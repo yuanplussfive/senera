@@ -44,6 +44,7 @@ export interface AgentConfigFormField {
   secret?: boolean;
   multiline?: boolean;
   required: boolean;
+  essential: boolean;
   addLabel?: string;
   itemLabelPath?: string[];
   itemFields?: AgentConfigFormField[];

@@ -1,9 +1,9 @@
-import crypto from "node:crypto";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 import { createPluginConfigurationArtifacts } from "@senera/tool-plugin-sdk";
 import type { PluginConfigurationDefinition } from "@senera/tool-plugin-sdk";
+import { readOptionalUtf8, writeUtf8Atomically } from "./GeneratedTextFile.js";
 
 const ConfigurationDefinitionFileName = "PluginConfig.definition.cjs";
 const check = process.argv.includes("--check");
@@ -50,21 +50,8 @@ function loadPluginConfigurationDefinition(definitionPath: string): unknown {
 }
 
 function syncArtifact(filePath: string, expected: string): void {
-  const actual = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : undefined;
+  const actual = readOptionalUtf8(filePath);
   if (actual === expected) return;
   changed.push(path.relative(workspaceRoot, filePath));
   if (!check) writeUtf8Atomically(filePath, expected);
-}
-
-function writeUtf8Atomically(filePath: string, content: string): void {
-  const temporaryPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
-  );
-  fs.writeFileSync(temporaryPath, content, { encoding: "utf8", flag: "wx" });
-  try {
-    fs.renameSync(temporaryPath, filePath);
-  } finally {
-    fs.rmSync(temporaryPath, { force: true });
-  }
 }

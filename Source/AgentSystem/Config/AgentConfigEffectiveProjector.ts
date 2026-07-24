@@ -7,6 +7,7 @@ import {
   resolveConfigStoreConfig,
   resolveFrontendConfig,
   resolveMemoryLearningConfig,
+  resolveModelProviderRuntimeDefaults,
   resolvePersistenceConfig,
   resolvePresetsConfig,
   resolveServerConfig,
@@ -52,10 +53,9 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
       ConfigStore: resolveConfigStoreConfig(config),
     },
     ModelProviderEndpoints: projectModelProviderEndpoints(config),
-    ModelProviders: config.ModelProviders.map((provider) => ({
-      ...AgentDefaults.ModelRuntime,
-      ...provider,
-    })),
+    ModelProviders: config.ModelProviders.map((provider) =>
+      resolveModelProviderRuntimeDefaults(resolveAgentDefaults(config).ModelRuntime, provider),
+    ),
     ModelGroups: config.ModelGroups,
   };
 }

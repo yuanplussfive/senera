@@ -102,7 +102,8 @@ export interface PluginConfigurationField {
   step?: number;
   secret?: boolean;
   multiline?: boolean;
-  required?: boolean;
+  required: boolean;
+  essential: boolean;
 }
 
 export interface PluginConfigurationSection {

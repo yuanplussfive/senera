@@ -1,19 +1,34 @@
 import {
   AgentSandboxRuntimeProvider,
+  type AgentSandboxPreparationProgress,
   type AgentSandboxRuntimeState,
   type AgentSandboxRuntimeSnapshot,
 } from "./AgentSandboxRuntimeTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { resolveSandboxRuntimeConfig } from "../AgentDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import { resolveAgentSandboxRuntimePaths } from "./AgentSandboxRuntimePreparation.js";
+import {
+  prepareAgentSandboxRuntime,
+  resolveAgentSandboxRuntimePaths,
+  type AgentSandboxRuntimePreparationOptions,
+  type AgentSandboxRuntimePreparationResult,
+} from "./AgentSandboxRuntimePreparation.js";
+import type { ResolvedAgentSandboxRuntimeConfig } from "../Types/AgentConfigTypes.js";
 
 export interface AgentSandboxRuntimePreparationStatus {
   state: AgentSandboxRuntimeState;
   message?: string;
   error?: string;
+  progress?: AgentSandboxPreparationProgress;
   updatedAt?: string;
 }
+
+export type AgentSandboxRuntimePrepareOptions = Omit<
+  AgentSandboxRuntimePreparationOptions,
+  "workspaceRoot" | "config" | "onProgress"
+> & {
+  config?: ResolvedAgentSandboxRuntimeConfig;
+};
 
 export interface AgentSandboxRuntimeServiceOptions {
   workspaceRoot?: string;
@@ -21,6 +36,7 @@ export interface AgentSandboxRuntimeServiceOptions {
   platform?: NodeJS.Platform;
   clock?: () => Date;
   packageAvailable?: () => boolean;
+  progressUpdateIntervalMs?: number;
 }
 
 export class AgentSandboxRuntimeService {
@@ -29,6 +45,10 @@ export class AgentSandboxRuntimeService {
   private readonly platform: NodeJS.Platform;
   private readonly clock: () => Date;
   private readonly packageAvailable: () => boolean;
+  private readonly progressUpdateIntervalMs: number;
+  private readonly listeners = new Set<(snapshot: AgentSandboxRuntimeSnapshot) => void>();
+  private preparationPromise: Promise<AgentSandboxRuntimePreparationResult | undefined> | undefined;
+  private lastProgressPublicationAt = Number.NEGATIVE_INFINITY;
   private preparationStatus: AgentSandboxRuntimePreparationStatus = {
     state: "unknown",
   };
@@ -39,23 +59,33 @@ export class AgentSandboxRuntimeService {
     this.platform = options.platform ?? process.platform;
     this.clock = options.clock ?? (() => new Date());
     this.packageAvailable = options.packageAvailable ?? resolveMicrosandboxPackageAvailable;
+    this.progressUpdateIntervalMs = options.progressUpdateIntervalMs ?? 200;
   }
 
   snapshot(): AgentSandboxRuntimeSnapshot {
+    const runtimeConfig = this.runtimeConfig();
+    const enabled = runtimeConfig?.Enabled ?? true;
     const supported = this.packageAvailable();
-    const paths = this.runtimePaths();
-    const state = supported ? this.preparationStatus.state : "unavailable";
-    const effectiveMode = supported && state === "ready" ? "sandbox" : "unavailable";
-    const diagnostics = this.diagnostics(supported, state);
+    const pathResolution = enabled ? this.runtimePaths(runtimeConfig) : { paths: undefined };
+    const state = enabled
+      ? supported && !pathResolution.error
+        ? this.preparationStatus.state
+        : "unavailable"
+      : "disabled";
+    const unavailableError = pathResolution.error ?? this.preparationStatus.error;
+    const effectiveMode =
+      state === "disabled" ? "disabled" : supported && state === "ready" ? "sandbox" : "unavailable";
+    const diagnostics = this.diagnostics(supported, state, unavailableError);
     return {
       provider: AgentSandboxRuntimeProvider,
       platform: this.platform,
       state,
       supported,
       effectiveMode,
-      paths,
+      paths: pathResolution.paths,
+      progress: state === "preparing" ? this.preparationStatus.progress : undefined,
       dependencies: {
-        errors: this.dependencyErrors(supported, state),
+        errors: this.dependencyErrors(supported, state, unavailableError),
         warnings: this.dependencyWarnings(supported, state),
       },
       diagnostics,
@@ -65,11 +95,78 @@ export class AgentSandboxRuntimeService {
   }
 
   markPreparing(message = agentErrorMessage("sandbox.preparing.statusMessage")): void {
+    this.setPreparing(message);
+  }
+
+  reportProgress(progress: AgentSandboxPreparationProgress): void {
+    this.setPreparing(agentErrorMessage("sandbox.preparing.statusMessage"), progress, true);
+  }
+
+  async prepare(
+    options: AgentSandboxRuntimePrepareOptions = {},
+  ): Promise<AgentSandboxRuntimePreparationResult | undefined> {
+    if (this.preparationPromise) {
+      return this.preparationPromise;
+    }
+
+    const config = options.config ?? this.runtimeConfig();
+    if (!config) {
+      throw new Error("Sandbox runtime preparation requires a resolved runtime configuration.");
+    }
+    if (!config.Enabled) {
+      this.markDisabled();
+      return undefined;
+    }
+
+    this.markPreparing();
+    const preparation = prepareAgentSandboxRuntime({
+      ...options,
+      workspaceRoot: this.workspaceRoot,
+      config,
+      onProgress: (progress) => this.reportProgress(progress),
+    });
+    this.preparationPromise = preparation.then(
+      (result) => {
+        if (result.skippedReason) {
+          this.markUnavailable(new Error(result.skippedReason));
+        } else {
+          this.markReady();
+        }
+        return result;
+      },
+      (error: unknown) => {
+        this.markUnavailable(error);
+        throw error;
+      },
+    );
+    try {
+      return await this.preparationPromise;
+    } finally {
+      this.preparationPromise = undefined;
+    }
+  }
+
+  subscribe(listener: (snapshot: AgentSandboxRuntimeSnapshot) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private setPreparing(message: string, progress?: AgentSandboxPreparationProgress, throttle = false): void {
+    const previousProgress = this.preparationStatus.progress;
     this.preparationStatus = {
       state: "preparing",
       message,
+      progress,
       updatedAt: this.clock().toISOString(),
     };
+    if (
+      throttle &&
+      previousProgress?.stage === progress?.stage &&
+      this.clock().getTime() - this.lastProgressPublicationAt < this.progressUpdateIntervalMs
+    ) {
+      return;
+    }
+    this.publish();
   }
 
   markReady(message = agentErrorMessage("sandbox.ready.statusMessage")): void {
@@ -78,6 +175,7 @@ export class AgentSandboxRuntimeService {
       message,
       updatedAt: this.clock().toISOString(),
     };
+    this.publish();
   }
 
   markUnavailable(error: unknown, message = agentErrorMessage("sandbox.unavailable.statusMessage")): void {
@@ -87,28 +185,64 @@ export class AgentSandboxRuntimeService {
       error: errorMessage(error),
       updatedAt: this.clock().toISOString(),
     };
+    this.publish();
   }
 
-  private runtimePaths(): AgentSandboxRuntimeSnapshot["paths"] {
+  markDisabled(message = agentErrorMessage("sandbox.disabled.statusMessage")): void {
+    this.preparationStatus = {
+      state: "disabled",
+      message,
+      updatedAt: this.clock().toISOString(),
+    };
+    this.publish();
+  }
+
+  private publish(): void {
+    this.lastProgressPublicationAt = this.clock().getTime();
+    const snapshot = this.snapshot();
+    for (const listener of this.listeners) listener(snapshot);
+  }
+
+  private runtimeConfig() {
     const config = this.configSnapshot?.();
-    if (!config) {
-      return undefined;
-    }
-
-    return resolveAgentSandboxRuntimePaths(this.workspaceRoot, resolveSandboxRuntimeConfig(config));
+    return config ? resolveSandboxRuntimeConfig(config) : undefined;
   }
 
-  private dependencyErrors(supported: boolean, state: AgentSandboxRuntimeState): string[] {
+  private runtimePaths(runtimeConfig = this.runtimeConfig()): {
+    paths: AgentSandboxRuntimeSnapshot["paths"];
+    error?: string;
+  } {
+    if (!runtimeConfig) {
+      return { paths: undefined };
+    }
+    try {
+      return { paths: resolveAgentSandboxRuntimePaths(this.workspaceRoot, runtimeConfig) };
+    } catch (error) {
+      return { paths: undefined, error: errorMessage(error) };
+    }
+  }
+
+  private dependencyErrors(
+    supported: boolean,
+    state: AgentSandboxRuntimeState,
+    unavailableError: string | undefined,
+  ): string[] {
+    if (state === "disabled") {
+      return [];
+    }
     if (!supported) {
       return ["microsandbox package is not resolvable"];
     }
-    if (state === "unavailable" && this.preparationStatus.error) {
-      return [this.preparationStatus.error];
+    if (state === "unavailable" && unavailableError) {
+      return [unavailableError];
     }
     return [];
   }
 
   private dependencyWarnings(supported: boolean, state: AgentSandboxRuntimeState): string[] {
+    if (state === "disabled") {
+      return [];
+    }
     if (!supported) {
       return [];
     }
@@ -124,7 +258,14 @@ export class AgentSandboxRuntimeService {
     return [];
   }
 
-  private diagnostics(supported: boolean, state: AgentSandboxRuntimeState): AgentSandboxRuntimeSnapshot["diagnostics"] {
+  private diagnostics(
+    supported: boolean,
+    state: AgentSandboxRuntimeState,
+    unavailableError: string | undefined,
+  ): AgentSandboxRuntimeSnapshot["diagnostics"] {
+    if (state === "disabled") {
+      return [microsandboxDisabledDiagnostic()];
+    }
     if (!supported) {
       return [microsandboxMissingDiagnostic()];
     }
@@ -135,12 +276,15 @@ export class AgentSandboxRuntimeService {
       return [microsandboxPreparingDiagnostic()];
     }
     if (state === "unavailable") {
-      return [microsandboxUnavailableDiagnostic(this.preparationStatus.error)];
+      return [microsandboxUnavailableDiagnostic(unavailableError)];
     }
     return [microsandboxConfiguredDiagnostic()];
   }
 
   private message(supported: boolean, state: AgentSandboxRuntimeState): string {
+    if (state === "disabled") {
+      return this.preparationStatus.message ?? agentErrorMessage("sandbox.disabled.snapshotMessage");
+    }
     if (!supported) {
       return agentErrorMessage("sandbox.missing.snapshotMessage");
     }
@@ -155,6 +299,16 @@ export class AgentSandboxRuntimeService {
     }
     return agentErrorMessage("sandbox.configured.snapshotMessage");
   }
+}
+
+function microsandboxDisabledDiagnostic(): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
+  return {
+    code: "microsandbox_disabled_by_runtime_configuration",
+    severity: "warning",
+    message: agentErrorMessage("sandbox.disabled.message"),
+    recommendation: agentErrorMessage("sandbox.disabled.recommendation"),
+    details: [agentErrorMessage("sandbox.disabled.detail.localOnly")],
+  };
 }
 
 function microsandboxConfiguredDiagnostic(): AgentSandboxRuntimeSnapshot["diagnostics"][number] {

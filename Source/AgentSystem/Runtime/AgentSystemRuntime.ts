@@ -43,6 +43,7 @@ import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlann
 import { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 import { createSeneraExecutionEnvironments } from "../Execution/SeneraExecutionEnvFactory.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
+import type { SeneraMicrosandboxSdkAdapter } from "../Execution/SeneraMicrosandboxTypes.js";
 import { resolveAgentSandboxRuntimePaths } from "../Sandbox/AgentSandboxRuntimePreparation.js";
 import { AgentPiCompactionSummarizer } from "../Pi/AgentPiCompactionSummarizer.js";
 import { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
@@ -103,6 +104,8 @@ export class AgentSystemRuntime {
     readonly resourcesPath?: string,
     runtimeModuleResolver?: AgentMcpRuntimeModuleResolver,
     injectedExecutionResources?: AgentExecutionResourceBroker,
+    sandboxRuntimeReady?: () => boolean,
+    microsandboxSdk?: SeneraMicrosandboxSdkAdapter,
   ) {
     this.approvalRuntime = injectedApprovalRuntime ?? new AgentApprovalRuntime();
     this.ownsInteractionInput = !injectedInteractionInput;
@@ -110,11 +113,15 @@ export class AgentSystemRuntime {
     this.piSessionRegistry = injectedPiSessionRegistry ?? new AgentPiActiveSessionRegistry();
     const authorizationPolicyClient = new AgentSeneraOpaPolicyClient({ registry: this.registry });
     const sandboxRuntimeConfig = resolveSandboxRuntimeConfig(config);
+    const sandboxRuntimePaths = tryResolveSandboxRuntimePaths(this.workspaceRoot, sandboxRuntimeConfig);
     const executionResourceLimits = resolveAgentExecutionResourceLimits(config);
     const executionEnvironments = createSeneraExecutionEnvironments({
       workspaceRoot: this.workspaceRoot,
       resourcesPath: this.resourcesPath,
-      sandboxRuntimePaths: resolveAgentSandboxRuntimePaths(this.workspaceRoot, sandboxRuntimeConfig),
+      sandboxRuntimePaths,
+      sandboxEnabled: sandboxRuntimeConfig.Enabled,
+      sandboxRuntimeReady,
+      microsandboxSdk,
       microsandboxSettings: {
         image: sandboxRuntimeConfig.Images[0],
       },
@@ -262,6 +269,7 @@ export class AgentSystemRuntime {
       resourcesPath?: string;
       runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
       executionResources?: AgentExecutionResourceBroker;
+      microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
     } = {},
   ): AgentSystemRuntime {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
@@ -281,6 +289,8 @@ export class AgentSystemRuntime {
       options.resourcesPath,
       options.runtimeModuleResolver,
       options.executionResources,
+      undefined,
+      options.microsandboxSdk,
     );
     const scanner = new AgentPluginScanner(workspaceRoot, runtime.config);
     for (const plugin of scanner.scan()) {
@@ -305,6 +315,8 @@ export class AgentSystemRuntime {
     resourcesPath?: string;
     runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
     executionResources?: AgentExecutionResourceBroker;
+    sandboxRuntimeReady?: () => boolean;
+    microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
   }): AgentSystemRuntime {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
     const configPath = path.resolve(workspaceRoot, options.configPath ?? "senera.config.json");
@@ -323,6 +335,8 @@ export class AgentSystemRuntime {
       options.resourcesPath,
       options.runtimeModuleResolver,
       options.executionResources,
+      options.sandboxRuntimeReady,
+      options.microsandboxSdk,
     );
     const scanner = new AgentPluginScanner(workspaceRoot, runtime.config);
     for (const plugin of scanner.scan()) {
@@ -331,5 +345,13 @@ export class AgentSystemRuntime {
     runtime.registry.validateAgentReferences();
 
     return runtime;
+  }
+}
+
+function tryResolveSandboxRuntimePaths(workspaceRoot: string, config: ReturnType<typeof resolveSandboxRuntimeConfig>) {
+  try {
+    return resolveAgentSandboxRuntimePaths(workspaceRoot, config);
+  } catch {
+    return undefined;
   }
 }

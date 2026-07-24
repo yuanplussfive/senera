@@ -79,6 +79,35 @@ describe("providerConnectionState", () => {
     expect(resetProviderConnectionDraft(acceptedProvider)).toEqual(acceptedProvider);
   });
 
+  it("builds a sparse merge patch and uses null to remove saved fields", () => {
+    const base = {
+      Id: "custom",
+      Enabled: true,
+      BaseUrl: "https://saved.example.test/v1",
+      ApiKey: "saved-key",
+      Headers: { "x-senera": "saved" },
+    };
+    const mutation = buildProviderEndpointMutationInput(
+      {
+        Id: "custom",
+        Enabled: false,
+        BaseUrl: "https://saved.example.test/v1",
+      },
+      base,
+    );
+
+    expect(mutation).toEqual({
+      ok: true,
+      providerId: "custom",
+      endpoint: {
+        Id: "custom",
+        Enabled: false,
+        ApiKey: null,
+        Headers: null,
+      },
+    });
+  });
+
   it("trims provider ids before confirm or fetch payloads", () => {
     expect(
       buildProviderEndpointMutationInput({

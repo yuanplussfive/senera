@@ -16,7 +16,7 @@ export interface DesktopRuntimePaths {
   systemPluginRoot: string;
   userPluginRoot: string;
   sandboxRuntimeRoot: string;
-  sandboxBundleRoot: string;
+  microsandboxRuntimeBridgePath: string;
   frontendIndexHtml: string;
   windowIconPath: string;
   logPath: string;
@@ -27,6 +27,7 @@ const ConfigDatabaseFileName = "Config.sqlite";
 const PluginConfigFileName = "PluginConfig.toml";
 const DesktopIconFileName = "senera-icon.png";
 const NodeModulesDirectoryName = "node_modules";
+const MicrosandboxRuntimeBridgePath = ["Dist", "Apps", "Desktop", "DesktopMicrosandboxRuntimeBridge.js"];
 
 interface PackageJson {
   dependencies?: Record<string, string>;
@@ -60,9 +61,12 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
   const configDatabasePath = path.join(desktopDataRoot, ConfigDatabaseFileName);
   const configSeedPath = path.join(resourceRoot, ConfigTemplateFileName);
   const sandboxRuntimeRoot = path.join(desktopDataRoot, "SandboxRuntime");
-  const sandboxBundleRoot = path.join(desktopDataRoot, "SandboxBundles");
+  const microsandboxRuntimeBridgePath = path.join(
+    app.isPackaged ? unpackedAppRoot(appRoot) : appRoot,
+    ...MicrosandboxRuntimeBridgePath,
+  );
   const bundledTerminalRuntimeRoot = app.isPackaged
-    ? path.join(resourceRoot, "TerminalSidecarRuntime")
+    ? path.join(process.resourcesPath, "TerminalSidecarRuntime")
     : path.join(resourceRoot, ".senera", "sandbox-runtime", "terminal-sidecar");
 
   fs.mkdirSync(workspaceRoot, { recursive: true });
@@ -94,7 +98,7 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
     systemPluginRoot: runtimeSystemPlugins,
     userPluginRoot: runtimeUserPlugins,
     sandboxRuntimeRoot,
-    sandboxBundleRoot,
+    microsandboxRuntimeBridgePath,
     frontendIndexHtml: path.join(resourceRoot, "Frontend", "dist", "index.html"),
     windowIconPath: path.join(resourceRoot, "Apps", "Desktop", "Assets", DesktopIconFileName),
     logPath: path.join(userDataRoot, "desktop.log"),

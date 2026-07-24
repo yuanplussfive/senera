@@ -179,12 +179,11 @@ describe("agent protocol E2E", () => {
     const sibling = await AgentProtocolE2eClient.connect(harness.websocketUrl);
     try {
       const siblingSequence = sibling.snapshot().at(-1)?.sequence ?? 0;
-      const requestId = "request_e2e_model_sync";
+      const commandId = "command_e2e_model_sync";
 
       harness.client.send({
         type: "provider.model.upsert",
-        requestId,
-        expectedRevision: 1,
+        commandId,
         model: {
           Id: "e2e-added-model",
           ProviderId: "e2e",
@@ -195,7 +194,7 @@ describe("agent protocol E2E", () => {
 
       await harness.client.waitForEvent(
         AgentEventKinds.ConfigSnapshot,
-        (event) => readOperationRequestId(event) === requestId,
+        (event) => readOperationCommandId(event) === commandId,
       );
       const reloaded = await sibling.waitForEvent(AgentEventKinds.ConfigReloaded, undefined, {
         afterSequence: siblingSequence,
@@ -318,11 +317,11 @@ async function createCompletedSession(
   });
 }
 
-function readOperationRequestId(event: { data: unknown }): string | undefined {
+function readOperationCommandId(event: { data: unknown }): string | undefined {
   const operation = readDataRecord(event).operation;
   if (!operation || typeof operation !== "object") return undefined;
-  const requestId = (operation as Record<string, unknown>).requestId;
-  return typeof requestId === "string" ? requestId : undefined;
+  const commandId = (operation as Record<string, unknown>).commandId;
+  return typeof commandId === "string" ? commandId : undefined;
 }
 
 function readDataRecord(event: { data: unknown }): Record<string, unknown> {

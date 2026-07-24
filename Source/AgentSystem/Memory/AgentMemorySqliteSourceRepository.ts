@@ -28,7 +28,7 @@ import {
   sourceToRow,
 } from "./AgentMemoryRowMapper.js";
 import { failedAgentMemoryLearningJobStatus, memoryLearningJobFromStorageRow } from "./AgentMemoryLearningJob.js";
-import { AgentMemoryDatabaseMigrations } from "./AgentMemorySqlSchema.js";
+import { AgentMemoryDatabaseContract } from "./AgentMemorySqlSchema.js";
 import { prepareAgentMemorySqlStatements, type AgentMemorySqlStatements } from "./AgentMemorySqlStatements.js";
 import { projectMemoryTime as projectTime } from "./AgentMemoryTime.js";
 import type {
@@ -58,7 +58,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
   private readonly statements: AgentMemorySqlStatements;
 
   constructor(databasePath: string) {
-    this.kernel = new AgentSqliteDatabaseKernel({ databasePath, migrations: AgentMemoryDatabaseMigrations });
+    this.kernel = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentMemoryDatabaseContract });
     this.db = this.kernel.connection;
     this.statements = prepareAgentMemorySqlStatements(this.db);
   }

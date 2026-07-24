@@ -6,7 +6,10 @@ import {
   BamlValidationError,
 } from "../BamlClient/baml_client/index.js";
 import { AgentActionPlannerValidationError } from "./AgentActionPlannerSchema.js";
-import { AgentBamlStructuredOutputError } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
+import {
+  AgentBamlModelCallError,
+  AgentBamlStructuredOutputError,
+} from "../BamlClient/AgentBamlStructuredOutputRunner.js";
 import { zodIssuesToAgentStructuredIssues, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
 
 export interface RawActionPlanningFailure {
@@ -19,7 +22,7 @@ export function issueMessages(error: unknown): string[] {
     return error.issues;
   }
 
-  if (error instanceof AgentBamlStructuredOutputError) {
+  if (error instanceof AgentBamlModelCallError || error instanceof AgentBamlStructuredOutputError) {
     return error.issues;
   }
 
@@ -49,6 +52,10 @@ export function issueDetails(error: unknown): AgentStructuredIssue[] {
 export function stringifyIssueValue(error: unknown): string {
   if (error instanceof AgentActionPlannerValidationError) {
     return JSON.stringify(error.invalidDecision, null, 2);
+  }
+
+  if (error instanceof AgentBamlModelCallError) {
+    return stringifyIssueValue(error.originalError);
   }
 
   if (error instanceof AgentBamlStructuredOutputError) {
@@ -87,6 +94,10 @@ export function isRepairablePlanningFailure(error: unknown): boolean {
 }
 
 export function summarizePlannerFailure(error: unknown): string {
+  if (error instanceof AgentBamlModelCallError) {
+    return summarizePlannerModelCallFailure(error);
+  }
+
   if (error instanceof BamlTimeoutError) {
     return "action_planner_timeout";
   }
@@ -130,6 +141,10 @@ export function collectPlannerFailureToolNames(error: unknown): string[] {
       collectToolNames(value.invalidDecision, names);
       return;
     }
+    if (value instanceof AgentBamlModelCallError) {
+      visit(value.originalError);
+      return;
+    }
     if (value instanceof AgentBamlStructuredOutputError) {
       visit(value.originalError);
       return;
@@ -141,6 +156,17 @@ export function collectPlannerFailureToolNames(error: unknown): string[] {
 
   visit(error);
   return [...names];
+}
+
+function summarizePlannerModelCallFailure(error: AgentBamlModelCallError): string {
+  const original = error.originalError;
+  if (original instanceof BamlTimeoutError) return "action_planner_timeout";
+  if (original instanceof BamlClientHttpError) {
+    return `action_planner_http_error${original.status_code > 0 ? `:${original.status_code}` : ""}`;
+  }
+  if (original instanceof BamlAbortError) return "action_planner_aborted";
+  if (original instanceof BamlClientFinishReasonError) return "action_planner_incomplete_output";
+  return withPlannerDetails("action_planner_model_request_failed", error.issues);
 }
 
 function collectToolNames(value: unknown, names: Set<string>): void {

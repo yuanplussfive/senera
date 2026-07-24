@@ -31,6 +31,11 @@ FROM ${NODE_IMAGE} AS runtime
 
 WORKDIR /app
 
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+  apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates
+
 ENV NODE_ENV=production
 ENV SENERA_WORKSPACE_ROOT=/data
 ENV AGENT_CONFIG_PATH=/data/senera.config.json

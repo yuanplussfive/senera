@@ -1,9 +1,10 @@
 import { AgentDefaults } from "../AgentDefaults.js";
+import { applyAgentJsonMergePatch } from "../Core/AgentJsonMergePatch.js";
+import type { AgentProviderEndpointPatch } from "./AgentConfigCommandSchemas.js";
 import type {
   AgentModelGroupConfig,
   AgentModelGroupStrategyConfig,
   AgentModelProviderConfig,
-  AgentModelProviderEndpointConfig,
   AgentSystemConfig,
 } from "../Types/AgentConfigTypes.js";
 
@@ -17,9 +18,12 @@ export type AgentProviderModelConfigOperationKind =
   | "provider.defaultModel.set";
 
 export interface AgentConfigRevisionGuardInput {
-  expectedRevision?: number;
-  expectedVersion?: number;
-  mirrorJson?: boolean;
+  baseRevision?: number;
+  baseVersion?: number;
+}
+
+export interface AgentConfigCommandInput {
+  commandId: string;
 }
 
 export interface AgentProviderModelGroupAssignmentInput {
@@ -28,22 +32,22 @@ export interface AgentProviderModelGroupAssignmentInput {
   icon?: string;
 }
 
-export interface AgentProviderEndpointUpsertInput extends AgentConfigRevisionGuardInput {
-  endpoint: AgentModelProviderEndpointConfig;
+export interface AgentProviderEndpointUpsertInput extends AgentConfigCommandInput {
+  endpoint: AgentProviderEndpointPatch;
 }
 
-export interface AgentProviderEndpointRenameInput extends AgentConfigRevisionGuardInput {
+export interface AgentProviderEndpointRenameInput extends AgentConfigCommandInput {
   providerId: string;
   nextProviderId: string;
 }
 
-export interface AgentProviderEndpointDeleteInput extends AgentConfigRevisionGuardInput {
+export interface AgentProviderEndpointDeleteInput extends AgentConfigCommandInput {
   providerId: string;
   cascadeModels?: boolean;
   replacementDefaultModelId?: string;
 }
 
-export interface AgentProviderModelUpsertInput extends AgentConfigRevisionGuardInput {
+export interface AgentProviderModelUpsertInput extends AgentConfigCommandInput {
   model: AgentModelProviderConfig;
   group?: AgentProviderModelGroupAssignmentInput;
 }
@@ -52,18 +56,18 @@ export interface AgentProviderModelBulkImportGroupAssignmentInput extends AgentP
   modelId: string;
 }
 
-export interface AgentProviderModelBulkImportInput extends AgentConfigRevisionGuardInput {
+export interface AgentProviderModelBulkImportInput extends AgentConfigCommandInput {
   models: AgentModelProviderConfig[];
   overwriteExisting?: boolean;
   groupAssignments?: AgentProviderModelBulkImportGroupAssignmentInput[];
 }
 
-export interface AgentProviderModelDeleteInput extends AgentConfigRevisionGuardInput {
+export interface AgentProviderModelDeleteInput extends AgentConfigCommandInput {
   modelId: string;
   replacementDefaultModelId?: string;
 }
 
-export interface AgentDefaultModelSetInput extends AgentConfigRevisionGuardInput {
+export interface AgentDefaultModelSetInput extends AgentConfigCommandInput {
   modelId: string;
 }
 
@@ -85,9 +89,9 @@ export class AgentConfigStaleWriteError extends Error {
 
   constructor(
     readonly details: {
-      expectedRevision?: number;
+      baseRevision?: number;
       currentRevision?: number;
-      expectedVersion?: number;
+      baseVersion?: number;
       currentVersion: number;
     },
   ) {
@@ -104,25 +108,25 @@ export function assertConfigRevisionGuard(
   },
 ): void {
   if (current.revision !== undefined) {
-    if (input.expectedRevision === current.revision) {
+    if (input.baseRevision === current.revision) {
       return;
     }
     throw new AgentConfigStaleWriteError({
-      expectedRevision: input.expectedRevision,
+      baseRevision: input.baseRevision,
       currentRevision: current.revision,
-      expectedVersion: input.expectedVersion,
+      baseVersion: input.baseVersion,
       currentVersion: current.version,
     });
   }
 
-  if (input.expectedVersion === current.version) {
+  if (input.baseVersion === current.version) {
     return;
   }
 
   throw new AgentConfigStaleWriteError({
-    expectedRevision: input.expectedRevision,
+    baseRevision: input.baseRevision,
     currentRevision: current.revision,
-    expectedVersion: input.expectedVersion,
+    baseVersion: input.baseVersion,
     currentVersion: current.version,
   });
 }
@@ -134,10 +138,12 @@ export function upsertProviderEndpoint(
   assertConfiguredEndpointIdsUnique(config);
   const endpoints = config.ModelProviderEndpoints ?? [];
   const existingIndex = endpoints.findIndex((endpoint) => endpoint.Id === input.endpoint.Id);
+  const { Id, ...patch } = input.endpoint;
+  const nextEndpoint = applyAgentJsonMergePatch(existingIndex >= 0 ? endpoints[existingIndex] : { Id }, patch);
   const nextEndpoints =
     existingIndex >= 0
-      ? endpoints.map((endpoint, index) => (index === existingIndex ? { ...input.endpoint } : { ...endpoint }))
-      : [...endpoints.map((endpoint) => ({ ...endpoint })), { ...input.endpoint }];
+      ? endpoints.map((endpoint, index) => (index === existingIndex ? nextEndpoint : { ...endpoint }))
+      : [...endpoints.map((endpoint) => ({ ...endpoint })), nextEndpoint];
 
   return validateProviderModelInvariants({
     ...config,
@@ -350,13 +356,13 @@ function buildStaleWriteMessage(details: AgentConfigStaleWriteError["details"]):
   if (details.currentRevision !== undefined) {
     return [
       "配置已被其他写入更新，请刷新后重试。",
-      `expectedRevision=${details.expectedRevision ?? "missing"}`,
+      `baseRevision=${details.baseRevision ?? "missing"}`,
       `currentRevision=${details.currentRevision}`,
     ].join(" ");
   }
   return [
     "配置已被其他写入更新，请刷新后重试。",
-    `expectedVersion=${details.expectedVersion ?? "missing"}`,
+    `baseVersion=${details.baseVersion ?? "missing"}`,
     `currentVersion=${details.currentVersion}`,
   ].join(" ");
 }

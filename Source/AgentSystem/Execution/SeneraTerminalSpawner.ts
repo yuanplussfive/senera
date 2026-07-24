@@ -95,6 +95,8 @@ export interface SeneraAuthorizedTerminalSpawnerOptions {
   readonly sandbox?: SeneraTerminalBackend;
   readonly backends?: Iterable<SeneraTerminalBackend>;
   readonly environmentPolicy?: SeneraProcessEnvironmentPolicy | SeneraProcessEnvironmentPolicyOptions;
+  /** Whether this runtime is allowed to create a microsandbox guest. */
+  readonly sandboxEnabled?: boolean;
 }
 
 export function createSeneraAuthorizedTerminalSpawner(
@@ -113,6 +115,17 @@ export function createSeneraAuthorizedTerminalSpawner(
         SeneraExecutionErrorCodes.SandboxUnavailable,
         "PTY terminal requires an explicit execution boundary.",
         { profile: profile?.name },
+      );
+    }
+
+    if (profile.backend === "sandbox" && options.sandboxEnabled === false) {
+      throw new SeneraExecutionError(
+        SeneraExecutionErrorCodes.SandboxUnavailable,
+        "Sandbox terminal execution is disabled by the active runtime deployment.",
+        {
+          reason: "sandbox_disabled",
+          profile: profile.name,
+        },
       );
     }
 

@@ -1,83 +1,77 @@
-import { useCallback, useMemo, useReducer, useRef, type MutableRefObject } from "react";
+import { useCallback, useMemo, useReducer, useRef } from "react";
 import { toast } from "sonner";
-import type {
-  ConfigMutationState,
-  ConfigSnapshotData,
-  EventEnvelope,
-  ProviderModelEndpointInput,
-  WsRequest,
-} from "../api/eventTypes";
-import type { SocketStatus } from "../api/useAgentSocket";
-import { generateId } from "../lib/util";
+import type { ConfigMutationState, EventEnvelope, ProviderModelEndpointPatchInput } from "../api/eventTypes";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import {
   providerEndpointMessageKeys,
-  readConfigRevisionGuard,
   resolveProviderEndpointMutationEvent,
   type PendingProviderEndpointOperation,
   type ProviderEndpointConfigRequest,
   type ProviderEndpointDeleteOptions,
 } from "./providerEndpointMutations";
-
-type SendRequest = (request: WsRequest) => boolean;
+import type { SystemConfigCommandQueue, SystemConfigCommandTransportFailure } from "./useSystemConfigCommandQueue";
 
 export interface ProviderEndpointMutationTransport {
-  configSnapshot?: ConfigSnapshotData | null;
-  sendRef: MutableRefObject<SendRequest | null>;
-  statusRef: MutableRefObject<SocketStatus>;
+  commandQueue: SystemConfigCommandQueue;
 }
 
 type State = Record<string, ConfigMutationState>;
 type Action =
   { type: "upsert"; providerId: string; operation: ConfigMutationState } | { type: "remove"; providerId: string };
 
-export function useProviderEndpointMutations({
-  configSnapshot = null,
-  sendRef,
-  statusRef,
-}: ProviderEndpointMutationTransport) {
+export function useProviderEndpointMutations({ commandQueue }: ProviderEndpointMutationTransport) {
   const [operations, dispatch] = useReducer(reducer, {});
   const pendingRef = useRef<Map<string, PendingProviderEndpointOperation>>(new Map());
 
   const start = useCallback(
     (pending: PendingProviderEndpointOperation, request: ProviderEndpointConfigRequest): string | null => {
-      const send = sendRef.current;
       const copy = providerEndpointMessageKeys[pending.kind];
-      if (statusRef.current !== "open" || !send) {
-        toast.error(frontendMessage(copy.offline));
-        return null;
-      }
-      if (!configSnapshot) {
-        toast.error(frontendMessage(copy.configUnavailable));
-        return null;
-      }
-      const requestId = generateId();
-      pendingRef.current.set(requestId, pending);
+      let commandId: string | null = null;
+      const handleTransportFailure = (failure: SystemConfigCommandTransportFailure): void => {
+        const messageKey =
+          failure === "config_unavailable"
+            ? copy.configUnavailable
+            : failure === "offline"
+              ? copy.offline
+              : copy.disconnected;
+        if (commandId) {
+          pendingRef.current.delete(commandId);
+          dispatch({
+            type: "upsert",
+            providerId: pending.providerId,
+            operation: {
+              commandId,
+              kind: pending.kind,
+              status: "error",
+              message: frontendMessage(messageKey),
+              updatedAt: timestamp(),
+            },
+          });
+        }
+        toast.error(frontendMessage(messageKey));
+      };
+      commandId = commandQueue.enqueue({
+        operationKind: pending.kind,
+        request,
+        ...(pending.kind === "provider.endpoint.upsert"
+          ? { coalesceKey: pending.kind + ":" + pending.providerId }
+          : {}),
+        onTransportFailure: handleTransportFailure,
+      });
+      if (!commandId) return null;
+      pendingRef.current.set(commandId, pending);
       dispatch({
         type: "upsert",
         providerId: pending.providerId,
-        operation: { requestId, kind: pending.kind, status: "pending", updatedAt: timestamp() },
+        operation: { commandId, kind: pending.kind, status: "pending", updatedAt: timestamp() },
       });
-      if (
-        !send({
-          ...request,
-          ...readConfigRevisionGuard(configSnapshot),
-          requestId,
-          mirrorJson: true,
-        } as ProviderEndpointConfigRequest)
-      ) {
-        pendingRef.current.delete(requestId);
-        dispatch({ type: "remove", providerId: pending.providerId });
-        toast.error(frontendMessage(copy.disconnected));
-        return null;
-      }
-      return requestId;
+      return commandId;
     },
-    [configSnapshot, sendRef, statusRef],
+    [commandQueue],
   );
 
   const upsertProviderEndpoint = useCallback(
-    (endpoint: ProviderModelEndpointInput) =>
+    (endpoint: ProviderModelEndpointPatchInput) =>
       start(
         { kind: "provider.endpoint.upsert", providerId: endpoint.Id },
         { type: "provider.endpoint.upsert", endpoint },
@@ -104,12 +98,12 @@ export function useProviderEndpointMutations({
   const ingestProviderEndpointMutationEvent = useCallback((env: EventEnvelope): boolean => {
     const resolution = resolveProviderEndpointMutationEvent(env, pendingRef.current);
     if (!resolution) return false;
-    pendingRef.current.delete(resolution.requestId);
+    pendingRef.current.delete(resolution.commandId);
     dispatch({
       type: "upsert",
       providerId: resolution.providerId,
       operation: {
-        requestId: resolution.requestId,
+        commandId: resolution.commandId,
         kind: resolution.operationKind,
         status: resolution.kind === "success" ? "success" : "error",
         ...(resolution.kind === "failure" ? { message: resolution.message, errorCode: resolution.errorCode } : {}),

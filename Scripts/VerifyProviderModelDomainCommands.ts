@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentConfigStaleWriteError } from "../Source/AgentSystem/Config/AgentProviderModelConfigCommands.js";
+import { AgentConfigCommandIdConflictError } from "../Source/AgentSystem/Config/AgentConfigSqliteRepository.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const tempRoot = path.join(process.cwd(), ".senera", "tmp", "verify-provider-model-domain");
@@ -10,14 +11,15 @@ fs.mkdirSync(tempRoot, { recursive: true });
 const workspaceRoot = fs.mkdtempSync(path.join(tempRoot, "run-"));
 
 let service: AgentConfigService | undefined;
+let commandSequence = 0;
 
 try {
   service = createService(baseConfig());
   assert.equal(service.snapshot().revision, 1);
 
-  const staleRevision = service.snapshot().revision;
+  const createEndpointCommandId = nextCommandId();
   const createdIdentity = service.upsertProviderEndpoint({
-    expectedRevision: staleRevision,
+    commandId: createEndpointCommandId,
     endpoint: {
       Id: "custom",
       Icon: "openai",
@@ -32,7 +34,7 @@ try {
   });
 
   const confirmedConnection = service.upsertProviderEndpoint({
-    expectedRevision: service.snapshot().revision,
+    commandId: nextCommandId(),
     endpoint: {
       ...findEndpoint(service.snapshot().value, "custom"),
       BaseUrl: "https://custom.example.test/v1",
@@ -41,24 +43,40 @@ try {
   });
   assert.equal(confirmedConnection.revision, 3);
   assert.equal(findEndpoint(confirmedConnection.value, "custom").BaseUrl, "https://custom.example.test/v1");
+  const clearedCredential = service.upsertProviderEndpoint({
+    commandId: nextCommandId(),
+    endpoint: {
+      Id: "custom",
+      ApiKey: null,
+    },
+  });
+  assert.equal(findEndpoint(clearedCredential.value, "custom").BaseUrl, "https://custom.example.test/v1");
+  assert.equal("ApiKey" in findEndpoint(clearedCredential.value, "custom"), false);
+  const revisionAfterConfirmation = clearedCredential.revision;
+  const replayedIdentity = service.upsertProviderEndpoint({
+    commandId: createEndpointCommandId,
+    endpoint: {
+      Id: "custom",
+      Icon: "openai",
+      Kind: "OpenAICompatible",
+    },
+  });
+  assert.equal(replayedIdentity.revision, revisionAfterConfirmation);
+  assert.equal(findEndpoint(replayedIdentity.value, "custom").BaseUrl, "https://custom.example.test/v1");
   assert.throws(
     () =>
       service?.upsertProviderEndpoint({
-        expectedRevision: staleRevision,
+        commandId: createEndpointCommandId,
         endpoint: {
-          Id: "stale",
-          BaseUrl: "https://stale.example.test/v1",
+          Id: "custom",
+          BaseUrl: "https://conflicting.example.test/v1",
         },
       }),
-    AgentConfigStaleWriteError,
-  );
-  assert.equal(
-    service.snapshot().value.ModelProviderEndpoints?.some((endpoint) => endpoint.Id === "stale"),
-    false,
+    AgentConfigCommandIdConflictError,
   );
 
   const imported = service.bulkImportProviderModels({
-    expectedRevision: service.snapshot().revision,
+    commandId: nextCommandId(),
     models: [
       {
         Id: "custom/model-a",
@@ -97,7 +115,7 @@ try {
   );
 
   const preserved = service.upsertProviderModel({
-    expectedRevision: service.snapshot().revision,
+    commandId: nextCommandId(),
     model: {
       Id: "custom/model-a",
       ProviderId: "custom",
@@ -110,7 +128,7 @@ try {
   assert.equal(preservedModel.Temperature, 0.2);
 
   const renamed = service.renameProviderEndpoint({
-    expectedRevision: service.snapshot().revision,
+    commandId: nextCommandId(),
     providerId: "custom",
     nextProviderId: "custom-renamed",
   });
@@ -120,7 +138,7 @@ try {
   assert.throws(
     () =>
       service?.renameProviderEndpoint({
-        expectedRevision: service?.snapshot().revision,
+        commandId: nextCommandId(),
         providerId: "openai",
         nextProviderId: "openai-custom",
       }),
@@ -130,7 +148,7 @@ try {
   assert.throws(
     () =>
       service?.deleteProviderEndpoint({
-        expectedRevision: service?.snapshot().revision,
+        commandId: nextCommandId(),
         providerId: "custom-renamed",
       }),
     /cascadeModels=true/,
@@ -141,14 +159,14 @@ try {
   );
 
   const defaultChanged = service.setDefaultProviderModel({
-    expectedRevision: service.snapshot().revision,
+    commandId: nextCommandId(),
     modelId: "custom/model-a",
   });
   assert.equal(defaultChanged.value.DefaultModelProviderId, "custom/model-a");
   assert.throws(
     () =>
       service?.deleteProviderModel({
-        expectedRevision: service?.snapshot().revision,
+        commandId: nextCommandId(),
         modelId: "custom/model-a",
       }),
     /replacementDefaultModelId/,
@@ -156,7 +174,7 @@ try {
   assert.throws(
     () =>
       service?.deleteProviderModel({
-        expectedRevision: service?.snapshot().revision,
+        commandId: nextCommandId(),
         modelId: "custom/model-a",
         replacementDefaultModelId: "missing",
       }),
@@ -164,7 +182,7 @@ try {
   );
 
   const modelDeleted = service.deleteProviderModel({
-    expectedRevision: service.snapshot().revision,
+    commandId: nextCommandId(),
     modelId: "custom/model-a",
     replacementDefaultModelId: "main",
   });
@@ -176,7 +194,7 @@ try {
   assert.equal(modelDeleted.value.ModelGroups?.find((group) => group.Id === "reasoning")?.Strategies?.length ?? 0, 0);
 
   const reimported = service.bulkImportProviderModels({
-    expectedRevision: service.snapshot().revision,
+    commandId: nextCommandId(),
     models: [
       {
         Id: "custom/model-b",
@@ -192,7 +210,7 @@ try {
   );
 
   const endpointDeleted = service.deleteProviderEndpoint({
-    expectedRevision: service.snapshot().revision,
+    commandId: nextCommandId(),
     providerId: "custom-renamed",
     cascadeModels: true,
   });
@@ -209,7 +227,7 @@ try {
   assert.throws(
     () =>
       service?.setDefaultProviderModel({
-        expectedRevision: service?.snapshot().revision,
+        commandId: nextCommandId(),
         modelId: "missing-model",
       }),
     /DefaultModelProviderId=missing-model/,
@@ -217,7 +235,7 @@ try {
   assert.throws(
     () =>
       service?.upsertProviderModel({
-        expectedRevision: service?.snapshot().revision,
+        commandId: nextCommandId(),
         model: {
           Id: "missing-provider/model",
           ProviderId: "missing-provider",
@@ -229,6 +247,30 @@ try {
   );
 
   assert.equal(service.snapshot().value.DefaultModelProviderId, "main");
+  assert.throws(
+    () =>
+      service?.replaceConfig({
+        commandId: nextCommandId(),
+        baseRevision: 1,
+        config: service.snapshot().value,
+      }),
+    AgentConfigStaleWriteError,
+  );
+  const replaceCommandId = nextCommandId();
+  const replaced = service.replaceConfig({
+    commandId: replaceCommandId,
+    baseRevision: service.snapshot().revision,
+    config: service.snapshot().value,
+  });
+  const replacedRevision = replaced.revision;
+  assert.equal(
+    service.replaceConfig({
+      commandId: replaceCommandId,
+      baseRevision: replacedRevision ? replacedRevision - 1 : undefined,
+      config: replaced.value,
+    }).revision,
+    replacedRevision,
+  );
   const finalRevision = service.snapshot().revision;
   assert.ok(finalRevision !== undefined && finalRevision > 1);
 
@@ -236,6 +278,11 @@ try {
 } finally {
   service?.close();
   removeTempWorkspace(workspaceRoot);
+}
+
+function nextCommandId(): string {
+  commandSequence += 1;
+  return `verify-provider-model-${commandSequence}`;
 }
 
 function createService(seedConfig: AgentSystemConfig): AgentConfigService {
@@ -295,11 +342,17 @@ function removeTempWorkspace(targetPath: string): void {
       fs.rmSync(targetPath, { recursive: true, force: true });
       return;
     } catch (error) {
-      if (!isBusyFileError(error) || attempt === attempts) {
+      if (!isBusyFileError(error)) {
         throw error;
       }
-      sleep(100 * attempt);
+      if (attempt < attempts) sleep(100 * attempt);
     }
+  }
+
+  try {
+    fs.renameSync(targetPath, `${targetPath}.pending-delete-${Date.now()}`);
+  } catch (error) {
+    if (!isBusyFileError(error)) throw error;
   }
 }
 

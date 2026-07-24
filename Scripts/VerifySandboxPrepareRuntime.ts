@@ -1,66 +1,24 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import {
-  discoverSandboxImages,
-  prepareSandboxRuntime,
-  readOptions,
-  type PrepareOptions,
-} from "../Build/PrepareSandboxRuntime.js";
-import { resolveAgentSandboxRuntimePaths } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
-import { resolveAgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
+import { prepareSandboxRuntime, readOptions, type PrepareOptions } from "../Build/PrepareSandboxRuntime.js";
 import { SeneraMicrosandboxDefaults } from "../Source/AgentSystem/Execution/SeneraMicrosandboxDefaults.js";
 
-interface FakeSetupBuilder {
-  baseDir(path: string): FakeSetupBuilder;
-  install(): Promise<void>;
-}
-
 class FakeMicrosandboxModule {
-  installCount = 0;
   readonly createdImages: string[] = [];
-  readonly importedBundles: string[] = [];
-  runtimeBaseDir = "";
-  libkrunfwPath = "";
   readonly Snapshot = {
-    import: async (archive: string): Promise<void> => {
-      this.importedBundles.push(archive);
-    },
+    import: async (_archive: string): Promise<void> => {},
     export: async (_nameOrPath: string, _out: string): Promise<void> => {},
   };
   readonly Sandbox = {
-    builder: (name: string) => new FakeSandboxBuilder(name, this.createdImages),
+    builder: (name: string) => new FakeSandboxBuilder(name, this.createdImages, this.runtimeAvailable),
     get: async (_name: string) => ({
       snapshotTo: async (_path: string): Promise<void> => {},
     }),
   };
 
-  constructor(private installed: boolean) {}
-
-  isInstalled(): boolean {
-    return this.installed;
-  }
-
-  async install(): Promise<void> {
-    this.installCount += 1;
-    this.installed = true;
-  }
-
-  setup(): FakeSetupBuilder {
-    const builder: FakeSetupBuilder = {
-      baseDir: (baseDir: string) => {
-        this.runtimeBaseDir = baseDir;
-        return builder;
-      },
-      install: () => this.install(),
-    };
-    return builder;
-  }
-
-  setRuntimeLibkrunfwPath(path: string): void {
-    this.libkrunfwPath = path;
-  }
+  constructor(private readonly runtimeAvailable: boolean) {}
 }
 
 class FakeSandboxBuilder {
@@ -69,6 +27,7 @@ class FakeSandboxBuilder {
   constructor(
     readonly name: string,
     private readonly createdImages: string[],
+    private readonly runtimeAvailable: boolean,
   ) {}
 
   image(image: string): this {
@@ -109,10 +68,21 @@ class FakeSandboxBuilder {
   }
 
   async create(): Promise<FakeSandbox> {
+    if (!this.runtimeAvailable) throw new Error("official microsandbox runtime unavailable");
     assert.match(this.name, /^senera-sandbox-prepare-/);
     assert.ok(this.selectedImage);
     this.createdImages.push(this.selectedImage);
     return new FakeSandbox(this.name);
+  }
+
+  async createWithPullProgress() {
+    const sandbox = await this.create();
+    return {
+      awaitSandbox: async () => sandbox,
+      async *[Symbol.asyncIterator]() {
+        yield { kind: "complete" as const, reference: "test-image" };
+      },
+    };
   }
 }
 
@@ -122,22 +92,16 @@ class FakeSandbox {
   async kill(): Promise<void> {}
 }
 
-const images = discoverSandboxImages();
-assert.deepEqual(images, []);
 assert.deepEqual(readOptions(["--strict"]), {
   strict: true,
   skipImagePull: false,
-  importBundles: false,
   baseDir: undefined,
-  bundleDir: undefined,
   exportBundlePath: undefined,
 });
 assert.deepEqual(readOptions(["--skip-image-pull"]), {
   strict: false,
   skipImagePull: true,
-  importBundles: false,
   baseDir: undefined,
-  bundleDir: undefined,
   exportBundlePath: undefined,
 });
 
@@ -148,47 +112,30 @@ try {
     preparedTerminalRuntimeRoots.push(options.sandboxRuntimeBaseDir);
     return { runtimeRoot: options.sandboxRuntimeBaseDir, prepared: true, fingerprint: "verify" };
   };
-  const installed = new FakeMicrosandboxModule(true);
-  const installedOptions = await prepareOptionsFixture(tempRoot, "installed", false);
-  await writeRuntimeInstallMarkers(installedOptions);
-  await prepareSandboxRuntime(installedOptions, installed, prepareTerminalRuntime);
-  assert.equal(installed.installCount, 0);
-  assert.deepEqual(installed.createdImages, [SeneraMicrosandboxDefaults.image, ...images]);
+  const available = new FakeMicrosandboxModule(true);
+  const availableOptions = prepareOptionsFixture(tempRoot, "available", false);
+  await prepareSandboxRuntime(availableOptions, available, prepareTerminalRuntime);
+  assert.deepEqual(available.createdImages, [SeneraMicrosandboxDefaults.image]);
 
   const missing = new FakeMicrosandboxModule(false);
-  const missingOptions = await prepareOptionsFixture(tempRoot, "missing", true);
-  await prepareSandboxRuntime(missingOptions, missing, prepareTerminalRuntime);
-  assert.equal(missing.installCount, 1);
+  const missingOptions = prepareOptionsFixture(tempRoot, "missing", false);
+  await assert.rejects(() => prepareSandboxRuntime(missingOptions, missing, prepareTerminalRuntime), {
+    message: /official microsandbox runtime unavailable/u,
+  });
   assert.deepEqual(missing.createdImages, []);
-  assert.deepEqual(preparedTerminalRuntimeRoots, [installedOptions.baseDir, missingOptions.baseDir]);
+  assert.deepEqual(preparedTerminalRuntimeRoots, [availableOptions.baseDir]);
 } finally {
   await rm(tempRoot, { recursive: true, force: true });
 }
 
 console.log("Sandbox prepare runtime verification passed.");
 
-async function prepareOptionsFixture(root: string, name: string, skipImagePull: boolean): Promise<PrepareOptions> {
+function prepareOptionsFixture(root: string, name: string, skipImagePull: boolean): PrepareOptions {
   const baseDir = path.join(root, name, "runtime");
-  const bundleDir = path.join(root, name, "bundles");
-  await mkdir(bundleDir, { recursive: true });
   return {
     strict: true,
     skipImagePull,
-    importBundles: false,
     baseDir,
-    bundleDir,
     exportBundlePath: undefined,
   };
-}
-
-async function writeRuntimeInstallMarkers(options: PrepareOptions): Promise<void> {
-  const defaults = resolveAgentDefaults(undefined).SandboxRuntime;
-  const paths = resolveAgentSandboxRuntimePaths(process.cwd(), {
-    BaseDir: options.baseDir ?? defaults.BaseDir,
-    BundleDir: options.bundleDir ?? defaults.BundleDir,
-  });
-  await mkdir(path.dirname(paths.msbPath), { recursive: true });
-  await mkdir(path.dirname(paths.libkrunfwPath), { recursive: true });
-  await writeFile(paths.msbPath, "");
-  await writeFile(paths.libkrunfwPath, "");
 }

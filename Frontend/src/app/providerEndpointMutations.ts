@@ -1,8 +1,7 @@
 import { EventKinds, type ConfigFailedData, type ConfigSnapshotData, type EventEnvelope } from "../api/eventTypes";
 import type {
-  ConfigRevisionGuardRequestInput,
   ProviderModelConfigOperationKind,
-  ProviderModelConfigRequest,
+  ProviderModelConfigCommandDraft,
 } from "../api/providerModelCommandTypes";
 import type { FrontendMessageKey } from "../i18n/frontendMessageCatalog";
 import { readConfigFailureCode } from "./configMutationFailure";
@@ -13,7 +12,7 @@ export type ProviderEndpointOperationKind = Extract<
 >;
 
 export type ProviderEndpointConfigRequest = Extract<
-  ProviderModelConfigRequest,
+  ProviderModelConfigCommandDraft,
   { type: ProviderEndpointOperationKind }
 >;
 
@@ -59,13 +58,13 @@ export type ProviderEndpointMutationResolution =
       kind: "success";
       operationKind: ProviderEndpointOperationKind;
       providerId: string;
-      requestId: string;
+      commandId: string;
     }
   | {
       kind: "failure";
       operationKind: ProviderEndpointOperationKind;
       providerId: string;
-      requestId: string;
+      commandId: string;
       message: string;
       errorCode?: string;
     };
@@ -76,26 +75,27 @@ export function resolveProviderEndpointMutationEvent(
 ): ProviderEndpointMutationResolution | null {
   if (env.kind === EventKinds.ConfigSnapshot) {
     const operation = (env.data as ConfigSnapshotData).operation;
-    const pending = readMatchingPendingOperation(operation?.requestId, operation?.kind, pendingOperations);
-    return pending && operation?.requestId
+    const pending = readMatchingPendingOperation(operation?.commandId, operation?.kind, pendingOperations);
+    return pending && operation?.commandId
       ? {
           kind: "success",
           operationKind: pending.kind,
           providerId: pending.providerId,
-          requestId: operation.requestId,
+          commandId: operation.commandId,
         }
       : null;
   }
 
   if (env.kind === EventKinds.ConfigFailed) {
     const data = env.data as ConfigFailedData;
-    const pending = readMatchingPendingOperation(data.operation?.requestId, data.operation?.kind, pendingOperations);
-    return pending && data.operation?.requestId
+    const operation = data.operation && "commandId" in data.operation ? data.operation : undefined;
+    const pending = readMatchingPendingOperation(operation?.commandId, operation?.kind, pendingOperations);
+    return pending && operation?.commandId
       ? {
           kind: "failure",
           operationKind: pending.kind,
           providerId: pending.providerId,
-          requestId: data.operation.requestId,
+          commandId: operation.commandId,
           message: data.message,
           errorCode: readConfigFailureCode(data.details),
         }
@@ -105,21 +105,13 @@ export function resolveProviderEndpointMutationEvent(
   return null;
 }
 
-export function readConfigRevisionGuard(
-  snapshot: ConfigSnapshotData,
-): Pick<ConfigRevisionGuardRequestInput, "expectedRevision" | "expectedVersion"> {
-  return typeof snapshot.revision === "number"
-    ? { expectedRevision: snapshot.revision }
-    : { expectedVersion: snapshot.version };
-}
-
 function readMatchingPendingOperation(
-  requestId: string | undefined,
+  commandId: string | undefined,
   operationKind: unknown,
   pendingOperations: ReadonlyMap<string, PendingProviderEndpointOperation>,
 ): PendingProviderEndpointOperation | undefined {
-  if (!requestId || !isProviderEndpointOperationKind(operationKind)) return undefined;
-  const pending = pendingOperations.get(requestId);
+  if (!commandId || !isProviderEndpointOperationKind(operationKind)) return undefined;
+  const pending = pendingOperations.get(commandId);
   return pending?.kind === operationKind ? pending : undefined;
 }
 

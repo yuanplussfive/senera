@@ -145,7 +145,7 @@ export function ProviderModelManagementSurface({
     for (const [modelId, current] of modelSaveQueueRef.current) {
       if (!current.requestId) continue;
       const operation = operations[modelId];
-      if (!operation || operation.requestId !== current.requestId || operation.status === "pending") continue;
+      if (!operation || operation.commandId !== current.requestId || operation.status === "pending") continue;
       if (operation.status === "error") {
         modelSaveQueueRef.current.set(modelId, {
           ...current,

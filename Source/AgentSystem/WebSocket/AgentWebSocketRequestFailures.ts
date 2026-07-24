@@ -100,7 +100,7 @@ function projectConfigFailure(
         message: errorMessage(error),
         details: serializeError(error),
         operation: {
-          requestId: request.requestId,
+          commandId: request.commandId,
           kind: request.type === "config.update" ? "config_update" : request.type,
         },
       },

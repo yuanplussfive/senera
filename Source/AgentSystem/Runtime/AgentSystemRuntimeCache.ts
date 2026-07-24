@@ -8,6 +8,7 @@ import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteracti
 import { createAgentRuntimePreparationFingerprint } from "./AgentRuntimePreparationFingerprint.js";
 import type { AgentMcpRuntimeModuleResolver } from "../Mcp/AgentMcpRuntimeModuleResolver.js";
 import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
+import type { SeneraMicrosandboxSdkAdapter } from "../Execution/SeneraMicrosandboxTypes.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
@@ -33,6 +34,8 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   resourcesPath?: string;
   runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
   executionResources?: AgentExecutionResourceBroker;
+  sandboxRuntimeReady?: () => boolean;
+  microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
 }
 
 export interface AgentSystemRuntimeLease<TRuntime extends AgentSystemRuntimeCacheRuntime> {
@@ -54,6 +57,8 @@ export interface AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRunt
   resourcesPath?: string;
   runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
   executionResources?: AgentExecutionResourceBroker;
+  sandboxRuntimeReady?: () => boolean;
+  microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
   maxIdleEntries?: number;
   runtimeFactory?: (input: AgentSystemRuntimeCacheRuntimeFactoryInput) => TRuntime;
 }
@@ -128,6 +133,8 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
         resourcesPath: this.options.resourcesPath,
         runtimeModuleResolver: this.options.runtimeModuleResolver,
         executionResources: this.options.executionResources,
+        sandboxRuntimeReady: this.options.sandboxRuntimeReady,
+        microsandboxSdk: this.options.microsandboxSdk,
       });
     }
 
@@ -144,6 +151,8 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       resourcesPath: this.options.resourcesPath,
       runtimeModuleResolver: this.options.runtimeModuleResolver,
       executionResources: this.options.executionResources,
+      sandboxRuntimeReady: this.options.sandboxRuntimeReady,
+      microsandboxSdk: this.options.microsandboxSdk,
     }) as unknown as TRuntime;
   }
 

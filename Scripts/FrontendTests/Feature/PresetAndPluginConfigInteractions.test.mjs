@@ -155,6 +155,7 @@ test("plugin settings default to essential fields and can reveal other optional 
     type: "string",
     value: "global",
     required: false,
+    essential: false,
   };
   const optionalSwitch = {
     section: "General",
@@ -164,6 +165,7 @@ test("plugin settings default to essential fields and can reveal other optional 
     type: "boolean",
     value: false,
     required: false,
+    essential: true,
   };
   const sections = [
     {
@@ -186,7 +188,7 @@ test("plugin settings default to essential fields and can reveal other optional 
   expect(screen.getByText("Enable search")).toBeVisible();
   expect(screen.getByText("Cache search results")).toBeVisible();
   expect(screen.queryByText("Search region")).not.toBeInTheDocument();
-  expect(screen.getAllByText("必填")).toHaveLength(2);
+  expect(screen.getAllByText("必填")).toHaveLength(1);
 
   await user.click(screen.getByRole("button", { name: /全部/ }));
 
@@ -398,6 +400,7 @@ function createPlugin(overrides = {}) {
     type: "boolean",
     value: true,
     required: true,
+    essential: true,
   };
   return {
     name: "SearchPlugin",

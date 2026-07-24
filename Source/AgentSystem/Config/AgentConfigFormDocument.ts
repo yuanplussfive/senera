@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import { moduleDirPath } from "../Core/AgentPath.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { readAgentConfigFieldContract } from "./AgentConfigFieldContractCatalog.js";
 
 const FormSchemaPath = path.join(moduleDirPath(import.meta.url), "AgentSystemConfig.form.json");
 
@@ -18,6 +19,8 @@ type ConfigFormFieldSchemaInput = {
   description?: string;
   placeholder?: string;
   type: z.infer<typeof ConfigFormFieldTypeSchema>;
+  required: boolean;
+  essential: boolean;
   itemType?: z.infer<typeof ConfigFormFieldTypeSchema>;
   options?: Array<z.infer<typeof ConfigFormFieldOptionValueSchema>>;
   optionLabels?: Record<string, string>;
@@ -46,6 +49,8 @@ const ConfigFormFieldSchema: z.ZodType<ConfigFormFieldSchemaInput> = z.lazy(() =
       description: z.string().min(1).optional(),
       placeholder: z.string().min(1).optional(),
       type: ConfigFormFieldTypeSchema,
+      required: z.boolean(),
+      essential: z.boolean(),
       itemType: ConfigFormFieldTypeSchema.optional(),
       options: z.array(ConfigFormFieldOptionValueSchema).optional(),
       optionLabels: z.record(z.string(), z.string()).optional(),
@@ -109,8 +114,42 @@ export function readConfigFormDocument(): ConfigFormDocument {
     );
   }
 
+  assertConfigFormRequiredDeclarations(result.data);
   cachedDocument = result.data;
   return cachedDocument;
+}
+
+function assertConfigFormRequiredDeclarations(document: ConfigFormDocument): void {
+  for (const section of document.form.sections ?? []) {
+    for (const field of section.fields ?? []) {
+      assertFieldRequiredDeclaration(field, []);
+    }
+  }
+}
+
+function assertFieldRequiredDeclaration(field: ConfigFormFieldDefinition, basePath: readonly string[]): void {
+  const path = [...basePath, ...field.path];
+  const contract = readAgentConfigFieldContract(path);
+  if (field.required !== contract.required) {
+    throw new Error(
+      `Agent config form required declaration does not match AgentSystemConfigSchema: ${path.join(".")}.`,
+    );
+  }
+  if (contract.options && !sameOptions(field.options, contract.options)) {
+    throw new Error(`Agent config form options do not match AgentSystemConfigSchema: ${path.join(".")}.`);
+  }
+  for (const itemField of field.itemFields ?? []) {
+    assertFieldRequiredDeclaration(itemField, path);
+  }
+}
+
+function sameOptions(
+  declared: readonly (string | number | boolean)[] | undefined,
+  contract: readonly (string | number | boolean)[],
+): boolean {
+  if (!declared || declared.length !== contract.length) return false;
+  const declaredValues = new Set(declared.map((value) => JSON.stringify(value)));
+  return contract.every((value) => declaredValues.has(JSON.stringify(value)));
 }
 
 function formatZodIssue(issue: z.core.$ZodIssue): string {

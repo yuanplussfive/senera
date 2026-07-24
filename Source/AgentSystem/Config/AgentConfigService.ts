@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { AgentConfigLoader } from "../Config/AgentConfigLoader.js";
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { resolveConfigStoreConfig } from "../AgentDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
@@ -14,6 +16,7 @@ import {
   setDefaultProviderModel,
   upsertProviderEndpoint,
   upsertProviderModel,
+  type AgentConfigCommandInput,
   type AgentConfigRevisionGuardInput,
   type AgentDefaultModelSetInput,
   type AgentProviderEndpointDeleteInput,
@@ -23,7 +26,11 @@ import {
   type AgentProviderModelDeleteInput,
   type AgentProviderModelUpsertInput,
 } from "./AgentProviderModelConfigCommands.js";
-import { AgentConfigSqliteRepository, type AgentConfigRevisionRecord } from "./AgentConfigSqliteRepository.js";
+import {
+  AgentConfigCommandIdConflictError,
+  AgentConfigSqliteRepository,
+  type AgentConfigRevisionRecord,
+} from "./AgentConfigSqliteRepository.js";
 import { formatConfigIssues } from "./AgentConfigDiagnostics.js";
 import {
   resolveConfigPath,
@@ -52,10 +59,9 @@ export interface AgentConfigDiagnostic {
   details?: unknown;
 }
 
-export interface AgentConfigUpdateInput {
+export interface AgentConfigReplaceInput extends AgentConfigCommandInput, AgentConfigRevisionGuardInput {
   config: AgentSystemConfig;
   source?: "ui_update" | "api_update";
-  mirrorJson?: boolean;
 }
 
 export type AgentConfigSourceOptions =
@@ -98,6 +104,7 @@ export class AgentConfigService {
   private snapshotValue: AgentConfigSnapshot;
   private repository?: AgentConfigSqliteRepository;
   private repositoryPath?: string;
+  private readonly jsonCommandReceipts = new Map<string, { operationKind: string; payloadHash: string }>();
 
   constructor(
     private readonly options: {
@@ -117,80 +124,87 @@ export class AgentConfigService {
     return this.snapshotValue;
   }
 
-  update(input: AgentConfigUpdateInput): AgentConfigSnapshot {
+  replaceConfig(input: AgentConfigReplaceInput): AgentConfigSnapshot {
     const config = this.validateConfig(input.config);
-    if (this.options.source.kind === "sqlite") {
-      const source = this.options.source;
-      const databasePath = this.resolveSqliteSourceDatabasePath(source);
-      const revision = this.repositoryForPath(databasePath).appendRevision({
+    return this.executeConfigCommand(
+      input,
+      "config.update",
+      {
         config,
-        source: input.source ?? "api_update",
-      });
-      this.snapshotValue = this.snapshotFromRevision(config, revision, {
-        path: this.readSourceLabel(source),
-        databasePath,
-        diagnostics: [],
-      });
-      return this.snapshotValue;
-    }
-
-    const store = resolveConfigStoreConfig(config);
-    if (!store.Enabled) {
-      this.closeRepository();
-      writeAgentConfigJsonMirror(config, this.options.source.configPath);
-      this.snapshotValue = {
-        path: this.options.source.configPath,
-        version: this.snapshotValue.version + 1,
-        value: config,
-        source: "json",
-        diagnostics: [],
-        form: projectAgentConfigForm(config),
-      };
-      return this.snapshotValue;
-    }
-
-    const databasePath = this.resolveDatabasePath(config);
-    const revision = this.repositoryForPath(databasePath).appendRevision({
-      config,
-      source: input.source ?? "api_update",
-    });
-    if (input.mirrorJson ?? store.MirrorJson) {
-      writeAgentConfigJsonMirror(config, this.options.source.configPath);
-    }
-    this.snapshotValue = this.snapshotFromRevision(config, revision, {
-      path: this.options.source.configPath,
-      databasePath,
-      diagnostics: [],
-    });
-    return this.snapshotValue;
+        baseRevision: input.baseRevision,
+        baseVersion: input.baseVersion,
+      },
+      (current) => {
+        assertConfigRevisionGuard(input, current);
+        return config;
+      },
+      input.source ?? "api_update",
+    );
   }
 
   upsertProviderEndpoint(input: AgentProviderEndpointUpsertInput): AgentConfigSnapshot {
-    return this.updateProviderModelConfig(input, (config) => upsertProviderEndpoint(config, input));
+    return this.updateProviderModelConfig(input, "provider.endpoint.upsert", input.endpoint, (config) =>
+      upsertProviderEndpoint(config, input),
+    );
   }
 
   renameProviderEndpoint(input: AgentProviderEndpointRenameInput): AgentConfigSnapshot {
-    return this.updateProviderModelConfig(input, (config) => renameProviderEndpoint(config, input));
+    return this.updateProviderModelConfig(
+      input,
+      "provider.endpoint.rename",
+      { providerId: input.providerId, nextProviderId: input.nextProviderId },
+      (config) => renameProviderEndpoint(config, input),
+    );
   }
 
   deleteProviderEndpoint(input: AgentProviderEndpointDeleteInput): AgentConfigSnapshot {
-    return this.updateProviderModelConfig(input, (config) => deleteProviderEndpoint(config, input));
+    return this.updateProviderModelConfig(
+      input,
+      "provider.endpoint.delete",
+      {
+        providerId: input.providerId,
+        cascadeModels: input.cascadeModels,
+        replacementDefaultModelId: input.replacementDefaultModelId,
+      },
+      (config) => deleteProviderEndpoint(config, input),
+    );
   }
 
   upsertProviderModel(input: AgentProviderModelUpsertInput): AgentConfigSnapshot {
-    return this.updateProviderModelConfig(input, (config) => upsertProviderModel(config, input));
+    return this.updateProviderModelConfig(
+      input,
+      "provider.model.upsert",
+      { model: input.model, group: input.group },
+      (config) => upsertProviderModel(config, input),
+    );
   }
 
   bulkImportProviderModels(input: AgentProviderModelBulkImportInput): AgentConfigSnapshot {
-    return this.updateProviderModelConfig(input, (config) => bulkImportProviderModels(config, input));
+    return this.updateProviderModelConfig(
+      input,
+      "provider.model.bulkImport",
+      {
+        models: input.models,
+        overwriteExisting: input.overwriteExisting,
+        groupAssignments: input.groupAssignments,
+      },
+      (config) => bulkImportProviderModels(config, input),
+    );
   }
 
   deleteProviderModel(input: AgentProviderModelDeleteInput): AgentConfigSnapshot {
-    return this.updateProviderModelConfig(input, (config) => deleteProviderModel(config, input));
+    return this.updateProviderModelConfig(
+      input,
+      "provider.model.delete",
+      { modelId: input.modelId, replacementDefaultModelId: input.replacementDefaultModelId },
+      (config) => deleteProviderModel(config, input),
+    );
   }
 
   setDefaultProviderModel(input: AgentDefaultModelSetInput): AgentConfigSnapshot {
-    return this.updateProviderModelConfig(input, (config) => setDefaultProviderModel(config, input));
+    return this.updateProviderModelConfig(input, "provider.defaultModel.set", { modelId: input.modelId }, (config) =>
+      setDefaultProviderModel(config, input),
+    );
   }
   reloadFromSources(): AgentConfigSnapshot {
     this.snapshotValue = this.initialize(this.snapshotValue.version + 1);
@@ -302,19 +316,106 @@ export class AgentConfigService {
   }
 
   private updateProviderModelConfig(
-    input: AgentConfigRevisionGuardInput,
+    input: AgentConfigCommandInput,
+    operationKind: string,
+    payload: unknown,
     transform: (config: AgentSystemConfig) => AgentSystemConfig,
   ): AgentConfigSnapshot {
-    const snapshot = this.snapshotValue;
-    assertConfigRevisionGuard(input, {
-      revision: snapshot.revision,
-      version: snapshot.version,
+    return this.executeConfigCommand(input, operationKind, payload, (current) => transform(current.value), "ui_update");
+  }
+
+  private executeConfigCommand(
+    input: AgentConfigCommandInput,
+    operationKind: string,
+    payload: unknown,
+    transform: (current: Pick<AgentConfigSnapshot, "value" | "version" | "revision">) => AgentSystemConfig,
+    source: AgentConfigRevisionRecord["source"],
+  ): AgentConfigSnapshot {
+    const payloadHash = createConfigCommandPayloadHash(operationKind, payload);
+    if (!this.usesSqliteStore()) {
+      if (this.options.source.kind !== "json") {
+        throw new Error("JSON configuration command requires a JSON configuration source.");
+      }
+      const receipt = this.jsonCommandReceipts.get(input.commandId);
+      if (receipt) {
+        if (receipt.operationKind !== operationKind || receipt.payloadHash !== payloadHash) {
+          throw new AgentConfigCommandIdConflictError(input.commandId, receipt, { operationKind, payloadHash });
+        }
+        return this.snapshotValue;
+      }
+      const config = this.validateConfig(transform(this.snapshotValue));
+      writeAgentConfigJsonMirror(config, this.options.source.configPath);
+      this.snapshotValue = {
+        path: this.options.source.configPath,
+        version: this.snapshotValue.version + 1,
+        value: config,
+        source: "json",
+        diagnostics: [],
+        form: projectAgentConfigForm(config),
+      };
+      this.jsonCommandReceipts.set(input.commandId, { operationKind, payloadHash });
+      return this.snapshotValue;
+    }
+
+    const databasePath = this.activeDatabasePath();
+    const result = this.repositoryForPath(databasePath).executeCommand(
+      {
+        commandId: input.commandId,
+        operationKind,
+        payloadHash,
+        source,
+      },
+      (current) =>
+        this.validateConfig(
+          transform({
+            value: current.config,
+            version: this.snapshotValue.version,
+            revision: current.revision,
+          }),
+        ),
+    );
+    this.snapshotValue = this.snapshotFromRevision(result.revision.config, result.revision, {
+      path:
+        this.options.source.kind === "json"
+          ? this.options.source.configPath
+          : this.readSourceLabel(this.options.source),
+      databasePath,
+      diagnostics: [],
     });
-    return this.update({
-      config: transform(snapshot.value),
-      source: "ui_update",
-      mirrorJson: input.mirrorJson,
-    });
+    const store = resolveConfigStoreConfig(result.revision.config);
+    this.writeCommittedJsonMirror(result.revision.config, store.MirrorJson);
+    return this.snapshotValue;
+  }
+
+  private usesSqliteStore(): boolean {
+    return this.options.source.kind === "sqlite" || resolveConfigStoreConfig(this.snapshotValue.value).Enabled;
+  }
+
+  private activeDatabasePath(): string {
+    return this.options.source.kind === "sqlite"
+      ? this.resolveSqliteSourceDatabasePath(this.options.source)
+      : this.resolveDatabasePath(this.snapshotValue.value);
+  }
+
+  private writeCommittedJsonMirror(config: AgentSystemConfig, enabled: boolean): void {
+    if (!enabled || this.options.source.kind !== "json") return;
+    try {
+      writeAgentConfigJsonMirror(config, this.options.source.configPath);
+    } catch (error) {
+      this.snapshotValue = {
+        ...this.snapshotValue,
+        diagnostics: [
+          ...this.snapshotValue.diagnostics,
+          {
+            severity: "warning",
+            message: agentErrorMessage("config.mirrorWriteFailed", {
+              path: this.options.source.configPath,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          },
+        ],
+      };
+    }
   }
   private readLatestValidRevision(repository: AgentConfigSqliteRepository): AgentConfigRevisionLoadResult {
     const latest = repository.latestRevision();
@@ -398,6 +499,10 @@ export class AgentConfigService {
 
 export function loadConfigFile(filePath: string): AgentSystemConfig {
   return AgentConfigLoader.load(filePath);
+}
+
+function createConfigCommandPayloadHash(operationKind: string, payload: unknown): string {
+  return createHash("sha256").update(stringifyAgentCanonicalJson({ operationKind, payload }), "utf8").digest("hex");
 }
 
 function diagnosticsForRepair(repair: AgentConfigRepairResult): AgentConfigDiagnostic[] {

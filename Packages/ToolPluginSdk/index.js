@@ -256,10 +256,16 @@ function normalizePluginConfigurationField(value) {
     ...(typeof field.step === "number" ? { step: field.step } : {}),
     ...(field.secret === true ? { secret: true } : {}),
     ...(field.multiline === true ? { multiline: true } : {}),
-    ...(type === "boolean" || typeof field.required === "boolean"
-      ? { required: type === "boolean" || field.required === true }
-      : {}),
+    required: readRequiredBoolean(field.required, "required"),
+    essential: readRequiredBoolean(field.essential, "essential"),
   };
+}
+
+function readRequiredBoolean(value, key) {
+  if (typeof value !== "boolean") {
+    throw new TypeError(`Plugin configuration fields require an explicit ${key} boolean.`);
+  }
+  return value;
 }
 
 function normalizeAllowedPath(value) {

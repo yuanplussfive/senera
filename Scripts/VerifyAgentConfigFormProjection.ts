@@ -36,6 +36,9 @@ const config: AgentSystemConfig = {
       ProviderId: "main-provider",
       Endpoint: "ChatCompletions",
       Model: "mistral-large-latest",
+      Capabilities: {
+        DeveloperRole: true,
+      },
       MaxOutputTokens: -1,
     },
   ],
@@ -70,6 +73,9 @@ assert.equal(models.required, true);
 assert.equal(models.itemFields?.find((field) => field.key === "ProviderId")?.required, true);
 assert.equal(models.itemFields?.find((field) => field.key === "Endpoint")?.required, true);
 assert.equal(models.itemFields?.find((field) => field.key === "Model")?.required, true);
+assert.equal(models.itemFields?.find((field) => field.key === "Chat")?.required, false);
+assert.equal(models.itemFields?.find((field) => field.key === "Chat")?.essential, true);
+assert.equal((models.effectiveValue as Array<{ Capabilities?: { Chat?: boolean } }>)[0]?.Capabilities?.Chat, true);
 
 assert.equal(findOptionalField(form, ["AgentLoop", "LoadedTools"]), undefined);
 
@@ -89,15 +95,24 @@ const memoryExpansionMode = findField(form, ["ToolSearch", "Ranking", "MemoryExp
 assert.deepEqual(memoryExpansionMode.options, ["disabled", "fallback", "augment"]);
 assert.equal(memoryExpansionMode.effectiveValue, "fallback");
 
+assert.deepEqual(findField(form, ["ToolExecution", "Environment", "Inherit"]).options, ["all", "allowlist", "none"]);
+
 assert.equal(findField(form, ["VectorModels", "Embedding", "InputMaxChars"]).effectiveValue, -1);
 assert.equal(findField(form, ["VectorModels", "Embedding", "Model"]).valueSource, "inherited");
 assert.equal(findField(form, ["VectorModels", "Rerank", "CandidateLimit"]).effectiveValue, -1);
 assert.equal(findField(form, ["VectorModels", "Rerank", "TopK"]).effectiveValue, -1);
 assert.equal(findOptionalField(form, ["ToolSearch", "Memory", "Kind"]), undefined);
-assert.equal(findField(form, ["AgentLoop", "PiSessions", "Compaction", "Enabled"]).required, true);
-assert.equal(findField(form, ["Server", "HotReload"]).required, true);
-assert.equal(findField(form, ["ConfigStore", "Enabled"]).required, true);
-assert.equal(findField(form, ["ConfigStore", "MirrorJson"]).required, true);
+assert.equal(findField(form, ["AgentLoop", "PiSessions", "Compaction", "Enabled"]).required, false);
+assert.equal(findField(form, ["Server", "HotReload"]).required, false);
+assert.equal(findField(form, ["ConfigStore", "Enabled"]).required, false);
+assert.equal(findField(form, ["ConfigStore", "MirrorJson"]).required, false);
+assert.equal(findField(form, ["AgentLoop", "PiSessions", "Compaction", "Enabled"]).essential, true);
+
+for (const section of form.sections) {
+  for (const field of section.fields) {
+    assertExplicitFieldMetadata(field);
+  }
+}
 
 console.log("Agent config form projection verified.");
 
@@ -111,4 +126,18 @@ function findOptionalField(form: ReturnType<typeof projectAgentConfigForm>, path
   return form.sections
     .flatMap((section) => section.fields)
     .find((candidate) => candidate.path.join(".") === path.join("."));
+}
+
+interface ConfigFormFieldMetadata {
+  required: boolean;
+  essential: boolean;
+  itemFields?: readonly ConfigFormFieldMetadata[];
+}
+
+function assertExplicitFieldMetadata(field: ConfigFormFieldMetadata) {
+  assert.equal(typeof field.required, "boolean");
+  assert.equal(typeof field.essential, "boolean");
+  for (const itemField of field.itemFields ?? []) {
+    assertExplicitFieldMetadata(itemField);
+  }
 }

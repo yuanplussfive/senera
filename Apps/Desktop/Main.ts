@@ -16,6 +16,11 @@ import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibilit
 import { desktopMessage } from "./DesktopMessageCatalog.js";
 import { resolveAgentExternalUrl } from "../../Source/AgentSystem/Interaction/AgentExternalUrlPolicy.js";
 import { createCompiledAgentMcpRuntimeModuleResolver } from "../../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
+import { createDesktopMicrosandboxModuleLoader } from "./DesktopMicrosandboxModuleLoader.js";
+import {
+  DesktopMicrosandboxRuntimeSmokeArgument,
+  runDesktopMicrosandboxRuntimeSmoke,
+} from "./DesktopMicrosandboxRuntimeSmoke.js";
 
 let serverHandle: SeneraServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
@@ -28,6 +33,7 @@ let runtimePaths: DesktopRuntimePaths | undefined;
 let frontendSource: DesktopFrontendSource | undefined;
 const desktopModuleDir = path.dirname(fileURLToPath(import.meta.url));
 const remoteDebuggingPort = process.env.SENERA_DESKTOP_REMOTE_DEBUGGING_PORT?.trim();
+const microsandboxRuntimeSmoke = process.argv.includes(DesktopMicrosandboxRuntimeSmokeArgument);
 
 const settingsSectionIds = new Set([
   "model-service",
@@ -51,13 +57,18 @@ Menu.setApplicationMenu(null);
 
 app
   .whenReady()
-  .then(() => {
+  .then(async () => {
     runtimePaths = prepareDesktopRuntime();
     appendDesktopLog(
       runtimePaths.logPath,
       `starting desktop runtime workspace=${runtimePaths.workspaceRoot} configDatabase=${runtimePaths.configDatabasePath}`,
     );
     const paths = runtimePaths;
+    if (microsandboxRuntimeSmoke) {
+      await runDesktopMicrosandboxRuntimeSmoke(paths);
+      app.quit();
+      return;
+    }
     desktopTray = createDesktopTray(paths.windowIconPath);
     frontendSource = createDesktopFrontendSource({
       devServerUrl: process.env.SENERA_DESKTOP_FRONTEND_URL,
@@ -75,6 +86,7 @@ app
       },
       runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(paths.resourceRoot),
       runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config),
+      microsandboxModuleLoader: createDesktopMicrosandboxModuleLoader(paths.microsandboxRuntimeBridgePath),
     });
     mainWindow = createMainWindow();
     void loadDesktopFrontend(mainWindow, frontendSource);
@@ -87,6 +99,11 @@ app
     const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
     const logPath = runtimePaths?.logPath ?? path.join(app.getPath("userData"), "desktop.log");
     appendDesktopLog(logPath, `startup failed\n${message}`);
+    if (microsandboxRuntimeSmoke) {
+      process.stderr.write(`${message}\n`);
+      app.exit(1);
+      return;
+    }
     dialog.showErrorBox(desktopMessage("startup.failedTitle", {}, app.getLocale()), message);
     app.exit(1);
   });

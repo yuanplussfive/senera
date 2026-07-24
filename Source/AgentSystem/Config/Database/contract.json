@@ -1,0 +1,30 @@
+{
+  "id": "agent-config",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "config-schema-baseline",
+      "migration": "migrations/0001-config-schema-baseline.sql",
+      "migrationSha256": "8394b5c4ee68b38053f55a84585b8b29cbe12f38869b9ec8ad3cbe1793c52691",
+      "snapshot": "snapshots/0001.schema.sql",
+      "snapshotSha256": "587319db376a924779eef144086e15cf6cfe60ffea5d911943c2a57b48d460fe"
+    },
+    {
+      "version": 2,
+      "name": "remove-legacy-config-metadata",
+      "migration": "migrations/0002-remove-legacy-config-metadata.sql",
+      "migrationSha256": "f30101f3cf082bb51bfc7e39f3477688e971bcee568fe6050a3a1a236fb7b99e",
+      "snapshot": "snapshots/0002.schema.sql",
+      "snapshotSha256": "d9e53c8040d9688cde87798b3f36a6325469b082029a6c5eeb82e41f20261fb4"
+    },
+    {
+      "version": 3,
+      "name": "config-command-receipts",
+      "migration": "migrations/0003-config-command-receipts.sql",
+      "snapshot": "snapshots/0003.schema.sql",
+      "migrationSha256": "44a585a4cda07e30a62a5e9ca6e55886192bc9cffcf95ef9ced3951a7095ebda",
+      "snapshotSha256": "df923fb6d1da31d1b59fcd30e8c864788bfaae2bfc920b7ace868fff3c4a3f93"
+    }
+  ]
+}

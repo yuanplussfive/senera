@@ -68,11 +68,12 @@ export function resolvePluginSettingsEvent(
 
   if (env.kind === EventKinds.ConfigFailed) {
     const data = env.data as ConfigFailedData;
-    const requestId = data.operation?.requestId;
+    const operation = data.operation && "requestId" in data.operation ? data.operation : undefined;
+    const requestId = operation?.requestId;
     if (
       requestId &&
       pendingPluginRequestIds.has(requestId) &&
-      (data.operation?.kind === "update" || data.operation?.kind === "set_enabled")
+      (operation?.kind === "update" || operation?.kind === "set_enabled")
     ) {
       return {
         kind: "plugin_config_failed",

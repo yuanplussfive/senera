@@ -12,17 +12,9 @@ import type {
 } from "./SeneraMicrosandboxTypes.js";
 
 interface MicrosandboxModule {
-  isInstalled(): boolean;
-  setRuntimeLibkrunfwPath(path: string): void;
-  setup(): MicrosandboxSetupBuilder;
   Sandbox: {
     builder(name: string): MicrosandboxSandboxBuilder;
   };
-}
-
-interface MicrosandboxSetupBuilder {
-  baseDir(path: string): this;
-  install(): Promise<void>;
 }
 
 interface MicrosandboxSandboxBuilder {
@@ -86,25 +78,15 @@ interface MicrosandboxExecBuilder {
   stdinBytes(data: Buffer): this;
 }
 
-type MicrosandboxModuleLoader = () => Promise<MicrosandboxModule>;
+export type SeneraMicrosandboxModuleLoader = () => Promise<unknown>;
 
 export class SeneraMicrosandboxDynamicSdkAdapter implements SeneraMicrosandboxSdkAdapter {
   private modulePromise: Promise<MicrosandboxModule> | undefined;
-  private runtimePreparePromise: Promise<void> | undefined;
 
-  constructor(private readonly moduleLoader: MicrosandboxModuleLoader = () => import("microsandbox")) {}
-
-  async isInstalled(): Promise<boolean> {
-    try {
-      return (await this.load()).isInstalled();
-    } catch {
-      return false;
-    }
-  }
+  constructor(private readonly moduleLoader: SeneraMicrosandboxModuleLoader = () => import("microsandbox")) {}
 
   async createSandbox(request: SeneraMicrosandboxCreateRequest): Promise<SeneraMicrosandboxSession> {
     const microsandbox = await this.load();
-    await this.prepareRuntime(microsandbox, request);
     const builder = microsandbox.Sandbox.builder(request.name)
       .image(request.image)
       .cpus(request.cpus)
@@ -149,36 +131,8 @@ export class SeneraMicrosandboxDynamicSdkAdapter implements SeneraMicrosandboxSd
   }
 
   private load(): Promise<MicrosandboxModule> {
-    this.modulePromise ??= this.moduleLoader();
+    this.modulePromise ??= this.moduleLoader().then((module) => module as MicrosandboxModule);
     return this.modulePromise;
-  }
-
-  private prepareRuntime(microsandbox: MicrosandboxModule, request: SeneraMicrosandboxCreateRequest): Promise<void> {
-    if (!request.runtime) {
-      return Promise.resolve();
-    }
-
-    const runtime = request.runtime;
-    this.runtimePreparePromise ??= this.installRuntime(microsandbox, runtime).catch((error: unknown) => {
-      this.runtimePreparePromise = undefined;
-      throw error;
-    });
-    return this.runtimePreparePromise;
-  }
-
-  private async installRuntime(
-    microsandbox: MicrosandboxModule,
-    runtime: NonNullable<SeneraMicrosandboxCreateRequest["runtime"]>,
-  ): Promise<void> {
-    if (microsandbox.isInstalled()) {
-      return;
-    }
-
-    process.env.MSB_PATH = runtime.msbPath;
-    microsandbox.setRuntimeLibkrunfwPath(runtime.libkrunfwPath);
-    if (!microsandbox.isInstalled()) {
-      await microsandbox.setup().baseDir(runtime.baseDir).install();
-    }
   }
 }
 

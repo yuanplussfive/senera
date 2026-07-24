@@ -36,11 +36,10 @@ export type WsRequest =
   | { type: "config.get" }
   | {
       type: "config.update";
-      requestId?: string;
-      expectedRevision?: number;
-      expectedVersion?: number;
+      commandId: string;
+      baseRevision?: number;
+      baseVersion?: number;
       config: Record<string, unknown>;
-      mirrorJson?: boolean;
     }
   | ProviderModelConfigRequest
   | { type: "plugin.config.list" }

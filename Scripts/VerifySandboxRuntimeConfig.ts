@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { resolveAgentDefaults, resolveSandboxRuntimeConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import {
@@ -9,14 +11,16 @@ import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigT
 import { SeneraMicrosandboxDefaults } from "../Source/AgentSystem/Execution/SeneraMicrosandboxDefaults.js";
 
 const defaults = resolveAgentDefaults(undefined).SandboxRuntime;
+assert.equal(defaults.Enabled, true);
 assert.equal(defaults.BaseDir, ".senera/sandbox-runtime");
-assert.equal(defaults.BundleDir, ".senera/sandbox-bundles");
 assert.deepEqual(defaults.Images, [SeneraMicrosandboxDefaults.image]);
+
+const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-sandbox-runtime-config-"));
 
 const config = {
   SandboxRuntime: {
+    Enabled: false,
     BaseDir: ".sandbox/runtime",
-    BundleDir: ".sandbox/bundles",
     Images: ["node:22-bookworm-slim", "alpine"],
   },
   ModelProviderEndpoints: [
@@ -37,19 +41,19 @@ const config = {
 } satisfies AgentSystemConfig;
 
 const resolved = resolveSandboxRuntimeConfig(config);
+assert.equal(resolved.Enabled, false);
 assert.deepEqual(resolved.Images, ["alpine", "node:22-bookworm-slim"]);
 
-const workspaceRoot = path.resolve("sandbox-runtime-config-fixture");
 const paths = resolveAgentSandboxRuntimePaths(workspaceRoot, resolved);
 assert.equal(path.relative(workspaceRoot, paths.baseDir), path.normalize(".sandbox/runtime"));
-assert.equal(path.relative(workspaceRoot, paths.bundleDir), path.normalize(".sandbox/bundles"));
-assert.ok(paths.msbPath.endsWith(process.platform === "win32" ? "msb.exe" : "msb"));
-assert.ok(paths.libkrunfwPath.includes("libkrunfw"));
+assert.deepEqual(Object.keys(paths), ["baseDir"]);
 
 assert.deepEqual(normalizeSandboxImages(["alpine", "node:22-bookworm-slim"], ["alpine", "python"]), [
   "alpine",
   "node:22-bookworm-slim",
   "python",
 ]);
+
+fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
 console.log("Sandbox runtime config verification passed.");

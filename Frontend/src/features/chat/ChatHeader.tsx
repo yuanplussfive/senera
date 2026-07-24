@@ -8,6 +8,7 @@ import {
   SquareTerminal,
 } from "lucide-react";
 import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
+import { sandboxStatusDetail } from "../sandbox/sandboxPreparationPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { IconButton, Tooltip } from "../../shared/ui";
@@ -117,7 +118,10 @@ function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | n
         )}
       >
         <Icon className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">{presentation.label}</span>
+        <span className="hidden sm:inline lg:hidden">{presentation.label}</span>
+        <span className="hidden max-w-[220px] truncate lg:inline">
+          {status?.state === "preparing" ? sandboxStatusDetail(status) : presentation.label}
+        </span>
       </button>
     </Tooltip>
   );
@@ -130,14 +134,22 @@ function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null
   className: string;
 } {
   const state = status?.state ?? "unknown";
-  const detail = status?.message ?? frontendMessage("sandbox.status.unsynced");
+  const detail = sandboxStatusDetail(status);
   const availabilitySuffix =
-    status?.effectiveMode === "unavailable"
-      ? frontendMessage("sandbox.status.unavailableSuffix")
-      : frontendMessage("sandbox.status.sandboxSuffix");
+    status?.effectiveMode === "sandbox"
+      ? frontendMessage("sandbox.status.sandboxSuffix")
+      : status?.effectiveMode === "disabled"
+        ? frontendMessage("sandbox.status.disabledSuffix")
+        : frontendMessage("sandbox.status.unavailableSuffix");
   const commonTooltip = `${detail} ${availabilitySuffix}`;
 
   const table = {
+    disabled: {
+      label: frontendMessage("sandbox.status.disabled"),
+      tooltip: commonTooltip,
+      Icon: Shield,
+      className: "border-ink-200 bg-paper-100 text-ink-500 hover:bg-ink-900/[0.04]",
+    },
     unknown: {
       label: frontendMessage("sandbox.status.unknown"),
       tooltip: commonTooltip,

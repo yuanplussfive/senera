@@ -100,16 +100,14 @@ export interface ResolvedAgentExecutionResourcesConfig extends Required<AgentExe
 }
 
 export interface AgentSandboxRuntimeConfig {
+  Enabled?: boolean;
   BaseDir?: string;
-  BundleDir?: string;
-  ImportBundlesOnStartup?: boolean;
   Images?: string[];
 }
 
 export interface ResolvedAgentSandboxRuntimeConfig {
+  Enabled: boolean;
   BaseDir: string;
-  BundleDir: string;
-  ImportBundlesOnStartup: boolean;
   Images: string[];
 }
 

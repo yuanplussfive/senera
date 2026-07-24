@@ -1,18 +1,16 @@
-import fs from "node:fs";
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import type { SeneraMicrosandboxModuleLoader } from "../Execution/SeneraMicrosandboxSdkAdapter.js";
 import type { ResolvedAgentSandboxRuntimeConfig } from "../Types/AgentConfigTypes.js";
 import { normalizeSandboxImages } from "./AgentSandboxRuntimeImages.js";
+import { AgentSandboxPreparationStages, type AgentSandboxPreparationProgress } from "./AgentSandboxRuntimeTypes.js";
 
 export { normalizeSandboxImages } from "./AgentSandboxRuntimeImages.js";
 
 export interface AgentSandboxRuntimePaths {
   baseDir: string;
-  bundleDir: string;
-  msbPath: string;
-  libkrunfwPath: string;
 }
 
 export interface AgentSandboxRuntimePreparationOptions {
@@ -21,35 +19,26 @@ export interface AgentSandboxRuntimePreparationOptions {
   images?: readonly string[];
   strict?: boolean;
   skipImagePull?: boolean;
-  importBundles?: boolean;
   exportBundlePath?: string;
   microsandbox?: MicrosandboxModule;
+  microsandboxModuleLoader?: SeneraMicrosandboxModuleLoader;
   log?: (message: string) => void;
+  onProgress?: (progress: AgentSandboxPreparationProgress) => void;
 }
 
 export interface AgentSandboxRuntimePreparationResult {
   paths: AgentSandboxRuntimePaths;
-  importedBundles: string[];
   preparedImages: string[];
   exportedBundlePath?: string;
   skippedReason?: string;
 }
 
 export interface MicrosandboxModule {
-  install(): Promise<void>;
-  isInstalled(): boolean;
-  setup(): MicrosandboxSetupBuilder;
-  setRuntimeLibkrunfwPath(path: string): void;
   Snapshot: MicrosandboxSnapshotApi;
   Sandbox: {
     builder(name: string): MicrosandboxSandboxBuilder;
     get(name: string): Promise<MicrosandboxSandboxHandle>;
   };
-}
-
-export interface MicrosandboxSetupBuilder {
-  baseDir(path: string): this;
-  install(): Promise<void>;
 }
 
 export interface MicrosandboxSnapshotApi {
@@ -68,7 +57,28 @@ export interface MicrosandboxSandboxBuilder {
   disableNetwork(): this;
   maxDuration(seconds: number): this;
   create(): Promise<MicrosandboxSandbox>;
+  createWithPullProgress(): Promise<MicrosandboxPullProgressCreate>;
 }
+
+export interface MicrosandboxPullProgressCreate extends AsyncIterable<MicrosandboxPullProgressEvent> {
+  awaitSandbox(): Promise<MicrosandboxSandbox>;
+}
+
+export type MicrosandboxPullProgressEvent =
+  | { kind: "resolving"; reference: string }
+  | { kind: "resolved"; reference: string; totalDownloadBytes: number | null }
+  | { kind: "layerDownloadProgress"; layerIndex: number; downloadedBytes: number; totalBytes: number | null }
+  | { kind: "layerDownloadComplete"; layerIndex: number; downloadedBytes: number }
+  | { kind: "layerDownloadVerifying"; layerIndex: number }
+  | { kind: "layerMaterializeStarted"; layerIndex: number }
+  | { kind: "layerMaterializeProgress"; layerIndex: number; bytesRead: number; totalBytes: number }
+  | { kind: "layerMaterializeWriting"; layerIndex: number }
+  | { kind: "layerMaterializeComplete"; layerIndex: number }
+  | { kind: "stitchMergingTrees" }
+  | { kind: "stitchWritingFsmeta" }
+  | { kind: "stitchWritingVmdk" }
+  | { kind: "stitchComplete" }
+  | { kind: "complete"; reference: string };
 
 export interface MicrosandboxSandbox {
   name: string;
@@ -81,38 +91,35 @@ export interface MicrosandboxSandboxHandle {
 }
 
 const SandboxPreparePrefix = "senera-sandbox-prepare";
-const BundleExtensions = new Set([".tar", ".zst"]);
 
 export async function prepareAgentSandboxRuntime(
   options: AgentSandboxRuntimePreparationOptions,
 ): Promise<AgentSandboxRuntimePreparationResult> {
   const log = options.log ?? (() => undefined);
+  const report = options.onProgress ?? (() => undefined);
   const paths = resolveAgentSandboxRuntimePaths(options.workspaceRoot, options.config);
   const result: AgentSandboxRuntimePreparationResult = {
     paths,
-    importedBundles: [],
     preparedImages: [],
   };
 
   try {
-    const microsandbox = options.microsandbox ?? (await loadMicrosandbox());
+    report({ stage: AgentSandboxPreparationStages.CheckingHostRuntime });
     await mkdir(paths.baseDir, { recursive: true });
-    await mkdir(paths.bundleDir, { recursive: true });
-    configureMicrosandboxRuntime(microsandbox, paths);
-    await installMicrosandboxRuntime(microsandbox, paths, log);
-
-    if (options.importBundles ?? options.config.ImportBundlesOnStartup) {
-      result.importedBundles = await importSandboxBundles(microsandbox, paths.bundleDir, log);
-    }
+    configureMicrosandboxRuntime(paths);
+    report({ stage: AgentSandboxPreparationStages.LoadingRuntime });
+    const microsandbox = options.microsandbox ?? (await loadMicrosandbox(options.microsandboxModuleLoader));
 
     if (!options.skipImagePull) {
-      for (const image of normalizeSandboxImages(options.config.Images, options.images)) {
-        await warmSandboxImage(microsandbox, image, log);
+      const images = normalizeSandboxImages(options.config.Images, options.images);
+      for (const [index, image] of images.entries()) {
+        await warmSandboxImage(microsandbox, image, index, images.length, log, report);
         result.preparedImages.push(image);
       }
     }
 
     if (options.exportBundlePath) {
+      report({ stage: AgentSandboxPreparationStages.ExportingBundle });
       result.exportedBundlePath = await exportSandboxBundle(
         microsandbox,
         options.exportBundlePath,
@@ -133,94 +140,39 @@ export async function prepareAgentSandboxRuntime(
 
 export function resolveAgentSandboxRuntimePaths(
   workspaceRoot: string,
-  config: Pick<ResolvedAgentSandboxRuntimeConfig, "BaseDir" | "BundleDir">,
+  config: Pick<ResolvedAgentSandboxRuntimeConfig, "BaseDir">,
 ): AgentSandboxRuntimePaths {
   const baseDir = resolveConfiguredPath(workspaceRoot, config.BaseDir);
-  return {
-    baseDir,
-    bundleDir: resolveConfiguredPath(workspaceRoot, config.BundleDir),
-    msbPath: path.join(baseDir, "bin", process.platform === "win32" ? "msb.exe" : "msb"),
-    libkrunfwPath: path.join(
-      baseDir,
-      "lib",
-      process.platform === "win32"
-        ? "libkrunfw.dll"
-        : process.platform === "darwin"
-          ? "libkrunfw.dylib"
-          : "libkrunfw.so",
-    ),
-  };
+  return { baseDir };
 }
 
-export function configureMicrosandboxRuntime(
-  microsandbox: Pick<MicrosandboxModule, "setRuntimeLibkrunfwPath">,
-  paths: AgentSandboxRuntimePaths,
-): void {
-  process.env.MSB_PATH = paths.msbPath;
-  microsandbox.setRuntimeLibkrunfwPath(paths.libkrunfwPath);
+export function configureMicrosandboxRuntime(paths: AgentSandboxRuntimePaths): void {
+  process.env.MSB_HOME = paths.baseDir;
 }
 
-async function loadMicrosandbox(): Promise<MicrosandboxModule> {
-  return (await import("microsandbox")) as MicrosandboxModule;
-}
-
-async function installMicrosandboxRuntime(
-  microsandbox: MicrosandboxModule,
-  paths: AgentSandboxRuntimePaths,
-  log: (message: string) => void,
-): Promise<void> {
-  if (fs.existsSync(paths.msbPath) && fs.existsSync(paths.libkrunfwPath) && microsandbox.isInstalled()) {
-    log("microsandbox runtime already installed.");
-    return;
-  }
-
-  log(`Installing microsandbox runtime into ${paths.baseDir}...`);
-  await microsandbox.setup().baseDir(paths.baseDir).install();
-}
-
-async function importSandboxBundles(
-  microsandbox: MicrosandboxModule,
-  bundleDir: string,
-  log: (message: string) => void,
-): Promise<string[]> {
-  const bundles = await discoverSandboxBundles(bundleDir);
-  for (const bundle of bundles) {
-    log(`Importing sandbox bundle ${bundle}...`);
-    await microsandbox.Snapshot.import(bundle);
-  }
-  return bundles;
-}
-
-async function discoverSandboxBundles(bundleDir: string): Promise<string[]> {
-  if (!fs.existsSync(bundleDir)) {
-    return [];
-  }
-
-  const entries = await readdir(bundleDir, { withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isFile())
-    .map((entry) => path.join(bundleDir, entry.name))
-    .filter(isSandboxBundlePath)
-    .sort((left, right) => left.localeCompare(right));
-}
-
-function isSandboxBundlePath(filePath: string): boolean {
-  if (filePath.endsWith(".tar.zst")) {
-    return true;
-  }
-  return BundleExtensions.has(path.extname(filePath));
+async function loadMicrosandbox(loader: SeneraMicrosandboxModuleLoader = () => import("microsandbox")) {
+  return (await loader()) as MicrosandboxModule;
 }
 
 async function warmSandboxImage(
   microsandbox: MicrosandboxModule,
   image: string,
+  imageIndex: number,
+  imageCount: number,
   log: (message: string) => void,
+  report: (progress: AgentSandboxPreparationProgress) => void,
 ): Promise<void> {
   const name = `${SandboxPreparePrefix}-${safeImageName(image)}-${process.pid}`;
   let sandbox: MicrosandboxSandbox | undefined;
   log(`Preparing sandbox image ${image}...`);
+  report({
+    stage: AgentSandboxPreparationStages.WarmingImage,
+    item: image,
+    completed: imageIndex,
+    total: imageCount,
+  });
   try {
-    sandbox = await microsandbox.Sandbox.builder(name)
+    const creation = await microsandbox.Sandbox.builder(name)
       .image(image)
       .pullPolicy("if-missing")
       .cpus(1)
@@ -230,13 +182,51 @@ async function warmSandboxImage(
       .disableMetricsSample()
       .disableNetwork()
       .maxDuration(60)
-      .create();
+      .createWithPullProgress();
+    const [createdSandbox] = await Promise.all([
+      creation.awaitSandbox(),
+      consumeImagePullProgress(creation, image, imageIndex, imageCount, report),
+    ]);
+    sandbox = createdSandbox;
+    report({
+      stage: AgentSandboxPreparationStages.WarmingImage,
+      item: image,
+      completed: imageIndex + 1,
+      total: imageCount,
+    });
   } finally {
     if (sandbox) {
       await sandbox.stopWithTimeout(1_000).catch(async () => {
         await sandbox?.kill().catch(() => undefined);
       });
     }
+  }
+}
+
+async function consumeImagePullProgress(
+  stream: MicrosandboxPullProgressCreate,
+  image: string,
+  imageIndex: number,
+  imageCount: number,
+  report: (progress: AgentSandboxPreparationProgress) => void,
+): Promise<void> {
+  const layerDownloads = new Map<number, number>();
+  let totalBytes: number | undefined;
+  for await (const event of stream) {
+    if (event.kind === "resolved" && event.totalDownloadBytes !== null) {
+      totalBytes = event.totalDownloadBytes;
+    }
+    if (event.kind === "layerDownloadProgress" || event.kind === "layerDownloadComplete") {
+      layerDownloads.set(event.layerIndex, event.downloadedBytes);
+    }
+    report({
+      stage: AgentSandboxPreparationStages.WarmingImage,
+      item: image,
+      completed: imageIndex,
+      total: imageCount,
+      downloadedBytes: sumNumbers(layerDownloads.values()),
+      totalBytes,
+    });
   }
 }
 
@@ -301,4 +291,10 @@ function safeImageName(image: string): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function sumNumbers(values: Iterable<number>): number {
+  let total = 0;
+  for (const value of values) total += value;
+  return total;
 }

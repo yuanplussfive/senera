@@ -1,6 +1,5 @@
 import type { AgentConfigFormField } from "../Types/ConfigFormTypes.js";
 import type { ConfigFormFieldDefinition } from "./AgentConfigFormDocument.js";
-import { readAgentConfigFieldContract } from "./AgentConfigFieldContractCatalog.js";
 
 export function projectConfigFormField(options: {
   field: ConfigFormFieldDefinition;
@@ -51,7 +50,8 @@ export function projectConfigFormField(options: {
     step: options.field.step,
     secret: options.field.secret,
     multiline: options.field.multiline,
-    required: readAgentConfigFieldContract(fullPath, options.field.type).required,
+    required: options.field.required,
+    essential: options.field.essential,
     addLabel: options.field.addLabel,
     itemLabelPath: options.field.itemLabelPath,
     itemFields,

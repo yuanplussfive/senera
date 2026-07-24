@@ -1,0 +1,23 @@
+{
+  "id": "tool-search-learning",
+  "dataClass": "derived",
+  "versions": [
+    {
+      "version": 1,
+      "name": "tool-search-learning-schema",
+      "migration": "migrations/0001-tool-search-learning-schema.sql",
+      "migrationSha256": "6176cb1f781ba43eae15528b83bd00f7f4cb74b6527c8e4a84eeed0864d88bff",
+      "snapshot": "snapshots/0001.schema.sql",
+      "snapshotSha256": "569c3bd325b9ac740e46b01d5ae144a06e8fc050b543d1eebc0fec35727f0e08"
+    }
+  ],
+  "legacySnapshots": [
+    {
+      "id": "tool-search-pre-learned-keywords",
+      "definition": "legacy/0000-tool-search-pre-learned-keywords.sql",
+      "definitionSha256": "ced5f4ae00b40f7def0e76e0b15cabfa5c28d6c2bca8d4d599e88ece9e6b4dda",
+      "snapshot": "snapshots/0000-tool-search-pre-learned-keywords.schema.sql",
+      "snapshotSha256": "28bef14bc301dfb129838667ca80d99ce28c9e9d0868b99033ba285fc0182b46"
+    }
+  ]
+}

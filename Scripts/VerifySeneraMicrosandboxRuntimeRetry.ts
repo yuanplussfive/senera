@@ -4,23 +4,27 @@ import type { SeneraMicrosandboxCreateRequest } from "../Source/AgentSystem/Exec
 
 async function main(): Promise<void> {
   const microsandbox = new FakeMicrosandboxModule();
-  const adapter = new SeneraMicrosandboxDynamicSdkAdapter(() => Promise.resolve(microsandbox));
+  let moduleLoads = 0;
+  const adapter = new SeneraMicrosandboxDynamicSdkAdapter(() => {
+    moduleLoads += 1;
+    return Promise.resolve(microsandbox);
+  });
   const request = createRequest();
 
-  await assert.rejects(() => adapter.createSandbox(request), /runtime install failed/);
-  assert.equal(microsandbox.installAttempts, 1);
-  assert.equal(microsandbox.createAttempts, 0);
+  await assert.rejects(() => adapter.createSandbox(request), /official runtime is not ready/);
+  assert.equal(microsandbox.createAttempts, 1);
+  assert.equal(moduleLoads, 1);
 
   const session = await adapter.createSandbox(request);
-  assert.equal(microsandbox.installAttempts, 2);
-  assert.equal(microsandbox.createAttempts, 1);
+  assert.equal(microsandbox.createAttempts, 2);
+  assert.equal(moduleLoads, 1);
   await session.stop(1_000);
 
   await adapter.createSandbox(request);
-  assert.equal(microsandbox.installAttempts, 2);
-  assert.equal(microsandbox.createAttempts, 2);
+  assert.equal(microsandbox.createAttempts, 3);
+  assert.equal(moduleLoads, 1);
 
-  console.log("Senera microsandbox runtime retry verified.");
+  console.log("Senera microsandbox official runtime retry boundary verified.");
 }
 
 function createRequest(): SeneraMicrosandboxCreateRequest {
@@ -38,49 +42,17 @@ function createRequest(): SeneraMicrosandboxCreateRequest {
     memoryMiB: 512,
     network: "disabled",
     pullPolicy: "if-missing",
-    runtime: {
-      baseDir: "/tmp/senera-sandbox-runtime",
-      msbPath: "/tmp/senera-sandbox-runtime/bin/msb",
-      libkrunfwPath: "/tmp/senera-sandbox-runtime/lib/libkrunfw.so",
-    },
     maxDurationSeconds: 30,
   };
 }
 
 class FakeMicrosandboxModule {
-  installAttempts = 0;
   createAttempts = 0;
-  installed = false;
+  failNextCreation = true;
 
   readonly Sandbox = {
     builder: (_name: string) => new FakeSandboxBuilder(this),
   };
-
-  isInstalled(): boolean {
-    return this.installed;
-  }
-
-  setRuntimeLibkrunfwPath(_path: string): void {}
-
-  setup(): FakeSetupBuilder {
-    return new FakeSetupBuilder(this);
-  }
-}
-
-class FakeSetupBuilder {
-  constructor(private readonly module: FakeMicrosandboxModule) {}
-
-  baseDir(_path: string): this {
-    return this;
-  }
-
-  async install(): Promise<void> {
-    this.module.installAttempts += 1;
-    if (this.module.installAttempts === 1) {
-      throw new Error("runtime install failed");
-    }
-    this.module.installed = true;
-  }
 }
 
 class FakeSandboxBuilder {
@@ -135,6 +107,10 @@ class FakeSandboxBuilder {
 
   async create(): Promise<FakeSandbox> {
     this.module.createAttempts += 1;
+    if (this.module.failNextCreation) {
+      this.module.failNextCreation = false;
+      throw new Error("official runtime is not ready");
+    }
     return new FakeSandbox();
   }
 }

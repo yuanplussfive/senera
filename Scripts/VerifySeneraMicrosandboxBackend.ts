@@ -265,10 +265,6 @@ class FakeMicrosandboxSdkAdapter implements SeneraMicrosandboxSdkAdapter {
     ]),
   ) {}
 
-  async isInstalled(): Promise<boolean> {
-    return true;
-  }
-
   async createSandbox(request: SeneraMicrosandboxCreateRequest): Promise<SeneraMicrosandboxSession> {
     this.createRequests.push(request);
     return {
@@ -301,10 +297,6 @@ class FakeMicrosandboxSdkAdapter implements SeneraMicrosandboxSdkAdapter {
 
 class UnavailableMicrosandboxSdkAdapter implements SeneraMicrosandboxSdkAdapter {
   createCount = 0;
-
-  async isInstalled(): Promise<boolean> {
-    return false;
-  }
 
   async createSandbox(_request: SeneraMicrosandboxCreateRequest): Promise<SeneraMicrosandboxSession> {
     this.createCount += 1;

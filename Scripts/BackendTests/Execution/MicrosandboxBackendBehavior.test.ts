@@ -71,6 +71,22 @@ describe("Microsandbox backend behavior", () => {
     expect(session.killCount).toBe(0);
   });
 
+  test("rejects sandbox execution until the Senera runtime service reports readiness", async () => {
+    const workspaceRoot = createWorkspace();
+    const sdk = new RecordingMicrosandboxSdk(new ScriptedMicrosandboxSession([]));
+    const backend = new SeneraMicrosandboxBackend({
+      workspaceRoot,
+      sdk,
+      runtimeReady: () => false,
+    });
+
+    await expect(backend.executeProcess(processRequest(workspaceRoot))).rejects.toMatchObject({
+      code: SeneraExecutionErrorCodes.SandboxUnavailable,
+      details: expect.objectContaining({ reason: "sandbox_runtime_not_ready" }),
+    });
+    expect(sdk.createRequests).toEqual([]);
+  });
+
   test("caches sandbox creation failure until the retry window expires", async () => {
     const workspaceRoot = createWorkspace();
     const sdk = new FailingMicrosandboxSdk();
@@ -220,10 +236,6 @@ class RecordingMicrosandboxSdk implements SeneraMicrosandboxSdkAdapter {
 
   constructor(private readonly session: SeneraMicrosandboxSession) {}
 
-  async isInstalled(): Promise<boolean> {
-    return true;
-  }
-
   async createSandbox(request: SeneraMicrosandboxCreateRequest): Promise<SeneraMicrosandboxSession> {
     this.createRequests.push(request);
     return this.session;
@@ -232,10 +244,6 @@ class RecordingMicrosandboxSdk implements SeneraMicrosandboxSdkAdapter {
 
 class FailingMicrosandboxSdk implements SeneraMicrosandboxSdkAdapter {
   createCount = 0;
-
-  async isInstalled(): Promise<boolean> {
-    return false;
-  }
 
   async createSandbox(): Promise<SeneraMicrosandboxSession> {
     this.createCount += 1;

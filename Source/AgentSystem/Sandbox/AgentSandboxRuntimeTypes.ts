@@ -1,8 +1,32 @@
 export const AgentSandboxRuntimeProvider = "microsandbox";
 
-export type AgentSandboxEffectiveMode = "sandbox" | "unavailable";
-export type AgentSandboxRuntimeState = "unknown" | "preparing" | "ready" | "unavailable";
+export type AgentSandboxEffectiveMode = "sandbox" | "unavailable" | "disabled";
+export type AgentSandboxRuntimeState = "disabled" | "unknown" | "preparing" | "ready" | "unavailable";
 export type AgentSandboxDiagnosticSeverity = "warning" | "error";
+
+export const AgentSandboxPreparationStages = {
+  CheckingHostRuntime: "checking_host_runtime",
+  LoadingRuntime: "loading_runtime",
+  WarmingImage: "warming_image",
+  ExportingBundle: "exporting_bundle",
+} as const;
+
+export type AgentSandboxPreparationStage =
+  (typeof AgentSandboxPreparationStages)[keyof typeof AgentSandboxPreparationStages];
+
+/**
+ * A typed preparation checkpoint. Byte counters are only present when the
+ * underlying runtime exposes a trustworthy total; callers must not infer a
+ * percentage from missing totals.
+ */
+export interface AgentSandboxPreparationProgress {
+  stage: AgentSandboxPreparationStage;
+  item?: string;
+  completed?: number;
+  total?: number;
+  downloadedBytes?: number;
+  totalBytes?: number;
+}
 
 export interface AgentSandboxDiagnostic {
   code: string;
@@ -20,9 +44,6 @@ export interface AgentSandboxDependencySnapshot {
 
 export interface AgentSandboxRuntimePathSnapshot {
   baseDir: string;
-  bundleDir: string;
-  msbPath: string;
-  libkrunfwPath: string;
 }
 
 export interface AgentSandboxRuntimeSnapshot {
@@ -32,6 +53,7 @@ export interface AgentSandboxRuntimeSnapshot {
   supported: boolean;
   effectiveMode: AgentSandboxEffectiveMode;
   paths?: AgentSandboxRuntimePathSnapshot;
+  progress?: AgentSandboxPreparationProgress;
   dependencies: AgentSandboxDependencySnapshot;
   diagnostics: AgentSandboxDiagnostic[];
   message: string;

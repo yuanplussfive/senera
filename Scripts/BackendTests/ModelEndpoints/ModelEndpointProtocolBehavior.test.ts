@@ -242,6 +242,84 @@ describe("model endpoint protocol adapters", () => {
     }
   });
 
+  test.each([
+    {
+      name: "OpenAI Chat Completions",
+      endpoint: "ChatCompletions" as const,
+      completeResponse: { choices: [{ message: { content: "chat" }, usage: null }], usage: null },
+      streamEvent: { choices: [{ delta: { content: "delta" }, usage: null }], usage: null },
+      expectedText: "chat",
+    },
+    {
+      name: "OpenAI Responses",
+      endpoint: "Responses" as const,
+      completeResponse: { output_text: "responses", usage: null },
+      streamEvent: {
+        type: "response.output_text.delta",
+        delta: "delta",
+        usage: null,
+        response: { usage: null },
+      },
+      expectedText: "responses",
+    },
+    {
+      name: "Claude Messages",
+      endpoint: "ClaudeMessages" as const,
+      completeResponse: { content: [{ type: "text", text: "claude" }], usage: null },
+      streamEvent: { type: "content_block_delta", delta: { text: "delta" }, message: { usage: null }, usage: null },
+      expectedText: "claude",
+    },
+    {
+      name: "Google Generate Content",
+      endpoint: "GoogleGenerateContent" as const,
+      completeResponse: { candidates: [{ content: { parts: [{ text: "google" }] } }], usageMetadata: null },
+      streamEvent: { candidates: [{ content: { parts: [{ text: "delta" }] } }], usageMetadata: null },
+      expectedText: "google",
+    },
+  ])("treats explicit null usage metadata from $name as absent telemetry", async (protocol) => {
+    const http = new RecordingModelHttp({ json: protocol.completeResponse, stream: createStaticModelStream([]) });
+    const endpoint = createModelEndpoint(
+      protocol.endpoint,
+      createModelEndpointRuntime(http, { Endpoint: protocol.endpoint }),
+    );
+
+    await expect(endpoint.complete(createModelRequest())).resolves.toEqual({
+      text: protocol.expectedText,
+      usage: undefined,
+    });
+    await endpoint.stream(createModelRequest());
+    expect(http.sseRequests[0]?.projectEvent(protocol.streamEvent)).toEqual({
+      textDelta: "delta",
+      usage: undefined,
+    });
+  });
+
+  test("ignores null fields inside otherwise valid OpenAI usage telemetry", async () => {
+    const http = new RecordingModelHttp({ stream: createStaticModelStream([]) });
+    const endpoint = createModelEndpoint("ChatCompletions", createModelEndpointRuntime(http));
+
+    await endpoint.stream(createModelRequest());
+
+    expect(
+      http.sseRequests[0]?.projectEvent({
+        choices: [],
+        usage: {
+          prompt_tokens: 12,
+          completion_tokens: null,
+          total_tokens: null,
+          prompt_tokens_details: null,
+          completion_tokens_details: { reasoning_tokens: null },
+        },
+      }),
+    ).toEqual({
+      textDelta: "",
+      usage: {
+        source: "provider_reported",
+        inputTokens: 12,
+      },
+    });
+  });
+
   test("allows OpenAI-compatible gateways to disable streaming usage requests", async () => {
     const http = new RecordingModelHttp({ stream: createStaticModelStream([]) });
     const endpoint = createModelEndpoint(

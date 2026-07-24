@@ -9,6 +9,7 @@ x-senera-runtime: &senera-runtime
     SENERA_BIND_ADDRESS: ${SENERA_BIND_ADDRESS:-127.0.0.1}
     SENERA_ALLOWED_ORIGINS: ${SENERA_ALLOWED_ORIGINS:-}
     SENERA_PUBLIC_WS_URL: ${SENERA_PUBLIC_WS_URL:-}
+    SENERA_SANDBOX_DEPLOYMENT: standard
   volumes:
     - senera-data:/data
 
@@ -18,10 +19,6 @@ services:
     container_name: senera
     ports:
       - "${SENERA_BIND_ADDRESS:-127.0.0.1}:${SENERA_PORT:-8787}:8787"
-    devices:
-      - /dev/kvm:/dev/kvm
-    cap_add:
-      - NET_ADMIN
     restart: unless-stopped
 
   senera-admin:

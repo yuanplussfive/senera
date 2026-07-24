@@ -21,11 +21,6 @@ export interface SeneraMicrosandboxCreateRequest {
   memoryMiB: number;
   network: SeneraMicrosandboxNetworkMode;
   pullPolicy: SeneraMicrosandboxPullPolicy;
-  runtime?: {
-    baseDir: string;
-    msbPath: string;
-    libkrunfwPath: string;
-  };
   maxDurationSeconds: number;
 }
 
@@ -70,6 +65,5 @@ export interface SeneraMicrosandboxSession {
 }
 
 export interface SeneraMicrosandboxSdkAdapter {
-  isInstalled(): Promise<boolean>;
   createSandbox(request: SeneraMicrosandboxCreateRequest): Promise<SeneraMicrosandboxSession>;
 }

@@ -19,7 +19,7 @@ import {
 } from "../Session/AgentUserProfile.js";
 import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
-import { AgentSessionDatabaseMigrations } from "../SessionPersistence/AgentSessionSqlSchema.js";
+import { AgentSessionDatabaseContract } from "../SessionPersistence/AgentSessionSqlSchema.js";
 import {
   prepareAgentSessionSqlStatements,
   type AgentSessionSqlStatements,
@@ -65,7 +65,7 @@ export class SqliteSessionRepository implements AgentSessionRepository {
   constructor(databasePath: string) {
     this.kernel = new AgentSqliteDatabaseKernel({
       databasePath,
-      migrations: AgentSessionDatabaseMigrations,
+      contract: AgentSessionDatabaseContract,
     });
     this.db = this.kernel.connection;
     this.stmts = prepareAgentSessionSqlStatements(this.db);

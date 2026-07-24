@@ -6,6 +6,20 @@ import type {
 } from "../../../Source/AgentSystem/Execution/SeneraMicrosandboxTypes.js";
 
 describe("microsandbox SDK adapter", () => {
+  it("delegates runtime readiness to Senera instead of reading the SDK installation flag", async () => {
+    const isInstalled = vi.fn(() => false);
+    const sandbox = {
+      execStreamWith: vi.fn(),
+      stopWithTimeout: vi.fn(async () => undefined),
+      kill: vi.fn(async () => undefined),
+    };
+    const module = { ...fakeMicrosandboxModule(sandbox), isInstalled };
+    const adapter = new SeneraMicrosandboxDynamicSdkAdapter(async () => module as never);
+
+    await expect(adapter.createSandbox(createRequest())).resolves.toBeDefined();
+    expect(isInstalled).not.toHaveBeenCalled();
+  });
+
   it("preserves native TTY output events that the public SDK normalizer omits", async () => {
     const rawEvents: unknown[] = [
       { eventType: "started", pid: 42 },
@@ -122,9 +136,6 @@ function fakeMicrosandboxModule(sandbox: object) {
     },
   };
   return {
-    isInstalled: () => true,
-    setRuntimeLibkrunfwPath: () => undefined,
-    setup: () => ({ baseDir: () => ({ install: async () => undefined }) }),
     Sandbox: { builder: () => sandboxBuilder },
   };
 }

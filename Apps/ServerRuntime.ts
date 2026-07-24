@@ -40,7 +40,6 @@ import { AgentPiActiveSessionRegistry } from "../Source/AgentSystem/Pi/AgentPiAc
 import { AgentPiSessionMutationService } from "../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
 import { createAgentPiDiagnosticLogger } from "../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 import { AgentSystemRuntimeCache } from "../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
-import { prepareAgentSandboxRuntime } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
 import { AgentSandboxRuntimeService } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeService.js";
 import { AgentExecutionResourceBroker } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceBroker.js";
 import { resolveAgentExecutionResourceLimits } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceConfig.js";
@@ -48,6 +47,10 @@ import { AgentInteractionInputRuntime } from "../Source/AgentSystem/Interaction/
 import { createAgentRequestCancellationResource } from "../Source/AgentSystem/Session/AgentSessionRunResource.js";
 import { AgentArtifactRetentionService } from "../Source/AgentSystem/Artifacts/AgentArtifactRetentionService.js";
 import type { AgentMcpRuntimeModuleResolver } from "../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
+import {
+  SeneraMicrosandboxDynamicSdkAdapter,
+  type SeneraMicrosandboxModuleLoader,
+} from "../Source/AgentSystem/Execution/SeneraMicrosandboxSdkAdapter.js";
 
 export interface SeneraServerOptions {
   workspaceRoot?: string;
@@ -57,6 +60,12 @@ export interface SeneraServerOptions {
   configSource?: AgentConfigSourceOptions;
   runtimeConfigProjection?: (config: AgentSystemConfig) => AgentSystemConfig;
   runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
+  /**
+   * Set only by a deployment bootstrap that has already prepared and verified
+   * the configured microsandbox runtime before opening the web server.
+   */
+  sandboxRuntimePrepared?: boolean;
+  microsandboxModuleLoader?: SeneraMicrosandboxModuleLoader;
 }
 
 export interface SeneraServerHandle {
@@ -112,6 +121,9 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     workspaceRoot,
     configSnapshot,
   });
+  const microsandboxSdk = options.microsandboxModuleLoader
+    ? new SeneraMicrosandboxDynamicSdkAdapter(options.microsandboxModuleLoader)
+    : undefined;
   const executionResources = new AgentExecutionResourceBroker({
     workspaceRoot,
     limits: () => resolveAgentExecutionResourceLimits(configSnapshot()),
@@ -135,6 +147,8 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     resourcesPath: options.resourcesPath,
     runtimeModuleResolver: options.runtimeModuleResolver,
     executionResources,
+    sandboxRuntimeReady: () => sandboxRuntimeService.snapshot().state === "ready",
+    microsandboxSdk,
   });
 
   const loopFactory = (modelProviderId?: string) => {
@@ -245,22 +259,29 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   approvalRuntime.setEventSink((event) => server.broadcast(event));
   interactionInput.setEventSink((event) => server.broadcast(event));
   executionResources.setEventSink((event) => server.broadcast(event));
+  const unsubscribeSandboxStatus = sandboxRuntimeService.subscribe((snapshot) => {
+    void server
+      .broadcast({
+        kind: AgentEventKinds.SandboxStatusSnapshot,
+        context: {},
+        data: snapshot,
+      })
+      .catch((error) => {
+        logger.error("沙箱准备事件广播失败", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+  });
 
   server.start();
   memoryLearning.start();
   artifactRetention.start();
   startSandboxRuntimePreparation({
-    workspaceRoot,
     config: initialConfig,
     sandboxRuntimeService,
     logger,
-    broadcast: (event) => {
-      void server.broadcast(event).catch((error) => {
-        logger.error("沙箱准备事件广播失败", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-    },
+    prepared: options.sandboxRuntimePrepared ?? false,
+    microsandboxModuleLoader: options.microsandboxModuleLoader,
   });
   if (configSource.kind === "json" && resolveServerConfig(initialConfig).HotReload) {
     const jsonConfigPath = configSource.configPath;
@@ -309,6 +330,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     stop: () =>
       (stopPromise ??= (async () => {
         if (watchedConfigPath) fs.unwatchFile(watchedConfigPath);
+        unsubscribeSandboxStatus();
         let serverFailure: unknown;
         try {
           await server.stop();
@@ -333,44 +355,49 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
 }
 
 function startSandboxRuntimePreparation(input: {
-  workspaceRoot: string;
   config: AgentSystemConfig;
   sandboxRuntimeService: AgentSandboxRuntimeService;
   logger: AgentLogger;
-  broadcast: (event: AgentDomainEvent) => void;
+  prepared: boolean;
+  microsandboxModuleLoader?: SeneraMicrosandboxModuleLoader;
 }): void {
-  const publishStatus = (): void => {
-    input.broadcast({
-      kind: AgentEventKinds.SandboxStatusSnapshot,
-      context: {},
-      data: input.sandboxRuntimeService.snapshot(),
+  const sandboxRuntimeConfig = resolveSandboxRuntimeConfig(input.config);
+  if (!sandboxRuntimeConfig.Enabled) {
+    input.sandboxRuntimeService.markDisabled();
+    input.logger.info("sandbox.runtime.disabled", {
+      provider: "microsandbox",
     });
-  };
+    return;
+  }
 
-  input.sandboxRuntimeService.markPreparing();
-  publishStatus();
-  void prepareAgentSandboxRuntime({
-    workspaceRoot: input.workspaceRoot,
-    config: resolveSandboxRuntimeConfig(input.config),
-    skipImagePull: true,
-    strict: true,
-    log: (message) => input.logger.info("sandbox.runtime.prepare", { message }),
-  }).then(
-    () => {
-      input.sandboxRuntimeService.markReady();
-      input.logger.success("sandbox.runtime.ready", {
-        provider: "microsandbox",
-      });
-      publishStatus();
-    },
-    (error: unknown) => {
-      input.sandboxRuntimeService.markUnavailable(error);
-      input.logger.warn("sandbox.runtime.unavailable", {
-        message: error instanceof Error ? error.message : String(error),
-      });
-      publishStatus();
-    },
-  );
+  if (input.prepared) {
+    input.sandboxRuntimeService.markReady();
+    input.logger.success("sandbox.runtime.ready", {
+      provider: "microsandbox",
+    });
+    return;
+  }
+
+  void input.sandboxRuntimeService
+    .prepare({
+      config: sandboxRuntimeConfig,
+      strict: true,
+      microsandboxModuleLoader: input.microsandboxModuleLoader,
+      log: (message) => input.logger.info("sandbox.runtime.prepare", { message }),
+    })
+    .then(
+      () => {
+        input.sandboxRuntimeService.markReady();
+        input.logger.success("sandbox.runtime.ready", {
+          provider: "microsandbox",
+        });
+      },
+      (error: unknown) => {
+        input.logger.warn("sandbox.runtime.unavailable", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
 }
 
 function createRepository(workspaceRoot: string, config: AgentSystemConfig): AgentSessionRepository {

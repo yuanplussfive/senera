@@ -5,7 +5,8 @@ import { createRequestId } from "../Core/AgentIds.js";
 import { AgentUserProfileInputSchema } from "../Session/AgentUserProfile.js";
 import { AgentUploadAttachmentListSchema } from "../Uploads/AgentUploadTypes.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
-import { ModelProviderEndpointSchema, ModelProviderSchema } from "../Schemas/AgentModelConfigSchema.js";
+import { ModelProviderSchema } from "../Schemas/AgentModelConfigSchema.js";
+import { AgentProviderEndpointPatchSchema } from "../Config/AgentConfigCommandSchemas.js";
 import { SeneraTerminalDimensionLimits } from "../Execution/SeneraTerminalTypes.js";
 import { AgentApprovalDecisions } from "../Approvals/AgentApprovalTypes.js";
 import { AgentInteractionInputActions } from "../Interaction/AgentInteractionInputTypes.js";
@@ -15,10 +16,13 @@ const AgentInteractionInputValueSchema = z.union([z.string(), z.number().finite(
 const AgentPresetFormatSchema = z.enum(["json", "markdown", "text"]);
 
 const AgentConfigRevisionGuardRequestSchema = {
-  requestId: z.string().min(1).optional(),
-  expectedRevision: z.number().int().min(1).optional(),
-  expectedVersion: z.number().int().min(1).optional(),
-  mirrorJson: z.boolean().optional(),
+  commandId: z.string().min(1),
+  baseRevision: z.number().int().min(1).optional(),
+  baseVersion: z.number().int().min(1).optional(),
+} as const;
+
+const AgentConfigCommandRequestSchema = {
+  commandId: z.string().min(1),
 } as const;
 
 const AgentProviderModelEndpointRequestSchema = z
@@ -158,14 +162,14 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("provider.endpoint.upsert"),
-      ...AgentConfigRevisionGuardRequestSchema,
-      endpoint: ModelProviderEndpointSchema,
+      ...AgentConfigCommandRequestSchema,
+      endpoint: AgentProviderEndpointPatchSchema,
     })
     .strict(),
   z
     .object({
       type: z.literal("provider.endpoint.delete"),
-      ...AgentConfigRevisionGuardRequestSchema,
+      ...AgentConfigCommandRequestSchema,
       providerId: z.string().min(1),
       cascadeModels: z.boolean().optional(),
       replacementDefaultModelId: z.string().min(1).optional(),
@@ -174,7 +178,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("provider.endpoint.rename"),
-      ...AgentConfigRevisionGuardRequestSchema,
+      ...AgentConfigCommandRequestSchema,
       providerId: z.string().min(1),
       nextProviderId: z.string().min(1),
     })
@@ -182,7 +186,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("provider.model.upsert"),
-      ...AgentConfigRevisionGuardRequestSchema,
+      ...AgentConfigCommandRequestSchema,
       model: ModelProviderSchema,
       group: AgentProviderModelGroupAssignmentRequestSchema.optional(),
     })
@@ -190,7 +194,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("provider.model.delete"),
-      ...AgentConfigRevisionGuardRequestSchema,
+      ...AgentConfigCommandRequestSchema,
       modelId: z.string().min(1),
       replacementDefaultModelId: z.string().min(1).optional(),
     })
@@ -198,7 +202,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("provider.model.bulkImport"),
-      ...AgentConfigRevisionGuardRequestSchema,
+      ...AgentConfigCommandRequestSchema,
       models: z.array(ModelProviderSchema),
       overwriteExisting: z.boolean().optional(),
       groupAssignments: z.array(AgentProviderModelBulkImportGroupAssignmentRequestSchema).optional(),
@@ -207,7 +211,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("provider.defaultModel.set"),
-      ...AgentConfigRevisionGuardRequestSchema,
+      ...AgentConfigCommandRequestSchema,
       modelId: z.string().min(1),
     })
     .strict(),

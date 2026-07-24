@@ -135,10 +135,6 @@ describe("terminal backend routing", () => {
 class FakeMicrosandboxSdk implements SeneraMicrosandboxSdkAdapter {
   constructor(private readonly session: SeneraMicrosandboxSession) {}
 
-  async isInstalled(): Promise<boolean> {
-    return true;
-  }
-
   async createSandbox(_request: SeneraMicrosandboxCreateRequest): Promise<SeneraMicrosandboxSession> {
     return this.session;
   }

@@ -1,18 +1,5 @@
-import { defineAgentSqliteMigration } from "../Database/AgentSqliteMigration.js";
+import { loadAgentSqliteStoreContract } from "../Database/AgentSqliteStoreContract.js";
+import runtimeContract from "./Database/runtime.json" with { type: "json" };
 
-const AgentConfigInitialSchemaSql = `
-  CREATE TABLE IF NOT EXISTS config_revisions (
-    revision INTEGER PRIMARY KEY,
-    config_json TEXT NOT NULL,
-    source TEXT NOT NULL,
-    created_at TEXT NOT NULL
-  ) STRICT;
-`;
-
-export const AgentConfigDatabaseMigrations = Object.freeze([
-  defineAgentSqliteMigration({
-    version: 1,
-    name: "config_schema_baseline",
-    sql: AgentConfigInitialSchemaSql,
-  }),
-]);
+/** The configuration store owns its versioned SQL contract beside this module. */
+export const AgentConfigDatabaseContract = loadAgentSqliteStoreContract(runtimeContract);

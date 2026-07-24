@@ -16,7 +16,7 @@ import {
   rowToTermAggregate,
   termAggregateRecord,
 } from "./AgentToolSearchMemoryCodec.js";
-import { AgentToolSearchMemoryDatabaseMigrations } from "./AgentToolSearchMemorySqlSchema.js";
+import { AgentToolSearchLearningStoreContract } from "./AgentToolSearchMemorySqlSchema.js";
 import {
   prepareToolSearchMemorySqlStatements,
   type ToolSearchMemorySqlStatements,
@@ -31,7 +31,7 @@ export class SqliteToolSearchMemoryStore implements AgentToolSearchMemoryStore {
   constructor(databasePath: string) {
     this.kernel = new AgentSqliteDatabaseKernel({
       databasePath,
-      migrations: AgentToolSearchMemoryDatabaseMigrations,
+      contract: AgentToolSearchLearningStoreContract,
     });
     this.db = this.kernel.connection;
     this.stmts = prepareToolSearchMemorySqlStatements(this.db);

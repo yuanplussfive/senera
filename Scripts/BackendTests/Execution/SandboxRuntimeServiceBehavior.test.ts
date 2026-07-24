@@ -80,4 +80,62 @@ describe("sandbox runtime service behavior", () => {
       ],
     });
   });
+
+  test("reports an explicitly disabled runtime without probing package availability", () => {
+    const service = new AgentSandboxRuntimeService({
+      configSnapshot: () => ({
+        ModelProviders: [],
+        SandboxRuntime: { Enabled: false },
+      }),
+      packageAvailable: () => false,
+    });
+
+    expect(service.snapshot()).toMatchObject({
+      state: "disabled",
+      effectiveMode: "disabled",
+      dependencies: { errors: [], warnings: [] },
+      diagnostics: [
+        expect.objectContaining({
+          code: "microsandbox_disabled_by_runtime_configuration",
+          message: agentErrorMessage("sandbox.disabled.message"),
+        }),
+      ],
+    });
+  });
+
+  test("publishes typed preparation progress without flooding repeated checkpoints", () => {
+    let now = new Date("2026-01-01T00:00:00.000Z");
+    const service = new AgentSandboxRuntimeService({
+      clock: () => now,
+      packageAvailable: () => true,
+      progressUpdateIntervalMs: 100,
+    });
+    const snapshots: ReturnType<typeof service.snapshot>[] = [];
+    const unsubscribe = service.subscribe((snapshot) => snapshots.push(snapshot));
+
+    service.markPreparing();
+    service.reportProgress({ stage: "loading_runtime" });
+    service.reportProgress({ stage: "loading_runtime" });
+    now = new Date("2026-01-01T00:00:00.100Z");
+    service.reportProgress({
+      stage: "warming_image",
+      item: "node:22-bookworm-slim",
+      completed: 0,
+      total: 1,
+      downloadedBytes: 512,
+      totalBytes: 1024,
+    });
+    unsubscribe();
+
+    expect(snapshots).toHaveLength(3);
+    expect(snapshots.at(-1)).toMatchObject({
+      state: "preparing",
+      progress: {
+        stage: "warming_image",
+        item: "node:22-bookworm-slim",
+        downloadedBytes: 512,
+        totalBytes: 1024,
+      },
+    });
+  });
 });

@@ -2,10 +2,7 @@ import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js"
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { resolveModelProviderCatalog } from "../AgentDefaults.js";
 import { projectAgentConfigForm } from "../Config/AgentConfigFormProjector.js";
-import {
-  assertConfigRevisionGuard,
-  type AgentProviderModelConfigOperationKind,
-} from "../Config/AgentProviderModelConfigCommands.js";
+import { type AgentProviderModelConfigOperationKind } from "../Config/AgentProviderModelConfigCommands.js";
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
@@ -304,18 +301,12 @@ export class AgentWebSocketConfigRequestHandlers {
       throw new Error(agentErrorMessage("websocket.configServiceDisabled"));
     }
 
-    const configService = this.context.configService;
-    const current = configService.snapshot();
-    if (request.expectedRevision !== undefined || request.expectedVersion !== undefined) {
-      assertConfigRevisionGuard(request, {
-        revision: current.revision,
-        version: current.version,
-      });
-    }
-    const snapshot = configService.update({
+    const snapshot = this.context.configService.replaceConfig({
+      commandId: request.commandId,
+      baseRevision: request.baseRevision,
+      baseVersion: request.baseVersion,
       config: request.config,
       source: "ui_update",
-      mirrorJson: request.mirrorJson,
     });
     await sendEvent({
       kind: AgentEventKinds.ConfigSnapshot,
@@ -323,7 +314,7 @@ export class AgentWebSocketConfigRequestHandlers {
       data: {
         ...snapshot,
         operation: {
-          requestId: request.requestId,
+          commandId: request.commandId,
           kind: "config_update",
         },
       },
@@ -473,7 +464,7 @@ export class AgentWebSocketConfigRequestHandlers {
   private sendProviderModelConfigSnapshot(
     snapshot: ReturnType<NonNullable<AgentWebSocketRequestContext["configService"]>["snapshot"]>,
     request: {
-      requestId?: string;
+      commandId: string;
       type: AgentProviderModelConfigOperationKind;
     },
     sendEvent: AgentWebSocketEventSender,
@@ -485,7 +476,7 @@ export class AgentWebSocketConfigRequestHandlers {
         data: {
           ...snapshot,
           operation: {
-            requestId: request.requestId,
+            commandId: request.commandId,
             kind: request.type,
           },
         },

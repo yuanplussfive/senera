@@ -14,6 +14,22 @@ export function resolveModelProviderConfig(config: AgentSystemConfig, id?: strin
   return resolveModelProviderCatalog(config).resolve(id);
 }
 
+/**
+ * Applies the shared model-runtime defaults to one persisted model declaration.
+ * This intentionally deep-merges capabilities: a model may override only the
+ * capability flags it needs without discarding the rest of the runtime policy.
+ */
+export function resolveModelProviderRuntimeDefaults(
+  defaults: AgentModelRuntimeDefaultsConfig,
+  provider: AgentModelProviderConfig,
+): AgentModelRuntimeDefaultsConfig & AgentModelProviderConfig {
+  return {
+    ...defaults,
+    ...provider,
+    Capabilities: resolveModelCapabilities(defaults, provider.Capabilities),
+  };
+}
+
 export function resolveModelProviderEndpointConfig(config: AgentSystemConfig, id: string) {
   return resolveModelProviderEndpointCatalog(config).resolve(id);
 }
@@ -60,35 +76,24 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
   const providers: ResolvedAgentModelProviderConfig[] = config.ModelProviders.flatMap((provider) => {
     const endpoint = endpointCatalog.resolveKnown(provider.ProviderId);
     if (!endpoint.Enabled) return [];
-    const {
-      Capabilities,
-      TimeoutSeconds,
-      FirstTokenTimeoutSeconds,
-      MaxRequestSeconds,
-      RetryBaseDelaySeconds,
-      RetryMaxDelaySeconds,
-      RetryAfterMaxDelaySeconds,
-      Icon,
-      ...providerRuntime
-    } = provider;
+    const runtime = resolveModelProviderRuntimeDefaults(defaults.ModelRuntime, provider);
     const retryDelays = resolveModelRetryDelays(defaults.ModelRuntime, {
-      RetryBaseDelaySeconds,
-      RetryMaxDelaySeconds,
-      RetryAfterMaxDelaySeconds,
+      RetryBaseDelaySeconds: runtime.RetryBaseDelaySeconds,
+      RetryMaxDelaySeconds: runtime.RetryMaxDelaySeconds,
+      RetryAfterMaxDelaySeconds: runtime.RetryAfterMaxDelaySeconds,
     });
     return [
       {
-        ...defaults.ModelRuntime,
         ...endpoint,
-        ...providerRuntime,
-        Capabilities: resolveModelCapabilities(defaults.ModelRuntime, Capabilities),
-        TimeoutMs: optionalSecondsToMilliseconds(TimeoutSeconds) ?? defaults.ModelRuntime.TimeoutMs,
+        ...runtime,
+        TimeoutMs: optionalSecondsToMilliseconds(runtime.TimeoutSeconds) ?? defaults.ModelRuntime.TimeoutMs,
         FirstTokenTimeoutMs:
-          optionalDisabledOrSecondsToMilliseconds(FirstTokenTimeoutSeconds) ??
+          optionalDisabledOrSecondsToMilliseconds(runtime.FirstTokenTimeoutSeconds) ??
           defaults.ModelRuntime.FirstTokenTimeoutMs,
-        MaxRequestMs: optionalDisabledOrSecondsToMilliseconds(MaxRequestSeconds) ?? defaults.ModelRuntime.MaxRequestMs,
+        MaxRequestMs:
+          optionalDisabledOrSecondsToMilliseconds(runtime.MaxRequestSeconds) ?? defaults.ModelRuntime.MaxRequestMs,
         ...retryDelays,
-        Icon: Icon ?? endpoint.Icon,
+        Icon: provider.Icon ?? endpoint.Icon,
         ProviderId: endpoint.Id,
         Kind: endpoint.Kind,
         BaseUrl: endpoint.BaseUrl,

@@ -116,7 +116,9 @@ test("multi-section settings expose lightweight section navigation", () => {
         {
           name: "planning",
           label: "Planning",
-          fields: [{ path: ["Plan"], label: "Plan", type: "string", effectiveValue: "", required: true }],
+          fields: [
+            { path: ["Plan"], label: "Plan", type: "string", effectiveValue: "", required: true, essential: true },
+          ],
         },
       ],
       value: initialConfig,
@@ -139,7 +141,7 @@ test("multi-section settings expose lightweight section navigation", () => {
   expect(screen.queryByRole("heading", { name: "Runtime" })).not.toBeInTheDocument();
 });
 
-test("settings default to required fields and switches, then reveal all optional fields on demand", async () => {
+test("settings use declared essential visibility independently from required validation", async () => {
   const user = userEvent.setup();
   render(
     React.createElement(JsonConfigSettingsView, {
@@ -154,6 +156,7 @@ test("settings default to required fields and switches, then reveal all optional
               type: "string",
               effectiveValue: "ready",
               required: true,
+              essential: true,
             },
             {
               path: ["OptionalValue"],
@@ -161,6 +164,7 @@ test("settings default to required fields and switches, then reveal all optional
               type: "string",
               effectiveValue: "default",
               required: false,
+              essential: false,
             },
             {
               path: ["OptionalSwitch"],
@@ -168,6 +172,7 @@ test("settings default to required fields and switches, then reveal all optional
               type: "boolean",
               effectiveValue: false,
               required: false,
+              essential: true,
             },
           ],
         },
@@ -180,7 +185,7 @@ test("settings default to required fields and switches, then reveal all optional
   expect(screen.getByText("Required value")).toBeVisible();
   expect(screen.getByText("Optional switch")).toBeVisible();
   expect(screen.queryByText("Optional value")).not.toBeInTheDocument();
-  expect(screen.getAllByText("必填")).toHaveLength(2);
+  expect(screen.getAllByText("必填")).toHaveLength(1);
 
   await user.click(screen.getByRole("button", { name: /全部/ }));
 
@@ -238,6 +243,7 @@ const configSections = [
         type: "boolean",
         effectiveValue: false,
         required: true,
+        essential: true,
       },
       {
         path: ["Mode"],
@@ -247,6 +253,7 @@ const configSections = [
         optionLabels: { fast: "Fast", safe: "Safe" },
         effectiveValue: "fast",
         required: true,
+        essential: true,
       },
       {
         path: ["Retries"],
@@ -256,6 +263,7 @@ const configSections = [
         max: 5,
         effectiveValue: 1,
         required: true,
+        essential: true,
       },
       {
         path: ["Tags"],
@@ -265,6 +273,7 @@ const configSections = [
         addLabel: "添加标签",
         effectiveValue: ["release"],
         required: true,
+        essential: true,
       },
       {
         path: ["Headers"],
@@ -273,6 +282,7 @@ const configSections = [
         itemType: "string",
         effectiveValue: { existing: "value" },
         required: true,
+        essential: true,
       },
     ],
   },

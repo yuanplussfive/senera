@@ -11,6 +11,7 @@ path = [ "senera", "enabled" ]
 label = "启用插件"
 type = "boolean"
 required = true
+essential = true
 
 [[form.sections]]
 id = "weather"
@@ -23,6 +24,7 @@ type = "array"
 itemType = "string"
 secret = true
 required = true
+essential = true
 
 [[form.sections.fields]]
 path = [ "weather", "api_host" ]
@@ -30,17 +32,22 @@ label = "API URL"
 type = "string"
 description = "和风天气控制台分配的专属 API Host，必须包含 https://。"
 required = true
+essential = true
 
 [[form.sections.fields]]
 path = [ "weather", "language" ]
 label = "语言"
 type = "string"
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "weather", "unit" ]
 label = "单位"
 type = "string"
 options = [ "metric", "imperial" ]
+required = false
+essential = false
 
 [form.sections.fields.optionLabels]
 metric = "公制"
@@ -53,8 +60,12 @@ type = "number"
 min = 1
 max = 300
 step = 1
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "weather", "state_dir" ]
 label = "状态目录"
 type = "string"
+required = false
+essential = false

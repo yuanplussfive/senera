@@ -39,16 +39,24 @@ describe("plugin configuration artifacts", () => {
             id: "service",
             label: "Service",
             fields: [
-              { path: ["service", "enabled"], label: "Enabled", type: "boolean" },
-              { path: ["service", "endpoints"], label: "Endpoints", type: "array", itemType: "string" },
+              { path: ["service", "enabled"], label: "Enabled", type: "boolean", required: false, essential: true },
+              {
+                path: ["service", "endpoints"],
+                label: "Endpoints",
+                type: "array",
+                itemType: "string",
+                required: false,
+                essential: false,
+              },
               {
                 path: ["service", "nested", "api key"],
                 label: "API key",
                 type: "string",
                 secret: true,
                 required: true,
+                essential: true,
               },
-              { path: ["service", "headers"], label: "Headers", type: "table" },
+              { path: ["service", "headers"], label: "Headers", type: "table", required: false, essential: false },
             ],
           },
         ],
@@ -73,7 +81,9 @@ describe("plugin configuration artifacts", () => {
             {
               id: "service",
               label: "Service",
-              fields: [{ path: ["service", "value"], label: "Value", type: "string" }],
+              fields: [
+                { path: ["service", "value"], label: "Value", type: "string", required: false, essential: false },
+              ],
             },
           ],
         },

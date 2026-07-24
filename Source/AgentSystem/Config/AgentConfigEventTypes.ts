@@ -7,10 +7,9 @@ import type { AgentPresetOperationResult, AgentPresetSnapshot } from "../Presets
 import type { AgentConfigDiagnostic, AgentConfigSnapshot, AgentConfigSnapshotSource } from "./AgentConfigService.js";
 import type { AgentProviderModelSnapshot } from "./AgentProviderModelDiscovery.js";
 
-export type AgentPluginConfigOperationKind =
-  | "list"
-  | "update"
-  | "set_enabled"
+export type AgentPluginConfigOperationKind = "list" | "update" | "set_enabled";
+
+export type AgentSystemConfigOperationKind =
   | "config_update"
   | "provider.endpoint.upsert"
   | "provider.endpoint.delete"
@@ -24,6 +23,11 @@ export interface AgentPluginConfigOperationResult {
   requestId?: string;
   kind: AgentPluginConfigOperationKind;
   pluginName?: string;
+}
+
+export interface AgentSystemConfigOperationResult {
+  commandId: string;
+  kind: AgentSystemConfigOperationKind;
 }
 
 export type AgentConfigDomainEvent =
@@ -45,7 +49,7 @@ export type AgentConfigDomainEvent =
         configPath: string;
         message: string;
         details?: unknown;
-        operation?: AgentPluginConfigOperationResult;
+        operation?: AgentPluginConfigOperationResult | AgentSystemConfigOperationResult;
       };
     }
   | {
@@ -87,7 +91,7 @@ export type AgentConfigDomainEvent =
       kind: typeof AgentEventKinds.ConfigSnapshot;
       context: AgentEventContext;
       data: AgentConfigSnapshot & {
-        operation?: AgentPluginConfigOperationResult;
+        operation?: AgentSystemConfigOperationResult;
       };
     }
   | {
