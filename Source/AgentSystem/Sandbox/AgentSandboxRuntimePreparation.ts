@@ -255,7 +255,7 @@ async function resolveSandboxProvisioning(
     onProgress: report,
   });
   return {
-    images: [installation.manifest.sourceImage],
+    images: [installation.manifest.runtimeImage],
     pullPolicy: "never",
   };
 }

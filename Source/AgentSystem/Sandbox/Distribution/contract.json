@@ -1,12 +1,17 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "senera-node-runtime",
-  "bundleVersion": "1.0.0",
+  "bundleVersion": "1.0.1",
   "microsandboxVersion": "0.6.4",
   "targets": {
     "x64": {
       "sourceImage": "docker.io/library/node@sha256:8607a9064d4a571140998ae9e52a3b3fcf9cff361d04642d5971e6cd76d39e27",
-      "bundleAssetName": "SeneraSandboxBundle-1.0.0-x64.tar.zst"
+      "runtimeImage": "senera.local/senera-node-runtime:1.0.1-x64",
+      "probe": {
+        "command": "node",
+        "arguments": ["--version"]
+      },
+      "bundleAssetName": "SeneraSandboxBundle-1.0.1-x64.tar.zst"
     }
   },
   "release": {

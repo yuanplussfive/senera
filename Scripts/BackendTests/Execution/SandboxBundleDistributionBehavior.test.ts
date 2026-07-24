@@ -4,15 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import { buildSandboxBundle } from "../../../Build/BuildSandboxBundle.js";
+import type { MicrosandboxDistributionRuntime } from "../../../Build/MicrosandboxDistributionRuntime.js";
 import { installAgentSandboxReleaseBundle } from "../../../Source/AgentSystem/Sandbox/AgentSandboxBundleInstaller.js";
 import {
   resolveAgentSandboxReleaseLocation,
   type AgentSandboxDistributionContract,
 } from "../../../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
-import type {
-  MicrosandboxModule,
-  MicrosandboxRegistryConfigBuilder,
-} from "../../../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
 
 const BundleContents = Buffer.from("verified-sandbox-bundle");
 
@@ -82,7 +79,10 @@ describe("sandbox bundle distribution", () => {
   test("builds a strict manifest and content-addressed bundle from the declared OCI image", async () => {
     const outputRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-build-"));
     const contract = distributionContract();
-    const microsandbox = createBuildMicrosandbox();
+    const savedImages: string[] = [];
+    const loadedImages: string[] = [];
+    const preparedImages: Array<{ reference: string; pullPolicy: string }> = [];
+    const runtime = createBuildRuntime({ savedImages, loadedImages, preparedImages });
     try {
       const result = await buildSandboxBundle({
         workspaceRoot: process.cwd(),
@@ -90,7 +90,7 @@ describe("sandbox bundle distribution", () => {
         productVersion: "1.2.3",
         architecture: "x64",
         contract,
-        microsandbox,
+        runtime,
       });
       expect(await readFile(result.bundlePath)).toEqual(BundleContents);
       expect(JSON.parse(await readFile(result.manifestPath, "utf8"))).toEqual(result.manifest);
@@ -98,11 +98,19 @@ describe("sandbox bundle distribution", () => {
         distributionId: contract.id,
         productVersion: "1.2.3",
         sourceImage: contract.targets.x64?.sourceImage,
+        runtimeImage: contract.targets.x64?.runtimeImage,
         asset: {
           sizeBytes: BundleContents.byteLength,
           sha256: createHash("sha256").update(BundleContents).digest("hex"),
         },
       });
+      expect(savedImages).toEqual([contract.targets.x64?.sourceImage]);
+      expect(loadedImages).toEqual([contract.targets.x64?.runtimeImage]);
+      expect(preparedImages).toEqual([
+        { reference: contract.targets.x64?.sourceImage, pullPolicy: "if-missing" },
+        { reference: contract.targets.x64?.runtimeImage, pullPolicy: "never" },
+        { reference: contract.targets.x64?.runtimeImage, pullPolicy: "never" },
+      ]);
       await expect(
         buildSandboxBundle({
           workspaceRoot: process.cwd(),
@@ -110,9 +118,35 @@ describe("sandbox bundle distribution", () => {
           productVersion: "1.2.3",
           architecture: "x64",
           contract,
-          microsandbox,
+          runtime,
         }),
       ).rejects.toThrow("Sandbox release output already exists");
+    } finally {
+      await rm(outputRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("does not publish a bundle that fails clean-runtime import verification", async () => {
+    const outputRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-rejected-"));
+    const contract = distributionContract();
+    const location = resolveAgentSandboxReleaseLocation(contract, "1.2.3", "x64");
+    try {
+      await expect(
+        buildSandboxBundle({
+          workspaceRoot: process.cwd(),
+          outputRoot,
+          productVersion: "1.2.3",
+          architecture: "x64",
+          contract,
+          runtime: createBuildRuntime({ importError: new Error("raw manifest digest mismatch") }),
+        }),
+      ).rejects.toThrow("raw manifest digest mismatch");
+      await expect(readFile(path.join(outputRoot, location.target.bundleAssetName))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(readFile(path.join(outputRoot, contract.release.manifestAssetName))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
     } finally {
       await rm(outputRoot, { recursive: true, force: true });
     }
@@ -121,14 +155,16 @@ describe("sandbox bundle distribution", () => {
 
 function distributionContract(): AgentSandboxDistributionContract {
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     id: "senera-test-runtime",
-    bundleVersion: "1.0.0",
+    bundleVersion: "1.0.1",
     microsandboxVersion: "0.6.4",
     targets: {
       x64: {
         sourceImage: "docker.io/library/node@sha256:8607a9064d4a571140998ae9e52a3b3fcf9cff361d04642d5971e6cd76d39e27",
-        bundleAssetName: "SeneraSandboxBundle-1.0.0-x64.tar.zst",
+        runtimeImage: "senera.local/senera-test-runtime:1.0.1-x64",
+        probe: { command: "node", arguments: ["--version"] },
+        bundleAssetName: "SeneraSandboxBundle-1.0.1-x64.tar.zst",
       },
     },
     release: {
@@ -147,13 +183,14 @@ function distributionContract(): AgentSandboxDistributionContract {
 function bundleManifest(contract: AgentSandboxDistributionContract, productVersion: string) {
   const location = resolveAgentSandboxReleaseLocation(contract, productVersion, "x64");
   return {
-    formatVersion: 1 as const,
+    formatVersion: 2 as const,
     distributionId: contract.id,
     bundleVersion: contract.bundleVersion,
     productVersion,
     microsandboxVersion: contract.microsandboxVersion,
     target: location.targetId,
     sourceImage: location.target.sourceImage,
+    runtimeImage: location.target.runtimeImage,
     asset: {
       fileName: location.target.bundleAssetName,
       url: location.bundleUrl,
@@ -163,96 +200,28 @@ function bundleManifest(contract: AgentSandboxDistributionContract, productVersi
   };
 }
 
-function createBuildMicrosandbox(): MicrosandboxModule {
+function createBuildRuntime(
+  options: {
+    importError?: Error;
+    savedImages?: string[];
+    loadedImages?: string[];
+    preparedImages?: Array<{ reference: string; pullPolicy: string }>;
+  } = {},
+): MicrosandboxDistributionRuntime {
   return {
-    Snapshot: {
-      import: async () => undefined,
-      export: async (_snapshotPath, outputPath) => writeFile(outputPath, BundleContents),
+    prepareImage: async ({ reference, pullPolicy }) => {
+      options.preparedImages?.push({ reference, pullPolicy });
     },
-    Sandbox: {
-      builder: (name) => new BuildSandboxBuilder(name),
-      get: async () => ({ snapshotTo: async () => undefined }),
+    saveOciImage: async ({ reference, outputPath }) => {
+      options.savedImages?.push(reference);
+      await writeFile(outputPath, "normalized-image");
+    },
+    loadOciImage: async ({ reference }) => {
+      options.loadedImages?.push(reference);
+    },
+    exportSandboxBundle: async ({ outputPath }) => writeFile(outputPath, BundleContents),
+    importSandboxBundle: async () => {
+      if (options.importError) throw options.importError;
     },
   };
-}
-
-class BuildSandboxBuilder {
-  constructor(readonly name: string) {}
-
-  image(): this {
-    return this;
-  }
-
-  registry(configure: (registry: MicrosandboxRegistryConfigBuilder) => MicrosandboxRegistryConfigBuilder): this {
-    configure(new NoopRegistryBuilder());
-    return this;
-  }
-
-  pullPolicy(): this {
-    return this;
-  }
-
-  cpus(): this {
-    return this;
-  }
-
-  memory(): this {
-    return this;
-  }
-
-  replace(): this {
-    return this;
-  }
-
-  quietLogs(): this {
-    return this;
-  }
-
-  disableMetricsSample(): this {
-    return this;
-  }
-
-  disableNetwork(): this {
-    return this;
-  }
-
-  maxDuration(): this {
-    return this;
-  }
-
-  async create() {
-    return this.sandbox();
-  }
-
-  async createWithPullProgress() {
-    const sandbox = this.sandbox();
-    return {
-      awaitSandbox: async () => sandbox,
-      async *[Symbol.asyncIterator]() {
-        yield { kind: "complete" as const, reference: "test" };
-      },
-    };
-  }
-
-  private sandbox() {
-    return {
-      name: this.name,
-      stopWithTimeout: async () => undefined,
-      kill: async () => undefined,
-    };
-  }
-}
-
-class NoopRegistryBuilder implements MicrosandboxRegistryConfigBuilder {
-  auth(): this {
-    return this;
-  }
-
-  insecure(): this {
-    return this;
-  }
-
-  caCerts(): this {
-    return this;
-  }
 }

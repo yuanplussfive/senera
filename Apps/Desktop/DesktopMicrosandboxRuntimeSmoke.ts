@@ -4,6 +4,10 @@ import { probeSeneraMicrosandboxRuntime } from "../../Source/AgentSystem/Executi
 import { SeneraMicrosandboxDynamicSdkAdapter } from "../../Source/AgentSystem/Execution/SeneraMicrosandboxSdkAdapter.js";
 import { resolvePreparedSeneraTerminalSidecarGuestRuntime } from "../../Source/AgentSystem/Execution/SeneraTerminalSidecarGuestRuntime.js";
 import { prepareAgentSandboxRuntime } from "../../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
+import {
+  readAgentSandboxDistributionContract,
+  resolveAgentSandboxDistributionTarget,
+} from "../../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
 import { createDesktopMicrosandboxModuleLoader } from "./DesktopMicrosandboxModuleLoader.js";
 import type { DesktopRuntimePaths } from "./DesktopRuntime.js";
 
@@ -19,6 +23,7 @@ export async function runDesktopMicrosandboxRuntimeSmoke(
     Provisioning: { Kind: "ReleaseBundle" as const },
   };
   const microsandboxModuleLoader = createDesktopMicrosandboxModuleLoader(paths.microsandboxRuntimeBridgePath);
+  const sandboxTarget = resolveAgentSandboxDistributionTarget(readAgentSandboxDistributionContract());
   const preparation = await prepareAgentSandboxRuntime({
     workspaceRoot: paths.workspaceRoot,
     config,
@@ -28,6 +33,7 @@ export async function runDesktopMicrosandboxRuntimeSmoke(
   });
   const backend = new SeneraMicrosandboxBackend({
     workspaceRoot: paths.workspaceRoot,
+    settings: { image: sandboxTarget.runtimeImage, pullPolicy: "never" },
     runtimePaths: preparation.paths,
     terminalRuntime: resolvePreparedSeneraTerminalSidecarGuestRuntime(preparation.paths.baseDir),
     sdk: new SeneraMicrosandboxDynamicSdkAdapter(microsandboxModuleLoader),
