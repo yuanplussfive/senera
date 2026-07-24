@@ -5,7 +5,6 @@ import type {
   AgentModelGroupConfig,
   AgentModelGroupStrategyConfig,
   AgentModelProviderConfig,
-  AgentModelProviderEndpointConfig,
   AgentSystemConfig,
 } from "../Types/AgentConfigTypes.js";
 
