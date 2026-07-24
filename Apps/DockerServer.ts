@@ -3,13 +3,19 @@ import path from "node:path";
 import { startSeneraServer } from "./ServerRuntime.js";
 import { createCompiledAgentMcpRuntimeModuleResolver } from "../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
 import { syncRuntimeDirectory } from "./RuntimeAssetSync.js";
-import { resolveFrontendConfig, resolveSandboxRuntimeConfig } from "../Source/AgentSystem/AgentDefaults.js";
+import {
+  resolveFrontendConfig,
+  resolveSandboxRuntimeConfig,
+  resolveServerConfig,
+} from "../Source/AgentSystem/AgentDefaults.js";
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { writeAgentConfigJsonMirror } from "../Source/AgentSystem/Config/AgentConfigServicePaths.js";
 import { moduleDirPath } from "../Source/AgentSystem/Core/AgentPath.js";
 import { readAgentProductMetadata } from "../Source/AgentSystem/Core/AgentProductMetadata.js";
+import { resolveAgentLocalAdminAccountPath } from "../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
 import { prepareAgentSandboxRuntime } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { synchronizeDockerAdminAccount } from "./DockerAdminAccountSync.js";
 
 const AppRoot = resolveAppRoot();
 const ProductVersion = readAgentProductMetadata(AppRoot).version;
@@ -28,18 +34,6 @@ const BundledDockerUserPluginRoot = path.join(AppRoot, "Plugins");
 const DockerSandboxRuntime = {
   BaseDir: "/data/.senera/sandbox-runtime",
 } as const;
-const DockerSandboxDeploymentEnvironment = "SENERA_SANDBOX_DEPLOYMENT";
-const DockerSandboxDeployments = {
-  standard: {
-    sandboxEnabled: false,
-  },
-  kvm: {
-    sandboxEnabled: true,
-  },
-} as const;
-
-type DockerSandboxDeployment = keyof typeof DockerSandboxDeployments;
-
 await main();
 
 async function main(): Promise<void> {
@@ -48,11 +42,17 @@ async function main(): Promise<void> {
   ensureFrontendBundleExists();
   ensureRuntimeConfigFile();
 
-  const deployment = resolveDockerSandboxDeployment();
   const config = loadConfigFile(ConfigPath);
-  const runtimeProjection = createDockerRuntimeProjection(deployment);
+  const runtimeProjection = createDockerRuntimeProjection();
   const projectedConfig = runtimeProjection(config);
-  await prepareDockerSandboxRuntime(projectedConfig, deployment);
+  await synchronizeDockerAdminAccount({
+    accountFile: resolveAgentLocalAdminAccountPath(
+      WorkspaceRoot,
+      resolveServerConfig(projectedConfig).AccessControl.AccountFile,
+    ),
+    log: (message) => writeJsonLine({ kind: "senera.docker.admin.synchronized", message }),
+  });
+  await prepareDockerSandboxRuntime(projectedConfig);
   writeFrontendRuntimeConfig(projectedConfig);
 
   const server = startSeneraServer({
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
     resourcesPath: AppRoot,
     runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(AppRoot),
     runtimeConfigProjection: runtimeProjection,
-    sandboxRuntimePrepared: DockerSandboxDeployments[deployment].sandboxEnabled,
+    sandboxRuntimePrepared: true,
     productVersion: ProductVersion,
   });
 
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     configPath: server.configPath,
     webUrl: `http://localhost:${resolveDockerPort()}`,
     websocketUrl: server.websocketUrl,
-    sandboxDeployment: deployment,
+    sandboxRuntime: "required",
   });
 }
 
@@ -100,9 +100,7 @@ function ensureRuntimeConfigFile(): void {
   writeAgentConfigJsonMirror(seedConfig, ConfigPath);
 }
 
-function createDockerRuntimeProjection(
-  deployment: DockerSandboxDeployment,
-): (config: AgentSystemConfig) => AgentSystemConfig {
+function createDockerRuntimeProjection(): (config: AgentSystemConfig) => AgentSystemConfig {
   return (config) => ({
     ...config,
     PluginRoots: {
@@ -112,10 +110,8 @@ function createDockerRuntimeProjection(
     SandboxRuntime: {
       ...config.SandboxRuntime,
       ...DockerSandboxRuntime,
-      Enabled: DockerSandboxDeployments[deployment].sandboxEnabled,
-      Provisioning:
-        config.SandboxRuntime?.Provisioning ??
-        (DockerSandboxDeployments[deployment].sandboxEnabled ? { Kind: "ReleaseBundle" } : undefined),
+      Enabled: true,
+      Provisioning: config.SandboxRuntime?.Provisioning ?? { Kind: "ReleaseBundle" },
     },
     Server: {
       ...config.Server,
@@ -124,30 +120,13 @@ function createDockerRuntimeProjection(
       AccessControl: {
         ...config.Server?.AccessControl,
         AllowedOrigins: resolveDockerAllowedOrigins(),
-        AllowInsecureLoopback: isLoopbackAddress(resolveDockerBindAddress()),
+        AllowInsecureHttp: resolveDockerAllowInsecureHttp(),
       },
     },
   });
 }
 
-function resolveDockerSandboxDeployment(): DockerSandboxDeployment {
-  const deployment = (process.env[DockerSandboxDeploymentEnvironment] ?? "standard").trim().toLowerCase();
-  if (Object.hasOwn(DockerSandboxDeployments, deployment)) {
-    return deployment as DockerSandboxDeployment;
-  }
-
-  const supported = Object.keys(DockerSandboxDeployments).join(", ");
-  throw new Error(`${DockerSandboxDeploymentEnvironment} must be one of: ${supported}.`);
-}
-
-async function prepareDockerSandboxRuntime(
-  config: AgentSystemConfig,
-  deployment: DockerSandboxDeployment,
-): Promise<void> {
-  if (!DockerSandboxDeployments[deployment].sandboxEnabled) {
-    return;
-  }
-
+async function prepareDockerSandboxRuntime(config: AgentSystemConfig): Promise<void> {
   try {
     await prepareAgentSandboxRuntime({
       workspaceRoot: WorkspaceRoot,
@@ -158,7 +137,7 @@ async function prepareDockerSandboxRuntime(
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`KVM sandbox deployment could not be prepared: ${detail}`, { cause: error });
+    throw new Error(`Docker OS sandbox could not be prepared: ${detail}`, { cause: error });
   }
 }
 
@@ -188,28 +167,22 @@ function resolveDockerHost(): string {
   return process.env.SENERA_SERVER_HOST?.trim() || "0.0.0.0";
 }
 
-function resolveDockerBindAddress(): string {
-  return process.env.SENERA_BIND_ADDRESS?.trim() || "127.0.0.1";
-}
-
 function resolveDockerAllowedOrigins(): string[] {
   const configured = process.env.SENERA_ALLOWED_ORIGINS?.trim();
-  if (configured) {
-    return configured
-      .split(",")
-      .map((value) => new URL(value.trim()).origin)
-      .filter((value, index, values) => values.indexOf(value) === index);
+  if (!configured) {
+    throw new Error("SENERA_ALLOWED_ORIGINS must declare at least one browser Origin.");
   }
-  if (!isLoopbackAddress(resolveDockerBindAddress())) {
-    return [];
-  }
-  const port = resolveDockerPort();
-  return [`http://localhost:${port}`, `http://127.0.0.1:${port}`];
+  return configured
+    .split(",")
+    .map((value) => new URL(value.trim()).origin)
+    .filter((value, index, values) => values.indexOf(value) === index);
 }
 
-function isLoopbackAddress(value: string): boolean {
-  const normalized = value.trim().toLowerCase();
-  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
+function resolveDockerAllowInsecureHttp(): boolean {
+  const configured = process.env.SENERA_ALLOW_INSECURE_HTTP?.trim().toLowerCase();
+  if (configured === "true") return true;
+  if (configured === "false") return false;
+  throw new Error("SENERA_ALLOW_INSECURE_HTTP must be either true or false.");
 }
 
 function resolveDockerPort(): number {

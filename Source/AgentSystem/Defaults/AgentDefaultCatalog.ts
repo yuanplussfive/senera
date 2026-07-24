@@ -267,6 +267,7 @@ export const AgentDefaults = {
       AllowedOrigins: [],
       TrustedProxyAddresses: [],
       AllowInsecureLoopback: false,
+      AllowInsecureHttp: false,
       Session: {
         AbsoluteTtlHours: 72,
         IdleTtlHours: 12,

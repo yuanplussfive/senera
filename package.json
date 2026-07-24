@@ -58,7 +58,6 @@
     "build": "npm run verify.config-command-contracts && npm run verify.database-contracts && npm run verify.plugin-config && npm run verify.tool-contracts && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts && node Dist/Scripts/VerifyPluginRuntimeManifest.js",
     "dev": "concurrently -k -n server,frontend -c blue,green \"npm run dev.server\" \"npm run dev.frontend\"",
     "docker.up": "docker compose pull && docker compose up -d",
-    "docker.up.kvm": "docker compose -f compose.yaml -f compose.kvm.yaml pull && docker compose -f compose.yaml -f compose.kvm.yaml up -d",
     "docker.down": "docker compose down",
     "docker.logs": "docker compose logs -f senera",
     "dev.frontend": "npm --workspace senera-frontend run dev",

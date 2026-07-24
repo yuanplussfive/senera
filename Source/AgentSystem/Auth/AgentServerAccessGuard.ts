@@ -1,11 +1,14 @@
 import { randomBytes } from "node:crypto";
 import type http from "node:http";
-import path from "node:path";
 import { type WebSocket } from "ws";
 import type { ResolvedAgentServerConfig } from "../Types/AgentConfigTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentAdminSessionStore, type AgentAdminSession, type AgentServerPrincipal } from "./AgentAdminSessionStore.js";
-import { AgentLocalAdminAccountStore, type AgentLocalAdminAccount } from "./AgentLocalAdminAccount.js";
+import {
+  AgentLocalAdminAccountStore,
+  resolveAgentLocalAdminAccountPath,
+  type AgentLocalAdminAccount,
+} from "./AgentLocalAdminAccount.js";
 import { AgentTokenBucket } from "./AgentTokenBucket.js";
 
 const MinuteMs = 60_000;
@@ -65,7 +68,9 @@ export class AgentServerAccessGuard {
     },
   ) {
     this.required = resolveAuthenticationRequired(options.server);
-    this.accountStore = new AgentLocalAdminAccountStore(resolveAccountPath(options.workspaceRoot, options.server));
+    this.accountStore = new AgentLocalAdminAccountStore(
+      resolveAgentLocalAdminAccountPath(options.workspaceRoot, options.server.AccessControl.AccountFile),
+    );
     this.sessions = new AgentAdminSessionStore({
       absoluteTtlMs: options.server.AccessControl.Session.AbsoluteTtlHours * 60 * MinuteMs,
       idleTtlMs: options.server.AccessControl.Session.IdleTtlHours * 60 * MinuteMs,
@@ -360,12 +365,21 @@ export class AgentServerAccessGuard {
     return (
       (forwarded === "https" &&
         this.options.server.AccessControl.TrustedProxyAddresses.includes(this.clientAddress(request))) ||
+      this.allowsInsecureHttp(request) ||
       this.allowsInsecureLoopback(request)
     );
   }
 
   private get usesSecureCookie(): boolean {
-    return !isLoopbackHost(this.options.server.Host) && !this.options.server.AccessControl.AllowInsecureLoopback;
+    return (
+      !isLoopbackHost(this.options.server.Host) &&
+      !this.options.server.AccessControl.AllowInsecureLoopback &&
+      !this.options.server.AccessControl.AllowInsecureHttp
+    );
+  }
+
+  private allowsInsecureHttp(request: http.IncomingMessage): boolean {
+    return this.options.server.AccessControl.AllowInsecureHttp && this.isAllowedBrowserOrigin(request);
   }
 
   private allowsInsecureLoopback(request: http.IncomingMessage): boolean {
@@ -396,11 +410,6 @@ export function resolveAuthenticationRequired(server: ResolvedAgentServerConfig)
 export function isLoopbackHost(host: string): boolean {
   const normalized = host.trim().toLowerCase();
   return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
-}
-
-function resolveAccountPath(workspaceRoot: string, server: ResolvedAgentServerConfig): string {
-  const configured = server.AccessControl.AccountFile;
-  return path.isAbsolute(configured) ? path.normalize(configured) : path.resolve(workspaceRoot, configured);
 }
 
 function createRateLimiter(capacity: number, now: (() => number) | undefined): AgentTokenBucket {

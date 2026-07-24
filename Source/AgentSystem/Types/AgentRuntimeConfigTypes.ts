@@ -255,6 +255,7 @@ export interface AgentServerAccessControlConfig {
   AllowedOrigins?: string[];
   TrustedProxyAddresses?: string[];
   AllowInsecureLoopback?: boolean;
+  AllowInsecureHttp?: boolean;
   Session?: AgentServerSessionConfig;
   Limits?: AgentServerConnectionLimitsConfig;
 }
@@ -273,6 +274,7 @@ export interface ResolvedAgentServerAccessControlConfig {
   AllowedOrigins: string[];
   TrustedProxyAddresses: string[];
   AllowInsecureLoopback: boolean;
+  AllowInsecureHttp: boolean;
   Session: Required<AgentServerSessionConfig>;
   Limits: Required<AgentServerConnectionLimitsConfig>;
 }

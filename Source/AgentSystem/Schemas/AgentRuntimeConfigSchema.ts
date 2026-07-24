@@ -188,6 +188,7 @@ export const ServerSchema = z
         AllowedOrigins: z.array(z.string().url()).optional(),
         TrustedProxyAddresses: z.array(z.string().min(1)).optional(),
         AllowInsecureLoopback: z.boolean().optional(),
+        AllowInsecureHttp: z.boolean().optional(),
         Session: z
           .object({
             AbsoluteTtlHours: z.number().int().min(1).max(72).optional(),

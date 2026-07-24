@@ -264,8 +264,12 @@ jobs:
     name: Verify Container Runtime
     needs:
       - metadata
+      - sandbox-bundle
       - container-build
-    if: needs.metadata.result == 'success' && needs.container-build.result == 'success'
+    if: >-
+      needs.metadata.result == 'success' &&
+      needs.sandbox-bundle.result == 'success' &&
+      needs.container-build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -298,15 +302,18 @@ jobs:
           trap cleanup EXIT
 
           docker pull "$IMAGE"
-          openssl rand -hex 24 | docker run --rm --interactive \
+          test -c /dev/kvm
+          sudo chmod 0666 /dev/kvm
+          docker run --detach --name "$CONTAINER_NAME" \
             --volume "$VOLUME_NAME:/data" \
-            "$IMAGE" \
-            node Dist/Apps/AdminAccess.js init \
-            --workspace /data \
-            --login-name release-smoke-admin \
-            --display-name "Release Smoke Administrator" \
-            --password-stdin
-          docker run --detach --name "$CONTAINER_NAME" --volume "$VOLUME_NAME:/data" "$IMAGE" >/dev/null
+            --device /dev/kvm:/dev/kvm \
+            --cap-add NET_ADMIN \
+            --env SENERA_ADMIN_LOGIN_NAME=release-smoke-admin \
+            --env SENERA_ADMIN_DISPLAY_NAME="Release Smoke Administrator" \
+            --env SENERA_ADMIN_PASSWORD="$(openssl rand -hex 24)" \
+            --env SENERA_ALLOWED_ORIGINS="http://localhost:8787,http://127.0.0.1:8787" \
+            --env SENERA_ALLOW_INSECURE_HTTP=true \
+            "$IMAGE" >/dev/null
           deadline=$((SECONDS + CONTAINER_HEALTH_TIMEOUT_SECONDS))
           while true; do
             state="$(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME")"

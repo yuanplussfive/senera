@@ -8,7 +8,6 @@ const dockerServer = fs.readFileSync(path.join(workspaceRoot, "Apps", "DockerSer
 const readme = fs.readFileSync(path.join(workspaceRoot, "README.md"), "utf8");
 const operations = fs.readFileSync(path.join(workspaceRoot, "docs", "Operations.md"), "utf8");
 const compose = fs.readFileSync(path.join(workspaceRoot, "compose.yaml"), "utf8");
-const kvmCompose = fs.readFileSync(path.join(workspaceRoot, "compose.kvm.yaml"), "utf8");
 const releaseWorkflow = fs.readFileSync(path.join(workspaceRoot, ".github", "workflows", "release.yml"), "utf8");
 
 assert.ok(
@@ -37,34 +36,40 @@ assert.ok(
 );
 assert.ok(
   dockerServer.includes('{ Kind: "ReleaseBundle" }') && dockerServer.includes("productVersion: ProductVersion"),
-  "Docker KVM deployment must consume the version-matched release bundle without an OCI fallback.",
-);
-assertAdminInitializationPrecedesStartup(readme, "README.md");
-assertAdminInitializationPrecedesStartup(operations, "docs/Operations.md");
-assert.ok(
-  compose.includes("x-senera-runtime: &senera-runtime") && compose.match(/<<: \*senera-runtime/gu)?.length === 2,
-  "compose.yaml must share one runtime image, environment, and volume contract across service entrypoints.",
+  "Docker deployment must consume the version-matched release bundle without an OCI fallback.",
 );
 assert.ok(
-  compose.includes("senera-admin:") && compose.includes("- admin") && compose.includes("- Dist/Apps/AdminAccess.js"),
-  "compose.yaml must expose the administrator command through an opt-in service profile.",
+  compose.includes("SENERA_ADMIN_LOGIN_NAME") &&
+    compose.includes("SENERA_ADMIN_DISPLAY_NAME") &&
+    compose.includes("SENERA_ADMIN_PASSWORD"),
+  "compose.yaml must declare first-run administrator credentials directly in the service environment.",
 );
 assert.ok(
-  compose.includes("SENERA_SANDBOX_DEPLOYMENT: standard") &&
-    !compose.includes("/dev/kvm:/dev/kvm") &&
-    !compose.includes("NET_ADMIN"),
-  "compose.yaml must provide a standard deployment without KVM or NET_ADMIN requirements.",
+  !compose.includes("senera-admin:") && !compose.includes("SENERA_SANDBOX_DEPLOYMENT"),
+  "compose.yaml must not retain administrator sidecars or selectable sandbox deployment modes.",
 );
 assert.ok(
-  kvmCompose.includes("SENERA_SANDBOX_DEPLOYMENT: kvm") &&
-    kvmCompose.includes("/dev/kvm:/dev/kvm") &&
-    kvmCompose.includes("NET_ADMIN"),
-  "compose.kvm.yaml must opt into the KVM-specific sandbox capabilities.",
+  compose.includes("/dev/kvm:/dev/kvm") && compose.includes("NET_ADMIN"),
+  "compose.yaml must require the KVM and network capabilities needed by the OS sandbox.",
 );
 assert.ok(
-  dockerServer.includes("prepareDockerSandboxRuntime") && dockerServer.includes("sandboxRuntimePrepared"),
-  "Docker KVM deployment must prepare microsandbox before starting the web server and publish the verified state.",
+  compose.includes('- "8787:8787"') &&
+    compose.includes('SENERA_ALLOW_INSECURE_HTTP: "true"') &&
+    !compose.includes("127.0.0.1:8787:8787"),
+  "compose.yaml must publish the service port and make direct HTTP access an explicit policy.",
 );
+assert.ok(
+  !fs.existsSync(path.join(workspaceRoot, "compose.kvm.yaml")),
+  "The retired compose.kvm.yaml overlay must not remain after Docker deployment convergence.",
+);
+assert.ok(
+  dockerServer.includes("synchronizeDockerAdminAccount") &&
+    dockerServer.includes("prepareDockerSandboxRuntime") &&
+    dockerServer.includes("sandboxRuntimePrepared: true"),
+  "Docker must synchronize its administrator and prepare microsandbox before starting the web server.",
+);
+assertDockerStartupDocumented(readme, "README.md");
+assertDockerStartupDocumented(operations, "docs/Operations.md");
 assert.ok(
   releaseWorkflow.includes("node Dist/Scripts/VerifyDockerUserPluginWrite.js"),
   "Release container smoke must verify that the node user can write the persistent plugin root.",
@@ -72,13 +77,13 @@ assert.ok(
 
 console.log("Docker runtime sandbox policy verified.");
 
-function assertAdminInitializationPrecedesStartup(document: string, label: string): void {
-  const initialize = document.indexOf("docker compose run --rm -it senera-admin init");
+function assertDockerStartupDocumented(document: string, label: string): void {
+  const configure = document.indexOf("SENERA_ADMIN_LOGIN_NAME");
   const startup = document.indexOf("docker compose up -d --pull always");
-  assert.ok(initialize >= 0, `${label} must document Docker administrator initialization.`);
-  assert.ok(startup > initialize, `${label} must initialize the Docker administrator before starting the service.`);
+  assert.ok(configure >= 0, `${label} must document Compose administrator bootstrap values.`);
+  assert.ok(startup > configure, `${label} must document Docker startup after administrator configuration.`);
   assert.ok(
-    !document.includes("docker compose run --rm -it senera node Dist/Apps/AdminAccess.js"),
-    `${label} must not expose the container's internal administrator script path.`,
+    !document.includes("senera-admin init") && !document.includes("compose.kvm.yaml"),
+    `${label} must not document retired Docker initialization or deployment modes.`,
   );
 }

@@ -54,6 +54,15 @@ export interface AgentLocalAdminAccountInput {
   readonly password: string;
 }
 
+export type AgentLocalAdminAccountSynchronization = {
+  readonly kind: "created" | "updated" | "unchanged";
+  readonly account: AgentLocalAdminAccount;
+};
+
+export function resolveAgentLocalAdminAccountPath(workspaceRoot: string, accountFile: string): string {
+  return path.isAbsolute(accountFile) ? path.normalize(accountFile) : path.resolve(workspaceRoot, accountFile);
+}
+
 type AccountDocument = z.infer<typeof AccountDocumentSchema>;
 
 export class AgentLocalAdminAccountStore {
@@ -84,6 +93,33 @@ export class AgentLocalAdminAccountStore {
     const account = await createAccountDocument(input);
     this.writeDocument(account);
     return projectAccount(account);
+  }
+
+  async synchronize(input: AgentLocalAdminAccountInput): Promise<AgentLocalAdminAccountSynchronization> {
+    const current = this.readDocument();
+    if (!current) {
+      const account = await createAccountDocument(input);
+      this.writeDocument(account);
+      return { kind: "created", account: projectAccount(account) };
+    }
+
+    const loginName = normalizeLoginName(input.loginName);
+    const displayName = normalizeDisplayName(input.displayName);
+    validateAdminPassword(input.password);
+    const passwordMatches = await verifyPassword(input.password, current.password);
+    if (loginName === current.loginName && displayName === current.displayName && passwordMatches) {
+      return { kind: "unchanged", account: projectAccount(current) };
+    }
+
+    const next: AccountDocument = {
+      ...current,
+      loginName,
+      displayName,
+      password: passwordMatches ? current.password : await hashPassword(input.password),
+      updatedAt: new Date().toISOString(),
+    };
+    this.writeDocument(next);
+    return { kind: "updated", account: projectAccount(next) };
   }
 
   async resetPassword(input: AgentLocalAdminAccountInput): Promise<AgentLocalAdminAccount> {
