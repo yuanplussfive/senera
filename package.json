@@ -207,7 +207,7 @@
     "istextorbinary": "^9.5.0",
     "json-parse-even-better-errors": "^5.0.0",
     "json-source-map": "^0.6.1",
-    "liquidjs": "^10.25.7",
+    "liquidjs": "^10.27.2",
     "markdown-it": "^14.1.1",
     "microsandbox": "0.6.4",
     "mime-types": "^3.0.2",
