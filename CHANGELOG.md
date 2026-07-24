@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.8.3](https://github.com/yuanplussfive/senera/compare/v1.8.2...v1.8.3) (2026-07-24)
+
+
+### 问题修复
+
+* **sandbox:** distribute portable OCI archives ([#63](https://github.com/yuanplussfive/senera/issues/63)) ([894ad88](https://github.com/yuanplussfive/senera/commit/894ad8867e2f5c7bf93bc8fe6064090f77ea685e))
+
 ## [1.8.2](https://github.com/yuanplussfive/senera/compare/v1.8.1...v1.8.2) (2026-07-24)
 
 
