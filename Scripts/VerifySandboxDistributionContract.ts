@@ -19,6 +19,9 @@ assert.equal(readLockfilePackageVersion(lockfile, "node_modules/microsandbox"), 
 
 for (const [architecture, target] of Object.entries(contract.targets)) {
   assert.match(target.sourceImage, /^[^\s@]+@sha256:[a-f0-9]{64}$/u, `${architecture} image must be immutable.`);
+  assert.ok(target.runtimeImage.includes(contract.bundleVersion), `${architecture} runtime image must be versioned.`);
+  assert.ok(target.runtimeImage.includes(architecture), `${architecture} runtime image must identify its target.`);
+  assert.ok(target.probe.command.length > 0, `${architecture} runtime probe must declare a command.`);
   assert.equal(path.basename(target.bundleAssetName), target.bundleAssetName);
   const location = resolveAgentSandboxReleaseLocation(contract, "1.2.3", architecture);
   assert.equal(location.releaseTag, "v1.2.3");

@@ -13,9 +13,9 @@ import {
   type AgentSandboxDistributionContract,
 } from "../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
 import {
-  prepareAgentSandboxRuntime,
-  type MicrosandboxModule,
-} from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
+  createMicrosandboxDistributionRuntime,
+  type MicrosandboxDistributionRuntime,
+} from "./MicrosandboxDistributionRuntime.js";
 import { readProductReleaseInfo } from "./ProductReleaseInfo.js";
 
 export interface BuildSandboxBundleOptions {
@@ -24,7 +24,7 @@ export interface BuildSandboxBundleOptions {
   productVersion: string;
   architecture?: string;
   contract?: AgentSandboxDistributionContract;
-  microsandbox?: MicrosandboxModule;
+  runtime?: MicrosandboxDistributionRuntime;
   log?: (message: string) => void;
 }
 
@@ -60,22 +60,52 @@ export async function buildSandboxBundle(options: BuildSandboxBundleOptions): Pr
   const bundlePath = path.join(options.outputRoot, location.target.bundleAssetName);
   const manifestPath = path.join(options.outputRoot, contract.release.manifestAssetName);
   await assertOutputsAbsent([bundlePath, manifestPath]);
-  const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-runtime-"));
-  const previousMsbHome = process.env.MSB_HOME;
+  const sourceRuntimeRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-source-"));
+  const normalizedRuntimeRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-normalized-"));
+  const verificationRuntimeRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-verification-"));
+  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-snapshot-"));
+  const imageArchivePath = path.join(
+    options.outputRoot,
+    `.${location.target.bundleAssetName}.${process.pid}.${randomUUID()}.oci.tar`,
+  );
+  const buildId = randomUUID().replaceAll("-", "").slice(0, 16);
+  const sourceSandboxName = `senera-bundle-source-${buildId}`;
+  const normalizedSandboxName = `senera-bundle-normalized-${buildId}`;
+  const verificationSandboxName = `senera-bundle-verification-${buildId}`;
   try {
-    await prepareAgentSandboxRuntime({
-      workspaceRoot: options.workspaceRoot,
-      config: {
-        Enabled: true,
-        BaseDir: runtimeRoot,
-        Provisioning: {
-          Kind: "Oci",
-          Images: [location.target.sourceImage],
-        },
-      },
-      exportBundlePath: stagingBundlePath,
-      microsandbox: options.microsandbox,
-      log: options.log,
+    const runtime =
+      options.runtime ??
+      createMicrosandboxDistributionRuntime({ workspaceRoot: options.workspaceRoot, log: options.log });
+
+    await runtime.prepareImage({
+      baseDir: sourceRuntimeRoot,
+      reference: location.target.sourceImage,
+      sandboxName: sourceSandboxName,
+      pullPolicy: "if-missing",
+      probe: location.target.probe,
+    });
+    await runtime.saveOciImage({
+      baseDir: sourceRuntimeRoot,
+      reference: location.target.sourceImage,
+      outputPath: imageArchivePath,
+    });
+    await runtime.loadOciImage({
+      baseDir: normalizedRuntimeRoot,
+      archivePath: imageArchivePath,
+      reference: location.target.runtimeImage,
+    });
+    await runtime.prepareImage({
+      baseDir: normalizedRuntimeRoot,
+      reference: location.target.runtimeImage,
+      sandboxName: normalizedSandboxName,
+      pullPolicy: "never",
+      probe: location.target.probe,
+    });
+    await runtime.exportSandboxBundle({
+      baseDir: normalizedRuntimeRoot,
+      sandboxName: normalizedSandboxName,
+      snapshotPath: path.join(snapshotRoot, "snapshot"),
+      outputPath: stagingBundlePath,
     });
     const bundleStat = await stat(stagingBundlePath);
     if (!bundleStat.isFile() || bundleStat.size <= 0) {
@@ -84,14 +114,27 @@ export async function buildSandboxBundle(options: BuildSandboxBundleOptions): Pr
     if (bundleStat.size > contract.downloadPolicy.bundleMaxBytes) {
       throw new Error(`Sandbox bundle exceeds the distribution limit: ${bundleStat.size} bytes.`);
     }
+    await runtime.importSandboxBundle({
+      baseDir: verificationRuntimeRoot,
+      bundlePath: stagingBundlePath,
+    });
+    await runtime.prepareImage({
+      baseDir: verificationRuntimeRoot,
+      reference: location.target.runtimeImage,
+      sandboxName: verificationSandboxName,
+      pullPolicy: "never",
+      probe: location.target.probe,
+    });
+
     const manifest = AgentSandboxBundleManifestSchema.parse({
-      formatVersion: 1,
+      formatVersion: 2,
       distributionId: contract.id,
       bundleVersion: contract.bundleVersion,
       productVersion: options.productVersion,
       microsandboxVersion: contract.microsandboxVersion,
       target: location.targetId,
       sourceImage: location.target.sourceImage,
+      runtimeImage: location.target.runtimeImage,
       asset: {
         fileName: location.target.bundleAssetName,
         url: location.bundleUrl,
@@ -104,8 +147,14 @@ export async function buildSandboxBundle(options: BuildSandboxBundleOptions): Pr
     await writeFileAtomically(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     return { bundlePath, manifestPath, manifest };
   } finally {
-    restoreEnvironment("MSB_HOME", previousMsbHome);
-    await Promise.all([rm(runtimeRoot, { recursive: true, force: true }), rm(stagingBundlePath, { force: true })]);
+    await Promise.all([
+      rm(sourceRuntimeRoot, { recursive: true, force: true }),
+      rm(normalizedRuntimeRoot, { recursive: true, force: true }),
+      rm(verificationRuntimeRoot, { recursive: true, force: true }),
+      rm(snapshotRoot, { recursive: true, force: true }),
+      rm(imageArchivePath, { force: true }),
+      rm(stagingBundlePath, { force: true }),
+    ]);
   }
 }
 
@@ -148,11 +197,6 @@ async function assertOutputsAbsent(filePaths: readonly string[]): Promise<void> 
     }
     throw new Error(`Sandbox release output already exists: ${filePath}`);
   }
-}
-
-function restoreEnvironment(name: string, value: string | undefined): void {
-  if (value === undefined) delete process.env[name];
-  else process.env[name] = value;
 }
 
 function nodeErrorCode(error: unknown): string | undefined {

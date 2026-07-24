@@ -15,12 +15,13 @@ import { AgentSandboxPreparationStages, type AgentSandboxPreparationProgress } f
 
 const InstallationReceiptSchema = z
   .object({
-    formatVersion: z.literal(1),
+    formatVersion: z.literal(2),
     distributionId: z.string().min(1),
     bundleVersion: z.string().min(1),
     productVersion: z.string().min(1),
     target: z.string().min(1),
     sourceImage: z.string().min(1),
+    runtimeImage: z.string().min(1),
     bundleSha256: z.string().regex(/^[a-f0-9]{64}$/u),
   })
   .strict();
@@ -292,12 +293,13 @@ async function writeNewFileAtomically(filePath: string, content: string): Promis
 
 function createInstallationReceipt(manifest: AgentSandboxBundleManifest): InstallationReceipt {
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     distributionId: manifest.distributionId,
     bundleVersion: manifest.bundleVersion,
     productVersion: manifest.productVersion,
     target: manifest.target,
     sourceImage: manifest.sourceImage,
+    runtimeImage: manifest.runtimeImage,
     bundleSha256: manifest.asset.sha256,
   };
 }

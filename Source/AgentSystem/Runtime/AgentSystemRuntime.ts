@@ -368,7 +368,7 @@ function resolveRuntimeMicrosandboxSettings(config: ReturnType<typeof resolveSan
     };
   }
   return {
-    image: resolveAgentSandboxDistributionTarget(readAgentSandboxDistributionContract()).sourceImage,
+    image: resolveAgentSandboxDistributionTarget(readAgentSandboxDistributionContract()).runtimeImage,
     pullPolicy: "never" as const,
   };
 }

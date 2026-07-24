@@ -79,17 +79,19 @@ describe("sandbox runtime loading", () => {
     const createdImages: string[] = [];
     const pullPolicies: string[] = [];
     const sourceImage = "registry.example/runtime@sha256:bundle";
+    const runtimeImage = "senera.local/test-runtime:1.0.1-x64";
     const bundleInstallation = {
       bundlePath: path.join(workspaceRoot, "bundle.tar.zst"),
       imported: true,
       manifest: {
-        formatVersion: 1,
+        formatVersion: 2,
         distributionId: "test",
         bundleVersion: "1.0.0",
         productVersion: "1.2.3",
         microsandboxVersion: "0.6.4",
         target: "x64",
         sourceImage,
+        runtimeImage,
         asset: {
           fileName: "bundle.tar.zst",
           url: "https://example.test/bundle.tar.zst",
@@ -113,8 +115,8 @@ describe("sandbox runtime loading", () => {
       });
 
       expect(bundleInstaller).toHaveBeenCalledOnce();
-      expect(prepared.preparedImages).toEqual([sourceImage]);
-      expect(createdImages).toEqual([sourceImage]);
+      expect(prepared.preparedImages).toEqual([runtimeImage]);
+      expect(createdImages).toEqual([runtimeImage]);
       expect(pullPolicies).toEqual(["never"]);
     } finally {
       await rm(workspaceRoot, { recursive: true, force: true });
@@ -255,6 +257,12 @@ class FakeSandboxBuilder {
     this.createdImages.push(this.selectedImage);
     return {
       name: "runtime-probe",
+      exec: async () => ({
+        code: 0,
+        success: true,
+        stdout: () => "",
+        stderr: () => "",
+      }),
       stopWithTimeout: async () => undefined,
       kill: async () => undefined,
     };

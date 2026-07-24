@@ -8,6 +8,13 @@ const StableVersionSchema = z.string().regex(/^\d+\.\d+\.\d+$/u);
 const TargetIdSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]*$/u);
 const DistributionIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/u);
 const ImmutableOciReferenceSchema = z.string().regex(/^[^\s@]+@sha256:[a-f0-9]{64}$/u);
+const RuntimeOciReferenceSchema = z.string().regex(/^[^\s@]+:[^\s/:]+$/u);
+const SandboxProbeSchema = z
+  .object({
+    command: z.string().trim().min(1),
+    arguments: z.array(z.string()).max(64),
+  })
+  .strict();
 const SafeAssetNameSchema = z
   .string()
   .min(1)
@@ -16,13 +23,15 @@ const SafeAssetNameSchema = z
 const AgentSandboxDistributionTargetSchema = z
   .object({
     sourceImage: ImmutableOciReferenceSchema,
+    runtimeImage: RuntimeOciReferenceSchema,
+    probe: SandboxProbeSchema,
     bundleAssetName: SafeAssetNameSchema,
   })
   .strict();
 
 export const AgentSandboxDistributionContractSchema = z
   .object({
-    formatVersion: z.literal(1),
+    formatVersion: z.literal(2),
     id: DistributionIdSchema,
     bundleVersion: StableVersionSchema,
     microsandboxVersion: StableVersionSchema,
@@ -49,13 +58,14 @@ export type AgentSandboxDistributionTarget = z.infer<typeof AgentSandboxDistribu
 
 export const AgentSandboxBundleManifestSchema = z
   .object({
-    formatVersion: z.literal(1),
+    formatVersion: z.literal(2),
     distributionId: DistributionIdSchema,
     bundleVersion: StableVersionSchema,
     productVersion: StableVersionSchema,
     microsandboxVersion: StableVersionSchema,
     target: TargetIdSchema,
     sourceImage: ImmutableOciReferenceSchema,
+    runtimeImage: RuntimeOciReferenceSchema,
     asset: z
       .object({
         fileName: SafeAssetNameSchema,
@@ -130,6 +140,7 @@ export function assertAgentSandboxBundleManifest(
     microsandboxVersion: contract.microsandboxVersion,
     target: location.targetId,
     sourceImage: location.target.sourceImage,
+    runtimeImage: location.target.runtimeImage,
     fileName: location.target.bundleAssetName,
     url: location.bundleUrl,
   };
@@ -140,6 +151,7 @@ export function assertAgentSandboxBundleManifest(
     microsandboxVersion: manifest.microsandboxVersion,
     target: manifest.target,
     sourceImage: manifest.sourceImage,
+    runtimeImage: manifest.runtimeImage,
     fileName: manifest.asset.fileName,
     url: manifest.asset.url,
   };
