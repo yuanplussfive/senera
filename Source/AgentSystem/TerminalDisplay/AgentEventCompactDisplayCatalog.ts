@@ -2,7 +2,12 @@ import type { AgentEventEnvelope } from "../Events/AgentEvent.js";
 import { describeSessionHandle } from "../Core/AgentIds.js";
 import type { AgentCompactEventDisplay, AgentCompactEventFormatter } from "./AgentEventDisplayTypes.js";
 import { eventDisplayMessage } from "./AgentEventDisplayMessages.js";
-import { normalizeRecord, readRequestHandle, readStringToken } from "./AgentEventDisplayValueReaders.js";
+import {
+  normalizeRecord,
+  readFiniteNumber,
+  readRequestHandle,
+  readStringToken,
+} from "./AgentEventDisplayValueReaders.js";
 import {
   formatActiveRequestToken,
   formatCountToken,
@@ -130,12 +135,16 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
   },
   "sandbox.status.snapshot": (event) => {
     const data = normalizeRecord(event.data);
+    const progress = normalizeRecord(data.progress);
     return {
       message: "安全沙箱状态",
       tokens: [
         readStringToken(data.platform),
         readStringToken(data.state),
         readStringToken(data.effectiveMode),
+        readStringToken(progress.stage),
+        readStringToken(progress.item),
+        formatSandboxProgress(progress),
         readStringToken(data.message),
       ],
     };
@@ -166,6 +175,26 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
     tokens: [readRequestHandle(event.requestId)],
   }),
 };
+
+function formatSandboxProgress(progress: Record<string, unknown>): string | undefined {
+  const downloadedBytes = readFiniteNumber(progress.downloadedBytes);
+  const totalBytes = readFiniteNumber(progress.totalBytes);
+  if (downloadedBytes !== undefined && totalBytes !== undefined) {
+    return `${formatByteSize(downloadedBytes)}/${formatByteSize(totalBytes)}`;
+  }
+  const completed = readFiniteNumber(progress.completed);
+  const total = readFiniteNumber(progress.total);
+  return completed !== undefined && total !== undefined ? `${completed}/${total}` : undefined;
+}
+
+function formatByteSize(bytes: number): string {
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  const safeBytes = Math.max(0, bytes);
+  const unitIndex = Math.min(Math.floor(Math.log(Math.max(safeBytes, 1)) / Math.log(1024)), units.length - 1);
+  const unit = units[unitIndex] ?? "TiB";
+  const value = safeBytes / 1024 ** unitIndex;
+  return `${value.toFixed(unitIndex === 0 ? 0 : 1)}${unit}`;
+}
 
 export function fallbackCompactEventDisplay(event: AgentEventEnvelope<string, unknown>): AgentCompactEventDisplay {
   const data = normalizeRecord(event.data);

@@ -1,0 +1,22 @@
+{
+  "formatVersion": 1,
+  "id": "senera-node-runtime",
+  "bundleVersion": "1.0.0",
+  "microsandboxVersion": "0.6.4",
+  "targets": {
+    "x64": {
+      "sourceImage": "docker.io/library/node@sha256:8607a9064d4a571140998ae9e52a3b3fcf9cff361d04642d5971e6cd76d39e27",
+      "bundleAssetName": "SeneraSandboxBundle-1.0.0-x64.tar.zst"
+    }
+  },
+  "release": {
+    "repositoryUrl": "https://github.com/yuanplussfive/senera",
+    "tagTemplate": "v{productVersion}",
+    "manifestAssetName": "SeneraSandboxBundleManifest.json"
+  },
+  "downloadPolicy": {
+    "requestTimeoutMs": 1800000,
+    "manifestMaxBytes": 65536,
+    "bundleMaxBytes": 2147483648
+  }
+}

@@ -4,6 +4,10 @@ import path from "node:path";
 import process from "node:process";
 import semver from "semver";
 import { isMainModule } from "../Source/AgentSystem/Core/AgentPath.js";
+import {
+  readAgentSandboxDistributionContract,
+  resolveAgentSandboxDistributionTarget,
+} from "../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
 
 export const ProductReleaseTagEnv = "SENERA_RELEASE_TAG";
 export const ProductReleaseShaEnv = "SENERA_RELEASE_SHA";
@@ -16,6 +20,8 @@ export interface ProductReleaseInfo {
   desktopArtifactPath: string;
   containerVersionTag: string;
   containerMinorTag: string;
+  sandboxBundleArtifactName: string;
+  sandboxBundleManifestArtifactName: string;
   sourceSha: string;
 }
 
@@ -43,6 +49,8 @@ export function createProductReleaseInfo(input: {
   const parsedVersion = semver.parse(version);
   assert.ok(parsedVersion, `Unable to parse normalized product version: ${version}`);
   const tag = `v${version}`;
+  const sandboxDistribution = readAgentSandboxDistributionContract();
+  const sandboxTarget = resolveAgentSandboxDistributionTarget(sandboxDistribution);
 
   if (input.tag !== undefined) {
     assert.equal(
@@ -60,6 +68,8 @@ export function createProductReleaseInfo(input: {
     desktopArtifactPath: `Release/SeneraSetup-${version}.exe`,
     containerVersionTag: version,
     containerMinorTag: `${parsedVersion.major}.${parsedVersion.minor}`,
+    sandboxBundleArtifactName: sandboxTarget.bundleAssetName,
+    sandboxBundleManifestArtifactName: sandboxDistribution.release.manifestAssetName,
     sourceSha: input.sourceSha ?? "",
   };
 }
@@ -84,6 +94,8 @@ export function writeGitHubOutputs(info: ProductReleaseInfo, env: NodeJS.Process
     desktop_artifact_path: info.desktopArtifactPath,
     container_version_tag: info.containerVersionTag,
     container_minor_tag: info.containerMinorTag,
+    sandbox_bundle_artifact_name: info.sandboxBundleArtifactName,
+    sandbox_bundle_manifest_artifact_name: info.sandboxBundleManifestArtifactName,
     source_sha: info.sourceSha,
   };
 

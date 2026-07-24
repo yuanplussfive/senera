@@ -126,7 +126,7 @@ docker compose up -d --pull always
 npm run docker.up.kvm
 ```
 
-KVM 会在启动前验证镜像内置的 microVM 运行时种子并预热配置的镜像；验证失败时容器会停止。普通 Docker 不需要 KVM、`NET_ADMIN` 或特权容器。完整前提与差异见 [部署与运维](docs/Operations.md#docker-部署模式)。
+KVM 会在启动前下载与 Senera 版本匹配的官方 Snapshot Bundle，校验清单、大小和 SHA-256 后离线导入并启动一次受限 microVM；任何步骤失败都会停止容器。普通 Docker 不需要 KVM、`NET_ADMIN` 或特权容器。完整前提与差异见 [部署与运维](docs/Operations.md#docker-部署模式)。
 
 已有账户时请使用重置密码命令，不要重复初始化。Senera 不提供默认账号或默认密码。
 

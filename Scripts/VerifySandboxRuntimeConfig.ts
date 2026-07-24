@@ -13,7 +13,7 @@ import { SeneraMicrosandboxDefaults } from "../Source/AgentSystem/Execution/Sene
 const defaults = resolveAgentDefaults(undefined).SandboxRuntime;
 assert.equal(defaults.Enabled, true);
 assert.equal(defaults.BaseDir, ".senera/sandbox-runtime");
-assert.deepEqual(defaults.Images, [SeneraMicrosandboxDefaults.image]);
+assert.deepEqual(defaults.Provisioning, { Kind: "Oci", Images: [SeneraMicrosandboxDefaults.image] });
 
 const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-sandbox-runtime-config-"));
 
@@ -21,7 +21,10 @@ const config = {
   SandboxRuntime: {
     Enabled: false,
     BaseDir: ".sandbox/runtime",
-    Images: ["node:22-bookworm-slim", "alpine"],
+    Provisioning: {
+      Kind: "Oci",
+      Images: ["node:22-bookworm-slim", "alpine"],
+    },
   },
   ModelProviderEndpoints: [
     {
@@ -42,16 +45,18 @@ const config = {
 
 const resolved = resolveSandboxRuntimeConfig(config);
 assert.equal(resolved.Enabled, false);
-assert.deepEqual(resolved.Images, ["alpine", "node:22-bookworm-slim"]);
+assert.deepEqual(resolved.Provisioning, {
+  Kind: "Oci",
+  Images: ["node:22-bookworm-slim", "alpine"],
+});
 
 const paths = resolveAgentSandboxRuntimePaths(workspaceRoot, resolved);
 assert.equal(path.relative(workspaceRoot, paths.baseDir), path.normalize(".sandbox/runtime"));
 assert.deepEqual(Object.keys(paths), ["baseDir"]);
 
-assert.deepEqual(normalizeSandboxImages(["alpine", "node:22-bookworm-slim"], ["alpine", "python"]), [
+assert.deepEqual(normalizeSandboxImages(["alpine", "node:22-bookworm-slim", "alpine"]), [
   "alpine",
   "node:22-bookworm-slim",
-  "python",
 ]);
 
 fs.rmSync(workspaceRoot, { recursive: true, force: true });

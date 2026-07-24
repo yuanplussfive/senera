@@ -47,7 +47,9 @@ export function resolveAgentDefaults(
     SandboxRuntime: {
       ...AgentDefaults.SandboxRuntime,
       ...defaults?.SandboxRuntime,
-      Images: [...new Set([...AgentDefaults.SandboxRuntime.Images, ...(defaults?.SandboxRuntime?.Images ?? [])])],
+      Provisioning: structuredClone(
+        defaults?.SandboxRuntime?.Provisioning ?? AgentDefaults.SandboxRuntime.Provisioning,
+      ),
     },
     AgentLoop: {
       ...AgentDefaults.AgentLoop,

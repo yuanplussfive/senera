@@ -7,6 +7,10 @@ export type AgentSandboxDiagnosticSeverity = "warning" | "error";
 export const AgentSandboxPreparationStages = {
   CheckingHostRuntime: "checking_host_runtime",
   LoadingRuntime: "loading_runtime",
+  ResolvingBundle: "resolving_bundle",
+  DownloadingBundle: "downloading_bundle",
+  VerifyingBundle: "verifying_bundle",
+  ImportingBundle: "importing_bundle",
   WarmingImage: "warming_image",
   ExportingBundle: "exporting_bundle",
 } as const;

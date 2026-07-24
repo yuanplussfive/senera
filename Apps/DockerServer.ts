@@ -7,10 +7,12 @@ import { resolveFrontendConfig, resolveSandboxRuntimeConfig } from "../Source/Ag
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { writeAgentConfigJsonMirror } from "../Source/AgentSystem/Config/AgentConfigServicePaths.js";
 import { moduleDirPath } from "../Source/AgentSystem/Core/AgentPath.js";
+import { readAgentProductMetadata } from "../Source/AgentSystem/Core/AgentProductMetadata.js";
 import { prepareAgentSandboxRuntime } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const AppRoot = resolveAppRoot();
+const ProductVersion = readAgentProductMetadata(AppRoot).version;
 const WorkspaceRoot = path.resolve(process.env.SENERA_WORKSPACE_ROOT?.trim() || "/data");
 const ConfigPath = resolveWorkspacePath(process.env.AGENT_CONFIG_PATH?.trim() || "senera.config.json");
 const FrontendRoot = path.join(AppRoot, "Frontend", "dist");
@@ -61,6 +63,7 @@ async function main(): Promise<void> {
     runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(AppRoot),
     runtimeConfigProjection: runtimeProjection,
     sandboxRuntimePrepared: DockerSandboxDeployments[deployment].sandboxEnabled,
+    productVersion: ProductVersion,
   });
 
   writeJsonLine({
@@ -110,6 +113,9 @@ function createDockerRuntimeProjection(
       ...config.SandboxRuntime,
       ...DockerSandboxRuntime,
       Enabled: DockerSandboxDeployments[deployment].sandboxEnabled,
+      Provisioning:
+        config.SandboxRuntime?.Provisioning ??
+        (DockerSandboxDeployments[deployment].sandboxEnabled ? { Kind: "ReleaseBundle" } : undefined),
     },
     Server: {
       ...config.Server,
@@ -146,7 +152,7 @@ async function prepareDockerSandboxRuntime(
     await prepareAgentSandboxRuntime({
       workspaceRoot: WorkspaceRoot,
       config: resolveSandboxRuntimeConfig(config),
-      strict: true,
+      productVersion: ProductVersion,
       log: (message) => writeJsonLine({ kind: "senera.docker.sandbox.prepare", message }),
       onProgress: (progress) => writeJsonLine({ kind: "senera.docker.sandbox.progress", progress }),
     });

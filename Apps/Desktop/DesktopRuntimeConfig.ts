@@ -6,7 +6,17 @@ export interface DesktopPluginRoots {
   sandboxRuntimeRoot: string;
 }
 
-export function projectDesktopRuntimeConfig(paths: DesktopPluginRoots, config: AgentSystemConfig): AgentSystemConfig {
+export interface DesktopRuntimeConfigProjectionOptions {
+  packaged: boolean;
+}
+
+export function projectDesktopRuntimeConfig(
+  paths: DesktopPluginRoots,
+  config: AgentSystemConfig,
+  options: DesktopRuntimeConfigProjectionOptions,
+): AgentSystemConfig {
+  const provisioning =
+    config.SandboxRuntime?.Provisioning ?? (options.packaged ? ({ Kind: "ReleaseBundle" } as const) : undefined);
   return {
     ...config,
     PluginRoots: {
@@ -17,6 +27,7 @@ export function projectDesktopRuntimeConfig(paths: DesktopPluginRoots, config: A
     SandboxRuntime: {
       ...config.SandboxRuntime,
       BaseDir: paths.sandboxRuntimeRoot,
+      ...(provisioning ? { Provisioning: provisioning } : {}),
     },
   };
 }

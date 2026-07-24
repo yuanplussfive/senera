@@ -84,7 +84,10 @@ export const AgentDefaults = {
   SandboxRuntime: {
     Enabled: true,
     BaseDir: ".senera/sandbox-runtime",
-    Images: [SeneraMicrosandboxDefaults.image],
+    Provisioning: {
+      Kind: "Oci",
+      Images: [SeneraMicrosandboxDefaults.image],
+    },
   },
   AgentLoop: {
     PiTurnLeaseTimeoutSeconds: 120,

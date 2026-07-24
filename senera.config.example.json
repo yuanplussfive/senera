@@ -1,5 +1,5 @@
 {
-  "ConfigVersion": 4,
+  "ConfigVersion": 5,
   "Defaults": {
     "PluginRoots": {
       "System": ["./System/Plugins"],
@@ -68,8 +68,7 @@
     },
     "SandboxRuntime": {
       "Enabled": true,
-      "BaseDir": ".senera/sandbox-runtime",
-      "Images": ["node:22-bookworm-slim"]
+      "BaseDir": ".senera/sandbox-runtime"
     },
     "ToolSearch": {
       "Memory": {

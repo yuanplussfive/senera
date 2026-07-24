@@ -86,7 +86,40 @@ export const SandboxRuntimeSchema = z
   .object({
     Enabled: z.boolean().optional(),
     BaseDir: z.string().min(1).optional(),
-    Images: z.array(z.string().min(1)).optional(),
+    Provisioning: z
+      .discriminatedUnion("Kind", [
+        z
+          .object({
+            Kind: z.literal("Oci"),
+            Images: z.array(z.string().trim().min(1)).min(1),
+            Registry: z
+              .object({
+                Authentication: z
+                  .discriminatedUnion("Kind", [
+                    z.object({ Kind: z.literal("Anonymous") }).strict(),
+                    z
+                      .object({
+                        Kind: z.literal("Basic"),
+                        UsernameEnvironmentVariable: z.string().trim().min(1),
+                        PasswordEnvironmentVariable: z.string().trim().min(1),
+                      })
+                      .strict(),
+                  ])
+                  .optional(),
+                Insecure: z.boolean().optional(),
+                CertificateFiles: z.array(z.string().trim().min(1)).optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict(),
+        z
+          .object({
+            Kind: z.literal("ReleaseBundle"),
+          })
+          .strict(),
+      ])
+      .optional(),
   })
   .strict();
 

@@ -8,7 +8,7 @@ import {
   SquareTerminal,
 } from "lucide-react";
 import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
-import { sandboxStatusDetail } from "../sandbox/sandboxPreparationPresentation";
+import { sandboxPreparationRatio, sandboxStatusDetail } from "../sandbox/sandboxPreparationPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { IconButton, Tooltip } from "../../shared/ui";
@@ -103,6 +103,7 @@ export function ChatHeader({
 function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | null }): JSX.Element {
   const presentation = readSandboxStatusPresentation(status);
   const Icon = presentation.Icon;
+  const progressRatio = sandboxPreparationRatio(status?.progress);
 
   return (
     <Tooltip
@@ -113,7 +114,7 @@ function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | n
       <button
         type="button"
         className={cn(
-          "ml-1 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2 text-[12px] transition",
+          "relative ml-1 inline-flex h-8 shrink-0 items-center gap-1.5 overflow-hidden rounded-md border px-2 text-[12px] transition",
           presentation.className,
         )}
       >
@@ -122,6 +123,16 @@ function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | n
         <span className="hidden max-w-[220px] truncate lg:inline">
           {status?.state === "preparing" ? sandboxStatusDetail(status) : presentation.label}
         </span>
+        {status?.state === "preparing" ? (
+          <span
+            className={cn(
+              "pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left bg-current opacity-40 transition-transform duration-200",
+              progressRatio === undefined && "animate-pulse motion-reduce:animate-none",
+            )}
+            style={{ transform: `scaleX(${progressRatio ?? 1})` }}
+            aria-hidden="true"
+          />
+        ) : null}
       </button>
     </Tooltip>
   );

@@ -33,6 +33,7 @@ export type AgentSandboxRuntimePrepareOptions = Omit<
 export interface AgentSandboxRuntimeServiceOptions {
   workspaceRoot?: string;
   configSnapshot?: () => AgentSystemConfig;
+  productVersion?: string;
   platform?: NodeJS.Platform;
   clock?: () => Date;
   packageAvailable?: () => boolean;
@@ -42,6 +43,7 @@ export interface AgentSandboxRuntimeServiceOptions {
 export class AgentSandboxRuntimeService {
   private readonly workspaceRoot: string;
   private readonly configSnapshot: (() => AgentSystemConfig) | undefined;
+  private readonly productVersion: string | undefined;
   private readonly platform: NodeJS.Platform;
   private readonly clock: () => Date;
   private readonly packageAvailable: () => boolean;
@@ -56,6 +58,7 @@ export class AgentSandboxRuntimeService {
   constructor(options: AgentSandboxRuntimeServiceOptions = {}) {
     this.workspaceRoot = options.workspaceRoot ?? process.cwd();
     this.configSnapshot = options.configSnapshot;
+    this.productVersion = options.productVersion;
     this.platform = options.platform ?? process.platform;
     this.clock = options.clock ?? (() => new Date());
     this.packageAvailable = options.packageAvailable ?? resolveMicrosandboxPackageAvailable;
@@ -123,15 +126,12 @@ export class AgentSandboxRuntimeService {
       ...options,
       workspaceRoot: this.workspaceRoot,
       config,
+      productVersion: options.productVersion ?? this.productVersion,
       onProgress: (progress) => this.reportProgress(progress),
     });
     this.preparationPromise = preparation.then(
       (result) => {
-        if (result.skippedReason) {
-          this.markUnavailable(new Error(result.skippedReason));
-        } else {
-          this.markReady();
-        }
+        this.markReady();
         return result;
       },
       (error: unknown) => {

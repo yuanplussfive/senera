@@ -45,6 +45,10 @@ import { createSeneraExecutionEnvironments } from "../Execution/SeneraExecutionE
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import type { SeneraMicrosandboxSdkAdapter } from "../Execution/SeneraMicrosandboxTypes.js";
 import { resolveAgentSandboxRuntimePaths } from "../Sandbox/AgentSandboxRuntimePreparation.js";
+import {
+  readAgentSandboxDistributionContract,
+  resolveAgentSandboxDistributionTarget,
+} from "../Sandbox/AgentSandboxDistributionContract.js";
 import { AgentPiCompactionSummarizer } from "../Pi/AgentPiCompactionSummarizer.js";
 import { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import { resolveAgentExecutionResourceLimits } from "../ExecutionResources/AgentExecutionResourceConfig.js";
@@ -122,9 +126,7 @@ export class AgentSystemRuntime {
       sandboxEnabled: sandboxRuntimeConfig.Enabled,
       sandboxRuntimeReady,
       microsandboxSdk,
-      microsandboxSettings: {
-        image: sandboxRuntimeConfig.Images[0],
-      },
+      microsandboxSettings: resolveRuntimeMicrosandboxSettings(sandboxRuntimeConfig),
       environmentPolicy: resolveToolExecutionConfig(config).Environment,
       terminationGraceMs: executionResourceLimits.terminationGraceMs,
       resourceAccessPolicy: new AgentResourceAccessPolicy(authorizationPolicyClient),
@@ -354,4 +356,19 @@ function tryResolveSandboxRuntimePaths(workspaceRoot: string, config: ReturnType
   } catch {
     return undefined;
   }
+}
+
+function resolveRuntimeMicrosandboxSettings(config: ReturnType<typeof resolveSandboxRuntimeConfig>) {
+  if (config.Provisioning.Kind === "Oci") {
+    const image = config.Provisioning.Images[0];
+    if (!image) throw new Error("OCI sandbox provisioning requires at least one image.");
+    return {
+      image,
+      pullPolicy: "if-missing" as const,
+    };
+  }
+  return {
+    image: resolveAgentSandboxDistributionTarget(readAgentSandboxDistributionContract()).sourceImage,
+    pullPolicy: "never" as const,
+  };
 }

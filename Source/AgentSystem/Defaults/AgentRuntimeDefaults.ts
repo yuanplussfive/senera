@@ -5,7 +5,6 @@ import type {
 } from "../Types/AgentConfigTypes.js";
 import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
 import { optionalSecondsToMilliseconds } from "./AgentTimeDefaults.js";
-import { normalizeSandboxImages } from "../Sandbox/AgentSandboxRuntimeImages.js";
 
 export function resolveAgentLoopConfig(config: AgentSystemConfig) {
   const defaults = resolveAgentDefaults(config);
@@ -81,6 +80,6 @@ export function resolveSandboxRuntimeConfig(config: AgentSystemConfig): Resolved
   return {
     ...defaults.SandboxRuntime,
     ...configured,
-    Images: normalizeSandboxImages(defaults.SandboxRuntime.Images, configured.Images ?? []),
+    Provisioning: structuredClone(configured.Provisioning ?? defaults.SandboxRuntime.Provisioning),
   };
 }

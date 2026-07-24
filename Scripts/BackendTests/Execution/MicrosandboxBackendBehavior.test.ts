@@ -10,6 +10,7 @@ import type {
   SeneraMicrosandboxSession,
 } from "../../../Source/AgentSystem/Execution/SeneraMicrosandboxTypes.js";
 import { SeneraExecutionErrorCodes } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
+import { SeneraMicrosandboxDefaults } from "../../../Source/AgentSystem/Execution/SeneraMicrosandboxDefaults.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const temporaryDirectories: string[] = [];
@@ -52,7 +53,7 @@ describe("Microsandbox backend behavior", () => {
     expect(sdk.createRequests).toEqual([
       expect.objectContaining({
         name: "sandbox-test",
-        image: "node:22-bookworm-slim",
+        image: SeneraMicrosandboxDefaults.image,
         guestWorkspaceRoot: "/workspace",
         guestWorkdir: "/workspace/Source/AgentSystem",
         network: "disabled",

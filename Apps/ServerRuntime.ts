@@ -60,6 +60,7 @@ export interface SeneraServerOptions {
   configSource?: AgentConfigSourceOptions;
   runtimeConfigProjection?: (config: AgentSystemConfig) => AgentSystemConfig;
   runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
+  productVersion?: string;
   /**
    * Set only by a deployment bootstrap that has already prepared and verified
    * the configured microsandbox runtime before opening the web server.
@@ -120,6 +121,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   const sandboxRuntimeService = new AgentSandboxRuntimeService({
     workspaceRoot,
     configSnapshot,
+    productVersion: options.productVersion,
   });
   const microsandboxSdk = options.microsandboxModuleLoader
     ? new SeneraMicrosandboxDynamicSdkAdapter(options.microsandboxModuleLoader)
@@ -381,13 +383,11 @@ function startSandboxRuntimePreparation(input: {
   void input.sandboxRuntimeService
     .prepare({
       config: sandboxRuntimeConfig,
-      strict: true,
       microsandboxModuleLoader: input.microsandboxModuleLoader,
       log: (message) => input.logger.info("sandbox.runtime.prepare", { message }),
     })
     .then(
       () => {
-        input.sandboxRuntimeService.markReady();
         input.logger.success("sandbox.runtime.ready", {
           provider: "microsandbox",
         });
