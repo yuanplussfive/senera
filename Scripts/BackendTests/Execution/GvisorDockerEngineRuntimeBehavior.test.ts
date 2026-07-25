@@ -87,7 +87,7 @@ describe("Docker Engine sandbox runtime", () => {
     ).rejects.toThrow("registered-runsc");
   });
 
-  test("tags an already-present Bundle image by its declared OCI config digest", async () => {
+  test("tags a verified Bundle by its imported OCI source reference", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "senera-docker-bundle-identity-"));
     const archivePath = path.join(root, "runtime.oci.tar.gz");
     const resolved = readAgentDockerEngineRuntimeContract("docker-engine", "x64");
@@ -103,8 +103,8 @@ describe("Docker Engine sandbox runtime", () => {
       info: vi.fn(async () => ({ Runtimes: { runc: {} } })),
       getImage: vi.fn((reference: string) => {
         if (reference === resolved.image.runtimeImage) return { inspect: vi.fn(async () => Promise.reject(missing)) };
-        if (reference === resolved.image.configDigest) {
-          return { inspect: vi.fn(async () => ({ Id: resolved.image.configDigest })), tag };
+        if (reference === resolved.image.sourceImage) {
+          return { inspect: vi.fn(async () => ({ Id: `sha256:${"d".repeat(64)}` })), tag };
         }
         throw new Error(`Unexpected image reference: ${reference}`);
       }),

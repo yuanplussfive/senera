@@ -384,15 +384,12 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
       });
     });
     const target = splitImageReference(this.resolvedContract.image.runtimeImage);
-    const importedImage = this.options.docker.getImage(verified.manifest.configDigest);
-    const inspected = await importedImage
+    const importedImage = this.options.docker.getImage(verified.manifest.sourceImage);
+    await importedImage
       .inspect()
       .catch((error: unknown) => Promise.reject(dockerOperationError("inspect bundled image", error)));
-    if (inspected.Id.toLowerCase() !== verified.manifest.configDigest) {
-      throw new Error(
-        `Docker loaded Sandbox Bundle config ${String(inspected.Id)}, expected ${verified.manifest.configDigest}.`,
-      );
-    }
+    // Docker's classic and containerd image stores expose different values as
+    // ImageInspect.Id. The verified OCI source reference is stable across both.
     await importedImage.tag(target);
   }
 
