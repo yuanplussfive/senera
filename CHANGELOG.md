@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.9.6](https://github.com/yuanplussfive/senera/compare/v1.9.5...v1.9.6) (2026-07-25)
+
+
+### 问题修复
+
+* **frontend:** load runtime config before application ([#82](https://github.com/yuanplussfive/senera/issues/82)) ([e54d070](https://github.com/yuanplussfive/senera/commit/e54d070d49a01699c9a0675594fd7463ff2b4f24))
+
 ## [1.9.5](https://github.com/yuanplussfive/senera/compare/v1.9.4...v1.9.5) (2026-07-25)
 
 
