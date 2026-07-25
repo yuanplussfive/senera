@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { resolveSandboxRuntimeConfig } from "../Source/AgentSystem/AgentDefaults.js";
@@ -105,9 +104,4 @@ function delay(milliseconds: number): Promise<void> {
 
 function isMissingFile(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
-export function resolveSeneraServerConfigPath(workspaceRoot: string): string {
-  const configured = process.env.AGENT_CONFIG_PATH?.trim();
-  return configured ? path.resolve(workspaceRoot, configured) : path.resolve(workspaceRoot, "senera.config.json");
 }

@@ -9,7 +9,6 @@ import {
   resolveServerConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
-import { writeAgentConfigJsonMirror } from "../Source/AgentSystem/Config/AgentConfigServicePaths.js";
 import { moduleDirPath } from "../Source/AgentSystem/Core/AgentPath.js";
 import { resolveAgentLocalAdminAccountPath } from "../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
 import { AgentGvisorWorkerSocketClient } from "../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerClient.js";
@@ -19,6 +18,7 @@ import { synchronizeDockerAdminAccount } from "./DockerAdminAccountSync.js";
 import { resolveAgentSandboxPackagedBundleRoot } from "../Source/AgentSystem/Sandbox/AgentSandboxBundlePaths.js";
 import type { AgentSandboxRuntimeProvider } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
 import type { SeneraGvisorWorkerClient } from "../Source/AgentSystem/Execution/SeneraGvisorTypes.js";
+import { ensureRuntimeConfigFile } from "./RuntimeConfigBootstrap.js";
 
 const AppRoot = resolveAppRoot();
 const SandboxBundleRoot = resolveAgentSandboxPackagedBundleRoot(AppRoot);
@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   fs.mkdirSync(WorkspaceRoot, { recursive: true });
   syncBundledUserPlugins();
   ensureFrontendBundleExists();
-  ensureRuntimeConfigFile();
+  ensureRuntimeConfigFile({ configPath: ConfigPath, templatePath: ExampleConfigPath });
 
   const config = loadConfigFile(ConfigPath);
   const worker = new AgentGvisorWorkerSocketClient({ socketPath: resolveDockerGvisorWorkerSocketPath() });
@@ -96,15 +96,6 @@ function ensureFrontendBundleExists(): void {
   }
 
   throw new Error(`容器前端产物缺失: ${indexPath}`);
-}
-
-function ensureRuntimeConfigFile(): void {
-  if (fs.existsSync(ConfigPath)) {
-    return;
-  }
-
-  const seedConfig = loadConfigFile(ExampleConfigPath);
-  writeAgentConfigJsonMirror(seedConfig, ConfigPath);
 }
 
 function createDockerRuntimeProjection(

@@ -6,10 +6,14 @@ import path from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 
 interface NanoContract {
+  readonly schemaVersion: number;
   readonly source: {
     readonly branch: string;
     readonly outputBranch: string;
     readonly repositoryUrl: string;
+  };
+  readonly files: {
+    readonly projections: readonly { readonly source: string; readonly target: string }[];
   };
   readonly rootPackage: {
     readonly scripts: readonly string[];
@@ -43,6 +47,9 @@ const ForbiddenPackages = [
   "@testing-library/react",
   "@testing-library/user-event",
   "@vitest/coverage-v8",
+  "@types/dockerode",
+  "@types/tar-fs",
+  "dockerode",
   "electron",
   "electron-builder",
   "eslint",
@@ -51,6 +58,7 @@ const ForbiddenPackages = [
   "rimraf",
   "semver",
   "ts-json-schema-generator",
+  "tar-fs",
   "vitest",
 ] as const;
 
@@ -136,6 +144,8 @@ function verifyGeneratedFiles(outputRoot: string): void {
       file.startsWith("Build/") ||
       file.startsWith("Scripts/") ||
       file.startsWith("Apps/Desktop/") ||
+      file === "Source/AgentSystem/Sandbox/Gvisor/AgentGvisorDockerRuntime.ts" ||
+      file === "Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerServer.ts" ||
       file === "Apps/DockerServer.ts" ||
       file === "Apps/DockerAdminAccountSync.ts" ||
       file === "Dockerfile" ||
@@ -146,8 +156,15 @@ function verifyGeneratedFiles(outputRoot: string): void {
 
   assert.deepEqual(
     files.filter((file) => file.startsWith("Apps/")),
-    ["Apps/DevServer.ts", "Apps/ServerRuntime.ts", "Apps/ServerWatch.ts"],
+    ["Apps/DevServer.ts", "Apps/RuntimeConfigBootstrap.ts", "Apps/ServerRuntime.ts", "Apps/ServerWatch.ts"],
   );
+  const projectedDevServer = fs.readFileSync(path.join(outputRoot, "Apps", "DevServer.ts"), "utf8");
+  assert.ok(projectedDevServer.includes("AgentSandboxRuntimeProviders.Microsandbox"));
+  assert.ok(projectedDevServer.includes("ensureSeneraDevelopmentConfig"));
+  assert.ok(!projectedDevServer.includes("GvisorWorker"));
+  assert.deepEqual(contract.files.projections, [
+    { source: "Build/Distributions/NanoDevServer.ts.template", target: "Apps/DevServer.ts" },
+  ]);
   for (const required of [
     "README.md",
     "SENERA_NANO.json",
@@ -224,6 +241,7 @@ function verifySourceMetadata(outputRoot: string, contractValue: NanoContract, s
       commit: sourceSha,
     },
   });
+  assert.equal(contractValue.schemaVersion, 2);
   const readme = fs.readFileSync(path.join(outputRoot, "README.md"), "utf8");
   assert.ok(readme.includes(sourceSha));
   assert.ok(!/\{\{[a-zA-Z][a-zA-Z0-9]*\}\}/u.test(readme), "Nano README contains unresolved template values.");

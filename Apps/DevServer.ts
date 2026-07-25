@@ -1,18 +1,21 @@
 import { startSeneraServer } from "./ServerRuntime.js";
 import { createSourceAgentMcpRuntimeModuleResolver } from "../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
 import { resolveAgentSandboxDevelopmentBundleRoot } from "../Source/AgentSystem/Sandbox/AgentSandboxBundlePaths.js";
-import { resolveSeneraServerConfigPath, startSeneraGvisorWorkerProcess } from "./GvisorWorkerProcess.js";
+import { startSeneraGvisorWorkerProcess } from "./GvisorWorkerProcess.js";
+import { ensureSeneraDevelopmentConfig } from "./RuntimeConfigBootstrap.js";
 
 async function main(): Promise<void> {
   const workspaceRoot = process.cwd();
+  const configPath = ensureSeneraDevelopmentConfig(workspaceRoot);
   const worker = await startSeneraGvisorWorkerProcess({
     workspaceRoot,
-    configPath: resolveSeneraServerConfigPath(workspaceRoot),
+    configPath,
     entrypoint: "Apps/GvisorWorker.ts",
     nodeArguments: ["--import", "tsx"],
     resourcesPath: workspaceRoot,
   });
   const handle = startSeneraServer({
+    configPath,
     runtimeModuleResolver: createSourceAgentMcpRuntimeModuleResolver(workspaceRoot),
     sandboxBundleRoot: resolveAgentSandboxDevelopmentBundleRoot(workspaceRoot),
     sandboxProvider: worker?.provider,

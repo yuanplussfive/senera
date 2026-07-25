@@ -27,6 +27,11 @@ interface PackageProjection {
   readonly optionalDependencies: DependencyProjection;
 }
 
+interface FileProjection {
+  readonly source: string;
+  readonly target: string;
+}
+
 interface NanoDistributionContract {
   readonly schemaVersion: number;
   readonly id: string;
@@ -37,6 +42,7 @@ interface NanoDistributionContract {
   };
   readonly files: {
     readonly gitPathspecs: readonly string[];
+    readonly projections: readonly FileProjection[];
   };
   readonly rootPackage: PackageProjection;
   readonly workspacePackages: Readonly<Record<string, { readonly scripts: readonly string[] }>>;
@@ -83,6 +89,7 @@ function main(): void {
   const outputRoot = prepareOutputRoot(sourceRoot, invocation.output);
 
   copySelectedFiles(sourceRoot, outputRoot, contract.files.gitPathspecs);
+  projectFiles(sourceRoot, outputRoot, contract.files.projections);
   projectRootPackage(sourceRoot, outputRoot, contract.rootPackage);
   projectWorkspacePackages(outputRoot, contract.workspacePackages);
   projectTypescriptConfig(sourceRoot, outputRoot, contract.typescript.include);
@@ -124,7 +131,7 @@ function parseInvocation(args: readonly string[]): Invocation {
 function readContract(contractPath: string): NanoDistributionContract {
   const value = readJsonFile(contractPath);
   if (!isRecord(value)) throw new Error(`Nano distribution contract must be an object: ${contractPath}`);
-  if (value.schemaVersion !== 1 || value.id !== "nano") {
+  if (value.schemaVersion !== 2 || value.id !== "nano") {
     throw new Error(`Unsupported Nano distribution contract version or id: ${contractPath}`);
   }
   if (!isRecord(value.source) || !isRecord(value.files) || !isRecord(value.rootPackage)) {
@@ -137,6 +144,7 @@ function readContract(contractPath: string): NanoDistributionContract {
   assertString(value.source.outputBranch, "source.outputBranch");
   assertString(value.source.repositoryUrl, "source.repositoryUrl");
   assertStringArray(value.files.gitPathspecs, "files.gitPathspecs");
+  assertFileProjections(value.files.projections);
   assertPackageProjection(value.rootPackage, "rootPackage");
   assertStringArray(value.typescript.include, "typescript.include");
   assertString(value.generatedFiles.readmeTemplate, "generatedFiles.readmeTemplate");
@@ -146,6 +154,22 @@ function readContract(contractPath: string): NanoDistributionContract {
     assertStringArray(projection.scripts, `workspacePackages.${packagePath}.scripts`);
   }
   return value as unknown as NanoDistributionContract;
+}
+
+function assertFileProjections(value: unknown): void {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("files.projections must be a non-empty array.");
+  }
+  const targets = new Set<string>();
+  for (const [index, projection] of value.entries()) {
+    if (!isRecord(projection)) throw new Error(`files.projections.${index} must be an object.`);
+    assertString(projection.source, `files.projections.${index}.source`);
+    assertString(projection.target, `files.projections.${index}.target`);
+    if (targets.has(projection.target)) {
+      throw new Error(`files.projections declares duplicate target: ${projection.target}`);
+    }
+    targets.add(projection.target);
+  }
 }
 
 function assertPackageProjection(value: Record<string, unknown>, label: string): void {
@@ -197,6 +221,19 @@ function copySelectedFiles(sourceRoot: string, outputRoot: string, pathspecs: re
     mkdirSync(path.dirname(destinationPath), { recursive: true });
     copyFileSync(sourcePath, destinationPath);
     chmodSync(destinationPath, stats.mode & 0o777);
+  }
+}
+
+function projectFiles(sourceRoot: string, outputRoot: string, projections: readonly FileProjection[]): void {
+  for (const projection of projections) {
+    const sourcePath = resolveContainedPath(sourceRoot, projection.source);
+    const targetPath = resolveContainedPath(outputRoot, projection.target);
+    if (existsSync(targetPath)) throw new Error(`Nano projected file target already exists: ${projection.target}`);
+    const stats = lstatSync(sourcePath);
+    if (!stats.isFile()) throw new Error(`Nano projected source must be a regular file: ${projection.source}`);
+    mkdirSync(path.dirname(targetPath), { recursive: true });
+    copyFileSync(sourcePath, targetPath);
+    chmodSync(targetPath, stats.mode & 0o777);
   }
 }
 

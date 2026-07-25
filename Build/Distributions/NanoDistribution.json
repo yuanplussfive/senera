@@ -1,6 +1,6 @@
 {
   "$schema": "./NanoDistribution.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "nano",
   "source": {
     "branch": "main",
@@ -17,7 +17,7 @@
       "package.json",
       "package-lock.json",
       "senera.config.example.json",
-      "Apps/DevServer.ts",
+      "Apps/RuntimeConfigBootstrap.ts",
       "Apps/ServerRuntime.ts",
       "Apps/ServerWatch.ts",
       "Source",
@@ -26,7 +26,15 @@
       "Plugins",
       "System",
       "baml_src",
+      ":(exclude,glob)Source/AgentSystem/Sandbox/Gvisor/AgentGvisorDockerRuntime.ts",
+      ":(exclude,glob)Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerServer.ts",
       ":(exclude,glob)Frontend/**/*.stories.tsx"
+    ],
+    "projections": [
+      {
+        "source": "Build/Distributions/NanoDevServer.ts.template",
+        "target": "Apps/DevServer.ts"
+      }
     ]
   },
   "rootPackage": {
@@ -41,7 +49,7 @@
     "scripts": ["dev", "dev.server", "dev.server.dry-run", "dev.frontend", "check.types", "check.frontend-types"],
     "dependencies": {
       "mode": "exclude",
-      "names": ["fast-glob", "tslib"]
+      "names": ["dockerode", "fast-glob", "tar-fs", "tslib"]
     },
     "devDependencies": {
       "mode": "include",
