@@ -48,6 +48,7 @@ export { MenuSelect } from "./MenuSelect";
 export type { MenuSelectOption, MenuSelectProps } from "./MenuSelect";
 export { Switch, SwitchTrack } from "./Switch";
 export type { SwitchProps, SwitchSize, SwitchTrackProps } from "./Switch";
+export { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs";
 export { ScrollArea, ScrollBar } from "./ScrollArea";
 export {
   Sheet,
