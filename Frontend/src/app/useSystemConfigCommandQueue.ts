@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import {
   EventKinds,
-  type ConfigFailedData,
   type ConfigOperationKind,
   type ConfigSnapshotData,
   type EventEnvelope,
@@ -9,6 +8,7 @@ import {
 } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { generateId } from "../lib/util";
+import { readConfigCommandEventOperation } from "./configCommandOperation";
 
 type SendRequest = (request: WsRequest) => boolean;
 type SystemConfigCommandRequest = Extract<WsRequest, { commandId: string }>;
@@ -113,8 +113,7 @@ export function useSystemConfigCommandQueue({
         latestSnapshotRef.current = event.data as ConfigSnapshotData;
       }
       if (event.kind !== EventKinds.ConfigSnapshot && event.kind !== EventKinds.ConfigFailed) return false;
-      const data = event.data as ConfigSnapshotData | ConfigFailedData;
-      const operation = data.operation && "commandId" in data.operation ? data.operation : undefined;
+      const operation = readConfigCommandEventOperation(event);
       const commandId = operation?.commandId;
       if (
         !commandId ||

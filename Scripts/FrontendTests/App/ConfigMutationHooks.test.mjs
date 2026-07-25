@@ -110,6 +110,34 @@ test("useConfigMutationController handles offline commands and unmatched events 
   );
 });
 
+test("useConfigMutationController ignores execution resource list snapshots without treating them as config commands", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+
+  render(React.createElement(ConfigMutationHarness, { send, status: "open", handleRef }));
+
+  await act(async () => {
+    expect(
+      handleRef.current.ingestConfigMutationEvent(
+        event(
+          EventKinds.ExecutionResourceSnapshot,
+          "tool",
+          { operation: "list", resources: [] },
+          { sessionId: "session-1" },
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      handleRef.current.ingestConfigMutationEvent(
+        event(EventKinds.ConfigSnapshot, "config", {
+          ...createConfigSnapshot(),
+          operation: "list",
+        }),
+      ),
+    ).toBe(false);
+  });
+});
+
 test("useConfigMutationController sends refresh commands and cleans up failed sends", async () => {
   const send = vi.fn(() => true);
   const handleRef = { current: null };

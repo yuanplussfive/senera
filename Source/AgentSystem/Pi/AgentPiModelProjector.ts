@@ -2,6 +2,7 @@ import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes
 import type { AgentPiModelApi, AgentPiProviderProjection } from "./AgentPiTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { buildPiProxyBaseUrl } from "../PiProxy/AgentPiProxyHttpApi.js";
+import { AgentPiProxyProtocol } from "../PiProxy/AgentPiProxyContract.js";
 import {
   AgentPiProxyModelProviderHeader,
   encodePiProxyModelProviderHeaderValue,
@@ -18,7 +19,6 @@ const FreeCostModel = {
 
 const SeneraPiProxyProviderId = "senera-pi-proxy";
 const SeneraPiProxyApi: AgentPiModelApi = "openai-completions";
-const SeneraPiProxyApiKey = "senera-local";
 
 export function projectSeneraModelProviderToPi(
   provider: ResolvedAgentModelProviderConfig,
@@ -49,7 +49,7 @@ export function projectSeneraModelProviderToPi(
 
   return {
     providerId: model.provider,
-    apiKey: SeneraPiProxyApiKey,
+    apiKey: AgentPiProxyProtocol.apiKey,
     headers: {
       [AgentPiProxyModelProviderHeader]: encodePiProxyModelProviderHeaderValue(provider.Id),
     },

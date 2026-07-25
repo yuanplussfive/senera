@@ -7,6 +7,7 @@ import type { AgentUploadHttpApi } from "../../../Source/AgentSystem/Uploads/Age
 import type { AgentStaticFrontendHttpApi } from "../../../Source/AgentSystem/WebSocket/AgentStaticFrontendHttpApi.js";
 import { AgentWebSocketHttpRouter } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketHttpRouter.js";
 import type { AgentHealthHttpApi } from "../../../Source/AgentSystem/WebSocket/AgentHealthHttpApi.js";
+import { AgentPiProxyProtocol } from "../../../Source/AgentSystem/PiProxy/AgentPiProxyContract.js";
 
 describe("WebSocket HTTP router", () => {
   test("routes authentication before generic access control", async () => {
@@ -71,13 +72,46 @@ describe("WebSocket HTTP router", () => {
     expect(fixture.upload.handle).toHaveBeenCalledTimes(1);
   });
 
-  test("authorizes read-only Pi proxy requests without CSRF", async () => {
+  test("authorizes local Pi proxy requests with the runtime credential instead of browser access", async () => {
     const fixture = createRouterFixture({ pi: true });
 
-    await fixture.router.handle(request("GET", "/api/pi/models"), fixture.response.value);
+    await fixture.router.handle(
+      request("GET", "/v1/models", {
+        authorization: `Bearer ${AgentPiProxyProtocol.apiKey}`,
+      }),
+      fixture.response.value,
+    );
 
-    expect(fixture.authorizeHttp).toHaveBeenCalledWith(expect.anything(), { requireCsrf: false });
+    expect(fixture.authorizeHttp).not.toHaveBeenCalled();
     expect(fixture.pi.handle).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects Pi proxy requests without the runtime credential", async () => {
+    const fixture = createRouterFixture({ pi: true });
+
+    await fixture.router.handle(request("POST", "/v1/chat/completions"), fixture.response.value);
+
+    expect(fixture.pi.handle).not.toHaveBeenCalled();
+    expect(fixture.authorizeHttp).not.toHaveBeenCalled();
+    expect(fixture.response.writeHead).toHaveBeenCalledWith(
+      401,
+      expect.objectContaining({ "Cache-Control": "no-store" }),
+    );
+  });
+
+  test("rejects valid Pi proxy credentials from a remote connection", async () => {
+    const fixture = createRouterFixture({ pi: true });
+
+    await fixture.router.handle(
+      request("POST", "/v1/chat/completions", {
+        authorization: `Bearer ${AgentPiProxyProtocol.apiKey}`,
+        remoteAddress: "203.0.113.8",
+      }),
+      fixture.response.value,
+    );
+
+    expect(fixture.pi.handle).not.toHaveBeenCalled();
+    expect(fixture.response.writeHead).toHaveBeenCalledWith(401, expect.anything());
   });
 
   test("serves static frontend routes without invoking API authorization", async () => {
@@ -160,6 +194,22 @@ function createResponse() {
   };
 }
 
-function request(method: string, url: string): http.IncomingMessage {
-  return { method, url } as unknown as http.IncomingMessage;
+function request(
+  method: string,
+  url: string,
+  options: {
+    authorization?: string;
+    localAddress?: string;
+    remoteAddress?: string;
+  } = {},
+): http.IncomingMessage {
+  return {
+    method,
+    url,
+    headers: options.authorization ? { authorization: options.authorization } : {},
+    socket: {
+      localAddress: options.localAddress ?? "127.0.0.1",
+      remoteAddress: options.remoteAddress ?? "127.0.0.1",
+    },
+  } as unknown as http.IncomingMessage;
 }

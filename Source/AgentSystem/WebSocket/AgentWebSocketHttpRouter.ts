@@ -6,6 +6,7 @@ import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { type AgentAuthenticationHttpApi } from "../Auth/AgentAuthenticationHttpApi.js";
 import type { AgentAccessFailure, AgentServerAccessGuard } from "../Auth/AgentServerAccessGuard.js";
 import type { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
+import { authorizeAgentPiProxyRequest } from "../PiProxy/AgentPiProxyAuthorization.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
@@ -39,7 +40,8 @@ export class AgentWebSocketHttpRouter {
     }
 
     if (this.options.piProxyApi?.canHandle(request)) {
-      if (!this.authorize(request, response)) {
+      if (!authorizeAgentPiProxyRequest(request)) {
+        this.writePiProxyAccessFailure(response);
         return;
       }
       await this.options.piProxyApi.handle(request, response);
@@ -93,6 +95,22 @@ export class AgentWebSocketHttpRouter {
         error: {
           code: failure.code,
           message: agentErrorMessage("auth.requestDenied"),
+        },
+      }),
+    );
+  }
+
+  private writePiProxyAccessFailure(response: http.ServerResponse): void {
+    response.writeHead(401, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    response.end(
+      JSON.stringify({
+        error: {
+          code: "pi_proxy_authentication_required",
+          message: "Senera Pi proxy authentication failed.",
+          type: "senera_pi_proxy_error",
         },
       }),
     );

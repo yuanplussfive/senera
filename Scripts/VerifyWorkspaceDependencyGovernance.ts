@@ -188,7 +188,7 @@ function inspectRootScripts(): string[] {
     clean: "rimraf Dist",
     "quality.baml": "baml check --from baml_src",
     "quality.baml.generate": "baml generate --from baml_src",
-    "quality.security": "npm audit --audit-level=high",
+    "quality.security": "npm audit --audit-level=moderate",
     "quality.format": "tsx Scripts/VerifyChangedFormatting.ts",
     "quality.format.fix": "tsx Scripts/VerifyChangedFormatting.ts --write",
     "quality.format.full": 'prettier "**/*" --check --ignore-unknown',

@@ -13,6 +13,7 @@ import {
 } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { readConfigCommandEventOperation } from "./configCommandOperation";
 import { readConfigFailureCode } from "./configMutationFailure";
 import type { SystemConfigCommandQueue, SystemConfigCommandTransportFailure } from "./useSystemConfigCommandQueue";
 
@@ -124,8 +125,9 @@ export function useConfigCommands({ commandQueue, sendRef, statusRef }: ConfigCo
       toast.error(frontendMessage("config.providerModelsFailed"), { description: data.message });
       return true;
     }
+    if (env.kind !== EventKinds.ConfigSnapshot && env.kind !== EventKinds.ConfigFailed) return false;
     const data = env.data as ConfigSnapshotData | ConfigFailedData;
-    const operation = data.operation && "commandId" in data.operation ? data.operation : undefined;
+    const operation = readConfigCommandEventOperation(env);
     const commandId = operation?.commandId;
     if (!commandId || !pendingRef.current.has(commandId) || operation.kind !== "config_update") return false;
     pendingRef.current.delete(commandId);

@@ -1,17 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import type { SocketStatus } from "../../../api/useAgentSocket";
-import { isConfigConflict } from "../../../app/configMutationFailure";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { normalizeProviderEndpointDraft } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import type { ModelServiceState } from "./modelServiceState";
 import {
-  applyProviderConnectionDraftPatch,
   buildProviderEndpointMutationInput,
   providerIdentitySnapshot,
   sameProviderEndpoint,
 } from "./providerConnectionState";
+import { useProviderConnectionDraftQueue } from "./useProviderConnectionDraftQueue";
 
 interface PendingProviderRename {
   providerId: string;
@@ -27,22 +26,6 @@ interface PendingProviderDraft {
 interface PendingProviderDraftConfirmation {
   providerId: string;
   requestId: string;
-}
-
-interface ActiveProviderSave {
-  draft: ProviderEndpointDraft;
-  providerId: string;
-  requestId: string;
-}
-
-interface ProviderDraftEntry {
-  synced: ProviderEndpointDraft;
-  draft: ProviderEndpointDraft;
-  active?: ActiveProviderSave;
-  queuedDraft?: ProviderEndpointDraft;
-  awaitingSnapshot?: ProviderEndpointDraft;
-  error?: string;
-  autoSaveBlocked: boolean;
 }
 
 export interface UseProviderConnectionActionsInput {
@@ -106,13 +89,12 @@ export function useProviderConnectionActions({
   onFetchProviderModels,
   onRenameProviderEndpoint,
   onUpsertProviderEndpoint,
-  onRefreshConfig = () => undefined,
+  onRefreshConfig = noop,
   socketStatus = "open",
   state,
   selectedProviderId,
   setSelectedProviderId,
 }: UseProviderConnectionActionsInput): ProviderConnectionActions {
-  const [, bumpDraftVersion] = useState(0);
   const [draftProvider, setDraftProvider] = useState<ProviderEndpointDraft | null>(state.providers[0] ?? null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [renameTarget, setRenameTarget] = useState<ProviderEndpointDraft | null>(null);
@@ -120,9 +102,6 @@ export function useProviderConnectionActions({
   const [pendingProviderDraftConfirmation, setPendingProviderDraftConfirmation] =
     useState<PendingProviderDraftConfirmation | null>(null);
   const [pendingRename, setPendingRename] = useState<PendingProviderRename | null>(null);
-  const providerEntriesRef = useRef<Map<string, ProviderDraftEntry>>(new Map());
-  const providerSaveTimersRef = useRef<Map<string, number>>(new Map());
-  const sendProviderDraftRef = useRef<(draft: ProviderEndpointDraft, manual?: boolean) => void>(() => undefined);
 
   // `readModelServiceState` intentionally materializes fresh provider objects. Depend on
   // their normalized values rather than object identity so effects do not reset a local
@@ -148,19 +127,15 @@ export function useProviderConnectionActions({
       : undefined;
   const providersRef = useRef(state.providers);
   providersRef.current = state.providers;
-
-  const ensureProviderEntry = (provider: ProviderEndpointDraft): ProviderDraftEntry => {
-    const normalized = normalizeProviderEndpointDraft(provider);
-    const current = providerEntriesRef.current.get(normalized.Id);
-    if (current) return current;
-    const entry: ProviderDraftEntry = {
-      synced: normalized,
-      draft: normalized,
-      autoSaveBlocked: false,
-    };
-    providerEntriesRef.current.set(normalized.Id, entry);
-    return entry;
-  };
+  const draftQueue = useProviderConnectionDraftQueue({
+    operations,
+    onPendingDraftSave: (providerId, requestId) => setPendingProviderDraftConfirmation({ providerId, requestId }),
+    onRefreshConfig,
+    onUpsertProviderEndpoint,
+    pendingProviderDraftId,
+    providers: state.providers,
+    socketStatus,
+  });
 
   useEffect(() => {
     const providers = providersRef.current;
@@ -211,69 +186,11 @@ export function useProviderConnectionActions({
     setSelectedProviderId,
   ]);
 
-  useEffect(() => {
-    let changed = false;
-    const providers = providersRef.current;
-    for (const provider of providers) {
-      const normalized = normalizeProviderEndpointDraft(provider);
-      const current = providerEntriesRef.current.get(provider.Id);
-      if (!current) {
-        providerEntriesRef.current.set(provider.Id, {
-          synced: normalized,
-          draft: normalized,
-          autoSaveBlocked: false,
-        });
-        changed = true;
-        continue;
-      }
-      if (sameProviderEndpoint(current.synced, normalized)) continue;
-      if (current.awaitingSnapshot && sameProviderEndpoint(current.awaitingSnapshot, normalized)) {
-        providerEntriesRef.current.set(provider.Id, {
-          ...current,
-          synced: normalized,
-          awaitingSnapshot: undefined,
-          draft: sameProviderEndpoint(current.draft, current.synced) ? normalized : current.draft,
-        });
-        changed = true;
-        continue;
-      }
-      if (current.awaitingSnapshot) continue;
-      if (current.active) continue;
-      if (!current.active && !current.queuedDraft && sameProviderEndpoint(current.synced, current.draft)) {
-        providerEntriesRef.current.set(provider.Id, {
-          ...current,
-          synced: normalized,
-          draft: normalized,
-          error: undefined,
-          autoSaveBlocked: false,
-        });
-        changed = true;
-        continue;
-      }
-      providerEntriesRef.current.set(provider.Id, {
-        ...current,
-        synced: normalized,
-        draft: rebaseProviderEndpoint(current.synced, current.draft, normalized),
-      });
-      changed = true;
-    }
-    const providerIds = new Set(providers.map((provider) => provider.Id));
-    for (const [providerId, entry] of providerEntriesRef.current) {
-      if (providerIds.has(providerId) || entry.active || entry.queuedDraft) continue;
-      providerEntriesRef.current.delete(providerId);
-      const timer = providerSaveTimersRef.current.get(providerId);
-      if (timer !== undefined) window.clearTimeout(timer);
-      providerSaveTimersRef.current.delete(providerId);
-      changed = true;
-    }
-    if (changed) bumpDraftVersion((version) => version + 1);
-  }, [providerListKey]);
-
   const acceptedProvider = selectedProviderId
     ? (state.providers.find((provider) => provider.Id === selectedProviderId) ??
       (pendingRenameProviderId === selectedProviderId ? draftProvider : null))
     : (state.providers[0] ?? null);
-  const selectedEntry = acceptedProvider ? ensureProviderEntry(acceptedProvider) : undefined;
+  const selectedEntry = acceptedProvider ? draftQueue.read(acceptedProvider) : undefined;
   const selectedProviderIndex = acceptedProvider
     ? state.providers.findIndex((provider) => provider.Id === acceptedProvider.Id)
     : -1;
@@ -289,121 +206,6 @@ export function useProviderConnectionActions({
   const dirty = Boolean(selectedEntry && !sameProviderEndpoint(selectedEntry.synced, selectedEntry.draft));
   const localError = selectedEntry?.error ?? null;
   const saving = providerOperation?.status === "pending" || pendingProviderDraftConfirmation !== null;
-
-  const sendProviderDraft = useCallback(
-    (nextDraft: ProviderEndpointDraft, manual = false): void => {
-      const providerId = nextDraft.Id;
-      const entry = providerEntriesRef.current.get(providerId) ?? ensureProviderEntry(nextDraft);
-      if (entry.active) {
-        providerEntriesRef.current.set(providerId, { ...entry, queuedDraft: nextDraft });
-        bumpDraftVersion((version) => version + 1);
-        return;
-      }
-      if (!entry.awaitingSnapshot && sameProviderEndpoint(entry.synced, nextDraft)) {
-        providerEntriesRef.current.set(providerId, {
-          ...entry,
-          draft: entry.synced,
-          queuedDraft: undefined,
-          error: undefined,
-          autoSaveBlocked: false,
-        });
-        bumpDraftVersion((version) => version + 1);
-        return;
-      }
-      if (!manual && (entry.autoSaveBlocked || entry.awaitingSnapshot)) return;
-      if (socketStatus !== "open") {
-        providerEntriesRef.current.set(providerId, {
-          ...entry,
-          error: frontendMessage("settings.draft.connectionInterrupted"),
-          autoSaveBlocked: true,
-        });
-        bumpDraftVersion((version) => version + 1);
-        return;
-      }
-      const mutation = buildProviderEndpointMutationInput(nextDraft, entry.synced);
-      if (!mutation.ok) {
-        providerEntriesRef.current.set(providerId, { ...entry, error: mutation.message });
-        bumpDraftVersion((version) => version + 1);
-        return;
-      }
-      const requestId = onUpsertProviderEndpoint(mutation.endpoint);
-      if (!requestId) {
-        providerEntriesRef.current.set(providerId, {
-          ...entry,
-          error: frontendMessage("settings.draft.connectionInterrupted"),
-          autoSaveBlocked: true,
-        });
-        bumpDraftVersion((version) => version + 1);
-        return;
-      }
-      providerEntriesRef.current.set(providerId, {
-        ...entry,
-        active: {
-          draft: nextDraft,
-          providerId: mutation.providerId,
-          requestId,
-        },
-        error: undefined,
-        autoSaveBlocked: false,
-        awaitingSnapshot: undefined,
-      });
-      bumpDraftVersion((version) => version + 1);
-      if (pendingProviderDraftId === mutation.providerId) {
-        setPendingProviderDraftConfirmation({ providerId: mutation.providerId, requestId });
-      }
-    },
-    [onUpsertProviderEndpoint, pendingProviderDraftId, socketStatus],
-  );
-  sendProviderDraftRef.current = sendProviderDraft;
-
-  useEffect(() => {
-    let changed = false;
-    const followUps: ProviderEndpointDraft[] = [];
-    for (const [providerId, current] of providerEntriesRef.current) {
-      const activeSave = current.active;
-      if (!activeSave) continue;
-      const operation = operations[providerId];
-      if (!operation || operation.commandId !== activeSave.requestId || operation.status === "pending") continue;
-      if (operation.status === "error") {
-        providerEntriesRef.current.set(providerId, {
-          ...current,
-          active: undefined,
-          queuedDraft: undefined,
-          error: isConfigConflict(operation)
-            ? frontendMessage("settings.draft.conflict")
-            : (operation.message ?? frontendMessage("settings.draft.connectionInterrupted")),
-          autoSaveBlocked: true,
-        });
-        if (isConfigConflict(operation)) onRefreshConfig();
-        changed = true;
-        continue;
-      }
-      const queuedDraft = current.queuedDraft;
-      const latestProvider = providersRef.current.find((provider) => provider.Id === providerId);
-      const latestSnapshot = latestProvider ? normalizeProviderEndpointDraft(latestProvider) : undefined;
-      const snapshotMatchesRequest = Boolean(latestSnapshot && sameProviderEndpoint(latestSnapshot, activeSave.draft));
-      const hasDistinctQueuedDraft = Boolean(queuedDraft && !sameProviderEndpoint(activeSave.draft, queuedDraft));
-      providerEntriesRef.current.set(providerId, {
-        ...current,
-        synced: snapshotMatchesRequest && latestSnapshot ? latestSnapshot : current.synced,
-        draft:
-          hasDistinctQueuedDraft && queuedDraft
-            ? queuedDraft
-            : snapshotMatchesRequest && latestSnapshot
-              ? latestSnapshot
-              : current.draft,
-        active: undefined,
-        queuedDraft: undefined,
-        awaitingSnapshot: hasDistinctQueuedDraft || snapshotMatchesRequest ? undefined : activeSave.draft,
-        error: undefined,
-        autoSaveBlocked: false,
-      });
-      if (hasDistinctQueuedDraft && queuedDraft) followUps.push(queuedDraft);
-      changed = true;
-    }
-    if (changed) bumpDraftVersion((version) => version + 1);
-    for (const draft of followUps) sendProviderDraft(draft, true);
-  }, [onRefreshConfig, operations, sendProviderDraft]);
 
   useEffect(() => {
     if (pendingRenameProviderId) {
@@ -448,7 +250,7 @@ export function useProviderConnectionActions({
   };
 
   const commitAndSelectProvider = (provider: ProviderEndpointDraft): boolean => {
-    const currentEntry = acceptedProvider ? providerEntriesRef.current.get(acceptedProvider.Id) : undefined;
+    const currentEntry = acceptedProvider ? draftQueue.read(acceptedProvider) : undefined;
     const currentDirty = Boolean(currentEntry && !sameProviderEndpoint(currentEntry.synced, currentEntry.draft));
     if (currentDirty && currentEntry && !currentEntry.error && !currentEntry.autoSaveBlocked) confirmDraft();
     setSelectedProviderId(provider.Id);
@@ -457,20 +259,7 @@ export function useProviderConnectionActions({
   };
 
   const discardAndSelectProvider = (provider: ProviderEndpointDraft): void => {
-    if (acceptedProvider) {
-      const current = ensureProviderEntry(acceptedProvider);
-      providerEntriesRef.current.set(acceptedProvider.Id, {
-        ...current,
-        draft: current.synced,
-        queuedDraft: undefined,
-        error: undefined,
-        autoSaveBlocked: false,
-      });
-      const timer = providerSaveTimersRef.current.get(acceptedProvider.Id);
-      if (timer !== undefined) window.clearTimeout(timer);
-      providerSaveTimersRef.current.delete(acceptedProvider.Id);
-      bumpDraftVersion((version) => version + 1);
-    }
+    if (acceptedProvider) draftQueue.discard(acceptedProvider);
     setSelectedProviderId(provider.Id);
     setDraftProvider(provider);
     setPendingProviderDraft(null);
@@ -479,99 +268,24 @@ export function useProviderConnectionActions({
 
   const updateDraftProvider = (patch: Partial<ProviderEndpointDraft>): void => {
     if (!acceptedProvider || !connectionDraft) return;
-    const nextDraft = applyProviderConnectionDraftPatch({
-      acceptedProvider,
-      currentDraft: connectionDraft,
-      patch,
-    });
-    const current = ensureProviderEntry(acceptedProvider);
-    providerEntriesRef.current.set(acceptedProvider.Id, {
-      ...current,
-      draft: nextDraft,
-      queuedDraft: current.active ? nextDraft : current.queuedDraft,
-      error: undefined,
-      autoSaveBlocked: false,
-    });
-    bumpDraftVersion((version) => version + 1);
-    scheduleProviderSave(acceptedProvider.Id, 500);
+    draftQueue.update(acceptedProvider, connectionDraft, patch);
   };
 
   const resetDraft = (): void => {
     if (!acceptedProvider) return;
-    const current = ensureProviderEntry(acceptedProvider);
-    providerEntriesRef.current.set(acceptedProvider.Id, {
-      ...current,
-      draft: current.synced,
-      queuedDraft: undefined,
-      error: undefined,
-      autoSaveBlocked: false,
-    });
-    const timer = providerSaveTimersRef.current.get(acceptedProvider.Id);
-    if (timer !== undefined) window.clearTimeout(timer);
-    providerSaveTimersRef.current.delete(acceptedProvider.Id);
-    bumpDraftVersion((version) => version + 1);
+    draftQueue.reset(acceptedProvider);
     setPendingProviderDraft(null);
     setPendingProviderDraftConfirmation(null);
   };
 
   const confirmDraft = (patch?: Partial<ProviderEndpointDraft>): void => {
-    const currentEntry = acceptedProvider ? providerEntriesRef.current.get(acceptedProvider.Id) : selectedEntry;
-    const currentConnectionDraft = currentEntry?.draft ?? connectionDraft;
-    const nextDraft = patch
-      ? applyProviderConnectionDraftPatch({
-          acceptedProvider,
-          currentDraft: currentConnectionDraft,
-          patch,
-        })
-      : currentConnectionDraft;
-    const providerId = nextDraft?.Id ?? acceptedProvider?.Id;
-    if (providerId) {
-      const timer = providerSaveTimersRef.current.get(providerId);
-      if (timer !== undefined) window.clearTimeout(timer);
-      providerSaveTimersRef.current.delete(providerId);
-    }
-    const currentDirty = Boolean(currentEntry && !sameProviderEndpoint(currentEntry.synced, currentEntry.draft));
-    if (!nextDraft || (!patch && !currentDirty && !currentEntry?.active && !currentEntry?.queuedDraft)) return;
-    const current = ensureProviderEntry(nextDraft);
-    if (current.active) {
-      providerEntriesRef.current.set(nextDraft.Id, {
-        ...current,
-        draft: nextDraft,
-        queuedDraft: sameProviderEndpoint(current.active.draft, nextDraft) ? undefined : nextDraft,
-        error: undefined,
-      });
-      bumpDraftVersion((version) => version + 1);
-      return;
-    }
-    sendProviderDraftRef.current(nextDraft, true);
-  };
-
-  const scheduleProviderSave = (providerId: string, delay: number): void => {
-    const previous = providerSaveTimersRef.current.get(providerId);
-    if (previous !== undefined) window.clearTimeout(previous);
-    const timer = window.setTimeout(() => {
-      providerSaveTimersRef.current.delete(providerId);
-      const entry = providerEntriesRef.current.get(providerId);
-      if (
-        entry?.draft &&
-        !entry.active &&
-        !entry.awaitingSnapshot &&
-        !sameProviderEndpoint(entry.synced, entry.draft)
-      ) {
-        sendProviderDraftRef.current(entry.draft);
-      }
-    }, delay);
-    providerSaveTimersRef.current.set(providerId, timer);
+    draftQueue.confirm(acceptedProvider, connectionDraft, patch);
   };
 
   const addProvider = (provider: ProviderEndpointDraft): void => {
     const mutation = buildProviderEndpointMutationInput(providerIdentitySnapshot(provider));
     if (!mutation.ok) {
-      if (acceptedProvider) {
-        const current = ensureProviderEntry(acceptedProvider);
-        providerEntriesRef.current.set(acceptedProvider.Id, { ...current, error: mutation.message });
-        bumpDraftVersion((version) => version + 1);
-      }
+      if (acceptedProvider) draftQueue.setError(acceptedProvider, mutation.message);
       return;
     }
     const requestId = onUpsertProviderEndpoint(mutation.endpoint);
@@ -581,13 +295,7 @@ export function useProviderConnectionActions({
         ...providerIdentitySnapshot(provider),
         Id: mutation.providerId,
       });
-      providerEntriesRef.current.set(mutation.providerId, {
-        synced: nextDraft,
-        draft: nextDraft,
-        active: { draft: nextDraft, providerId: mutation.providerId, requestId },
-        autoSaveBlocked: false,
-      });
-      bumpDraftVersion((version) => version + 1);
+      draftQueue.registerActive(nextDraft, mutation.providerId, requestId);
       setSelectedProviderId(mutation.providerId);
       setDraftProvider(nextDraft);
       setPendingProviderDraft({ draft: nextDraft, requestId });
@@ -597,14 +305,8 @@ export function useProviderConnectionActions({
 
   const renameProvider = (providerId: string, nextProviderId: string): void => {
     if (providerId === selectedProviderId && dirty) {
-      const current = acceptedProvider ? ensureProviderEntry(acceptedProvider) : undefined;
-      if (acceptedProvider && current) {
-        providerEntriesRef.current.set(acceptedProvider.Id, {
-          ...current,
-          error: frontendMessage("settings.provider.pendingDraftError"),
-        });
-        bumpDraftVersion((version) => version + 1);
-      }
+      if (acceptedProvider)
+        draftQueue.setError(acceptedProvider, frontendMessage("settings.provider.pendingDraftError"));
       return;
     }
     const requestId = onRenameProviderEndpoint(providerId, nextProviderId);
@@ -626,11 +328,7 @@ export function useProviderConnectionActions({
     const nextProvider = state.providers.find((entry) => entry.Id !== provider.Id) ?? null;
     setSelectedProviderId(nextProvider?.Id ?? null);
     setDraftProvider(nextProvider);
-    providerEntriesRef.current.delete(provider.Id);
-    const timer = providerSaveTimersRef.current.get(provider.Id);
-    if (timer !== undefined) window.clearTimeout(timer);
-    providerSaveTimersRef.current.delete(provider.Id);
-    bumpDraftVersion((version) => version + 1);
+    draftQueue.remove(provider.Id);
     if (pendingProviderDraftId === provider.Id) {
       setPendingProviderDraft(null);
       setPendingProviderDraftConfirmation(null);
@@ -642,11 +340,7 @@ export function useProviderConnectionActions({
     if (!connectionDraft?.Id) return;
     const mutation = buildProviderEndpointMutationInput(connectionDraft);
     if (!mutation.ok) {
-      if (acceptedProvider) {
-        const current = ensureProviderEntry(acceptedProvider);
-        providerEntriesRef.current.set(acceptedProvider.Id, { ...current, error: mutation.message });
-        bumpDraftVersion((version) => version + 1);
-      }
+      if (acceptedProvider) draftQueue.setError(acceptedProvider, mutation.message);
       return;
     }
     onFetchProviderModels(mutation.providerId, force, mutation.endpoint);
@@ -681,26 +375,4 @@ export function useProviderConnectionActions({
   };
 }
 
-function rebaseProviderEndpoint(
-  base: ProviderEndpointDraft,
-  local: ProviderEndpointDraft | null,
-  remote: ProviderEndpointDraft,
-): ProviderEndpointDraft {
-  if (!local) return normalizeProviderEndpointDraft(remote);
-  const result: Record<string, unknown> = { ...normalizeProviderEndpointDraft(remote) };
-  const baseRecord = normalizeProviderEndpointDraft(base) as unknown as Record<string, unknown>;
-  const localRecord = normalizeProviderEndpointDraft(local) as unknown as Record<string, unknown>;
-  const remoteRecord = result;
-  for (const key of new Set([...Object.keys(baseRecord), ...Object.keys(localRecord)])) {
-    const baseHas = Object.prototype.hasOwnProperty.call(baseRecord, key);
-    const localHas = Object.prototype.hasOwnProperty.call(localRecord, key);
-    if (!localHas && baseHas) {
-      delete remoteRecord[key];
-      continue;
-    }
-    if (localHas && (!baseHas || JSON.stringify(localRecord[key]) !== JSON.stringify(baseRecord[key]))) {
-      remoteRecord[key] = localRecord[key];
-    }
-  }
-  return normalizeProviderEndpointDraft(remoteRecord as unknown as ProviderEndpointDraft);
-}
+function noop(): void {}

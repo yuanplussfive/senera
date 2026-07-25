@@ -31,6 +31,22 @@ export interface ProviderConnectionDraftState {
   dirty: boolean;
 }
 
+export interface ActiveProviderSave {
+  draft: ProviderEndpointDraft;
+  providerId: string;
+  requestId: string;
+}
+
+export interface ProviderDraftEntry {
+  synced: ProviderEndpointDraft;
+  draft: ProviderEndpointDraft;
+  active?: ActiveProviderSave;
+  queuedDraft?: ProviderEndpointDraft;
+  awaitingSnapshot?: ProviderEndpointDraft;
+  error?: string;
+  autoSaveBlocked: boolean;
+}
+
 export type ProviderEndpointMutationInput<
   Endpoint extends ProviderModelEndpointInput | ProviderModelEndpointPatchInput = ProviderModelEndpointPatchInput,
 > =
@@ -167,4 +183,36 @@ export function providerIdentitySnapshot(provider: ProviderEndpointDraft): Provi
 
 export function sameProviderEndpoint(left: ProviderEndpointDraft, right: ProviderEndpointDraft): boolean {
   return JSON.stringify(normalizeProviderEndpointDraft(left)) === JSON.stringify(normalizeProviderEndpointDraft(right));
+}
+
+export function createProviderDraftEntry(provider: ProviderEndpointDraft): ProviderDraftEntry {
+  const normalized = normalizeProviderEndpointDraft(provider);
+  return {
+    synced: normalized,
+    draft: normalized,
+    autoSaveBlocked: false,
+  };
+}
+
+export function rebaseProviderEndpoint(
+  base: ProviderEndpointDraft,
+  local: ProviderEndpointDraft | null,
+  remote: ProviderEndpointDraft,
+): ProviderEndpointDraft {
+  if (!local) return normalizeProviderEndpointDraft(remote);
+  const result: Record<string, unknown> = { ...normalizeProviderEndpointDraft(remote) };
+  const baseRecord = normalizeProviderEndpointDraft(base) as unknown as Record<string, unknown>;
+  const localRecord = normalizeProviderEndpointDraft(local) as unknown as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(baseRecord), ...Object.keys(localRecord)])) {
+    const baseHas = Object.prototype.hasOwnProperty.call(baseRecord, key);
+    const localHas = Object.prototype.hasOwnProperty.call(localRecord, key);
+    if (!localHas && baseHas) {
+      delete result[key];
+      continue;
+    }
+    if (localHas && (!baseHas || JSON.stringify(localRecord[key]) !== JSON.stringify(baseRecord[key]))) {
+      result[key] = localRecord[key];
+    }
+  }
+  return normalizeProviderEndpointDraft(result as unknown as ProviderEndpointDraft);
 }

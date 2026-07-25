@@ -11,6 +11,7 @@ import type {
   ProviderModelConfigCommandDraft as ProviderModelCommandDraft,
   ProviderModelGroupAssignmentInput,
 } from "../api/providerModelCommandTypes";
+import { readConfigCommandEventOperation } from "./configCommandOperation";
 import { readConfigFailureCode } from "./configMutationFailure";
 
 export type ProviderModelOperationKind = Extract<
@@ -51,7 +52,7 @@ export function readMatchingProviderModelOperation(
       : env.kind === EventKinds.ConfigFailed
         ? (env.data as ConfigFailedData)
         : null;
-  const eventOperation = data?.operation && "commandId" in data.operation ? data.operation : undefined;
+  const eventOperation = readConfigCommandEventOperation(env);
   const commandId = eventOperation?.commandId;
   const operationKind = eventOperation?.kind;
   if (!commandId || !isProviderModelOperationKind(operationKind)) return null;

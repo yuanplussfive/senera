@@ -1,9 +1,10 @@
-import { EventKinds, type ConfigFailedData, type ConfigSnapshotData, type EventEnvelope } from "../api/eventTypes";
+import { EventKinds, type ConfigFailedData, type EventEnvelope } from "../api/eventTypes";
 import type {
   ProviderModelConfigOperationKind,
   ProviderModelConfigCommandDraft,
 } from "../api/providerModelCommandTypes";
 import type { FrontendMessageKey } from "../i18n/frontendMessageCatalog";
+import { readConfigCommandEventOperation } from "./configCommandOperation";
 import { readConfigFailureCode } from "./configMutationFailure";
 
 export type ProviderEndpointOperationKind = Extract<
@@ -74,7 +75,7 @@ export function resolveProviderEndpointMutationEvent(
   pendingOperations: ReadonlyMap<string, PendingProviderEndpointOperation>,
 ): ProviderEndpointMutationResolution | null {
   if (env.kind === EventKinds.ConfigSnapshot) {
-    const operation = (env.data as ConfigSnapshotData).operation;
+    const operation = readConfigCommandEventOperation(env);
     const pending = readMatchingPendingOperation(operation?.commandId, operation?.kind, pendingOperations);
     return pending && operation?.commandId
       ? {
@@ -88,7 +89,7 @@ export function resolveProviderEndpointMutationEvent(
 
   if (env.kind === EventKinds.ConfigFailed) {
     const data = env.data as ConfigFailedData;
-    const operation = data.operation && "commandId" in data.operation ? data.operation : undefined;
+    const operation = readConfigCommandEventOperation(env);
     const pending = readMatchingPendingOperation(operation?.commandId, operation?.kind, pendingOperations);
     return pending && operation?.commandId
       ? {

@@ -6,6 +6,7 @@ import {
   projectPiChatCompletionStreamEvents,
 } from "../Source/AgentSystem/PiProxy/AgentPiOpenAiResponseProjector.js";
 import { AgentPiProxyHttpApi, buildPiProxyBaseUrl } from "../Source/AgentSystem/PiProxy/AgentPiProxyHttpApi.js";
+import { AgentPiProxyProtocol } from "../Source/AgentSystem/PiProxy/AgentPiProxyContract.js";
 import {
   AgentPiProxyContextHeader,
   AgentPiProxyModelProviderHeader,
@@ -256,6 +257,7 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
         method: "POST",
         url: "/v1/chat/completions",
         headers: {
+          authorization: `Bearer ${AgentPiProxyProtocol.apiKey}`,
           [AgentPiProxyContextHeader]: contextId,
           [AgentPiProxyModelProviderHeader]: "test-model",
         },
@@ -444,6 +446,10 @@ class MockHttpRequest extends Readable {
   readonly method: string;
   readonly url: string;
   readonly headers: http.IncomingHttpHeaders;
+  readonly socket = {
+    localAddress: "127.0.0.1",
+    remoteAddress: "127.0.0.1",
+  };
   private body: Buffer;
   private sent = false;
 

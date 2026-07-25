@@ -20,7 +20,7 @@
     "clean": "rimraf Dist",
     "quality.baml": "baml check --from baml_src",
     "quality.baml.generate": "baml generate --from baml_src",
-    "quality.security": "npm audit --audit-level=high",
+    "quality.security": "npm audit --audit-level=moderate",
     "quality.coverage": "npm run test.coverage.frontend && npm run test.coverage.backend",
     "quality.lint": "eslint . --cache --cache-location .cache/eslint/.eslintcache --max-warnings=0",
     "quality.lint.fix": "npm run quality.lint -- --fix",
@@ -277,6 +277,7 @@
     "vitest": "^4.1.10"
   },
   "overrides": {
+    "@hono/node-server": "2.0.11",
     "brace-expansion": "5.0.8",
     "js-yaml": "4.3.0",
     "tar": "7.5.22"

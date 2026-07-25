@@ -1,10 +1,13 @@
+import { randomBytes } from "node:crypto";
 import { resolveServerConfig } from "../AgentDefaults.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+
+const RuntimeApiKeyBytes = 32;
 
 export const AgentPiProxyProtocol = {
   providerId: "senera-pi-proxy",
   modelApi: "openai-completions",
-  apiKey: "senera-local",
+  apiKey: randomBytes(RuntimeApiKeyBytes).toString("base64url"),
   basePath: "/v1",
   routes: {
     models: "/v1/models",
