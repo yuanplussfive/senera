@@ -189,7 +189,7 @@ function writeFrontendRuntimeConfig(config: AgentSystemConfig): void {
   fs.mkdirSync(FrontendRoot, { recursive: true });
   fs.writeFileSync(
     path.join(FrontendRoot, RuntimeConfigFileName),
-    `window.__SENERA_RUNTIME_CONFIG__ = ${JSON.stringify(runtimeConfig, null, 2)};\nexport {};\n`,
+    `window.__SENERA_RUNTIME_CONFIG__ = ${JSON.stringify(runtimeConfig, null, 2)};\n`,
     "utf8",
   );
 }

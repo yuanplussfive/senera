@@ -6,7 +6,7 @@ await withFrontendServer(
   {
     body: [
       '<script type="module" src="/@vite/client"></script>',
-      '<script type="module" src="/senera-runtime-config.js"></script>',
+      '<script src="/senera-runtime-config.js"></script>',
       '<script type="module" src="/src/main.tsx"></script>',
     ].join("\n"),
     statusCode: 200,
@@ -45,7 +45,7 @@ await withFrontendServer(
   {
     body: [
       '<script type="module" src="/@vite/client"></script>',
-      '<script type="module" src="/senera-runtime-config.js"></script>',
+      '<script src="/senera-runtime-config.js"></script>',
       '<script type="module" src="/src/main.tsx"></script>',
     ].join("\n"),
     statusCode: 404,

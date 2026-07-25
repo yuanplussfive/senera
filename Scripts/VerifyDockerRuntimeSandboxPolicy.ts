@@ -12,6 +12,11 @@ const sandboxDockerfile = fs.readFileSync(path.join(workspaceRoot, "Dockerfile.s
 const dockerignore = fs.readFileSync(path.join(workspaceRoot, ".dockerignore"), "utf8");
 const dockerEntrypoint = fs.readFileSync(path.join(workspaceRoot, "Apps", "DockerEntrypoint.sh"), "utf8");
 const dockerServer = fs.readFileSync(path.join(workspaceRoot, "Apps", "DockerServer.ts"), "utf8");
+const frontendIndex = fs.readFileSync(path.join(workspaceRoot, "Frontend", "index.html"), "utf8");
+const frontendRuntimeConfig = fs.readFileSync(
+  path.join(workspaceRoot, "Frontend", "public", "senera-runtime-config.js"),
+  "utf8",
+);
 const gvisorWorker = fs.readFileSync(path.join(workspaceRoot, "Apps", "GvisorWorker.ts"), "utf8");
 const dockerRuntime = fs.readFileSync(
   path.join(workspaceRoot, "Source", "AgentSystem", "Sandbox", "Gvisor", "AgentGvisorDockerRuntime.ts"),
@@ -116,6 +121,15 @@ assert.ok(
     dockerServer.includes("complete compose.yaml deployment") &&
     dockerServer.includes("application container requires sandbox-worker"),
   "Docker deployment must negotiate and lock its Docker Engine provider before preparing the isolated Worker.",
+);
+const runtimeConfigEntry = '<script src="/senera-runtime-config.js"></script>';
+const frontendMainEntry = '<script type="module" src="/src/main.tsx"></script>';
+assert.ok(
+  frontendIndex.indexOf(runtimeConfigEntry) >= 0 &&
+    frontendIndex.indexOf(runtimeConfigEntry) < frontendIndex.indexOf(frontendMainEntry) &&
+    !frontendRuntimeConfig.includes("export") &&
+    !dockerServer.includes("export {};"),
+  "Frontend runtime configuration must execute as a classic script before the application module.",
 );
 assert.deepEqual(
   JSON.parse(providerRegistry).candidates.map((candidate: { provider: string }) => candidate.provider),
