@@ -5,7 +5,7 @@ import {
 } from "../../../Frontend/src/store/session/persistence.ts";
 import { DEFAULT_USER_PROFILE } from "../../../Frontend/src/store/session/userProfile.ts";
 describe("session persistence migration", () => {
-  it("returns default layout preferences without treating runtime collapsed state as durable", () => {
+  it("ignores legacy right-panel defaults and supplies the shared dock width", () => {
     const migrate = sessionPersistOptions.migrate;
     expect(migrate).toBeDefined();
     const migrated = migrate?.(
@@ -33,7 +33,6 @@ describe("session persistence migration", () => {
     );
     expect(migrated).toEqual({
       defaultSidebarCollapsed: false,
-      defaultRightPanelCollapsed: true,
       motionLevel: "full",
       selectedModelProviderId: "provider-1",
       selectedModelProviderIdsBySession: { "legacy-active": "provider-1" },
@@ -42,6 +41,7 @@ describe("session persistence migration", () => {
         avatarDataUrl: null,
         updatedAt: "2026-05-29T08:00:00.000Z",
       },
+      workflowDockWidth: 420,
     });
   });
   it("keeps persisted motion level when migrating current preferences", () => {
@@ -52,7 +52,7 @@ describe("session persistence migration", () => {
         sidebarCollapsed: false,
         rightPanelCollapsed: true,
         defaultSidebarCollapsed: true,
-        defaultRightPanelCollapsed: false,
+        workflowDockWidth: 555,
         motionLevel: "reduced",
         selectedModelProviderId: null,
         userProfile: DEFAULT_USER_PROFILE,
@@ -62,8 +62,8 @@ describe("session persistence migration", () => {
     );
     expect(migrated).toMatchObject({
       defaultSidebarCollapsed: true,
-      defaultRightPanelCollapsed: false,
       motionLevel: "reduced",
+      workflowDockWidth: 555,
     });
   });
   it("falls back to full motion when persisted motion level is invalid", () => {
@@ -76,9 +76,30 @@ describe("session persistence migration", () => {
       4,
     );
     expect(migrated).toMatchObject({
-      defaultRightPanelCollapsed: true,
       motionLevel: "full",
+      workflowDockWidth: 420,
     });
+  });
+  it("rehydrates with the right panel collapsed even when legacy preferences requested it open", () => {
+    const merge = sessionPersistOptions.merge;
+    expect(merge).toBeDefined();
+    const merged = merge?.(
+      {
+        defaultRightPanelCollapsed: false,
+        workflowDockWidth: 520,
+      },
+      {
+        defaultSidebarCollapsed: false,
+        motionLevel: "full",
+        rightPanelCollapsed: false,
+        workflowDockWidth: 420,
+      },
+    );
+    expect(merged).toMatchObject({
+      rightPanelCollapsed: true,
+      workflowDockWidth: 520,
+    });
+    expect(merged).not.toHaveProperty("defaultRightPanelCollapsed");
   });
 });
 describe("readPersistedSessionPreferences", () => {
@@ -89,6 +110,7 @@ describe("readPersistedSessionPreferences", () => {
           state: {
             defaultSidebarCollapsed: true,
             defaultRightPanelCollapsed: false,
+            workflowDockWidth: 900,
             motionLevel: "reduced",
             selectedModelProviderId: "main",
             selectedModelProviderIdsBySession: { topic_a: "main", invalid: 1 },
@@ -97,11 +119,11 @@ describe("readPersistedSessionPreferences", () => {
       ),
     ).toEqual({
       defaultSidebarCollapsed: true,
-      defaultRightPanelCollapsed: false,
       motionLevel: "reduced",
       selectedModelProviderId: "main",
       selectedModelProviderIdsBySession: { topic_a: "main" },
       userProfile: undefined,
+      workflowDockWidth: 640,
     });
   });
   it("returns null for invalid persisted preference payloads", () => {
@@ -118,5 +140,17 @@ describe("readPersistedSessionPreferences", () => {
         }),
       )?.motionLevel,
     ).toBe("full");
+  });
+  it("does not synthesize a width for storage events from older windows", () => {
+    expect(
+      readPersistedSessionPreferences(
+        JSON.stringify({
+          state: {
+            defaultRightPanelCollapsed: false,
+            motionLevel: "full",
+          },
+        }),
+      )?.workflowDockWidth,
+    ).toBeUndefined();
   });
 });

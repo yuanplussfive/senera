@@ -27,6 +27,7 @@ export function resetFrontendStore(overrides = {}) {
     activeSessionId: null,
     sidebarCollapsed: false,
     rightPanelCollapsed: false,
+    workflowDockWidth: 420,
     motionLevel: "full",
     viewedRunIdBySession: {},
     historyLoadedIds: {},

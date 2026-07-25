@@ -46,9 +46,7 @@ function Root(): JSX.Element {
   useFrontendLocale();
   const motionLevel = useStore((state) => state.motionLevel);
   const defaultSidebarCollapsed = useStore((state) => state.defaultSidebarCollapsed);
-  const defaultRightPanelCollapsed = useStore((state) => state.defaultRightPanelCollapsed);
   const setDefaultSidebarCollapsed = useStore((state) => state.setDefaultSidebarCollapsed);
-  const setDefaultRightPanelCollapsed = useStore((state) => state.setDefaultRightPanelCollapsed);
   const setMotionLevel = useStore((state) => state.setMotionLevel);
   const isDesktop = Boolean(readDesktopBridge()?.isDesktop);
   const surface = resolveAppSurface(window.location, isDesktop);
@@ -74,11 +72,10 @@ function Root(): JSX.Element {
                 surface === "settings" ? (
                   <DesktopSettingsSurface
                     initialSection={settingsSection}
-                    values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
+                    values={{ defaultSidebarCollapsed }}
                     motionLevel={motionLevel}
                     onValueChange={(id, value) => {
                       if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
-                      if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
                     }}
                     onMotionLevelChange={setMotionLevel}
                     socketReconnectPolicy={socketReconnectPolicy}

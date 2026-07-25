@@ -11,13 +11,6 @@ import { RunSelector, RunSummaryStrip } from "./WorkflowRunControls";
 import { motionSprings, motionTimings, readFocusPanelVariants, useMotionLevel } from "../../shared/motion";
 import type { WorkflowLayoutDirection } from "./layout";
 
-export type ThinkingTimelineDockTab = {
-  id: string;
-  label: string;
-  active: boolean;
-  onSelect: () => void;
-};
-
 const LazyThinkingTimelineCanvas = lazy(() =>
   import("./ThinkingTimelineCanvas").then((module) => ({
     default: module.ThinkingTimelineCanvas,
@@ -27,33 +20,22 @@ const LazyThinkingTimelineCanvas = lazy(() =>
 export function ThinkingTimeline({
   presentation = "auto",
   hidePanelTitle = false,
-  dockTabs,
   onClosePanel,
 }: {
   presentation?: "auto" | "dock" | "panel";
   hidePanelTitle?: boolean;
-  dockTabs?: readonly ThinkingTimelineDockTab[];
   onClosePanel?: () => void;
 }): JSX.Element {
-  return (
-    <ThinkingPanel
-      presentation={presentation}
-      hidePanelTitle={hidePanelTitle}
-      dockTabs={dockTabs}
-      onClosePanel={onClosePanel}
-    />
-  );
+  return <ThinkingPanel presentation={presentation} hidePanelTitle={hidePanelTitle} onClosePanel={onClosePanel} />;
 }
 
 function ThinkingPanel({
   presentation,
   hidePanelTitle,
-  dockTabs,
   onClosePanel,
 }: {
   presentation: "auto" | "dock" | "panel";
   hidePanelTitle: boolean;
-  dockTabs?: readonly ThinkingTimelineDockTab[];
   onClosePanel?: () => void;
 }): JSX.Element {
   const activeId = useStore((s) => s.activeSessionId);
@@ -104,7 +86,6 @@ function ThinkingPanel({
           pinnedToHistory={isPinnedToHistory}
           hideTitle={hidePanelTitle}
           presentation={presentation}
-          dockTabs={dockTabs}
           onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
           onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
           onClosePanel={onClosePanel}
@@ -134,7 +115,6 @@ function TopBar({
   pinnedToHistory,
   hideTitle,
   presentation,
-  dockTabs,
   onSelect,
   onFollowLatest,
   onClosePanel,
@@ -145,7 +125,6 @@ function TopBar({
   pinnedToHistory: boolean;
   hideTitle?: boolean;
   presentation: "auto" | "dock" | "panel";
-  dockTabs?: readonly ThinkingTimelineDockTab[];
   onSelect: (requestId: string) => void;
   onFollowLatest: () => void;
   onClosePanel?: () => void;
@@ -154,63 +133,41 @@ function TopBar({
 
   return (
     <>
-      <div
-        className={cn(
-          "relative z-10 flex items-center gap-2 border-b border-line-subtle",
-          presentation === "dock" ? "h-[58px] bg-transparent px-3" : "h-[52px] bg-surface-raised px-3",
-        )}
-        data-window-drag-region
-      >
-        {dockTabs ? (
-          <nav
-            className="flex min-w-0 flex-1 items-center gap-0.5 rounded-full border border-line-subtle bg-surface-subtle p-1"
-            aria-label={frontendMessage("workflow.dock.tabs")}
-            data-workflow-dock-tabs
-          >
-            {dockTabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={tab.active}
-                onClick={tab.onSelect}
-                className={cn(
-                  "min-w-0 flex-1 rounded-full px-1.5 py-1.5 text-[12px] font-medium text-content-muted transition-[background-color,color,box-shadow] duration-150 hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-                  tab.active && "bg-surface-raised text-content-primary shadow-sm",
-                  !tab.active && "hover:bg-surface-hover",
-                )}
-                data-workflow-dock-tab={tab.id}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        ) : hideTitle ? null : (
-          <nav
-            className="flex min-w-0 items-center gap-2"
-            aria-label={frontendMessage("workflow.panel.title")}
-            data-workspace-tool-dock
-          >
-            <ListTree className="h-4 w-4 shrink-0 text-content-secondary" />
-            <span className="truncate text-[13px] font-medium text-content-primary">
-              {frontendMessage("workflow.panel.title")}
-            </span>
-          </nav>
-        )}
-        {onClosePanel ? (
-          <div className="ml-auto">
-            <IconButton
-              label={frontendMessage("workflow.panel.collapse")}
-              tone="muted"
-              tooltip={frontendMessage("workflow.panel.collapse")}
-              tooltipSide="bottom"
-              onClick={onClosePanel}
+      {!hideTitle || onClosePanel ? (
+        <div
+          className={cn(
+            "relative z-10 flex items-center gap-2 border-b border-line-subtle",
+            presentation === "dock" ? "h-[58px] bg-transparent px-3" : "h-[52px] bg-surface-raised px-3",
+          )}
+          data-window-drag-region
+        >
+          {!hideTitle ? (
+            <nav
+              className="flex min-w-0 items-center gap-2"
+              aria-label={frontendMessage("workflow.panel.title")}
+              data-workspace-tool-dock
             >
-              <PanelRightClose className="h-4 w-4" />
-            </IconButton>
-          </div>
-        ) : null}
-      </div>
+              <ListTree className="h-4 w-4 shrink-0 text-content-secondary" />
+              <span className="truncate text-[13px] font-medium text-content-primary">
+                {frontendMessage("workflow.panel.title")}
+              </span>
+            </nav>
+          ) : null}
+          {onClosePanel ? (
+            <div className="ml-auto">
+              <IconButton
+                label={frontendMessage("workflow.panel.collapse")}
+                tone="muted"
+                tooltip={frontendMessage("workflow.panel.collapse")}
+                tooltipSide="bottom"
+                onClick={onClosePanel}
+              >
+                <PanelRightClose className="h-4 w-4" />
+              </IconButton>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {runs.length > 0 ? (
         <div

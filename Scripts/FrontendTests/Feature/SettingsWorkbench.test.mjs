@@ -15,7 +15,6 @@ const baseProps = {
   },
   values: {
     defaultSidebarCollapsed: false,
-    defaultRightPanelCollapsed: false,
   },
   motionLevel: "full",
   onValueChange: vi.fn(),
@@ -33,6 +32,12 @@ afterEach(() => {
 });
 
 describe("SettingsWorkbench", () => {
+  it("offers only the left-sidebar launch preference", () => {
+    renderWithFrontendProviders(React.createElement(SettingsWorkbench, baseProps));
+
+    expect(screen.getAllByRole("switch")).toHaveLength(1);
+  });
+
   it("uses grouped navigation without migration cards or persistent sync badges", async () => {
     renderWithFrontendProviders(React.createElement(SettingsWorkbench, baseProps));
 

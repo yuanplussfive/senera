@@ -3,6 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DesktopWindowChrome, shouldUseCustomWindowControls } from "../../../Frontend/src/app/DesktopWindowChrome.tsx";
 import { readWindowControlsInsetWidth } from "../../../Frontend/src/shared/responsive/windowControlsLayout.ts";
+import { Dialog, DialogContent } from "../../../Frontend/src/shared/ui/Dialog.tsx";
 
 describe("desktop window chrome", () => {
   afterEach(() => {
@@ -45,7 +46,7 @@ describe("desktop window chrome", () => {
       ),
     );
 
-    expect(document.querySelector("[data-desktop-window-controls]")).toHaveClass("text-content-muted");
+    expect(document.querySelector("[data-desktop-window-controls]")).toHaveClass("z-40", "text-content-muted");
     const maximizeButton = screen.getByRole("button", { name: "最大化窗口" });
     expect(maximizeButton.querySelector(".lucide-square")).toBeInTheDocument();
     expect(maximizeButton.querySelector(".lucide-maximize-2")).not.toBeInTheDocument();
@@ -58,5 +59,29 @@ describe("desktop window chrome", () => {
     const closeButton = screen.getByRole("button", { name: "关闭窗口" });
     expect(closeButton).toHaveClass("hover:bg-ink-900/[0.055]", "hover:text-content-primary");
     expect(closeButton.className).not.toContain("#c42b1c");
+  });
+
+  it("keeps custom controls below modal portal layers", () => {
+    window.seneraDesktop = {
+      isDesktop: true,
+      windowControls: "custom",
+      getWindowState: vi.fn().mockResolvedValue({ isMaximized: false }),
+    };
+
+    render(
+      React.createElement(
+        DesktopWindowChrome,
+        { surface: "main" },
+        React.createElement(
+          Dialog,
+          { open: true },
+          React.createElement(DialogContent, { title: "模态窗口" }, React.createElement("p", null, "模态内容")),
+        ),
+      ),
+    );
+
+    expect(document.querySelector("[data-desktop-window-controls]")).toHaveClass("z-40");
+    expect(document.querySelector(".fixed.inset-0")).toHaveClass("z-50");
+    expect(screen.getByRole("dialog", { name: "模态窗口" })).toHaveClass("z-50");
   });
 });

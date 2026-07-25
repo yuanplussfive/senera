@@ -33,11 +33,6 @@ export const preferenceSections = [
         title: frontendMessage("runtime.migrated.features.session.types.32.16"),
         description: frontendMessage("runtime.migrated.features.session.types.33.22"),
       },
-      {
-        id: "defaultRightPanelCollapsed",
-        title: frontendMessage("runtime.migrated.features.session.types.37.16"),
-        description: frontendMessage("runtime.migrated.features.session.types.38.22"),
-      },
     ],
   },
 ] as const;

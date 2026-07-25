@@ -69,10 +69,8 @@ export function App({
   const presetsEnabled = useStore((s) => s.presetsEnabled);
   const presetRootDir = useStore((s) => s.presetRootDir);
   const defaultSidebarCollapsed = useStore((s) => s.defaultSidebarCollapsed);
-  const defaultRightPanelCollapsed = useStore((s) => s.defaultRightPanelCollapsed);
   const motionLevel = useStore((s) => s.motionLevel);
   const setDefaultSidebarCollapsed = useStore((s) => s.setDefaultSidebarCollapsed);
-  const setDefaultRightPanelCollapsed = useStore((s) => s.setDefaultRightPanelCollapsed);
   const setMotionLevel = useStore((s) => s.setMotionLevel);
   const responsiveMode = useResponsiveMode();
   const { hasPersistentSessionPanel, hasPersistentWorkflowPanel } = responsiveMode;
@@ -431,11 +429,10 @@ export function App({
             mode: import.meta.env.MODE,
             surface: "web",
           },
-          values: { defaultSidebarCollapsed, defaultRightPanelCollapsed },
+          values: { defaultSidebarCollapsed },
           motionLevel,
           onValueChange: (id, value) => {
             if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
-            if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
           },
           onMotionLevelChange: setMotionLevel,
           pluginSettings: settingsRuntime.pluginSettings,

@@ -14,6 +14,7 @@ beforeEach(() => {
     activeSessionId: null,
     sidebarCollapsed: false,
     rightPanelCollapsed: false,
+    workflowDockWidth: 420,
     viewedRunIdBySession: {},
     historyLoadedIds: {},
     historyLoadingIds: {},
@@ -35,9 +36,9 @@ beforeEach(() => {
 test("cross-window preference refresh preserves manually toggled panels when their defaults are unchanged", () => {
   useStore.setState({
     defaultSidebarCollapsed: false,
-    defaultRightPanelCollapsed: false,
     sidebarCollapsed: true,
     rightPanelCollapsed: true,
+    workflowDockWidth: 512,
     motionLevel: "full",
     selectedModelProviderId: "provider_a",
     selectedModelProviderIdsBySession: { session_a: "provider_a" },
@@ -46,7 +47,7 @@ test("cross-window preference refresh preserves manually toggled panels when the
   dispatchPersistedStorage({
     state: {
       defaultSidebarCollapsed: false,
-      defaultRightPanelCollapsed: false,
+      workflowDockWidth: 512,
       motionLevel: "full",
       selectedModelProviderId: "provider_a",
       selectedModelProviderIdsBySession: { session_a: "provider_a" },
@@ -57,33 +58,35 @@ test("cross-window preference refresh preserves manually toggled panels when the
   expect(useStore.getState()).toMatchObject({
     sidebarCollapsed: true,
     rightPanelCollapsed: true,
+    workflowDockWidth: 512,
   });
 });
 
-test("cross-window layout default changes still apply to the live panels", () => {
+test("cross-window layout and dock-width preferences do not reopen the right panel", () => {
   useStore.setState({
     defaultSidebarCollapsed: false,
-    defaultRightPanelCollapsed: false,
     sidebarCollapsed: false,
     rightPanelCollapsed: false,
+    workflowDockWidth: 420,
   });
 
   dispatchPersistedStorage({
     state: {
       defaultSidebarCollapsed: true,
       defaultRightPanelCollapsed: true,
+      workflowDockWidth: 580,
       motionLevel: useStore.getState().motionLevel,
       selectedModelProviderId: useStore.getState().selectedModelProviderId,
       selectedModelProviderIdsBySession: useStore.getState().selectedModelProviderIdsBySession,
     },
-    version: 5,
+    version: 6,
   });
 
   expect(useStore.getState()).toMatchObject({
     defaultSidebarCollapsed: true,
-    defaultRightPanelCollapsed: true,
     sidebarCollapsed: true,
-    rightPanelCollapsed: true,
+    rightPanelCollapsed: false,
+    workflowDockWidth: 580,
   });
 });
 

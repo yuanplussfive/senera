@@ -3,6 +3,7 @@ import { FrontendLocales, frontendMessage } from "../../../i18n/frontendMessageC
 import { useFrontendLocale, useSetFrontendLocale } from "../../../i18n/useFrontendLocale";
 import { cn } from "../../../lib/util";
 import { Switch } from "../../../shared/ui";
+import { preferenceSections } from "../../session/types";
 import type { SettingsWorkbenchProps } from "../SettingsWorkbenchContracts";
 import { SettingsPanel } from "../SettingsPanel";
 
@@ -14,24 +15,6 @@ export function GeneralSettings({
 }: Pick<SettingsWorkbenchProps, "values" | "motionLevel" | "onValueChange" | "onMotionLevelChange">): JSX.Element {
   const locale = useFrontendLocale();
   const setLocale = useSetFrontendLocale();
-  const preferenceSections = [
-    {
-      id: "layout",
-      title: frontendMessage("runtime.migrated.features.session.types.28.12"),
-      items: [
-        {
-          id: "defaultSidebarCollapsed",
-          title: frontendMessage("runtime.migrated.features.session.types.32.16"),
-          description: frontendMessage("runtime.migrated.features.session.types.33.22"),
-        },
-        {
-          id: "defaultRightPanelCollapsed",
-          title: frontendMessage("runtime.migrated.features.session.types.37.16"),
-          description: frontendMessage("runtime.migrated.features.session.types.38.22"),
-        },
-      ],
-    },
-  ] as const;
   const motionLevelOptions = [
     {
       id: "full",
