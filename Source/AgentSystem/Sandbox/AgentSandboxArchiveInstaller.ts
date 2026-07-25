@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -49,8 +48,17 @@ export interface AgentSandboxVerifiedBundle {
   archivePath: string;
 }
 
+interface BundleArchiveVerificationInput {
+  archivePath: string;
+  manifest: AgentSandboxArchiveManifest;
+  maxBytes: number;
+  report: (progress: AgentSandboxPreparationProgress) => void;
+  clock: () => number;
+}
+
 const ProgressByteInterval = 1024 * 1024;
 const ProgressTimeIntervalMs = 250;
+const FileReadChunkBytes = 64 * 1024;
 
 export async function installAgentSandboxBundle(
   options: AgentSandboxArchiveInstallerOptions,
@@ -117,68 +125,103 @@ export async function verifyAgentSandboxBundle(
 }
 
 async function readBundleManifest(filePath: string, maxBytes: number): Promise<AgentSandboxArchiveManifest> {
-  const value = await stat(filePath).catch((error: unknown) => {
+  const file = await open(filePath, "r").catch((error: unknown) => {
     if (nodeErrorCode(error) === "ENOENT") {
       throw new Error(`Sandbox Bundle manifest is missing: ${filePath}`, { cause: error });
     }
     throw error;
   });
-  if (!value.isFile()) throw new Error(`Sandbox Bundle manifest is not a file: ${filePath}`);
-  if (value.size <= 0 || value.size > maxBytes) {
-    throw new Error(`Sandbox Bundle manifest size is invalid: ${value.size} bytes (${filePath}).`);
+  try {
+    const value = await file.stat();
+    if (!value.isFile()) throw new Error(`Sandbox Bundle manifest is not a file: ${filePath}`);
+    if (value.size <= 0 || value.size > maxBytes) {
+      throw new Error(`Sandbox Bundle manifest size is invalid: ${value.size} bytes (${filePath}).`);
+    }
+    const content = await readFileHandleWithLimit(file, maxBytes);
+    if (content.byteLength <= 0 || content.byteLength > maxBytes) {
+      throw new Error(`Sandbox Bundle manifest size is invalid: ${content.byteLength} bytes (${filePath}).`);
+    }
+    return AgentSandboxArchiveManifestSchema.parse(JSON.parse(content.toString("utf8")));
+  } finally {
+    await file.close();
   }
-  return AgentSandboxArchiveManifestSchema.parse(JSON.parse(await readFile(filePath, "utf8")));
 }
 
-async function verifyBundleArchive(input: {
-  archivePath: string;
-  manifest: AgentSandboxArchiveManifest;
-  maxBytes: number;
-  report: (progress: AgentSandboxPreparationProgress) => void;
-  clock: () => number;
-}): Promise<void> {
-  const value = await stat(input.archivePath).catch((error: unknown) => {
+async function verifyBundleArchive(input: BundleArchiveVerificationInput): Promise<void> {
+  const file = await open(input.archivePath, "r").catch((error: unknown) => {
     if (nodeErrorCode(error) === "ENOENT") {
       throw new Error(`Sandbox Bundle archive is missing: ${input.archivePath}`, { cause: error });
     }
     throw error;
   });
-  if (!value.isFile()) throw new Error(`Sandbox Bundle archive is not a file: ${input.archivePath}`);
-  if (value.size > input.maxBytes || value.size !== input.manifest.asset.sizeBytes) {
-    throw new Error(
-      `Sandbox Bundle archive size does not match its manifest: ${value.size} !== ${input.manifest.asset.sizeBytes}.`,
-    );
-  }
-
-  const hash = createHash("sha256");
-  let processedBytes = 0;
-  let lastReportedBytes = 0;
-  let lastReportedAt = input.clock();
-  const publish = (): void => {
-    input.report({
-      stage: AgentSandboxPreparationStages.VerifyingArchive,
-      item: input.manifest.asset.fileName,
-      downloadedBytes: processedBytes,
-      totalBytes: input.manifest.asset.sizeBytes,
-    });
-    lastReportedBytes = processedBytes;
-    lastReportedAt = input.clock();
-  };
-  publish();
-  for await (const chunk of createReadStream(input.archivePath)) {
-    hash.update(chunk);
-    processedBytes += chunk.byteLength;
-    if (
-      processedBytes - lastReportedBytes >= ProgressByteInterval ||
-      input.clock() - lastReportedAt >= ProgressTimeIntervalMs
-    ) {
-      publish();
+  try {
+    const value = await file.stat();
+    if (!value.isFile()) throw new Error(`Sandbox Bundle archive is not a file: ${input.archivePath}`);
+    if (value.size > input.maxBytes || value.size !== input.manifest.asset.sizeBytes) {
+      throw archiveSizeMismatch(input, value.size);
     }
+
+    const hash = createHash("sha256");
+    const buffer = Buffer.allocUnsafe(FileReadChunkBytes);
+    let processedBytes = 0;
+    let lastReportedBytes = 0;
+    let lastReportedAt = input.clock();
+    const publish = (): void => {
+      input.report({
+        stage: AgentSandboxPreparationStages.VerifyingArchive,
+        item: input.manifest.asset.fileName,
+        downloadedBytes: processedBytes,
+        totalBytes: input.manifest.asset.sizeBytes,
+      });
+      lastReportedBytes = processedBytes;
+      lastReportedAt = input.clock();
+    };
+    publish();
+    while (true) {
+      const { bytesRead } = await file.read(buffer, 0, buffer.byteLength, null);
+      if (bytesRead === 0) break;
+      processedBytes += bytesRead;
+      if (processedBytes > input.maxBytes || processedBytes > input.manifest.asset.sizeBytes) {
+        throw archiveSizeMismatch(input, processedBytes);
+      }
+      hash.update(buffer.subarray(0, bytesRead));
+      if (
+        processedBytes - lastReportedBytes >= ProgressByteInterval ||
+        input.clock() - lastReportedAt >= ProgressTimeIntervalMs
+      ) {
+        publish();
+      }
+    }
+    if (processedBytes !== input.manifest.asset.sizeBytes) {
+      throw archiveSizeMismatch(input, processedBytes);
+    }
+    if (processedBytes !== lastReportedBytes) publish();
+    if (hash.digest("hex") !== input.manifest.asset.sha256) {
+      throw new Error(`Sandbox Bundle archive failed SHA-256 verification: ${input.archivePath}`);
+    }
+  } finally {
+    await file.close();
   }
-  if (processedBytes !== lastReportedBytes) publish();
-  if (hash.digest("hex") !== input.manifest.asset.sha256) {
-    throw new Error(`Sandbox Bundle archive failed SHA-256 verification: ${input.archivePath}`);
+}
+
+async function readFileHandleWithLimit(file: FileHandle, maxBytes: number): Promise<Buffer> {
+  const content = Buffer.allocUnsafe(maxBytes + 1);
+  let offset = 0;
+  while (offset < content.byteLength) {
+    const { bytesRead } = await file.read(content, offset, content.byteLength - offset, null);
+    if (bytesRead === 0) break;
+    offset += bytesRead;
   }
+  return content.subarray(0, offset);
+}
+
+function archiveSizeMismatch(
+  input: Pick<BundleArchiveVerificationInput, "archivePath" | "manifest">,
+  actualBytes: number,
+): Error {
+  return new Error(
+    `Sandbox Bundle archive size does not match its manifest: ${actualBytes} !== ${input.manifest.asset.sizeBytes} (${input.archivePath}).`,
+  );
 }
 
 async function readOptionalJson<T>(filePath: string, schema: z.ZodType<T>): Promise<T | undefined> {

@@ -94,6 +94,32 @@ describe("sandbox OCI image Bundle distribution", () => {
     }
   });
 
+  test("rejects a manifest that exceeds its declared read limit", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-manifest-limit-"));
+    const baseline = distributionContract();
+    const contract: AgentSandboxDistributionContract = {
+      ...baseline,
+      limits: { ...baseline.limits, manifestMaxBytes: 32 },
+    };
+    const manifest = archiveManifest(contract);
+    await writeBundle(root, contract, manifest);
+    const loadArchive = vi.fn(async () => undefined);
+    try {
+      await expect(
+        installAgentSandboxBundle({
+          baseDir: path.join(root, "runtime"),
+          bundleRoot: root,
+          architecture: "x64",
+          contract,
+          imageArchive: createImageArchiveApi(loadArchive),
+        }),
+      ).rejects.toThrow("Sandbox Bundle manifest size is invalid");
+      expect(loadArchive).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("publishes a compressed Bundle that starts after its source cache and raw archive are removed", async () => {
     const outputRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-build-"));
     const contract = distributionContract();

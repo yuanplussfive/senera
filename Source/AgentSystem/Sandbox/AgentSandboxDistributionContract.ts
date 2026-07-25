@@ -9,7 +9,13 @@ const TargetIdSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]*$/u);
 const DistributionIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/u);
 const ImmutableOciReferenceSchema = z.string().regex(/^[^\s@]+@sha256:[a-f0-9]{64}$/u);
 const RuntimeOciReferenceSchema = z.string().regex(/^[^\s@]+:[^\s/:]+$/u);
-const AbsolutePosixPathSchema = z.string().regex(/^\/(?:[^/\0]+\/?)+$/u);
+const AbsolutePosixPathSchema = z
+  .string()
+  .refine(
+    (value) =>
+      value !== "/" && !value.includes("\0") && path.posix.isAbsolute(value) && path.posix.normalize(value) === value,
+    "Invalid absolute POSIX path.",
+  );
 const SafeFileNameSchema = z
   .string()
   .min(1)

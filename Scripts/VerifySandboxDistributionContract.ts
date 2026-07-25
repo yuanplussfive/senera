@@ -38,6 +38,26 @@ assert.equal(
   false,
   "Sandbox distribution contracts must reject undeclared fields.",
 );
+for (const invalidDevicePath of ["dev/kvm", "/", "/dev//kvm", "/dev/../kvm", "/dev/kvm\0suffix"]) {
+  const invalidContract = {
+    ...contract,
+    hostRequirements: {
+      ...contract.hostRequirements,
+      microsandbox: {
+        ...contract.hostRequirements.microsandbox,
+        linux: {
+          ...contract.hostRequirements.microsandbox.linux,
+          devices: [{ path: invalidDevicePath, access: ["read", "write"] }],
+        },
+      },
+    },
+  };
+  assert.equal(
+    AgentSandboxDistributionContractSchema.safeParse(invalidContract).success,
+    false,
+    `Sandbox distribution contract accepted invalid device path: ${JSON.stringify(invalidDevicePath)}`,
+  );
+}
 for (const fragment of [
   "sandbox-archive:",
   "node Dist/Build/BuildSandboxImageArchive.js",
