@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.9.3](https://github.com/yuanplussfive/senera/compare/v1.9.2...v1.9.3) (2026-07-25)
+
+
+### 问题修复
+
+* **docker:** make sandbox bundle imports portable ([#76](https://github.com/yuanplussfive/senera/issues/76)) ([ded61a1](https://github.com/yuanplussfive/senera/commit/ded61a187941ae52030c440aca1e418f0465a39a))
+
 ## [1.9.2](https://github.com/yuanplussfive/senera/compare/v1.9.1...v1.9.2) (2026-07-25)
 
 
