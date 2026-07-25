@@ -20,6 +20,10 @@ import { AgentSandboxPreparationStages, type AgentSandboxPreparationProgress } f
 import { selectAgentSandboxProvider } from "../AgentSandboxProviderSelection.js";
 import { AgentSandboxRuntimeProviders } from "../AgentSandboxRuntimeTypes.js";
 import type { AgentSandboxProviderPreference } from "../../Types/AgentRuntimeConfigTypes.js";
+import {
+  resolveAgentDockerLoadedImageId,
+  type AgentDockerImageSummary,
+} from "../DockerEngine/AgentDockerImageLoadIdentity.js";
 
 export type AgentGvisorWorkspaceSource = { kind: "bind"; sourcePath: string } | { kind: "volume"; volumeName: string };
 
@@ -375,22 +379,31 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
       stage: AgentSandboxPreparationStages.ImportingImage,
       item: verified.manifest.runtimeImage,
     });
+    const imagesBefore = await this.listImages();
     const archive = createReadStream(verified.archivePath).pipe(createGunzip());
     const stream = await this.options.docker.loadImage(archive);
-    await new Promise<void>((resolve, reject) => {
-      dockerModem(this.options.docker).followProgress(stream, (error) => {
+    const loadEvents = await new Promise<readonly unknown[]>((resolve, reject) => {
+      dockerModem(this.options.docker).followProgress(stream, (error, output) => {
         if (error) reject(dockerOperationError("load bundled image", error));
-        else resolve();
+        else resolve(output);
       });
     });
     const target = splitImageReference(this.resolvedContract.image.runtimeImage);
-    const importedImage = this.options.docker.getImage(verified.manifest.sourceImage);
-    await importedImage
-      .inspect()
-      .catch((error: unknown) => Promise.reject(dockerOperationError("inspect bundled image", error)));
-    // Docker's classic and containerd image stores expose different values as
-    // ImageInspect.Id. The verified OCI source reference is stable across both.
+    const imagesAfter = await this.listImages();
+    const importedImage = this.options.docker.getImage(
+      resolveAgentDockerLoadedImageId({
+        imagesBefore,
+        imagesAfter,
+        loadEvents,
+        expectedImageIds: [verified.manifest.configDigest],
+        expectedReferences: [verified.manifest.runtimeImage, verified.manifest.sourceImage],
+      }),
+    );
     await importedImage.tag(target);
+  }
+
+  private async listImages(): Promise<readonly AgentDockerImageSummary[]> {
+    return (await this.options.docker.listImages({ all: true })) as AgentDockerImageSummary[];
   }
 
   private async stageRootfsCopies(copies: AgentGvisorExecutionRequest["rootfsCopies"]): Promise<string> {

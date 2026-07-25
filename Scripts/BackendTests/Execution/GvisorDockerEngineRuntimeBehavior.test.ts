@@ -91,6 +91,7 @@ describe("Docker Engine sandbox runtime", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "senera-docker-bundle-identity-"));
     const archivePath = path.join(root, "runtime.oci.tar.gz");
     const resolved = readAgentDockerEngineRuntimeContract("docker-engine", "x64");
+    const importedImageId = `sha256:${"d".repeat(64)}`;
     const tag = vi.fn(async () => undefined);
     const createContainer = vi.fn(async () => ({
       start: vi.fn(async () => undefined),
@@ -103,11 +104,15 @@ describe("Docker Engine sandbox runtime", () => {
       info: vi.fn(async () => ({ Runtimes: { runc: {} } })),
       getImage: vi.fn((reference: string) => {
         if (reference === resolved.image.runtimeImage) return { inspect: vi.fn(async () => Promise.reject(missing)) };
-        if (reference === resolved.image.sourceImage) {
-          return { inspect: vi.fn(async () => ({ Id: `sha256:${"d".repeat(64)}` })), tag };
-        }
+        if (reference === importedImageId) return { tag };
         throw new Error(`Unexpected image reference: ${reference}`);
       }),
+      listImages: vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { Id: importedImageId, RepoTags: [resolved.image.sourceImage.replace("docker.io/library/", "")] },
+        ]),
       loadImage: vi.fn(async (archive: NodeJS.ReadableStream) => {
         for await (const _chunk of archive as NodeJS.ReadableStream & AsyncIterable<Buffer>) {
           // Consume the verified archive exactly as the Docker Engine API does.
@@ -116,7 +121,13 @@ describe("Docker Engine sandbox runtime", () => {
       }),
       createContainer,
       modem: {
-        followProgress: (_stream: NodeJS.ReadableStream, callback: (error: Error | null) => void) => callback(null),
+        followProgress: (
+          _stream: NodeJS.ReadableStream,
+          callback: (error: Error | null, output: readonly unknown[]) => void,
+        ) =>
+          callback(null, [
+            { stream: `Loaded image: ${resolved.image.sourceImage.replace("docker.io/library/", "")}\n` },
+          ]),
       },
     } as unknown as Docker;
     await writeFile(archivePath, gzipSync(Buffer.from("verified OCI archive")));
