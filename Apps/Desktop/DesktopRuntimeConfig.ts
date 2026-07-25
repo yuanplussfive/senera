@@ -15,8 +15,9 @@ export function projectDesktopRuntimeConfig(
   config: AgentSystemConfig,
   options: DesktopRuntimeConfigProjectionOptions,
 ): AgentSystemConfig {
-  const provisioning =
-    config.SandboxRuntime?.Provisioning ?? (options.packaged ? ({ Kind: "ReleaseBundle" } as const) : undefined);
+  const provisioning = options.packaged
+    ? ({ Kind: "ReleaseBundle" } as const)
+    : (config.SandboxRuntime?.Provisioning ?? ({ Kind: "ReleaseBundle" } as const));
   return {
     ...config,
     PluginRoots: {
@@ -26,6 +27,7 @@ export function projectDesktopRuntimeConfig(
     },
     SandboxRuntime: {
       ...config.SandboxRuntime,
+      Provider: "microsandbox",
       BaseDir: paths.sandboxRuntimeRoot,
       ...(provisioning ? { Provisioning: provisioning } : {}),
     },

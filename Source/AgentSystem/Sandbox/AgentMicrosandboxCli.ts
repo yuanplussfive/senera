@@ -1,8 +1,12 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { createGunzip } from "node:zlib";
 import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
@@ -29,6 +33,7 @@ export interface AgentMicrosandboxCliOptions {
 
 export interface AgentMicrosandboxCli {
   run(baseDir: string, arguments_: readonly string[]): Promise<void>;
+  runWithInput(baseDir: string, arguments_: readonly string[], input: Readable): Promise<void>;
 }
 
 export interface AgentMicrosandboxImageArchiveWriter {
@@ -36,7 +41,14 @@ export interface AgentMicrosandboxImageArchiveWriter {
 }
 
 export interface AgentMicrosandboxImageArchiveLoader {
-  load(input: { baseDir: string; archivePath: string; reference: string }): Promise<void>;
+  load(input: {
+    baseDir: string;
+    archivePath: string;
+    reference: string;
+    compression: "gzip";
+    expectedUncompressedBytes: number;
+    maxUncompressedBytes: number;
+  }): Promise<void>;
 }
 
 export interface AgentMicrosandboxImageArchive
@@ -64,6 +76,43 @@ export function createAgentMicrosandboxCli(options: AgentMicrosandboxCliOptions)
         throw new Error(`Microsandbox command failed: ${detail.trim()}`, { cause: error });
       }
     },
+    async runWithInput(baseDir, arguments_, input) {
+      const microsandboxPackage = await resolvePackage();
+      const child = spawn(process.execPath, [microsandboxPackage.cliPath, ...arguments_], {
+        cwd: options.cwd,
+        env: childProcessEnvironment(baseDir),
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
+      });
+      const stdout = collectProcessOutput(child.stdout);
+      const stderr = collectProcessOutput(child.stderr);
+      const exit = new Promise<number>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("close", (code, signal) => {
+          if (signal) {
+            reject(new Error(`Microsandbox command terminated by signal ${signal}.`));
+            return;
+          }
+          resolve(code ?? 1);
+        });
+      });
+      let inputError: unknown;
+      await Promise.all([
+        pipeline(input, child.stdin).catch((error: unknown) => {
+          inputError = error;
+        }),
+        exit.then((code) => {
+          if (code === 0) return;
+          const detail = stderr() || stdout() || `exit code ${code}`;
+          throw new Error(`Microsandbox command failed: ${detail.trim()}`);
+        }),
+      ]);
+      if (inputError) {
+        throw new Error(`Unable to stream the Sandbox Bundle into Microsandbox: ${errorMessage(inputError)}`, {
+          cause: inputError,
+        });
+      }
+    },
   };
 }
 
@@ -81,8 +130,49 @@ export function createAgentMicrosandboxImageArchive(cli: AgentMicrosandboxCli): 
         input.reference,
       ]),
     load: (input) =>
-      cli.run(input.baseDir, ["image", "load", "--quiet", "--input", input.archivePath, "--tag", input.reference]),
+      cli.runWithInput(
+        input.baseDir,
+        ["image", "load", "--quiet", "--tag", input.reference],
+        Readable.from(readCompressedArchive(input)),
+      ),
   };
+}
+
+async function* readCompressedArchive(
+  input: Parameters<AgentMicrosandboxImageArchiveLoader["load"]>[0],
+): AsyncGenerator<Buffer> {
+  const archive = createReadStream(input.archivePath).pipe(createGunzip());
+  let uncompressedBytes = 0;
+  for await (const value of archive) {
+    const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    uncompressedBytes += chunk.byteLength;
+    if (uncompressedBytes > input.maxUncompressedBytes || uncompressedBytes > input.expectedUncompressedBytes) {
+      throw new Error(`Sandbox Bundle expanded beyond its declared OCI archive size: ${input.archivePath}`);
+    }
+    yield chunk;
+  }
+  if (uncompressedBytes !== input.expectedUncompressedBytes) {
+    throw new Error(
+      `Sandbox Bundle expanded to ${uncompressedBytes} bytes; expected ${input.expectedUncompressedBytes}: ${input.archivePath}`,
+    );
+  }
+}
+
+function collectProcessOutput(stream: NodeJS.ReadableStream, maxBytes = 4 * 1024 * 1024): () => string {
+  const chunks: Buffer[] = [];
+  let retainedBytes = 0;
+  stream.on("data", (value: Buffer | string) => {
+    if (retainedBytes >= maxBytes) return;
+    const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    const retained = chunk.subarray(0, maxBytes - retainedBytes);
+    chunks.push(retained);
+    retainedBytes += retained.byteLength;
+  });
+  return () => Buffer.concat(chunks).toString("utf8");
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export async function resolveAgentMicrosandboxPackage(

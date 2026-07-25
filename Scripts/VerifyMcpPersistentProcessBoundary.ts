@@ -18,7 +18,7 @@ async function main(): Promise<void> {
     name: "verify-mcp",
     kind: "mcp-server",
     backend: "sandbox",
-    microsandbox: {
+    sandbox: {
       network: "disabled",
       workspaceMount: "readonly",
     },

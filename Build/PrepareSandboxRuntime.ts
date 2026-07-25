@@ -3,9 +3,11 @@ import { pathToFileURL } from "node:url";
 import { resolveAgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
 import {
   prepareAgentSandboxRuntime,
+  type AgentSandboxRuntimePreparationOptions,
   type MicrosandboxModule,
 } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
 import type { ResolvedAgentSandboxRuntimeConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { resolveAgentSandboxDevelopmentBundleRoot } from "../Source/AgentSystem/Sandbox/AgentSandboxBundlePaths.js";
 import { prepareSeneraTerminalSidecarGuestRuntime } from "./PrepareTerminalSidecarGuestRuntime.js";
 
 export interface PrepareOptions {
@@ -23,13 +25,16 @@ export async function prepareSandboxRuntime(
   options: PrepareOptions,
   microsandbox?: MicrosandboxModule,
   prepareTerminalRuntime: typeof prepareSeneraTerminalSidecarGuestRuntime = prepareSeneraTerminalSidecarGuestRuntime,
+  archiveInstaller?: AgentSandboxRuntimePreparationOptions["archiveInstaller"],
 ): Promise<void> {
   const config = buildSandboxRuntimeConfig(options);
   process.stdout.write(`sandbox provisioning: ${config.Provisioning.Kind}\n`);
   const prepared = await prepareAgentSandboxRuntime({
     workspaceRoot,
     config,
+    sandboxBundleRoot: resolveAgentSandboxDevelopmentBundleRoot(workspaceRoot),
     microsandbox,
+    archiveInstaller,
     log: (message) => process.stdout.write(`${message}\n`),
   });
   await prepareTerminalRuntime({

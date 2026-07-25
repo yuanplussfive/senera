@@ -60,9 +60,6 @@ const explicitOci = projectDesktopRuntimeConfig(
   },
   { packaged: true },
 );
-assert.deepEqual(explicitOci.SandboxRuntime?.Provisioning, {
-  Kind: "Oci",
-  Images: ["registry.example/runtime@sha256:digest"],
-});
+assert.deepEqual(explicitOci.SandboxRuntime?.Provisioning, { Kind: "ReleaseBundle" });
 
 console.log("Desktop runtime config projection verification passed.");

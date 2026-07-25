@@ -17,7 +17,9 @@ export {
 export {
   resolveModelProviderCatalog,
   resolveModelProviderConfig,
+  resolveModelProviderEndpointConfigs,
   resolveModelProviderRuntimeDefaults,
+  resolveStandaloneModelProviderEndpointConfig,
 } from "./Defaults/AgentModelProviderDefaults.js";
 
 export { resolveActionPlannerConfig } from "./Defaults/AgentPlannerDefaults.js";

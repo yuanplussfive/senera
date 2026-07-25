@@ -175,10 +175,29 @@ jobs:
         run: |
           set -euo pipefail
           test -c /dev/kvm
-          sudo chmod 0666 /dev/kvm
       - run: npm run build
       - name: Build and verify portable sandbox image assets
-        run: node Dist/Build/BuildSandboxImageArchive.js --output Release/SandboxImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          kvm_gid="$(stat -c '%g' /dev/kvm)"
+          runtime_groups="$(id -G | tr ' ' ',')"
+          if [ "$kvm_gid" != "0" ]; then
+            case ",${runtime_groups}," in
+              *",${kvm_gid},"*) ;;
+              *) runtime_groups="${runtime_groups},${kvm_gid}" ;;
+            esac
+          fi
+          sudo setpriv \
+            --reuid="$(id -u)" \
+            --regid="$(id -g)" \
+            --groups="$runtime_groups" \
+            -- sh -c 'test -r /dev/kvm && test -w /dev/kvm'
+          sudo setpriv \
+            --reuid="$(id -u)" \
+            --regid="$(id -g)" \
+            --groups="$runtime_groups" \
+            -- node Dist/Build/BuildSandboxImageArchive.js --output Release/SandboxImage
       - uses: actions/upload-artifact@v4
         with:
           name: senera-sandbox-image-${{ needs.metadata.outputs.version }}
@@ -186,20 +205,12 @@ jobs:
             Release/SandboxImage/${{ needs.metadata.outputs.sandbox_archive_artifact_name }}
             Release/SandboxImage/${{ needs.metadata.outputs.sandbox_archive_manifest_artifact_name }}
           if-no-files-found: error
-      - name: Attach sandbox assets to GitHub Release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
-          ARCHIVE_PATH: Release/SandboxImage/${{ needs.metadata.outputs.sandbox_archive_artifact_name }}
-          MANIFEST_PATH: Release/SandboxImage/${{ needs.metadata.outputs.sandbox_archive_manifest_artifact_name }}
-        run: gh release upload "$RELEASE_TAG" "$ARCHIVE_PATH" "$MANIFEST_PATH" --clobber
-
   desktop:
     name: Build Windows Installer
     needs:
       - metadata
-    if: needs.metadata.result == 'success'
+      - sandbox-archive
+    if: needs.metadata.result == 'success' && needs.sandbox-archive.result == 'success'
     runs-on: windows-latest
     environment: release-stable
     steps:
@@ -207,6 +218,10 @@ jobs:
         with:
           ref: ${{ needs.metadata.outputs.tag }}
       - uses: ./.github/actions/setup-node
+      - uses: actions/download-artifact@v4
+        with:
+          name: senera-sandbox-image-${{ needs.metadata.outputs.version }}
+          path: Release/SandboxImage
       - run: npm run desktop.pack
       - uses: actions/upload-artifact@v4
         with:
@@ -225,7 +240,8 @@ jobs:
     name: Build Container Candidate
     needs:
       - metadata
-    if: needs.metadata.result == 'success'
+      - sandbox-archive
+    if: needs.metadata.result == 'success' && needs.sandbox-archive.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -235,6 +251,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.metadata.outputs.tag }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: senera-sandbox-image-${{ needs.metadata.outputs.version }}
+          path: Release/SandboxImage
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -272,75 +292,61 @@ jobs:
       needs.sandbox-archive.result == 'success' &&
       needs.container-build.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       CONTAINER_HEALTH_TIMEOUT_SECONDS: 180
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.tag }}
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - name: Start and probe container
+      - uses: ./.github/actions/setup-gvisor
+      - name: Start and probe isolated container deployment
         shell: bash
         env:
           IMAGE: ${{ needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest }}
-          CONTAINER_NAME: senera-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}
-          VOLUME_NAME: senera-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          COMPOSE_PROJECT_NAME: senera-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          SENERA_DATA_VOLUME: senera-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}-data
+          SENERA_HOST_PORT: "18787"
+          SENERA_ADMIN_LOGIN_NAME: release-smoke-admin
+          SENERA_ADMIN_DISPLAY_NAME: Release Smoke Administrator
+          SENERA_ALLOWED_ORIGINS: http://localhost:18787,http://127.0.0.1:18787
+          SENERA_ALLOW_INSECURE_HTTP: "true"
         run: |
           set -euo pipefail
+
+          export SENERA_IMAGE="$IMAGE"
+          export SENERA_ADMIN_PASSWORD="$(openssl rand -hex 24)"
 
           cleanup() {
             local status=$?
             trap - EXIT
             if [ "$status" -ne 0 ]; then
-              docker logs "$CONTAINER_NAME" || true
+              docker compose ps || true
+              docker compose logs || true
             fi
-            docker rm --force "$CONTAINER_NAME" >/dev/null 2>&1 || true
-            docker volume rm "$VOLUME_NAME" >/dev/null 2>&1 || true
+            docker compose down --volumes --remove-orphans >/dev/null 2>&1 || true
             exit "$status"
           }
           trap cleanup EXIT
 
-          docker pull "$IMAGE"
-          test -c /dev/kvm
-          sudo chmod 0666 /dev/kvm
-          docker run --detach --name "$CONTAINER_NAME" \
-            --volume "$VOLUME_NAME:/data" \
-            --device /dev/kvm:/dev/kvm \
-            --cap-add NET_ADMIN \
-            --env SENERA_ADMIN_LOGIN_NAME=release-smoke-admin \
-            --env SENERA_ADMIN_DISPLAY_NAME="Release Smoke Administrator" \
-            --env SENERA_ADMIN_PASSWORD="$(openssl rand -hex 24)" \
-            --env SENERA_ALLOWED_ORIGINS="http://localhost:8787,http://127.0.0.1:8787" \
-            --env SENERA_ALLOW_INSECURE_HTTP=true \
-            "$IMAGE" >/dev/null
-          deadline=$((SECONDS + CONTAINER_HEALTH_TIMEOUT_SECONDS))
-          while true; do
-            state="$(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME")"
-            health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$CONTAINER_NAME")"
-            if [ "$state" != "running" ]; then
-              echo "Container exited before becoming healthy (state=$state, health=$health)." >&2
-              exit 1
-            fi
-            case "$health" in
-              healthy)
-                break
-                ;;
-              unhealthy|missing)
-                echo "Container healthcheck failed (state=$state, health=$health)." >&2
-                exit 1
-                ;;
-            esac
-            if [ "$SECONDS" -ge "$deadline" ]; then
-              echo "Container did not become healthy within ${CONTAINER_HEALTH_TIMEOUT_SECONDS} seconds (state=$state, health=$health)." >&2
-              exit 1
-            fi
-            sleep 5
-          done
+          docker compose pull
+          docker compose up --detach --wait --wait-timeout "$CONTAINER_HEALTH_TIMEOUT_SECONDS"
+          container_id="$(docker compose ps --quiet senera)"
+          test -n "$container_id"
+          runtime_uid="$(docker exec "$container_id" sh -c "sed -n 's/^Uid:[[:space:]]*\\([0-9]*\\).*/\\1/p' /proc/1/status")"
+          node_uid="$(docker exec "$container_id" id -u node)"
+          if [ "$runtime_uid" = "0" ] || [ "$runtime_uid" != "$node_uid" ]; then
+            echo "Container PID 1 must run as node (runtime_uid=$runtime_uid, node_uid=$node_uid)." >&2
+            exit 1
+          fi
 
-          docker exec "$CONTAINER_NAME" node Dist/Scripts/VerifyDockerNativeSqlite.js
-          docker exec "$CONTAINER_NAME" node Dist/Scripts/VerifyDockerUserPluginWrite.js
+          docker compose exec -T --user node senera node Dist/Scripts/VerifyDockerNativeSqlite.js
+          docker compose exec -T --user node senera node Dist/Scripts/VerifyDockerUserPluginWrite.js
 
   container:
     name: Publish Container Image

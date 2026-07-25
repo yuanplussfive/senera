@@ -1,4 +1,4 @@
-import { AgentDefaults } from "../AgentDefaults.js";
+import { AgentDefaults, resolveModelProviderEndpointConfigs } from "../AgentDefaults.js";
 import { applyAgentJsonMergePatch } from "../Core/AgentJsonMergePatch.js";
 import type { AgentProviderEndpointPatch } from "./AgentConfigCommandSchemas.js";
 import type {
@@ -476,14 +476,51 @@ function assertDefaultModelProviderIdValid(config: AgentSystemConfig): void {
     throw new AgentProviderModelConfigCommandError("至少需要保留一个模型配置。", "provider_model_empty");
   }
 
-  if (config.DefaultModelProviderId !== undefined) {
-    assertModelIdExists(config.ModelProviders, config.DefaultModelProviderId, "default_model_missing");
+  if (config.DefaultModelProviderId === undefined) {
+    return;
+  }
+
+  const model = assertModelIdExists(config.ModelProviders, config.DefaultModelProviderId, "default_model_missing");
+  if (!model.Model.trim()) {
+    throw new AgentProviderModelConfigCommandError(
+      `默认模型名称不能为空：DefaultModelProviderId=${model.Id}`,
+      "default_model_name_empty",
+      { modelId: model.Id, providerId: model.ProviderId },
+    );
+  }
+
+  const endpoint = resolveModelProviderEndpointConfigs(config).find((candidate) => candidate.Id === model.ProviderId);
+  if (!endpoint) {
+    throw new AgentProviderModelConfigCommandError(
+      `供应商端点配置不存在：ProviderId=${model.ProviderId}`,
+      "provider_endpoint_missing",
+      { modelId: model.Id, providerId: model.ProviderId },
+    );
+  }
+  if (!endpoint.Enabled) {
+    throw new AgentProviderModelConfigCommandError(
+      `默认模型对应的供应商端点已禁用：ProviderId=${endpoint.Id}`,
+      "default_model_provider_disabled",
+      { modelId: model.Id, providerId: endpoint.Id },
+    );
+  }
+  if (!endpoint.BaseUrl.trim()) {
+    throw new AgentProviderModelConfigCommandError(
+      `默认模型对应的供应商端点地址不能为空：ProviderId=${endpoint.Id}`,
+      "default_model_provider_base_url_empty",
+      { modelId: model.Id, providerId: endpoint.Id },
+    );
   }
 }
 
-function assertModelIdExists(models: readonly AgentModelProviderConfig[], modelId: string, code: string): void {
-  if (models.some((model) => model.Id === modelId)) {
-    return;
+function assertModelIdExists(
+  models: readonly AgentModelProviderConfig[],
+  modelId: string,
+  code: string,
+): AgentModelProviderConfig {
+  const model = models.find((candidate) => candidate.Id === modelId);
+  if (model) {
+    return model;
   }
   throw new AgentProviderModelConfigCommandError(`默认模型配置不存在：DefaultModelProviderId=${modelId}`, code, {
     modelId,

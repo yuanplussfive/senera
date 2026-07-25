@@ -46,6 +46,7 @@ import { useConfigSettingsDraftState } from "./sections/configSettingsDraftState
 import { ModelServiceSection } from "./sections/ModelServiceSection";
 import { DefaultModelSection } from "./sections/DefaultModelSection";
 import { SkillSettingsSection } from "./sections/SkillSettingsSection";
+import { projectSectionConfigFields } from "./sections/runtimeModelAssignments";
 import { classifySettingsShellLayout, useObservedLayout } from "../../shared/responsive";
 import { readSettingsSection, settingsSections, type SettingsSectionDefinition, type SettingsSectionId } from "./types";
 
@@ -471,7 +472,11 @@ function renderSettingsContent({
         />
       );
     case "default-model":
-      return <DefaultModelSection systemConfig={systemConfig} />;
+      return (
+        <DraftBackedSection draftState={configDraftState} ready={Boolean(systemConfig?.configSnapshot)}>
+          <DefaultModelSection draftState={configDraftState} systemConfig={systemConfig} />
+        </DraftBackedSection>
+      );
     case "model-service":
       return <ModelServiceSection systemConfig={systemConfig} onDirtyChange={onEntityDraftChange} />;
     case "skills":
@@ -490,7 +495,11 @@ function ConfigFormSectionSettings({
   sectionId: Extract<SettingsSectionId, "runtime" | "planning" | "retrieval" | "storage">;
   systemConfig?: SettingsSystemConfigHandle;
 }): JSX.Element {
-  const sections = systemConfig?.configSnapshot?.form.sections.filter((section) => section.name === sectionId) ?? [];
+  const allSections = systemConfig?.configSnapshot?.form.sections ?? [];
+  const sections = allSections
+    .filter((section) => section.name === sectionId)
+    .map((section) => projectSectionConfigFields(section, allSections))
+    .filter((section) => section.fields.length > 0);
   if (!systemConfig?.configSnapshot)
     return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingConfig")}</SettingsWorkspaceState>;
   return (
@@ -526,6 +535,11 @@ function DraftBackedSection({
     validationErrors: draftState.validationErrors,
   });
   const showStatusBar = interaction.status === "invalid" || interaction.status === "conflict";
+  const saveStatus = draftState.saving
+    ? frontendMessage("settings.draft.savingStatus")
+    : draftState.savedRecently
+      ? frontendMessage("settings.draft.savedStatus")
+      : "";
 
   const recoveryLabel =
     interaction.status === "conflict"
@@ -541,15 +555,18 @@ function DraftBackedSection({
         : frontendMessage("settings.draft.reloadTitle");
   return (
     <SettingsWorkspaceFrame className="overflow-visible">
-      {draftState.saving ? (
-        <div className="flex h-7 items-center justify-end px-4 pt-2 text-[11px] text-ink-450" aria-live="polite">
-          {frontendMessage("settings.draft.savingStatus")}
-        </div>
-      ) : draftState.savedRecently ? (
-        <div className="flex h-7 items-center justify-end px-4 pt-2 text-[11px] text-accent-content" aria-live="polite">
-          {frontendMessage("settings.draft.savedStatus")}
-        </div>
-      ) : null}
+      <div
+        data-settings-save-status
+        className={cn(
+          "flex h-7 items-center justify-end px-4 pt-2 text-[11px] transition-opacity duration-150",
+          draftState.savedRecently ? "text-accent-content" : "text-ink-450",
+          saveStatus ? "opacity-100" : "opacity-0",
+        )}
+        aria-live="polite"
+        aria-hidden={!saveStatus}
+      >
+        {saveStatus || "\u00a0"}
+      </div>
       {showStatusBar ? (
         <div className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-ink-200/70 bg-paper-50 px-4 py-2.5">
           <div className="min-w-0 text-[11.5px] leading-5 text-ink-500">{interaction.detail}</div>

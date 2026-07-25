@@ -85,7 +85,15 @@ export const ToolExecutionSchema = z
 export const SandboxRuntimeSchema = z
   .object({
     Enabled: z.boolean().optional(),
+    Provider: z.enum(["auto", "microsandbox", "gvisor", "docker-engine"]).optional(),
     BaseDir: z.string().min(1).optional(),
+    Gvisor: z
+      .object({
+        WorkerSocketPath: z.string().trim().min(1).optional(),
+        PreparationTimeoutSeconds: z.number().positive().max(300).optional(),
+      })
+      .strict()
+      .optional(),
     Provisioning: z
       .discriminatedUnion("Kind", [
         z

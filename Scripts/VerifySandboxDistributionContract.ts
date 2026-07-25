@@ -4,7 +4,7 @@ import path from "node:path";
 import {
   AgentSandboxDistributionContractSchema,
   readAgentSandboxDistributionContract,
-  resolveAgentSandboxReleaseLocation,
+  resolveAgentSandboxBundleLocation,
 } from "../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
 
 const workspaceRoot = process.cwd();
@@ -24,10 +24,13 @@ for (const [architecture, target] of Object.entries(contract.targets)) {
   assert.ok(target.probe.command.length > 0, `${architecture} runtime probe must declare a command.`);
   assert.equal(target.archive.format, "oci");
   assert.equal(target.archive.mediaType, "application/vnd.oci.image.layout.v1.tar");
+  assert.equal(target.archive.compression, "gzip");
+  assert.equal(target.archive.compressedMediaType, "application/gzip");
+  assert.ok(target.archive.assetName.endsWith(".oci.tar.gz"));
   assert.equal(path.basename(target.archive.assetName), target.archive.assetName);
-  const location = resolveAgentSandboxReleaseLocation(contract, "1.2.3", architecture);
-  assert.equal(location.releaseTag, "v1.2.3");
-  assert.ok(location.archiveUrl.endsWith(`/${encodeURIComponent(target.archive.assetName)}`));
+  const location = resolveAgentSandboxBundleLocation(contract, architecture);
+  assert.equal(location.archiveFileName, target.archive.assetName);
+  assert.equal(location.manifestFileName, contract.bundle.manifestFileName);
 }
 
 assert.equal(
@@ -40,7 +43,7 @@ for (const fragment of [
   "node Dist/Build/BuildSandboxImageArchive.js",
   "sandbox_archive_artifact_name",
   "sandbox_archive_manifest_artifact_name",
-  "gh release upload",
+  "actions/download-artifact",
   "needs.sandbox-archive.result == 'success'",
 ]) {
   assert.ok(

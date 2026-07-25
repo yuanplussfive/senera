@@ -36,7 +36,7 @@ describe("Shell command runtime", () => {
         dialect: "posix-sh",
         profile: expect.objectContaining({
           backend: "sandbox",
-          microsandbox: { network: "default", workspaceMount: "writable" },
+          sandbox: { network: "default", workspaceMount: "writable" },
         }),
       }),
     );

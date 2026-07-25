@@ -5,6 +5,7 @@ import { agentErrorMessage } from "../../../Source/AgentSystem/I18n/AgentMessage
 describe("sandbox runtime service behavior", () => {
   test("projects localized status snapshots for package, ready, preparing, and unavailable states", () => {
     const service = new AgentSandboxRuntimeService({
+      platform: "win32",
       clock: () => new Date("2026-01-01T00:00:00.000Z"),
       packageAvailable: () => true,
     });
@@ -64,6 +65,7 @@ describe("sandbox runtime service behavior", () => {
 
   test("reports localized missing package diagnostics without runtime paths", () => {
     const service = new AgentSandboxRuntimeService({
+      platform: "win32",
       packageAvailable: () => false,
     });
 
@@ -83,6 +85,7 @@ describe("sandbox runtime service behavior", () => {
 
   test("reports an explicitly disabled runtime without probing package availability", () => {
     const service = new AgentSandboxRuntimeService({
+      platform: "win32",
       configSnapshot: () => ({
         ModelProviders: [],
         SandboxRuntime: { Enabled: false },
@@ -106,6 +109,7 @@ describe("sandbox runtime service behavior", () => {
   test("publishes typed preparation progress without flooding repeated checkpoints", () => {
     let now = new Date("2026-01-01T00:00:00.000Z");
     const service = new AgentSandboxRuntimeService({
+      platform: "win32",
       clock: () => now,
       packageAvailable: () => true,
       progressUpdateIntervalMs: 100,

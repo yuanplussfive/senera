@@ -34,11 +34,13 @@ export function resolveModelProviderEndpointConfig(config: AgentSystemConfig, id
   return resolveModelProviderEndpointCatalog(config).resolve(id);
 }
 
-export function resolveModelProviderEndpointCatalog(config: AgentSystemConfig) {
+export function resolveModelProviderEndpointConfigs(
+  config: AgentSystemConfig,
+): ResolvedAgentModelProviderEndpointConfig[] {
   const defaults = resolveAgentDefaults(config);
   const endpointsById = new Map<string, ResolvedAgentModelProviderEndpointConfig>();
   for (const endpoint of defaults.ModelProviderEndpoints) {
-    endpointsById.set(endpoint.Id, endpoint);
+    endpointsById.set(endpoint.Id, cloneResolvedEndpoint(endpoint));
   }
 
   const configuredIds = new Set<string>();
@@ -47,9 +49,21 @@ export function resolveModelProviderEndpointCatalog(config: AgentSystemConfig) {
       throw new Error(`供应商端点配置重复：ModelProviderEndpoints[].Id=${endpoint.Id}`);
     }
     configuredIds.add(endpoint.Id);
-    endpointsById.set(endpoint.Id, resolveConfiguredEndpoint(endpoint));
+    endpointsById.set(endpoint.Id, resolveEndpointFields(endpoint, endpointsById.get(endpoint.Id)));
   }
-  const endpoints = [...endpointsById.values()].filter((endpoint) => endpoint.Enabled);
+  return [...endpointsById.values()];
+}
+
+export function resolveStandaloneModelProviderEndpointConfig(
+  endpoint: AgentModelProviderEndpointConfig,
+): ResolvedAgentModelProviderEndpointConfig {
+  return resolveEndpointFields(endpoint);
+}
+
+export function resolveModelProviderEndpointCatalog(config: AgentSystemConfig) {
+  const resolvedEndpoints = resolveModelProviderEndpointConfigs(config);
+  const endpointsById = new Map(resolvedEndpoints.map((endpoint) => [endpoint.Id, endpoint]));
+  const endpoints = resolvedEndpoints.filter((endpoint) => endpoint.Enabled);
 
   return {
     endpoints,
@@ -161,18 +175,28 @@ function resolveModelRetryDelays(
   return retryDelays;
 }
 
-function resolveConfiguredEndpoint(
+function resolveEndpointFields(
   endpoint: AgentModelProviderEndpointConfig,
+  baseline?: ResolvedAgentModelProviderEndpointConfig,
 ): ResolvedAgentModelProviderEndpointConfig {
   return {
     Id: endpoint.Id,
-    Icon: endpoint.Icon ?? "",
-    Enabled: endpoint.Enabled ?? true,
-    Kind: endpoint.Kind ?? "OpenAICompatible",
-    BaseUrl: endpoint.BaseUrl ?? "",
-    ApiKey: endpoint.ApiKey ?? "",
-    ApiVersion: endpoint.ApiVersion ?? "2023-06-01",
-    Headers: { ...(endpoint.Headers ?? {}) },
+    Icon: endpoint.Icon ?? baseline?.Icon ?? "",
+    Enabled: endpoint.Enabled ?? baseline?.Enabled ?? true,
+    Kind: endpoint.Kind ?? baseline?.Kind ?? "OpenAICompatible",
+    BaseUrl: endpoint.BaseUrl ?? baseline?.BaseUrl ?? "",
+    ApiKey: endpoint.ApiKey ?? baseline?.ApiKey ?? "",
+    ApiVersion: endpoint.ApiVersion ?? baseline?.ApiVersion ?? "2023-06-01",
+    Headers: { ...(endpoint.Headers ?? baseline?.Headers ?? {}) },
+  };
+}
+
+function cloneResolvedEndpoint(
+  endpoint: ResolvedAgentModelProviderEndpointConfig,
+): ResolvedAgentModelProviderEndpointConfig {
+  return {
+    ...endpoint,
+    Headers: { ...endpoint.Headers },
   };
 }
 

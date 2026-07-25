@@ -110,9 +110,22 @@ senera 不把历史工具原文无限塞回模型。新一轮任务会优先使�
 
 本地运行要求 Node.js 22+。真实密钥放在 `senera.config.json`,这个文件已被 git 忽略。
 
+### Nano 轻量开发分支
+
+只需要本机源码开发时，可以直接克隆自动生成的 `nano` 分支：
+
+```bash
+git clone --branch nano --single-branch https://github.com/yuanplussfive/senera.git senera
+cd senera
+npm ci
+npm run dev
+```
+
+`nano` 只保留开发服务器、前端、核心源码、插件和对应依赖，不包含 Docker、Electron、安装包、测试、覆盖率和发布工具。它在 `main` 完整验证通过后自动重建，不接收直接提交或 Pull Request。由于不携带正式发布的 Sandbox Bundle，需要 OS Sandbox 的开发和分发工作仍应使用完整的 `main` 分支。
+
 ### Docker
 
-在首次启动前，直接编辑 `compose.yaml` 中的三个管理员值：
+在首次启动前，直接把 `compose.yaml` 中的三个 `SENERA_ADMIN_*` 表达式改为值，或在 1Panel / Compose 环境变量中填写：
 
 ```yaml
 SENERA_ADMIN_LOGIN_NAME: "admin"
@@ -122,7 +135,7 @@ SENERA_ALLOWED_ORIGINS: "http://localhost:8787,http://127.0.0.1:8787,http://192.
 SENERA_ALLOW_INSECURE_HTTP: "true"
 ```
 
-Docker 主机必须提供 `/dev/kvm`。然后启动唯一的 Compose 部署：
+Docker 部署不要求向 Senera 主容器传入 `/dev/kvm` 或 `NET_ADMIN`。Compose 会启动一个仅通过 Unix Socket 接收受限请求的 `sandbox-worker`，只有该 Worker 能访问 Docker Engine API，主服务仍以非 root `node` 身份运行。Worker 在启动时读取 Docker Engine 能力：已注册 `runsc` 时锁定 gVisor，否则锁定受限 Docker Engine 容器；一次服务生命周期内不会再次切换。然后启动唯一的 Compose 部署：
 
 ```bash
 docker compose pull
@@ -131,13 +144,14 @@ docker compose up -d --pull always
 
 容器会在每次启动时同步 Compose 声明的管理员资料：未变化时不重写，用户名、显示名或密码变化时更新账户；磁盘只保存 `scrypt` 密码哈希。服务通过 `8787:8787` 发布，随后可打开 `http://localhost:8787` 或已加入 Origin 白名单的 IP 地址。运行数据默认保存在 Docker volume 里。部署、日志、非 root 容器权限和沙箱说明见 [部署与运维](docs/Operations.md)，版本变化见 [更新记录](CHANGELOG.md)。
 
-Docker 始终使用 KVM microVM OS Sandbox。它会在启动前下载与 Senera 版本匹配的官方 OCI 镜像归档，校验清单、媒体类型、大小和 SHA-256 后通过 microsandbox 官方 `image load` 离线导入，并以 `pullPolicy("never")` 启动一次受限 microVM；任何步骤失败都会停止容器，绝不会切换为本机执行或访问其他镜像源。没有 KVM 的 Docker 主机不满足 Senera 容器部署要求。完整前提见 [部署与运维](docs/Operations.md#docker-启动)。
+Docker 镜像内置带 SHA-256 清单的 OCI Sandbox Bundle；`docker pull` 会随镜像获取一次，容器启动和重启不会访问 GitHub Releases。Worker 先验证 Bundle，再通过 Docker Engine API 导入；gVisor 与受限 Docker Engine provider 共用只读根文件系统、非 root 用户、能力全移除、`no-new-privileges`、资源限制和统一网络策略。默认允许正常联网，只有工具显式声明 `Network: Deny` 时才断网。两者都不会把 Sandbox 请求改为本机执行；完整前提见 [部署与运维](docs/Operations.md#docker-启动)。
 
 ### 本地开发
 
 ```bash
 npm ci
 copy senera.config.example.json senera.config.json
+npm run sandbox.archive
 npm run dev
 ```
 
@@ -147,7 +161,7 @@ macOS / Linux 创建配置文件:
 cp senera.config.example.json senera.config.json
 ```
 
-然后编辑 `senera.config.json`,填好模型服务的 `BaseUrl`、`ApiKey` 和 `Model`。启动后打开 `http://127.0.0.1:5173`。
+然后编辑 `senera.config.json`,填好模型服务的 `BaseUrl`、`ApiKey` 和 `Model`。`sandbox.archive` 是开发环境显式的 Bundle 准备步骤，会在 `Release/SandboxImage` 生成与正式包相同的压缩资产；服务启动本身只读取本地文件，不会自动下载或回退。启动后打开 `http://127.0.0.1:5173`。
 
 仓库使用 npm workspaces,只需要在根目录执行一次 `npm ci`。依赖版本由根目录 `package-lock.json` 锁定;只有主动增删依赖时才使用 `npm install <package>`,并同时提交 `package.json` 和 `package-lock.json`。
 

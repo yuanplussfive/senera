@@ -44,6 +44,12 @@ import { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry
 import { createSeneraExecutionEnvironments } from "../Execution/SeneraExecutionEnvFactory.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import type { SeneraMicrosandboxSdkAdapter } from "../Execution/SeneraMicrosandboxTypes.js";
+import type { SeneraGvisorWorkerClient } from "../Execution/SeneraGvisorTypes.js";
+import type { AgentSandboxRuntimeProvider } from "../Sandbox/AgentSandboxRuntimeTypes.js";
+import { AgentSandboxRuntimeProviders } from "../Sandbox/AgentSandboxRuntimeTypes.js";
+import { selectAgentSandboxProvider } from "../Sandbox/AgentSandboxProviderSelection.js";
+import { AgentGvisorWorkerSocketClient } from "../Sandbox/Gvisor/AgentGvisorWorkerClient.js";
+import { resolveAgentGvisorWorkerSocketPath } from "../Sandbox/Gvisor/AgentGvisorRuntimePreparation.js";
 import { resolveAgentSandboxRuntimePaths } from "../Sandbox/AgentSandboxRuntimePreparation.js";
 import {
   readAgentSandboxDistributionContract,
@@ -110,6 +116,8 @@ export class AgentSystemRuntime {
     injectedExecutionResources?: AgentExecutionResourceBroker,
     sandboxRuntimeReady?: () => boolean,
     microsandboxSdk?: SeneraMicrosandboxSdkAdapter,
+    injectedSandboxProvider?: AgentSandboxRuntimeProvider,
+    injectedGvisorWorker?: SeneraGvisorWorkerClient,
   ) {
     this.approvalRuntime = injectedApprovalRuntime ?? new AgentApprovalRuntime();
     this.ownsInteractionInput = !injectedInteractionInput;
@@ -118,6 +126,16 @@ export class AgentSystemRuntime {
     const authorizationPolicyClient = new AgentSeneraOpaPolicyClient({ registry: this.registry });
     const sandboxRuntimeConfig = resolveSandboxRuntimeConfig(config);
     const sandboxRuntimePaths = tryResolveSandboxRuntimePaths(this.workspaceRoot, sandboxRuntimeConfig);
+    const sandboxProvider =
+      injectedSandboxProvider ?? selectAgentSandboxProvider({ preference: sandboxRuntimeConfig.Provider });
+    const gvisorWorker =
+      injectedGvisorWorker ??
+      (sandboxProvider === AgentSandboxRuntimeProviders.Gvisor ||
+      sandboxProvider === AgentSandboxRuntimeProviders.DockerEngine
+        ? new AgentGvisorWorkerSocketClient({
+            socketPath: resolveAgentGvisorWorkerSocketPath(this.workspaceRoot, sandboxRuntimeConfig),
+          })
+        : undefined);
     const executionResourceLimits = resolveAgentExecutionResourceLimits(config);
     const executionEnvironments = createSeneraExecutionEnvironments({
       workspaceRoot: this.workspaceRoot,
@@ -126,6 +144,8 @@ export class AgentSystemRuntime {
       sandboxEnabled: sandboxRuntimeConfig.Enabled,
       sandboxRuntimeReady,
       microsandboxSdk,
+      sandboxProvider,
+      gvisorWorker,
       microsandboxSettings: resolveRuntimeMicrosandboxSettings(sandboxRuntimeConfig),
       environmentPolicy: resolveToolExecutionConfig(config).Environment,
       terminationGraceMs: executionResourceLimits.terminationGraceMs,
@@ -319,6 +339,8 @@ export class AgentSystemRuntime {
     executionResources?: AgentExecutionResourceBroker;
     sandboxRuntimeReady?: () => boolean;
     microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
+    sandboxProvider?: AgentSandboxRuntimeProvider;
+    gvisorWorker?: SeneraGvisorWorkerClient;
   }): AgentSystemRuntime {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
     const configPath = path.resolve(workspaceRoot, options.configPath ?? "senera.config.json");
@@ -339,6 +361,8 @@ export class AgentSystemRuntime {
       options.executionResources,
       options.sandboxRuntimeReady,
       options.microsandboxSdk,
+      options.sandboxProvider,
+      options.gvisorWorker,
     );
     const scanner = new AgentPluginScanner(workspaceRoot, runtime.config);
     for (const plugin of scanner.scan()) {

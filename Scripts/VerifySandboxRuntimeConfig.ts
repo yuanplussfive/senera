@@ -8,12 +8,11 @@ import {
   resolveAgentSandboxRuntimePaths,
 } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
-import { SeneraMicrosandboxDefaults } from "../Source/AgentSystem/Execution/SeneraMicrosandboxDefaults.js";
 
 const defaults = resolveAgentDefaults(undefined).SandboxRuntime;
 assert.equal(defaults.Enabled, true);
 assert.equal(defaults.BaseDir, ".senera/sandbox-runtime");
-assert.deepEqual(defaults.Provisioning, { Kind: "Oci", Images: [SeneraMicrosandboxDefaults.image] });
+assert.deepEqual(defaults.Provisioning, { Kind: "ReleaseBundle" });
 
 const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-sandbox-runtime-config-"));
 

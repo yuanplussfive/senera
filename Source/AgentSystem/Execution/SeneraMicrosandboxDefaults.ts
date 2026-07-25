@@ -11,9 +11,9 @@ const defaultSandboxTarget = resolveAgentSandboxDistributionTarget(sandboxDistri
 export const SeneraMicrosandboxDefaults = {
   image: defaultSandboxTarget.sourceImage,
   guestWorkspaceRoot: "/workspace",
-  cpus: 1,
-  memoryMiB: 512,
-  network: "disabled",
+  cpus: 2,
+  memoryMiB: 1024,
+  network: "default",
   pullPolicy: "if-missing",
   sandboxNamePrefix: "senera",
   guestShell: {
@@ -25,7 +25,7 @@ export const SeneraMicrosandboxDefaults = {
   unavailableRetryDelayMs: 60_000,
 } as const;
 
-export type SeneraMicrosandboxNetworkMode = typeof SeneraMicrosandboxDefaults.network | "default";
+export type SeneraMicrosandboxNetworkMode = typeof SeneraMicrosandboxDefaults.network | "disabled";
 
 export type SeneraMicrosandboxPullPolicy = typeof SeneraMicrosandboxDefaults.pullPolicy | "always" | "never";
 

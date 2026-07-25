@@ -15,7 +15,14 @@
             "type": "string",
             "placeholder": "选择一个已启用模型",
             "required": false,
-            "essential": false
+            "essential": false,
+            "modelSelection": {
+              "id": "assistant",
+              "capability": "Chat",
+              "valueKind": "model-id",
+              "mutation": "default-model",
+              "required": true
+            }
           },
           {
             "path": ["ModelProviderEndpoints"],
@@ -838,7 +845,14 @@
             "type": "string",
             "placeholder": "选择已启用模型",
             "required": false,
-            "essential": false
+            "essential": false,
+            "modelSelection": {
+              "id": "planner-base",
+              "capability": "Chat",
+              "valueKind": "model-id",
+              "mutation": "config",
+              "required": true
+            }
           },
           {
             "path": ["ActionPlanner", "Client", "Temperature"],
@@ -861,13 +875,36 @@
             "essential": false
           },
           {
+            "path": ["ActionPlanner", "PlanningClient", "ModelProviderId"],
+            "label": "行动规划模型",
+            "description": "执行行动规划和结构化决策。",
+            "type": "string",
+            "placeholder": "选择已启用模型",
+            "required": false,
+            "essential": false,
+            "modelSelection": {
+              "id": "action-planner",
+              "capability": "Chat",
+              "valueKind": "model-id",
+              "mutation": "config",
+              "required": true
+            }
+          },
+          {
             "path": ["ActionPlanner", "FinalAnswerClient", "ModelProviderId"],
             "label": "最终回答模型",
             "description": "为空时继承 Planner 模型。",
             "type": "string",
             "placeholder": "选择已启用模型",
             "required": false,
-            "essential": false
+            "essential": false,
+            "modelSelection": {
+              "id": "final-answer",
+              "capability": "Chat",
+              "valueKind": "model-id",
+              "mutation": "config",
+              "required": true
+            }
           },
           {
             "path": ["ActionPlanner", "FinalAnswerClient", "Temperature"],
@@ -904,6 +941,22 @@
             "step": 1,
             "required": false,
             "essential": false
+          },
+          {
+            "path": ["ToolLearning", "Client", "ModelProviderId"],
+            "label": "工具学习模型",
+            "description": "归纳工具调用经验并生成可复用模式。",
+            "type": "string",
+            "placeholder": "选择已启用模型",
+            "required": false,
+            "essential": false,
+            "modelSelection": {
+              "id": "tool-learning",
+              "capability": "Chat",
+              "valueKind": "model-id",
+              "mutation": "config",
+              "required": true
+            }
           },
           {
             "path": ["ToolLearning", "Patterns", "MinSupport"],
@@ -1087,7 +1140,15 @@
             "type": "string",
             "placeholder": "选择嵌入模型",
             "required": false,
-            "essential": false
+            "essential": false,
+            "modelSelection": {
+              "id": "embedding",
+              "capability": "Embedding",
+              "valueKind": "provider-model",
+              "mutation": "config",
+              "providerPath": ["VectorModels", "Embedding", "ProviderId"],
+              "required": true
+            }
           },
           {
             "path": ["VectorModels", "Embedding", "Dimensions"],
@@ -1139,7 +1200,15 @@
             "type": "string",
             "placeholder": "选择重排模型",
             "required": false,
-            "essential": false
+            "essential": false,
+            "modelSelection": {
+              "id": "rerank",
+              "capability": "Rerank",
+              "valueKind": "provider-model",
+              "mutation": "config",
+              "providerPath": ["VectorModels", "Rerank", "ProviderId"],
+              "required": true
+            }
           },
           {
             "path": ["VectorModels", "Rerank", "EndpointPath"],

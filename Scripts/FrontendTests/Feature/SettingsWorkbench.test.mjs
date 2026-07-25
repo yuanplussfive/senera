@@ -61,4 +61,40 @@ describe("SettingsWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: /供应商/ }));
     expect(baseProps.onSectionChange).toHaveBeenCalledWith("model-service");
   });
+
+  it("reserves a stable save-status rail while the configuration is idle", async () => {
+    const { container } = renderWithFrontendProviders(
+      React.createElement(SettingsWorkbench, {
+        ...baseProps,
+        section: "runtime",
+        systemConfig: createSystemConfig(),
+      }),
+    );
+
+    await waitFor(() => expect(container.querySelector("[data-settings-save-status]")).toBeInTheDocument());
+    const rail = container.querySelector("[data-settings-save-status]");
+    expect(rail).toHaveClass("h-7", "opacity-0");
+    expect(rail).toHaveAttribute("aria-hidden", "true");
+  });
 });
+
+function createSystemConfig() {
+  return {
+    socketStatus: "open",
+    configOperation: null,
+    configSnapshot: {
+      path: "test",
+      version: 1,
+      revision: 1,
+      value: {},
+      source: "sqlite",
+      diagnostics: [],
+      form: {
+        version: 1,
+        sections: [{ name: "runtime", label: "运行", keyCount: 0, fields: [] }],
+      },
+    },
+    refreshConfig: vi.fn(),
+    saveConfig: vi.fn(() => "save-1"),
+  };
+}

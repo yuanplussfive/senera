@@ -586,9 +586,33 @@
                     "Enabled": {
                       "type": "boolean"
                     },
+                    "Provider": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "microsandbox",
+                        "gvisor",
+                        "docker-engine"
+                      ]
+                    },
                     "BaseDir": {
                       "type": "string",
                       "minLength": 1
+                    },
+                    "Gvisor": {
+                      "type": "object",
+                      "properties": {
+                        "WorkerSocketPath": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "PreparationTimeoutSeconds": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 300
+                        }
+                      },
+                      "additionalProperties": false
                     },
                     "Provisioning": {
                       "oneOf": [
@@ -1802,9 +1826,33 @@
                 "Enabled": {
                   "type": "boolean"
                 },
+                "Provider": {
+                  "type": "string",
+                  "enum": [
+                    "auto",
+                    "microsandbox",
+                    "gvisor",
+                    "docker-engine"
+                  ]
+                },
                 "BaseDir": {
                   "type": "string",
                   "minLength": 1
+                },
+                "Gvisor": {
+                  "type": "object",
+                  "properties": {
+                    "WorkerSocketPath": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "PreparationTimeoutSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 300
+                    }
+                  },
+                  "additionalProperties": false
                 },
                 "Provisioning": {
                   "oneOf": [

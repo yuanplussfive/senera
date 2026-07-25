@@ -83,7 +83,7 @@ const rootOwnedToolchainDependencies = new Map(
     "@vitest/coverage-v8": "^4.1.10",
     autoprefixer: "^10.4.20",
     jsdom: "^29.1.1",
-    postcss: "^8.4.49",
+    postcss: "^8.5.23",
     prettier: "^3.9.5",
     tailwindcss: "^3.4.17",
     "ts-json-schema-generator": "^2.9.0",

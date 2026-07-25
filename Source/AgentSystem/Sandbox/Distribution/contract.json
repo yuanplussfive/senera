@@ -1,8 +1,20 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 4,
   "id": "senera-node-runtime",
   "archiveVersion": "1.0.2",
   "microsandboxVersion": "0.6.4",
+  "hostRequirements": {
+    "microsandbox": {
+      "linux": {
+        "devices": [
+          {
+            "path": "/dev/kvm",
+            "access": ["read", "write"]
+          }
+        ]
+      }
+    }
+  },
   "targets": {
     "x64": {
       "sourceImage": "docker.io/library/node@sha256:8607a9064d4a571140998ae9e52a3b3fcf9cff361d04642d5971e6cd76d39e27",
@@ -14,18 +26,18 @@
       "archive": {
         "format": "oci",
         "mediaType": "application/vnd.oci.image.layout.v1.tar",
-        "assetName": "SeneraSandboxImage-1.0.2-x64.oci.tar"
+        "compression": "gzip",
+        "compressedMediaType": "application/gzip",
+        "assetName": "SeneraSandboxImage-1.0.2-x64.oci.tar.gz"
       }
     }
   },
-  "release": {
-    "repositoryUrl": "https://github.com/yuanplussfive/senera",
-    "tagTemplate": "v{productVersion}",
-    "manifestAssetName": "SeneraSandboxImageManifest.json"
+  "bundle": {
+    "manifestFileName": "SeneraSandboxImageManifest.json"
   },
-  "downloadPolicy": {
-    "requestTimeoutMs": 1800000,
+  "limits": {
     "manifestMaxBytes": 65536,
+    "bundleMaxBytes": 536870912,
     "archiveMaxBytes": 2147483648
   }
 }

@@ -11,6 +11,9 @@ import type { SeneraResourceAccessAuthorizer } from "./SeneraResourceAccess.js";
 import { createSeneraAuthorizedTerminalSpawner } from "./SeneraTerminalSpawner.js";
 import { SeneraProcessEnvironmentPolicy } from "./SeneraProcessEnvironment.js";
 import type { SeneraProcessEnvironmentPolicyOptions } from "./SeneraProcessEnvironment.js";
+import { SeneraGvisorBackend } from "./SeneraGvisorBackend.js";
+import type { SeneraGvisorWorkerClient } from "./SeneraGvisorTypes.js";
+import { AgentSandboxRuntimeProviders, type AgentSandboxRuntimeProvider } from "../Sandbox/AgentSandboxRuntimeTypes.js";
 
 export interface SeneraExecutionEnvFactoryOptions {
   workspaceRoot: string;
@@ -23,6 +26,8 @@ export interface SeneraExecutionEnvFactoryOptions {
   sandboxEnabled?: boolean;
   sandboxRuntimeReady?: () => boolean;
   microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
+  sandboxProvider?: AgentSandboxRuntimeProvider;
+  gvisorWorker?: SeneraGvisorWorkerClient;
 }
 
 export function createSeneraExecutionEnv(options: SeneraExecutionEnvFactoryOptions): SeneraExecutionEnv {
@@ -59,13 +64,7 @@ function createSharedExecutionDependencies(options: SeneraExecutionEnvFactoryOpt
     environmentPolicy,
     terminationGraceMs: options.terminationGraceMs,
   });
-  const sandboxBackend = new SeneraMicrosandboxBackend({
-    workspaceRoot: options.workspaceRoot,
-    settings: options.microsandboxSettings,
-    runtimePaths: options.sandboxRuntimePaths,
-    runtimeReady: options.sandboxRuntimeReady,
-    sdk: options.microsandboxSdk,
-  });
+  const sandboxBackend = createSandboxBackend(options);
   const processBackend = new SeneraRoutingProcessBackend({
     local: localBackend,
     sandbox: sandboxBackend,
@@ -83,6 +82,31 @@ function createSharedExecutionDependencies(options: SeneraExecutionEnvFactoryOpt
       environmentPolicy,
     }),
   };
+}
+
+function createSandboxBackend(options: SeneraExecutionEnvFactoryOptions) {
+  if (
+    options.sandboxProvider === AgentSandboxRuntimeProviders.Gvisor ||
+    options.sandboxProvider === AgentSandboxRuntimeProviders.DockerEngine
+  ) {
+    if (!options.gvisorWorker) {
+      throw new Error(`The selected ${options.sandboxProvider} provider requires a Docker Engine worker client.`);
+    }
+    return new SeneraGvisorBackend({
+      workspaceRoot: options.workspaceRoot,
+      worker: options.gvisorWorker,
+      provider: options.sandboxProvider,
+      runtimePaths: options.sandboxRuntimePaths,
+      runtimeReady: options.sandboxRuntimeReady,
+    });
+  }
+  return new SeneraMicrosandboxBackend({
+    workspaceRoot: options.workspaceRoot,
+    settings: options.microsandboxSettings,
+    runtimePaths: options.sandboxRuntimePaths,
+    runtimeReady: options.sandboxRuntimeReady,
+    sdk: options.microsandboxSdk,
+  });
 }
 
 function createLocalExecutionEnv(

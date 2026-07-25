@@ -11,14 +11,17 @@ import {
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { writeAgentConfigJsonMirror } from "../Source/AgentSystem/Config/AgentConfigServicePaths.js";
 import { moduleDirPath } from "../Source/AgentSystem/Core/AgentPath.js";
-import { readAgentProductMetadata } from "../Source/AgentSystem/Core/AgentProductMetadata.js";
 import { resolveAgentLocalAdminAccountPath } from "../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
-import { prepareAgentSandboxRuntime } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
+import { AgentGvisorWorkerSocketClient } from "../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerClient.js";
+import { prepareAgentGvisorRuntime } from "../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorRuntimePreparation.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { synchronizeDockerAdminAccount } from "./DockerAdminAccountSync.js";
+import { resolveAgentSandboxPackagedBundleRoot } from "../Source/AgentSystem/Sandbox/AgentSandboxBundlePaths.js";
+import type { AgentSandboxRuntimeProvider } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
+import type { SeneraGvisorWorkerClient } from "../Source/AgentSystem/Execution/SeneraGvisorTypes.js";
 
 const AppRoot = resolveAppRoot();
-const ProductVersion = readAgentProductMetadata(AppRoot).version;
+const SandboxBundleRoot = resolveAgentSandboxPackagedBundleRoot(AppRoot);
 const WorkspaceRoot = path.resolve(process.env.SENERA_WORKSPACE_ROOT?.trim() || "/data");
 const ConfigPath = resolveWorkspacePath(process.env.AGENT_CONFIG_PATH?.trim() || "senera.config.json");
 const FrontendRoot = path.join(AppRoot, "Frontend", "dist");
@@ -43,7 +46,9 @@ async function main(): Promise<void> {
   ensureRuntimeConfigFile();
 
   const config = loadConfigFile(ConfigPath);
-  const runtimeProjection = createDockerRuntimeProjection();
+  const worker = new AgentGvisorWorkerSocketClient({ socketPath: resolveDockerGvisorWorkerSocketPath() });
+  const sandboxProvider = await resolveDockerSandboxProvider(config, worker);
+  const runtimeProjection = createDockerRuntimeProjection(sandboxProvider);
   const projectedConfig = runtimeProjection(config);
   await synchronizeDockerAdminAccount({
     accountFile: resolveAgentLocalAdminAccountPath(
@@ -52,7 +57,7 @@ async function main(): Promise<void> {
     ),
     log: (message) => writeJsonLine({ kind: "senera.docker.admin.synchronized", message }),
   });
-  await prepareDockerSandboxRuntime(projectedConfig);
+  await prepareDockerSandboxRuntime(projectedConfig, worker, sandboxProvider);
   writeFrontendRuntimeConfig(projectedConfig);
 
   const server = startSeneraServer({
@@ -63,7 +68,9 @@ async function main(): Promise<void> {
     runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(AppRoot),
     runtimeConfigProjection: runtimeProjection,
     sandboxRuntimePrepared: true,
-    productVersion: ProductVersion,
+    sandboxBundleRoot: SandboxBundleRoot,
+    sandboxProvider,
+    dockerEngineWorker: worker,
   });
 
   writeJsonLine({
@@ -72,7 +79,7 @@ async function main(): Promise<void> {
     configPath: server.configPath,
     webUrl: `http://localhost:${resolveDockerPort()}`,
     websocketUrl: server.websocketUrl,
-    sandboxRuntime: "required",
+    sandboxRuntime: sandboxProvider,
   });
 }
 
@@ -100,7 +107,9 @@ function ensureRuntimeConfigFile(): void {
   writeAgentConfigJsonMirror(seedConfig, ConfigPath);
 }
 
-function createDockerRuntimeProjection(): (config: AgentSystemConfig) => AgentSystemConfig {
+function createDockerRuntimeProjection(
+  sandboxProvider: Extract<AgentSandboxRuntimeProvider, "gvisor" | "docker-engine">,
+): (config: AgentSystemConfig) => AgentSystemConfig {
   return (config) => ({
     ...config,
     PluginRoots: {
@@ -111,7 +120,11 @@ function createDockerRuntimeProjection(): (config: AgentSystemConfig) => AgentSy
       ...config.SandboxRuntime,
       ...DockerSandboxRuntime,
       Enabled: true,
-      Provisioning: config.SandboxRuntime?.Provisioning ?? { Kind: "ReleaseBundle" },
+      Provider: sandboxProvider,
+      Gvisor: {
+        ...config.SandboxRuntime?.Gvisor,
+        WorkerSocketPath: resolveDockerGvisorWorkerSocketPath(),
+      },
     },
     Server: {
       ...config.Server,
@@ -126,19 +139,46 @@ function createDockerRuntimeProjection(): (config: AgentSystemConfig) => AgentSy
   });
 }
 
-async function prepareDockerSandboxRuntime(config: AgentSystemConfig): Promise<void> {
+async function prepareDockerSandboxRuntime(
+  config: AgentSystemConfig,
+  worker: SeneraGvisorWorkerClient,
+  provider: Extract<AgentSandboxRuntimeProvider, "gvisor" | "docker-engine">,
+): Promise<void> {
   try {
-    await prepareAgentSandboxRuntime({
+    const sandboxConfig = resolveSandboxRuntimeConfig(config);
+    await prepareAgentGvisorRuntime({
       workspaceRoot: WorkspaceRoot,
-      config: resolveSandboxRuntimeConfig(config),
-      productVersion: ProductVersion,
-      log: (message) => writeJsonLine({ kind: "senera.docker.sandbox.prepare", message }),
+      config: sandboxConfig,
+      worker,
+      expectedProvider: provider,
       onProgress: (progress) => writeJsonLine({ kind: "senera.docker.sandbox.progress", progress }),
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Docker OS sandbox could not be prepared: ${detail}`, { cause: error });
+    throw new Error(`Docker OS sandbox (${provider}) could not be prepared: ${detail}`, { cause: error });
   }
+}
+
+async function resolveDockerSandboxProvider(
+  config: AgentSystemConfig,
+  worker: SeneraGvisorWorkerClient,
+): Promise<Extract<AgentSandboxRuntimeProvider, "gvisor" | "docker-engine">> {
+  const timeoutMs = resolveSandboxRuntimeConfig(config).Gvisor.PreparationTimeoutSeconds * 1000;
+  try {
+    const probe = await worker.probe({ timeoutMs });
+    return probe.isolation;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Docker sandbox provider negotiation failed: ${detail}`, { cause: error });
+  }
+}
+
+function resolveDockerGvisorWorkerSocketPath(): string {
+  const configured = process.env.SENERA_GVISOR_WORKER_SOCKET?.trim();
+  if (!configured || !path.isAbsolute(configured)) {
+    throw new Error("SENERA_GVISOR_WORKER_SOCKET must be an absolute Unix socket path.");
+  }
+  return path.normalize(configured);
 }
 
 function writeFrontendRuntimeConfig(config: AgentSystemConfig): void {

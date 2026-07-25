@@ -1,7 +1,11 @@
 .git
 .agents
 .codex
+.claude
+.cache
 .senera
+.uploads
+coverage
 docker-data
 node_modules
 Dist
@@ -10,9 +14,14 @@ Frontend/node_modules
 Frontend/.vite-dev*.log
 Frontend/*.log
 Frontend/tsconfig.tsbuildinfo
-Release
+Release/*
+!Release/SandboxImage
+!Release/SandboxImage/**
 tmp
 *.local
+*.bak
+*.pid
+pid.txt
 .env
 .env.*
 senera.config.json

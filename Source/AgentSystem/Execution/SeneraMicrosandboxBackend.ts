@@ -1,11 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdir } from "node:fs/promises";
 import {
   SeneraExecutionError,
   SeneraExecutionErrorCodes,
   type SeneraShellExecutionResult,
 } from "./SeneraExecutionTypes.js";
-import { createSeneraProcessRootfsBundle } from "./SeneraProcessRootfsBundle.js";
 import { SeneraProcessOutputBuffer } from "./SeneraProcessOutputBuffer.js";
 import type { SeneraProcessExecutionBackend, SeneraProcessExecutionRequest } from "./SeneraProcessExecutionBackend.js";
 import { resolveSeneraMicrosandboxSettings, type SeneraMicrosandboxSettings } from "./SeneraMicrosandboxDefaults.js";
@@ -18,6 +16,10 @@ import type {
   SeneraMicrosandboxSession,
 } from "./SeneraMicrosandboxTypes.js";
 import type { SeneraShellInvocation } from "./SeneraShellPlatform.js";
+import {
+  materializeSeneraSandboxRootfs,
+  prepareSeneraSandboxWritableMounts,
+} from "./SeneraSandboxProfileMaterializer.js";
 import { SeneraShellDialects } from "./SeneraShellCommand.js";
 import type { AgentSandboxRuntimePaths } from "../Sandbox/AgentSandboxRuntimePreparation.js";
 import { openSeneraTerminalSidecar } from "./SeneraTerminalSidecarClient.js";
@@ -103,14 +105,14 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
     assertMicrosandboxProfile(request.profile);
     this.throwIfTemporarilyUnavailable();
     const settings = this.effectiveSettings(request.profile);
-    await prepareWritableMounts(request.profile);
+    await prepareSeneraSandboxWritableMounts(request.profile);
 
     const mount = projectMicrosandboxWorkspaceMount({
       workspaceRoot: this.workspaceRoot,
       cwd: request.cwd,
       guestWorkspaceRoot: settings.guestWorkspaceRoot,
     });
-    const materialized = await materializeRootfsBundles(request.profile);
+    const materialized = await materializeSeneraSandboxRootfs(request.profile);
     let session: SeneraMicrosandboxSession | undefined;
     let result: SeneraShellExecutionResult | undefined;
     let primaryError: SeneraExecutionError | undefined;
@@ -119,7 +121,7 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
       session = (
         await this.createSession(
           request.profile,
-          request.profile?.microsandbox?.guestWorkdir ?? mount.guestCwd,
+          request.profile?.sandbox?.guestWorkdir ?? mount.guestCwd,
           settings,
           materialized.rootfsCopies,
           request.timeoutMs,
@@ -129,10 +131,10 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
         session,
         {
           ...request,
-          cwd: request.profile?.microsandbox?.guestWorkdir ?? mount.guestCwd,
+          cwd: request.profile?.sandbox?.guestWorkdir ?? mount.guestCwd,
           env: {
             ...definedEnv(request.env),
-            ...(request.profile?.microsandbox?.env ?? {}),
+            ...(request.profile?.sandbox?.env ?? {}),
           },
         },
         settings.stopTimeoutMs,
@@ -179,14 +181,14 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
     }
 
     const settings = this.effectiveSettings(options.profile);
-    await prepareWritableMounts(options.profile);
+    await prepareSeneraSandboxWritableMounts(options.profile);
     const mount = projectMicrosandboxWorkspaceMount({
       workspaceRoot: this.workspaceRoot,
       cwd: options.cwd,
       guestWorkspaceRoot: settings.guestWorkspaceRoot,
     });
-    const guestCwd = options.profile?.microsandbox?.guestWorkdir ?? mount.guestCwd;
-    const materialized = await materializeRootfsBundles(options.profile);
+    const guestCwd = options.profile?.sandbox?.guestWorkdir ?? mount.guestCwd;
+    const materialized = await materializeSeneraSandboxRootfs(options.profile);
     const runtime = this.resolveTerminalRuntime();
     let opened: { id: string; session: SeneraMicrosandboxSession } | undefined;
     try {
@@ -219,7 +221,7 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
         cwd: guestCwd,
         env: {
           ...definedEnv(options.env),
-          ...(options.profile?.microsandbox?.env ?? {}),
+          ...(options.profile?.sandbox?.env ?? {}),
         },
       });
       const session = opened.session;
@@ -233,7 +235,7 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
         cwd: guestCwd,
         env: {
           ...definedEnv(options.env),
-          ...(options.profile?.microsandbox?.env ?? {}),
+          ...(options.profile?.sandbox?.env ?? {}),
         },
         columns: options.columns,
         rows: options.rows,
@@ -292,11 +294,11 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
         image: settings.image,
         workspaceRoot: this.workspaceRoot,
         guestWorkspaceRoot: settings.guestWorkspaceRoot,
-        workspaceMount: profile?.microsandbox?.workspaceMount ?? "readonly",
-        writableMounts: profile?.microsandbox?.writableMounts ?? [],
+        workspaceMount: profile?.sandbox?.workspaceMount ?? "readonly",
+        writableMounts: profile?.sandbox?.writableMounts ?? [],
         guestWorkdir,
         rootfsCopies,
-        env: profile?.microsandbox?.env ?? {},
+        env: profile?.sandbox?.env ?? {},
         cpus: settings.cpus,
         memoryMiB: settings.memoryMiB,
         network: settings.network,
@@ -333,9 +335,9 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
   private effectiveSettings(profile: SeneraProcessExecutionRequest["profile"]): SeneraMicrosandboxSettings {
     return resolveSeneraMicrosandboxSettings({
       ...this.settings,
-      image: profile?.microsandbox?.image ?? this.settings.image,
-      guestWorkspaceRoot: profile?.microsandbox?.guestWorkspaceRoot ?? this.settings.guestWorkspaceRoot,
-      network: profile?.microsandbox?.network ?? this.settings.network,
+      image: profile?.sandbox?.image ?? this.settings.image,
+      guestWorkspaceRoot: profile?.sandbox?.guestWorkspaceRoot ?? this.settings.guestWorkspaceRoot,
+      network: profile?.sandbox?.network ?? this.settings.network,
     });
   }
 
@@ -472,7 +474,7 @@ function assertMicrosandboxProfile(profile: SeneraProcessExecutionRequest["profi
     );
   }
 
-  if (profile?.backend === "sandbox" && !profile.microsandbox) {
+  if (profile?.backend === "sandbox" && !profile.sandbox) {
     throw new SeneraExecutionError(
       SeneraExecutionErrorCodes.SandboxUnavailable,
       "沙箱进程缺少 microsandbox 执行画像，已跳过 microsandbox 后端。",
@@ -624,42 +626,6 @@ async function withDeadline<T>(operation: Promise<T>, timeoutMs: number): Promis
   } finally {
     if (timer) clearTimeout(timer);
   }
-}
-
-async function prepareWritableMounts(profile: SeneraProcessExecutionRequest["profile"]): Promise<void> {
-  await Promise.all(
-    (profile?.microsandbox?.writableMounts ?? []).map((mount) => mkdir(mount.hostPath, { recursive: true })),
-  );
-}
-
-async function materializeRootfsBundles(profile: SeneraProcessExecutionRequest["profile"]): Promise<{
-  rootfsCopies: SeneraMicrosandboxCreateRequest["rootfsCopies"];
-  cleanup(): void;
-}> {
-  const bundles = await Promise.all(
-    (profile?.microsandbox?.rootfsBundles ?? []).map(async (bundle) => ({
-      bundle: await createSeneraProcessRootfsBundle({
-        workspaceRoot: bundle.workspaceRoot,
-        packageRoot: bundle.packageRoot,
-      }),
-      guestPath: bundle.guestPath,
-    })),
-  );
-
-  return {
-    rootfsCopies: [
-      ...(profile?.microsandbox?.rootfsCopies ?? []),
-      ...bundles.map(({ bundle, guestPath }) => ({
-        hostPath: bundle.rootPath,
-        guestPath,
-      })),
-    ],
-    cleanup: () => {
-      for (const { bundle } of bundles) {
-        bundle.cleanup();
-      }
-    },
-  };
 }
 
 function isSandboxUnavailableError(error: unknown): error is SeneraExecutionError {

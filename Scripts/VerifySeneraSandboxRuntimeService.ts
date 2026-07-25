@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   assert.equal(snapshot.effectiveMode, "unavailable");
   assert.equal(snapshot.updatedAt, "2026-01-02T03:04:05.000Z");
   assert.equal(snapshot.diagnostics[0]?.code, "microsandbox_backend_configured");
-  assert.match(snapshot.message, /microsandbox 沙箱后端已配置/);
+  assert.match(snapshot.message, /OS 沙箱后端已配置/);
 
   service.markPreparing();
   const preparingSnapshot = service.snapshot();
@@ -40,6 +40,11 @@ async function main(): Promise<void> {
 
   const unavailableSnapshot = new AgentSandboxRuntimeService({
     platform: "linux",
+    configSnapshot: () =>
+      ({
+        ModelProviders: [],
+        SandboxRuntime: { Provider: "microsandbox" },
+      }) satisfies AgentSystemConfig,
     clock: () => new Date("2026-01-02T03:04:05.000Z"),
     packageAvailable: () => false,
   }).snapshot();

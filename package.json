@@ -37,6 +37,7 @@
     "generate.protocol-reference": "tsx Build/GenerateWebSocketProtocolReference.ts",
     "generate.tool-contracts": "tsx Build/GenerateToolContractBundles.ts",
     "generate.plugin-config": "tsx Build/GeneratePluginConfigurationArtifacts.ts",
+    "generate.nano": "node --disable-warning=ExperimentalWarning --experimental-strip-types Build/Distributions/GenerateNanoDistribution.ts --output",
     "verify.tool-contracts": "tsx Build/GenerateToolContractBundles.ts --check",
     "verify.plugin-config": "tsx Build/GeneratePluginConfigurationArtifacts.ts --check",
     "verify.database-contracts": "tsx Build/GenerateDatabaseContracts.ts --check",
@@ -134,6 +135,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "Release/SandboxImage",
+        "to": "SandboxImage",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "extraMetadata": {
@@ -196,6 +204,7 @@
     "chardet": "^2.1.1",
     "cross-spawn": "^7.0.6",
     "diff": "^9.0.0",
+    "dockerode": "^5.0.1",
     "entities": "^8.0.0",
     "eventsource-parser": "^3.0.8",
     "fast-glob": "^3.3.3",
@@ -216,6 +225,7 @@
     "parse5": "^8.0.1",
     "saxes": "^6.0.0",
     "smol-toml": "^1.6.1",
+    "tar-fs": "^3.1.3",
     "tree-kill": "^1.2.2",
     "tslib": "2.8.1",
     "ws": "^8.20.0",
@@ -230,11 +240,13 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/dockerode": "^4.0.1",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.6.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/semver": "^7.7.1",
+    "@types/tar-fs": "^2.0.4",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.7.0",
     "@vitest/coverage-v8": "^4.1.10",
@@ -248,7 +260,7 @@
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.7.0",
     "jsdom": "^29.1.1",
-    "postcss": "^8.4.49",
+    "postcss": "^8.5.23",
     "prettier": "^3.9.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -263,20 +275,9 @@
     "vitest": "^4.1.10"
   },
   "overrides": {
+    "brace-expansion": "5.0.8",
     "js-yaml": "4.3.0",
-    "minimatch@3.1.5": {
-      "brace-expansion": "1.1.16"
-    },
-    "minimatch@5.1.9": {
-      "brace-expansion": "2.1.2"
-    },
-    "minimatch@9.0.9": {
-      "brace-expansion": "2.1.2"
-    },
-    "minimatch@10.2.5": {
-      "brace-expansion": "5.0.7"
-    },
-    "tar": "7.5.20"
+    "tar": "7.5.22"
   },
   "optionalDependencies": {
     "@boundaryml/baml-darwin-arm64": "^0.222.0",

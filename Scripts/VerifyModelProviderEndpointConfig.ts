@@ -7,6 +7,7 @@ import {
 } from "../Source/AgentSystem/AgentDefaults.js";
 import { resolveModelProviderEndpointCatalog } from "../Source/AgentSystem/Defaults/AgentModelProviderDefaults.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { projectEffectiveConfig } from "../Source/AgentSystem/Config/AgentConfigEffectiveProjector.js";
 import { projectAgentConfigForm } from "../Source/AgentSystem/Config/AgentConfigFormProjector.js";
 
 const config: AgentSystemConfig = {
@@ -108,6 +109,26 @@ const overriddenDefaultEndpoint = resolveModelProviderEndpointCatalog({
 }).resolve("default");
 assert.equal(overriddenDefaultEndpoint.BaseUrl, "https://default-override.test/v1");
 assert.equal(overriddenDefaultEndpoint.ApiKey, "override-key");
+
+const sparseDeepSeekConfig: AgentSystemConfig = {
+  DefaultModelProviderId: "deepseek-chat",
+  ModelProviderEndpoints: [{ Id: "deepseek", ApiKey: "deepseek-key" }],
+  ModelProviders: [
+    {
+      Id: "deepseek-chat",
+      ProviderId: "deepseek",
+      Endpoint: "ChatCompletions",
+      Model: "deepseek-chat",
+    },
+  ],
+};
+const sparseDeepSeekEndpoint = resolveModelProviderEndpointCatalog(sparseDeepSeekConfig).resolve("deepseek");
+assert.equal(sparseDeepSeekEndpoint.BaseUrl, "https://api.deepseek.com/v1");
+assert.equal(sparseDeepSeekEndpoint.ApiKey, "deepseek-key");
+assert.deepEqual(
+  projectEffectiveConfig(sparseDeepSeekConfig).ModelProviderEndpoints?.find((endpoint) => endpoint.Id === "deepseek"),
+  sparseDeepSeekEndpoint,
+);
 
 assert.throws(
   () =>

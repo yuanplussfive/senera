@@ -1,0 +1,126 @@
+name: Sync Nano
+
+on:
+  workflow_run:
+    workflows: ["Verify"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-nano
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Publish verified Nano snapshot
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+      NANO_ROOT: ${{ runner.temp }}/senera-nano
+    steps:
+      - name: Check out the verified source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Confirm verified source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git ls-remote origin refs/heads/main | awk '{print $1}')" = "$SOURCE_SHA"
+
+      - name: Generate Nano source distribution
+        shell: bash
+        run: >-
+          node --disable-warning=ExperimentalWarning --experimental-strip-types
+          Build/Distributions/GenerateNanoDistribution.ts
+          --output "$NANO_ROOT"
+          --source-sha "$SOURCE_SHA"
+          --repository-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+
+      - name: Create reproducible Nano lockfile
+        working-directory: ${{ runner.temp }}/senera-nano
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Install Nano dependencies
+        working-directory: ${{ runner.temp }}/senera-nano
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify Nano type boundaries
+        working-directory: ${{ runner.temp }}/senera-nano
+        run: |
+          npm run check.types
+          npm run check.frontend-types
+          npm run dev.server.dry-run
+
+      - name: Verify Nano development startup
+        shell: bash
+        working-directory: ${{ runner.temp }}/senera-nano
+        run: |
+          set -euo pipefail
+          setsid npm run dev > "$RUNNER_TEMP/nano-dev.log" 2>&1 &
+          dev_pid=$!
+          cleanup() {
+            kill -TERM -- "-$dev_pid" >/dev/null 2>&1 || true
+            wait "$dev_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for _attempt in $(seq 1 60); do
+            if ! kill -0 "$dev_pid" >/dev/null 2>&1; then
+              cat "$RUNNER_TEMP/nano-dev.log"
+              exit 1
+            fi
+            if curl --fail --silent --show-error http://127.0.0.1:8787/health/live >/dev/null && \
+              curl --fail --silent --show-error http://127.0.0.1:5173/ >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat "$RUNNER_TEMP/nano-dev.log"
+            exit 1
+          fi
+
+      - name: Publish Nano branch atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest_main="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          if [ "$latest_main" != "$SOURCE_SHA" ]; then
+            echo "main advanced from $SOURCE_SHA to $latest_main; the newer Verify run will publish Nano."
+            exit 0
+          fi
+
+          nano_ref="$(git ls-remote --heads origin refs/heads/nano)"
+          nano_sha="${nano_ref%%[[:space:]]*}"
+
+          git -C "$NANO_ROOT" init --initial-branch=nano
+          git -C "$NANO_ROOT" config user.name "github-actions[bot]"
+          git -C "$NANO_ROOT" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$NANO_ROOT" add --all
+          git -C "$NANO_ROOT" commit -m "chore(nano): sync ${SOURCE_SHA:0:12}"
+
+          git fetch "$NANO_ROOT" refs/heads/nano:refs/nano/generated
+          git push \
+            --force-with-lease="refs/heads/nano:${nano_sha}" \
+            origin \
+            refs/nano/generated:refs/heads/nano

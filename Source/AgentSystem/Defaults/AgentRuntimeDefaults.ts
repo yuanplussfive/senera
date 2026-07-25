@@ -80,6 +80,10 @@ export function resolveSandboxRuntimeConfig(config: AgentSystemConfig): Resolved
   return {
     ...defaults.SandboxRuntime,
     ...configured,
+    Gvisor: {
+      ...defaults.SandboxRuntime.Gvisor,
+      ...configured.Gvisor,
+    },
     Provisioning: structuredClone(configured.Provisioning ?? defaults.SandboxRuntime.Provisioning),
   };
 }

@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "id": "senera-docker-engine-oci-runtime",
+  "provider": "docker-engine",
+  "runtime": {
+    "strategy": "daemon-default",
+    "platform": "linux"
+  },
+  "container": {
+    "labels": {
+      "ai.senera.sandbox-provider": "docker-engine"
+    }
+  }
+}

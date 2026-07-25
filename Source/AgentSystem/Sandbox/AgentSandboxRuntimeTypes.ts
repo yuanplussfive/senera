@@ -1,4 +1,11 @@
-export const AgentSandboxRuntimeProvider = "microsandbox";
+export const AgentSandboxRuntimeProviders = {
+  Microsandbox: "microsandbox",
+  Gvisor: "gvisor",
+  DockerEngine: "docker-engine",
+} as const;
+
+export type AgentSandboxRuntimeProvider =
+  (typeof AgentSandboxRuntimeProviders)[keyof typeof AgentSandboxRuntimeProviders];
 
 export type AgentSandboxEffectiveMode = "sandbox" | "unavailable" | "disabled";
 export type AgentSandboxRuntimeState = "disabled" | "unknown" | "preparing" | "ready" | "unavailable";
@@ -6,12 +13,13 @@ export type AgentSandboxDiagnosticSeverity = "warning" | "error";
 
 export const AgentSandboxPreparationStages = {
   CheckingHostRuntime: "checking_host_runtime",
+  ConnectingWorker: "connecting_worker",
   LoadingRuntime: "loading_runtime",
   ResolvingArchive: "resolving_archive",
-  DownloadingArchive: "downloading_archive",
   VerifyingArchive: "verifying_archive",
   ImportingImage: "importing_image",
   WarmingImage: "warming_image",
+  ProbingSandbox: "probing_sandbox",
 } as const;
 
 export type AgentSandboxPreparationStage =
@@ -50,7 +58,7 @@ export interface AgentSandboxRuntimePathSnapshot {
 }
 
 export interface AgentSandboxRuntimeSnapshot {
-  provider: typeof AgentSandboxRuntimeProvider;
+  provider: AgentSandboxRuntimeProvider;
   platform: NodeJS.Platform;
   state: AgentSandboxRuntimeState;
   supported: boolean;

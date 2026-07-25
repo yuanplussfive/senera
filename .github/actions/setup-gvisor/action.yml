@@ -1,0 +1,28 @@
+name: Setup gVisor
+description: Install and register the official gVisor runsc OCI runtime for Docker Engine verification.
+
+runs:
+  using: composite
+  steps:
+    - name: Install official runsc release
+      shell: bash
+      run: |
+        set -euo pipefail
+        architecture="$(uname -m)"
+        release_root="https://storage.googleapis.com/gvisor/releases/release/latest/${architecture}"
+        temporary_root="$(mktemp -d)"
+        cleanup() {
+          rm -rf "$temporary_root"
+        }
+        trap cleanup EXIT
+
+        curl --fail --location --retry 3 --retry-all-errors --output "$temporary_root/runsc" "$release_root/runsc"
+        curl --fail --location --retry 3 --retry-all-errors --output "$temporary_root/runsc.sha512" "$release_root/runsc.sha512"
+        (
+          cd "$temporary_root"
+          sha512sum --check runsc.sha512
+        )
+        sudo install --mode=0755 "$temporary_root/runsc" /usr/local/bin/runsc
+        sudo /usr/local/bin/runsc install
+        sudo systemctl restart docker
+        docker info --format '{{json .Runtimes}}' | grep --quiet '"runsc"'

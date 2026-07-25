@@ -1,0 +1,87 @@
+{
+  "$schema": "./NanoDistribution.schema.json",
+  "schemaVersion": 1,
+  "id": "nano",
+  "source": {
+    "branch": "main",
+    "outputBranch": "nano",
+    "repositoryUrl": "https://github.com/yuanplussfive/senera"
+  },
+  "files": {
+    "gitPathspecs": [
+      ".editorconfig",
+      ".gitattributes",
+      ".gitignore",
+      ".npmrc",
+      "LICENSE",
+      "package.json",
+      "package-lock.json",
+      "senera.config.example.json",
+      "Apps/DevServer.ts",
+      "Apps/ServerRuntime.ts",
+      "Apps/ServerWatch.ts",
+      "Source",
+      "Frontend",
+      "Packages",
+      "Plugins",
+      "System",
+      "baml_src",
+      ":(exclude,glob)Frontend/**/*.stories.tsx"
+    ]
+  },
+  "rootPackage": {
+    "copyFields": ["name", "version", "keywords", "author", "license", "type", "workspaces", "overrides"],
+    "setFields": {
+      "private": true,
+      "description": "Senera Nano source development distribution.",
+      "engines": {
+        "node": ">=22 <23"
+      }
+    },
+    "scripts": ["dev", "dev.server", "dev.server.dry-run", "dev.frontend", "check.types", "check.frontend-types"],
+    "dependencies": {
+      "mode": "exclude",
+      "names": ["fast-glob", "tslib"]
+    },
+    "devDependencies": {
+      "mode": "include",
+      "names": [
+        "@types/markdown-it",
+        "@types/node",
+        "@types/react",
+        "@types/react-dom",
+        "@types/ws",
+        "@vitejs/plugin-react",
+        "autoprefixer",
+        "concurrently",
+        "postcss",
+        "tailwindcss",
+        "tsx",
+        "typescript",
+        "vite"
+      ]
+    },
+    "optionalDependencies": {
+      "mode": "all"
+    }
+  },
+  "workspacePackages": {
+    "Frontend/package.json": {
+      "scripts": ["dev", "check.types"]
+    }
+  },
+  "typescript": {
+    "include": [
+      "Apps/DevServer.ts",
+      "Apps/ServerRuntime.ts",
+      "Apps/ServerWatch.ts",
+      "Plugins/**/*.ts",
+      "Source/**/*.ts",
+      "System/**/*.ts"
+    ]
+  },
+  "generatedFiles": {
+    "readmeTemplate": "Build/Distributions/NanoREADME.md",
+    "metadataFile": "SENERA_NANO.json"
+  }
+}

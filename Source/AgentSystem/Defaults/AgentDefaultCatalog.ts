@@ -7,7 +7,6 @@ import type {
   ResolvedAgentDefaultsConfig,
 } from "./AgentDefaultValueTypes.js";
 import { moduleDirPath } from "../Core/AgentPath.js";
-import { SeneraMicrosandboxDefaults } from "../Execution/SeneraMicrosandboxDefaults.js";
 import { SeneraDefaultTerminationGraceMs } from "../Execution/SeneraTerminationPolicy.js";
 import { AgentPiSessionCacheDefaults } from "../Pi/AgentPiSessionCachePolicy.js";
 import { AgentToolSearchMemoryExpansionModes } from "../Types/AgentToolAndMemoryConfigTypes.js";
@@ -83,10 +82,14 @@ export const AgentDefaults = {
   },
   SandboxRuntime: {
     Enabled: true,
+    Provider: "auto",
     BaseDir: ".senera/sandbox-runtime",
+    Gvisor: {
+      WorkerSocketPath: "gvisor/worker.sock",
+      PreparationTimeoutSeconds: 30,
+    },
     Provisioning: {
-      Kind: "Oci",
-      Images: [SeneraMicrosandboxDefaults.image],
+      Kind: "ReleaseBundle",
     },
   },
   AgentLoop: {

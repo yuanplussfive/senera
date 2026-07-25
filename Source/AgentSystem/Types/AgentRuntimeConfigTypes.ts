@@ -101,14 +101,25 @@ export interface ResolvedAgentExecutionResourcesConfig extends Required<AgentExe
 
 export interface AgentSandboxRuntimeConfig {
   Enabled?: boolean;
+  Provider?: AgentSandboxProviderPreference;
   BaseDir?: string;
   Provisioning?: AgentSandboxProvisioningConfig;
+  Gvisor?: AgentGvisorRuntimeConfig;
 }
 
 export interface ResolvedAgentSandboxRuntimeConfig {
   Enabled: boolean;
+  Provider: AgentSandboxProviderPreference;
   BaseDir: string;
   Provisioning: ResolvedAgentSandboxProvisioningConfig;
+  Gvisor: Required<AgentGvisorRuntimeConfig>;
+}
+
+export type AgentSandboxProviderPreference = "auto" | "microsandbox" | "gvisor" | "docker-engine";
+
+export interface AgentGvisorRuntimeConfig {
+  WorkerSocketPath?: string;
+  PreparationTimeoutSeconds?: number;
 }
 
 export type AgentSandboxProvisioningConfig =

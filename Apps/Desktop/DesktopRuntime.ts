@@ -3,6 +3,10 @@ import path from "node:path";
 import electron from "electron";
 import { syncRuntimeDirectory } from "../RuntimeAssetSync.js";
 import { resolveDesktopResourceRoot, resolveDesktopWorkspaceRoot } from "./DesktopRuntimePathResolver.js";
+import {
+  resolveAgentSandboxDevelopmentBundleRoot,
+  resolveAgentSandboxPackagedBundleRoot,
+} from "../../Source/AgentSystem/Sandbox/AgentSandboxBundlePaths.js";
 
 const { app } = electron;
 
@@ -16,6 +20,7 @@ export interface DesktopRuntimePaths {
   systemPluginRoot: string;
   userPluginRoot: string;
   sandboxRuntimeRoot: string;
+  sandboxBundleRoot: string;
   microsandboxRuntimeBridgePath: string;
   frontendIndexHtml: string;
   windowIconPath: string;
@@ -61,6 +66,9 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
   const configDatabasePath = path.join(desktopDataRoot, ConfigDatabaseFileName);
   const configSeedPath = path.join(resourceRoot, ConfigTemplateFileName);
   const sandboxRuntimeRoot = path.join(desktopDataRoot, "SandboxRuntime");
+  const sandboxBundleRoot = app.isPackaged
+    ? resolveAgentSandboxPackagedBundleRoot(process.resourcesPath)
+    : resolveAgentSandboxDevelopmentBundleRoot(resourceRoot);
   const microsandboxRuntimeBridgePath = path.join(
     app.isPackaged ? unpackedAppRoot(appRoot) : appRoot,
     ...MicrosandboxRuntimeBridgePath,
@@ -98,6 +106,7 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
     systemPluginRoot: runtimeSystemPlugins,
     userPluginRoot: runtimeUserPlugins,
     sandboxRuntimeRoot,
+    sandboxBundleRoot,
     microsandboxRuntimeBridgePath,
     frontendIndexHtml: path.join(resourceRoot, "Frontend", "dist", "index.html"),
     windowIconPath: path.join(resourceRoot, "Apps", "Desktop", "Assets", DesktopIconFileName),

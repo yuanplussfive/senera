@@ -162,7 +162,7 @@ export function createAgentShellExecutionProfile(
     name: ShellExecutionProfileName,
     kind: "shell",
     backend: executionPlan.backend,
-    microsandbox: local
+    sandbox: local
       ? undefined
       : {
           network: executionPlan.network,

@@ -3,7 +3,7 @@ import path from "node:path";
 import type { SeneraMicrosandboxModuleLoader } from "../Execution/SeneraMicrosandboxSdkAdapter.js";
 import type { ResolvedAgentSandboxRuntimeConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentSandboxRegistryConfig } from "../Types/AgentRuntimeConfigTypes.js";
-import { installAgentSandboxReleaseArchive } from "./AgentSandboxArchiveInstaller.js";
+import { installAgentSandboxBundle } from "./AgentSandboxArchiveInstaller.js";
 import {
   createAgentMicrosandboxCli,
   createAgentMicrosandboxImageArchive,
@@ -21,14 +21,14 @@ export interface AgentSandboxRuntimePaths {
 
 export interface AgentSandboxRuntimePreparationOptions {
   workspaceRoot: string;
-  config: ResolvedAgentSandboxRuntimeConfig;
-  productVersion?: string;
+  config: Pick<ResolvedAgentSandboxRuntimeConfig, "Enabled" | "BaseDir" | "Provisioning">;
+  sandboxBundleRoot?: string;
   architecture?: string;
   microsandbox?: MicrosandboxModule;
   microsandboxModuleLoader?: SeneraMicrosandboxModuleLoader;
   microsandboxPackageEntryResolver?: AgentMicrosandboxPackageEntryResolver;
   imageArchive?: AgentMicrosandboxImageArchiveLoader;
-  archiveInstaller?: typeof installAgentSandboxReleaseArchive;
+  archiveInstaller?: typeof installAgentSandboxBundle;
   log?: (message: string) => void;
   onProgress?: (progress: AgentSandboxPreparationProgress) => void;
 }
@@ -226,9 +226,9 @@ async function resolveSandboxProvisioning(
     };
   }
 
-  const productVersion = options.productVersion?.trim();
-  if (!productVersion) {
-    throw new Error("ReleaseBundle sandbox provisioning requires the application product version.");
+  const sandboxBundleRoot = options.sandboxBundleRoot?.trim();
+  if (!sandboxBundleRoot) {
+    throw new Error("ReleaseBundle sandbox provisioning requires a trusted local Bundle root.");
   }
   const imageArchive =
     options.imageArchive ??
@@ -238,9 +238,9 @@ async function resolveSandboxProvisioning(
         packageEntryResolver: options.microsandboxPackageEntryResolver,
       }),
     );
-  const installation = await (options.archiveInstaller ?? installAgentSandboxReleaseArchive)({
+  const installation = await (options.archiveInstaller ?? installAgentSandboxBundle)({
     baseDir: paths.baseDir,
-    productVersion,
+    bundleRoot: resolveConfiguredPath(options.workspaceRoot, sandboxBundleRoot),
     architecture: options.architecture,
     imageArchive,
     onProgress: report,

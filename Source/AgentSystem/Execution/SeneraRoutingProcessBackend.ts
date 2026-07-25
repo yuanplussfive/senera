@@ -10,7 +10,7 @@ import { isSeneraShellDialectCompatible } from "./SeneraShellCommand.js";
 export interface SeneraRoutingProcessBackendOptions {
   readonly local: SeneraProcessExecutionBackend;
   readonly sandbox: SeneraProcessExecutionBackend;
-  /** Whether this runtime is allowed to create a microsandbox guest. */
+  /** Whether this runtime is allowed to create an isolated sandbox guest. */
   readonly sandboxEnabled?: boolean;
 }
 

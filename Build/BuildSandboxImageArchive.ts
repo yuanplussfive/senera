@@ -1,14 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import { link, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pipeline } from "node:stream/promises";
+import { constants as zlibConstants, createGzip } from "node:zlib";
 import { isMainModule } from "../Source/AgentSystem/Core/AgentPath.js";
 import {
   AgentSandboxArchiveManifestSchema,
   assertAgentSandboxArchiveManifest,
   readAgentSandboxDistributionContract,
-  resolveAgentSandboxReleaseLocation,
+  resolveAgentSandboxBundleLocation,
   type AgentSandboxArchiveManifest,
   type AgentSandboxDistributionContract,
 } from "../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
@@ -17,12 +19,10 @@ import {
   createMicrosandboxDistributionRuntime,
   type MicrosandboxDistributionRuntime,
 } from "./MicrosandboxDistributionRuntime.js";
-import { readProductReleaseInfo } from "./ProductReleaseInfo.js";
 
 export interface BuildSandboxImageArchiveOptions {
   workspaceRoot: string;
   outputRoot: string;
-  productVersion: string;
   architecture?: string;
   contract?: AgentSandboxDistributionContract;
   runtime?: MicrosandboxDistributionRuntime;
@@ -37,12 +37,10 @@ export interface SandboxImageArchiveBuildResult {
 
 if (isMainModule(import.meta.url)) {
   const workspaceRoot = process.cwd();
-  const release = readProductReleaseInfo({ workspaceRoot });
   const outputRoot = resolveOutputRoot(workspaceRoot, process.argv.slice(2));
   const result = await buildSandboxImageArchive({
     workspaceRoot,
     outputRoot,
-    productVersion: release.version,
     log: (message) => process.stdout.write(`${message}\n`),
   });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -52,20 +50,22 @@ export async function buildSandboxImageArchive(
   options: BuildSandboxImageArchiveOptions,
 ): Promise<SandboxImageArchiveBuildResult> {
   const contract = options.contract ?? readAgentSandboxDistributionContract();
-  const location = resolveAgentSandboxReleaseLocation(contract, options.productVersion, options.architecture);
+  const location = resolveAgentSandboxBundleLocation(contract, options.architecture);
   await assertMicrosandboxVersion(contract.microsandboxVersion);
   await mkdir(options.outputRoot, { recursive: true });
 
-  const archivePath = path.join(options.outputRoot, location.target.archive.assetName);
-  const manifestPath = path.join(options.outputRoot, contract.release.manifestAssetName);
-  const stagingArchivePath = path.join(
+  const archivePath = path.join(options.outputRoot, location.archiveFileName);
+  const manifestPath = path.join(options.outputRoot, location.manifestFileName);
+  const stagingBundlePath = path.join(
     options.outputRoot,
-    `.${location.target.archive.assetName}.${process.pid}.${randomUUID()}.tmp`,
+    `.${location.archiveFileName}.${process.pid}.${randomUUID()}.tmp`,
   );
   await assertOutputsAbsent([archivePath, manifestPath]);
 
   let sourceRuntimeRoot: string | undefined = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-image-source-"));
   const verificationRuntimeRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-image-verification-"));
+  const archiveStagingRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-image-archive-"));
+  const rawArchivePath = path.join(archiveStagingRoot, "image.oci.tar");
   const buildId = randomUUID().replaceAll("-", "").slice(0, 16);
   try {
     const runtime =
@@ -82,24 +82,33 @@ export async function buildSandboxImageArchive(
     await runtime.saveOciImage({
       baseDir: sourceRuntimeRoot,
       reference: location.target.sourceImage,
-      outputPath: stagingArchivePath,
+      outputPath: rawArchivePath,
     });
-    const archiveStat = await stat(stagingArchivePath);
-    if (!archiveStat.isFile() || archiveStat.size <= 0) {
-      throw new Error(`Microsandbox did not produce a valid OCI image archive: ${stagingArchivePath}`);
-    }
-    if (archiveStat.size > contract.downloadPolicy.archiveMaxBytes) {
-      throw new Error(`Sandbox image archive exceeds the distribution limit: ${archiveStat.size} bytes.`);
-    }
+    const rawArchiveStat = await requireFileWithinLimit(
+      rawArchivePath,
+      contract.limits.archiveMaxBytes,
+      "uncompressed OCI archive",
+    );
+    options.log?.(`Compressing sandbox OCI archive as ${location.target.archive.compression}...`);
+    await compressArchive(rawArchivePath, stagingBundlePath, location.target.archive.compression);
+    const bundleStat = await requireFileWithinLimit(
+      stagingBundlePath,
+      contract.limits.bundleMaxBytes,
+      "compressed Sandbox Bundle",
+    );
 
-    // Verification must have no access to the cache that produced the archive.
+    // Verification must have no access to the cache or raw archive that produced the Bundle.
     await rm(sourceRuntimeRoot, { recursive: true, force: true });
     sourceRuntimeRoot = undefined;
+    await rm(rawArchivePath, { force: true });
 
     await runtime.loadOciImage({
       baseDir: verificationRuntimeRoot,
-      archivePath: stagingArchivePath,
+      archivePath: stagingBundlePath,
       reference: location.target.runtimeImage,
+      compression: location.target.archive.compression,
+      expectedUncompressedBytes: rawArchiveStat.size,
+      maxUncompressedBytes: contract.limits.archiveMaxBytes,
     });
     await runtime.prepareImage({
       baseDir: verificationRuntimeRoot,
@@ -110,10 +119,9 @@ export async function buildSandboxImageArchive(
     });
 
     const manifest = AgentSandboxArchiveManifestSchema.parse({
-      formatVersion: 3,
+      formatVersion: 4,
       distributionId: contract.id,
       archiveVersion: contract.archiveVersion,
-      productVersion: options.productVersion,
       microsandboxVersion: contract.microsandboxVersion,
       target: location.targetId,
       sourceImage: location.target.sourceImage,
@@ -121,21 +129,24 @@ export async function buildSandboxImageArchive(
       asset: {
         format: location.target.archive.format,
         mediaType: location.target.archive.mediaType,
-        fileName: location.target.archive.assetName,
-        url: location.archiveUrl,
-        sizeBytes: archiveStat.size,
-        sha256: await sha256File(stagingArchivePath),
+        compression: location.target.archive.compression,
+        compressedMediaType: location.target.archive.compressedMediaType,
+        fileName: location.archiveFileName,
+        sizeBytes: bundleStat.size,
+        uncompressedSizeBytes: rawArchiveStat.size,
+        sha256: await sha256File(stagingBundlePath),
       },
     });
-    assertAgentSandboxArchiveManifest(manifest, contract, options.productVersion, location);
-    await publishFile(stagingArchivePath, archivePath);
+    assertAgentSandboxArchiveManifest(manifest, contract, location.targetId);
+    await publishFile(stagingBundlePath, archivePath);
     await writeFileAtomically(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     return { archivePath, manifestPath, manifest };
   } finally {
     await Promise.all([
       sourceRuntimeRoot ? rm(sourceRuntimeRoot, { recursive: true, force: true }) : Promise.resolve(),
       rm(verificationRuntimeRoot, { recursive: true, force: true }),
-      rm(stagingArchivePath, { force: true }),
+      rm(archiveStagingRoot, { recursive: true, force: true }),
+      rm(stagingBundlePath, { force: true }),
     ]);
   }
 }
@@ -147,6 +158,29 @@ async function assertMicrosandboxVersion(expectedVersion: string): Promise<void>
       `Sandbox distribution requires microsandbox ${expectedVersion}, received ${microsandboxPackage.version}: ${microsandboxPackage.rootPath}`,
     );
   }
+}
+
+async function compressArchive(sourcePath: string, targetPath: string, compression: "gzip"): Promise<void> {
+  switch (compression) {
+    case "gzip":
+      await pipeline(
+        createReadStream(sourcePath),
+        createGzip({ level: zlibConstants.Z_BEST_COMPRESSION }),
+        createWriteStream(targetPath, { flags: "wx" }),
+      );
+      return;
+  }
+}
+
+async function requireFileWithinLimit(filePath: string, maxBytes: number, label: string) {
+  const value = await stat(filePath);
+  if (!value.isFile() || value.size <= 0) {
+    throw new Error(`Microsandbox did not produce a valid ${label}: ${filePath}`);
+  }
+  if (value.size > maxBytes) {
+    throw new Error(`Sandbox ${label} exceeds the distribution limit: ${value.size} bytes.`);
+  }
+  return value;
 }
 
 async function sha256File(filePath: string): Promise<string> {
@@ -178,7 +212,7 @@ async function assertOutputsAbsent(filePaths: readonly string[]): Promise<void> 
       if (nodeErrorCode(error) === "ENOENT") continue;
       throw error;
     }
-    throw new Error(`Sandbox release output already exists: ${filePath}`);
+    throw new Error(`Sandbox Bundle output already exists: ${filePath}`);
   }
 }
 

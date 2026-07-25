@@ -52,6 +52,8 @@ import {
   type SeneraMicrosandboxModuleLoader,
 } from "../Source/AgentSystem/Execution/SeneraMicrosandboxSdkAdapter.js";
 import type { AgentMicrosandboxPackageEntryResolver } from "../Source/AgentSystem/Sandbox/AgentMicrosandboxCli.js";
+import type { AgentSandboxRuntimeProvider } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
+import type { SeneraGvisorWorkerClient } from "../Source/AgentSystem/Execution/SeneraGvisorTypes.js";
 
 export interface SeneraServerOptions {
   workspaceRoot?: string;
@@ -61,12 +63,14 @@ export interface SeneraServerOptions {
   configSource?: AgentConfigSourceOptions;
   runtimeConfigProjection?: (config: AgentSystemConfig) => AgentSystemConfig;
   runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
-  productVersion?: string;
+  sandboxBundleRoot?: string;
   /**
    * Set only by a deployment bootstrap that has already prepared and verified
    * the configured microsandbox runtime before opening the web server.
    */
   sandboxRuntimePrepared?: boolean;
+  sandboxProvider?: AgentSandboxRuntimeProvider;
+  dockerEngineWorker?: SeneraGvisorWorkerClient;
   microsandboxModuleLoader?: SeneraMicrosandboxModuleLoader;
   microsandboxPackageEntryResolver?: AgentMicrosandboxPackageEntryResolver;
 }
@@ -123,7 +127,9 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   const sandboxRuntimeService = new AgentSandboxRuntimeService({
     workspaceRoot,
     configSnapshot,
-    productVersion: options.productVersion,
+    sandboxBundleRoot: options.sandboxBundleRoot,
+    provider: options.sandboxProvider,
+    dockerEngineWorker: options.dockerEngineWorker,
   });
   const microsandboxSdk = options.microsandboxModuleLoader
     ? new SeneraMicrosandboxDynamicSdkAdapter(options.microsandboxModuleLoader)
@@ -153,6 +159,8 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     executionResources,
     sandboxRuntimeReady: () => sandboxRuntimeService.snapshot().state === "ready",
     microsandboxSdk,
+    sandboxProvider: sandboxRuntimeService.runtimeProvider(),
+    gvisorWorker: sandboxRuntimeService.gvisorWorkerClient(),
   });
 
   const loopFactory = (modelProviderId?: string) => {
@@ -371,7 +379,7 @@ function startSandboxRuntimePreparation(input: {
   if (!sandboxRuntimeConfig.Enabled) {
     input.sandboxRuntimeService.markDisabled();
     input.logger.info("sandbox.runtime.disabled", {
-      provider: "microsandbox",
+      provider: input.sandboxRuntimeService.runtimeProvider(),
     });
     return;
   }
@@ -379,7 +387,7 @@ function startSandboxRuntimePreparation(input: {
   if (input.prepared) {
     input.sandboxRuntimeService.markReady();
     input.logger.success("sandbox.runtime.ready", {
-      provider: "microsandbox",
+      provider: input.sandboxRuntimeService.runtimeProvider(),
     });
     return;
   }
@@ -394,7 +402,7 @@ function startSandboxRuntimePreparation(input: {
     .then(
       () => {
         input.logger.success("sandbox.runtime.ready", {
-          provider: "microsandbox",
+          provider: input.sandboxRuntimeService.runtimeProvider(),
         });
       },
       (error: unknown) => {

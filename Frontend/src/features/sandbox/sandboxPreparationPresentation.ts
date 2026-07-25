@@ -7,6 +7,25 @@ export function sandboxStatusDetail(status?: SandboxStatusSnapshotData | null): 
     : (status?.message ?? frontendMessage("sandbox.status.unsynced"));
 }
 
+export function sandboxStatusAvailabilitySuffix(status?: SandboxStatusSnapshotData | null): string {
+  if (status?.effectiveMode === "disabled") return frontendMessage("sandbox.status.disabledSuffix");
+  if (status?.effectiveMode !== "sandbox") return frontendMessage("sandbox.status.unavailableSuffix");
+  return frontendMessage("sandbox.status.sandboxSuffix", { provider: sandboxProviderLabel(status.provider) });
+}
+
+export function sandboxProviderLabel(provider: string | undefined): string {
+  switch (provider) {
+    case "microsandbox":
+      return frontendMessage("sandbox.provider.microsandbox");
+    case "gvisor":
+      return frontendMessage("sandbox.provider.gvisor");
+    case "docker-engine":
+      return frontendMessage("sandbox.provider.dockerEngine");
+    default:
+      return frontendMessage("sandbox.provider.unknown");
+  }
+}
+
 export function sandboxPreparationRatio(progress?: SandboxPreparationProgressData): number | undefined {
   const values =
     progress?.downloadedBytes !== undefined && progress.totalBytes !== undefined
@@ -23,14 +42,12 @@ function describeSandboxPreparation(progress: SandboxPreparationProgressData): s
   switch (progress.stage) {
     case "checking_host_runtime":
       return frontendMessage("sandbox.progress.checkingHostRuntime");
+    case "connecting_worker":
+      return frontendMessage("sandbox.progress.connectingWorker");
     case "loading_runtime":
-      return frontendMessage("sandbox.progress.loadingRuntime");
+      return frontendMessage("sandbox.progress.loadingRuntime", { item: progress.item ?? "" });
     case "resolving_archive":
       return frontendMessage("sandbox.progress.resolvingArchive");
-    case "downloading_archive":
-      return frontendMessage("sandbox.progress.downloadingArchive", {
-        progress: formatImageProgress(progress) ?? progressCount,
-      });
     case "verifying_archive":
       return frontendMessage("sandbox.progress.verifyingArchive");
     case "importing_image":
@@ -40,6 +57,8 @@ function describeSandboxPreparation(progress: SandboxPreparationProgressData): s
         item: progress.item ?? "",
         progress: formatImageProgress(progress) ?? progressCount,
       });
+    case "probing_sandbox":
+      return frontendMessage("sandbox.progress.probingSandbox", { item: progress.item ?? "" });
   }
 }
 

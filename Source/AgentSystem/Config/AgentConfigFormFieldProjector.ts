@@ -59,6 +59,7 @@ export function projectConfigFormField(options: {
     defaultItem: options.field.defaultItem,
     keyPlaceholder: options.field.keyPlaceholder,
     valuePlaceholder: options.field.valuePlaceholder,
+    modelSelection: options.field.modelSelection,
   };
 }
 

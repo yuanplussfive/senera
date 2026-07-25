@@ -3,7 +3,10 @@ import type {
   AgentSystemConfig,
   ResolvedAgentModelProviderEndpointConfig,
 } from "../Types/AgentConfigTypes.js";
-import { resolveModelProviderEndpointCatalog } from "../Defaults/AgentModelProviderDefaults.js";
+import {
+  resolveModelProviderEndpointCatalog,
+  resolveStandaloneModelProviderEndpointConfig,
+} from "../Defaults/AgentModelProviderDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export interface AgentProviderModelInfo {
@@ -43,7 +46,7 @@ export class AgentProviderModelDiscovery {
     endpoint?: AgentModelProviderEndpointConfig;
   }): Promise<AgentProviderModelSnapshot> {
     const endpoint = input.endpoint
-      ? resolveConfiguredEndpoint({ ...input.endpoint, Id: input.providerId })
+      ? resolveStandaloneModelProviderEndpointConfig({ ...input.endpoint, Id: input.providerId })
       : this.resolveEndpoint(input.providerId);
     const fingerprint = endpointFingerprint(endpoint);
     const cached = this.cache.get(endpoint.Id);
@@ -100,25 +103,8 @@ export class AgentProviderModelDiscovery {
   }
 
   private resolveEndpoint(providerId: string): ResolvedAgentModelProviderEndpointConfig {
-    const config = this.options.configSnapshot();
-    const direct = config.ModelProviderEndpoints?.find((endpoint) => endpoint.Id === providerId);
-    return direct ? resolveConfiguredEndpoint(direct) : resolveModelProviderEndpointCatalog(config).resolve(providerId);
+    return resolveModelProviderEndpointCatalog(this.options.configSnapshot()).resolve(providerId);
   }
-}
-
-function resolveConfiguredEndpoint(
-  endpoint: AgentModelProviderEndpointConfig,
-): ResolvedAgentModelProviderEndpointConfig {
-  return {
-    Id: endpoint.Id,
-    Icon: endpoint.Icon ?? "",
-    Enabled: endpoint.Enabled ?? true,
-    Kind: endpoint.Kind ?? "OpenAICompatible",
-    BaseUrl: endpoint.BaseUrl ?? "",
-    ApiKey: endpoint.ApiKey ?? "",
-    ApiVersion: endpoint.ApiVersion ?? "2023-06-01",
-    Headers: { ...(endpoint.Headers ?? {}) },
-  };
 }
 
 function modelsUrl(baseUrl: string): URL {

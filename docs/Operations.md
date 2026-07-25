@@ -28,9 +28,11 @@ npm run benchmark.pi-planner -- -- --stage=direct-flow --iterations=3
 
 ## Docker 启动
 
-容器监听 `8787`，所有运行数据都放在容器内的 `/data`。`compose.yaml` 使用 Docker named volume，首次部署不需要先处理宿主机目录权限。Docker 主机必须将 `/dev/kvm` 传入容器，并允许 `NET_ADMIN`，否则 OS Sandbox 无法运行且容器会停止启动。
+容器监听 `8787`，所有运行数据都放在容器内的 `/data`。`compose.yaml` 使用 Docker named volume，首次部署不需要先处理宿主机目录权限。Docker 部署不需要把 `/dev/kvm` 或 `NET_ADMIN` 传给 Senera 主服务；宿主已注册 `runsc` 时使用 gVisor，否则使用受限 Docker Engine 容器。
 
-Senera 不提供默认账号或默认密码。首次启动前，直接编辑唯一的 `compose.yaml`，填写管理员资料：
+镜像入口只在权限准备阶段以 root 运行，然后通过 `exec` 以非 root `node` 启动主服务。Compose 另起一个网络隔离、只读的 `sandbox-worker`，该 Worker 是唯一挂载 Docker Engine Socket 的组件，并且只接受版本化 Worker 协议允许的镜像、挂载和资源策略；主服务仅通过私有 Unix Socket 访问 Worker。
+
+Senera 不提供默认账号或默认密码。首次启动前，必须提供管理员资料。可以直接把 `compose.yaml` 中三条 `SENERA_ADMIN_*` 表达式改为字面值，也可以在 1Panel 或 Compose 环境变量中填写：
 
 ```yaml
 SENERA_ADMIN_LOGIN_NAME: "admin"
@@ -65,23 +67,24 @@ Docker 镜像运行的是标准 Node.js 22，不是 Electron，因此不需要�
 
 默认 `compose.yaml` 做了这些事情：
 
-- `senera-data:/data`：配置、数据库、会话、用户插件和 microsandbox 状态与镜像缓存都在这里。
+- `senera-data:/data`：配置、数据库、会话和用户插件。
 - `8787:8787`：宿主机所有网络接口发布 `8787`，访问控制仍由精确 Origin 白名单和管理员认证负责。
-- `/dev/kvm:/dev/kvm` 与 `NET_ADMIN`：唯一 Compose 部署明确要求它们，以启动每个 Sandbox 工具调用所需的 microVM。
+- `sandbox-worker`：网络隔离、只读的受限 Worker；它独占 Docker Engine Socket，主服务只持有控制 Socket。
 
-Docker 不提供“无 OS Sandbox”模式。嵌套虚拟化、云实例或 Docker Desktop 未暴露 KVM 时，容器会在 HTTP 服务启动前失败；不要删除 Compose 权限后期待它改在容器本机执行。
+Docker 不会把 Sandbox 请求改为本机执行。`runsc` 未注册时，启动协商会锁定受限 Docker Engine provider；Docker Engine 不可连接、Bundle 无法验证或 Worker 不可用时，容器会在打开 Web 服务前明确失败，不会在工具执行阶段静默切换。Local 工具与 Sandbox 边界保持独立。
+
+应用进程和镜像健康检查都以 `node` 运行。镜像必须先以 root 进入权限准备入口，因此手工执行容器内诊断命令时应显式沿用应用身份，例如 `docker compose exec -T --user node senera id`；不要依赖 `docker exec` 的默认用户。
 
 镜像内置的用户插件会在容器启动时同步到 `/data/Plugins`。该目录属于数据卷，插件的
 `PluginConfig.toml` 会保留用户修改；放入该目录的自定义插件也不会被启动同步清理。
 
-如果服务器上 `8787` 已被占用，直接把 `compose.yaml` 的端口映射改为：
+如果服务器上 `8787` 已被占用，在启动前指定另一个主机端口：
 
 ```yaml
-ports:
-  - "18787:8787"
+SENERA_HOST_PORT: "18787"
 ```
 
-同时把浏览器实际使用的 `http://IP:18787` 加入 `SENERA_ALLOWED_ORIGINS`。
+同时把浏览器实际使用的 `http://IP:18787` 加入 `SENERA_ALLOWED_ORIGINS`。这两个值可作为部署平台中的 Compose 环境变量设置，或直接替换 `compose.yaml` 里的默认值。
 
 ## 管理员访问
 
@@ -193,10 +196,10 @@ docker compose images
 `--pull always` 会先解析远端标签；只有镜像 digest 变化时才替换服务容器。可用下面的命令检查运行中镜像声明的版本和镜像 ID：
 
 ```bash
-docker inspect senera --format '{{index .Config.Labels "org.opencontainers.image.version"}} {{.Image}}'
+docker inspect "$(docker compose ps -q senera)" --format '{{index .Config.Labels "org.opencontainers.image.version"}} {{.Image}}'
 ```
 
-数据会继续留在 Compose 里的 `senera-data` volume。实际 volume 名称可以用 `docker volume ls` 查看。大版本升级前建议备份：
+数据会继续留在 Compose 里的 `senera-data` volume。实际 volume 名称可以用 `docker volume ls` 查看；同一主机运行多个部署时，设置唯一的 `SENERA_DATA_VOLUME` 环境变量。大版本升级前建议备份：
 
 ```bash
 docker compose exec -T senera tar czf - -C /data . > senera-data-backup.tgz
@@ -273,17 +276,17 @@ docker compose up -d
 
 ## 沙箱状态
 
-Docker 在 Web 服务监听前读取随程序发布的版本化分发契约，从同版本 GitHub Release 下载 OCI 镜像归档清单和归档。运行时严格核对分发 ID、产品版本、microsandbox 版本、目标架构、归档格式与媒体类型、固定 OCI digest、资产 URL、文件大小和 SHA-256，然后调用官方 `msb image load` 将镜像物化到当前 `MSB_HOME`，并以 `pullPolicy("never")` 启动一次真实 microVM 作为就绪依据。归档缓存在 `/data/.senera/sandbox-runtime`，已安装版本仍会重新校验归档摘要，但不会重新访问网络或重复导入。
+Docker 的 `sandbox-worker` 在 Web 服务监听前读取镜像内 `/app/SandboxImage` 的版本化分发契约清单和 gzip 压缩 OCI Bundle。Worker 严格核对分发 ID、归档版本、目标架构、归档格式、压缩格式与媒体类型、固定 OCI digest、压缩及解压尺寸和 SHA-256；验证后的流通过 Docker Engine API 导入为 Senera 的固定运行时镜像，再使用启动时锁定的 provider 探测。主服务不会访问 Docker Socket，也不会调用 Docker CLI。
 
-Microsandbox 的平台运行时由 npm 可选平台包随 Senera 一起交付。Senera 从 `microsandbox` 包入口向上解析其权威 `package.json`，并只执行包内 `bin.msb` 声明；平台二进制仍由 microsandbox 自己选择，Senera 不维护平台映射、不推断可执行文件名，也不覆盖供应商二进制路径。`MSB_HOME` 只指定 Microsandbox 的持久状态目录。清单下载、摘要校验、OCI 导入、KVM 或 capability 任一步骤失败，容器都会输出 `Docker OS sandbox could not be prepared` 并退出；不存在改拉 Docker Hub、改用其他镜像或改为本机执行的隐式路径。
+桌面安装包固定使用 microsandbox；平台运行时由 npm 的可选平台包交付。Linux 源码开发和 Docker 的 `auto` 模式在启动时读取版本化 provider 注册表与宿主能力：KVM 可用时选择 microsandbox；否则在 Docker Engine 已注册 `runsc` 时选择 gVisor；最后选择受限 Docker Engine 容器。三个 provider 默认都允许正常网络访问，工具执行契约显式声明 `Network: Deny` 时才断网。这个选择在启动时锁定；一次工具执行不会在 provider 间切换，也绝不会退回到主机本机执行。
 
-桌面安装包、源码开发和 Docker 使用同一个准备器及官方 OCI 导入链路。正式桌面安装包和 Docker 默认使用 `ReleaseBundle`，这里的 Bundle 由版本化清单和标准 OCI image-layout tar 组成；源码开发默认使用分发契约中固定 digest 的 `Oci` 模式，便于修改镜像后显式测试。前端和终端会持续显示清单解析、归档下载、摘要校验、镜像导入及离线探测进度。用户不需要另行安装 Node、npm、Microsandbox 或平台运行时；平台包缺失、宿主虚拟化不可用或准备失败时，Sandbox 调用会明确失败，Local 调用保持独立。
+桌面安装包和 Docker 都将同一已验证 Bundle 内置到发布产物：桌面位于 `extraResources/SandboxImage`，Docker 位于镜像层。它们启动时不会访问 GitHub Releases。源码开发需要显式执行 `npm run sandbox.archive` 生成 `Release/SandboxImage`；`npm run dev`、`npm run desktop` 和 `npm run sandbox.prepare` 只消费这个目录。前端和终端会显示契约读取、摘要校验、镜像导入和隔离探测进度；不会把未知下载量伪装成进度百分比。
 
-高级部署可以在系统配置中显式选择 `Oci` 并声明镜像与 registry 配置。Basic 凭据只引用环境变量名，真实值不会写入配置。`Oci` 与 `ReleaseBundle` 是互斥的配置形状，运行时只执行选中的来源；Release Bundle 安装不会访问 OCI registry，也不会在认证失败、下载失败或缓存损坏时切换来源。
+源码高级测试可以在系统配置中显式选择 `Oci` 并声明镜像与 registry 配置。Basic 凭据只引用环境变量名，真实值不会写入配置。`Oci` 与 `ReleaseBundle` 是互斥形状，运行时只执行选中的来源；正式桌面和 Docker 投影固定为随包交付的 `ReleaseBundle`，不会在 Bundle 失败时切换来源。桌面侧成功导入记录按 `distributionId/archiveVersion/architecture/sha256` 存放在 `MSB_HOME`，与 Senera 产品版本解耦；Docker Engine 则按固定 runtime image tag 管理已导入镜像。
 
 PTY 后台终端也通过同一执行边界路由。资源快照会返回 `requestedBoundary`、`effectiveBoundary`、
-`backend`、`capabilities`、`sandboxId` 和回退审批信息。microsandbox 当前支持交互输入和信号，但 SDK
-未提供程序化终端 resize 时不会声明 `resize`，前端会自动禁用该操作。
+`backend`、`capabilities`、`sandboxId` 和审批信息。microsandbox 与 Docker Engine Worker 都支持交互输入和信号；
+只有实际后端声明 `resize` 时前端才启用终端尺寸调整。
 
 本地命令、后台进程和 PTY 的环境继承可以统一收敛：
 
@@ -302,9 +305,9 @@ PTY 后台终端也通过同一执行边界路由。资源快照会返回 `reque
 }
 ```
 
-`Set` 最后应用并覆盖同名值。microsandbox 不继承宿主环境，只接收执行画像和调用显式投影的变量。
+`Set` 最后应用并覆盖同名值。所有 Sandbox provider 都不继承宿主环境，只接收执行画像和调用显式投影的变量。
 
-唯一的 `compose.yaml` 已固定传递 `/dev/kvm` 与 `NET_ADMIN`。如果宿主机无法提供 KVM，则不能运行 Senera 的 Docker 部署。
+唯一的 `compose.yaml` 不再传递 `/dev/kvm` 或 `NET_ADMIN`。主服务以非 root 用户运行；仅隔离 Worker 能访问 Docker Engine Socket。管理员可在宿主预先安装并注册 `runsc` 以获得更强的 gVisor 隔离；未注册时使用受限 Docker Engine 容器。容器不会擅自修改宿主守护进程配置。
 
 ## 依赖安装策略
 

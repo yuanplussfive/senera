@@ -314,7 +314,7 @@ function sandboxOptions(): SeneraTerminalSpawnOptions {
       name: "sandbox-terminal",
       kind: "shell",
       backend: "sandbox",
-      microsandbox: {
+      sandbox: {
         workspaceMount: "writable",
         network: "disabled",
       },

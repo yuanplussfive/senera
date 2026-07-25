@@ -83,6 +83,25 @@ const plannerModel = findField(form, ["ActionPlanner", "Client", "ModelProviderI
 assert.equal(plannerModel.type, "string");
 assert.equal(plannerModel.valueSource, "missing");
 assert.equal(plannerModel.missing, true);
+assert.deepEqual(plannerModel.modelSelection, {
+  id: "planner-base",
+  capability: "Chat",
+  valueKind: "model-id",
+  mutation: "config",
+  required: true,
+});
+const modelSelections = form.sections.flatMap((section) =>
+  section.fields.flatMap((field) => (field.modelSelection ? [field.modelSelection] : [])),
+);
+assert.deepEqual(
+  modelSelections.map((selection) => selection.id),
+  ["assistant", "planner-base", "action-planner", "final-answer", "tool-learning", "embedding", "rerank"],
+);
+assert.deepEqual(findField(form, ["VectorModels", "Embedding", "Model"]).modelSelection?.providerPath, [
+  "VectorModels",
+  "Embedding",
+  "ProviderId",
+]);
 assert.equal(findOptionalField(form, ["ActionPlanner", "Client", "Provider"]), undefined);
 assert.equal(findOptionalField(form, ["ActionPlanner", "FinalAnswerClient", "Provider"]), undefined);
 

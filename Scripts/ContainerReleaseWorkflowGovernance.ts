@@ -1,10 +1,38 @@
 const ReleaseWorkflowLabel = ".github/workflows/release.yml";
 
 export function inspectContainerReleasePipeline(workflow: string): string[] {
+  const sandboxJob = workflowJobBlock(workflow, "sandbox-archive");
+  const desktopJob = workflowJobBlock(workflow, "desktop");
   const buildJob = workflowJobBlock(workflow, "container-build");
   const smokeJob = workflowJobBlock(workflow, "container-smoke");
   const publishJob = workflowJobBlock(workflow, "container");
   const violations: string[] = [];
+
+  if (!sandboxJob) {
+    violations.push(`${ReleaseWorkflowLabel} must define the sandbox-archive job.`);
+  } else {
+    violations.push(
+      ...inspectTextIncludes(sandboxJob, `${ReleaseWorkflowLabel} job sandbox-archive`, [
+        "BuildSandboxImageArchive.js",
+        "actions/upload-artifact@v4",
+      ]),
+    );
+    if (sandboxJob.includes("gh release upload")) {
+      violations.push(`${ReleaseWorkflowLabel} job sandbox-archive must remain an internal build artifact.`);
+    }
+  }
+
+  if (!desktopJob) {
+    violations.push(`${ReleaseWorkflowLabel} must define the desktop job.`);
+  } else {
+    violations.push(
+      ...inspectTextIncludes(desktopJob, `${ReleaseWorkflowLabel} job desktop`, [
+        "- sandbox-archive",
+        "actions/download-artifact@v4",
+        "path: Release/SandboxImage",
+      ]),
+    );
+  }
 
   if (!buildJob) {
     violations.push(`${ReleaseWorkflowLabel} must define the container-build job.`);
@@ -12,6 +40,9 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
     violations.push(
       ...inspectTextIncludes(buildJob, `${ReleaseWorkflowLabel} job container-build`, [
         "timeout-minutes: 20",
+        "- sandbox-archive",
+        "actions/download-artifact@v4",
+        "path: Release/SandboxImage",
         "digest: ${{ steps.build.outputs.digest }}",
         "type=raw,value=sha-${{ needs.metadata.outputs.source_sha }}",
         "push: true",
@@ -35,24 +66,29 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         "- sandbox-archive",
         "- container-build",
         "needs.sandbox-archive.result == 'success'",
-        "timeout-minutes: 5",
+        "timeout-minutes: 10",
         "CONTAINER_HEALTH_TIMEOUT_SECONDS: 180",
         "needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest",
-        'docker pull "$IMAGE"',
-        '--volume "$VOLUME_NAME:/data"',
-        "--device /dev/kvm:/dev/kvm",
-        "--cap-add NET_ADMIN",
-        "SENERA_ADMIN_LOGIN_NAME=release-smoke-admin",
-        "SENERA_ADMIN_DISPLAY_NAME=",
-        "SENERA_ADMIN_PASSWORD",
-        "SENERA_ALLOWED_ORIGINS=",
-        "SENERA_ALLOW_INSECURE_HTTP=true",
-        'docker volume rm "$VOLUME_NAME"',
-        "deadline=$((SECONDS + CONTAINER_HEALTH_TIMEOUT_SECONDS))",
-        'docker exec "$CONTAINER_NAME" node Dist/Scripts/VerifyDockerNativeSqlite.js',
-        'docker exec "$CONTAINER_NAME" node Dist/Scripts/VerifyDockerUserPluginWrite.js',
+        "actions/checkout@v4",
+        "./.github/actions/setup-gvisor",
+        'export SENERA_IMAGE="$IMAGE"',
+        "SENERA_DATA_VOLUME:",
+        "SENERA_HOST_PORT:",
+        "SENERA_ADMIN_LOGIN_NAME:",
+        "SENERA_ADMIN_DISPLAY_NAME:",
+        "SENERA_ALLOWED_ORIGINS:",
+        'export SENERA_ADMIN_PASSWORD="$(openssl rand -hex 24)"',
+        'docker compose up --detach --wait --wait-timeout "$CONTAINER_HEALTH_TIMEOUT_SECONDS"',
+        'container_id="$(docker compose ps --quiet senera)"',
+        'runtime_uid="$(docker exec "$container_id"',
+        "docker compose down --volumes --remove-orphans",
+        "docker compose exec -T --user node senera node Dist/Scripts/VerifyDockerNativeSqlite.js",
+        "docker compose exec -T --user node senera node Dist/Scripts/VerifyDockerUserPluginWrite.js",
       ]),
     );
+    if (smokeJob.includes("/dev/kvm") || smokeJob.includes("NET_ADMIN")) {
+      violations.push(`${ReleaseWorkflowLabel} job container-smoke must not require KVM or NET_ADMIN.`);
+    }
     if (smokeJob.includes("docker/build-push-action")) {
       violations.push(
         `${ReleaseWorkflowLabel} job container-smoke must test the built digest without rebuilding the image.`,

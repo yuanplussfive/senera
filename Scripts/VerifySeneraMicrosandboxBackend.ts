@@ -66,7 +66,9 @@ async function main(): Promise<void> {
   assert.equal(sdk.createRequests[0]?.guestWorkdir, "/workspace/Source/AgentSystem");
   assert.deepEqual(sdk.createRequests[0]?.rootfsCopies, []);
   assert.deepEqual(sdk.createRequests[0]?.env, {});
-  assert.equal(sdk.createRequests[0]?.network, "disabled");
+  assert.equal(sdk.createRequests[0]?.cpus, 2);
+  assert.equal(sdk.createRequests[0]?.memoryMiB, 1024);
+  assert.equal(sdk.createRequests[0]?.network, "default");
   assert.equal(sdk.execRequests[0]?.command, "/bin/sh");
   assert.deepEqual(sdk.execRequests[0]?.args, ["-lc", "pwd"]);
   assert.deepEqual(sdk.execRequests[0]?.env, { SENERA_VERIFY: "1" });
@@ -87,7 +89,7 @@ async function main(): Promise<void> {
     profile: {
       name: "node-plugin",
       kind: "mcp-server",
-      microsandbox: {
+      sandbox: {
         image: "node:22-bookworm-slim",
         guestWorkspaceRoot: "/workspace",
         guestWorkdir: "/opt/senera/runtime/System/Plugins/AskUserToolPlugin",

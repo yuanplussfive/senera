@@ -3,7 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { prepareSandboxRuntime, readOptions, type PrepareOptions } from "../Build/PrepareSandboxRuntime.js";
-import { SeneraMicrosandboxDefaults } from "../Source/AgentSystem/Execution/SeneraMicrosandboxDefaults.js";
+import {
+  readAgentSandboxDistributionContract,
+  resolveAgentSandboxDistributionTarget,
+} from "../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
 
 class FakeMicrosandboxModule {
   readonly createdImages: string[] = [];
@@ -102,12 +105,36 @@ try {
   };
   const available = new FakeMicrosandboxModule(true);
   const availableOptions = prepareOptionsFixture(tempRoot, "available");
-  await prepareSandboxRuntime(availableOptions, available, prepareTerminalRuntime);
-  assert.deepEqual(available.createdImages, [SeneraMicrosandboxDefaults.image]);
+  const sandboxTarget = resolveAgentSandboxDistributionTarget(readAgentSandboxDistributionContract());
+  const archiveInstaller = async () => ({
+    archivePath: path.join(tempRoot, "SandboxImage", sandboxTarget.archive.assetName),
+    imported: true,
+    manifest: {
+      formatVersion: 4 as const,
+      distributionId: "senera-node-runtime",
+      archiveVersion: "1.0.2",
+      microsandboxVersion: "0.6.4",
+      target: process.arch,
+      sourceImage: sandboxTarget.sourceImage,
+      runtimeImage: sandboxTarget.runtimeImage,
+      asset: {
+        format: sandboxTarget.archive.format,
+        mediaType: sandboxTarget.archive.mediaType,
+        compression: sandboxTarget.archive.compression,
+        compressedMediaType: sandboxTarget.archive.compressedMediaType,
+        fileName: sandboxTarget.archive.assetName,
+        sizeBytes: 1,
+        uncompressedSizeBytes: 1,
+        sha256: "0".repeat(64),
+      },
+    },
+  });
+  await prepareSandboxRuntime(availableOptions, available, prepareTerminalRuntime, archiveInstaller);
+  assert.deepEqual(available.createdImages, [sandboxTarget.runtimeImage]);
 
   const missing = new FakeMicrosandboxModule(false);
   const missingOptions = prepareOptionsFixture(tempRoot, "missing");
-  await assert.rejects(() => prepareSandboxRuntime(missingOptions, missing, prepareTerminalRuntime), {
+  await assert.rejects(() => prepareSandboxRuntime(missingOptions, missing, prepareTerminalRuntime, archiveInstaller), {
     message: /official microsandbox runtime unavailable/u,
   });
   assert.deepEqual(missing.createdImages, []);

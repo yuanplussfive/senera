@@ -151,6 +151,6 @@ function projectExecutionProfileIdentity(profile: SeneraProcessExecutionProfile)
     name: profile.name,
     kind: profile.kind,
     backend: profile.backend,
-    microsandbox: profile.microsandbox,
+    sandbox: profile.sandbox,
   };
 }

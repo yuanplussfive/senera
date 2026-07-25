@@ -1,0 +1,65 @@
+{
+  "formatVersion": 1,
+  "id": "senera-docker-engine-sandbox-policy",
+  "engine": {
+    "minimumApiVersion": "1.43"
+  },
+  "protocol": {
+    "maxFrameBytes": 1048576,
+    "maxArguments": 256,
+    "maxEnvironmentVariables": 512
+  },
+  "guest": {
+    "workspaceRoot": "/workspace",
+    "user": "node",
+    "shell": {
+      "command": "/bin/sh",
+      "arguments": ["-lc"]
+    },
+    "temporaryFilesystems": [
+      {
+        "path": "/tmp",
+        "sizeMiB": 256,
+        "mode": "01777",
+        "noSuid": true,
+        "noDevice": true
+      },
+      {
+        "path": "/run",
+        "sizeMiB": 16,
+        "mode": "00755",
+        "noSuid": true,
+        "noDevice": true
+      }
+    ]
+  },
+  "container": {
+    "readOnlyRootFilesystem": true,
+    "init": true,
+    "networkModes": {
+      "disabled": "none",
+      "default": "bridge"
+    },
+    "securityOptions": ["no-new-privileges:true"],
+    "dropCapabilities": ["ALL"],
+    "labels": {
+      "ai.senera.managed": "true"
+    },
+    "stopTimeoutSeconds": 10
+  },
+  "defaults": {
+    "cpuCount": 2,
+    "memoryMiB": 1024,
+    "processCount": 256,
+    "network": "default"
+  },
+  "limits": {
+    "maxCpuCount": 16,
+    "maxMemoryMiB": 32768,
+    "maxProcessCount": 4096,
+    "maxExecutionSeconds": 86400,
+    "maxConcurrentExecutions": 32,
+    "maxRootfsCopies": 128,
+    "maxWritableMounts": 64
+  }
+}

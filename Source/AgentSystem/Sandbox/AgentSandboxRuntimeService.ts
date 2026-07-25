@@ -1,9 +1,11 @@
 import {
-  AgentSandboxRuntimeProvider,
+  AgentSandboxRuntimeProviders,
   type AgentSandboxPreparationProgress,
+  type AgentSandboxRuntimeProvider,
   type AgentSandboxRuntimeState,
   type AgentSandboxRuntimeSnapshot,
 } from "./AgentSandboxRuntimeTypes.js";
+import { selectAgentSandboxProvider } from "./AgentSandboxProviderSelection.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { resolveSandboxRuntimeConfig } from "../AgentDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
@@ -14,6 +16,12 @@ import {
   type AgentSandboxRuntimePreparationResult,
 } from "./AgentSandboxRuntimePreparation.js";
 import type { ResolvedAgentSandboxRuntimeConfig } from "../Types/AgentConfigTypes.js";
+import type { SeneraGvisorWorkerClient } from "../Execution/SeneraGvisorTypes.js";
+import { AgentGvisorWorkerSocketClient } from "./Gvisor/AgentGvisorWorkerClient.js";
+import {
+  prepareAgentGvisorRuntime,
+  resolveAgentGvisorWorkerSocketPath,
+} from "./Gvisor/AgentGvisorRuntimePreparation.js";
 
 export interface AgentSandboxRuntimePreparationStatus {
   state: AgentSandboxRuntimeState;
@@ -28,26 +36,32 @@ export type AgentSandboxRuntimePrepareOptions = Omit<
   "workspaceRoot" | "config" | "onProgress"
 > & {
   config?: ResolvedAgentSandboxRuntimeConfig;
+  gvisorWorker?: SeneraGvisorWorkerClient;
+  dockerEngineWorker?: SeneraGvisorWorkerClient;
 };
 
 export interface AgentSandboxRuntimeServiceOptions {
   workspaceRoot?: string;
   configSnapshot?: () => AgentSystemConfig;
-  productVersion?: string;
+  sandboxBundleRoot?: string;
   platform?: NodeJS.Platform;
   clock?: () => Date;
   packageAvailable?: () => boolean;
   progressUpdateIntervalMs?: number;
+  provider?: AgentSandboxRuntimeProvider;
+  dockerEngineWorker?: SeneraGvisorWorkerClient;
 }
 
 export class AgentSandboxRuntimeService {
   private readonly workspaceRoot: string;
   private readonly configSnapshot: (() => AgentSystemConfig) | undefined;
-  private readonly productVersion: string | undefined;
+  private readonly sandboxBundleRoot: string | undefined;
   private readonly platform: NodeJS.Platform;
   private readonly clock: () => Date;
   private readonly packageAvailable: () => boolean;
   private readonly progressUpdateIntervalMs: number;
+  private readonly provider: AgentSandboxRuntimeProvider;
+  private gvisorWorker: SeneraGvisorWorkerClient | undefined;
   private readonly listeners = new Set<(snapshot: AgentSandboxRuntimeSnapshot) => void>();
   private preparationPromise: Promise<AgentSandboxRuntimePreparationResult | undefined> | undefined;
   private lastProgressPublicationAt = Number.NEGATIVE_INFINITY;
@@ -58,17 +72,24 @@ export class AgentSandboxRuntimeService {
   constructor(options: AgentSandboxRuntimeServiceOptions = {}) {
     this.workspaceRoot = options.workspaceRoot ?? process.cwd();
     this.configSnapshot = options.configSnapshot;
-    this.productVersion = options.productVersion;
+    this.sandboxBundleRoot = options.sandboxBundleRoot;
     this.platform = options.platform ?? process.platform;
     this.clock = options.clock ?? (() => new Date());
     this.packageAvailable = options.packageAvailable ?? resolveMicrosandboxPackageAvailable;
     this.progressUpdateIntervalMs = options.progressUpdateIntervalMs ?? 200;
+    this.provider =
+      options.provider ??
+      selectAgentSandboxProvider({
+        preference: this.runtimeConfig()?.Provider ?? "auto",
+        platform: this.platform,
+      });
+    this.gvisorWorker = options.dockerEngineWorker;
   }
 
   snapshot(): AgentSandboxRuntimeSnapshot {
     const runtimeConfig = this.runtimeConfig();
     const enabled = runtimeConfig?.Enabled ?? true;
-    const supported = this.packageAvailable();
+    const supported = this.provider !== AgentSandboxRuntimeProviders.Microsandbox || this.packageAvailable();
     const pathResolution = enabled ? this.runtimePaths(runtimeConfig) : { paths: undefined };
     const state = enabled
       ? supported && !pathResolution.error
@@ -80,7 +101,7 @@ export class AgentSandboxRuntimeService {
       state === "disabled" ? "disabled" : supported && state === "ready" ? "sandbox" : "unavailable";
     const diagnostics = this.diagnostics(supported, state, unavailableError);
     return {
-      provider: AgentSandboxRuntimeProvider,
+      provider: this.provider,
       platform: this.platform,
       state,
       supported,
@@ -95,6 +116,24 @@ export class AgentSandboxRuntimeService {
       message: this.message(supported, state),
       updatedAt: this.clock().toISOString(),
     };
+  }
+
+  runtimeProvider(): AgentSandboxRuntimeProvider {
+    return this.provider;
+  }
+
+  gvisorWorkerClient(): SeneraGvisorWorkerClient | undefined {
+    if (
+      this.provider !== AgentSandboxRuntimeProviders.Gvisor &&
+      this.provider !== AgentSandboxRuntimeProviders.DockerEngine
+    ) {
+      return undefined;
+    }
+    const config = this.runtimeConfig();
+    if (!config) return undefined;
+    return (this.gvisorWorker ??= new AgentGvisorWorkerSocketClient({
+      socketPath: resolveAgentGvisorWorkerSocketPath(this.workspaceRoot, config),
+    }));
   }
 
   markPreparing(message = agentErrorMessage("sandbox.preparing.statusMessage")): void {
@@ -122,13 +161,23 @@ export class AgentSandboxRuntimeService {
     }
 
     this.markPreparing();
-    const preparation = prepareAgentSandboxRuntime({
-      ...options,
-      workspaceRoot: this.workspaceRoot,
-      config,
-      productVersion: options.productVersion ?? this.productVersion,
-      onProgress: (progress) => this.reportProgress(progress),
-    });
+    const preparation =
+      this.provider === AgentSandboxRuntimeProviders.Gvisor ||
+      this.provider === AgentSandboxRuntimeProviders.DockerEngine
+        ? prepareAgentGvisorRuntime({
+            workspaceRoot: this.workspaceRoot,
+            config,
+            worker: options.gvisorWorker ?? options.dockerEngineWorker ?? this.gvisorWorkerClient()!,
+            expectedProvider: this.provider,
+            onProgress: (progress) => this.reportProgress(progress),
+          })
+        : prepareAgentSandboxRuntime({
+            ...options,
+            workspaceRoot: this.workspaceRoot,
+            config,
+            sandboxBundleRoot: options.sandboxBundleRoot ?? this.sandboxBundleRoot,
+            onProgress: (progress) => this.reportProgress(progress),
+          });
     this.preparationPromise = preparation.then(
       (result) => {
         this.markReady();
@@ -247,10 +296,10 @@ export class AgentSandboxRuntimeService {
       return [];
     }
     if (state === "unknown") {
-      return ["microsandbox host runtime has not been checked yet"];
+      return [`${this.provider} host runtime has not been checked yet`];
     }
     if (state === "preparing") {
-      return ["microsandbox host runtime is being prepared"];
+      return [`${this.provider} host runtime is being prepared`];
     }
     if (state === "unavailable") {
       return ["tools selected for the sandbox boundary cannot run until the sandbox runtime is available"];
@@ -264,21 +313,21 @@ export class AgentSandboxRuntimeService {
     unavailableError: string | undefined,
   ): AgentSandboxRuntimeSnapshot["diagnostics"] {
     if (state === "disabled") {
-      return [microsandboxDisabledDiagnostic()];
+      return [sandboxDisabledDiagnostic(this.provider)];
     }
     if (!supported) {
       return [microsandboxMissingDiagnostic()];
     }
     if (state === "ready") {
-      return [microsandboxReadyDiagnostic()];
+      return [sandboxReadyDiagnostic(this.provider)];
     }
     if (state === "preparing") {
-      return [microsandboxPreparingDiagnostic()];
+      return [sandboxPreparingDiagnostic(this.provider)];
     }
     if (state === "unavailable") {
-      return [microsandboxUnavailableDiagnostic(unavailableError)];
+      return [sandboxUnavailableDiagnostic(this.provider, unavailableError)];
     }
-    return [microsandboxConfiguredDiagnostic()];
+    return [sandboxConfiguredDiagnostic(this.provider)];
   }
 
   private message(supported: boolean, state: AgentSandboxRuntimeState): string {
@@ -301,9 +350,11 @@ export class AgentSandboxRuntimeService {
   }
 }
 
-function microsandboxDisabledDiagnostic(): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
+function sandboxDisabledDiagnostic(
+  provider: AgentSandboxRuntimeProvider,
+): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
   return {
-    code: "microsandbox_disabled_by_runtime_configuration",
+    code: `${provider}_disabled_by_runtime_configuration`,
     severity: "warning",
     message: agentErrorMessage("sandbox.disabled.message"),
     recommendation: agentErrorMessage("sandbox.disabled.recommendation"),
@@ -311,36 +362,46 @@ function microsandboxDisabledDiagnostic(): AgentSandboxRuntimeSnapshot["diagnost
   };
 }
 
-function microsandboxConfiguredDiagnostic(): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
+function sandboxConfiguredDiagnostic(
+  provider: AgentSandboxRuntimeProvider,
+): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
   return {
-    code: "microsandbox_backend_configured",
+    code: `${provider}_backend_configured`,
     severity: "warning",
     message: agentErrorMessage("sandbox.configured.message"),
     recommendation: agentErrorMessage("sandbox.configured.recommendation"),
     details: [
       agentErrorMessage("sandbox.configured.detail.readOnlyWorkspace"),
-      agentErrorMessage("sandbox.configured.detail.sandboxNetworkDenied"),
-      agentErrorMessage("sandbox.configured.detail.uacNotUsed"),
+      agentErrorMessage("sandbox.configured.detail.networkPolicy"),
+      ...(provider === AgentSandboxRuntimeProviders.Microsandbox
+        ? [agentErrorMessage("sandbox.configured.detail.uacNotUsed")]
+        : []),
     ],
   };
 }
 
-function microsandboxPreparingDiagnostic(): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
+function sandboxPreparingDiagnostic(
+  provider: AgentSandboxRuntimeProvider,
+): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
   return {
-    code: "microsandbox_runtime_preparing",
+    code: `${provider}_runtime_preparing`,
     severity: "warning",
     message: agentErrorMessage("sandbox.preparing.message"),
     recommendation: agentErrorMessage("sandbox.preparing.recommendation"),
     details: [
       agentErrorMessage("sandbox.preparing.detail.desktopStartup"),
-      agentErrorMessage("sandbox.preparing.detail.networkMayBeRequired"),
+      ...(provider === AgentSandboxRuntimeProviders.Microsandbox
+        ? [agentErrorMessage("sandbox.preparing.detail.localBundleRequired")]
+        : []),
     ],
   };
 }
 
-function microsandboxReadyDiagnostic(): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
+function sandboxReadyDiagnostic(
+  provider: AgentSandboxRuntimeProvider,
+): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
   return {
-    code: "microsandbox_runtime_ready",
+    code: `${provider}_runtime_ready`,
     severity: "warning",
     message: agentErrorMessage("sandbox.ready.message"),
     recommendation: agentErrorMessage("sandbox.ready.recommendation"),
@@ -351,17 +412,20 @@ function microsandboxReadyDiagnostic(): AgentSandboxRuntimeSnapshot["diagnostics
   };
 }
 
-function microsandboxUnavailableDiagnostic(
+function sandboxUnavailableDiagnostic(
+  provider: AgentSandboxRuntimeProvider,
   error: string | undefined,
 ): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
   return {
-    code: "microsandbox_runtime_unavailable",
+    code: `${provider}_runtime_unavailable`,
     severity: "error",
     message: agentErrorMessage("sandbox.unavailable.message"),
     recommendation: agentErrorMessage("sandbox.unavailable.recommendation"),
     details: [
       agentErrorMessage("sandbox.unavailable.detail.selectedSandboxTools"),
-      agentErrorMessage("sandbox.unavailable.detail.windowsVirtualization"),
+      ...(provider === AgentSandboxRuntimeProviders.Microsandbox
+        ? [agentErrorMessage("sandbox.unavailable.detail.windowsVirtualization")]
+        : []),
       ...(error ? [agentErrorMessage("sandbox.unavailable.detail.lastError", { error })] : []),
     ],
   };

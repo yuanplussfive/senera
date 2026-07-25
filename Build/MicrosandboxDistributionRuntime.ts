@@ -15,7 +15,14 @@ export interface MicrosandboxDistributionRuntime {
     probe: MicrosandboxDistributionProbe;
   }): Promise<void>;
   saveOciImage(input: { baseDir: string; reference: string; outputPath: string }): Promise<void>;
-  loadOciImage(input: { baseDir: string; archivePath: string; reference: string }): Promise<void>;
+  loadOciImage(input: {
+    baseDir: string;
+    archivePath: string;
+    reference: string;
+    compression: "gzip";
+    expectedUncompressedBytes: number;
+    maxUncompressedBytes: number;
+  }): Promise<void>;
 }
 
 export interface MicrosandboxDistributionProbe {
@@ -75,8 +82,10 @@ export function createMicrosandboxDistributionRuntime(
     },
 
     async loadOciImage(input) {
-      log(`Loading normalized sandbox image as ${input.reference}...`);
-      await imageArchive.load(input);
+      log(`Loading compressed Sandbox Bundle as ${input.reference}...`);
+      await imageArchive.load({
+        ...input,
+      });
     },
   };
 }

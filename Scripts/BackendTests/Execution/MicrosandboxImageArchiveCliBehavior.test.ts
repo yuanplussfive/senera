@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, test, vi } from "vitest";
+import { gzipSync } from "node:zlib";
 import {
   createAgentMicrosandboxImageArchive,
   resolveAgentMicrosandboxPackage,
@@ -37,20 +38,46 @@ describe("microsandbox image archive CLI", () => {
     }
   });
 
-  test("maps OCI save and load operations to the official image commands", async () => {
+  test("maps OCI save and streaming gzip load operations to the official image commands", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "senera-microsandbox-archive-"));
+    const archivePath = path.join(root, "image.oci.tar.gz");
+    const archiveContents = Buffer.from("oci archive contents");
+    await writeFile(archivePath, gzipSync(archiveContents));
     const run = vi.fn(async () => undefined);
-    const archive = createAgentMicrosandboxImageArchive({ run } satisfies AgentMicrosandboxCli);
+    const loaded: Buffer[] = [];
+    const runWithInput = vi.fn(
+      async (_baseDir: string, _arguments: readonly string[], input: NodeJS.ReadableStream) => {
+        for await (const chunk of input) loaded.push(Buffer.from(chunk));
+      },
+    );
+    const archive = createAgentMicrosandboxImageArchive({ run, runWithInput } satisfies AgentMicrosandboxCli);
 
-    await archive.save({ baseDir: "source", reference: "registry/image@sha256:digest", outputPath: "image.tar" });
-    await archive.load({ baseDir: "target", archivePath: "image.tar", reference: "local/image:version" });
+    try {
+      await archive.save({ baseDir: "source", reference: "registry/image@sha256:digest", outputPath: "image.tar" });
+      await archive.load({
+        baseDir: "target",
+        archivePath,
+        reference: "local/image:version",
+        compression: "gzip",
+        expectedUncompressedBytes: archiveContents.byteLength,
+        maxUncompressedBytes: 1024,
+      });
 
-    expect(run.mock.calls).toEqual([
-      [
-        "source",
-        ["image", "save", "--quiet", "--format", "oci", "--output", "image.tar", "registry/image@sha256:digest"],
-      ],
-      ["target", ["image", "load", "--quiet", "--input", "image.tar", "--tag", "local/image:version"]],
-    ]);
+      expect(run.mock.calls).toEqual([
+        [
+          "source",
+          ["image", "save", "--quiet", "--format", "oci", "--output", "image.tar", "registry/image@sha256:digest"],
+        ],
+      ]);
+      expect(runWithInput).toHaveBeenCalledOnce();
+      expect(runWithInput.mock.calls[0]?.slice(0, 2)).toEqual([
+        "target",
+        ["image", "load", "--quiet", "--tag", "local/image:version"],
+      ]);
+      expect(Buffer.concat(loaded)).toEqual(archiveContents);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

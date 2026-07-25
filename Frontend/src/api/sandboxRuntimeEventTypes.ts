@@ -2,12 +2,13 @@ export type SandboxEffectiveMode = "sandbox" | "unavailable" | "disabled";
 export type SandboxRuntimeState = "disabled" | "unknown" | "preparing" | "ready" | "unavailable";
 export type SandboxPreparationStage =
   | "checking_host_runtime"
+  | "connecting_worker"
   | "loading_runtime"
   | "resolving_archive"
-  | "downloading_archive"
   | "verifying_archive"
   | "importing_image"
-  | "warming_image";
+  | "warming_image"
+  | "probing_sandbox";
 
 export interface SandboxPreparationProgressData {
   stage: SandboxPreparationStage;

@@ -3,7 +3,11 @@
   "suites": {
     "workspace": {
       "description": "Root workspace dependency and install-boundary governance.",
-      "patterns": ["VerifyWorkspaceDependencyGovernance.js", "VerifyCommitMessagePolicy.js"]
+      "patterns": [
+        "VerifyWorkspaceDependencyGovernance.js",
+        "VerifyCommitMessagePolicy.js",
+        "VerifyNanoDistribution.js"
+      ]
     },
     "contracts": {
       "description": "Static architecture contracts that should fail before runtime tests.",

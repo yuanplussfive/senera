@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yuanplussfive/senera/blob/main/Build/Distributions/NanoDistribution.schema.json",
+  "title": "Senera Nano distribution contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "source",
+    "files",
+    "rootPackage",
+    "workspacePackages",
+    "typescript",
+    "generatedFiles"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "id": { "const": "nano" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch", "outputBranch", "repositoryUrl"],
+      "properties": {
+        "branch": { "type": "string", "minLength": 1 },
+        "outputBranch": { "type": "string", "minLength": 1 },
+        "repositoryUrl": { "type": "string", "format": "uri", "pattern": "^https://" }
+      }
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gitPathspecs"],
+      "properties": {
+        "gitPathspecs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "rootPackage": { "$ref": "#/$defs/packageProjection" },
+    "workspacePackages": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scripts"],
+        "properties": {
+          "scripts": { "$ref": "#/$defs/stringList" }
+        }
+      }
+    },
+    "typescript": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["include"],
+      "properties": {
+        "include": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "generatedFiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["readmeTemplate", "metadataFile"],
+      "properties": {
+        "readmeTemplate": { "type": "string", "minLength": 1 },
+        "metadataFile": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "stringList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "dependencyProjection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": { "mode": { "const": "all" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "names"],
+          "properties": {
+            "mode": { "enum": ["include", "exclude"] },
+            "names": { "$ref": "#/$defs/stringList" }
+          }
+        }
+      ]
+    },
+    "packageProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["copyFields", "setFields", "scripts", "dependencies", "devDependencies", "optionalDependencies"],
+      "properties": {
+        "copyFields": { "$ref": "#/$defs/stringList" },
+        "setFields": { "type": "object" },
+        "scripts": { "$ref": "#/$defs/stringList" },
+        "dependencies": { "$ref": "#/$defs/dependencyProjection" },
+        "devDependencies": { "$ref": "#/$defs/dependencyProjection" },
+        "optionalDependencies": { "$ref": "#/$defs/dependencyProjection" }
+      }
+    }
+  }
+}

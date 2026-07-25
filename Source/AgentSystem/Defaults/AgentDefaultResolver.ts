@@ -47,6 +47,10 @@ export function resolveAgentDefaults(
     SandboxRuntime: {
       ...AgentDefaults.SandboxRuntime,
       ...defaults?.SandboxRuntime,
+      Gvisor: {
+        ...AgentDefaults.SandboxRuntime.Gvisor,
+        ...defaults?.SandboxRuntime?.Gvisor,
+      },
       Provisioning: structuredClone(
         defaults?.SandboxRuntime?.Provisioning ?? AgentDefaults.SandboxRuntime.Provisioning,
       ),

@@ -13,6 +13,49 @@ const ConfigFormFieldOptionValueSchema = z.union([z.string(), z.number(), z.bool
 
 const ConfigFormFieldLevelSchema = z.enum(["basic", "advanced", "internal"]);
 
+const ConfigFormModelSelectionSchema = z
+  .object({
+    id: z.string().min(1),
+    capability: z.enum([
+      "Chat",
+      "Embedding",
+      "Rerank",
+      "Vision",
+      "ImageOutput",
+      "Reasoning",
+      "DeveloperRole",
+      "StreamingUsage",
+    ]),
+    valueKind: z.enum(["model-id", "provider-model"]),
+    mutation: z.enum(["config", "default-model"]),
+    providerPath: z.array(z.string().min(1)).min(1).optional(),
+    required: z.boolean(),
+  })
+  .strict()
+  .superRefine((selection, context) => {
+    if (selection.valueKind === "provider-model" && !selection.providerPath) {
+      context.addIssue({
+        code: "custom",
+        message: "providerPath is required when valueKind is provider-model.",
+        path: ["providerPath"],
+      });
+    }
+    if (selection.valueKind === "model-id" && selection.providerPath) {
+      context.addIssue({
+        code: "custom",
+        message: "providerPath is only supported when valueKind is provider-model.",
+        path: ["providerPath"],
+      });
+    }
+    if (selection.mutation === "default-model" && selection.valueKind !== "model-id") {
+      context.addIssue({
+        code: "custom",
+        message: "default-model mutations require model-id values.",
+        path: ["mutation"],
+      });
+    }
+  });
+
 type ConfigFormFieldSchemaInput = {
   path: string[];
   label: string;
@@ -39,6 +82,7 @@ type ConfigFormFieldSchemaInput = {
   defaultItem?: Record<string, unknown>;
   keyPlaceholder?: string;
   valuePlaceholder?: string;
+  modelSelection?: z.infer<typeof ConfigFormModelSelectionSchema>;
 };
 
 const ConfigFormFieldSchema: z.ZodType<ConfigFormFieldSchemaInput> = z.lazy(() =>
@@ -69,6 +113,7 @@ const ConfigFormFieldSchema: z.ZodType<ConfigFormFieldSchemaInput> = z.lazy(() =
       defaultItem: z.record(z.string(), z.unknown()).optional(),
       keyPlaceholder: z.string().min(1).optional(),
       valuePlaceholder: z.string().min(1).optional(),
+      modelSelection: ConfigFormModelSelectionSchema.optional(),
     })
     .strict(),
 );

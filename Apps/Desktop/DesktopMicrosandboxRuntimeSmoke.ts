@@ -13,10 +13,7 @@ import type { DesktopRuntimePaths } from "./DesktopRuntime.js";
 
 export const DesktopMicrosandboxRuntimeSmokeArgument = "--senera-verify-microsandbox-runtime";
 
-export async function runDesktopMicrosandboxRuntimeSmoke(
-  paths: DesktopRuntimePaths,
-  productVersion: string,
-): Promise<void> {
+export async function runDesktopMicrosandboxRuntimeSmoke(paths: DesktopRuntimePaths): Promise<void> {
   const config = {
     ...resolveAgentDefaults(undefined).SandboxRuntime,
     BaseDir: paths.sandboxRuntimeRoot,
@@ -27,7 +24,7 @@ export async function runDesktopMicrosandboxRuntimeSmoke(
   const preparation = await prepareAgentSandboxRuntime({
     workspaceRoot: paths.workspaceRoot,
     config,
-    productVersion,
+    sandboxBundleRoot: paths.sandboxBundleRoot,
     microsandboxModuleLoader: microsandboxRuntime.moduleLoader,
     microsandboxPackageEntryResolver: microsandboxRuntime.packageEntryResolver,
     log: (message) => process.stdout.write(`${message}\n`),

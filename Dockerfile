@@ -34,7 +34,7 @@ WORKDIR /app
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
   apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates
+  && apt-get install -y --no-install-recommends ca-certificates util-linux
 
 ENV NODE_ENV=production
 ENV SENERA_WORKSPACE_ROOT=/data
@@ -42,6 +42,7 @@ ENV AGENT_CONFIG_PATH=/data/senera.config.json
 ENV SENERA_SERVER_HOST=0.0.0.0
 ENV SENERA_SERVER_PORT=8787
 
+COPY --chown=node:node Release/SandboxImage ./SandboxImage
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/Dist ./Dist
@@ -50,15 +51,15 @@ COPY --from=builder /app/System ./System
 COPY --from=builder /app/Plugins ./Plugins
 COPY --from=builder /app/Packages ./Packages
 COPY --from=builder /app/senera.config.example.json ./senera.config.example.json
+COPY --chmod=755 Apps/DockerEntrypoint.sh /usr/local/bin/senera-container-entrypoint
 
 RUN mkdir -p /data/Plugins \
   && chown -R node:node /data /app/Frontend/dist
 
-USER node
-
 VOLUME ["/data"]
 EXPOSE 8787
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "const port = process.env.SENERA_SERVER_PORT || 8787; fetch('http://127.0.0.1:' + port + '/health/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1));"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD setpriv --reuid=node --regid=node --clear-groups -- node -e "const port = process.env.SENERA_SERVER_PORT || 8787; fetch('http://127.0.0.1:' + port + '/health/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1));"
 
+ENTRYPOINT ["senera-container-entrypoint"]
 CMD ["node", "Dist/Apps/DockerServer.js"]

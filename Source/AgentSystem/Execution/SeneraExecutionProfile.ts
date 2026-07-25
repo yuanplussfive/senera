@@ -19,7 +19,7 @@ export interface SeneraProcessRootfsBundle {
   guestPath: string;
 }
 
-export interface SeneraProcessMicrosandboxProfile {
+export interface SeneraProcessSandboxProfile {
   image?: string;
   guestWorkspaceRoot?: string;
   guestWorkdir?: string;
@@ -35,5 +35,5 @@ export interface SeneraProcessExecutionProfile {
   name: string;
   kind: "shell" | "mcp-server";
   backend?: SeneraProcessBackendPreference;
-  microsandbox?: SeneraProcessMicrosandboxProfile;
+  sandbox?: SeneraProcessSandboxProfile;
 }

@@ -17,6 +17,7 @@ export const SeneraTerminalCapabilityProviders = {
   HostPty: "host-pty",
   GuestNodePty: "guest-node-pty",
   MicrosandboxSdk: "microsandbox-sdk",
+  DockerEngine: "docker-engine",
 } as const;
 
 export type SeneraTerminalCapabilityProvider =

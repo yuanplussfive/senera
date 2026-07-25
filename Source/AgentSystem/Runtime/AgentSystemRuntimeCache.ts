@@ -9,6 +9,8 @@ import { createAgentRuntimePreparationFingerprint } from "./AgentRuntimePreparat
 import type { AgentMcpRuntimeModuleResolver } from "../Mcp/AgentMcpRuntimeModuleResolver.js";
 import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 import type { SeneraMicrosandboxSdkAdapter } from "../Execution/SeneraMicrosandboxTypes.js";
+import type { SeneraGvisorWorkerClient } from "../Execution/SeneraGvisorTypes.js";
+import type { AgentSandboxRuntimeProvider } from "../Sandbox/AgentSandboxRuntimeTypes.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
@@ -36,6 +38,8 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   executionResources?: AgentExecutionResourceBroker;
   sandboxRuntimeReady?: () => boolean;
   microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
+  sandboxProvider?: AgentSandboxRuntimeProvider;
+  gvisorWorker?: SeneraGvisorWorkerClient;
 }
 
 export interface AgentSystemRuntimeLease<TRuntime extends AgentSystemRuntimeCacheRuntime> {
@@ -59,6 +63,8 @@ export interface AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRunt
   executionResources?: AgentExecutionResourceBroker;
   sandboxRuntimeReady?: () => boolean;
   microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
+  sandboxProvider?: AgentSandboxRuntimeProvider;
+  gvisorWorker?: SeneraGvisorWorkerClient;
   maxIdleEntries?: number;
   runtimeFactory?: (input: AgentSystemRuntimeCacheRuntimeFactoryInput) => TRuntime;
 }
@@ -135,6 +141,8 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
         executionResources: this.options.executionResources,
         sandboxRuntimeReady: this.options.sandboxRuntimeReady,
         microsandboxSdk: this.options.microsandboxSdk,
+        sandboxProvider: this.options.sandboxProvider,
+        gvisorWorker: this.options.gvisorWorker,
       });
     }
 
@@ -153,6 +161,8 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       executionResources: this.options.executionResources,
       sandboxRuntimeReady: this.options.sandboxRuntimeReady,
       microsandboxSdk: this.options.microsandboxSdk,
+      sandboxProvider: this.options.sandboxProvider,
+      gvisorWorker: this.options.gvisorWorker,
     }) as unknown as TRuntime;
   }
 

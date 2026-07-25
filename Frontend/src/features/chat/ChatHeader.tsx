@@ -8,7 +8,11 @@ import {
   SquareTerminal,
 } from "lucide-react";
 import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
-import { sandboxPreparationRatio, sandboxStatusDetail } from "../sandbox/sandboxPreparationPresentation";
+import {
+  sandboxPreparationRatio,
+  sandboxStatusAvailabilitySuffix,
+  sandboxStatusDetail,
+} from "../sandbox/sandboxPreparationPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { IconButton, Tooltip } from "../../shared/ui";
@@ -146,12 +150,7 @@ function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null
 } {
   const state = status?.state ?? "unknown";
   const detail = sandboxStatusDetail(status);
-  const availabilitySuffix =
-    status?.effectiveMode === "sandbox"
-      ? frontendMessage("sandbox.status.sandboxSuffix")
-      : status?.effectiveMode === "disabled"
-        ? frontendMessage("sandbox.status.disabledSuffix")
-        : frontendMessage("sandbox.status.unavailableSuffix");
+  const availabilitySuffix = sandboxStatusAvailabilitySuffix(status);
   const commonTooltip = `${detail} ${availabilitySuffix}`;
 
   const table = {

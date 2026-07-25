@@ -56,7 +56,9 @@ describe("Microsandbox backend behavior", () => {
         image: SeneraMicrosandboxDefaults.image,
         guestWorkspaceRoot: "/workspace",
         guestWorkdir: "/workspace/Source/AgentSystem",
-        network: "disabled",
+        cpus: 2,
+        memoryMiB: 1024,
+        network: "default",
         maxDurationSeconds: 5,
       }),
     ]);

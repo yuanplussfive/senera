@@ -13,7 +13,7 @@ export function buildAgentMcpExecutionProfile(
     name: McpExecutionProfileName,
     kind: "mcp-server",
     backend: executionPlan.backend,
-    microsandbox: local
+    sandbox: local
       ? undefined
       : {
           network: executionPlan.network,

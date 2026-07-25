@@ -453,6 +453,18 @@ export type ConfigFormFieldOptionValue = string | number | boolean;
 
 export type ConfigFormValueSource = "explicit" | "inherited" | "default" | "missing";
 
+export type ConfigFormModelCapability =
+  "Chat" | "Embedding" | "Rerank" | "Vision" | "ImageOutput" | "Reasoning" | "DeveloperRole" | "StreamingUsage";
+
+export interface ConfigFormModelSelectionData {
+  id: string;
+  capability: ConfigFormModelCapability;
+  valueKind: "model-id" | "provider-model";
+  mutation: "config" | "default-model";
+  providerPath?: string[];
+  required: boolean;
+}
+
 export interface ConfigFormSnapshotData {
   version: 1;
   sections: ConfigFormSectionData[];
@@ -499,6 +511,7 @@ export interface ConfigFormFieldData {
   defaultItem?: Record<string, unknown>;
   keyPlaceholder?: string;
   valuePlaceholder?: string;
+  modelSelection?: ConfigFormModelSelectionData;
 }
 
 export interface ConfigSnapshotData {

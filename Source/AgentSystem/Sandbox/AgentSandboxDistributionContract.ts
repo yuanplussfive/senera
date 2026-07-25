@@ -9,21 +9,24 @@ const TargetIdSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]*$/u);
 const DistributionIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/u);
 const ImmutableOciReferenceSchema = z.string().regex(/^[^\s@]+@sha256:[a-f0-9]{64}$/u);
 const RuntimeOciReferenceSchema = z.string().regex(/^[^\s@]+:[^\s/:]+$/u);
+const AbsolutePosixPathSchema = z.string().regex(/^\/(?:[^/\0]+\/?)+$/u);
+const SafeFileNameSchema = z
+  .string()
+  .min(1)
+  .refine((value) => path.basename(value) === value && value !== "." && value !== "..", "Invalid file name.");
 const SandboxProbeSchema = z
   .object({
     command: z.string().trim().min(1),
     arguments: z.array(z.string()).max(64),
   })
   .strict();
-const SafeAssetNameSchema = z
-  .string()
-  .min(1)
-  .refine((value) => path.basename(value) === value && value !== "." && value !== "..", "Invalid asset name.");
 const OciArchiveSchema = z
   .object({
     format: z.literal("oci"),
     mediaType: z.literal("application/vnd.oci.image.layout.v1.tar"),
-    assetName: SafeAssetNameSchema,
+    compression: z.literal("gzip"),
+    compressedMediaType: z.literal("application/gzip"),
+    assetName: SafeFileNameSchema,
   })
   .strict();
 
@@ -38,22 +41,42 @@ const AgentSandboxDistributionTargetSchema = z
 
 export const AgentSandboxDistributionContractSchema = z
   .object({
-    formatVersion: z.literal(3),
+    formatVersion: z.literal(4),
     id: DistributionIdSchema,
     archiveVersion: StableVersionSchema,
     microsandboxVersion: StableVersionSchema,
-    targets: z.record(TargetIdSchema, AgentSandboxDistributionTargetSchema),
-    release: z
+    hostRequirements: z
       .object({
-        repositoryUrl: z.url().refine((value) => new URL(value).protocol === "https:", "HTTPS is required."),
-        tagTemplate: z.string().includes("{productVersion}"),
-        manifestAssetName: SafeAssetNameSchema,
+        microsandbox: z
+          .object({
+            linux: z
+              .object({
+                devices: z
+                  .array(
+                    z
+                      .object({
+                        path: AbsolutePosixPathSchema,
+                        access: z.array(z.enum(["read", "write"])).min(1),
+                      })
+                      .strict(),
+                  )
+                  .min(1),
+              })
+              .strict(),
+          })
+          .strict(),
       })
       .strict(),
-    downloadPolicy: z
+    targets: z.record(TargetIdSchema, AgentSandboxDistributionTargetSchema),
+    bundle: z
       .object({
-        requestTimeoutMs: z.number().int().positive(),
+        manifestFileName: SafeFileNameSchema,
+      })
+      .strict(),
+    limits: z
+      .object({
         manifestMaxBytes: z.number().int().positive(),
+        bundleMaxBytes: z.number().int().positive(),
         archiveMaxBytes: z.number().int().positive(),
       })
       .strict(),
@@ -65,10 +88,9 @@ export type AgentSandboxDistributionTarget = z.infer<typeof AgentSandboxDistribu
 
 export const AgentSandboxArchiveManifestSchema = z
   .object({
-    formatVersion: z.literal(3),
+    formatVersion: z.literal(4),
     distributionId: DistributionIdSchema,
     archiveVersion: StableVersionSchema,
-    productVersion: StableVersionSchema,
     microsandboxVersion: StableVersionSchema,
     target: TargetIdSchema,
     sourceImage: ImmutableOciReferenceSchema,
@@ -77,9 +99,11 @@ export const AgentSandboxArchiveManifestSchema = z
       .object({
         format: z.literal("oci"),
         mediaType: z.literal("application/vnd.oci.image.layout.v1.tar"),
-        fileName: SafeAssetNameSchema,
-        url: z.url().refine((value) => new URL(value).protocol === "https:", "HTTPS is required."),
+        compression: z.literal("gzip"),
+        compressedMediaType: z.literal("application/gzip"),
+        fileName: SafeFileNameSchema,
         sizeBytes: z.number().int().positive(),
+        uncompressedSizeBytes: z.number().int().positive(),
         sha256: Sha256Schema,
       })
       .strict(),
@@ -88,12 +112,11 @@ export const AgentSandboxArchiveManifestSchema = z
 
 export type AgentSandboxArchiveManifest = z.infer<typeof AgentSandboxArchiveManifestSchema>;
 
-export interface AgentSandboxReleaseLocation {
+export interface AgentSandboxBundleLocation {
   targetId: string;
   target: AgentSandboxDistributionTarget;
-  releaseTag: string;
-  manifestUrl: string;
-  archiveUrl: string;
+  manifestFileName: string;
+  archiveFileName: string;
 }
 
 export function resolveAgentSandboxDistributionTarget(
@@ -112,70 +135,60 @@ export function readAgentSandboxDistributionContract(): AgentSandboxDistribution
   return AgentSandboxDistributionContractSchema.parse(JSON.parse(fs.readFileSync(contractPath, "utf8")));
 }
 
-export function resolveAgentSandboxReleaseLocation(
+export function resolveAgentSandboxBundleLocation(
   contract: AgentSandboxDistributionContract,
-  productVersion: string,
   architecture: string = process.arch,
-): AgentSandboxReleaseLocation {
-  const normalizedProductVersion = StableVersionSchema.parse(productVersion);
+): AgentSandboxBundleLocation {
   const target = resolveAgentSandboxDistributionTarget(contract, architecture);
-  const releaseTag = contract.release.tagTemplate.replaceAll("{productVersion}", normalizedProductVersion);
-  if (releaseTag.includes("{") || releaseTag.includes("}")) {
-    throw new Error(`Sandbox release tag template contains an unresolved variable: ${releaseTag}`);
-  }
-  const releaseRoot = new URL(
-    `releases/download/${encodeURIComponent(releaseTag)}/`,
-    ensureTrailingSlash(contract.release.repositoryUrl),
-  );
   return {
     targetId: architecture,
     target,
-    releaseTag,
-    manifestUrl: new URL(encodeURIComponent(contract.release.manifestAssetName), releaseRoot).href,
-    archiveUrl: new URL(encodeURIComponent(target.archive.assetName), releaseRoot).href,
+    manifestFileName: contract.bundle.manifestFileName,
+    archiveFileName: target.archive.assetName,
   };
 }
 
 export function assertAgentSandboxArchiveManifest(
   manifest: AgentSandboxArchiveManifest,
   contract: AgentSandboxDistributionContract,
-  productVersion: string,
-  location: AgentSandboxReleaseLocation,
+  architecture: string = process.arch,
 ): void {
+  const location = resolveAgentSandboxBundleLocation(contract, architecture);
   const expected = {
     distributionId: contract.id,
     archiveVersion: contract.archiveVersion,
-    productVersion,
     microsandboxVersion: contract.microsandboxVersion,
     target: location.targetId,
     sourceImage: location.target.sourceImage,
     runtimeImage: location.target.runtimeImage,
     format: location.target.archive.format,
     mediaType: location.target.archive.mediaType,
-    fileName: location.target.archive.assetName,
-    url: location.archiveUrl,
+    compression: location.target.archive.compression,
+    compressedMediaType: location.target.archive.compressedMediaType,
+    fileName: location.archiveFileName,
   };
   const actual = {
     distributionId: manifest.distributionId,
     archiveVersion: manifest.archiveVersion,
-    productVersion: manifest.productVersion,
     microsandboxVersion: manifest.microsandboxVersion,
     target: manifest.target,
     sourceImage: manifest.sourceImage,
     runtimeImage: manifest.runtimeImage,
     format: manifest.asset.format,
     mediaType: manifest.asset.mediaType,
+    compression: manifest.asset.compression,
+    compressedMediaType: manifest.asset.compressedMediaType,
     fileName: manifest.asset.fileName,
-    url: manifest.asset.url,
   };
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(`Sandbox archive manifest does not match distribution contract ${contract.id}.`);
+    throw new Error(`Sandbox Bundle manifest does not match distribution contract ${contract.id}.`);
   }
-  if (manifest.asset.sizeBytes > contract.downloadPolicy.archiveMaxBytes) {
-    throw new Error(`Sandbox image archive exceeds the declared download limit: ${manifest.asset.sizeBytes} bytes.`);
+  if (manifest.asset.sizeBytes > contract.limits.bundleMaxBytes) {
+    throw new Error(`Sandbox Bundle exceeds the declared compressed size limit: ${manifest.asset.sizeBytes} bytes.`);
   }
-}
-
-function ensureTrailingSlash(value: string): string {
-  return value.endsWith("/") ? value : `${value}/`;
+  if (manifest.asset.uncompressedSizeBytes > contract.limits.archiveMaxBytes) {
+    throw new Error(
+      `Sandbox Bundle exceeds the declared uncompressed size limit: ${manifest.asset.uncompressedSizeBytes} bytes.`,
+    );
+  }
 }

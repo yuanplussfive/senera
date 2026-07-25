@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
-import { sandboxStatusDetail } from "../sandbox/sandboxPreparationPresentation";
+import { sandboxStatusAvailabilitySuffix, sandboxStatusDetail } from "../sandbox/sandboxPreparationPresentation";
 import type { UserProfile } from "../../store/sessionStore";
 import type { SettingsSectionId } from "../settings/types";
 import { cn } from "../../lib/util";
@@ -161,12 +161,7 @@ export function UserFooter({
 function SandboxStatusMeta({ status }: { status?: SandboxStatusSnapshotData | null }): JSX.Element {
   const state = status?.state ?? "unknown";
   const detail = sandboxStatusDetail(status);
-  const suffix =
-    status?.effectiveMode === "sandbox"
-      ? frontendMessage("sandbox.status.sandboxSuffix")
-      : status?.effectiveMode === "disabled"
-        ? frontendMessage("sandbox.status.disabledSuffix")
-        : frontendMessage("sandbox.status.unavailableSuffix");
+  const suffix = sandboxStatusAvailabilitySuffix(status);
   const table = {
     disabled: {
       label: frontendMessage("sandbox.status.disabled"),

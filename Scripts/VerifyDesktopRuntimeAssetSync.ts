@@ -20,8 +20,10 @@ const workspaceRoot = fs.mkdtempSync(path.join(tempRoot, "run-"));
 
 try {
   assert.ok(
-    !rootPackage.build?.extraResources?.some((resource) => resource.to === "SandboxSeed"),
-    "Desktop packages must not ship a copied Microsandbox seed.",
+    rootPackage.build?.extraResources?.some(
+      (resource) => resource.from === "Release/SandboxImage" && resource.to === "SandboxImage",
+    ),
+    "Desktop packages must embed the verified Sandbox Bundle as an extra resource.",
   );
   assert.ok(
     !desktopPack.includes("sandbox.seed"),
@@ -30,6 +32,11 @@ try {
   assert.ok(
     desktopRuntime.includes("SandboxRuntime"),
     "Desktop runtime must keep Microsandbox state inside application-managed user data.",
+  );
+  assert.ok(
+    desktopRuntime.includes("resolveAgentSandboxPackagedBundleRoot") &&
+      desktopRuntime.includes("resolveAgentSandboxDevelopmentBundleRoot"),
+    "Desktop runtime must select its trusted packaged or explicit development Bundle root.",
   );
   assert.ok(
     rootPackage.build?.asarUnpack?.includes("Dist/Apps/Desktop/DesktopMicrosandboxRuntimeBridge.js"),

@@ -6,6 +6,18 @@ export type AgentConfigFormFieldLevel = "basic" | "advanced" | "internal";
 
 export type AgentConfigFormValueSource = "explicit" | "inherited" | "default" | "missing";
 
+export type AgentConfigFormModelCapability =
+  "Chat" | "Embedding" | "Rerank" | "Vision" | "ImageOutput" | "Reasoning" | "DeveloperRole" | "StreamingUsage";
+
+export interface AgentConfigFormModelSelection {
+  id: string;
+  capability: AgentConfigFormModelCapability;
+  valueKind: "model-id" | "provider-model";
+  mutation: "config" | "default-model";
+  providerPath?: string[];
+  required: boolean;
+}
+
 export interface AgentConfigFormSnapshot {
   version: 1;
   sections: AgentConfigFormSection[];
@@ -52,4 +64,5 @@ export interface AgentConfigFormField {
   defaultItem?: Record<string, unknown>;
   keyPlaceholder?: string;
   valuePlaceholder?: string;
+  modelSelection?: AgentConfigFormModelSelection;
 }

@@ -69,7 +69,7 @@ export function createProductReleaseInfo(input: {
     containerVersionTag: version,
     containerMinorTag: `${parsedVersion.major}.${parsedVersion.minor}`,
     sandboxArchiveArtifactName: sandboxTarget.archive.assetName,
-    sandboxArchiveManifestArtifactName: sandboxDistribution.release.manifestAssetName,
+    sandboxArchiveManifestArtifactName: sandboxDistribution.bundle.manifestFileName,
     sourceSha: input.sourceSha ?? "",
   };
 }

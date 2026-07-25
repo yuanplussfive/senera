@@ -8,27 +8,74 @@ x-senera-runtime: &senera-runtime
     SENERA_SERVER_PORT: 8787
     # Add every exact browser Origin used to access Senera, including an IP
     # and port when applicable, for example http://192.168.1.20:8787.
-    SENERA_ALLOWED_ORIGINS: "http://localhost:8787,http://127.0.0.1:8787"
-    SENERA_ALLOW_INSECURE_HTTP: "true"
+    SENERA_ALLOWED_ORIGINS: "${SENERA_ALLOWED_ORIGINS:-http://localhost:8787,http://127.0.0.1:8787}"
+    SENERA_ALLOW_INSECURE_HTTP: "${SENERA_ALLOW_INSECURE_HTTP:-true}"
     SENERA_PUBLIC_WS_URL: ${SENERA_PUBLIC_WS_URL:-}
+    SENERA_GVISOR_WORKER_SOCKET: /run/senera-sandbox/worker.sock
     # These values are authoritative and synchronized on every container start.
-    SENERA_ADMIN_LOGIN_NAME: ""
-    SENERA_ADMIN_DISPLAY_NAME: ""
-    SENERA_ADMIN_PASSWORD: ""
+    # Replace expressions with literals to keep credentials directly in this YAML.
+    SENERA_ADMIN_LOGIN_NAME: "${SENERA_ADMIN_LOGIN_NAME:?Set SENERA_ADMIN_LOGIN_NAME before starting Senera}"
+    SENERA_ADMIN_DISPLAY_NAME: "${SENERA_ADMIN_DISPLAY_NAME:?Set SENERA_ADMIN_DISPLAY_NAME before starting Senera}"
+    SENERA_ADMIN_PASSWORD: "${SENERA_ADMIN_PASSWORD:?Set SENERA_ADMIN_PASSWORD before starting Senera}"
   volumes:
     - senera-data:/data
+    - senera-sandbox-control:/run/senera-sandbox
+    - senera-sandbox-staging:/tmp
 
 services:
   senera:
     <<: *senera-runtime
-    container_name: senera
     ports:
-      - "8787:8787"
-    devices:
-      - /dev/kvm:/dev/kvm
-    cap_add:
-      - NET_ADMIN
+      - "${SENERA_HOST_PORT:-8787}:8787"
+    depends_on:
+      sandbox-worker:
+        condition: service_healthy
+    restart: unless-stopped
+
+  sandbox-worker:
+    image: ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:latest}
+    pull_policy: always
+    entrypoint: ["node", "Dist/Apps/GvisorWorker.js"]
+    command: []
+    user: "0:0"
+    environment:
+      SENERA_GVISOR_WORKER_SOCKET: /run/senera-sandbox/worker.sock
+      # Docker controls access through this dedicated named volume. The main
+      # service runs as node, while the Worker remains root for Docker Engine.
+      SENERA_GVISOR_WORKER_SOCKET_MODE: "0666"
+      SENERA_DOCKER_ENGINE_SOCKET: /run/docker-engine.sock
+      SENERA_DOCKER_SANDBOX_PROVIDER: "${SENERA_SANDBOX_PROVIDER:-auto}"
+      SENERA_GVISOR_WORKSPACE_KIND: volume
+      SENERA_GVISOR_WORKSPACE_SOURCE: ${SENERA_DATA_VOLUME:-senera-data}
+      SENERA_GVISOR_COPY_SOURCE_ROOTS: '["/app","/data","/tmp"]'
+      SENERA_GVISOR_BUNDLE_ROOT: /app/SandboxImage
+    volumes:
+      - /var/run/docker.sock:/run/docker-engine.sock
+      - senera-data:/data:ro
+      - senera-sandbox-control:/run/senera-sandbox
+      - senera-sandbox-staging:/tmp
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const fs=require('node:fs');process.exit(fs.statSync(process.env.SENERA_GVISOR_WORKER_SOCKET).isSocket()?0:1)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
     restart: unless-stopped
 
 volumes:
   senera-data:
+    name: ${SENERA_DATA_VOLUME:-senera-data}
+  senera-sandbox-control:
+  senera-sandbox-staging:

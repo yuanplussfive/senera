@@ -15,7 +15,6 @@ vi.mock("../../../Frontend/src/shared/code/CodeTextEditor.tsx", () => ({
 }));
 
 const { PresetControl } = await import("../../../Frontend/src/features/chat/PresetPanel.tsx");
-const { PlanningConfigView } = await import("../../../Frontend/src/features/chat/PlanningConfigView.tsx");
 const { PluginConfigContent } = await import("../../../Frontend/src/features/chat/PluginConfigPanel.tsx");
 const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
 const { ConfigSourceNotice, Diagnostics, SettingsView, TomlView, ViewSwitch } =
@@ -73,45 +72,6 @@ test("preset control requires confirmation before deleting the selected preset",
   await user.click(deleteButtons[0]);
 
   expect(onDelete).toHaveBeenCalledWith("writer.md");
-});
-
-test("planning config selects only chat-capable models and can return to inherited defaults", async () => {
-  const onChange = vi.fn();
-  const user = userEvent.setup();
-  const value = {
-    ModelProviders: [
-      { Id: "planner-a", Model: "Planner Alpha", Capabilities: { Chat: true } },
-      { Id: "embedding-a", Model: "Embedding Alpha", Capabilities: { Chat: false } },
-    ],
-  };
-  const view = renderWithFrontendProviders(
-    React.createElement(PlanningConfigView, {
-      value,
-      onChange,
-    }),
-  );
-
-  await user.click(screen.getByRole("button", { name: "模型: 继承主模型" }));
-  expect(screen.queryByText("Embedding Alpha")).not.toBeInTheDocument();
-  await user.click(screen.getByRole("menuitem", { name: "Planner Alpha" }));
-  expect(onChange).toHaveBeenLastCalledWith(
-    expect.objectContaining({
-      ActionPlanner: { Client: { ModelProviderId: "planner-a" } },
-    }),
-  );
-
-  view.rerender(
-    React.createElement(PlanningConfigView, {
-      value: {
-        ...value,
-        ActionPlanner: { Client: { ModelProviderId: "planner-a" } },
-      },
-      onChange,
-    }),
-  );
-  await user.click(screen.getByRole("button", { name: "模型: Planner Alpha" }));
-  await user.click(screen.getByRole("menuitem", { name: "继承主模型" }));
-  expect(onChange.mock.calls.at(-1)[0].ActionPlanner.Client.ModelProviderId).toBeUndefined();
 });
 
 test("plugin settings route tool and field changes while parse failures disable controls", async () => {

@@ -81,13 +81,12 @@ describe("sandbox runtime loading", () => {
     const sourceImage = "registry.example/runtime@sha256:bundle";
     const runtimeImage = "senera.local/test-runtime:1.0.1-x64";
     const archiveInstallation = {
-      archivePath: path.join(workspaceRoot, "image.oci.tar"),
+      archivePath: path.join(workspaceRoot, "image.oci.tar.gz"),
       imported: true,
       manifest: {
-        formatVersion: 3,
+        formatVersion: 4,
         distributionId: "test",
         archiveVersion: "1.0.2",
-        productVersion: "1.2.3",
         microsandboxVersion: "0.6.4",
         target: "x64",
         sourceImage,
@@ -95,9 +94,11 @@ describe("sandbox runtime loading", () => {
         asset: {
           format: "oci",
           mediaType: "application/vnd.oci.image.layout.v1.tar",
-          fileName: "image.oci.tar",
-          url: "https://example.test/image.oci.tar",
+          compression: "gzip",
+          compressedMediaType: "application/gzip",
+          fileName: "image.oci.tar.gz",
           sizeBytes: 1,
+          uncompressedSizeBytes: 1,
           sha256: "0".repeat(64),
         },
       },
@@ -111,7 +112,7 @@ describe("sandbox runtime loading", () => {
           BaseDir: ".senera/runtime",
           Provisioning: { Kind: "ReleaseBundle" },
         },
-        productVersion: "1.2.3",
+        sandboxBundleRoot: path.join(workspaceRoot, "Release", "SandboxImage"),
         microsandbox: createMicrosandbox(createdImages, pullPolicies),
         archiveInstaller,
       });
@@ -165,7 +166,10 @@ describe("sandbox runtime loading", () => {
   });
 });
 
-function sandboxConfig(baseDir: string, images: string[] = ["alpine"]): ResolvedAgentSandboxRuntimeConfig {
+function sandboxConfig(
+  baseDir: string,
+  images: string[] = ["alpine"],
+): Pick<ResolvedAgentSandboxRuntimeConfig, "Enabled" | "BaseDir" | "Provisioning"> {
   return {
     Enabled: true,
     BaseDir: baseDir,

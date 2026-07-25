@@ -1,4 +1,4 @@
-import type { AgentModelProviderEndpointConfig, AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import {
   AgentDefaults,
   resolveAgentDefaults,
@@ -7,6 +7,7 @@ import {
   resolveConfigStoreConfig,
   resolveFrontendConfig,
   resolveMemoryLearningConfig,
+  resolveModelProviderEndpointConfigs,
   resolveModelProviderRuntimeDefaults,
   resolvePersistenceConfig,
   resolvePresetsConfig,
@@ -52,41 +53,12 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
       Persistence: resolvePersistenceConfig(config),
       ConfigStore: resolveConfigStoreConfig(config),
     },
-    ModelProviderEndpoints: projectModelProviderEndpoints(config),
+    ModelProviderEndpoints: resolveModelProviderEndpointConfigs(config),
     ModelProviders: config.ModelProviders.map((provider) =>
       resolveModelProviderRuntimeDefaults(resolveAgentDefaults(config).ModelRuntime, provider),
     ),
     ModelGroups: config.ModelGroups,
   };
-}
-
-function projectModelProviderEndpoints(config: AgentSystemConfig) {
-  const endpointsById = new Map<string, AgentModelProviderEndpointConfig>();
-  for (const endpoint of AgentDefaults.ModelProviderEndpoints) {
-    endpointsById.set(endpoint.Id, endpoint);
-  }
-  for (const endpoint of config.ModelProviderEndpoints ?? []) {
-    endpointsById.set(endpoint.Id, {
-      ...defaultModelProviderEndpointFields(endpoint.Id),
-      ...endpoint,
-    });
-  }
-  return [...endpointsById.values()];
-}
-
-function defaultModelProviderEndpointFields(id: string) {
-  return (
-    AgentDefaults.ModelProviderEndpoints.find((endpoint) => endpoint.Id === id) ?? {
-      Id: id,
-      Icon: "",
-      Enabled: true,
-      Kind: "OpenAICompatible" as const,
-      BaseUrl: "",
-      ApiKey: "",
-      ApiVersion: "2023-06-01",
-      Headers: {},
-    }
-  );
 }
 
 function projectResolvedActionPlanner(config: AgentSystemConfig): NonNullable<AgentSystemConfig["ActionPlanner"]> {

@@ -1,5 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import type { SeneraMicrosandboxTerminalHandle } from "./SeneraMicrosandboxTypes.js";
+import type { SeneraGvisorProcessHandle } from "./SeneraGvisorTypes.js";
 import type { SeneraTerminalDisposable, SeneraTerminalExitEvent, SeneraTerminalSignal } from "./SeneraTerminalTypes.js";
 
 export interface SeneraTerminalSidecarChannel {
@@ -155,6 +156,71 @@ export class SeneraMicrosandboxTerminalSidecarChannel implements SeneraTerminalS
   private disposeOnce(): Promise<void> {
     this.disposal ??= this.dispose();
     return this.disposal;
+  }
+}
+
+export class SeneraGvisorTerminalSidecarChannel implements SeneraTerminalSidecarChannel {
+  private readonly dataListeners = new Set<(data: Buffer) => void>();
+  private readonly errorListeners = new Set<(error: Error) => void>();
+  private readonly exitListeners = new Set<(event: SeneraTerminalExitEvent) => void>();
+  private error: Error | undefined;
+  private exitEvent: SeneraTerminalExitEvent | undefined;
+
+  constructor(private readonly handle: SeneraGvisorProcessHandle) {
+    void this.consume();
+  }
+
+  write(data: Uint8Array): Promise<void> {
+    return this.handle.write(data);
+  }
+
+  terminate(signal: SeneraTerminalSignal): Promise<void> {
+    return this.handle.terminate(signal);
+  }
+
+  onData(listener: (data: Buffer) => void): SeneraTerminalDisposable {
+    this.dataListeners.add(listener);
+    return disposable(() => this.dataListeners.delete(listener));
+  }
+
+  onError(listener: (error: Error) => void): SeneraTerminalDisposable {
+    this.errorListeners.add(listener);
+    if (this.error) queueMicrotask(() => listener(this.error as Error));
+    return disposable(() => this.errorListeners.delete(listener));
+  }
+
+  onExit(listener: (event: SeneraTerminalExitEvent) => void): SeneraTerminalDisposable {
+    this.exitListeners.add(listener);
+    if (this.exitEvent) queueMicrotask(() => listener(this.exitEvent as SeneraTerminalExitEvent));
+    return disposable(() => this.exitListeners.delete(listener));
+  }
+
+  private async consume(): Promise<void> {
+    try {
+      for await (const event of this.handle.events) {
+        if (event.kind === "output" && event.stream === "stdout") {
+          for (const listener of this.dataListeners) listener(event.data);
+        } else if (event.kind === "output") {
+          this.emitError(new Error(event.data.toString("utf8")));
+        } else {
+          this.emitExit({ exitCode: event.code ?? 1, signal: event.signal ?? undefined });
+        }
+      }
+    } catch (error) {
+      this.emitError(error instanceof Error ? error : new Error(String(error)));
+      this.emitExit({ exitCode: 1 });
+    }
+  }
+
+  private emitError(error: Error): void {
+    this.error = error;
+    for (const listener of this.errorListeners) listener(error);
+  }
+
+  private emitExit(event: SeneraTerminalExitEvent): void {
+    if (this.exitEvent) return;
+    this.exitEvent = event;
+    for (const listener of this.exitListeners) listener(event);
   }
 }
 
