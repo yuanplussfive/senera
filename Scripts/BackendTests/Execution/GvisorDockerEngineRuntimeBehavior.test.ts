@@ -4,7 +4,7 @@ import Docker from "dockerode";
 import { describe, expect, test, vi } from "vitest";
 import {
   AgentGvisorDockerEngineRuntime,
-  findImportedDockerImageId,
+  resolveImportedDockerImageId,
   resolveAgentDockerEngineSandboxProvider,
 } from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorDockerRuntime.js";
 import {
@@ -90,12 +90,49 @@ describe("Docker Engine sandbox runtime", () => {
     const importedReference = sourceReference.replace("docker.io/library/", "");
 
     expect(
-      findImportedDockerImageId(
-        [{ Id: "sha256:image-config", RepoTags: [importedReference], RepoDigests: [] }],
-        sourceReference,
-      ),
+      resolveImportedDockerImageId({
+        imagesBefore: [],
+        imagesAfter: [{ Id: "sha256:image-config", RepoTags: [importedReference], RepoDigests: [] }],
+        loadEvents: [],
+        expectedReferences: [sourceReference],
+      }),
     ).toBe("sha256:image-config");
-    expect(() => findImportedDockerImageId([], sourceReference)).toThrow("imported 0 images");
+  });
+
+  test("uses Docker's load response for an already-present dangling OCI image", () => {
+    const imageId = `sha256:${"a".repeat(64)}`;
+    const danglingImage = { Id: imageId, RepoTags: ["<none>:<none>"], RepoDigests: [] };
+
+    expect(
+      resolveImportedDockerImageId({
+        imagesBefore: [danglingImage],
+        imagesAfter: [danglingImage],
+        loadEvents: [{ stream: `Loaded image ID: ${imageId}\n` }],
+        expectedReferences: ["senera.local/runtime:1.0.2"],
+      }),
+    ).toBe(imageId);
+  });
+
+  test("uses the unique inventory delta when Docker omits the loaded image identity", () => {
+    expect(
+      resolveImportedDockerImageId({
+        imagesBefore: [{ Id: "sha256:existing" }],
+        imagesAfter: [{ Id: "sha256:existing" }, { Id: "sha256:imported" }],
+        loadEvents: [],
+        expectedReferences: ["senera.local/runtime:1.0.2"],
+      }),
+    ).toBe("sha256:imported");
+  });
+
+  test("rejects an ambiguous Docker image inventory delta", () => {
+    expect(() =>
+      resolveImportedDockerImageId({
+        imagesBefore: [],
+        imagesAfter: [{ Id: "sha256:first" }, { Id: "sha256:second" }],
+        loadEvents: [],
+        expectedReferences: ["senera.local/runtime:1.0.2"],
+      }),
+    ).toThrow("load added multiple images");
   });
 });
 

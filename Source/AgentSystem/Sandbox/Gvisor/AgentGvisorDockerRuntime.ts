@@ -370,22 +370,34 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
       bundleRoot: this.options.bundleRoot!,
       onProgress,
     });
+    onProgress?.({
+      stage: AgentSandboxPreparationStages.ImportingImage,
+      item: verified.manifest.runtimeImage,
+    });
+    const imagesBefore = await this.listImages();
     const archive = createReadStream(verified.archivePath).pipe(createGunzip());
-    const stream = await this.options.docker.loadImage(archive, { quiet: true });
-    await new Promise<void>((resolve, reject) => {
-      dockerModem(this.options.docker).followProgress(stream, (error) => {
+    const stream = await this.options.docker.loadImage(archive);
+    const loadEvents = await new Promise<readonly unknown[]>((resolve, reject) => {
+      dockerModem(this.options.docker).followProgress(stream, (error, output) => {
         if (error) reject(dockerOperationError("load bundled image", error));
-        else resolve();
+        else resolve(output);
       });
     });
     const target = splitImageReference(this.resolvedContract.image.runtimeImage);
-    const importedImage = await this.resolveImportedBundleImage(this.resolvedContract.image.sourceImage);
+    const imagesAfter = await this.listImages();
+    const importedImage = this.options.docker.getImage(
+      resolveImportedDockerImageId({
+        imagesBefore,
+        imagesAfter,
+        loadEvents,
+        expectedReferences: [this.resolvedContract.image.runtimeImage, this.resolvedContract.image.sourceImage],
+      }),
+    );
     await importedImage.tag(target);
   }
 
-  private async resolveImportedBundleImage(sourceReference: string): Promise<Docker.Image> {
-    const images = (await this.options.docker.listImages({ all: true })) as DockerImageSummary[];
-    return this.options.docker.getImage(findImportedDockerImageId(images, sourceReference));
+  private async listImages(): Promise<readonly DockerImageSummary[]> {
+    return (await this.options.docker.listImages({ all: true })) as DockerImageSummary[];
   }
 
   private async stageRootfsCopies(copies: AgentGvisorExecutionRequest["rootfsCopies"]): Promise<string> {
@@ -421,19 +433,46 @@ export interface DockerImageSummary {
   RepoDigests?: string[];
 }
 
-export function findImportedDockerImageId(images: readonly DockerImageSummary[], sourceReference: string): string {
-  const expected = normalizeDockerImageReference(sourceReference);
-  const matches = images.filter((image) =>
-    [...(image.RepoTags ?? []), ...(image.RepoDigests ?? [])].some(
-      (reference) => normalizeDockerImageReference(reference) === expected,
-    ),
-  );
-  if (matches.length !== 1 || !matches[0]?.Id) {
+export interface ImportedDockerImageResolutionInput {
+  imagesBefore: readonly DockerImageSummary[];
+  imagesAfter: readonly DockerImageSummary[];
+  loadEvents: readonly unknown[];
+  expectedReferences: readonly string[];
+}
+
+/** Resolves the one image identified by Docker's load result without trusting an unrelated dangling image. */
+export function resolveImportedDockerImageId(input: ImportedDockerImageResolutionInput): string {
+  const beforeIds = dockerImageIds(input.imagesBefore);
+  const afterIds = dockerImageIds(input.imagesAfter);
+  const referencedIds = findDockerImageIdsByReferences(input.imagesAfter, input.expectedReferences);
+  const loadIdentity = readDockerImageLoadIdentity(input.loadEvents);
+  const responseIds = new Set<string>();
+
+  for (const imageId of loadIdentity.imageIds) {
+    if (!afterIds.has(imageId)) {
+      throw new Error(`Docker reported loaded image ${imageId}, but it is absent from the post-import inventory.`);
+    }
+    responseIds.add(imageId);
+  }
+  for (const reference of loadIdentity.references) {
+    for (const imageId of findDockerImageIdsByReferences(input.imagesAfter, [reference])) responseIds.add(imageId);
+  }
+
+  const identifiedIds = new Set([...referencedIds, ...responseIds]);
+  if (identifiedIds.size === 1) return firstSetValue(identifiedIds);
+  if (identifiedIds.size > 1) {
     throw new Error(
-      `Verified Sandbox Bundle imported ${matches.length} images matching ${sourceReference}; exactly one is required.`,
+      `Verified Sandbox Bundle load identified multiple images: ${[...identifiedIds].sort().join(", ")}.`,
     );
   }
-  return matches[0].Id;
+
+  const addedIds = new Set([...afterIds].filter((imageId) => !beforeIds.has(imageId)));
+  if (addedIds.size === 1) return firstSetValue(addedIds);
+  throw new Error(
+    addedIds.size === 0
+      ? "Verified Sandbox Bundle was loaded, but Docker did not expose its image identity."
+      : `Verified Sandbox Bundle load added multiple images: ${[...addedIds].sort().join(", ")}.`,
+  );
 }
 
 interface DockerContainerWaitResult {
@@ -442,7 +481,10 @@ interface DockerContainerWaitResult {
 
 interface DockerModemOperations {
   demuxStream(stream: NodeJS.ReadableStream, stdout: NodeJS.WritableStream, stderr: NodeJS.WritableStream): void;
-  followProgress(stream: NodeJS.ReadableStream, completed: (error: Error | null) => void): void;
+  followProgress(
+    stream: NodeJS.ReadableStream,
+    completed: (error: Error | null, output: readonly unknown[]) => void,
+  ): void;
 }
 
 function dockerModem(docker: Docker): DockerModemOperations {
@@ -507,6 +549,56 @@ function normalizeDockerImageReference(reference: string): string {
       ? `docker.io/library/${name}`
       : `docker.io/${name}`;
   return `${normalizedName}${suffix}`;
+}
+
+function dockerImageIds(images: readonly DockerImageSummary[]): Set<string> {
+  return new Set(images.flatMap((image) => (image.Id ? [image.Id] : [])));
+}
+
+function findDockerImageIdsByReferences(
+  images: readonly DockerImageSummary[],
+  references: readonly string[],
+): Set<string> {
+  const expected = new Set(references.map(normalizeDockerImageReference));
+  return new Set(
+    images.flatMap((image) => {
+      if (!image.Id) return [];
+      const matches = [...(image.RepoTags ?? []), ...(image.RepoDigests ?? [])].some((reference) =>
+        expected.has(normalizeDockerImageReference(reference)),
+      );
+      return matches ? [image.Id] : [];
+    }),
+  );
+}
+
+function readDockerImageLoadIdentity(events: readonly unknown[]): {
+  imageIds: ReadonlySet<string>;
+  references: ReadonlySet<string>;
+} {
+  const imageIds = new Set<string>();
+  const references = new Set<string>();
+  for (const event of events) {
+    if (!isRecord(event)) continue;
+    for (const value of [event.stream, event.status]) {
+      if (typeof value !== "string") continue;
+      for (const line of value.split(/\r?\n/u)) {
+        const imageId = /^Loaded image ID:\s*(sha256:[a-f0-9]{64})\s*$/iu.exec(line)?.[1];
+        if (imageId) {
+          imageIds.add(imageId.toLowerCase());
+          continue;
+        }
+        const reference = /^Loaded image:\s*(\S+)\s*$/u.exec(line)?.[1];
+        if (reference) references.add(reference);
+      }
+    }
+  }
+  return { imageIds, references };
+}
+
+function firstSetValue(values: ReadonlySet<string>): string {
+  const value = values.values().next().value;
+  if (typeof value !== "string") throw new Error("Expected a non-empty Docker image identity set.");
+  return value;
 }
 
 function imageNameWithoutTag(reference: string): string {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AgentSandboxPreparationStages } from "../AgentSandboxRuntimeTypes.js";
 import { readAgentGvisorRuntimePolicyContract } from "./AgentGvisorRuntimeContract.js";
 
 export const AgentGvisorWorkerProtocolVersion = 1;
@@ -8,6 +9,8 @@ export const AgentGvisorWorkerMaxFrameBytes = RuntimePolicy.protocol.maxFrameByt
 const NonEmptyString = z.string().trim().min(1);
 const AbsoluteGuestPath = z.string().startsWith("/").min(1);
 const InitialMessage = z.object({ protocolVersion: z.literal(AgentGvisorWorkerProtocolVersion) });
+const PreparationStage = z.enum(Object.values(AgentSandboxPreparationStages));
+const ProgressCount = z.number().int().nonnegative();
 
 export const AgentGvisorExecutionRequestSchema = z
   .object({
@@ -105,17 +108,12 @@ export const AgentGvisorWorkerServerMessageSchema = z.discriminatedUnion("type",
   z
     .object({
       type: z.literal("progress"),
-      stage: z.enum([
-        "checking_host_runtime",
-        "connecting_worker",
-        "loading_runtime",
-        "resolving_archive",
-        "verifying_archive",
-        "importing_image",
-        "warming_image",
-        "probing_sandbox",
-      ]),
+      stage: PreparationStage,
       item: z.string().optional(),
+      completed: ProgressCount.optional(),
+      total: ProgressCount.optional(),
+      downloadedBytes: ProgressCount.optional(),
+      totalBytes: ProgressCount.optional(),
     })
     .strict(),
   z.object({ type: z.literal("prepared") }).strict(),

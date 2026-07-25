@@ -96,8 +96,7 @@ export class AgentGvisorWorkerServer {
         onProgress: (progress) => {
           void writeFrame(socket, {
             type: "progress",
-            stage: progress.stage,
-            ...(progress.item ? { item: progress.item } : {}),
+            ...progress,
           }).catch(() => undefined);
         },
       })

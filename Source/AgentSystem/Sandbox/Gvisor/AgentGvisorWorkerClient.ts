@@ -134,7 +134,8 @@ export class AgentGvisorWorkerSocketClient implements SeneraGvisorWorkerClient {
             for (const value of decoder.push(Buffer.from(chunk))) {
               const message = AgentGvisorWorkerServerMessageSchema.parse(value);
               if (message.type === "progress") {
-                onProgress?.({ stage: message.stage, item: message.item });
+                const { type: _type, ...progress } = message;
+                onProgress?.(progress);
               } else if (message.type === "error") {
                 reject(workerError(message));
               } else {

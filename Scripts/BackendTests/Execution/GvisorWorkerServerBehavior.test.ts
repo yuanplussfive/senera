@@ -26,7 +26,21 @@ describe("gVisor worker server", () => {
         isolation: "gvisor",
         imageReady: true,
       });
-      await expect(client.prepare({ timeoutMs: 1_000 })).resolves.toBeUndefined();
+      const preparationProgress: unknown[] = [];
+      await expect(
+        client.prepare({
+          timeoutMs: 1_000,
+          onProgress: (progress) => preparationProgress.push(progress),
+        }),
+      ).resolves.toBeUndefined();
+      expect(preparationProgress).toEqual([
+        {
+          stage: "verifying_archive",
+          item: "sandbox.oci.tar.gz",
+          downloadedBytes: 1024,
+          totalBytes: 4096,
+        },
+      ]);
 
       const process = await client.start(createExecutionRequest());
       await process.write(Buffer.from("first input"));
@@ -152,8 +166,14 @@ class RecordingRuntime implements AgentGvisorDockerRuntime {
     };
   }
 
-  async prepare(): Promise<void> {
+  async prepare(input?: Parameters<AgentGvisorDockerRuntime["prepare"]>[0]): Promise<void> {
     this.preparations += 1;
+    input?.onProgress?.({
+      stage: "verifying_archive",
+      item: "sandbox.oci.tar.gz",
+      downloadedBytes: 1024,
+      totalBytes: 4096,
+    });
   }
 
   async start(_request: AgentGvisorExecutionRequest): Promise<AgentGvisorDockerProcess> {
