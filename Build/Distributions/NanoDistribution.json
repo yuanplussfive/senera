@@ -72,6 +72,7 @@
         "@types/node",
         "@types/react",
         "@types/react-dom",
+        "@types/tar-stream",
         "@types/ws",
         "@vitejs/plugin-react",
         "autoprefixer",
