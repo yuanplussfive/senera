@@ -14,6 +14,7 @@ import {
   type AgentSandboxArchiveManifest,
   type AgentSandboxDistributionContract,
 } from "../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
+import { readAgentOciArchiveConfigDigest } from "../Source/AgentSystem/Sandbox/Distribution/AgentOciArchiveIdentity.js";
 import { resolveAgentMicrosandboxPackage } from "../Source/AgentSystem/Sandbox/AgentMicrosandboxCli.js";
 import {
   createMicrosandboxDistributionRuntime,
@@ -26,6 +27,7 @@ export interface BuildSandboxImageArchiveOptions {
   architecture?: string;
   contract?: AgentSandboxDistributionContract;
   runtime?: MicrosandboxDistributionRuntime;
+  archiveIdentityReader?: typeof readAgentOciArchiveConfigDigest;
   log?: (message: string) => void;
 }
 
@@ -89,6 +91,16 @@ export async function buildSandboxImageArchive(
       contract.limits.archiveMaxBytes,
       "uncompressed OCI archive",
     );
+    const configDigest = await (options.archiveIdentityReader ?? readAgentOciArchiveConfigDigest)({
+      archivePath: rawArchivePath,
+      reference: location.target.sourceImage,
+      maxMetadataBytes: contract.limits.manifestMaxBytes,
+    });
+    if (configDigest !== location.target.configDigest) {
+      throw new Error(
+        `Sandbox OCI archive config digest does not match its distribution contract: ${configDigest} !== ${location.target.configDigest}.`,
+      );
+    }
     options.log?.(`Compressing sandbox OCI archive as ${location.target.archive.compression}...`);
     await compressArchive(rawArchivePath, stagingBundlePath, location.target.archive.compression);
     const bundleStat = await requireFileWithinLimit(
@@ -119,13 +131,14 @@ export async function buildSandboxImageArchive(
     });
 
     const manifest = AgentSandboxArchiveManifestSchema.parse({
-      formatVersion: 4,
+      formatVersion: 5,
       distributionId: contract.id,
       archiveVersion: contract.archiveVersion,
       microsandboxVersion: contract.microsandboxVersion,
       target: location.targetId,
       sourceImage: location.target.sourceImage,
       runtimeImage: location.target.runtimeImage,
+      configDigest,
       asset: {
         format: location.target.archive.format,
         mediaType: location.target.archive.mediaType,

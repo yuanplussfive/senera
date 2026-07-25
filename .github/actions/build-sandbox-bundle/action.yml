@@ -1,0 +1,46 @@
+name: Build verified Sandbox Bundle
+description: Build and clean-room verify the versioned microsandbox OCI Bundle.
+
+inputs:
+  output-root:
+    description: Workspace-relative directory that receives the Bundle manifest and archive.
+    required: false
+    default: Release/SandboxImage
+
+runs:
+  using: composite
+  steps:
+    - name: Require hardware virtualization
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -c /dev/kvm
+
+    - name: Compile Sandbox Bundle builder
+      shell: bash
+      run: npm run build
+
+    - name: Build and verify portable Sandbox Bundle
+      shell: bash
+      env:
+        SENERA_SANDBOX_BUNDLE_OUTPUT: ${{ inputs.output-root }}
+      run: |
+        set -euo pipefail
+        kvm_gid="$(stat -c '%g' /dev/kvm)"
+        runtime_groups="$(id -G | tr ' ' ',')"
+        if [ "$kvm_gid" != "0" ]; then
+          case ",${runtime_groups}," in
+            *",${kvm_gid},"*) ;;
+            *) runtime_groups="${runtime_groups},${kvm_gid}" ;;
+          esac
+        fi
+        sudo setpriv \
+          --reuid="$(id -u)" \
+          --regid="$(id -g)" \
+          --groups="$runtime_groups" \
+          -- sh -c 'test -r /dev/kvm && test -w /dev/kvm'
+        sudo setpriv \
+          --reuid="$(id -u)" \
+          --regid="$(id -g)" \
+          --groups="$runtime_groups" \
+          -- node Dist/Build/BuildSandboxImageArchive.js --output "$SENERA_SANDBOX_BUNDLE_OUTPUT"

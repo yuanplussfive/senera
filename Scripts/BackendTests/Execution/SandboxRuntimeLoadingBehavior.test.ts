@@ -84,13 +84,14 @@ describe("sandbox runtime loading", () => {
       archivePath: path.join(workspaceRoot, "image.oci.tar.gz"),
       imported: true,
       manifest: {
-        formatVersion: 4,
+        formatVersion: 5,
         distributionId: "test",
         archiveVersion: "1.0.2",
         microsandboxVersion: "0.6.4",
         target: "x64",
         sourceImage,
         runtimeImage,
+        configDigest: `sha256:${"c".repeat(64)}`,
         asset: {
           format: "oci",
           mediaType: "application/vnd.oci.image.layout.v1.tar",

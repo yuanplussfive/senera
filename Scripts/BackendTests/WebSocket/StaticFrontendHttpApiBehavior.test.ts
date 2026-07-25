@@ -27,6 +27,10 @@ describe("static frontend HTTP API", () => {
       expect(await asset.text()).toBe("console.log('ready');");
       expect(asset.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
       expect(asset.headers.get("content-type")).toContain("javascript");
+
+      const runtimeConfig = await fetch(`${server.origin}/senera-runtime-config.js`);
+      expect(await runtimeConfig.text()).toBe("window.__SENERA_RUNTIME_CONFIG__ = {};");
+      expect(runtimeConfig.headers.get("cache-control")).toBe("no-store");
     } finally {
       await server.close();
     }
@@ -85,6 +89,7 @@ function createFrontendRoot(): string {
   fs.mkdirSync(path.join(root, "assets"), { recursive: true });
   fs.writeFileSync(path.join(root, "index.html"), "<main>Senera</main>", "utf8");
   fs.writeFileSync(path.join(root, "assets", "app.js"), "console.log('ready');", "utf8");
+  fs.writeFileSync(path.join(root, "senera-runtime-config.js"), "window.__SENERA_RUNTIME_CONFIG__ = {};", "utf8");
   return root;
 }
 

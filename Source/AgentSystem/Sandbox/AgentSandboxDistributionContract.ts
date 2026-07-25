@@ -4,6 +4,7 @@ import { z } from "zod";
 import { moduleDirPath } from "../Core/AgentPath.js";
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
+const Sha256DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const StableVersionSchema = z.string().regex(/^\d+\.\d+\.\d+$/u);
 const TargetIdSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]*$/u);
 const DistributionIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/u);
@@ -40,6 +41,7 @@ const AgentSandboxDistributionTargetSchema = z
   .object({
     sourceImage: ImmutableOciReferenceSchema,
     runtimeImage: RuntimeOciReferenceSchema,
+    configDigest: Sha256DigestSchema,
     probe: SandboxProbeSchema,
     archive: OciArchiveSchema,
   })
@@ -47,7 +49,7 @@ const AgentSandboxDistributionTargetSchema = z
 
 export const AgentSandboxDistributionContractSchema = z
   .object({
-    formatVersion: z.literal(4),
+    formatVersion: z.literal(5),
     id: DistributionIdSchema,
     archiveVersion: StableVersionSchema,
     microsandboxVersion: StableVersionSchema,
@@ -94,13 +96,14 @@ export type AgentSandboxDistributionTarget = z.infer<typeof AgentSandboxDistribu
 
 export const AgentSandboxArchiveManifestSchema = z
   .object({
-    formatVersion: z.literal(4),
+    formatVersion: z.literal(5),
     distributionId: DistributionIdSchema,
     archiveVersion: StableVersionSchema,
     microsandboxVersion: StableVersionSchema,
     target: TargetIdSchema,
     sourceImage: ImmutableOciReferenceSchema,
     runtimeImage: RuntimeOciReferenceSchema,
+    configDigest: Sha256DigestSchema,
     asset: z
       .object({
         format: z.literal("oci"),
@@ -167,6 +170,7 @@ export function assertAgentSandboxArchiveManifest(
     target: location.targetId,
     sourceImage: location.target.sourceImage,
     runtimeImage: location.target.runtimeImage,
+    configDigest: location.target.configDigest,
     format: location.target.archive.format,
     mediaType: location.target.archive.mediaType,
     compression: location.target.archive.compression,
@@ -180,6 +184,7 @@ export function assertAgentSandboxArchiveManifest(
     target: manifest.target,
     sourceImage: manifest.sourceImage,
     runtimeImage: manifest.runtimeImage,
+    configDigest: manifest.configDigest,
     format: manifest.asset.format,
     mediaType: manifest.asset.mediaType,
     compression: manifest.asset.compression,

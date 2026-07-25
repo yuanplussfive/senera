@@ -15,7 +15,7 @@ runtime_uid="$(id -u "$runtime_user")" || fail "runtime user $runtime_user does 
 runtime_gid="$(id -g "$runtime_user")" || fail "runtime group for $runtime_user does not exist."
 [ "$runtime_uid" != "0" ] || fail "runtime user $runtime_user must not be root."
 [ "$runtime_gid" != "0" ] || fail "runtime group for $runtime_user must not be root."
-printf '%s\n' "Senera container runtime: user=${runtime_user} uid=${runtime_uid} gid=${runtime_gid} sandbox_provider=gvisor"
+printf '%s\n' "Senera container runtime: user=${runtime_user} uid=${runtime_uid} gid=${runtime_gid}"
 exec setpriv \
   --reuid="$runtime_uid" \
   --regid="$runtime_gid" \

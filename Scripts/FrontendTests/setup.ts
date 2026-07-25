@@ -11,6 +11,7 @@ declare global {
   interface Window {
     __SENERA_RUNTIME_CONFIG__?: {
       webSocketUrl?: string;
+      httpBaseUrl?: string;
       modelLabel?: string;
       userName?: string;
       emptySuggestions?: string[];

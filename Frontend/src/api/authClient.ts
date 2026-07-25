@@ -37,17 +37,16 @@ export class ServerAuthenticationError extends Error {
   }
 }
 
-export function buildServerApiUrl(webSocketUrl: string, pathname: string): string {
-  const url = new URL(webSocketUrl, window.location.href);
-  url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+export function buildServerApiUrl(httpBaseUrl: string, pathname: string): string {
+  const url = new URL(pathname, `${httpBaseUrl.replace(/\/+$/u, "")}/`);
   url.pathname = pathname;
   url.search = "";
   url.hash = "";
   return url.toString();
 }
 
-export async function readServerAuthentication(webSocketUrl: string): Promise<ServerAuthentication> {
-  const response = await fetch(buildServerApiUrl(webSocketUrl, "/api/auth/session"), {
+export async function readServerAuthentication(httpBaseUrl: string): Promise<ServerAuthentication> {
+  const response = await fetch(buildServerApiUrl(httpBaseUrl, "/api/auth/session"), {
     credentials: "include",
     headers: { Accept: "application/json" },
   });
@@ -55,10 +54,10 @@ export async function readServerAuthentication(webSocketUrl: string): Promise<Se
 }
 
 export async function loginServerAuthentication(
-  webSocketUrl: string,
+  httpBaseUrl: string,
   credentials: { loginName: string; password: string },
 ): Promise<ServerAuthenticatedSession> {
-  const response = await fetch(buildServerApiUrl(webSocketUrl, "/api/auth/login"), {
+  const response = await fetch(buildServerApiUrl(httpBaseUrl, "/api/auth/login"), {
     method: "POST",
     credentials: "include",
     headers: {
@@ -74,8 +73,8 @@ export async function loginServerAuthentication(
   return authentication;
 }
 
-export async function logoutServerAuthentication(webSocketUrl: string, csrfToken: string | undefined): Promise<void> {
-  const response = await fetch(buildServerApiUrl(webSocketUrl, "/api/auth/logout"), {
+export async function logoutServerAuthentication(httpBaseUrl: string, csrfToken: string | undefined): Promise<void> {
+  const response = await fetch(buildServerApiUrl(httpBaseUrl, "/api/auth/logout"), {
     method: "POST",
     credentials: "include",
     headers: {

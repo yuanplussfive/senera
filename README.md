@@ -115,17 +115,17 @@ senera 不把历史工具原文无限塞回模型。新一轮任务会优先使�
 只需要本机源码开发时，可以直接克隆自动生成的 `nano` 分支：
 
 ```bash
-git clone --branch nano --single-branch https://github.com/yuanplussfive/senera.git senera
+git clone --depth 1 --branch nano --single-branch https://github.com/yuanplussfive/senera.git senera
 cd senera
 npm ci
 npm run dev
 ```
 
-`nano` 只保留开发服务器、前端、核心源码、插件和对应依赖，不包含 Docker、Electron、安装包、测试、覆盖率和发布工具。它在 `main` 完整验证通过后自动重建，不接收直接提交或 Pull Request。由于不携带正式发布的 Sandbox Bundle，需要 OS Sandbox 的开发和分发工作仍应使用完整的 `main` 分支。
+`nano` 只保留开发服务器、前端、核心源码、插件和对应依赖，不包含 Docker、Electron、安装包、测试、覆盖率和发布工具。它在 `main` 完整验证通过后自动重建，不接收直接提交或 Pull Request。分支内置经过 SHA-256 校验的版本化 Sandbox Bundle，首次准备沙箱不再访问 GitHub Releases 或容器镜像仓库。
 
 ### Docker
 
-在首次启动前，直接把 `compose.yaml` 中的三个 `SENERA_ADMIN_*` 表达式改为值，或在 1Panel / Compose 环境变量中填写：
+在首次启动前，直接编辑 `compose.yaml` 中已经写明的管理员资料和访问 Origin：
 
 ```yaml
 SENERA_ADMIN_LOGIN_NAME: "admin"
@@ -141,6 +141,8 @@ Docker 部署不要求向 Senera 主容器传入 `/dev/kvm` 或 `NET_ADMIN`。Co
 docker compose pull
 docker compose up -d --pull always
 ```
+
+不要使用 `docker run` 单独启动应用镜像。镜像需要 Compose 同时创建 `sandbox-worker`、私有控制 Socket 和数据卷；缺少其中任何一项都会在启动阶段明确失败。
 
 容器会在每次启动时同步 Compose 声明的管理员资料：未变化时不重写，用户名、显示名或密码变化时更新账户；磁盘只保存 `scrypt` 密码哈希。服务通过 `8787:8787` 发布，随后可打开 `http://localhost:8787` 或已加入 Origin 白名单的 IP 地址。运行数据默认保存在 Docker volume 里。部署、日志、非 root 容器权限和沙箱说明见 [部署与运维](docs/Operations.md)，版本变化见 [更新记录](CHANGELOG.md)。
 

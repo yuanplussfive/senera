@@ -1,10 +1,12 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
+import { gzipSync } from "node:zlib";
 import Docker from "dockerode";
 import { describe, expect, test, vi } from "vitest";
 import {
   AgentGvisorDockerEngineRuntime,
-  resolveImportedDockerImageId,
   resolveAgentDockerEngineSandboxProvider,
 } from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorDockerRuntime.js";
 import {
@@ -85,54 +87,77 @@ describe("Docker Engine sandbox runtime", () => {
     ).rejects.toThrow("registered-runsc");
   });
 
-  test("resolves Docker Hub's normalized import reference to the Engine image id", () => {
-    const sourceReference = readAgentDockerEngineRuntimeContract("docker-engine", "x64").image.sourceImage;
-    const importedReference = sourceReference.replace("docker.io/library/", "");
-
-    expect(
-      resolveImportedDockerImageId({
-        imagesBefore: [],
-        imagesAfter: [{ Id: "sha256:image-config", RepoTags: [importedReference], RepoDigests: [] }],
-        loadEvents: [],
-        expectedReferences: [sourceReference],
+  test("tags an already-present Bundle image by its declared OCI config digest", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "senera-docker-bundle-identity-"));
+    const archivePath = path.join(root, "runtime.oci.tar.gz");
+    const resolved = readAgentDockerEngineRuntimeContract("docker-engine", "x64");
+    const tag = vi.fn(async () => undefined);
+    const createContainer = vi.fn(async () => ({
+      start: vi.fn(async () => undefined),
+      wait: vi.fn(async () => ({ StatusCode: 0 })),
+      remove: vi.fn(async () => undefined),
+    }));
+    const missing = Object.assign(new Error("image not tagged"), { statusCode: 404 });
+    const docker = {
+      version: vi.fn(async () => ({ ApiVersion: resolved.contract.engine.minimumApiVersion })),
+      info: vi.fn(async () => ({ Runtimes: { runc: {} } })),
+      getImage: vi.fn((reference: string) => {
+        if (reference === resolved.image.runtimeImage) return { inspect: vi.fn(async () => Promise.reject(missing)) };
+        if (reference === resolved.image.configDigest) {
+          return { inspect: vi.fn(async () => ({ Id: resolved.image.configDigest })), tag };
+        }
+        throw new Error(`Unexpected image reference: ${reference}`);
       }),
-    ).toBe("sha256:image-config");
-  });
-
-  test("uses Docker's load response for an already-present dangling OCI image", () => {
-    const imageId = `sha256:${"a".repeat(64)}`;
-    const danglingImage = { Id: imageId, RepoTags: ["<none>:<none>"], RepoDigests: [] };
-
-    expect(
-      resolveImportedDockerImageId({
-        imagesBefore: [danglingImage],
-        imagesAfter: [danglingImage],
-        loadEvents: [{ stream: `Loaded image ID: ${imageId}\n` }],
-        expectedReferences: ["senera.local/runtime:1.0.2"],
+      loadImage: vi.fn(async (archive: NodeJS.ReadableStream) => {
+        for await (const _chunk of archive as NodeJS.ReadableStream & AsyncIterable<Buffer>) {
+          // Consume the verified archive exactly as the Docker Engine API does.
+        }
+        return new PassThrough();
       }),
-    ).toBe(imageId);
-  });
-
-  test("uses the unique inventory delta when Docker omits the loaded image identity", () => {
-    expect(
-      resolveImportedDockerImageId({
-        imagesBefore: [{ Id: "sha256:existing" }],
-        imagesAfter: [{ Id: "sha256:existing" }, { Id: "sha256:imported" }],
-        loadEvents: [],
-        expectedReferences: ["senera.local/runtime:1.0.2"],
+      createContainer,
+      modem: {
+        followProgress: (_stream: NodeJS.ReadableStream, callback: (error: Error | null) => void) => callback(null),
+      },
+    } as unknown as Docker;
+    await writeFile(archivePath, gzipSync(Buffer.from("verified OCI archive")));
+    const runtime = new AgentGvisorDockerEngineRuntime({
+      docker,
+      workspace: { kind: "volume", volumeName: "senera-data" },
+      copySourceRoots: [root],
+      runtimeContract: resolved,
+      bundleRoot: root,
+      bundleVerifier: async () => ({
+        archivePath,
+        manifest: {
+          formatVersion: 5,
+          distributionId: "senera-node-runtime",
+          archiveVersion: "1.0.3",
+          microsandboxVersion: "0.6.4",
+          target: "x64",
+          sourceImage: resolved.image.sourceImage,
+          runtimeImage: resolved.image.runtimeImage,
+          configDigest: resolved.image.configDigest,
+          asset: {
+            format: "oci",
+            mediaType: "application/vnd.oci.image.layout.v1.tar",
+            compression: "gzip",
+            compressedMediaType: "application/gzip",
+            fileName: path.basename(archivePath),
+            sizeBytes: 1,
+            uncompressedSizeBytes: 1,
+            sha256: "0".repeat(64),
+          },
+        },
       }),
-    ).toBe("sha256:imported");
-  });
+    });
 
-  test("rejects an ambiguous Docker image inventory delta", () => {
-    expect(() =>
-      resolveImportedDockerImageId({
-        imagesBefore: [],
-        imagesAfter: [{ Id: "sha256:first" }, { Id: "sha256:second" }],
-        loadEvents: [],
-        expectedReferences: ["senera.local/runtime:1.0.2"],
-      }),
-    ).toThrow("load added multiple images");
+    try {
+      await runtime.prepare();
+      expect(tag).toHaveBeenCalledWith({ repo: "senera.local/senera-node-runtime", tag: "1.0.3-x64" });
+      expect(createContainer).toHaveBeenCalledOnce();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

@@ -13,7 +13,7 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
   } else {
     violations.push(
       ...inspectTextIncludes(sandboxJob, `${ReleaseWorkflowLabel} job sandbox-archive`, [
-        "BuildSandboxImageArchive.js",
+        "./.github/actions/build-sandbox-bundle",
         "actions/upload-artifact@v4",
       ]),
     );
@@ -71,14 +71,9 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         "needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest",
         "actions/checkout@v4",
         "./.github/actions/setup-gvisor",
-        'export SENERA_IMAGE="$IMAGE"',
-        "SENERA_DATA_VOLUME:",
-        "SENERA_HOST_PORT:",
-        "SENERA_ADMIN_LOGIN_NAME:",
-        "SENERA_ADMIN_DISPLAY_NAME:",
-        "SENERA_ALLOWED_ORIGINS:",
-        'export SENERA_ADMIN_PASSWORD="$(openssl rand -hex 24)"',
-        'docker compose up --detach --wait --wait-timeout "$CONTAINER_HEALTH_TIMEOUT_SECONDS"',
+        'docker pull "$IMAGE"',
+        'docker tag "$IMAGE" ghcr.io/yuanplussfive/senera:latest',
+        'docker compose up --detach --wait --wait-timeout "$CONTAINER_HEALTH_TIMEOUT_SECONDS" --pull never',
         'container_id="$(docker compose ps --quiet senera)"',
         'runtime_uid="$(docker exec "$container_id"',
         "docker compose down --volumes --remove-orphans",

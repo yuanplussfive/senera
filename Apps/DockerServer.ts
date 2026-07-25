@@ -37,6 +37,8 @@ const BundledDockerUserPluginRoot = path.join(AppRoot, "Plugins");
 const DockerSandboxRuntime = {
   BaseDir: "/data/.senera/sandbox-runtime",
 } as const;
+const DockerComposeDeploymentHint =
+  "Start Senera with the complete compose.yaml deployment; the application container requires sandbox-worker.";
 await main();
 
 async function main(): Promise<void> {
@@ -46,7 +48,7 @@ async function main(): Promise<void> {
   ensureRuntimeConfigFile({ configPath: ConfigPath, templatePath: ExampleConfigPath });
 
   const config = loadConfigFile(ConfigPath);
-  const worker = new AgentGvisorWorkerSocketClient({ socketPath: resolveDockerGvisorWorkerSocketPath() });
+  const worker = new AgentGvisorWorkerSocketClient({ socketPath: resolveDockerSandboxWorkerSocketPath() });
   const sandboxProvider = await resolveDockerSandboxProvider(config, worker);
   const runtimeProjection = createDockerRuntimeProjection(sandboxProvider);
   const projectedConfig = runtimeProjection(config);
@@ -114,7 +116,7 @@ function createDockerRuntimeProjection(
       Provider: sandboxProvider,
       Gvisor: {
         ...config.SandboxRuntime?.Gvisor,
-        WorkerSocketPath: resolveDockerGvisorWorkerSocketPath(),
+        WorkerSocketPath: resolveDockerSandboxWorkerSocketPath(),
       },
     },
     Server: {
@@ -160,14 +162,19 @@ async function resolveDockerSandboxProvider(
     return probe.isolation;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Docker sandbox provider negotiation failed: ${detail}`, { cause: error });
+    throw new Error(`Docker sandbox Worker negotiation failed: ${detail}. ${DockerComposeDeploymentHint}`, {
+      cause: error,
+    });
   }
 }
 
-function resolveDockerGvisorWorkerSocketPath(): string {
+function resolveDockerSandboxWorkerSocketPath(): string {
   const configured = process.env.SENERA_GVISOR_WORKER_SOCKET?.trim();
-  if (!configured || !path.isAbsolute(configured)) {
-    throw new Error("SENERA_GVISOR_WORKER_SOCKET must be an absolute Unix socket path.");
+  if (!configured) {
+    throw new Error(`Docker sandbox Worker socket is not configured. ${DockerComposeDeploymentHint}`);
+  }
+  if (!path.isAbsolute(configured)) {
+    throw new Error(`Docker sandbox Worker socket must be an absolute Unix path. ${DockerComposeDeploymentHint}`);
   }
   return path.normalize(configured);
 }
@@ -176,6 +183,7 @@ function writeFrontendRuntimeConfig(config: AgentSystemConfig): void {
   const frontend = resolveFrontendConfig(config);
   const runtimeConfig = {
     webSocketUrl: resolvePublicWebSocketUrl(),
+    httpBaseUrl: "",
     modelLabel: frontend.Client.ModelLabel,
     userName: frontend.Client.UserName,
     emptySuggestions: frontend.Client.EmptySuggestions,

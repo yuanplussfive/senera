@@ -1,6 +1,6 @@
 {
   "$schema": "./NanoDistribution.schema.json",
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "id": "nano",
   "source": {
     "branch": "main",
@@ -11,7 +11,6 @@
     "gitPathspecs": [
       ".editorconfig",
       ".gitattributes",
-      ".gitignore",
       ".npmrc",
       "LICENSE",
       "package.json",
@@ -32,10 +31,25 @@
     ],
     "projections": [
       {
+        "source": "Build/Distributions/NanoGitignore.template",
+        "target": ".gitignore"
+      },
+      {
         "source": "Build/Distributions/NanoDevServer.ts.template",
         "target": "Apps/DevServer.ts"
       }
     ]
+  },
+  "runtime": {
+    "sandbox": {
+      "provider": "microsandbox",
+      "bundle": {
+        "distributionContract": "Source/AgentSystem/Sandbox/Distribution/contract.json",
+        "sourceRoot": "Release/SandboxImage",
+        "targetRoot": "Release/SandboxImage",
+        "target": "x64"
+      }
+    }
   },
   "rootPackage": {
     "copyFields": ["name", "version", "keywords", "author", "license", "type", "workspaces", "overrides"],

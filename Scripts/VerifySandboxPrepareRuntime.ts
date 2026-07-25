@@ -105,18 +105,20 @@ try {
   };
   const available = new FakeMicrosandboxModule(true);
   const availableOptions = prepareOptionsFixture(tempRoot, "available");
-  const sandboxTarget = resolveAgentSandboxDistributionTarget(readAgentSandboxDistributionContract());
+  const sandboxContract = readAgentSandboxDistributionContract();
+  const sandboxTarget = resolveAgentSandboxDistributionTarget(sandboxContract);
   const archiveInstaller = async () => ({
     archivePath: path.join(tempRoot, "SandboxImage", sandboxTarget.archive.assetName),
     imported: true,
     manifest: {
-      formatVersion: 4 as const,
+      formatVersion: 5 as const,
       distributionId: "senera-node-runtime",
-      archiveVersion: "1.0.2",
-      microsandboxVersion: "0.6.4",
+      archiveVersion: sandboxContract.archiveVersion,
+      microsandboxVersion: sandboxContract.microsandboxVersion,
       target: process.arch,
       sourceImage: sandboxTarget.sourceImage,
       runtimeImage: sandboxTarget.runtimeImage,
+      configDigest: sandboxTarget.configDigest,
       asset: {
         format: sandboxTarget.archive.format,
         mediaType: sandboxTarget.archive.mediaType,

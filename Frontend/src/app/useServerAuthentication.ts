@@ -17,7 +17,7 @@ export type ServerAuthenticationState =
 export type ServerAuthenticationRevalidationResult =
   "authorized" | "anonymous" | "rejected" | "unreachable" | "superseded";
 
-export function useServerAuthentication(webSocketUrl: string): {
+export function useServerAuthentication(httpBaseUrl: string): {
   state: ServerAuthenticationState;
   login: (credentials: { loginName: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
@@ -30,14 +30,14 @@ export function useServerAuthentication(webSocketUrl: string): {
   const refresh = useCallback(async (): Promise<void> => {
     const operation = ++operationRef.current;
     try {
-      const authentication = await readServerAuthentication(webSocketUrl);
+      const authentication = await readServerAuthentication(httpBaseUrl);
       if (operation === operationRef.current) setState(projectAuthenticationState(authentication));
     } catch (error) {
       if (operation === operationRef.current) {
         setState({ status: "failed", error: error instanceof Error ? error : new Error(String(error)) });
       }
     }
-  }, [webSocketUrl]);
+  }, [httpBaseUrl]);
 
   useEffect(() => {
     void refresh();
@@ -46,10 +46,10 @@ export function useServerAuthentication(webSocketUrl: string): {
   const login = useCallback(
     async (credentials: { loginName: string; password: string }): Promise<void> => {
       const operation = ++operationRef.current;
-      const authentication = await loginServerAuthentication(webSocketUrl, credentials);
+      const authentication = await loginServerAuthentication(httpBaseUrl, credentials);
       if (operation === operationRef.current) setState({ status: "authenticated", authentication });
     },
-    [webSocketUrl],
+    [httpBaseUrl],
   );
 
   const logout = useCallback(async (): Promise<void> => {
@@ -57,14 +57,14 @@ export function useServerAuthentication(webSocketUrl: string): {
     const authentication = state.status === "authenticated" ? state.authentication : undefined;
     const csrfToken =
       authentication?.state === AuthenticationSessionStates.Authenticated ? authentication.csrfToken : undefined;
-    await logoutServerAuthentication(webSocketUrl, csrfToken);
+    await logoutServerAuthentication(httpBaseUrl, csrfToken);
     if (operation === operationRef.current) setState({ status: "anonymous" });
-  }, [state, webSocketUrl]);
+  }, [httpBaseUrl, state]);
 
   const revalidate = useCallback(async (): Promise<ServerAuthenticationRevalidationResult> => {
     const operation = ++operationRef.current;
     try {
-      const authentication = await readServerAuthentication(webSocketUrl);
+      const authentication = await readServerAuthentication(httpBaseUrl);
       if (operation !== operationRef.current) return "superseded";
       setState(projectAuthenticationState(authentication));
       return authentication.state === AuthenticationSessionStates.Anonymous ? "anonymous" : "authorized";
@@ -76,7 +76,7 @@ export function useServerAuthentication(webSocketUrl: string): {
       }
       return "unreachable";
     }
-  }, [webSocketUrl]);
+  }, [httpBaseUrl]);
 
   return useMemo(
     () => ({

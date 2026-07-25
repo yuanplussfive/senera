@@ -15,12 +15,13 @@ import type { AgentMicrosandboxImageArchiveLoader } from "./AgentMicrosandboxCli
 
 const InstallationReceiptSchema = z
   .object({
-    formatVersion: z.literal(4),
+    formatVersion: z.literal(5),
     distributionId: z.string().min(1),
     archiveVersion: z.string().min(1),
     target: z.string().min(1),
     sourceImage: z.string().min(1),
     runtimeImage: z.string().min(1),
+    configDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
     bundleSha256: z.string().regex(/^[a-f0-9]{64}$/u),
   })
   .strict();
@@ -252,12 +253,13 @@ async function writeNewFileAtomically(filePath: string, content: string): Promis
 
 function createInstallationReceipt(manifest: AgentSandboxArchiveManifest): InstallationReceipt {
   return {
-    formatVersion: 4,
+    formatVersion: 5,
     distributionId: manifest.distributionId,
     archiveVersion: manifest.archiveVersion,
     target: manifest.target,
     sourceImage: manifest.sourceImage,
     runtimeImage: manifest.runtimeImage,
+    configDigest: manifest.configDigest,
     bundleSha256: manifest.asset.sha256,
   };
 }

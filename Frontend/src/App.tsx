@@ -22,7 +22,7 @@ import { useSocketPostIngestEffects } from "./app/useSocketPostIngestEffects";
 import { useWorkflowNavigation } from "./app/useWorkflowNavigation";
 import { useResponsiveMode } from "./shared/responsive";
 import { installCopyableToasts } from "./shared/ui/installCopyableToasts";
-import { resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
+import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { useSettingsRuntime } from "./app/useSettingsRuntime";
 import { useWebSettingsController } from "./app/useWebSettingsController";
 import { SettingsOverlay } from "./features/settings";
@@ -30,6 +30,7 @@ import { useExecutionResourceCommands } from "./app/useExecutionResourceCommands
 import { TerminalPanelStatus, TerminalRuntimeBoundary } from "./features/terminal/TerminalPanelStatus";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
+const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
 type BackgroundTerminalPanelComponent = (typeof import("./features/terminal"))["BackgroundTerminalPanel"];
 type TerminalPanelLoadState =
   | { status: "idle" }
@@ -80,7 +81,7 @@ export function App({
   const [workflowDockTool, setWorkflowDockTool] = useState<WorkflowDockTool>("execution");
   const [terminalPanelLoadState, setTerminalPanelLoadState] = useState<TerminalPanelLoadState>({ status: "idle" });
   const [terminalRuntimeRevision, setTerminalRuntimeRevision] = useState(0);
-  const uploadUrl = useMemo(() => buildUploadUrl(WS_URL), []);
+  const uploadUrl = useMemo(() => buildUploadUrl(HTTP_BASE_URL), []);
   const appShellRenderPlan = readAppShellRenderPlan(responsiveMode);
   const settingsController = useWebSettingsController();
 

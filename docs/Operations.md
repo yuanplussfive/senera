@@ -32,7 +32,7 @@ npm run benchmark.pi-planner -- -- --stage=direct-flow --iterations=3
 
 镜像入口只在权限准备阶段以 root 运行，然后通过 `exec` 以非 root `node` 启动主服务。Compose 另起一个网络隔离、只读的 `sandbox-worker`，该 Worker 是唯一挂载 Docker Engine Socket 的组件，并且只接受版本化 Worker 协议允许的镜像、挂载和资源策略；主服务仅通过私有 Unix Socket 访问 Worker。
 
-Senera 不提供默认账号或默认密码。首次启动前，必须提供管理员资料。可以直接把 `compose.yaml` 中三条 `SENERA_ADMIN_*` 表达式改为字面值，也可以在 1Panel 或 Compose 环境变量中填写：
+Senera 不提供可直接用于生产的默认密码。首次启动前，直接编辑 `compose.yaml` 中已写明的管理员资料和访问 Origin：
 
 ```yaml
 SENERA_ADMIN_LOGIN_NAME: "admin"
@@ -49,6 +49,10 @@ docker compose pull
 docker compose up -d --pull always
 docker compose logs -f senera
 ```
+
+应用镜像不是可独立运行的单容器部署单元。不要用 `docker run` 绕过编排；主服务需要 Compose 创建的 `sandbox-worker`、私有控制 Socket 和共享数据卷。Worker 会在 `auto` 模式下检测 Docker Engine：已注册 `runsc` 时使用 gVisor，否则使用受限 Docker Engine provider；缺少 Worker 本身属于部署不完整，不会降级为让主服务直接访问 Docker Socket。
+
+Docker Web 的认证、上传和其他 HTTP API 固定使用浏览器当前 Origin，WebSocket 地址不会改写 HTTP API 地址。因此通过 `https://senera.example.com` 反向代理时，浏览器请求保持在同一域名并经过代理；容器内部的 `127.0.0.1` 不会暴露给访问者。动态 `senera-runtime-config.js` 使用 `no-store`，代理也不应覆盖该响应的缓存策略。
 
 容器每次启动都会读取这三个管理员环境变量并与 `/data/.senera/access/admin-account.json` 对账。内容相同则不重写；登录名、显示名或密码变化时原子更新账户，因此编辑 YAML 后重启即可生效。密码只以 `scrypt` 哈希写入账户文件，但原始密码仍会出现在部署 YAML 和 Docker 容器环境中，因此不得提交包含真实密码的 `compose.yaml`。启动成功后打开 `http://localhost:8787` 或已加入 Origin 白名单的 IP 地址。
 
@@ -81,10 +85,11 @@ Docker 不会把 Sandbox 请求改为本机执行。`runsc` 未注册时，启�
 如果服务器上 `8787` 已被占用，在启动前指定另一个主机端口：
 
 ```yaml
-SENERA_HOST_PORT: "18787"
+ports:
+  - "18787:8787"
 ```
 
-同时把浏览器实际使用的 `http://IP:18787` 加入 `SENERA_ALLOWED_ORIGINS`。这两个值可作为部署平台中的 Compose 环境变量设置，或直接替换 `compose.yaml` 里的默认值。
+同时把浏览器实际使用的 `http://IP:18787` 加入 `SENERA_ALLOWED_ORIGINS`。所有部署值都直接在 `compose.yaml` 中修改，不依赖额外的 `.env` 或面板环境变量。
 
 ## 管理员访问
 
@@ -199,7 +204,7 @@ docker compose images
 docker inspect "$(docker compose ps -q senera)" --format '{{index .Config.Labels "org.opencontainers.image.version"}} {{.Image}}'
 ```
 
-数据会继续留在 Compose 里的 `senera-data` volume。实际 volume 名称可以用 `docker volume ls` 查看；同一主机运行多个部署时，设置唯一的 `SENERA_DATA_VOLUME` 环境变量。大版本升级前建议备份：
+数据会继续留在 Compose 项目自己的 `senera-data` volume。实际 volume 名称可以用 `docker volume ls` 查看；同一主机运行多个部署时，为每个编排设置不同的 Compose 项目名。大版本升级前建议备份：
 
 ```bash
 docker compose exec -T senera tar czf - -C /data . > senera-data-backup.tgz

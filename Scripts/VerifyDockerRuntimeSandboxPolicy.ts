@@ -75,7 +75,8 @@ assert.ok(
     dockerEntrypoint.includes("exec setpriv") &&
     dockerEntrypoint.includes("--clear-groups") &&
     dockerEntrypoint.includes('[ "$runtime_uid" != "0" ]') &&
-    dockerEntrypoint.includes('[ "$runtime_gid" != "0" ]'),
+    dockerEntrypoint.includes('[ "$runtime_gid" != "0" ]') &&
+    !dockerEntrypoint.includes("sandbox_provider="),
   "Docker bootstrap must drop privileges without requiring a host KVM device.",
 );
 assert.ok(
@@ -90,7 +91,10 @@ assert.ok(
   dockerServer.includes("resolveDockerSandboxProvider") &&
     dockerServer.includes("Provider: sandboxProvider") &&
     dockerServer.includes("prepareAgentGvisorRuntime") &&
-    dockerServer.includes("SENERA_GVISOR_WORKER_SOCKET"),
+    dockerServer.includes("SENERA_GVISOR_WORKER_SOCKET") &&
+    dockerServer.includes('httpBaseUrl: ""') &&
+    dockerServer.includes("complete compose.yaml deployment") &&
+    dockerServer.includes("application container requires sandbox-worker"),
   "Docker deployment must negotiate and lock its Docker Engine provider before preparing the isolated Worker.",
 );
 assert.deepEqual(
@@ -107,10 +111,9 @@ assert.ok(
   compose.includes("SENERA_ADMIN_LOGIN_NAME") &&
     compose.includes("SENERA_ADMIN_DISPLAY_NAME") &&
     compose.includes("SENERA_ADMIN_PASSWORD") &&
-    compose.includes("Set SENERA_ADMIN_LOGIN_NAME") &&
-    compose.includes("Set SENERA_ADMIN_DISPLAY_NAME") &&
-    compose.includes("Set SENERA_ADMIN_PASSWORD"),
-  "compose.yaml must require authoritative administrator credentials from deployment configuration.",
+    compose.includes('SENERA_ADMIN_PASSWORD: "replace-with-a-strong-password"') &&
+    !compose.includes("${SENERA_"),
+  "compose.yaml must expose directly editable administrator values without external variable interpolation.",
 );
 assert.ok(
   !compose.includes("senera-admin:") && compose.includes("sandbox-worker:"),
@@ -120,20 +123,18 @@ assert.ok(
   !compose.includes("/dev/kvm:/dev/kvm") &&
     !compose.includes("NET_ADMIN") &&
     compose.includes("/var/run/docker.sock:/run/docker-engine.sock") &&
-    compose.includes("SENERA_DOCKER_SANDBOX_PROVIDER") &&
     compose.includes('SENERA_GVISOR_WORKER_SOCKET_MODE: "0666"') &&
     compose.includes("network_mode: none") &&
     compose.includes("read_only: true"),
   "compose.yaml must keep Docker Engine access inside the isolated, read-only Worker without host KVM requirements.",
 );
 assert.ok(
-  compose.includes('- "${SENERA_HOST_PORT:-8787}:8787"') &&
+  compose.includes('- "8787:8787"') &&
     compose.includes("SENERA_ALLOW_INSECURE_HTTP") &&
-    compose.includes("SENERA_DATA_VOLUME") &&
     compose.includes("command: []") &&
     !compose.includes("container_name:") &&
     !compose.includes("127.0.0.1:8787:8787"),
-  "compose.yaml must publish a configurable service port, isolate deployment names, and make direct HTTP access explicit.",
+  "compose.yaml must publish the service port, isolate deployment names, and make direct HTTP access explicit.",
 );
 assert.ok(
   !fs.existsSync(path.join(workspaceRoot, "compose.kvm.yaml")),

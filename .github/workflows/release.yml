@@ -170,34 +170,7 @@ jobs:
         with:
           ref: ${{ needs.metadata.outputs.tag }}
       - uses: ./.github/actions/setup-node
-      - name: Require hardware virtualization
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -c /dev/kvm
-      - run: npm run build
-      - name: Build and verify portable sandbox image assets
-        shell: bash
-        run: |
-          set -euo pipefail
-          kvm_gid="$(stat -c '%g' /dev/kvm)"
-          runtime_groups="$(id -G | tr ' ' ',')"
-          if [ "$kvm_gid" != "0" ]; then
-            case ",${runtime_groups}," in
-              *",${kvm_gid},"*) ;;
-              *) runtime_groups="${runtime_groups},${kvm_gid}" ;;
-            esac
-          fi
-          sudo setpriv \
-            --reuid="$(id -u)" \
-            --regid="$(id -g)" \
-            --groups="$runtime_groups" \
-            -- sh -c 'test -r /dev/kvm && test -w /dev/kvm'
-          sudo setpriv \
-            --reuid="$(id -u)" \
-            --regid="$(id -g)" \
-            --groups="$runtime_groups" \
-            -- node Dist/Build/BuildSandboxImageArchive.js --output Release/SandboxImage
+      - uses: ./.github/actions/build-sandbox-bundle
       - uses: actions/upload-artifact@v4
         with:
           name: senera-sandbox-image-${{ needs.metadata.outputs.version }}
@@ -310,17 +283,8 @@ jobs:
         env:
           IMAGE: ${{ needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest }}
           COMPOSE_PROJECT_NAME: senera-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}
-          SENERA_DATA_VOLUME: senera-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}-data
-          SENERA_HOST_PORT: "18787"
-          SENERA_ADMIN_LOGIN_NAME: release-smoke-admin
-          SENERA_ADMIN_DISPLAY_NAME: Release Smoke Administrator
-          SENERA_ALLOWED_ORIGINS: http://localhost:18787,http://127.0.0.1:18787
-          SENERA_ALLOW_INSECURE_HTTP: "true"
         run: |
           set -euo pipefail
-
-          export SENERA_IMAGE="$IMAGE"
-          export SENERA_ADMIN_PASSWORD="$(openssl rand -hex 24)"
 
           cleanup() {
             local status=$?
@@ -334,8 +298,9 @@ jobs:
           }
           trap cleanup EXIT
 
-          docker compose pull
-          docker compose up --detach --wait --wait-timeout "$CONTAINER_HEALTH_TIMEOUT_SECONDS"
+          docker pull "$IMAGE"
+          docker tag "$IMAGE" ghcr.io/yuanplussfive/senera:latest
+          docker compose up --detach --wait --wait-timeout "$CONTAINER_HEALTH_TIMEOUT_SECONDS" --pull never
           container_id="$(docker compose ps --quiet senera)"
           test -n "$container_id"
           runtime_uid="$(docker exec "$container_id" sh -c "sed -n 's/^Uid:[[:space:]]*\\([0-9]*\\).*/\\1/p' /proc/1/status")"

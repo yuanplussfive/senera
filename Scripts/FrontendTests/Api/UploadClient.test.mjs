@@ -16,7 +16,7 @@ test("upload client projects secure WebSocket URLs and reports upload progress",
   vi.stubGlobal("XMLHttpRequest", TestXmlHttpRequest);
   const progress = vi.fn();
   const file = new File(["hello"], "hello.txt", { type: "text/plain" });
-  const uploadUrl = buildUploadUrl("wss://agent.example.test/socket?token=secret#fragment");
+  const uploadUrl = buildUploadUrl("https://agent.example.test");
 
   const resultPromise = uploadFile(uploadUrl, file, { onProgress: progress });
   const request = TestXmlHttpRequest.instances[0];

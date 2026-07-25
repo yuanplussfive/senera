@@ -12,7 +12,7 @@ import { useSettingsRuntime } from "./app/useSettingsRuntime";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
 import type { WsRequest } from "./api/eventTypes";
 import { AuthenticationSessionStates } from "./api/generatedEventCatalog";
-import { resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
+import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { installMotionDevTools } from "./dev/motionDevTools";
 import { SettingsWorkbench } from "./features/settings";
 import type { SettingsSectionId } from "./features/settings/types";
@@ -28,6 +28,7 @@ import "./styles/react-flow.css";
 import "./styles/markdown.css";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
+const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
 const root = document.getElementById("root");
 
 if (import.meta.env.DEV) installMotionDevTools();
@@ -52,7 +53,7 @@ function Root(): JSX.Element {
   const isDesktop = Boolean(readDesktopBridge()?.isDesktop);
   const surface = resolveAppSurface(window.location, isDesktop);
   const settingsSection = resolveSettingsSection(window.location);
-  const authentication = useServerAuthentication(WS_URL);
+  const authentication = useServerAuthentication(HTTP_BASE_URL);
   const revalidateAuthentication = authentication.revalidate;
   const socketReconnectPolicy = useCallback<AgentSocketReconnectPolicy>(async () => {
     const result = await revalidateAuthentication();

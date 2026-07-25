@@ -1,22 +1,22 @@
+# Keep both service image values on the same Senera release.
 x-senera-runtime: &senera-runtime
-  image: ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:latest}
+  image: ghcr.io/yuanplussfive/senera:latest
   pull_policy: always
   environment:
     SENERA_WORKSPACE_ROOT: /data
     AGENT_CONFIG_PATH: /data/senera.config.json
     SENERA_SERVER_HOST: 0.0.0.0
     SENERA_SERVER_PORT: 8787
-    # Add every exact browser Origin used to access Senera, including an IP
-    # and port when applicable, for example http://192.168.1.20:8787.
-    SENERA_ALLOWED_ORIGINS: "${SENERA_ALLOWED_ORIGINS:-http://localhost:8787,http://127.0.0.1:8787}"
-    SENERA_ALLOW_INSECURE_HTTP: "${SENERA_ALLOW_INSECURE_HTTP:-true}"
-    SENERA_PUBLIC_WS_URL: ${SENERA_PUBLIC_WS_URL:-}
+    # Add the exact browser Origin used to access Senera, including its port.
+    SENERA_ALLOWED_ORIGINS: "http://localhost:8787,http://127.0.0.1:8787"
+    SENERA_ALLOW_INSECURE_HTTP: "true"
+    SENERA_PUBLIC_WS_URL: ""
     SENERA_GVISOR_WORKER_SOCKET: /run/senera-sandbox/worker.sock
-    # These values are authoritative and synchronized on every container start.
-    # Replace expressions with literals to keep credentials directly in this YAML.
-    SENERA_ADMIN_LOGIN_NAME: "${SENERA_ADMIN_LOGIN_NAME:?Set SENERA_ADMIN_LOGIN_NAME before starting Senera}"
-    SENERA_ADMIN_DISPLAY_NAME: "${SENERA_ADMIN_DISPLAY_NAME:?Set SENERA_ADMIN_DISPLAY_NAME before starting Senera}"
-    SENERA_ADMIN_PASSWORD: "${SENERA_ADMIN_PASSWORD:?Set SENERA_ADMIN_PASSWORD before starting Senera}"
+    # Change these three values before the first start. They remain
+    # authoritative when the container is restarted.
+    SENERA_ADMIN_LOGIN_NAME: "admin"
+    SENERA_ADMIN_DISPLAY_NAME: "Senera Administrator"
+    SENERA_ADMIN_PASSWORD: "replace-with-a-strong-password"
   volumes:
     - senera-data:/data
     - senera-sandbox-control:/run/senera-sandbox
@@ -26,14 +26,14 @@ services:
   senera:
     <<: *senera-runtime
     ports:
-      - "${SENERA_HOST_PORT:-8787}:8787"
+      - "8787:8787"
     depends_on:
       sandbox-worker:
         condition: service_healthy
     restart: unless-stopped
 
   sandbox-worker:
-    image: ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:latest}
+    image: ghcr.io/yuanplussfive/senera:latest
     pull_policy: always
     entrypoint: ["node", "Dist/Apps/GvisorWorker.js"]
     command: []
@@ -44,9 +44,9 @@ services:
       # service runs as node, while the Worker remains root for Docker Engine.
       SENERA_GVISOR_WORKER_SOCKET_MODE: "0666"
       SENERA_DOCKER_ENGINE_SOCKET: /run/docker-engine.sock
-      SENERA_DOCKER_SANDBOX_PROVIDER: "${SENERA_SANDBOX_PROVIDER:-auto}"
+      SENERA_DOCKER_SANDBOX_PROVIDER: auto
       SENERA_GVISOR_WORKSPACE_KIND: volume
-      SENERA_GVISOR_WORKSPACE_SOURCE: ${SENERA_DATA_VOLUME:-senera-data}
+      SENERA_GVISOR_WORKSPACE_SOURCE: senera-data
       SENERA_GVISOR_COPY_SOURCE_ROOTS: '["/app","/data","/tmp"]'
       SENERA_GVISOR_BUNDLE_ROOT: /app/SandboxImage
     volumes:
@@ -76,6 +76,5 @@ services:
 
 volumes:
   senera-data:
-    name: ${SENERA_DATA_VOLUME:-senera-data}
   senera-sandbox-control:
   senera-sandbox-staging:

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 import { Ajv2020 } from "ajv/dist/2020.js";
 
 interface NanoContract {
@@ -15,6 +17,17 @@ interface NanoContract {
   readonly files: {
     readonly projections: readonly { readonly source: string; readonly target: string }[];
   };
+  readonly runtime: {
+    readonly sandbox: {
+      readonly provider: "microsandbox";
+      readonly bundle: {
+        readonly distributionContract: string;
+        readonly sourceRoot: string;
+        readonly targetRoot: string;
+        readonly target: string;
+      };
+    };
+  };
   readonly rootPackage: {
     readonly scripts: readonly string[];
     readonly dependencies: { readonly mode: string; readonly names?: readonly string[] };
@@ -24,6 +37,44 @@ interface NanoContract {
   readonly generatedFiles: {
     readonly metadataFile: string;
   };
+}
+
+interface SandboxDistributionContract {
+  readonly formatVersion: number;
+  readonly id: string;
+  readonly archiveVersion: string;
+  readonly microsandboxVersion: string;
+  readonly targets: Readonly<
+    Record<
+      string,
+      {
+        readonly sourceImage: string;
+        readonly runtimeImage: string;
+        readonly configDigest: string;
+        readonly archive: {
+          readonly format: string;
+          readonly mediaType: string;
+          readonly compression: string;
+          readonly compressedMediaType: string;
+          readonly assetName: string;
+        };
+      }
+    >
+  >;
+  readonly bundle: { readonly manifestFileName: string };
+}
+
+interface SandboxBundleFixture {
+  readonly manifest: {
+    readonly distributionId: string;
+    readonly archiveVersion: string;
+    readonly microsandboxVersion: string;
+    readonly target: string;
+    readonly runtimeImage: string;
+    readonly configDigest: string;
+    readonly asset: { readonly fileName: string; readonly sizeBytes: number; readonly sha256: string };
+  };
+  readonly archivePath: string;
 }
 
 interface PackageJson {
@@ -40,6 +91,7 @@ const ContractPath = path.join(WorkspaceRoot, "Build", "Distributions", "NanoDis
 const ContractSchemaPath = path.join(WorkspaceRoot, "Build", "Distributions", "NanoDistribution.schema.json");
 const GeneratorPath = path.join(WorkspaceRoot, "Build", "Distributions", "GenerateNanoDistribution.ts");
 const WorkflowPath = path.join(WorkspaceRoot, ".github", "workflows", "sync-nano.yml");
+const BundleActionPath = path.join(WorkspaceRoot, ".github", "actions", "build-sandbox-bundle", "action.yml");
 const ForbiddenPackages = [
   "@commitlint/cli",
   "@ladle/react",
@@ -66,8 +118,11 @@ const contract = readJson<NanoContract>(ContractPath);
 verifyContractSchema(contract);
 verifyPublicationWorkflow(contract);
 
-const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-nano-verification-"));
+const verificationRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-nano-verification-"));
+const outputRoot = path.join(verificationRoot, "output");
+const bundleRoot = path.join(verificationRoot, "bundle");
 try {
+  const fixture = writeSandboxBundleFixture(bundleRoot, contract);
   const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: WorkspaceRoot,
     encoding: "utf8",
@@ -75,13 +130,15 @@ try {
   const generation = spawnSync(
     process.execPath,
     [
-      "--disable-warning=ExperimentalWarning",
-      "--experimental-strip-types",
+      "--import",
+      "tsx",
       GeneratorPath,
       "--output",
       outputRoot,
       "--source-sha",
       sourceSha,
+      "--sandbox-bundle-root",
+      bundleRoot,
     ],
     { cwd: WorkspaceRoot, encoding: "utf8" },
   );
@@ -91,12 +148,14 @@ try {
     `Nano generator failed.\nstdout:\n${generation.stdout}\nstderr:\n${generation.stderr}`,
   );
 
-  verifyGeneratedFiles(outputRoot);
+  verifyGeneratedFiles(outputRoot, contract, fixture);
   verifyRootPackage(outputRoot, contract);
   verifyWorkspacePackages(outputRoot, contract);
-  verifySourceMetadata(outputRoot, contract, sourceSha);
+  verifySourceMetadata(outputRoot, contract, sourceSha, fixture);
+  verifyBundlePublication(outputRoot, contract, fixture);
+  verifyCorruptBundleRejection(verificationRoot, bundleRoot, fixture, sourceSha);
 } finally {
-  fs.rmSync(outputRoot, { recursive: true, force: true });
+  fs.rmSync(verificationRoot, { recursive: true, force: true });
 }
 
 console.log("Nano distribution contract verified.");
@@ -115,11 +174,16 @@ function verifyContractSchema(contractValue: unknown): void {
 
 function verifyPublicationWorkflow(contractValue: NanoContract): void {
   const workflow = fs.readFileSync(WorkflowPath, "utf8");
+  const bundleAction = fs.readFileSync(BundleActionPath, "utf8");
   const requiredFragments = [
     'workflows: ["Verify"]',
     "github.event.workflow_run.conclusion == 'success'",
     "github.event.workflow_run.head_sha",
     "contents: write",
+    "timeout-minutes: 45",
+    "./.github/actions/setup-node",
+    "./.github/actions/build-sandbox-bundle",
+    "--sandbox-bundle-root",
     "npm install --package-lock-only",
     "npm ci",
     "npm run check.types",
@@ -134,9 +198,18 @@ function verifyPublicationWorkflow(contractValue: NanoContract): void {
     assert.ok(workflow.includes(fragment), `Nano publication workflow is missing: ${fragment}`);
   }
   assert.ok(!workflow.includes("${{ runner.temp }}"), "Nano workflow must resolve runner.temp inside a job step.");
+  assert.ok(!workflow.includes("gh release download"), "Nano publication must build its Bundle from verified source.");
+  for (const fragment of [
+    "test -c /dev/kvm",
+    "npm run build",
+    "BuildSandboxImageArchive.js",
+    "SENERA_SANDBOX_BUNDLE_OUTPUT",
+  ]) {
+    assert.ok(bundleAction.includes(fragment), `Sandbox Bundle action is missing: ${fragment}`);
+  }
 }
 
-function verifyGeneratedFiles(outputRoot: string): void {
+function verifyGeneratedFiles(outputRoot: string, contractValue: NanoContract, fixture: SandboxBundleFixture): void {
   const files = listFiles(outputRoot);
   const forbidden = files.filter(
     (file) =>
@@ -163,8 +236,11 @@ function verifyGeneratedFiles(outputRoot: string): void {
   assert.ok(projectedDevServer.includes("ensureSeneraDevelopmentConfig"));
   assert.ok(!projectedDevServer.includes("GvisorWorker"));
   assert.deepEqual(contract.files.projections, [
+    { source: "Build/Distributions/NanoGitignore.template", target: ".gitignore" },
     { source: "Build/Distributions/NanoDevServer.ts.template", target: "Apps/DevServer.ts" },
   ]);
+  const bundleTargetRoot = contractValue.runtime.sandbox.bundle.targetRoot;
+  const distributionContract = readSandboxDistributionContract(contractValue);
   for (const required of [
     "README.md",
     "SENERA_NANO.json",
@@ -173,9 +249,17 @@ function verifyGeneratedFiles(outputRoot: string): void {
     "tsconfig.json",
     "Frontend/package.json",
     "Source/AgentSystem/AgentDefaults.ts",
+    path.posix.join(bundleTargetRoot, distributionContract.bundle.manifestFileName),
+    path.posix.join(bundleTargetRoot, fixture.manifest.asset.fileName),
   ]) {
     assert.ok(files.includes(required), `Nano generated distribution is missing ${required}.`);
   }
+  assert.deepEqual(
+    fs.readFileSync(path.join(outputRoot, bundleTargetRoot, fixture.manifest.asset.fileName)),
+    fs.readFileSync(fixture.archivePath),
+  );
+  const gitignore = fs.readFileSync(path.join(outputRoot, ".gitignore"), "utf8");
+  assert.ok(gitignore.includes("!Release/SandboxImage/**"));
 }
 
 function verifyRootPackage(outputRoot: string, contractValue: NanoContract): void {
@@ -226,25 +310,144 @@ function verifyWorkspacePackages(outputRoot: string, contractValue: NanoContract
   }
 }
 
-function verifySourceMetadata(outputRoot: string, contractValue: NanoContract, sourceSha: string): void {
+function verifySourceMetadata(
+  outputRoot: string,
+  contractValue: NanoContract,
+  sourceSha: string,
+  fixture: SandboxBundleFixture,
+): void {
   const metadata = readJson<{
     schemaVersion: number;
     distribution: string;
     source: { repository: string; branch: string; commit: string };
+    runtime: {
+      sandbox: { provider: string; bundle: SandboxBundleFixture["manifest"] };
+    };
   }>(path.join(outputRoot, contractValue.generatedFiles.metadataFile));
   assert.deepEqual(metadata, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     distribution: "nano",
     source: {
       repository: contractValue.source.repositoryUrl,
       branch: contractValue.source.branch,
       commit: sourceSha,
     },
+    runtime: {
+      sandbox: {
+        provider: "microsandbox",
+        bundle: fixture.manifest,
+      },
+    },
   });
-  assert.equal(contractValue.schemaVersion, 2);
+  assert.equal(contractValue.schemaVersion, 3);
   const readme = fs.readFileSync(path.join(outputRoot, "README.md"), "utf8");
   assert.ok(readme.includes(sourceSha));
+  assert.ok(readme.includes("git clone --depth 1"));
+  assert.ok(readme.includes("不会再访问 GitHub Releases"));
   assert.ok(!/\{\{[a-zA-Z][a-zA-Z0-9]*\}\}/u.test(readme), "Nano README contains unresolved template values.");
+}
+
+function writeSandboxBundleFixture(bundleRoot: string, contractValue: NanoContract): SandboxBundleFixture {
+  const distribution = readSandboxDistributionContract(contractValue);
+  const targetId = contractValue.runtime.sandbox.bundle.target;
+  const target = distribution.targets[targetId];
+  assert.ok(target, `Sandbox distribution does not declare Nano target ${targetId}.`);
+  const archive = gzipSync(Buffer.from("verified Nano Sandbox Bundle fixture"));
+  const sha256 = createHash("sha256").update(archive).digest("hex");
+  const manifest = {
+    formatVersion: distribution.formatVersion,
+    distributionId: distribution.id,
+    archiveVersion: distribution.archiveVersion,
+    microsandboxVersion: distribution.microsandboxVersion,
+    target: targetId,
+    sourceImage: target.sourceImage,
+    runtimeImage: target.runtimeImage,
+    configDigest: target.configDigest,
+    asset: {
+      format: target.archive.format,
+      mediaType: target.archive.mediaType,
+      compression: target.archive.compression,
+      compressedMediaType: target.archive.compressedMediaType,
+      fileName: target.archive.assetName,
+      sizeBytes: archive.byteLength,
+      uncompressedSizeBytes: Buffer.byteLength("verified Nano Sandbox Bundle fixture"),
+      sha256,
+    },
+  };
+  fs.mkdirSync(bundleRoot, { recursive: true });
+  const archivePath = path.join(bundleRoot, target.archive.assetName);
+  fs.writeFileSync(archivePath, archive);
+  fs.writeFileSync(
+    path.join(bundleRoot, distribution.bundle.manifestFileName),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+  );
+  return {
+    manifest: {
+      distributionId: manifest.distributionId,
+      archiveVersion: manifest.archiveVersion,
+      microsandboxVersion: manifest.microsandboxVersion,
+      target: manifest.target,
+      runtimeImage: manifest.runtimeImage,
+      configDigest: manifest.configDigest,
+      asset: {
+        fileName: manifest.asset.fileName,
+        sizeBytes: manifest.asset.sizeBytes,
+        sha256: manifest.asset.sha256,
+      },
+    },
+    archivePath,
+  };
+}
+
+function verifyCorruptBundleRejection(
+  verificationRoot: string,
+  bundleRoot: string,
+  fixture: SandboxBundleFixture,
+  sourceSha: string,
+): void {
+  fs.appendFileSync(fixture.archivePath, "corrupt");
+  const generation = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      GeneratorPath,
+      "--output",
+      path.join(verificationRoot, "corrupt-output"),
+      "--source-sha",
+      sourceSha,
+      "--sandbox-bundle-root",
+      bundleRoot,
+    ],
+    { cwd: WorkspaceRoot, encoding: "utf8" },
+  );
+  assert.notEqual(generation.status, 0, "Nano generator accepted a corrupt Sandbox Bundle.");
+  assert.match(`${generation.stdout}\n${generation.stderr}`, /archive size does not match|SHA-256 verification/u);
+}
+
+function verifyBundlePublication(outputRoot: string, contractValue: NanoContract, fixture: SandboxBundleFixture): void {
+  const initialize = spawnSync("git", ["init", "--initial-branch=nano"], { cwd: outputRoot, encoding: "utf8" });
+  assert.equal(initialize.status, 0, `Could not initialize generated Nano repository: ${initialize.stderr}`);
+  const add = spawnSync("git", ["add", "--all"], { cwd: outputRoot, encoding: "utf8" });
+  assert.equal(add.status, 0, `Could not stage generated Nano repository: ${add.stderr}`);
+  const staged = execFileSync("git", ["ls-files"], { cwd: outputRoot, encoding: "utf8" })
+    .split(/\r?\n/u)
+    .filter(Boolean)
+    .map((file) => file.replaceAll("\\", "/"));
+  const bundleRoot = contractValue.runtime.sandbox.bundle.targetRoot;
+  const distribution = readSandboxDistributionContract(contractValue);
+  for (const expected of [
+    path.posix.join(bundleRoot, distribution.bundle.manifestFileName),
+    path.posix.join(bundleRoot, fixture.manifest.asset.fileName),
+  ]) {
+    assert.ok(staged.includes(expected), `Nano publication would omit embedded runtime asset ${expected}.`);
+  }
+}
+
+function readSandboxDistributionContract(contractValue: NanoContract): SandboxDistributionContract {
+  return readJson<SandboxDistributionContract>(
+    path.join(WorkspaceRoot, contractValue.runtime.sandbox.bundle.distributionContract),
+  );
 }
 
 function listFiles(root: string, relative = ""): string[] {

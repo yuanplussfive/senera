@@ -34,9 +34,8 @@ const UploadReference = {
 
 const UploadHttpPath = "/api/uploads";
 
-export function buildUploadUrl(webSocketUrl: string): string {
-  const url = new URL(webSocketUrl, window.location.href);
-  url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+export function buildUploadUrl(httpBaseUrl: string): string {
+  const url = new URL(UploadHttpPath, `${httpBaseUrl.replace(/\/+$/u, "")}/`);
   url.pathname = UploadHttpPath;
   url.search = "";
   url.hash = "";

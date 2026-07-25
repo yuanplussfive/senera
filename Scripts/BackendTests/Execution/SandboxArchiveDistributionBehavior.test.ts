@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import os from "node:os";
 import path from "node:path";
 import { gzipSync, gunzipSync } from "node:zlib";
+import * as tar from "tar-stream";
 import { describe, expect, test, vi } from "vitest";
 import { buildSandboxImageArchive } from "../../../Build/BuildSandboxImageArchive.js";
 import type { MicrosandboxDistributionRuntime } from "../../../Build/MicrosandboxDistributionRuntime.js";
@@ -13,10 +14,67 @@ import {
   type AgentSandboxDistributionContract,
 } from "../../../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
 import type { AgentMicrosandboxImageArchiveLoader } from "../../../Source/AgentSystem/Sandbox/AgentMicrosandboxCli.js";
+import { readAgentOciArchiveConfigDigest } from "../../../Source/AgentSystem/Sandbox/Distribution/AgentOciArchiveIdentity.js";
 
 const ArchiveContents = Buffer.from("verified-oci-image-archive");
 
 describe("sandbox OCI image Bundle distribution", () => {
+  test("derives the Docker image identity from the requested OCI archive manifest", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "senera-oci-identity-"));
+    const archivePath = path.join(root, "image.oci.tar");
+    const reference = "registry.example/runtime@sha256:source";
+    const config = Buffer.from('{"architecture":"amd64","os":"linux"}');
+    const configDigest = sha256Digest(config);
+    const manifest = Buffer.from(
+      JSON.stringify({
+        schemaVersion: 2,
+        mediaType: "application/vnd.oci.image.manifest.v1+json",
+        config: {
+          mediaType: "application/vnd.oci.image.config.v1+json",
+          digest: configDigest,
+          size: config.byteLength,
+        },
+        layers: [],
+      }),
+    );
+    const manifestDigest = sha256Digest(manifest);
+    const index = Buffer.from(
+      JSON.stringify({
+        schemaVersion: 2,
+        manifests: [
+          {
+            mediaType: "application/vnd.oci.image.manifest.v1+json",
+            digest: manifestDigest,
+            size: manifest.byteLength,
+            annotations: { "org.opencontainers.image.ref.name": reference },
+          },
+        ],
+      }),
+    );
+    try {
+      await writeFile(
+        archivePath,
+        await packTarEntries([
+          [digestPath(configDigest), config],
+          [digestPath(manifestDigest), manifest],
+          ["index.json", index],
+        ]),
+      );
+      await expect(readAgentOciArchiveConfigDigest({ archivePath, reference, maxMetadataBytes: 65_536 })).resolves.toBe(
+        configDigest,
+      );
+      await expect(
+        readAgentOciArchiveConfigDigest({
+          archivePath,
+          reference: "registry.example/other:latest",
+          maxMetadataBytes: 65_536,
+        }),
+      ).rejects.toThrow("exactly one manifest");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("verifies and imports one local Bundle without any network source", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-install-"));
     const bundleRoot = path.join(root, "bundle");
@@ -134,14 +192,16 @@ describe("sandbox OCI image Bundle distribution", () => {
         architecture: "x64",
         contract,
         runtime,
+        archiveIdentityReader: async () => contract.targets.x64!.configDigest,
       });
       expect(gunzipSync(await readFile(result.archivePath))).toEqual(ArchiveContents);
       expect(JSON.parse(await readFile(result.manifestPath, "utf8"))).toEqual(result.manifest);
       expect(result.manifest).toMatchObject({
-        formatVersion: 4,
+        formatVersion: 5,
         distributionId: contract.id,
         sourceImage: contract.targets.x64?.sourceImage,
         runtimeImage: contract.targets.x64?.runtimeImage,
+        configDigest: contract.targets.x64?.configDigest,
         asset: {
           format: "oci",
           mediaType: "application/vnd.oci.image.layout.v1.tar",
@@ -166,6 +226,7 @@ describe("sandbox OCI image Bundle distribution", () => {
           architecture: "x64",
           contract,
           runtime,
+          archiveIdentityReader: async () => contract.targets.x64!.configDigest,
         }),
       ).rejects.toThrow("Sandbox Bundle output already exists");
     } finally {
@@ -185,6 +246,7 @@ describe("sandbox OCI image Bundle distribution", () => {
           architecture: "x64",
           contract,
           runtime: createBuildRuntime({ loadError: new Error("OCI archive import failed") }),
+          archiveIdentityReader: async () => contract.targets.x64!.configDigest,
         }),
       ).rejects.toThrow("OCI archive import failed");
       await expect(readFile(path.join(outputRoot, location.archiveFileName))).rejects.toMatchObject({ code: "ENOENT" });
@@ -199,7 +261,7 @@ describe("sandbox OCI image Bundle distribution", () => {
 
 function distributionContract(): AgentSandboxDistributionContract {
   return {
-    formatVersion: 4,
+    formatVersion: 5,
     id: "senera-test-runtime",
     archiveVersion: "1.0.2",
     microsandboxVersion: "0.6.4",
@@ -214,6 +276,7 @@ function distributionContract(): AgentSandboxDistributionContract {
       x64: {
         sourceImage: "docker.io/library/node@sha256:8607a9064d4a571140998ae9e52a3b3fcf9cff361d04642d5971e6cd76d39e27",
         runtimeImage: "senera.local/senera-test-runtime:1.0.2-x64",
+        configDigest: `sha256:${"c".repeat(64)}`,
         probe: { command: "node", arguments: ["--version"] },
         archive: {
           format: "oci",
@@ -237,13 +300,14 @@ function archiveManifest(contract: AgentSandboxDistributionContract): AgentSandb
   const location = resolveAgentSandboxBundleLocation(contract, "x64");
   const bundle = gzipSync(ArchiveContents, { level: 9 });
   return {
-    formatVersion: 4,
+    formatVersion: 5,
     distributionId: contract.id,
     archiveVersion: contract.archiveVersion,
     microsandboxVersion: contract.microsandboxVersion,
     target: location.targetId,
     sourceImage: location.target.sourceImage,
     runtimeImage: location.target.runtimeImage,
+    configDigest: location.target.configDigest,
     asset: {
       format: location.target.archive.format,
       mediaType: location.target.archive.mediaType,
@@ -323,4 +387,25 @@ async function pathExists(filePath: string): Promise<boolean> {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return false;
     throw error;
   }
+}
+
+function sha256Digest(content: Buffer): string {
+  return `sha256:${createHash("sha256").update(content).digest("hex")}`;
+}
+
+function digestPath(digest: string): string {
+  return `blobs/sha256/${digest.slice("sha256:".length)}`;
+}
+
+async function packTarEntries(entries: ReadonlyArray<readonly [string, Buffer]>): Promise<Buffer> {
+  const pack = tar.pack();
+  const chunks: Buffer[] = [];
+  const completed = new Promise<Buffer>((resolve, reject) => {
+    pack.on("data", (chunk: Buffer) => chunks.push(chunk));
+    pack.once("error", reject);
+    pack.once("end", () => resolve(Buffer.concat(chunks)));
+  });
+  for (const [name, content] of entries) pack.entry({ name }, content);
+  pack.finalize();
+  return completed;
 }

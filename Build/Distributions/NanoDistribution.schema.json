@@ -9,6 +9,7 @@
     "id",
     "source",
     "files",
+    "runtime",
     "rootPackage",
     "workspacePackages",
     "typescript",
@@ -16,7 +17,7 @@
   ],
   "properties": {
     "$schema": { "type": "string" },
-    "schemaVersion": { "const": 2 },
+    "schemaVersion": { "const": 3 },
     "id": { "const": "nano" },
     "source": {
       "type": "object",
@@ -43,6 +44,32 @@
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/fileProjection" }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sandbox"],
+      "properties": {
+        "sandbox": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "bundle"],
+          "properties": {
+            "provider": { "const": "microsandbox" },
+            "bundle": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["distributionContract", "sourceRoot", "targetRoot", "target"],
+              "properties": {
+                "distributionContract": { "type": "string", "minLength": 1 },
+                "sourceRoot": { "type": "string", "minLength": 1 },
+                "targetRoot": { "type": "string", "minLength": 1 },
+                "target": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" }
+              }
+            }
+          }
         }
       }
     },

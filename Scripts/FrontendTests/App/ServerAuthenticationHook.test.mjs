@@ -26,7 +26,7 @@ vi.mock("../../../Frontend/src/api/authClient.ts", () => ({
 import { useServerAuthentication } from "../../../Frontend/src/app/useServerAuthentication.ts";
 import { ServerAuthenticationError } from "../../../Frontend/src/api/authClient.ts";
 
-const WebSocketUrl = "wss://agent.example.test/socket";
+const HttpBaseUrl = "https://agent.example.test";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -52,7 +52,7 @@ test("restores an existing session and sends its CSRF token when signing out", a
     await handleRef.current.logout();
   });
 
-  expect(authenticationApi.logout).toHaveBeenCalledWith(WebSocketUrl, authentication.csrfToken);
+  expect(authenticationApi.logout).toHaveBeenCalledWith(HttpBaseUrl, authentication.csrfToken);
   expect(handleRef.current.state).toEqual({ status: "anonymous" });
 });
 
@@ -91,7 +91,7 @@ test("uses the authentication API result as the authoritative post-login session
     await handleRef.current.login(credentials);
   });
 
-  expect(authenticationApi.login).toHaveBeenCalledWith(WebSocketUrl, credentials);
+  expect(authenticationApi.login).toHaveBeenCalledWith(HttpBaseUrl, credentials);
   expect(handleRef.current.state).toEqual({ status: "authenticated", authentication });
 });
 
@@ -138,7 +138,7 @@ test("stops reconnect validation when the server explicitly rejects access", asy
 });
 
 function AuthenticationHarness({ handleRef }) {
-  const handle = useServerAuthentication(WebSocketUrl);
+  const handle = useServerAuthentication(HttpBaseUrl);
   useEffect(() => {
     handleRef.current = handle;
   }, [handle, handleRef]);

@@ -22,7 +22,7 @@ jobs:
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
@@ -32,10 +32,9 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 1
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+      - uses: ./.github/actions/setup-node
+
+      - uses: ./.github/actions/build-sandbox-bundle
 
       - name: Resolve Nano workspace
         id: paths
@@ -52,11 +51,12 @@ jobs:
       - name: Generate Nano source distribution
         shell: bash
         run: >-
-          node --disable-warning=ExperimentalWarning --experimental-strip-types
+          node --import tsx
           Build/Distributions/GenerateNanoDistribution.ts
           --output "${{ steps.paths.outputs.root }}"
           --source-sha "$SOURCE_SHA"
           --repository-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          --sandbox-bundle-root "$GITHUB_WORKSPACE/Release/SandboxImage"
 
       - name: Create reproducible Nano lockfile
         working-directory: ${{ steps.paths.outputs.root }}

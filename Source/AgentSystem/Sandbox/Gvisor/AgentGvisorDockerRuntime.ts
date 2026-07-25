@@ -31,6 +31,7 @@ export interface AgentGvisorDockerRuntimeOptions {
   runtimeName?: string;
   runtimeContract?: ResolvedAgentDockerEngineRuntimeContract;
   bundleRoot?: string;
+  bundleVerifier?: typeof verifyAgentSandboxBundle;
   containerNameFactory?: () => string;
 }
 
@@ -366,7 +367,7 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
   private async loadVerifiedBundle(
     onProgress: ((progress: AgentSandboxPreparationProgress) => void) | undefined,
   ): Promise<void> {
-    const verified = await verifyAgentSandboxBundle({
+    const verified = await (this.options.bundleVerifier ?? verifyAgentSandboxBundle)({
       bundleRoot: this.options.bundleRoot!,
       onProgress,
     });
@@ -374,30 +375,25 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
       stage: AgentSandboxPreparationStages.ImportingImage,
       item: verified.manifest.runtimeImage,
     });
-    const imagesBefore = await this.listImages();
     const archive = createReadStream(verified.archivePath).pipe(createGunzip());
     const stream = await this.options.docker.loadImage(archive);
-    const loadEvents = await new Promise<readonly unknown[]>((resolve, reject) => {
-      dockerModem(this.options.docker).followProgress(stream, (error, output) => {
+    await new Promise<void>((resolve, reject) => {
+      dockerModem(this.options.docker).followProgress(stream, (error) => {
         if (error) reject(dockerOperationError("load bundled image", error));
-        else resolve(output);
+        else resolve();
       });
     });
     const target = splitImageReference(this.resolvedContract.image.runtimeImage);
-    const imagesAfter = await this.listImages();
-    const importedImage = this.options.docker.getImage(
-      resolveImportedDockerImageId({
-        imagesBefore,
-        imagesAfter,
-        loadEvents,
-        expectedReferences: [this.resolvedContract.image.runtimeImage, this.resolvedContract.image.sourceImage],
-      }),
-    );
+    const importedImage = this.options.docker.getImage(verified.manifest.configDigest);
+    const inspected = await importedImage
+      .inspect()
+      .catch((error: unknown) => Promise.reject(dockerOperationError("inspect bundled image", error)));
+    if (inspected.Id.toLowerCase() !== verified.manifest.configDigest) {
+      throw new Error(
+        `Docker loaded Sandbox Bundle config ${String(inspected.Id)}, expected ${verified.manifest.configDigest}.`,
+      );
+    }
     await importedImage.tag(target);
-  }
-
-  private async listImages(): Promise<readonly DockerImageSummary[]> {
-    return (await this.options.docker.listImages({ all: true })) as DockerImageSummary[];
   }
 
   private async stageRootfsCopies(copies: AgentGvisorExecutionRequest["rootfsCopies"]): Promise<string> {
@@ -425,54 +421,6 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
 
 interface DockerEngineInfo {
   Runtimes?: Record<string, unknown>;
-}
-
-export interface DockerImageSummary {
-  Id?: string;
-  RepoTags?: string[];
-  RepoDigests?: string[];
-}
-
-export interface ImportedDockerImageResolutionInput {
-  imagesBefore: readonly DockerImageSummary[];
-  imagesAfter: readonly DockerImageSummary[];
-  loadEvents: readonly unknown[];
-  expectedReferences: readonly string[];
-}
-
-/** Resolves the one image identified by Docker's load result without trusting an unrelated dangling image. */
-export function resolveImportedDockerImageId(input: ImportedDockerImageResolutionInput): string {
-  const beforeIds = dockerImageIds(input.imagesBefore);
-  const afterIds = dockerImageIds(input.imagesAfter);
-  const referencedIds = findDockerImageIdsByReferences(input.imagesAfter, input.expectedReferences);
-  const loadIdentity = readDockerImageLoadIdentity(input.loadEvents);
-  const responseIds = new Set<string>();
-
-  for (const imageId of loadIdentity.imageIds) {
-    if (!afterIds.has(imageId)) {
-      throw new Error(`Docker reported loaded image ${imageId}, but it is absent from the post-import inventory.`);
-    }
-    responseIds.add(imageId);
-  }
-  for (const reference of loadIdentity.references) {
-    for (const imageId of findDockerImageIdsByReferences(input.imagesAfter, [reference])) responseIds.add(imageId);
-  }
-
-  const identifiedIds = new Set([...referencedIds, ...responseIds]);
-  if (identifiedIds.size === 1) return firstSetValue(identifiedIds);
-  if (identifiedIds.size > 1) {
-    throw new Error(
-      `Verified Sandbox Bundle load identified multiple images: ${[...identifiedIds].sort().join(", ")}.`,
-    );
-  }
-
-  const addedIds = new Set([...afterIds].filter((imageId) => !beforeIds.has(imageId)));
-  if (addedIds.size === 1) return firstSetValue(addedIds);
-  throw new Error(
-    addedIds.size === 0
-      ? "Verified Sandbox Bundle was loaded, but Docker did not expose its image identity."
-      : `Verified Sandbox Bundle load added multiple images: ${[...addedIds].sort().join(", ")}.`,
-  );
 }
 
 interface DockerContainerWaitResult {
@@ -533,77 +481,6 @@ function splitImageReference(reference: string): { repo: string; tag: string } {
   if (separator <= reference.lastIndexOf("/"))
     throw new Error(`Docker Engine sandbox image is missing a tag: ${reference}`);
   return { repo: reference.slice(0, separator), tag: reference.slice(separator + 1) };
-}
-
-function normalizeDockerImageReference(reference: string): string {
-  const trimmed = reference.trim();
-  const separator = trimmed.indexOf("@");
-  const name = separator >= 0 ? trimmed.slice(0, separator) : imageNameWithoutTag(trimmed);
-  const suffix = separator >= 0 ? trimmed.slice(separator) : trimmed.slice(name.length);
-  const segments = name.split("/");
-  const registry = segments[0] ?? "";
-  const hasExplicitRegistry = registry === "localhost" || registry.includes(".") || registry.includes(":");
-  const normalizedName = hasExplicitRegistry
-    ? `${registry === "index.docker.io" ? "docker.io" : registry}/${segments.slice(1).join("/")}`
-    : segments.length === 1
-      ? `docker.io/library/${name}`
-      : `docker.io/${name}`;
-  return `${normalizedName}${suffix}`;
-}
-
-function dockerImageIds(images: readonly DockerImageSummary[]): Set<string> {
-  return new Set(images.flatMap((image) => (image.Id ? [image.Id] : [])));
-}
-
-function findDockerImageIdsByReferences(
-  images: readonly DockerImageSummary[],
-  references: readonly string[],
-): Set<string> {
-  const expected = new Set(references.map(normalizeDockerImageReference));
-  return new Set(
-    images.flatMap((image) => {
-      if (!image.Id) return [];
-      const matches = [...(image.RepoTags ?? []), ...(image.RepoDigests ?? [])].some((reference) =>
-        expected.has(normalizeDockerImageReference(reference)),
-      );
-      return matches ? [image.Id] : [];
-    }),
-  );
-}
-
-function readDockerImageLoadIdentity(events: readonly unknown[]): {
-  imageIds: ReadonlySet<string>;
-  references: ReadonlySet<string>;
-} {
-  const imageIds = new Set<string>();
-  const references = new Set<string>();
-  for (const event of events) {
-    if (!isRecord(event)) continue;
-    for (const value of [event.stream, event.status]) {
-      if (typeof value !== "string") continue;
-      for (const line of value.split(/\r?\n/u)) {
-        const imageId = /^Loaded image ID:\s*(sha256:[a-f0-9]{64})\s*$/iu.exec(line)?.[1];
-        if (imageId) {
-          imageIds.add(imageId.toLowerCase());
-          continue;
-        }
-        const reference = /^Loaded image:\s*(\S+)\s*$/u.exec(line)?.[1];
-        if (reference) references.add(reference);
-      }
-    }
-  }
-  return { imageIds, references };
-}
-
-function firstSetValue(values: ReadonlySet<string>): string {
-  const value = values.values().next().value;
-  if (typeof value !== "string") throw new Error("Expected a non-empty Docker image identity set.");
-  return value;
-}
-
-function imageNameWithoutTag(reference: string): string {
-  const separator = reference.lastIndexOf(":");
-  return separator > reference.lastIndexOf("/") ? reference.slice(0, separator) : reference;
 }
 
 function dockerStatusCode(error: unknown): number | undefined {

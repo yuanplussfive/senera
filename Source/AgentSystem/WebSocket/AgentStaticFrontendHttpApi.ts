@@ -108,9 +108,8 @@ export class AgentStaticFrontendHttpApi {
 
   private readCacheControl(filePath: string): string {
     const fileName = path.basename(filePath);
-    return fileName === "index.html" || fileName === this.runtimeConfigFileName
-      ? "no-cache"
-      : "public, max-age=31536000, immutable";
+    if (fileName === this.runtimeConfigFileName) return "no-store";
+    return fileName === "index.html" ? "no-cache" : "public, max-age=31536000, immutable";
   }
 
   private sendNotFound(response: ServerResponse): void {

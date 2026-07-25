@@ -12,6 +12,11 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyAgentSandboxBundle } from "../../Source/AgentSystem/Sandbox/AgentSandboxArchiveInstaller.js";
+import {
+  AgentSandboxDistributionContractSchema,
+  resolveAgentSandboxBundleLocation,
+} from "../../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
 
 interface DependencyProjection {
   readonly mode: "all" | "include" | "exclude";
@@ -32,6 +37,27 @@ interface FileProjection {
   readonly target: string;
 }
 
+interface SandboxBundleProjection {
+  readonly distributionContract: string;
+  readonly sourceRoot: string;
+  readonly targetRoot: string;
+  readonly target: string;
+}
+
+interface SandboxBundleMetadata {
+  readonly distributionId: string;
+  readonly archiveVersion: string;
+  readonly microsandboxVersion: string;
+  readonly target: string;
+  readonly runtimeImage: string;
+  readonly configDigest: string;
+  readonly asset: {
+    readonly fileName: string;
+    readonly sizeBytes: number;
+    readonly sha256: string;
+  };
+}
+
 interface NanoDistributionContract {
   readonly schemaVersion: number;
   readonly id: string;
@@ -43,6 +69,12 @@ interface NanoDistributionContract {
   readonly files: {
     readonly gitPathspecs: readonly string[];
     readonly projections: readonly FileProjection[];
+  };
+  readonly runtime: {
+    readonly sandbox: {
+      readonly provider: "microsandbox";
+      readonly bundle: SandboxBundleProjection;
+    };
   };
   readonly rootPackage: PackageProjection;
   readonly workspacePackages: Readonly<Record<string, { readonly scripts: readonly string[] }>>;
@@ -67,14 +99,15 @@ interface Invocation {
   readonly contractPath: string;
   readonly sourceSha?: string;
   readonly repositoryUrl?: string;
+  readonly sandboxBundleRoot?: string;
 }
 
 const GeneratorDirectory = path.dirname(fileURLToPath(import.meta.url));
 const DefaultContractPath = path.join(GeneratorDirectory, "NanoDistribution.json");
 
-main();
+await main();
 
-function main(): void {
+async function main(): Promise<void> {
   const invocation = parseInvocation(process.argv.slice(2));
   const sourceRoot = runGit(process.cwd(), ["rev-parse", "--show-toplevel"]);
   const headSha = runGit(sourceRoot, ["rev-parse", "HEAD"]);
@@ -93,7 +126,13 @@ function main(): void {
   projectRootPackage(sourceRoot, outputRoot, contract.rootPackage);
   projectWorkspacePackages(outputRoot, contract.workspacePackages);
   projectTypescriptConfig(sourceRoot, outputRoot, contract.typescript.include);
-  writeGeneratedFiles(sourceRoot, outputRoot, contract, sourceSha, repositoryUrl);
+  const sandboxBundle = await projectSandboxBundle(
+    sourceRoot,
+    outputRoot,
+    contract.runtime.sandbox.bundle,
+    invocation.sandboxBundleRoot,
+  );
+  writeGeneratedFiles(sourceRoot, outputRoot, contract, sourceSha, repositoryUrl, sandboxBundle);
 
   process.stdout.write(`Generated ${contract.id} distribution at ${outputRoot}\n`);
   process.stdout.write(`Source: ${contract.source.branch}@${sourceSha}\n`);
@@ -106,14 +145,14 @@ function parseInvocation(args: readonly string[]): Invocation {
     const value = args[index + 1];
     if (!name?.startsWith("--") || value === undefined || value.startsWith("--")) {
       throw new Error(
-        "Usage: GenerateNanoDistribution.ts --output <directory> [--contract <file>] [--source-sha <sha>] [--repository-url <url>]",
+        "Usage: GenerateNanoDistribution.ts --output <directory> [--contract <file>] [--source-sha <sha>] [--repository-url <url>] [--sandbox-bundle-root <directory>]",
       );
     }
     if (values.has(name)) throw new Error(`Duplicate argument: ${name}`);
     values.set(name, value);
   }
 
-  const supported = new Set(["--output", "--contract", "--source-sha", "--repository-url"]);
+  const supported = new Set(["--output", "--contract", "--source-sha", "--repository-url", "--sandbox-bundle-root"]);
   for (const name of values.keys()) {
     if (!supported.has(name)) throw new Error(`Unknown argument: ${name}`);
   }
@@ -125,16 +164,17 @@ function parseInvocation(args: readonly string[]): Invocation {
     contractPath: values.get("--contract")?.trim() || DefaultContractPath,
     sourceSha: values.get("--source-sha")?.trim(),
     repositoryUrl: values.get("--repository-url")?.trim(),
+    sandboxBundleRoot: values.get("--sandbox-bundle-root")?.trim(),
   };
 }
 
 function readContract(contractPath: string): NanoDistributionContract {
   const value = readJsonFile(contractPath);
   if (!isRecord(value)) throw new Error(`Nano distribution contract must be an object: ${contractPath}`);
-  if (value.schemaVersion !== 2 || value.id !== "nano") {
+  if (value.schemaVersion !== 3 || value.id !== "nano") {
     throw new Error(`Unsupported Nano distribution contract version or id: ${contractPath}`);
   }
-  if (!isRecord(value.source) || !isRecord(value.files) || !isRecord(value.rootPackage)) {
+  if (!isRecord(value.source) || !isRecord(value.files) || !isRecord(value.runtime) || !isRecord(value.rootPackage)) {
     throw new Error(`Nano distribution contract is missing required projections: ${contractPath}`);
   }
   if (!isRecord(value.workspacePackages) || !isRecord(value.typescript) || !isRecord(value.generatedFiles)) {
@@ -145,6 +185,7 @@ function readContract(contractPath: string): NanoDistributionContract {
   assertString(value.source.repositoryUrl, "source.repositoryUrl");
   assertStringArray(value.files.gitPathspecs, "files.gitPathspecs");
   assertFileProjections(value.files.projections);
+  assertSandboxRuntime(value.runtime);
   assertPackageProjection(value.rootPackage, "rootPackage");
   assertStringArray(value.typescript.include, "typescript.include");
   assertString(value.generatedFiles.readmeTemplate, "generatedFiles.readmeTemplate");
@@ -154,6 +195,15 @@ function readContract(contractPath: string): NanoDistributionContract {
     assertStringArray(projection.scripts, `workspacePackages.${packagePath}.scripts`);
   }
   return value as unknown as NanoDistributionContract;
+}
+
+function assertSandboxRuntime(value: Record<string, unknown>): void {
+  if (!isRecord(value.sandbox) || value.sandbox.provider !== "microsandbox" || !isRecord(value.sandbox.bundle)) {
+    throw new Error("runtime.sandbox must declare a microsandbox Bundle projection.");
+  }
+  for (const field of ["distributionContract", "sourceRoot", "targetRoot", "target"] as const) {
+    assertString(value.sandbox.bundle[field], `runtime.sandbox.bundle.${field}`);
+  }
 }
 
 function assertFileProjections(value: unknown): void {
@@ -287,12 +337,62 @@ function projectTypescriptConfig(sourceRoot: string, outputRoot: string, include
   });
 }
 
+async function projectSandboxBundle(
+  sourceRoot: string,
+  outputRoot: string,
+  projection: SandboxBundleProjection,
+  sourceOverride: string | undefined,
+): Promise<SandboxBundleMetadata> {
+  const distributionContract = AgentSandboxDistributionContractSchema.parse(
+    readJsonFile(resolveContainedPath(sourceRoot, projection.distributionContract)),
+  );
+  const location = resolveAgentSandboxBundleLocation(distributionContract, projection.target);
+  const bundleRoot = sourceOverride
+    ? path.resolve(sourceOverride)
+    : resolveContainedPath(sourceRoot, projection.sourceRoot);
+  const { manifest, archivePath } = await verifyAgentSandboxBundle({
+    bundleRoot,
+    architecture: projection.target,
+    contract: distributionContract,
+  });
+
+  const targetRoot = resolveContainedPath(outputRoot, projection.targetRoot);
+  copyRegularFile(
+    resolveContainedPath(bundleRoot, location.manifestFileName),
+    resolveContainedPath(targetRoot, location.manifestFileName),
+  );
+  copyRegularFile(archivePath, resolveContainedPath(targetRoot, location.archiveFileName));
+  return {
+    distributionId: manifest.distributionId,
+    archiveVersion: manifest.archiveVersion,
+    microsandboxVersion: manifest.microsandboxVersion,
+    target: manifest.target,
+    runtimeImage: manifest.runtimeImage,
+    configDigest: manifest.configDigest,
+    asset: {
+      fileName: manifest.asset.fileName,
+      sizeBytes: manifest.asset.sizeBytes,
+      sha256: manifest.asset.sha256,
+    },
+  };
+}
+
+function copyRegularFile(sourcePath: string, targetPath: string): void {
+  const stats = lstatSync(sourcePath);
+  if (!stats.isFile()) throw new Error(`Nano runtime asset must be a regular file: ${sourcePath}`);
+  if (existsSync(targetPath)) throw new Error(`Nano runtime asset target already exists: ${targetPath}`);
+  mkdirSync(path.dirname(targetPath), { recursive: true });
+  copyFileSync(sourcePath, targetPath);
+  chmodSync(targetPath, stats.mode & 0o777);
+}
+
 function writeGeneratedFiles(
   sourceRoot: string,
   outputRoot: string,
   contract: NanoDistributionContract,
   sourceSha: string,
   repositoryUrl: string,
+  sandboxBundle: SandboxBundleMetadata,
 ): void {
   const templatePath = resolveContainedPath(sourceRoot, contract.generatedFiles.readmeTemplate);
   const replacements: Readonly<Record<string, string>> = {
@@ -311,12 +411,18 @@ function writeGeneratedFiles(
   writeFileSync(path.join(outputRoot, "README.md"), readme, "utf8");
 
   writeJsonFile(resolveContainedPath(outputRoot, contract.generatedFiles.metadataFile), {
-    schemaVersion: 1,
+    schemaVersion: 2,
     distribution: contract.id,
     source: {
       repository: repositoryUrl,
       branch: contract.source.branch,
       commit: sourceSha,
+    },
+    runtime: {
+      sandbox: {
+        provider: contract.runtime.sandbox.provider,
+        bundle: sandboxBundle,
+      },
     },
   });
 }

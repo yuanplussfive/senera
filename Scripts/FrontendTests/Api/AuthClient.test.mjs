@@ -14,8 +14,8 @@ afterEach(() => {
 });
 
 describe("server authentication API", () => {
-  test("projects WebSocket origins into same-server HTTP authentication routes", () => {
-    expect(buildServerApiUrl("wss://agent.example/socket", "/api/auth/session")).toBe(
+  test("builds authentication routes from the resolved HTTP base URL", () => {
+    expect(buildServerApiUrl("https://agent.example", "/api/auth/session")).toBe(
       "https://agent.example/api/auth/session",
     );
   });
@@ -24,7 +24,7 @@ describe("server authentication API", () => {
     const fetch = vi.fn().mockResolvedValue(jsonResponse({ ok: true, session: { state: "anonymous" } }));
     vi.stubGlobal("fetch", fetch);
 
-    await expect(readServerAuthentication("ws://agent.test")).resolves.toEqual({ state: "anonymous" });
+    await expect(readServerAuthentication("http://agent.test")).resolves.toEqual({ state: "anonymous" });
     expect(fetch).toHaveBeenCalledWith(
       "http://agent.test/api/auth/session",
       expect.objectContaining({ credentials: "include" }),
@@ -46,7 +46,7 @@ describe("server authentication API", () => {
     vi.stubGlobal("fetch", fetch);
 
     await expect(
-      loginServerAuthentication("ws://agent.test", { loginName: "owner", password: "secret" }),
+      loginServerAuthentication("http://agent.test", { loginName: "owner", password: "secret" }),
     ).resolves.toMatchObject({
       account: { loginName: "owner" },
     });
@@ -64,14 +64,14 @@ describe("server authentication API", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ ok: false }, 503)));
 
     await expect(
-      loginServerAuthentication("ws://agent.test", { loginName: "owner", password: "secret" }),
+      loginServerAuthentication("http://agent.test", { loginName: "owner", password: "secret" }),
     ).rejects.toMatchObject({ name: ServerAuthenticationError.name, status: 503, message: "" });
   });
 
   test("keeps logout failure detail empty when the server omits a message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 503 })));
 
-    await expect(logoutServerAuthentication("ws://agent.test", "csrf")).rejects.toMatchObject({
+    await expect(logoutServerAuthentication("http://agent.test", "csrf")).rejects.toMatchObject({
       name: ServerAuthenticationError.name,
       status: 503,
       message: "",
@@ -82,11 +82,11 @@ describe("server authentication API", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ ok: false, error: { message: "Denied" } }, 403)));
 
     await expect(
-      loginServerAuthentication("ws://agent.test", { loginName: "owner", password: "secret" }),
+      loginServerAuthentication("http://agent.test", { loginName: "owner", password: "secret" }),
     ).rejects.toEqual(expect.objectContaining({ name: ServerAuthenticationError.name, status: 403 }));
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ ok: true, session: { state: "unknown" } })));
-    await expect(readServerAuthentication("ws://agent.test")).rejects.toMatchObject({
+    await expect(readServerAuthentication("http://agent.test")).rejects.toMatchObject({
       name: ServerAuthenticationError.name,
       status: 200,
     });

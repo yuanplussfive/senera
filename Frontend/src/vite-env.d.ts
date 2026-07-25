@@ -10,6 +10,7 @@ declare const __SENERA_FRONTEND_VERSION__: string;
 interface Window {
   __SENERA_RUNTIME_CONFIG__?: {
     webSocketUrl?: string;
+    httpBaseUrl?: string;
     modelLabel?: string;
     userName?: string;
     emptySuggestions?: string[];
