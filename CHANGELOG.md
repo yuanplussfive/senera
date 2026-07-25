@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.9.0](https://github.com/yuanplussfive/senera/compare/v1.8.4...v1.9.0) (2026-07-25)
+
+
+### 新增功能
+
+* **runtime:** unify sandbox providers and model setup ([#70](https://github.com/yuanplussfive/senera/issues/70)) ([7f44095](https://github.com/yuanplussfive/senera/commit/7f440952bdcd20080ce4a7dfe9d1d3ee696ea92b))
+
 ## [1.8.4](https://github.com/yuanplussfive/senera/compare/v1.8.3...v1.8.4) (2026-07-24)
 
 
