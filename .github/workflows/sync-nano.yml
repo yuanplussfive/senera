@@ -25,7 +25,6 @@ jobs:
     timeout-minutes: 20
     env:
       SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
-      NANO_ROOT: ${{ runner.temp }}/senera-nano
     steps:
       - name: Check out the verified source commit
         uses: actions/checkout@v4
@@ -37,6 +36,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Resolve Nano workspace
+        id: paths
+        shell: bash
+        run: echo "root=$RUNNER_TEMP/senera-nano" >> "$GITHUB_OUTPUT"
 
       - name: Confirm verified source identity
         shell: bash
@@ -50,20 +54,20 @@ jobs:
         run: >-
           node --disable-warning=ExperimentalWarning --experimental-strip-types
           Build/Distributions/GenerateNanoDistribution.ts
-          --output "$NANO_ROOT"
+          --output "${{ steps.paths.outputs.root }}"
           --source-sha "$SOURCE_SHA"
           --repository-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
 
       - name: Create reproducible Nano lockfile
-        working-directory: ${{ runner.temp }}/senera-nano
+        working-directory: ${{ steps.paths.outputs.root }}
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
       - name: Install Nano dependencies
-        working-directory: ${{ runner.temp }}/senera-nano
+        working-directory: ${{ steps.paths.outputs.root }}
         run: npm ci --no-audit --no-fund
 
       - name: Verify Nano type boundaries
-        working-directory: ${{ runner.temp }}/senera-nano
+        working-directory: ${{ steps.paths.outputs.root }}
         run: |
           npm run check.types
           npm run check.frontend-types
@@ -71,7 +75,7 @@ jobs:
 
       - name: Verify Nano development startup
         shell: bash
-        working-directory: ${{ runner.temp }}/senera-nano
+        working-directory: ${{ steps.paths.outputs.root }}
         run: |
           set -euo pipefail
           setsid npm run dev > "$RUNNER_TEMP/nano-dev.log" 2>&1 &
@@ -113,13 +117,14 @@ jobs:
           nano_ref="$(git ls-remote --heads origin refs/heads/nano)"
           nano_sha="${nano_ref%%[[:space:]]*}"
 
-          git -C "$NANO_ROOT" init --initial-branch=nano
-          git -C "$NANO_ROOT" config user.name "github-actions[bot]"
-          git -C "$NANO_ROOT" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C "$NANO_ROOT" add --all
-          git -C "$NANO_ROOT" commit -m "chore(nano): sync ${SOURCE_SHA:0:12}"
+          nano_root="${{ steps.paths.outputs.root }}"
+          git -C "$nano_root" init --initial-branch=nano
+          git -C "$nano_root" config user.name "github-actions[bot]"
+          git -C "$nano_root" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$nano_root" add --all
+          git -C "$nano_root" commit -m "chore(nano): sync ${SOURCE_SHA:0:12}"
 
-          git fetch "$NANO_ROOT" refs/heads/nano:refs/nano/generated
+          git fetch "$nano_root" refs/heads/nano:refs/nano/generated
           git push \
             --force-with-lease="refs/heads/nano:${nano_sha}" \
             origin \

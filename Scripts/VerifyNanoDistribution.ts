@@ -117,12 +117,15 @@ function verifyPublicationWorkflow(contractValue: NanoContract): void {
     "npm run check.types",
     "npm run check.frontend-types",
     "npm run dev",
+    'echo "root=$RUNNER_TEMP/senera-nano" >> "$GITHUB_OUTPUT"',
+    "steps.paths.outputs.root",
     "--force-with-lease",
     `refs/heads/${contractValue.source.outputBranch}`,
   ];
   for (const fragment of requiredFragments) {
     assert.ok(workflow.includes(fragment), `Nano publication workflow is missing: ${fragment}`);
   }
+  assert.ok(!workflow.includes("${{ runner.temp }}"), "Nano workflow must resolve runner.temp inside a job step.");
 }
 
 function verifyGeneratedFiles(outputRoot: string): void {
