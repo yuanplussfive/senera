@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { AgentSandboxRuntimeService } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeService.js";
+import { AgentSandboxRuntimeProviders } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 async function main(): Promise<void> {
   const service = new AgentSandboxRuntimeService({
     platform: "win32",
+    provider: AgentSandboxRuntimeProviders.Microsandbox,
     clock: () => new Date("2026-01-02T03:04:05.000Z"),
     packageAvailable: () => true,
   });
@@ -40,6 +42,7 @@ async function main(): Promise<void> {
 
   const unavailableSnapshot = new AgentSandboxRuntimeService({
     platform: "linux",
+    provider: AgentSandboxRuntimeProviders.Microsandbox,
     configSnapshot: () =>
       ({
         ModelProviders: [],
@@ -55,6 +58,8 @@ async function main(): Promise<void> {
   assert.equal(unavailableSnapshot.diagnostics[0]?.code, "microsandbox_package_missing");
 
   const disabledSnapshot = new AgentSandboxRuntimeService({
+    platform: "win32",
+    provider: AgentSandboxRuntimeProviders.Microsandbox,
     configSnapshot: () =>
       ({
         ModelProviders: [],

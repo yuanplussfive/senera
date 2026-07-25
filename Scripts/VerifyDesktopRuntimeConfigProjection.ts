@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { projectDesktopRuntimeConfig } from "../Apps/Desktop/DesktopRuntimeConfig.js";
+import { AgentSandboxRuntimeProviders } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const sourceConfig: AgentSystemConfig = {
@@ -43,6 +44,7 @@ assert.deepEqual(projected.PluginRoots, {
   User: ["C:/Users/test/AppData/Roaming/Senera/runtime/Plugins"],
 });
 assert.deepEqual(projected.SandboxRuntime, {
+  Provider: AgentSandboxRuntimeProviders.Microsandbox,
   BaseDir: "C:/Users/test/AppData/Roaming/Senera/runtime/SandboxRuntime",
   Provisioning: { Kind: "ReleaseBundle" },
 });
@@ -60,6 +62,7 @@ const explicitOci = projectDesktopRuntimeConfig(
   },
   { packaged: true },
 );
+assert.equal(explicitOci.SandboxRuntime?.Provider, AgentSandboxRuntimeProviders.Microsandbox);
 assert.deepEqual(explicitOci.SandboxRuntime?.Provisioning, { Kind: "ReleaseBundle" });
 
 console.log("Desktop runtime config projection verification passed.");
