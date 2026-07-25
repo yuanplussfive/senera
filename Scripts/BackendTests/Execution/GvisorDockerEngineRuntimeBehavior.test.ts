@@ -1,8 +1,5 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
-import { gzipSync } from "node:zlib";
 import Docker from "dockerode";
 import { describe, expect, test, vi } from "vitest";
 import {
@@ -14,6 +11,7 @@ import {
   type AgentDockerEngineSandboxProvider,
   type ResolvedAgentDockerEngineRuntimeContract,
 } from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorRuntimeContract.js";
+import { AgentSandboxRuntimeImageLabels } from "../../../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
 
 describe("Docker Engine sandbox runtime", () => {
   test("uses the registered runsc runtime for the gVisor provider", async () => {
@@ -28,7 +26,7 @@ describe("Docker Engine sandbox runtime", () => {
 
     expect(fixture.created).toMatchObject({
       name: "contract-sandbox",
-      Image: fixture.resolved.image.sourceImage,
+      Image: fixture.imageReference,
       Entrypoint: ["/usr/local/bin/node"],
       Cmd: ["--version"],
       WorkingDir: fixture.resolved.contract.guest.workspaceRoot,
@@ -87,94 +85,63 @@ describe("Docker Engine sandbox runtime", () => {
     ).rejects.toThrow("registered-runsc");
   });
 
-  test("tags a verified Bundle by its imported OCI source reference", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "senera-docker-bundle-identity-"));
-    const archivePath = path.join(root, "runtime.oci.tar.gz");
+  test("requires the deployment to preload the declared runtime image", async () => {
     const resolved = readAgentDockerEngineRuntimeContract("docker-engine", "x64");
-    const importedImageId = `sha256:${"d".repeat(64)}`;
-    const tag = vi.fn(async () => undefined);
-    const createContainer = vi.fn(async () => ({
-      start: vi.fn(async () => undefined),
-      wait: vi.fn(async () => ({ StatusCode: 0 })),
-      remove: vi.fn(async () => undefined),
-    }));
-    const missing = Object.assign(new Error("image not tagged"), { statusCode: 404 });
+    const imageReference = "ghcr.io/example/senera-sandbox-runtime:verified";
+    const missing = Object.assign(new Error("image missing"), { statusCode: 404 });
+    const pull = vi.fn();
     const docker = {
       version: vi.fn(async () => ({ ApiVersion: resolved.contract.engine.minimumApiVersion })),
       info: vi.fn(async () => ({ Runtimes: { runc: {} } })),
-      getImage: vi.fn((reference: string) => {
-        if (reference === resolved.image.runtimeImage) return { inspect: vi.fn(async () => Promise.reject(missing)) };
-        if (reference === importedImageId) return { tag };
-        throw new Error(`Unexpected image reference: ${reference}`);
-      }),
-      listImages: vi
-        .fn()
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([
-          { Id: importedImageId, RepoTags: [resolved.image.sourceImage.replace("docker.io/library/", "")] },
-        ]),
-      loadImage: vi.fn(async (archive: NodeJS.ReadableStream) => {
-        for await (const _chunk of archive as NodeJS.ReadableStream & AsyncIterable<Buffer>) {
-          // Consume the verified archive exactly as the Docker Engine API does.
-        }
-        return new PassThrough();
-      }),
-      createContainer,
-      modem: {
-        followProgress: (
-          _stream: NodeJS.ReadableStream,
-          callback: (error: Error | null, output: readonly unknown[]) => void,
-        ) =>
-          callback(null, [
-            { stream: `Loaded image: ${resolved.image.sourceImage.replace("docker.io/library/", "")}\n` },
-          ]),
-      },
+      getImage: vi.fn(() => ({ inspect: vi.fn(async () => Promise.reject(missing)) })),
+      pull,
+      createContainer: vi.fn(),
     } as unknown as Docker;
-    await writeFile(archivePath, gzipSync(Buffer.from("verified OCI archive")));
     const runtime = new AgentGvisorDockerEngineRuntime({
       docker,
       workspace: { kind: "volume", volumeName: "senera-data" },
-      copySourceRoots: [root],
+      copySourceRoots: [path.resolve("workspace")],
       runtimeContract: resolved,
-      bundleRoot: root,
-      bundleVerifier: async () => ({
-        archivePath,
-        manifest: {
-          formatVersion: 5,
-          distributionId: "senera-node-runtime",
-          archiveVersion: "1.0.3",
-          microsandboxVersion: "0.6.4",
-          target: "x64",
-          sourceImage: resolved.image.sourceImage,
-          runtimeImage: resolved.image.runtimeImage,
-          configDigest: resolved.image.configDigest,
-          asset: {
-            format: "oci",
-            mediaType: "application/vnd.oci.image.layout.v1.tar",
-            compression: "gzip",
-            compressedMediaType: "application/gzip",
-            fileName: path.basename(archivePath),
-            sizeBytes: 1,
-            uncompressedSizeBytes: 1,
-            sha256: "0".repeat(64),
+      imageReference,
+    });
+    await expect(runtime.probe()).resolves.toMatchObject({ image: imageReference, imageReady: false });
+    await expect(runtime.prepare()).rejects.toThrow("deployment must pull the declared image");
+    expect(pull).not.toHaveBeenCalled();
+  });
+
+  test("rejects a preloaded image that does not match the declared distribution", async () => {
+    const resolved = readAgentDockerEngineRuntimeContract("docker-engine", "x64");
+    const imageReference = "ghcr.io/example/senera-sandbox-runtime:verified";
+    const docker = {
+      version: vi.fn(async () => ({ ApiVersion: resolved.contract.engine.minimumApiVersion })),
+      info: vi.fn(async () => ({ Runtimes: { runc: {} } })),
+      getImage: vi.fn(() => ({
+        inspect: vi.fn(async () => ({
+          Config: {
+            Labels: {
+              ...runtimeImageLabels(resolved),
+              [AgentSandboxRuntimeImageLabels.distributionVersion]: "unexpected",
+            },
           },
-        },
-      }),
+        })),
+      })),
+    } as unknown as Docker;
+    const runtime = new AgentGvisorDockerEngineRuntime({
+      docker,
+      workspace: { kind: "volume", volumeName: "senera-data" },
+      copySourceRoots: [path.resolve("workspace")],
+      runtimeContract: resolved,
+      imageReference,
     });
 
-    try {
-      await runtime.prepare();
-      expect(tag).toHaveBeenCalledWith({ repo: "senera.local/senera-node-runtime", tag: "1.0.3-x64" });
-      expect(createContainer).toHaveBeenCalledOnce();
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+    await expect(runtime.probe()).rejects.toThrow("runtime image identity is invalid");
   });
 });
 
 function createRuntimeFixture(provider: AgentDockerEngineSandboxProvider): {
   runtime: AgentGvisorDockerEngineRuntime;
   resolved: ResolvedAgentDockerEngineRuntimeContract;
+  imageReference: string;
   remove: ReturnType<typeof vi.fn>;
   readonly created: Docker.ContainerCreateOptions | undefined;
 } {
@@ -184,7 +151,9 @@ function createRuntimeFixture(provider: AgentDockerEngineSandboxProvider): {
   const docker = {
     version: vi.fn(async () => ({ ApiVersion: resolved.contract.engine.minimumApiVersion })),
     info: vi.fn(async () => ({ Runtimes: { runsc: {}, runc: {} } })),
-    getImage: vi.fn(() => ({ inspect: vi.fn(async () => ({ Id: "image" })) })),
+    getImage: vi.fn(() => ({
+      inspect: vi.fn(async () => ({ Id: "image", Config: { Labels: runtimeImageLabels(resolved) } })),
+    })),
     createContainer: vi.fn(async (options: Docker.ContainerCreateOptions) => {
       created = options;
       const attached = new PassThrough();
@@ -203,16 +172,19 @@ function createRuntimeFixture(provider: AgentDockerEngineSandboxProvider): {
     },
   } as unknown as Docker;
   const workspaceRoot = path.resolve("workspace");
+  const imageReference = "ghcr.io/example/senera-sandbox-runtime:verified";
   const runtime = new AgentGvisorDockerEngineRuntime({
     docker,
     workspace: { kind: "bind", sourcePath: workspaceRoot },
     copySourceRoots: [workspaceRoot],
     runtimeContract: resolved,
+    imageReference,
     containerNameFactory: () => "contract-sandbox",
   });
   return {
     runtime,
     resolved,
+    imageReference,
     remove,
     get created() {
       return created;
@@ -224,9 +196,9 @@ async function executeProbeCommand(
   runtime: AgentGvisorDockerEngineRuntime,
   resolved: ResolvedAgentDockerEngineRuntimeContract,
 ): Promise<void> {
+  await runtime.prepare();
   const process = await runtime.start({
     requestId: "request-1",
-    image: resolved.image.sourceImage,
     command: "/usr/local/bin/node",
     arguments: ["--version"],
     cwd: resolved.contract.guest.workspaceRoot,
@@ -240,4 +212,13 @@ async function executeProbeCommand(
   });
   await expect(process.completion).resolves.toEqual({ exitCode: 0, signal: null });
   await process.cleanup();
+}
+
+function runtimeImageLabels(resolved: ResolvedAgentDockerEngineRuntimeContract): Record<string, string> {
+  return {
+    [AgentSandboxRuntimeImageLabels.distributionId]: resolved.distribution.id,
+    [AgentSandboxRuntimeImageLabels.distributionVersion]: resolved.distribution.version,
+    [AgentSandboxRuntimeImageLabels.target]: resolved.distribution.target,
+    [AgentSandboxRuntimeImageLabels.sourceImage]: resolved.image.sourceImage,
+  };
 }

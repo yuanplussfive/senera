@@ -26,6 +26,11 @@ assert.deepEqual(release, {
   containerMinorTag: "1.2",
   sandboxArchiveArtifactName: "SeneraSandboxImage-1.0.3-x64.oci.tar.gz",
   sandboxArchiveManifestArtifactName: "SeneraSandboxImageManifest.json",
+  sandboxRuntimeSourceImage:
+    "docker.io/library/node@sha256:8607a9064d4a571140998ae9e52a3b3fcf9cff361d04642d5971e6cd76d39e27",
+  sandboxRuntimeDistributionId: "senera-node-runtime",
+  sandboxRuntimeVersionTag: "1.0.3",
+  sandboxRuntimeTarget: process.arch,
   sourceSha: "abcdef1234567890",
 });
 
@@ -66,6 +71,13 @@ try {
   assert.equal(outputs.container_minor_tag, "2.4");
   assert.equal(outputs.sandbox_archive_artifact_name, "SeneraSandboxImage-1.0.3-x64.oci.tar.gz");
   assert.equal(outputs.sandbox_archive_manifest_artifact_name, "SeneraSandboxImageManifest.json");
+  assert.equal(
+    outputs.sandbox_runtime_source_image,
+    "docker.io/library/node@sha256:8607a9064d4a571140998ae9e52a3b3fcf9cff361d04642d5971e6cd76d39e27",
+  );
+  assert.equal(outputs.sandbox_runtime_distribution_id, "senera-node-runtime");
+  assert.equal(outputs.sandbox_runtime_version_tag, "1.0.3");
+  assert.equal(outputs.sandbox_runtime_target, process.arch);
   assert.equal(outputs.source_sha, "release-sha");
 } finally {
   fs.rmSync(workspaceRoot, { recursive: true, force: true });

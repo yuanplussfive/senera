@@ -15,7 +15,10 @@ import type {
   AgentGvisorDockerProcess,
   AgentGvisorDockerRuntime,
 } from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorDockerRuntime.js";
-import type { AgentGvisorExecutionRequest } from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerProtocol.js";
+import {
+  AgentGvisorExecutionRequestSchema,
+  type AgentGvisorExecutionRequest,
+} from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerProtocol.js";
 
 describe("gVisor worker server", () => {
   test("keeps the execution socket open for streamed input after the start frame", async () => {
@@ -95,6 +98,15 @@ describe("gVisor worker server", () => {
       await fixture.close();
     }
   });
+
+  test("does not let execution requests select a runtime image", () => {
+    expect(
+      AgentGvisorExecutionRequestSchema.safeParse({
+        ...createExecutionRequest(),
+        image: "untrusted.example/runtime:latest",
+      }).success,
+    ).toBe(false);
+  });
 });
 
 async function createWorkerFixture(provider: "gvisor" | "docker-engine" = "gvisor"): Promise<{
@@ -123,7 +135,6 @@ async function createWorkerFixture(provider: "gvisor" | "docker-engine" = "gviso
 function createExecutionRequest(): AgentGvisorExecutionRequest {
   return {
     requestId: "request-1",
-    image: "senera.local/node:latest",
     command: "/bin/sh",
     arguments: ["-lc", "cat"],
     cwd: "/workspace",

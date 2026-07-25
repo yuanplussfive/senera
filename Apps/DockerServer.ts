@@ -15,13 +15,11 @@ import { AgentGvisorWorkerSocketClient } from "../Source/AgentSystem/Sandbox/Gvi
 import { prepareAgentGvisorRuntime } from "../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorRuntimePreparation.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { synchronizeDockerAdminAccount } from "./DockerAdminAccountSync.js";
-import { resolveAgentSandboxPackagedBundleRoot } from "../Source/AgentSystem/Sandbox/AgentSandboxBundlePaths.js";
 import type { AgentSandboxRuntimeProvider } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
 import type { SeneraGvisorWorkerClient } from "../Source/AgentSystem/Execution/SeneraGvisorTypes.js";
 import { ensureRuntimeConfigFile } from "./RuntimeConfigBootstrap.js";
 
 const AppRoot = resolveAppRoot();
-const SandboxBundleRoot = resolveAgentSandboxPackagedBundleRoot(AppRoot);
 const WorkspaceRoot = path.resolve(process.env.SENERA_WORKSPACE_ROOT?.trim() || "/data");
 const ConfigPath = resolveWorkspacePath(process.env.AGENT_CONFIG_PATH?.trim() || "senera.config.json");
 const FrontendRoot = path.join(AppRoot, "Frontend", "dist");
@@ -70,7 +68,6 @@ async function main(): Promise<void> {
     runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(AppRoot),
     runtimeConfigProjection: runtimeProjection,
     sandboxRuntimePrepared: true,
-    sandboxBundleRoot: SandboxBundleRoot,
     sandboxProvider,
     dockerEngineWorker: worker,
   });

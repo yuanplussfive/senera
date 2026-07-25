@@ -42,7 +42,6 @@ ENV AGENT_CONFIG_PATH=/data/senera.config.json
 ENV SENERA_SERVER_HOST=0.0.0.0
 ENV SENERA_SERVER_PORT=8787
 
-COPY --chown=node:node Release/SandboxImage ./SandboxImage
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/Dist ./Dist

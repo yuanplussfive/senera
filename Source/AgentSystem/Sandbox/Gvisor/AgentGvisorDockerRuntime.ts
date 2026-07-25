@@ -4,8 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { PassThrough, type Duplex, type Readable } from "node:stream";
 import { finished } from "node:stream/promises";
-import { createGunzip } from "node:zlib";
-import { createReadStream } from "node:fs";
 import Docker from "dockerode";
 import tar from "tar-fs";
 import type { AgentGvisorExecutionRequest } from "./AgentGvisorWorkerProtocol.js";
@@ -15,15 +13,11 @@ import {
   type ResolvedAgentDockerEngineRuntimeContract,
 } from "./AgentGvisorRuntimeContract.js";
 import type { SeneraTerminalSignal } from "../../Execution/SeneraTerminalTypes.js";
-import { verifyAgentSandboxBundle } from "../AgentSandboxArchiveInstaller.js";
 import { AgentSandboxPreparationStages, type AgentSandboxPreparationProgress } from "../AgentSandboxRuntimeTypes.js";
 import { selectAgentSandboxProvider } from "../AgentSandboxProviderSelection.js";
 import { AgentSandboxRuntimeProviders } from "../AgentSandboxRuntimeTypes.js";
 import type { AgentSandboxProviderPreference } from "../../Types/AgentRuntimeConfigTypes.js";
-import {
-  resolveAgentDockerLoadedImageId,
-  type AgentDockerImageSummary,
-} from "../DockerEngine/AgentDockerImageLoadIdentity.js";
+import { AgentSandboxRuntimeImageLabels } from "../AgentSandboxDistributionContract.js";
 
 export type AgentGvisorWorkspaceSource = { kind: "bind"; sourcePath: string } | { kind: "volume"; volumeName: string };
 
@@ -34,8 +28,7 @@ export interface AgentGvisorDockerRuntimeOptions {
   provider?: AgentDockerEngineSandboxProvider;
   runtimeName?: string;
   runtimeContract?: ResolvedAgentDockerEngineRuntimeContract;
-  bundleRoot?: string;
-  bundleVerifier?: typeof verifyAgentSandboxBundle;
+  imageReference: string;
   containerNameFactory?: () => string;
 }
 
@@ -100,15 +93,14 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
   private readonly copySourceRoots: readonly string[];
   private readonly containerNameFactory: () => string;
   private readonly imageReference: string;
+  private prepared = false;
 
   constructor(private readonly options: AgentGvisorDockerRuntimeOptions) {
     this.resolvedContract =
       options.runtimeContract ?? readAgentDockerEngineRuntimeContract(options.provider ?? "gvisor");
     this.runtimeName = resolveRuntimeName(this.resolvedContract, options.runtimeName);
     this.copySourceRoots = options.copySourceRoots.map((root) => path.resolve(root));
-    this.imageReference = options.bundleRoot
-      ? this.resolvedContract.image.runtimeImage
-      : this.resolvedContract.image.sourceImage;
+    this.imageReference = requireImageReference(options.imageReference);
     this.containerNameFactory =
       options.containerNameFactory ?? (() => `${this.resolvedContract.contract.id}-${randomUUID()}`);
   }
@@ -126,12 +118,13 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
   }> {
     await this.assertEngineCompatible();
     await this.assertRuntimeStrategyAvailable();
+    const imageReady = await this.validateImageIfPresent(this.imageReference);
     return {
       provider: this.provider(),
       ...(this.runtimeName ? { runtimeName: this.runtimeName } : {}),
       contractId: this.resolvedContract.contract.id,
       image: this.imageReference,
-      imageReady: await this.imageExists(this.imageReference),
+      imageReady,
     };
   }
 
@@ -140,6 +133,7 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
       onProgress?: (progress: AgentSandboxPreparationProgress) => void;
     } = {},
   ): Promise<void> {
+    this.prepared = false;
     input.onProgress?.({
       stage: AgentSandboxPreparationStages.LoadingRuntime,
       item: this.runtimeName ?? "Docker Engine default runtime",
@@ -147,16 +141,20 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
     await this.assertEngineCompatible();
     await this.assertRuntimeStrategyAvailable();
     const image = this.imageReference;
-    if (!(await this.imageExists(image))) {
-      input.onProgress?.({ stage: AgentSandboxPreparationStages.WarmingImage, item: image });
-      if (this.options.bundleRoot) await this.loadVerifiedBundle(input.onProgress);
-      else await this.pullImage(image);
+    if (!(await this.validateImageIfPresent(image))) {
+      throw new Error(
+        `Docker sandbox runtime image is unavailable: ${image}. The deployment must pull the declared image before starting the Worker.`,
+      );
     }
     input.onProgress?.({ stage: AgentSandboxPreparationStages.ProbingSandbox, item: image });
     await this.runProbeContainer();
+    this.prepared = true;
   }
 
   async start(request: AgentGvisorExecutionRequest): Promise<AgentGvisorDockerProcess> {
+    if (!this.prepared) {
+      throw new Error("Docker sandbox runtime must be prepared before starting an execution.");
+    }
     this.assertRequestPolicy(request);
     const container = await this.options.docker.createContainer(this.createContainerOptions(request));
     let stagingRoot: string | undefined;
@@ -313,7 +311,6 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
   private assertRequestPolicy(request: AgentGvisorExecutionRequest): void {
     const limits = this.resolvedContract.contract.limits;
     const violations = [
-      request.image === this.imageReference ? undefined : "image",
       request.limits.cpus <= limits.maxCpuCount ? undefined : "cpu",
       request.limits.memoryMiB <= limits.maxMemoryMiB ? undefined : "memory",
       request.limits.processCount <= limits.maxProcessCount ? undefined : "process_count",
@@ -348,9 +345,10 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
     }
   }
 
-  private async imageExists(image: string): Promise<boolean> {
+  private async validateImageIfPresent(image: string): Promise<boolean> {
     try {
-      await this.options.docker.getImage(image).inspect();
+      const inspection = await this.options.docker.getImage(image).inspect();
+      this.assertImageIdentity(inspection.Config?.Labels ?? {});
       return true;
     } catch (error) {
       if (dockerStatusCode(error) === 404) return false;
@@ -358,52 +356,22 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
     }
   }
 
-  private async pullImage(image: string): Promise<void> {
-    const stream = await this.options.docker.pull(image);
-    await new Promise<void>((resolve, reject) => {
-      dockerModem(this.options.docker).followProgress(stream, (error) => {
-        if (error) reject(dockerOperationError("pull image", error));
-        else resolve();
-      });
-    });
-  }
-
-  private async loadVerifiedBundle(
-    onProgress: ((progress: AgentSandboxPreparationProgress) => void) | undefined,
-  ): Promise<void> {
-    const verified = await (this.options.bundleVerifier ?? verifyAgentSandboxBundle)({
-      bundleRoot: this.options.bundleRoot!,
-      onProgress,
-    });
-    onProgress?.({
-      stage: AgentSandboxPreparationStages.ImportingImage,
-      item: verified.manifest.runtimeImage,
-    });
-    const imagesBefore = await this.listImages();
-    const archive = createReadStream(verified.archivePath).pipe(createGunzip());
-    const stream = await this.options.docker.loadImage(archive);
-    const loadEvents = await new Promise<readonly unknown[]>((resolve, reject) => {
-      dockerModem(this.options.docker).followProgress(stream, (error, output) => {
-        if (error) reject(dockerOperationError("load bundled image", error));
-        else resolve(output);
-      });
-    });
-    const target = splitImageReference(this.resolvedContract.image.runtimeImage);
-    const imagesAfter = await this.listImages();
-    const importedImage = this.options.docker.getImage(
-      resolveAgentDockerLoadedImageId({
-        imagesBefore,
-        imagesAfter,
-        loadEvents,
-        expectedImageIds: [verified.manifest.configDigest],
-        expectedReferences: [verified.manifest.runtimeImage, verified.manifest.sourceImage],
-      }),
+  private assertImageIdentity(labels: Record<string, string>): void {
+    const distribution = this.resolvedContract.distribution;
+    const expected = {
+      [AgentSandboxRuntimeImageLabels.distributionId]: distribution.id,
+      [AgentSandboxRuntimeImageLabels.distributionVersion]: distribution.version,
+      [AgentSandboxRuntimeImageLabels.target]: distribution.target,
+      [AgentSandboxRuntimeImageLabels.sourceImage]: this.resolvedContract.image.sourceImage,
+    };
+    const mismatches = Object.entries(expected).flatMap(([name, value]) =>
+      labels[name] === value
+        ? []
+        : [`${name}=${JSON.stringify(labels[name] ?? null)} (expected ${JSON.stringify(value)})`],
     );
-    await importedImage.tag(target);
-  }
-
-  private async listImages(): Promise<readonly AgentDockerImageSummary[]> {
-    return (await this.options.docker.listImages({ all: true })) as AgentDockerImageSummary[];
+    if (mismatches.length > 0) {
+      throw new Error(`Docker sandbox runtime image identity is invalid: ${mismatches.join(", ")}.`);
+    }
   }
 
   private async stageRootfsCopies(copies: AgentGvisorExecutionRequest["rootfsCopies"]): Promise<string> {
@@ -486,11 +454,10 @@ function compareDockerApiVersions(left: string, right: string): number {
   return leftMajor === rightMajor ? leftMinor - rightMinor : leftMajor - rightMajor;
 }
 
-function splitImageReference(reference: string): { repo: string; tag: string } {
-  const separator = reference.lastIndexOf(":");
-  if (separator <= reference.lastIndexOf("/"))
-    throw new Error(`Docker Engine sandbox image is missing a tag: ${reference}`);
-  return { repo: reference.slice(0, separator), tag: reference.slice(separator + 1) };
+function requireImageReference(reference: string): string {
+  const normalized = reference.trim();
+  if (!normalized || /\s/u.test(normalized)) throw new Error("Docker sandbox runtime image reference is invalid.");
+  return normalized;
 }
 
 function dockerStatusCode(error: unknown): number | undefined {

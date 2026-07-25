@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AgentSandboxPreparationStages } from "../AgentSandboxRuntimeTypes.js";
 import { readAgentGvisorRuntimePolicyContract } from "./AgentGvisorRuntimeContract.js";
 
-export const AgentGvisorWorkerProtocolVersion = 1;
+export const AgentGvisorWorkerProtocolVersion = 2;
 const RuntimePolicy = readAgentGvisorRuntimePolicyContract();
 export const AgentGvisorWorkerMaxFrameBytes = RuntimePolicy.protocol.maxFrameBytes;
 
@@ -15,7 +15,6 @@ const ProgressCount = z.number().int().nonnegative();
 export const AgentGvisorExecutionRequestSchema = z
   .object({
     requestId: NonEmptyString,
-    image: NonEmptyString,
     command: NonEmptyString,
     arguments: z.array(z.string()).max(RuntimePolicy.protocol.maxArguments),
     cwd: AbsoluteGuestPath,

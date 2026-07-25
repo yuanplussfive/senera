@@ -22,6 +22,10 @@ export interface ProductReleaseInfo {
   containerMinorTag: string;
   sandboxArchiveArtifactName: string;
   sandboxArchiveManifestArtifactName: string;
+  sandboxRuntimeSourceImage: string;
+  sandboxRuntimeDistributionId: string;
+  sandboxRuntimeVersionTag: string;
+  sandboxRuntimeTarget: string;
   sourceSha: string;
 }
 
@@ -70,6 +74,10 @@ export function createProductReleaseInfo(input: {
     containerMinorTag: `${parsedVersion.major}.${parsedVersion.minor}`,
     sandboxArchiveArtifactName: sandboxTarget.archive.assetName,
     sandboxArchiveManifestArtifactName: sandboxDistribution.bundle.manifestFileName,
+    sandboxRuntimeSourceImage: sandboxTarget.sourceImage,
+    sandboxRuntimeDistributionId: sandboxDistribution.id,
+    sandboxRuntimeVersionTag: sandboxDistribution.archiveVersion,
+    sandboxRuntimeTarget: process.arch,
     sourceSha: input.sourceSha ?? "",
   };
 }
@@ -96,6 +104,10 @@ export function writeGitHubOutputs(info: ProductReleaseInfo, env: NodeJS.Process
     container_minor_tag: info.containerMinorTag,
     sandbox_archive_artifact_name: info.sandboxArchiveArtifactName,
     sandbox_archive_manifest_artifact_name: info.sandboxArchiveManifestArtifactName,
+    sandbox_runtime_source_image: info.sandboxRuntimeSourceImage,
+    sandbox_runtime_distribution_id: info.sandboxRuntimeDistributionId,
+    sandbox_runtime_version_tag: info.sandboxRuntimeVersionTag,
+    sandbox_runtime_target: info.sandboxRuntimeTarget,
     source_sha: info.sourceSha,
   };
 

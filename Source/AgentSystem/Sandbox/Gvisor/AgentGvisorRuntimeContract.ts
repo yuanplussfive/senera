@@ -131,6 +131,11 @@ export type AgentDockerEngineRuntimeContract = z.infer<typeof AgentDockerEngineR
 
 export interface ResolvedAgentDockerEngineRuntimeContract {
   contract: AgentDockerEngineRuntimeContract;
+  distribution: {
+    id: string;
+    version: string;
+    target: string;
+  };
   image: AgentSandboxDistributionTarget;
 }
 
@@ -146,6 +151,11 @@ export function readAgentDockerEngineRuntimeContract(
   const distribution = readAgentSandboxDistributionContract();
   return {
     contract,
+    distribution: {
+      id: distribution.id,
+      version: distribution.archiveVersion,
+      target: architecture,
+    },
     image: resolveAgentSandboxDistributionTarget(distribution, architecture),
   };
 }

@@ -135,18 +135,18 @@ SENERA_ALLOWED_ORIGINS: "http://localhost:8787,http://127.0.0.1:8787,http://192.
 SENERA_ALLOW_INSECURE_HTTP: "true"
 ```
 
-Docker 部署不要求向 Senera 主容器传入 `/dev/kvm` 或 `NET_ADMIN`。Compose 会启动一个仅通过 Unix Socket 接收受限请求的 `sandbox-worker`，只有该 Worker 能访问 Docker Engine API，主服务仍以非 root `node` 身份运行。Worker 在启动时读取 Docker Engine 能力：已注册 `runsc` 时锁定 gVisor，否则锁定受限 Docker Engine 容器；一次服务生命周期内不会再次切换。然后启动唯一的 Compose 部署：
+Docker 部署不要求向 Senera 主容器传入 `/dev/kvm` 或 `NET_ADMIN`。Compose 会先从现有公开 `senera` GHCR package 拉取并探测独立的 `sandbox-runtime-*` 镜像标签，再启动仅通过 Unix Socket 接收受限请求的 `sandbox-worker`；只有该 Worker 能访问 Docker Engine API，主服务仍以非 root `node` 身份运行。Worker 在启动时读取 Docker Engine 能力：已注册 `runsc` 时锁定 gVisor，否则锁定受限 Docker Engine 容器；一次服务生命周期内不会再次切换。然后启动唯一的 Compose 部署：
 
 ```bash
 docker compose pull
 docker compose up -d --pull always
 ```
 
-不要使用 `docker run` 单独启动应用镜像。镜像需要 Compose 同时创建 `sandbox-worker`、私有控制 Socket 和数据卷；缺少其中任何一项都会在启动阶段明确失败。
+不要使用 `docker run` 单独启动应用镜像。镜像需要 Compose 同时准备 `sandbox-runtime`、`sandbox-worker`、私有控制 Socket 和数据卷；缺少其中任何一项都会在启动阶段明确失败。
 
 容器会在每次启动时同步 Compose 声明的管理员资料：未变化时不重写，用户名、显示名或密码变化时更新账户；磁盘只保存 `scrypt` 密码哈希。服务通过 `8787:8787` 发布，随后可打开 `http://localhost:8787` 或已加入 Origin 白名单的 IP 地址。运行数据默认保存在 Docker volume 里。部署、日志、非 root 容器权限和沙箱说明见 [部署与运维](docs/Operations.md)，版本变化见 [更新记录](CHANGELOG.md)。
 
-Docker 镜像内置带 SHA-256 清单的 OCI Sandbox Bundle；`docker pull` 会随镜像获取一次，容器启动和重启不会访问 GitHub Releases。Worker 先验证 Bundle，再通过 Docker Engine API 导入；gVisor 与受限 Docker Engine provider 共用只读根文件系统、非 root 用户、能力全移除、`no-new-privileges`、资源限制和统一网络策略。默认允许正常联网，只有工具显式声明 `Network: Deny` 时才断网。两者都不会把 Sandbox 请求改为本机执行；完整前提见 [部署与运维](docs/Operations.md#docker-启动)。
+Docker 不再把 Microsandbox OCI Bundle 塞进应用镜像，也不调用 Docker `/images/load`。`docker compose pull` 使用标准 Registry 协议分别获取应用镜像和版本化沙箱运行时，支持分层缓存、断点续传和平台校验；Worker 只使用 Compose 已准备好的镜像，缺失时明确失败，不会下载、导入或猜测镜像身份。gVisor 与受限 Docker Engine provider 共用只读根文件系统、非 root 用户、能力全移除、`no-new-privileges`、资源限制和统一网络策略。默认允许正常联网，只有工具显式声明 `Network: Deny` 时才断网。完整前提见 [部署与运维](docs/Operations.md#docker-启动)。
 
 ### 本地开发
 

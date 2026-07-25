@@ -23,7 +23,7 @@ const WorkerEnvironmentSchema = z
     SENERA_DOCKER_ENGINE_SOCKET: z.string().trim().min(1).optional(),
     SENERA_GVISOR_RUNTIME_NAME: z.string().trim().min(1).optional(),
     SENERA_DOCKER_SANDBOX_PROVIDER: z.enum(["auto", "gvisor", "docker-engine"]).default("auto"),
-    SENERA_GVISOR_BUNDLE_ROOT: z.string().trim().min(1).optional(),
+    SENERA_DOCKER_SANDBOX_IMAGE: z.string().trim().min(1),
     SENERA_GVISOR_WORKER_SOCKET_MODE: z
       .string()
       .regex(/^0[0-7]{3}$/u)
@@ -56,7 +56,7 @@ async function main(): Promise<void> {
       ...(resolution.provider === "gvisor" && environment.SENERA_GVISOR_RUNTIME_NAME
         ? { runtimeName: environment.SENERA_GVISOR_RUNTIME_NAME }
         : {}),
-      bundleRoot: environment.SENERA_GVISOR_BUNDLE_ROOT,
+      imageReference: environment.SENERA_DOCKER_SANDBOX_IMAGE,
     }),
     socketMode: parseSocketMode(environment.SENERA_GVISOR_WORKER_SOCKET_MODE),
   });
@@ -67,6 +67,7 @@ async function main(): Promise<void> {
       socketPath: environment.SENERA_GVISOR_WORKER_SOCKET,
       workspaceKind: workspace.kind,
       sandboxProvider: resolution.provider,
+      runtimeImage: environment.SENERA_DOCKER_SANDBOX_IMAGE,
       registeredRuntimes: resolution.registeredRuntimes,
     })}\n`,
   );

@@ -99,7 +99,6 @@ export class SeneraGvisorBackend implements SeneraProcessExecutionBackend, Sener
     try {
       const handle = await this.options.worker.start({
         requestId: this.requestIdFactory(),
-        image: request.profile?.sandbox?.image ?? this.resolvedContract.image.sourceImage,
         command: request.command,
         arguments: [...request.args],
         cwd: request.profile?.sandbox?.guestWorkdir ?? mount.guestCwd,
@@ -169,7 +168,6 @@ export class SeneraGvisorBackend implements SeneraProcessExecutionBackend, Sener
       const terminalRuntime = resolvePreparedSeneraTerminalSidecarGuestRuntime(this.options.runtimePaths.baseDir);
       const handle = await this.options.worker.start({
         requestId: this.requestIdFactory(),
-        image: options.profile?.sandbox?.image ?? this.resolvedContract.image.sourceImage,
         command: terminalRuntime.guestNodeCommand,
         arguments: [terminalRuntime.guestEntrypoint],
         cwd: guestCwd,

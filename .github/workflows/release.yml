@@ -133,6 +133,10 @@ jobs:
       container_minor_tag: ${{ steps.release.outputs.container_minor_tag }}
       sandbox_archive_artifact_name: ${{ steps.release.outputs.sandbox_archive_artifact_name }}
       sandbox_archive_manifest_artifact_name: ${{ steps.release.outputs.sandbox_archive_manifest_artifact_name }}
+      sandbox_runtime_source_image: ${{ steps.release.outputs.sandbox_runtime_source_image }}
+      sandbox_runtime_distribution_id: ${{ steps.release.outputs.sandbox_runtime_distribution_id }}
+      sandbox_runtime_version_tag: ${{ steps.release.outputs.sandbox_runtime_version_tag }}
+      sandbox_runtime_target: ${{ steps.release.outputs.sandbox_runtime_target }}
       source_sha: ${{ steps.source.outputs.sha }}
     env:
       RELEASE_TAG: ${{ inputs.release_tag || needs.release-please.outputs.tag_name }}
@@ -213,8 +217,7 @@ jobs:
     name: Build Container Candidate
     needs:
       - metadata
-      - sandbox-archive
-    if: needs.metadata.result == 'success' && needs.sandbox-archive.result == 'success'
+    if: needs.metadata.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -224,10 +227,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.metadata.outputs.tag }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: senera-sandbox-image-${{ needs.metadata.outputs.version }}
-          path: Release/SandboxImage
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -254,16 +253,61 @@ jobs:
           cache-from: type=gha,scope=senera-release-container
           cache-to: type=gha,mode=max,scope=senera-release-container,ignore-error=true
 
+  sandbox-runtime-build:
+    name: Build Sandbox Runtime Candidate
+    needs:
+      - metadata
+    if: needs.metadata.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      reference: ${{ steps.image.outputs.tags }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.tag }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: image
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/senera
+          tags: |
+            type=raw,value=sandbox-runtime-sha-${{ needs.metadata.outputs.source_sha }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.metadata.outputs.sandbox_runtime_version_tag }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.sandbox
+          build-args: |
+            SENERA_SANDBOX_SOURCE_IMAGE=${{ needs.metadata.outputs.sandbox_runtime_source_image }}
+            SENERA_SANDBOX_DISTRIBUTION_ID=${{ needs.metadata.outputs.sandbox_runtime_distribution_id }}
+            SENERA_SANDBOX_DISTRIBUTION_VERSION=${{ needs.metadata.outputs.sandbox_runtime_version_tag }}
+            SENERA_SANDBOX_TARGET=${{ needs.metadata.outputs.sandbox_runtime_target }}
+          push: true
+          tags: ${{ steps.image.outputs.tags }}
+          labels: ${{ steps.image.outputs.labels }}
+          pull: true
+          cache-from: type=gha,scope=senera-release-sandbox-runtime
+          cache-to: type=gha,mode=max,scope=senera-release-sandbox-runtime,ignore-error=true
+
   container-smoke:
     name: Verify Container Runtime
     needs:
       - metadata
-      - sandbox-archive
       - container-build
+      - sandbox-runtime-build
     if: >-
       needs.metadata.result == 'success' &&
-      needs.sandbox-archive.result == 'success' &&
-      needs.container-build.result == 'success'
+      needs.container-build.result == 'success' &&
+      needs.sandbox-runtime-build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -282,6 +326,8 @@ jobs:
         shell: bash
         env:
           IMAGE: ${{ needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest }}
+          SANDBOX_IMAGE: ${{ needs.sandbox-runtime-build.outputs.reference }}@${{ needs.sandbox-runtime-build.outputs.digest }}
+          SANDBOX_TARGET_IMAGE: ghcr.io/${{ github.repository_owner }}/senera:sandbox-runtime-${{ needs.metadata.outputs.sandbox_runtime_version_tag }}
           COMPOSE_PROJECT_NAME: senera-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
@@ -300,6 +346,8 @@ jobs:
 
           docker pull "$IMAGE"
           docker tag "$IMAGE" ghcr.io/yuanplussfive/senera:latest
+          docker pull "$SANDBOX_IMAGE"
+          docker tag "$SANDBOX_IMAGE" "$SANDBOX_TARGET_IMAGE"
           docker compose up --detach --wait --wait-timeout "$CONTAINER_HEALTH_TIMEOUT_SECONDS" --pull never
           container_id="$(docker compose ps --quiet senera)"
           test -n "$container_id"
@@ -318,10 +366,12 @@ jobs:
     needs:
       - metadata
       - container-build
+      - sandbox-runtime-build
       - container-smoke
     if: >-
       needs.metadata.result == 'success' &&
       needs.container-build.result == 'success' &&
+      needs.sandbox-runtime-build.result == 'success' &&
       needs.container-smoke.result == 'success'
     runs-on: ubuntu-latest
     environment: release-stable
@@ -340,6 +390,13 @@ jobs:
             type=raw,value=${{ needs.metadata.outputs.container_version_tag }}
             type=raw,value=${{ needs.metadata.outputs.container_minor_tag }}
             type=raw,value=latest
+      - id: sandbox-image
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/senera
+          tags: |
+            type=raw,value=sandbox-runtime-${{ needs.metadata.outputs.sandbox_runtime_version_tag }}
+            type=raw,value=sandbox-runtime-latest
       - name: Promote verified container digest
         shell: bash
         env:
@@ -357,6 +414,28 @@ jobs:
 
           if [ "${#tag_arguments[@]}" -eq 0 ]; then
             echo "No stable container tags were generated." >&2
+            exit 1
+          fi
+
+          docker buildx imagetools create "${tag_arguments[@]}" "$SOURCE_IMAGE"
+
+      - name: Promote verified sandbox runtime digest
+        shell: bash
+        env:
+          SOURCE_IMAGE: ${{ needs.sandbox-runtime-build.outputs.reference }}@${{ needs.sandbox-runtime-build.outputs.digest }}
+          TARGET_TAGS: ${{ steps.sandbox-image.outputs.tags }}
+        run: |
+          set -euo pipefail
+
+          tag_arguments=()
+          while IFS= read -r tag; do
+            if [ -n "$tag" ]; then
+              tag_arguments+=(--tag "$tag")
+            fi
+          done <<< "$TARGET_TAGS"
+
+          if [ "${#tag_arguments[@]}" -eq 0 ]; then
+            echo "No stable sandbox runtime tags were generated." >&2
             exit 1
           fi
 

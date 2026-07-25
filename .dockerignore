@@ -15,8 +15,6 @@ Frontend/.vite-dev*.log
 Frontend/*.log
 Frontend/tsconfig.tsbuildinfo
 Release/*
-!Release/SandboxImage
-!Release/SandboxImage/**
 tmp
 *.local
 *.bak

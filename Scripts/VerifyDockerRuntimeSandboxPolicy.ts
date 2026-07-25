@@ -1,12 +1,26 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import {
+  AgentSandboxRuntimeImageLabels,
+  readAgentSandboxDistributionContract,
+} from "../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
 
 const workspaceRoot = process.cwd();
 const dockerfile = fs.readFileSync(path.join(workspaceRoot, "Dockerfile"), "utf8");
+const sandboxDockerfile = fs.readFileSync(path.join(workspaceRoot, "Dockerfile.sandbox"), "utf8");
 const dockerignore = fs.readFileSync(path.join(workspaceRoot, ".dockerignore"), "utf8");
 const dockerEntrypoint = fs.readFileSync(path.join(workspaceRoot, "Apps", "DockerEntrypoint.sh"), "utf8");
 const dockerServer = fs.readFileSync(path.join(workspaceRoot, "Apps", "DockerServer.ts"), "utf8");
+const gvisorWorker = fs.readFileSync(path.join(workspaceRoot, "Apps", "GvisorWorker.ts"), "utf8");
+const dockerRuntime = fs.readFileSync(
+  path.join(workspaceRoot, "Source", "AgentSystem", "Sandbox", "Gvisor", "AgentGvisorDockerRuntime.ts"),
+  "utf8",
+);
+const workerProtocol = fs.readFileSync(
+  path.join(workspaceRoot, "Source", "AgentSystem", "Sandbox", "Gvisor", "AgentGvisorWorkerProtocol.ts"),
+  "utf8",
+);
 const readme = fs.readFileSync(path.join(workspaceRoot, "README.md"), "utf8");
 const operations = fs.readFileSync(path.join(workspaceRoot, "docs", "Operations.md"), "utf8");
 const compose = fs.readFileSync(path.join(workspaceRoot, "compose.yaml"), "utf8");
@@ -19,11 +33,16 @@ const dockerEnginePolicy = fs.readFileSync(
   path.join(workspaceRoot, "Source", "AgentSystem", "Sandbox", "DockerEngine", "contract.json"),
   "utf8",
 );
+const sandboxDistribution = readAgentSandboxDistributionContract();
+const sandboxImageReference = `ghcr.io/yuanplussfive/senera:sandbox-runtime-${sandboxDistribution.archiveVersion}`;
 
 assert.ok(
   !dockerfile.includes("sandbox.seed") && !dockerfile.includes("SandboxSeed"),
   "Dockerfile must not scan or copy platform-specific Microsandbox runtime files.",
 );
+for (const label of Object.values(AgentSandboxRuntimeImageLabels)) {
+  assert.ok(sandboxDockerfile.includes(label), `Docker sandbox image must declare the identity label ${label}.`);
+}
 assert.ok(
   !dockerfile.includes("PrepareSandboxRuntime"),
   "Dockerfile must not start or download the microsandbox runtime while building the image.",
@@ -35,8 +54,8 @@ for (const ignoredPath of [".cache", ".senera", ".uploads", "coverage", "Release
   );
 }
 assert.ok(
-  dockerignore.includes("!Release/SandboxImage/**"),
-  ".dockerignore must admit only the generated Sandbox Bundle from the Release tree.",
+  !dockerignore.includes("!Release/SandboxImage"),
+  ".dockerignore must not admit Microsandbox release assets into the Docker build context.",
 );
 assert.ok(
   dockerfile.includes("npm rebuild better-sqlite3 --build-from-source"),
@@ -47,8 +66,8 @@ assert.ok(
   "Dockerfile must run the native SQLite smoke test before producing the runtime image.",
 );
 assert.ok(
-  dockerfile.includes("COPY --chown=node:node Release/SandboxImage ./SandboxImage"),
-  "Docker runtime must embed the verified Sandbox Bundle in its own image layer.",
+  !dockerfile.includes("Release/SandboxImage") && !dockerfile.includes("SandboxImage"),
+  "Docker runtime must consume a registry-native sandbox image instead of embedding a Microsandbox Bundle.",
 );
 assert.ok(
   dockerfile.includes("/health/ready") && !dockerfile.includes("fetch('http://127.0.0.1:' + port + '/')"),
@@ -92,6 +111,7 @@ assert.ok(
     dockerServer.includes("Provider: sandboxProvider") &&
     dockerServer.includes("prepareAgentGvisorRuntime") &&
     dockerServer.includes("SENERA_GVISOR_WORKER_SOCKET") &&
+    !dockerServer.includes("sandboxBundleRoot") &&
     dockerServer.includes('httpBaseUrl: ""') &&
     dockerServer.includes("complete compose.yaml deployment") &&
     dockerServer.includes("application container requires sandbox-worker"),
@@ -116,14 +136,18 @@ assert.ok(
   "compose.yaml must expose directly editable administrator values without external variable interpolation.",
 );
 assert.ok(
-  !compose.includes("senera-admin:") && compose.includes("sandbox-worker:"),
-  "compose.yaml must use the dedicated sandbox Worker rather than an administrator sidecar.",
+  !compose.includes("senera-admin:") && compose.includes("sandbox-worker:") && compose.includes("sandbox-runtime:"),
+  "compose.yaml must use dedicated sandbox runtime and Worker services rather than an administrator sidecar.",
 );
 assert.ok(
   !compose.includes("/dev/kvm:/dev/kvm") &&
     !compose.includes("NET_ADMIN") &&
     compose.includes("/var/run/docker.sock:/run/docker-engine.sock") &&
     compose.includes('SENERA_GVISOR_WORKER_SOCKET_MODE: "0666"') &&
+    compose.includes("SENERA_DOCKER_SANDBOX_IMAGE: *senera-sandbox-image") &&
+    compose.includes("condition: service_completed_successfully") &&
+    compose.includes(sandboxImageReference) &&
+    !compose.includes("SENERA_GVISOR_BUNDLE_ROOT") &&
     compose.includes("network_mode: none") &&
     compose.includes("read_only: true"),
   "compose.yaml must keep Docker Engine access inside the isolated, read-only Worker without host KVM requirements.",
@@ -137,6 +161,17 @@ assert.ok(
   "compose.yaml must publish the service port, isolate deployment names, and make direct HTTP access explicit.",
 );
 assert.ok(
+  dockerRuntime.includes("assertImageIdentity") &&
+    dockerRuntime.includes("AgentSandboxRuntimeImageLabels") &&
+    !dockerRuntime.includes("loadImage(") &&
+    !dockerRuntime.includes(".pull("),
+  "Docker sandbox runtime must validate the declared registry image without importing or pulling it.",
+);
+assert.ok(
+  !/requestId:\s*NonEmptyString,\s*image:/u.test(workerProtocol) && !dockerRuntime.includes("request.image"),
+  "Docker sandbox execution requests must not be able to select or override the deployment runtime image.",
+);
+assert.ok(
   !fs.existsSync(path.join(workspaceRoot, "compose.kvm.yaml")),
   "The retired compose.kvm.yaml overlay must not remain after Docker deployment convergence.",
 );
@@ -145,6 +180,12 @@ assert.ok(
     dockerServer.includes("prepareDockerSandboxRuntime") &&
     dockerServer.includes("sandboxRuntimePrepared: true"),
   "Docker must synchronize its administrator and prepare the locked sandbox provider before starting the web server.",
+);
+assert.ok(
+  gvisorWorker.includes("SENERA_DOCKER_SANDBOX_IMAGE") &&
+    !gvisorWorker.includes("SENERA_GVISOR_BUNDLE_ROOT") &&
+    !gvisorWorker.includes("bundleRoot"),
+  "Docker Worker must require the registry-native runtime image and must not expose a Bundle import path.",
 );
 assertDockerStartupDocumented(readme, "README.md");
 assertDockerStartupDocumented(operations, "docs/Operations.md");

@@ -94,6 +94,13 @@ export const AgentSandboxDistributionContractSchema = z
 export type AgentSandboxDistributionContract = z.infer<typeof AgentSandboxDistributionContractSchema>;
 export type AgentSandboxDistributionTarget = z.infer<typeof AgentSandboxDistributionTargetSchema>;
 
+export const AgentSandboxRuntimeImageLabels = Object.freeze({
+  distributionId: "ai.senera.sandbox.distribution-id",
+  distributionVersion: "ai.senera.sandbox.distribution-version",
+  target: "ai.senera.sandbox.target",
+  sourceImage: "ai.senera.sandbox.source-image",
+});
+
 export const AgentSandboxArchiveManifestSchema = z
   .object({
     formatVersion: z.literal(5),

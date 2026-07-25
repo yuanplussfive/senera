@@ -1,4 +1,6 @@
-# Keep both service image values on the same Senera release.
+# The preparation service and Worker must use the same versioned runtime image.
+x-senera-sandbox-image: &senera-sandbox-image ghcr.io/yuanplussfive/senera:sandbox-runtime-1.0.3
+
 x-senera-runtime: &senera-runtime
   image: ghcr.io/yuanplussfive/senera:latest
   pull_policy: always
@@ -23,6 +25,19 @@ x-senera-runtime: &senera-runtime
     - senera-sandbox-staging:/tmp
 
 services:
+  sandbox-runtime:
+    image: *senera-sandbox-image
+    pull_policy: always
+    entrypoint: ["node", "--version"]
+    command: []
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
   senera:
     <<: *senera-runtime
     ports:
@@ -45,16 +60,19 @@ services:
       SENERA_GVISOR_WORKER_SOCKET_MODE: "0666"
       SENERA_DOCKER_ENGINE_SOCKET: /run/docker-engine.sock
       SENERA_DOCKER_SANDBOX_PROVIDER: auto
+      SENERA_DOCKER_SANDBOX_IMAGE: *senera-sandbox-image
       SENERA_GVISOR_WORKSPACE_KIND: volume
       SENERA_GVISOR_WORKSPACE_SOURCE: senera-data
       SENERA_GVISOR_COPY_SOURCE_ROOTS: '["/app","/data","/tmp"]'
-      SENERA_GVISOR_BUNDLE_ROOT: /app/SandboxImage
     volumes:
       - /var/run/docker.sock:/run/docker-engine.sock
       - senera-data:/data:ro
       - senera-sandbox-control:/run/senera-sandbox
       - senera-sandbox-staging:/tmp
     network_mode: none
+    depends_on:
+      sandbox-runtime:
+        condition: service_completed_successfully
     read_only: true
     cap_drop:
       - ALL

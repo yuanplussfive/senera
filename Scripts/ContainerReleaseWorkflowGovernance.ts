@@ -4,6 +4,7 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
   const sandboxJob = workflowJobBlock(workflow, "sandbox-archive");
   const desktopJob = workflowJobBlock(workflow, "desktop");
   const buildJob = workflowJobBlock(workflow, "container-build");
+  const sandboxRuntimeBuildJob = workflowJobBlock(workflow, "sandbox-runtime-build");
   const smokeJob = workflowJobBlock(workflow, "container-smoke");
   const publishJob = workflowJobBlock(workflow, "container");
   const violations: string[] = [];
@@ -40,9 +41,6 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
     violations.push(
       ...inspectTextIncludes(buildJob, `${ReleaseWorkflowLabel} job container-build`, [
         "timeout-minutes: 20",
-        "- sandbox-archive",
-        "actions/download-artifact@v4",
-        "path: Release/SandboxImage",
         "digest: ${{ steps.build.outputs.digest }}",
         "type=raw,value=sha-${{ needs.metadata.outputs.source_sha }}",
         "push: true",
@@ -56,6 +54,33 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         `${ReleaseWorkflowLabel} job container-build must not publish a stable latest tag before smoke verification.`,
       );
     }
+    if (buildJob.includes("sandbox-archive") || buildJob.includes("Release/SandboxImage")) {
+      violations.push(`${ReleaseWorkflowLabel} job container-build must not consume the Microsandbox archive.`);
+    }
+  }
+
+  if (!sandboxRuntimeBuildJob) {
+    violations.push(`${ReleaseWorkflowLabel} must define the sandbox-runtime-build job.`);
+  } else {
+    violations.push(
+      ...inspectTextIncludes(sandboxRuntimeBuildJob, `${ReleaseWorkflowLabel} job sandbox-runtime-build`, [
+        "Dockerfile.sandbox",
+        "SENERA_SANDBOX_SOURCE_IMAGE=${{ needs.metadata.outputs.sandbox_runtime_source_image }}",
+        "SENERA_SANDBOX_DISTRIBUTION_ID=${{ needs.metadata.outputs.sandbox_runtime_distribution_id }}",
+        "SENERA_SANDBOX_DISTRIBUTION_VERSION=${{ needs.metadata.outputs.sandbox_runtime_version_tag }}",
+        "SENERA_SANDBOX_TARGET=${{ needs.metadata.outputs.sandbox_runtime_target }}",
+        "ghcr.io/${{ github.repository_owner }}/senera",
+        "type=raw,value=sandbox-runtime-sha-${{ needs.metadata.outputs.source_sha }}",
+        "digest: ${{ steps.build.outputs.digest }}",
+        "push: true",
+        "pull: true",
+      ]),
+    );
+    if (sandboxRuntimeBuildJob.includes("type=raw,value=latest")) {
+      violations.push(
+        `${ReleaseWorkflowLabel} job sandbox-runtime-build must not publish stable tags before smoke verification.`,
+      );
+    }
   }
 
   if (!smokeJob) {
@@ -63,9 +88,9 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
   } else {
     violations.push(
       ...inspectTextIncludes(smokeJob, `${ReleaseWorkflowLabel} job container-smoke`, [
-        "- sandbox-archive",
         "- container-build",
-        "needs.sandbox-archive.result == 'success'",
+        "- sandbox-runtime-build",
+        "needs.sandbox-runtime-build.result == 'success'",
         "timeout-minutes: 10",
         "CONTAINER_HEALTH_TIMEOUT_SECONDS: 180",
         "needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest",
@@ -73,6 +98,9 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         "./.github/actions/setup-gvisor",
         'docker pull "$IMAGE"',
         'docker tag "$IMAGE" ghcr.io/yuanplussfive/senera:latest',
+        'docker pull "$SANDBOX_IMAGE"',
+        "SANDBOX_TARGET_IMAGE: ghcr.io/${{ github.repository_owner }}/senera:sandbox-runtime-${{ needs.metadata.outputs.sandbox_runtime_version_tag }}",
+        'docker tag "$SANDBOX_IMAGE" "$SANDBOX_TARGET_IMAGE"',
         'docker compose up --detach --wait --wait-timeout "$CONTAINER_HEALTH_TIMEOUT_SECONDS" --pull never',
         'container_id="$(docker compose ps --quiet senera)"',
         'runtime_uid="$(docker exec "$container_id"',
@@ -97,11 +125,16 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
     violations.push(
       ...inspectTextIncludes(publishJob, `${ReleaseWorkflowLabel} job container`, [
         "- container-build",
+        "- sandbox-runtime-build",
         "- container-smoke",
         "type=raw,value=${{ needs.metadata.outputs.container_version_tag }}",
         "type=raw,value=${{ needs.metadata.outputs.container_minor_tag }}",
         "type=raw,value=latest",
         "needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest",
+        "needs.sandbox-runtime-build.outputs.reference }}@${{ needs.sandbox-runtime-build.outputs.digest",
+        "sandbox_runtime_version_tag",
+        "type=raw,value=sandbox-runtime-${{ needs.metadata.outputs.sandbox_runtime_version_tag }}",
+        "type=raw,value=sandbox-runtime-latest",
         'docker buildx imagetools create "${tag_arguments[@]}" "$SOURCE_IMAGE"',
       ]),
     );
@@ -113,9 +146,9 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
   }
 
   const buildActionCount = workflow.match(/docker\/build-push-action@v6/gu)?.length ?? 0;
-  if (buildActionCount !== 1) {
+  if (buildActionCount !== 2) {
     violations.push(
-      `${ReleaseWorkflowLabel} must build the release container exactly once; found ${buildActionCount} build actions.`,
+      `${ReleaseWorkflowLabel} must build the application and sandbox runtime exactly once each; found ${buildActionCount} build actions.`,
     );
   }
   return violations;

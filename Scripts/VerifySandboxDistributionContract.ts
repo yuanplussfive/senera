@@ -12,6 +12,8 @@ const contract = readAgentSandboxDistributionContract();
 const rootPackage = readJson(path.join(workspaceRoot, "package.json"));
 const lockfile = readJson(path.join(workspaceRoot, "package-lock.json"));
 const releaseWorkflow = fs.readFileSync(path.join(workspaceRoot, ".github", "workflows", "release.yml"), "utf8");
+const sandboxDockerfile = fs.readFileSync(path.join(workspaceRoot, "Dockerfile.sandbox"), "utf8");
+const compose = fs.readFileSync(path.join(workspaceRoot, "compose.yaml"), "utf8");
 const bundleAction = fs.readFileSync(
   path.join(workspaceRoot, ".github", "actions", "build-sandbox-bundle", "action.yml"),
   "utf8",
@@ -76,6 +78,33 @@ for (const fragment of [
     `Product release workflow is missing sandbox distribution step: ${fragment}`,
   );
 }
+for (const fragment of [
+  "sandbox-runtime-build:",
+  "file: ./Dockerfile.sandbox",
+  "SENERA_SANDBOX_SOURCE_IMAGE=${{ needs.metadata.outputs.sandbox_runtime_source_image }}",
+  "SENERA_SANDBOX_DISTRIBUTION_ID=${{ needs.metadata.outputs.sandbox_runtime_distribution_id }}",
+  "SENERA_SANDBOX_DISTRIBUTION_VERSION=${{ needs.metadata.outputs.sandbox_runtime_version_tag }}",
+  "SENERA_SANDBOX_TARGET=${{ needs.metadata.outputs.sandbox_runtime_target }}",
+  "type=raw,value=sandbox-runtime-sha-${{ needs.metadata.outputs.source_sha }}",
+]) {
+  assert.ok(releaseWorkflow.includes(fragment), `Docker sandbox runtime release is missing: ${fragment}`);
+}
+for (const fragment of [
+  "ARG SENERA_SANDBOX_SOURCE_IMAGE",
+  "ARG SENERA_SANDBOX_DISTRIBUTION_ID",
+  "ARG SENERA_SANDBOX_DISTRIBUTION_VERSION",
+  "ARG SENERA_SANDBOX_TARGET",
+  "ai.senera.sandbox.distribution-id",
+  "ai.senera.sandbox.distribution-version",
+  "ai.senera.sandbox.target",
+  "ai.senera.sandbox.source-image",
+]) {
+  assert.ok(sandboxDockerfile.includes(fragment), `Docker sandbox runtime image contract is missing: ${fragment}`);
+}
+assert.ok(
+  compose.includes(`ghcr.io/yuanplussfive/senera:sandbox-runtime-${contract.archiveVersion}`),
+  "Compose must pin the Docker sandbox runtime to the declared distribution version.",
+);
 for (const fragment of ["test -c /dev/kvm", "npm run build", "node Dist/Build/BuildSandboxImageArchive.js"]) {
   assert.ok(bundleAction.includes(fragment), `Sandbox Bundle build action is missing: ${fragment}`);
 }
