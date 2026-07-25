@@ -25,6 +25,22 @@ test("source tree has no retired root components bridge or imports", () => {
   expect(violations).toEqual([]);
 });
 
+test("shadcn intake remains transient and isolated from production source", () => {
+  const incomingRoot = path.join(srcRoot, "shared", "ui", "_incoming");
+  const violations = [
+    ...(existsSync(incomingRoot)
+      ? sourceFiles(incomingRoot).map((file) => formatViolation(file, "commits transient shadcn intake source"))
+      : []),
+    ...sourceFiles(srcRoot).flatMap((file) =>
+      staticImportTargets(file)
+        .filter((target) => targetsIncomingUiRoot(file, target, incomingRoot))
+        .map((target) => formatViolation(file, "imports transient shadcn intake source", target)),
+    ),
+  ];
+
+  expect(violations).toEqual([]);
+});
+
 test("responsive decisions go through shared responsive capabilities", () => {
   const responsiveOwnedRoots = ["app", "features", "layout"]
     .map((segment) => path.join(srcRoot, segment))
@@ -136,6 +152,17 @@ function targetsRetiredComponentsRoot(file, target, retiredComponentsRoot) {
   }
 
   return pathIsInsideOrEqual(path.resolve(path.dirname(file), target), retiredComponentsRoot);
+}
+
+function targetsIncomingUiRoot(file, target, incomingRoot) {
+  if (target === "@/shared/ui/_incoming" || target.startsWith("@/shared/ui/_incoming/")) {
+    return true;
+  }
+  if (!target.startsWith(".")) {
+    return false;
+  }
+
+  return pathIsInsideOrEqual(path.resolve(path.dirname(file), target), incomingRoot);
 }
 
 function targetsAnotherFeatureBarrel(file, target, currentFeature, featureNames) {

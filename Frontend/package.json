@@ -10,6 +10,8 @@
     "check.types": "tsc --noEmit",
     "check.governance": "node --import tsx ../Scripts/VerifyFrontendTestCoverage.ts",
     "check.ladle": "node --import tsx ../Scripts/VerifyFrontendLadleContracts.ts",
+    "ui.registry.view": "shadcn view",
+    "ui.registry.dry-run": "shadcn add --dry-run",
     "test.behavior": "node --import tsx ../Scripts/VerifyFrontendVitestSuite.ts",
     "test.coverage": "vitest run --config ../vitest.config.ts --coverage",
     "test": "npm run check.types && npm run check.governance && npm run check.ladle && npm run test.behavior",
@@ -59,5 +61,8 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "shadcn": "4.14.1"
   }
 }
