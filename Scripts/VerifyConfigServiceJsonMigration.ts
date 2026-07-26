@@ -57,9 +57,14 @@ function verifyLegacyJsonMigration(): void {
   assert.equal("MaxRepairAttempts" in (snapshot.value.AgentLoop ?? {}), false);
   assert.equal("LoadedTools" in (snapshot.value.AgentLoop ?? {}), false);
   assert.equal("DecisionActionDescription" in (snapshot.value.PluginDocumentation ?? {}), false);
-  assert.equal(fs.readFileSync(`${configPath}.v0.bak`, "utf8"), originalText);
+  assert.equal(snapshot.value.ModelProviderEndpoints?.[0]?.ApiKey, "test");
 
-  const persisted = JSON.parse(fs.readFileSync(configPath, "utf8")) as Record<string, unknown>;
+  const backupText = fs.readFileSync(`${configPath}.v0.bak`, "utf8");
+  assertProtectedApiKey(backupText);
+
+  const persistedText = fs.readFileSync(configPath, "utf8");
+  assertProtectedApiKey(persistedText);
+  const persisted = JSON.parse(persistedText) as Record<string, unknown>;
   assert.equal(persisted.ConfigVersion, CurrentAgentConfigVersion);
   assert.equal("Cli" in persisted, false);
   assert.equal((persisted.Defaults as Record<string, unknown>).Cli, undefined);
@@ -72,9 +77,16 @@ function verifyLegacyJsonMigration(): void {
       configPath,
     },
   });
-  assert.deepEqual(reloaded.snapshot().diagnostics, []);
+  const reloadedSnapshot = reloaded.snapshot();
+  assert.deepEqual(reloadedSnapshot.diagnostics, []);
+  assert.equal(reloadedSnapshot.value.ModelProviderEndpoints?.[0]?.ApiKey, "test");
   reloaded.close();
-  assert.equal(fs.readFileSync(`${configPath}.v0.bak`, "utf8"), originalText);
+  assert.equal(fs.readFileSync(`${configPath}.v0.bak`, "utf8"), backupText);
+}
+
+function assertProtectedApiKey(text: string): void {
+  assert.equal(text.includes('"ApiKey": "test"'), false);
+  assert.equal(text.includes('"ApiKey": "senera:secret:v1:'), true);
 }
 
 function verifyUnknownFieldsRemainErrors(): void {
