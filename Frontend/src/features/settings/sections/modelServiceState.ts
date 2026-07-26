@@ -515,7 +515,10 @@ function readProviderDiagnosticItems(
       group: "model_list",
       severity: "error",
       title: frontendMessage("settings.diagnostics.modelFetchFailed"),
-      detail: `${providerIdLabel(provider)}：${error.message}`,
+      detail: frontendMessage("settings.diagnostics.providerDetail", {
+        provider: providerIdLabel(provider),
+        message: error.message,
+      }),
       affectedProviderId: provider.Id,
       action: loadingIds[provider.Id] ? "none" : "fetch_models",
     });

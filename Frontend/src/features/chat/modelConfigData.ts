@@ -1,5 +1,5 @@
 import type { JsonConfigObject } from "../../shared/config/JsonConfigForm";
-import { FrontendDefaultLocale } from "../../i18n/frontendMessageCatalog";
+import { getFrontendLocale } from "../../i18n/frontendLocaleStore";
 import {
   readDefaultModelGroup,
   readDefaultModelGroupRules,
@@ -190,7 +190,7 @@ export function sortProviderRows(
     .sort((left, right) => {
       const enabledDiff = Number(providerEnabled(right.provider)) - Number(providerEnabled(left.provider));
       if (enabledDiff !== 0) return enabledDiff;
-      return providerIdLabel(left.provider).localeCompare(providerIdLabel(right.provider), FrontendDefaultLocale);
+      return providerIdLabel(left.provider).localeCompare(providerIdLabel(right.provider), getFrontendLocale());
     });
 }
 
@@ -513,7 +513,7 @@ export function formatShortTime(iso: string): string {
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return date.toLocaleString(FrontendDefaultLocale, {
+  return date.toLocaleString(getFrontendLocale(), {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

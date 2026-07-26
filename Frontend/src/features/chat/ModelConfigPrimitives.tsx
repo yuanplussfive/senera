@@ -295,11 +295,17 @@ export function ProviderCatalogStatus({
     <RefreshCw className="h-3.5 w-3.5" />
   );
   const text = disabled
-    ? "供应商已关闭"
+    ? frontendMessage("config.model.statusProviderDisabled")
     : (error?.message ??
       (catalog
-        ? `${catalog.models.length} 个模型 · ${catalog.source === "cache" ? "缓存" : "网络"} · ${formatShortTime(catalog.fetchedAt)}`
-        : "尚未获取模型列表"));
+        ? frontendMessage("config.model.statusSummary", {
+            count: catalog.models.length,
+            source: frontendMessage(
+              catalog.source === "cache" ? "config.model.sourceCache" : "config.model.sourceNetwork",
+            ),
+            time: formatShortTime(catalog.fetchedAt),
+          })
+        : frontendMessage("config.model.statusNotFetched")));
 
   return (
     <div
