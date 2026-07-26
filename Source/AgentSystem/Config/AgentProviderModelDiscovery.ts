@@ -50,15 +50,8 @@ export class AgentProviderModelDiscovery {
     const endpoint = input.endpoint
       ? resolveStandaloneModelProviderEndpointConfig({ ...input.endpoint, Id: input.providerId })
       : this.resolveEndpoint(input.providerId);
-    const fingerprint = endpointFingerprint(endpoint);
-    const cached = this.cache.get(endpoint.Id);
-    if (!input.force && cached?.fingerprint === fingerprint) {
-      return {
-        ...cached.snapshot,
-        source: "cache",
-      };
-    }
-
+    // Reject disabled/unconfigured endpoints before consulting the cache — a
+    // warm cache must not mask an endpoint that can no longer be queried.
     if (!endpoint.Enabled) {
       throw new Error(
         agentErrorMessage("model.listProviderDisabled", {
@@ -73,6 +66,15 @@ export class AgentProviderModelDiscovery {
           providerId: endpoint.Id,
         }),
       );
+    }
+
+    const fingerprint = endpointFingerprint(endpoint);
+    const cached = this.cache.get(endpoint.Id);
+    if (!input.force && cached?.fingerprint === fingerprint) {
+      return {
+        ...cached.snapshot,
+        source: "cache",
+      };
     }
 
     let response: Awaited<ReturnType<typeof fetch>>;
@@ -198,6 +200,9 @@ function endpointFingerprint(endpoint: ResolvedAgentModelProviderEndpointConfig)
   return JSON.stringify({
     kind: endpoint.Kind,
     baseUrl: endpoint.BaseUrl,
+    // Different keys can expose different model sets (org scoping); a rotated
+    // key must invalidate the cached list.
+    apiKey: endpoint.ApiKey,
     apiVersion: endpoint.ApiVersion,
     headers: endpoint.Headers,
   });
