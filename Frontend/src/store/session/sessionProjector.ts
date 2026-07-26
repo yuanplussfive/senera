@@ -96,7 +96,9 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
     }
 
     case EventKinds.ConfigSnapshot: {
-      state.configSnapshot = env.data as ConfigSnapshotData;
+      const data = env.data as ConfigSnapshotData;
+      invalidateStaleProviderModelCatalogs(state, state.configSnapshot, data);
+      state.configSnapshot = data;
       return;
     }
 
@@ -320,4 +322,48 @@ function appendMissingByKey<T>(current: T[], retained: readonly T[], selectKey: 
 
 function isPendingDeleteResolutionEvent(kind: string): boolean {
   return kind === EventKinds.SessionClosed || kind === EventKinds.SessionNotFound;
+}
+
+/**
+ * A model catalog fetched with the old BaseUrl/ApiKey must not keep rendering
+ * as current after the endpoint's connection settings change (or the endpoint
+ * disappears). Mirrors the backend discovery fingerprint, minus Enabled —
+ * toggling an endpoint off does not change what its /models would return.
+ */
+function invalidateStaleProviderModelCatalogs(
+  state: StoreState,
+  previous: ConfigSnapshotData | null,
+  next: ConfigSnapshotData,
+): void {
+  if (!previous) return;
+  const previousFingerprints = readEndpointConnectionFingerprints(previous.value);
+  const nextFingerprints = readEndpointConnectionFingerprints(next.value);
+  const staleIds = [...Object.keys(state.providerModelCatalogs), ...Object.keys(state.providerModelErrors)].filter(
+    (providerId) => previousFingerprints.get(providerId) !== nextFingerprints.get(providerId),
+  );
+  for (const providerId of staleIds) {
+    delete state.providerModelCatalogs[providerId];
+    delete state.providerModelErrors[providerId];
+  }
+}
+
+function readEndpointConnectionFingerprints(value: Record<string, unknown>): Map<string, string> {
+  const endpoints = Array.isArray(value.ModelProviderEndpoints) ? value.ModelProviderEndpoints : [];
+  const fingerprints = new Map<string, string>();
+  for (const endpoint of endpoints) {
+    if (!endpoint || typeof endpoint !== "object" || Array.isArray(endpoint)) continue;
+    const record = endpoint as Record<string, unknown>;
+    if (typeof record.Id !== "string") continue;
+    fingerprints.set(
+      record.Id,
+      JSON.stringify({
+        kind: record.Kind,
+        baseUrl: record.BaseUrl,
+        apiKey: record.ApiKey,
+        apiVersion: record.ApiVersion,
+        headers: record.Headers,
+      }),
+    );
+  }
+  return fingerprints;
 }
