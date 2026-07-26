@@ -6,7 +6,7 @@
         "kind": "typescript",
         "identity": "./ToolSignature.ts#default",
         "file": "./ToolSignature.ts",
-        "sha256": "45697caac8bee6fa384a9054f3650c9afeb0b99f7e520fe9d76fe3ef8e1b834c"
+        "sha256": "29e65fe651fea7e5237c23ae2dcf3c971e5cde73ae56670bdb288b8736052bbd"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",

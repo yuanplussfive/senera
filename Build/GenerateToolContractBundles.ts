@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { format, resolveConfig } from "prettier";
@@ -8,7 +7,10 @@ import {
   type AgentToolContractBundle,
 } from "../Source/AgentSystem/ToolContracts/AgentToolContractTypes.js";
 import { readOptionalUtf8, writeUtf8Atomically } from "./GeneratedTextFile.js";
-import { AgentTypescriptToolContractProjector } from "./ToolContracts/AgentTypescriptToolContractProjector.js";
+import {
+  AgentTypescriptToolContractProjector,
+  digestToolContractSource,
+} from "./ToolContracts/AgentTypescriptToolContractProjector.js";
 
 interface SourceToolManifest {
   Name: string;
@@ -64,7 +66,7 @@ for (const { pluginRoot, manifestPath, manifest } of discoverPlugins(pluginColle
             identity: `${normalizeRelativePath(source.file)}#${source.type ?? "default"}`,
             file: normalizeRelativePath(source.file),
             ...(source.type ? { type: source.type } : {}),
-            sha256: crypto.createHash("sha256").update(sourceText).digest("hex"),
+            sha256: digestToolContractSource(sourceText),
           },
           inputSchema: annotateJsonSchema(structuredClone(input.jsonSchema), input.properties),
         },
