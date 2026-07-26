@@ -27,7 +27,7 @@ export const Sizes: Story = () => (
       ))}
     </div>
     <p className="mt-4 text-[13px] leading-6 text-ink-500">
-      全站唯一的旋转加载图标，统一使用 Loader2。动画由 index.css 的全局减动效规则统一降级，使用处无需单独处理。
+      全站唯一的旋转加载图标，统一使用 Loader2。动画遵循全局减动效设置，使用处无需单独处理。
     </p>
   </StoryFrame>
 );

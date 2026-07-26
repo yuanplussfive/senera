@@ -199,7 +199,8 @@ test("useSocketErrorToasts resolves history failures and tool failures from stor
     }),
     expect.objectContaining({
       variant: "error",
-      title: "工具调用失败: ShellCommandTool",
+      title: "工具调用失败：ShellCommandTool",
+      options: expect.objectContaining({ description: "exit 1" }),
     }),
   ]);
 });

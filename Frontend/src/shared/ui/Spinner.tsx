@@ -1,5 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { cn } from "../../lib/util";
+import { useMotionLevel } from "../motion";
 
 export type SpinnerSize = "xs" | "sm" | "md";
 
@@ -11,8 +12,14 @@ const sizeClasses: Record<SpinnerSize, string> = {
 
 /**
  * 全站唯一的旋转加载图标。颜色继承 currentColor，由使用处的文字颜色决定；
- * 动画由 index.css 的全局减动效规则统一降级。
+ * 动画遵循全局减动效设置。
  */
 export function Spinner({ size = "sm", className }: { size?: SpinnerSize; className?: string }): JSX.Element {
-  return <Loader2 aria-hidden="true" className={cn("shrink-0 animate-spin", sizeClasses[size], className)} />;
+  const { reduceMotion } = useMotionLevel();
+  return (
+    <Loader2
+      aria-hidden="true"
+      className={cn("shrink-0", !reduceMotion && "animate-spin", sizeClasses[size], className)}
+    />
+  );
 }
