@@ -36,6 +36,9 @@ export interface ModelProviderDraft {
   RetryBaseDelaySeconds?: number;
   RetryMaxDelaySeconds?: number;
   RetryAfterMaxDelaySeconds?: number;
+  MaxResponseBytes?: number;
+  MaxSseEventBytes?: number;
+  MaxSseEvents?: number;
 }
 
 export interface ModelCapabilitiesDraft {

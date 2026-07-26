@@ -137,9 +137,23 @@ export function upsertProviderEndpoint(
 ): AgentSystemConfig {
   assertConfiguredEndpointIdsUnique(config);
   const endpoints = config.ModelProviderEndpoints ?? [];
-  const existingIndex = endpoints.findIndex((endpoint) => endpoint.Id === input.endpoint.Id);
+  // Trim the id like rename/delete do — otherwise a whitespace-padded id can be
+  // created here but never renamed or deleted again.
+  const endpointId = input.endpoint.Id.trim();
+  if (!endpointId) {
+    throw new AgentProviderModelConfigCommandError(
+      "供应商端点 ID 不能为空：ModelProviderEndpoints[].Id",
+      "provider_endpoint_id_required",
+      {},
+    );
+  }
+  const existingIndex = endpoints.findIndex((endpoint) => endpoint.Id === endpointId);
   const { Id, ...patch } = input.endpoint;
-  const nextEndpoint = applyAgentJsonMergePatch(existingIndex >= 0 ? endpoints[existingIndex] : { Id }, patch);
+  void Id;
+  const nextEndpoint = applyAgentJsonMergePatch(
+    existingIndex >= 0 ? endpoints[existingIndex] : { Id: endpointId },
+    patch,
+  );
   const nextEndpoints =
     existingIndex >= 0
       ? endpoints.map((endpoint, index) => (index === existingIndex ? nextEndpoint : { ...endpoint }))
@@ -231,8 +245,11 @@ export function upsertProviderModel(
   assertProviderEndpointExists(config, input.model.ProviderId);
   assertConfiguredModelIdsUnique(config);
   const existingIndex = config.ModelProviders.findIndex((model) => model.Id === input.model.Id);
-  const nextModel =
-    existingIndex >= 0 ? { ...config.ModelProviders[existingIndex], ...input.model } : { ...input.model };
+  // Full-replacement semantics: the client always submits the complete model,
+  // so omitted optional fields mean "cleared" (fall back to runtime defaults).
+  // Merging here would make overrides impossible to remove — the merge spread
+  // silently kept the stored value for every omitted key.
+  const nextModel = { ...input.model };
   const nextModels =
     existingIndex >= 0
       ? config.ModelProviders.map((model, index) => (index === existingIndex ? nextModel : { ...model }))

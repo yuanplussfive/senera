@@ -218,6 +218,9 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
     ...optionalNumber("RetryBaseDelaySeconds", record.RetryBaseDelaySeconds),
     ...optionalNumber("RetryMaxDelaySeconds", record.RetryMaxDelaySeconds),
     ...optionalNumber("RetryAfterMaxDelaySeconds", record.RetryAfterMaxDelaySeconds),
+    ...optionalNumber("MaxResponseBytes", record.MaxResponseBytes),
+    ...optionalNumber("MaxSseEventBytes", record.MaxSseEventBytes),
+    ...optionalNumber("MaxSseEvents", record.MaxSseEvents),
   };
 }
 
