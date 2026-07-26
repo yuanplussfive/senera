@@ -323,7 +323,10 @@ export function useProviderConnectionActions({
   };
 
   useEffect(() => {
-    if (pendingAddStatus === "success") setShowAddDialog(false);
+    if (pendingAddStatus !== "success") return;
+    setShowAddDialog(false);
+    setPendingProviderDraft(null);
+    setPendingProviderDraftConfirmation(null);
   }, [pendingAddStatus]);
 
   const dismissAddDialog = (): void => {

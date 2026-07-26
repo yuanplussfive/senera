@@ -70,13 +70,19 @@ export function AddProviderDialog({
     );
   };
 
+  const handleOpenChange = (nextOpen: boolean): void => {
+    if (!nextOpen && pending) return;
+    onOpenChange(nextOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         title={frontendMessage("settings.provider.addCustomTitle")}
         description={frontendMessage("settings.provider.addCustomDescription")}
         className="min-h-[540px] w-[min(600px,calc(100vw_-_32px))]"
         bodyClassName="flex min-h-0 flex-1 flex-col px-8 pb-7 pt-3"
+        showClose={!pending}
       >
         <div className="grid gap-6">
           <FormField>
@@ -86,6 +92,7 @@ export function AddProviderDialog({
               value={providerId}
               placeholder={frontendMessage("settings.provider.namePlaceholder")}
               aria-invalid={duplicate}
+              disabled={pending}
               onChange={(event) => setProviderId(event.currentTarget.value)}
             />
             <FormHint>{frontendMessage("settings.provider.nameHint")}</FormHint>
@@ -97,7 +104,7 @@ export function AddProviderDialog({
               placeholder={frontendMessage("settings.provider.presetPlaceholder")}
               ariaLabel={frontendMessage("settings.provider.presetLabel")}
               options={providerPresets.map((entry) => ({ value: entry.id, label: entry.label }))}
-              disabled={false}
+              disabled={pending}
               triggerClassName="h-11 rounded-lg px-3.5 text-[14px] hover:border-ink-300"
               renderValue={(value) => {
                 const current = providerPresets.find((entry) => entry.id === value);
@@ -127,7 +134,7 @@ export function AddProviderDialog({
           {error ? <ProviderFormError message={error} /> : null}
         </div>
         <DialogActions className="mt-auto">
-          <DialogActionButton onClick={() => onOpenChange(false)}>
+          <DialogActionButton disabled={pending} onClick={() => handleOpenChange(false)}>
             {frontendMessage("settings.action.cancel")}
           </DialogActionButton>
           <DialogActionButton variant="primary" disabled={invalid || pending} onClick={submit}>
