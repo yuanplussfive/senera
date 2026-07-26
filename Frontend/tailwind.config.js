@@ -122,22 +122,12 @@ export default {
         soft: "var(--shadow-soft)",
       },
       animation: {
-        caret: "caret 1.1s ease-in-out infinite",
-        shimmer: "shimmer 2s linear infinite",
         "fade-in": "fadeIn 0.18s ease-out both",
         // Dialog content must not animate transform, otherwise it overrides Tailwind translate centering.
         "dialog-in": "dialogIn 0.16s ease-out both",
         "dialog-out": "dialogOut 0.12s ease-in both",
       },
       keyframes: {
-        caret: {
-          "0%, 50%": { opacity: "1" },
-          "50.01%, 100%": { opacity: "0" },
-        },
-        shimmer: {
-          "0%": { backgroundPosition: "-200% 0" },
-          "100%": { backgroundPosition: "200% 0" },
-        },
         fadeIn: {
           "0%": { opacity: "0", transform: "translateY(4px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },

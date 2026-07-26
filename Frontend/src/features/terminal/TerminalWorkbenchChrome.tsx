@@ -360,4 +360,4 @@ const terminalMenuItemClassName =
   "text-[var(--terminal-muted)] data-[highlighted]:bg-white/[0.07] data-[highlighted]:text-[var(--terminal-foreground)]";
 
 const terminalDestructiveMenuItemClassName =
-  "text-brick-300 data-[highlighted]:bg-brick-400/15 data-[highlighted]:text-brick-200";
+  "text-brick-200 data-[highlighted]:bg-brick-500/15 data-[highlighted]:text-brick-100";

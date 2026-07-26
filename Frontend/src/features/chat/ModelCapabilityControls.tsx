@@ -17,7 +17,7 @@ import type { ModelCapabilitiesDraft } from "./modelConfigTypes";
 export function CapabilityIconStrip({ capabilities }: { capabilities: Required<ModelCapabilitiesDraft> }): JSX.Element {
   const enabledItems = ModelCapabilityIconItems.filter((item) => capabilities[item.key]);
   if (enabledItems.length === 0) {
-    return <span className="text-[10px] text-ink-400">{frontendMessage("config.model.noCapabilities")}</span>;
+    return <span className="text-[10px] text-ink-500">{frontendMessage("config.model.noCapabilities")}</span>;
   }
   return (
     <span className="flex min-w-0 items-center gap-1">
@@ -121,7 +121,7 @@ export const ModelCapabilityIconItems = [
     key: "StreamingUsage",
     label: frontendMessage("config.model.capability.streamingUsage"),
     icon: <Activity className="h-3 w-3" />,
-    className: "border-amber-200 bg-amber-50 text-amber-700",
+    className: "text-umber-600",
   },
 ] as const satisfies readonly {
   key: keyof ModelCapabilitiesDraft;

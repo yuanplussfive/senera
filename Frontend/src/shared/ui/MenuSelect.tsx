@@ -70,7 +70,7 @@ export function MenuSelect({
           )}
         >
           <span className="flex min-w-0 flex-1 items-center gap-2">
-            {leading ? <span className="grid h-4 w-4 shrink-0 place-items-center text-ink-450">{leading}</span> : null}
+            {leading ? <span className="grid h-4 w-4 shrink-0 place-items-center text-ink-500">{leading}</span> : null}
             <span className={cn("min-w-0 flex-1 truncate", !display && "text-ink-350")}>{display ?? placeholder}</span>
           </span>
           {trailing ?? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-350" />}

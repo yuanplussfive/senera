@@ -1,4 +1,6 @@
 import {
+  Ban,
+  CircleAlert,
   Clock3,
   MessageSquareText,
   PanelLeftOpen,
@@ -58,21 +60,23 @@ export function ChatHeader({
       ) : null}
       <h1 className="min-w-0 flex-1 truncate text-[14.5px] font-semibold text-content-strong">{title}</h1>
       {waitingForApproval ? (
-        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-umber-200 bg-umber-50 px-2 py-0.5 font-mono text-[10px] text-umber-700">
+        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-umber-200 bg-umber-50 px-2 py-0.5 font-mono text-[10px] text-umber-600">
           <Clock3 className="h-3 w-3" />
           {frontendMessage("approval.waiting")}
         </span>
       ) : waitingForInput ? (
-        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-0.5 font-mono text-[10px] text-cyan-700">
+        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-surface px-2 py-0.5 font-mono text-[10px] text-accent-content">
           <MessageSquareText className="h-3 w-3" />
           {frontendMessage("interaction.input.pending")}
         </span>
       ) : runStatus === "failed" ? (
-        <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-medium text-brick-600">
+        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-brick-200 bg-brick-50 px-2 py-0.5 font-mono text-[10px] text-brick-700">
+          <CircleAlert className="h-3 w-3" />
           {frontendMessage("workflow.run.status.failed")}
         </span>
       ) : runStatus === "cancelled" ? (
-        <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-medium text-content-secondary">
+        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-line bg-surface-muted px-2 py-0.5 font-mono text-[10px] text-content-secondary">
+          <Ban className="h-3 w-3" />
           {frontendMessage("workflow.run.status.cancelled")}
         </span>
       ) : null}
@@ -131,7 +135,7 @@ function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | n
           <span
             className={cn(
               "pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left bg-current opacity-40 transition-transform duration-200",
-              progressRatio === undefined && "animate-pulse motion-reduce:animate-none",
+              progressRatio === undefined && "animate-pulse",
             )}
             style={{ transform: `scaleX(${progressRatio ?? 1})` }}
             aria-hidden="true"
@@ -170,13 +174,13 @@ function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null
       label: frontendMessage("sandbox.status.preparing"),
       tooltip: commonTooltip,
       Icon: Shield,
-      className: "border-umber-200 bg-umber-50/70 text-umber-700 hover:bg-umber-50",
+      className: "border-umber-200 bg-umber-50/70 text-umber-600 hover:bg-umber-50",
     },
     ready: {
       label: frontendMessage("sandbox.status.ready"),
       tooltip: commonTooltip,
       Icon: ShieldCheck,
-      className: "border-moss-200 bg-moss-50/70 text-moss-700 hover:bg-moss-50",
+      className: "border-moss-100 bg-moss-50/70 text-moss-600 hover:bg-moss-50",
     },
     unavailable: {
       label: frontendMessage("sandbox.status.unavailable"),

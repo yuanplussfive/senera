@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowUp, Check, ChevronDown, Loader2, Paperclip, RotateCcw, Square, X } from "lucide-react";
+import { AlertCircle, ArrowUp, Check, ChevronDown, Paperclip, RotateCcw, Square, X } from "lucide-react";
 import { toast } from "sonner";
 import type { UploadAttachmentData, ModelProviderListItem } from "../../api/eventTypes";
 import { uploadFile, type UploadProgress } from "../../api/uploadClient";
@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
   ConversationFrame,
   IconButton,
+  Spinner,
   Tooltip,
 } from "../../shared/ui";
 import { FilePreviewIcon } from "./FilePreviewIcon";
@@ -56,6 +57,7 @@ type PendingAttachment = {
   error?: string;
   previewUrl?: string;
   previewUnavailable?: boolean;
+  file?: File;
 };
 
 export function ChatComposer({
@@ -166,6 +168,39 @@ export function ChatComposer({
   const uploading = pendingAttachments.some((attachment) => attachment.status === "uploading");
   const canSend = !disabled && !uploading && value.trim().length > 0;
 
+  const startUpload = (id: string, file: File): void => {
+    void uploadFile(runtime.uploadUrl, file, {
+      headers: runtime.uploadCsrfToken ? { "X-Senera-Csrf": runtime.uploadCsrfToken } : undefined,
+      onProgress: (progress) => {
+        setPendingAttachments((current) => current.map((entry) => (entry.id === id ? { ...entry, progress } : entry)));
+      },
+    })
+      .then((attachment) => {
+        setPendingAttachments((current) =>
+          current.map((entry) =>
+            entry.id === id
+              ? {
+                  ...entry,
+                  fileName: attachment.name,
+                  mime: attachment.mime,
+                  size: attachment.size,
+                  status: "uploaded",
+                  progress: { loaded: attachment.size, total: attachment.size, ratio: 1 },
+                  attachment,
+                }
+              : entry,
+          ),
+        );
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        setPendingAttachments((current) =>
+          current.map((entry) => (entry.id === id ? { ...entry, status: "error", error: message } : entry)),
+        );
+        toast.error(frontendMessage("upload.fileFailed"), { description: message });
+      });
+  };
+
   const enqueueFiles = (files: File[]): void => {
     if (files.length === 0) return;
     for (const file of files) {
@@ -184,41 +219,30 @@ export function ChatComposer({
           status: "uploading",
           progress: { loaded: 0, total: file.size, ratio: file.size === 0 ? 1 : 0 },
           previewUrl,
+          file,
         },
       ]);
-      void uploadFile(runtime.uploadUrl, file, {
-        headers: runtime.uploadCsrfToken ? { "X-Senera-Csrf": runtime.uploadCsrfToken } : undefined,
-        onProgress: (progress) => {
-          setPendingAttachments((current) =>
-            current.map((entry) => (entry.id === id ? { ...entry, progress } : entry)),
-          );
-        },
-      })
-        .then((attachment) => {
-          setPendingAttachments((current) =>
-            current.map((entry) =>
-              entry.id === id
-                ? {
-                    ...entry,
-                    fileName: attachment.name,
-                    mime: attachment.mime,
-                    size: attachment.size,
-                    status: "uploaded",
-                    progress: { loaded: attachment.size, total: attachment.size, ratio: 1 },
-                    attachment,
-                  }
-                : entry,
-            ),
-          );
-        })
-        .catch((error) => {
-          const message = error instanceof Error ? error.message : String(error);
-          setPendingAttachments((current) =>
-            current.map((entry) => (entry.id === id ? { ...entry, status: "error", error: message } : entry)),
-          );
-          toast.error(frontendMessage("upload.fileFailed"), { description: message });
-        });
+      startUpload(id, file);
     }
+  };
+
+  const retryAttachment = (id: string): void => {
+    const entry = pendingAttachments.find((item) => item.id === id);
+    if (!entry?.file) return;
+    const file = entry.file;
+    setPendingAttachments((current) =>
+      current.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              status: "uploading",
+              error: undefined,
+              progress: { loaded: 0, total: file.size, ratio: file.size === 0 ? 1 : 0 },
+            }
+          : item,
+      ),
+    );
+    startUpload(id, file);
   };
 
   const removeAttachment = (id: string): void => {
@@ -307,6 +331,7 @@ export function ChatComposer({
             <AttachmentTray
               attachments={pendingAttachments}
               onRemove={removeAttachment}
+              onRetry={retryAttachment}
               onPreviewUnavailable={markPreviewUnavailable}
             />
           ) : null}
@@ -439,10 +464,12 @@ function hasActiveInteractionLayer(event: KeyboardEvent): boolean {
 function AttachmentTray({
   attachments,
   onRemove,
+  onRetry,
   onPreviewUnavailable,
 }: {
   attachments: PendingAttachment[];
   onRemove: (id: string) => void;
+  onRetry: (id: string) => void;
   onPreviewUnavailable: (id: string) => void;
 }): JSX.Element {
   return (
@@ -453,7 +480,7 @@ function AttachmentTray({
             key={entry.id}
             className={cn(
               "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-surface-muted",
-              entry.status === "error" ? "border-brick-300" : "border-line-subtle",
+              entry.status === "error" ? "border-brick-500" : "border-line-subtle",
             )}
           >
             <img
@@ -470,9 +497,15 @@ function AttachmentTray({
               </span>
             ) : null}
             {entry.status === "error" ? (
-              <span className="absolute bottom-1 left-1 grid h-4 w-4 place-items-center rounded-full bg-brick-50">
-                <AlertCircle className="h-3 w-3 text-brick-500" />
-              </span>
+              <button
+                type="button"
+                onClick={() => onRetry(entry.id)}
+                title={entry.error ?? undefined}
+                aria-label={frontendMessage("ui.retry")}
+                className="absolute bottom-1 left-1 grid h-5 w-5 place-items-center rounded-full bg-brick-50 text-brick-600 transition hover:bg-brick-100"
+              >
+                <RotateCcw className="h-3 w-3" />
+              </button>
             ) : null}
             <IconButton
               label={frontendMessage("chat.attachment.remove")}
@@ -500,7 +533,7 @@ function AttachmentTray({
               <FilePreviewIcon name={entry.fileName} mime={entry.mime ?? entry.attachment?.mime} />
               {entry.status === "uploading" ? (
                 <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-surface-raised bg-surface-raised">
-                  <Loader2 className="h-2.5 w-2.5 animate-spin text-accent-content" />
+                  <Spinner size="xs" className="h-2.5 w-2.5 text-accent-content" />
                 </span>
               ) : null}
               {entry.status === "error" ? (
@@ -522,6 +555,20 @@ function AttachmentTray({
               {entry.previewUnavailable ? (
                 <span className="text-[10px] text-content-muted">
                   {frontendMessage("chat.attachment.previewUnavailable")}
+                </span>
+              ) : null}
+              {entry.status === "error" ? (
+                <span className="flex min-w-0 items-center gap-1.5 text-[10px] text-brick-600">
+                  <span className="min-w-0 truncate" title={entry.error ?? undefined}>
+                    {entry.error ?? frontendMessage("upload.fileFailed")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onRetry(entry.id)}
+                    className="shrink-0 font-medium underline underline-offset-2 hover:text-brick-700"
+                  >
+                    {frontendMessage("ui.retry")}
+                  </button>
                 </span>
               ) : null}
               {entry.status === "uploading" ? <UploadProgressBar progress={entry.progress} /> : null}

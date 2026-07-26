@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { AlertCircle, RefreshCcw, RefreshCw } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Button } from "./Button";
 import { cn } from "../../lib/util";
@@ -101,12 +101,10 @@ function DefaultErrorFallback({ onReset, onReload, presentation }: DefaultErrorF
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-2">
               <Button onClick={onReset} size="sm">
-                <RefreshCw aria-hidden="true" className="h-4 w-4" />
                 {frontendMessage("app.errorBoundary.retry")}
               </Button>
               {appPresentation ? (
                 <Button onClick={onReload ?? (() => globalThis.location?.reload())} size="sm" variant="ghost">
-                  <RefreshCcw aria-hidden="true" className="h-4 w-4" />
                   {frontendMessage("app.errorBoundary.reload")}
                 </Button>
               ) : null}

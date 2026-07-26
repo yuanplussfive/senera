@@ -1,7 +1,7 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { BrainCircuit, Settings2, SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "../../lib/util";
-import { Button, Dialog, DialogContent, MenuSelect, ScrollArea } from "../../shared/ui";
+import { Button, Dialog, DialogContent, InlineError, MenuSelect, ScrollArea } from "../../shared/ui";
 import { ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
 import { readBooleanWithTemplate, readModelCapabilities, readNumberWithTemplate } from "./modelConfigData";
 import type { ModelCapabilitiesDraft, ModelProviderDraft } from "./modelConfigTypes";
@@ -313,11 +313,7 @@ export function ModelOptionsDialog({
         </ScrollArea>
 
         <div className="shrink-0 border-t border-ink-200/70 bg-paper-100 px-5 py-3">
-          {errorMessage ? (
-            <p role="alert" className="mb-2 text-[12px] leading-5 text-brick-700">
-              {errorMessage}
-            </p>
-          ) : null}
+          {errorMessage ? <InlineError className="mb-2">{errorMessage}</InlineError> : null}
           <div className="flex items-center justify-between">
             <button
               type="button"
@@ -326,8 +322,8 @@ export function ModelOptionsDialog({
               className={cn(
                 "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] transition disabled:pointer-events-none disabled:opacity-50",
                 isSaved
-                  ? "border-brick-200 bg-brick-50 text-brick-700 hover:bg-brick-100"
-                  : "border-ink-200 bg-paper-50 text-ink-450",
+                  ? "border-ink-200 bg-paper-50 text-brick-600 hover:border-brick-200 hover:bg-brick-50 hover:text-brick-700"
+                  : "border-ink-200 bg-paper-50 text-ink-500",
               )}
               onClick={() => {
                 if (modelIndex !== null) onRemove(modelIndex);

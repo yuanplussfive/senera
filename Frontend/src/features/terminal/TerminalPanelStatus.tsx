@@ -1,7 +1,7 @@
-import { AlertTriangle, LoaderCircle, RefreshCw } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import type { ReactNode } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { Button, ErrorBoundary } from "../../shared/ui";
+import { ErrorBoundary, RetryButton, Spinner } from "../../shared/ui";
 import { TerminalSurfaceStyle } from "./terminalPresentation";
 
 export interface TerminalPanelStatusProps {
@@ -19,11 +19,7 @@ export function TerminalPanelStatus(props: TerminalPanelStatusProps): JSX.Elemen
     >
       <div className="flex max-w-sm flex-col items-center gap-3">
         <div className="grid h-10 w-10 place-items-center rounded-md border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] text-[var(--terminal-accent)]">
-          {failed ? (
-            <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-          ) : (
-            <LoaderCircle className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" />
-          )}
+          {failed ? <AlertTriangle className="h-4 w-4" aria-hidden="true" /> : <Spinner size="md" />}
         </div>
         <div>
           <h2 className="text-[13px] font-medium text-[var(--terminal-foreground)]">
@@ -34,15 +30,11 @@ export function TerminalPanelStatus(props: TerminalPanelStatusProps): JSX.Elemen
           </p>
         </div>
         {failed && props.onRetry ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={props.onRetry}
+          <RetryButton
+            onRetry={props.onRetry}
+            label={frontendMessage("terminal.error.retry")}
             className="mt-1 border-[var(--terminal-border)] bg-[var(--terminal-elevated)] text-[var(--terminal-foreground)] hover:bg-white/[0.08]"
-          >
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-            {frontendMessage("terminal.error.retry")}
-          </Button>
+          />
         ) : null}
       </div>
     </div>

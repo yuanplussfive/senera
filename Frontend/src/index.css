@@ -404,32 +404,24 @@ html[data-motion-level="none"] *::after {
   animation: shimmer 1.8s linear infinite;
 }
 
-/* ----- 内联等待点 ----- */
-.thinking-loader-dot {
-  animation: thinking-loader-dot 1.18s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-  transform-origin: center;
-  will-change: opacity, transform;
-}
-
-html[data-motion-level="reduced"] .thinking-loader-dot {
-  animation-name: thinking-loader-dot-reduced;
-  animation-duration: 1.25s !important;
-  animation-iteration-count: infinite !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .thinking-loader[data-motion-level="reduced"] .thinking-loader-dot {
-    animation-name: thinking-loader-dot-reduced;
-    animation-duration: 1.25s !important;
-    animation-iteration-count: infinite !important;
+@keyframes caret {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
   }
 }
 
-html[data-motion-level="none"] .thinking-loader-dot,
-.thinking-loader--static .thinking-loader-dot {
-  animation: none !important;
-  opacity: 0.72;
-  transform: scale(0.92);
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 /* ----- 选中文字 ----- */
@@ -478,30 +470,6 @@ html[data-motion-level="none"]::view-transition-new(root) {
   }
   42% {
     background-color: var(--theme-complete-highlight);
-  }
-}
-
-@keyframes thinking-loader-dot {
-  0%,
-  72%,
-  100% {
-    opacity: 0.32;
-    transform: scale(0.82);
-  }
-  36% {
-    opacity: 0.95;
-    transform: scale(1);
-  }
-}
-
-@keyframes thinking-loader-dot-reduced {
-  0%,
-  72%,
-  100% {
-    opacity: 0.34;
-  }
-  36% {
-    opacity: 0.9;
   }
 }
 

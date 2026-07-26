@@ -3,11 +3,11 @@ import { RotateCcw } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { JsonConfigSettingsView } from "../../shared/config/JsonConfigForm";
-import { Button, ScrollArea } from "../../shared/ui";
+import { Button, ScrollArea, StateView } from "../../shared/ui";
 import type { SettingsSystemConfigHandle } from "./SettingsContracts";
 import type { SettingsContentProps } from "./SettingsWorkbenchContracts";
 import { readSettingsDraftInteraction } from "./settingsInteractionModel";
-import { SettingsWorkspaceFrame, SettingsWorkspaceState } from "./SettingsWorkspaceSurface";
+import { SettingsWorkspaceFrame } from "./SettingsWorkspaceSurface";
 import type { SettingsSectionDefinition, SettingsSectionId } from "./types";
 import { AboutSettings } from "./sections/AboutSettings";
 import { AppearanceSettings } from "./sections/AppearanceSettings";
@@ -127,7 +127,13 @@ function ConfigFormSectionSettings({
     .map((section) => projectSectionConfigFields(section, allSections))
     .filter((section) => section.fields.length > 0);
   if (!systemConfig?.configSnapshot)
-    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingConfig")}</SettingsWorkspaceState>;
+    return (
+      <StateView
+        status="loading"
+        className="min-h-[360px] bg-paper-50"
+        description={frontendMessage("settings.state.loadingConfig")}
+      />
+    );
   return (
     <DraftBackedSection draftState={draftState} ready>
       <JsonConfigSettingsView
@@ -185,7 +191,7 @@ function DraftBackedSection({
         data-settings-save-status
         className={cn(
           "flex h-7 items-center justify-end px-4 pt-2 text-[11px] transition-opacity duration-150",
-          draftState.savedRecently ? "text-accent-content" : "text-ink-450",
+          draftState.savedRecently ? "text-accent-content" : "text-ink-500",
           saveStatus ? "opacity-100" : "opacity-0",
         )}
         aria-live="polite"

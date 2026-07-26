@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   Info,
-  LoaderCircle,
   Settings,
   Shield,
   ShieldAlert,
@@ -29,6 +28,7 @@ import {
   DropdownMenuMeta,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Spinner,
 } from "../../shared/ui";
 import {
   AVATAR_PREVIEW_SIZE,
@@ -68,14 +68,9 @@ export function UserFooter({
         : socketStatus === "error"
           ? frontendMessage("connection.error")
           : frontendMessage("connection.closed");
-  const StatusIcon =
-    socketStatus === "open" ? Wifi : socketStatus === "connecting" || socketStatus === "idle" ? LoaderCircle : WifiOff;
-  const statusIconClass =
-    socketStatus === "open"
-      ? "text-moss-600"
-      : socketStatus === "connecting" || socketStatus === "idle"
-        ? "animate-spin text-umber-600"
-        : "text-brick-600";
+  const connecting = socketStatus === "connecting" || socketStatus === "idle";
+  const StatusIcon = socketStatus === "open" ? Wifi : WifiOff;
+  const statusIconClass = socketStatus === "open" ? "text-moss-600" : "text-brick-600";
 
   return (
     <>
@@ -125,7 +120,13 @@ export function UserFooter({
           <DropdownMenuSeparator />
           <DropdownMenuMeta
             aria-live="polite"
-            icon={<StatusIcon className={cn("h-3.5 w-3.5", statusIconClass)} aria-hidden="true" />}
+            icon={
+              connecting ? (
+                <Spinner size="sm" className="text-umber-600" />
+              ) : (
+                <StatusIcon className={cn("h-3.5 w-3.5", statusIconClass)} aria-hidden="true" />
+              )
+            }
             value={statusLabel}
           >
             {frontendMessage("runtime.migrated.features.session.ProfileFooter.122.55")}

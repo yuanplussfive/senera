@@ -17,7 +17,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { Tooltip, useClipboardCopy } from "../ui";
+import { Spinner, Tooltip, useClipboardCopy } from "../ui";
 import { CollapsibleCodeBlock } from "./CollapsibleCodeBlock";
 import { type CodeArtifact, readCodeArtifact } from "./CodeArtifactModel";
 
@@ -188,9 +188,9 @@ function PreviewCodeBlock({
 
 function CodeArtifactViewerLoading(): JSX.Element {
   return (
-    <div className="code-artifact-viewer__loading" role="status" aria-live="polite">
-      <div className="h-2 w-24 rounded bg-ink-700/30" />
-      <div className="h-2 w-40 rounded bg-ink-700/30" />
+    <div className="code-artifact-viewer__loading" role="status" aria-busy="true">
+      <Spinner size="sm" className="text-ink-500" />
+      <span className="text-[12px] text-ink-600">{frontendMessage("ui.loading")}</span>
     </div>
   );
 }

@@ -1,11 +1,13 @@
 import { useId, useMemo, useState, type AriaRole, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronDown, ChevronRight, Circle, Loader2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Circle, X } from "lucide-react";
 import { cn } from "../../lib/util";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { type RunRecord } from "../../store/sessionStore";
 import { deriveFeedModel, statusTextClass, type FeedGroup, type FeedItem } from "./feedModel";
 import { FeedGroupIconCatalog, FeedItemIconCatalog } from "./feedPresentation";
 import { motionTimings, readFeedItemVariants, useMotionLevel, type MotionLevel } from "../../shared/motion";
+import { Spinner } from "../../shared/ui";
 
 export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; showBody?: boolean }): JSX.Element {
   const model = useMemo(() => deriveFeedModel(run), [run]);
@@ -24,7 +26,7 @@ export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; s
             data-execution-rail
           />
         ) : null}
-        <FeedHeadline item={model.headline} stepCount={run.steps.length} motionLevel={effectiveLevel} />
+        <FeedHeadline item={model.headline} stepCount={run.steps.length} />
         {hasTimeline ? (
           <div className="mt-2.5 flex min-w-0 flex-col gap-1.5" role="list" aria-label={model.headline.title}>
             {model.groups.map((group) => (
@@ -93,10 +95,10 @@ function FeedTimelineGroup({
     return <FeedGroupBlock group={group} expanded={expanded} onToggle={onToggle} motionLevel={motionLevel} />;
   }
 
-  return <FeedGroupRows group={group} motionLevel={motionLevel} />;
+  return <FeedGroupRows group={group} />;
 }
 
-function FeedGroupRows({ group, motionLevel }: { group: FeedGroup; motionLevel: MotionLevel }): JSX.Element {
+function FeedGroupRows({ group }: { group: FeedGroup }): JSX.Element {
   const variant = group.variant ?? "trace";
   const Icon = FeedGroupIconCatalog[variant];
 
@@ -114,7 +116,7 @@ function FeedGroupRows({ group, motionLevel }: { group: FeedGroup; motionLevel: 
         </div>
         <div className="mt-0.5 flex min-w-0 flex-col" role="list">
           {group.items.map((item) => (
-            <FeedRow key={item.id} item={item} compact motionLevel={motionLevel} />
+            <FeedRow key={item.id} item={item} compact />
           ))}
         </div>
       </div>
@@ -122,24 +124,18 @@ function FeedGroupRows({ group, motionLevel }: { group: FeedGroup; motionLevel: 
   );
 }
 
-function FeedHeadline({
-  item,
-  stepCount,
-  motionLevel,
-}: {
-  item: FeedItem;
-  stepCount: number;
-  motionLevel: MotionLevel;
-}): JSX.Element {
+function FeedHeadline({ item, stepCount }: { item: FeedItem; stepCount: number }): JSX.Element {
   return (
     <div className="flex min-w-0 items-start gap-2.5">
       <TimelineMarker status={item.status} emphasis>
-        <FeedStatusIcon status={item.status} motionLevel={motionLevel} />
+        <FeedStatusIcon status={item.status} />
       </TimelineMarker>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13.5px] font-medium text-content-primary">{item.title}</span>
-          <span className="text-[10.5px] tabular-nums text-content-muted">{stepCount} steps</span>
+          <span className="text-[10.5px] tabular-nums text-content-muted">
+            {frontendMessage("workflow.feed.stepCount", { count: stepCount })}
+          </span>
           {item.meta ? <span className="text-[10.5px] tabular-nums text-content-muted">{item.meta}</span> : null}
         </div>
         {item.subtitle ? (
@@ -199,7 +195,7 @@ function FeedGroupBlock({
                 data-feed-detail-surface
               >
                 {group.items.map((item) => (
-                  <FeedRow key={item.id} item={item} compact motionLevel={motionLevel} />
+                  <FeedRow key={item.id} item={item} compact />
                 ))}
               </div>
             </FeedMotionBlock>
@@ -229,22 +225,14 @@ function TimelineFeedItem({ item }: { item: FeedItem }): JSX.Element {
   );
 }
 
-function FeedRow({
-  item,
-  compact = false,
-  motionLevel,
-}: {
-  item: FeedItem;
-  compact?: boolean;
-  motionLevel: MotionLevel;
-}): JSX.Element {
+function FeedRow({ item, compact = false }: { item: FeedItem; compact?: boolean }): JSX.Element {
   return (
     <div
       className={cn("flex min-w-0 items-start gap-2 py-1.5", compact && "py-1")}
       role="listitem"
       data-feed-item-kind={item.kind}
     >
-      <FeedRowStatus status={item.status} motionLevel={motionLevel} />
+      <FeedRowStatus status={item.status} />
       <FeedItemContent item={item} />
     </div>
   );
@@ -290,10 +278,10 @@ function TimelineMarker({
   );
 }
 
-function FeedRowStatus({ status, motionLevel }: { status: FeedItem["status"]; motionLevel: MotionLevel }): JSX.Element {
+function FeedRowStatus({ status }: { status: FeedItem["status"] }): JSX.Element {
   const iconClassName = cn("mt-1 h-3 w-3 shrink-0", statusTextClass(status));
   if (status === "running") {
-    return <Loader2 className={cn(iconClassName, motionLevel === "full" && "animate-spin")} aria-hidden="true" />;
+    return <Spinner size="xs" className={iconClassName} />;
   }
   if (status === "failed") return <X className={iconClassName} aria-hidden="true" />;
   if (status === "done") return <Check className={iconClassName} aria-hidden="true" />;
@@ -315,21 +303,8 @@ function toggleSetEntry(values: ReadonlySet<string>, value: string): ReadonlySet
   return next;
 }
 
-function FeedStatusIcon({
-  status,
-  motionLevel,
-  className,
-}: {
-  status: FeedItem["status"];
-  motionLevel: MotionLevel;
-  className?: string;
-}): JSX.Element {
-  if (status === "running")
-    return (
-      <Loader2
-        className={cn("h-4 w-4 shrink-0", motionLevel === "full" && "animate-spin", statusTextClass(status), className)}
-      />
-    );
+function FeedStatusIcon({ status, className }: { status: FeedItem["status"]; className?: string }): JSX.Element {
+  if (status === "running") return <Spinner size="md" className={cn(statusTextClass(status), className)} />;
   if (status === "failed") return <X className={cn("h-4 w-4 shrink-0", statusTextClass(status), className)} />;
   if (status === "pending" || status === "neutral") {
     return <Circle className={cn("h-3 w-3 shrink-0", statusTextClass(status), className)} />;
@@ -374,9 +349,7 @@ function PendingLine({ label, motionLevel }: { label: string; motionLevel: Motio
       role="status"
       ariaLive="polite"
     >
-      <Loader2
-        className={cn("h-3.5 w-3.5 shrink-0 text-content-secondary", motionLevel === "full" && "animate-spin")}
-      />
+      <Spinner size="sm" className="text-content-secondary" />
       <span className="min-w-0 truncate">{label}</span>
     </FeedMotionBlock>
   );

@@ -1,6 +1,6 @@
 import type { PluginSettingsCommandsHandle } from "../../../app/usePluginSettingsCommands";
 import { PluginConfigContent } from "../../chat/PluginConfigPanel";
-import { SettingsWorkspaceState } from "../SettingsWorkspaceSurface";
+import { StateView } from "../../../shared/ui";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 
 export function SkillSettingsSection({
@@ -11,7 +11,13 @@ export function SkillSettingsSection({
   onDirtyChange?: (dirty: boolean) => void;
 }): JSX.Element {
   if (!pluginSettings) {
-    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingSkills")}</SettingsWorkspaceState>;
+    return (
+      <StateView
+        status="loading"
+        className="min-h-[360px] bg-paper-50"
+        description={frontendMessage("settings.state.loadingSkills")}
+      />
+    );
   }
 
   return (

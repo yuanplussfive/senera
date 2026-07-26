@@ -1,10 +1,11 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Component, lazy, Suspense, useMemo, type ReactNode } from "react";
 import { cva } from "class-variance-authority";
-import { BadgeCheck, Check, CircleOff, Loader2, Power, PowerOff, Save, ScrollText, Trash2 } from "lucide-react";
+import { BadgeCheck, Check, CircleOff, Power, PowerOff, Save, ScrollText, Trash2 } from "lucide-react";
 import type { PresetFormat, PresetItem } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { Button, ScrollArea } from "../../shared/ui";
+import { Button, ScrollArea, Spinner, StateView } from "../../shared/ui";
+import { ConfigDiagnosticsList } from "./ConfigDiagnostics";
 import {
   PresetEditorLanguages,
   PresetFormatOptions,
@@ -201,7 +202,9 @@ export function PresetInspector({
             <div className="text-[12px] font-semibold text-ink-900">
               {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.225.69")}
             </div>
-            <div className="mt-1 truncate font-mono text-[11px] text-ink-500">{displayName || "未命名预设"}</div>
+            <div className="mt-1 truncate font-mono text-[11px] text-ink-500">
+              {displayName || frontendMessage("preset.ui.unnamed")}
+            </div>
           </div>
           <span
             className={cn(
@@ -241,7 +244,7 @@ export function PresetInspector({
               <div className="text-[11px] font-medium text-brick-600">
                 {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.263.97")}
               </div>
-              <div className="mt-2 whitespace-pre-wrap border-l-2 border-brick-300 bg-brick-50/70 px-2.5 py-2 text-[11.5px] leading-5 text-brick-700">
+              <div className="mt-2 whitespace-pre-wrap break-words border-l-2 border-brick-500 pl-2.5 text-[11.5px] leading-5 text-brick-600">
                 {jsonIssue}
               </div>
             </section>
@@ -311,13 +314,13 @@ function PresetToolbar({
             className="h-9 bg-paper-50"
           >
             {settingActive ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Spinner size="sm" />
             ) : selectedIsActive ? (
               <PowerOff className="h-3.5 w-3.5" />
             ) : (
               <Power className="h-3.5 w-3.5" />
             )}
-            {selectedIsActive ? "关闭" : "启用"}
+            {frontendMessage(selectedIsActive ? "preset.ui.disable" : "preset.ui.enable")}
           </Button>
           <Button
             size="sm"
@@ -326,7 +329,7 @@ function PresetToolbar({
             onClick={onDelete}
             className="h-9 text-brick-600 hover:bg-brick-50 hover:text-brick-700"
           >
-            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            {deleting ? <Spinner size="sm" /> : <Trash2 className="h-3.5 w-3.5" />}
             {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.350.13")}
           </Button>
           <span className="mx-0.5 hidden h-6 w-px bg-ink-200/80 sm:block" />
@@ -337,7 +340,7 @@ function PresetToolbar({
             onClick={() => onSave(false)}
             className="h-9 bg-paper-50"
           >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {saving ? <Spinner size="sm" /> : <Save className="h-3.5 w-3.5" />}
             {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.361.13")}
           </Button>
           <Button size="sm" disabled={saving || importing} onClick={() => onSave(true)} className="h-9">
@@ -401,7 +404,7 @@ function PresetEditor({
         >
           <Suspense fallback={<EditorLoading />}>
             <LazyCodeTextEditor
-              ariaLabel="角色预设内容"
+              ariaLabel={frontendMessage("preset.ui.content")}
               className={cn("min-h-0 flex-1", jsonIssue && "[&_.cm-editor]:bg-brick-50/20")}
               disabled={disabled}
               language={language}
@@ -513,22 +516,23 @@ function InfoRow({ label, value }: { label: string; value: string }): JSX.Elemen
 
 function EditorLoading(): JSX.Element {
   return (
-    <div className="grid h-full min-h-0 place-items-center bg-[var(--theme-config-editor-loading-bg)] text-[12px] text-ink-400">
-      <span className="inline-flex items-center gap-2">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.540.9")}
-      </span>
-    </div>
+    <StateView
+      status="loading"
+      className="h-full bg-[var(--theme-config-editor-loading-bg)]"
+      description={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.540.9")}
+    />
   );
 }
 
 function StatusPill({ active, dirty, busy }: { active: boolean; dirty: boolean; busy: boolean }): JSX.Element {
-  const label = busy ? "处理中" : dirty ? "未保存" : active ? "已启用" : "未启用";
+  const label = frontendMessage(
+    busy ? "preset.ui.processing" : dirty ? "preset.ui.unsaved" : active ? "preset.ui.enabled" : "preset.ui.disabled",
+  );
   const state = busy ? "busy" : dirty ? "dirty" : active ? "active" : "idle";
   return (
     <span className={statusPillClass({ state })}>
       {busy ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <Spinner size="sm" />
       ) : active ? (
         <BadgeCheck className="h-3.5 w-3.5" />
       ) : (
@@ -575,20 +579,8 @@ function Diagnostics({
   }
 
   return (
-    <div className="shrink-0 space-y-1 border-b border-ink-200/60 bg-paper-50 px-3 py-2 sm:px-5">
-      {items.map((item, index) => (
-        <div
-          key={`${item.severity}-${index}`}
-          className={cn(
-            "whitespace-pre-wrap rounded-md border px-2 py-1.5 text-[12px]",
-            item.severity === "error"
-              ? "border-brick-200 bg-brick-50 text-brick-700"
-              : "border-ink-200 bg-paper-100 text-umber-600",
-          )}
-        >
-          {item.message}
-        </div>
-      ))}
+    <div className="shrink-0 border-b border-ink-200/60 bg-paper-50 px-3 py-2 sm:px-5">
+      <ConfigDiagnosticsList items={items} />
     </div>
   );
 }

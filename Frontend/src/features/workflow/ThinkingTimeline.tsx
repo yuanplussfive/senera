@@ -1,10 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { cn } from "../../lib/util";
-import { ListTree, Loader2, Maximize2, PanelRightClose } from "lucide-react";
+import { ListTree, Maximize2, PanelRightClose } from "lucide-react";
 import { useStore, type RunRecord } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { Dialog, DialogContent, IconButton } from "../../shared/ui";
+import { Dialog, DialogContent, IconButton, Spinner } from "../../shared/ui";
 import { summarizeRun } from "./runSummary";
 import { shouldLoadWorkflowCanvas } from "./canvasLoadPolicy";
 import { RunSelector, RunSummaryStrip } from "./WorkflowRunControls";
@@ -341,7 +341,7 @@ function CanvasLoading(): JSX.Element {
   return (
     <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-transparent">
       <div className="inline-flex items-center gap-2 text-[12px] text-content-secondary">
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-umber-500" />
+        <Spinner size="sm" className="text-umber-500" />
         {frontendMessage("workflow.panel.loadingGraph")}
       </div>
     </div>

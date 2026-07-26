@@ -1,4 +1,4 @@
-import { Check, CircleStop, ExternalLink, LoaderCircle, MessageSquareText, ShieldAlert, X } from "lucide-react";
+import { Check, CircleStop, ExternalLink, MessageSquareText, ShieldAlert, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import type {
@@ -9,7 +9,7 @@ import type {
 } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { InteractionInputRunRecord } from "../../store/sessionStore";
-import { Button, MetaLabel } from "../../shared/ui";
+import { Button, InlineError, MetaLabel, Spinner } from "../../shared/ui";
 import { openExternalUrl } from "../../app/desktopBridge";
 
 export interface InteractionInputStripProps {
@@ -80,13 +80,13 @@ function FormInteractionInputItem({
   };
 
   return (
-    <section className="border-l-2 border-cyan-600 bg-paper-50 px-3 py-2.5 shadow-[inset_0_-1px_0_rgba(24,24,27,0.05),0_1px_2px_rgba(24,24,27,0.04)]">
+    <section className="border-l-2 border-accent-border-strong bg-paper-50 px-3 py-2.5 shadow-[inset_0_-1px_0_rgba(24,24,27,0.05),0_1px_2px_rgba(24,24,27,0.04)]">
       <div className="flex items-start gap-2.5">
-        <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-cyan-700" />
+        <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-accent-content" />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="truncate text-[12.5px] font-medium text-ink-900">{interaction.toolName}</span>
-            <MetaLabel size="sm" className="text-cyan-700">
+            <MetaLabel size="sm" className="text-accent-content">
               {frontendMessage("interaction.input.pending")}
             </MetaLabel>
           </div>
@@ -165,13 +165,13 @@ function UrlInteractionInputItem({
   };
 
   return (
-    <section className="border-l-2 border-cyan-600 bg-paper-50 px-3 py-2.5 shadow-[inset_0_-1px_0_rgba(24,24,27,0.05),0_1px_2px_rgba(24,24,27,0.04)]">
+    <section className="border-l-2 border-accent-border-strong bg-paper-50 px-3 py-2.5 shadow-[inset_0_-1px_0_rgba(24,24,27,0.05),0_1px_2px_rgba(24,24,27,0.04)]">
       <div className="flex items-start gap-2.5">
-        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-cyan-700" />
+        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-accent-content" />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="truncate text-[12.5px] font-medium text-ink-900">{interaction.toolName}</span>
-            <MetaLabel size="sm" className="text-cyan-700">
+            <MetaLabel size="sm" className="text-accent-content">
               {frontendMessage(
                 waitingForCompletion ? "interaction.input.externalPending" : "interaction.input.externalRequired",
               )}
@@ -187,8 +187,8 @@ function UrlInteractionInputItem({
           </p>
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
             {waitingForCompletion ? (
-              <span className="inline-flex h-7 items-center gap-1.5 px-1 text-[11.5px] text-cyan-700">
-                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+              <span className="inline-flex h-7 items-center gap-1.5 px-1 text-[11.5px] text-accent-content">
+                <Spinner size="sm" />
                 {frontendMessage("interaction.input.externalWaiting")}
               </span>
             ) : (
@@ -198,11 +198,7 @@ function UrlInteractionInputItem({
                 onClick={() => void open()}
                 className="h-7 bg-ink-900 px-2 text-paper-50 hover:bg-ink-800"
               >
-                {opening ? (
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ExternalLink className="h-3.5 w-3.5" />
-                )}
+                {opening ? <Spinner size="sm" /> : <ExternalLink className="h-3.5 w-3.5" />}
                 {frontendMessage(opening ? "interaction.input.externalOpening" : "interaction.input.externalOpen")}
               </Button>
             )}
@@ -255,7 +251,7 @@ function InteractionField({
       {property.description ? (
         <span className="mt-1 block text-[10.5px] leading-4 text-ink-400">{property.description}</span>
       ) : null}
-      {error ? <span className="mt-1 block text-[10.5px] text-brick-700">{error}</span> : null}
+      {error ? <InlineError className="mt-1 text-[10.5px] leading-4">{error}</InlineError> : null}
     </label>
   );
 }
@@ -272,7 +268,7 @@ function InteractionControl({
   onChange: (value: InteractionInputValue | undefined) => void;
 }): JSX.Element {
   const className =
-    "h-8 w-full border border-ink-200 bg-white px-2 text-[12px] text-ink-900 outline-none focus:border-cyan-600 disabled:bg-ink-50";
+    "h-8 w-full border border-ink-200 bg-white px-2 text-[12px] text-ink-900 outline-none focus:border-accent-border disabled:bg-ink-50";
   if (property.type === "boolean") {
     return (
       <input
@@ -280,7 +276,7 @@ function InteractionControl({
         checked={value === true}
         disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4 accent-cyan-700"
+        className="h-4 w-4 accent-accent-solid"
       />
     );
   }
@@ -299,7 +295,7 @@ function InteractionControl({
                   event.target.checked ? [...selected, option.value] : selected.filter((item) => item !== option.value),
                 )
               }
-              className="h-3.5 w-3.5 accent-cyan-700"
+              className="h-3.5 w-3.5 accent-accent-solid"
             />
             {option.label}
           </span>
@@ -365,7 +361,7 @@ function ResolveButton({
 }): JSX.Element {
   const presentation = interactionActionPresentation[action];
   const resolving = pendingAction === action;
-  const Icon = resolving ? LoaderCircle : presentation.Icon;
+  const Icon = presentation.Icon;
   return (
     <Button
       size="sm"
@@ -374,7 +370,7 @@ function ResolveButton({
       onClick={onClick}
       className={presentation.className}
     >
-      <Icon className={`h-3.5 w-3.5${resolving ? " animate-spin" : ""}`} />
+      {resolving ? <Spinner size="sm" /> : <Icon className="h-3.5 w-3.5" />}
       {frontendMessage(resolving ? "interaction.input.resolving" : presentation.label)}
     </Button>
   );

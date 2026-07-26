@@ -1,6 +1,7 @@
-import { KeyRound, LoaderCircle, LogIn, RefreshCcw } from "lucide-react";
+import { AlertCircle, KeyRound, LogIn } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { InlineError, RetryButton, Spinner } from "../shared/ui";
 import type { ServerAuthenticationState } from "./useServerAuthentication";
 import { ServerAuthenticationError, type ServerAuthorizedAuthentication } from "../api/authClient";
 
@@ -31,12 +32,13 @@ export function ServerAuthenticationGate({
   onRetry: () => Promise<void>;
 }): JSX.Element {
   if (state.status === "loading") {
-    return <AuthenticationStatus icon={<LoaderCircle className="h-5 w-5 animate-spin" />} messageKey="auth.loading" />;
+    return <AuthenticationStatus tone="loading" icon={<Spinner size="md" />} messageKey="auth.loading" />;
   }
   if (state.status === "failed") {
     return (
       <AuthenticationStatus
-        icon={<RefreshCcw className="h-5 w-5" />}
+        tone="failed"
+        icon={<AlertCircle className="h-4 w-4 text-brick-600" aria-hidden="true" />}
         message={readServerFailureMessage(state.error)}
         actionLabel={frontendMessage("auth.retry")}
         onAction={() => void onRetry()}
@@ -102,13 +104,13 @@ function LoginForm({
             required
           />
         </label>
-        {failed ? <p className="mt-3 text-[12px] text-brick-700">{frontendMessage("auth.loginFailed")}</p> : null}
+        {failed ? <InlineError className="mt-3">{frontendMessage("auth.loginFailed")}</InlineError> : null}
         <button
           type="submit"
           disabled={submitting}
           className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 bg-ink-900 px-3 text-[13px] font-medium text-paper-50 transition hover:bg-ink-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <LogIn className="h-4 w-4" aria-hidden="true" />
+          {submitting ? <Spinner size="md" /> : <LogIn className="h-4 w-4" aria-hidden="true" />}
           {submitting ? frontendMessage("auth.signingIn") : frontendMessage("auth.signIn")}
         </button>
       </form>
@@ -117,34 +119,33 @@ function LoginForm({
 }
 
 function AuthenticationStatus({
+  tone,
   icon,
   messageKey,
   message,
   actionLabel,
   onAction,
 }: {
+  tone: "loading" | "failed";
   icon: JSX.Element;
   messageKey?: "auth.loading" | "auth.connectionFailed";
   message?: string;
   actionLabel?: string;
   onAction?: () => void;
 }): JSX.Element {
+  const failed = tone === "failed";
   return (
     <main className="flex min-h-screen items-center justify-center bg-paper-100 px-4 py-8 text-ink-900">
-      <div className="flex items-center gap-3 border border-ink-200 bg-paper-50 px-4 py-3 shadow-[0_18px_60px_rgba(24,27,31,0.12)]">
+      <div
+        role={failed ? "alert" : "status"}
+        aria-busy={failed ? undefined : true}
+        className="flex items-center gap-3 border border-ink-200 bg-paper-50 px-4 py-3 shadow-[0_18px_60px_rgba(24,27,31,0.12)]"
+      >
         <span className="text-ink-500">{icon}</span>
         {message || messageKey ? (
           <p className="text-[13px] text-ink-700">{message ?? frontendMessage(messageKey!)}</p>
         ) : null}
-        {actionLabel && onAction ? (
-          <button
-            type="button"
-            onClick={onAction}
-            className="text-[13px] font-medium text-accent-content hover:text-accent-content-hover"
-          >
-            {actionLabel}
-          </button>
-        ) : null}
+        {actionLabel && onAction ? <RetryButton onRetry={onAction} label={actionLabel} /> : null}
       </div>
     </main>
   );
