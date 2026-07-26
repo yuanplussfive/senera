@@ -4,8 +4,6 @@ import { EventKinds, type EventEnvelope } from "../api/eventTypes";
 import { useStore } from "../store/sessionStore";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
-const ApprovalExpiredBackendMessage = "审批请求不存在或已结束";
-
 export type SocketErrorToastVariant = "error" | "warning";
 
 export interface SocketErrorToast {
@@ -55,7 +53,7 @@ export function resolveSocketErrorToast(env: EventEnvelope, state: SocketErrorTo
 
   if (env.kind === EventKinds.RequestInvalid) {
     const message = readDataString(env.data, "message") ?? "";
-    if (message.includes(ApprovalExpiredBackendMessage)) {
+    if (readDataString(env.data, "code") === "approval_not_pending") {
       return {
         variant: "warning",
         title: frontendMessage("socket.approvalExpired"),

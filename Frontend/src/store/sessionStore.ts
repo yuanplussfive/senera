@@ -303,6 +303,8 @@ export interface StoreState {
   presetRootDir: string;
   configSnapshot: ConfigSnapshotData | null;
   userProfile: UserProfile;
+  /** 各目录快照是否已到达过一次；用于区分"尚未同步"与"确实为空"，避免空态闪现 */
+  catalogSynced: { sessions: boolean; presets: boolean; plugins: boolean };
 
   selectSession: (id: string) => void;
   toggleSidebar: () => void;
@@ -384,6 +386,7 @@ export const useStore = create<StoreState>()(
       presetRootDir: "",
       configSnapshot: null,
       userProfile: DEFAULT_USER_PROFILE,
+      catalogSynced: { sessions: false, presets: false, plugins: false },
 
       selectSession: (id) =>
         set((state) => {

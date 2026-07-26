@@ -92,7 +92,16 @@ export type AgentRunDomainEvent =
       kind: typeof AgentEventKinds.RequestInvalid;
       context: AgentEventContext;
       data: {
+        /** 结构化错误码；前端据此分类，不要再匹配 message 文案 */
+        code?: AgentRequestInvalidCode;
         message: string;
         details?: unknown;
       };
     };
+
+export type AgentRequestInvalidCode =
+  | "approval_not_pending"
+  | "interaction_input_resolve_failed"
+  | "request_parse_failed"
+  | "session_fork_boundary_missing"
+  | "session_fork_target_exists";

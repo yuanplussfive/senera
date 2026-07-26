@@ -53,6 +53,7 @@ export function SessionList({
   const order = useStore((s) => s.sessionOrder);
   const active = useStore((s) => s.activeSessionId);
   const historyLoadingIds = useStore((s) => s.historyLoadingIds);
+  const sessionCatalogSynced = useStore((s) => s.catalogSynced.sessions);
   const select = useStore((s) => s.selectSession);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
   const sidebarCollapsed = useStore((s) => s.sidebarCollapsed);
@@ -190,6 +191,7 @@ export function SessionList({
         <SessionPanelBody
           sessions={filteredSessions}
           totalSessionCount={sessionList.length}
+          catalogSynced={sessionCatalogSynced}
           query={searchQuery}
           onQueryChange={setSearchQuery}
           activeSessionId={active}

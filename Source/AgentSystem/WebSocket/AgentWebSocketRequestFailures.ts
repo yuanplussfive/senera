@@ -120,6 +120,7 @@ export function projectAgentWebSocketRequestFailure(
       kind: AgentEventKinds.RequestInvalid,
       context: {},
       data: {
+        code: "interaction_input_resolve_failed",
         message: errorMessage(error),
         details: {
           interactionId: request.interactionId,

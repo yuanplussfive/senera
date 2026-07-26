@@ -529,14 +529,20 @@ export class AgentSessionManager {
         await emitAgentEvent(request.onEvent, {
           kind: AgentEventKinds.RequestInvalid,
           context: { sessionId: result.sessionId },
-          data: { message: agentErrorMessage("session.forkTargetExists", { sessionId: result.sessionId }) },
+          data: {
+            code: "session_fork_target_exists",
+            message: agentErrorMessage("session.forkTargetExists", { sessionId: result.sessionId }),
+          },
         });
         return;
       case "request_missing":
         await emitAgentEvent(request.onEvent, {
           kind: AgentEventKinds.RequestInvalid,
           context: { sessionId: result.sourceSessionId },
-          data: { message: agentErrorMessage("session.forkBoundaryMissing", { requestId: result.requestId }) },
+          data: {
+            code: "session_fork_boundary_missing",
+            message: agentErrorMessage("session.forkBoundaryMissing", { requestId: result.requestId }),
+          },
         });
         return;
       case "forked":

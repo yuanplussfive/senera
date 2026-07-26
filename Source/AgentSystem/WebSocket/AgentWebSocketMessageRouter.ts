@@ -2,7 +2,10 @@ import { type WebSocket, type RawData } from "ws";
 import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { matchByType } from "../Core/AgentMatch.js";
 import { AgentWebSocketRequestSchema, type AgentWebSocketRequest } from "./AgentWebSocketProtocol.js";
-import { projectAgentWebSocketParseFailure, projectAgentWebSocketRequestFailure } from "./AgentWebSocketRequestFailures.js";
+import {
+  projectAgentWebSocketParseFailure,
+  projectAgentWebSocketRequestFailure,
+} from "./AgentWebSocketRequestFailures.js";
 import {
   AgentWebSocketApprovalRequestHandlers,
   AgentWebSocketConfigRequestHandlers,
@@ -167,6 +170,6 @@ function requestInvalidEvent(data: { message: string; details?: unknown }): Agen
   return {
     kind: AgentEventKinds.RequestInvalid,
     context: {},
-    data,
+    data: { code: "request_parse_failed", ...data },
   };
 }

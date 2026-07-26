@@ -23,6 +23,7 @@ import { projectSessionHistoryEvent } from "./sessionHistoryProjector";
 import { deleteSessionRuntimeState, ingestSessionList, readFirstAvailableSessionId } from "./sessionListProjection";
 import { nowIso, syncSessionCountsFromLoadedMessages } from "./sessionProjectorCore";
 import { applyModelListSnapshotSelection, syncActiveSessionModelSelection } from "./sessionModelSelection";
+import { syncRunActiveFlags } from "./sessionRunProjection";
 import type { StoreState } from "./types";
 
 export { normalizeUserProfile } from "./userProfile";
@@ -56,20 +57,39 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
 
   switch (env.kind) {
     case EventKinds.RequestInvalid: {
-      const details = (env.data as RequestInvalidData).details;
-      const interactionId =
-        details && typeof details === "object" && "interactionId" in details
-          ? (details as { interactionId?: unknown }).interactionId
+      const data = env.data as RequestInvalidData;
+      const details = data.details;
+      const readDetail = (key: string): unknown =>
+        details && typeof details === "object" && key in details
+          ? (details as Record<string, unknown>)[key]
           : undefined;
-      if (typeof interactionId !== "string") return;
-      for (const session of Object.values(state.sessions)) {
-        for (const run of session.runs) {
-          const interaction = run.interactionInputs?.find((entry) => entry.interactionId === interactionId);
-          if (!interaction) continue;
-          interaction.resolutionPending = false;
-          interaction.pendingAction = undefined;
-          run.revision += 1;
-          return;
+      const interactionId = readDetail("interactionId");
+      if (typeof interactionId === "string") {
+        for (const session of Object.values(state.sessions)) {
+          for (const run of session.runs) {
+            const interaction = run.interactionInputs?.find((entry) => entry.interactionId === interactionId);
+            if (!interaction) continue;
+            interaction.resolutionPending = false;
+            interaction.pendingAction = undefined;
+            run.revision += 1;
+            return;
+          }
+        }
+        return;
+      }
+      const approvalId = readDetail("approvalId");
+      if (data.code === "approval_not_pending" && typeof approvalId === "string") {
+        for (const session of Object.values(state.sessions)) {
+          for (const run of session.runs) {
+            const approval = run.approvals?.find((entry) => entry.approvalId === approvalId);
+            if (!approval) continue;
+            approval.resolutionPending = false;
+            approval.pendingDecision = undefined;
+            if (approval.status === "pending") approval.status = "expired";
+            syncRunActiveFlags(run);
+            run.revision += 1;
+            return;
+          }
         }
       }
       return;
@@ -111,6 +131,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
     case EventKinds.PluginConfigSnapshot: {
       const data = env.data as PluginConfigSnapshotData;
       state.pluginConfigs = data.plugins;
+      state.catalogSynced.plugins = true;
       return;
     }
 
@@ -120,6 +141,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       state.activePresetName = data.activePresetName;
       state.presetsEnabled = data.enabled;
       state.presetRootDir = data.rootDir;
+      state.catalogSynced.presets = true;
       return;
     }
 
@@ -187,6 +209,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
     case EventKinds.SessionListSnapshot: {
       const data = env.data as SessionListSnapshotData;
       ingestSessionList(state, data.sessions);
+      state.catalogSynced.sessions = true;
       return;
     }
 

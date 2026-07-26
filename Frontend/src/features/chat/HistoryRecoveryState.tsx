@@ -1,9 +1,9 @@
 import { motion } from "framer-motion";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/motion";
-import { Button, ConversationFrame } from "../../shared/ui";
+import { ConversationFrame, RetryButton, Skeleton } from "../../shared/ui";
 
 export function HistoryRecoveryState({
   failed,
@@ -33,25 +33,14 @@ export function HistoryRecoveryState({
                 {frontendMessage("session.historyFailedDescription")}
               </p>
             </div>
-            {onRetry ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onRetry}
-                disabled={retryDisabled}
-                className="h-7 gap-1 rounded-md px-2 text-[12px]"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                {frontendMessage("ui.retry")}
-              </Button>
-            ) : null}
+            {onRetry ? <RetryButton onRetry={onRetry} disabled={retryDisabled} /> : null}
           </div>
         </div>
       </div>
     );
   }
 
-  const rows = Math.min(6, Math.max(5, Math.ceil(messageCount / 3)));
+  const rows = Math.min(6, Math.max(1, messageCount || 5));
   return (
     <div
       className="flex flex-1 flex-col justify-end overflow-hidden pb-5 pt-6"
@@ -60,7 +49,7 @@ export function HistoryRecoveryState({
       aria-label={frontendMessage("session.historyRestoring", { count: messageCount })}
       data-history-skeleton
     >
-      <div className="flex w-full flex-col gap-5">
+      <div className="flex w-full flex-col gap-4">
         {Array.from({ length: rows }).map((_, index) => (
           <HistorySkeletonRow
             key={index}
@@ -70,9 +59,6 @@ export function HistoryRecoveryState({
           />
         ))}
       </div>
-      <span className="sr-only" aria-live="polite">
-        {frontendMessage("session.historyRestoring", { count: messageCount })}
-      </span>
     </div>
   );
 }
@@ -103,10 +89,9 @@ function UserMessageSkeleton({ index }: { index: number }): JSX.Element {
   return (
     <ConversationFrame mode="user" className="items-start justify-end gap-2.5" aria-hidden="true">
       <div className={cn("flex flex-col items-end", index % 4 === 0 ? "w-[46%]" : "w-[58%]")}>
-        <span className="shimmer h-2 w-16 rounded-sm" />
-        <span className="shimmer mt-2 h-11 w-full rounded-lg rounded-tr-sm" />
+        <Skeleton className="h-11 w-full rounded-2xl rounded-tr-[5px]" />
       </div>
-      <span className="shimmer h-8 w-8 shrink-0 rounded-full" />
+      <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
     </ConversationFrame>
   );
 }
@@ -115,12 +100,12 @@ function AssistantMessageSkeleton({ index }: { index: number }): JSX.Element {
   return (
     <ConversationFrame mode="wide" aria-hidden="true">
       <div className="flex min-w-0 items-start gap-3">
-        <span className="shimmer h-8 w-8 shrink-0 rounded-md" />
+        <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
         <div className={cn("min-w-0 flex-1", index % 4 === 1 ? "max-w-[72%]" : "max-w-[82%]")}>
-          <span className="shimmer block h-3 w-24 rounded-sm" />
-          <span className="shimmer mt-3 block h-3 w-full rounded-sm" />
-          <span className="shimmer mt-2 block h-3 w-[88%] rounded-sm" />
-          <span className="shimmer mt-2 block h-3 w-[62%] rounded-sm" />
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="mt-3 h-3 w-full" />
+          <Skeleton className="mt-2 h-3 w-[88%]" />
+          <Skeleton className="mt-2 h-3 w-[62%]" />
         </div>
       </div>
     </ConversationFrame>
