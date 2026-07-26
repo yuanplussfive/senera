@@ -140,8 +140,7 @@ export function useProviderConnectionDraftQueue({
         (providerOperation.kind === "provider.endpoint.delete" ||
           providerOperation.kind === "provider.endpoint.rename");
       const missing =
-        pendingProviderDraftId !== providerId &&
-        !providersRef.current.some((provider) => provider.Id === providerId);
+        pendingProviderDraftId !== providerId && !providersRef.current.some((provider) => provider.Id === providerId);
       if (destructivePending || missing) return;
       const entry = entriesRef.current.get(providerId) ?? read(nextDraft);
       if (entry.active) {

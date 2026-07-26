@@ -5,10 +5,7 @@ import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { normalizeProviderEndpointDraft } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import type { ModelServiceState } from "./modelServiceState";
-import {
-  buildProviderEndpointMutationInput,
-  sameProviderEndpoint,
-} from "./providerConnectionState";
+import { buildProviderEndpointMutationInput, sameProviderEndpoint } from "./providerConnectionState";
 import { useProviderConnectionDraftQueue } from "./useProviderConnectionDraftQueue";
 
 interface PendingProviderRename {
