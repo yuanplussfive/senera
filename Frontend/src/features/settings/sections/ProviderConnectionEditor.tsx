@@ -201,7 +201,13 @@ export function ProviderConnectionEditor({
       <Dialog
         open={requestConfigOpen}
         onOpenChange={(open) => {
-          if (!open) onConfirm({ Headers: rowsToHeaders(requestHeadersDraft) });
+          // Save-on-close, but never commit a duplicate-name collapse: rowsToHeaders
+          // is last-wins, so ESC/X with duplicates would silently drop a header.
+          // Match the disabled Confirm button — discard the invalid in-dialog edits
+          // (reopening reseeds from the saved headers) instead of corrupting them.
+          if (!open && duplicateHeaderNames.size === 0) {
+            onConfirm({ Headers: rowsToHeaders(requestHeadersDraft) });
+          }
           setRequestConfigOpen(open);
         }}
       >

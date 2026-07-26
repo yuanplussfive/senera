@@ -57,6 +57,7 @@ export interface ProviderConnectionActions {
   localError: string | null;
   showAddDialog: boolean;
   setShowAddDialog: (open: boolean) => void;
+  dismissAddDialog: () => void;
   addPending: boolean;
   addError: string | null;
   renameTarget: ProviderEndpointDraft | null;
@@ -224,10 +225,9 @@ export function useProviderConnectionActions({
 
     if (pendingProviderDraftId === selectedProviderId) {
       if (!acceptedProvider || acceptedProvider.Id !== selectedProviderId) {
-        if (pendingAddStatus === "error") {
-          setPendingProviderDraft(null);
-          setPendingProviderDraftConfirmation(null);
-        }
+        // A failed add keeps its pending draft so the dialog can surface the
+        // error and offer Retry; dismissAddDialog() clears it when the user
+        // gives up. Clearing here would blank the error after a single frame.
         return;
       }
 
@@ -246,7 +246,6 @@ export function useProviderConnectionActions({
     }
   }, [
     acceptedProvider,
-    pendingAddStatus,
     pendingProviderDraftConfirmation,
     pendingProviderDraftConfirmationStatus,
     pendingProviderDraftId,
@@ -327,6 +326,15 @@ export function useProviderConnectionActions({
     if (pendingAddStatus === "success") setShowAddDialog(false);
   }, [pendingAddStatus]);
 
+  const dismissAddDialog = (): void => {
+    // Abandon an in-flight or failed add: drop the pending draft so the editor
+    // does not stay pointed at a provider the server never accepted, and so a
+    // stale error does not resurface when the dialog reopens.
+    setShowAddDialog(false);
+    setPendingProviderDraft(null);
+    setPendingProviderDraftConfirmation(null);
+  };
+
   const addPending = pendingAddStatus === "pending";
   const addError = pendingAddStatus === "error" ? (pendingAddOperation?.message ?? null) : null;
 
@@ -393,6 +401,7 @@ export function useProviderConnectionActions({
     localError,
     showAddDialog,
     setShowAddDialog,
+    dismissAddDialog,
     addPending,
     addError,
     renameTarget,
