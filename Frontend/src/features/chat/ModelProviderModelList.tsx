@@ -22,7 +22,13 @@ import {
   iconButtonClassName,
 } from "./ModelConfigPrimitives";
 
-const EMPTY_PENDING_MODEL_IDS: ReadonlySet<string> = new Set();
+const EMPTY_PENDING_MODEL_IDS: ReadonlyMap<string, string> = new Map();
+
+function pendingModelOperationLabel(kind: string): string {
+  if (kind === "provider.model.delete") return frontendMessage("settings.modelManagement.removing");
+  if (kind === "provider.defaultModel.set") return frontendMessage("settings.modelManagement.settingDefault");
+  return frontendMessage("settings.modelManagement.adding");
+}
 const modelActionClassName =
   "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[10.5px] font-medium text-ink-650 transition hover:bg-ink-900/[0.05] hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50";
 const modelRemoveActionClassName =
@@ -66,7 +72,7 @@ export function ProviderModelList({
   models: ModelProviderDraft[];
   modelTemplate: Record<string, unknown>;
   defaultModelId: string;
-  pendingModelIds?: ReadonlySet<string>;
+  pendingModelIds?: ReadonlyMap<string, string>;
   search: string;
   configuredOnly: boolean;
   disabled: boolean;
@@ -284,7 +290,7 @@ function ProviderModelRows({
   models: ModelProviderDraft[];
   modelTemplate: Record<string, unknown>;
   defaultModelId: string;
-  pendingModelIds: ReadonlySet<string>;
+  pendingModelIds: ReadonlyMap<string, string>;
   disabled: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
   onSetDefaultModel?: (model: ModelProviderDraft) => void;
@@ -338,7 +344,7 @@ function ProviderModelRows({
                 providerId={selectedProvider.Id}
                 configured={configuredByModel.get(model.id)}
                 defaultModelId={defaultModelId}
-                pending={pendingModelIds.has(modelConfigId(selectedProviderId, model.id))}
+                pendingKind={pendingModelIds.get(modelConfigId(selectedProviderId, model.id))}
                 modelTemplate={modelTemplate}
                 disabled={disabled}
                 onConfigureModel={onConfigureModel}
@@ -359,7 +365,7 @@ function ProviderModelRow({
   providerId,
   configured,
   defaultModelId,
-  pending,
+  pendingKind,
   modelTemplate,
   disabled,
   onConfigureModel,
@@ -371,7 +377,8 @@ function ProviderModelRow({
   providerId: string;
   configured?: ModelProviderDraft;
   defaultModelId: string;
-  pending: boolean;
+  /** Operation kind pending for this model (upsert/delete/default-set), if any. */
+  pendingKind?: string;
   modelTemplate: Record<string, unknown>;
   disabled: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
@@ -400,10 +407,10 @@ function ProviderModelRow({
       </span>
       <span className="flex flex-wrap items-center justify-end gap-1.5">
         <ConfiguredModelBadge isDefault={isDefault} configured={Boolean(configured)} />
-        {pending ? (
+        {pendingKind ? (
           <span className="inline-flex items-center gap-1.5 text-[10.5px] font-medium text-ink-600">
             <Loader2 className="h-3 w-3 animate-spin text-accent-content" />{" "}
-            {frontendMessage("settings.modelManagement.adding")}
+            {pendingModelOperationLabel(pendingKind)}
           </span>
         ) : configured && (onSetDefaultModel || onRemoveModel) ? (
           <>

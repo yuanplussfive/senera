@@ -169,10 +169,10 @@ export function ProviderModelManagementSurface({
   const catalogGroups = groupProviderModelRows(catalogVisibleRows, modelGroups);
   const pendingModelIds = useMemo(
     () =>
-      new Set(
+      new Map(
         Object.entries(operations)
           .filter(([, operation]) => operation.status === "pending")
-          .map(([modelId]) => modelId),
+          .map(([modelId, operation]) => [modelId, operation.kind] as const),
       ),
     [operations],
   );

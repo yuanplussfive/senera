@@ -1106,6 +1106,8 @@
   "settings.modelManagement.providerModel": "Provider model",
   "settings.modelManagement.added": "Added",
   "settings.modelManagement.adding": "Adding",
+  "settings.modelManagement.removing": "Removing",
+  "settings.modelManagement.settingDefault": "Setting default",
   "settings.modelManagement.addModel": "Add model",
   "settings.modelManagement.addModelAria": "Add model {model}",
   "settings.modelManagement.noProvider": "Add a provider connection before managing models.",

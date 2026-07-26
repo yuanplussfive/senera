@@ -38,7 +38,7 @@ export function ProviderModelCatalogDialog({
   onOpenChange: (open: boolean) => void;
   onSearch: (value: string) => void;
   open: boolean;
-  pendingModelIds: ReadonlySet<string>;
+  pendingModelIds: ReadonlyMap<string, string>;
   providerId: string;
   rows: ProviderModelInfo[];
   search: string;
@@ -157,7 +157,7 @@ function CatalogModelDialogContent({
   rows: ProviderModelInfo[];
   groups: ReturnType<typeof groupProviderModelRows>;
   configuredModels: readonly ModelProviderDraft[];
-  pendingModelIds: ReadonlySet<string>;
+  pendingModelIds: ReadonlyMap<string, string>;
   providerId: string;
   search: string;
   loading: boolean;

@@ -1106,6 +1106,8 @@
   "settings.modelManagement.providerModel": "供应商模型",
   "settings.modelManagement.added": "已添加",
   "settings.modelManagement.adding": "添加中",
+  "settings.modelManagement.removing": "移除中",
+  "settings.modelManagement.settingDefault": "设为默认中",
   "settings.modelManagement.addModel": "添加模型",
   "settings.modelManagement.addModelAria": "添加模型 {model}",
   "settings.modelManagement.noProvider": "先在供应商中添加连接，再管理模型。",
