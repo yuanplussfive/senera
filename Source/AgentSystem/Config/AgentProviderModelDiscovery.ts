@@ -68,6 +68,14 @@ export class AgentProviderModelDiscovery {
       );
     }
 
+    if (!endpoint.ApiKey.trim()) {
+      throw new Error(
+        agentErrorMessage("model.listApiKeyEmpty", {
+          providerId: endpoint.Id,
+        }),
+      );
+    }
+
     const fingerprint = endpointFingerprint(endpoint);
     const cached = this.cache.get(endpoint.Id);
     if (!input.force && cached?.fingerprint === fingerprint) {

@@ -347,7 +347,7 @@ test("useConfigMutationController rolls back disconnected sends and records prov
 
   send.mockReturnValue(true);
   await act(async () => {
-    handleRef.current.fetchProviderModels("openai", true);
+    handleRef.current.fetchProviderModels("openai", true, { Id: "openai", ApiKey: "secret" });
   });
   expect(handleRef.current.providerModelLoadingIds.openai).toBe(true);
 

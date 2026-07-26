@@ -116,7 +116,6 @@ export interface ReadProviderModelListStateInput {
   models: ModelProviderDraft[];
   provider: ProviderEndpointDraft;
   search?: string;
-  configuredOnly?: boolean;
 }
 
 export interface DefaultAssistantModelCandidate {
@@ -239,7 +238,6 @@ export function readProviderModelListState({
   models,
   provider,
   search = "",
-  configuredOnly = false,
 }: ReadProviderModelListStateInput): ProviderModelListState {
   const catalog = provider.Id ? catalogs[provider.Id] : undefined;
   const rows = sortProviderModelRows({
@@ -248,7 +246,7 @@ export function readProviderModelListState({
       models,
       providerId: provider.Id,
       search,
-      configuredOnly,
+      configuredOnly: true,
     }),
     models,
     providerId: provider.Id,

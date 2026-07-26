@@ -3,6 +3,7 @@ import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
 import type { ProviderModelConfigInput } from "../../../api/providerModelCommandTypes";
 import { cn } from "../../../lib/util";
+import { StateView } from "../../../shared/ui";
 import {
   createModelDraft,
   groupProviderModelRows,
@@ -15,7 +16,7 @@ import { readProviderModelListState, type ReadProviderModelListStateInput } from
 import { ModelOptionsDialog } from "../../chat/ModelOptionsDialog";
 import { ProviderModelList } from "../../chat/ModelProviderModelList";
 import type { ModelProviderDraft, ProviderModelInfo } from "../../chat/modelConfigTypes";
-import { SettingsWorkspaceState } from "../SettingsWorkspaceSurface";
+
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import type { ModelServiceState } from "./modelServiceState";
 import type { ConfigFormSectionData } from "../../../api/eventTypes";
@@ -89,7 +90,6 @@ export function ProviderModelManagementSurface({
     initialSelectedProviderId ?? state.providers[0]?.Id ?? "",
   );
   const [search, setSearch] = useState("");
-  const [configuredOnly, setConfiguredOnly] = useState(false);
   const [editingModel, setEditingModel] = useState<ModelProviderDraft | null>(null);
   const [editingExisting, setEditingExisting] = useState(false);
   const [closeBlocked, setCloseBlocked] = useState(false);
@@ -146,16 +146,15 @@ export function ProviderModelManagementSurface({
         provider: selectedProvider,
       })
     : null;
+  const providerFetchEndpoint = selectedProvider
+    ? (fetchEndpoint ?? toProviderEndpointInput(selectedProvider))
+    : undefined;
+  const canFetchProviderModels = Boolean(providerFetchEndpoint?.ApiKey?.trim());
   const modelTemplate = useMemo(() => modelField?.defaultItem ?? {}, [modelField]);
   const endpointChoices = endpointOptions;
   const visibleRows = selectedProvider
     ? (selectedList?.rows.filter((row) => {
         const query = deferredSearch.trim().toLowerCase();
-        if (
-          configuredOnly &&
-          !state.models.some((model) => model.ProviderId === selectedProvider.Id && model.Model === row.id)
-        )
-          return false;
         if (!query) return true;
         return row.id.toLowerCase().includes(query);
       }) ?? [])
@@ -178,7 +177,13 @@ export function ProviderModelManagementSurface({
   );
 
   if (!selectedProvider || !selectedList) {
-    return <SettingsWorkspaceState>{frontendMessage("settings.modelManagement.noProvider")}</SettingsWorkspaceState>;
+    return (
+      <StateView
+        status="empty"
+        className="min-h-[360px] bg-paper-50"
+        description={frontendMessage("settings.modelManagement.noProvider")}
+      />
+    );
   }
 
   const configuredModel = (modelId: string): ModelProviderDraft | undefined =>
@@ -262,7 +267,7 @@ export function ProviderModelManagementSurface({
   return (
     <div
       className={cn(
-        embedded ? "grid min-h-0 bg-paper-50" : "grid h-full min-h-0 bg-paper-50",
+        "grid h-full min-h-0 overflow-hidden bg-paper-50",
         showProviderList ? "grid-cols-[minmax(210px,260px)_minmax(0,1fr)]" : "grid-cols-1",
       )}
     >
@@ -276,7 +281,7 @@ export function ProviderModelManagementSurface({
           onSelect={setSelectedProviderId}
         />
       ) : null}
-      <section className={cn("min-h-0 min-w-0 bg-paper-50", embedded ? "overflow-visible" : "overflow-hidden")}>
+      <section className="h-full min-h-0 min-w-0 overflow-hidden bg-paper-50">
         <ProviderModelList
           selectedProvider={selectedProvider}
           catalog={selectedList.catalog}
@@ -285,6 +290,7 @@ export function ProviderModelManagementSurface({
           }
           loading={Boolean(selectedList.loading)}
           enabled={Boolean(selectedList.enabled)}
+          canFetchModels={canFetchProviderModels}
           rows={visibleRows}
           groups={visibleGroups}
           models={state.models}
@@ -292,27 +298,20 @@ export function ProviderModelManagementSurface({
           defaultModelId={state.defaultModel?.model.Id ?? ""}
           pendingModelIds={pendingModelIds}
           search={search}
-          configuredOnly={configuredOnly}
           disabled={disabled}
-          layoutMode={embedded ? "embedded" : "panel"}
           compactHeader={embedded}
           onSearch={setSearch}
-          onConfiguredOnlyChange={setConfiguredOnly}
           onOpenModelGroups={() => setGroupUnsupportedDialogOpen(true)}
           showFetchAction={showFetchAction}
           onAddManualModel={() => setManualOpen(true)}
           onFetch={(force) => {
+            if (!providerFetchEndpoint?.ApiKey?.trim()) return;
             setCatalogOpen(true);
-            onFetchProviderModels(
-              selectedProvider.Id,
-              force,
-              fetchEndpoint ?? toProviderEndpointInput(selectedProvider),
-            );
+            onFetchProviderModels(selectedProvider.Id, force, providerFetchEndpoint);
           }}
           onConfigureModel={openModel}
           onSetDefaultModel={(model) => onSetDefaultModel(model.Id)}
           onRemoveModel={requestModelRemoval}
-          onAddModel={addFetchedModel}
         />
       </section>
       <ModelOptionsDialog
@@ -423,6 +422,11 @@ export function ProviderModelManagementSurface({
         onAddModel={addFetchedModel}
         onOpenChange={setCatalogOpen}
         onSearch={setCatalogSearch}
+        onRetryFetch={
+          providerFetchEndpoint?.ApiKey?.trim()
+            ? () => onFetchProviderModels(selectedProvider.Id, true, providerFetchEndpoint)
+            : undefined
+        }
       />
       <ProviderModelManualAddDialog
         disabled={disabled}

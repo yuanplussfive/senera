@@ -8,10 +8,22 @@ import { AgentProviderModelDiscovery } from "../../../Source/AgentSystem/Config/
 import {
   resolveModelProviderConfig,
   resolveModelProviderEndpointCatalog,
+  resolveModelProviderEndpointConfigs,
 } from "../../../Source/AgentSystem/Defaults/AgentModelProviderDefaults.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 describe("model provider endpoint defaults", () => {
+  it("keeps built-in endpoints disabled until they are explicitly configured", () => {
+    expect(resolveModelProviderEndpointConfigs({ ModelProviders: [] })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ Id: "openai", Enabled: false }),
+        expect.objectContaining({ Id: "deepseek", Enabled: false }),
+        expect.objectContaining({ Id: "anthropic", Enabled: false }),
+        expect.objectContaining({ Id: "gemini", Enabled: false }),
+      ]),
+    );
+  });
+
   it("uses the same effective built-in endpoint for UI projection and model runtime", () => {
     const config = deepSeekConfig();
     const endpoint = resolveModelProviderEndpointCatalog(config).resolve("deepseek");
@@ -34,7 +46,7 @@ describe("model provider endpoint defaults", () => {
   it("inherits omitted headers but respects explicit empty headers and base URLs", () => {
     const inherited = resolveModelProviderEndpointCatalog({
       ...deepSeekConfig(),
-      ModelProviderEndpoints: [{ Id: "anthropic", ApiKey: "secret" }],
+      ModelProviderEndpoints: [{ Id: "anthropic", Enabled: true, ApiKey: "secret" }],
       ModelProviders: [
         {
           Id: "anthropic-chat",
@@ -49,7 +61,7 @@ describe("model provider endpoint defaults", () => {
 
     const explicit = resolveModelProviderEndpointCatalog({
       ...deepSeekConfig(),
-      ModelProviderEndpoints: [{ Id: "anthropic", BaseUrl: "", Headers: {} }],
+      ModelProviderEndpoints: [{ Id: "anthropic", Enabled: true, BaseUrl: "", Headers: {} }],
     }).resolve("anthropic");
     expect(explicit.BaseUrl).toBe("");
     expect(explicit.Headers).toEqual({});
@@ -73,6 +85,20 @@ describe("model provider endpoint defaults", () => {
       new URL("https://api.deepseek.com/v1/models"),
       expect.objectContaining({ method: "GET" }),
     );
+  });
+
+  it("does not contact the provider when its API key is empty", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const discovery = new AgentProviderModelDiscovery({
+      configSnapshot: () => ({
+        ModelProviderEndpoints: [{ Id: "deepseek", Enabled: true }],
+        ModelProviders: [],
+      }),
+      fetchImpl,
+    });
+
+    await expect(discovery.listProviderModels({ providerId: "deepseek" })).rejects.toThrow("API Key");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("rejects a default model whose custom endpoint has no effective base URL", () => {
@@ -139,7 +165,7 @@ describe("model provider endpoint defaults", () => {
 function deepSeekConfig(): AgentSystemConfig {
   return {
     DefaultModelProviderId: "deepseek-chat",
-    ModelProviderEndpoints: [{ Id: "deepseek", ApiKey: "secret" }],
+    ModelProviderEndpoints: [{ Id: "deepseek", Enabled: true, ApiKey: "secret" }],
     ModelProviders: [
       {
         Id: "deepseek-chat",

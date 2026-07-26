@@ -87,6 +87,8 @@ export function resolveModelProviderEndpointCatalog(config: AgentSystemConfig) {
 export function resolveModelProviderCatalog(config: AgentSystemConfig) {
   const defaults = resolveAgentDefaults(config);
   const endpointCatalog = resolveModelProviderEndpointCatalog(config);
+  const configuredModelIds = new Set(config.ModelProviders.map((provider) => provider.Id));
+  const resolveConfiguredModelId = createModelProviderIdAliasResolver(config, configuredModelIds);
   const providers: ResolvedAgentModelProviderConfig[] = config.ModelProviders.flatMap((provider) => {
     const endpoint = endpointCatalog.resolveKnown(provider.ProviderId);
     if (!endpoint.Enabled) return [];
@@ -126,13 +128,12 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
     ids.add(provider.Id);
   }
 
-  if (
-    config.DefaultModelProviderId !== undefined &&
-    !config.ModelProviders.some((provider) => provider.Id === config.DefaultModelProviderId)
-  ) {
+  const configuredDefaultId =
+    config.DefaultModelProviderId === undefined ? undefined : resolveConfiguredModelId(config.DefaultModelProviderId);
+  if (configuredDefaultId !== undefined && !configuredModelIds.has(configuredDefaultId)) {
     throw new Error(`默认模型配置不存在：DefaultModelProviderId=${config.DefaultModelProviderId}`);
   }
-  const defaultId = providers.find((provider) => provider.Id === config.DefaultModelProviderId)?.Id ?? providers[0]?.Id;
+  const defaultId = providers.find((provider) => provider.Id === configuredDefaultId)?.Id ?? providers[0]?.Id;
   const defaultProvider = providers.find((provider) => provider.Id === defaultId);
   if (!defaultProvider) {
     throw new Error(`默认模型配置不存在：DefaultModelProviderId=${defaultId}`);
@@ -142,7 +143,8 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
     defaultId,
     providers,
     resolve: (providerId?: string) => {
-      const resolvedId = providerId?.trim() || defaultId;
+      const requestedId = providerId?.trim();
+      const resolvedId = requestedId ? resolveConfiguredModelId(requestedId) : defaultId;
       const provider = providers.find((item) => item.Id === resolvedId);
       if (!provider) {
         throw new Error(`模型配置不存在：${resolvedId}`);
@@ -151,6 +153,39 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
     },
     list: () => providers.map((provider) => toModelProviderListItem(provider, defaultId, defaults.ModelRuntime)),
   };
+}
+
+function createModelProviderIdAliasResolver(
+  config: AgentSystemConfig,
+  modelIds: ReadonlySet<string>,
+): (modelId: string) => string {
+  const aliases = config.ModelProviderIdAliases ?? {};
+
+  const resolve = (modelId: string): string => {
+    if (modelIds.has(modelId)) {
+      return modelId;
+    }
+
+    const visited = new Set<string>();
+    let current = modelId;
+    while (!modelIds.has(current)) {
+      if (visited.has(current)) {
+        throw new Error(`模型 ID 兼容别名存在循环：ModelProviderIdAliases.${modelId}`);
+      }
+      visited.add(current);
+      const next = aliases[current];
+      if (!next) {
+        throw new Error(`模型配置不存在：${modelId}`);
+      }
+      current = next;
+    }
+    return current;
+  };
+
+  for (const alias of Object.keys(aliases)) {
+    resolve(alias);
+  }
+  return resolve;
 }
 
 function resolveModelRetryDelays(

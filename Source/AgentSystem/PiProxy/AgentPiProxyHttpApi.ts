@@ -338,15 +338,14 @@ function resolvePiProxyModelProvider(
   }
 
   const catalog = resolveModelProviderCatalog(config);
-  const provider = catalog.providers.find((item) => item.Id === modelProviderId);
-  if (!provider) {
+  try {
+    return catalog.resolve(modelProviderId);
+  } catch {
     throw new AgentPiProxyRequestError(
       "invalid_model_provider",
       `Pi proxy model provider is not configured: ${modelProviderId}`,
     );
   }
-
-  return provider;
 }
 
 function routeKey(request: http.IncomingMessage): string {

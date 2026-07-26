@@ -23,6 +23,7 @@
   "mcp.requiredNonEmptyString": "{name} 必须是非空字符串。",
   "mcp.ripgrepUnsupportedTool": "不支持的 ripgrep MCP 工具：{toolName}",
   "model.apiKeyMissing": "缺少模型 API Key。请在配置文件中填写 ModelProviders[].ApiKey。 provider={providerId}",
+  "model.listApiKeyEmpty": "供应商 API Key 为空：{providerId}",
   "model.listBaseUrlEmpty": "供应商 Base URL 为空：{providerId}",
   "model.listProviderDisabled": "供应商已关闭：{providerId}",
   "model.listRequestFailed": "模型列表请求失败：provider={providerId} status={status} {statusText}",

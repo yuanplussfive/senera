@@ -89,7 +89,12 @@ test("useConfigMutationController handles offline commands and unmatched events 
 
   await act(async () => {
     expect(handleRef.current.saveConfig({ AgentLoop: {} })).toBe(null);
-    expect(handleRef.current.fetchProviderModels("openai")).toBeUndefined();
+    expect(
+      handleRef.current.fetchProviderModels("openai", false, {
+        Id: "openai",
+        ApiKey: "secret",
+      }),
+    ).toBeUndefined();
     expect(handleRef.current.savePluginConfig("demo", "enabled = true")).toBe(null);
     expect(handleRef.current.savePreset({ name: "default", format: "toml", content: "x = 1" })).toBe(null);
     expect(
@@ -108,6 +113,24 @@ test("useConfigMutationController handles offline commands and unmatched events 
       expect.objectContaining({ title: frontendMessage("preset.updateOffline") }),
     ]),
   );
+});
+
+test("useConfigMutationController does not start model discovery without an API key", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+
+  render(React.createElement(ConfigMutationHarness, { send, status: "open", handleRef }));
+
+  await act(async () => {
+    handleRef.current.fetchProviderModels("openai", true, {
+      Id: "openai",
+      ApiKey: "   ",
+      BaseUrl: "https://api.openai.com/v1",
+    });
+  });
+
+  expect(send).not.toHaveBeenCalled();
+  expect(handleRef.current.providerModelLoadingIds).toEqual({});
 });
 
 test("useConfigMutationController ignores execution resource list snapshots without treating them as config commands", async () => {
@@ -217,7 +240,7 @@ test("useConfigMutationController covers enabled plugins, preset mutations, and 
 
   send.mockReturnValue(false);
   await act(async () => {
-    handleRef.current.fetchProviderModels("openai", true);
+    handleRef.current.fetchProviderModels("openai", true, { Id: "openai", ApiKey: "secret" });
   });
   expect(handleRef.current.providerModelLoadingIds).toEqual({});
 });
@@ -456,7 +479,7 @@ test("useConfigMutationController rolls back disconnected sends and records prov
 
   send.mockReturnValue(true);
   await act(async () => {
-    handleRef.current.fetchProviderModels("openai", true);
+    handleRef.current.fetchProviderModels("openai", true, { Id: "openai", ApiKey: "secret" });
   });
   expect(handleRef.current.providerModelLoadingIds.openai).toBe(true);
 
