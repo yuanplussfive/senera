@@ -92,6 +92,7 @@ export function ProviderModelManagementSurface({
   const [configuredOnly, setConfiguredOnly] = useState(false);
   const [editingModel, setEditingModel] = useState<ModelProviderDraft | null>(null);
   const [editingExisting, setEditingExisting] = useState(false);
+  const [closeBlocked, setCloseBlocked] = useState(false);
   const [manualOpen, setManualOpen] = useState(initialManualAdd);
   const [manualModelId, setManualModelId] = useState("");
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -117,6 +118,7 @@ export function ProviderModelManagementSurface({
       pendingNewModelIdRef.current = null;
       setEditingModel(null);
       setEditingExisting(false);
+      setCloseBlocked(false);
     },
   });
 
@@ -196,17 +198,31 @@ export function ProviderModelManagementSurface({
       });
     setEditingModel(draft);
     setEditingExisting(Boolean(configured));
+    setCloseBlocked(false);
     pendingNewModelIdRef.current = null;
   };
 
   const requestModelRemoval = (model: ModelProviderDraft): void => {
+    // Drop the queued draft first: a debounced edit firing after the delete
+    // command would silently re-upsert (resurrect) the removed model.
+    modelSaveQueue.discard(model.Id);
     setEditingModel(null);
+    setCloseBlocked(false);
     onRequestRemoveModel(model);
   };
 
   const addManualModel = (): void => {
     const modelId = manualModelId.trim();
     if (!modelId) return;
+    const configured = configuredModel(modelId);
+    if (configured) {
+      // Already configured: open it for editing. Submitting a fresh template
+      // draft here would silently reset every customized field to defaults.
+      setManualOpen(false);
+      setManualModelId("");
+      openModel({ id: modelId });
+      return;
+    }
     const model = createModelDraft({
       provider: selectedProvider,
       modelInfo: { id: modelId },
@@ -325,14 +341,39 @@ export function ProviderModelManagementSurface({
           if (!editingModel) return;
           if (editingExisting) {
             const flushed = modelSaveQueue.flush(editingModel.Id, true);
-            if (!flushed || !modelSaveQueue.requestClose(editingModel.Id)) return;
+            if (!flushed || !modelSaveQueue.requestClose(editingModel.Id)) {
+              // An in-flight save auto-closes on completion; anything else
+              // (offline, rejected) needs the discard escape so a failing save
+              // can never trap the dialog open.
+              if (operations[editingModel.Id]?.status !== "pending") setCloseBlocked(true);
+              return;
+            }
           } else {
             if (!modelSaveQueue.requestClose(editingModel.Id)) return;
             pendingNewModelIdRef.current = null;
           }
           setEditingModel(null);
           setEditingExisting(false);
+          setCloseBlocked(false);
         }}
+        errorMessage={
+          editingModel && operations[editingModel.Id]?.status === "error"
+            ? (operations[editingModel.Id]?.message ?? null)
+            : null
+        }
+        discardAction={
+          editingExisting && editingModel && (closeBlocked || operations[editingModel.Id]?.status === "error")
+            ? {
+                label: frontendMessage("settings.modelManagement.discardAndClose"),
+                onDiscard: () => {
+                  modelSaveQueue.discard(editingModel.Id);
+                  setEditingModel(null);
+                  setEditingExisting(false);
+                  setCloseBlocked(false);
+                },
+              }
+            : undefined
+        }
         onChange={(patch) => {
           if (!editingModel) return;
           const nextModel = { ...editingModel, ...patch };
@@ -361,6 +402,9 @@ export function ProviderModelManagementSurface({
           if (flushed && modelSaveQueue.requestClose(editingModel.Id)) {
             setEditingModel(null);
             setEditingExisting(false);
+            setCloseBlocked(false);
+          } else if (operations[editingModel.Id]?.status !== "pending") {
+            setCloseBlocked(true);
           }
         }}
         onRemove={() => editingModel && requestModelRemoval(editingModel)}

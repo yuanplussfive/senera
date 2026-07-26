@@ -11,6 +11,7 @@ interface ModelSaveQueueEntry {
 }
 
 export interface ProviderModelSaveQueue {
+  discard: (modelId: string) => void;
   flush: (modelId?: string, closeRequested?: boolean) => boolean;
   readDraft: (modelId: string) => ModelProviderDraft | undefined;
   requestClose: (modelId: string) => boolean;
@@ -143,6 +144,17 @@ export function useProviderModelSaveQueue({
     return false;
   }, []);
 
+  // Drops the local draft and any scheduled save. An in-flight request cannot
+  // be cancelled, but its completion is ignored once the entry is gone. Used
+  // when the user discards changes or removes the model, so stale drafts never
+  // resurface on the next open or resurrect a deleted model.
+  const discard = useCallback((modelId: string): void => {
+    const current = entriesRef.current.get(modelId);
+    if (!current) return;
+    if (current.timer !== null) window.clearTimeout(current.timer);
+    entriesRef.current.delete(modelId);
+  }, []);
+
   const submitNew = useCallback(
     (model: ModelProviderDraft): boolean => {
       if (!requestClose(model.Id)) return false;
@@ -160,6 +172,7 @@ export function useProviderModelSaveQueue({
   );
 
   return {
+    discard,
     flush,
     readDraft: (modelId) => entriesRef.current.get(modelId)?.draft,
     requestClose,

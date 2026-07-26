@@ -101,7 +101,9 @@ export function ProviderModelManualAddDialog({
             value={modelId}
             placeholder={frontendMessage("settings.modelManagement.modelIdPlaceholder")}
             onChange={(event) => onModelIdChange(event.currentTarget.value)}
-            onKeyDown={(event) => event.key === "Enter" && onAdd()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !disabled && modelId.trim()) onAdd();
+            }}
           />
         </FormField>
         <DialogActions className="mt-auto">

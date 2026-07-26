@@ -160,6 +160,18 @@ export function NumberRow({
           const next = event.currentTarget.value;
           onChange(next === "" ? undefined : Number(next));
         }}
+        onBlur={() => {
+          // HTML min/max do not constrain typed values; normalize on blur so the
+          // draft the save queue submits stays inside the backend schema bounds.
+          if (value === undefined || !Number.isFinite(value)) {
+            if (value !== undefined) onChange(undefined);
+            return;
+          }
+          let next = step === 1 ? Math.round(value) : value;
+          if (min !== undefined && next < min) next = min;
+          if (max !== undefined && next > max) next = max;
+          if (next !== value) onChange(next);
+        }}
       />
     </SettingRow>
   );
