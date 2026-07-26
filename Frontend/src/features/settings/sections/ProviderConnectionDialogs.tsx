@@ -25,11 +25,17 @@ import { isProtectedProvider, providerPresets } from "./ProviderConnectionIdenti
 export function AddProviderDialog({
   open,
   providers,
+  pending = false,
+  error = null,
   onAdd,
   onOpenChange,
 }: {
   open: boolean;
   providers: readonly ProviderEndpointDraft[];
+  /** True while the add command is in flight; blocks resubmission. */
+  pending?: boolean;
+  /** Failure message from the add command, shown inside the dialog. */
+  error?: string | null;
   onAdd: (provider: ProviderEndpointDraft) => void;
   onOpenChange: (open: boolean) => void;
 }): JSX.Element {
@@ -49,7 +55,7 @@ export function AddProviderDialog({
 
   const submit = (): void => {
     const id = providerId.trim();
-    if (!id || duplicate || !preset) return;
+    if (!id || duplicate || pending || !preset) return;
     onAdd(
       normalizeProviderEndpointDraft({
         Id: id,
@@ -118,15 +124,16 @@ export function AddProviderDialog({
             <FormHint>{frontendMessage("settings.provider.presetHint")}</FormHint>
           </FormField>
           {duplicate ? <ProviderFormError message={frontendMessage("settings.provider.duplicate")} /> : null}
+          {error ? <ProviderFormError message={error} /> : null}
         </div>
         <DialogActions className="mt-auto">
           <DialogActionButton onClick={() => onOpenChange(false)}>
             {frontendMessage("settings.action.cancel")}
           </DialogActionButton>
-          <DialogActionButton variant="primary" disabled={invalid} onClick={submit}>
+          <DialogActionButton variant="primary" disabled={invalid || pending} onClick={submit}>
             <span className="inline-flex items-center gap-1.5">
               <Plus className="h-3.5 w-3.5" />
-              {frontendMessage("settings.action.add")}
+              {frontendMessage(error ? "settings.action.retry" : "settings.action.add")}
             </span>
           </DialogActionButton>
         </DialogActions>

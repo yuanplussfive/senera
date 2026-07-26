@@ -57,6 +57,8 @@ export interface ProviderConnectionActions {
   localError: string | null;
   showAddDialog: boolean;
   setShowAddDialog: (open: boolean) => void;
+  addPending: boolean;
+  addError: string | null;
   renameTarget: ProviderEndpointDraft | null;
   setRenameTarget: (provider: ProviderEndpointDraft | null) => void;
   renameError: string | null;
@@ -315,9 +317,18 @@ export function useProviderConnectionActions({
       setSelectedProviderId(mutation.providerId);
       setDraftProvider(nextDraft);
       setPendingProviderDraft({ draft: nextDraft, requestId });
-      setShowAddDialog(false);
+      // The dialog stays open until the command resolves — closing on success
+      // (effect below) keeps a failed add from discarding the typed identity
+      // with nothing but a toast.
     }
   };
+
+  useEffect(() => {
+    if (pendingAddStatus === "success") setShowAddDialog(false);
+  }, [pendingAddStatus]);
+
+  const addPending = pendingAddStatus === "pending";
+  const addError = pendingAddStatus === "error" ? (pendingAddOperation?.message ?? null) : null;
 
   const setRenameTarget = (provider: ProviderEndpointDraft | null): void => {
     setRenameTargetState(provider);
@@ -382,6 +393,8 @@ export function useProviderConnectionActions({
     localError,
     showAddDialog,
     setShowAddDialog,
+    addPending,
+    addError,
     renameTarget,
     setRenameTarget,
     renameError,

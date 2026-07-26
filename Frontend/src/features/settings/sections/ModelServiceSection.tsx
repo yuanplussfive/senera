@@ -228,6 +228,8 @@ export function ModelServiceSection({
       <AddProviderDialog
         open={actions.showAddDialog}
         providers={state.providers}
+        pending={actions.addPending}
+        error={actions.addError}
         onOpenChange={actions.setShowAddDialog}
         onAdd={actions.addProvider}
       />
