@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentConfigMigrationError } from "../Source/AgentSystem/Config/AgentConfigMigration.js";
+import { AgentConfigSecretCodec } from "../Source/AgentSystem/Config/AgentConfigSecretProtection.js";
 import { CurrentAgentConfigVersion } from "../Source/AgentSystem/Config/AgentConfigVersion.js";
 import { AgentJsonFileError } from "../Source/AgentSystem/Config/AgentJsonFileLoader.js";
 import { AgentConfigSqliteRepository } from "../Source/AgentSystem/Config/AgentConfigSqliteRepository.js";
@@ -160,7 +161,10 @@ function verifyInvalidStoredRevisionFailsWithoutJsonFallback(): void {
       }),
     /配置数据库中的配置结构无效/,
   );
-  assert.equal(fs.readFileSync(configPath, "utf8"), originalText);
+  const persistedText = fs.readFileSync(configPath, "utf8");
+  assertProtectedApiKey(persistedText);
+  const revealed = new AgentConfigSecretCodec({ workspaceRoot }).revealPayload(JSON.parse(persistedText) as unknown);
+  assert.deepEqual(revealed.value, currentConfig);
 }
 
 function createCurrentConfig(): Record<string, unknown> {
