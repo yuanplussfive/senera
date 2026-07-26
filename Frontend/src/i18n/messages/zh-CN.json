@@ -1049,6 +1049,7 @@
   "settings.provider.disabled": "已停用",
   "settings.provider.chooseRequired": "请选择供应商。",
   "settings.provider.idRequired": "供应商 ID 不能为空。",
+  "settings.provider.invalidBaseUrl": "API 地址必须是以 http:// 或 https:// 开头的完整 URL。",
   "settings.provider.addCustomTitle": "添加自定义供应商",
   "settings.provider.addCustomDescription": "创建供应商身份后，在连接页配置 API 地址和密钥。",
   "settings.provider.nameLabel": "供应商名称",

@@ -7,7 +7,6 @@ import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import type { ModelServiceState } from "./modelServiceState";
 import {
   buildProviderEndpointMutationInput,
-  providerIdentitySnapshot,
   sameProviderEndpoint,
 } from "./providerConnectionState";
 import { useProviderConnectionDraftQueue } from "./useProviderConnectionDraftQueue";
@@ -252,7 +251,12 @@ export function useProviderConnectionActions({
   const commitAndSelectProvider = (provider: ProviderEndpointDraft): boolean => {
     const currentEntry = acceptedProvider ? draftQueue.read(acceptedProvider) : undefined;
     const currentDirty = Boolean(currentEntry && !sameProviderEndpoint(currentEntry.synced, currentEntry.draft));
-    if (currentDirty && currentEntry && !currentEntry.error && !currentEntry.autoSaveBlocked) confirmDraft();
+    // Blocked edits (save error / offline) cannot be committed in passing;
+    // report failure so the caller can ask the user to keep or discard them.
+    if (currentDirty && currentEntry && (currentEntry.error || currentEntry.autoSaveBlocked)) {
+      return false;
+    }
+    if (currentDirty && currentEntry) confirmDraft();
     setSelectedProviderId(provider.Id);
     setDraftProvider(provider);
     return true;
@@ -283,7 +287,11 @@ export function useProviderConnectionActions({
   };
 
   const addProvider = (provider: ProviderEndpointDraft): void => {
-    const mutation = buildProviderEndpointMutationInput(providerIdentitySnapshot(provider));
+    // Send the full preset draft (BaseUrl/ApiVersion/Headers included) so the
+    // server-side endpoint matches what the editor shows. Registering the same
+    // draft keeps the queue baseline honest: the success snapshot matches it,
+    // so auto-save stays enabled for the new provider.
+    const mutation = buildProviderEndpointMutationInput(provider);
     if (!mutation.ok) {
       if (acceptedProvider) draftQueue.setError(acceptedProvider, mutation.message);
       return;
@@ -292,7 +300,6 @@ export function useProviderConnectionActions({
     if (requestId) {
       const nextDraft = normalizeProviderEndpointDraft({
         ...provider,
-        ...providerIdentitySnapshot(provider),
         Id: mutation.providerId,
       });
       draftQueue.registerActive(nextDraft, mutation.providerId, requestId);

@@ -1049,6 +1049,7 @@
   "settings.provider.disabled": "Disabled",
   "settings.provider.chooseRequired": "Select a provider.",
   "settings.provider.idRequired": "Provider ID cannot be empty.",
+  "settings.provider.invalidBaseUrl": "API URL must be a full URL starting with http:// or https://.",
   "settings.provider.addCustomTitle": "Add custom provider",
   "settings.provider.addCustomDescription": "Create the provider identity, then configure its API URL and key on the connection page.",
   "settings.provider.nameLabel": "Provider name",

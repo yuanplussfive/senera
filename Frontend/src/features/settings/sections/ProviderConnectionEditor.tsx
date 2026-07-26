@@ -1,5 +1,5 @@
 import { Eye, EyeOff, Plus, RotateCcw, Server, SlidersHorizontal, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import { cn } from "../../../lib/util";
@@ -15,10 +15,26 @@ import {
 } from "../../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
 import { DetailTitle, EmptyDetail, IconAction, inputClassName } from "../../chat/ModelConfigPrimitives";
-import { nextHeaderKey, providerEnabled, providerIdLabel } from "../../chat/modelConfigData";
+import { providerEnabled, providerIdLabel } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { ProviderFormError } from "./ProviderConnectionFeedback";
 import { isProtectedProvider } from "./ProviderConnectionIdentity";
+
+interface HeaderRow {
+  id: number;
+  name: string;
+  value: string;
+}
+
+let headerRowSeed = 0;
+
+function toHeaderRows(headers: Record<string, string>): HeaderRow[] {
+  return Object.entries(headers).map(([name, value]) => ({ id: ++headerRowSeed, name, value }));
+}
+
+function rowsToHeaders(rows: readonly HeaderRow[]): Record<string, string> {
+  return Object.fromEntries(rows.filter((row) => row.name.trim()).map((row) => [row.name, row.value]));
+}
 
 export function ProviderConnectionEditor({
   acceptedProvider,
@@ -47,8 +63,13 @@ export function ProviderConnectionEditor({
 }): JSX.Element {
   const [showKey, setShowKey] = useState(false);
   const [requestConfigOpen, setRequestConfigOpen] = useState(false);
-  const [requestHeadersDraft, setRequestHeadersDraft] = useState<Record<string, string>>({});
+  const [requestHeadersDraft, setRequestHeadersDraft] = useState<HeaderRow[]>([]);
   const provider = draftProvider;
+  const providerId = provider?.Id;
+
+  useEffect(() => {
+    setShowKey(false);
+  }, [providerId]);
 
   if (!provider || !acceptedProvider || providerIndex < 0) {
     return (
@@ -98,7 +119,7 @@ export function ProviderConnectionEditor({
                 label={frontendMessage("settings.provider.apiConfig")}
                 disabled={disabled}
                 onClick={() => {
-                  setRequestHeadersDraft({ ...(provider.Headers ?? {}) });
+                  setRequestHeadersDraft(toHeaderRows(provider.Headers ?? {}));
                   setRequestConfigOpen(true);
                 }}
               >
@@ -165,7 +186,7 @@ export function ProviderConnectionEditor({
       <Dialog
         open={requestConfigOpen}
         onOpenChange={(open) => {
-          if (!open) onConfirm({ Headers: requestHeadersDraft });
+          if (!open) onConfirm({ Headers: rowsToHeaders(requestHeadersDraft) });
           setRequestConfigOpen(open);
         }}
       >
@@ -182,16 +203,7 @@ export function ProviderConnectionEditor({
               </span>
               <span className="font-mono text-[10.5px] text-ink-450">{"{}"}</span>
             </div>
-            <HeadersEditor
-              headers={requestHeadersDraft}
-              disabled={disabled}
-              onChange={(headers, immediate) => {
-                setRequestHeadersDraft(headers);
-                onChange({ Headers: headers });
-                if (immediate) onConfirm({ Headers: headers });
-              }}
-              onCommit={() => onConfirm({ Headers: requestHeadersDraft })}
-            />
+            <HeadersEditor rows={requestHeadersDraft} disabled={disabled} onChange={setRequestHeadersDraft} />
             <FormHint className="mt-3">{frontendMessage("settings.provider.customHeadersHint")}</FormHint>
           </div>
           <DialogActions className="mt-auto">
@@ -199,7 +211,7 @@ export function ProviderConnectionEditor({
               variant="primary"
               disabled={disabled}
               onClick={() => {
-                onConfirm({ Headers: requestHeadersDraft });
+                onConfirm({ Headers: rowsToHeaders(requestHeadersDraft) });
                 setRequestConfigOpen(false);
               }}
             >
@@ -223,47 +235,43 @@ function ConnectionField({ label, children }: { label: string; children: React.R
 
 function HeadersEditor({
   disabled,
-  headers,
+  rows,
   onChange,
-  onCommit,
 }: {
   disabled: boolean;
-  headers: Record<string, string>;
-  onChange: (headers: Record<string, string>, immediate?: boolean) => void;
-  onCommit: () => void;
+  rows: readonly HeaderRow[];
+  onChange: (rows: HeaderRow[]) => void;
 }): JSX.Element {
-  const entries = Object.entries(headers);
+  const updateRow = (id: number, patch: Partial<Pick<HeaderRow, "name" | "value">>): void => {
+    onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+  };
+  const duplicateNames = new Set(
+    [...rows]
+      .map((row) => row.name.trim())
+      .filter((name, index, names) => name && names.indexOf(name) !== index),
+  );
   return (
     <div className="grid gap-2">
-      {entries.map(([key, value], index) => (
-        <div key={`${key}:${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+      {rows.map((row) => (
+        <div key={row.id} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
           <Input
-            value={key}
+            value={row.name}
             placeholder={frontendMessage("settings.provider.headerName")}
             disabled={disabled}
-            onChange={(event) => {
-              const next = [...entries];
-              next[index] = [event.currentTarget.value, value];
-              onChange(Object.fromEntries(next.filter(([entryKey]) => entryKey.trim())));
-            }}
-            onBlur={onCommit}
+            aria-invalid={duplicateNames.has(row.name.trim())}
+            onChange={(event) => updateRow(row.id, { name: event.currentTarget.value })}
           />
           <Input
-            value={value}
+            value={row.value}
             placeholder={frontendMessage("settings.provider.headerValue")}
             disabled={disabled}
-            onChange={(event) => {
-              const next = [...entries];
-              next[index] = [key, event.currentTarget.value];
-              onChange(Object.fromEntries(next));
-            }}
-            onBlur={onCommit}
+            onChange={(event) => updateRow(row.id, { value: event.currentTarget.value })}
           />
           <IconAction
             label={frontendMessage("settings.provider.deleteHeader")}
             danger
             disabled={disabled}
-            onClick={() => onChange(Object.fromEntries(entries.filter((_, entryIndex) => entryIndex !== index)), true)}
+            onClick={() => onChange(rows.filter((entry) => entry.id !== row.id))}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </IconAction>
@@ -273,7 +281,7 @@ function HeadersEditor({
         variant="outline"
         disabled={disabled}
         className="w-fit border-dashed"
-        onClick={() => onChange({ ...headers, [nextHeaderKey(headers)]: "" }, true)}
+        onClick={() => onChange([...rows, { id: ++headerRowSeed, name: "", value: "" }])}
       >
         <Plus className="h-3.5 w-3.5" />
         {frontendMessage("settings.provider.addHeader")}
