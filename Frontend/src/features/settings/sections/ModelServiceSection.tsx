@@ -234,6 +234,7 @@ export function ModelServiceSection({
       <RenameProviderDialog
         provider={actions.renameTarget}
         providers={state.providers}
+        error={actions.renameError}
         onOpenChange={(open) => !open && actions.setRenameTarget(null)}
         onRename={actions.renameProvider}
       />

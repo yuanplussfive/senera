@@ -138,11 +138,14 @@ export function AddProviderDialog({
 export function RenameProviderDialog({
   provider,
   providers,
+  error,
   onOpenChange,
   onRename,
 }: {
   provider: ProviderEndpointDraft | null;
   providers: readonly ProviderEndpointDraft[];
+  /** Rename conflict reported by the actions layer (e.g. unsaved edits). */
+  error?: string | null;
   onOpenChange: (open: boolean) => void;
   onRename: (providerId: string, nextProviderId: string) => void;
 }): JSX.Element {
@@ -188,6 +191,7 @@ export function RenameProviderDialog({
           (providers.some((entry) => entry.Id === targetId) || isProtectedProvider(targetId)) ? (
             <ProviderFormError message={frontendMessage("settings.provider.nameConflict")} />
           ) : null}
+          {error ? <ProviderFormError message={error} /> : null}
         </div>
         <DialogActions className="mt-auto">
           <DialogActionButton onClick={() => onOpenChange(false)}>

@@ -59,6 +59,7 @@ export interface ProviderConnectionActions {
   setShowAddDialog: (open: boolean) => void;
   renameTarget: ProviderEndpointDraft | null;
   setRenameTarget: (provider: ProviderEndpointDraft | null) => void;
+  renameError: string | null;
   selectProvider: (provider: ProviderEndpointDraft) => boolean;
   commitAndSelectProvider: (provider: ProviderEndpointDraft) => boolean;
   discardAndSelectProvider: (provider: ProviderEndpointDraft) => void;
@@ -96,7 +97,8 @@ export function useProviderConnectionActions({
 }: UseProviderConnectionActionsInput): ProviderConnectionActions {
   const [draftProvider, setDraftProvider] = useState<ProviderEndpointDraft | null>(state.providers[0] ?? null);
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [renameTarget, setRenameTarget] = useState<ProviderEndpointDraft | null>(null);
+  const [renameTarget, setRenameTargetState] = useState<ProviderEndpointDraft | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [pendingProviderDraft, setPendingProviderDraft] = useState<PendingProviderDraft | null>(null);
   const [pendingProviderDraftConfirmation, setPendingProviderDraftConfirmation] =
     useState<PendingProviderDraftConfirmation | null>(null);
@@ -141,7 +143,14 @@ export function useProviderConnectionActions({
     if (pendingRenameProviderId && pendingRenameNextProviderId) {
       const renamedProvider = providers.find((provider) => provider.Id === pendingRenameNextProviderId);
       if (renamedProvider) {
-        setSelectedProviderId(renamedProvider.Id);
+        // Follow the rename only while the user is still on the old id — a
+        // click on another provider mid-rename must not be overridden.
+        if (
+          selectedProviderId === pendingRenameProviderId ||
+          !providers.some((provider) => provider.Id === selectedProviderId)
+        ) {
+          setSelectedProviderId(renamedProvider.Id);
+        }
         setPendingRename(null);
         return;
       }
@@ -151,10 +160,10 @@ export function useProviderConnectionActions({
         return;
       }
 
-      // Keep the old selection while a rename request is pending. A snapshot that
-      // replaces the old ID with the new one is handled above on the next render.
+      // Rename request still pending: keep whatever valid selection the user
+      // has; only restore the renaming provider when nothing else is selected.
       if (providers.some((provider) => provider.Id === pendingRenameProviderId)) {
-        if (selectedProviderId !== pendingRenameProviderId) {
+        if (!providers.some((provider) => provider.Id === selectedProviderId)) {
           setSelectedProviderId(pendingRenameProviderId);
         }
         return;
@@ -310,10 +319,16 @@ export function useProviderConnectionActions({
     }
   };
 
+  const setRenameTarget = (provider: ProviderEndpointDraft | null): void => {
+    setRenameTargetState(provider);
+    setRenameError(null);
+  };
+
   const renameProvider = (providerId: string, nextProviderId: string): void => {
     if (providerId === selectedProviderId && dirty) {
-      if (acceptedProvider)
-        draftQueue.setError(acceptedProvider, frontendMessage("settings.provider.pendingDraftError"));
+      // Surface the conflict inside the rename dialog — the connection
+      // editor's error area sits underneath the dialog overlay.
+      setRenameError(frontendMessage("settings.provider.pendingDraftError"));
       return;
     }
     const requestId = onRenameProviderEndpoint(providerId, nextProviderId);
@@ -369,6 +384,7 @@ export function useProviderConnectionActions({
     setShowAddDialog,
     renameTarget,
     setRenameTarget,
+    renameError,
     selectProvider,
     commitAndSelectProvider,
     discardAndSelectProvider,
