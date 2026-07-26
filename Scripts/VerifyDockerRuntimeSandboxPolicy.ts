@@ -146,8 +146,12 @@ assert.ok(
     compose.includes("SENERA_ADMIN_DISPLAY_NAME") &&
     compose.includes("SENERA_ADMIN_PASSWORD") &&
     compose.includes('SENERA_ADMIN_PASSWORD: "replace-with-a-strong-password"') &&
-    !compose.includes("${SENERA_"),
+    !compose.includes("${SENERA_ADMIN_"),
   "compose.yaml must expose directly editable administrator values without external variable interpolation.",
+);
+assert.ok(
+  compose.includes('SENERA_CONFIG_SECRET_KEY: "${SENERA_CONFIG_SECRET_KEY:-}"'),
+  "compose.yaml must allow an optional host-managed configuration secret key.",
 );
 assert.ok(
   !compose.includes("senera-admin:") && compose.includes("sandbox-worker:") && compose.includes("sandbox-runtime:"),
