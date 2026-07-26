@@ -36,6 +36,20 @@ function rowsToHeaders(rows: readonly HeaderRow[]): Record<string, string> {
   return Object.fromEntries(rows.filter((row) => row.name.trim()).map((row) => [row.name, row.value]));
 }
 
+// Case-insensitive: HTTP header names are case-insensitive, so "Auth"/"auth"
+// would collide at the transport layer even though the object keeps both.
+function readDuplicateHeaderNames(rows: readonly HeaderRow[]): ReadonlySet<string> {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const row of rows) {
+    const name = row.name.trim().toLowerCase();
+    if (!name) continue;
+    if (seen.has(name)) duplicates.add(name);
+    seen.add(name);
+  }
+  return duplicates;
+}
+
 export function ProviderConnectionEditor({
   acceptedProvider,
   dirty,
@@ -86,6 +100,7 @@ export function ProviderConnectionEditor({
   const pending = operation?.status === "pending";
   const operationError = operation?.status === "error" ? operation.message : null;
   const errorMessage = localError ?? operationError;
+  const duplicateHeaderNames = readDuplicateHeaderNames(requestHeadersDraft);
 
   return (
     <div className="bg-paper-50">
@@ -156,7 +171,7 @@ export function ProviderConnectionEditor({
               />
               <button
                 type="button"
-                className="grid h-9 w-9 shrink-0 place-items-center border-l border-ink-200 text-ink-450 transition hover:text-ink-800"
+                className="grid h-9 w-9 shrink-0 place-items-center border-l border-ink-200 text-ink-500 transition hover:text-ink-800"
                 onClick={() => setShowKey((current) => !current)}
                 aria-label={frontendMessage(showKey ? "config.provider.hideApiKey" : "config.provider.showApiKey")}
               >
@@ -198,18 +213,28 @@ export function ProviderConnectionEditor({
         >
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="mb-3 flex items-center gap-2">
-              <span className="text-[12px] font-semibold text-ink-750">
+              <span className="text-[12px] font-semibold text-ink-800">
                 {frontendMessage("settings.provider.customHeaders")}
               </span>
-              <span className="font-mono text-[10.5px] text-ink-450">{"{}"}</span>
+              <span className="font-mono text-[10.5px] text-ink-500">{"{}"}</span>
             </div>
-            <HeadersEditor rows={requestHeadersDraft} disabled={disabled} onChange={setRequestHeadersDraft} />
+            <HeadersEditor
+              rows={requestHeadersDraft}
+              disabled={disabled}
+              duplicateNames={duplicateHeaderNames}
+              onChange={setRequestHeadersDraft}
+            />
+            {duplicateHeaderNames.size > 0 ? (
+              <div className="mt-3">
+                <ProviderFormError message={frontendMessage("settings.provider.duplicateHeaderName")} />
+              </div>
+            ) : null}
             <FormHint className="mt-3">{frontendMessage("settings.provider.customHeadersHint")}</FormHint>
           </div>
           <DialogActions className="mt-auto">
             <DialogActionButton
               variant="primary"
-              disabled={disabled}
+              disabled={disabled || duplicateHeaderNames.size > 0}
               onClick={() => {
                 onConfirm({ Headers: rowsToHeaders(requestHeadersDraft) });
                 setRequestConfigOpen(false);
@@ -236,20 +261,17 @@ function ConnectionField({ label, children }: { label: string; children: React.R
 function HeadersEditor({
   disabled,
   rows,
+  duplicateNames,
   onChange,
 }: {
   disabled: boolean;
   rows: readonly HeaderRow[];
+  duplicateNames: ReadonlySet<string>;
   onChange: (rows: HeaderRow[]) => void;
 }): JSX.Element {
   const updateRow = (id: number, patch: Partial<Pick<HeaderRow, "name" | "value">>): void => {
     onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
-  const duplicateNames = new Set(
-    [...rows]
-      .map((row) => row.name.trim())
-      .filter((name, index, names) => name && names.indexOf(name) !== index),
-  );
   return (
     <div className="grid gap-2">
       {rows.map((row) => (
@@ -258,7 +280,7 @@ function HeadersEditor({
             value={row.name}
             placeholder={frontendMessage("settings.provider.headerName")}
             disabled={disabled}
-            aria-invalid={duplicateNames.has(row.name.trim())}
+            aria-invalid={duplicateNames.has(row.name.trim().toLowerCase())}
             onChange={(event) => updateRow(row.id, { name: event.currentTarget.value })}
           />
           <Input
