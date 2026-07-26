@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentConfigDatabaseContract } from "./AgentConfigSqlSchema.js";
+import { AgentConfigSecretCodec, resolveAgentConfigSecretWorkspaceRoot } from "./AgentConfigSecretProtection.js";
 import {
   prepareAgentConfigSqlStatements,
   type AgentConfigRevisionRow,
@@ -52,16 +53,21 @@ export class AgentConfigSqliteRepository {
   private readonly kernel: AgentSqliteDatabaseKernel;
   private readonly db: Database.Database;
   private readonly statements: AgentConfigSqlStatements;
+  private readonly secretCodec: AgentConfigSecretCodec;
 
-  constructor(databasePath: string) {
+  constructor(databasePath: string, secretCodec?: AgentConfigSecretCodec) {
     this.kernel = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
     this.db = this.kernel.connection;
     this.statements = prepareAgentConfigSqlStatements(this.db);
+    this.secretCodec =
+      secretCodec ?? new AgentConfigSecretCodec({ workspaceRoot: resolveAgentConfigSecretWorkspaceRoot(databasePath) });
+    this.db.pragma("secure_delete = ON");
+    this.protectLegacyRevisionSecrets();
   }
 
   latestRevision(): AgentConfigRevisionRecord | undefined {
     const row = this.statements.selectLatestRevision.get();
-    return row ? rowToRevision(row) : undefined;
+    return row ? this.rowToRevision(row) : undefined;
   }
 
   appendRevision(input: AgentConfigWriteInput): AgentConfigRevisionRecord {
@@ -70,7 +76,7 @@ export class AgentConfigSqliteRepository {
       const nextRevision = this.nextRevision();
       this.statements.insertRevision.run({
         revision: nextRevision,
-        config_json: JSON.stringify(input.config),
+        config_json: JSON.stringify(this.secretCodec.protectConfig(input.config)),
         source: input.source,
         created_at: createdAt,
       });
@@ -106,16 +112,16 @@ export class AgentConfigSqliteRepository {
         if (!recorded || !latest) {
           throw new Error(`Configuration command receipt references missing revision ${receipt.revision}.`);
         }
-        return { revision: rowToRevision(latest), replayed: true, appliedRevision: receipt.revision };
+        return { revision: this.rowToRevision(latest), replayed: true, appliedRevision: receipt.revision };
       }
 
       const current = this.statements.selectLatestRevision.get();
       if (!current) throw new Error("Configuration database does not contain a latest revision.");
-      const config = transform(rowToRevision(current));
+      const config = transform(this.rowToRevision(current));
       const revision = this.nextRevision();
       this.statements.insertRevision.run({
         revision,
-        config_json: JSON.stringify(config),
+        config_json: JSON.stringify(this.secretCodec.protectConfig(config)),
         source: input.source,
         created_at: createdAt,
       });
@@ -150,13 +156,51 @@ export class AgentConfigSqliteRepository {
     if (!row) throw new Error("Unable to allocate the next configuration revision.");
     return row.revision;
   }
-}
 
-function rowToRevision(row: AgentConfigRevisionRow): AgentConfigRevisionRecord {
-  return {
-    revision: row.revision,
-    config: JSON.parse(row.config_json) as AgentSystemConfig,
-    source: row.source,
-    createdAt: row.created_at,
-  };
+  private rowToRevision(row: AgentConfigRevisionRow): AgentConfigRevisionRecord {
+    const parsed = JSON.parse(row.config_json) as AgentSystemConfig;
+    return {
+      revision: row.revision,
+      config: this.secretCodec.revealConfig(parsed).value,
+      source: row.source,
+      createdAt: row.created_at,
+    };
+  }
+
+  private protectLegacyRevisionSecrets(): void {
+    const revisions = this.statements.selectAllRevisions.all();
+    let protectedSecretsFound = false;
+    const rewrites = revisions.flatMap((row) => {
+      const payload = JSON.parse(row.config_json) as unknown;
+      const revealed = this.secretCodec.revealPayload(payload);
+      protectedSecretsFound ||= revealed.protectedSecretsFound;
+      return revealed.plaintextSecretsFound
+        ? [
+            {
+              revision: row.revision,
+              configJson: JSON.stringify(this.secretCodec.protectPayload(revealed.value)),
+            },
+          ]
+        : [];
+    });
+    if (rewrites.length === 0) {
+      if (protectedSecretsFound) {
+        this.kernel.checkpoint();
+      }
+      return;
+    }
+
+    const rewrite = this.db.transaction(() => {
+      for (const item of rewrites) {
+        this.statements.updateRevisionConfig.run({
+          revision: item.revision,
+          config_json: item.configJson,
+        });
+      }
+    });
+    rewrite.immediate();
+    this.kernel.checkpoint();
+    this.db.exec("VACUUM");
+    this.kernel.checkpoint();
+  }
 }

@@ -20,9 +20,11 @@ export interface AgentConfigSqlStatements {
   readonly selectLatestRevision: Database.Statement<[], AgentConfigRevisionRow>;
   readonly selectNextRevision: Database.Statement<[], { revision: number }>;
   readonly selectRevision: Database.Statement<[number], AgentConfigRevisionRow>;
+  readonly selectAllRevisions: Database.Statement<[], AgentConfigRevisionRow>;
   readonly selectCommandReceipt: Database.Statement<[string], AgentConfigCommandReceiptRow>;
   readonly insertRevision: Database.Statement;
   readonly insertCommandReceipt: Database.Statement;
+  readonly updateRevisionConfig: Database.Statement;
 }
 
 export function prepareAgentConfigSqlStatements(database: Database.Database): AgentConfigSqlStatements {
@@ -42,6 +44,11 @@ export function prepareAgentConfigSqlStatements(database: Database.Database): Ag
       FROM config_revisions
       WHERE revision = ?
     `),
+    selectAllRevisions: database.prepare(`
+      SELECT revision, config_json, source, created_at
+      FROM config_revisions
+      ORDER BY revision ASC
+    `),
     selectCommandReceipt: database.prepare(`
       SELECT command_id, operation_kind, payload_hash, revision, created_at
       FROM config_command_receipts
@@ -54,6 +61,11 @@ export function prepareAgentConfigSqlStatements(database: Database.Database): Ag
     insertCommandReceipt: database.prepare(`
       INSERT INTO config_command_receipts (command_id, operation_kind, payload_hash, revision, created_at)
       VALUES (@command_id, @operation_kind, @payload_hash, @revision, @created_at)
+    `),
+    updateRevisionConfig: database.prepare(`
+      UPDATE config_revisions
+      SET config_json = @config_json
+      WHERE revision = @revision
     `),
   };
 }

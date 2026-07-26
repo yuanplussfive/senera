@@ -39,6 +39,7 @@ import {
   writeAgentConfigJsonMirror,
 } from "./AgentConfigServicePaths.js";
 import { migrateAgentConfigPayload } from "./AgentConfigMigration.js";
+import { AgentConfigSecretCodec } from "./AgentConfigSecretProtection.js";
 
 export type AgentConfigSnapshotSource = "sqlite" | "json";
 
@@ -104,14 +105,17 @@ export class AgentConfigService {
   private snapshotValue: AgentConfigSnapshot;
   private repository?: AgentConfigSqliteRepository;
   private repositoryPath?: string;
+  private readonly secretCodec: AgentConfigSecretCodec;
   private readonly jsonCommandReceipts = new Map<string, { operationKind: string; payloadHash: string }>();
 
   constructor(
     private readonly options: {
       workspaceRoot: string;
       source: AgentConfigSourceOptions;
+      secretCodec?: AgentConfigSecretCodec;
     },
   ) {
+    this.secretCodec = options.secretCodec ?? new AgentConfigSecretCodec({ workspaceRoot: options.workspaceRoot });
     try {
       this.snapshotValue = this.initialize(1);
     } catch (error) {
@@ -225,16 +229,24 @@ export class AgentConfigService {
     source: Extract<AgentConfigSourceOptions, { kind: "json" }>,
     version: number,
   ): AgentConfigSnapshot {
-    const loadedJson = AgentConfigLoader.loadWithMetadata(source.configPath);
+    const loadedJson = AgentConfigLoader.loadWithMetadata(source.configPath, this.secretCodec);
     const jsonConfig = loadedJson.config;
     const migrationDiagnostics = loadedJson.migration
       ? [
           migrationDiagnostic(
             loadedJson.migration,
-            persistMigratedAgentConfigJson(jsonConfig, source.configPath, loadedJson.migration.sourceVersion),
+            persistMigratedAgentConfigJson(
+              jsonConfig,
+              source.configPath,
+              loadedJson.migration.sourceVersion,
+              this.secretCodec,
+            ),
           ),
         ]
       : [];
+    if (loadedJson.secretsNeedPersistence && !loadedJson.migration) {
+      writeAgentConfigJsonMirror(jsonConfig, source.configPath, this.secretCodec);
+    }
     const store = resolveConfigStoreConfig(jsonConfig);
     if (!store.Enabled) {
       return {
@@ -302,7 +314,7 @@ export class AgentConfigService {
       return this.repository;
     }
 
-    const repository = new AgentConfigSqliteRepository(databasePath);
+    const repository = new AgentConfigSqliteRepository(databasePath, this.secretCodec);
     this.closeRepository();
     this.repository = repository;
     this.repositoryPath = databasePath;
@@ -344,7 +356,7 @@ export class AgentConfigService {
         return this.snapshotValue;
       }
       const config = this.validateConfig(transform(this.snapshotValue));
-      writeAgentConfigJsonMirror(config, this.options.source.configPath);
+      writeAgentConfigJsonMirror(config, this.options.source.configPath, this.secretCodec);
       this.snapshotValue = {
         path: this.options.source.configPath,
         version: this.snapshotValue.version + 1,
@@ -400,7 +412,7 @@ export class AgentConfigService {
   private writeCommittedJsonMirror(config: AgentSystemConfig, enabled: boolean): void {
     if (!enabled || this.options.source.kind !== "json") return;
     try {
-      writeAgentConfigJsonMirror(config, this.options.source.configPath);
+      writeAgentConfigJsonMirror(config, this.options.source.configPath, this.secretCodec);
     } catch (error) {
       this.snapshotValue = {
         ...this.snapshotValue,
