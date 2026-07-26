@@ -1,6 +1,8 @@
 import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { createRequestId } from "../Core/AgentIds.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import type { AgentSystemConfigOperationKind } from "../Config/AgentConfigEventTypes.js";
 import type { AgentWebSocketRequest, AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 
@@ -55,6 +57,50 @@ const PresetOperationKinds = {
   "preset.delete": "delete",
   "preset.set_active": "set_active",
 } as const satisfies Partial<Record<AgentWebSocketRequest["type"], string>>;
+
+/**
+ * Maps a schema-parse failure back onto the originating config command when the
+ * raw payload still carries an identifiable `type` + `commandId`. Without this,
+ * the frontend command queue would never release its in-flight slot, because
+ * `RequestInvalid` events carry no operation identity.
+ */
+const ParseFailureOperationKinds: Partial<Record<string, AgentSystemConfigOperationKind>> = {
+  "config.update": "config_update",
+  "provider.endpoint.upsert": "provider.endpoint.upsert",
+  "provider.endpoint.delete": "provider.endpoint.delete",
+  "provider.endpoint.rename": "provider.endpoint.rename",
+  "provider.model.upsert": "provider.model.upsert",
+  "provider.model.delete": "provider.model.delete",
+  "provider.model.bulkImport": "provider.model.bulkImport",
+  "provider.defaultModel.set": "provider.defaultModel.set",
+};
+
+export function projectAgentWebSocketParseFailure(
+  rawRequest: unknown,
+  issues: unknown,
+  context: AgentWebSocketRequestContext,
+): AgentDomainEvent | null {
+  if (typeof rawRequest !== "object" || rawRequest === null || Array.isArray(rawRequest)) return null;
+  const record = rawRequest as Record<string, unknown>;
+  const type = record.type;
+  const commandId = record.commandId;
+  if (typeof type !== "string" || typeof commandId !== "string" || !commandId) return null;
+  const operationKind = ParseFailureOperationKinds[type];
+  if (!operationKind) return null;
+  return {
+    kind: AgentEventKinds.ConfigFailed,
+    context: {},
+    data: {
+      configPath: context.configService?.snapshot().path ?? "",
+      message: agentErrorMessage("websocket.requestInvalid"),
+      details: { issues },
+      operation: {
+        commandId,
+        kind: operationKind,
+      },
+    },
+  };
+}
 
 export function projectAgentWebSocketRequestFailure(
   request: AgentWebSocketRequest,

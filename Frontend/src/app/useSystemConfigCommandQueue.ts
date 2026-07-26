@@ -20,6 +20,8 @@ export type SystemConfigCommandDraft = SystemConfigCommandRequest extends infer 
 
 export type SystemConfigCommandTransportFailure = "config_unavailable" | "offline" | "disconnected";
 
+const COMMAND_RESPONSE_TIMEOUT_MS = 30_000;
+
 export interface SystemConfigCommandEnqueueInput {
   operationKind: ConfigOperationKind;
   request: SystemConfigCommandDraft | ((snapshot: ConfigSnapshotData) => SystemConfigCommandDraft);
@@ -49,8 +51,15 @@ export function useSystemConfigCommandQueue({
   const activeRef = useRef<QueuedSystemConfigCommand | null>(null);
   const queuedRef = useRef<QueuedSystemConfigCommand[]>([]);
   const statusRef = useRef(status);
+  const responseTimeoutRef = useRef<number | null>(null);
   latestSnapshotRef.current = configSnapshot ?? latestSnapshotRef.current;
   statusRef.current = status;
+
+  const clearResponseTimeout = useCallback((): void => {
+    if (responseTimeoutRef.current === null) return;
+    window.clearTimeout(responseTimeoutRef.current);
+    responseTimeoutRef.current = null;
+  }, []);
 
   const failCommand = useCallback(
     (command: QueuedSystemConfigCommand, failure: SystemConfigCommandTransportFailure) => {
@@ -74,11 +83,24 @@ export function useSystemConfigCommandQueue({
       }
       const draft = typeof command.request === "function" ? command.request(snapshot) : command.request;
       activeRef.current = command;
-      if (send({ ...draft, commandId: command.commandId } as SystemConfigCommandRequest)) return;
+      if (send({ ...draft, commandId: command.commandId } as SystemConfigCommandRequest)) {
+        // Safety net: a command that never gets a matching ConfigSnapshot/ConfigFailed
+        // (e.g. rejected before reaching a handler) must not deadlock the queue forever.
+        clearResponseTimeout();
+        responseTimeoutRef.current = window.setTimeout(() => {
+          responseTimeoutRef.current = null;
+          const stalled = activeRef.current;
+          if (!stalled || stalled.commandId !== command.commandId) return;
+          activeRef.current = null;
+          failCommand(stalled, "disconnected");
+          pump();
+        }, COMMAND_RESPONSE_TIMEOUT_MS);
+        return;
+      }
       activeRef.current = null;
       failCommand(command, "disconnected");
     }
-  }, [failCommand, sendRef]);
+  }, [clearResponseTimeout, failCommand, sendRef]);
 
   const enqueue = useCallback(
     (input: SystemConfigCommandEnqueueInput): string | null => {
@@ -123,10 +145,11 @@ export function useSystemConfigCommandQueue({
         return false;
       }
       activeRef.current = null;
+      clearResponseTimeout();
       pump();
       return true;
     },
-    [pump],
+    [clearResponseTimeout, pump],
   );
 
   useEffect(() => {
@@ -134,11 +157,12 @@ export function useSystemConfigCommandQueue({
       pump();
       return;
     }
+    clearResponseTimeout();
     const pending = [...(activeRef.current ? [activeRef.current] : []), ...queuedRef.current];
     activeRef.current = null;
     queuedRef.current = [];
     for (const command of pending) failCommand(command, "disconnected");
-  }, [failCommand, pump, status]);
+  }, [clearResponseTimeout, failCommand, pump, status]);
 
   return useMemo(() => ({ enqueue, ingest }), [enqueue, ingest]);
 }
