@@ -32,6 +32,8 @@ interface CachedProviderModels {
   snapshot: AgentProviderModelSnapshot;
 }
 
+const DISCOVERY_TIMEOUT_MS = 20_000;
+
 export class AgentProviderModelDiscovery {
   private readonly fetchImpl: typeof fetch;
   private readonly cache = new Map<string, CachedProviderModels>();
@@ -73,10 +75,28 @@ export class AgentProviderModelDiscovery {
       );
     }
 
-    const response = await this.fetchImpl(modelsUrl(endpoint.BaseUrl), {
-      method: "GET",
-      headers: providerHeaders(endpoint),
-    });
+    let response: Awaited<ReturnType<typeof fetch>>;
+    try {
+      response = await this.fetchImpl(modelsUrl(endpoint.BaseUrl), {
+        method: "GET",
+        headers: providerHeaders(endpoint),
+        // Unreachable endpoints must not hang the request (and the UI spinner)
+        // for undici's multi-minute default timeout.
+        signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "TimeoutError") {
+        throw new Error(
+          agentErrorMessage("model.listRequestFailed", {
+            providerId: endpoint.Id,
+            status: 408,
+            statusText: "timeout",
+          }),
+          { cause: error },
+        );
+      }
+      throw error;
+    }
 
     if (!response.ok) {
       throw new Error(
