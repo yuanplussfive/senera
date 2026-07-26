@@ -7,7 +7,7 @@
         "identity": "./ToolSignature.ts#WorkspaceReadFileArguments",
         "file": "./ToolSignature.ts",
         "type": "WorkspaceReadFileArguments",
-        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+        "sha256": "ce1d82dd3186fc493e498c0612afac4f0baa835ee8664f54a9345ab149e13c3c"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -31,7 +31,7 @@
         "identity": "./ToolSignature.ts#WorkspaceListDirectoryArguments",
         "file": "./ToolSignature.ts",
         "type": "WorkspaceListDirectoryArguments",
-        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+        "sha256": "ce1d82dd3186fc493e498c0612afac4f0baa835ee8664f54a9345ab149e13c3c"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -48,7 +48,7 @@
         "identity": "./ToolSignature.ts#WorkspaceSearchFilesArguments",
         "file": "./ToolSignature.ts",
         "type": "WorkspaceSearchFilesArguments",
-        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+        "sha256": "ce1d82dd3186fc493e498c0612afac4f0baa835ee8664f54a9345ab149e13c3c"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -69,7 +69,7 @@
         "identity": "./ToolSignature.ts#WorkspaceGrepArguments",
         "file": "./ToolSignature.ts",
         "type": "WorkspaceGrepArguments",
-        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+        "sha256": "ce1d82dd3186fc493e498c0612afac4f0baa835ee8664f54a9345ab149e13c3c"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -93,7 +93,7 @@
         "identity": "./ToolSignature.ts#WorkspaceListFilesArguments",
         "file": "./ToolSignature.ts",
         "type": "WorkspaceListFilesArguments",
-        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+        "sha256": "ce1d82dd3186fc493e498c0612afac4f0baa835ee8664f54a9345ab149e13c3c"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -115,7 +115,7 @@
         "identity": "./ToolSignature.ts#WorkspaceEditFileArguments",
         "file": "./ToolSignature.ts",
         "type": "WorkspaceEditFileArguments",
-        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+        "sha256": "ce1d82dd3186fc493e498c0612afac4f0baa835ee8664f54a9345ab149e13c3c"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -145,7 +145,7 @@
         "identity": "./ToolSignature.ts#WorkspaceWriteFileArguments",
         "file": "./ToolSignature.ts",
         "type": "WorkspaceWriteFileArguments",
-        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+        "sha256": "ce1d82dd3186fc493e498c0612afac4f0baa835ee8664f54a9345ab149e13c3c"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -165,7 +165,7 @@
         "identity": "./ToolSignature.ts#WorkspaceCreateDirectoryArguments",
         "file": "./ToolSignature.ts",
         "type": "WorkspaceCreateDirectoryArguments",
-        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+        "sha256": "ce1d82dd3186fc493e498c0612afac4f0baa835ee8664f54a9345ab149e13c3c"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -182,7 +182,7 @@
         "identity": "./ToolSignature.ts#WorkspaceMoveFileArguments",
         "file": "./ToolSignature.ts",
         "type": "WorkspaceMoveFileArguments",
-        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+        "sha256": "ce1d82dd3186fc493e498c0612afac4f0baa835ee8664f54a9345ab149e13c3c"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
