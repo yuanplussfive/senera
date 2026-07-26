@@ -4,45 +4,69 @@ import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { spawn, sync as spawnSync } from "cross-spawn";
+import { isMainModule } from "../../Source/AgentSystem/Core/AgentPath.js";
 import { probeDesktopLiveFrontend } from "./DesktopLiveFrontendServer.js";
+import {
+  acquireDesktopLiveLock,
+  createDesktopLiveCleanup,
+  repairNodeNativeDependencies,
+  type DesktopLiveLock,
+} from "./DesktopLiveLifecycle.js";
 
 interface CommandInvocation {
   command: string;
   arguments: string[];
   env?: NodeJS.ProcessEnv;
+  quiet?: boolean;
+  stdio?: "ignore" | "inherit";
 }
 
 const nativeModules = ["better-sqlite3"];
+const nativeDependencyProbe = [
+  'const Database = require("better-sqlite3");',
+  'const database = new Database(":memory:");',
+  "database.close();",
+].join(" ");
 
 const configuredFrontendUrl = process.env.SENERA_DESKTOP_FRONTEND_URL?.trim();
 const defaultFrontendUrl = "http://127.0.0.1:5173";
 const runningChildren = new Set<ChildProcess>();
-let shuttingDown = false;
+let desktopLiveLock: DesktopLiveLock | undefined;
+let nativeDependenciesRequireRestore = false;
+let shutdownPromise: Promise<void> | undefined;
+let signalExitStarted = false;
+const cleanupDesktopLive = createDesktopLiveCleanup(cleanupDesktopLiveResources);
 
-void main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (isMainModule(import.meta.url)) {
+  void main().catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
 
 async function main(): Promise<void> {
-  clearNativeRebuildMetadata();
-
-  const setupSteps = [
-    command("npm", ["run", "build"]),
-    command("electron-builder", ["install-app-deps", "--platform=win32", "--arch=x64"]),
-  ];
-
-  for (const step of setupSteps) {
-    const result = run(step);
-    if (result !== 0) {
-      process.exitCode = result;
-      restoreNativeDependencies();
+  desktopLiveLock = acquireDesktopLiveLock(process.cwd());
+  try {
+    registerShutdownHandlers();
+    const nodeNativeCode = ensureNodeNativeDependencies();
+    if (nodeNativeCode !== 0) {
+      process.exitCode = nodeNativeCode;
       return;
     }
-  }
 
-  registerShutdownHandlers();
-  try {
+    const buildCode = run(command("npm", ["run", "build"]));
+    if (buildCode !== 0) {
+      process.exitCode = buildCode;
+      return;
+    }
+
+    nativeDependenciesRequireRestore = true;
+    const electronNativeCode = run(command("electron-builder", ["install-app-deps", "--platform=win32", "--arch=x64"]));
+    if (electronNativeCode !== 0) {
+      process.exitCode = electronNativeCode;
+      return;
+    }
+
     let frontendUrl = configuredFrontendUrl || defaultFrontendUrl;
     let frontendProbe = await probeDesktopLiveFrontend(frontendUrl);
     if (!configuredFrontendUrl && frontendProbe.kind === "invalid") {
@@ -71,8 +95,10 @@ async function main(): Promise<void> {
     );
     process.exitCode = await waitForExit(electronProcess);
   } finally {
-    await shutdownChildren();
-    restoreNativeDependencies();
+    const cleanupCode = await cleanupDesktopLive();
+    if ((process.exitCode === undefined || process.exitCode === 0) && cleanupCode !== 0) {
+      process.exitCode = cleanupCode;
+    }
   }
 }
 
@@ -123,12 +149,14 @@ function isPortAvailable(host: string, port: number): Promise<boolean> {
 }
 
 function run(invocation: CommandInvocation): number {
-  console.log(`\n> ${[invocation.command, ...invocation.arguments].join(" ")}`);
+  if (!invocation.quiet) {
+    console.log(`\n> ${[invocation.command, ...invocation.arguments].join(" ")}`);
+  }
 
   const result = spawnSync(invocation.command, invocation.arguments, {
     cwd: process.cwd(),
     env: invocation.env ?? process.env,
-    stdio: "inherit",
+    stdio: invocation.stdio ?? "inherit",
     windowsHide: true,
   });
 
@@ -202,18 +230,20 @@ function waitForExit(child: ChildProcess): Promise<number> {
 function registerShutdownHandlers(): void {
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.once(signal, () => {
-      void shutdownChildren().finally(() => {
-        restoreNativeDependencies();
-        process.exit(signal === "SIGINT" ? 130 : 143);
-      });
+      if (signalExitStarted) return;
+      signalExitStarted = true;
+      void cleanupDesktopLive()
+        .then((cleanupCode) => process.exit(cleanupCode || (signal === "SIGINT" ? 130 : 143)))
+        .catch((error: unknown) => {
+          console.error(error);
+          process.exit(1);
+        });
     });
   }
 }
 
-async function shutdownChildren(): Promise<void> {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  await Promise.all([...runningChildren].map(killProcessTree));
+function shutdownChildren(): Promise<void> {
+  return (shutdownPromise ??= Promise.all([...runningChildren].map(killProcessTree)).then(() => undefined));
 }
 
 function killProcessTree(child: ChildProcess): Promise<void> {
@@ -237,11 +267,40 @@ function killProcessTree(child: ChildProcess): Promise<void> {
   });
 }
 
-function restoreNativeDependencies(): void {
-  const restoreCode = run(command("npm", ["rebuild", "better-sqlite3"]));
+function ensureNodeNativeDependencies(): number {
   clearNativeRebuildMetadata();
-  if (process.exitCode === undefined && restoreCode !== 0) {
-    process.exitCode = restoreCode;
+  const result = repairNodeNativeDependencies(
+    () =>
+      run({
+        command: process.execPath,
+        arguments: ["-e", nativeDependencyProbe],
+        quiet: true,
+        stdio: "ignore",
+      }),
+    () => {
+      console.log("\n> detected incompatible Node native dependencies; rebuilding better-sqlite3");
+      return run(command("npm", ["rebuild", ...nativeModules]));
+    },
+  );
+  clearNativeRebuildMetadata();
+  return result.exitCode;
+}
+
+function restoreNativeDependencies(): number {
+  if (!nativeDependenciesRequireRestore) return 0;
+  nativeDependenciesRequireRestore = false;
+  const restoreCode = run(command("npm", ["rebuild", ...nativeModules]));
+  clearNativeRebuildMetadata();
+  return restoreCode;
+}
+
+async function cleanupDesktopLiveResources(): Promise<number> {
+  try {
+    await shutdownChildren();
+    return restoreNativeDependencies();
+  } finally {
+    desktopLiveLock?.release();
+    desktopLiveLock = undefined;
   }
 }
 

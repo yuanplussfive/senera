@@ -83,7 +83,8 @@
         "VerifyDesktopRuntimeAssetSync.js",
         "VerifyDesktopRuntimePaths.js",
         "VerifyDesktopFrontendSource.js",
-        "VerifyDesktopLiveFrontendServer.js"
+        "VerifyDesktopLiveFrontendServer.js",
+        "VerifyDesktopLiveLifecycle.js"
       ]
     },
     "release": {
