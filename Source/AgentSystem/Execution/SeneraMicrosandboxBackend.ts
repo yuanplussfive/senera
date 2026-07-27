@@ -7,7 +7,6 @@ import {
 import { SeneraProcessOutputBuffer } from "./SeneraProcessOutputBuffer.js";
 import type { SeneraProcessExecutionBackend, SeneraProcessExecutionRequest } from "./SeneraProcessExecutionBackend.js";
 import { resolveSeneraMicrosandboxSettings, type SeneraMicrosandboxSettings } from "./SeneraMicrosandboxDefaults.js";
-import { projectMicrosandboxWorkspaceMount } from "./SeneraMicrosandboxPaths.js";
 import { SeneraMicrosandboxDynamicSdkAdapter } from "./SeneraMicrosandboxSdkAdapter.js";
 import type {
   SeneraMicrosandboxCreateRequest,
@@ -16,10 +15,6 @@ import type {
   SeneraMicrosandboxSession,
 } from "./SeneraMicrosandboxTypes.js";
 import type { SeneraShellInvocation } from "./SeneraShellPlatform.js";
-import {
-  materializeSeneraSandboxRootfs,
-  prepareSeneraSandboxWritableMounts,
-} from "./SeneraSandboxProfileMaterializer.js";
 import { SeneraShellDialects } from "./SeneraShellCommand.js";
 import type { AgentSandboxRuntimePaths } from "../Sandbox/AgentSandboxRuntimePreparation.js";
 import { openSeneraTerminalSidecar } from "./SeneraTerminalSidecarClient.js";
@@ -32,13 +27,20 @@ import {
 } from "./SeneraExecutionErrorDiagnostics.js";
 import { withDeadline } from "../Core/AgentTiming.js";
 import {
-  SeneraTerminalCapabilityNames,
+  prepareSeneraSandboxExecutionContext,
+  releaseSeneraSandboxResources,
+  type SeneraSandboxCleanupResource,
+} from "./SeneraSandboxExecutionContext.js";
+import {
   SeneraTerminalCapabilityProviders,
-  SeneraTerminalPersistenceScopes,
   type SeneraTerminalBackend,
   type SeneraTerminalChild,
   type SeneraTerminalSpawnOptions,
 } from "./SeneraTerminalTypes.js";
+import {
+  createSeneraSandboxTerminalDescriptor,
+  projectSeneraSandboxTerminalMetadata,
+} from "./SeneraSandboxTerminalDescriptor.js";
 
 export interface SeneraMicrosandboxBackendOptions {
   workspaceRoot: string;
@@ -54,24 +56,10 @@ export interface SeneraMicrosandboxBackendOptions {
 export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend, SeneraTerminalBackend {
   readonly kind = "microsandbox";
   readonly shellDialect = SeneraShellDialects.Posix;
-  readonly descriptor = {
-    id: "microsandbox-sidecar",
-    boundary: "sandbox",
-    shellDialect: SeneraShellDialects.Posix,
-    capabilities: new Set([
-      SeneraTerminalCapabilityNames.Persistent,
-      SeneraTerminalCapabilityNames.InteractiveInput,
-      SeneraTerminalCapabilityNames.Resize,
-      SeneraTerminalCapabilityNames.Signals,
-    ]),
-    capabilityProviders: {
-      [SeneraTerminalCapabilityNames.Persistent]: SeneraTerminalCapabilityProviders.GuestNodePty,
-      [SeneraTerminalCapabilityNames.InteractiveInput]: SeneraTerminalCapabilityProviders.GuestNodePty,
-      [SeneraTerminalCapabilityNames.Resize]: SeneraTerminalCapabilityProviders.GuestNodePty,
-      [SeneraTerminalCapabilityNames.Signals]: SeneraTerminalCapabilityProviders.MicrosandboxSdk,
-    },
-    persistenceScope: SeneraTerminalPersistenceScopes.ExecutionResource,
-  } as const;
+  readonly descriptor = createSeneraSandboxTerminalDescriptor(
+    "microsandbox-sidecar",
+    SeneraTerminalCapabilityProviders.MicrosandboxSdk,
+  );
   private readonly workspaceRoot: string;
   private readonly settings: SeneraMicrosandboxSettings;
   private readonly runtimePaths: AgentSandboxRuntimePaths | undefined;
@@ -106,37 +94,28 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
     assertMicrosandboxProfile(request.profile);
     this.throwIfTemporarilyUnavailable();
     const settings = this.effectiveSettings(request.profile);
-    await prepareSeneraSandboxWritableMounts(request.profile);
-
-    const mount = projectMicrosandboxWorkspaceMount({
+    const context = await prepareSeneraSandboxExecutionContext({
       workspaceRoot: this.workspaceRoot,
       cwd: request.cwd,
       guestWorkspaceRoot: settings.guestWorkspaceRoot,
+      guestWorkdir: request.profile?.sandbox?.guestWorkdir,
+      environment: request.env,
+      profile: request.profile,
     });
-    const materialized = await materializeSeneraSandboxRootfs(request.profile);
     let session: SeneraMicrosandboxSession | undefined;
     let result: SeneraShellExecutionResult | undefined;
     let primaryError: SeneraExecutionError | undefined;
 
     try {
       session = (
-        await this.createSession(
-          request.profile,
-          request.profile?.sandbox?.guestWorkdir ?? mount.guestCwd,
-          settings,
-          materialized.rootfsCopies,
-          request.timeoutMs,
-        )
+        await this.createSession(request.profile, context.guestCwd, settings, context.rootfsCopies, request.timeoutMs)
       ).session;
       result = await this.collectExecution(
         session,
         {
           ...request,
-          cwd: request.profile?.sandbox?.guestWorkdir ?? mount.guestCwd,
-          env: {
-            ...definedEnv(request.env),
-            ...(request.profile?.sandbox?.env ?? {}),
-          },
+          cwd: context.guestCwd,
+          env: context.environment,
         },
         settings.stopTimeoutMs,
       );
@@ -144,24 +123,10 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
       primaryError = error instanceof SeneraExecutionError ? error : toExecutionError(error, request);
     }
 
-    let cleanupError: SeneraExecutionError | undefined;
-    try {
-      materialized.cleanup();
-    } catch (error) {
-      const materializedCleanupError = normalizeSeneraExecutionDiagnostic(
-        error,
-        SeneraExecutionErrorCodes.CleanupFailed,
-        { reason: "rootfs_cleanup_failed", backend: this.kind },
-      );
-      cleanupError = materializedCleanupError;
-    }
-
-    if (cleanupError) {
-      primaryError = primaryError
-        ? attachSeneraExecutionDiagnostic(primaryError, "cleanup", cleanupError)
-        : cleanupError;
-    }
-    if (primaryError) throw primaryError;
+    await releaseSeneraSandboxResources([context.rootfsCleanup], {
+      backend: this.kind,
+      primaryError,
+    });
     return result!;
   }
 
@@ -182,23 +147,23 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
     }
 
     const settings = this.effectiveSettings(options.profile);
-    await prepareSeneraSandboxWritableMounts(options.profile);
-    const mount = projectMicrosandboxWorkspaceMount({
+    const context = await prepareSeneraSandboxExecutionContext({
       workspaceRoot: this.workspaceRoot,
       cwd: options.cwd,
       guestWorkspaceRoot: settings.guestWorkspaceRoot,
+      guestWorkdir: options.profile?.sandbox?.guestWorkdir,
+      environment: options.env,
+      profile: options.profile,
     });
-    const guestCwd = options.profile?.sandbox?.guestWorkdir ?? mount.guestCwd;
-    const materialized = await materializeSeneraSandboxRootfs(options.profile);
     const runtime = this.resolveTerminalRuntime();
     let opened: { id: string; session: SeneraMicrosandboxSession } | undefined;
     try {
       opened = await this.createSession(
         options.profile,
-        guestCwd,
+        context.guestCwd,
         settings,
         [
-          ...materialized.rootfsCopies,
+          ...context.rootfsCopies,
           {
             hostPath: runtime.sourceRoot,
             guestPath: runtime.guestRoot,
@@ -219,45 +184,39 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
       const handle = await opened.session.openTerminal({
         command: runtime.guestNodeCommand,
         args: [runtime.guestEntrypoint],
-        cwd: guestCwd,
-        env: {
-          ...definedEnv(options.env),
-          ...(options.profile?.sandbox?.env ?? {}),
-        },
+        cwd: context.guestCwd,
+        env: context.environment,
       });
       const session = opened.session;
       return openSeneraTerminalSidecar({
         channel: new SeneraMicrosandboxTerminalSidecarChannel(handle, async () => {
-          await stopSession(session, settings.stopTimeoutMs);
-          materialized.cleanup();
+          await releaseSeneraSandboxResources(
+            [microsandboxSessionCleanup(session, settings.stopTimeoutMs), context.rootfsCleanup],
+            { backend: this.descriptor.id },
+          );
         }),
         command,
         args,
-        cwd: guestCwd,
-        env: {
-          ...definedEnv(options.env),
-          ...(options.profile?.sandbox?.env ?? {}),
-        },
+        cwd: context.guestCwd,
+        env: context.environment,
         columns: options.columns,
         rows: options.rows,
         terminalName: options.name ?? "xterm-256color",
-        metadata: {
-          requestedBoundary: "sandbox",
-          effectiveBoundary: "sandbox",
-          backendId: this.descriptor.id,
-          shellDialect: this.descriptor.shellDialect,
-          capabilities: [...this.descriptor.capabilities].sort(),
-          capabilityProviders: this.descriptor.capabilityProviders,
-          persistenceScope: this.descriptor.persistenceScope,
-          sandboxId: opened.id,
-        },
+        metadata: projectSeneraSandboxTerminalMetadata(this.descriptor, opened.id),
         signal: options.signal,
       });
     } catch (error) {
-      if (opened) await stopSession(opened.session, settings.stopTimeoutMs);
-      materialized.cleanup();
-      if (isSandboxUnavailableError(error)) throw error;
-      throw toTerminalSpawnError(error, command, args, guestCwd);
+      const primaryError = isSandboxUnavailableError(error)
+        ? error
+        : toTerminalSpawnError(error, command, args, context.guestCwd);
+      await releaseSeneraSandboxResources(
+        [
+          ...(opened ? [microsandboxSessionCleanup(opened.session, settings.stopTimeoutMs)] : []),
+          context.rootfsCleanup,
+        ],
+        { backend: this.descriptor.id, primaryError },
+      );
+      throw primaryError;
     }
   }
 
@@ -577,13 +536,18 @@ function timeoutSeconds(timeoutMs: number): number {
   return Math.max(1, Math.ceil(timeoutMs / 1000));
 }
 
-function definedEnv(env: NodeJS.ProcessEnv | undefined): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(env ?? {}).flatMap(([key, value]) => (typeof value === "string" ? [[key, value]] : [])),
-  );
-}
-
 const stoppedSessions = new WeakMap<SeneraMicrosandboxSession, Promise<void>>();
+
+function microsandboxSessionCleanup(
+  session: SeneraMicrosandboxSession,
+  timeoutMs: number,
+): SeneraSandboxCleanupResource {
+  return {
+    diagnosticKey: "cleanup",
+    reason: "sandbox_session_cleanup_failed",
+    release: () => stopSession(session, timeoutMs),
+  };
+}
 
 function stopSession(session: SeneraMicrosandboxSession, timeoutMs: number): Promise<void> {
   const existing = stoppedSessions.get(session);

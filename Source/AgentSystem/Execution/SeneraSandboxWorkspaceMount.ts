@@ -1,18 +1,18 @@
 import path from "node:path";
 import { projectHostPathToGuestPath } from "./SeneraGuestPathProjection.js";
 
-export interface SeneraMicrosandboxWorkspaceMount {
+export interface SeneraSandboxWorkspaceMount {
   hostWorkspaceRoot: string;
   guestWorkspaceRoot: string;
   hostCwd: string;
   guestCwd: string;
 }
 
-export function projectMicrosandboxWorkspaceMount(input: {
+export function projectSeneraSandboxWorkspaceMount(input: {
   workspaceRoot: string;
   cwd: string;
   guestWorkspaceRoot: string;
-}): SeneraMicrosandboxWorkspaceMount {
+}): SeneraSandboxWorkspaceMount {
   const hostWorkspaceRoot = path.resolve(input.workspaceRoot);
   const hostCwd = path.resolve(input.cwd);
   const relativeCwd = path.relative(hostWorkspaceRoot, hostCwd);

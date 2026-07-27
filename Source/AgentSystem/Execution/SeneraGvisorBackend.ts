@@ -6,11 +6,6 @@ import {
 } from "./SeneraExecutionTypes.js";
 import type { SeneraProcessExecutionBackend, SeneraProcessExecutionRequest } from "./SeneraProcessExecutionBackend.js";
 import { SeneraProcessOutputBuffer } from "./SeneraProcessOutputBuffer.js";
-import { projectMicrosandboxWorkspaceMount } from "./SeneraMicrosandboxPaths.js";
-import {
-  materializeSeneraSandboxRootfs,
-  prepareSeneraSandboxWritableMounts,
-} from "./SeneraSandboxProfileMaterializer.js";
 import type { SeneraShellInvocation } from "./SeneraShellPlatform.js";
 import { SeneraShellDialects } from "./SeneraShellCommand.js";
 import type { SeneraGvisorProcessEvent, SeneraGvisorWorkerClient } from "./SeneraGvisorTypes.js";
@@ -19,9 +14,7 @@ import { openSeneraTerminalSidecar } from "./SeneraTerminalSidecarClient.js";
 import { SeneraGvisorTerminalSidecarChannel } from "./SeneraTerminalSidecarChannel.js";
 import { resolvePreparedSeneraTerminalSidecarGuestRuntime } from "./SeneraTerminalSidecarGuestRuntime.js";
 import {
-  SeneraTerminalCapabilityNames,
   SeneraTerminalCapabilityProviders,
-  SeneraTerminalPersistenceScopes,
   type SeneraTerminalBackend,
   type SeneraTerminalChild,
   type SeneraTerminalSpawnOptions,
@@ -31,6 +24,15 @@ import {
   type AgentDockerEngineSandboxProvider,
   type ResolvedAgentDockerEngineRuntimeContract,
 } from "../Sandbox/Gvisor/AgentGvisorRuntimeContract.js";
+import {
+  prepareSeneraSandboxExecutionContext,
+  releaseSeneraSandboxResources,
+  type SeneraSandboxCleanupResource,
+} from "./SeneraSandboxExecutionContext.js";
+import {
+  createSeneraSandboxTerminalDescriptor,
+  projectSeneraSandboxTerminalMetadata,
+} from "./SeneraSandboxTerminalDescriptor.js";
 
 export interface SeneraGvisorBackendOptions {
   workspaceRoot: string;
@@ -59,24 +61,10 @@ export class SeneraGvisorBackend implements SeneraProcessExecutionBackend, Sener
         `Docker Engine backend contract/provider mismatch: ${this.resolvedContract.contract.provider} != ${this.kind}.`,
       );
     }
-    this.descriptor = {
-      id: `${this.kind}-sidecar`,
-      boundary: "sandbox" as const,
-      shellDialect: SeneraShellDialects.Posix,
-      capabilities: new Set([
-        SeneraTerminalCapabilityNames.Persistent,
-        SeneraTerminalCapabilityNames.InteractiveInput,
-        SeneraTerminalCapabilityNames.Resize,
-        SeneraTerminalCapabilityNames.Signals,
-      ]),
-      capabilityProviders: {
-        [SeneraTerminalCapabilityNames.Persistent]: SeneraTerminalCapabilityProviders.GuestNodePty,
-        [SeneraTerminalCapabilityNames.InteractiveInput]: SeneraTerminalCapabilityProviders.GuestNodePty,
-        [SeneraTerminalCapabilityNames.Resize]: SeneraTerminalCapabilityProviders.GuestNodePty,
-        [SeneraTerminalCapabilityNames.Signals]: SeneraTerminalCapabilityProviders.DockerEngine,
-      },
-      persistenceScope: SeneraTerminalPersistenceScopes.ExecutionResource,
-    };
+    this.descriptor = createSeneraSandboxTerminalDescriptor(
+      `${this.kind}-sidecar`,
+      SeneraTerminalCapabilityProviders.DockerEngine,
+    );
     this.runtimeReady = options.runtimeReady ?? (() => true);
     this.requestIdFactory = options.requestIdFactory ?? randomUUID;
   }
@@ -88,29 +76,29 @@ export class SeneraGvisorBackend implements SeneraProcessExecutionBackend, Sener
 
   async executeProcess(request: SeneraProcessExecutionRequest): Promise<SeneraShellExecutionResult> {
     assertGvisorRequest(request, this.runtimeReady(), this.kind);
-    await prepareSeneraSandboxWritableMounts(request.profile);
     const contract = this.resolvedContract.contract;
-    const mount = projectMicrosandboxWorkspaceMount({
+    const context = await prepareSeneraSandboxExecutionContext({
       workspaceRoot: this.options.workspaceRoot,
       cwd: request.cwd,
       guestWorkspaceRoot: request.profile?.sandbox?.guestWorkspaceRoot ?? contract.guest.workspaceRoot,
+      guestWorkdir: request.profile?.sandbox?.guestWorkdir,
+      environment: request.env,
+      profile: request.profile,
     });
-    const materialized = await materializeSeneraSandboxRootfs(request.profile);
+    let result: SeneraShellExecutionResult | undefined;
+    let primaryError: SeneraExecutionError | undefined;
     try {
       const handle = await this.options.worker.start({
         requestId: this.requestIdFactory(),
         command: request.command,
         arguments: [...request.args],
-        cwd: request.profile?.sandbox?.guestWorkdir ?? mount.guestCwd,
-        environment: {
-          ...definedEnvironment(request.env),
-          ...(request.profile?.sandbox?.env ?? {}),
-        },
+        cwd: context.guestCwd,
+        environment: context.environment,
         ...(request.stdin === undefined ? {} : { stdin: request.stdin }),
         interactive: false,
         workspaceMount: request.profile?.sandbox?.workspaceMount ?? "readonly",
         network: request.profile?.sandbox?.network ?? contract.defaults.network,
-        rootfsCopies: materialized.rootfsCopies.map((copy) => ({
+        rootfsCopies: context.rootfsCopies.map((copy) => ({
           sourcePath: copy.hostPath,
           guestPath: copy.guestPath,
         })),
@@ -127,19 +115,15 @@ export class SeneraGvisorBackend implements SeneraProcessExecutionBackend, Sener
       });
       if (request.stdin !== undefined) await handle.write(Buffer.from(request.stdin));
       await handle.endInput();
-      return await collectGvisorExecution(handle, request, this.kind);
+      result = await collectGvisorExecution(handle, request, this.kind);
     } catch (error) {
-      if (error instanceof SeneraExecutionError) throw error;
-      const cause = error instanceof Error ? error : new Error(String(error));
-      throw new SeneraExecutionError(
-        SeneraExecutionErrorCodes.SpawnFailed,
-        cause.message,
-        { backend: this.kind, command: request.command, args: request.args, cwd: request.cwd },
-        cause,
-      );
-    } finally {
-      materialized.cleanup();
+      primaryError = toGvisorExecutionError(error, request, this.kind);
     }
+    await releaseSeneraSandboxResources([context.rootfsCleanup], {
+      backend: this.kind,
+      primaryError,
+    });
+    return result!;
   }
 
   async spawn(
@@ -148,38 +132,36 @@ export class SeneraGvisorBackend implements SeneraProcessExecutionBackend, Sener
     options: SeneraTerminalSpawnOptions,
   ): Promise<SeneraTerminalChild> {
     assertGvisorTerminalRequest(options, this.runtimeReady(), this.kind);
-    await prepareSeneraSandboxWritableMounts(options.profile);
     const contract = this.resolvedContract.contract;
-    const mount = projectMicrosandboxWorkspaceMount({
+    if (!this.options.runtimePaths) {
+      throw new SeneraExecutionError(
+        SeneraExecutionErrorCodes.SandboxUnavailable,
+        "Docker Engine sandbox terminal runtime paths are not configured.",
+        { backend: this.descriptor.id, reason: "terminal_runtime_unconfigured" },
+      );
+    }
+    const terminalRuntime = resolvePreparedSeneraTerminalSidecarGuestRuntime(this.options.runtimePaths.baseDir);
+    const context = await prepareSeneraSandboxExecutionContext({
       workspaceRoot: this.options.workspaceRoot,
       cwd: options.cwd,
       guestWorkspaceRoot: options.profile?.sandbox?.guestWorkspaceRoot ?? contract.guest.workspaceRoot,
+      guestWorkdir: options.profile?.sandbox?.guestWorkdir,
+      environment: options.env,
+      profile: options.profile,
     });
-    const guestCwd = options.profile?.sandbox?.guestWorkdir ?? mount.guestCwd;
-    const materialized = await materializeSeneraSandboxRootfs(options.profile);
+    let handle: Awaited<ReturnType<SeneraGvisorWorkerClient["start"]>>;
     try {
-      if (!this.options.runtimePaths) {
-        throw new SeneraExecutionError(
-          SeneraExecutionErrorCodes.SandboxUnavailable,
-          "Docker Engine sandbox terminal runtime paths are not configured.",
-          { backend: this.descriptor.id, reason: "terminal_runtime_unconfigured" },
-        );
-      }
-      const terminalRuntime = resolvePreparedSeneraTerminalSidecarGuestRuntime(this.options.runtimePaths.baseDir);
-      const handle = await this.options.worker.start({
+      handle = await this.options.worker.start({
         requestId: this.requestIdFactory(),
         command: terminalRuntime.guestNodeCommand,
         arguments: [terminalRuntime.guestEntrypoint],
-        cwd: guestCwd,
-        environment: {
-          ...definedEnvironment(options.env),
-          ...(options.profile?.sandbox?.env ?? {}),
-        },
+        cwd: context.guestCwd,
+        environment: context.environment,
         interactive: true,
         workspaceMount: options.profile?.sandbox?.workspaceMount ?? "readonly",
         network: options.profile?.sandbox?.network ?? contract.defaults.network,
         rootfsCopies: [
-          ...materialized.rootfsCopies.map((copy) => ({ sourcePath: copy.hostPath, guestPath: copy.guestPath })),
+          ...context.rootfsCopies.map((copy) => ({ sourcePath: copy.hostPath, guestPath: copy.guestPath })),
           { sourcePath: terminalRuntime.sourceRoot, guestPath: terminalRuntime.guestRoot },
         ],
         writableMounts: (options.profile?.sandbox?.writableMounts ?? []).map((entry) => ({
@@ -193,41 +175,36 @@ export class SeneraGvisorBackend implements SeneraProcessExecutionBackend, Sener
           timeoutMs: options.maxDurationMs as number,
         },
       });
-      materialized.cleanup();
+    } catch (error) {
+      const primaryError = toGvisorTerminalSpawnError(error, command, args, context.guestCwd, this.descriptor.id);
+      await releaseSeneraSandboxResources([context.rootfsCleanup], {
+        backend: this.descriptor.id,
+        primaryError,
+      });
+      throw primaryError;
+    }
+
+    try {
+      await releaseSeneraSandboxResources([context.rootfsCleanup], { backend: this.descriptor.id });
       return openSeneraTerminalSidecar({
         channel: new SeneraGvisorTerminalSidecarChannel(handle),
         command,
         args,
-        cwd: guestCwd,
-        env: {
-          ...definedEnvironment(options.env),
-          ...(options.profile?.sandbox?.env ?? {}),
-        },
+        cwd: context.guestCwd,
+        env: context.environment,
         columns: options.columns,
         rows: options.rows,
         terminalName: options.name ?? "xterm-256color",
-        metadata: {
-          requestedBoundary: "sandbox",
-          effectiveBoundary: "sandbox",
-          backendId: this.descriptor.id,
-          shellDialect: this.descriptor.shellDialect,
-          capabilities: [...this.descriptor.capabilities].sort(),
-          capabilityProviders: this.descriptor.capabilityProviders,
-          persistenceScope: this.descriptor.persistenceScope,
-          sandboxId: handle.id,
-        },
+        metadata: projectSeneraSandboxTerminalMetadata(this.descriptor, handle.id),
         signal: options.signal,
       });
     } catch (error) {
-      materialized.cleanup();
-      if (error instanceof SeneraExecutionError) throw error;
-      const cause = error instanceof Error ? error : new Error(String(error));
-      throw new SeneraExecutionError(
-        SeneraExecutionErrorCodes.SpawnFailed,
-        cause.message,
-        { backend: this.descriptor.id, command, args, cwd: guestCwd },
-        cause,
-      );
+      const primaryError = toGvisorTerminalSpawnError(error, command, args, context.guestCwd, this.descriptor.id);
+      await releaseSeneraSandboxResources([gvisorProcessCleanup(handle)], {
+        backend: this.descriptor.id,
+        primaryError,
+      });
+      throw primaryError;
     }
   }
 }
@@ -381,8 +358,44 @@ function assertGvisorTerminalRequest(
   );
 }
 
-function definedEnvironment(environment: NodeJS.ProcessEnv | undefined): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(environment ?? {}).flatMap(([name, value]) => (typeof value === "string" ? [[name, value]] : [])),
+function toGvisorExecutionError(
+  error: unknown,
+  request: SeneraProcessExecutionRequest,
+  provider: AgentDockerEngineSandboxProvider,
+): SeneraExecutionError {
+  if (error instanceof SeneraExecutionError) return error;
+  const cause = error instanceof Error ? error : new Error(String(error));
+  return new SeneraExecutionError(
+    SeneraExecutionErrorCodes.SpawnFailed,
+    cause.message,
+    { backend: provider, command: request.command, args: request.args, cwd: request.cwd },
+    cause,
   );
+}
+
+function toGvisorTerminalSpawnError(
+  error: unknown,
+  command: string,
+  args: readonly string[],
+  cwd: string,
+  backend: string,
+): SeneraExecutionError {
+  if (error instanceof SeneraExecutionError) return error;
+  const cause = error instanceof Error ? error : new Error(String(error));
+  return new SeneraExecutionError(
+    SeneraExecutionErrorCodes.SpawnFailed,
+    cause.message,
+    { backend, command, args, cwd },
+    cause,
+  );
+}
+
+function gvisorProcessCleanup(
+  handle: Awaited<ReturnType<SeneraGvisorWorkerClient["start"]>>,
+): SeneraSandboxCleanupResource {
+  return {
+    diagnosticKey: "cleanup",
+    reason: "gvisor_process_cleanup_failed",
+    release: () => handle.terminate("kill"),
+  };
 }
