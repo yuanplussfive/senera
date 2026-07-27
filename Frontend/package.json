@@ -13,8 +13,10 @@
     "ui.registry.view": "shadcn view",
     "ui.registry.dry-run": "shadcn add --dry-run",
     "test.behavior": "node --import tsx ../Scripts/VerifyFrontendVitestSuite.ts",
+    "test.governance": "npm run check.governance && npm run check.ladle",
+    "test.static": "npm run check.types && npm run test.governance",
     "test.coverage": "vitest run --config ../vitest.config.ts --coverage",
-    "test": "npm run check.types && npm run check.governance && npm run check.ladle && npm run test.behavior",
+    "test": "npm run test.static && npm run test.behavior",
     "ladle": "ladle serve",
     "ladle:build": "ladle build"
   },

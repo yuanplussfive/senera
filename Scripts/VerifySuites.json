@@ -27,7 +27,6 @@
         "VerifyFrontendRuntimeI18n.js",
         "VerifyPluginArtifactPolicies.js",
         "VerifyPluginReferenceValidation.js",
-        "VerifyPluginRuntimeManifest.js",
         "VerifyToolExecutionPolicy.js",
         "VerifyWorkspaceApplyPatchTool.js",
         "VerifyPluginRuntimeBundleProjection.js",

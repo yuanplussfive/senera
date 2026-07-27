@@ -23,8 +23,13 @@ export function inspectSecurityScanWorkflow(workflow: string): string[] {
     "actions/dependency-review-action@v4",
     TrivyAction,
     "github/codeql-action/upload-sarif@v3",
+    "actions/setup-node@v4",
     "npm run quality.security",
   ]);
+  const auditJob = workflowJobBlock(workflow, "dependency-audit");
+  if (auditJob?.includes("./.github/actions/setup-node")) {
+    violations.push(`${SecurityScanWorkflowLabel} dependency audit must not install the workspace dependency tree.`);
+  }
   const trivyJob = workflowJobBlock(workflow, "trivy-filesystem");
   if (trivyJob) {
     for (const policy of TrivyStepPolicies) {

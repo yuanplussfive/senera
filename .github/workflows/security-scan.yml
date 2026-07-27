@@ -32,7 +32,11 @@ jobs:
       npm_config_cache: .npm-cache
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
       - run: npm run quality.security
 
   codeql:

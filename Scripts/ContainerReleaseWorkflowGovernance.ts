@@ -9,6 +9,7 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
   const sandboxRuntimeBuildJob = workflowJobBlock(workflow, "sandbox-runtime-build");
   const smokeJob = workflowJobBlock(workflow, "container-smoke");
   const publishJob = workflowJobBlock(workflow, "container");
+  const retiredPublishJob = workflowJobBlock(workflow, "publish");
   const violations: string[] = [];
 
   if (!sandboxJob) {
@@ -23,6 +24,9 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
     if (sandboxJob.includes("gh release upload")) {
       violations.push(`${ReleaseWorkflowLabel} job sandbox-archive must remain an internal build artifact.`);
     }
+    if (sandboxJob.includes("environment: release-stable")) {
+      violations.push(`${ReleaseWorkflowLabel} job sandbox-archive must not create a stable deployment record.`);
+    }
   }
 
   if (!desktopJob) {
@@ -35,6 +39,9 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         "path: Release/SandboxImage",
       ]),
     );
+    if (desktopJob.includes("gh release upload") || desktopJob.includes("environment: release-stable")) {
+      violations.push(`${ReleaseWorkflowLabel} job desktop must build an internal artifact before stable publication.`);
+    }
   }
 
   if (!buildJob) {
@@ -127,6 +134,9 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
   } else {
     violations.push(
       ...inspectTextIncludes(publishJob, `${ReleaseWorkflowLabel} job container`, [
+        "name: Publish Verified Release",
+        "- sandbox-archive",
+        "- desktop",
         "- container-build",
         "- sandbox-runtime-build",
         "- container-smoke",
@@ -138,6 +148,11 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         "sandbox_runtime_version_tag",
         "type=raw,value=sandbox-runtime-${{ needs.metadata.outputs.sandbox_runtime_version_tag }}",
         "type=raw,value=sandbox-runtime-latest",
+        "environment: release-stable",
+        "actions/download-artifact@v4",
+        "gh release upload",
+        "gh release edit",
+        "--draft=false --latest",
         'docker buildx imagetools create "${tag_arguments[@]}" "$SOURCE_IMAGE"',
       ]),
     );
@@ -146,6 +161,32 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         `${ReleaseWorkflowLabel} job container must promote the verified digest without rebuilding the image.`,
       );
     }
+    const installerUpload = publishJob.indexOf("gh release upload");
+    const firstDigestPromotion = publishJob.indexOf("docker buildx imagetools create");
+    const lastDigestPromotion = publishJob.lastIndexOf("docker buildx imagetools create");
+    const stableRelease = publishJob.indexOf("gh release edit");
+    if (
+      installerUpload < 0 ||
+      firstDigestPromotion < 0 ||
+      installerUpload > firstDigestPromotion ||
+      stableRelease < lastDigestPromotion
+    ) {
+      violations.push(
+        `${ReleaseWorkflowLabel} job container must stage the installer, promote verified digests, then publish the draft release.`,
+      );
+    }
+  }
+
+  if (retiredPublishJob) {
+    violations.push(`${ReleaseWorkflowLabel} must publish stable assets in one environment job.`);
+  }
+  const stableEnvironmentCount = workflow
+    .split(/\r?\n/u)
+    .filter((line) => line === "    environment: release-stable").length;
+  if (stableEnvironmentCount !== 1) {
+    violations.push(
+      `${ReleaseWorkflowLabel} must create exactly one release-stable deployment; found ${stableEnvironmentCount}.`,
+    );
   }
 
   const buildActionCount = workflow.match(/docker\/build-push-action@v6/gu)?.length ?? 0;

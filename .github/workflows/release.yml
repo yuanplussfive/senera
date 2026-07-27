@@ -168,7 +168,6 @@ jobs:
     if: needs.metadata.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: release-stable
     steps:
       - uses: actions/checkout@v4
         with:
@@ -189,12 +188,13 @@ jobs:
       - sandbox-archive
     if: needs.metadata.result == 'success' && needs.sandbox-archive.result == 'success'
     runs-on: windows-latest
-    environment: release-stable
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.metadata.outputs.tag }}
       - uses: ./.github/actions/setup-node
+        with:
+          install-electron: "true"
       - uses: actions/download-artifact@v4
         with:
           name: senera-sandbox-image-${{ needs.metadata.outputs.version }}
@@ -205,13 +205,6 @@ jobs:
           name: ${{ needs.metadata.outputs.desktop_artifact_name }}
           path: ${{ needs.metadata.outputs.desktop_artifact_path }}
           if-no-files-found: error
-      - name: Attach installer to GitHub Release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
-          ARTIFACT_PATH: ${{ needs.metadata.outputs.desktop_artifact_path }}
-        run: gh release upload $env:RELEASE_TAG $env:ARTIFACT_PATH --clobber
 
   container-build:
     name: Build Container Candidate
@@ -363,14 +356,18 @@ jobs:
           docker compose exec -T --user node senera node Dist/Scripts/VerifyDockerUserPluginWrite.js
 
   container:
-    name: Publish Container Image
+    name: Publish Verified Release
     needs:
       - metadata
+      - sandbox-archive
+      - desktop
       - container-build
       - sandbox-runtime-build
       - container-smoke
     if: >-
       needs.metadata.result == 'success' &&
+      needs.sandbox-archive.result == 'success' &&
+      needs.desktop.result == 'success' &&
       needs.container-build.result == 'success' &&
       needs.sandbox-runtime-build.result == 'success' &&
       needs.container-smoke.result == 'success'
@@ -383,6 +380,26 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
+      - name: Download verified Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.metadata.outputs.desktop_artifact_name }}
+          path: ${{ runner.temp }}/release-assets
+      - name: Attach verified installer to the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          RELEASE_ASSET_ROOT: ${{ runner.temp }}/release-assets
+        run: |
+          set -euo pipefail
+          mapfile -d '' release_assets < <(find "$RELEASE_ASSET_ROOT" -type f -print0)
+          if [ "${#release_assets[@]}" -ne 1 ]; then
+            echo "Expected exactly one verified desktop release asset, found ${#release_assets[@]}." >&2
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${release_assets[0]}" --repo "$REPOSITORY" --clobber
       - id: image
         uses: docker/metadata-action@v5
         with:
@@ -441,21 +458,6 @@ jobs:
           fi
 
           docker buildx imagetools create "${tag_arguments[@]}" "$SOURCE_IMAGE"
-
-  publish:
-    name: Publish Verified Release
-    needs:
-      - metadata
-      - sandbox-archive
-      - desktop
-      - container
-    if: >-
-      needs.metadata.result == 'success' &&
-      needs.sandbox-archive.result == 'success' &&
-      needs.desktop.result == 'success' &&
-      needs.container.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
       - name: Publish draft as the latest stable release
         env:
           GH_TOKEN: ${{ github.token }}

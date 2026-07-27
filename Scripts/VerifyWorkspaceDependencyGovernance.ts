@@ -6,7 +6,8 @@ import { IntegrationTestPolicy, ProjectTestCoveragePolicies } from "./TestCovera
 import { inspectContainerReleasePipeline } from "./ContainerReleaseWorkflowGovernance.js";
 import { inspectSecurityScanWorkflow } from "./SecurityScanWorkflowGovernance.js";
 import { toPosixPath, toPosixRelative } from "./Support/FileWalk.js";
-import { inspectTextIncludes, workflowJobBlock } from "./Support/WorkflowGovernance.js";
+import { inspectTextIncludes } from "./Support/WorkflowGovernance.js";
+import { inspectVerifyPipeline } from "./VerifyWorkflowGovernance.js";
 
 interface PackageJson {
   name?: string;
@@ -101,7 +102,6 @@ const rootOwnedToolchainDependencies = new Map(
     vitest: "^4.1.10",
   }),
 );
-const verifyWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "verify.yml"));
 const productReleaseWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "release.yml"));
 const violations = [
   ...inspectWorkspaceCoverage(),
@@ -109,7 +109,10 @@ const violations = [
   ...inspectLockfileWorkspaceState(),
   ...inspectNativeOptionalDependencyClosure(),
   ...inspectRootNpmPolicy(),
-  ...inspectVerifyWorkflow(),
+  ...inspectVerifyPipeline(
+    readTextFile(path.join(workspaceRoot, ".github", "workflows", "verify.yml")),
+    readTextFile(path.join(workspaceRoot, ".github", "actions", "setup-node", "action.yml")),
+  ),
   ...inspectSecurityScanWorkflow(readTextFile(path.join(workspaceRoot, ".github", "workflows", "security-scan.yml"))),
   ...inspectReleaseWorkflowGates(),
   ...inspectRootScripts(),
@@ -197,7 +200,9 @@ function inspectRootScripts(): string[] {
     clean: "rimraf Dist",
     "quality.baml": "baml check --from baml_src",
     "quality.baml.generate": "baml generate --from baml_src",
-    "quality.security": "npm audit --audit-level=moderate",
+    "quality.security": "npm audit --package-lock-only --audit-level=moderate",
+    "quality.lint":
+      "eslint . --cache --cache-location .cache/eslint/.eslintcache --cache-strategy content --max-warnings=0",
     "quality.format": "tsx Scripts/VerifyChangedFormatting.ts",
     "quality.format.fix": "tsx Scripts/VerifyChangedFormatting.ts --write",
     "quality.format.full": 'prettier "**/*" --check --ignore-unknown',
@@ -227,6 +232,8 @@ function inspectRootScripts(): string[] {
     "dev.frontend": "npm --workspace senera-frontend run dev",
     "check.frontend-types": "npm --workspace senera-frontend run check.types",
     "test.frontend": "npm --workspace senera-frontend run test",
+    "test.frontend.governance": "npm --workspace senera-frontend run test.governance",
+    "test.frontend.static": "npm --workspace senera-frontend run test.static",
     "test.coverage.frontend": "npm --workspace senera-frontend run test.coverage",
     "test.backend": vitestRunCommand(ProjectTestCoveragePolicies.backend.vitestConfig),
     "test.coverage.backend": vitestRunCommand(ProjectTestCoveragePolicies.backend.vitestConfig, "--coverage"),
@@ -260,13 +267,13 @@ function inspectRootScripts(): string[] {
       "quality.security",
       "quality.baml",
       "policy.verify",
-      "check.types",
-      "test.backend",
-      "test.frontend",
-      "test.integration",
+      "quality.lint",
+      "quality.format",
       "build",
-      "test.e2e.web.run",
+      "test.frontend.governance",
+      "test.integration",
       "quality.coverage",
+      "test.e2e.web.run",
     ]),
   ];
 }
@@ -496,8 +503,10 @@ function inspectFrontendScripts(): string[] {
     "check.governance": `node --import tsx ../${ProjectTestCoveragePolicies.frontend.verifyEntrypoint}`,
     "check.ladle": "node --import tsx ../Scripts/VerifyFrontendLadleContracts.ts",
     "test.behavior": `node --import tsx ../${ProjectTestCoveragePolicies.frontend.runnerEntrypoint}`,
+    "test.governance": "npm run check.governance && npm run check.ladle",
+    "test.static": "npm run check.types && npm run test.governance",
     "test.coverage": vitestRunCommand(`../${ProjectTestCoveragePolicies.frontend.vitestConfig}`, "--coverage"),
-    test: "npm run check.types && npm run check.governance && npm run check.ladle && npm run test.behavior",
+    test: "npm run test.static && npm run test.behavior",
   });
 }
 
@@ -531,43 +540,6 @@ function inspectRootNpmPolicy(): string[] {
   }
 
   return violations;
-}
-
-function inspectVerifyWorkflow(): string[] {
-  return [
-    ...inspectTextIncludes(verifyWorkflow, ".github/workflows/verify.yml", [
-      "name: Fast Gate",
-      "name: Windows Platform Smoke",
-      "name: Coverage Gate",
-      "./.github/actions/setup-node",
-      "fetch-depth: 0",
-      "types:\n      - opened\n      - synchronize\n      - reopened\n      - edited",
-      "id: range",
-      'from="$(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA")"',
-      "GITHUB_PR_TITLE: ${{ github.event.pull_request.title }}",
-      "node --import tsx Scripts/VerifyPullRequestTitle.ts",
-      "npm run quality.format -- ${{ steps.range.outputs.arguments }}",
-      "npm run test.backend",
-      "npm run test.frontend",
-      "npm run test.integration",
-      "npm run test.e2e.web",
-      "npm run verify.suite -- workspace core integration e2e release",
-      "npm run verify.suite -- platform",
-      "github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'",
-      "npm run test.coverage.frontend",
-      "npm run test.coverage.backend",
-      "inputs.full_suite",
-    ]),
-    ...inspectPullRequestJobGate(verifyWorkflow, ".github/workflows/verify.yml", "coverage"),
-  ];
-}
-
-function inspectPullRequestJobGate(workflow: string, file: string, jobName: string): string[] {
-  const block = workflowJobBlock(workflow, jobName);
-  if (!block) return [`${file} must define the ${jobName} job.`];
-  return block.includes("if: github.event_name != 'pull_request'")
-    ? [`${file} ${jobName} must run for pull_request events.`]
-    : [];
 }
 
 function inspectReleaseWorkflowGates(): string[] {

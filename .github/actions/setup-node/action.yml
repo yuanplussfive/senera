@@ -6,6 +6,10 @@ inputs:
     description: Node.js major version to install.
     required: false
     default: "22"
+  install-electron:
+    description: Download Electron during npm installation for jobs that execute or package the desktop application.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -15,5 +19,21 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache: npm
         cache-dependency-path: package-lock.json
-    - run: npm ci
+    - name: Restore Windows Electron downloads
+      if: runner.os == 'Windows' && inputs.install-electron == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/AppData/Local/electron/Cache
+          ~/AppData/Local/electron-builder/Cache
+        key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+    - name: Install locked dependencies with Electron
+      if: inputs.install-electron == 'true'
+      run: npm ci --no-audit --no-fund --prefer-offline
       shell: bash
+    - name: Install locked dependencies without Electron
+      if: inputs.install-electron != 'true'
+      run: npm ci --no-audit --no-fund --prefer-offline
+      shell: bash
+      env:
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
