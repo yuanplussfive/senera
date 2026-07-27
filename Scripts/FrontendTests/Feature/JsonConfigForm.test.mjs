@@ -7,6 +7,7 @@ import {
   validateJsonConfigDraft,
   writeJsonConfigFieldValue,
 } from "../../../Frontend/src/shared/config/JsonConfigForm.tsx";
+import { sameJsonValue } from "../../../Frontend/src/shared/config/JsonConfigValue.ts";
 
 afterEach(() => {
   cleanup();
@@ -32,6 +33,16 @@ test("nested config writes are immutable and create missing parent records", () 
     untouched: { enabled: true },
   });
   expect(created.untouched).not.toBe(original.untouched);
+});
+
+test("JSON equality ignores object key order while preserving array order", () => {
+  expect(
+    sameJsonValue(
+      { Runtime: { Enabled: true, Limits: { Requests: 4, Bytes: 1024 } } },
+      { Runtime: { Limits: { Bytes: 1024, Requests: 4 }, Enabled: true } },
+    ),
+  ).toBe(true);
+  expect(sameJsonValue({ Values: ["first", "second"] }, { Values: ["second", "first"] })).toBe(false);
 });
 
 test("draft validation reports nested table, range, and option violations", () => {

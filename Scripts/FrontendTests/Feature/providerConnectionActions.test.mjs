@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { useProviderConnectionActions } from "../../../Frontend/src/features/settings/sections/useProviderConnectionActions.ts";
+import { ConfigSecretContract } from "../../../Frontend/src/api/generatedEventCatalog.ts";
 
 afterEach(() => {
   cleanup();
@@ -351,6 +352,92 @@ test("provider drafts and errors stay isolated when switching during a save", as
   expect(handleRef.current.actions.localError).toBe("alpha rejected");
 });
 
+test("invalid drafts cannot be silently discarded when switching before blur", async () => {
+  const handleRef = { current: null };
+  render(React.createElement(ActionsHarness, { handleRef, state: createMultiState() }));
+  const beta = createMultiState().providers[1];
+
+  await act(async () => {
+    handleRef.current.actions.updateDraftProvider({ BaseUrl: "not-a-url" });
+    expect(handleRef.current.actions.commitAndSelectProvider(beta)).toBe(false);
+  });
+
+  expect(handleRef.current.selectedProviderId).toBe("alpha");
+  expect(handleRef.current.actions.localError).toBe("API 地址必须是以 http:// 或 https:// 开头的完整 URL。");
+  expect(handleRef.current.actions.connectionDraft?.BaseUrl).toBe("not-a-url");
+});
+
+test("redacted snapshots settle secret saves and allow a clean provider switch", async () => {
+  const handleRef = { current: null };
+  const onUpsertProviderEndpoint = vi.fn(() => "secret-save");
+  const redacted = ConfigSecretContract.RedactedPlaceholder;
+  const alpha = {
+    Id: "alpha",
+    Enabled: true,
+    BaseUrl: "https://alpha.example.test/v1",
+    ApiKey: redacted,
+    Headers: { Authorization: redacted, "X-Trace": "trace" },
+  };
+  const beta = createState("beta").providers[0];
+  const initialState = {
+    ...createMultiState(),
+    providers: [alpha, beta],
+    selectedProvider: alpha,
+  };
+  const view = render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      onUpsertProviderEndpoint,
+      state: initialState,
+    }),
+  );
+
+  await act(async () => {
+    handleRef.current.actions.updateDraftProvider({
+      ApiKey: "rotated-secret",
+      Headers: { "X-Trace": "trace", Authorization: "Bearer rotated" },
+    });
+    handleRef.current.actions.confirmDraft();
+  });
+  expect(handleRef.current.actions.dirty).toBe(true);
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        onUpsertProviderEndpoint,
+        operations: {
+          alpha: {
+            commandId: "secret-save",
+            kind: "provider.endpoint.upsert",
+            status: "success",
+            updatedAt: "2026-07-27T00:00:00.000Z",
+          },
+        },
+        state: initialState,
+      }),
+    );
+  });
+
+  expect(handleRef.current.actions.dirty).toBe(false);
+  expect(handleRef.current.actions.connectionDraft?.ApiKey).toBe(redacted);
+  expect(handleRef.current.actions.commitAndSelectProvider(beta)).toBe(true);
+});
+
+test("selecting the active provider never asks callers to discard its blocked draft", async () => {
+  const handleRef = { current: null };
+  render(React.createElement(ActionsHarness, { handleRef, state: createState("alpha"), socketStatus: "idle" }));
+
+  await act(async () => {
+    handleRef.current.actions.updateDraftProvider({ ApiKey: "local-only" });
+    handleRef.current.actions.confirmDraft();
+  });
+
+  expect(handleRef.current.actions.dirty).toBe(true);
+  expect(handleRef.current.actions.localError).toBe("配置服务连接已中断，当前修改仍保留在本地草稿中。");
+  expect(handleRef.current.actions.commitAndSelectProvider(createState("alpha").providers[0])).toBe(true);
+});
+
 function ActionsHarness({
   handleRef,
   onRender,
@@ -358,6 +445,7 @@ function ActionsHarness({
   onRenameProviderEndpoint = () => "rename-request",
   onUpsertProviderEndpoint = () => "upsert-request",
   operations = {},
+  socketStatus = "open",
   state,
 }) {
   const [selectedProviderId, setSelectedProviderId] = useState("alpha");
@@ -378,6 +466,7 @@ function ActionsHarness({
     onFetchProviderModels: () => undefined,
     onRenameProviderEndpoint,
     onUpsertProviderEndpoint,
+    socketStatus,
   });
 
   onRender?.();

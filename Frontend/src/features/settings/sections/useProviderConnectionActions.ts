@@ -213,7 +213,13 @@ export function useProviderConnectionActions({
     selectedEntry?.draft ?? (acceptedProvider ? normalizeProviderEndpointDraft(acceptedProvider) : null);
   const dirty = Boolean(selectedEntry && !sameProviderEndpoint(selectedEntry.synced, selectedEntry.draft));
   const localError = selectedEntry?.error ?? null;
-  const saving = providerOperation?.status === "pending" || pendingProviderDraftConfirmation !== null;
+  const providerSaveOperation =
+    selectedEntry?.active &&
+    providerOperation?.kind === "provider.endpoint.upsert" &&
+    providerOperation.commandId === selectedEntry.active.requestId
+      ? providerOperation
+      : undefined;
+  const saving = providerSaveOperation?.status === "pending" || pendingProviderDraftConfirmation !== null;
 
   useEffect(() => {
     if (pendingRenameProviderId) {
@@ -256,6 +262,7 @@ export function useProviderConnectionActions({
   };
 
   const commitAndSelectProvider = (provider: ProviderEndpointDraft): boolean => {
+    if (provider.Id === acceptedProvider?.Id) return true;
     const currentEntry = acceptedProvider ? draftQueue.read(acceptedProvider) : undefined;
     const currentDirty = Boolean(currentEntry && !sameProviderEndpoint(currentEntry.synced, currentEntry.draft));
     // Blocked edits (save error / offline) cannot be committed in passing;
@@ -263,7 +270,14 @@ export function useProviderConnectionActions({
     if (currentDirty && currentEntry && (currentEntry.error || currentEntry.autoSaveBlocked)) {
       return false;
     }
-    if (currentDirty && currentEntry) confirmDraft();
+    if (currentDirty && currentEntry) {
+      const mutation = buildProviderEndpointMutationInput(currentEntry.draft, currentEntry.synced);
+      if (!mutation.ok || socketStatus !== "open") {
+        confirmDraft();
+        return false;
+      }
+      confirmDraft();
+    }
     setSelectedProviderId(provider.Id);
     setDraftProvider(provider);
     return true;
@@ -391,7 +405,7 @@ export function useProviderConnectionActions({
     acceptedProvider,
     selectedProviderIndex,
     selectedProviderModelCount,
-    providerOperation,
+    providerOperation: providerSaveOperation,
     selectedProviderCatalog,
     selectedProviderError,
     selectedProviderLoading,

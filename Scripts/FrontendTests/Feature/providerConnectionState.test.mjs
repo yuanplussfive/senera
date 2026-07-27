@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   applyProviderConnectionDraftPatch,
   buildProviderEndpointMutationInput,
+  providerEndpointSnapshotMatchesDraft,
   readProviderConnectionDraftState,
   readProviderConnectionState,
   resetProviderConnectionDraft,
+  sameProviderEndpoint,
 } from "../../../Frontend/src/features/settings/sections/providerConnectionState.ts";
+import { ConfigSecretContract } from "../../../Frontend/src/api/generatedEventCatalog.ts";
 
 describe("providerConnectionState", () => {
   it("reads effective provider endpoints so built-in providers remain visible", () => {
@@ -135,6 +138,45 @@ describe("providerConnectionState", () => {
       ok: false,
       message: "供应商 ID 不能为空。",
     });
+  });
+
+  it("compares endpoint values semantically without treating header order or empty headers as edits", () => {
+    expect(
+      sameProviderEndpoint(
+        {
+          Id: "custom",
+          Enabled: true,
+          Headers: { Authorization: "Bearer token", "X-Trace": "trace" },
+        },
+        {
+          Id: "custom",
+          Headers: { "X-Trace": "trace", Authorization: "Bearer token" },
+        },
+      ),
+    ).toBe(true);
+    expect(sameProviderEndpoint({ Id: "custom", Headers: {} }, { Id: "custom" })).toBe(true);
+  });
+
+  it("accepts redacted save snapshots without hiding a newly typed secret from dirty comparison", () => {
+    const submitted = {
+      Id: "custom",
+      ApiKey: "rotated-secret",
+      Headers: { Authorization: "Bearer rotated", "X-Trace": "trace" },
+    };
+    const snapshot = {
+      Id: "custom",
+      ApiKey: ConfigSecretContract.RedactedPlaceholder,
+      Headers: {
+        Authorization: ConfigSecretContract.RedactedPlaceholder,
+        "X-Trace": "trace",
+      },
+    };
+
+    expect(providerEndpointSnapshotMatchesDraft(snapshot, submitted)).toBe(true);
+    expect(sameProviderEndpoint(snapshot, submitted)).toBe(false);
+    expect(
+      providerEndpointSnapshotMatchesDraft({ ...snapshot, BaseUrl: "https://changed.example.test/v1" }, submitted),
+    ).toBe(false);
   });
 });
 

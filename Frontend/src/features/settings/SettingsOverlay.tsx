@@ -5,7 +5,8 @@ import type { SocketStatus } from "../../api/useAgentSocket";
 import type { WsRequest } from "../../api/eventTypes";
 import { buildSettingsSurfaceSyncRequests } from "../../app/settingsSurfaceSync";
 import type { WebSettingsController } from "../../app/useWebSettingsController";
-import { Dialog, DialogActionButton, DialogActions, DialogContent, IconButton } from "../../shared/ui";
+import { Dialog, DialogContent, IconButton } from "../../shared/ui";
+import { DiscardDraftDialog } from "./DiscardDraftDialog";
 import { SettingsWorkbench, type SettingsWorkbenchProps } from "./SettingsWorkbench";
 
 export function SettingsOverlay({
@@ -74,21 +75,16 @@ export function SettingsOverlay({
         ) : null}
       </Dialog>
 
-      <Dialog open={controller.closeConfirmationOpen} onOpenChange={(open) => !open && controller.cancelClose()}>
-        <DialogContent
-          title={frontendMessage("settings.discard.title")}
-          description={frontendMessage("settings.discard.closeDescription")}
-        >
-          <DialogActions>
-            <DialogActionButton close onClick={controller.cancelClose}>
-              {frontendMessage("settings.discard.continue")}
-            </DialogActionButton>
-            <DialogActionButton variant="danger" onClick={controller.confirmClose}>
-              {frontendMessage("settings.discard.confirm")}
-            </DialogActionButton>
-          </DialogActions>
-        </DialogContent>
-      </Dialog>
+      <DiscardDraftDialog
+        open={controller.closeConfirmationOpen}
+        title={frontendMessage("settings.discard.title")}
+        description={frontendMessage("settings.discard.closeDescription")}
+        consequence={frontendMessage("settings.discard.savedUnaffected")}
+        continueLabel={frontendMessage("settings.discard.continue")}
+        confirmLabel={frontendMessage("settings.discard.closeConfirm")}
+        onOpenChange={(open) => !open && controller.cancelClose()}
+        onDiscard={controller.confirmClose}
+      />
     </>
   );
 }

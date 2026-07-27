@@ -9,6 +9,7 @@ import {
   applyProviderConnectionDraftPatch,
   buildProviderEndpointMutationInput,
   createProviderDraftEntry,
+  providerEndpointSnapshotMatchesDraft,
   rebaseProviderEndpoint,
   sameProviderEndpoint,
   type ProviderDraftEntry,
@@ -89,7 +90,7 @@ export function useProviderConnectionDraftQueue({
         continue;
       }
       if (sameProviderEndpoint(current.synced, normalized)) continue;
-      if (current.awaitingSnapshot && sameProviderEndpoint(current.awaitingSnapshot, normalized)) {
+      if (current.awaitingSnapshot && providerEndpointSnapshotMatchesDraft(normalized, current.awaitingSnapshot)) {
         entriesRef.current.set(provider.Id, {
           ...current,
           synced: normalized,
@@ -226,7 +227,9 @@ export function useProviderConnectionDraftQueue({
       const queuedDraft = current.queuedDraft;
       const latestProvider = providersRef.current.find((provider) => provider.Id === providerId);
       const latestSnapshot = latestProvider ? normalizeProviderEndpointDraft(latestProvider) : undefined;
-      const snapshotMatchesRequest = Boolean(latestSnapshot && sameProviderEndpoint(latestSnapshot, activeSave.draft));
+      const snapshotMatchesRequest = Boolean(
+        latestSnapshot && providerEndpointSnapshotMatchesDraft(latestSnapshot, activeSave.draft),
+      );
       const hasDistinctQueuedDraft = Boolean(queuedDraft && !sameProviderEndpoint(activeSave.draft, queuedDraft));
       entriesRef.current.set(providerId, {
         ...current,

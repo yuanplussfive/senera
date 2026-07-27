@@ -3,6 +3,7 @@ import type { ConfigMutationState, ConfigSnapshotData } from "../../../api/event
 import type { SocketStatus } from "../../../api/useAgentSocket";
 import { isConfigConflict } from "../../../app/configMutationFailure";
 import { validateJsonConfigDraft, type JsonConfigObject } from "../../../shared/config/JsonConfigForm";
+import { sameJsonValue } from "../../../shared/config/JsonConfigValue";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 
 export type ConfigDraftSaveMode = "debounced" | "immediate";
@@ -231,7 +232,7 @@ export function useConfigSettingsDraftState({
 }
 
 function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return sameJsonValue(left, right);
 }
 
 function rebaseJson(base: unknown, local: unknown, remote: unknown): JsonConfigObject {

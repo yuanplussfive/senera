@@ -6,9 +6,10 @@ import { buildSettingsSurfaceSyncRequests } from "./settingsSurfaceSync";
 import { readDesktopBridge } from "./desktopBridge";
 import { useSettingsRuntime } from "./useSettingsRuntime";
 import { SettingsWorkbench } from "../features/settings";
+import { DiscardDraftDialog } from "../features/settings/DiscardDraftDialog";
 import type { SettingsSectionId } from "../features/settings/settingsSectionContract";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
-import { Dialog, DialogActionButton, DialogActions, DialogContent, TooltipProvider } from "../shared/ui";
+import { TooltipProvider } from "../shared/ui";
 import { useStore } from "../store/sessionStore";
 import { resolveRuntimeWebSocketUrl } from "../config/runtimeConfig";
 
@@ -90,32 +91,23 @@ export function DesktopSettingsSurface({
         pluginSettings={runtime.pluginSettings}
         systemConfig={runtime.systemConfig}
       />
-      <Dialog
+      <DiscardDraftDialog
         open={closeConfirmationOpen}
+        title={frontendMessage("settings.discard.title")}
+        description={frontendMessage("settings.discard.closeDescription")}
+        consequence={frontendMessage("settings.discard.savedUnaffected")}
+        continueLabel={frontendMessage("settings.discard.continue")}
+        confirmLabel={frontendMessage("settings.discard.closeConfirm")}
         onOpenChange={(open) => {
           setCloseConfirmationOpen(open);
           if (!open) void bridge?.cancelSettingsClose?.();
         }}
-      >
-        <DialogContent
-          title={frontendMessage("settings.discard.title")}
-          description={frontendMessage("settings.discard.closeDescription")}
-        >
-          <DialogActions>
-            <DialogActionButton close>{frontendMessage("settings.discard.continue")}</DialogActionButton>
-            <DialogActionButton
-              variant="danger"
-              onClick={() => {
-                setCloseConfirmationOpen(false);
-                setPendingChanges(false);
-                void bridge?.confirmSettingsClose?.();
-              }}
-            >
-              {frontendMessage("settings.discard.confirm")}
-            </DialogActionButton>
-          </DialogActions>
-        </DialogContent>
-      </Dialog>
+        onDiscard={() => {
+          setCloseConfirmationOpen(false);
+          setPendingChanges(false);
+          void bridge?.confirmSettingsClose?.();
+        }}
+      />
       <Toaster
         position="bottom-right"
         toastOptions={{

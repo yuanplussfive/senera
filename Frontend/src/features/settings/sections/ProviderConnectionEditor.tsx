@@ -110,9 +110,7 @@ export function ProviderConnectionEditor({
           icon={<ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={22} />}
           title={providerIdLabel(provider)}
           subtitle={readProviderConnectionSubtitle({
-            dirty,
             enabled,
-            operation,
             protectedProvider,
             providerModelCount,
           })}
@@ -325,28 +323,17 @@ function HeadersEditor({
 }
 
 function readProviderConnectionSubtitle({
-  dirty,
   enabled,
-  operation,
   protectedProvider,
   providerModelCount,
 }: {
-  dirty: boolean;
   enabled: boolean;
-  operation?: SettingsConfigCommands["providerEndpointOperations"][string];
   protectedProvider: boolean;
   providerModelCount: number;
 }): string {
-  if (operation?.status === "pending") {
-    return frontendMessage("settings.provider.savingConnection");
-  }
-  if (operation?.status === "error") {
-    return frontendMessage("settings.provider.lastSaveFailed");
-  }
   const identity = frontendMessage(
     protectedProvider ? "settings.provider.builtIn" : "settings.provider.customIdentity",
   );
   const state = frontendMessage(enabled ? "settings.state.enabled" : "settings.state.disabled");
-  const draft = frontendMessage(dirty ? "settings.provider.unsavedChanges" : "settings.provider.fieldsSynced");
-  return frontendMessage("settings.provider.connectionStatus", { identity, state, count: providerModelCount, draft });
+  return frontendMessage("settings.provider.connectionStatus", { identity, state, count: providerModelCount });
 }

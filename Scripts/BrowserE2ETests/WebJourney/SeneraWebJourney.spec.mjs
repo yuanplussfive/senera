@@ -55,6 +55,44 @@ test.describe("authenticationMode=disabled", () => {
     await expect(page).toHaveURL(`${disabledHarness.httpOrigin}/`);
   });
 
+  test("switches providers after the real input blur chain without inventing unsaved changes", async ({ page }) => {
+    await page.goto(`${disabledHarness.httpOrigin}/settings/model-service`);
+    const providerRows = page.locator('button[aria-pressed="true"], button[aria-pressed="false"]');
+    await expect(providerRows.first()).toBeVisible();
+    expect(await providerRows.count()).toBeGreaterThan(1);
+
+    const activeProvider = page.locator('button[aria-pressed="true"]').first();
+    const activeLabel = await activeProvider.getAttribute("aria-label");
+    const apiUrl = page.getByLabel("API 地址");
+    await apiUrl.focus();
+    await page.locator('button[aria-pressed="false"]').first().click();
+
+    await expect(page.getByRole("dialog", { name: "当前连接还有未保存的修改" })).toHaveCount(0);
+    await expect(page.locator('button[aria-pressed="true"]')).not.toHaveAttribute("aria-label", activeLabel ?? "");
+    await expect(page.getByText("正在保存连接配置", { exact: true })).toHaveCount(0);
+  });
+
+  test("keeps a real invalid connection draft behind the explicit discard confirmation", async ({ page }) => {
+    await page.goto(`${disabledHarness.httpOrigin}/settings/model-service`);
+    const activeProvider = page.locator('button[aria-pressed="true"]').first();
+    const activeLabel = await activeProvider.getAttribute("aria-label");
+    const apiUrl = page.getByLabel("API 地址");
+
+    await apiUrl.fill("not-a-url");
+    await page.locator('button[aria-pressed="false"]').first().click();
+
+    const confirmation = page.getByRole("dialog", { name: "当前连接还有未保存的修改" });
+    await expect(confirmation).toBeVisible();
+    await expect(confirmation).toContainText("已经保存的供应商和模型不会改变");
+    const continueEditing = confirmation.getByRole("button", { name: "返回继续编辑" });
+    await expect(continueEditing).toBeFocused();
+    await continueEditing.click();
+
+    await expect(confirmation).toBeHidden();
+    await expect(page.locator('button[aria-pressed="true"]')).toHaveAttribute("aria-label", activeLabel ?? "");
+    await expect(apiUrl).toHaveValue("not-a-url");
+  });
+
   test("keeps the workspace stable while the Web settings chunk is loading", async ({ page }) => {
     let releaseSettingsChunk = () => undefined;
     let markSettingsChunkRequested = () => undefined;

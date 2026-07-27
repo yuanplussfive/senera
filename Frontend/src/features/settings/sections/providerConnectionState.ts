@@ -7,6 +7,7 @@ import type { JsonConfigObject } from "../../../shared/config/JsonConfigForm";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import {
   findTopField,
+  isRedactedConfigSecret,
   normalizeProviderEndpointDraft,
   readProviderEndpoints,
   toProviderEndpointInput,
@@ -199,7 +200,38 @@ export function providerIdentitySnapshot(provider: ProviderEndpointDraft): Provi
 }
 
 export function sameProviderEndpoint(left: ProviderEndpointDraft, right: ProviderEndpointDraft): boolean {
-  return JSON.stringify(normalizeProviderEndpointDraft(left)) === JSON.stringify(normalizeProviderEndpointDraft(right));
+  return JSON.stringify(canonicalProviderEndpoint(left)) === JSON.stringify(canonicalProviderEndpoint(right));
+}
+
+/**
+ * A successful save can only be confirmed from the redacted config snapshot.
+ * Redacted values match a submitted non-empty secret here, but never in the
+ * ordinary dirty comparator above where a newly typed secret is a real edit.
+ */
+export function providerEndpointSnapshotMatchesDraft(
+  snapshot: ProviderEndpointDraft,
+  draft: ProviderEndpointDraft,
+): boolean {
+  const current = canonicalProviderEndpoint(snapshot);
+  const expected = canonicalProviderEndpoint(draft);
+  if (
+    current.Id !== expected.Id ||
+    current.Icon !== expected.Icon ||
+    current.Enabled !== expected.Enabled ||
+    current.Kind !== expected.Kind ||
+    current.BaseUrl !== expected.BaseUrl ||
+    current.ApiVersion !== expected.ApiVersion ||
+    !snapshotSecretMatchesDraft(current.ApiKey, expected.ApiKey) ||
+    current.Headers.length !== expected.Headers.length
+  ) {
+    return false;
+  }
+  return current.Headers.every(([name, value], index) => {
+    const expectedHeader = expected.Headers[index];
+    return Boolean(
+      expectedHeader && name === expectedHeader[0] && snapshotSecretMatchesDraft(value, expectedHeader[1]),
+    );
+  });
 }
 
 export function createProviderDraftEntry(provider: ProviderEndpointDraft): ProviderDraftEntry {
@@ -232,4 +264,37 @@ export function rebaseProviderEndpoint(
     }
   }
   return normalizeProviderEndpointDraft(result as unknown as ProviderEndpointDraft);
+}
+
+interface CanonicalProviderEndpoint {
+  Id: string;
+  Icon: string;
+  Enabled: boolean;
+  Kind: string;
+  BaseUrl: string;
+  ApiKey: string;
+  ApiVersion: string;
+  Headers: Array<readonly [name: string, value: string]>;
+}
+
+function canonicalProviderEndpoint(provider: ProviderEndpointDraft): CanonicalProviderEndpoint {
+  const normalized = normalizeProviderEndpointDraft(provider);
+  return {
+    Id: normalized.Id,
+    Icon: normalized.Icon ?? "",
+    Enabled: normalized.Enabled !== false,
+    Kind: normalized.Kind ?? "",
+    BaseUrl: normalized.BaseUrl ?? "",
+    ApiKey: normalized.ApiKey ?? "",
+    ApiVersion: normalized.ApiVersion ?? "",
+    Headers: Object.entries(normalized.Headers ?? {}).sort(([left], [right]) => compareStrings(left, right)),
+  };
+}
+
+function snapshotSecretMatchesDraft(snapshot: string, draft: string): boolean {
+  return snapshot === draft || (isRedactedConfigSecret(snapshot) && draft.length > 0);
+}
+
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }

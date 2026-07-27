@@ -2,16 +2,8 @@ import type { MutableRefObject, ReactNode, Ref } from "react";
 import { Menu, MonitorCog, Search, X } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import {
-  Dialog,
-  DialogActionButton,
-  DialogActions,
-  DialogContent,
-  IconButton,
-  ScrollArea,
-  Sheet,
-  SheetContent,
-} from "../../shared/ui";
+import { IconButton, ScrollArea, Sheet, SheetContent } from "../../shared/ui";
+import { DiscardDraftDialog } from "./DiscardDraftDialog";
 import type { groupSettingsSectionResults } from "./settingsPresentation";
 import type { SettingsSectionDefinition, SettingsSectionId } from "./types";
 
@@ -270,18 +262,15 @@ export function DiscardSectionDraftDialog({
   onDiscard: () => void;
 }): JSX.Element {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        title={frontendMessage("settings.discard.title")}
-        description={frontendMessage("settings.discard.switchDescription")}
-      >
-        <DialogActions>
-          <DialogActionButton close>{frontendMessage("settings.discard.continue")}</DialogActionButton>
-          <DialogActionButton variant="danger" onClick={onDiscard}>
-            {frontendMessage("settings.discard.confirm")}
-          </DialogActionButton>
-        </DialogActions>
-      </DialogContent>
-    </Dialog>
+    <DiscardDraftDialog
+      open={open}
+      title={frontendMessage("settings.discard.title")}
+      description={frontendMessage("settings.discard.switchDescription")}
+      consequence={frontendMessage("settings.discard.savedUnaffected")}
+      continueLabel={frontendMessage("settings.discard.continue")}
+      confirmLabel={frontendMessage("settings.discard.sectionConfirm")}
+      onOpenChange={onOpenChange}
+      onDiscard={onDiscard}
+    />
   );
 }

@@ -5,9 +5,16 @@ import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 
 import { classifySettingsContentLayout, useObservedLayout } from "../../../shared/responsive";
 import { cn } from "../../../lib/util";
-import { Dialog, DialogActionButton, DialogActions, DialogContent, StateView } from "../../../shared/ui";
-import { findItemField, findTopField, readFieldOptions, toProviderEndpointInput } from "../../chat/modelConfigData";
+import { StateView } from "../../../shared/ui";
+import {
+  findItemField,
+  findTopField,
+  providerIdLabel,
+  readFieldOptions,
+  toProviderEndpointInput,
+} from "../../chat/modelConfigData";
 import type { ModelProviderDraft, ProviderEndpointDraft } from "../../chat/modelConfigTypes";
+import { DiscardDraftDialog } from "../DiscardDraftDialog";
 import { AddProviderDialog, RenameProviderDialog } from "./ProviderConnectionDialogs";
 import { ProviderConnectionEditor } from "./ProviderConnectionEditor";
 import { ProviderConnectionList } from "./ProviderConnectionList";
@@ -165,7 +172,6 @@ export function ModelServiceSection({
         catalogs={systemConfig.providerModelCatalogs}
         errors={systemConfig.providerModelErrors}
         loadingProviderIds={systemConfig.providerModelLoadingIds}
-        operations={systemConfig.providerEndpointOperations}
         selectedProviderId={actions.acceptedProvider?.Id ?? null}
         disabled={false}
         onRequestAdd={() => actions.setShowAddDialog(true)}
@@ -267,31 +273,25 @@ export function ModelServiceSection({
           return provider ? actions.deleteProvider(provider, input) : false;
         }}
       />
-      <Dialog
+      <DiscardDraftDialog
         open={pendingProviderSelection !== null}
+        title={frontendMessage("settings.discard.connectionTitle")}
+        description={frontendMessage("settings.discard.connectionDescription", {
+          current: actions.acceptedProvider ? providerIdLabel(actions.acceptedProvider) : "",
+          next: pendingProviderSelection ? providerIdLabel(pendingProviderSelection) : "",
+        })}
+        consequence={frontendMessage("settings.discard.connectionConsequence")}
+        continueLabel={frontendMessage("settings.discard.continue")}
+        confirmLabel={frontendMessage("settings.discard.connectionConfirm")}
         onOpenChange={(open) => !open && setPendingProviderSelection(null)}
-      >
-        <DialogContent
-          title={frontendMessage("settings.discard.connectionTitle")}
-          description={frontendMessage("settings.discard.connectionDescription")}
-        >
-          <DialogActions>
-            <DialogActionButton close>{frontendMessage("settings.discard.continue")}</DialogActionButton>
-            <DialogActionButton
-              variant="danger"
-              onClick={() => {
-                const provider = pendingProviderSelection;
-                setPendingProviderSelection(null);
-                if (!provider) return;
-                actions.discardAndSelectProvider(provider);
-                if (layout === "compact") setMobileDetailOpen(true);
-              }}
-            >
-              {frontendMessage("settings.discard.confirm")}
-            </DialogActionButton>
-          </DialogActions>
-        </DialogContent>
-      </Dialog>
+        onDiscard={() => {
+          const provider = pendingProviderSelection;
+          setPendingProviderSelection(null);
+          if (!provider) return;
+          actions.discardAndSelectProvider(provider);
+          if (layout === "compact") setMobileDetailOpen(true);
+        }}
+      />
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import { sameJsonValue } from "./JsonConfigValue";
+
 export type JsonMergePatch<Value extends object, Identity extends keyof Value> = Pick<Value, Identity> & {
   [Key in Exclude<keyof Value, Identity>]?: Value[Key] | null;
 };
@@ -23,8 +25,4 @@ export function createJsonMergePatch<Value extends object, const Identity extend
     if (!sameJsonValue(base[field], next[field])) result[field] = next[field];
   }
   return result as JsonMergePatch<Value, Identity[number]>;
-}
-
-function sameJsonValue(left: unknown, right: unknown): boolean {
-  return Object.is(left, right) || JSON.stringify(left) === JSON.stringify(right);
 }
