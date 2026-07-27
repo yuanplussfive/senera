@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import ts from "typescript";
 import { toPosixPath, toPosixRelative, walkFiles } from "./Support/FileWalk.js";
 import { sha256Hex } from "../Source/AgentSystem/Core/AgentHash.js";
 
@@ -150,6 +151,7 @@ try {
   );
 
   verifyGeneratedFiles(outputRoot, contract, fixture);
+  verifyRelativeImportClosure(outputRoot);
   verifyRootPackage(outputRoot, contract);
   verifyWorkspacePackages(outputRoot, contract);
   verifySourceMetadata(outputRoot, contract, sourceSha, fixture);
@@ -230,7 +232,13 @@ function verifyGeneratedFiles(outputRoot: string, contractValue: NanoContract, f
 
   assert.deepEqual(
     files.filter((file) => file.startsWith("Apps/")),
-    ["Apps/DevServer.ts", "Apps/RuntimeConfigBootstrap.ts", "Apps/ServerRuntime.ts", "Apps/ServerWatch.ts"],
+    [
+      "Apps/DevServer.ts",
+      "Apps/RuntimeConfigBootstrap.ts",
+      "Apps/ServerRuntime.ts",
+      "Apps/ServerWatch.ts",
+      "Apps/ServerWatchPolicy.ts",
+    ],
   );
   const projectedDevServer = fs.readFileSync(path.join(outputRoot, "Apps", "DevServer.ts"), "utf8");
   assert.ok(projectedDevServer.includes("AgentSandboxRuntimeProviders.Microsandbox"));
@@ -261,6 +269,87 @@ function verifyGeneratedFiles(outputRoot: string, contractValue: NanoContract, f
   );
   const gitignore = fs.readFileSync(path.join(outputRoot, ".gitignore"), "utf8");
   assert.ok(gitignore.includes("!Release/SandboxImage/**"));
+}
+
+function verifyRelativeImportClosure(outputRoot: string): void {
+  const sourceFiles = walkFiles(outputRoot, {
+    extensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
+  });
+  const missing: string[] = [];
+  for (const sourceFile of sourceFiles) {
+    const source = fs.readFileSync(sourceFile, "utf8");
+    for (const specifier of runtimeRelativeImports(sourceFile, source)) {
+      if (!resolveRelativeImport(outputRoot, sourceFile, specifier)) {
+        missing.push(`${toPosixRelative(outputRoot, sourceFile)} -> ${specifier}`);
+      }
+    }
+  }
+  assert.deepEqual(missing, [], `Nano generated distribution has unresolved relative imports: ${missing.join(", ")}`);
+}
+
+function runtimeRelativeImports(filePath: string, source: string): string[] {
+  const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
+  const imports = new Set<string>();
+  const addSpecifier = (node: ts.Expression | undefined): void => {
+    if (node && ts.isStringLiteralLike(node) && node.text.startsWith(".")) imports.add(node.text);
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node)) {
+      const clause = node.importClause;
+      const runtimeBinding =
+        !clause ||
+        (!clause.isTypeOnly &&
+          (Boolean(clause.name) ||
+            Boolean(clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) ||
+            Boolean(
+              clause.namedBindings &&
+              ts.isNamedImports(clause.namedBindings) &&
+              clause.namedBindings.elements.some((element) => !element.isTypeOnly),
+            )));
+      if (runtimeBinding) addSpecifier(node.moduleSpecifier);
+    } else if (ts.isExportDeclaration(node)) {
+      const runtimeBinding =
+        !node.isTypeOnly &&
+        (!node.exportClause ||
+          ts.isNamespaceExport(node.exportClause) ||
+          node.exportClause.elements.some((element) => !element.isTypeOnly));
+      if (runtimeBinding) addSpecifier(node.moduleSpecifier);
+    } else if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+    ) {
+      addSpecifier(node.arguments[0]);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return [...imports];
+}
+
+function resolveRelativeImport(outputRoot: string, sourceFile: string, specifier: string): string | undefined {
+  const unresolved = path.resolve(path.dirname(sourceFile), specifier);
+  const relative = path.relative(outputRoot, unresolved);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return undefined;
+
+  const candidates = new Set<string>([unresolved]);
+  const extension = path.extname(unresolved);
+  const sourceExtension = new Map([
+    [".js", [".ts", ".tsx"]],
+    [".jsx", [".tsx", ".ts"]],
+    [".mjs", [".mts"]],
+    [".cjs", [".cts"]],
+  ]).get(extension);
+  if (sourceExtension) {
+    const stem = unresolved.slice(0, -extension.length);
+    for (const replacement of sourceExtension) candidates.add(`${stem}${replacement}`);
+  } else if (!extension) {
+    for (const suffix of [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"]) {
+      candidates.add(`${unresolved}${suffix}`);
+      candidates.add(path.join(unresolved, `index${suffix}`));
+    }
+  }
+  return [...candidates].find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
 }
 
 function verifyRootPackage(outputRoot: string, contractValue: NanoContract): void {

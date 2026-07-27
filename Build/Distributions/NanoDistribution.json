@@ -19,6 +19,7 @@
       "Apps/RuntimeConfigBootstrap.ts",
       "Apps/ServerRuntime.ts",
       "Apps/ServerWatch.ts",
+      "Apps/ServerWatchPolicy.ts",
       "Source",
       "Frontend",
       "Packages",
@@ -97,6 +98,7 @@
       "Apps/DevServer.ts",
       "Apps/ServerRuntime.ts",
       "Apps/ServerWatch.ts",
+      "Apps/ServerWatchPolicy.ts",
       "Plugins/**/*.ts",
       "Source/**/*.ts",
       "System/**/*.ts"
