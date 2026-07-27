@@ -4,9 +4,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough, Readable } from "node:stream";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { resolveUploadsConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
-import { AgentUploadHttpApi } from "../../../Source/AgentSystem/Uploads/AgentUploadHttpApi.js";
+import {
+  AgentUploadHttpApi,
+  AgentUploadMaintenanceTriggers,
+} from "../../../Source/AgentSystem/Uploads/AgentUploadHttpApi.js";
 import { AgentUploadStore } from "../../../Source/AgentSystem/Uploads/AgentUploadStore.js";
 import type { ResolvedAgentUploadsConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
@@ -21,6 +24,7 @@ const roots: string[] = [];
 const servers: http.Server[] = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(
     servers.splice(0).map(
       (server) =>
@@ -241,6 +245,75 @@ describe("upload governance behavior", () => {
     expect(await readUploadEntries(harness.root)).toHaveLength(1);
     stream.end("complete");
     await expect(pendingUpload).resolves.toMatchObject({ name: "active.txt" });
+  });
+
+  test("reports maintenance failures and retries after the configured interval", async () => {
+    vi.useFakeTimers();
+    const harness = createStore({ MaintenanceIntervalMinutes: 1 / 60_000 });
+    const startupFailure = new Error("startup maintenance unavailable");
+    const scheduledFailure = new Error("scheduled maintenance unavailable");
+    const maintain = vi
+      .spyOn(harness.store, "maintain")
+      .mockRejectedValueOnce(startupFailure)
+      .mockRejectedValueOnce(scheduledFailure)
+      .mockResolvedValue({ retainedBytes: 0, removedBytes: 0, removedUploads: 0 });
+    const onMaintenanceError = vi.fn();
+    const api = new AgentUploadHttpApi({ store: harness.store, onMaintenanceError });
+
+    api.startMaintenance();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onMaintenanceError).toHaveBeenCalledWith({
+      trigger: AgentUploadMaintenanceTriggers.Startup,
+      error: startupFailure,
+      consecutiveFailures: 1,
+      retryInMs: 1,
+    });
+    expect(maintain).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(maintain).toHaveBeenCalledTimes(2);
+    expect(onMaintenanceError).toHaveBeenLastCalledWith({
+      trigger: AgentUploadMaintenanceTriggers.Scheduled,
+      error: scheduledFailure,
+      consecutiveFailures: 2,
+      retryInMs: 1,
+    });
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(maintain).toHaveBeenCalledTimes(3);
+    await api.stopMaintenance();
+  });
+
+  test("keeps maintenance single-flight and waits for an active run during stop", async () => {
+    vi.useFakeTimers();
+    const harness = createStore({ MaintenanceIntervalMinutes: 1 / 60_000 });
+    let resolveMaintenance!: () => void;
+    const activeMaintenance = new Promise<void>((resolve) => {
+      resolveMaintenance = resolve;
+    });
+    const maintain = vi.spyOn(harness.store, "maintain").mockImplementation(async () => {
+      await activeMaintenance;
+      return { retainedBytes: 0, removedBytes: 0, removedUploads: 0 };
+    });
+    const api = new AgentUploadHttpApi({ store: harness.store });
+
+    api.startMaintenance();
+    api.startMaintenance();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(maintain).toHaveBeenCalledTimes(1);
+
+    let stopped = false;
+    const stopping = api.stopMaintenance().then(() => {
+      stopped = true;
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(stopped).toBe(false);
+
+    resolveMaintenance();
+    await stopping;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(maintain).toHaveBeenCalledTimes(1);
   });
 });
 

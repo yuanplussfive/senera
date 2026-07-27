@@ -9,6 +9,12 @@ import type {
   SeneraPersistentProcessSpawner,
 } from "../Execution/SeneraPersistentProcessTypes.js";
 import { SeneraProcessOutputBuffer } from "../Execution/SeneraProcessOutputBuffer.js";
+import {
+  isSeneraProcessTreeAlive,
+  terminateSeneraProcessTreeWithEscalation,
+} from "../Execution/SeneraProcessTreeTermination.js";
+import { sleep } from "../Core/AgentTiming.js";
+import { toError } from "../Core/AgentErrors.js";
 
 const McpDiagnosticStderrLimitBytes = 16 * 1024;
 const McpErrorSummaryChars = 512;
@@ -350,19 +356,36 @@ export class AgentMcpStdioTransport implements Transport {
     }
 
     const signalFailures: unknown[] = [];
-    if (await waitForClose(child, this.options.terminationGraceMs)) {
+    if ((await waitForClose(child, this.options.terminationGraceMs)) && !isKnownProcessTreeAlive(child.pid)) {
       this.finishClose(child);
       return;
     }
-    tryKill(child, "SIGTERM", signalFailures);
-    if (await waitForClose(child, this.options.terminationGraceMs)) {
-      this.finishClose(child);
-      return;
-    }
-    tryKill(child, "SIGKILL", signalFailures);
-    if (await waitForClose(child, this.options.terminationGraceMs)) {
-      this.finishClose(child);
-      return;
+
+    if (child.pid !== undefined) {
+      try {
+        await terminateSeneraProcessTreeWithEscalation({
+          pid: child.pid,
+          graceMs: this.options.terminationGraceMs,
+          hasRootExited: () => !isRunning(child),
+          waitForRootExit: (timeoutMs) => waitForClose(child, timeoutMs),
+          terminateProcessTree: (_pid, signal) => child.terminateTree(signal),
+        });
+        this.finishClose(child);
+        return;
+      } catch (error) {
+        signalFailures.push(error);
+      }
+    } else {
+      await tryTerminateTree(child, "SIGTERM", signalFailures);
+      if (await waitForClose(child, this.options.terminationGraceMs)) {
+        this.finishClose(child);
+        return;
+      }
+      await tryTerminateTree(child, "SIGKILL", signalFailures);
+      if (await waitForClose(child, this.options.terminationGraceMs)) {
+        this.finishClose(child);
+        return;
+      }
     }
     throw new AgentMcpStdioTransportCloseError(this.options.command, child.pid, signalFailures);
   }
@@ -382,7 +405,7 @@ function isExpectedPipeClosureError(error: Error): boolean {
 async function waitForClose(child: SeneraPersistentProcessChild, timeoutMs: number): Promise<boolean> {
   if (!isRunning(child)) return true;
   const closePromise = new Promise<void>((resolve) => child.once("close", resolve));
-  await Promise.race([closePromise, delay(timeoutMs)]);
+  await Promise.race([closePromise, sleep(timeoutMs, { unref: true })]);
   return !isRunning(child);
 }
 
@@ -391,6 +414,10 @@ function isRunning(child: SeneraPersistentProcessChild): boolean {
     (child.exitCode === null || child.exitCode === undefined) &&
     (child.signalCode === null || child.signalCode === undefined)
   );
+}
+
+function isKnownProcessTreeAlive(pid: number | undefined): boolean {
+  return pid !== undefined && isSeneraProcessTreeAlive(pid) === true;
 }
 
 function assertTerminationGrace(value: number): void {
@@ -421,9 +448,13 @@ class BoundedPassThrough extends PassThrough {
   }
 }
 
-function tryKill(child: SeneraPersistentProcessChild, signal: NodeJS.Signals, failures: unknown[]): void {
+async function tryTerminateTree(
+  child: SeneraPersistentProcessChild,
+  signal: NodeJS.Signals,
+  failures: unknown[],
+): Promise<void> {
   try {
-    child.kill(signal);
+    await child.terminateTree(signal);
   } catch (error) {
     failures.push(error);
   }
@@ -432,15 +463,4 @@ function tryKill(child: SeneraPersistentProcessChild, signal: NodeJS.Signals, fa
 function summarizeDiagnostic(value: string): string {
   const normalized = value.replace(/\s+/gu, " ").trim();
   return normalized.length > McpErrorSummaryChars ? `${normalized.slice(0, McpErrorSummaryChars)}...` : normalized;
-}
-
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    timer.unref();
-  });
 }

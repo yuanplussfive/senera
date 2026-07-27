@@ -1,5 +1,5 @@
 import * as AjvModule from "ajv";
-import type { ErrorObject, ValidateFunction } from "ajv";
+import type { ValidateFunction } from "ajv";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { ResolvedAgentActionPlannerConfig } from "../Types/AgentConfigTypes.js";
 import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
@@ -30,6 +30,8 @@ import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteract
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import { AgentPiAuthoritativeActionProjector } from "./AgentPiAuthoritativeActionProjector.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { formatAjvIssue } from "../Diagnostics/AgentValidationIssue.js";
 
 const Ajv = (AjvModule.default ?? AjvModule) as unknown as typeof import("ajv").default;
 
@@ -464,7 +466,9 @@ function validateJsonSchema(schema: unknown, value: Record<string, unknown>): st
   } catch (error) {
     return [`tool schema is invalid: ${errorMessage(error)}`];
   }
-  return validate(value) ? [] : (validate.errors ?? []).map(formatAjvIssue);
+  return validate(value)
+    ? []
+    : (validate.errors ?? []).map((error) => formatAjvIssue(error, { rootLabel: "arguments" }));
 }
 
 const schemaValidatorCache = new WeakMap<object, ValidateFunction>();
@@ -484,29 +488,6 @@ function normalizeParameterSchema(schema: unknown): Record<string, unknown> {
   return schema && typeof schema === "object" && !Array.isArray(schema)
     ? (schema as Record<string, unknown>)
     : EmptyObjectParameterSchema;
-}
-
-function formatAjvIssue(error: ErrorObject): string {
-  const path = [...jsonPointerPath(error.instancePath), ...ajvParamPath(error)];
-  const location = path.length > 0 ? path.map(String).join(".") : "arguments";
-  return `${location}: ${error.message ?? "JSON Schema validation failed"}`;
-}
-
-function ajvParamPath(error: ErrorObject): Array<string | number> {
-  const params = error.params as Record<string, unknown>;
-  const property = params.additionalProperty ?? params.missingProperty;
-  return typeof property === "string" && property.length > 0 ? [property] : [];
-}
-
-function jsonPointerPath(pointer: string): Array<string | number> {
-  return pointer
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => segment.replaceAll("~1", "/").replaceAll("~0", "~"))
-    .map((segment) => {
-      const index = Number(segment);
-      return Number.isInteger(index) && String(index) === segment ? index : segment;
-    });
 }
 
 function formatArgumentFailure(call: AgentPiPlannedToolCall, issues: readonly string[]): string {
@@ -643,8 +624,4 @@ function stringifyForRepair(value: unknown): string {
   } catch {
     return String(value);
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

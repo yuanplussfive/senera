@@ -2,9 +2,9 @@ import { cva } from "class-variance-authority";
 import { AlertTriangle, BookUser, Check, FileUp, Loader2, Plus, RefreshCw, Search } from "lucide-react";
 import type { PresetItem } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { cn } from "../../lib/util";
+import { cn, formatShortTime } from "../../lib/util";
 import { Button, IconButton, ScrollArea } from "../../shared/ui";
-import { PresetFormatOptions, formatPresetTime, readPresetDisplayName } from "./presetPanelUtils";
+import { PresetFormatOptions, readPresetDisplayName } from "./presetPanelUtils";
 
 const presetListItemClass = cva(
   "flex min-w-[220px] items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition lg:w-full lg:min-w-0",
@@ -167,7 +167,7 @@ function PresetListItem({
           {displayName || frontendMessage("preset.ui.unnamed")}
         </span>
         <span className="mt-0.5 block truncate text-[10.5px] tabular-nums text-ink-400">
-          {formatLabel} · {formatPresetTime(preset.updatedAt)}
+          {formatLabel} · {formatShortTime(preset.updatedAt)}
         </span>
       </span>
       {preset.active ? <Check className="h-3.5 w-3.5 shrink-0 text-accent-content" /> : null}

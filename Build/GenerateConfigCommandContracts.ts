@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
@@ -9,7 +8,9 @@ import {
 } from "../Source/AgentSystem/Config/AgentConfigCommandContract.js";
 import { AgentConfigCommandSchemaCatalog } from "../Source/AgentSystem/Config/AgentConfigCommandSchemaCatalog.js";
 import { createAgentJsonMergePatchSchema } from "../Source/AgentSystem/Core/AgentJsonMergePatch.js";
-import { readOptionalUtf8, writeUtf8Atomically } from "./GeneratedTextFile.js";
+import { readOptionalUtf8, synchronizeGeneratedFile } from "./GeneratedTextFile.js";
+import { sha256Hex } from "../Source/AgentSystem/Core/AgentHash.js";
+import { toPosixRelative } from "../Scripts/Support/FileWalk.js";
 
 interface ContractManifest {
   formatVersion?: unknown;
@@ -66,13 +67,13 @@ function synchronizeVersion(version: ContractVersion, latest: boolean): void {
   if (latest && version.snapshotSha256 === undefined) {
     const snapshot = `${JSON.stringify(projectSnapshot(number, definition), null, 2)}\n`;
     synchronizeFile(snapshotPath, snapshot);
-    version.snapshotSha256 = sha256(snapshot);
+    version.snapshotSha256 = sha256Hex(snapshot);
     return;
   }
 
   const snapshotSource = readOptionalUtf8(snapshotPath);
   if (snapshotSource === undefined) throw new Error(`Missing version ${number} snapshot: ${relative(snapshotPath)}.`);
-  const snapshotChecksum = sha256(snapshotSource);
+  const snapshotChecksum = sha256Hex(snapshotSource);
   synchronizeImmutableChecksum(version, "snapshotSha256", snapshotChecksum, `version ${number} snapshot`);
   if (latest) {
     const expected = `${JSON.stringify(projectSnapshot(number, definition), null, 2)}\n`;
@@ -153,10 +154,12 @@ function resolveResource(value: unknown, label: string): string {
 }
 
 function synchronizeFile(filePath: string, content: string): void {
-  const actual = readOptionalUtf8(filePath);
-  if (actual === content) return;
-  if (check) throw new Error(`${relative(filePath)} is stale. Run npm run generate.config-command-contracts.`);
-  writeUtf8Atomically(filePath, content);
+  synchronizeGeneratedFile({
+    filePath,
+    content,
+    check,
+    regenerateCommand: "npm run generate.config-command-contracts",
+  });
 }
 
 function readIdentifier(value: unknown, label: string): string {
@@ -171,12 +174,8 @@ function readPositiveInteger(value: unknown, label: string): number {
   return value as number;
 }
 
-function sha256(content: string): string {
-  return createHash("sha256").update(content, "utf8").digest("hex");
-}
-
 function relative(filePath: string): string {
-  return path.relative(process.cwd(), filePath).split(path.sep).join("/");
+  return toPosixRelative(process.cwd(), filePath);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

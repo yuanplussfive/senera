@@ -3,6 +3,7 @@ import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { createRequestId } from "../Core/AgentIds.js";
 import type { AgentWebSocketRequest, AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 type FullConfigUpdateRequest = AgentWebSocketRequestOf<"config.update">;
 
@@ -171,8 +172,4 @@ function isProviderModelConfigMutationRequest(
 
 function isPresetRequest(request: AgentWebSocketRequest): request is PresetRequest {
   return request.type in PresetOperationKinds;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

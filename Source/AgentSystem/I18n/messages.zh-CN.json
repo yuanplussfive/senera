@@ -18,6 +18,8 @@
   "config.mirrorWriteFailed": "配置已提交，但 JSON 镜像导出失败：{path}，{error}",
   "config.migrationApplied": "配置已从版本 {sourceVersion} 迁移到版本 {targetVersion}。",
   "config.formDocumentInvalid": "主配置表单说明文件无效：{issues}",
+  "config.secretPlaceholderApiKeyUnresolved": "无法还原 API Key 占位符：端点 {providerId} 没有已保存的密钥，请重新输入完整密钥。",
+  "config.secretPlaceholderHeaderUnresolved": "无法还原请求头占位符：端点 {providerId} 的请求头 {headerName} 没有已保存的值，请重新输入。",
   "execution.packageRootOutsideWorkspace": "进程根文件系统包目录必须位于工作区内。",
   "mcp.packageMissingBin": "{packageName} 缺少可执行 bin 入口。",
   "mcp.requiredNonEmptyString": "{name} 必须是非空字符串。",

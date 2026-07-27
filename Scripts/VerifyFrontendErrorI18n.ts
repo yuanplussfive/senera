@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { formatFrontendMessage, frontendMessage } from "../Frontend/src/i18n/frontendMessageCatalog.js";
+import { toPosixRelative, walkFiles } from "./Support/FileWalk.js";
 
 const workspaceRoot = process.cwd();
 
@@ -10,8 +11,8 @@ assert.equal(frontendMessage("session.bulkDeletePartialFailed", { count: 3 }), "
 assert.equal(formatFrontendMessage("{known} {unknown}", { known: "ok" }), "ok {unknown}");
 
 const frontendSourceRoot = path.join(workspaceRoot, "Frontend", "src");
-const migratedFrontendFiles = walkSourceFiles(frontendSourceRoot)
-  .map((file) => path.relative(workspaceRoot, file).replaceAll(path.sep, "/"))
+const migratedFrontendFiles = walkFiles(frontendSourceRoot, { extensions: [".ts", ".tsx"] })
+  .map((file) => toPosixRelative(workspaceRoot, file))
   .filter((file) => !file.startsWith("Frontend/src/i18n/"));
 
 for (const relativeFile of migratedFrontendFiles) {
@@ -29,13 +30,3 @@ for (const relativeFile of migratedFrontendFiles) {
 }
 
 console.log("Frontend error i18n verification passed.");
-
-function walkSourceFiles(directory: string): string[] {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const fullPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      return walkSourceFiles(fullPath);
-    }
-    return /\.(ts|tsx)$/u.test(entry.name) ? [fullPath] : [];
-  });
-}

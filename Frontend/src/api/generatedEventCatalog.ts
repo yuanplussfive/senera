@@ -92,6 +92,10 @@ export const AuthenticationSessionStates = {
 } as const;
 export type AuthenticationSessionState = (typeof AuthenticationSessionStates)[keyof typeof AuthenticationSessionStates];
 
+export const ConfigSecretContract = {
+  RedactedPlaceholder: "__senera_redacted_secret__",
+} as const;
+
 export const WebSocketCloseCodes = {
   AuthenticationRequired: 4401,
   AccessForbidden: 4403,

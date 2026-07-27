@@ -1,41 +1,33 @@
-import { randomUUID } from "node:crypto";
 import fs from "node:fs";
-import path from "node:path";
+import { isMissingFileError, writeFileAtomicSync } from "../Source/AgentSystem/Core/AgentFs.js";
+import { toPosixRelative } from "../Scripts/Support/FileWalk.js";
 
 export function readOptionalUtf8(filePath: string): string | undefined {
   try {
     return fs.readFileSync(filePath, "utf8");
   } catch (error) {
-    if (nodeErrorCode(error) === "ENOENT") return undefined;
+    if (isMissingFileError(error)) return undefined;
     throw error;
   }
 }
 
-export function writeUtf8Atomically(filePath: string, content: string): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const temporaryPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
-  );
-  try {
-    fs.writeFileSync(temporaryPath, content, { encoding: "utf8", flag: "wx" });
-    fs.renameSync(temporaryPath, filePath);
-  } catch (writeError) {
-    try {
-      fs.unlinkSync(temporaryPath);
-    } catch (cleanupError) {
-      if (nodeErrorCode(cleanupError) !== "ENOENT") {
-        throw new AggregateError([writeError, cleanupError], `Could not replace generated file: ${filePath}`, {
-          cause: cleanupError,
-        });
-      }
-    }
-    throw writeError;
+export function synchronizeGeneratedFile(options: {
+  filePath: string;
+  content: string;
+  check: boolean;
+  regenerateCommand: string;
+}): void {
+  if (readOptionalUtf8(options.filePath) === options.content) return;
+  if (options.check) {
+    throw new Error(`${workspaceRelativePath(options.filePath)} is stale. Run ${options.regenerateCommand}.`);
   }
+  writeUtf8Atomically(options.filePath, options.content);
 }
 
-function nodeErrorCode(error: unknown): string | undefined {
-  return error && typeof error === "object" && "code" in error && typeof error.code === "string"
-    ? error.code
-    : undefined;
+export function writeUtf8Atomically(filePath: string, content: string): void {
+  writeFileAtomicSync(filePath, content);
+}
+
+function workspaceRelativePath(filePath: string): string {
+  return toPosixRelative(process.cwd(), filePath);
 }

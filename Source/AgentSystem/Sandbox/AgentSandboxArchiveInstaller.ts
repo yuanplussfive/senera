@@ -1,5 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, type FileHandle } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, open, readFile, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -12,6 +12,7 @@ import {
 } from "./AgentSandboxDistributionContract.js";
 import { AgentSandboxPreparationStages, type AgentSandboxPreparationProgress } from "./AgentSandboxRuntimeTypes.js";
 import type { AgentMicrosandboxImageArchiveLoader } from "./AgentMicrosandboxCli.js";
+import { nodeErrorCode, writeFileAtomic } from "../Core/AgentFs.js";
 
 const InstallationReceiptSchema = z
   .object({
@@ -96,7 +97,7 @@ export async function installAgentSandboxBundle(
     expectedUncompressedBytes: manifest.asset.uncompressedSizeBytes,
     maxUncompressedBytes: contract.limits.archiveMaxBytes,
   });
-  await writeNewFileAtomically(receiptPath, `${JSON.stringify(expectedReceipt, null, 2)}\n`);
+  await writeFileAtomic(receiptPath, `${JSON.stringify(expectedReceipt, null, 2)}\n`, { fsync: true });
   return { manifest, archivePath, imported: true };
 }
 
@@ -234,23 +235,6 @@ async function readOptionalJson<T>(filePath: string, schema: z.ZodType<T>): Prom
   }
 }
 
-async function writeNewFileAtomically(filePath: string, content: string): Promise<void> {
-  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
-  try {
-    const file = await open(temporaryPath, "wx");
-    try {
-      await file.writeFile(content, "utf8");
-      await file.sync();
-    } finally {
-      await file.close();
-    }
-    await rename(temporaryPath, filePath);
-  } catch (error) {
-    await rm(temporaryPath, { force: true }).catch(() => undefined);
-    throw error;
-  }
-}
-
 function createInstallationReceipt(manifest: AgentSandboxArchiveManifest): InstallationReceipt {
   return {
     formatVersion: 5,
@@ -268,10 +252,4 @@ function assertReceipt(actual: InstallationReceipt, expected: InstallationReceip
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error("Sandbox Bundle installation receipt does not match the active manifest.");
   }
-}
-
-function nodeErrorCode(error: unknown): string | undefined {
-  return error && typeof error === "object" && "code" in error && typeof error.code === "string"
-    ? error.code
-    : undefined;
 }

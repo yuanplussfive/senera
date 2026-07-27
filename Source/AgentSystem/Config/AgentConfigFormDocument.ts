@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { moduleDirPath } from "../Core/AgentPath.js";
+import { formatZodIssue } from "../Diagnostics/AgentValidationIssue.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { readAgentConfigFieldContract } from "./AgentConfigFieldContractCatalog.js";
 
@@ -154,7 +155,7 @@ export function readConfigFormDocument(): ConfigFormDocument {
   if (!result.success) {
     throw new Error(
       agentErrorMessage("config.formDocumentInvalid", {
-        issues: result.error.issues.map(formatZodIssue).join("; "),
+        issues: result.error.issues.map((issue) => formatZodIssue(issue)).join("; "),
       }),
     );
   }
@@ -195,9 +196,4 @@ function sameOptions(
   if (!declared || declared.length !== contract.length) return false;
   const declaredValues = new Set(declared.map((value) => JSON.stringify(value)));
   return contract.every((value) => declaredValues.has(JSON.stringify(value)));
-}
-
-function formatZodIssue(issue: z.core.$ZodIssue): string {
-  const pathText = issue.path.length > 0 ? issue.path.join(".") : "root";
-  return `${pathText}: ${issue.message}`;
 }

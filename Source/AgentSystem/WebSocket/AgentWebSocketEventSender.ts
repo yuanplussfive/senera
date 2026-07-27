@@ -9,6 +9,7 @@ import { type AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentServerEventLogger } from "../Diagnostics/AgentServerEventLogger.js";
 import { projectAgentRunEventForHistory } from "../Events/AgentRunEventHistoryPolicy.js";
 import type { AgentEventPersistenceState, AgentRunEventWriter } from "./AgentRunEventWriter.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 const DefaultPersistenceBatchSize = 128;
 const DefaultPersistenceQueueLimit = 8_192;
@@ -172,7 +173,7 @@ export class AgentWebSocketEventEnvelopeSender {
             requestId: failure.event.requestId,
             attempts: failure.attempts,
             reason: failure.reason,
-            error: failure.error instanceof Error ? failure.error.message : String(failure.error),
+            error: errorMessage(failure.error),
           });
         }),
       );

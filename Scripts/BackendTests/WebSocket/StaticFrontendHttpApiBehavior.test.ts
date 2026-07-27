@@ -2,6 +2,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { brotliCompressSync, gzipSync } from "node:zlib";
 import { afterEach, describe, expect, test } from "vitest";
 import { AgentStaticFrontendHttpApi } from "../../../Source/AgentSystem/WebSocket/AgentStaticFrontendHttpApi.js";
 
@@ -51,6 +52,42 @@ describe("static frontend HTTP API", () => {
       const head = await fetch(`${server.origin}/assets/app.js`, { method: "HEAD" });
       expect(head.status).toBe(200);
       expect(await head.text()).toBe("");
+      expect(head.headers.get("content-length")).toBe(String(Buffer.byteLength("console.log('ready');")));
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("negotiates verified Brotli and gzip representations without exposing sidecars", async () => {
+    const root = createFrontendRoot();
+    const source = Buffer.from("console.log('ready');".repeat(128));
+    const assetPath = path.join(root, "assets", "app.js");
+    fs.writeFileSync(assetPath, source);
+    fs.writeFileSync(`${assetPath}.br`, brotliCompressSync(source));
+    fs.writeFileSync(`${assetPath}.gz`, gzipSync(source));
+    const server = await startServer(new AgentStaticFrontendHttpApi({ rootDir: root }));
+    try {
+      const preferred = await fetch(`${server.origin}/assets/app.js`, {
+        headers: { "Accept-Encoding": "gzip;q=0.5, br" },
+      });
+      expect(preferred.headers.get("content-encoding")).toBe("br");
+      expect(preferred.headers.get("vary")).toBe("Accept-Encoding");
+      expect(Buffer.from(await preferred.arrayBuffer())).toEqual(source);
+
+      const gzip = await fetch(`${server.origin}/assets/app.js`, {
+        headers: { "Accept-Encoding": "br;q=0, gzip" },
+      });
+      expect(gzip.headers.get("content-encoding")).toBe("gzip");
+      expect(Buffer.from(await gzip.arrayBuffer())).toEqual(source);
+
+      const identity = await fetch(`${server.origin}/assets/app.js`, {
+        headers: { "Accept-Encoding": "identity" },
+      });
+      expect(identity.headers.get("content-encoding")).toBeNull();
+      expect(Buffer.from(await identity.arrayBuffer())).toEqual(source);
+
+      expect((await fetch(`${server.origin}/assets/app.js.br`)).status).toBe(404);
+      expect((await fetch(`${server.origin}/assets/app.js.gz`)).status).toBe(404);
     } finally {
       await server.close();
     }

@@ -18,6 +18,7 @@ import type {
   AgentExecutionResourceExitSignal,
   AgentExecutionResourceTransport,
 } from "./AgentExecutionResourceTransport.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export interface AgentProcessExecutionResourceOptions {
   id: string;
@@ -157,7 +158,7 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
       throw new AgentExecutionResourceError(
         AgentExecutionResourceErrorCodes.NotWritable,
         `Execution resource ${this.id} rejected input.`,
-        { resourceId: this.id, cause: error instanceof Error ? error.message : String(error) },
+        { resourceId: this.id, cause: errorMessage(error) },
       );
     }
     return this.inspect(this.nextCursor);
@@ -290,7 +291,7 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
 
   private fail(error: unknown): void {
     if (this.terminal) return;
-    this.error = error instanceof Error ? error.message : String(error);
+    this.error = errorMessage(error);
     this.transition(AgentExecutionResourceStates.Failed, this.error);
     void this.transport.signal(AgentExecutionResourceSignals.Terminate).catch(() => undefined);
   }

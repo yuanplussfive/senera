@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import fg from "fast-glob";
 import ts from "typescript";
+import { toPosixRelative } from "./Support/FileWalk.js";
 
 const workspaceRoot = process.cwd();
 const agentSystemRoot = path.join(workspaceRoot, "Source", "AgentSystem");
@@ -75,7 +76,7 @@ function inspectModuleBoundary(file: string): string[] {
     const location = source.getLineAndCharacterOfPosition(node.moduleSpecifier.getStart(source));
     issues.push(
       [
-        `${relativePath(file)}:${location.line + 1}:${location.character + 1}`,
+        `${toPosixRelative(workspaceRoot, file)}:${location.line + 1}:${location.character + 1}`,
         `must not import ${policy.label}`,
         policy.guidance,
       ].join(" - "),
@@ -101,7 +102,7 @@ function inspectExplicitAny(file: string): string[] {
         const location = source.getLineAndCharacterOfPosition(node.getStart(source));
         issues.push(
           [
-            `${relativePath(file)}:${location.line + 1}:${location.character + 1}`,
+            `${toPosixRelative(workspaceRoot, file)}:${location.line + 1}:${location.character + 1}`,
             "must not use explicit any",
             "use unknown, a concrete generic bound, or a typed boundary adapter.",
           ].join(" - "),
@@ -113,7 +114,9 @@ function inspectExplicitAny(file: string): string[] {
 }
 
 function inspectRemovedBarrel(policy: { target: string; label: string }): string[] {
-  return ts.sys.fileExists(policy.target) ? [`${relativePath(policy.target)} - ${policy.label} must not exist`] : [];
+  return ts.sys.fileExists(policy.target)
+    ? [`${toPosixRelative(workspaceRoot, policy.target)} - ${policy.label} must not exist`]
+    : [];
 }
 
 function resolveTypeScriptModulePath(importer: string, specifier: string): string | undefined {
@@ -133,8 +136,4 @@ function resolveTypeScriptModulePath(importer: string, specifier: string): strin
 
 function normalizePath(value: string): string {
   return path.normalize(value);
-}
-
-function relativePath(value: string): string {
-  return path.relative(workspaceRoot, value).replaceAll(path.sep, "/");
 }

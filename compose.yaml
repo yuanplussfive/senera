@@ -1,8 +1,10 @@
-# The preparation service and Worker must use the same versioned runtime image.
-x-senera-sandbox-image: &senera-sandbox-image ghcr.io/yuanplussfive/senera:sandbox-runtime-1.0.3
+# Production deployments should set both variables to registry references with
+# digests. Versioned tags remain as local-development defaults.
+x-senera-image: &senera-image ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:1.9.7}
+x-senera-sandbox-image: &senera-sandbox-image ${SENERA_SANDBOX_IMAGE:-ghcr.io/yuanplussfive/senera:sandbox-runtime-1.0.3}
 
 x-senera-runtime: &senera-runtime
-  image: ghcr.io/yuanplussfive/senera:latest
+  image: *senera-image
   pull_policy: always
   environment:
     SENERA_WORKSPACE_ROOT: /data
@@ -14,6 +16,7 @@ x-senera-runtime: &senera-runtime
     SENERA_ALLOW_INSECURE_HTTP: "true"
     SENERA_PUBLIC_WS_URL: ""
     SENERA_GVISOR_WORKER_SOCKET: /run/senera-sandbox/worker.sock
+    SENERA_RUNTIME_IMAGE_REFERENCE: *senera-image
     # Change these three values before the first start. They remain
     # authoritative when the container is restarted.
     SENERA_ADMIN_LOGIN_NAME: "admin"
@@ -48,7 +51,7 @@ services:
     restart: unless-stopped
 
   sandbox-worker:
-    image: ghcr.io/yuanplussfive/senera:latest
+    image: *senera-image
     pull_policy: always
     entrypoint: ["node", "Dist/Apps/GvisorWorker.js"]
     command: []

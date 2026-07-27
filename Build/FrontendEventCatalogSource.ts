@@ -1,5 +1,6 @@
 import { AgentEventKinds, AgentEventLayers, AgentEventPhases } from "../Source/AgentSystem/Events/AgentEventCatalog.js";
 import { AgentAuthenticationSessionStates } from "../Source/AgentSystem/Auth/AgentAuthenticationProtocol.js";
+import { AgentConfigSecretContract } from "../Source/AgentSystem/Config/AgentConfigSecretContract.js";
 import {
   AgentWebSocketCloseCodes,
   AgentWebSocketCloseReasons,
@@ -23,6 +24,8 @@ export function renderFrontendEventCatalogSource(): string {
     "",
     renderConstObject("AuthenticationSessionStates", AgentAuthenticationSessionStates),
     "export type AuthenticationSessionState = (typeof AuthenticationSessionStates)[keyof typeof AuthenticationSessionStates];",
+    "",
+    renderConstObject("ConfigSecretContract", AgentConfigSecretContract),
     "",
     renderConstObject("WebSocketCloseCodes", AgentWebSocketCloseCodes),
     "export type WebSocketCloseCode = (typeof WebSocketCloseCodes)[keyof typeof WebSocketCloseCodes];",

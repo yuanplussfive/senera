@@ -21,8 +21,33 @@ const DEFAULT_ERROR_MESSAGE = frontendMessage("clipboard.copyFailed");
 const DEFAULT_RESET_DELAY_MS = 1200;
 
 export async function writeClipboardText(text: string, clipboard?: ClipboardWriter): Promise<void> {
-  const writer = clipboard ?? navigator.clipboard;
-  await writer.writeText(text);
+  if (clipboard) {
+    await clipboard.writeText(text);
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (error) {
+    if (!copyTextWithTextarea(text)) throw error;
+  }
+}
+
+function copyTextWithTextarea(text: string): boolean {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    textarea.remove();
+  }
 }
 
 export function useClipboardCopy({

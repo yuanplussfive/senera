@@ -6,7 +6,7 @@ import {
   isSettingsHistoryState,
   readWebSettingsSection,
 } from "./appSurface";
-import { defaultSettingsSectionId, type SettingsSectionId } from "../features/settings/types";
+import { defaultSettingsSectionId, type SettingsSectionId } from "../features/settings/settingsSectionContract";
 
 export interface WebSettingsController {
   section: SettingsSectionId | null;
@@ -39,9 +39,11 @@ export function useWebSettingsController(): WebSettingsController {
 
   useEffect(() => {
     const initial = readWebSettingsSection(window.location);
-    const search = new URLSearchParams(window.location.search);
-    if (initial && !search.has("settings")) {
-      window.history.replaceState(window.history.state, "", buildWebSettingsLocation(window.location, initial));
+    if (initial) {
+      const canonicalLocation = buildWebSettingsLocation(window.location, initial);
+      const currentLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (canonicalLocation === currentLocation) return;
+      window.history.replaceState(window.history.state, "", canonicalLocation);
       setSection(initial);
     }
   }, []);

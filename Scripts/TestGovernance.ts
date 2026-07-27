@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { toPosixPath, toPosixRelative, walkFiles } from "./Support/FileWalk.js";
 import type { TestSuitePolicy } from "./TestCoveragePolicy.js";
 export { resolveWorkspaceRoot } from "./WorkspaceRoot.js";
 
@@ -15,7 +16,7 @@ export type TestGovernanceOptions = {
 export function verifyTestGovernance(options: TestGovernanceOptions): number {
   const testRoot = resolvePolicyPath(options.workspaceRoot, options.policy.testRoot);
   const sourceRoot = resolvePolicyPath(options.workspaceRoot, options.policy.sourceRoot);
-  const testFiles = walkFiles(testRoot)
+  const testFiles = walkFiles(testRoot, { excludeDirectoryNames: ignoredDirectories })
     .filter((file) => options.policy.testFilePattern.test(file))
     .sort((left, right) => left.localeCompare(right));
   const testSources = new Map(testFiles.map((file) => [file, readFileSync(file, "utf8")]));
@@ -56,7 +57,7 @@ function assertRequiredLayers(
 function assertTestFilesDeclareCases(options: TestGovernanceOptions, testSources: ReadonlyMap<string, string>): void {
   const filesWithoutCases = [...testSources.entries()]
     .filter(([, source]) => countVitestCaseCalls(source) === 0)
-    .map(([file]) => relativePath(options.workspaceRoot, file));
+    .map(([file]) => toPosixRelative(options.workspaceRoot, file));
   assert.deepEqual(
     filesWithoutCases,
     [],
@@ -65,14 +66,14 @@ function assertTestFilesDeclareCases(options: TestGovernanceOptions, testSources
 }
 
 function assertTestFilesStayInScripts(options: TestGovernanceOptions, sourceRoot: string, testRoot: string): void {
-  const localTests = walkFiles(sourceRoot)
+  const localTests = walkFiles(sourceRoot, { excludeDirectoryNames: ignoredDirectories })
     .filter((file) => options.policy.sourceLocalTestPattern.test(file))
-    .map((file) => relativePath(options.workspaceRoot, file))
+    .map((file) => toPosixRelative(options.workspaceRoot, file))
     .sort((left, right) => left.localeCompare(right));
   assert.deepEqual(
     localTests,
     [],
-    `${options.policy.label} verification tests must live under ${relativePath(options.workspaceRoot, testRoot)}.`,
+    `${options.policy.label} verification tests must live under ${toPosixRelative(options.workspaceRoot, testRoot)}.`,
   );
 }
 
@@ -92,9 +93,9 @@ function assertLayerImportRules(
     }
 
     const imports = readStaticImports(testSources.get(file) ?? "");
-    const relative = relativePath(options.workspaceRoot, file);
+    const relative = toPosixRelative(options.workspaceRoot, file);
     return imports
-      .filter((target) => forbiddenImports.some((prefix) => normalizePath(target).includes(prefix)))
+      .filter((target) => forbiddenImports.some((prefix) => toPosixPath(target).includes(prefix)))
       .map((target) => `${relative} imports forbidden layer target: ${target}`);
   });
   assert.deepEqual(violations, [], `${options.policy.label} test layer import rules failed.`);
@@ -207,30 +208,6 @@ function parseTestSource(source: string): ts.SourceFile {
 
 function isUnderTestLayer(testRoot: string, file: string, layer: string): boolean {
   return path.relative(testRoot, file).split(path.sep)[0] === layer;
-}
-
-function walkFiles(directory: string): string[] {
-  const files: string[] = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const fullPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      if (ignoredDirectories.has(entry.name)) continue;
-      files.push(...walkFiles(fullPath));
-      continue;
-    }
-    if (entry.isFile()) {
-      files.push(fullPath);
-    }
-  }
-  return files;
-}
-
-function normalizePath(value: string): string {
-  return value.replaceAll("\\", "/");
-}
-
-function relativePath(workspaceRoot: string, file: string): string {
-  return path.relative(workspaceRoot, file).replaceAll(path.sep, "/");
 }
 
 function resolvePolicyPath(workspaceRoot: string, value: string): string {

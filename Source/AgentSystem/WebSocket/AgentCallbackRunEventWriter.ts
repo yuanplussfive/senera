@@ -4,6 +4,7 @@ import {
   type AgentRunEventWriter,
   type AgentRunEventWriterHealth,
 } from "./AgentRunEventWriter.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export class AgentCallbackRunEventWriter implements AgentRunEventWriter {
   private committedBatches = 0;
@@ -27,7 +28,7 @@ export class AgentCallbackRunEventWriter implements AgentRunEventWriter {
       this.lastError = undefined;
     } catch (error) {
       this.failedBatches += 1;
-      this.lastError = error instanceof Error ? error.message : String(error);
+      this.lastError = errorMessage(error);
       throw error;
     }
   }

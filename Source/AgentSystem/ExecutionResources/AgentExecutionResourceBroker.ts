@@ -21,6 +21,7 @@ import {
   type AgentExecutionResourceSignal,
   type AgentExecutionResourceSnapshot,
 } from "./AgentExecutionResourceTypes.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export interface AgentExecutionResourceBrokerOptions {
   workspaceRoot: string;
@@ -57,6 +58,7 @@ export interface AgentExecutionTerminalStartRequest extends AgentExecutionProces
 }
 
 export class AgentExecutionResourceBroker {
+  private static readonly FallbackSweepIntervalMs = 30_000;
   private readonly workspaceRoot: string;
   private readonly resources = new Map<string, AgentExecutionResourceHandle>();
   private readonly cleanupInFlight = new Map<string, Promise<void>>();
@@ -350,6 +352,9 @@ export class AgentExecutionResourceBroker {
         return now - resource.lastAccessedAt >= ttl;
       });
       await Promise.allSettled(expired.map((resource) => this.cleanupResource(resource, "expired")));
+    } catch {
+      // limits() 解析失败（如配置热更异常）会在 acquire 等前台调用点显式暴露；
+      // 后台扫描只按下一轮重试，不产生未处理拒绝。
     } finally {
       this.scheduleSweep();
     }
@@ -357,8 +362,16 @@ export class AgentExecutionResourceBroker {
 
   private scheduleSweep(): void {
     if (this.closed) return;
-    this.timer = setTimeout(() => void this.sweep(), this.limits.sweepIntervalMs);
+    this.timer = setTimeout(() => void this.sweep(), this.sweepIntervalMsOrFallback());
     this.timer.unref();
+  }
+
+  private sweepIntervalMsOrFallback(): number {
+    try {
+      return this.limits.sweepIntervalMs;
+    } catch {
+      return AgentExecutionResourceBroker.FallbackSweepIntervalMs;
+    }
   }
 
   private get limits(): AgentExecutionResourceLimits {
@@ -428,7 +441,7 @@ export class AgentExecutionResourceBroker {
     if (!failure) return snapshot;
     return {
       ...snapshot,
-      error: `资源清理失败（${failure.reason}）：${formatCleanupFailure(failure.error)}`,
+      error: `资源清理失败（${failure.reason}）：${errorMessage(failure.error)}`,
     };
   }
 
@@ -469,10 +482,6 @@ function throwCleanupFailures(settlements: readonly PromiseSettledResult<void>[]
   const failures = settlements.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []));
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) throw new AggregateError(failures, message);
-}
-
-function formatCleanupFailure(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function createPendingStartSettlement(): {

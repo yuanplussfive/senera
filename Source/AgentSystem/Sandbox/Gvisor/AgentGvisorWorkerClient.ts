@@ -16,6 +16,7 @@ import type {
   SeneraGvisorWorkerClient,
 } from "../../Execution/SeneraGvisorTypes.js";
 import type { AgentSandboxPreparationProgress } from "../AgentSandboxRuntimeTypes.js";
+import { toError } from "../../Core/AgentErrors.js";
 
 export interface AgentGvisorWorkerSocketClientOptions {
   socketPath: string;
@@ -88,7 +89,7 @@ export class AgentGvisorWorkerSocketClient implements SeneraGvisorWorkerClient {
           }
         }
       } catch (error) {
-        fail(asError(error));
+        fail(toError(error));
       }
     });
     socket.once("error", (error) => fail(error));
@@ -143,7 +144,7 @@ export class AgentGvisorWorkerSocketClient implements SeneraGvisorWorkerClient {
               }
             }
           } catch (error) {
-            reject(asError(error));
+            reject(toError(error));
           }
         });
         socket.once("error", reject);
@@ -237,8 +238,4 @@ function workerError(message: Extract<AgentGvisorWorkerServerMessage, { type: "e
 
 function unexpectedMessage(expected: string, actual: AgentGvisorWorkerServerMessage): Error {
   return new Error(`gVisor worker returned ${actual.type}; expected ${expected}.`);
-}
-
-function asError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
 }

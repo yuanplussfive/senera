@@ -1,32 +1,23 @@
-import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, StrictMode, Suspense, useCallback } from "react";
 import { createRoot } from "react-dom/client";
-import { Toaster } from "sonner";
-import { App } from "./App";
 import { resolveAppSurface, resolveSettingsSection } from "./app/appSurface";
 import { readDesktopBridge } from "./app/desktopBridge";
 import { DesktopWindowChrome } from "./app/DesktopWindowChrome";
-import { buildSettingsSurfaceSyncRequests } from "./app/settingsSurfaceSync";
-import { ServerAuthenticationBoundary } from "./app/ServerAuthenticationGate";
+import { ServerAuthenticationBoundary, ServerAuthenticationLoading } from "./app/ServerAuthenticationGate";
 import { useServerAuthentication } from "./app/useServerAuthentication";
-import { useSettingsRuntime } from "./app/useSettingsRuntime";
-import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
-import type { WsRequest } from "./api/eventTypes";
+import type { AgentSocketReconnectPolicy } from "./api/useAgentSocket";
 import { AuthenticationSessionStates } from "./api/generatedEventCatalog";
 import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { installMotionDevTools } from "./dev/motionDevTools";
-import { SettingsWorkbench } from "./features/settings";
-import type { SettingsSectionId } from "./features/settings/types";
-import { frontendMessage } from "./i18n/frontendMessageCatalog";
 import { FrontendI18nProvider, useFrontendLocale } from "./i18n/useFrontendLocale";
-import { AppMotionProvider } from "./shared/motion";
-import { AppAppearanceProvider } from "./shared/theme";
-import { Dialog, DialogActionButton, DialogActions, DialogContent, ErrorBoundary, TooltipProvider } from "./shared/ui";
-import { useStore } from "./store/sessionStore";
+import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
+import { loadAuthenticatedSurfaceComponent } from "./app/applicationModuleLoaders";
+import { useAuthenticatedApplicationPreload } from "./app/useAuthenticatedApplicationPreload";
+import "./styles/fonts.css";
 import "./index.css";
 import "./styles/transitions.css";
-import "./styles/react-flow.css";
-import "./styles/markdown.css";
 
+const LazyAuthenticatedSurface = lazy(loadAuthenticatedSurfaceComponent);
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
 const root = document.getElementById("root");
@@ -44,16 +35,14 @@ createRoot(root).render(
 
 function Root(): JSX.Element {
   useFrontendLocale();
-  const motionLevel = useStore((state) => state.motionLevel);
-  const defaultSidebarCollapsed = useStore((state) => state.defaultSidebarCollapsed);
-  const defaultRightPanelCollapsed = useStore((state) => state.defaultRightPanelCollapsed);
-  const setDefaultSidebarCollapsed = useStore((state) => state.setDefaultSidebarCollapsed);
-  const setDefaultRightPanelCollapsed = useStore((state) => state.setDefaultRightPanelCollapsed);
-  const setMotionLevel = useStore((state) => state.setMotionLevel);
   const isDesktop = Boolean(readDesktopBridge()?.isDesktop);
   const surface = resolveAppSurface(window.location, isDesktop);
   const settingsSection = resolveSettingsSection(window.location);
-  const authentication = useServerAuthentication(HTTP_BASE_URL);
+  const authenticatedApplicationPreload = useAuthenticatedApplicationPreload({ isDesktop, surface });
+  const authentication = useServerAuthentication(HTTP_BASE_URL, {
+    onInitialRequestStarted: authenticatedApplicationPreload.onInitialAuthenticationRequestStarted,
+    prepareAuthorizedSurface: authenticatedApplicationPreload.prepareAuthorizedSurface,
+  });
   const revalidateAuthentication = authentication.revalidate;
   const socketReconnectPolicy = useCallback<AgentSocketReconnectPolicy>(async () => {
     const result = await revalidateAuthentication();
@@ -62,159 +51,29 @@ function Root(): JSX.Element {
 
   return (
     <FrontendI18nProvider>
-      <AppMotionProvider level={motionLevel}>
-        <AppAppearanceProvider motionLevel={motionLevel}>
-          <DesktopWindowChrome surface={surface}>
-            <ServerAuthenticationBoundary
-              state={authentication.state}
-              onLogin={authentication.login}
-              onRetry={authentication.refresh}
-            >
-              {(resolvedAuthentication) =>
-                surface === "settings" ? (
-                  <DesktopSettingsSurface
-                    initialSection={settingsSection}
-                    values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
-                    motionLevel={motionLevel}
-                    onValueChange={(id, value) => {
-                      if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
-                      if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
-                    }}
-                    onMotionLevelChange={setMotionLevel}
-                    socketReconnectPolicy={socketReconnectPolicy}
-                  />
-                ) : (
-                  <App
-                    onLogout={
-                      resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
-                        ? authentication.logout
-                        : undefined
-                    }
-                    uploadCsrfToken={
-                      resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
-                        ? resolvedAuthentication.csrfToken
-                        : undefined
-                    }
-                    socketReconnectPolicy={socketReconnectPolicy}
-                  />
-                )
-              }
-            </ServerAuthenticationBoundary>
-          </DesktopWindowChrome>
-        </AppAppearanceProvider>
-      </AppMotionProvider>
-    </FrontendI18nProvider>
-  );
-}
-
-function DesktopSettingsSurface({
-  initialSection,
-  values,
-  motionLevel,
-  onValueChange,
-  onMotionLevelChange,
-  socketReconnectPolicy,
-}: {
-  initialSection: SettingsSectionId;
-  values: React.ComponentProps<typeof SettingsWorkbench>["values"];
-  motionLevel: React.ComponentProps<typeof SettingsWorkbench>["motionLevel"];
-  onValueChange: React.ComponentProps<typeof SettingsWorkbench>["onValueChange"];
-  onMotionLevelChange: React.ComponentProps<typeof SettingsWorkbench>["onMotionLevelChange"];
-  socketReconnectPolicy: AgentSocketReconnectPolicy;
-}): JSX.Element {
-  const [section, setSection] = useState(initialSection);
-  const [pendingChanges, setPendingChanges] = useState(false);
-  const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
-  const ingest = useStore((state) => state.ingest);
-  const sendRef = useRef<((request: WsRequest) => boolean) | null>(null);
-  const statusRef = useRef<SocketStatus>("idle");
-  const settingsEventHandlerRef = useRef<(env: Parameters<typeof ingest>[0]) => boolean>(() => false);
-  const { status, send } = useAgentSocket({
-    url: WS_URL,
-    reconnectPolicy: socketReconnectPolicy,
-    onEvent: (env) => {
-      ingest(env);
-      settingsEventHandlerRef.current(env);
-    },
-  });
-  sendRef.current = send;
-  statusRef.current = status;
-  const runtime = useSettingsRuntime({ sendRef, statusRef });
-  settingsEventHandlerRef.current = runtime.controller.ingestConfigMutationEvent;
-  const bridge = readDesktopBridge();
-
-  useEffect(() => {
-    if (status !== "open") return;
-    for (const request of buildSettingsSurfaceSyncRequests()) send(request);
-  }, [send, status]);
-
-  useEffect(() => {
-    void bridge?.setSettingsDirty?.(pendingChanges);
-  }, [bridge, pendingChanges]);
-
-  useEffect(() => {
-    return bridge?.onSettingsCloseRequested?.(() => setCloseConfirmationOpen(true));
-  }, [bridge]);
-
-  const changeSection = (nextSection: SettingsSectionId): void => {
-    const search = new URLSearchParams(window.location.search);
-    search.set("surface", "settings");
-    search.set("section", nextSection);
-    window.history.replaceState(window.history.state, "", `${window.location.pathname}?${search.toString()}`);
-    setSection(nextSection);
-  };
-
-  return (
-    <TooltipProvider delayDuration={300}>
-      <SettingsWorkbench
-        section={section}
-        onSectionChange={changeSection}
-        onPendingChangesChange={setPendingChanges}
-        environment={{
-          appVersion: __SENERA_APP_VERSION__,
-          frontendVersion: __SENERA_FRONTEND_VERSION__,
-          mode: import.meta.env.MODE,
-          surface: "desktop",
-        }}
-        values={values}
-        motionLevel={motionLevel}
-        onValueChange={onValueChange}
-        onMotionLevelChange={onMotionLevelChange}
-        pluginSettings={runtime.pluginSettings}
-        systemConfig={runtime.systemConfig}
-      />
-      <Dialog
-        open={closeConfirmationOpen}
-        onOpenChange={(open) => {
-          setCloseConfirmationOpen(open);
-          if (!open) void bridge?.cancelSettingsClose?.();
-        }}
-      >
-        <DialogContent
-          title={frontendMessage("settings.discard.title")}
-          description={frontendMessage("settings.discard.closeDescription")}
+      <DesktopWindowChrome surface={surface}>
+        <ServerAuthenticationBoundary
+          state={authentication.state}
+          onLogin={authentication.login}
+          onRetry={authentication.refresh}
         >
-          <DialogActions>
-            <DialogActionButton close>{frontendMessage("settings.discard.continue")}</DialogActionButton>
-            <DialogActionButton
-              variant="danger"
-              onClick={() => {
-                setCloseConfirmationOpen(false);
-                setPendingChanges(false);
-                void bridge?.confirmSettingsClose?.();
-              }}
-            >
-              {frontendMessage("settings.discard.confirm")}
-            </DialogActionButton>
-          </DialogActions>
-        </DialogContent>
-      </Dialog>
-      <Toaster
-        position="bottom-right"
-        toastOptions={{
-          className: "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
-        }}
-      />
-    </TooltipProvider>
+          {(resolvedAuthentication) => (
+            <Suspense fallback={<ServerAuthenticationLoading />}>
+              <LazyAuthenticatedSurface
+                authentication={resolvedAuthentication}
+                surface={surface}
+                settingsSection={settingsSection}
+                socketReconnectPolicy={socketReconnectPolicy}
+                onLogout={
+                  resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
+                    ? authentication.logout
+                    : undefined
+                }
+              />
+            </Suspense>
+          )}
+        </ServerAuthenticationBoundary>
+      </DesktopWindowChrome>
+    </FrontendI18nProvider>
   );
 }

@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
 import {
   AgentMcpTaskDetachedError,
@@ -133,17 +133,12 @@ export class AgentMcpToolClientPool {
 export function createAgentMcpToolClientPoolKey(
   options: Pick<AgentMcpToolClientOptions, "server" | "executionProfile" | "terminationGraceMs" | "interactionInput">,
 ): string {
-  return crypto
-    .createHash("sha256")
-    .update(
-      JSON.stringify({
-        server: options.server,
-        executionProfile: projectExecutionProfileIdentity(options.executionProfile),
-        terminationGraceMs: options.terminationGraceMs,
-        elicitation: Boolean(options.interactionInput),
-      }),
-    )
-    .digest("hex");
+  return sha256HexOfCanonicalJson({
+    server: options.server,
+    executionProfile: projectExecutionProfileIdentity(options.executionProfile),
+    terminationGraceMs: options.terminationGraceMs,
+    elicitation: Boolean(options.interactionInput),
+  });
 }
 
 function projectExecutionProfileIdentity(profile: SeneraProcessExecutionProfile): unknown {

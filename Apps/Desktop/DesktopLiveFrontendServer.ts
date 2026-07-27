@@ -1,4 +1,5 @@
 import http from "node:http";
+import { errorMessage } from "../../Source/AgentSystem/Core/AgentErrors.js";
 
 const ViteClientEntry = 'src="/@vite/client"';
 const RuntimeConfigEntry = 'src="/senera-runtime-config.js"';
@@ -65,7 +66,7 @@ export function probeDesktopLiveFrontend(url: string, timeoutMs = 2_000): Promis
     } catch (error) {
       finish({
         kind: "unavailable",
-        message: error instanceof Error ? error.message : String(error),
+        message: errorMessage(error),
       });
       return;
     }

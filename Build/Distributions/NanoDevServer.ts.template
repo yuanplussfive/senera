@@ -6,7 +6,7 @@ import { ensureSeneraDevelopmentConfig } from "./RuntimeConfigBootstrap.js";
 
 const workspaceRoot = process.cwd();
 const configPath = ensureSeneraDevelopmentConfig(workspaceRoot);
-const handle = startSeneraServer({
+const handle = await startSeneraServer({
   configPath,
   runtimeModuleResolver: createSourceAgentMcpRuntimeModuleResolver(workspaceRoot),
   sandboxBundleRoot: resolveAgentSandboxDevelopmentBundleRoot(workspaceRoot),

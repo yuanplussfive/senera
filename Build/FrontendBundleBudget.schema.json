@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://senera.local/schemas/frontend-bundle-budget.schema.json",
+  "title": "Senera frontend route bundle budget",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "entryDocument", "manifest", "groups"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 3
+    },
+    "entryDocument": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manifest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "groups": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "roots", "limits"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "includeEntryDocument": {
+            "type": "boolean"
+          },
+          "extends": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
+          },
+          "roots": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "requiredAssets": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/$defs/requiredAsset"
+            }
+          },
+          "limits": {
+            "$ref": "#/$defs/limits"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "requiredAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extension", "minimumCount"],
+      "properties": {
+        "extension": {
+          "type": "string",
+          "pattern": "^\\.[a-z0-9]+$"
+        },
+        "minimumCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceCount", "identityBytes", "gzipBytes", "brotliBytes"],
+      "properties": {
+        "resourceCount": { "type": "integer", "minimum": 1 },
+        "identityBytes": { "type": "integer", "minimum": 1 },
+        "gzipBytes": { "type": "integer", "minimum": 1 },
+        "brotliBytes": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

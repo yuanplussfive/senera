@@ -12,6 +12,7 @@ import {
 import { AgentPresetParser } from "./AgentPresetParser.js";
 import { AgentPresetRepository } from "./AgentPresetRepository.js";
 import { AgentPresetXmlProjector } from "./AgentPresetXmlProjector.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export interface AgentPresetManagerOptions {
   workspaceRoot: string;
@@ -179,7 +180,7 @@ export class AgentPresetManager {
         diagnostics: [
           {
             severity: "error",
-            message: error instanceof Error ? error.message : String(error),
+            message: errorMessage(error),
           },
         ],
       };

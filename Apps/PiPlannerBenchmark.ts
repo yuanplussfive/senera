@@ -15,6 +15,7 @@ import { AgentPiPreparedActionLease } from "../Source/AgentSystem/PiProxy/AgentP
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import type { AgentPiToolCard } from "../Source/AgentSystem/PiProxy/AgentPiAssistantMessageTypes.js";
 import type { PiOpenAiTool } from "../Source/AgentSystem/PiProxy/AgentPiOpenAiWireTypes.js";
+import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 
 const BenchmarkDefaults = {
   configFile: "senera.config.json",
@@ -37,7 +38,7 @@ const argumentsSchema = {
 } as const;
 
 void main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.stderr.write(`${errorMessage(error)}\n`);
   process.exitCode = 1;
 });
 

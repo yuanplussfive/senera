@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import crypto from "node:crypto";
 import type { AgentHarnessResources, PromptTemplate, Skill } from "@earendil-works/pi-agent-core";
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
@@ -7,6 +6,7 @@ import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { RegisteredSkill, RegisteredTemplate } from "../Types/PluginRuntimeTypes.js";
 import { AgentPiResourceSelector, type AgentPiResourceSelection } from "./AgentPiResourceSelector.js";
+import { sha256Hex } from "../Core/AgentHash.js";
 
 export interface AgentPiResourceProjectionInput {
   input?: string;
@@ -43,7 +43,7 @@ export class AgentPiResourceProjector {
     return {
       harnessResources,
       selection,
-      fingerprint: crypto.createHash("sha256").update(JSON.stringify(harnessResources)).digest("hex"),
+      fingerprint: sha256Hex(JSON.stringify(harnessResources)),
     };
   }
 

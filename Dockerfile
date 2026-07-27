@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG NODE_IMAGE=node:22-trixie-slim
+ARG NODE_IMAGE=docker.io/library/node:22-trixie-slim@sha256:e6d9a389d34ff9678438af985c9913fbd1eb6ed36e80fea56644f4b4f6dd70ba
 
 FROM ${NODE_IMAGE} AS builder
 
@@ -9,7 +9,7 @@ WORKDIR /app
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
   apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ bubblewrap socat ripgrep
+  && apt-get install -y --no-install-recommends python3 make g++
 
 COPY package.json package-lock.json .npmrc ./
 COPY Frontend/package.json ./Frontend/package.json

@@ -32,7 +32,21 @@ export function entryToRow(sessionId: string, entry: AgentConversationEntry, seq
   };
 }
 
-export function rowToEntry(row: EntryRow): AgentConversationEntry | undefined {
+export interface AgentConversationEntryDecodeIssue {
+  entryId: string;
+  requestId: string;
+  kind: string;
+  name: "transcript_parse_failed";
+  issueCount: number;
+  issues: string[];
+}
+
+export type AgentConversationEntryDecodeIssueSink = (issue: AgentConversationEntryDecodeIssue) => void;
+
+export function rowToEntry(
+  row: EntryRow,
+  onDecodeIssue?: AgentConversationEntryDecodeIssueSink,
+): AgentConversationEntry | undefined {
   const data = JSON.parse(row.data) as {
     content?: string;
     attachments?: unknown;
@@ -68,7 +82,16 @@ export function rowToEntry(row: EntryRow): AgentConversationEntry | undefined {
       return {
         ...base,
         kind: AgentConversationEntryKinds.OpenAiTranscript,
-        messages: parseAgentOpenAiTranscriptMessages(data.messages),
+        messages: parseAgentOpenAiTranscriptMessages(data.messages, (failure) =>
+          onDecodeIssue?.({
+            entryId: row.id,
+            requestId: row.request_id,
+            kind: row.kind,
+            name: "transcript_parse_failed",
+            issueCount: failure.issueCount,
+            issues: failure.issues,
+          }),
+        ),
         metadata,
       };
     case AgentConversationEntryKinds.ContextToolResults:

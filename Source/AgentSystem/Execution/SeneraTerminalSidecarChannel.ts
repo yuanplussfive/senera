@@ -129,7 +129,7 @@ export class SeneraMicrosandboxTerminalSidecarChannel implements SeneraTerminalS
       for await (const event of this.handle.events) {
         if (event.kind === "started") this._pid = event.pid;
         else if (event.kind === "output" && event.stream === "stdout") {
-          for (const listener of this.dataListeners) listener(event.data);
+          dispatchToListeners(this.dataListeners, event.data);
         } else if (event.kind === "output") {
           this.emitError(new Error(event.data.toString("utf8")));
         } else exitCode = event.code;
@@ -137,20 +137,24 @@ export class SeneraMicrosandboxTerminalSidecarChannel implements SeneraTerminalS
     } catch (error) {
       this.emitError(error instanceof Error ? error : new Error(String(error)));
     } finally {
-      await this.disposeOnce();
+      try {
+        await this.disposeOnce();
+      } catch {
+        // dispose 失败会在 terminate() 等显式调用点重新抛出；这里不阻塞退出事件。
+      }
       this.emitExit({ exitCode });
     }
   }
 
   private emitError(error: Error): void {
     this.error = error;
-    for (const listener of this.errorListeners) listener(error);
+    dispatchToListeners(this.errorListeners, error);
   }
 
   private emitExit(event: SeneraTerminalExitEvent): void {
     if (this.exitEvent) return;
     this.exitEvent = event;
-    for (const listener of this.exitListeners) listener(event);
+    dispatchToListeners(this.exitListeners, event);
   }
 
   private disposeOnce(): Promise<void> {
@@ -199,7 +203,7 @@ export class SeneraGvisorTerminalSidecarChannel implements SeneraTerminalSidecar
     try {
       for await (const event of this.handle.events) {
         if (event.kind === "output" && event.stream === "stdout") {
-          for (const listener of this.dataListeners) listener(event.data);
+          dispatchToListeners(this.dataListeners, event.data);
         } else if (event.kind === "output") {
           this.emitError(new Error(event.data.toString("utf8")));
         } else {
@@ -214,16 +218,28 @@ export class SeneraGvisorTerminalSidecarChannel implements SeneraTerminalSidecar
 
   private emitError(error: Error): void {
     this.error = error;
-    for (const listener of this.errorListeners) listener(error);
+    dispatchToListeners(this.errorListeners, error);
   }
 
   private emitExit(event: SeneraTerminalExitEvent): void {
     if (this.exitEvent) return;
     this.exitEvent = event;
-    for (const listener of this.exitListeners) listener(event);
+    dispatchToListeners(this.exitListeners, event);
   }
 }
 
 function disposable(dispose: () => void): SeneraTerminalDisposable {
   return { dispose };
+}
+
+// 监听器异常不允许拖垮通道读取循环，也不允许从 fire-and-forget 的
+// consume() 中逃逸成未处理拒绝；消费方的错误由消费方自己负责。
+function dispatchToListeners<Value>(listeners: Iterable<(value: Value) => void>, value: Value): void {
+  for (const listener of listeners) {
+    try {
+      listener(value);
+    } catch {
+      // 有意吞掉。
+    }
+  }
 }

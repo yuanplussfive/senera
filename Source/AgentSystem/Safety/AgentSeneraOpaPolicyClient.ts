@@ -10,6 +10,7 @@ import {
   readAgentToolApprovalPolicyData,
 } from "./AgentToolApprovalPolicyArtifact.js";
 import { createAgentOpaWasmPolicyClient } from "./AgentOpaWasmPolicyClient.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export interface AgentSeneraOpaPolicyClientOptions {
   readonly registry: AgentPluginRegistry;
@@ -119,7 +120,7 @@ export class AgentSeneraOpaPolicyClient implements PolicyClient {
         },
       });
     } catch (error) {
-      this.wasmLoadFailure = error instanceof Error ? error.message : String(error);
+      this.wasmLoadFailure = errorMessage(error);
       return undefined;
     }
   }

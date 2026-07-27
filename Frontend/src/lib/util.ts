@@ -1,8 +1,21 @@
 import { twMerge } from "tailwind-merge";
 import { clsx, type ClassValue } from "clsx";
+import { FrontendDefaultLocale } from "../i18n/frontendMessageCatalog";
+
+const integerFormatter = new Intl.NumberFormat(FrontendDefaultLocale);
+const shortTimeFormatter = new Intl.DateTimeFormat(FrontendDefaultLocale, {
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
+}
+
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function formatTime(iso: string): string {
@@ -42,6 +55,26 @@ export function hasMeasuredDuration(startIso?: string, endIso?: string): boolean
   } catch {
     return false;
   }
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)}KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(mb < 10 ? 1 : 0)}MB`;
+}
+
+export function formatInteger(value: number): string {
+  return integerFormatter.format(value);
+}
+
+export function formatShortTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+  return shortTimeFormatter.format(date);
 }
 
 export function generateId(): string {

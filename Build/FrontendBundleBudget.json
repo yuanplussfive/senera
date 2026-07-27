@@ -1,0 +1,53 @@
+{
+  "$schema": "./FrontendBundleBudget.schema.json",
+  "schemaVersion": 3,
+  "entryDocument": "Frontend/dist/index.html",
+  "manifest": "Frontend/dist/.vite/manifest.json",
+  "groups": [
+    {
+      "id": "bootstrap",
+      "includeEntryDocument": true,
+      "roots": ["index.html"],
+      "requiredAssets": [{ "extension": ".woff2", "minimumCount": 4 }],
+      "limits": {
+        "resourceCount": 9,
+        "identityBytes": 700000,
+        "gzipBytes": 320000,
+        "brotliBytes": 305000
+      }
+    },
+    {
+      "id": "authenticated-main",
+      "extends": ["bootstrap"],
+      "roots": ["src/app/AuthenticatedSurface.tsx", "App"],
+      "limits": {
+        "resourceCount": 17,
+        "identityBytes": 1550000,
+        "gzipBytes": 550000,
+        "brotliBytes": 515000
+      }
+    },
+    {
+      "id": "web-settings",
+      "extends": ["authenticated-main"],
+      "roots": ["src/features/settings/SettingsOverlay.tsx"],
+      "limits": {
+        "resourceCount": 20,
+        "identityBytes": 1750000,
+        "gzipBytes": 605000,
+        "brotliBytes": 565000
+      }
+    },
+    {
+      "id": "desktop-settings",
+      "extends": ["bootstrap"],
+      "roots": ["src/app/AuthenticatedSurface.tsx", "src/app/DesktopSettingsSurface.tsx"],
+      "limits": {
+        "resourceCount": 19,
+        "identityBytes": 1425000,
+        "gzipBytes": 505000,
+        "brotliBytes": 475000
+      }
+    }
+  ]
+}

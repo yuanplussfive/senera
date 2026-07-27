@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import fg from "fast-glob";
+import { toPosixRelative } from "./Support/FileWalk.js";
 
 interface VerifySuitesConfig {
   defaultSuite: string;
@@ -34,7 +35,7 @@ async function main(): Promise<void> {
   assert.ok(
     fs.existsSync(distScriptsRoot),
     [
-      `Compiled verification scripts were not found at ${relativePath(distScriptsRoot)}.`,
+      `Compiled verification scripts were not found at ${toPosixRelative(workspaceRoot, distScriptsRoot)}.`,
       "Run npm run build before invoking verifysuite directly.",
     ].join("\n"),
   );
@@ -141,8 +142,4 @@ async function runScript(scriptPath: string): Promise<void> {
       reject(new Error(`${relativeScript} failed with code=${code ?? "null"} signal=${signal ?? "null"}`));
     });
   });
-}
-
-function relativePath(value: string): string {
-  return path.relative(workspaceRoot, value).replaceAll(path.sep, "/");
 }

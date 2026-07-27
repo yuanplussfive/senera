@@ -2,7 +2,7 @@ import { MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
-import { cn } from "../../../lib/util";
+import { cn, formatShortTime } from "../../../lib/util";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +13,7 @@ import {
 } from "../../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
 import { EmptyList, ProviderStatusIcon, SearchInput } from "../../chat/ModelConfigPrimitives";
-import { formatShortTime, providerEnabled, providerIdLabel, sortProviderRows } from "../../chat/modelConfigData";
+import { providerEnabled, providerIdLabel, sortProviderRows } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { isProtectedProvider } from "./ProviderConnectionIdentity";
 

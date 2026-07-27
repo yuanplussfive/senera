@@ -31,7 +31,8 @@ import {
   type MemoryRecallResult,
   type MemoryRecallToolArguments,
 } from "./AgentMemoryRecallTypes.js";
-import { readErrorMessage, unique } from "./AgentMemoryRecallUtils.js";
+import { unique } from "./AgentMemoryRecallUtils.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export type {
   MemoryRecallOptions,
@@ -74,7 +75,7 @@ export const recallMemoryHostTool: AgentHostToolHandler = async (args, context) 
   } catch (error) {
     return memoryRecallFailure({
       code: AgentExecutionErrorCodes.PluginExecutionError,
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage(error),
       details: {
         phase: AgentToolProcessErrorPhases.RuntimeExecution,
         toolName: context.tool.name,
@@ -118,7 +119,7 @@ export async function recallAgentMemories(
   ];
 
   const semantic = await semanticMemoryRanking(args.query, items, options).catch((error) => {
-    warnings.push(`semantic recall unavailable: ${readErrorMessage(error)}`);
+    warnings.push(`semantic recall unavailable: ${errorMessage(error)}`);
     return [];
   });
   initialRankings.push({
@@ -128,7 +129,7 @@ export async function recallAgentMemories(
 
   const candidateUris = fuseMemoryRankings(initialRankings, candidateLimit).map((entry) => entry.memoryUri);
   const reranked = await rerankMemories(args.query, candidateUris, itemsByUri, options).catch((error) => {
-    warnings.push(`memory rerank unavailable: ${readErrorMessage(error)}`);
+    warnings.push(`memory rerank unavailable: ${errorMessage(error)}`);
     return [];
   });
 
@@ -156,7 +157,7 @@ export async function recallAgentMemories(
           exactSources,
           options,
         }).catch((error) => {
-          warnings.push(`conversation recall unavailable: ${readErrorMessage(error)}`);
+          warnings.push(`conversation recall unavailable: ${errorMessage(error)}`);
           return [];
         })
       : [];

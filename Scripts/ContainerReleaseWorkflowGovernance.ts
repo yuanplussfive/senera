@@ -1,3 +1,5 @@
+import { inspectTextIncludes, workflowJobBlock } from "./Support/WorkflowGovernance.js";
+
 const ReleaseWorkflowLabel = ".github/workflows/release.yml";
 
 export function inspectContainerReleasePipeline(workflow: string): string[] {
@@ -44,6 +46,7 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         "digest: ${{ steps.build.outputs.digest }}",
         "type=raw,value=sha-${{ needs.metadata.outputs.source_sha }}",
         "push: true",
+        "sbom: true",
         "pull: true",
         "cache-from: type=gha,scope=senera-release-container",
         "cache-to: type=gha,mode=max,scope=senera-release-container,ignore-error=true",
@@ -73,6 +76,7 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         "type=raw,value=sandbox-runtime-sha-${{ needs.metadata.outputs.source_sha }}",
         "digest: ${{ steps.build.outputs.digest }}",
         "push: true",
+        "sbom: true",
         "pull: true",
       ]),
     );
@@ -97,10 +101,9 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         "actions/checkout@v4",
         "./.github/actions/setup-gvisor",
         'docker pull "$IMAGE"',
-        'docker tag "$IMAGE" ghcr.io/yuanplussfive/senera:latest',
         'docker pull "$SANDBOX_IMAGE"',
-        "SANDBOX_TARGET_IMAGE: ghcr.io/${{ github.repository_owner }}/senera:sandbox-runtime-${{ needs.metadata.outputs.sandbox_runtime_version_tag }}",
-        'docker tag "$SANDBOX_IMAGE" "$SANDBOX_TARGET_IMAGE"',
+        'export SENERA_IMAGE="$IMAGE"',
+        'export SENERA_SANDBOX_IMAGE="$SANDBOX_IMAGE"',
         'docker compose up --detach --wait --wait-timeout "$CONTAINER_HEALTH_TIMEOUT_SECONDS" --pull never',
         'container_id="$(docker compose ps --quiet senera)"',
         'runtime_uid="$(docker exec "$container_id"',
@@ -152,18 +155,4 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
     );
   }
   return violations;
-}
-
-function inspectTextIncludes(source: string, label: string, expectedTerms: readonly string[]): string[] {
-  return expectedTerms.filter((term) => !source.includes(term)).map((term) => `${label} must include ${term}.`);
-}
-
-function workflowJobBlock(source: string, jobName: string): string | undefined {
-  const marker = `\n  ${jobName}:\n`;
-  const start = source.indexOf(marker);
-  if (start < 0) return undefined;
-  const nextJob = /^ {2}[a-z0-9-]+:\s*$/gm;
-  nextJob.lastIndex = start + marker.length;
-  const next = nextJob.exec(source);
-  return source.slice(start, next?.index ?? source.length);
 }

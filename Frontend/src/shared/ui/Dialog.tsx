@@ -27,7 +27,7 @@ function mergeDialogPresenceStyle(style?: CSSProperties): DialogPresenceStyle {
 
 export const DialogOverlay = forwardRef<HTMLDivElement, React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>>(
   ({ className, style, ...props }, ref) => (
-    <DialogPrimitive.Overlay ref={ref} asChild forceMount {...props}>
+    <DialogPrimitive.Overlay ref={ref} asChild {...props}>
       <MotionDialogOverlay
         className={cn(
           "dialog-presence fixed inset-0 z-50 bg-[var(--theme-dialog-backdrop)] [will-change:opacity]",
@@ -208,7 +208,7 @@ export const DialogContent = forwardRef<
   ) => (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Content ref={ref} asChild forceMount {...props}>
+      <DialogPrimitive.Content ref={ref} asChild {...props}>
         <DialogContentFrame
           className={cn(
             "dialog-presence",

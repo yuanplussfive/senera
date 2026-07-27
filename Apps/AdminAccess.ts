@@ -11,11 +11,12 @@ import {
   parseAdminAccessInvocation,
   readAdminAccessPassword,
 } from "./AdminAccessCommand.js";
+import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 
 const DefaultAccountFile = ".senera/access/admin-account.json";
 
 void main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.stderr.write(`${errorMessage(error)}\n`);
   process.exitCode = 1;
 });
 

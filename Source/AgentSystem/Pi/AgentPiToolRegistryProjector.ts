@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { AgentMarkdownPromptXmlRenderer } from "../Xml/AgentMarkdownPromptXmlRenderer.js";
 import { normalizeMarkdownSectionText } from "../Xml/AgentMarkdownSections.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
@@ -9,6 +8,7 @@ import { resolveAgentPromptSections } from "../Prompt/AgentPromptSectionResolver
 import type { AgentPiToolExecutionBridge } from "./AgentPiToolExecutionBridge.js";
 import type { AgentPiToolDefinition, AgentPiToolProjectionContext } from "./AgentPiTypes.js";
 import { projectAgentToolInvocationSchema } from "../ToolRuntime/AgentToolExecutionPlan.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 
 export interface AgentPiToolRuntimeContractProjector {
   projectToolInvocationSchema(tool: RegisteredTool, schema: Readonly<Record<string, unknown>>): Record<string, unknown>;
@@ -58,7 +58,7 @@ export class AgentPiToolRegistryProjector {
     const tools = this.visibleTools(visibleToolNames);
     const descriptors = tools.map((tool) => this.projectDescriptor(tool));
     const activeToolNames = descriptors.map((descriptor) => descriptor.name);
-    const fingerprint = crypto.createHash("sha256").update(stableSerialize(descriptors)).digest("hex");
+    const fingerprint = sha256HexOfCanonicalJson(descriptors);
     return {
       fingerprint,
       activeToolNames,
@@ -126,17 +126,6 @@ export class AgentPiToolRegistryProjector {
 
 function normalizeToolParams(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function stableSerialize(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
-  if (value && typeof value === "object") {
-    return `{${Object.keys(value as Record<string, unknown>)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableSerialize((value as Record<string, unknown>)[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
 }
 
 function resolveConfiguredToolDescriptionSections(config: AgentSystemConfig) {

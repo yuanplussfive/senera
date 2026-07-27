@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parse as parseToml, type TomlTableWithoutBigInt } from "smol-toml";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export type PluginTomlConfig = TomlTableWithoutBigInt;
 
@@ -43,7 +44,7 @@ export function readPluginTomlConfig<TConfig = PluginTomlConfig>(
     throw new Error(
       agentErrorMessage("plugin.configFileTomlInvalid", {
         configPath,
-        message: error instanceof Error ? error.message : String(error),
+        message: errorMessage(error),
       }),
       { cause: error },
     );

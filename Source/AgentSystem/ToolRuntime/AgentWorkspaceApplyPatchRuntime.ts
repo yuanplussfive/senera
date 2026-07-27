@@ -24,6 +24,7 @@ import {
   type WorkspacePatchPrecondition,
   type WorkspacePatchTarget,
 } from "./AgentWorkspacePatchTransaction.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 const MaxOperations = 64;
 const MaxFuzzFactor = 3;
@@ -207,7 +208,7 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
       ? workspacePatchFailure(error.toFailureInput(context.tool.name))
       : workspacePatchFailure({
           code: AgentExecutionErrorCodes.PluginExecutionError,
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage(error),
           details: {
             phase: AgentToolProcessErrorPhases.RuntimeExecution,
             toolName: context.tool.name,
@@ -592,7 +593,7 @@ function applyHunkPatch(input: {
       throw error;
     }
     throw new WorkspaceApplyPatchError({
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage(error),
       pointer: input.pointer,
       suggestion: agentErrorMessage("workspacePatch.patchStructureSuggestion"),
     });

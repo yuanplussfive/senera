@@ -5,6 +5,10 @@ import {
   SeneraTerminalCapabilityProviders,
   SeneraTerminalPersistenceScopes,
 } from "./SeneraTerminalTypes.js";
+import { sleep, withDeadline } from "../Core/AgentTiming.js";
+
+/** 探针轮询终端输出的间隔；诊断路径，短间隔换取快速反馈。 */
+const OutputPollIntervalMs = 25;
 
 export interface SeneraMicrosandboxRuntimeProbeResult {
   readonly processOutput: string;
@@ -52,7 +56,7 @@ export async function probeSeneraMicrosandboxRuntime(
     await terminal.write(`printf real-pty-ok${"\n"}`);
     await waitForOutput(chunks, /real-pty-ok/u, timeoutMs);
     await terminal.write(`exit${"\n"}`);
-    const exitEvent = await Promise.race([exit, timeout(timeoutMs, "Microsandbox terminal did not exit.")]);
+    const exitEvent = await withDeadline(exit, timeoutMs, () => new Error("Microsandbox terminal did not exit."));
     if (exitEvent.exitCode !== 0) {
       throw new Error(`Microsandbox terminal exited with code ${exitEvent.exitCode}.`);
     }
@@ -92,10 +96,6 @@ async function waitForOutput(chunks: readonly string[], pattern: RegExp, timeout
     if (Date.now() - startedAt >= timeoutMs) {
       throw new Error(`Timed out waiting for terminal output: ${pattern}`);
     }
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await sleep(OutputPollIntervalMs);
   }
-}
-
-function timeout(milliseconds: number, message: string): Promise<never> {
-  return new Promise((_, reject) => setTimeout(() => reject(new Error(message)), milliseconds));
 }

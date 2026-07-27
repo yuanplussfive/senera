@@ -97,20 +97,25 @@ describe("SQLite database kernel", () => {
     });
   });
 
-  test("rebuilds an unrecognized authoritative database into its declared current contract", () => {
+  test("rejects and preserves an unrecognized authoritative database", () => {
     const databasePath = temporaryDatabasePath("unknown.sqlite");
     const unknown = new Database(databasePath);
     unknown.exec("CREATE TABLE unrelated_records (id INTEGER PRIMARY KEY) STRICT;");
     unknown.close();
 
-    withDatabaseKernel(databasePath, AgentConfigDatabaseContract, (kernel) => {
-      expect(userTable(kernel.connection, "unrelated_records")).toBe(false);
-      expect(userTable(kernel.connection, "config_revisions")).toBe(true);
-      expect(recordedVersions(kernel.connection)).toEqual(declaredVersions(AgentConfigDatabaseContract));
-    });
+    expect(() => new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract })).toThrowError(
+      expect.objectContaining<Partial<AgentSqliteMigrationError>>({
+        code: AgentSqliteMigrationErrorCodes.UntrackedDatabase,
+      }),
+    );
+
+    const unchanged = new Database(databasePath);
+    expect(userTable(unchanged, "unrelated_records")).toBe(true);
+    expect(userTable(unchanged, "config_revisions")).toBe(false);
+    unchanged.close();
   });
 
-  test("rebuilds a manually changed authoritative schema after validating a replacement", () => {
+  test("rejects and preserves a manually changed authoritative schema", () => {
     const databasePath = temporaryDatabasePath("changed-config.sqlite");
     const initial = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
     initial.connection
@@ -122,10 +127,16 @@ describe("SQLite database kernel", () => {
     changed.exec("ALTER TABLE config_revisions ADD COLUMN unexpected_value TEXT;");
     changed.close();
 
-    const rebuilt = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
-    expect(columnNames(rebuilt.connection, "config_revisions")).not.toContain("unexpected_value");
-    expect(rebuilt.connection.prepare("SELECT COUNT(*) AS count FROM config_revisions").get()).toEqual({ count: 0 });
-    rebuilt.close();
+    expect(() => new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract })).toThrowError(
+      expect.objectContaining<Partial<AgentSqliteMigrationError>>({
+        code: AgentSqliteMigrationErrorCodes.SchemaMismatch,
+      }),
+    );
+
+    const unchanged = new Database(databasePath);
+    expect(columnNames(unchanged, "config_revisions")).toContain("unexpected_value");
+    expect(unchanged.prepare("SELECT revision FROM config_revisions").all()).toEqual([{ revision: 1 }]);
+    unchanged.close();
   });
 
   test("rejects an unrecognized derived database instead of deleting an arbitrary SQLite file", () => {

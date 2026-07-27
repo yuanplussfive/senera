@@ -11,6 +11,7 @@ import {
   AgentBamlStructuredOutputError,
 } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
 import { zodIssuesToAgentStructuredIssues, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export interface RawActionPlanningFailure {
   error: unknown;
@@ -30,7 +31,7 @@ export function issueMessages(error: unknown): string[] {
     return error.issues.map((issue) => `${issue.path.join(".") || "/"}: ${issue.message}`);
   }
 
-  return [error instanceof Error ? error.message : String(error)];
+  return [errorMessage(error)];
 }
 
 export function issueDetails(error: unknown): AgentStructuredIssue[] {

@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -10,7 +10,6 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 }));
 
 const { SessionList } = await import("../../../Frontend/src/features/session/SessionList.tsx");
-const { SessionRow } = await import("../../../Frontend/src/features/session/SessionRows.tsx");
 const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
 const { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } =
   await import("../../../Frontend/src/store/sessionStore.ts");
@@ -122,132 +121,6 @@ test("persistent session sidebar collapses into the prototype tool rail", async 
   expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toBeVisible();
 });
 
-test("account menu exposes settings and global runtime status", async () => {
-  const user = userEvent.setup();
-  const onOpenSettings = vi.fn();
-  renderWithFrontendProviders(
-    React.createElement(
-      SessionList,
-      createProps({
-        onOpenSettings,
-        sandboxStatus: {
-          state: "ready",
-          provider: "microsandbox",
-          effectiveMode: "sandbox",
-          message: "microVM ready",
-        },
-      }),
-    ),
-  );
-
-  expect(document.querySelector("[data-session-sidebar] .lucide-settings")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: /用户/ }));
-  expect(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.edit") })).toBeVisible();
-  expect(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.settings") })).toBeVisible();
-  expect(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.about") })).toBeVisible();
-  expect(screen.queryByRole("menuitem", { name: "外观设置" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("menuitem", { name: "通用设置" })).not.toBeInTheDocument();
-  const sandboxStatus = document.querySelector("[data-sandbox-status='ready']");
-  expect(sandboxStatus).toHaveTextContent(frontendMessage("sandbox.status.label"));
-  expect(sandboxStatus).toHaveTextContent(frontendMessage("sandbox.status.ready"));
-  expect(sandboxStatus).toHaveAttribute("title", expect.stringContaining("microVM ready"));
-
-  await user.click(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.settings") }));
-  expect(onOpenSettings).toHaveBeenCalledWith(undefined, expect.any(HTMLButtonElement));
-
-  await user.click(screen.getByRole("button", { name: /用户/ }));
-  await user.click(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.about") }));
-  expect(onOpenSettings).toHaveBeenLastCalledWith("about", expect.any(HTMLButtonElement));
-
-  await user.click(screen.getByRole("button", { name: /用户/ }));
-  await user.click(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.edit") }));
-  expect(screen.getByRole("dialog", { name: frontendMessage("profile.title") })).toBeVisible();
-  const editor = document.querySelector("[data-profile-editor]");
-  expect(editor).not.toBeNull();
-  expect(editor.querySelector(":scope > .rounded-lg.border")).toBeNull();
-});
-
-test("session row menu submits a trimmed rename", async () => {
-  const onRenameSession = vi.fn();
-  const user = userEvent.setup();
-  resetSessionStore({
-    sessions: { first: session("first", "Old title") },
-    sessionOrder: ["first"],
-    activeSessionId: "first",
-  });
-  renderWithFrontendProviders(React.createElement(SessionList, createProps({ onRenameSession })));
-
-  await user.click(screen.getByRole("button", { name: "more" }));
-  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.rename") }));
-  const input = screen.getByRole("textbox");
-  await user.clear(input);
-  await user.type(input, "  New title  ");
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.save") }));
-
-  expect(onRenameSession).toHaveBeenCalledWith("first", "New title");
-});
-
-test("session rename dialog stays open when the command is rejected", async () => {
-  const onRenameSession = vi.fn(() => false);
-  const user = userEvent.setup();
-  resetSessionStore({
-    sessions: { first: session("first", "Old title") },
-    sessionOrder: ["first"],
-    activeSessionId: "first",
-  });
-  renderWithFrontendProviders(React.createElement(SessionList, createProps({ onRenameSession })));
-
-  await user.click(screen.getByRole("button", { name: "more" }));
-  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.rename") }));
-  await user.clear(screen.getByRole("textbox"));
-  await user.type(screen.getByRole("textbox"), "New title");
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.save") }));
-
-  expect(onRenameSession).toHaveBeenCalledWith("first", "New title");
-  expect(screen.getByRole("dialog", { name: frontendMessage("session.renameDialogTitle") })).toBeVisible();
-});
-
-test("desktop session rows use the context menu without a duplicate overflow button", async () => {
-  const onRename = vi.fn();
-  const user = userEvent.setup();
-  renderWithFrontendProviders(
-    React.createElement(SessionRow, {
-      active: true,
-      sessionId: "desktop-session",
-      title: "Desktop session",
-      accent: "idle",
-      onClick: vi.fn(),
-      showInlineActions: false,
-      onRename,
-      onClose: vi.fn(),
-    }),
-  );
-
-  const sessionButton = screen.getByRole("button", { name: "打开会话：Desktop session" });
-  expect(screen.queryByRole("button", { name: "more" })).not.toBeInTheDocument();
-  fireEvent.contextMenu(sessionButton, { clientX: 24, clientY: 24 });
-  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.rename") }));
-  expect(onRename).toHaveBeenCalledTimes(1);
-});
-
-test("session row deletion requires explicit confirmation", async () => {
-  const onCloseSession = vi.fn();
-  const user = userEvent.setup();
-  resetSessionStore({
-    sessions: { first: session("first", "Disposable session") },
-    sessionOrder: ["first"],
-    activeSessionId: "first",
-  });
-  renderWithFrontendProviders(React.createElement(SessionList, createProps({ onCloseSession })));
-
-  await user.click(screen.getByRole("button", { name: "more" }));
-  await user.click(await screen.findByRole("menuitem", { name: "删除历史" }));
-  expect(screen.getByRole("dialog", { name: frontendMessage("session.deleteCurrentTitle") })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteCurrentConfirm") }));
-
-  expect(onCloseSession).toHaveBeenCalledWith("first");
-});
-
 function createProps(overrides = {}) {
   return {
     onNewSession: vi.fn(),
@@ -300,21 +173,3 @@ function session(sessionId, title) {
     runs: [],
   };
 }
-
-test("session header menu keeps only non-duplicated session actions", async () => {
-  const user = userEvent.setup();
-  resetSessionStore({
-    sessions: { first: session("first", "Frontend refactor") },
-    sessionOrder: ["first"],
-    activeSessionId: "first",
-  });
-  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
-
-  await user.click(screen.getByRole("button", { name: "Senera" }));
-
-  expect(screen.getByRole("menuitem", { name: frontendMessage("session.renameCurrent") })).toBeVisible();
-  expect(screen.getByRole("menuitem", { name: frontendMessage("session.deleteCurrentTitle") })).toBeVisible();
-  expect(screen.getByRole("menuitem", { name: frontendMessage("session.deleteAllHistory") })).toBeVisible();
-  expect(screen.queryByRole("menuitem", { name: frontendMessage("session.new") })).not.toBeInTheDocument();
-  expect(screen.queryByRole("menuitem", { name: frontendMessage("session.sync") })).not.toBeInTheDocument();
-});

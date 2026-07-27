@@ -29,10 +29,12 @@ import {
 } from "./AgentMemoryLearningVectorRuntime.js";
 import { AgentMemoryLearningModelClient } from "./AgentMemoryLearningModelClient.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import type {
   AgentMemoryConsolidationPromptInput,
   AgentMemoryLearningPromptInput,
 } from "../ActionPlanner/AgentLearningPromptJson.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export { buildMemoryLearningPromptInput } from "./AgentMemoryLearningPromptProjector.js";
 
@@ -191,7 +193,7 @@ export class AgentMemoryLearningRuntime {
       this.options.repository.markMemoryLearningJobCompleted(job.episodeUri, this.now());
       this.recordedTurns.delete(job.episodeUri);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       const terminal = claimed.attempts >= (this.options.maxAttempts ?? AgentMemoryLearningRuntime.DefaultMaxAttempts);
       const delay = this.retryDelay(claimed.attempts);
       const now = this.now();
@@ -264,7 +266,9 @@ export class AgentMemoryLearningRuntime {
     this.timer = setTimeout(
       () => {
         this.timer = undefined;
-        void this.drainDue();
+        this.drainDue().catch((error) => {
+          this.options.logger?.error("记忆学习任务轮询失败", { error: serializeError(error) });
+        });
       },
       Math.max(0, nextAt - this.now()),
     );
@@ -304,7 +308,7 @@ export class AgentMemoryLearningRuntime {
       await recordMemoryItemEmbeddings(input.vectorClient, this.options.repository, written).catch((error) => {
         this.options.logger?.warn("memory.learning.embedding_skipped", {
           requestId: input.recordedTurn.episode.requestId,
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage(error),
         });
       });
       this.options.logger?.info("memory.learning.candidate_absorbed", {
@@ -385,7 +389,7 @@ export class AgentMemoryLearningRuntime {
       await recordMemoryItemEmbeddings(input.vectorClient, this.options.repository, written).catch((error) => {
         this.options.logger?.warn("memory.learning.embedding_skipped", {
           requestId: input.recordedTurn.episode.requestId,
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage(error),
         });
       });
       this.options.logger?.info("memory.learning.promoted", {

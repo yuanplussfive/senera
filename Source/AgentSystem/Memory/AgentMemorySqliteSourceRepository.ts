@@ -49,6 +49,7 @@ import type {
   AgentMemorySourceRepository,
   AgentMemoryType,
 } from "./AgentMemorySourceRepository.js";
+import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 
 export const DefaultAgentMemoryDatabasePath = ".senera/Memory.sqlite";
 
@@ -57,8 +58,12 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
   private readonly db: Database.Database;
   private readonly statements: AgentMemorySqlStatements;
 
-  constructor(databasePath: string) {
-    this.kernel = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentMemoryDatabaseContract });
+  constructor(databasePath: string, upgradeSession?: AgentUpgradeSession) {
+    this.kernel = new AgentSqliteDatabaseKernel({
+      databasePath,
+      contract: AgentMemoryDatabaseContract,
+      upgradeSession,
+    });
     this.db = this.kernel.connection;
     this.statements = prepareAgentMemorySqlStatements(this.db);
   }

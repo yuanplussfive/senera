@@ -3,6 +3,14 @@ import { createCompiledAgentMcpRuntimeModuleResolver } from "../Source/AgentSyst
 import { resolveAgentSandboxDevelopmentBundleRoot } from "../Source/AgentSystem/Sandbox/AgentSandboxBundlePaths.js";
 import { startSeneraGvisorWorkerProcess } from "./GvisorWorkerProcess.js";
 import { ensureSeneraDevelopmentConfig } from "./RuntimeConfigBootstrap.js";
+import { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
+import {
+  installAgentProcessFailureGuard,
+  installAgentProcessShutdownGuard,
+} from "../Source/AgentSystem/Diagnostics/AgentProcessGuard.js";
+
+const processLogger = new AgentLogger();
+installAgentProcessFailureGuard({ logger: processLogger });
 
 async function main(): Promise<void> {
   const workspaceRoot = process.cwd();
@@ -13,24 +21,17 @@ async function main(): Promise<void> {
     entrypoint: "Dist/Apps/GvisorWorker.js",
     resourcesPath: workspaceRoot,
   });
-  const handle = startSeneraServer({
+  const handle = await startSeneraServer({
     configPath,
     runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(workspaceRoot),
     sandboxBundleRoot: resolveAgentSandboxDevelopmentBundleRoot(workspaceRoot),
     sandboxProvider: worker?.provider,
     dockerEngineWorker: worker?.client,
   });
-  let shutdownPromise: Promise<void> | undefined;
-  const shutdown = (): void => {
-    shutdownPromise ??= Promise.all([handle.stop(), worker?.close()])
-      .then(() => undefined)
-      .finally(() => {
-        process.exit(0);
-      });
-  };
-
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  installAgentProcessShutdownGuard({
+    logger: processLogger,
+    stop: () => Promise.all([handle.stop(), worker?.close()]),
+  });
 }
 
 await main();

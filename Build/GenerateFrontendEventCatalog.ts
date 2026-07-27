@@ -1,8 +1,12 @@
-import fs from "node:fs";
 import path from "node:path";
 import { FrontendEventCatalogPath, renderFrontendEventCatalogSource } from "./FrontendEventCatalogSource.js";
+import { synchronizeGeneratedFile } from "./GeneratedTextFile.js";
 
-const targetPath = path.resolve(process.cwd(), FrontendEventCatalogPath);
-fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-fs.writeFileSync(targetPath, renderFrontendEventCatalogSource(), "utf8");
-console.log(`Generated ${FrontendEventCatalogPath}.`);
+const check = process.argv.includes("--check");
+synchronizeGeneratedFile({
+  filePath: path.resolve(process.cwd(), FrontendEventCatalogPath),
+  content: renderFrontendEventCatalogSource(),
+  check,
+  regenerateCommand: "npm run generate.frontend-events",
+});
+console.log(`${check ? "Verified" : "Generated"} ${FrontendEventCatalogPath}.`);

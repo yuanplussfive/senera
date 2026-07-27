@@ -3,6 +3,12 @@ import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import mime from "mime-types";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import {
+  isAgentStaticAssetSidecar,
+  readAgentStaticAssetSidecarSuffix,
+  selectAgentStaticAssetContentEncoding,
+  type AgentStaticAssetContentEncoding,
+} from "./AgentStaticAssetEncoding.js";
 
 export interface AgentStaticFrontendHttpApiOptions {
   rootDir: string;
@@ -55,10 +61,13 @@ export class AgentStaticFrontendHttpApi {
   }
 
   private resolveExistingFile(requestedPath: string): string | undefined {
+    if (isAgentStaticAssetSidecar(requestedPath)) return undefined;
     const candidate = this.resolveSafePath(requestedPath);
-    if (!candidate || !this.isReadableFile(candidate)) {
-      return undefined;
-    }
+    return candidate ? this.resolveCanonicalReadableFile(candidate) : undefined;
+  }
+
+  private resolveCanonicalReadableFile(candidate: string): string | undefined {
+    if (!this.isReadableFile(candidate)) return undefined;
     try {
       const canonicalCandidate = fs.realpathSync(candidate);
       return isInsideDirectory(this.canonicalRootDir, canonicalCandidate) ? canonicalCandidate : undefined;
@@ -89,9 +98,14 @@ export class AgentStaticFrontendHttpApi {
   }
 
   private sendFile(request: IncomingMessage, response: ServerResponse, filePath: string): void {
+    const representation = this.resolveRepresentation(request, filePath);
+    const byteLength = fs.statSync(representation.filePath).size;
     response.writeHead(200, {
       "Content-Type": this.readContentType(filePath),
       "Cache-Control": this.readCacheControl(filePath),
+      "Content-Length": byteLength,
+      Vary: "Accept-Encoding",
+      ...(representation.contentEncoding ? { "Content-Encoding": representation.contentEncoding } : {}),
     });
 
     if (request.method === "HEAD") {
@@ -99,7 +113,23 @@ export class AgentStaticFrontendHttpApi {
       return;
     }
 
-    fs.createReadStream(filePath).pipe(response);
+    fs.createReadStream(representation.filePath).pipe(response);
+  }
+
+  private resolveRepresentation(
+    request: IncomingMessage,
+    filePath: string,
+  ): { filePath: string; contentEncoding?: AgentStaticAssetContentEncoding } {
+    const representationByEncoding = new Map<AgentStaticAssetContentEncoding, string>();
+    const contentEncoding = selectAgentStaticAssetContentEncoding(request.headers["accept-encoding"], (candidate) => {
+      const representationPath = this.resolveCanonicalReadableFile(
+        `${filePath}${readAgentStaticAssetSidecarSuffix(candidate)}`,
+      );
+      if (representationPath) representationByEncoding.set(candidate, representationPath);
+      return Boolean(representationPath);
+    });
+    const representationPath = contentEncoding ? representationByEncoding.get(contentEncoding) : undefined;
+    return contentEncoding && representationPath ? { filePath: representationPath, contentEncoding } : { filePath };
   }
 
   private readContentType(filePath: string): string {

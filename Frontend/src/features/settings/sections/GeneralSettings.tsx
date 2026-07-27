@@ -17,17 +17,17 @@ export function GeneralSettings({
   const preferenceSections = [
     {
       id: "layout",
-      title: frontendMessage("runtime.migrated.features.session.types.28.12"),
+      title: frontendMessage("settings.general.interfaceTitle"),
       items: [
         {
           id: "defaultSidebarCollapsed",
-          title: frontendMessage("runtime.migrated.features.session.types.32.16"),
-          description: frontendMessage("runtime.migrated.features.session.types.33.22"),
+          title: frontendMessage("settings.general.sidebarCollapsedLabel"),
+          description: frontendMessage("settings.general.sidebarCollapsedDescription"),
         },
         {
           id: "defaultRightPanelCollapsed",
-          title: frontendMessage("runtime.migrated.features.session.types.37.16"),
-          description: frontendMessage("runtime.migrated.features.session.types.38.22"),
+          title: frontendMessage("settings.general.thinkingCollapsedLabel"),
+          description: frontendMessage("settings.general.thinkingCollapsedDescription"),
         },
       ],
     },
@@ -35,18 +35,18 @@ export function GeneralSettings({
   const motionLevelOptions = [
     {
       id: "full",
-      title: frontendMessage("runtime.migrated.features.session.types.49.12"),
-      description: frontendMessage("runtime.migrated.features.session.types.50.18"),
+      title: frontendMessage("settings.general.motionFullLabel"),
+      description: frontendMessage("settings.general.motionFullDescription"),
     },
     {
       id: "reduced",
-      title: frontendMessage("runtime.migrated.features.session.types.54.12"),
-      description: frontendMessage("runtime.migrated.features.session.types.55.18"),
+      title: frontendMessage("settings.general.motionReducedLabel"),
+      description: frontendMessage("settings.general.motionReducedDescription"),
     },
     {
       id: "none",
-      title: frontendMessage("runtime.migrated.features.session.types.59.12"),
-      description: frontendMessage("runtime.migrated.features.session.types.60.18"),
+      title: frontendMessage("settings.general.motionOffLabel"),
+      description: frontendMessage("settings.general.motionOffDescription"),
     },
   ] as const;
 

@@ -1,4 +1,5 @@
 import { useStore, type ChatMessage, type RunRecord, type SessionRecord } from "../store/sessionStore";
+import { errorMessage } from "../lib/util";
 
 type DevSeedOptions = {
   sessions?: number;
@@ -112,7 +113,7 @@ function writeLastMeasure(sample: PerfSample): void {
 
 function writeLastMeasureError(error: unknown): void {
   document.documentElement.dataset.motionDevLastMeasureStatus = "error";
-  document.documentElement.dataset.motionDevLastMeasureError = error instanceof Error ? error.message : String(error);
+  document.documentElement.dataset.motionDevLastMeasureError = errorMessage(error);
 }
 
 function generateMockSessions(sessionCount: number, messageCount: number): SessionRecord[] {

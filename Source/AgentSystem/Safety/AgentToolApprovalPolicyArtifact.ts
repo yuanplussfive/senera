@@ -1,7 +1,7 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { sha256Hex } from "../Core/AgentHash.js";
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 
@@ -162,7 +162,7 @@ export function createAgentToolApprovalPolicyArtifactManifest(input: {
     assets: {
       policies: input.policies.map(({ file, content }) => ({
         file,
-        sha256: sha256(content),
+        sha256: sha256Hex(content),
       })),
       data: assetManifest("data", input.data),
       wasm: assetManifest("wasm", input.wasm),
@@ -194,7 +194,7 @@ function artifactPath(directory: string, kind: "data" | "wasm" | "manifest"): st
 function assetManifest(kind: "data" | "wasm", content: Buffer): { file: string; sha256: string } {
   return {
     file: AgentToolApprovalPolicyArtifactContract.files[kind],
-    sha256: sha256(content),
+    sha256: sha256Hex(content),
   };
 }
 
@@ -218,12 +218,8 @@ function sameValues(left: readonly string[], right: readonly string[]): boolean 
 }
 
 function assertAssetHash(kind: string, content: Buffer, expectedHash: string): void {
-  const actualHash = sha256(content);
+  const actualHash = sha256Hex(content);
   if (actualHash !== expectedHash) {
     throw new Error(`OPA policy ${kind} hash mismatch: expected ${expectedHash}, got ${actualHash}.`);
   }
-}
-
-function sha256(content: Buffer): string {
-  return crypto.createHash("sha256").update(content).digest("hex");
 }

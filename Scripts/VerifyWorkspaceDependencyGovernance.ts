@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import fg from "fast-glob";
-import { E2eTestPolicy, ProjectTestCoveragePolicies } from "./TestCoveragePolicy.js";
+import { IntegrationTestPolicy, ProjectTestCoveragePolicies } from "./TestCoveragePolicy.js";
 import { inspectContainerReleasePipeline } from "./ContainerReleaseWorkflowGovernance.js";
+import { inspectSecurityScanWorkflow } from "./SecurityScanWorkflowGovernance.js";
+import { toPosixPath, toPosixRelative } from "./Support/FileWalk.js";
+import { inspectTextIncludes, workflowJobBlock } from "./Support/WorkflowGovernance.js";
 
 interface PackageJson {
   name?: string;
+  main?: string;
   type?: string;
   workspaces?:
     | string[]
@@ -72,8 +76,14 @@ const rootLockfilePath = path.join(workspaceRoot, "package-lock.json");
 const rootLockfile = fs.existsSync(rootLockfilePath) ? readPackageLockJson(rootLockfilePath) : undefined;
 const workspacePatterns = readWorkspacePatterns(rootPackage);
 const expectedWorkspaces = discoverWorkspacePackages(workspacePatterns);
+const RootRuntimeEntrypoints = Object.freeze({
+  source: "./Source/AgentSystem/Runtime/AgentSystemRuntime.ts",
+  compiled: "./Dist/Source/AgentSystem/Runtime/AgentSystemRuntime.js",
+});
 const rootOwnedToolchainDependencies = new Map(
   Object.entries({
+    "@playwright/test": "^1.62.0",
+    "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -81,11 +91,9 @@ const rootOwnedToolchainDependencies = new Map(
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.7.0",
     "@vitest/coverage-v8": "^4.1.10",
-    autoprefixer: "^10.4.20",
     jsdom: "^29.1.1",
-    postcss: "^8.5.23",
     prettier: "^3.9.5",
-    tailwindcss: "^3.4.17",
+    tailwindcss: "^4.3.3",
     "ts-json-schema-generator": "^2.9.0",
     typescript: "^6.0.3",
     tsx: "^4.22.4",
@@ -94,19 +102,20 @@ const rootOwnedToolchainDependencies = new Map(
   }),
 );
 const verifyWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "verify.yml"));
-const securityScanWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "security-scan.yml"));
 const productReleaseWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "release.yml"));
 const violations = [
   ...inspectWorkspaceCoverage(),
+  ...inspectWorkspacePatternCoverage(),
   ...inspectLockfileWorkspaceState(),
   ...inspectNativeOptionalDependencyClosure(),
   ...inspectRootNpmPolicy(),
   ...inspectVerifyWorkflow(),
-  ...inspectSecurityScanWorkflow(),
+  ...inspectSecurityScanWorkflow(readTextFile(path.join(workspaceRoot, ".github", "workflows", "security-scan.yml"))),
   ...inspectReleaseWorkflowGates(),
   ...inspectRootScripts(),
   ...inspectModuleSystemBoundary(),
   ...inspectRootRuntimeDependencies(),
+  ...inspectRootDependencyHygiene(),
   ...inspectRootToolchainDependencies(),
   ...inspectWorkspaceToolchainDependencyBoundaries(),
   ...inspectRetiredRootScripts(),
@@ -193,7 +202,8 @@ function inspectRootScripts(): string[] {
     "quality.format.fix": "tsx Scripts/VerifyChangedFormatting.ts --write",
     "quality.format.full": 'prettier "**/*" --check --ignore-unknown',
     "quality.format.full.fix": 'prettier "**/*" --write --ignore-unknown',
-    "quality.coverage": "npm run test.coverage.frontend && npm run test.coverage.backend",
+    "quality.coverage":
+      "npm run test.coverage.frontend && npm run test.coverage.backend && npm run quality.coverage.ratchet",
     "policy.compile": "tsx Build/CompileOpaPolicy.ts",
     "policy.verify": "tsx Build/CompileOpaPolicy.ts --check",
     "generate.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts",
@@ -209,7 +219,7 @@ function inspectRootScripts(): string[] {
     "sandbox.archive": "tsx Build/BuildSandboxImageArchive.ts",
     "check.types": "tsc --noEmit",
     build:
-      "npm run verify.config-command-contracts && npm run verify.database-contracts && npm run verify.plugin-config && npm run verify.tool-contracts && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts && node Dist/Scripts/VerifyPluginRuntimeManifest.js",
+      "npm run verify.config-command-contracts && npm run verify.database-contracts && npm run verify.plugin-config && npm run verify.tool-contracts && npm run verify.frontend-events && npm run verify.protocol-reference && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts && node Dist/Scripts/VerifyPluginRuntimeManifest.js",
     dev: 'concurrently -k -n server,frontend -c blue,green "npm run dev.server" "npm run dev.frontend"',
     "docker.up": "docker compose pull && docker compose up -d",
     "docker.down": "docker compose down",
@@ -220,12 +230,18 @@ function inspectRootScripts(): string[] {
     "test.coverage.frontend": "npm --workspace senera-frontend run test.coverage",
     "test.backend": vitestRunCommand(ProjectTestCoveragePolicies.backend.vitestConfig),
     "test.coverage.backend": vitestRunCommand(ProjectTestCoveragePolicies.backend.vitestConfig, "--coverage"),
-    "test.e2e": vitestRunCommand(E2eTestPolicy.vitestConfig),
+    "test.integration": vitestRunCommand(IntegrationTestPolicy.vitestConfig),
+    "test.e2e.web.setup": "playwright install chromium",
+    "test.e2e.web.run": "playwright test --config playwright.config.ts --project chromium",
+    "test.e2e.web": "npm run build && npm --workspace senera-frontend run build && npm run test.e2e.web.run",
+    "test.e2e.desktop.run": "playwright test --config playwright.config.ts --project electron",
+    "test.e2e.desktop": "npm run build && npm --workspace senera-frontend run build && npm run test.e2e.desktop.run",
+    "test.e2e": "npm run test.integration && npm run test.e2e.web",
     "test.all": "npm test && npm run test.e2e",
     server: "npm run build && node Dist/Apps/Server.js",
     "dev.server": "tsx Apps/ServerWatch.ts",
     "dev.server.dry-run": "tsx Apps/ServerWatch.ts --dry-run",
-    desktop: "npm run build && npm --workspace senera-frontend run build && electron Dist/Apps/Desktop/Main.js",
+    desktop: "tsx Apps/Desktop/RunDesktop.ts",
     "desktop.prepare-native": "tsx Build/PrepareElectronNativeModules.ts",
     "desktop.pack": "tsx Apps/Desktop/PackageDesktop.ts",
     "verify.suite": "node Dist/Scripts/VerifySuite.js",
@@ -247,8 +263,9 @@ function inspectRootScripts(): string[] {
       "check.types",
       "test.backend",
       "test.frontend",
-      "test.e2e",
+      "test.integration",
       "build",
+      "test.e2e.web.run",
       "quality.coverage",
     ]),
   ];
@@ -263,6 +280,19 @@ function inspectRootRuntimeDependencies(): string[] {
     },
     "dependencies",
   );
+}
+
+function inspectRootDependencyHygiene(): string[] {
+  const declared = new Set([
+    ...Object.keys(rootPackage.dependencies ?? {}),
+    ...Object.keys(rootPackage.devDependencies ?? {}),
+  ]);
+  return [
+    ...(declared.has("tslib") ? ["package.json must not pin transitive-only dependency tslib at the root."] : []),
+    ...(declared.has("@types/diff")
+      ? ["package.json must use the declarations bundled by diff instead of declaring @types/diff."]
+      : []),
+  ];
 }
 
 function inspectRootToolchainDependencies(): string[] {
@@ -301,9 +331,33 @@ function inspectModuleSystemBoundary(): string[] {
 }
 
 function inspectRootPackageExports(): string[] {
-  return Object.entries(rootPackage.exports ?? {})
-    .filter(([, conditions]) => Boolean(conditions.require))
-    .map(([exportPath]) => `package.json export ${exportPath} must not expose a CommonJS require condition.`);
+  const rootExport = rootPackage.exports?.["."];
+  return [
+    ...(rootPackage.main === RootRuntimeEntrypoints.compiled.slice(2)
+      ? []
+      : [`package.json main must point to ${RootRuntimeEntrypoints.compiled}.`]),
+    ...(rootExport?.types === RootRuntimeEntrypoints.source
+      ? []
+      : [`package.json export types must point to ${RootRuntimeEntrypoints.source}.`]),
+    ...(rootExport?.import === RootRuntimeEntrypoints.compiled && rootExport.default === RootRuntimeEntrypoints.compiled
+      ? []
+      : [`package.json runtime exports must point to ${RootRuntimeEntrypoints.compiled}.`]),
+    ...Object.entries(rootPackage.exports ?? {})
+      .filter(([, conditions]) => Boolean(conditions.require))
+      .map(([exportPath]) => `package.json export ${exportPath} must not expose a CommonJS require condition.`),
+  ];
+}
+
+function inspectWorkspacePatternCoverage(): string[] {
+  return workspacePatterns.flatMap((pattern) =>
+    fg.sync(toPackageJsonPattern(pattern), {
+      cwd: workspaceRoot,
+      onlyFiles: true,
+      ignore: ["**/node_modules/**"],
+    }).length > 0
+      ? []
+      : [`package.json workspace pattern does not match a package: ${pattern}`],
+  );
 }
 
 function inspectWorkspacePackageTypes(expectedTypes: Record<string, string>): string[] {
@@ -495,8 +549,9 @@ function inspectVerifyWorkflow(): string[] {
       "npm run quality.format -- ${{ steps.range.outputs.arguments }}",
       "npm run test.backend",
       "npm run test.frontend",
-      "npm run test.e2e",
-      "npm run verify.suite -- workspace core e2e release",
+      "npm run test.integration",
+      "npm run test.e2e.web",
+      "npm run verify.suite -- workspace core integration e2e release",
       "npm run verify.suite -- platform",
       "github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'",
       "npm run test.coverage.frontend",
@@ -505,47 +560,6 @@ function inspectVerifyWorkflow(): string[] {
     ]),
     ...inspectPullRequestJobGate(verifyWorkflow, ".github/workflows/verify.yml", "coverage"),
   ];
-}
-
-function inspectSecurityScanWorkflow(): string[] {
-  const label = ".github/workflows/security-scan.yml";
-  const violations = inspectTextIncludes(securityScanWorkflow, label, [
-    "name: Security Scan",
-    "pull_request:",
-    "github/codeql-action/init@v3",
-    "queries: security-extended,security-and-quality",
-    "actions/dependency-review-action@v4",
-    "aquasecurity/trivy-action@0.35.0",
-    "github/codeql-action/upload-sarif@v3",
-    "npm run quality.security",
-  ]);
-  const trivyJob = workflowJobBlock(securityScanWorkflow, "trivy-filesystem");
-  if (trivyJob) {
-    violations.push(
-      ...inspectWorkflowNamedStep(trivyJob, label, "Generate Trivy SARIF report", [
-        "aquasecurity/trivy-action@0.35.0",
-        'exit-code: "0"',
-        "format: sarif",
-        "output: trivy-results.sarif",
-      ]),
-      ...inspectWorkflowNamedStep(trivyJob, label, "Enforce Trivy severity gate", [
-        "aquasecurity/trivy-action@0.35.0",
-        "severity: HIGH,CRITICAL",
-        "ignore-unfixed: true",
-        'exit-code: "1"',
-        "format: table",
-      ]),
-    );
-  }
-  for (const jobName of ["dependency-audit", "codeql", "trivy-filesystem"]) {
-    const block = workflowJobBlock(securityScanWorkflow, jobName);
-    if (!block) {
-      violations.push(`${label} must define ${jobName}.`);
-    } else if (block.includes("\n    if: github.event_name != 'pull_request'")) {
-      violations.push(`${label} job ${jobName} must run for pull requests.`);
-    }
-  }
-  return violations;
 }
 
 function inspectPullRequestJobGate(workflow: string, file: string, jobName: string): string[] {
@@ -742,49 +756,10 @@ function sameStringSet(left: readonly string[], right: readonly string[]): boole
   return left.every((value) => rightValues.has(value));
 }
 
-function inspectTextIncludes(source: string, label: string, expectedTerms: readonly string[]): string[] {
-  return expectedTerms.filter((term) => !source.includes(term)).map((term) => `${label} must include ${term}.`);
-}
-
-function inspectWorkflowNamedStep(
-  jobSource: string,
-  workflowLabel: string,
-  stepName: string,
-  expectedTerms: readonly string[],
-): string[] {
-  const block = workflowNamedStepBlock(jobSource, stepName);
-  if (!block) return [`${workflowLabel} must define step ${stepName}.`];
-  return inspectTextIncludes(block, `${workflowLabel} step ${stepName}`, expectedTerms);
-}
-
-function workflowNamedStepBlock(jobSource: string, stepName: string): string | undefined {
-  const marker = `\n      - name: ${stepName}\n`;
-  const start = jobSource.indexOf(marker);
-  if (start < 0) return undefined;
-  const nextStep = /^ {6}- (?:name|uses|run):/gm;
-  nextStep.lastIndex = start + marker.length;
-  const next = nextStep.exec(jobSource);
-  return jobSource.slice(start, next?.index ?? jobSource.length);
-}
-
-function workflowJobBlock(source: string, jobName: string): string | undefined {
-  const marker = `\n  ${jobName}:\n`;
-  const start = source.indexOf(marker);
-  if (start < 0) return undefined;
-  const nextJob = /^ {2}[a-z0-9-]+:\s*$/gm;
-  nextJob.lastIndex = start + marker.length;
-  const next = nextJob.exec(source);
-  return source.slice(start, next?.index ?? source.length);
-}
-
 function toPackageJsonPattern(pattern: string): string {
-  return pattern.endsWith("package.json") ? pattern : path.posix.join(normalizeRelativePath(pattern), "package.json");
-}
-
-function normalizeRelativePath(value: string): string {
-  return value.split(path.sep).join("/");
+  return pattern.endsWith("package.json") ? pattern : path.posix.join(toPosixPath(pattern), "package.json");
 }
 
 function relativePath(value: string): string {
-  return path.relative(workspaceRoot, value).split(path.sep).join("/");
+  return toPosixRelative(workspaceRoot, value);
 }

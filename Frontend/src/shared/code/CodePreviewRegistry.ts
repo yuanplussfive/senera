@@ -32,24 +32,24 @@ interface CodePreviewProvider {
 const previewProviders: readonly CodePreviewProvider[] = [
   {
     id: "html-document",
-    label: frontendMessage("runtime.migrated.shared.code.CodePreviewRegistry.34.12"),
+    label: frontendMessage("code.preview"),
     languages: ["html", "htm"],
     detect: ({ code }) => parseHtmlSource(code).hasRenderableContent,
     build: ({ code }) => ({
       id: "html-document",
-      label: frontendMessage("runtime.migrated.shared.code.CodePreviewRegistry.39.14"),
+      label: frontendMessage("code.preview"),
       source: buildPreviewDocument(code),
       sandbox: "allow-forms allow-modals allow-pointer-lock allow-popups",
     }),
   },
   {
     id: "svg-document",
-    label: frontendMessage("runtime.migrated.shared.code.CodePreviewRegistry.46.12"),
+    label: frontendMessage("code.preview"),
     languages: ["svg"],
     detect: ({ code }) => parseHtmlSource(code).hasElement("svg"),
     build: ({ code }) => ({
       id: "svg-document",
-      label: frontendMessage("runtime.migrated.shared.code.CodePreviewRegistry.51.14"),
+      label: frontendMessage("code.preview"),
       source: buildPreviewDocument(code),
       sandbox: "allow-pointer-lock allow-popups",
     }),

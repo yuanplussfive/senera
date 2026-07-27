@@ -22,13 +22,16 @@ describe("resolveAppSurface", () => {
 
 describe("settings location", () => {
   it("uses the first settings section as the default", () => {
-    expect(resolveSettingsSection({ search: "?settings=unknown", hash: "" })).toBe("model-service");
+    expect(resolveSettingsSection({ pathname: "/", search: "?settings=unknown", hash: "" })).toBe("model-service");
   });
 
   it("reads canonical and legacy settings links", () => {
-    expect(readWebSettingsSection({ search: "?settings=skills", hash: "" })).toBe("skills");
-    expect(readWebSettingsSection({ search: "?surface=settings&section=appearance", hash: "" })).toBe("appearance");
-    expect(readWebSettingsSection({ search: "", hash: "" })).toBeNull();
+    expect(readWebSettingsSection({ pathname: "/", search: "?settings=skills", hash: "" })).toBe("skills");
+    expect(readWebSettingsSection({ pathname: "/", search: "?surface=settings&section=appearance", hash: "" })).toBe(
+      "appearance",
+    );
+    expect(readWebSettingsSection({ pathname: "/settings/appearance", search: "", hash: "" })).toBe("appearance");
+    expect(readWebSettingsSection({ pathname: "/", search: "", hash: "" })).toBeNull();
   });
 
   it("builds canonical overlay locations without legacy parameters", () => {
@@ -41,6 +44,10 @@ describe("settings location", () => {
     expect(buildWebSettingsLocation({ pathname: "/chat/one", search: "?foo=1&settings=skills", hash: "" }, null)).toBe(
       "/chat/one?foo=1",
     );
+    expect(buildWebSettingsLocation({ pathname: "/settings/appearance", search: "?foo=1", hash: "" }, "about")).toBe(
+      "/settings/about?foo=1",
+    );
+    expect(buildWebSettingsLocation({ pathname: "/settings/about", search: "?foo=1", hash: "" }, null)).toBe("/?foo=1");
   });
 
   it("marks history entries created by the settings overlay", () => {

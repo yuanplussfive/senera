@@ -5,8 +5,11 @@ import {
   projectPiChatCompletionResponse,
   projectPiChatCompletionStreamEvents,
 } from "../Source/AgentSystem/PiProxy/AgentPiOpenAiResponseProjector.js";
-import { AgentPiProxyHttpApi, buildPiProxyBaseUrl } from "../Source/AgentSystem/PiProxy/AgentPiProxyHttpApi.js";
-import { AgentPiProxyProtocol } from "../Source/AgentSystem/PiProxy/AgentPiProxyContract.js";
+import { AgentPiProxyHttpApi } from "../Source/AgentSystem/PiProxy/AgentPiProxyHttpApi.js";
+import {
+  AgentPiProxyProtocol,
+  resolveAgentPiProxyBaseUrl,
+} from "../Source/AgentSystem/PiProxy/AgentPiProxyContract.js";
 import {
   AgentPiProxyContextHeader,
   AgentPiProxyModelProviderHeader,
@@ -79,11 +82,11 @@ const provider: ResolvedAgentModelProviderConfig = {
 const projected = projectSeneraModelProviderToPi(provider, config);
 assert.equal(projected.model.provider, "senera-pi-proxy");
 assert.equal(projected.model.api, "openai-completions");
-assert.equal(projected.model.baseUrl, buildPiProxyBaseUrl(config));
+assert.equal(projected.model.baseUrl, resolveAgentPiProxyBaseUrl(config));
 assert.equal(projected.upstream.baseUrl, provider.BaseUrl);
 assert.equal(projected.headers[AgentPiProxyModelProviderHeader], provider.Id);
 assert.equal(
-  buildPiProxyBaseUrl({
+  resolveAgentPiProxyBaseUrl({
     ...config,
     Server: {
       Host: "0.0.0.0",

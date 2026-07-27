@@ -13,6 +13,7 @@ import {
   type AgentApprovalRuntime as AgentApprovalRuntimePort,
   type AgentApprovalWaitOptions,
 } from "./AgentApprovalTypes.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 interface PendingApproval {
   readonly approval: AgentApprovalRequest;
@@ -145,7 +146,7 @@ export class AgentApprovalRuntime implements AgentApprovalRuntimePort {
 
   async cancelByRequestId(requestId: string, error: unknown = new AgentCancellationError()): Promise<number> {
     const matches = [...this.pending.values()].filter((pending) => pending.approval.requestId === requestId);
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     await Promise.all(
       matches.map((pending) =>
         this.settle(pending, {

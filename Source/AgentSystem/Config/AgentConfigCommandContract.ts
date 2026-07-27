@@ -1,6 +1,5 @@
-import { createHash } from "node:crypto";
-import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { AgentConfigCommandSchemaCatalog, type AgentConfigCommandSchemaId } from "./AgentConfigCommandSchemaCatalog.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 
 export interface AgentConfigMergePatchContract {
   readonly schema: AgentConfigCommandSchemaId;
@@ -55,7 +54,7 @@ export function loadAgentConfigCommandDefinition(value: unknown): AgentConfigCom
 }
 
 export function checksumAgentConfigCommandDefinition(definition: AgentConfigCommandContractDefinition): string {
-  return createHash("sha256").update(stringifyAgentCanonicalJson(definition), "utf8").digest("hex");
+  return sha256HexOfCanonicalJson(definition);
 }
 
 function readMergePatchContract(value: unknown, operation: string): AgentConfigMergePatchContract {

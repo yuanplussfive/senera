@@ -63,7 +63,7 @@
     "scripts": ["dev", "dev.server", "dev.server.dry-run", "dev.frontend", "check.types", "check.frontend-types"],
     "dependencies": {
       "mode": "exclude",
-      "names": ["dockerode", "fast-glob", "tar-fs", "tslib"]
+      "names": ["dockerode", "fast-glob", "tar-fs"]
     },
     "devDependencies": {
       "mode": "include",
@@ -74,10 +74,9 @@
         "@types/react-dom",
         "@types/tar-stream",
         "@types/ws",
+        "@tailwindcss/vite",
         "@vitejs/plugin-react",
-        "autoprefixer",
         "concurrently",
-        "postcss",
         "tailwindcss",
         "tsx",
         "typescript",

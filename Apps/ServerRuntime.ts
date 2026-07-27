@@ -54,6 +54,9 @@ import {
 import type { AgentMicrosandboxPackageEntryResolver } from "../Source/AgentSystem/Sandbox/AgentMicrosandboxCli.js";
 import type { AgentSandboxRuntimeProvider } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
 import type { SeneraGvisorWorkerClient } from "../Source/AgentSystem/Execution/SeneraGvisorTypes.js";
+import { readAgentProductMetadata } from "../Source/AgentSystem/Core/AgentProductMetadata.js";
+import { AgentUpgradeSession } from "../Source/AgentSystem/Upgrade/AgentUpgradeSession.js";
+import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 
 export interface SeneraServerOptions {
   workspaceRoot?: string;
@@ -73,19 +76,73 @@ export interface SeneraServerOptions {
   dockerEngineWorker?: SeneraGvisorWorkerClient;
   microsandboxModuleLoader?: SeneraMicrosandboxModuleLoader;
   microsandboxPackageEntryResolver?: AgentMicrosandboxPackageEntryResolver;
+  upgradeStateRoot?: string;
+  upgradeDataRoots?: readonly string[];
+  runtimeImageReference?: string;
 }
 
 export interface SeneraServerHandle {
   workspaceRoot: string;
   configPath: string;
   websocketUrl: string;
+  healthUrl: string;
   stop(): Promise<void>;
 }
 
 type ServerEventLogDetail = "compact" | "verbose";
 
-export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServerHandle {
+export async function startSeneraServer(options: SeneraServerOptions = {}): Promise<SeneraServerHandle> {
   const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
+  const resourceRoot = path.resolve(options.resourcesPath ?? process.cwd());
+  const product = readAgentProductMetadata(resourceRoot);
+  const upgradeSession = new AgentUpgradeSession({
+    workspaceRoot,
+    stateRoot: options.upgradeStateRoot,
+    allowedDataRoots: options.upgradeDataRoots,
+    appVersion: product.version,
+    imageReference: options.runtimeImageReference ?? process.env.SENERA_RUNTIME_IMAGE_REFERENCE,
+  });
+  const cleanup = new SeneraStartupCleanup();
+  let handle: SeneraServerHandle | undefined;
+  try {
+    upgradeSession.recoverInterruptedUpgrade();
+    handle = await startSeneraServerRuntime(options, workspaceRoot, upgradeSession, cleanup);
+    await probeSeneraReadiness(handle.healthUrl);
+    upgradeSession.markHealthy();
+    cleanup.disarm();
+    return handle;
+  } catch (error) {
+    const failures: unknown[] = [error];
+    try {
+      if (handle) await handle.stop();
+      else await cleanup.run();
+    } catch (cleanupError) {
+      failures.push(cleanupError);
+    }
+    try {
+      upgradeSession.failAndRollback(error);
+    } catch (rollbackError) {
+      failures.push(rollbackError);
+    }
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "Senera startup and automatic upgrade rollback failed.", { cause: error });
+    }
+    throw error;
+  }
+}
+
+async function startSeneraServerRuntime(
+  options: SeneraServerOptions,
+  workspaceRoot: string,
+  upgradeSession: AgentUpgradeSession,
+  startupCleanup: SeneraStartupCleanup,
+): Promise<SeneraServerHandle> {
+  const startupResourceCleanups: Array<() => void> = [];
+  const deferResourceCleanup = (callback: () => void | Promise<void>): (() => void) => {
+    const cancel = startupCleanup.defer(callback);
+    startupResourceCleanups.push(cancel);
+    return cancel;
+  };
   const configSource = resolveConfigSource(workspaceRoot, options);
   const configPath = resolveRuntimeConfigPath(workspaceRoot, configSource);
   let watchedConfigPath: string | undefined;
@@ -103,9 +160,12 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   const configService = new AgentConfigService({
     workspaceRoot,
     source: configSource,
+    upgradeSession,
   });
+  deferResourceCleanup(() => configService.close());
   const approvalRuntime = new AgentApprovalRuntime();
   const interactionInput = new AgentInteractionInputRuntime();
+  deferResourceCleanup(() => interactionInput.close());
   const piSessionRegistry = new AgentPiActiveSessionRegistry();
   const projectRuntimeConfig = (config: AgentSystemConfig): AgentSystemConfig =>
     options.runtimeConfigProjection?.(config) ?? config;
@@ -141,10 +201,11 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
       logger.error("后台执行资源清理失败", {
         resourceId: failure.resourceId,
         reason: failure.reason,
-        error: failure.error instanceof Error ? failure.error.message : String(failure.error),
+        error: errorMessage(failure.error),
       });
     },
   });
+  deferResourceCleanup(() => executionResources.close());
   const runtimeCache = new AgentSystemRuntimeCache({
     workspaceRoot,
     configPath,
@@ -162,6 +223,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     sandboxProvider: sandboxRuntimeService.runtimeProvider(),
     gvisorWorker: sandboxRuntimeService.gvisorWorkerClient(),
   });
+  deferResourceCleanup(() => runtimeCache.clear());
 
   const loopFactory = (modelProviderId?: string) => {
     const lease = runtimeCache.acquire(modelProviderId);
@@ -194,10 +256,13 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   });
 
   const persistence = resolvePersistenceConfig(initialConfig);
-  const repository = createRepository(workspaceRoot, initialConfig);
+  const repository = createRepository(workspaceRoot, initialConfig, upgradeSession, logger);
+  deferResourceCleanup(() => repository.close());
   const memorySourceRepository = new SqliteAgentMemorySourceRepository(
     resolveAgentMemoryDatabasePath(workspaceRoot, DefaultAgentMemoryDatabasePath),
+    upgradeSession,
   );
+  const cancelMemorySourceCleanup = deferResourceCleanup(() => memorySourceRepository.close());
   const memoryLearning = new AgentMemoryLearningRuntime({
     repository: memorySourceRepository,
     configSnapshot,
@@ -207,11 +272,14 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     sourceRepository: memorySourceRepository,
     learning: memoryLearning,
   });
+  cancelMemorySourceCleanup();
+  deferResourceCleanup(() => memoryService.close());
   const artifactRetention = new AgentArtifactRetentionService({
     workspaceRoot,
     config: () => resolveArtifactsConfig(configSnapshot()),
     onError: (error) => logger.warn("artifact.retention.failed", { error: serializeError(error) }),
   });
+  deferResourceCleanup(() => artifactRetention.close());
   const sessionStore = new AgentSessionStore({ repository });
   sessionStore.hydrate();
 
@@ -244,6 +312,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     persistence.Kind === "sqlite"
       ? new AgentSqliteRunEventWriter({ databasePath: path.resolve(workspaceRoot, persistence.DatabasePath) })
       : new AgentCallbackRunEventWriter((events) => sessionManager.recordRunEvents(events));
+  const cancelEventWriterCleanup = deferResourceCleanup(() => eventWriter.close());
   const userProfileManager = new AgentUserProfileManager(repository);
   const pluginConfigManager = new AgentPluginConfigManager({
     workspaceRoot,
@@ -268,6 +337,8 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     piDiagnostics,
     eventWriter,
   });
+  cancelEventWriterCleanup();
+  deferResourceCleanup(() => server.stop());
   approvalRuntime.setEventSink((event) => server.broadcast(event));
   interactionInput.setEventSink((event) => server.broadcast(event));
   executionResources.setEventSink((event) => server.broadcast(event));
@@ -280,12 +351,13 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
       })
       .catch((error) => {
         logger.error("沙箱准备事件广播失败", {
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       });
   });
 
-  server.start();
+  upgradeSession.markStarting();
+  await server.start();
   memoryLearning.start();
   artifactRetention.start();
   startSandboxRuntimePreparation({
@@ -316,18 +388,22 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
           })
           .catch((error) => {
             logger.error("配置变更事件广播失败", {
-              error: error instanceof Error ? error.message : String(error),
+              error: errorMessage(error),
             });
           });
       } catch (error) {
-        void emitAgentEvent((event: AgentDomainEvent) => server.broadcast(event), {
+        emitAgentEvent((event: AgentDomainEvent) => server.broadcast(event), {
           kind: AgentEventKinds.ConfigFailed,
           context: {},
           data: {
             configPath: jsonConfigPath,
-            message: error instanceof Error ? error.message : String(error),
+            message: errorMessage(error),
             details: serializeError(error),
           },
+        }).catch((broadcastError) => {
+          logger.error("配置失败事件广播失败", {
+            error: errorMessage(broadcastError),
+          });
         });
       }
     });
@@ -335,36 +411,60 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
 
   const serverConfig = resolveServerConfig(initialConfig);
   let stopPromise: Promise<void> | undefined;
+  const stop = (): Promise<void> =>
+    (stopPromise ??= (async () => {
+      if (watchedConfigPath) fs.unwatchFile(watchedConfigPath);
+      unsubscribeSandboxStatus();
+      let serverFailure: unknown;
+      try {
+        await server.stop();
+      } catch (error) {
+        serverFailure = error;
+      }
+      try {
+        await Promise.all([
+          runtimeCache.clear(),
+          executionResources.close(),
+          interactionInput.close(),
+          artifactRetention.close(),
+        ]);
+      } finally {
+        configService.close();
+        memoryService.close();
+        repository.close();
+      }
+      if (serverFailure) throw serverFailure;
+    })());
+
+  for (const cancel of startupResourceCleanups) cancel();
+  startupCleanup.defer(stop);
 
   return {
     workspaceRoot,
     configPath,
     websocketUrl: `ws://${serverConfig.Host}:${serverConfig.Port}`,
-    stop: () =>
-      (stopPromise ??= (async () => {
-        if (watchedConfigPath) fs.unwatchFile(watchedConfigPath);
-        unsubscribeSandboxStatus();
-        let serverFailure: unknown;
-        try {
-          await server.stop();
-        } catch (error) {
-          serverFailure = error;
-        }
-        try {
-          await Promise.all([
-            runtimeCache.clear(),
-            executionResources.close(),
-            interactionInput.close(),
-            artifactRetention.close(),
-          ]);
-        } finally {
-          configService.close();
-          memoryService.close();
-          repository.close();
-        }
-        if (serverFailure) throw serverFailure;
-      })()),
+    healthUrl: `http://${resolveHealthCheckHost(serverConfig.Host)}:${serverConfig.Port}/health/ready`,
+    stop,
   };
+}
+
+export async function probeSeneraReadiness(healthUrl: string): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(healthUrl, { signal: AbortSignal.timeout(5_000) });
+  } catch (error) {
+    throw new Error(`Senera readiness check failed for ${healthUrl}.`, { cause: error });
+  }
+  if (!response.ok) {
+    throw new Error(`Senera readiness check failed for ${healthUrl}: HTTP ${response.status}.`);
+  }
+}
+
+function resolveHealthCheckHost(host: string): string {
+  const normalized = host.trim().toLowerCase();
+  if (normalized === "0.0.0.0") return "127.0.0.1";
+  if (normalized === "::" || normalized === "[::]") return "[::1]";
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 
 function startSandboxRuntimePreparation(input: {
@@ -407,19 +507,52 @@ function startSandboxRuntimePreparation(input: {
       },
       (error: unknown) => {
         input.logger.warn("sandbox.runtime.unavailable", {
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage(error),
         });
       },
     );
 }
 
-function createRepository(workspaceRoot: string, config: AgentSystemConfig): AgentSessionRepository {
+function createRepository(
+  workspaceRoot: string,
+  config: AgentSystemConfig,
+  upgradeSession: AgentUpgradeSession,
+  logger: AgentLogger,
+): AgentSessionRepository {
   const persistence = resolvePersistenceConfig(config);
   if (persistence.Kind === "memory") {
     return new InMemorySessionRepository();
   }
   const dbPath = path.resolve(workspaceRoot, persistence.DatabasePath);
-  return new SqliteSessionRepository(dbPath);
+  return new SqliteSessionRepository(dbPath, upgradeSession, (sessionId, issue) =>
+    logger.warn("session.entry.decode_failed", { sessionId, ...issue }),
+  );
+}
+
+class SeneraStartupCleanup {
+  private readonly callbacks = new Set<() => void | Promise<void>>();
+
+  defer(callback: () => void | Promise<void>): () => void {
+    this.callbacks.add(callback);
+    return () => this.callbacks.delete(callback);
+  }
+
+  disarm(): void {
+    this.callbacks.clear();
+  }
+
+  async run(): Promise<void> {
+    const failures: unknown[] = [];
+    for (const callback of [...this.callbacks].reverse()) {
+      try {
+        await callback();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    this.callbacks.clear();
+    if (failures.length > 0) throw new AggregateError(failures, "Senera startup cleanup failed.");
+  }
 }
 
 function resolveConfigPath(workspaceRoot: string): string {

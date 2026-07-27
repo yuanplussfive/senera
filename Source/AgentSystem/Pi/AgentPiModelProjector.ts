@@ -1,8 +1,7 @@
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentPiModelApi, AgentPiProviderProjection } from "./AgentPiTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import { buildPiProxyBaseUrl } from "../PiProxy/AgentPiProxyHttpApi.js";
-import { AgentPiProxyProtocol } from "../PiProxy/AgentPiProxyContract.js";
+import { resolveAgentPiProxyBaseUrl, AgentPiProxyProtocol } from "../PiProxy/AgentPiProxyContract.js";
 import {
   AgentPiProxyModelProviderHeader,
   encodePiProxyModelProviderHeaderValue,
@@ -17,8 +16,7 @@ const FreeCostModel = {
   cacheWrite: 0,
 } as const;
 
-const SeneraPiProxyProviderId = "senera-pi-proxy";
-const SeneraPiProxyApi: AgentPiModelApi = "openai-completions";
+const SeneraPiProxyApi: AgentPiModelApi = AgentPiProxyProtocol.modelApi;
 
 export function projectSeneraModelProviderToPi(
   provider: ResolvedAgentModelProviderConfig,
@@ -27,12 +25,12 @@ export function projectSeneraModelProviderToPi(
   const capabilities = provider.Capabilities ?? {};
   const compatibility = resolveAgentModelCompatibility(provider);
   const compaction = resolveAgentLoopConfig(config).PiSessions.Compaction;
-  const proxyBaseUrl = buildPiProxyBaseUrl(config);
+  const proxyBaseUrl = resolveAgentPiProxyBaseUrl(config);
   const model = {
     id: provider.Model,
     name: provider.Id,
     api: SeneraPiProxyApi,
-    provider: SeneraPiProxyProviderId,
+    provider: AgentPiProxyProtocol.providerId,
     baseUrl: proxyBaseUrl,
     reasoning: capabilities.Reasoning === true,
     input: capabilities.Vision === true ? ["text", "image"] : ["text"],

@@ -3,6 +3,7 @@ import process from "node:process";
 import { parseArgs } from "node:util";
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import { ToolLoadingModes } from "../Source/AgentSystem/Types/PluginToolManifestTypes.js";
+import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 
 const DefaultPrompts = [
   "请用一句话说明你是谁",
@@ -21,7 +22,7 @@ const argumentsSchema = {
 } as const;
 
 void main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.stderr.write(`${errorMessage(error)}\n`);
   process.exitCode = 1;
 });
 

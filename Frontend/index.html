@@ -4,18 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>senera</title>
+    <script>
+      if (window.location.protocol !== "file:") {
+        const base = document.createElement("base");
+        base.href = "/";
+        document.head.append(base);
+      }
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script src="/senera-runtime-config.js"></script>
     <script>
       __SENERA_APPEARANCE_BOOTSTRAP_SCRIPT__;
     </script>
-
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&family=Geist:wght@300..700&family=JetBrains+Mono:wght@400..600&display=swap"
-      rel="stylesheet"
-    />
   </head>
   <body>
     <div id="root"></div>

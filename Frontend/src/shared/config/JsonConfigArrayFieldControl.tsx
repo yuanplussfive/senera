@@ -63,14 +63,14 @@ export function JsonConfigArrayFieldControl({
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <JsonConfigIconAction
-                    label={frontendMessage("runtime.migrated.shared.config.JsonConfigForm.429.27")}
+                    label={frontendMessage("config.form.copy")}
                     disabled={disabled}
                     onClick={() => duplicateItem(index)}
                   >
                     <CopyPlus className="h-3.5 w-3.5" />
                   </JsonConfigIconAction>
                   <JsonConfigIconAction
-                    label={frontendMessage("runtime.migrated.shared.config.JsonConfigForm.436.27")}
+                    label={frontendMessage("config.form.delete")}
                     disabled={disabled}
                     danger
                     onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))}
@@ -134,7 +134,7 @@ export function JsonConfigArrayFieldControl({
             className={jsonConfigInputClassName}
           />
           <JsonConfigIconAction
-            label={frontendMessage("runtime.migrated.shared.config.JsonConfigForm.493.19")}
+            label={frontendMessage("config.form.delete")}
             disabled={disabled}
             danger
             onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))}

@@ -7,6 +7,7 @@ import {
   type AgentResourceAccessIntent,
   type SeneraResourceAccessAuthorizer,
 } from "./SeneraResourceAccess.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 declare const CanonicalWorkspacePathBrand: unique symbol;
 
@@ -61,7 +62,7 @@ export class SeneraWorkspaceBoundary {
       } catch (error) {
         throw new SeneraWorkspaceBoundaryError(
           "policy_denied",
-          error instanceof Error ? error.message : String(error),
+          errorMessage(error),
           inspection.facts,
           error instanceof Error ? error : undefined,
         );

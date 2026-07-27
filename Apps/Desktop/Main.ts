@@ -77,8 +77,11 @@ app
     registerDesktopIpc();
     const seedConfig = loadConfigFile(paths.configSeedPath);
     const microsandboxRuntime = createDesktopMicrosandboxRuntimeAccess(paths.microsandboxRuntimeBridgePath);
-    serverHandle = startSeneraServer({
+    serverHandle = await startSeneraServer({
       workspaceRoot: paths.workspaceRoot,
+      resourcesPath: paths.resourceRoot,
+      upgradeStateRoot: path.join(paths.desktopDataRoot, ".senera"),
+      upgradeDataRoots: [paths.desktopDataRoot],
       configSource: {
         kind: "sqlite",
         databasePath: paths.configDatabasePath,

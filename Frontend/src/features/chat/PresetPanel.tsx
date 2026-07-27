@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FileRejection } from "react-dropzone";
 import { AlertTriangle, BookUser, Check } from "lucide-react";
 import type { PresetFormat, PresetItem, PresetMutationState } from "../../api/eventTypes";
-import { cn } from "../../lib/util";
+import { cn, errorMessage } from "../../lib/util";
 import { useResponsiveMode } from "../../shared/responsive";
 import { Dialog, DialogContent, FileDropZone, Tooltip, type FileDropZoneAccept } from "../../shared/ui";
 import {
@@ -310,7 +310,7 @@ export function PresetControl({
 
       setLocalError(errors.length > 0 ? errors.join("\n") : null);
     } catch (error) {
-      setLocalError(error instanceof Error ? error.message : String(error));
+      setLocalError(errorMessage(error));
     } finally {
       setImporting(false);
     }

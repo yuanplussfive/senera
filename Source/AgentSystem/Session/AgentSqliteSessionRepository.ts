@@ -8,6 +8,7 @@ import {
   rowToEntry,
   rowToRunSnapshot,
   runSnapshotToRow,
+  type AgentConversationEntryDecodeIssue,
 } from "../SessionPersistence/AgentSessionCodec.js";
 import type { AgentSession } from "./AgentSession.js";
 import {
@@ -43,6 +44,7 @@ import {
   parseAgentTurnPreparationSnapshot,
   type AgentTurnPreparationSnapshot,
 } from "../Loop/AgentTurnPreparationSnapshot.js";
+import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 
 export { InMemorySessionRepository } from "../SessionPersistence/InMemorySessionRepository.js";
 export type {
@@ -56,20 +58,29 @@ export type {
 
 const USER_PROFILE_SETTING_KEY = "user.profile";
 
+export type AgentSessionEntryDecodeIssueSink = (sessionId: string, issue: AgentConversationEntryDecodeIssue) => void;
+
 export class SqliteSessionRepository implements AgentSessionRepository {
   private readonly kernel: AgentSqliteDatabaseKernel;
   private readonly db: Database.Database;
   private readonly stmts: AgentSessionSqlStatements;
   private readonly traces: AgentSqliteSessionTraceStore;
+  private readonly onDecodeIssue?: AgentSessionEntryDecodeIssueSink;
 
-  constructor(databasePath: string) {
+  constructor(
+    databasePath: string,
+    upgradeSession?: AgentUpgradeSession,
+    onDecodeIssue?: AgentSessionEntryDecodeIssueSink,
+  ) {
     this.kernel = new AgentSqliteDatabaseKernel({
       databasePath,
       contract: AgentSessionDatabaseContract,
+      upgradeSession,
     });
     this.db = this.kernel.connection;
     this.stmts = prepareAgentSessionSqlStatements(this.db);
     this.traces = new AgentSqliteSessionTraceStore(this.db, this.stmts);
+    this.onDecodeIssue = onDecodeIssue;
   }
 
   // ---- 接口实现 ----
@@ -145,7 +156,7 @@ export class SqliteSessionRepository implements AgentSessionRepository {
 
   loadEntries(sessionId: string): AgentConversationEntry[] {
     return this.stmts.selectEntries.all(sessionId).flatMap((row) => {
-      const entry = rowToEntry(row);
+      const entry = rowToEntry(row, (issue) => this.onDecodeIssue?.(sessionId, issue));
       return entry ? [entry] : [];
     });
   }

@@ -26,7 +26,7 @@ export function CodeArtifactViewer({
   const defaultView = useMemo<ArtifactView>(() => (artifact.preview ? "preview" : "source"), [artifact.preview]);
   const [view, setView] = useState<ArtifactView>(initialView ?? defaultView);
   const [wrapped, setWrapped] = useState(false);
-  const { copied, copyText } = useClipboardCopy({ successMessage: "代码已复制" });
+  const { copied, copyText } = useClipboardCopy({ successMessage: frontendMessage("code.copied") });
   const { tokens } = useAppearance();
   const previewSource = useMemo(
     () =>
@@ -72,7 +72,7 @@ export function CodeArtifactViewer({
                 onClick={() => setView("source")}
               >
                 <FileCode className="h-3.5 w-3.5" />
-                {frontendMessage("runtime.migrated.shared.code.CodeArtifactViewer.83.17")}
+                {frontendMessage("code.source")}
               </button>
               {artifact.preview ? (
                 <button
@@ -92,7 +92,7 @@ export function CodeArtifactViewer({
                 className={cn("code-artifact-viewer__button", wrapped && "is-active")}
                 onClick={() => setWrapped((value) => !value)}
               >
-                {frontendMessage("runtime.migrated.shared.code.CodeArtifactViewer.103.17")}
+                {frontendMessage("code.wrap")}
               </button>
               <Tooltip
                 content={copied ? frontendMessage("clipboard.copied") : frontendMessage("clipboard.copyToast")}

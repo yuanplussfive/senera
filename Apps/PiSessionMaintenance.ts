@@ -5,6 +5,7 @@ import { z } from "zod";
 import { resolveAgentLoopConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { AgentJsonFileLoader } from "../Source/AgentSystem/Config/AgentJsonFileLoader.js";
 import { AgentPiSessionHistoryMaintenance } from "../Source/AgentSystem/Pi/AgentPiSessionHistoryMaintenance.js";
+import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 
 const argumentsSchema = {
   workspace: { type: "string" },
@@ -43,7 +44,7 @@ const PiSessionsPathSchema = z
   .passthrough();
 
 void main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.stderr.write(`${errorMessage(error)}\n`);
   process.exitCode = 1;
 });
 

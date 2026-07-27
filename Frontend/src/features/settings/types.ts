@@ -12,18 +12,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
+import type { SettingsSectionId } from "./settingsSectionContract";
 
-export type SettingsSectionId =
-  | "model-service"
-  | "default-model"
-  | "runtime"
-  | "planning"
-  | "retrieval"
-  | "skills"
-  | "general"
-  | "appearance"
-  | "storage"
-  | "about";
+export {
+  defaultSettingsSectionId,
+  isSettingsSectionId,
+  settingsSectionIds,
+  type SettingsSectionId,
+} from "./settingsSectionContract";
 
 export interface SettingsSectionDefinition {
   id: SettingsSectionId;
@@ -87,13 +83,6 @@ function defineSettingsSection(
     },
   };
 }
-export const settingsSectionIds = settingsSections.map((section) => section.id) as readonly SettingsSectionId[];
-export const defaultSettingsSectionId: SettingsSectionId = settingsSections[0].id;
-
-export function isSettingsSectionId(value: string | null | undefined): value is SettingsSectionId {
-  return settingsSectionIds.includes(value as SettingsSectionId);
-}
-
 export function readSettingsSection(sectionId: SettingsSectionId): SettingsSectionDefinition {
   return settingsSections.find((section) => section.id === sectionId) ?? settingsSections[0];
 }

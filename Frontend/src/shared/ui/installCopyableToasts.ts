@@ -1,6 +1,7 @@
 import { isValidElement, type MouseEvent, type ReactNode } from "react";
 import { toast, type ExternalToast } from "sonner";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { writeClipboardText } from "./useClipboardCopy";
 
 type ToastMethod = (message: ReactNode | (() => ReactNode), data?: ExternalToast) => string | number;
 
@@ -79,22 +80,8 @@ function readNodeText(value: ReactNode | (() => ReactNode) | undefined): string 
 
 async function writeToastCopyText(text: string): Promise<void> {
   try {
-    await navigator.clipboard.writeText(text);
-    return;
+    await writeClipboardText(text);
   } catch {
-    copyTextWithTextarea(text);
+    // Copy failures are non-fatal here: the toast content stays visible for manual copying.
   }
-}
-
-function copyTextWithTextarea(text: string): void {
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "true");
-  textarea.style.position = "fixed";
-  textarea.style.left = "-9999px";
-  textarea.style.top = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand("copy");
-  textarea.remove();
 }

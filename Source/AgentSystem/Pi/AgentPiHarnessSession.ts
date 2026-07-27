@@ -21,6 +21,7 @@ import type {
   AgentPiCompactionRunResult,
   AgentPiCompactionPolicy,
 } from "./AgentPiCompactionPolicy.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export interface AgentPiHarnessSessionOptions {
   model: AgentPiModelProjection;
@@ -146,7 +147,7 @@ export class AgentPiHarnessSession implements AgentPiSession {
       return {
         status: "failed",
         inspection,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       };
     } finally {
       clearTimeout(timeout);

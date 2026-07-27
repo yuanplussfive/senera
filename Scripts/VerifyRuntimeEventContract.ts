@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { FrontendEventCatalogPath, renderFrontendEventCatalogSource } from "../Build/FrontendEventCatalogSource.js";
+import { toPosixPath, toPosixRelative, walkFiles } from "./Support/FileWalk.js";
 
 const workspaceRoot = process.cwd();
 const IgnoredDirectories = new Set([".git", ".sandbox", "Dist", "Release", "build", "dist", "node_modules"]);
@@ -102,7 +103,7 @@ function collectBackendEventProducers(): Map<string, string[]> {
 
 function collectFrontendEventConsumers(): Map<string, string[]> {
   const files = walk(path.join(workspaceRoot, "Frontend", "src")).filter(
-    (filePath) => !normalizedPath(filePath).endsWith("Frontend/src/api/eventTypes.ts"),
+    (filePath) => !toPosixPath(filePath).endsWith("Frontend/src/api/eventTypes.ts"),
   );
 
   return collectIdentifierReferences(files, /EventKinds\.([A-Z]\w*)/g);
@@ -178,31 +179,14 @@ function isBackendNonProducer(filePath: string): boolean {
 }
 
 function walk(directory: string): string[] {
-  if (!fs.existsSync(directory)) {
-    return [];
-  }
-
-  const files: string[] = [];
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      if (IgnoredDirectories.has(entry.name)) continue;
-      files.push(...walk(entryPath));
-      continue;
-    }
-    if (entry.isFile() && /\.(ts|tsx)$/.test(entry.name)) {
-      files.push(entryPath);
-    }
-  }
-  return files;
+  return walkFiles(directory, {
+    extensions: [".ts", ".tsx"],
+    excludeDirectoryNames: IgnoredDirectories,
+  });
 }
 
 function relativePath(filePath: string): string {
-  return normalizedPath(path.relative(workspaceRoot, filePath));
-}
-
-function normalizedPath(filePath: string): string {
-  return filePath.replace(/\\/g, "/");
+  return toPosixRelative(workspaceRoot, filePath);
 }
 
 function normalizeLineEndings(value: string): string {

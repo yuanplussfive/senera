@@ -4,6 +4,7 @@ import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentEventKinds, type AgentEventSink } from "../Events/AgentEvent.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export interface AgentConfigSnapshot {
   path: string;
@@ -69,15 +70,19 @@ export class AgentConfigWatcher {
         },
       });
     } catch (error) {
-      await emitAgentEvent(this.options.onEvent, {
-        kind: AgentEventKinds.ConfigFailed,
-        context: {},
-        data: {
-          configPath: this.options.configPath,
-          message: error instanceof Error ? error.message : String(error),
-          details: serializeError(error),
-        },
-      });
+      try {
+        await emitAgentEvent(this.options.onEvent, {
+          kind: AgentEventKinds.ConfigFailed,
+          context: {},
+          data: {
+            configPath: this.options.configPath,
+            message: errorMessage(error),
+            details: serializeError(error),
+          },
+        });
+      } catch {
+        // 事件通道本身不可用时已无处上报；吞掉以避免 watchFile 回调产生未处理拒绝。
+      }
     }
   }
 }

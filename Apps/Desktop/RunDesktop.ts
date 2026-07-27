@@ -1,14 +1,11 @@
 import { sync as spawnSync } from "cross-spawn";
-import fs from "node:fs";
-import path from "node:path";
 import process from "node:process";
+import { DesktopNativeModuleMaintenance } from "../../Build/DesktopNativeModuleMaintenance.js";
 
 interface CommandInvocation {
   command: string;
   arguments: string[];
 }
-
-const nativeModules = ["better-sqlite3"];
 
 const steps = [
   command("npm", ["run", "build"]),
@@ -17,26 +14,33 @@ const steps = [
   command("electron", ["Dist/Apps/Desktop/Main.js"]),
 ];
 
-let exitCode = 0;
+void runDesktop().then(
+  (exitCode) => {
+    process.exitCode = exitCode;
+  },
+  (error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  },
+);
 
-try {
-  clearNativeRebuildMetadata();
-  for (const step of steps) {
-    const result = run(step);
-    if (result !== 0) {
-      exitCode = result;
-      break;
+async function runDesktop(): Promise<number> {
+  const nativeMaintenance = new DesktopNativeModuleMaintenance(process.cwd());
+  let exitCode = 0;
+  await nativeMaintenance.clearRebuildMetadata();
+  try {
+    for (const step of steps) {
+      const result = run(step);
+      if (result !== 0) {
+        exitCode = result;
+        break;
+      }
     }
+  } finally {
+    await nativeMaintenance.restoreNodeCompatibility();
   }
-} finally {
-  const restoreCode = run(command("npm", ["rebuild", "better-sqlite3"]));
-  clearNativeRebuildMetadata();
-  if (exitCode === 0 && restoreCode !== 0) {
-    exitCode = restoreCode;
-  }
+  return exitCode;
 }
-
-process.exitCode = exitCode;
 
 function run(invocation: CommandInvocation): number {
   console.log(`\n> ${[invocation.command, ...invocation.arguments].join(" ")}`);
@@ -60,43 +64,4 @@ function command(name: string, args: readonly string[] = []): CommandInvocation 
     command: name,
     arguments: [...args],
   };
-}
-
-function clearNativeRebuildMetadata(): void {
-  for (const moduleName of nativeModules) {
-    const metadataPath = path.join(process.cwd(), "node_modules", moduleName, "build", "Release", ".forge-meta");
-    removeNativeRebuildMetadata(metadataPath);
-  }
-}
-
-function removeNativeRebuildMetadata(metadataPath: string): void {
-  if (!fs.existsSync(metadataPath)) return;
-
-  try {
-    fs.rmSync(metadataPath, { force: true });
-    return;
-  } catch (error) {
-    if (process.platform !== "win32" || !isWindowsCleanupError(error)) {
-      throw error;
-    }
-  }
-
-  try {
-    fs.unlinkSync(metadataPath);
-  } catch {
-    try {
-      fs.rmSync(metadataPath, { force: true });
-    } catch {
-      // ignore and let the existence check below raise a consistent error
-    }
-  }
-  if (fs.existsSync(metadataPath)) {
-    throw new Error(`Could not remove native rebuild metadata: ${metadataPath}`);
-  }
-}
-
-function isWindowsCleanupError(error: unknown): boolean {
-  if (!(error instanceof Error) || !("code" in error)) return false;
-  const code = error.code;
-  return code === "EPERM" || code === "EACCES" || code === "EBUSY";
 }

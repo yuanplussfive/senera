@@ -2,6 +2,7 @@ import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { writeFileAtomicSync } from "../Core/AgentFs.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 const PasswordMinimumLength = 15;
@@ -169,10 +170,7 @@ export class AgentLocalAdminAccountStore {
   }
 
   private writeDocument(document: AccountDocument): void {
-    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-    const temporaryPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(temporaryPath, `${JSON.stringify(document, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    fs.renameSync(temporaryPath, this.filePath);
+    writeFileAtomicSync(this.filePath, `${JSON.stringify(document, null, 2)}\n`, { mode: 0o600 });
     try {
       fs.chmodSync(this.filePath, 0o600);
     } catch {

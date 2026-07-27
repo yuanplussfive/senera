@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { writeFileAtomic } from "../Core/AgentFs.js";
 
 export type SeneraOutputStream = "stdout" | "stderr";
 export const SeneraOutputSpoolMarkerFileName = ".output-spool.json";
@@ -188,13 +188,7 @@ async function updateSpoolMarkerState(markerPath: string, state: SeneraOutputSpo
 }
 
 async function writeSpoolMarker(markerPath: string, marker: Record<string, unknown>): Promise<void> {
-  const temporaryPath = `${markerPath}.${randomUUID()}.tmp`;
-  try {
-    await fsp.writeFile(temporaryPath, `${JSON.stringify(marker)}\n`, { encoding: "utf8", flag: "wx" });
-    await fsp.rename(temporaryPath, markerPath);
-  } finally {
-    await fsp.rm(temporaryPath, { force: true }).catch(() => undefined);
-  }
+  await writeFileAtomic(markerPath, `${JSON.stringify(marker)}\n`);
 }
 
 function validateMaxBytes(value: number | undefined): void {

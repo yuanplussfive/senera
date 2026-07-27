@@ -1,5 +1,6 @@
 import { LruCache } from "../../lib/LruCache";
 import { normalizeLanguage } from "./CodePreviewRegistry";
+import { scheduleIdleTask } from "../scheduling/scheduleIdleTask";
 import type { ShikiTransformer } from "shiki";
 
 export interface HighlightedCodeRequest {
@@ -109,18 +110,7 @@ export function scheduleHighlightedCodePreload(request: HighlightedCodeRequest):
     return noop;
   }
 
-  if (typeof window === "undefined") {
-    return noop;
-  }
-
-  const preload = (): void => preloadHighlightedCode(request);
-  if (typeof window.requestIdleCallback === "function") {
-    const handle = window.requestIdleCallback(preload);
-    return () => window.cancelIdleCallback(handle);
-  }
-
-  const handle = window.setTimeout(preload, 0);
-  return () => window.clearTimeout(handle);
+  return scheduleIdleTask(() => preloadHighlightedCode(request), { priority: "user-visible" });
 }
 
 export function loadingHighlightedCode(): HighlightedCodeState {

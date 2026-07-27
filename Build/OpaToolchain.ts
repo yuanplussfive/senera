@@ -1,7 +1,7 @@
 import fs from "node:fs";
-import { createHash } from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
+import { sha256Hex } from "../Source/AgentSystem/Core/AgentHash.js";
 
 const OpaArtifactSchema = z
   .object({
@@ -54,7 +54,7 @@ export async function resolveOpaCompilerBinary(workspaceRoot: string, toolchain:
   }
 
   const binary = Buffer.from(await response.arrayBuffer());
-  if (sha256(binary) !== artifact.Sha256) {
+  if (sha256Hex(binary) !== artifact.Sha256) {
     throw new Error(`Pinned OPA ${toolchain.Version} failed SHA-256 verification.`);
   }
 
@@ -82,12 +82,8 @@ function resolvePlatformArtifact(toolchain: OpaToolchain): z.infer<typeof OpaArt
 
 function isVerifiedArtifact(filePath: string, expectedSha256: string): boolean {
   try {
-    return fs.statSync(filePath).isFile() && sha256(fs.readFileSync(filePath)) === expectedSha256;
+    return fs.statSync(filePath).isFile() && sha256Hex(fs.readFileSync(filePath)) === expectedSha256;
   } catch {
     return false;
   }
-}
-
-function sha256(value: Buffer): string {
-  return createHash("sha256").update(value).digest("hex");
 }

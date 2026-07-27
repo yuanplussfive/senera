@@ -1,3 +1,5 @@
+import { readCoverageRatchet, type CoverageRatchetSuite } from "./CoverageRatchetStore.js";
+
 export type CoverageThresholds = {
   lines: number;
   functions: number;
@@ -49,6 +51,22 @@ export type TestSuitePolicy = Pick<
 
 const sourceLocalTestPattern = /\.test\.(ts|tsx|js|jsx|mjs|mts)$/;
 
+// Numeric coverage floors live in Scripts/CoverageRatchet.json so VerifyCoverageRatchet
+// can raise them mechanically; this policy only wires them to suites.
+const coverageRatchet = readCoverageRatchet();
+
+function ratchetSuite(suiteName: string): CoverageRatchetSuite {
+  const suite = coverageRatchet.suites[suiteName];
+  if (!suite) {
+    throw new Error(`Scripts/CoverageRatchet.json must define coverage thresholds for suite "${suiteName}".`);
+  }
+  return suite;
+}
+
+function ratchetThresholdGroups(suiteName: string): { pattern: string; thresholds: CoverageThresholds }[] {
+  return Object.entries(ratchetSuite(suiteName).groups).map(([pattern, thresholds]) => ({ pattern, thresholds }));
+}
+
 const frontendTestLayers = [
   { name: "Architecture", minimumCases: 6 },
   {
@@ -96,12 +114,8 @@ export const FrontendTestCoveragePolicy = {
   coverageDirectory: "coverage/frontend",
   coverageInclude: ["Frontend/src/**/*.{ts,tsx}"],
   coverageExclude: ["Frontend/src/main.tsx", "Frontend/src/generated/**", "Frontend/src/**/*.d.ts"],
-  thresholds: {
-    lines: 53,
-    functions: 52,
-    branches: 40,
-    statements: 50,
-  },
+  thresholds: ratchetSuite("frontend").total,
+  thresholdGroups: ratchetThresholdGroups("frontend"),
   requiredLayers: frontendTestLayers,
 } as const satisfies TestSuiteCoveragePolicy;
 
@@ -117,41 +131,25 @@ export const BackendTestCoveragePolicy = {
   coverageDirectory: "coverage/backend",
   coverageInclude: ["Source/AgentSystem/**/*.ts"],
   coverageExclude: ["Source/AgentSystem/BamlClient/**", "Source/AgentSystem/**/*.d.ts"],
-  thresholds: {
-    lines: 40,
-    functions: 38,
-    branches: 28,
-    statements: 40,
-  },
-  thresholdGroups: [
-    {
-      pattern:
-        "Source/AgentSystem/{ActionPlanner,Auth,Execution,Memory,ModelEndpoints,Pi,Session,Text,ToolSearch,Uploads,Xml}/**/*.ts",
-      thresholds: {
-        lines: 60,
-        functions: 60,
-        branches: 45,
-        statements: 60,
-      },
-    },
-  ],
+  thresholds: ratchetSuite("backend").total,
+  thresholdGroups: ratchetThresholdGroups("backend"),
   requiredLayers: backendTestLayers,
 } as const satisfies TestSuiteCoveragePolicy;
 
-export const E2eTestPolicy = {
-  label: "E2E",
-  testRoot: "Scripts/E2ETests",
+export const IntegrationTestPolicy = {
+  label: "Integration",
+  testRoot: "Scripts/IntegrationTests",
   sourceRoot: "Source",
   testFilePattern: /\.test\.(mjs|ts)$/,
   sourceLocalTestPattern,
-  vitestConfig: "vitest.e2e.config.ts",
-  verifyEntrypoint: "Scripts/VerifyE2eTestCoverage.ts",
-  runnerEntrypoint: "Scripts/VerifyE2eVitestSuite.ts",
-  testInclude: ["Scripts/E2ETests/**/*.test.ts", "Scripts/E2ETests/**/*.test.mjs"],
+  vitestConfig: "vitest.integration.config.ts",
+  verifyEntrypoint: "Scripts/VerifyIntegrationTestCoverage.ts",
+  runnerEntrypoint: "Scripts/VerifyIntegrationVitestSuite.ts",
+  testInclude: ["Scripts/IntegrationTests/**/*.test.ts", "Scripts/IntegrationTests/**/*.test.mjs"],
   requiredLayers: [
-    { name: "AgentProtocol", minimumCases: 3 },
+    { name: "AgentProtocol", minimumCases: 10 },
     { name: "FrontendJourney", minimumCases: 2 },
-    { name: "RuntimeIntegration", minimumCases: 1 },
+    { name: "RuntimeIntegration", minimumCases: 5 },
   ],
 } as const satisfies TestSuitePolicy;
 

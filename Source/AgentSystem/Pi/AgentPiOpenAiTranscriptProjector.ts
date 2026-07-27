@@ -10,6 +10,16 @@ export interface AgentPiOpenAiTranscriptProjection {
   input: string;
 }
 
+export interface AgentPiTranscriptProjectionIssue {
+  name: "tool_arguments_parse_failed";
+  requestId: string;
+  toolCallId: string;
+  toolName: string;
+  argumentChars: number;
+}
+
+type TranscriptProjectionIssueSink = (issue: AgentPiTranscriptProjectionIssue) => void;
+
 interface ConversationTurn {
   requestId: string;
   users: Array<Extract<AgentConversationEntry, { kind: "user.message" }>>;
@@ -32,6 +42,8 @@ const EmptyUsage: Usage = {
 };
 
 export class AgentPiOpenAiTranscriptProjector {
+  constructor(private readonly options: { onIssue?: TranscriptProjectionIssueSink } = {}) {}
+
   project(input: {
     requestId: string;
     userInput: string;
@@ -41,7 +53,7 @@ export class AgentPiOpenAiTranscriptProjector {
     const messages = this.materializeMessages(input.conversationEntries, input.requestId);
     const current = this.currentUserContent(input.conversationEntries, input.requestId) ?? input.userInput;
     return {
-      history: this.projectHistory(messages, input.model),
+      history: this.projectHistory(messages, input.model, input.requestId),
       input: current,
     };
   }
@@ -75,6 +87,7 @@ export class AgentPiOpenAiTranscriptProjector {
   private projectHistory(
     messages: readonly AgentOpenAiTranscriptMessage[],
     model: AgentPiModelProjection,
+    requestId: string,
   ): AgentMessage[] {
     const toolNamesByCallId = new Map<string, string>();
     const projected: AgentMessage[] = [];
@@ -85,7 +98,9 @@ export class AgentPiOpenAiTranscriptProjector {
           toolNamesByCallId.set(call.id, call.function.name);
         }
       }
-      const entry = projectOpenAiMessageToPi(message, model, toolNamesByCallId);
+      const entry = projectOpenAiMessageToPi(message, model, toolNamesByCallId, (issue) =>
+        this.options.onIssue?.({ ...issue, requestId }),
+      );
       if (entry) {
         projected.push(entry);
       }
@@ -135,6 +150,7 @@ function projectOpenAiMessageToPi(
   message: AgentOpenAiTranscriptMessage,
   model: AgentPiModelProjection,
   toolNamesByCallId: ReadonlyMap<string, string>,
+  onIssue?: (issue: Omit<AgentPiTranscriptProjectionIssue, "requestId">) => void,
 ): Message | undefined {
   if (message.role === "system" || message.role === "developer") {
     return undefined;
@@ -177,7 +193,14 @@ function projectOpenAiMessageToPi(
         type: "toolCall" as const,
         id: call.id,
         name: call.function.name,
-        arguments: parseToolArguments(call.function.arguments),
+        arguments: parseToolArguments(call.function.arguments, () =>
+          onIssue?.({
+            name: "tool_arguments_parse_failed",
+            toolCallId: call.id,
+            toolName: call.function.name,
+            argumentChars: call.function.arguments.length,
+          }),
+        ),
       })),
     ],
     api: model.api,
@@ -203,11 +226,17 @@ function projectUserContent(entry: Extract<AgentConversationEntry, { kind: "user
   );
 }
 
-function parseToolArguments(value: string): Record<string, unknown> {
+// Stored tool-call arguments that are not a JSON object degrade to {} so history
+// projection survives, but the degradation is reported through onInvalid.
+function parseToolArguments(value: string, onInvalid?: () => void): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value) as unknown;
-    return readRecord(parsed) ?? {};
+    const record = readRecord(parsed);
+    if (record) return record;
+    onInvalid?.();
+    return {};
   } catch {
+    onInvalid?.();
     return {};
   }
 }

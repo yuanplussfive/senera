@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import fg from "fast-glob";
+import { toPosixPath } from "./Support/FileWalk.js";
 
 interface ComplexityBudget {
   sourceRoots: string[];
@@ -39,7 +40,7 @@ const budgetPath = path.join(workspaceRoot, "Scripts", "ComplexityBudget.json");
 const budget = readBudget();
 const sourceFiles = readSourceFileMetrics();
 const sourceFilesByPath = new Map(sourceFiles.map((file) => [file.path, file]));
-const legacyBudgetsByPath = new Map(budget.legacyLargeFiles.map((entry) => [normalizePath(entry.path), entry]));
+const legacyBudgetsByPath = new Map(budget.legacyLargeFiles.map((entry) => [toPosixPath(entry.path), entry]));
 
 const violations = [
   ...inspectRequiredGuides(),
@@ -70,7 +71,7 @@ function inspectRequiredGuides(): string[] {
 
 function inspectLegacyBudgets(): string[] {
   return budget.legacyLargeFiles.flatMap((entry) => {
-    const budgetedPath = normalizePath(entry.path);
+    const budgetedPath = toPosixPath(entry.path);
     const file = sourceFilesByPath.get(budgetedPath);
     if (!file) {
       return [`${entry.path} legacy large-file budget references a missing or ignored source file.`];
@@ -142,7 +143,7 @@ function inspectDirectoryBudgets(): string[] {
 }
 
 function readSourceFileMetrics(): SourceFileMetric[] {
-  const patterns = budget.sourceRoots.map((root) => `${root.replaceAll("\\", "/")}/**/*`);
+  const patterns = budget.sourceRoots.map((root) => `${toPosixPath(root)}/**/*`);
   return fg
     .sync(patterns, {
       cwd: workspaceRoot,
@@ -154,17 +155,14 @@ function readSourceFileMetrics(): SourceFileMetric[] {
     .filter((file) => budget.fileExtensions.includes(path.extname(file)))
     .sort((left, right) => left.localeCompare(right))
     .map((file) => ({
-      path: normalizePath(file),
+      path: toPosixPath(file),
       lines: countLines(path.join(workspaceRoot, file)),
     }));
 }
 
 function countLines(file: string): number {
   const text = fs.readFileSync(file, "utf8");
-  if (text.length === 0) {
-    return 0;
-  }
-  return text.split(/\r\n|\r|\n/).length;
+  return text.length === 0 ? 0 : text.split(/\r\n|\r|\n/).length;
 }
 
 function readBudget(): ComplexityBudget {
@@ -178,7 +176,7 @@ function readBudget(): ComplexityBudget {
   assert.ok(Array.isArray(parsed.requiredModuleGuides), "ComplexityBudget.json must define requiredModuleGuides.");
   assert.equal(
     parsed.legacyLargeFiles.length,
-    new Set(parsed.legacyLargeFiles.map((entry) => normalizePath(entry.path))).size,
+    new Set(parsed.legacyLargeFiles.map((entry) => toPosixPath(entry.path))).size,
     "ComplexityBudget.json legacyLargeFiles paths must be unique.",
   );
   for (const entry of parsed.legacyLargeFiles) {
@@ -189,8 +187,4 @@ function readBudget(): ComplexityBudget {
     assert.ok(entry.splitTarget, `${entry.path} must define splitTarget.`);
   }
   return parsed;
-}
-
-function normalizePath(value: string): string {
-  return value.replaceAll("\\", "/");
 }

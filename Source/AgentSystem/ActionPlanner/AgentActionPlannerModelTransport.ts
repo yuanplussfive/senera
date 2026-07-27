@@ -13,6 +13,7 @@ import {
   type AgentModelUsageSink,
   type AgentModelUsageValue,
 } from "../ModelEndpoints/AgentModelUsage.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export class AgentActionPlannerModelTransport {
   private readonly endpoint: TextGenerationEndpoint;
@@ -166,8 +167,4 @@ function requestCharacterCount(request: AgentBamlModelRequest): number {
 
 function elapsedMilliseconds(startedAt: number): number {
   return Math.max(0, Math.round(performance.now() - startedAt));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

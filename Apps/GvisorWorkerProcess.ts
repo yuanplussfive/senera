@@ -11,6 +11,7 @@ import {
 } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
 import { resolveAgentGvisorWorkerSocketPath } from "../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorRuntimePreparation.js";
 import { AgentGvisorWorkerSocketClient } from "../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerClient.js";
+import { sleep } from "../Source/AgentSystem/Core/AgentTiming.js";
 
 export interface SeneraGvisorWorkerProcessOptions {
   workspaceRoot: string;
@@ -90,16 +91,9 @@ async function waitForWorkerSocket(child: ChildProcess, socketPath: string, time
     } catch (error) {
       if (!isMissingFile(error)) throw error;
     }
-    await delay(50);
+    await sleep(50, { unref: true });
   }
   throw new Error(`gVisor worker did not create its control socket within ${timeoutMs}ms.`);
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, milliseconds);
-    timer.unref();
-  });
 }
 
 function isMissingFile(error: unknown): boolean {

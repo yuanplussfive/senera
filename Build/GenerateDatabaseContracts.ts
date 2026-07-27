@@ -1,9 +1,11 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { snapshotAgentSqliteSchema } from "../Source/AgentSystem/Database/AgentSqliteDatabaseSchema.js";
-import { readOptionalUtf8, writeUtf8Atomically } from "./GeneratedTextFile.js";
+import { synchronizeGeneratedFile } from "./GeneratedTextFile.js";
+import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
+import { sha256Hex } from "../Source/AgentSystem/Core/AgentHash.js";
+import { toPosixRelative, walkFiles } from "../Scripts/Support/FileWalk.js";
 
 interface ContractManifest {
   id?: unknown;
@@ -73,8 +75,8 @@ function synchronizeContract(manifestPath: string, verifyOnly: boolean): void {
       database.exec(migration);
       const snapshot = snapshotAgentSqliteSchema(database);
       synchronizeTextFile(snapshotPath, snapshot, verifyOnly);
-      version.migrationSha256 = sha256(migration);
-      version.snapshotSha256 = sha256(snapshot);
+      version.migrationSha256 = sha256Hex(migration);
+      version.snapshotSha256 = sha256Hex(snapshot);
     }
 
     for (const legacy of legacySnapshots) {
@@ -141,8 +143,8 @@ function synchronizeLegacySnapshot(directory: string, legacy: LegacySnapshot, ve
     database.exec(definition);
     const snapshot = snapshotAgentSqliteSchema(database);
     synchronizeTextFile(snapshotPath, snapshot, verifyOnly);
-    legacy.definitionSha256 = sha256(definition);
-    legacy.snapshotSha256 = sha256(snapshot);
+    legacy.definitionSha256 = sha256Hex(definition);
+    legacy.snapshotSha256 = sha256Hex(snapshot);
   } finally {
     database.close();
   }
@@ -189,12 +191,12 @@ function resolveResource(directory: string, value: unknown, label: string): stri
 }
 
 function synchronizeTextFile(filePath: string, expected: string, verifyOnly: boolean): void {
-  const actual = readOptionalUtf8(filePath);
-  if (actual === expected) return;
-  if (verifyOnly) {
-    throw new Error(`${relativePath(filePath)} is stale. Run npm run generate.database-contracts.`);
-  }
-  writeUtf8Atomically(filePath, expected);
+  synchronizeGeneratedFile({
+    filePath,
+    content: expected,
+    check: verifyOnly,
+    regenerateCommand: "npm run generate.database-contracts",
+  });
 }
 
 function discoverContractManifests(root: string): string[] {
@@ -203,17 +205,6 @@ function discoverContractManifests(root: string): string[] {
       (filePath) => path.basename(filePath) === "contract.json" && path.basename(path.dirname(filePath)) === "Database",
     )
     .sort((left, right) => left.localeCompare(right));
-}
-
-function walkFiles(directory: string): string[] {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const entryPath = path.join(directory, entry.name);
-    return entry.isDirectory() ? walkFiles(entryPath) : [entryPath];
-  });
-}
-
-function sha256(content: string): string {
-  return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
 function readNonEmptyString(value: unknown, label: string): string {
@@ -228,9 +219,5 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function relativePath(filePath: string): string {
-  return path.relative(process.cwd(), filePath).split(path.sep).join("/");
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return toPosixRelative(process.cwd(), filePath);
 }

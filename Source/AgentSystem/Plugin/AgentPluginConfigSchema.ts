@@ -1,5 +1,7 @@
 import { parse as parseToml, type TomlTableWithoutBigInt } from "smol-toml";
 import { z } from "zod";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { formatZodIssue } from "../Diagnostics/AgentValidationIssue.js";
 import type { LoadedPluginConfigDiagnostic } from "../Types/PluginConfigTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
@@ -124,7 +126,7 @@ export function parsePluginConfigSchema(options: ParseLoadedPluginConfigTomlOpti
         {
           severity: "error",
           message: agentErrorMessage("plugin.configSchemaTomlInvalid", {
-            message: error instanceof Error ? error.message : String(error),
+            message: errorMessage(error),
           }),
         },
       ],
@@ -138,7 +140,7 @@ export function parsePluginConfigSchema(options: ParseLoadedPluginConfigTomlOpti
         {
           severity: "error",
           message: agentErrorMessage("plugin.configSchemaInvalid", {
-            issues: result.error.issues.map(formatZodIssue).join("; "),
+            issues: result.error.issues.map((issue) => formatZodIssue(issue)).join("; "),
           }),
         },
       ],
@@ -149,9 +151,4 @@ export function parsePluginConfigSchema(options: ParseLoadedPluginConfigTomlOpti
     schema: result.data,
     diagnostics: [],
   };
-}
-
-export function formatZodIssue(issue: z.core.$ZodIssue): string {
-  const pathText = issue.path.length > 0 ? issue.path.join(".") : "root";
-  return `${pathText}: ${issue.message}`;
 }

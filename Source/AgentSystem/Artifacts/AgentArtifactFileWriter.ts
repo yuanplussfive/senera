@@ -7,6 +7,7 @@ import { Readable } from "node:stream";
 import type { Transform } from "node:stream";
 import { SeneraWorkspaceBoundary, SeneraWorkspaceBoundaryError } from "../Execution/SeneraWorkspaceBoundary.js";
 import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
+import { writeFileAtomic } from "../Core/AgentFs.js";
 
 export class AgentArtifactFileWriter {
   private readonly boundary: SeneraWorkspaceBoundary;
@@ -42,13 +43,7 @@ export class AgentArtifactFileWriter {
     const target = await this.prepareTarget(filePath);
     assertJsonBudget(maxBytes);
     const text = truncateArtifactTextByBytes(value, maxBytes);
-    const temporary = path.join(path.dirname(target.absolutePath), `.${path.basename(filePath)}.${randomUUID()}.tmp`);
-    try {
-      await fs.writeFile(temporary, text, { encoding: "utf8", flag: "wx" });
-      await fs.rename(temporary, target.absolutePath);
-    } finally {
-      await fs.rm(temporary, { force: true }).catch(() => undefined);
-    }
+    await writeFileAtomic(target.absolutePath, text);
   }
 
   private async writeJsonStream(filePath: string, value: unknown): Promise<void> {

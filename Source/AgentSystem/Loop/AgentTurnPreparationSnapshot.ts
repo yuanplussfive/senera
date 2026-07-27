@@ -1,9 +1,9 @@
-import crypto from "node:crypto";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import { parsePiControllerAction, type ParsedPiControllerAction } from "../PiProxy/AgentPiAssistantMessageSchema.js";
+import { sha256Hex } from "../Core/AgentHash.js";
 
 export const AgentTurnPreparationSnapshotSchemaVersion = 3 as const;
 
@@ -33,7 +33,7 @@ export function createAgentTurnPreparationSnapshot(input: {
   return {
     schemaVersion: AgentTurnPreparationSnapshotSchemaVersion,
     runtimeFingerprint: input.runtimeFingerprint,
-    inputDigest: digestAgentTurnInput(input.userInput),
+    inputDigest: sha256Hex(input.userInput),
     turnUnderstanding: input.turnUnderstanding,
     route: structuredClone(input.route),
     loadedToolNames: [...input.loadedToolNames],
@@ -51,7 +51,7 @@ export function isAgentTurnPreparationReusable(
     snapshot &&
     input.runtimeFingerprint &&
     snapshot.runtimeFingerprint === input.runtimeFingerprint &&
-    snapshot.inputDigest === digestAgentTurnInput(input.userInput),
+    snapshot.inputDigest === sha256Hex(input.userInput),
   );
 }
 
@@ -89,8 +89,4 @@ export function parseAgentTurnPreparationSnapshot(value: unknown): AgentTurnPrep
   } catch {
     return undefined;
   }
-}
-
-function digestAgentTurnInput(value: string): string {
-  return crypto.createHash("sha256").update(value).digest("hex");
 }

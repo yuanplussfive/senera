@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import { sha256Hex } from "../Core/AgentHash.js";
 
 const EvidenceUriProtocol = "senera:";
 const EvidenceUriAuthority = "evidence";
@@ -14,11 +14,7 @@ export function createAgentEvidenceUri(input: AgentEvidenceUriInput): string {
 }
 
 export function createAgentEvidenceId(input: AgentEvidenceUriInput): string {
-  const digest = crypto
-    .createHash("sha256")
-    .update(`${input.artifactId}:${input.evidenceKey}`)
-    .digest("hex")
-    .slice(0, 24);
+  const digest = sha256Hex(`${input.artifactId}:${input.evidenceKey}`).slice(0, 24);
   return `ev_${digest}`;
 }
 

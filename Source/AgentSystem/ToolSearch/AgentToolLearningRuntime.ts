@@ -17,6 +17,7 @@ import {
 } from "../ActionPlanner/AgentActionPlannerFailure.js";
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export interface AgentToolLearningEpisodeDraft {
   episode: Omit<AgentToolSearchEpisode, "learnedKeywords">;
@@ -149,7 +150,7 @@ export class AgentToolLearningRuntime {
 
   private reportFailure(draft: AgentToolLearningEpisodeDraft, error: unknown): void {
     this.logger?.warn("tool.learning.failed", {
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage(error),
       standaloneRequest: draft.standaloneRequest,
       chosenTools: draft.episode.chosenTools,
     });

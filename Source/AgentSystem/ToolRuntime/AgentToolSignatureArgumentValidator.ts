@@ -1,5 +1,6 @@
 import * as AjvModule from "ajv";
-import type { ErrorObject, ValidateFunction } from "ajv";
+import type { ValidateFunction } from "ajv";
+import { formatAjvIssue } from "../Diagnostics/AgentValidationIssue.js";
 import type { AgentPromptContractView } from "../Prompt/AgentPromptContractTypes.js";
 
 const Ajv = (AjvModule.default ?? AjvModule) as unknown as typeof import("ajv").default;
@@ -18,7 +19,15 @@ export function validateToolSignatureArguments(input: {
   path: Array<string | number>;
 }): string[] {
   const validate = validatorFor(input.contract.jsonSchema);
-  return validate(input.args) ? [] : (validate.errors ?? []).map((error) => formatAjvIssue(error, input.path));
+  return validate(input.args)
+    ? []
+    : (validate.errors ?? []).map((error) =>
+        formatAjvIssue(error, {
+          rootPath: input.path,
+          rootLabel: "arguments",
+          numericPathStyle: "brackets",
+        }),
+      );
 }
 
 export function assertToolContractSchema(schema: Record<string, unknown>): void {
@@ -34,30 +43,4 @@ function validatorFor(schema: Record<string, unknown>): ValidateFunction {
   const validate = ajv.compile(schema);
   validators.set(schema, validate);
   return validate;
-}
-
-function formatAjvIssue(error: ErrorObject, rootPath: readonly (string | number)[]): string {
-  const path = formatIssuePath([...rootPath, ...jsonPointerPath(error.instancePath), ...ajvParamPath(error)]);
-  return `${path}: ${error.message ?? "JSON Schema validation failed"}`;
-}
-
-function ajvParamPath(error: ErrorObject): Array<string | number> {
-  const params = error.params as Record<string, unknown>;
-  const property = params.additionalProperty ?? params.missingProperty;
-  return typeof property === "string" && property.length > 0 ? [property] : [];
-}
-
-function jsonPointerPath(pointer: string): Array<string | number> {
-  return pointer
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => segment.replaceAll("~1", "/").replaceAll("~0", "~"))
-    .map((segment) => {
-      const index = Number(segment);
-      return Number.isInteger(index) && String(index) === segment ? index : segment;
-    });
-}
-
-function formatIssuePath(path: readonly (string | number)[]): string {
-  return path.map((part) => (typeof part === "number" ? `[${part}]` : part)).join(".");
 }

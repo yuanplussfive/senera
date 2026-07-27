@@ -1,4 +1,5 @@
 import type { JsonConfigObject } from "../../shared/config/JsonConfigForm";
+import { ConfigSecretContract } from "../../api/generatedEventCatalog";
 import { FrontendDefaultLocale } from "../../i18n/frontendMessageCatalog";
 import {
   readDefaultModelGroup,
@@ -446,6 +447,11 @@ export function nextHeaderKey(headers: Record<string, string>): string {
   return `${base}-${index}`;
 }
 
+/** 服务端下发的密钥占位符；原样回传表示“保持已保存的值不变”。 */
+export function isRedactedConfigSecret(value: string | null | undefined): boolean {
+  return value === ConfigSecretContract.RedactedPlaceholder;
+}
+
 export function cloneRecord(value: unknown): Record<string, unknown> {
   return isRecord(value) ? (JSON.parse(JSON.stringify(value)) as Record<string, unknown>) : {};
 }
@@ -503,19 +509,6 @@ export function readBoolean(value: unknown): boolean | undefined {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-export function formatShortTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return iso;
-  }
-  return date.toLocaleString(FrontendDefaultLocale, {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 export const ModelCapabilityKeys = [

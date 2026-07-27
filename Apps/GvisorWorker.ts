@@ -6,6 +6,7 @@ import {
   resolveAgentDockerEngineSandboxProvider,
 } from "../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorDockerRuntime.js";
 import { AgentGvisorWorkerServer } from "../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerServer.js";
+import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 
 const WorkerEnvironmentSchema = z
   .object({
@@ -81,8 +82,4 @@ async function main(): Promise<void> {
 
 function parseSocketMode(value: string | undefined): number | undefined {
   return value ? Number.parseInt(value, 8) : undefined;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

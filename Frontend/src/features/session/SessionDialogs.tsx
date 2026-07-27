@@ -1,5 +1,6 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { CircleAlert } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { Dialog, DialogActionButton, DialogActions, DialogContent } from "../../shared/ui";
 import type { ConfirmationIntent } from "./types";
 
@@ -7,6 +8,7 @@ export function RenameDialog({
   open,
   title,
   value,
+  returnFocus,
   onValueChange,
   onOpenChange,
   onSubmit,
@@ -14,17 +16,30 @@ export function RenameDialog({
   open: boolean;
   title: string;
   value: string;
+  returnFocus: HTMLElement | null;
   onValueChange: (value: string) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
 }): JSX.Element {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus({ preventScroll: true });
+  }, [open]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title={frontendMessage("runtime.migrated.features.session.SessionDialogs.23.15")}
+        title={frontendMessage("session.renameDialogTitle")}
         description={title}
         className="w-[min(440px,calc(100vw-28px))]"
         bodyClassName="p-4"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          inputRef.current?.focus();
+        }}
+        onCloseAutoFocus={(event) => restoreDialogFocus(event, returnFocus)}
+        onEscapeKeyDown={() => onOpenChange(false)}
       >
         <form
           onSubmit={(event) => {
@@ -34,17 +49,15 @@ export function RenameDialog({
           className="space-y-4"
         >
           <input
-            autoFocus
+            ref={inputRef}
             value={value}
             onChange={(event) => onValueChange(event.target.value)}
             className="h-10 w-full rounded-lg border border-ink-200 bg-paper-50 px-3 text-[13px] text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-ink-300 focus:ring-2 focus:ring-accent-focus"
           />
           <DialogActions>
-            <DialogActionButton close>
-              {frontendMessage("runtime.migrated.features.session.SessionDialogs.42.39")}
-            </DialogActionButton>
+            <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
             <DialogActionButton type="submit" variant="primary">
-              {frontendMessage("runtime.migrated.features.session.SessionDialogs.44.15")}
+              {frontendMessage("session.save")}
             </DialogActionButton>
           </DialogActions>
         </form>
@@ -54,9 +67,11 @@ export function RenameDialog({
 }
 export function ConfirmationDialog({
   intent,
+  returnFocus,
   onOpenChange,
 }: {
   intent: ConfirmationIntent | null;
+  returnFocus: HTMLElement | null;
   onOpenChange: (open: boolean) => void;
 }): JSX.Element {
   return (
@@ -66,6 +81,8 @@ export function ConfirmationDialog({
         description={intent?.description}
         className="w-[min(480px,calc(100vw-28px))]"
         bodyClassName="p-4"
+        onCloseAutoFocus={(event) => restoreDialogFocus(event, returnFocus)}
+        onEscapeKeyDown={() => onOpenChange(false)}
       >
         <div className="rounded-lg border border-ink-200/70 bg-paper-100/70 p-3">
           <div className="flex gap-2.5">
@@ -80,9 +97,7 @@ export function ConfirmationDialog({
           </div>
         </div>
         <DialogActions className="mt-4">
-          <DialogActionButton close>
-            {frontendMessage("runtime.migrated.features.session.SessionDialogs.80.37")}
-          </DialogActionButton>
+          <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
           <DialogActionButton
             onClick={() => {
               intent?.onConfirm();
@@ -96,4 +111,10 @@ export function ConfirmationDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function restoreDialogFocus(event: Event, returnFocus: HTMLElement | null): void {
+  if (!returnFocus?.isConnected) return;
+  event.preventDefault();
+  returnFocus.focus();
 }

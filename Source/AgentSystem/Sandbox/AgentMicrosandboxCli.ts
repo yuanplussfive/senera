@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { createGunzip } from "node:zlib";
 import { z } from "zod";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { nodeErrorCode } from "../Core/AgentFs.js";
 
 const execFileAsync = promisify(execFile);
 const MicrosandboxPackageSchema = z
@@ -72,7 +74,7 @@ export function createAgentMicrosandboxCli(options: AgentMicrosandboxCliOptions)
       } catch (error) {
         const stderr = readProcessErrorOutput(error, "stderr");
         const stdout = readProcessErrorOutput(error, "stdout");
-        const detail = stderr || stdout || (error instanceof Error ? error.message : String(error));
+        const detail = stderr || stdout || errorMessage(error);
         throw new Error(`Microsandbox command failed: ${detail.trim()}`, { cause: error });
       }
     },
@@ -171,10 +173,6 @@ function collectProcessOutput(stream: NodeJS.ReadableStream, maxBytes = 4 * 1024
   return () => Buffer.concat(chunks).toString("utf8");
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export async function resolveAgentMicrosandboxPackage(
   packageEntryResolver: AgentMicrosandboxPackageEntryResolver = () => import.meta.resolve("microsandbox"),
 ): Promise<AgentMicrosandboxPackage> {
@@ -231,10 +229,4 @@ function readProcessErrorOutput(error: unknown, key: "stdout" | "stderr"): strin
   if (!error || typeof error !== "object" || !(key in error)) return "";
   const value = (error as Record<string, unknown>)[key];
   return typeof value === "string" ? value : Buffer.isBuffer(value) ? value.toString("utf8") : "";
-}
-
-function nodeErrorCode(error: unknown): string | undefined {
-  return error && typeof error === "object" && "code" in error && typeof error.code === "string"
-    ? error.code
-    : undefined;
 }

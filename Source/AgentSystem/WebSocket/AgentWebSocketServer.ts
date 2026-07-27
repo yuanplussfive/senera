@@ -24,6 +24,7 @@ import {
 } from "../Auth/AgentServerAccessGuard.js";
 import { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
 import { AgentWebSocketCloseCodes, AgentWebSocketCloseReasons } from "./AgentWebSocketCloseContract.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 
@@ -70,6 +71,14 @@ export class AgentWebSocketServer {
     this.uploadApi = new AgentUploadHttpApi({
       store: uploadStore,
       isOriginAllowed: (origin) => this.accessGuard.allowsOrigin(origin),
+      onMaintenanceError: ({ error, trigger, consecutiveFailures, retryInMs }) => {
+        this.logger.error("上传存储维护失败", {
+          trigger,
+          consecutiveFailures,
+          retryInMs,
+          error: errorMessage(error),
+        });
+      },
     });
     this.httpRouter = new AgentWebSocketHttpRouter({
       uploadApi: this.uploadApi,
@@ -108,7 +117,7 @@ export class AgentWebSocketServer {
     });
   }
 
-  start(): void {
+  async start(): Promise<void> {
     this.httpServer = http.createServer((request, response) => {
       void this.httpRouter.handle(request, response);
     });
@@ -128,21 +137,29 @@ export class AgentWebSocketServer {
       this.handleUpgrade(request, socket, head);
     });
 
-    this.httpServer.on("listening", () => {
-      this.handleListening();
+    await new Promise<void>((resolve, reject) => {
+      const handleListening = () => {
+        this.httpServer?.off("error", handleStartupError);
+        this.httpServer?.on("error", (error) => this.handleServerError(error));
+        this.handleListening();
+        resolve();
+      };
+      const handleStartupError = (error: Error) => {
+        this.httpServer?.off("listening", handleListening);
+        this.handleServerError(error as NodeJS.ErrnoException);
+        reject(error);
+      };
+      this.httpServer!.once("listening", handleListening);
+      this.httpServer!.once("error", handleStartupError);
+      this.httpServer!.listen(this.serverConfig.Port, this.serverConfig.Host);
     });
-    this.httpServer.on("error", (error) => {
-      this.handleServerError(error);
-    });
-
-    this.httpServer.listen(this.serverConfig.Port, this.serverConfig.Host);
     this.uploadApi.startMaintenance();
     this.heartbeatTimer = setInterval(() => this.heartbeat(), this.accessGuard.heartbeatIntervalMs);
     this.heartbeatTimer.unref();
   }
 
   async stop(): Promise<void> {
-    this.uploadApi.stopMaintenance();
+    await this.uploadApi.stopMaintenance();
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = undefined;
@@ -184,7 +201,7 @@ export class AgentWebSocketServer {
       }
       void this.messageRouter.handleMessage(socket, data).catch((error) => {
         this.logger.error("WebSocket 请求处理失败", {
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       });
     });

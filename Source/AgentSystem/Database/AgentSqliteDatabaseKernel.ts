@@ -2,13 +2,9 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import {
-  AgentSqliteMigrationError,
-  AgentSqliteMigrationErrorCodes,
-  migrateAgentSqliteStore,
-  planAgentSqliteStoreReconciliation,
-} from "./AgentSqliteMigrationRunner.js";
+import { migrateAgentSqliteStore, planAgentSqliteStoreReconciliation } from "./AgentSqliteMigrationRunner.js";
 import { AgentSqliteStoreDataClasses, type AgentSqliteStoreContract } from "./AgentSqliteStoreContract.js";
+import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 
 export const AgentSqliteJournalModes = {
   Wal: "WAL",
@@ -38,6 +34,7 @@ export interface AgentSqliteDatabaseOptions {
   readonly databasePath: string;
   readonly contract: AgentSqliteStoreContract;
   readonly profile?: AgentSqliteDatabaseProfile;
+  readonly upgradeSession?: AgentUpgradeSession;
 }
 
 export interface AgentSqliteDatabaseHealth {
@@ -63,7 +60,7 @@ export class AgentSqliteDatabaseKernel {
     this.databasePath = path.resolve(options.databasePath);
     this.checkpointOnClose = profile.checkpointOnClose;
     fs.mkdirSync(path.dirname(this.databasePath), { recursive: true });
-    this.connection = openDatabase(this.databasePath, profile, options.contract);
+    this.connection = openDatabase(this.databasePath, profile, options.contract, options.upgradeSession);
   }
 
   inspectHealth(): AgentSqliteDatabaseHealth {
@@ -100,12 +97,13 @@ function openDatabase(
   databasePath: string,
   profile: AgentSqliteDatabaseProfile,
   contract: AgentSqliteStoreContract,
+  upgradeSession?: AgentUpgradeSession,
 ): Database.Database {
   if (contract.dataClass === AgentSqliteStoreDataClasses.Authoritative) {
-    return openAuthoritativeDatabase(databasePath, profile, contract);
+    return openAuthoritativeDatabase(databasePath, profile, contract, upgradeSession);
   }
   if (contract.dataClass === AgentSqliteStoreDataClasses.Derived) {
-    return openDerivedDatabase(databasePath, profile, contract);
+    return openDerivedDatabase(databasePath, profile, contract, upgradeSession);
   }
   throw new TypeError("Unsupported SQLite store data class.");
 }
@@ -114,26 +112,30 @@ function openAuthoritativeDatabase(
   databasePath: string,
   profile: AgentSqliteDatabaseProfile,
   contract: AgentSqliteStoreContract,
+  upgradeSession?: AgentUpgradeSession,
 ): Database.Database {
   const database = new Database(databasePath);
   try {
     configureConnection(database, profile);
     assertDatabaseIntegrity(database, contract.id);
-    migrateAgentSqliteStore(database, contract);
+    const plan = planAgentSqliteStoreReconciliation(database, contract);
+    if (upgradeSession) {
+      upgradeSession.migrateSqlite({ database, databasePath, contract, plan });
+    } else {
+      migrateAgentSqliteStore(database, contract);
+    }
     return database;
   } catch (error) {
     database.close();
-    if (!shouldRebuildAuthoritativeStore(error)) throw error;
+    throw error;
   }
-
-  replaceStoreDatabase(databasePath, profile, contract);
-  return openRebuiltStoreDatabase(databasePath, profile, contract);
 }
 
 function openDerivedDatabase(
   databasePath: string,
   profile: AgentSqliteDatabaseProfile,
   contract: AgentSqliteStoreContract,
+  upgradeSession?: AgentUpgradeSession,
 ): Database.Database {
   const database = new Database(databasePath);
   try {
@@ -145,6 +147,9 @@ function openDerivedDatabase(
       migrateAgentSqliteStore(database, contract);
       return database;
     }
+    if (plan.kind === "rebuild" && upgradeSession) {
+      upgradeSession.prepareDerivedSqliteRebuild({ database, databasePath, contract, plan });
+    }
   } catch (error) {
     database.close();
     throw error;
@@ -152,7 +157,9 @@ function openDerivedDatabase(
   database.close();
 
   replaceStoreDatabase(databasePath, profile, contract);
-  return openRebuiltStoreDatabase(databasePath, profile, contract);
+  const replacement = openRebuiltStoreDatabase(databasePath, profile, contract);
+  upgradeSession?.markSqliteMigrationApplied(contract.id);
+  return replacement;
 }
 
 function openRebuiltStoreDatabase(
@@ -212,13 +219,6 @@ function assertDatabaseIntegrity(database: Database.Database, storeId: string): 
       `SQLite store ${storeId} integrity check failed: ${String(integrity)}.`,
     );
   }
-}
-
-function shouldRebuildAuthoritativeStore(error: unknown): boolean {
-  if (error instanceof AgentSqliteDatabaseIntegrityError) return true;
-  return (
-    error instanceof AgentSqliteMigrationError && error.code !== AgentSqliteMigrationErrorCodes.ContractIdentityMismatch
-  );
 }
 
 class AgentSqliteDatabaseIntegrityError extends Error {

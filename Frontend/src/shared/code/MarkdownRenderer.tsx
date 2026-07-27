@@ -20,6 +20,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Tooltip, useClipboardCopy } from "../ui";
 import { CollapsibleCodeBlock } from "./CollapsibleCodeBlock";
 import { type CodeArtifact, readCodeArtifact } from "./CodeArtifactModel";
+import "../../styles/markdown.css";
 
 const DEFAULT_CODE_PREVIEW_LINES = 10;
 const LazyCodeArtifactViewer = lazy(() =>

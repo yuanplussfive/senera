@@ -2,10 +2,9 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, Loader2, RefreshCw, Search } from "lucide-react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
-import { cn } from "../../lib/util";
+import { cn, formatShortTime } from "../../lib/util";
 import { Switch, Tooltip } from "../../shared/ui";
 import { ModelProviderIcon } from "./ModelProviderIcon";
-import { formatShortTime } from "./modelConfigData";
 
 export function ListHeader({
   title,
@@ -228,7 +227,7 @@ export function SearchInput({
       <input
         value={value}
         disabled={disabled}
-        placeholder={frontendMessage("runtime.migrated.features.chat.ModelConfigPrimitives.299.21")}
+        placeholder={frontendMessage("config.model.searchPlaceholder")}
         className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-800 outline-none placeholder:text-ink-350 disabled:opacity-55"
         onChange={(event) => onChange(event.currentTarget.value)}
       />

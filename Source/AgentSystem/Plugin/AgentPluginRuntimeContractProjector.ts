@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { resolveFrom } from "../Core/AgentPath.js";
 import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
@@ -91,20 +91,15 @@ export class AgentPluginRuntimeContractProjector {
     }
     const argumentsContract = this.contractProjector.project(definition.inputSchema);
     assertExecutionTargetIsReserved(tool, argumentsContract.jsonSchema);
-    const digest = crypto
-      .createHash("sha256")
-      .update(
-        JSON.stringify({
-          manifestVersion: plugin.manifest.ManifestVersion,
-          plugin: plugin.manifest.Plugin.Name,
-          pluginVersion: plugin.manifest.Plugin.Version,
-          tool: tool.Name,
-          contractSourceDigest: definition.source.sha256,
-          observation: tool.Observation,
-          arguments: argumentsContract,
-        }),
-      )
-      .digest("hex");
+    const digest = sha256HexOfCanonicalJson({
+      manifestVersion: plugin.manifest.ManifestVersion,
+      plugin: plugin.manifest.Plugin.Name,
+      pluginVersion: plugin.manifest.Plugin.Version,
+      tool: tool.Name,
+      contractSourceDigest: definition.source.sha256,
+      observation: tool.Observation,
+      arguments: argumentsContract,
+    });
     return deepFreeze({
       digest,
       arguments: argumentsContract,

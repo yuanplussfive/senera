@@ -19,6 +19,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createSeneraOutputSpool } from "../Execution/SeneraOutputSpool.js";
 import { assertInsideRoot } from "../Artifacts/AgentArtifactLocator.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 const ShellExecutionProfileName = "host-shell";
 
@@ -189,7 +190,7 @@ function shellExecutionFailure(input: {
   timeoutMs: number;
   signal?: AbortSignal;
 }): AgentToolProcessRunResult {
-  const message = input.error instanceof Error ? input.error.message : String(input.error);
+  const message = errorMessage(input.error);
   if (input.signal?.aborted || message === "aborted") {
     return cancelledToolProcessResult({
       signal: input.signal,

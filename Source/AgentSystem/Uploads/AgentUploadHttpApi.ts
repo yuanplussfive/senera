@@ -9,11 +9,28 @@ import { formatAgentUploadUri } from "./AgentUploadLocator.js";
 import { isAgentInlineImageMime } from "./AgentUploadMime.js";
 import { AgentUploadError, AgentUploadFailureKinds, type AgentUploadStore } from "./AgentUploadStore.js";
 import type { AgentUploadAttachment } from "./AgentUploadTypes.js";
+import { isMissingFileError } from "../Core/AgentFs.js";
+import { toError } from "../Core/AgentErrors.js";
 
 export const AgentUploadHttpRoutes = {
   Uploads: "/api/uploads",
   ContentSegment: "content",
 } as const;
+
+export const AgentUploadMaintenanceTriggers = {
+  Startup: "startup",
+  Scheduled: "scheduled",
+} as const;
+
+export type AgentUploadMaintenanceTrigger =
+  (typeof AgentUploadMaintenanceTriggers)[keyof typeof AgentUploadMaintenanceTriggers];
+
+export interface AgentUploadMaintenanceFailure {
+  readonly trigger: AgentUploadMaintenanceTrigger;
+  readonly error: unknown;
+  readonly consecutiveFailures: number;
+  readonly retryInMs: number;
+}
 
 type AgentUploadHttpRoute =
   | { readonly kind: "collection" }
@@ -23,27 +40,30 @@ type AgentUploadHttpRoute =
 export interface AgentUploadHttpApiOptions {
   store: AgentUploadStore;
   isOriginAllowed?: (origin: string) => boolean;
+  onMaintenanceError?: (failure: AgentUploadMaintenanceFailure) => void;
 }
 
 export class AgentUploadHttpApi {
   private maintenanceEnabled = false;
   private maintenanceTimer?: NodeJS.Timeout;
+  private maintenanceRun?: Promise<void>;
+  private consecutiveMaintenanceFailures = 0;
 
   constructor(private readonly options: AgentUploadHttpApiOptions) {}
 
   startMaintenance(): void {
     if (this.maintenanceEnabled) return;
     this.maintenanceEnabled = true;
-    void this.options.store.maintain().catch(() => undefined);
-    this.scheduleMaintenance();
+    this.startMaintenanceRun(AgentUploadMaintenanceTriggers.Startup);
   }
 
-  stopMaintenance(): void {
+  async stopMaintenance(): Promise<void> {
     this.maintenanceEnabled = false;
     if (this.maintenanceTimer) {
       clearTimeout(this.maintenanceTimer);
       this.maintenanceTimer = undefined;
     }
+    await this.maintenanceRun;
   }
 
   canHandle(request: IncomingMessage): boolean {
@@ -267,15 +287,41 @@ export class AgentUploadHttpApi {
   }
 
   private scheduleMaintenance(): void {
-    if (!this.maintenanceEnabled) return;
+    if (!this.maintenanceEnabled || this.maintenanceTimer || this.maintenanceRun) return;
     this.maintenanceTimer = setTimeout(() => {
       this.maintenanceTimer = undefined;
-      void this.options.store
-        .maintain()
-        .catch(() => undefined)
-        .finally(() => this.scheduleMaintenance());
+      this.startMaintenanceRun(AgentUploadMaintenanceTriggers.Scheduled);
     }, this.options.store.maintenanceIntervalMs);
     this.maintenanceTimer.unref();
+  }
+
+  private startMaintenanceRun(trigger: AgentUploadMaintenanceTrigger): void {
+    if (!this.maintenanceEnabled || this.maintenanceRun) return;
+    const run = this.runMaintenance(trigger);
+    this.maintenanceRun = run;
+    void run.finally(() => {
+      if (this.maintenanceRun === run) this.maintenanceRun = undefined;
+      this.scheduleMaintenance();
+    });
+  }
+
+  private async runMaintenance(trigger: AgentUploadMaintenanceTrigger): Promise<void> {
+    try {
+      await this.options.store.maintain();
+      this.consecutiveMaintenanceFailures = 0;
+    } catch (error) {
+      this.consecutiveMaintenanceFailures += 1;
+      try {
+        this.options.onMaintenanceError?.({
+          trigger,
+          error,
+          consecutiveFailures: this.consecutiveMaintenanceFailures,
+          retryInMs: this.options.store.maintenanceIntervalMs,
+        });
+      } catch (reportingError) {
+        process.emitWarning(toError(reportingError), { code: "SENERA_UPLOAD_MAINTENANCE_REPORTER_FAILED" });
+      }
+    }
   }
 
   private readRoute(request: IncomingMessage): AgentUploadHttpRoute | undefined {
@@ -335,10 +381,6 @@ function matchesIfNoneMatch(value: string | string[] | undefined, etag: string):
       return normalized === "*" || normalized === etag || normalized === `W/${etag}`;
     }) ?? false
   );
-}
-
-function isMissingFileError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR");
 }
 
 interface SettleUploadCollectionOptions {

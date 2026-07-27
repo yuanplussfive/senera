@@ -5,6 +5,7 @@ import { SeneraOutputSpoolMarkerFileName, type SeneraOutputSpoolState } from "..
 import { AgentArtifactFileNames, assertInsideRoot } from "./AgentArtifactLocator.js";
 import { SeneraWorkspaceBoundary } from "../Execution/SeneraWorkspaceBoundary.js";
 import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
+import { isMissingFileError } from "../Core/AgentFs.js";
 
 const OutputSpoolDirectoryName = ".spool";
 
@@ -452,10 +453,6 @@ async function removeDirectoryTree(directory: string, canonicalRoot: string): Pr
 function isInsideCanonicalRoot(root: string, target: string): boolean {
   const relative = path.relative(root, target);
   return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
-}
-
-function isMissingFileError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
 type QuotaCandidate =

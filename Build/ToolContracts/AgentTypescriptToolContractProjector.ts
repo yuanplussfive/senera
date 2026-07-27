@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import ts from "typescript";
 import { AgentPromptContractRenderer } from "../../Source/AgentSystem/Prompt/AgentPromptContractRenderer.js";
@@ -7,6 +6,7 @@ import { AgentXmlCodec } from "../../Source/AgentSystem/Xml/AgentXmlCodec.js";
 import { createXmlProtocolSpec } from "../../Source/AgentSystem/Xml/AgentXmlPolicy.js";
 import { AgentTypescriptToolContractAstReader } from "./AgentTypescriptToolContractAstReader.js";
 import { AgentTypescriptToolContractJsonSchemaCatalog } from "./AgentTypescriptToolContractJsonSchema.js";
+import { sha256Hex } from "../../Source/AgentSystem/Core/AgentHash.js";
 
 export class AgentTypescriptToolContractProjector {
   private readonly protocol = createXmlProtocolSpec();
@@ -72,5 +72,5 @@ export class AgentTypescriptToolContractProjector {
 }
 
 function digestSource(sourceText: string): string {
-  return crypto.createHash("sha256").update(sourceText).digest("hex");
+  return sha256Hex(sourceText);
 }

@@ -63,13 +63,13 @@ export function resolveVectorModelsConfig(config: AgentSystemConfig): ResolvedAg
 
   return {
     Embedding: {
-      ...resolveVectorHttpConfig(embedding, embeddingEndpoint),
+      ...resolveVectorHttpConfig(embedding, embeddingEndpoint, defaults.ModelRuntime),
       Dimensions: embedding.Dimensions,
       BatchSize: embedding.BatchSize,
       InputMaxChars: embedding.InputMaxChars,
     },
     Rerank: {
-      ...resolveVectorHttpConfig(rerank, rerankEndpoint),
+      ...resolveVectorHttpConfig(rerank, rerankEndpoint, defaults.ModelRuntime),
       EndpointPath: rerank.EndpointPath,
       CandidateLimit: rerank.CandidateLimit,
       TopK: rerank.TopK,
@@ -116,6 +116,10 @@ export function resolvePresetsConfig(config: AgentSystemConfig): ResolvedAgentPr
 function resolveVectorHttpConfig(
   config: (Required<AgentVectorEmbeddingConfig> | Required<AgentVectorRerankConfig>) & { TimeoutMs: number },
   endpoint: ReturnType<typeof resolveModelProviderEndpointCatalog>["endpoints"][number],
+  retryPolicy: Pick<
+    ReturnType<typeof resolveAgentDefaults>["ModelRuntime"],
+    "RetryBaseDelayMs" | "RetryMaxDelayMs" | "RetryAfterMaxDelayMs"
+  >,
 ) {
   return {
     Enabled: config.Enabled && endpoint.Enabled,
@@ -124,6 +128,9 @@ function resolveVectorHttpConfig(
     Model: config.Model,
     TimeoutMs: config.TimeoutMs,
     MaxNetworkRetries: config.MaxNetworkRetries,
+    RetryBaseDelayMs: retryPolicy.RetryBaseDelayMs,
+    RetryMaxDelayMs: retryPolicy.RetryMaxDelayMs,
+    RetryAfterMaxDelayMs: retryPolicy.RetryAfterMaxDelayMs,
     Headers: { ...endpoint.Headers },
   };
 }

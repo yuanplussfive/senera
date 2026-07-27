@@ -249,6 +249,7 @@ jobs:
           push: true
           tags: ${{ steps.image.outputs.tags }}
           labels: ${{ steps.image.outputs.labels }}
+          sbom: true
           pull: true
           cache-from: type=gha,scope=senera-release-container
           cache-to: type=gha,mode=max,scope=senera-release-container,ignore-error=true
@@ -294,6 +295,7 @@ jobs:
           push: true
           tags: ${{ steps.image.outputs.tags }}
           labels: ${{ steps.image.outputs.labels }}
+          sbom: true
           pull: true
           cache-from: type=gha,scope=senera-release-sandbox-runtime
           cache-to: type=gha,mode=max,scope=senera-release-sandbox-runtime,ignore-error=true
@@ -327,7 +329,6 @@ jobs:
         env:
           IMAGE: ${{ needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest }}
           SANDBOX_IMAGE: ${{ needs.sandbox-runtime-build.outputs.reference }}@${{ needs.sandbox-runtime-build.outputs.digest }}
-          SANDBOX_TARGET_IMAGE: ghcr.io/${{ github.repository_owner }}/senera:sandbox-runtime-${{ needs.metadata.outputs.sandbox_runtime_version_tag }}
           COMPOSE_PROJECT_NAME: senera-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
@@ -345,9 +346,9 @@ jobs:
           trap cleanup EXIT
 
           docker pull "$IMAGE"
-          docker tag "$IMAGE" ghcr.io/yuanplussfive/senera:latest
           docker pull "$SANDBOX_IMAGE"
-          docker tag "$SANDBOX_IMAGE" "$SANDBOX_TARGET_IMAGE"
+          export SENERA_IMAGE="$IMAGE"
+          export SENERA_SANDBOX_IMAGE="$SANDBOX_IMAGE"
           docker compose up --detach --wait --wait-timeout "$CONTAINER_HEALTH_TIMEOUT_SECONDS" --pull never
           container_id="$(docker compose ps --quiet senera)"
           test -n "$container_id"

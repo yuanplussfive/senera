@@ -15,7 +15,7 @@ npm run server     # 默认监听 ws://127.0.0.1:8787
 
 ```bash
 # 在仓库根目录
-npm install        # 仅第一次需要
+npm ci             # 仅第一次需要
 npm run dev.frontend
 ```
 
@@ -57,18 +57,23 @@ src/
     eventTypes.ts         协议 DTO；事件枚举从 generatedEventCatalog.ts 引入
     generatedEventCatalog.ts 后端事件 catalog 生成物
     useAgentSocket.ts     WS 连接 / 自动重连 hook
+  app/                    应用装配层：认证门、命令发送 hooks、桌面窗口 chrome
   store/
-    sessionStore.ts       Zustand store + 事件→状态投影
+    sessionStore.ts       Zustand store 入口
+    session/              按事件域拆分的投影器（该目录 README 有阅读顺序）
   features/
     session/              左栏：会话列表、用户资料和会话操作
     chat/                 主画布：对话消息、输入框和审批条
     settings/             设置工作台、供应商连接和模型服务管理
     workflow/             执行面板：思考过程时间线、工具节点和详情抽屉
+  i18n/                   中英文案目录与 locale store；键类型从 zh-CN.json 推导
   shared/
     ui/                   无业务语义的 UI primitives
     code/                 Markdown / code 渲染能力
   layout/
     AppShell.tsx          三栏响应式布局
+  design-system/          主题 token
+  config/runtimeConfig.ts 运行时配置加载
   lib/util.ts             小工具
   App.tsx                 顶层组装
 ```

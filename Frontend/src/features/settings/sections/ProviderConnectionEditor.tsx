@@ -15,7 +15,7 @@ import {
 } from "../../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
 import { DetailTitle, EmptyDetail, IconAction, inputClassName } from "../../chat/ModelConfigPrimitives";
-import { nextHeaderKey, providerEnabled, providerIdLabel } from "../../chat/modelConfigData";
+import { nextHeaderKey, isRedactedConfigSecret, providerEnabled, providerIdLabel } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { ProviderFormError } from "./ProviderConnectionFeedback";
 import { isProtectedProvider } from "./ProviderConnectionIdentity";
@@ -62,6 +62,7 @@ export function ProviderConnectionEditor({
 
   const enabled = providerEnabled(provider);
   const protectedProvider = isProtectedProvider(provider.Id);
+  const storedApiKey = isRedactedConfigSecret(provider.ApiKey);
   const pending = operation?.status === "pending";
   const operationError = operation?.status === "error" ? operation.message : null;
   const errorMessage = localError ?? operationError;
@@ -122,10 +123,10 @@ export function ProviderConnectionEditor({
           <ConnectionField label={frontendMessage("settings.provider.apiKey")}>
             <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <input
-                type={showKey ? "text" : "password"}
-                value={provider.ApiKey ?? ""}
+                type={showKey && !storedApiKey ? "text" : "password"}
+                value={storedApiKey ? "" : (provider.ApiKey ?? "")}
                 disabled={disabled}
-                placeholder="sk-..."
+                placeholder={storedApiKey ? frontendMessage("settings.provider.apiKeyStored") : "sk-..."}
                 spellCheck={false}
                 className={cn(inputClassName, "h-full font-mono")}
                 onChange={(event) => {
@@ -135,7 +136,8 @@ export function ProviderConnectionEditor({
               />
               <button
                 type="button"
-                className="grid h-9 w-9 shrink-0 place-items-center border-l border-ink-200 text-ink-450 transition hover:text-ink-800"
+                disabled={storedApiKey}
+                className="grid h-9 w-9 shrink-0 place-items-center border-l border-ink-200 text-ink-450 transition hover:text-ink-800 disabled:pointer-events-none disabled:opacity-40"
                 onClick={() => setShowKey((current) => !current)}
                 aria-label={frontendMessage(showKey ? "config.provider.hideApiKey" : "config.provider.showApiKey")}
               >
@@ -249,8 +251,10 @@ function HeadersEditor({
             onBlur={onCommit}
           />
           <Input
-            value={value}
-            placeholder={frontendMessage("settings.provider.headerValue")}
+            value={isRedactedConfigSecret(value) ? "" : value}
+            placeholder={frontendMessage(
+              isRedactedConfigSecret(value) ? "settings.provider.headerValueStored" : "settings.provider.headerValue",
+            )}
             disabled={disabled}
             onChange={(event) => {
               const next = [...entries];

@@ -17,7 +17,15 @@ export type ServerAuthenticationState =
 export type ServerAuthenticationRevalidationResult =
   "authorized" | "anonymous" | "rejected" | "unreachable" | "superseded";
 
-export function useServerAuthentication(httpBaseUrl: string): {
+export interface ServerAuthenticationLifecycle {
+  onInitialRequestStarted?: () => void;
+  prepareAuthorizedSurface?: () => Promise<void>;
+}
+
+export function useServerAuthentication(
+  httpBaseUrl: string,
+  lifecycle: ServerAuthenticationLifecycle = {},
+): {
   state: ServerAuthenticationState;
   login: (credentials: { loginName: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
@@ -26,11 +34,20 @@ export function useServerAuthentication(httpBaseUrl: string): {
 } {
   const [state, setState] = useState<ServerAuthenticationState>({ status: "loading" });
   const operationRef = useRef(0);
+  const initialRequestStartedRef = useRef(false);
+  const lifecycleRef = useRef(lifecycle);
+  lifecycleRef.current = lifecycle;
 
   const refresh = useCallback(async (): Promise<void> => {
     const operation = ++operationRef.current;
     try {
-      const authentication = await readServerAuthentication(httpBaseUrl);
+      const request = readServerAuthentication(httpBaseUrl);
+      if (!initialRequestStartedRef.current) {
+        initialRequestStartedRef.current = true;
+        lifecycleRef.current.onInitialRequestStarted?.();
+      }
+      const authentication = await request;
+      await prepareAuthorizedAuthentication(authentication, lifecycleRef.current.prepareAuthorizedSurface);
       if (operation === operationRef.current) setState(projectAuthenticationState(authentication));
     } catch (error) {
       if (operation === operationRef.current) {
@@ -47,6 +64,8 @@ export function useServerAuthentication(httpBaseUrl: string): {
     async (credentials: { loginName: string; password: string }): Promise<void> => {
       const operation = ++operationRef.current;
       const authentication = await loginServerAuthentication(httpBaseUrl, credentials);
+      if (operation !== operationRef.current) return;
+      await prepareAuthorizedAuthentication(authentication, lifecycleRef.current.prepareAuthorizedSurface);
       if (operation === operationRef.current) setState({ status: "authenticated", authentication });
     },
     [httpBaseUrl],
@@ -96,4 +115,16 @@ function projectAuthenticationState(
   return authentication.state === AuthenticationSessionStates.Anonymous
     ? { status: "anonymous" }
     : { status: "authenticated", authentication };
+}
+
+async function prepareAuthorizedAuthentication(
+  authentication: Awaited<ReturnType<typeof readServerAuthentication>>,
+  prepare: (() => Promise<void>) | undefined,
+): Promise<void> {
+  if (authentication.state === AuthenticationSessionStates.Anonymous || !prepare) return;
+  try {
+    await prepare();
+  } catch {
+    // Speculative loading must not turn a valid server session into an authentication failure.
+  }
 }

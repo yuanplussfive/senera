@@ -14,6 +14,8 @@ export type {
   AgentRunEventWriter,
   AgentRunEventWriterHealth,
 } from "./AgentRunEventWriter.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { withDeadline } from "../Core/AgentTiming.js";
 
 const DefaultWriterCloseTimeoutMs = 5_000;
 const DefaultOutboxDrainBatchSize = 256;
@@ -233,7 +235,7 @@ export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
     if (this.state === AgentEventPersistenceStates.Draining || this.state === AgentEventPersistenceStates.Stopped)
       return;
     this.state = AgentEventPersistenceStates.Degraded;
-    this.lastError = error instanceof Error ? error.message : String(error);
+    this.lastError = errorMessage(error);
     this.restartCount += 1;
     const worker = this.worker;
     worker?.removeAllListeners();
@@ -264,7 +266,7 @@ export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
       await withDeadline(
         this.send({ type: "shutdown", requestId: shutdownRequestId }),
         this.closeTimeoutMs,
-        "事件持久化 writer 关闭超时。",
+        () => new Error("事件持久化 writer 关闭超时。"),
       );
     } finally {
       this.shutdownRequestId = undefined;
@@ -325,19 +327,4 @@ function createError(error: { readonly name: string; readonly message: string; r
   result.name = error.name;
   if (error.code) Object.assign(result, { code: error.code });
   return result;
-}
-
-async function withDeadline<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      operation,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-        timer.unref();
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 }

@@ -48,6 +48,7 @@ export function UserFooter({
   sandboxStatus,
   onUpdateProfile,
   onLogout,
+  onSettingsIntent,
   onOpenSettings,
 }: {
   collapsed?: boolean;
@@ -56,10 +57,13 @@ export function UserFooter({
   sandboxStatus?: SandboxStatusSnapshotData | null;
   onUpdateProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   onLogout?: () => Promise<void>;
+  onSettingsIntent?: () => void;
   onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const openProfileAfterMenuCloseRef = useRef(false);
   const statusLabel =
     socketStatus === "open"
       ? frontendMessage("connection.open")
@@ -77,13 +81,21 @@ export function UserFooter({
         ? "animate-spin text-umber-600"
         : "text-brick-600";
 
+  useEffect(() => {
+    if (menuOpen || !openProfileAfterMenuCloseRef.current) return;
+    openProfileAfterMenuCloseRef.current = false;
+    setOpen(true);
+  }, [menuOpen]);
+
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <button
             ref={settingsTriggerRef}
             type="button"
+            onPointerEnter={onSettingsIntent}
+            onFocus={onSettingsIntent}
             className={cn(
               "mt-auto w-full transition-colors duration-150 hover:bg-surface-hover data-[state=open]:bg-surface-hover",
               collapsed
@@ -106,7 +118,12 @@ export function UserFooter({
           collisionPadding={8}
           className="w-[220px]"
         >
-          <DropdownMenuItem icon={<UserRoundPen className="h-3.5 w-3.5" />} onSelect={() => setOpen(true)}>
+          <DropdownMenuItem
+            icon={<UserRoundPen className="h-3.5 w-3.5" />}
+            onSelect={() => {
+              openProfileAfterMenuCloseRef.current = true;
+            }}
+          >
             {frontendMessage("profile.menu.edit")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -128,7 +145,7 @@ export function UserFooter({
             icon={<StatusIcon className={cn("h-3.5 w-3.5", statusIconClass)} aria-hidden="true" />}
             value={statusLabel}
           >
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.122.55")}
+            {frontendMessage("profile.menu.connectionStatus")}
           </DropdownMenuMeta>
           <SandboxStatusMeta status={sandboxStatus} />
         </DropdownMenuContent>
@@ -136,6 +153,7 @@ export function UserFooter({
       <ProfileDialog
         open={open}
         profile={profile}
+        returnFocus={settingsTriggerRef.current}
         onOpenChange={setOpen}
         onSubmit={(next) => {
           onUpdateProfile(next);
@@ -237,12 +255,14 @@ function UserAvatar({ profile, size = "normal" }: { profile: UserProfile; size?:
 function ProfileDialog({
   open,
   profile,
+  returnFocus,
   onOpenChange,
   onSubmit,
   onLogout,
 }: {
   open: boolean;
   profile: UserProfile;
+  returnFocus: HTMLElement | null;
   onOpenChange: (open: boolean) => void;
   onSubmit: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   onLogout?: () => Promise<void>;
@@ -250,6 +270,11 @@ function ProfileDialog({
   const [draftName, setDraftName] = useState(profile.name);
   const [draftAvatar, setDraftAvatar] = useState<string | null>(profile.avatarDataUrl);
   const [crop, setCrop] = useState<AvatarCropState | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) nameInputRef.current?.focus({ preventScroll: true });
+  }, [open]);
 
   const resetDraft = (): void => {
     setDraftName(profile.name);
@@ -300,6 +325,16 @@ function ProfileDialog({
         description={frontendMessage("profile.description")}
         className="w-[min(420px,calc(100vw-28px))]"
         bodyClassName="px-6 pb-6"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          nameInputRef.current?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          if (!returnFocus?.isConnected) return;
+          event.preventDefault();
+          returnFocus.focus();
+        }}
+        onEscapeKeyDown={() => onOpenChange(false)}
       >
         <form
           className="space-y-0"
@@ -340,7 +375,7 @@ function ProfileDialog({
               {frontendMessage("profile.displayName")}
             </span>
             <input
-              autoFocus
+              ref={nameInputRef}
               value={draftName}
               maxLength={48}
               onChange={(event) => setDraftName(event.target.value)}

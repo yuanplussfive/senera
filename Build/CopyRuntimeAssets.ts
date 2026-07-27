@@ -4,6 +4,7 @@ import {
   readAgentToolApprovalPolicyArtifact,
   resolveAgentToolApprovalPolicyArtifactDirectory,
 } from "../Source/AgentSystem/Safety/AgentToolApprovalPolicyArtifact.js";
+import { walkFiles } from "../Scripts/Support/FileWalk.js";
 
 const workspaceRoot = process.cwd();
 const sourceRoot = path.join(workspaceRoot, "Source");
@@ -33,17 +34,10 @@ readAgentToolApprovalPolicyArtifact(resolveAgentToolApprovalPolicyArtifactDirect
 process.stdout.write(`Runtime assets copied: ${runtimeAssets.length + extraRuntimeAssets.length}\n`);
 
 function discoverRuntimeAssets(root: string): string[] {
-  const copiedExtensions = new Set([".json", ".rego", ".sql", ".wasm"]);
+  const copiedExtensions = new Set([".cjs", ".json", ".rego", ".sql", ".wasm"]);
   return walkFiles(root)
     .filter((file) => copiedExtensions.has(path.extname(file)))
     .sort((left, right) => left.localeCompare(right));
-}
-
-function walkFiles(directory: string): string[] {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const entryPath = path.join(directory, entry.name);
-    return entry.isDirectory() ? walkFiles(entryPath) : [entryPath];
-  });
 }
 
 function copyFile(sourcePath: string, targetPath: string): void {

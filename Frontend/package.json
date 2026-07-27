@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && tsx ../Build/VerifyFrontendBundleBudget.ts",
     "preview": "vite preview",
     "check.types": "tsc --noEmit",
     "check.governance": "node --import tsx ../Scripts/VerifyFrontendTestCoverage.ts",
@@ -23,6 +23,9 @@
     "@codemirror/state": "^6.7.0",
     "@codemirror/view": "^6.43.2",
     "@dagrejs/dagre": "^3.0.0",
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@lezer/highlight": "^1.2.3",
     "@radix-ui/react-context-menu": "^2.2.16",
     "@radix-ui/react-dialog": "^1.1.15",

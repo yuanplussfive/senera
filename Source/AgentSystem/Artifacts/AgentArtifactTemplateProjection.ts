@@ -5,6 +5,7 @@ import type {
   ToolArtifactDeltaRecord,
   ToolArtifactEvidenceRecord,
 } from "../Types/ToolRuntimeTypes.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 const ArtifactTemplateRenderer = new Liquid({
   strictFilters: true,
@@ -156,6 +157,6 @@ function renderTemplate(
     const text = String(renderer.parseAndRenderSync(template, data)).trim();
     return text.length > 0 ? text : undefined;
   } catch (error) {
-    throw new Error(`${errorPrefix}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    throw new Error(`${errorPrefix}: ${errorMessage(error)}`, { cause: error });
   }
 }

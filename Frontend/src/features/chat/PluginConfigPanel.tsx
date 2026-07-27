@@ -364,11 +364,13 @@ export function PluginConfigContent({
           <div className="flex min-h-12 items-center justify-between gap-2 px-3 py-2 sm:px-4 lg:min-h-14">
             <div className="min-w-0">
               <div className="text-[12.5px] font-semibold text-ink-900">
-                {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.187.71")}
+                {frontendMessage("pluginConfig.externalPlugins")}
               </div>
               <div className="mt-0.5 text-[11px] text-ink-500">
-                {activePlugins}/{configurablePlugins.length || 0}{" "}
-                {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.189.65")}
+                {frontendMessage("pluginConfig.availableCount", {
+                  active: activePlugins,
+                  total: configurablePlugins.length || 0,
+                })}
               </div>
             </div>
             <Tooltip content={frontendMessage("pluginConfig.syncTitle")} side="bottom">
@@ -393,8 +395,8 @@ export function PluginConfigContent({
               <input
                 value={filterText}
                 onChange={(event) => setFilterText(event.currentTarget.value)}
-                aria-label={frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.210.27")}
-                placeholder={frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.210.27")}
+                aria-label={frontendMessage("pluginConfig.searchPlaceholder")}
+                placeholder={frontendMessage("pluginConfig.searchPlaceholder")}
                 className="min-w-0 flex-1 bg-transparent text-[12px] text-ink-800 outline-none placeholder:text-ink-400"
               />
             </label>
@@ -461,29 +463,25 @@ export function PluginConfigContent({
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-ink-500">
                       <span>
-                        {selected.enabledToolCount}/{selected.toolCount}{" "}
-                        {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.252.76")}
+                        {frontendMessage("pluginConfig.enabledToolCount", {
+                          enabled: selected.enabledToolCount,
+                          total: selected.toolCount,
+                        })}
                       </span>
                       {saving ? (
                         <>
                           <span className="text-ink-300">/</span>
-                          <span className="text-accent-content">
-                            {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.256.58")}
-                          </span>
+                          <span className="text-accent-content">{frontendMessage("pluginConfig.saving")}</span>
                         </>
                       ) : selected.needsUserConfig ? (
                         <>
                           <span className="text-ink-300">/</span>
-                          <span className="text-umber-600">
-                            {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.261.58")}
-                          </span>
+                          <span className="text-umber-600">{frontendMessage("pluginConfig.needsConfiguration")}</span>
                         </>
                       ) : dirty ? (
                         <>
                           <span className="text-ink-300">/</span>
-                          <span className="text-accent-content">
-                            {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.266.58")}
-                          </span>
+                          <span className="text-accent-content">{frontendMessage("pluginConfig.autoSaving")}</span>
                         </>
                       ) : null}
                     </div>
@@ -494,7 +492,7 @@ export function PluginConfigContent({
                     <TogglePill
                       enabled={selected.enabled}
                       disabled={dirty || toggling}
-                      label={frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.277.27")}
+                      label={frontendMessage("pluginConfig.plugin")}
                       onClick={() => setPluginEnabled(!selected.enabled)}
                     />
                     {saveError && dirty ? (
@@ -539,7 +537,7 @@ export function PluginConfigContent({
             </>
           ) : (
             <div className="grid flex-1 place-items-center text-[13px] text-ink-400">
-              {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.328.13")}
+              {frontendMessage("pluginConfig.empty")}
             </div>
           )}
         </section>
@@ -597,8 +595,10 @@ function PluginSelectorRows({
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13px] font-medium">{pluginDisplayTitle(plugin)}</span>
               <span className={cn("mt-0.5 block truncate text-[11px]", active ? "text-ink-500" : "text-ink-400")}>
-                {plugin.enabledToolCount}/{plugin.toolCount}{" "}
-                {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.391.62")}
+                {frontendMessage("pluginConfig.enabledToolCount", {
+                  enabled: plugin.enabledToolCount,
+                  total: plugin.toolCount,
+                })}
               </span>
             </span>
           </button>
@@ -606,7 +606,7 @@ function PluginSelectorRows({
       })}
       {plugins.length === 0 ? (
         <div className="w-full px-3 py-5 text-center text-[12px] text-ink-400 lg:py-8">
-          {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.402.11")}
+          {frontendMessage("pluginConfig.noMatches")}
         </div>
       ) : null}
     </>

@@ -1,6 +1,3 @@
-import type { ChildProcess } from "node:child_process";
-import { spawn } from "cross-spawn";
-import kill from "tree-kill";
 import {
   SeneraExecutionError,
   SeneraExecutionErrorCodes,
@@ -13,8 +10,15 @@ import { SeneraProcessEnvironmentPolicy } from "./SeneraProcessEnvironment.js";
 import type { SeneraProcessEnvironmentPolicyOptions } from "./SeneraProcessEnvironment.js";
 import { normalizeSeneraTerminationGraceMs } from "./SeneraTerminationPolicy.js";
 import { attachSeneraExecutionDiagnostic } from "./SeneraExecutionErrorDiagnostics.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { SeneraProcessTreeTerminationError, type SeneraProcessTreeTerminator } from "./SeneraProcessTreeTermination.js";
+import {
+  spawnSeneraOwnedProcess,
+  terminateSeneraOwnedProcessWithEscalation,
+  type SeneraOwnedProcess,
+} from "./SeneraOwnedProcessSpawner.js";
 
-export type SeneraProcessTreeTerminator = (pid: number, signal: NodeJS.Signals) => Promise<void>;
+export type { SeneraProcessTreeTerminator } from "./SeneraProcessTreeTermination.js";
 
 export interface SeneraNodeProcessBackendOptions {
   terminateProcessTree?: SeneraProcessTreeTerminator;
@@ -25,12 +29,12 @@ export interface SeneraNodeProcessBackendOptions {
 export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
   readonly kind = "node-local";
   readonly shellDialect = resolveSeneraShellPlatform().family;
-  private readonly terminateProcessTree: SeneraProcessTreeTerminator;
+  private readonly terminateProcessTree: SeneraProcessTreeTerminator | undefined;
   private readonly terminationGraceMs: number;
   private readonly environmentPolicy: SeneraProcessEnvironmentPolicy;
 
   constructor(options: SeneraNodeProcessBackendOptions = {}) {
-    this.terminateProcessTree = options.terminateProcessTree ?? terminateSeneraProcessTree;
+    this.terminateProcessTree = options.terminateProcessTree;
     this.terminationGraceMs = normalizeSeneraTerminationGraceMs(options.terminationGraceMs);
     this.environmentPolicy =
       options.environmentPolicy instanceof SeneraProcessEnvironmentPolicy
@@ -45,14 +49,25 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
   async executeProcess(request: SeneraProcessExecutionRequest): Promise<SeneraShellExecutionResult> {
     assertNotAborted(request.signal);
 
+    let ownedProcess: SeneraOwnedProcess;
+    try {
+      ownedProcess = await spawnSeneraOwnedProcess(
+        request.command,
+        request.args,
+        {
+          cwd: request.cwd,
+          env: this.environmentPolicy.project(process.env, request.env),
+          windowsHide: true,
+        },
+        { terminateProcessTree: this.terminateProcessTree },
+      );
+    } catch (error) {
+      await closeOutputSpool(request.outputSpool).catch(() => undefined);
+      throw spawnFailedError(request, error);
+    }
+
     return new Promise((resolve, reject) => {
-      const child = spawn(request.command, [...request.args], {
-        cwd: request.cwd,
-        env: this.environmentPolicy.project(process.env, request.env),
-        stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
-        detached: process.platform !== "win32",
-      });
+      const child = ownedProcess.child;
       const truncateOutput = request.outputOverflow === "truncate";
       const output = new SeneraProcessOutputBuffer({
         encoding: "auto",
@@ -67,10 +82,6 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
       let terminationError: SeneraExecutionError | undefined;
       let rejectionFinalizationStarted = false;
       let timer: ReturnType<typeof setTimeout> | undefined = undefined;
-      let resolveChildClosed: () => void;
-      const childClosed = new Promise<void>((resolve) => {
-        resolveChildClosed = resolve;
-      });
 
       const settle = (callback: () => void): void => {
         if (settled) return;
@@ -86,9 +97,7 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
         if (settled || terminalError) return;
         terminalError = error;
         void terminateChildProcess({
-          child,
-          childClosed,
-          terminateProcessTree: this.terminateProcessTree,
+          ownedProcess,
           graceMs: this.terminationGraceMs,
         }).then(
           () => {
@@ -200,23 +209,13 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
         if (terminalError) {
           return;
         }
-        const spawnError = new SeneraExecutionError(
-          SeneraExecutionErrorCodes.SpawnFailed,
-          error instanceof Error ? error.message : String(error),
-          {
-            command: request.command,
-            args: request.args,
-            cwd: request.cwd,
-          },
-          error instanceof Error ? error : undefined,
-        );
+        const spawnError = spawnFailedError(request, error);
         void closeOutputSpool(request.outputSpool).then(
           () => settle(() => reject(spawnError)),
           () => settle(() => reject(spawnError)),
         );
       });
-      child.on("close", (exitCode, signal) => {
-        resolveChildClosed();
+      void ownedProcess.closed.then(({ exitCode, signal }) => {
         if (terminalError) {
           finalizeRejection();
           return;
@@ -256,7 +255,7 @@ function closeOutputSpool(spool: SeneraProcessExecutionRequest["outputSpool"]): 
 function outputSpoolError(error: unknown): SeneraExecutionError {
   return new SeneraExecutionError(
     SeneraExecutionErrorCodes.Unknown,
-    error instanceof Error ? error.message : String(error),
+    errorMessage(error),
     { reason: "output_spool_failed" },
     error instanceof Error ? error : undefined,
   );
@@ -266,143 +265,49 @@ function normalizeTerminationError(error: unknown): SeneraExecutionError {
   if (error instanceof SeneraExecutionError) return error;
   return new SeneraExecutionError(
     SeneraExecutionErrorCodes.CleanupFailed,
-    error instanceof Error ? error.message : String(error),
+    errorMessage(error),
     { reason: "process_tree_termination_failed" },
     error instanceof Error ? error : undefined,
   );
 }
 
 interface TerminateChildProcessOptions {
-  child: ChildProcess;
-  childClosed: Promise<void>;
-  terminateProcessTree: SeneraProcessTreeTerminator;
+  ownedProcess: SeneraOwnedProcess;
   graceMs: number;
 }
 
 async function terminateChildProcess(options: TerminateChildProcessOptions): Promise<void> {
-  const { child, childClosed, terminateProcessTree, graceMs } = options;
-  const pid = child.pid;
-  if (pid === undefined || hasExited(child)) return;
+  const { ownedProcess, graceMs } = options;
+  const pid = ownedProcess.pid ?? ownedProcess.child.pid;
+  if (pid === undefined) return;
 
-  if (process.platform === "win32") {
-    const forceAcknowledged = await requestTreeTermination(terminateProcessTree, pid, "SIGKILL", graceMs);
-    const closed = await waitForChildExit(child, childClosed, graceMs);
-    if (closed && hasExited(child)) return;
-    throw new SeneraExecutionError(
-      SeneraExecutionErrorCodes.CleanupFailed,
-      `进程树 ${pid} 未在 deadline 内确认终止。`,
-      {
-        pid,
-        reason: "process_tree_termination_unconfirmed",
-        rootExited: hasExited(child),
-        processTreeAlive: false,
-        gracefulAcknowledged: false,
-        forceAcknowledged,
-        platform: process.platform,
-      },
-    );
-  }
-
-  const gracefulAcknowledged = await requestTreeTermination(terminateProcessTree, pid, "SIGTERM", graceMs);
-  const gracefullyClosed = await waitForChildExit(child, childClosed, graceMs);
-  if (gracefullyClosed && hasExited(child) && !isProcessTreeAlive(pid)) return;
-
-  const forceAcknowledged = await requestTreeTermination(terminateProcessTree, pid, "SIGKILL", graceMs);
-  const forceClosed = await waitForChildExit(child, childClosed, graceMs);
-  if (!forceClosed || !hasExited(child) || !forceAcknowledged || isProcessTreeAlive(pid)) {
-    throw new SeneraExecutionError(
-      SeneraExecutionErrorCodes.CleanupFailed,
-      `进程树 ${pid} 未在 deadline 内确认终止。`,
-      {
-        pid,
-        reason: "process_tree_termination_unconfirmed",
-        rootExited: hasExited(child),
-        processTreeAlive: isProcessTreeAlive(pid),
-        gracefulAcknowledged,
-        forceAcknowledged,
-        platform: process.platform,
-      },
-    );
-  }
-}
-
-async function requestTreeTermination(
-  terminateProcessTree: SeneraProcessTreeTerminator,
-  pid: number,
-  signal: NodeJS.Signals,
-  timeoutMs: number,
-): Promise<boolean> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const attempt = Promise.resolve()
-    .then(() => terminateProcessTree(pid, signal))
-    .then(
-      () => true,
-      () => false,
-    );
   try {
-    return await Promise.race([
-      attempt,
-      new Promise<boolean>((resolve) => {
-        timer = setTimeout(() => resolve(false), timeoutMs);
-        timer.unref();
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-export function terminateSeneraProcessTree(pid: number, signal: NodeJS.Signals): Promise<void> {
-  if (process.platform !== "win32") {
-    try {
-      process.kill(-pid, signal);
-      return Promise.resolve();
-    } catch (error) {
-      return Promise.reject(error);
-    }
-  }
-  return new Promise((resolve, reject) => {
-    kill(pid, signal, (error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve();
-    });
-  });
-}
-
-function waitForChildExit(child: ChildProcess, childClosed: Promise<void>, timeoutMs: number): Promise<boolean> {
-  if (hasExited(child)) return Promise.resolve(true);
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (closed: boolean): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(closed);
-    };
-    const timer = setTimeout(() => finish(false), timeoutMs);
-    timer.unref();
-    void childClosed.then(() => finish(true));
-  });
-}
-
-function hasExited(child: ChildProcess): boolean {
-  return child.exitCode !== null || child.signalCode !== null;
-}
-
-function isProcessTreeAlive(pid: number): boolean {
-  if (process.platform === "win32") return false;
-  try {
-    process.kill(-pid, 0);
-    return true;
+    await terminateSeneraOwnedProcessWithEscalation(ownedProcess, graceMs);
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ESRCH") return false;
-    if (code === "EPERM") return true;
-    return false;
+    if (!(error instanceof SeneraProcessTreeTerminationError)) throw error;
+    throw new SeneraExecutionError(
+      SeneraExecutionErrorCodes.CleanupFailed,
+      `进程树 ${pid} 未在 deadline 内确认终止。`,
+      {
+        reason: "process_tree_termination_unconfirmed",
+        ...error.diagnostics,
+      },
+      error,
+    );
   }
+}
+
+function spawnFailedError(request: SeneraProcessExecutionRequest, error: unknown): SeneraExecutionError {
+  return new SeneraExecutionError(
+    SeneraExecutionErrorCodes.SpawnFailed,
+    errorMessage(error),
+    {
+      command: request.command,
+      args: request.args,
+      cwd: request.cwd,
+    },
+    error instanceof Error ? error : undefined,
+  );
 }
 
 function buildRejectionError(

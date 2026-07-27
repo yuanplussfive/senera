@@ -5,6 +5,7 @@ import { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigServ
 import { AgentConfigStaleWriteError } from "../Source/AgentSystem/Config/AgentProviderModelConfigCommands.js";
 import { AgentConfigCommandIdConflictError } from "../Source/AgentSystem/Config/AgentConfigSqliteRepository.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { removeTemporaryWorkspace } from "./Support/TemporaryWorkspace.js";
 
 const tempRoot = path.join(process.cwd(), ".senera", "tmp", "verify-provider-model-domain");
 fs.mkdirSync(tempRoot, { recursive: true });
@@ -277,7 +278,7 @@ try {
   console.log("Provider/model domain command verification passed.");
 } finally {
   service?.close();
-  removeTempWorkspace(workspaceRoot);
+  await removeTemporaryWorkspace(workspaceRoot);
 }
 
 function nextCommandId(): string {
@@ -333,35 +334,4 @@ function findModel(config: AgentSystemConfig, id: string) {
   const model = config.ModelProviders.find((candidate) => candidate.Id === id);
   assert.ok(model, `Missing model: ${id}`);
   return model;
-}
-
-function removeTempWorkspace(targetPath: string): void {
-  const attempts = 10;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      fs.rmSync(targetPath, { recursive: true, force: true });
-      return;
-    } catch (error) {
-      if (!isBusyFileError(error)) {
-        throw error;
-      }
-      if (attempt < attempts) sleep(100 * attempt);
-    }
-  }
-
-  try {
-    fs.renameSync(targetPath, `${targetPath}.pending-delete-${Date.now()}`);
-  } catch (error) {
-    if (!isBusyFileError(error)) throw error;
-  }
-}
-
-function isBusyFileError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && (error.code === "EBUSY" || error.code === "EPERM");
-}
-
-function sleep(milliseconds: number): void {
-  const buffer = new SharedArrayBuffer(4);
-  const view = new Int32Array(buffer);
-  Atomics.wait(view, 0, 0, milliseconds);
 }

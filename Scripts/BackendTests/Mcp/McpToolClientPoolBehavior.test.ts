@@ -92,6 +92,15 @@ describe("MCP tool client pool", () => {
     );
   });
 
+  test("keeps pool identity stable across equivalent object key order", () => {
+    const base = connection();
+    const reorderedServer = Object.fromEntries(Object.entries(base.server).reverse()) as typeof base.server;
+
+    expect(createAgentMcpToolClientPoolKey(base)).toBe(
+      createAgentMcpToolClientPoolKey({ ...base, server: reorderedServer }),
+    );
+  });
+
   test("separates elicitation-capable clients from ordinary pooled clients", () => {
     const base = connection();
     expect(createAgentMcpToolClientPoolKey(base)).not.toBe(

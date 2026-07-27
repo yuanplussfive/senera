@@ -4,6 +4,7 @@ import { resolveVectorModelsConfig } from "../Source/AgentSystem/AgentDefaults.j
 import { AgentVectorModelClient } from "../Source/AgentSystem/Vector/AgentVectorModelClient.js";
 import { cosineSimilarity } from "../Source/AgentSystem/Vector/AgentVectorSimilarity.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 
 const requests: Array<{
   path: string;
@@ -20,7 +21,7 @@ async function main(): Promise<void> {
   const server = http.createServer((request, response) => {
     void handleRequest(request, response).catch((error: unknown) => {
       response.statusCode = 500;
-      response.end(error instanceof Error ? error.message : String(error));
+      response.end(errorMessage(error));
     });
   });
 
@@ -45,7 +46,12 @@ async function main(): Promise<void> {
       return;
     }
 
-    if (request.url === "/v1/rerank") {
+    if (request.url === "/v1/rerank" || request.url === "/v1/retry/rerank") {
+      if (request.url === "/v1/retry/rerank" && countRequests(request.url) === 1) {
+        response.statusCode = 503;
+        response.end(JSON.stringify({ error: "temporary" }));
+        return;
+      }
       response.end(
         JSON.stringify({
           results: [
@@ -54,6 +60,12 @@ async function main(): Promise<void> {
           ],
         }),
       );
+      return;
+    }
+
+    if (request.url === "/v1/rejected/rerank") {
+      response.statusCode = 400;
+      response.end(JSON.stringify({ error: "invalid request" }));
       return;
     }
 
@@ -154,6 +166,34 @@ async function main(): Promise<void> {
     assert.equal(boundedRerankBody.documents?.length, 2);
     assert.equal(boundedRerankBody.top_n, 2);
 
+    const retryingClient = new AgentVectorModelClient({
+      ...config,
+      Rerank: {
+        ...config.Rerank,
+        BaseUrl: `${baseUrl}/retry`,
+        MaxNetworkRetries: 1,
+        RetryBaseDelayMs: 0,
+        RetryMaxDelayMs: 0,
+        RetryAfterMaxDelayMs: 0,
+      },
+    });
+    await retryingClient.rerank({ query: "retry", documents: [{ id: "retry", text: "retry" }] });
+    assert.equal(countRequests("/v1/retry/rerank"), 2);
+
+    const rejectedClient = new AgentVectorModelClient({
+      ...config,
+      Rerank: {
+        ...config.Rerank,
+        BaseUrl: `${baseUrl}/rejected`,
+        MaxNetworkRetries: 3,
+      },
+    });
+    await assert.rejects(
+      rejectedClient.rerank({ query: "reject", documents: [{ id: "reject", text: "reject" }] }),
+      (error: unknown) => error instanceof Error && "status" in error && error.status === 400,
+    );
+    assert.equal(countRequests("/v1/rejected/rerank"), 1);
+
     assert.equal(Number(cosineSimilarity([1, 0], [1, 0]).toFixed(6)), 1);
     assert.equal(Number(cosineSimilarity([1, 0], [0, 1]).toFixed(6)), 0);
 
@@ -163,6 +203,10 @@ async function main(): Promise<void> {
       server.close((error) => (error ? reject(error) : resolve()));
     });
   }
+}
+
+function countRequests(requestPath: string): number {
+  return requests.filter(({ path }) => path === requestPath).length;
 }
 
 function readBody(request: http.IncomingMessage): Promise<unknown> {

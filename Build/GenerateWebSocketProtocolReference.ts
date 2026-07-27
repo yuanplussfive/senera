@@ -1,5 +1,5 @@
-import fs from "node:fs";
 import path from "node:path";
+import { synchronizeGeneratedFile } from "./GeneratedTextFile.js";
 import {
   renderWebSocketProtocolReference,
   renderWebSocketProtocolSchema,
@@ -7,14 +7,18 @@ import {
   WebSocketProtocolSchemaPath,
 } from "./WebSocketProtocolReferenceSource.js";
 
+const check = process.argv.includes("--check");
 const outputs = [
   [WebSocketProtocolReferencePath, renderWebSocketProtocolReference()],
   [WebSocketProtocolSchemaPath, renderWebSocketProtocolSchema()],
 ] as const;
 
 for (const [relativePath, content] of outputs) {
-  const targetPath = path.resolve(process.cwd(), relativePath);
-  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  fs.writeFileSync(targetPath, content, "utf8");
-  console.log(`Generated ${relativePath}.`);
+  synchronizeGeneratedFile({
+    filePath: path.resolve(process.cwd(), relativePath),
+    content,
+    check,
+    regenerateCommand: "npm run generate.protocol-reference",
+  });
+  console.log(`${check ? "Verified" : "Generated"} ${relativePath}.`);
 }

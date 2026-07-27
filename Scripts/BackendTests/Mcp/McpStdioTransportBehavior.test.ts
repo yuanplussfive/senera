@@ -10,6 +10,25 @@ import type {
   SeneraPersistentProcessChild,
   SeneraPersistentProcessSpawner,
 } from "../../../Source/AgentSystem/Execution/SeneraPersistentProcessTypes.js";
+import { createSeneraLocalPersistentProcessSpawner } from "../../../Source/AgentSystem/Execution/SeneraPersistentProcessSpawner.js";
+import { terminateSeneraProcessTree } from "../../../Source/AgentSystem/Execution/SeneraProcessTreeTermination.js";
+
+const FixtureReadyMethod = "senera/fixture-ready";
+const ProcessExitPollIntervalMs = 25;
+const ProcessExitTimeoutMs = 3_000;
+const RealProcessTerminationGraceMs = 1_000;
+const HoldProcessOpenSource = "setInterval(() => undefined, 1_000);";
+const McpProcessTreeFixtureSource = `
+const { spawn } = require("node:child_process");
+const method = process.argv[1];
+const holdSource = process.argv[2];
+const descendant = spawn(process.execPath, ["--input-type=commonjs", "--eval", holdSource], {
+  stdio: "ignore",
+  windowsHide: true,
+});
+process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method, params: { descendantPid: descendant.pid } }) + "\\n");
+setInterval(() => undefined, 1_000);
+`;
 
 describe("MCP stdio transport", () => {
   test("closes gracefully without sending process signals", async () => {
@@ -23,13 +42,14 @@ describe("MCP stdio transport", () => {
   });
 
   test("uses the configured grace before escalating to terminate", async () => {
-    const child = new FakePersistentProcessChild({ closeOnSignal: "SIGTERM" });
+    const expectedSignal = process.platform === "win32" ? "SIGKILL" : "SIGTERM";
+    const child = new FakePersistentProcessChild({ closeOnSignal: expectedSignal });
     const transport = createTransport(child, 5);
 
     await transport.start();
     await transport.close();
 
-    expect(child.signals).toEqual(["SIGTERM"]);
+    expect(child.treeSignals).toEqual([expectedSignal]);
   });
 
   test("reports a non-cooperative process after escalating to force kill", async () => {
@@ -39,8 +59,42 @@ describe("MCP stdio transport", () => {
     await transport.start();
     await expect(transport.close()).rejects.toBeInstanceOf(AgentMcpStdioTransportCloseError);
 
-    expect(child.signals).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(child.treeSignals).toEqual(process.platform === "win32" ? ["SIGKILL"] : ["SIGTERM", "SIGKILL"]);
   });
+
+  test("terminates a real MCP process and its descendant", async () => {
+    const transport = new AgentMcpStdioTransport({
+      command: process.execPath,
+      args: ["--input-type=commonjs", "--eval", McpProcessTreeFixtureSource, FixtureReadyMethod, HoldProcessOpenSource],
+      cwd: process.cwd(),
+      spawnPersistentProcess: createSeneraLocalPersistentProcessSpawner(),
+      terminationGraceMs: RealProcessTerminationGraceMs,
+    });
+    let descendantPid: number | undefined;
+    let rootPid: number | undefined;
+    transport.onmessage = (message) => {
+      if (!("method" in message) || message.method !== FixtureReadyMethod || !("params" in message)) return;
+      const params = message.params;
+      if (isRecord(params) && typeof params.descendantPid === "number") descendantPid = params.descendantPid;
+    };
+
+    try {
+      await transport.start();
+      rootPid = transport.pid ?? undefined;
+      await vi.waitFor(() => expect(descendantPid).toEqual(expect.any(Number)), {
+        timeout: ProcessExitTimeoutMs,
+      });
+
+      await transport.close();
+
+      await waitForProcessExit(rootPid!, ProcessExitTimeoutMs);
+      await waitForProcessExit(descendantPid!, ProcessExitTimeoutMs);
+    } finally {
+      await transport.close().catch(() => undefined);
+      await forceTerminateFixtureProcess(rootPid);
+      await forceTerminateFixtureProcess(descendantPid);
+    }
+  }, 10_000);
 
   test("rejects startup when the server exits immediately and preserves bounded stderr diagnostics", async () => {
     const child = new FakePersistentProcessChild();
@@ -158,8 +212,41 @@ async function waitForListenerBinding(child: EventEmitter, event: string): Promi
   expect(child.listenerCount(event)).toBeGreaterThan(0);
 }
 
+async function waitForProcessExit(pid: number, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (isProcessRunning(pid) && Date.now() < deadline) {
+    await new Promise<void>((resolve) => setTimeout(resolve, ProcessExitPollIntervalMs));
+  }
+  expect(isProcessRunning(pid)).toBe(false);
+}
+
+async function forceTerminateFixtureProcess(pid: number | undefined): Promise<void> {
+  if (pid === undefined || !isProcessRunning(pid)) return;
+  await terminateSeneraProcessTree(pid, "SIGKILL").catch(() => {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // The process exited between the liveness check and the cleanup signal.
+    }
+  });
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 class FakePersistentProcessChild extends EventEmitter implements SeneraPersistentProcessChild {
   readonly signals: NodeJS.Signals[] = [];
+  readonly treeSignals: NodeJS.Signals[] = [];
   readonly stdout = new EventEmitter() as SeneraPersistentProcessChild["stdout"];
   readonly stderr = new EventEmitter() as NonNullable<SeneraPersistentProcessChild["stderr"]>;
   readonly stdin: SeneraPersistentProcessChild["stdin"];
@@ -167,6 +254,7 @@ class FakePersistentProcessChild extends EventEmitter implements SeneraPersisten
   stdinAcceptsWrite = true;
   exitCode: number | null = null;
   signalCode: NodeJS.Signals | null = null;
+  readonly pid = 999_999;
 
   constructor(
     private readonly behavior: {
@@ -212,6 +300,11 @@ class FakePersistentProcessChild extends EventEmitter implements SeneraPersisten
     this.signals.push(signal);
     if (this.behavior.closeOnSignal === signal) this.emitClose(null, signal);
     return true;
+  }
+
+  async terminateTree(signal: NodeJS.Signals): Promise<void> {
+    this.treeSignals.push(signal);
+    if (this.behavior.closeOnSignal === signal) this.emitClose(null, signal);
   }
 
   emitStderr(value: string): void {

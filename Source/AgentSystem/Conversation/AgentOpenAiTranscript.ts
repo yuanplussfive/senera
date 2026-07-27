@@ -67,9 +67,33 @@ export const AgentOpenAiTranscriptMessageSchema = z.union([
   ToolMessageSchema,
 ]);
 
-export function parseAgentOpenAiTranscriptMessages(value: unknown): AgentOpenAiTranscriptMessage[] {
+export interface AgentOpenAiTranscriptParseFailure {
+  issueCount: number;
+  issues: string[];
+}
+
+const MaxReportedTranscriptIssues = 5;
+
+// Invalid stored transcripts intentionally degrade to an empty history instead of
+// crashing session loads, but the loss must be observable: callers pass onInvalid
+// to surface the failure through their diagnostics channel.
+export function parseAgentOpenAiTranscriptMessages(
+  value: unknown,
+  onInvalid?: (failure: AgentOpenAiTranscriptParseFailure) => void,
+): AgentOpenAiTranscriptMessage[] {
   const parsed = z.array(AgentOpenAiTranscriptMessageSchema).safeParse(value);
-  return parsed.success ? parsed.data : [];
+  if (parsed.success) return parsed.data;
+  onInvalid?.(projectTranscriptParseFailure(parsed.error));
+  return [];
+}
+
+function projectTranscriptParseFailure(error: z.ZodError): AgentOpenAiTranscriptParseFailure {
+  return {
+    issueCount: error.issues.length,
+    issues: error.issues
+      .slice(0, MaxReportedTranscriptIssues)
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`),
+  };
 }
 
 export function stringifyOpenAiFunctionArguments(value: unknown): string {

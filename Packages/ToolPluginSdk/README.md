@@ -1,10 +1,10 @@
 # Senera Tool Plugin SDK
 
-`@senera/tool-plugin-sdk` provides the MCP runtime adapter and the build-time contract exporter used by external tool plugins.
+`@senera/tool-plugin-sdk` 提供外部工具插件使用的 MCP 运行时适配器和开发期契约导出器。
 
-## Static contracts
+## 静态契约
 
-Define tool arguments and results once with Zod. Generate the versioned `ToolContracts.json` artifact during plugin development, then declare it through `Contracts.File` in `PluginManifest.json`.
+用 Zod 一次性定义工具参数和结果。在插件开发期生成版本化的 `ToolContracts.json` 产物，再通过 `PluginManifest.json` 的 `Contracts.File` 声明它。
 
 ```js
 const fs = require("node:fs");
@@ -18,4 +18,4 @@ const bundle = createToolContractBundle(definitions, {
 fs.writeFileSync("ToolContracts.json", `${JSON.stringify(bundle, null, 2)}\n`);
 ```
 
-The exporter is deterministic, rejects duplicate tool names, and includes both input and output Draft-07 JSON Schemas. Senera loads only the generated JSON artifact in production; it does not execute plugin authoring code to discover contracts.
+导出器是确定性的，会拒绝重复的工具名，并同时包含输入和输出的 Draft-07 JSON Schema。生产环境中 Senera 只加载生成的 JSON 产物，不会为了发现契约而执行插件的开发期代码。

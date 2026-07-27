@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { format, resolveConfig } from "prettier";
@@ -7,8 +6,10 @@ import {
   AgentToolContractVersion,
   type AgentToolContractBundle,
 } from "../Source/AgentSystem/ToolContracts/AgentToolContractTypes.js";
-import { readOptionalUtf8, writeUtf8Atomically } from "./GeneratedTextFile.js";
+import { readOptionalUtf8, synchronizeGeneratedFile } from "./GeneratedTextFile.js";
 import { AgentTypescriptToolContractProjector } from "./ToolContracts/AgentTypescriptToolContractProjector.js";
+import { sha256Hex } from "../Source/AgentSystem/Core/AgentHash.js";
+import { toPosixPath } from "../Scripts/Support/FileWalk.js";
 
 interface SourceToolManifest {
   Name: string;
@@ -64,7 +65,7 @@ for (const { pluginRoot, manifestPath, manifest } of discoverPlugins(pluginColle
             identity: `${normalizeRelativePath(source.file)}#${source.type ?? "default"}`,
             file: normalizeRelativePath(source.file),
             ...(source.type ? { type: source.type } : {}),
-            sha256: crypto.createHash("sha256").update(sourceText).digest("hex"),
+            sha256: sha256Hex(sourceText),
           },
           inputSchema: annotateJsonSchema(structuredClone(input.jsonSchema), input.properties),
         },
@@ -74,20 +75,18 @@ for (const { pluginRoot, manifestPath, manifest } of discoverPlugins(pluginColle
 
   const bundle: AgentToolContractBundle = { contractVersion: AgentToolContractVersion, tools };
   const expected = await format(JSON.stringify(bundle), { ...prettierConfig, parser: "json", filepath: bundlePath });
-  const actual = readOptionalUtf8(bundlePath);
-  if (actual === expected) continue;
+  if (readOptionalUtf8(bundlePath) === expected) continue;
   changed.push(path.relative(workspaceRoot, bundlePath));
-  if (!check) writeUtf8Atomically(bundlePath, expected);
-}
-
-if (check && changed.length > 0) {
-  throw new Error(`Tool contract bundles are stale:\n${changed.map((file) => `- ${file}`).join("\n")}`);
+  synchronizeGeneratedFile({
+    filePath: bundlePath,
+    content: expected,
+    check,
+    regenerateCommand: "npm run generate.tool-contracts",
+  });
 }
 
 process.stdout.write(
-  changed.length === 0
-    ? "Tool contract bundles are current.\n"
-    : `Tool contract bundles ${check ? "would change" : "updated"}: ${changed.length}\n`,
+  changed.length === 0 ? "Tool contract bundles are current.\n" : `Tool contract bundles updated: ${changed.length}\n`,
 );
 
 function discoverPlugins(
@@ -145,7 +144,7 @@ function resolveInsidePluginRoot(pluginRoot: string, file: string): string {
 }
 
 function normalizeRelativePath(filePath: string): string {
-  const normalized = filePath.replaceAll("\\", "/");
+  const normalized = toPosixPath(filePath);
   return normalized.startsWith("./") ? normalized : `./${normalized}`;
 }
 

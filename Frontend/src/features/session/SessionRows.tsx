@@ -1,7 +1,7 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { CircleAlert, LoaderCircle, MoreHorizontal, PencilLine, SquarePen, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/util";
 import {
   ContextMenu,
@@ -24,8 +24,8 @@ interface SessionRowProps {
   accent: "idle" | "running" | "failed";
   onClick: () => void;
   showInlineActions: boolean;
-  onRename: () => void;
-  onClose: () => void;
+  onRename: (returnFocus: HTMLElement | null) => void;
+  onClose: (returnFocus: HTMLElement | null) => void;
 }
 
 export function SessionRow({
@@ -39,26 +39,41 @@ export function SessionRow({
   onClose,
 }: SessionRowProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const selectionButtonRef = useRef<HTMLButtonElement>(null);
+  const pendingDialogActionRef = useRef<(() => void) | null>(null);
   const { reduceMotion, disableMotion } = useMotionLevel();
   const animateSelection = !reduceMotion && !disableMotion;
   const actions: SessionMenuAction[] = [
     {
       id: "rename",
-      label: frontendMessage("runtime.migrated.features.session.SessionRows.49.14"),
+      label: frontendMessage("session.rename"),
       icon: <PencilLine className="h-3.5 w-3.5" />,
-      onSelect: onRename,
+      onSelect: () => {
+        pendingDialogActionRef.current = () => onRename(selectionButtonRef.current);
+      },
     },
     {
       id: "delete",
-      label: frontendMessage("runtime.migrated.features.session.SessionRows.55.14"),
+      label: frontendMessage("session.deleteHistory"),
       icon: <Trash2 className="h-3.5 w-3.5" />,
       destructive: true,
-      onSelect: onClose,
+      onSelect: () => {
+        pendingDialogActionRef.current = () => onClose(selectionButtonRef.current);
+      },
     },
   ];
 
+  useEffect(() => {
+    if (menuOpen || contextMenuOpen) return;
+    const pendingAction = pendingDialogActionRef.current;
+    if (!pendingAction) return;
+    pendingDialogActionRef.current = null;
+    pendingAction();
+  }, [contextMenuOpen, menuOpen]);
+
   return (
-    <ContextMenu>
+    <ContextMenu onOpenChange={setContextMenuOpen}>
       <ContextMenuTrigger asChild>
         <div
           data-session-row={sessionId}
@@ -81,6 +96,7 @@ export function SessionRow({
             />
           ) : null}
           <button
+            ref={selectionButtonRef}
             type="button"
             aria-current={active ? "true" : undefined}
             aria-label={frontendMessage("session.open", { title })}
@@ -147,7 +163,7 @@ export function SessionRow({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-[196px]">
-        <ContextMenuLabel>{frontendMessage("runtime.migrated.features.session.SessionRows.141.27")}</ContextMenuLabel>
+        <ContextMenuLabel>{frontendMessage("session.actions")}</ContextMenuLabel>
         <ContextSessionMenuItems actions={actions} separateLast />
       </ContextMenuContent>
     </ContextMenu>
@@ -157,16 +173,14 @@ export function SessionRow({
 export function EmptyState({ onNewSession }: { onNewSession: () => void }): JSX.Element {
   return (
     <div className="mt-8 flex flex-col items-center px-4 text-center">
-      <div className="text-[13px] text-content-secondary">
-        {frontendMessage("runtime.migrated.features.session.SessionRows.152.54")}
-      </div>
+      <div className="text-[13px] text-content-secondary">{frontendMessage("session.emptyTitle")}</div>
       <button
         type="button"
         onClick={onNewSession}
         className="mt-3 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium text-content-secondary transition hover:bg-surface-hover hover:text-content-primary"
       >
         <SquarePen className="h-3 w-3" />
-        {frontendMessage("runtime.migrated.features.session.SessionRows.159.9")}
+        {frontendMessage("session.emptyAction")}
       </button>
     </div>
   );

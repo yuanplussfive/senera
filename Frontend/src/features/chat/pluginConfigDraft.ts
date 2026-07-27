@@ -1,6 +1,7 @@
 import { parse as parseToml, stringify as stringifyToml, type TomlTableWithoutBigInt } from "smol-toml";
 import type { PluginConfigField, PluginConfigFieldOptionValue, PluginConfigSection } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { errorMessage } from "../../lib/util";
 
 export type EditableTomlTable = Record<string, unknown>;
 
@@ -14,7 +15,7 @@ export function parseDraftToml(toml: string): {
     };
   } catch (error) {
     return {
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     };
   }
 }

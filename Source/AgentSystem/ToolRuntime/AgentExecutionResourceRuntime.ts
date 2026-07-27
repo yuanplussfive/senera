@@ -9,6 +9,7 @@ import type { AgentHostToolContext, AgentHostToolHandler } from "./AgentToolHost
 import { toolProcessFailureResult, toolProcessSuccessResult } from "./AgentToolProcessEnvelope.js";
 import { createAgentShellExecutionProfile } from "./AgentShellCommandRuntime.js";
 import { resolveAgentExecutionResourceWaitTimeoutMs } from "../ExecutionResources/AgentExecutionResourceConfig.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 const ResourceIdSchema = z
   .string()
@@ -185,7 +186,7 @@ function withValidatedArguments<TSchema extends z.ZodType<Record<string, unknown
     } catch (error) {
       return toolProcessFailureResult({
         code: AgentExecutionErrorCodes.PluginExecutionError,
-        message: error instanceof Error ? error.message : String(error),
+        message: errorMessage(error),
         details: {
           phase: AgentToolProcessErrorPhases.RuntimeExecution,
           resourceCode: error instanceof AgentExecutionResourceError ? error.code : undefined,

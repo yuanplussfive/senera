@@ -42,6 +42,12 @@ import type {
 } from "./SeneraPersistentProcessTypes.js";
 import { createSeneraLocalTerminalSpawner } from "./SeneraTerminalSpawner.js";
 import type { SeneraTerminalChild, SeneraTerminalSpawner, SeneraTerminalSpawnOptions } from "./SeneraTerminalTypes.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+
+// exec() is an internal convenience path, but it must stay bounded like every other
+// output channel. Mirrors AgentDefaults.ToolExecution.MaxStdoutBytes (64 MiB), which
+// cannot be imported here without inverting the Defaults -> Execution layering.
+const ExecOutputLimitBytes = 64 * 1024 * 1024;
 
 export interface SeneraLocalExecutionEnvOptions {
   workspaceRoot: string;
@@ -166,8 +172,8 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
         timeoutMs: options?.timeout === undefined ? undefined : options.timeout * 1000,
         limits: {
           timeoutMs: options?.timeout === undefined ? 0 : options.timeout * 1000,
-          maxStdoutBytes: Number.MAX_SAFE_INTEGER,
-          maxStderrBytes: Number.MAX_SAFE_INTEGER,
+          maxStdoutBytes: ExecOutputLimitBytes,
+          maxStderrBytes: ExecOutputLimitBytes,
         },
         signal: options?.abortSignal,
       });
@@ -440,7 +446,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     } catch (error) {
       throw new SeneraExecutionError(
         SeneraExecutionErrorCodes.InvalidWorkspacePath,
-        error instanceof Error ? error.message : String(error),
+        errorMessage(error),
         { cwd: value ?? ".", workspaceRoot: this.workspaceRoot },
         error instanceof Error ? error : undefined,
       );

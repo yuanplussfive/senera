@@ -52,6 +52,11 @@ assert.ok(
   !dockerfile.includes("PrepareSandboxRuntime"),
   "Dockerfile must not start or download the microsandbox runtime while building the image.",
 );
+assert.match(
+  dockerfile,
+  /ARG NODE_IMAGE=[^\s]+@sha256:[a-f0-9]{64}/u,
+  "Dockerfile must pin its Node base image to an immutable digest.",
+);
 for (const ignoredPath of [".cache", ".senera", ".uploads", "coverage", "Release/*", "node_modules"]) {
   assert.ok(
     dockerignore.split(/\r?\n/u).includes(ignoredPath),
@@ -65,6 +70,13 @@ assert.ok(
 assert.ok(
   dockerfile.includes("npm rebuild better-sqlite3 --build-from-source"),
   "Dockerfile must build the Node better-sqlite3 native addon after ignoring dependency scripts.",
+);
+assert.ok(
+  dockerfile.includes("apt-get install -y --no-install-recommends python3 make g++") &&
+    !dockerfile.includes("bubblewrap") &&
+    !dockerfile.includes("socat") &&
+    !/apt-get install[^\n]*\bripgrep\b/u.test(dockerfile),
+  "Docker builder must install only the native compilation toolchain used by better-sqlite3.",
 );
 assert.ok(
   dockerfile.includes("node Dist/Scripts/VerifyDockerNativeSqlite.js"),
@@ -146,7 +158,7 @@ assert.ok(
     compose.includes("SENERA_ADMIN_DISPLAY_NAME") &&
     compose.includes("SENERA_ADMIN_PASSWORD") &&
     compose.includes('SENERA_ADMIN_PASSWORD: "replace-with-a-strong-password"') &&
-    !compose.includes("${SENERA_"),
+    !compose.includes("${SENERA_ADMIN_"),
   "compose.yaml must expose directly editable administrator values without external variable interpolation.",
 );
 assert.ok(
@@ -159,6 +171,10 @@ assert.ok(
     compose.includes("/var/run/docker.sock:/run/docker-engine.sock") &&
     compose.includes('SENERA_GVISOR_WORKER_SOCKET_MODE: "0666"') &&
     compose.includes("SENERA_DOCKER_SANDBOX_IMAGE: *senera-sandbox-image") &&
+    compose.includes("${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:1.9.7}") &&
+    compose.includes("${SENERA_SANDBOX_IMAGE:-") &&
+    compose.includes("SENERA_RUNTIME_IMAGE_REFERENCE: *senera-image") &&
+    !compose.includes("ghcr.io/yuanplussfive/senera:latest") &&
     compose.includes("condition: service_completed_successfully") &&
     compose.includes(sandboxImageReference) &&
     !compose.includes("SENERA_GVISOR_BUNDLE_ROOT") &&

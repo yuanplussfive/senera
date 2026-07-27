@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 import { parse as parseToml, type TomlTableWithoutBigInt } from "smol-toml";
+import { isFileExistsError, writeFileAtomicSync } from "../Core/AgentFs.js";
 import { resolvePluginDiscoveryConfig } from "../AgentDefaults.js";
+import { formatZodIssue } from "../Diagnostics/AgentValidationIssue.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { LoadedPluginConfig, LoadedPluginConfigDiagnostic } from "../Types/PluginConfigTypes.js";
@@ -25,7 +26,6 @@ import {
 } from "./AgentPluginConfigFormProjector.js";
 import {
   AgentPluginConfigDefaults,
-  formatZodIssue,
   parsePluginConfigSchema,
   PluginConfigDocumentSchema,
   type ParseLoadedPluginConfigTomlOptions,
@@ -43,6 +43,7 @@ export {
   isLoadedPluginToolEnabled,
   projectPluginConfigSnapshot,
 } from "./AgentPluginConfigRuntime.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export function resolvePluginConfigFileName(config: AgentSystemConfig): string {
   return resolvePluginDiscoveryConfig(config).ConfigFileName;
@@ -168,18 +169,7 @@ function materializePluginConfig(configPath: string, toml: string): void {
 }
 
 function replacePluginConfigAtomically(configPath: string, toml: string): void {
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  const temporaryPath = path.join(path.dirname(configPath), `.${path.basename(configPath)}.${randomUUID()}.tmp`);
-  try {
-    fs.writeFileSync(temporaryPath, toml, { encoding: "utf8", flag: "wx" });
-    fs.renameSync(temporaryPath, configPath);
-  } finally {
-    fs.rmSync(temporaryPath, { force: true });
-  }
-}
-
-function isFileExistsError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EEXIST";
+  writeFileAtomicSync(configPath, toml);
 }
 
 export function parseLoadedPluginConfigToml(
@@ -201,7 +191,7 @@ export function parseLoadedPluginConfigToml(
         ...schemaResult.diagnostics,
         {
           severity: "error",
-          message: root.error.issues.map(formatZodIssue).join("; "),
+          message: root.error.issues.map((issue) => formatZodIssue(issue)).join("; "),
         },
       ],
     };
@@ -297,7 +287,7 @@ function parsePluginConfigDocument(
           ...schemaDiagnostics,
           {
             severity: "error",
-            message: error instanceof Error ? error.message : String(error),
+            message: errorMessage(error),
           },
         ],
       },

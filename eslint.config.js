@@ -123,7 +123,11 @@ export default tseslint.config(
     },
   },
   {
-    files: [...FrontendTestFiles, "Scripts/E2ETests/FrontendJourney/**/*.{js,mjs,ts,tsx}"],
+    files: [
+      ...FrontendTestFiles,
+      "Scripts/IntegrationTests/FrontendJourney/**/*.{js,mjs,ts,tsx}",
+      "Scripts/BrowserE2ETests/**/*.{js,mjs,ts,tsx}",
+    ],
     languageOptions: {
       globals: {
         ...globals.browser,

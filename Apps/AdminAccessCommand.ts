@@ -1,5 +1,6 @@
 import readline from "node:readline";
 import { parseArgs } from "node:util";
+import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 
 export const AdminAccessCommandNames = ["init", "reset-password"] as const;
 export const AdminAccessUsage = `用法：senera-admin-access <${AdminAccessCommandNames.join(
@@ -41,7 +42,7 @@ export function parseAdminAccessInvocation(args: readonly string[]): AdminAccess
   try {
     parsed = parseAdminAccessArguments(args);
   } catch (error) {
-    throw adminAccessArgumentError(error instanceof Error ? error.message : String(error), error);
+    throw adminAccessArgumentError(errorMessage(error), error);
   }
 
   if (parsed.positionals.length !== 1) {

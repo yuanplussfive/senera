@@ -29,6 +29,7 @@ export interface SeneraPersistentProcessChild {
   on(event: "close", listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void): void;
   off?(event: "close", listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void): void;
   kill(signal?: NodeJS.Signals): boolean;
+  terminateTree(signal: NodeJS.Signals): Promise<void>;
   pid?: number;
   exitCode?: number | null;
   signalCode?: NodeJS.Signals | null;

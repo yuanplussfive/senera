@@ -1,6 +1,5 @@
-import crypto from "node:crypto";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 
 const AgentRuntimePreparationFingerprintVersion = 1;
 
@@ -9,12 +8,11 @@ export function createAgentRuntimePreparationFingerprint(input: {
   modelProviderId?: string;
   sourceRevisions?: Readonly<Record<string, string | number>>;
 }): string {
-  const payload = stringifyAgentCanonicalJson({
+  const digest = sha256HexOfCanonicalJson({
     version: AgentRuntimePreparationFingerprintVersion,
     modelProviderId: input.modelProviderId?.trim() || null,
     sourceRevisions: input.sourceRevisions ?? {},
     config: input.config,
   });
-  const digest = crypto.createHash("sha256").update(payload).digest("hex");
   return `preparation-v${AgentRuntimePreparationFingerprintVersion}:${digest}`;
 }

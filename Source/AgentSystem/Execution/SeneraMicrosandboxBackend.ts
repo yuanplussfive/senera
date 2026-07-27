@@ -30,6 +30,7 @@ import {
   attachSeneraExecutionDiagnostic,
   normalizeSeneraExecutionDiagnostic,
 } from "./SeneraExecutionErrorDiagnostics.js";
+import { withDeadline } from "../Core/AgentTiming.js";
 import {
   SeneraTerminalCapabilityNames,
   SeneraTerminalCapabilityProviders,
@@ -601,7 +602,7 @@ async function stopSessionOnce(session: SeneraMicrosandboxSession, timeoutMs: nu
     return;
   } catch (stopError) {
     try {
-      await withDeadline(session.kill(), timeoutMs);
+      await withDeadline(session.kill(), timeoutMs, () => new Error(`cleanup exceeded ${timeoutMs}ms`));
     } catch (killError) {
       throw new SeneraExecutionError(
         SeneraExecutionErrorCodes.CleanupFailed,
@@ -610,21 +611,6 @@ async function stopSessionOnce(session: SeneraMicrosandboxSession, timeoutMs: nu
         new AggregateError([stopError, killError], "microsandbox cleanup failed."),
       );
     }
-  }
-}
-
-async function withDeadline<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      operation,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`cleanup exceeded ${timeoutMs}ms`)), timeoutMs);
-        timer.unref();
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
   }
 }
 

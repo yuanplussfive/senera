@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowUp, Check, ChevronDown, Loader2, Paperclip, RotateCcw, Square, X } from "lucide-react";
-import { toast } from "sonner";
 import type { UploadAttachmentData, ModelProviderListItem } from "../../api/eventTypes";
-import { uploadFile, type UploadProgress } from "../../api/uploadClient";
-import { isImageFilePreview } from "../../lib/filePreview";
-import { cn, generateId } from "../../lib/util";
+import type { UploadProgress } from "../../api/uploadClient";
+import { cn, formatFileSize } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useResponsiveMode } from "../../shared/responsive";
 import { MotionButton } from "../../shared/motion";
@@ -25,7 +23,7 @@ import { ModelProviderIcon } from "./ModelProviderIcon";
 import { readChatModelProviders, readSelectedModelProvider } from "./modelProvider";
 import type { MessageQueueMode } from "../../app/useChatCommands";
 import type { ChatModelConfig, ChatPresetConfig } from "./ChatPanelContracts";
-import { useUploadPreviewRegistry } from "./UploadPreviewRegistry";
+import { useComposerAttachments, type PendingAttachment } from "./useComposerAttachments";
 
 const DESKTOP_TEXTAREA_MAX_HEIGHT = 240;
 const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
@@ -45,19 +43,6 @@ export interface ChatComposerProps {
   onCancel: () => void;
 }
 
-type PendingAttachment = {
-  id: string;
-  fileName: string;
-  mime?: string;
-  size: number;
-  status: "uploading" | "uploaded" | "error";
-  progress?: UploadProgress;
-  attachment?: UploadAttachmentData;
-  error?: string;
-  previewUrl?: string;
-  previewUnavailable?: boolean;
-};
-
 export function ChatComposer({
   disabled,
   running,
@@ -68,19 +53,15 @@ export function ChatComposer({
   onCancel,
 }: ChatComposerProps): JSX.Element {
   const [value, setValue] = useState("");
-  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
-  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const dragDepthRef = useRef(0);
-  const ownedPreviewUrlsRef = useRef(new Set<string>());
-  const uploadPreviewRegistry = useUploadPreviewRegistry();
+  const attachments = useComposerAttachments({
+    uploadUrl: runtime.uploadUrl,
+    uploadCsrfToken: runtime.uploadCsrfToken,
+    interactionLocked: disabled || running,
+  });
   const { prefersCompactControls } = useResponsiveMode();
   const textareaMaxHeight = prefersCompactControls ? TOUCH_TEXTAREA_MAX_HEIGHT : DESKTOP_TEXTAREA_MAX_HEIGHT;
-  const revokePreviewUrl = useCallback((previewUrl: string | undefined): void => {
-    if (!previewUrl || !ownedPreviewUrlsRef.current.delete(previewUrl)) return;
-    URL.revokeObjectURL(previewUrl);
-  }, []);
 
   const hint = useMemo(() => {
     if (running) {
@@ -117,35 +98,14 @@ export function ChatComposer({
     el.style.height = value ? `${Math.min(el.scrollHeight, textareaMaxHeight)}px` : "auto";
   }, [textareaMaxHeight, value]);
 
-  useEffect(
-    () => () => {
-      for (const previewUrl of ownedPreviewUrlsRef.current) {
-        URL.revokeObjectURL(previewUrl);
-      }
-      ownedPreviewUrlsRef.current.clear();
-    },
-    [],
-  );
-
   const submit = (queueMode?: MessageQueueMode): void => {
     const text = value.trim();
-    const uploading = pendingAttachments.some((attachment) => attachment.status === "uploading");
-    if (!text || disabled || uploading) return;
-    const attachments = pendingAttachments.flatMap((entry) =>
-      entry.status === "uploaded" && entry.attachment ? [entry.attachment] : [],
-    );
-    const sent = onSend(text, attachments.length > 0 ? attachments : undefined, queueMode);
+    if (!text || disabled || attachments.uploading) return;
+    const uploaded = attachments.collectUploadedAttachments();
+    const sent = onSend(text, uploaded.length > 0 ? uploaded : undefined, queueMode);
     if (sent === false) return;
-    for (const entry of pendingAttachments) {
-      if (entry.previewUrl && entry.status === "uploaded" && entry.attachment) {
-        uploadPreviewRegistry.register(entry.attachment.uploadUri, entry.previewUrl);
-        ownedPreviewUrlsRef.current.delete(entry.previewUrl);
-      } else {
-        revokePreviewUrl(entry.previewUrl);
-      }
-    }
+    attachments.commitSentAttachments();
     setValue("");
-    setPendingAttachments([]);
     if (taRef.current) taRef.current.style.height = "auto";
   };
 
@@ -163,151 +123,39 @@ export function ChatComposer({
     el.style.height = `${Math.min(el.scrollHeight, textareaMaxHeight)}px`;
   };
 
-  const uploading = pendingAttachments.some((attachment) => attachment.status === "uploading");
-  const canSend = !disabled && !uploading && value.trim().length > 0;
-
-  const enqueueFiles = (files: File[]): void => {
-    if (files.length === 0) return;
-    for (const file of files) {
-      const id = generateId();
-      const previewUrl = isImageFilePreview({ name: file.name, mime: file.type })
-        ? URL.createObjectURL(file)
-        : undefined;
-      if (previewUrl) ownedPreviewUrlsRef.current.add(previewUrl);
-      setPendingAttachments((current) => [
-        ...current,
-        {
-          id,
-          fileName: file.name,
-          mime: file.type,
-          size: file.size,
-          status: "uploading",
-          progress: { loaded: 0, total: file.size, ratio: file.size === 0 ? 1 : 0 },
-          previewUrl,
-        },
-      ]);
-      void uploadFile(runtime.uploadUrl, file, {
-        headers: runtime.uploadCsrfToken ? { "X-Senera-Csrf": runtime.uploadCsrfToken } : undefined,
-        onProgress: (progress) => {
-          setPendingAttachments((current) =>
-            current.map((entry) => (entry.id === id ? { ...entry, progress } : entry)),
-          );
-        },
-      })
-        .then((attachment) => {
-          setPendingAttachments((current) =>
-            current.map((entry) =>
-              entry.id === id
-                ? {
-                    ...entry,
-                    fileName: attachment.name,
-                    mime: attachment.mime,
-                    size: attachment.size,
-                    status: "uploaded",
-                    progress: { loaded: attachment.size, total: attachment.size, ratio: 1 },
-                    attachment,
-                  }
-                : entry,
-            ),
-          );
-        })
-        .catch((error) => {
-          const message = error instanceof Error ? error.message : String(error);
-          setPendingAttachments((current) =>
-            current.map((entry) => (entry.id === id ? { ...entry, status: "error", error: message } : entry)),
-          );
-          toast.error(frontendMessage("upload.fileFailed"), { description: message });
-        });
-    }
-  };
-
-  const removeAttachment = (id: string): void => {
-    revokePreviewUrl(pendingAttachments.find((entry) => entry.id === id)?.previewUrl);
-    setPendingAttachments((current) => current.filter((entry) => entry.id !== id));
-  };
-
-  const markPreviewUnavailable = (id: string): void => {
-    revokePreviewUrl(pendingAttachments.find((entry) => entry.id === id)?.previewUrl);
-    setPendingAttachments((current) =>
-      current.map((entry) => (entry.id === id ? { ...entry, previewUrl: undefined, previewUnavailable: true } : entry)),
-    );
-  };
-
-  const acceptsDraggedFiles = (event: React.DragEvent): boolean =>
-    Array.from(event.dataTransfer.types).includes("Files");
-
-  const handleFileSelection = (event: React.ChangeEvent<HTMLInputElement>): void => {
-    enqueueFiles(Array.from(event.target.files ?? []));
-    event.target.value = "";
-  };
-
-  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>): void => {
-    if (disabled || running) return;
-    const files = readClipboardFiles(event.clipboardData);
-    if (files.length === 0) return;
-    enqueueFiles(files);
-    if (!event.clipboardData.getData("text/plain")) {
-      event.preventDefault();
-    }
-  };
-
-  const handleDragEnter = (event: React.DragEvent<HTMLDivElement>): void => {
-    if (!acceptsDraggedFiles(event)) return;
-    event.preventDefault();
-    if (disabled || running) return;
-    dragDepthRef.current += 1;
-    setIsDraggingFiles(true);
-  };
-
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>): void => {
-    if (!acceptsDraggedFiles(event)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = disabled || running ? "none" : "copy";
-  };
-
-  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>): void => {
-    if (!acceptsDraggedFiles(event)) return;
-    event.preventDefault();
-    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-    if (dragDepthRef.current === 0) {
-      setIsDraggingFiles(false);
-    }
-  };
-
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>): void => {
-    if (!acceptsDraggedFiles(event)) return;
-    event.preventDefault();
-    dragDepthRef.current = 0;
-    setIsDraggingFiles(false);
-    if (disabled || running) return;
-    enqueueFiles(Array.from(event.dataTransfer.files ?? []));
-  };
+  const canSend = !disabled && !attachments.uploading && value.trim().length > 0;
 
   return (
     <div className="bg-transparent py-3 sm:py-4">
       <ConversationFrame mode="composer">
         <div
-          onDragEnter={handleDragEnter}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
+          onDragEnter={attachments.handleDragEnter}
+          onDragOver={attachments.handleDragOver}
+          onDragLeave={attachments.handleDragLeave}
+          onDrop={attachments.handleDrop}
           className={cn(
             "relative flex min-w-0 flex-col rounded-[18px] border border-line bg-surface-raised px-3.5 pb-2.5 pt-2.5 shadow-[var(--shadow-soft)] transition-[background-color,border-color,box-shadow] duration-150",
-            isDraggingFiles && "border-accent-border bg-accent-surface ring-2 ring-accent-focus",
+            attachments.isDraggingFiles && "border-accent-border bg-accent-surface ring-2 ring-accent-focus",
           )}
           data-chat-composer
         >
-          {isDraggingFiles ? (
+          {attachments.isDraggingFiles ? (
             <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-md border border-dashed border-accent-border bg-surface-panel text-[13px] font-medium text-accent-content">
-              {frontendMessage("runtime.migrated.features.chat.ChatComposer.247.13")}
+              {frontendMessage("chat.composer.dropFiles")}
             </div>
           ) : null}
-          <input ref={fileInputRef} type="file" className="hidden" multiple onChange={handleFileSelection} />
-          {pendingAttachments.length > 0 ? (
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            multiple
+            onChange={attachments.handleFileSelection}
+          />
+          {attachments.pendingAttachments.length > 0 ? (
             <AttachmentTray
-              attachments={pendingAttachments}
-              onRemove={removeAttachment}
-              onPreviewUnavailable={markPreviewUnavailable}
+              attachments={attachments.pendingAttachments}
+              onRemove={attachments.removeAttachment}
+              onPreviewUnavailable={attachments.markPreviewUnavailable}
             />
           ) : null}
 
@@ -318,7 +166,7 @@ export function ChatComposer({
             rows={1}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
+            onPaste={attachments.handlePaste}
             placeholder={hint}
             disabled={disabled}
             style={{ maxHeight: textareaMaxHeight }}
@@ -329,7 +177,7 @@ export function ChatComposer({
             <div className="flex min-w-0 flex-1 items-center gap-1">
               <IconButton
                 label="attach"
-                tooltip={frontendMessage("runtime.migrated.features.chat.ChatComposer.260.21")}
+                tooltip={frontendMessage("chat.attachment.tooltip")}
                 tooltipSide="top"
                 tone="muted"
                 disabled={disabled || running}
@@ -566,25 +414,6 @@ function readProgressRatio(progress?: UploadProgress): number | undefined {
   const ratio =
     progress?.ratio ?? (progress?.total && progress.total > 0 ? progress.loaded / progress.total : undefined);
   return typeof ratio === "number" && Number.isFinite(ratio) ? Math.min(1, Math.max(0, ratio)) : undefined;
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)}KB`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(mb < 10 ? 1 : 0)}MB`;
-}
-
-function readClipboardFiles(data: DataTransfer): File[] {
-  const files = Array.from(data.files ?? []);
-  if (files.length > 0) return files;
-
-  return Array.from(data.items ?? []).flatMap((item) => {
-    if (item.kind !== "file") return [];
-    const file = item.getAsFile();
-    return file ? [file] : [];
-  });
 }
 
 function ModelSelector({

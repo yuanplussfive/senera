@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import type { ToolWorkspaceFileSnapshot } from "../Types/ToolRuntimeTypes.js";
 import { toPosixPath } from "./AgentArtifactLocator.js";
+import { sha256Hex } from "../Core/AgentHash.js";
 
 export function missingWorkspaceSnapshot(filePath: string, absolutePath: string): ToolWorkspaceFileSnapshot {
   return {
@@ -33,7 +34,7 @@ export async function hashWorkspaceFile(filePath: string): Promise<string> {
 }
 
 export function hashWorkspaceText(value: string): string {
-  return `sha256:${crypto.createHash("sha256").update(value).digest("hex")}`;
+  return `sha256:${sha256Hex(value)}`;
 }
 
 export function normalizeWorkspaceRelativePath(value: string): string {

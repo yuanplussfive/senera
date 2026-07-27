@@ -6,6 +6,7 @@ import { AgentArtifactRetentionService } from "../Source/AgentSystem/Artifacts/A
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { resolveArtifactsConfig } from "../Source/AgentSystem/Defaults/AgentAppDefaults.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentSystemConfigTypes.js";
+import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 
 const argumentsSchema = {
   workspace: { type: "string" },
@@ -16,7 +17,7 @@ const argumentsSchema = {
 } as const;
 
 void main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.stderr.write(`${errorMessage(error)}\n`);
   process.exitCode = 1;
 });
 

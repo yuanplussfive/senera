@@ -2,11 +2,18 @@ import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js"
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { resolveModelProviderCatalog } from "../AgentDefaults.js";
 import { projectAgentConfigForm } from "../Config/AgentConfigFormProjector.js";
+import {
+  redactAgentConfigSnapshotSecrets,
+  redactAgentSystemConfigSecrets,
+  restoreAgentProviderEndpointSecrets,
+  restoreAgentSystemConfigSecrets,
+} from "../Config/AgentConfigSecretRedaction.js";
 import { type AgentProviderModelConfigOperationKind } from "../Config/AgentProviderModelConfigCommands.js";
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentExecutionResourceSnapshot } from "../ExecutionResources/AgentExecutionResourceTypes.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export class AgentWebSocketSessionRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
@@ -251,7 +258,12 @@ export class AgentWebSocketConfigRequestHandlers {
         data: await this.context.providerModelDiscovery.listProviderModels({
           providerId: request.providerId,
           force: request.force,
-          endpoint: request.endpoint,
+          endpoint: request.endpoint
+            ? restoreAgentProviderEndpointSecrets(
+                request.endpoint,
+                this.currentConfigValue().ModelProviderEndpoints ?? [],
+              )
+            : undefined,
         }),
       });
     } catch (error) {
@@ -260,7 +272,7 @@ export class AgentWebSocketConfigRequestHandlers {
         context: {},
         data: {
           providerId: request.providerId,
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage(error),
           details: serializeError(error),
         },
       });
@@ -273,12 +285,12 @@ export class AgentWebSocketConfigRequestHandlers {
       await sendEvent({
         kind: AgentEventKinds.ConfigSnapshot,
         context: {},
-        data: snapshot,
+        data: redactAgentConfigSnapshotSecrets(snapshot),
       });
       return;
     }
 
-    const config = this.context.configSnapshot();
+    const config = redactAgentSystemConfigSecrets(this.context.configSnapshot());
     await sendEvent({
       kind: AgentEventKinds.ConfigSnapshot,
       context: {},
@@ -297,22 +309,19 @@ export class AgentWebSocketConfigRequestHandlers {
     request: AgentWebSocketRequestOf<"config.update">,
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
-    if (!this.context.configService) {
-      throw new Error(agentErrorMessage("websocket.configServiceDisabled"));
-    }
-
-    const snapshot = this.context.configService.replaceConfig({
+    const service = this.requireConfigService();
+    const snapshot = service.replaceConfig({
       commandId: request.commandId,
       baseRevision: request.baseRevision,
       baseVersion: request.baseVersion,
-      config: request.config,
+      config: restoreAgentSystemConfigSecrets(request.config, service.snapshot().value),
       source: "ui_update",
     });
     await sendEvent({
       kind: AgentEventKinds.ConfigSnapshot,
       context: {},
       data: {
-        ...snapshot,
+        ...redactAgentConfigSnapshotSecrets(snapshot),
         operation: {
           commandId: request.commandId,
           kind: "config_update",
@@ -326,8 +335,15 @@ export class AgentWebSocketConfigRequestHandlers {
     request: AgentWebSocketRequestOf<"provider.endpoint.upsert">,
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
+    const service = this.requireConfigService();
     return this.sendProviderModelConfigSnapshot(
-      this.requireConfigService().upsertProviderEndpoint(request),
+      service.upsertProviderEndpoint({
+        ...request,
+        endpoint: restoreAgentProviderEndpointSecrets(
+          request.endpoint,
+          service.snapshot().value.ModelProviderEndpoints ?? [],
+        ),
+      }),
       request,
       sendEvent,
     );
@@ -461,6 +477,10 @@ export class AgentWebSocketConfigRequestHandlers {
     return this.context.configService;
   }
 
+  private currentConfigValue() {
+    return this.context.configService?.snapshot().value ?? this.context.configSnapshot();
+  }
+
   private sendProviderModelConfigSnapshot(
     snapshot: ReturnType<NonNullable<AgentWebSocketRequestContext["configService"]>["snapshot"]>,
     request: {
@@ -474,7 +494,7 @@ export class AgentWebSocketConfigRequestHandlers {
         kind: AgentEventKinds.ConfigSnapshot,
         context: {},
         data: {
-          ...snapshot,
+          ...redactAgentConfigSnapshotSecrets(snapshot),
           operation: {
             commandId: request.commandId,
             kind: request.type,

@@ -97,7 +97,7 @@ export function ModelOptionsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.121.15")}
+        title={frontendMessage("config.model.optionsTitle")}
         description={model.Model}
         motionPreset="focus"
         className="h-[min(720px,calc(100dvh_-_48px))] w-[min(760px,calc(100vw_-_32px))] max-w-none rounded-lg bg-paper-50"
@@ -108,7 +108,7 @@ export function ModelOptionsDialog({
             <section>
               <SectionLabel
                 icon={<SlidersHorizontal className="h-4 w-4" />}
-                title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.130.84")}
+                title={frontendMessage("config.model.capabilitiesTitle")}
               />
               <div className="grid gap-2 sm:grid-cols-2">
                 {ModelCapabilityIconItems.map((item) => (
@@ -128,11 +128,11 @@ export function ModelOptionsDialog({
             <section>
               <SectionLabel
                 icon={<Settings2 className="h-4 w-4" />}
-                title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.147.76")}
+                title={frontendMessage("config.model.identityTitle")}
               />
               <SettingsTable>
                 <TextRow
-                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.149.32")}
+                  label={frontendMessage("config.model.modelId")}
                   value={model.Model}
                   disabled
                   icon={<Settings2 className="h-3.5 w-3.5" />}
@@ -143,11 +143,11 @@ export function ModelOptionsDialog({
             <section>
               <SectionLabel
                 icon={<BrainCircuit className="h-4 w-4" />}
-                title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.165.79")}
+                title={frontendMessage("config.model.parametersTitle")}
               />
               <SettingsTable>
                 <NumberRow
-                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.168.25")}
+                  label={frontendMessage("config.model.contextWindow")}
                   value={contextWindowTokens}
                   min={-1}
                   step={1}
@@ -156,7 +156,7 @@ export function ModelOptionsDialog({
                   onChange={(ContextWindowTokens) => onChange({ ContextWindowTokens })}
                 />
                 <NumberRow
-                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.177.25")}
+                  label={frontendMessage("config.model.maxModelOutput")}
                   value={maxModelOutputTokens}
                   min={-1}
                   step={1}
@@ -166,25 +166,22 @@ export function ModelOptionsDialog({
                 />
                 <MenuRow
                   icon={<Settings2 className="h-3.5 w-3.5" />}
-                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.185.77")}
+                  label={frontendMessage("config.model.endpointProtocol")}
                 >
                   <MenuSelect
                     value={model.Endpoint}
-                    placeholder={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.188.33")}
-                    ariaLabel={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.185.77")}
+                    placeholder={frontendMessage("config.model.selectProtocol")}
+                    ariaLabel={frontendMessage("config.model.endpointProtocol")}
                     options={endpointOptions}
                     disabled={disabled || endpointOptions.length === 0}
                     onChange={(Endpoint) => onChange({ Endpoint })}
                   />
                 </MenuRow>
-                <MenuRow
-                  icon={<BrainCircuit className="h-3.5 w-3.5" />}
-                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.194.80")}
-                >
+                <MenuRow icon={<BrainCircuit className="h-3.5 w-3.5" />} label={frontendMessage("config.model.icon")}>
                   <MenuSelect
                     value={model.Icon ?? ""}
-                    placeholder={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.197.33")}
-                    ariaLabel={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.194.80")}
+                    placeholder={frontendMessage("config.model.selectIcon")}
+                    ariaLabel={frontendMessage("config.model.icon")}
                     options={iconOptions}
                     disabled={disabled}
                     renderValue={(value) =>
@@ -210,11 +207,11 @@ export function ModelOptionsDialog({
             <section>
               <SectionLabel
                 icon={<SlidersHorizontal className="h-4 w-4" />}
-                title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.219.84")}
+                title={frontendMessage("config.model.runtimeParameters")}
               />
               <SettingsTable>
                 <NumberRow
-                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.222.25")}
+                  label={frontendMessage("config.model.temperature")}
                   value={temperature}
                   min={0}
                   max={2}
@@ -224,7 +221,7 @@ export function ModelOptionsDialog({
                   onChange={(Temperature) => onChange({ Temperature })}
                 />
                 <NumberRow
-                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.232.25")}
+                  label={frontendMessage("config.model.maxOutput")}
                   value={maxOutputTokens}
                   min={-1}
                   step={1}
@@ -233,13 +230,13 @@ export function ModelOptionsDialog({
                   onChange={(MaxOutputTokens) => onChange({ MaxOutputTokens })}
                 />
                 <ToggleRow
-                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.241.25")}
+                  label={frontendMessage("config.model.streaming")}
                   enabled={streamEnabled}
                   disabled={disabled}
                   onChange={(Stream) => onChange({ Stream })}
                 />
                 <NumberRow
-                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.247.25")}
+                  label={frontendMessage("config.model.requestTimeout")}
                   value={timeoutSeconds}
                   min={1}
                   step={1}
@@ -248,7 +245,7 @@ export function ModelOptionsDialog({
                   onChange={(TimeoutSeconds) => onChange({ TimeoutSeconds })}
                 />
                 <NumberRow
-                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.256.25")}
+                  label={frontendMessage("config.model.firstTokenTimeout")}
                   value={firstTokenTimeoutSeconds}
                   min={-1}
                   step={1}
@@ -257,7 +254,7 @@ export function ModelOptionsDialog({
                   onChange={(FirstTokenTimeoutSeconds) => onChange({ FirstTokenTimeoutSeconds })}
                 />
                 <NumberRow
-                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.265.25")}
+                  label={frontendMessage("config.model.maxRequestTime")}
                   value={maxRequestSeconds}
                   min={-1}
                   step={1}
@@ -266,7 +263,7 @@ export function ModelOptionsDialog({
                   onChange={(MaxRequestSeconds) => onChange({ MaxRequestSeconds })}
                 />
                 <NumberRow
-                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.274.25")}
+                  label={frontendMessage("config.model.networkRetries")}
                   value={maxNetworkRetries}
                   min={0}
                   step={1}

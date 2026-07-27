@@ -6,6 +6,7 @@ import {
   formatAgentMessage,
   readAgentErrorMessageTemplate,
 } from "../Source/AgentSystem/I18n/AgentMessageCatalog.js";
+import { toPosixRelative, walkFiles } from "./Support/FileWalk.js";
 
 const workspaceRoot = process.cwd();
 
@@ -13,20 +14,26 @@ assert.equal(agentErrorMessage("plugin.duplicateName", { pluginName: "VerifyPlug
 assert.equal(formatAgentMessage("missing {known} {unknown}", { known: "value" }), "missing value {unknown}");
 assert.equal(readAgentErrorMessageTemplate("tool.executionMissingConfig"), "工具缺少 Execution 配置：{toolName}");
 
+const migratedRuntimeDirectories = [
+  "ActionPlanner",
+  "Approvals",
+  "Config",
+  "Mcp",
+  "ModelEndpoints",
+  "PiProxy",
+  "Plugin",
+  "ToolRuntime",
+  "Uploads",
+  "WebSocket",
+];
+
 const migratedRuntimeFiles = [
-  ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "ActionPlanner")),
-  ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "Approvals")),
-  ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "Config")),
-  ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "Mcp")),
-  ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "ModelEndpoints")),
-  ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "PiProxy")),
-  ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "Plugin")),
-  ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "ToolRuntime")),
-  ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "Uploads")),
-  ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "WebSocket")),
+  ...migratedRuntimeDirectories.flatMap((directory) =>
+    walkFiles(path.join(workspaceRoot, "Source", "AgentSystem", directory), { extensions: [".ts"] }),
+  ),
   path.join(workspaceRoot, "Source", "AgentSystem", "AgentRootCommand.ts"),
 ]
-  .map((file) => path.relative(workspaceRoot, file).replaceAll(path.sep, "/"))
+  .map((file) => toPosixRelative(workspaceRoot, file))
   .filter((file) => !file.includes("/I18n/"))
   .filter((file) => !file.includes("/PiProxy/AgentPiProxyPrompts.ts"));
 
@@ -45,13 +52,3 @@ for (const relativeFile of migratedRuntimeFiles) {
 }
 
 console.log("Agent error i18n verification passed.");
-
-function walkSourceFiles(directory: string): string[] {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const fullPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      return walkSourceFiles(fullPath);
-    }
-    return entry.name.endsWith(".ts") ? [fullPath] : [];
-  });
-}

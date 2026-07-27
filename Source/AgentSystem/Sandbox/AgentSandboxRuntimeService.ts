@@ -22,6 +22,7 @@ import {
   prepareAgentGvisorRuntime,
   resolveAgentGvisorWorkerSocketPath,
 } from "./Gvisor/AgentGvisorRuntimePreparation.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export interface AgentSandboxRuntimePreparationStatus {
   state: AgentSandboxRuntimeState;
@@ -448,8 +449,4 @@ function resolveMicrosandboxPackageAvailable(): boolean {
   } catch {
     return false;
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

@@ -26,12 +26,12 @@ export function ViewSwitch({
   const items: Array<{ value: ConfigView; label: string; icon: JSX.Element }> = [
     {
       value: "settings",
-      label: frontendMessage("runtime.migrated.features.chat.PluginConfigViews.24.33"),
+      label: frontendMessage("pluginConfig.viewSettings"),
       icon: <Settings2 className="h-3.5 w-3.5" />,
     },
     {
       value: "toml",
-      label: frontendMessage("runtime.migrated.features.chat.PluginConfigViews.25.29"),
+      label: frontendMessage("pluginConfig.viewSource"),
       icon: <Code2 className="h-3.5 w-3.5" />,
     },
   ];
@@ -93,7 +93,7 @@ export function SettingsView({
     >
       {parseError ? (
         <div className="mb-5 rounded-lg border border-brick-100 bg-brick-50 px-3 py-2 text-[12.5px] text-brick-700">
-          {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.76.11")}
+          {frontendMessage("pluginConfig.sourceParseFailed")}
         </div>
       ) : null}
 
@@ -127,7 +127,7 @@ export function SettingsView({
           <div className="grid min-h-64 place-items-center rounded-lg border border-ink-200/70 bg-paper-50 text-[13px] text-ink-400 shadow-panel">
             {fieldVisibility === "essential" && allFields.length > 0
               ? frontendMessage("settings.config.noEssentialFields")
-              : frontendMessage("runtime.migrated.features.chat.PluginConfigViews.106.13")}
+              : frontendMessage("pluginConfig.noVisualFields")}
           </div>
         </div>
       )}
@@ -225,16 +225,9 @@ export function ConfigSourceNotice({ plugin }: { plugin: PluginConfigItem }): JS
 
   return (
     <div className="mt-2 rounded-md border border-ink-200 bg-paper-100 px-2 py-1.5 text-[12px] leading-5 text-ink-700">
-      {plugin.configExists ? (
-        <>
-          {templateName} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.56")}
-        </>
-      ) : (
-        <>
-          {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.7")}
-          {templateName} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.27")}
-        </>
-      )}
+      {plugin.configExists
+        ? frontendMessage("pluginConfig.exampleInitializedNotice", { templateName })
+        : frontendMessage("pluginConfig.templateDraftNotice", { templateName })}
     </div>
   );
 }
@@ -256,16 +249,16 @@ function PluginToolsSection({
     <section className="space-y-3">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h3 className="text-[13px] font-semibold text-ink-900">
-            {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.227.66")}
-          </h3>
+          <h3 className="text-[13px] font-semibold text-ink-900">{frontendMessage("pluginConfig.toolSwitches")}</h3>
           <p className="mt-0.5 text-[12px] leading-5 text-ink-500">
-            {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.229.13")}
+            {frontendMessage("pluginConfig.toolSwitchesDescription")}
           </p>
         </div>
         <span className="pb-0.5 text-[11px] text-ink-400">
-          {plugin.enabledToolCount}/{plugin.toolCount}{" "}
-          {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.232.104")}
+          {frontendMessage("pluginConfig.toolsEnabledCount", {
+            enabled: plugin.enabledToolCount,
+            total: plugin.toolCount,
+          })}
         </span>
       </div>
       <div className="plugin-config-tool-grid divide-y divide-ink-200/70 border-y border-ink-200/70">
@@ -320,7 +313,7 @@ function SettingsSection({
           ) : null}
         </div>
         <span className="pb-0.5 text-[11px] text-ink-400">
-          {section.fields.length} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.302.83")}
+          {frontendMessage("pluginConfig.fieldCount", { count: section.fields.length })}
         </span>
       </div>
       <div className="divide-y divide-ink-200/70 border-y border-ink-200/70 bg-paper-50">

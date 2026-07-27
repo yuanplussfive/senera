@@ -456,6 +456,10 @@ class FakePersistentChild extends EventEmitter implements SeneraPersistentProces
     return true;
   }
 
+  async terminateTree(signal: NodeJS.Signals): Promise<void> {
+    this.kill(signal);
+  }
+
   emitClose(exitCode: number | null = 0, signal: NodeJS.Signals | null = null): void {
     this.exitCode = exitCode;
     this.signalCode = signal;

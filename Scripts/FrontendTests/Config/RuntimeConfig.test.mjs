@@ -8,6 +8,19 @@ afterEach(() => {
 });
 
 describe("frontend runtime endpoints", () => {
+  test("uses the page origin when a production build has no endpoint override", () => {
+    window.__SENERA_RUNTIME_CONFIG__ = {};
+
+    const pageUrl = new URL(window.location.href);
+    pageUrl.protocol = pageUrl.protocol === "https:" ? "wss:" : "ws:";
+    pageUrl.pathname = "/";
+    pageUrl.search = "";
+    pageUrl.hash = "";
+
+    expect(resolveRuntimeWebSocketUrl("")).toBe(pageUrl.toString());
+    expect(resolveRuntimeHttpBaseUrl(resolveRuntimeWebSocketUrl(""))).toBe(window.location.origin);
+  });
+
   test("keeps Docker HTTP APIs on the page origin independently of the WebSocket endpoint", () => {
     window.__SENERA_RUNTIME_CONFIG__ = {
       webSocketUrl: "ws://127.0.0.1:8787",

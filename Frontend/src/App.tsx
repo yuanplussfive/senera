@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { Toaster } from "sonner";
 import { TooltipProvider, ErrorBoundary } from "./shared/ui";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
@@ -6,7 +6,6 @@ import { buildUploadUrl } from "./api/uploadClient";
 import { useStore } from "./store/sessionStore";
 import { ChatPanel } from "./features/chat";
 import { SessionList } from "./features/session";
-import { ThinkingTimeline } from "./features/workflow";
 import { AppShell, readAppShellRenderPlan, type WorkflowDockTool } from "./layout/AppShell";
 import { EventKinds, type EventEnvelope, type WsRequest } from "./api/eventTypes";
 import { useChatCommands, type LastSentMessage } from "./app/useChatCommands";
@@ -25,13 +24,22 @@ import { installCopyableToasts } from "./shared/ui/installCopyableToasts";
 import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { useSettingsRuntime } from "./app/useSettingsRuntime";
 import { useWebSettingsController } from "./app/useWebSettingsController";
-import { SettingsOverlay } from "./features/settings";
 import { useExecutionResourceCommands } from "./app/useExecutionResourceCommands";
 import { TerminalPanelStatus, TerminalRuntimeBoundary } from "./features/terminal/TerminalPanelStatus";
+import { loadWebSettingsOverlayComponent, preloadWebSettingsSurface } from "./app/applicationModuleLoaders";
+import { SettingsSurfaceLoading } from "./app/SurfaceLoading";
+import { scheduleIdleTask } from "./shared/scheduling/scheduleIdleTask";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
 type BackgroundTerminalPanelComponent = (typeof import("./features/terminal"))["BackgroundTerminalPanel"];
+type ThinkingTimelineProps = ComponentProps<
+  (typeof import("./features/workflow/ThinkingTimeline"))["ThinkingTimeline"]
+>;
+const LazyThinkingTimeline = lazy(() =>
+  import("./features/workflow/ThinkingTimeline").then((module) => ({ default: module.ThinkingTimeline })),
+);
+const LazySettingsOverlay = lazy(loadWebSettingsOverlayComponent);
 type TerminalPanelLoadState =
   | { status: "idle" }
   | { status: "loading" }
@@ -84,6 +92,8 @@ export function App({
   const uploadUrl = useMemo(() => buildUploadUrl(HTTP_BASE_URL), []);
   const appShellRenderPlan = readAppShellRenderPlan(responsiveMode);
   const settingsController = useWebSettingsController();
+
+  useEffect(() => scheduleIdleTask(preloadWebSettingsSurface), []);
 
   const handleWorkflowDockToolChange = useCallback((tool: WorkflowDockTool): void => {
     setWorkflowDockTool(tool);
@@ -318,41 +328,34 @@ export function App({
     />
   ) : null;
 
+  // sessionPanel(常驻侧栏)与 sessionDrawer(移动端抽屉)共用同一份会话列表行为。
+  const sessionListSharedProps: Omit<
+    ComponentProps<typeof SessionList>,
+    "presentation" | "onClosePanel" | "onSessionSelected"
+  > = {
+    onNewSession: handleNewSession,
+    onCloseSession: handleCloseSession,
+    onCloseSessions: handleCloseSessions,
+    onRenameSession: handleRenameSession,
+    userProfile,
+    onUpdateUserProfile: handleUpdateUserProfile,
+    onLogout,
+    socketStatus: status,
+    sandboxStatus,
+    onSettingsIntent: preloadWebSettingsSurface,
+    onOpenSettings: (section, returnFocus) => {
+      void settingsController.openSettings(section, returnFocus);
+    },
+  };
+
   return (
     <TooltipProvider delayDuration={300}>
       <AppShell
-        sessionPanel={
-          <SessionList
-            presentation="auto"
-            onNewSession={handleNewSession}
-            onCloseSession={handleCloseSession}
-            onCloseSessions={handleCloseSessions}
-            onRenameSession={handleRenameSession}
-            userProfile={userProfile}
-            onUpdateUserProfile={handleUpdateUserProfile}
-            onLogout={onLogout}
-            socketStatus={status}
-            sandboxStatus={sandboxStatus}
-            onOpenSettings={(section, returnFocus) => {
-              void settingsController.openSettings(section, returnFocus);
-            }}
-          />
-        }
+        sessionPanel={<SessionList presentation="auto" {...sessionListSharedProps} />}
         sessionDrawer={
           <SessionList
             presentation="panel"
-            onNewSession={handleNewSession}
-            onCloseSession={handleCloseSession}
-            onCloseSessions={handleCloseSessions}
-            onRenameSession={handleRenameSession}
-            userProfile={userProfile}
-            onUpdateUserProfile={handleUpdateUserProfile}
-            onLogout={onLogout}
-            socketStatus={status}
-            sandboxStatus={sandboxStatus}
-            onOpenSettings={(section, returnFocus) => {
-              void settingsController.openSettings(section, returnFocus);
-            }}
+            {...sessionListSharedProps}
             onClosePanel={() => setSessionDrawerOpen(false)}
             onSessionSelected={() => setSessionDrawerOpen(false)}
           />
@@ -409,8 +412,8 @@ export function App({
             />
           </ErrorBoundary>
         }
-        workflowPanel={<ThinkingTimeline presentation="dock" />}
-        workflowDrawer={<ThinkingTimeline presentation="panel" hidePanelTitle />}
+        workflowPanel={<DeferredThinkingTimeline presentation="dock" />}
+        workflowDrawer={<DeferredThinkingTimeline presentation="panel" hidePanelTitle />}
         terminalPanel={terminalPanel}
         workflowDockTool={workflowDockTool}
         onWorkflowDockToolChange={handleWorkflowDockToolChange}
@@ -420,28 +423,32 @@ export function App({
         onWorkflowDrawerOpenChange={setWorkflowDrawerOpen}
         responsiveMode={responsiveMode}
       />
-      <SettingsOverlay
-        controller={settingsController}
-        send={send}
-        status={status}
-        workbench={{
-          environment: {
-            appVersion: __SENERA_APP_VERSION__,
-            frontendVersion: __SENERA_FRONTEND_VERSION__,
-            mode: import.meta.env.MODE,
-            surface: "web",
-          },
-          values: { defaultSidebarCollapsed, defaultRightPanelCollapsed },
-          motionLevel,
-          onValueChange: (id, value) => {
-            if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
-            if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
-          },
-          onMotionLevelChange: setMotionLevel,
-          pluginSettings: settingsRuntime.pluginSettings,
-          systemConfig: settingsRuntime.systemConfig,
-        }}
-      />
+      {settingsController.section !== null || settingsController.closeConfirmationOpen ? (
+        <Suspense fallback={<SettingsSurfaceLoading presentation="overlay" />}>
+          <LazySettingsOverlay
+            controller={settingsController}
+            send={send}
+            status={status}
+            workbench={{
+              environment: {
+                appVersion: __SENERA_APP_VERSION__,
+                frontendVersion: __SENERA_FRONTEND_VERSION__,
+                mode: import.meta.env.MODE,
+                surface: "web",
+              },
+              values: { defaultSidebarCollapsed, defaultRightPanelCollapsed },
+              motionLevel,
+              onValueChange: (id, value) => {
+                if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
+                if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
+              },
+              onMotionLevelChange: setMotionLevel,
+              pluginSettings: settingsRuntime.pluginSettings,
+              systemConfig: settingsRuntime.systemConfig,
+            }}
+          />
+        </Suspense>
+      ) : null}
       <Toaster
         position="bottom-right"
         toastOptions={{
@@ -449,5 +456,13 @@ export function App({
         }}
       />
     </TooltipProvider>
+  );
+}
+
+function DeferredThinkingTimeline(props: ThinkingTimelineProps): JSX.Element {
+  return (
+    <Suspense fallback={<div className="h-full w-full" aria-busy="true" />}>
+      <LazyThinkingTimeline {...props} />
+    </Suspense>
   );
 }

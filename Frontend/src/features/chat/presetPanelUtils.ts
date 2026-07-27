@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { FileRejection } from "react-dropzone";
 import type { PresetFormat } from "../../api/eventTypes";
-import { FrontendDefaultLocale, frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { errorMessage, formatInteger } from "../../lib/util";
 import type { CodeTextEditorLanguage } from "../../shared/code/CodeTextEditor";
 
 export type PresetImportEntry = {
@@ -24,7 +25,6 @@ export type PresetTokenState = {
 type TokenCounter = (content: string) => number;
 
 const PresetTokenCountDelayMs = 120;
-const numberFormatter = new Intl.NumberFormat(FrontendDefaultLocale);
 let tokenCounterPromise: Promise<TokenCounter> | null = null;
 
 export const PresetFormatOptions: Array<{
@@ -76,7 +76,7 @@ export function validateDraft(format: PresetFormat, content: string): string | n
     JSON.parse(content);
     return null;
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    return errorMessage(error);
   }
 }
 
@@ -153,10 +153,6 @@ export function readPresetStatusLabel({
   return frontendMessage(active ? "preset.ui.enabled" : "preset.ui.disabled");
 }
 
-export function formatInteger(value: number): string {
-  return numberFormatter.format(value);
-}
-
 export function formatTokenState(state: PresetTokenState): string {
   if (state.status === "ready" && state.count !== null) {
     return frontendMessage("preset.ui.tokenCount", { count: formatInteger(state.count) });
@@ -180,20 +176,6 @@ export function withPresetFormatExtension(name: string, format: PresetFormat): s
   }
 
   return `${baseName}${readPresetFormatExtension(format)}`;
-}
-
-export function formatPresetTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(FrontendDefaultLocale, {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
 }
 
 function readPresetFileFormat(file: File): PresetFormat | null {

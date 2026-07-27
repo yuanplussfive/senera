@@ -1,8 +1,9 @@
-import { createHash } from "node:crypto";
 import type { FileError, FileInfo, Result } from "@earendil-works/pi-agent-core";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { WorkspaceApplyPatchError } from "./AgentWorkspacePatchError.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { sha256Hex } from "../Core/AgentHash.js";
 
 export interface WorkspacePatchTarget {
   input: string;
@@ -56,7 +57,7 @@ export async function applyWorkspacePatchTransaction(
       throw new WorkspaceApplyPatchError({
         message: agentErrorMessage("workspacePatch.rollbackIncomplete", {
           count: rollbackErrors.length,
-          cause: error instanceof Error ? error.message : String(error),
+          cause: errorMessage(error),
         }),
         pointer: "/operations",
         suggestion: rollbackErrors.join("; "),
@@ -77,7 +78,7 @@ export async function validateWorkspacePatchPreconditions(
       continue;
     }
     const current = await readBinaryFile(files, precondition.target, "/operations");
-    if (sha256(current) !== precondition.sha256) throw concurrentWorkspaceChange(precondition.target.relativePath);
+    if (sha256Hex(current) !== precondition.sha256) throw concurrentWorkspaceChange(precondition.target.relativePath);
   }
 }
 
@@ -91,7 +92,7 @@ export async function readWorkspaceTextFileWithPrecondition(
   const stat = await requiredFileInfo(files, target, pointer);
   if (stat.kind !== "file") throw targetNotFile(target, pointer);
   const content = await requireFileResult(files.readTextFile(target.relativePath), target, pointer);
-  addFilePrecondition(plan, target, sha256(Buffer.from(content, "utf8")), expectedSha256, pointer);
+  addFilePrecondition(plan, target, sha256Hex(Buffer.from(content, "utf8")), expectedSha256, pointer);
   return content;
 }
 
@@ -105,7 +106,7 @@ export async function captureWorkspaceFilePrecondition(
   const stat = await requiredFileInfo(files, target, pointer);
   if (stat.kind !== "file") throw targetNotFile(target, pointer);
   const content = await readBinaryFile(files, target, pointer);
-  addFilePrecondition(plan, target, sha256(content), expectedSha256, pointer);
+  addFilePrecondition(plan, target, sha256Hex(content), expectedSha256, pointer);
 }
 
 export function addWorkspaceMissingPrecondition(
@@ -144,7 +145,7 @@ async function captureRollbackSnapshot(
       throw concurrentWorkspaceChange(target.relativePath);
     }
     const content = await readBinaryFile(files, target, "/operations");
-    if (precondition?.state === "file" && sha256(content) !== precondition.sha256) {
+    if (precondition?.state === "file" && sha256Hex(content) !== precondition.sha256) {
       throw concurrentWorkspaceChange(target.relativePath);
     }
     snapshots.push({ target, state: "file", content });
@@ -169,7 +170,7 @@ async function restoreRollbackSnapshot(snapshot: RollbackSnapshot, files: Senera
         await requireFileResult(files.remove(file.target.relativePath), file.target);
       }
     } catch (error) {
-      errors.push(`${file.target.relativePath}: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`${file.target.relativePath}: ${errorMessage(error)}`);
     }
   }
 
@@ -186,7 +187,7 @@ async function restoreRollbackSnapshot(snapshot: RollbackSnapshot, files: Senera
         );
       }
     } catch (error) {
-      errors.push(`${directory.target.relativePath}: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`${directory.target.relativePath}: ${errorMessage(error)}`);
     }
   }
   return errors;
@@ -222,10 +223,6 @@ function targetNotFile(target: WorkspacePatchTarget, pointer: string): Workspace
     message: agentErrorMessage("workspacePatch.targetNotFile", { path: target.relativePath }),
     pointer,
   });
-}
-
-function sha256(content: Uint8Array): string {
-  return createHash("sha256").update(content).digest("hex");
 }
 
 async function requiredFileInfo(

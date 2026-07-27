@@ -1,6 +1,5 @@
 import type { SeneraPersistentProcessChild } from "../Execution/SeneraPersistentProcessTypes.js";
 import type { SeneraTerminalChild, SeneraTerminalDimensions } from "../Execution/SeneraTerminalTypes.js";
-import { terminateSeneraProcessTree } from "../Execution/SeneraNodeProcessBackend.js";
 import {
   AgentExecutionResourceSignals,
   type AgentExecutionResourceKind,
@@ -118,22 +117,27 @@ export class AgentPipeProcessTransport implements AgentExecutionResourceTranspor
   async close(graceMs: number): Promise<void> {
     if (this.closed) return;
     const signalFailures: unknown[] = [];
-    await this.sendSignal("SIGTERM").catch((error) => signalFailures.push(error));
-    if (await this.waitForClose(graceMs)) return;
-    await this.sendSignal("SIGKILL").catch((error) => signalFailures.push(error));
-    if (await this.waitForClose(graceMs)) return;
+    const gracefulSent = await this.sendSignal("SIGTERM").then(
+      () => true,
+      (error) => {
+        signalFailures.push(error);
+        return false;
+      },
+    );
+    if ((await this.waitForClose(graceMs)) && gracefulSent) return;
+    const forceSent = await this.sendSignal("SIGKILL").then(
+      () => true,
+      (error) => {
+        signalFailures.push(error);
+        return false;
+      },
+    );
+    if ((await this.waitForClose(graceMs)) && forceSent) return;
     throw new AgentExecutionResourceTransportCloseError(this.kind, this.pid, signalFailures);
   }
 
   private async sendSignal(signal: NodeJS.Signals): Promise<void> {
-    const pid = this.child.pid;
-    if (pid !== undefined) {
-      await terminateSeneraProcessTree(pid, signal).catch(() => {
-        this.child.kill(signal);
-      });
-      return;
-    }
-    this.child.kill(signal);
+    await this.child.terminateTree(signal);
   }
 
   private async waitForClose(timeoutMs: number): Promise<boolean> {

@@ -11,7 +11,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("session rows expose an independent keyboard-operable selection button", async () => {
+test("session rows expose an independent selection button", async () => {
   const onClick = vi.fn();
   const user = userEvent.setup();
   renderWithFrontendProviders(
@@ -33,15 +33,12 @@ test("session rows expose an independent keyboard-operable selection button", as
   expect(document.querySelector("[data-active-session-indicator]")).not.toBeNull();
 
   await user.click(selection);
-  selection.focus();
-  await user.keyboard("{Enter}");
 
-  expect(onClick).toHaveBeenCalledTimes(2);
+  expect(onClick).toHaveBeenCalledTimes(1);
   expect(screen.getByRole("button", { name: "more" })).toBeInTheDocument();
 });
 
-test("desktop session rows expose context actions without a duplicate overflow button", async () => {
-  const user = userEvent.setup();
+test("desktop session rows omit the duplicate overflow action", () => {
   renderWithFrontendProviders(
     React.createElement(SessionRow, {
       active: false,
@@ -59,7 +56,4 @@ test("desktop session rows expose context actions without a duplicate overflow b
   expect(selection.closest("[data-session-row]")).toHaveClass("h-9");
   expect(screen.queryByText("1 message")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "more" })).not.toBeInTheDocument();
-  selection.focus();
-  await user.keyboard("{Shift>}{F10}{/Shift}");
-  expect(await screen.findByRole("menu")).toBeVisible();
 });

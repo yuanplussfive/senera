@@ -64,7 +64,16 @@ const PiTurnPhases = {
 } as const;
 
 export class AgentPiTurnExecutor {
-  private readonly conversation = new AgentPiOpenAiTranscriptProjector();
+  private readonly conversation = new AgentPiOpenAiTranscriptProjector({
+    onIssue: (issue) => {
+      void emitAgentPiDiagnostic(this.options.runtime.piDiagnostics, {
+        context: { requestId: issue.requestId },
+        source: AgentPiDiagnosticSources.Session,
+        name: issue.name,
+        details: issue,
+      });
+    },
+  });
 
   constructor(private readonly options: AgentPiTurnExecutorOptions) {}
 

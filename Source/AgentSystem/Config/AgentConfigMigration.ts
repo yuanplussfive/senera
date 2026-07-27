@@ -20,7 +20,7 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
     return undefined;
   }
 
-  const sourceVersion = readConfigVersion(config);
+  const sourceVersion = readAgentConfigVersion(config);
   if (sourceVersion === CurrentAgentConfigVersion) {
     return undefined;
   }
@@ -150,7 +150,8 @@ function removeToolSearchIntentGate(container: Record<string, unknown>, prefix: 
   removedPaths.push(`${prefix}ToolSearch.Ranking.IntentGate`);
 }
 
-function readConfigVersion(config: Record<string, unknown>): number {
+export function readAgentConfigVersion(config: unknown): number {
+  if (!isRecord(config)) return 0;
   if (!Object.hasOwn(config, "ConfigVersion")) {
     return 0;
   }

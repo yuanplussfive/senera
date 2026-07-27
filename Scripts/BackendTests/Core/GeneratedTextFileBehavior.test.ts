@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { readOptionalUtf8, writeUtf8Atomically } from "../../../Build/GeneratedTextFile.js";
+import { readOptionalUtf8, synchronizeGeneratedFile, writeUtf8Atomically } from "../../../Build/GeneratedTextFile.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -29,6 +29,39 @@ describe("generated text files", () => {
 
     expect(fs.readFileSync(filePath, "utf8")).toBe("second\n");
     expect(fs.readdirSync(outputDirectory)).toEqual(["contract.json"]);
+  });
+
+  test("reports stale generated files in check mode without modifying them", () => {
+    const directory = createTemporaryDirectory();
+    const filePath = path.join(directory, "contract.json");
+    fs.writeFileSync(filePath, "old\n");
+
+    expect(() =>
+      synchronizeGeneratedFile({
+        filePath,
+        content: "new\n",
+        check: true,
+        regenerateCommand: "npm run generate.contract",
+      }),
+    ).toThrow(/contract\.json is stale\. Run npm run generate\.contract\./u);
+
+    expect(fs.readFileSync(filePath, "utf8")).toBe("old\n");
+    expect(fs.readdirSync(directory)).toEqual(["contract.json"]);
+  });
+
+  test("replaces stale generated files outside check mode", () => {
+    const directory = createTemporaryDirectory();
+    const filePath = path.join(directory, "generated", "contract.json");
+
+    synchronizeGeneratedFile({
+      filePath,
+      content: "generated\n",
+      check: false,
+      regenerateCommand: "npm run generate.contract",
+    });
+
+    expect(fs.readFileSync(filePath, "utf8")).toBe("generated\n");
+    expect(fs.readdirSync(path.dirname(filePath))).toEqual(["contract.json"]);
   });
 });
 

@@ -1,0 +1,302 @@
+import { afterEach, describe, expect, test } from "vitest";
+import { AgentEventKinds } from "../../../Source/AgentSystem/Events/AgentEventCatalog.js";
+import {
+  createRealRuntimeIntegrationHarness,
+  RealRuntimeIntegrationValues,
+  type RealRuntimeIntegrationHarness,
+} from "./RealRuntimeIntegrationHarness.js";
+
+const openHarnesses: RealRuntimeIntegrationHarness[] = [];
+
+afterEach(async () => {
+  await Promise.all(openHarnesses.splice(0).map((harness) => harness.stop()));
+});
+
+describe("real runtime integration", () => {
+  test("runs only the latest regeneration while replacing an active Pi provider turn", async () => {
+    const harness = await createRealRuntimeIntegrationHarness();
+    openHarnesses.push(harness);
+    const sessionId = "session_real_runtime_active_regeneration_e2e";
+    const requestId = "request_real_runtime_active_regeneration_e2e";
+    const firstReplacementRequestId = `${requestId}_replacement_1`;
+    const replacementRequestId = `${requestId}_replacement_2`;
+    const pausedFinalAnswer = harness.modelServer.pauseNext("generatePiFinalAnswer");
+
+    harness.client.send({
+      type: "session.message",
+      sessionId,
+      requestId,
+      input: RealRuntimeIntegrationValues.DirectRequestInput,
+      disposition: "create_if_missing",
+    });
+    await pausedFinalAnswer.entered;
+
+    harness.client.send({
+      type: "session.regenerate",
+      sessionId,
+      fromRequestId: requestId,
+      requestId: firstReplacementRequestId,
+      input: RealRuntimeIntegrationValues.DirectRequestInput,
+    });
+    harness.client.send({
+      type: "session.regenerate",
+      sessionId,
+      fromRequestId: requestId,
+      requestId: replacementRequestId,
+      input: RealRuntimeIntegrationValues.DirectRequestInput,
+    });
+    await harness.client.waitForEvent(
+      AgentEventKinds.RunCancelled,
+      (event) => event.requestId === firstReplacementRequestId,
+      { timeoutMs: 20_000 },
+    );
+    const truncated = await harness.client.waitForEvent(
+      AgentEventKinds.SessionTruncated,
+      (event) => event.sessionId === sessionId && readData(event).fromRequestId === requestId,
+      { timeoutMs: 20_000 },
+    );
+    const replacementStarted = await harness.client.waitForEvent(
+      AgentEventKinds.RunStarted,
+      (event) => event.requestId === replacementRequestId,
+      { timeoutMs: 20_000, afterSequence: truncated.sequence },
+    );
+    const replacementAnswer = await harness.client.waitForEvent(
+      AgentEventKinds.AssistantMessageCreated,
+      (event) =>
+        event.requestId === replacementRequestId &&
+        readData(event).content === RealRuntimeIntegrationValues.DirectFinalAnswer,
+      { timeoutMs: 20_000, afterSequence: replacementStarted.sequence },
+    );
+    await harness.client.waitForEvent(
+      AgentEventKinds.RunCompleted,
+      (event) => event.requestId === replacementRequestId,
+      {
+        timeoutMs: 20_000,
+        afterSequence: replacementAnswer.sequence,
+      },
+    );
+    pausedFinalAnswer.release();
+
+    expect(harness.modelServer.count("prepareInteraction")).toBe(1);
+    expect(harness.modelServer.count("generatePiFinalAnswer")).toBe(2);
+    expect(
+      harness.client
+        .snapshot()
+        .filter((event) => event.kind === AgentEventKinds.AssistantMessageCreated)
+        .map((event) => event.requestId),
+    ).toEqual([replacementRequestId]);
+  }, 30_000);
+
+  test("reuses the Pi session and bypasses duplicate action selection for authoritative direct responses", async () => {
+    const harness = await createRealRuntimeIntegrationHarness();
+    openHarnesses.push(harness);
+    const sessionId = "session_real_runtime_direct_e2e";
+    const requestId = "request_real_runtime_direct_e2e";
+
+    harness.client.send({
+      type: "session.message",
+      sessionId,
+      requestId,
+      input: RealRuntimeIntegrationValues.DirectRequestInput,
+      disposition: "create_if_missing",
+    });
+    await harness.client.waitForEvent(AgentEventKinds.SessionCreated, (event) => event.sessionId === sessionId);
+
+    const answer = await harness.client.waitForEvent(
+      AgentEventKinds.AssistantMessageCreated,
+      (event) =>
+        event.requestId === requestId && readData(event).content === RealRuntimeIntegrationValues.DirectFinalAnswer,
+      { timeoutMs: 20_000 },
+    );
+    await harness.client.waitForEvent(AgentEventKinds.RunCompleted, (event) => event.requestId === requestId, {
+      timeoutMs: 20_000,
+      afterSequence: answer.sequence,
+    });
+    const followUpRequestId = `${requestId}_follow_up`;
+    harness.client.send({
+      type: "session.message",
+      sessionId,
+      requestId: followUpRequestId,
+      input: RealRuntimeIntegrationValues.DirectRequestInput,
+    });
+    const followUpAnswer = await harness.client.waitForEvent(
+      AgentEventKinds.AssistantMessageCreated,
+      (event) =>
+        event.requestId === followUpRequestId &&
+        readData(event).content === RealRuntimeIntegrationValues.DirectFinalAnswer,
+      { timeoutMs: 20_000 },
+    );
+    await harness.client.waitForEvent(AgentEventKinds.RunCompleted, (event) => event.requestId === followUpRequestId, {
+      timeoutMs: 20_000,
+      afterSequence: followUpAnswer.sequence,
+    });
+    const regeneratedRequestId = `${requestId}_regenerated`;
+    harness.client.send({
+      type: "session.regenerate",
+      sessionId,
+      fromRequestId: requestId,
+      requestId: regeneratedRequestId,
+      input: RealRuntimeIntegrationValues.DirectRequestInput,
+    });
+    const truncated = await harness.client.waitForEvent(
+      AgentEventKinds.SessionTruncated,
+      (event) => event.sessionId === sessionId && readData(event).fromRequestId === requestId,
+      { timeoutMs: 20_000 },
+    );
+    const regeneratedStarted = await harness.client.waitForEvent(
+      AgentEventKinds.RunStarted,
+      (event) => event.requestId === regeneratedRequestId,
+      { timeoutMs: 20_000, afterSequence: truncated.sequence },
+    );
+    const regeneratedAnswer = await harness.client.waitForEvent(
+      AgentEventKinds.AssistantMessageCreated,
+      (event) =>
+        event.requestId === regeneratedRequestId &&
+        readData(event).content === RealRuntimeIntegrationValues.DirectFinalAnswer,
+      { timeoutMs: 20_000, afterSequence: regeneratedStarted.sequence },
+    );
+    await harness.client.waitForEvent(
+      AgentEventKinds.RunCompleted,
+      (event) => event.requestId === regeneratedRequestId,
+      {
+        timeoutMs: 20_000,
+        afterSequence: regeneratedAnswer.sequence,
+      },
+    );
+    expect(harness.modelServer.count("prepareInteraction")).toBe(2);
+    expect(harness.modelServer.count("selectPiAction")).toBe(0);
+    expect(harness.modelServer.count("generatePiFinalAnswer")).toBe(3);
+  }, 30_000);
+
+  test("runs BAML planning, Pi proxy model streaming, a host tool, and persisted session replay", async () => {
+    const harness = await createRealRuntimeIntegrationHarness();
+    openHarnesses.push(harness);
+    const sessionId = "session_real_runtime_e2e";
+    const requestId = "request_real_runtime_e2e";
+
+    harness.client.send({ type: "session.create", sessionId });
+    await harness.client.waitForEvent(AgentEventKinds.SessionCreated, (event) => event.sessionId === sessionId);
+    harness.client.send({
+      type: "session.message",
+      sessionId,
+      requestId,
+      input: RealRuntimeIntegrationValues.RequestInput,
+    });
+
+    const toolCompleted = await harness.client.waitForEvent(
+      AgentEventKinds.ToolCallCompleted,
+      (event) => event.requestId === requestId && readData(event).toolName === RealRuntimeIntegrationValues.ToolName,
+      { timeoutMs: 20_000 },
+    );
+    const finalAnswer = await harness.client.waitForEvent(
+      AgentEventKinds.AssistantMessageCreated,
+      (event) => event.requestId === requestId && readData(event).content === RealRuntimeIntegrationValues.FinalAnswer,
+      { timeoutMs: 20_000, afterSequence: toolCompleted.sequence },
+    );
+    await harness.client.waitForEvent(AgentEventKinds.RunCompleted, (event) => event.requestId === requestId, {
+      timeoutMs: 20_000,
+      afterSequence: finalAnswer.sequence,
+    });
+    expect(harness.modelServer.stages).toEqual(expect.arrayContaining(["prepareInteraction", "selectPiAction"]));
+    expect(harness.modelServer.count("selectPiAction")).toBe(1);
+    expect(harness.modelServer.count("generatePiFinalAnswer")).toBe(1);
+
+    harness.client.send({ type: "session.history", sessionId, refresh: true });
+    const history = await harness.client.waitForEvent(
+      AgentEventKinds.SessionHistoryChunk,
+      (event) =>
+        event.sessionId === sessionId && JSON.stringify(event.data).includes(RealRuntimeIntegrationValues.FinalAnswer),
+      { afterSequence: finalAnswer.sequence },
+    );
+    expect(JSON.stringify(history.data)).toContain(RealRuntimeIntegrationValues.RequestInput);
+    expect(JSON.stringify(history.data)).toContain('"source":"provider_reported"');
+    expect(JSON.stringify(history.data)).toContain('"totalTokens":440');
+    expect(JSON.stringify(history.data)).toContain('"stage":"PrepareInteraction"');
+    expect(JSON.stringify(history.data)).toContain('"stage":"AuditToolRisk"');
+    expect(JSON.stringify(history.data)).toContain('"stage":"GeneratePiFinalAnswer"');
+  }, 30_000);
+  test("cancels a run while the planner is paused mid-stage and accepts follow-up work", async () => {
+    const harness = await createRealRuntimeIntegrationHarness();
+    openHarnesses.push(harness);
+    const sessionId = "session_real_runtime_cancel_e2e";
+    const requestId = "request_real_runtime_cancel_e2e";
+    const paused = harness.modelServer.pauseNext("prepareInteraction");
+
+    harness.client.send({
+      type: "session.message",
+      sessionId,
+      requestId,
+      input: RealRuntimeIntegrationValues.DirectRequestInput,
+      disposition: "create_if_missing",
+    });
+    await paused.entered;
+    harness.client.send({ type: "session.cancel", sessionId });
+    await harness.client.waitForEvent(AgentEventKinds.RunCancelled, (event) => event.requestId === requestId, {
+      timeoutMs: 20_000,
+    });
+    paused.release();
+
+    const followUpRequestId = `${requestId}_follow_up`;
+    harness.client.send({
+      type: "session.message",
+      sessionId,
+      requestId: followUpRequestId,
+      input: RealRuntimeIntegrationValues.DirectRequestInput,
+    });
+    const followUpAnswer = await harness.client.waitForEvent(
+      AgentEventKinds.AssistantMessageCreated,
+      (event) =>
+        event.requestId === followUpRequestId &&
+        readData(event).content === RealRuntimeIntegrationValues.DirectFinalAnswer,
+      { timeoutMs: 20_000 },
+    );
+    await harness.client.waitForEvent(AgentEventKinds.RunCompleted, (event) => event.requestId === followUpRequestId, {
+      timeoutMs: 20_000,
+      afterSequence: followUpAnswer.sequence,
+    });
+    expect(harness.modelServer.count("prepareInteraction")).toBe(2);
+  }, 30_000);
+
+  test("surfaces a planner provider failure as run.failed and keeps the session usable", async () => {
+    const harness = await createRealRuntimeIntegrationHarness();
+    openHarnesses.push(harness);
+    const sessionId = "session_real_runtime_failure_e2e";
+    const requestId = "request_real_runtime_failure_e2e";
+    harness.modelServer.failNext("prepareInteraction");
+
+    harness.client.send({
+      type: "session.message",
+      sessionId,
+      requestId,
+      input: RealRuntimeIntegrationValues.DirectRequestInput,
+      disposition: "create_if_missing",
+    });
+    await harness.client.waitForEvent(AgentEventKinds.RunFailed, (event) => event.requestId === requestId, {
+      timeoutMs: 20_000,
+    });
+
+    const retryRequestId = `${requestId}_retry`;
+    harness.client.send({
+      type: "session.message",
+      sessionId,
+      requestId: retryRequestId,
+      input: RealRuntimeIntegrationValues.DirectRequestInput,
+    });
+    const retryAnswer = await harness.client.waitForEvent(
+      AgentEventKinds.AssistantMessageCreated,
+      (event) =>
+        event.requestId === retryRequestId &&
+        readData(event).content === RealRuntimeIntegrationValues.DirectFinalAnswer,
+      { timeoutMs: 20_000 },
+    );
+    await harness.client.waitForEvent(AgentEventKinds.RunCompleted, (event) => event.requestId === retryRequestId, {
+      timeoutMs: 20_000,
+      afterSequence: retryAnswer.sequence,
+    });
+    expect(harness.modelServer.count("prepareInteraction")).toBe(2);
+  }, 30_000);
+});
+
+function readData(event: { data: unknown }): Record<string, unknown> {
+  return event.data as Record<string, unknown>;
+}

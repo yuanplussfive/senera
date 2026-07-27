@@ -11,6 +11,7 @@ import {
   writeAgentToolApprovalPolicyArtifactManifest,
 } from "../Source/AgentSystem/Safety/AgentToolApprovalPolicyArtifact.js";
 import { readOpaToolchain, resolveOpaCompilerBinary } from "./OpaToolchain.js";
+import { toPosixRelative } from "../Scripts/Support/FileWalk.js";
 
 const workspaceRoot = process.cwd();
 const toolchain = readOpaToolchain(workspaceRoot);
@@ -130,7 +131,7 @@ function readOpaVersion(): string {
 }
 
 function toOpaCliPath(filePath: string): string {
-  return path.relative(workspaceRoot, filePath).replaceAll(path.sep, "/");
+  return toPosixRelative(workspaceRoot, filePath);
 }
 
 function extractTarGzEntry(bundlePath: string, entryName: string): Buffer {

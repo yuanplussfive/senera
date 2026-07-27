@@ -1,3 +1,5 @@
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
+
 export function readArrayItems(value: unknown, itemKey: string): unknown[] {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return [];
@@ -36,16 +38,6 @@ export function stringifyPreview(value: unknown): string {
 }
 
 export function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(stableStringify).join(",")}]`;
-  }
-
-  if (value && typeof value === "object") {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`)
-      .join(",")}}`;
-  }
-
-  return JSON.stringify(value);
+  // 委托规范 JSON（码点排序）：localeCompare 排序会随 ICU 环境漂移，不能用于哈希与身份键。
+  return value === undefined ? "null" : stringifyAgentCanonicalJson(value);
 }

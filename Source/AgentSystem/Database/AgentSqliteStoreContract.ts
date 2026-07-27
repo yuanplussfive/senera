@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "../Core/AgentHash.js";
 
 export const AgentSqliteStoreDataClasses = {
   Authoritative: "authoritative",
@@ -99,7 +99,7 @@ export function loadAgentSqliteStoreContract(value: unknown): AgentSqliteStoreCo
 }
 
 export function sha256AgentSqliteResource(content: string): string {
-  return createHash("sha256").update(content, "utf8").digest("hex");
+  return sha256Hex(content);
 }
 
 function readMigration(

@@ -16,6 +16,7 @@ import {
   readArtifactMemories,
 } from "./AgentArtifactMemoryReader.js";
 import { type ArtifactMemoryReadArguments, ArtifactMemoryReadArgumentsSchema } from "./AgentArtifactMemoryTypes.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 const ArtifactManifestIndexes = new AgentArtifactManifestIndexCache();
 const ArtifactMemoryContentCaches = new AgentArtifactMemoryContentCacheRegistry();
@@ -98,7 +99,7 @@ export const readArtifactMemoryHostTool: AgentHostToolHandler = async (args, con
     }
     return artifactMemoryFailure({
       code: AgentExecutionErrorCodes.PluginExecutionError,
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage(error),
       details: {
         phase: AgentToolProcessErrorPhases.RuntimeExecution,
         toolName: context.tool.name,

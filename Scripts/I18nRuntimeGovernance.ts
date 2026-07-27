@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { toPosixPath, toPosixRelative, walkFiles } from "./Support/FileWalk.js";
 
 export interface I18nRuntimeGovernanceArea {
   root: string;
@@ -58,23 +59,22 @@ export function verifyI18nRuntimeGovernance(options: I18nRuntimeGovernanceOption
 function inspectArea(workspaceRoot: string, area: I18nRuntimeGovernanceArea): string[] {
   const root = path.resolve(workspaceRoot, ...area.root.split("/"));
   const allowedFiles = new Set(
-    (area.allowedFiles ?? []).map((file) => normalizePath(path.resolve(workspaceRoot, ...file.split("/")))),
+    (area.allowedFiles ?? []).map((file) => toPosixPath(path.resolve(workspaceRoot, ...file.split("/")))),
   );
   const allowedFilePatterns = area.allowedFilePatterns ?? [];
-  const excludedPaths = (area.exclude ?? []).map((file) => normalizePath(path.resolve(root, ...file.split("/"))));
+  const excludedPaths = (area.exclude ?? []).map((file) => toPosixPath(path.resolve(root, ...file.split("/"))));
 
   return area.include
     .flatMap((include) => collectSourceFiles(path.resolve(root, ...include.split("/"))))
     .filter((file, index, files) => files.indexOf(file) === index)
     .filter(
       (file) =>
-        !allowedFiles.has(normalizePath(file)) &&
-        !allowedFilePatterns.some((pattern) => pattern.test(normalizePath(file))),
+        !allowedFiles.has(toPosixPath(file)) && !allowedFilePatterns.some((pattern) => pattern.test(toPosixPath(file))),
     )
     .filter(
       (file) =>
         !excludedPaths.some(
-          (excluded) => normalizePath(file) === excluded || normalizePath(file).startsWith(`${excluded}/`),
+          (excluded) => toPosixPath(file) === excluded || toPosixPath(file).startsWith(`${excluded}/`),
         ),
     )
     .flatMap((file) => inspectFile(workspaceRoot, file));
@@ -108,7 +108,7 @@ function inspectFile(workspaceRoot: string, file: string): string[] {
     }
     const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
     violations.push(
-      `${relativePath(workspaceRoot, file)}:${location.line + 1}:${location.character + 1} ${reason} must use i18n catalog`,
+      `${toPosixRelative(workspaceRoot, file)}:${location.line + 1}:${location.character + 1} ${reason} must use i18n catalog`,
     );
   };
 
@@ -278,24 +278,12 @@ function collectSourceFiles(target: string): string[] {
     return [];
   }
 
-  const files: string[] = [];
-  for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
-    if (entry.isDirectory() && IgnoredDirectoryNames.has(entry.name)) {
-      continue;
-    }
-    files.push(...collectSourceFiles(path.join(target, entry.name)));
-  }
-  return files;
+  return walkFiles(target, {
+    extensions: [".ts", ".tsx"],
+    excludeDirectoryNames: IgnoredDirectoryNames,
+  });
 }
 
 function compactJsxText(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
-}
-
-function normalizePath(value: string): string {
-  return value.replaceAll("\\", "/");
-}
-
-function relativePath(workspaceRoot: string, file: string): string {
-  return path.relative(workspaceRoot, file).replaceAll(path.sep, "/");
 }

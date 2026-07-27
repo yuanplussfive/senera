@@ -95,6 +95,69 @@ test("uses the authentication API result as the authoritative post-login session
   expect(handleRef.current.state).toEqual({ status: "authenticated", authentication });
 });
 
+test("starts desktop preloading after creating the initial authentication request", async () => {
+  const callOrder = [];
+  authenticationApi.read.mockImplementation(() => {
+    callOrder.push("read");
+    return Promise.resolve({ state: "anonymous" });
+  });
+  const onInitialRequestStarted = vi.fn(() => callOrder.push("preload"));
+  const handleRef = { current: null };
+
+  render(React.createElement(AuthenticationHarness, { handleRef, lifecycle: { onInitialRequestStarted } }));
+  await waitFor(() => expect(handleRef.current.state).toEqual({ status: "anonymous" }));
+
+  expect(callOrder).toEqual(["read", "preload"]);
+  expect(onInitialRequestStarted).toHaveBeenCalledTimes(1);
+});
+
+test("keeps the sign-in state visible until the authenticated surface is ready", async () => {
+  authenticationApi.read.mockResolvedValue({ state: "anonymous" });
+  authenticationApi.login.mockResolvedValue(authenticatedSession());
+  const preparation = deferredPromise();
+  const prepareAuthorizedSurface = vi.fn(() => preparation.promise);
+  const handleRef = { current: null };
+
+  render(React.createElement(AuthenticationHarness, { handleRef, lifecycle: { prepareAuthorizedSurface } }));
+  await waitFor(() => expect(handleRef.current.state).toEqual({ status: "anonymous" }));
+
+  let login;
+  act(() => {
+    login = handleRef.current.login({ loginName: "owner", password: "correct horse battery staple" });
+  });
+  await waitFor(() => expect(prepareAuthorizedSurface).toHaveBeenCalledTimes(1));
+  expect(handleRef.current.state).toEqual({ status: "anonymous" });
+
+  preparation.resolve();
+  await act(async () => login);
+  expect(handleRef.current.state.status).toBe("authenticated");
+});
+
+test("does not turn a valid session into an authentication failure when preloading fails", async () => {
+  const authentication = authenticatedSession();
+  authenticationApi.read.mockResolvedValue(authentication);
+  const prepareAuthorizedSurface = vi.fn().mockRejectedValue(new Error("chunk unavailable"));
+  const handleRef = { current: null };
+
+  render(React.createElement(AuthenticationHarness, { handleRef, lifecycle: { prepareAuthorizedSurface } }));
+
+  await waitFor(() => expect(handleRef.current.state).toEqual({ status: "authenticated", authentication }));
+  expect(prepareAuthorizedSurface).toHaveBeenCalledTimes(1);
+});
+
+test("prepares the authenticated application immediately when server authentication is disabled", async () => {
+  authenticationApi.read.mockResolvedValue({ state: "disabled" });
+  const prepareAuthorizedSurface = vi.fn().mockResolvedValue(undefined);
+  const handleRef = { current: null };
+
+  render(React.createElement(AuthenticationHarness, { handleRef, lifecycle: { prepareAuthorizedSurface } }));
+
+  await waitFor(() =>
+    expect(handleRef.current.state).toEqual({ status: "authenticated", authentication: { state: "disabled" } }),
+  );
+  expect(prepareAuthorizedSurface).toHaveBeenCalledTimes(1);
+});
+
 test("moves an active application back to sign-in when reconnect validation finds an anonymous session", async () => {
   authenticationApi.read.mockResolvedValueOnce(authenticatedSession()).mockResolvedValueOnce({ state: "anonymous" });
   const handleRef = { current: null };
@@ -137,12 +200,20 @@ test("stops reconnect validation when the server explicitly rejects access", asy
   expect(handleRef.current.state).toMatchObject({ status: "failed", error: { status: 403 } });
 });
 
-function AuthenticationHarness({ handleRef }) {
-  const handle = useServerAuthentication(HttpBaseUrl);
+function AuthenticationHarness({ handleRef, lifecycle }) {
+  const handle = useServerAuthentication(HttpBaseUrl, lifecycle);
   useEffect(() => {
     handleRef.current = handle;
   }, [handle, handleRef]);
   return null;
+}
+
+function deferredPromise() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 function authenticatedSession(overrides = {}) {

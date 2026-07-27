@@ -138,7 +138,7 @@ function OptionControl({
       className={jsonConfigInputClassName}
     >
       <option value="" disabled={field.required !== false}>
-        {frontendMessage("runtime.migrated.shared.config.JsonConfigForm.310.60")}
+        {frontendMessage("config.form.selectPlaceholder")}
       </option>
       {options.map((option) => (
         <option key={String(option)} value={String(option)}>

@@ -6,14 +6,7 @@
     "maxLines": 800,
     "legacyAllowance": 25
   },
-  "legacyLargeFiles": [
-    {
-      "path": "Frontend/src/shared/theme/themeData.ts",
-      "baselineLines": 2070,
-      "owner": "frontend-theme",
-      "splitTarget": "Split token tables, palette data, and presentation metadata into focused theme modules while preserving themeModel imports and appearance behavior."
-    }
-  ],
+  "legacyLargeFiles": [],
   "directoryBudgets": [
     {
       "path": "Source/AgentSystem",
@@ -26,6 +19,7 @@
     "docs/Development/AddTool.md",
     "docs/Development/AddRuntimeEvent.md",
     "docs/Development/AddModelEndpoint.md",
+    "docs/Development/BrowserE2ETesting.md",
     "docs/Glossary.md",
     "Source/AgentSystem/ActionPlanner/README.md",
     "Source/AgentSystem/Conversation/README.md",

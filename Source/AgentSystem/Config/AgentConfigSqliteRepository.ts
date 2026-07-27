@@ -7,6 +7,7 @@ import {
   type AgentConfigRevisionRow,
   type AgentConfigSqlStatements,
 } from "./AgentConfigSqlStatements.js";
+import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 
 export interface AgentConfigRevisionRecord {
   revision: number;
@@ -53,8 +54,12 @@ export class AgentConfigSqliteRepository {
   private readonly db: Database.Database;
   private readonly statements: AgentConfigSqlStatements;
 
-  constructor(databasePath: string) {
-    this.kernel = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
+  constructor(databasePath: string, upgradeSession?: AgentUpgradeSession) {
+    this.kernel = new AgentSqliteDatabaseKernel({
+      databasePath,
+      contract: AgentConfigDatabaseContract,
+      upgradeSession,
+    });
     this.db = this.kernel.connection;
     this.statements = prepareAgentConfigSqlStatements(this.db);
   }

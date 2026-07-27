@@ -32,6 +32,7 @@ import { memoryItemEmbeddingText } from "./AgentMemoryText.js";
 import { AgentMemoryWriteResolver } from "./AgentMemoryWriteResolver.js";
 import type { AgentMemoryWriteResolutionRequest, AgentMemoryWriteResolverOptions } from "./AgentMemoryWriteResolver.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 const MemoryWriteOperations = ["create", "reinforce", "update", "supersede"] as const;
 
@@ -146,7 +147,7 @@ export const writeMemoryHostTool: AgentHostToolHandler = async (args, context) =
   } catch (error) {
     return memoryWriteFailure({
       code: AgentExecutionErrorCodes.PluginExecutionError,
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage(error),
       details: {
         phase: AgentToolProcessErrorPhases.RuntimeExecution,
         toolName: context.tool.name,

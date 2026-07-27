@@ -18,6 +18,11 @@ import { synchronizeDockerAdminAccount } from "./DockerAdminAccountSync.js";
 import type { AgentSandboxRuntimeProvider } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
 import type { SeneraGvisorWorkerClient } from "../Source/AgentSystem/Execution/SeneraGvisorTypes.js";
 import { ensureRuntimeConfigFile } from "./RuntimeConfigBootstrap.js";
+import {
+  installAgentProcessFailureGuard,
+  installAgentProcessShutdownGuard,
+} from "../Source/AgentSystem/Diagnostics/AgentProcessGuard.js";
+import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 
 const AppRoot = resolveAppRoot();
 const WorkspaceRoot = path.resolve(process.env.SENERA_WORKSPACE_ROOT?.trim() || "/data");
@@ -37,6 +42,15 @@ const DockerSandboxRuntime = {
 } as const;
 const DockerComposeDeploymentHint =
   "Start Senera with the complete compose.yaml deployment; the application container requires sandbox-worker.";
+const dockerProcessLogger = {
+  error: (message: string, details: Record<string, unknown> = {}): void => {
+    writeJsonLine({ kind: "senera.docker.process.error", message, ...details });
+  },
+  warn: (message: string, details: Record<string, unknown> = {}): void => {
+    writeJsonLine({ kind: "senera.docker.process.warn", message, ...details });
+  },
+};
+installAgentProcessFailureGuard({ logger: dockerProcessLogger });
 await main();
 
 async function main(): Promise<void> {
@@ -60,7 +74,7 @@ async function main(): Promise<void> {
   await prepareDockerSandboxRuntime(projectedConfig, worker, sandboxProvider);
   writeFrontendRuntimeConfig(projectedConfig);
 
-  const server = startSeneraServer({
+  const server = await startSeneraServer({
     workspaceRoot: WorkspaceRoot,
     configPath: ConfigPath,
     staticFrontendRoot: FrontendRoot,
@@ -70,6 +84,10 @@ async function main(): Promise<void> {
     sandboxRuntimePrepared: true,
     sandboxProvider,
     dockerEngineWorker: worker,
+  });
+  installAgentProcessShutdownGuard({
+    logger: dockerProcessLogger,
+    stop: () => server.stop(),
   });
 
   writeJsonLine({
@@ -144,7 +162,7 @@ async function prepareDockerSandboxRuntime(
       onProgress: (progress) => writeJsonLine({ kind: "senera.docker.sandbox.progress", progress }),
     });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = errorMessage(error);
     throw new Error(`Docker OS sandbox (${provider}) could not be prepared: ${detail}`, { cause: error });
   }
 }
@@ -158,7 +176,7 @@ async function resolveDockerSandboxProvider(
     const probe = await worker.probe({ timeoutMs });
     return probe.isolation;
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = errorMessage(error);
     throw new Error(`Docker sandbox Worker negotiation failed: ${detail}. ${DockerComposeDeploymentHint}`, {
       cause: error,
     });

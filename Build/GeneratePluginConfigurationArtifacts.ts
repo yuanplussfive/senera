@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createPluginConfigurationArtifacts } from "@senera/tool-plugin-sdk";
 import type { PluginConfigurationDefinition } from "@senera/tool-plugin-sdk";
-import { readOptionalUtf8, writeUtf8Atomically } from "./GeneratedTextFile.js";
+import { readOptionalUtf8, synchronizeGeneratedFile } from "./GeneratedTextFile.js";
 
 const ConfigurationDefinitionFileName = "PluginConfig.definition.cjs";
 const check = process.argv.includes("--check");
@@ -21,14 +21,10 @@ for (const pluginRoot of discoverPluginRoots(collectionRoots)) {
   syncArtifact(path.join(pluginRoot, "PluginConfig.example.toml"), artifacts.exampleToml);
 }
 
-if (check && changed.length > 0) {
-  throw new Error(`Plugin configuration artifacts are stale:\n${changed.map((file) => `- ${file}`).join("\n")}`);
-}
-
 process.stdout.write(
   changed.length === 0
     ? "Plugin configuration artifacts are current.\n"
-    : `Plugin configuration artifacts ${check ? "would change" : "updated"}: ${changed.length}\n`,
+    : `Plugin configuration artifacts updated: ${changed.length}\n`,
 );
 
 function discoverPluginRoots(roots: readonly string[]): string[] {
@@ -50,8 +46,12 @@ function loadPluginConfigurationDefinition(definitionPath: string): unknown {
 }
 
 function syncArtifact(filePath: string, expected: string): void {
-  const actual = readOptionalUtf8(filePath);
-  if (actual === expected) return;
+  if (readOptionalUtf8(filePath) === expected) return;
   changed.push(path.relative(workspaceRoot, filePath));
-  if (!check) writeUtf8Atomically(filePath, expected);
+  synchronizeGeneratedFile({
+    filePath,
+    content: expected,
+    check,
+    regenerateCommand: "npm run generate.plugin-config",
+  });
 }

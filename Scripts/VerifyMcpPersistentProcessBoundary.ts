@@ -475,6 +475,10 @@ class FakeMcpProcess extends EventEmitter implements SeneraPersistentProcessChil
     return true;
   }
 
+  async terminateTree(signal: NodeJS.Signals): Promise<void> {
+    this.kill(signal);
+  }
+
   private handleMessage(message: Record<string, unknown>): void {
     const handlers = new Map<string, () => void>([
       [

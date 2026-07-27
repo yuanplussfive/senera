@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import { toPosixPath, toPosixRelative, walkFiles } from "./Support/FileWalk.js";
+import { sha256Hex } from "../Source/AgentSystem/Core/AgentHash.js";
 
 interface NanoContract {
   readonly schemaVersion: number;
@@ -353,7 +354,7 @@ function writeSandboxBundleFixture(bundleRoot: string, contractValue: NanoContra
   const target = distribution.targets[targetId];
   assert.ok(target, `Sandbox distribution does not declare Nano target ${targetId}.`);
   const archive = gzipSync(Buffer.from("verified Nano Sandbox Bundle fixture"));
-  const sha256 = createHash("sha256").update(archive).digest("hex");
+  const sha256 = sha256Hex(archive);
   const manifest = {
     formatVersion: distribution.formatVersion,
     distributionId: distribution.id,
@@ -433,7 +434,7 @@ function verifyBundlePublication(outputRoot: string, contractValue: NanoContract
   const staged = execFileSync("git", ["ls-files"], { cwd: outputRoot, encoding: "utf8" })
     .split(/\r?\n/u)
     .filter(Boolean)
-    .map((file) => file.replaceAll("\\", "/"));
+    .map(toPosixPath);
   const bundleRoot = contractValue.runtime.sandbox.bundle.targetRoot;
   const distribution = readSandboxDistributionContract(contractValue);
   for (const expected of [
@@ -450,13 +451,9 @@ function readSandboxDistributionContract(contractValue: NanoContract): SandboxDi
   );
 }
 
-function listFiles(root: string, relative = ""): string[] {
-  return fs
-    .readdirSync(path.join(root, relative), { withFileTypes: true })
-    .flatMap((entry) => {
-      const child = path.posix.join(relative.replaceAll("\\", "/"), entry.name);
-      return entry.isDirectory() ? listFiles(root, child) : [child];
-    })
+function listFiles(root: string): string[] {
+  return walkFiles(root)
+    .map((file) => toPosixRelative(root, file))
     .sort((left, right) => left.localeCompare(right));
 }
 

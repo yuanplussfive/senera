@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { toPosixPath } from "./Support/FileWalk.js";
 
 const workspaceRoot = process.cwd();
 const args = process.argv.slice(2);
@@ -75,10 +76,7 @@ function runGit(gitArgs: readonly string[]): string[] {
     );
     process.exit(2);
   }
-  return result.stdout
-    .split("\0")
-    .filter(Boolean)
-    .map((file) => file.replaceAll("\\", "/"));
+  return result.stdout.split("\0").filter(Boolean).map(toPosixPath);
 }
 
 function unique(values: readonly string[]): string[] {

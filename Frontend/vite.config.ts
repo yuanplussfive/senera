@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import fs from "node:fs";
 import path from "node:path";
 import { appearanceBootstrapPlugin } from "./src/build/appearanceBootstrapPlugin";
-import { readVendorChunkName } from "./src/build/viteManualChunks";
+import { staticAssetCompressionPlugin } from "./src/build/viteStaticAssetCompression";
 import { resolveFrontendConfig } from "../Source/AgentSystem/AgentDefaults";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes";
 
@@ -14,13 +15,16 @@ const frontendConfig = resolveFrontendConfig(readRootConfig());
 const rootPackageJson = readJsonFile<{ version?: string }>(path.resolve(WorkspaceRoot, "package.json"));
 const frontendPackageJson = readJsonFile<{ version?: string }>(path.resolve(__dirname, "package.json"));
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   base: "./",
-  plugins: [appearanceBootstrapPlugin(), react()],
+  plugins: [appearanceBootstrapPlugin(), react(), tailwindcss(), staticAssetCompressionPlugin()],
+  build: {
+    manifest: true,
+  },
   define: {
-    // react-draggable 4.7 reads this build-time debug flag through Node's process global.
+    // Production deployments discover their endpoint from runtime config or the page origin.
     "process.env.DRAGGABLE_DEBUG": "false",
-    __SENERA_DEFAULT_WS_URL__: JSON.stringify(frontendConfig.Client.WebSocketUrl),
+    __SENERA_DEFAULT_WS_URL__: JSON.stringify(command === "serve" ? frontendConfig.Client.WebSocketUrl : ""),
     __SENERA_DEFAULT_MODEL_LABEL__: JSON.stringify(frontendConfig.Client.ModelLabel),
     __SENERA_DEFAULT_USER_NAME__: JSON.stringify(frontendConfig.Client.UserName),
     __SENERA_EMPTY_SUGGESTIONS__: JSON.stringify(frontendConfig.Client.EmptySuggestions.join("|")),
@@ -38,15 +42,6 @@ export default defineConfig({
       "@uiw/react-codemirror",
     ],
   },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          return readVendorChunkName(id);
-        },
-      },
-    },
-  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -62,7 +57,7 @@ export default defineConfig({
     port: frontendConfig.PreviewServer.Port,
     strictPort: frontendConfig.PreviewServer.StrictPort,
   },
-});
+}));
 
 function readRootConfig(): AgentSystemConfig {
   const configuredPath = process.env.AGENT_CONFIG_PATH?.trim();

@@ -5,6 +5,7 @@ import { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigServ
 import { AgentConfigSqliteRepository } from "../Source/AgentSystem/Config/AgentConfigSqliteRepository.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { CurrentAgentConfigVersion } from "../Source/AgentSystem/Config/AgentConfigVersion.js";
+import { removeTemporaryWorkspace } from "./Support/TemporaryWorkspace.js";
 
 const tempRoot = path.join(process.cwd(), ".senera", "tmp", "verify-config-service");
 fs.mkdirSync(tempRoot, { recursive: true });
@@ -360,38 +361,5 @@ try {
 } finally {
   service?.close();
   reloaded?.close();
-  removeTempWorkspace(workspaceRoot);
-}
-
-function removeTempWorkspace(targetPath: string): void {
-  const attempts = 10;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      fs.rmSync(targetPath, { recursive: true, force: true });
-      return;
-    } catch (error) {
-      if (!isBusyFileError(error)) {
-        throw error;
-      }
-      if (attempt < attempts) sleep(100 * attempt);
-    }
-  }
-
-  try {
-    fs.renameSync(targetPath, `${targetPath}.pending-delete-${Date.now()}`);
-  } catch (error) {
-    if (!isBusyFileError(error)) {
-      throw error;
-    }
-  }
-}
-
-function isBusyFileError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && (error.code === "EBUSY" || error.code === "EPERM");
-}
-
-function sleep(milliseconds: number): void {
-  const buffer = new SharedArrayBuffer(4);
-  const view = new Int32Array(buffer);
-  Atomics.wait(view, 0, 0, milliseconds);
+  await removeTemporaryWorkspace(workspaceRoot);
 }

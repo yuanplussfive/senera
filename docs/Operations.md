@@ -45,6 +45,9 @@ SENERA_ALLOW_INSECURE_HTTP: "true"
 然后启动：
 
 ```bash
+# 生产环境固定应用和沙箱镜像的发布 digest；未设置时 Compose 使用版本 tag。
+export SENERA_IMAGE=ghcr.io/yuanplussfive/senera@sha256:<application-digest>
+export SENERA_SANDBOX_IMAGE=ghcr.io/yuanplussfive/senera@sha256:<sandbox-digest>
 docker compose pull
 docker compose up -d --pull always
 docker compose logs -f senera
@@ -192,26 +195,48 @@ sudo chown -R 1000:1000 docker-data
 
 ## 更新版本
 
-普通更新：
+普通更新先将两个变量改成目标版本发布的完整 digest，再启动：
 
 ```bash
+export SENERA_IMAGE=ghcr.io/yuanplussfive/senera@sha256:<application-digest>
+export SENERA_SANDBOX_IMAGE=ghcr.io/yuanplussfive/senera@sha256:<sandbox-digest>
 docker compose up -d --pull always
 docker compose images
 ```
 
-`--pull always` 会先解析远端标签；只有镜像 digest 变化时才替换服务容器。可用下面的命令检查运行中镜像声明的版本和镜像 ID：
+Senera 对需要迁移的权威配置和 SQLite 数据执行固定流程：`备份 -> 校验 -> dry-run -> 迁移 -> 启动 -> GET /health/ready`。升级日志和运行时标记使用 `schemaVersion: 3`，保存在 `.senera/upgrades/`；只有 readiness 探测成功才提交健康状态。可用下面的命令查看运行中镜像声明的版本和镜像 ID：
 
 ```bash
 docker inspect "$(docker compose ps -q senera)" --format '{{index .Config.Labels "org.opencontainers.image.version"}} {{.Image}}'
 ```
 
-数据会继续留在 Compose 项目自己的 `senera-data` volume。实际 volume 名称可以用 `docker volume ls` 查看；同一主机运行多个部署时，为每个编排设置不同的 Compose 项目名。大版本升级前建议备份：
+数据会继续留在 Compose 项目自己的 `senera-data` volume。实际 volume 名称可以用 `docker volume ls` 查看；同一主机运行多个部署时，为每个编排设置不同的 Compose 项目名。内置备份不替代部署级灾备，大版本升级前仍建议导出完整 volume：
 
 ```bash
 docker compose exec -T senera tar czf - -C /data . > senera-data-backup.tgz
 ```
 
 如果你改成了 `./docker-data:/data`，直接备份 `docker-data/` 目录即可。
+
+启动或健康检查失败时，Senera 会自动恢复本次升级涉及的配置和权威数据库。迁移日志与备份不会因失败被删除，失败时的新数据会移到对应操作目录的 `failed-state/`，而不是直接删除。查看状态：
+
+```bash
+senera upgrade status --workspace /data
+```
+
+需要手动回滚一次已经健康完成的迁移时，先停止所有 Senera 进程，再执行：
+
+```bash
+senera rollback --yes --workspace /data --data-root /data
+```
+
+可用 `--upgrade <id>` 指定 `upgrade status` 列出的操作。回滚会恢复该操作的备份并保留被替换的数据；它不会替换正在运行的程序或容器镜像。Docker 部署还需要把 `SENERA_IMAGE` 和 `SENERA_SANDBOX_IMAGE` 改回清单 `source` 中记录的旧 digest，再重新启动。容器内执行 CLI 时可使用：
+
+```bash
+docker compose stop
+docker compose run --rm --no-deps --user node --entrypoint node senera Dist/Apps/SeneraCli.js rollback --yes --workspace /data --data-root /data
+docker compose up -d
+```
 
 ## 发布与回滚
 
@@ -240,10 +265,11 @@ Release Please 创建的 PR 需要正常通过 Verify。仓库必须在 `Setting
 
 正式发布失败时，手动运行 `Product Release`，填写已经存在的 `vX.Y.Z`。工作流会重新验证并覆盖上传同一标签的产物，不会创建新版本。
 
-容器回退应直接固定上一完整版本，而不是重新标记源码：
+容器回退应直接固定上一个已验证 digest，而不是重新标记源码：
 
-```yaml
-image: ghcr.io/<owner>/senera:1.2.3
+```bash
+export SENERA_IMAGE=ghcr.io/<owner>/senera@sha256:<previous-application-digest>
+export SENERA_SANDBOX_IMAGE=ghcr.io/<owner>/senera@sha256:<previous-sandbox-digest>
 ```
 
 修改部署版本后重新拉取并启动：
@@ -282,7 +308,14 @@ docker compose up -d
 
 ## 沙箱状态
 
-Docker 的沙箱运行时使用现有公开 `senera` GHCR package 中独立的 `sandbox-runtime-*` 标签发布，拥有自己的 OCI manifest 与 digest，不需要维护第二个 package 的可见性。Compose 使用一个 YAML anchor 同时为 `sandbox-runtime` 服务和 Worker 声明固定版本引用：前者负责标准拉取与版本探测，后者核对分发 ID、版本、架构和固定源镜像 digest labels，再使用启动时锁定的 provider 执行隔离探测。Worker 没有归档导入、隐式拉取或 fallback 路径；主服务不会访问 Docker Socket，也不会调用 Docker CLI。
+Docker 的沙箱运行时使用现有公开 `senera` GHCR package 中独立的 `sandbox-runtime-*` 标签发布，拥有自己的 OCI manifest 与 digest，不需要维护第二个 package 的可见性。Compose 使用一个 YAML anchor 同时为 `sandbox-runtime` 服务和 Worker 声明同一引用；生产环境通过 `SENERA_SANDBOX_IMAGE` 固定 digest，前者负责标准拉取与版本探测，后者核对分发 ID、版本、架构和固定源镜像 digest labels，再使用启动时锁定的 provider 执行隔离探测。Worker 没有归档导入、隐式拉取或 fallback 路径；主服务不会访问 Docker Socket，也不会调用 Docker CLI。
+
+发布流水线使用 BuildKit 为应用镜像和沙箱镜像生成并附加 SPDX SBOM。可按 digest 检查远端 attestation：
+
+```bash
+docker buildx imagetools inspect "$SENERA_IMAGE" --format '{{ json .SBOM }}'
+docker buildx imagetools inspect "$SENERA_SANDBOX_IMAGE" --format '{{ json .SBOM }}'
+```
 
 桌面安装包固定使用 microsandbox；平台运行时由 npm 的可选平台包交付。Linux 源码开发和 Docker 的 `auto` 模式在启动时读取版本化 provider 注册表与宿主能力：KVM 可用时选择 microsandbox；否则在 Docker Engine 已注册 `runsc` 时选择 gVisor；最后选择受限 Docker Engine 容器。三个 provider 默认都允许正常网络访问，工具执行契约显式声明 `Network: Deny` 时才断网。这个选择在启动时锁定；一次工具执行不会在 provider 间切换，也绝不会退回到主机本机执行。
 

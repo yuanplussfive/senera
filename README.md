@@ -1,7 +1,7 @@
 # senera
 
 > 一个可观测、可校验、可扩展的 Agent 工作台。
-> 让模型像正常聊天一样表达,也能在需要行动时稳定地搜索、读写文件、调用插件、留下证据。
+> 让模型像正常聊天一样表达，也能在需要行动时稳定地搜索、读写文件、调用插件、留下证据。
 
 <p>
   <img alt="Node" src="https://img.shields.io/badge/Node.js-22%2B-43853d">
@@ -10,31 +10,21 @@
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
 </p>
 
-senera 不是一个简单的聊天壳。它更像一个透明的 AI 工作台:模型可以边说边做,工具执行过程可以被看到、被审批、被复盘,每次搜索、文件修改、命令执行都会留下结构化结果和证据。
+写 senera 的起点是一个很具体的烦恼：常见的 Agent 应用，要么是聊天壳，模型说得好听、动手全凭运气；要么把工具调用押在供应商的原生 tools 实现上，换一家模型服务，行为就跟着变。参数里多一个没转义的引号，整条链路断在半路，用户只能对着加载圈干等，事后连模型到底做过什么都查不到。
 
-它的核心目标是把“模型会聊天”和“模型能可靠行动”放在同一个产品里。模型只需要稳定输出文本，就能通过统一的 PiProxy 决策层和 Pi 多步工具循环获得一致的行动能力，不依赖供应商是否实现原生 tools。
+所以 senera 把两件事放进同一个产品里认真做：让模型正常说话，也让它的每一次行动都过校验、可审批、留证据。模型只需要稳定输出文本，统一的 PiProxy 决策层和 Pi 多步工具循环会把文本约束成结构化动作——上游是 OpenAI、Claude、Gemini 还是任何 OpenAI-compatible 服务，走的都是同一条链路，不依赖供应商是否实现原生 tools。
 
 ---
 
-## 核心卖点
+## 它是怎么做的
 
-- **统一的 tools 体验，不被供应商锁死。**
-  senera 内部用 OpenAI 风格 transcript 保存用户消息、assistant 文本、tool calls 和 tool result。所有上游模型都经过 PiProxy + BAML 投影成可校验的动作，统一兼容 OpenAI、Claude、Gemini 和 OpenAI-compatible 模型服务。
+senera 内部用 OpenAI 风格 transcript 保存一切：用户消息、assistant 文本、tool calls、tool result。所有上游模型都经过 PiProxy + BAML 投影成可校验的动作，供应商差异被挡在投影层外面，历史链路不会因为切换模型而需要迁移。
 
-- **工具调用不是靠模型“猜对格式”。**
-  每个工具都有 manifest、签名和 JSON Schema 参数合同。模型生成的首动作和后续动作都经过结构校验；参数由 AJV 对真实工具 schema 校验，结构错了会带着具体字段路径进入修复流程，而不是把坏 JSON 直接交给工具执行。
+工具调用不靠模型"猜对格式"。每个工具都有 manifest、签名和 JSON Schema 参数合同，模型生成的动作先过结构校验，参数再由 AJV 对真实工具 schema 校验。结构错了，会带着具体字段路径进入修复流程，而不是把坏 JSON 直接交给工具执行。执行过程对用户也不是黑箱：前端把预回复、工具计划、审批、开始执行、结果摘要、失败原因和最终回复分开展示，看到的是"边说边做"的过程，而不是等很久之后只拿到一个最终答案。
 
-- **过程可见,不是黑箱。**
-  前端会把预回复、工具计划、审批、开始执行、结果摘要、失败原因和最终回复分开展示。用户看到的是“边说边做”的过程,不是等很久以后只拿到一个最终答案。
+工具多了会把上下文塞爆，这件事没有银弹，senera 的取舍是动态检索：结合本地索引、BM25/RRF/MMR 和 SQLite 记忆反馈，只把当前任务真正可能用到的工具放进上下文。工具结果则生成 artifact/evidence 包，长期上下文优先使用摘要和证据投影，需要时再取回原始内容——旧日志、旧搜索结果不会一直躺在上下文里，追查时也能回到模型当时真正依据的东西。
 
-- **工具多了也不把上下文塞爆。**
-  senera 会动态检索工具,结合本地索引、BM25/RRF/MMR 和 SQLite 记忆反馈,只把当前任务真正可能用到的工具放进上下文。
-
-- **每次行动都有证据。**
-  工具结果会生成 artifact/evidence 包,长期上下文优先使用摘要和证据投影,需要时再取回原始内容。这样能减少上下文膨胀,也方便追查模型到底依据了什么。
-
-- **插件边界清楚。**
-  工具通过插件扩展。插件声明自己的执行边界、网络能力、工作区权限和 artifact 策略;系统工具可以使用宿主能力,外部进程插件可以放进 microsandbox microVM 边界。
+插件的边界写在声明里：执行目标、网络能力、工作区权限、artifact 策略。系统工具可以使用宿主能力，外部进程插件可以放进 microsandbox microVM 边界。Sandbox 不可用或被部署禁用时，运行时会明确拒绝该执行目标，绝不会悄悄改在本机执行。
 
 ---
 
@@ -42,13 +32,13 @@ senera 不是一个简单的聊天壳。它更像一个透明的 AI 工作台:�
 
 ### Agent 动作协议
 
-senera 把每一轮任务拆成清晰的动作:
+senera 把每一轮任务拆成清晰的动作：
 
-- `FinalAnswer`: 信息足够,直接回复用户。
-- `AskUser`: 缺少必要输入,向用户追问。
-- `CallTools`: 需要行动,先给出一段自然语言预回复,再规划工具调用。
+- `FinalAnswer`：信息足够，直接回复用户。
+- `AskUser`：缺少必要输入，向用户追问。
+- `CallTools`：需要行动，先给出一段自然语言预回复，再规划工具调用。
 
-`CallTools` 不要求模型一次性写出所有复杂参数。运行时会先让模型选择需要的工具和依赖关系,再并发生成各个工具的参数。工具调用 ID 由宿主生成,例如 `call_xxx`,依赖关系在宿主侧投影和校验,避免把稳定性押在模型自己编 ID 上。
+`CallTools` 不要求模型一次性写出所有复杂参数。运行时会先让模型选择需要的工具和依赖关系，再并发生成各个工具的参数。工具调用 ID 由宿主生成，例如 `call_xxx`，依赖关系在宿主侧投影和校验，避免把稳定性押在模型自己编 ID 上。
 
 ### PiProxy + Pi 工具循环
 
@@ -64,51 +54,48 @@ PiProxy 负责把不同供应商的文本生成能力统一约束成结构化动
 
 ### 像 OpenAI tools 一样保存上下文
 
-数据库里保存的是标准化消息结构:用户原话、assistant 文本、tool calls、tool result、最终回复。即使某些上游接口不接受 `role: "tool"`,也只在请求模型前做投影,不会把存储层降级成一堆私有 XML 字符串。
+数据库里保存的是标准化消息结构：用户原话、assistant 文本、tool calls、tool result、最终回复。即使某些上游接口不接受 `role: "tool"`，也只在请求模型前做投影，不会把存储层降级成一堆私有 XML 字符串。
 
-这种写法有两个价值:
-
-- 历史链路稳定,后续切换模型或协议不用迁移会话格式。
-- 工具调用、工具结果和最终回复天然对齐,前端可以把“准备做什么”“正在做什么”“做完得到什么”分开展示。
+这种写法的直接收益是历史链路稳定——后续切换模型或协议不用迁移会话格式。工具调用、工具结果和最终回复天然对齐，前端才能把"准备做什么""正在做什么""做完得到什么"分开展示。
 
 ### 上下文策略
 
-senera 不把历史工具原文无限塞回模型。新一轮任务会优先使用:
+senera 不把历史工具原文无限塞回模型。新一轮任务会优先使用：
 
 - 当前轮的完整用户输入和新工具结果。
 - 历史轮次的最终回复和必要工具摘要。
 - artifact / evidence 的结构化摘要、事实、URI。
 - 动态召回的项目记忆和相关文件片段。
 
-早期大段输出会沉淀成证据投影;真正需要原文时再通过 artifact 工具取回。这样上下文不会被旧日志、旧搜索结果、旧文件内容拖爆。
+早期大段输出会沉淀成证据投影，真正需要原文时再通过 artifact 工具取回。这样上下文不会被旧日志、旧搜索结果、旧文件内容拖爆。
 
 ### 插件写法
 
-一个工具插件通常包含:
+一个工具插件通常包含：
 
-- `PluginManifest.json`: 插件身份、能力声明、执行边界。
-- `ToolContracts.json`: 版本化的模型参数、运行时校验和提示投影契约；由开发期签名源生成并通过摘要门禁保持同步。
-- `docs/*.md`: 给模型看的工具使用说明。
-- `PluginConfig.toml`: 私有密钥和业务配置。
+- `PluginManifest.json`：插件身份、能力声明、执行边界。
+- `ToolContracts.json`：版本化的模型参数、运行时校验和提示投影契约；由开发期签名源生成并通过摘要门禁保持同步。
+- `docs/*.md`：给模型看的工具使用说明。
+- `PluginConfig.toml`：私有密钥和业务配置。
 
-插件可以声明 `Execution.Targets`、`Network` 和 `Workspace`。同时支持 `Sandbox`、`Local` 的工具会把执行目标作为公开参数交给模型选择；Sandbox 不可用或被部署禁用时，运行时会明确拒绝该目标，绝不会自动改在本机执行。Agent 主循环只认识统一的工具协议,不需要为每个业务插件写特殊分支。
+插件可以声明 `Execution.Targets`、`Network` 和 `Workspace`。同时支持 `Sandbox`、`Local` 的工具会把执行目标作为公开参数交给模型选择。Agent 主循环只认识统一的工具协议，不需要为每个业务插件写特殊分支。
 
 ---
 
 ## 能做什么
 
 - 搜索资料、查询天气、读取图片和文档。
-- 理解项目结构,搜索代码,读取和修改工作区文件。
-- 执行受控 shell 命令,并把 stdout/stderr、退出码和工作目录整理成证据。
+- 理解项目结构，搜索代码，读取和修改工作区文件。
+- 执行受控 shell 命令，并把 stdout/stderr、退出码和工作目录整理成证据。
 - 在需要高风险操作时先请求用户审批。
 - 把工具结果、文件 diff、摘要、证据 URI 和最终回答串成完整链路。
-- 用插件接入新的业务工具,不用改 Agent 主循环。
+- 用插件接入新的业务工具，不用改 Agent 主循环。
 
 ---
 
 ## 快速开始
 
-本地运行要求 Node.js 22+。真实密钥放在 `senera.config.json`,这个文件已被 git 忽略。
+本地运行要求 Node.js 22+。真实密钥放在 `senera.config.json`，这个文件已被 git 忽略。
 
 ### Nano 轻量开发分支
 
@@ -138,6 +125,9 @@ SENERA_ALLOW_INSECURE_HTTP: "true"
 Docker 部署不要求向 Senera 主容器传入 `/dev/kvm` 或 `NET_ADMIN`。Compose 会先从现有公开 `senera` GHCR package 拉取并探测独立的 `sandbox-runtime-*` 镜像标签，再启动仅通过 Unix Socket 接收受限请求的 `sandbox-worker`；只有该 Worker 能访问 Docker Engine API，主服务仍以非 root `node` 身份运行。Worker 在启动时读取 Docker Engine 能力：已注册 `runsc` 时锁定 gVisor，否则锁定受限 Docker Engine 容器；一次服务生命周期内不会再次切换。然后启动唯一的 Compose 部署：
 
 ```bash
+# 生产环境应使用 GHCR 页面或发布信息中显示的完整 digest。
+export SENERA_IMAGE=ghcr.io/yuanplussfive/senera@sha256:<application-digest>
+export SENERA_SANDBOX_IMAGE=ghcr.io/yuanplussfive/senera@sha256:<sandbox-digest>
 docker compose pull
 docker compose up -d --pull always
 ```
@@ -146,7 +136,7 @@ docker compose up -d --pull always
 
 容器会在每次启动时同步 Compose 声明的管理员资料：未变化时不重写，用户名、显示名或密码变化时更新账户；磁盘只保存 `scrypt` 密码哈希。服务通过 `8787:8787` 发布，随后可打开 `http://localhost:8787` 或已加入 Origin 白名单的 IP 地址。运行数据默认保存在 Docker volume 里。部署、日志、非 root 容器权限和沙箱说明见 [部署与运维](docs/Operations.md)，版本变化见 [更新记录](CHANGELOG.md)。
 
-Docker 不再把 Microsandbox OCI Bundle 塞进应用镜像，也不调用 Docker `/images/load`。`docker compose pull` 使用标准 Registry 协议分别获取应用镜像和版本化沙箱运行时，支持分层缓存、断点续传和平台校验；Worker 只使用 Compose 已准备好的镜像，缺失时明确失败，不会下载、导入或猜测镜像身份。gVisor 与受限 Docker Engine provider 共用只读根文件系统、非 root 用户、能力全移除、`no-new-privileges`、资源限制和统一网络策略。默认允许正常联网，只有工具显式声明 `Network: Deny` 时才断网。完整前提见 [部署与运维](docs/Operations.md#docker-启动)。
+Docker 不把 Microsandbox OCI Bundle 塞进应用镜像，也不调用 Docker `/images/load`。`docker compose pull` 使用标准 Registry 协议分别获取应用镜像和版本化沙箱运行时，支持分层缓存、断点续传和平台校验；Worker 只使用 Compose 已准备好的镜像，缺失时明确失败，不会下载、导入或猜测镜像身份。正式发布的应用与沙箱镜像都附带 SBOM，发布验证和生产部署使用 `name@sha256:...` 引用。gVisor 与受限 Docker Engine provider 共用只读根文件系统、非 root 用户、能力全移除、`no-new-privileges`、资源限制和统一网络策略。默认允许正常联网，只有工具显式声明 `Network: Deny` 时才断网。完整前提见 [部署与运维](docs/Operations.md#docker-启动)。
 
 ### 本地开发
 
@@ -157,26 +147,26 @@ npm run sandbox.archive
 npm run dev
 ```
 
-macOS / Linux 创建配置文件:
+macOS / Linux 创建配置文件：
 
 ```bash
 cp senera.config.example.json senera.config.json
 ```
 
-然后编辑 `senera.config.json`,填好模型服务的 `BaseUrl`、`ApiKey` 和 `Model`。`sandbox.archive` 是开发环境显式的 Bundle 准备步骤，会在 `Release/SandboxImage` 生成与正式包相同的压缩资产；服务启动本身只读取本地文件，不会自动下载或回退。启动后打开 `http://127.0.0.1:5173`。
+然后编辑 `senera.config.json`，填好模型服务的 `BaseUrl`、`ApiKey` 和 `Model`。`sandbox.archive` 是开发环境显式的 Bundle 准备步骤，会在 `Release/SandboxImage` 生成与正式包相同的压缩资产；服务启动本身只读取本地文件，不会自动下载或回退。启动后打开 `http://127.0.0.1:5173`。
 
-仓库使用 npm workspaces,只需要在根目录执行一次 `npm ci`。依赖版本由根目录 `package-lock.json` 锁定;只有主动增删依赖时才使用 `npm install <package>`,并同时提交 `package.json` 和 `package-lock.json`。
+仓库使用 npm workspaces，只需要在根目录执行一次 `npm ci`。依赖版本由根目录 `package-lock.json` 锁定；只有主动增删依赖时才使用 `npm install <package>`，并同时提交 `package.json` 和 `package-lock.json`。
 
 ---
 
 ## 模型与协议
 
-一个模型提供方通常由两部分组成:
+一个模型提供方通常由两部分组成：
 
-- `ModelProviderEndpoints[]`: 端点、BaseUrl、ApiKey。
-- `ModelProviders[]`: 具体模型、协议类型、输出上限和前端展示信息。
+- `ModelProviderEndpoints[]`：端点、BaseUrl、ApiKey。
+- `ModelProviders[]`：具体模型、协议类型、输出上限和前端展示信息。
 
-支持的上游协议:
+支持的上游协议：
 
 - OpenAI Responses
 - OpenAI Chat Completions
@@ -184,44 +174,49 @@ cp senera.config.example.json senera.config.json
 - Google GenerateContent
 - OpenAI-compatible Chat Completions 服务
 
-如果模型支持原生工具调用,senera 可以吃到 Pi 的工具循环能力;如果模型不支持,senera 会把工具语义投影成结构化动作,再由本地运行时负责校验、修复、执行和回填。
+如果模型支持原生工具调用，senera 可以吃到 Pi 的工具循环能力；如果模型不支持，senera 会把工具语义投影成结构化动作，再由本地运行时负责校验、修复、执行和回填。
 
 ---
 
 ## 工具与插件
 
-系统插件提供运行时基础能力:
+系统插件提供运行时基础能力：
 
-- `AgentToolSearchPlugin`: 动态工具发现。
-- `AgentCapabilitySkillsPlugin`: 代码调查、前端检查、文档理解、记忆形成等能力技能。
-- `AgentArtifactMemoryPlugin`: 按 artifact / evidence URI 读取历史证据。
-- `AgentMemoryRecallPlugin` / `AgentMemoryWritePlugin`: 长期记忆召回与写入。
-- `AskUserToolPlugin`: 缺少必要信息时向用户提问。
-- `AgentShellToolPlugin`: 在受控工作区内执行命令。
-- `WorkspaceMcpToolsPlugin`: 读取、列目录、搜索、写文件等工作区能力。
-- `WorkspacePatchToolPlugin`: 用结构化 patch 修改文件。
-- `AgentTemplatePlugin`: Liquid 提示模板。
+- `AgentToolSearchPlugin`：动态工具发现。
+- `AgentCapabilitySkillsPlugin`：代码调查、前端检查、文档理解、记忆形成等能力技能。
+- `AgentArtifactMemoryPlugin`：按 artifact / evidence URI 读取历史证据。
+- `AgentMemoryRecallPlugin` / `AgentMemoryWritePlugin`：长期记忆召回与写入。
+- `AskUserToolPlugin`：缺少必要信息时向用户提问。
+- `AgentShellToolPlugin`：在受控工作区内执行命令。
+- `WorkspaceMcpToolsPlugin`：读取、列目录、搜索、写文件等工作区能力。
+- `WorkspacePatchToolPlugin`：用结构化 patch 修改文件。
+- `AgentTemplatePlugin`：Liquid 提示模板。
 
-示例插件展示如何接业务工具:
+示例插件展示如何接业务工具：
 
-- `TavilySearchToolPlugin`: 联网搜索。
-- `WeatherToolPlugin`: 天气查询。
-- `AgentDocumentPlugin`: 文档解析。
-- `AgentImageVisionPlugin`: 图像理解。
+- `TavilySearchToolPlugin`：联网搜索。
+- `WeatherToolPlugin`：天气查询。
+- `AgentDocumentPlugin`：文档解析。
+- `AgentImageVisionPlugin`：图像理解。
 
-插件私有配置放在 `PluginConfig.toml`,例如 Tavily API key。公开模板可以用 `PluginConfig.example.toml`。
+插件私有配置放在 `PluginConfig.toml`，例如 Tavily API key。公开模板可以用 `PluginConfig.example.toml`。
 
 ---
 
 ## 证据与记忆
 
-senera 会把工具调用结果整理成 artifact pack,包括输入、原始结果、摘要、证据、投影和变更信息。模型上下文默认不直接塞大段 raw output,而是优先使用结构化摘要和证据 URI。
+senera 会把工具调用结果整理成 artifact pack，包括输入、原始结果、摘要、证据、投影和变更信息。模型上下文默认不直接塞大段 raw output，而是优先使用结构化摘要和证据 URI——上下文更短，不容易被历史工具结果拖爆；需要追查时可以回到原始 artifact；长期记忆也能基于新鲜证据沉淀，而不是反复学习旧历史。
 
-这样有三个好处:
+---
 
-- 上下文更短,不容易被历史工具结果拖爆。
-- 需要追查时可以回到原始 artifact。
-- 长期记忆可以基于 fresh evidence 沉淀,而不是反复学习旧历史。
+## 目前的局限
+
+有些事还没做好，写在这里，省得部署完才发现：
+
+- 认证是单管理员账户模型，没有多用户和权限分级。适合个人和小团队自部署，不适合直接当多租户服务开给别人用。
+- 桌面端目前只打包 Windows 安装包；macOS 和 Linux 请用 Web 或 Docker 方式运行。
+- 界面文案是中英双语，但后端错误消息目前只有中文目录，英文界面偶尔会看到中文报错。
+- 自动化测试覆盖 Chromium 和 Electron，暂时没有 Firefox / WebKit 的跨浏览器回归。
 
 ---
 
@@ -241,7 +236,7 @@ senera/
 └─ senera.config.example.json
 ```
 
-更多开发细节可以看:
+更多开发细节可以看：
 
 - [核心链路导览](docs/Architecture/CoreFlow.md)
 - [WebSocket 协议参考](docs/API/WebSocketProtocol.md)

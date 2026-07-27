@@ -1,11 +1,8 @@
 import crossSpawn from "cross-spawn";
-import fs from "node:fs";
-import path from "node:path";
 import process from "node:process";
 import { isMainModule } from "../../Source/AgentSystem/Core/AgentPath.js";
 
 const { sync: spawnSync } = crossSpawn;
-const nativeModules = ["better-sqlite3"];
 
 interface CommandInvocation {
   command: string;
@@ -26,19 +23,12 @@ if (isMainModule(import.meta.url)) {
 
 export function packageDesktop(): number {
   let exitCode = 0;
-  try {
-    clearNativeRebuildMetadata();
-    for (const step of steps) {
-      const result = run(step);
-      if (result !== 0) {
-        exitCode = result;
-        break;
-      }
+  for (const step of steps) {
+    const result = run(step);
+    if (result !== 0) {
+      exitCode = result;
+      break;
     }
-  } finally {
-    const restoreCode = run(command("npm", ["rebuild", "better-sqlite3"]));
-    clearNativeRebuildMetadata();
-    if (exitCode === 0 && restoreCode !== 0) exitCode = restoreCode;
   }
   return exitCode;
 }
@@ -65,41 +55,4 @@ function command(name: string, args: readonly string[] = []): CommandInvocation 
     command: name,
     arguments: [...args],
   };
-}
-function clearNativeRebuildMetadata(): void {
-  for (const moduleName of nativeModules) {
-    const metadataPath = path.join(process.cwd(), "node_modules", moduleName, "build", "Release", ".forge-meta");
-    removeNativeRebuildMetadata(metadataPath);
-  }
-}
-
-function removeNativeRebuildMetadata(metadataPath: string): void {
-  if (!fs.existsSync(metadataPath)) return;
-
-  try {
-    fs.rmSync(metadataPath, { force: true });
-    return;
-  } catch (error) {
-    if (process.platform !== "win32" || !isWindowsCleanupError(error)) {
-      throw error;
-    }
-  }
-
-  const result = spawnSync(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", "Remove-Item", "-LiteralPath", metadataPath, "-Force"],
-    {
-      stdio: "ignore",
-      windowsHide: true,
-    },
-  );
-  if (result.error || result.status !== 0 || fs.existsSync(metadataPath)) {
-    throw result.error ?? new Error(`Could not remove native rebuild metadata: ${metadataPath}`);
-  }
-}
-
-function isWindowsCleanupError(error: unknown): boolean {
-  if (!(error instanceof Error) || !("code" in error)) return false;
-  const code = error.code;
-  return code === "EPERM" || code === "EACCES" || code === "EBUSY";
 }

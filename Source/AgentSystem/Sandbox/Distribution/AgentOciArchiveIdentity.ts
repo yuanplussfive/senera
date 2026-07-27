@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import * as tar from "tar-stream";
 import { z } from "zod";
+import { sha256Hex } from "../../Core/AgentHash.js";
 
 const DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const DescriptorSchema = z
@@ -126,7 +126,7 @@ function assertDescriptorContent(descriptor: z.infer<typeof DescriptorSchema>, c
   if (content.byteLength !== descriptor.size) {
     throw new Error(`OCI descriptor size does not match archive entry ${name}.`);
   }
-  const digest = `sha256:${createHash("sha256").update(content).digest("hex")}`;
+  const digest = `sha256:${sha256Hex(content)}`;
   if (digest !== descriptor.digest) throw new Error(`OCI descriptor digest does not match archive entry ${name}.`);
 }
 

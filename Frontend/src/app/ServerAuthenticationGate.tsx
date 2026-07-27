@@ -31,7 +31,7 @@ export function ServerAuthenticationGate({
   onRetry: () => Promise<void>;
 }): JSX.Element {
   if (state.status === "loading") {
-    return <AuthenticationStatus icon={<LoaderCircle className="h-5 w-5 animate-spin" />} messageKey="auth.loading" />;
+    return <ServerAuthenticationLoading />;
   }
   if (state.status === "failed") {
     return (
@@ -44,6 +44,10 @@ export function ServerAuthenticationGate({
     );
   }
   return <LoginForm onLogin={onLogin} />;
+}
+
+export function ServerAuthenticationLoading(): JSX.Element {
+  return <AuthenticationStatus icon={<LoaderCircle className="h-5 w-5 animate-spin" />} messageKey="auth.loading" />;
 }
 
 function LoginForm({

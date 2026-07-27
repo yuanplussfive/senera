@@ -3,6 +3,7 @@ import { normalizeOpaDecision } from "@ai-sdk/policy-opa";
 import type { AgentPermissionAction, AgentPermissionDecision, AgentToolPermissionRequest } from "./AgentSafetyTypes.js";
 import { AgentPermissionActions } from "./AgentSafetyTypes.js";
 import type { AgentToolGuardrailAuditor } from "./AgentToolGuardrailAudit.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export interface AgentToolApprovalPolicyInput extends AgentToolPermissionRequest {
   messages?: readonly unknown[];
@@ -238,8 +239,4 @@ function manifestToolReason(toolName: string, action: AgentPermissionAction): st
 
 function policyDecisionReason(toolName: string, action: AgentPermissionAction): string {
   return `策略引擎将工具 ${toolName} 判定为 ${action}。`;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

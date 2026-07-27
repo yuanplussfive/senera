@@ -16,8 +16,8 @@ interface SessionPanelBodyProps {
   showInlineRowActions: boolean;
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
-  onRenameSession: (session: SessionRecord) => void;
-  onDeleteSession: (session: SessionRecord) => void;
+  onRenameSession: (session: SessionRecord, returnFocus: HTMLElement | null) => void;
+  onDeleteSession: (session: SessionRecord, returnFocus: HTMLElement | null) => void;
 }
 
 export function SessionPanelBody({
@@ -85,8 +85,8 @@ export function SessionPanelBody({
                         accent={isHistoryLoading || isRunning ? "running" : hasFailed ? "failed" : "idle"}
                         onClick={() => onSelectSession(session.sessionId)}
                         showInlineActions={showInlineRowActions}
-                        onRename={() => onRenameSession(session)}
-                        onClose={() => onDeleteSession(session)}
+                        onRename={(returnFocus) => onRenameSession(session, returnFocus)}
+                        onClose={(returnFocus) => onDeleteSession(session, returnFocus)}
                       />
                     </MotionListItem>
                   );

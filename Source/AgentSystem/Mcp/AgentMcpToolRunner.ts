@@ -19,6 +19,7 @@ import { createAgentMcpDefaultResourceCapabilities } from "./AgentMcpDefaultReso
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import type { AgentInteractionInputOwner } from "../Interaction/AgentInteractionInputTypes.js";
 import type { AgentMcpRuntimeModuleResolver } from "./AgentMcpRuntimeModuleResolver.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export interface AgentMcpToolRunnerOptions {
   config: AgentSystemConfig;
@@ -144,7 +145,7 @@ export class AgentMcpToolRunner {
       }
       return toolProcessSuccessResult(projectMcpToolResult(result));
     } catch (error) {
-      return mcpToolFailure(error instanceof Error ? error.message : String(error), {
+      return mcpToolFailure(errorMessage(error), {
         toolName: tool.name,
         serverId: handler.server,
         mcpToolName: handler.tool,

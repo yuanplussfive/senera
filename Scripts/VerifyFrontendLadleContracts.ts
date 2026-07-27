@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { toPosixRelative, walkFiles } from "./Support/FileWalk.js";
 import { resolveWorkspaceRoot } from "./TestGovernance.js";
 
 const workspaceRoot = resolveWorkspaceRoot();
@@ -95,20 +96,20 @@ function verifyPublicComponentStories(): void {
 }
 
 function verifyChineseStoryCopy(): void {
-  const storyFiles = walkStoryFiles(path.join(frontendRoot, "src"));
+  const storyFiles = walkFiles(path.join(frontendRoot, "src"), { extensions: [".stories.tsx", ".stories.ts"] });
   const withoutChinese = storyFiles
     .filter((file) => !/[\u3400-\u9fff]/u.test(readFileSync(file, "utf8")))
-    .map((file) => path.relative(workspaceRoot, file).replaceAll(path.sep, "/"));
+    .map((file) => toPosixRelative(workspaceRoot, file));
 
   assert.deepEqual(withoutChinese, [], "Every Ladle Story must contain Chinese visible copy.");
 }
 
 function verifySwitchCopy(): void {
-  const storyFiles = walkStoryFiles(path.join(frontendRoot, "src"));
+  const storyFiles = walkFiles(path.join(frontendRoot, "src"), { extensions: [".stories.tsx", ".stories.ts"] });
   const forbiddenCopy = /已启用|已关闭|\bON\b|\bOFF\b/u;
   const violations = storyFiles
     .filter((file) => forbiddenCopy.test(readFileSync(file, "utf8")))
-    .map((file) => path.relative(workspaceRoot, file).replaceAll(path.sep, "/"));
+    .map((file) => toPosixRelative(workspaceRoot, file));
 
   assert.deepEqual(violations, [], "Ladle stories must not repeat enabled/disabled copy beside switches.");
 }
@@ -143,14 +144,6 @@ function readNumberRecord(object: ts.ObjectLiteralExpression): Record<string, nu
       return [[property.name.text, Number(property.initializer.text)]];
     }),
   );
-}
-
-function walkStoryFiles(directory: string): string[] {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const fullPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) return walkStoryFiles(fullPath);
-    return entry.isFile() && /\.stories\.(?:tsx|ts)$/u.test(entry.name) ? [fullPath] : [];
-  });
 }
 
 function parseSource(fileName: string, source: string, scriptKind: ts.ScriptKind): ts.SourceFile {

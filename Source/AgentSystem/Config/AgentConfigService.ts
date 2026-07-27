@@ -1,6 +1,4 @@
-import { createHash } from "node:crypto";
 import { AgentConfigLoader } from "../Config/AgentConfigLoader.js";
-import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { resolveConfigStoreConfig } from "../AgentDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
@@ -38,7 +36,10 @@ import {
   persistMigratedAgentConfigJson,
   writeAgentConfigJsonMirror,
 } from "./AgentConfigServicePaths.js";
-import { migrateAgentConfigPayload } from "./AgentConfigMigration.js";
+import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
+import { migrateAgentConfigPayload, type AgentConfigMigrationResult } from "./AgentConfigMigration.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 
 export type AgentConfigSnapshotSource = "sqlite" | "json";
 
@@ -110,6 +111,7 @@ export class AgentConfigService {
     private readonly options: {
       workspaceRoot: string;
       source: AgentConfigSourceOptions;
+      upgradeSession?: AgentUpgradeSession;
     },
   ) {
     try {
@@ -225,15 +227,21 @@ export class AgentConfigService {
     source: Extract<AgentConfigSourceOptions, { kind: "json" }>,
     version: number,
   ): AgentConfigSnapshot {
-    const loadedJson = AgentConfigLoader.loadWithMetadata(source.configPath);
+    const upgradeParticipantId = "agent-config-json";
+    const loadedJson = AgentConfigLoader.loadWithMetadata(source.configPath, ({ sourceVersion, targetVersion }) => {
+      this.options.upgradeSession?.backupFileMigration({
+        id: upgradeParticipantId,
+        sourcePath: source.configPath,
+        sourceVersion,
+        targetVersion,
+      });
+    });
     const jsonConfig = loadedJson.config;
+    if (loadedJson.migration) {
+      this.options.upgradeSession?.markFileMigrationDryRunPassed(upgradeParticipantId);
+    }
     const migrationDiagnostics = loadedJson.migration
-      ? [
-          migrationDiagnostic(
-            loadedJson.migration,
-            persistMigratedAgentConfigJson(jsonConfig, source.configPath, loadedJson.migration.sourceVersion),
-          ),
-        ]
+      ? [this.persistJsonMigration(source, loadedJson.config, loadedJson.migration)]
       : [];
     const store = resolveConfigStoreConfig(jsonConfig);
     if (!store.Enabled) {
@@ -264,6 +272,16 @@ export class AgentConfigService {
       version,
       diagnostics: [...migrationDiagnostics, ...diagnosticsForRepair(latest.repaired)],
     });
+  }
+
+  private persistJsonMigration(
+    source: Extract<AgentConfigSourceOptions, { kind: "json" }>,
+    config: AgentSystemConfig,
+    migration: AgentConfigMigrationResult,
+  ): AgentConfigDiagnostic {
+    const result = persistMigratedAgentConfigJson(config, source.configPath, migration.sourceVersion);
+    this.options.upgradeSession?.markFileMigrationApplied("agent-config-json");
+    return migrationDiagnostic(migration, result);
   }
 
   private initializeSqlitePrimary(
@@ -302,7 +320,7 @@ export class AgentConfigService {
       return this.repository;
     }
 
-    const repository = new AgentConfigSqliteRepository(databasePath);
+    const repository = new AgentConfigSqliteRepository(databasePath, this.options.upgradeSession);
     this.closeRepository();
     this.repository = repository;
     this.repositoryPath = databasePath;
@@ -410,7 +428,7 @@ export class AgentConfigService {
             severity: "warning",
             message: agentErrorMessage("config.mirrorWriteFailed", {
               path: this.options.source.configPath,
-              error: error instanceof Error ? error.message : String(error),
+              error: errorMessage(error),
             }),
           },
         ],
@@ -502,7 +520,7 @@ export function loadConfigFile(filePath: string): AgentSystemConfig {
 }
 
 function createConfigCommandPayloadHash(operationKind: string, payload: unknown): string {
-  return createHash("sha256").update(stringifyAgentCanonicalJson({ operationKind, payload }), "utf8").digest("hex");
+  return sha256HexOfCanonicalJson({ operationKind, payload });
 }
 
 function diagnosticsForRepair(repair: AgentConfigRepairResult): AgentConfigDiagnostic[] {

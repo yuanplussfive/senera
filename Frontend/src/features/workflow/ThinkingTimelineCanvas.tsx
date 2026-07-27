@@ -10,6 +10,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import "../../styles/react-flow.css";
 import { type RunRecord } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
 import { StepNode } from "./StepNode";

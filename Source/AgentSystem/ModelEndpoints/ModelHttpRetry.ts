@@ -1,4 +1,3 @@
-import type { ModelProviderConfig } from "./ModelEndpointTypes.js";
 import { combineAbortSignals, disposeCombinedAbortSignal, readAbortFailure } from "./ModelHttpAbort.js";
 import { ModelProviderHttpError, ModelRequestTimeoutError, safeReadResponseBody } from "./ModelHttpErrors.js";
 
@@ -8,8 +7,16 @@ export interface ModelHttpRetryOptions {
   sleep?: (delayMs: number, signal?: AbortSignal | null) => Promise<void>;
 }
 
+export interface ModelHttpRetryConfig {
+  TimeoutMs: number;
+  MaxNetworkRetries: number;
+  RetryBaseDelayMs: number;
+  RetryMaxDelayMs: number;
+  RetryAfterMaxDelayMs: number;
+}
+
 export async function fetchModelHttpWithRetries(
-  config: ModelProviderConfig,
+  config: ModelHttpRetryConfig,
   url: URL,
   init: RequestInit,
   options: ModelHttpRetryOptions = {},

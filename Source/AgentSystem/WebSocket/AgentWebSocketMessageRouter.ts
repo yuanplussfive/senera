@@ -16,6 +16,7 @@ import {
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentWebSocketRequestScheduler } from "./AgentWebSocketRequestScheduler.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export class AgentWebSocketMessageRouter {
   private readonly session: AgentWebSocketSessionRequestHandlers;
@@ -138,7 +139,7 @@ export class AgentWebSocketMessageRouter {
       return {
         ok: false,
         event: requestInvalidEvent({
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage(error),
         }),
       };
     }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { AgentToolContractBundleLoader } from "../Source/AgentSystem/ToolContracts/AgentToolContractBundleLoader.js";
+import { walkFiles } from "./Support/FileWalk.js";
 
 const pluginRoot = path.join(process.cwd(), "System", "Plugins", "AgentShellToolPlugin");
 const contractPath = path.join(pluginRoot, "ToolContracts.json");
@@ -14,18 +15,12 @@ assert.deepEqual(findRuntimeToolchainImports(path.join(process.cwd(), "Dist", "S
 console.log("Runtime tool contract path verification passed.");
 
 function findRuntimeToolchainImports(runtimeRoot: string): string[] {
+  assert.equal(fs.existsSync(runtimeRoot), true, `Compiled runtime output is missing: ${runtimeRoot}`);
   const forbiddenSpecifiers = ["typescript", "ts-json-schema-generator"];
-  return walkJavaScriptFiles(runtimeRoot).flatMap((filePath) => {
+  return walkFiles(runtimeRoot, { extensions: [".js"] }).flatMap((filePath) => {
     const source = fs.readFileSync(filePath, "utf8");
     return forbiddenSpecifiers
       .filter((specifier) => source.includes(`from "${specifier}`) || source.includes(`require("${specifier}`))
       .map((specifier) => `${path.relative(runtimeRoot, filePath)} imports ${specifier}`);
-  });
-}
-
-function walkJavaScriptFiles(directory: string): string[] {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const entryPath = path.join(directory, entry.name);
-    return entry.isDirectory() ? walkJavaScriptFiles(entryPath) : path.extname(entry.name) === ".js" ? [entryPath] : [];
   });
 }

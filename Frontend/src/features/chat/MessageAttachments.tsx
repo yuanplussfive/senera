@@ -5,7 +5,7 @@ import type { UploadAttachmentData } from "../../api/eventTypes";
 import { buildUploadContentUrl } from "../../api/uploadClient";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { isImageFilePreview } from "../../lib/filePreview";
-import { cn } from "../../lib/util";
+import { cn, formatFileSize } from "../../lib/util";
 import { Dialog, DialogContent, IconButton } from "../../shared/ui";
 import { FilePreviewIcon } from "./FilePreviewIcon";
 import { useUploadPreviewRegistry } from "./UploadPreviewRegistry";
@@ -342,12 +342,4 @@ async function downloadImage(source: string, fileName: string): Promise<void> {
   link.click();
   link.remove();
   requestAnimationFrame(() => URL.revokeObjectURL(downloadUrl));
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)}KB`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(mb < 10 ? 1 : 0)}MB`;
 }

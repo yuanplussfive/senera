@@ -3,7 +3,7 @@ import type {
   ResolvedAgentVectorModelsConfig,
   ResolvedAgentVectorRerankConfig,
 } from "../Types/AgentConfigTypes.js";
-import { combineAbortSignals, disposeCombinedAbortSignal } from "../ModelEndpoints/ModelHttpAbort.js";
+import { fetchModelHttpWithRetries } from "../ModelEndpoints/ModelHttpRetry.js";
 
 export interface AgentEmbeddingRequest {
   input: readonly string[];
@@ -109,60 +109,13 @@ async function postJson(
   config: ResolvedAgentVectorEmbeddingConfig | ResolvedAgentVectorRerankConfig,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const response = await fetchWithRetries(
-    url,
-    {
-      method: "POST",
-      headers: headers(config),
-      body: JSON.stringify(payload),
-      signal,
-    },
-    config,
-  );
+  const response = await fetchModelHttpWithRetries(config, url, {
+    method: "POST",
+    headers: headers(config),
+    body: JSON.stringify(payload),
+    signal,
+  });
   return response.json() as Promise<unknown>;
-}
-
-async function fetchWithRetries(
-  url: URL,
-  init: RequestInit,
-  config: Pick<ResolvedAgentVectorEmbeddingConfig, "TimeoutMs" | "MaxNetworkRetries" | "Model" | "BaseUrl">,
-): Promise<Response> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= config.MaxNetworkRetries; attempt += 1) {
-    const timeout = new AbortController();
-    const signal = combineAbortSignals(init.signal, timeout.signal);
-    const timer = setTimeout(() => timeout.abort(new Error("vector_request_timeout")), config.TimeoutMs);
-    try {
-      const response = await fetch(url, {
-        ...init,
-        signal,
-      });
-      clearTimeout(timer);
-      if (response.ok) {
-        return response;
-      }
-
-      const detail = await safeReadText(response);
-      const error = new Error(
-        `向量模型请求失败。 status=${response.status} model=${config.Model} baseUrl=${config.BaseUrl} detail=${detail}`,
-      );
-      if (!isRetryableStatus(response.status) || attempt >= config.MaxNetworkRetries) {
-        throw error;
-      }
-      lastError = error;
-    } catch (error) {
-      clearTimeout(timer);
-      if (init.signal?.aborted || attempt >= config.MaxNetworkRetries) {
-        throw error;
-      }
-      lastError = error;
-    } finally {
-      clearTimeout(timer);
-      disposeCombinedAbortSignal(signal);
-    }
-  }
-
-  throw lastError;
 }
 
 function headers(config: Pick<ResolvedAgentVectorEmbeddingConfig, "ApiKey" | "Headers">): HeadersInit {
@@ -271,16 +224,4 @@ function urlFor(baseUrl: string, endpointPath: string): URL {
 
 function withTrailingSlash(value: string): string {
   return value.endsWith("/") ? value : `${value}/`;
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 408 || status === 409 || status === 429 || status >= 500;
-}
-
-async function safeReadText(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    return "";
-  }
 }

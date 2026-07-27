@@ -116,6 +116,9 @@ export interface ResolvedAgentVectorModelHttpConfig {
   Model: string;
   TimeoutMs: number;
   MaxNetworkRetries: number;
+  RetryBaseDelayMs: number;
+  RetryMaxDelayMs: number;
+  RetryAfterMaxDelayMs: number;
   Headers: Record<string, string>;
 }
 

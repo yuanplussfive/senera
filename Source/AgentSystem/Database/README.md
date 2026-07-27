@@ -1,6 +1,6 @@
-# SQLite Persistence Contracts
+# SQLite 持久化契约
 
-Every SQLite domain owns a `Database/` resource package next to its repository:
+每个 SQLite 领域在自己的仓库旁拥有一个 `Database/` 资源包：
 
 ```text
 <Domain>/Database/
@@ -10,15 +10,15 @@ Every SQLite domain owns a `Database/` resource package next to its repository:
   snapshots/0001.schema.sql
 ```
 
-`contract.json` declares the store id, whether data is `authoritative` or `derived`, and each contiguous migration version. Each version references immutable SQL and its generated schema snapshot, with SHA-256 hashes for both. The SQL files are the source of truth for columns, keys, constraints, defaults, indexes, and foreign keys. TypeScript imports the generated runtime module; it does not contain DDL.
+`contract.json` 声明 store id、数据属于 `authoritative` 还是 `derived`，以及每个连续的迁移版本。每个版本引用不可变的 SQL 及其生成的 schema 快照，两者都带 SHA-256 哈希。SQL 文件是列、键、约束、默认值、索引和外键的唯一事实来源；TypeScript 只导入生成的 runtime 模块，不包含 DDL。
 
-`runtime.json` is a generated, versioned module artifact containing the validated SQL and snapshots. Runtime code imports it through the standard JSON module contract, so Node, Electron, Docker, Vitest, and bundlers do not need to translate filesystem URLs. Do not edit it directly.
+`runtime.json` 是生成的版本化模块产物，内含已验证的 SQL 和快照。运行时代码通过标准 JSON 模块契约导入它，因此 Node、Electron、Docker、Vitest 和打包器都不需要转换文件系统 URL。不要直接编辑它。
 
-Run `npm run generate.database-contracts` after adding a migration. It applies every version to a fresh SQLite database, writes the canonical `sqlite_master` snapshot for each version, and refreshes manifest hashes. `npm run verify.database-contracts` checks that the checked-in resources are current; it runs before every build. `Build/CopyRuntimeAssets.ts` copies JSON and SQL resources into `Dist`, so development, Docker, and packaged desktop runtimes load the same contract.
+新增迁移后运行 `npm run generate.database-contracts`。它会把每个版本应用到全新的 SQLite 数据库、为每个版本写出规范的 `sqlite_master` 快照并刷新 manifest 哈希。`npm run verify.database-contracts` 检查已提交资源是否最新，它在每次构建前运行。`Build/CopyRuntimeAssets.ts` 会把 JSON 和 SQL 资源复制进 `Dist`，因此开发、Docker 和桌面打包运行时加载的是同一份契约。
 
-The runtime stores its ownership and immutable migration ledger in `__senera_database_contract` and `__senera_schema_migrations`. Those control tables are excluded from domain snapshots.
+运行时把所有权信息和不可变迁移账本保存在 `__senera_database_contract` 和 `__senera_schema_migrations`。这些控制表不进入领域快照。
 
-- `authoritative` stores preserve user facts when their canonical schema exactly matches a declared historical version. The runtime records that version, then applies subsequent SQL migrations inside `BEGIN IMMEDIATE`. An unsupported or manually changed schema is replaced by a fully validated current database. A database with explicit metadata for a different store id or data class still fails explicitly, so a path configuration mistake cannot erase another domain.
-- `derived` stores contain regenerable data such as tool-search learning. A current contract is reused. A declared old schema is rebuilt in a validated staging database. An unrecognized database is rejected; the runtime never guesses ownership from table names or deletes an arbitrary SQLite file.
+- `authoritative` 存储在其规范 schema 与某个已声明历史版本完全一致时保留用户数据。运行时记录该版本，然后在 `BEGIN IMMEDIATE` 内应用后续 SQL 迁移。不支持或被手工改动的 schema 会被替换为完整验证过的当前数据库。带有其他 store id 或数据类别显式元数据的数据库仍会明确失败，因此路径配置错误不会抹掉另一个领域的数据。
+- `derived` 存储保存可再生数据，例如工具搜索学习。当前契约直接复用；已声明的旧 schema 会在验证过的 staging 数据库中重建；无法识别的数据库会被拒绝。运行时绝不根据表名猜测所有权，也不会删除任意 SQLite 文件。
 
-To change a schema, add a new numbered SQL migration. Never edit a committed migration or snapshot by hand, and never add a runtime compatibility branch for a historical shape: model it as a declared versioned SQL transition instead. Unsupported authoritative schemas are intentionally reset, so their data must be treated as disposable before deployment.
+修改 schema 时新增一个编号 SQL 迁移。不要手工编辑已提交的迁移或快照，也不要为历史形态添加运行时兼容分支：应把它建模为已声明的版本化 SQL 迁移。不支持的 authoritative schema 会被有意重置，部署前应把这类数据当作可丢弃数据对待。
