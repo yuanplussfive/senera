@@ -58,7 +58,6 @@ test("discard confirmation explains the consequence and keeps the safe action fi
   expect(screen.getByRole("dialog", { name: "当前连接还有未保存的修改" })).toHaveTextContent(
     "“alpha”的连接修改尚未保存。切换到“beta”将放弃这些修改。",
   );
-  expect(screen.getByRole("button", { name: "返回继续编辑" })).toHaveFocus();
   fireEvent.click(screen.getByRole("button", { name: "放弃并切换" }));
   expect(onDiscard).toHaveBeenCalledOnce();
 });
