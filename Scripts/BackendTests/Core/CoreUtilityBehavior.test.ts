@@ -4,11 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { errorMessage, toError } from "../../../Source/AgentSystem/Core/AgentErrors.js";
 import { writeFileAtomic, writeFileAtomicSync } from "../../../Source/AgentSystem/Core/AgentFs.js";
-import {
-  hmacSha256HexOfCanonicalJson,
-  sha256Hex,
-  sha256HexOfCanonicalJson,
-} from "../../../Source/AgentSystem/Core/AgentHash.js";
+import { sha256Hex, sha256HexOfCanonicalJson } from "../../../Source/AgentSystem/Core/AgentHash.js";
 import { withDeadline } from "../../../Source/AgentSystem/Core/AgentTiming.js";
 import { toPosixPath, toPosixRelative, walkFiles } from "../../Support/FileWalk.js";
 import { inspectTextIncludes, inspectWorkflowNamedStep, workflowJobBlock } from "../../Support/WorkflowGovernance.js";
@@ -35,17 +31,6 @@ describe("core utilities", () => {
   test("hashes data and canonical JSON deterministically", () => {
     expect(sha256Hex("abc")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     expect(sha256HexOfCanonicalJson({ alpha: 1, beta: 2 })).toBe(sha256HexOfCanonicalJson({ beta: 2, alpha: 1 }));
-  });
-
-  test("keys canonical fingerprints without depending on object property order", () => {
-    const key = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
-
-    expect(hmacSha256HexOfCanonicalJson({ alpha: 1, beta: 2 }, key)).toBe(
-      hmacSha256HexOfCanonicalJson({ beta: 2, alpha: 1 }, key),
-    );
-    expect(hmacSha256HexOfCanonicalJson({ alpha: 1 }, key)).not.toBe(
-      hmacSha256HexOfCanonicalJson({ alpha: 1 }, Buffer.alloc(32, 1)),
-    );
   });
 
   test("clears a deadline timer when the operation settles first", async () => {

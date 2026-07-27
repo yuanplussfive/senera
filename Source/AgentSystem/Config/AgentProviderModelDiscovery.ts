@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type {
   AgentModelProviderEndpointConfig,
   AgentSystemConfig,
@@ -9,7 +9,6 @@ import {
   resolveStandaloneModelProviderEndpointConfig,
 } from "../Defaults/AgentModelProviderDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import { hmacSha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 
 export interface AgentProviderModelInfo {
   id: string;
@@ -30,16 +29,20 @@ export interface AgentProviderModelDiscoveryOptions {
 }
 
 interface CachedProviderModels {
-  fingerprint: string;
+  requestIdentity: ProviderModelsRequestIdentity;
   snapshot: AgentProviderModelSnapshot;
 }
+
+type ProviderModelsRequestIdentity = Pick<
+  ResolvedAgentModelProviderEndpointConfig,
+  "Kind" | "BaseUrl" | "ApiKey" | "ApiVersion" | "Headers"
+>;
 
 const DISCOVERY_TIMEOUT_MS = 20_000;
 
 export class AgentProviderModelDiscovery {
   private readonly fetchImpl: typeof fetch;
   private readonly cache = new Map<string, CachedProviderModels>();
-  private readonly fingerprintKey = randomBytes(32);
 
   constructor(private readonly options: AgentProviderModelDiscoveryOptions) {
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -71,9 +74,9 @@ export class AgentProviderModelDiscovery {
       );
     }
 
-    const fingerprint = endpointFingerprint(endpoint, this.fingerprintKey);
+    const requestIdentity = providerModelsRequestIdentity(endpoint);
     const cached = this.cache.get(endpoint.Id);
-    if (!input.force && cached?.fingerprint === fingerprint) {
+    if (!input.force && cached && isDeepStrictEqual(cached.requestIdentity, requestIdentity)) {
       return {
         ...cached.snapshot,
         source: "cache",
@@ -121,7 +124,7 @@ export class AgentProviderModelDiscovery {
       models: parseModelListResponse(await response.json()),
     };
     this.cache.set(endpoint.Id, {
-      fingerprint,
+      requestIdentity,
       snapshot,
     });
     return snapshot;
@@ -200,17 +203,16 @@ function parseModelInfo(value: unknown): AgentProviderModelInfo | null {
   };
 }
 
-function endpointFingerprint(endpoint: ResolvedAgentModelProviderEndpointConfig, key: NodeJS.ArrayBufferView): string {
-  return hmacSha256HexOfCanonicalJson(
-    {
-      kind: endpoint.Kind,
-      baseUrl: endpoint.BaseUrl,
-      apiKey: endpoint.ApiKey,
-      apiVersion: endpoint.ApiVersion,
-      headers: endpoint.Headers,
-    },
-    key,
-  );
+function providerModelsRequestIdentity(
+  endpoint: ResolvedAgentModelProviderEndpointConfig,
+): ProviderModelsRequestIdentity {
+  return {
+    Kind: endpoint.Kind,
+    BaseUrl: endpoint.BaseUrl,
+    ApiKey: endpoint.ApiKey,
+    ApiVersion: endpoint.ApiVersion,
+    Headers: { ...endpoint.Headers },
+  };
 }
 
 function withTrailingSlash(value: string): string {
