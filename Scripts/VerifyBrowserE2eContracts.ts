@@ -9,6 +9,7 @@ const testRoot = path.join(workspaceRoot, "Scripts", "BrowserE2ETests");
 const configSource = readSource("playwright.config.ts");
 const harnessSource = readSource("Scripts/BrowserE2ETests/browserE2eTest.mjs");
 const desktopHarnessSource = readSource("Scripts/BrowserE2ETests/DesktopJourney/electronDesktopHarness.cjs");
+const verifyWorkflowSource = readSource(".github/workflows/verify.yml");
 const testFiles = walkFiles(testRoot, { extensions: [".spec.mjs"] });
 const frontendTestFiles = walkFiles(path.join(workspaceRoot, "Scripts", "FrontendTests"), { extensions: [".mjs"] });
 const violations: string[] = [];
@@ -27,6 +28,12 @@ assert.ok(
 assert.ok(
   desktopHarnessSource.includes('Apps", "Desktop", "Preload.cjs"'),
   "Desktop Browser E2E must load the production Electron preload bridge.",
+);
+assert.ok(
+  verifyWorkflowSource.includes(
+    `node -p "'version=' + require('@playwright/test/package.json').version" >> "$GITHUB_OUTPUT"`,
+  ),
+  "Chromium Browser E2E must resolve the Playwright cache version without nested shell command quoting.",
 );
 
 let caseCount = 0;
