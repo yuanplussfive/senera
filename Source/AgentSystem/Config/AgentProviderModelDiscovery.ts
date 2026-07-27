@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type {
   AgentModelProviderEndpointConfig,
   AgentSystemConfig,
@@ -8,7 +9,7 @@ import {
   resolveStandaloneModelProviderEndpointConfig,
 } from "../Defaults/AgentModelProviderDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { hmacSha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 
 export interface AgentProviderModelInfo {
   id: string;
@@ -38,6 +39,7 @@ const DISCOVERY_TIMEOUT_MS = 20_000;
 export class AgentProviderModelDiscovery {
   private readonly fetchImpl: typeof fetch;
   private readonly cache = new Map<string, CachedProviderModels>();
+  private readonly fingerprintKey = randomBytes(32);
 
   constructor(private readonly options: AgentProviderModelDiscoveryOptions) {
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -69,7 +71,7 @@ export class AgentProviderModelDiscovery {
       );
     }
 
-    const fingerprint = endpointFingerprint(endpoint);
+    const fingerprint = endpointFingerprint(endpoint, this.fingerprintKey);
     const cached = this.cache.get(endpoint.Id);
     if (!input.force && cached?.fingerprint === fingerprint) {
       return {
@@ -198,14 +200,17 @@ function parseModelInfo(value: unknown): AgentProviderModelInfo | null {
   };
 }
 
-function endpointFingerprint(endpoint: ResolvedAgentModelProviderEndpointConfig): string {
-  return sha256HexOfCanonicalJson({
-    kind: endpoint.Kind,
-    baseUrl: endpoint.BaseUrl,
-    apiKey: endpoint.ApiKey,
-    apiVersion: endpoint.ApiVersion,
-    headers: endpoint.Headers,
-  });
+function endpointFingerprint(endpoint: ResolvedAgentModelProviderEndpointConfig, key: NodeJS.ArrayBufferView): string {
+  return hmacSha256HexOfCanonicalJson(
+    {
+      kind: endpoint.Kind,
+      baseUrl: endpoint.BaseUrl,
+      apiKey: endpoint.ApiKey,
+      apiVersion: endpoint.ApiVersion,
+      headers: endpoint.Headers,
+    },
+    key,
+  );
 }
 
 function withTrailingSlash(value: string): string {

@@ -81,9 +81,13 @@ function resolvePlatformArtifact(toolchain: OpaToolchain): z.infer<typeof OpaArt
 }
 
 function isVerifiedArtifact(filePath: string, expectedSha256: string): boolean {
+  let descriptor: number | undefined;
   try {
-    return fs.statSync(filePath).isFile() && sha256Hex(fs.readFileSync(filePath)) === expectedSha256;
+    descriptor = fs.openSync(filePath, fs.constants.O_RDONLY);
+    return fs.fstatSync(descriptor).isFile() && sha256Hex(fs.readFileSync(descriptor)) === expectedSha256;
   } catch {
     return false;
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
   }
 }
