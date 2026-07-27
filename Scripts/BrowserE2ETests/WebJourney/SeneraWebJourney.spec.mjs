@@ -55,6 +55,41 @@ test.describe("authenticationMode=disabled", () => {
     await expect(page).toHaveURL(`${disabledHarness.httpOrigin}/`);
   });
 
+  test("keeps the workspace stable while the Web settings chunk is loading", async ({ page }) => {
+    let releaseSettingsChunk = () => undefined;
+    let markSettingsChunkRequested = () => undefined;
+    const settingsChunkGate = new Promise((resolve) => {
+      releaseSettingsChunk = resolve;
+    });
+    const settingsChunkRequested = new Promise((resolve) => {
+      markSettingsChunkRequested = resolve;
+    });
+    await page.route(/\/assets\/SettingsOverlay-[^/]+\.js(?:\?.*)?$/, async (route) => {
+      markSettingsChunkRequested();
+      await settingsChunkGate;
+      await route.continue();
+    });
+
+    try {
+      await page.goto(disabledHarness.httpOrigin);
+      await expect(workspaceComposer(page)).toBeVisible();
+      await openProfileMenu(page);
+      await settingsChunkRequested;
+      await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+
+      await expect(workspaceComposer(page)).toBeVisible();
+      await expect(page.locator("[data-settings-loading]")).toHaveCount(0);
+      await expect(page.locator("[data-settings-workbench]")).toHaveCount(0);
+      await expect(page).toHaveURL(`${disabledHarness.httpOrigin}/`);
+
+      releaseSettingsChunk();
+      await expect(page.locator("[data-settings-workbench]")).toBeVisible();
+      await expect(page).toHaveURL(/\?settings=model-service$/);
+    } finally {
+      releaseSettingsChunk();
+    }
+  });
+
   test("keeps keyboard focus across portaled profile surfaces", async ({ page }) => {
     await page.goto(disabledHarness.httpOrigin);
     await expect(workspaceComposer(page)).toBeVisible();
@@ -142,6 +177,89 @@ test.describe("authenticationMode=disabled", () => {
     await expectPortaledOutsideSessionSidebar(confirmation);
     await confirmation.getByRole("button", { name: "永久删除" }).click();
     await expect(sessionRow).toHaveCount(0);
+  });
+
+  test("navigates the real workflow dock tabs with browser focus and arrow keys", async ({ page }) => {
+    await page.goto(disabledHarness.httpOrigin);
+    await expect(workspaceComposer(page)).toBeVisible();
+    const dock = await openWorkflowDock(page);
+    const executionTab = dock.getByRole("tab", { name: "执行" });
+    const terminalTab = dock.getByRole("tab", { name: "终端" });
+
+    await executionTab.focus();
+    await expect(executionTab).toBeFocused();
+    await executionTab.press("ArrowRight");
+    await expect(terminalTab).toBeFocused();
+    await expect(terminalTab).toHaveAttribute("aria-selected", "true");
+    await expect(dock.locator('[data-terminal-dock="dock"]')).toBeVisible();
+
+    await terminalTab.press("ArrowLeft");
+    await expect(executionTab).toBeFocused();
+    await expect(executionTab).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("resizes the workflow dock by keyboard and captured pointer, then restores its width", async ({ page }) => {
+    await page.goto(disabledHarness.httpOrigin);
+    await expect(workspaceComposer(page)).toBeVisible();
+    const dock = await openWorkflowDock(page);
+    const separator = dock.getByRole("separator", { name: "调整功能坞宽度" });
+    const minimum = Number(await separator.getAttribute("aria-valuemin"));
+    const maximum = Number(await separator.getAttribute("aria-valuemax"));
+
+    await separator.focus();
+    await separator.press("End");
+    await expect(separator).toHaveAttribute("aria-valuenow", String(maximum));
+    await separator.press("Home");
+    await expect(separator).toHaveAttribute("aria-valuenow", String(minimum));
+    await separator.press("ArrowLeft");
+    const keyboardWidth = Number(await separator.getAttribute("aria-valuenow"));
+    expect(keyboardWidth).toBeGreaterThan(minimum);
+
+    await separator.evaluate(() => {
+      globalThis.__seneraWorkflowDockCaptureEvents = [];
+      document.addEventListener(
+        "gotpointercapture",
+        (event) => {
+          const target = event.target;
+          globalThis.__seneraWorkflowDockCaptureEvents.push({
+            type: event.type,
+            captured: target instanceof Element && target.hasPointerCapture(event.pointerId),
+          });
+        },
+        { once: true },
+      );
+      document.addEventListener(
+        "lostpointercapture",
+        (event) => {
+          const target = event.target;
+          globalThis.__seneraWorkflowDockCaptureEvents.push({
+            type: event.type,
+            captured: target instanceof Element && target.hasPointerCapture(event.pointerId),
+          });
+        },
+        { once: true },
+      );
+    });
+    await separator.dragTo(page.locator("[data-workspace-main]"));
+    await expect.poll(async () => Number(await separator.getAttribute("aria-valuenow"))).toBeGreaterThan(keyboardWidth);
+    await expect
+      .poll(() => page.evaluate(() => globalThis.__seneraWorkflowDockCaptureEvents))
+      .toEqual([
+        { type: "gotpointercapture", captured: true },
+        { type: "lostpointercapture", captured: false },
+      ]);
+
+    const resizedWidth = Number(await separator.getAttribute("aria-valuenow"));
+    const persistedWidth = await readPersistedWorkflowDockWidth(page);
+    expect(persistedWidth).toBe(resizedWidth);
+
+    await page.reload();
+    await expect(workspaceComposer(page)).toBeVisible();
+    const restoredDock = await openWorkflowDock(page);
+    await expect(restoredDock.getByRole("separator", { name: "调整功能坞宽度" })).toHaveAttribute(
+      "aria-valuenow",
+      String(resizedWidth),
+    );
   });
 
   test("keeps the mobile viewport workspace path usable @smoke", async ({ page }) => {
@@ -275,6 +393,21 @@ async function login(page) {
 
 async function openProfileMenu(page) {
   await profileMenuButton(page).click();
+}
+
+async function openWorkflowDock(page) {
+  await page.locator('[data-workflow-dock-tool="execution"]').click();
+  const dock = page.locator('[data-workflow-dock][data-open="true"]');
+  await expect(dock).toBeVisible();
+  return dock;
+}
+
+async function readPersistedWorkflowDockWidth(page) {
+  return page.evaluate(() => {
+    const persisted = localStorage.getItem("senera-frontend@v1");
+    if (!persisted) return null;
+    return JSON.parse(persisted).state?.workflowDockWidth ?? null;
+  });
 }
 
 function profileMenuButton(page) {

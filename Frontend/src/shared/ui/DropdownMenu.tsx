@@ -91,7 +91,7 @@ export const DropdownMenuMeta = forwardRef<HTMLDivElement, MetaProps>(
       )}
       {...props}
     >
-      {icon ? <span className="grid h-4 w-4 shrink-0 place-items-center text-ink-450">{icon}</span> : null}
+      {icon ? <span className="grid h-4 w-4 shrink-0 place-items-center text-ink-500">{icon}</span> : null}
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {value ? <span className="shrink-0 text-[11px] text-ink-400">{value}</span> : null}
     </div>

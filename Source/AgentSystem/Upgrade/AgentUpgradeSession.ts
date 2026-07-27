@@ -40,6 +40,15 @@ export type AgentDerivedSqliteUpgradeInput = AgentSqliteUpgradeInput & {
   readonly plan: Extract<AgentSqliteStoreReconciliation, { kind: "rebuild" }>;
 };
 
+export interface AgentSqliteDataUpgradeInput {
+  readonly id: string;
+  readonly database: Database.Database;
+  readonly databasePath: string;
+  readonly sourceVersion: number;
+  readonly targetVersion: number;
+  readonly migrate: (database: Database.Database) => void;
+}
+
 export class AgentUpgradeSession {
   readonly journal: AgentUpgradeJournal;
   private readonly allowedDataRoots: readonly string[];
@@ -98,6 +107,22 @@ export class AgentUpgradeSession {
     this.dryRunSqlite(participant, input.contract);
     migrateAgentSqliteStore(input.database, input.contract);
     assertSqliteHealth(input.database, input.contract.id);
+    this.updateParticipant(participant.id, AgentUpgradeParticipantPhases.Migrated, "migration.applied");
+  }
+
+  migrateSqliteData(input: AgentSqliteDataUpgradeInput): void {
+    const sourcePath = this.assertAllowedDataPath(input.databasePath);
+    const participant = this.backupSqlite(input.database, {
+      id: input.id,
+      dataClass: "authoritative",
+      sourcePath,
+      sourceVersion: input.sourceVersion,
+      targetVersion: input.targetVersion,
+    });
+
+    this.dryRunSqliteData(participant, input);
+    input.migrate(input.database);
+    assertSqliteHealth(input.database, input.id);
     this.updateParticipant(participant.id, AgentUpgradeParticipantPhases.Migrated, "migration.applied");
   }
 
@@ -293,6 +318,24 @@ export class AgentUpgradeSession {
       dryRun.pragma("foreign_keys = ON");
       migrateAgentSqliteStore(dryRun, contract);
       assertSqliteHealth(dryRun, contract.id);
+    } finally {
+      dryRun.close();
+      removeSqliteFiles(dryRunPath);
+    }
+    this.updateParticipant(participant.id, AgentUpgradeParticipantPhases.DryRunPassed, "migration.dry_run_passed");
+  }
+
+  private dryRunSqliteData(participant: AgentUpgradeParticipant, input: AgentSqliteDataUpgradeInput): void {
+    const operationRoot = this.journal.operationRoot(this.requireManifest().upgradeId);
+    const backupPath = resolveInside(operationRoot, participant.backupPath);
+    const dryRunPath = resolveInside(operationRoot, "dry-run", `${participant.id}.sqlite`);
+    fs.mkdirSync(path.dirname(dryRunPath), { recursive: true, mode: 0o700 });
+    fs.copyFileSync(backupPath, dryRunPath);
+    const dryRun = new Database(dryRunPath, { fileMustExist: true });
+    try {
+      dryRun.pragma("foreign_keys = ON");
+      input.migrate(dryRun);
+      assertSqliteHealth(dryRun, input.id);
     } finally {
       dryRun.close();
       removeSqliteFiles(dryRunPath);

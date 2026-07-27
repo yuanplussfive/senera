@@ -1,7 +1,7 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { BrainCircuit, Settings2, SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "../../lib/util";
-import { Button, Dialog, DialogContent, MenuSelect, ScrollArea } from "../../shared/ui";
+import { Button, Dialog, DialogContent, InlineError, MenuSelect, ScrollArea } from "../../shared/ui";
 import { ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
 import { readBooleanWithTemplate, readModelCapabilities, readNumberWithTemplate } from "./modelConfigData";
 import type { ModelCapabilitiesDraft, ModelProviderDraft } from "./modelConfigTypes";
@@ -22,6 +22,8 @@ export function ModelOptionsDialog({
   onSetDefault,
   onRemove,
   removeDisabledReason,
+  errorMessage,
+  discardAction,
   commitLabels = {
     existing: frontendMessage("config.model.applyToDraft"),
     new: frontendMessage("config.model.addToDraft"),
@@ -40,6 +42,10 @@ export function ModelOptionsDialog({
   onSetDefault?: (modelId: string) => void;
   onRemove: (index: number) => void;
   removeDisabledReason?: string;
+  /** Last save failure for this model, shown above the footer actions. */
+  errorMessage?: string | null;
+  /** Escape hatch when the save-on-close cycle cannot complete. */
+  discardAction?: { label: string; onDiscard: () => void };
   commitLabels?: { existing: string; new: string };
 }): JSX.Element {
   const open = model !== null;
@@ -303,48 +309,56 @@ export function ModelOptionsDialog({
           </div>
         </ScrollArea>
 
-        <div className="flex shrink-0 items-center justify-between border-t border-ink-200/70 bg-paper-100 px-5 py-3">
-          <button
-            type="button"
-            disabled={disabled || !isSaved || Boolean(removeDisabledReason)}
-            title={removeDisabledReason}
-            className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] transition disabled:pointer-events-none disabled:opacity-50",
-              isSaved
-                ? "border-brick-200 bg-brick-50 text-brick-700 hover:bg-brick-100"
-                : "border-ink-200 bg-paper-50 text-ink-450",
-            )}
-            onClick={() => {
-              if (modelIndex !== null) onRemove(modelIndex);
-            }}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            {removeDisabledReason
-              ? frontendMessage("config.model.changeDefaultFirst")
-              : isSaved
-                ? frontendMessage("config.model.remove")
-                : frontendMessage("config.model.unsaved")}
-          </button>
-          <div className="flex items-center gap-2">
-            {onSetDefault ? (
-              <button
-                type="button"
-                disabled={disabled || !isSaved || !model.Id || isDefault}
-                className={cn(
-                  "inline-flex h-8 items-center rounded-md border px-3 text-[12px] transition",
-                  isDefault
-                    ? "border-accent-border bg-accent-surface text-accent-content"
-                    : "border-ink-200 bg-paper-50 text-ink-650 hover:border-accent-border-strong hover:text-accent-content-hover",
-                  "disabled:pointer-events-none disabled:opacity-50",
-                )}
-                onClick={() => onSetDefault(model.Id)}
-              >
-                {isDefault ? frontendMessage("config.model.default") : frontendMessage("config.model.setDefault")}
-              </button>
-            ) : null}
-            <Button size="sm" disabled={disabled} onClick={onCommit}>
-              {isSaved ? commitLabels.existing : commitLabels.new}
-            </Button>
+        <div className="shrink-0 border-t border-ink-200/70 bg-paper-100 px-5 py-3">
+          {errorMessage ? <InlineError className="mb-2">{errorMessage}</InlineError> : null}
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              disabled={disabled || !isSaved || Boolean(removeDisabledReason)}
+              title={removeDisabledReason}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] transition disabled:pointer-events-none disabled:opacity-50",
+                isSaved
+                  ? "border-ink-200 bg-paper-50 text-brick-600 hover:border-brick-200 hover:bg-brick-50 hover:text-brick-700"
+                  : "border-ink-200 bg-paper-50 text-ink-500",
+              )}
+              onClick={() => {
+                if (modelIndex !== null) onRemove(modelIndex);
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {removeDisabledReason
+                ? frontendMessage("config.model.changeDefaultFirst")
+                : isSaved
+                  ? frontendMessage("config.model.remove")
+                  : frontendMessage("config.model.unsaved")}
+            </button>
+            <div className="flex items-center gap-2">
+              {discardAction ? (
+                <Button size="sm" variant="outline" onClick={discardAction.onDiscard}>
+                  {discardAction.label}
+                </Button>
+              ) : null}
+              {onSetDefault ? (
+                <button
+                  type="button"
+                  disabled={disabled || !isSaved || !model.Id || isDefault}
+                  className={cn(
+                    "inline-flex h-8 items-center rounded-md border px-3 text-[12px] transition",
+                    isDefault
+                      ? "border-accent-border bg-accent-surface text-accent-content"
+                      : "border-ink-200 bg-paper-50 text-ink-650 hover:border-accent-border-strong hover:text-accent-content-hover",
+                    "disabled:pointer-events-none disabled:opacity-50",
+                  )}
+                  onClick={() => onSetDefault(model.Id)}
+                >
+                  {isDefault ? frontendMessage("config.model.default") : frontendMessage("config.model.setDefault")}
+                </button>
+              ) : null}
+              <Button size="sm" disabled={disabled} onClick={onCommit}>
+                {isSaved ? commitLabels.existing : commitLabels.new}
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>

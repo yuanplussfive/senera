@@ -187,7 +187,9 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("provider.model.upsert"),
       ...AgentConfigCommandRequestSchema,
-      model: ModelProviderSchema,
+      model: ModelProviderSchema.describe(
+        "Complete model configuration. Replaces an existing model with the same Id; omitted optional overrides are cleared.",
+      ),
       group: AgentProviderModelGroupAssignmentRequestSchema.optional(),
     })
     .strict(),
@@ -203,8 +205,17 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("provider.model.bulkImport"),
       ...AgentConfigCommandRequestSchema,
-      models: z.array(ModelProviderSchema),
-      overwriteExisting: z.boolean().optional(),
+      models: z
+        .array(ModelProviderSchema)
+        .describe(
+          "Complete model configurations to import. Existing Ids are skipped unless overwriteExisting is true.",
+        ),
+      overwriteExisting: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, completely replaces existing models with matching Ids; omitted optional overrides are cleared.",
+        ),
       groupAssignments: z.array(AgentProviderModelBulkImportGroupAssignmentRequestSchema).optional(),
     })
     .strict(),

@@ -18,6 +18,7 @@ export type PendingAttachment = {
   error?: string;
   previewUrl?: string;
   previewUnavailable?: boolean;
+  file?: File;
 };
 
 export interface ComposerAttachmentsOptions {
@@ -32,6 +33,7 @@ export interface ComposerAttachments {
   isDraggingFiles: boolean;
   uploading: boolean;
   removeAttachment: (id: string) => void;
+  retryAttachment: (id: string) => void;
   markPreviewUnavailable: (id: string) => void;
   collectUploadedAttachments: () => UploadAttachmentData[];
   commitSentAttachments: () => void;
@@ -66,26 +68,8 @@ export function useComposerAttachments(options: ComposerAttachmentsOptions): Com
     [],
   );
 
-  const enqueueFiles = (files: File[]): void => {
-    if (files.length === 0) return;
-    for (const file of files) {
-      const id = generateId();
-      const previewUrl = isImageFilePreview({ name: file.name, mime: file.type })
-        ? URL.createObjectURL(file)
-        : undefined;
-      if (previewUrl) ownedPreviewUrlsRef.current.add(previewUrl);
-      setPendingAttachments((current) => [
-        ...current,
-        {
-          id,
-          fileName: file.name,
-          mime: file.type,
-          size: file.size,
-          status: "uploading",
-          progress: { loaded: 0, total: file.size, ratio: file.size === 0 ? 1 : 0 },
-          previewUrl,
-        },
-      ]);
+  const startUpload = useCallback(
+    (id: string, file: File): void => {
       void uploadFile(uploadUrl, file, {
         headers: uploadCsrfToken ? { "X-Senera-Csrf": uploadCsrfToken } : undefined,
         onProgress: (progress) => {
@@ -118,7 +102,52 @@ export function useComposerAttachments(options: ComposerAttachmentsOptions): Com
           );
           toast.error(frontendMessage("upload.fileFailed"), { description: message });
         });
+    },
+    [uploadCsrfToken, uploadUrl],
+  );
+
+  const enqueueFiles = (files: File[]): void => {
+    if (files.length === 0) return;
+    for (const file of files) {
+      const id = generateId();
+      const previewUrl = isImageFilePreview({ name: file.name, mime: file.type })
+        ? URL.createObjectURL(file)
+        : undefined;
+      if (previewUrl) ownedPreviewUrlsRef.current.add(previewUrl);
+      setPendingAttachments((current) => [
+        ...current,
+        {
+          id,
+          fileName: file.name,
+          mime: file.type,
+          size: file.size,
+          status: "uploading",
+          progress: { loaded: 0, total: file.size, ratio: file.size === 0 ? 1 : 0 },
+          previewUrl,
+          file,
+        },
+      ]);
+      startUpload(id, file);
     }
+  };
+
+  const retryAttachment = (id: string): void => {
+    const entry = pendingAttachments.find((candidate) => candidate.id === id);
+    if (!entry?.file) return;
+    const file = entry.file;
+    setPendingAttachments((current) =>
+      current.map((candidate) =>
+        candidate.id === id
+          ? {
+              ...candidate,
+              status: "uploading",
+              error: undefined,
+              progress: { loaded: 0, total: file.size, ratio: file.size === 0 ? 1 : 0 },
+            }
+          : candidate,
+      ),
+    );
+    startUpload(id, file);
   };
 
   const removeAttachment = (id: string): void => {
@@ -202,6 +231,7 @@ export function useComposerAttachments(options: ComposerAttachmentsOptions): Com
     isDraggingFiles,
     uploading: pendingAttachments.some((attachment) => attachment.status === "uploading"),
     removeAttachment,
+    retryAttachment,
     markPreviewUnavailable,
     collectUploadedAttachments,
     commitSentAttachments,

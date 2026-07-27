@@ -7,6 +7,7 @@ import {
   readWebSettingsSection,
 } from "./appSurface";
 import { defaultSettingsSectionId, type SettingsSectionId } from "../features/settings/settingsSectionContract";
+import { prepareWebSettingsSurface } from "./applicationModuleLoaders";
 
 export interface WebSettingsController {
   section: SettingsSectionId | null;
@@ -20,7 +21,13 @@ export interface WebSettingsController {
   returnFocusRef: React.MutableRefObject<HTMLElement | null>;
 }
 
-export function useWebSettingsController(): WebSettingsController {
+export interface WebSettingsControllerOptions {
+  prepareSurface?: () => Promise<void>;
+}
+
+export function useWebSettingsController({
+  prepareSurface = prepareWebSettingsSurface,
+}: WebSettingsControllerOptions = {}): WebSettingsController {
   const [section, setSection] = useState<SettingsSectionId | null>(() => readWebSettingsSection(window.location));
   const [pendingChanges, setPendingChangesState] = useState(false);
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
@@ -29,6 +36,14 @@ export function useWebSettingsController(): WebSettingsController {
   const pendingCloseActionRef = useRef<(() => void) | null>(null);
   const bypassPopRef = useRef(false);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const openRequestSequenceRef = useRef(0);
+
+  useEffect(
+    () => () => {
+      openRequestSequenceRef.current += 1;
+    },
+    [],
+  );
 
   useEffect(() => {
     sectionRef.current = section;
@@ -112,6 +127,9 @@ export function useWebSettingsController(): WebSettingsController {
       }
       returnFocusRef.current =
         returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+      const requestSequence = ++openRequestSequenceRef.current;
+      await prepareSurface();
+      if (requestSequence !== openRequestSequenceRef.current) return;
       const current = sectionRef.current;
       const nextLocation = buildWebSettingsLocation(window.location, target);
       if (current) {
@@ -121,7 +139,7 @@ export function useWebSettingsController(): WebSettingsController {
       }
       setSection(target);
     },
-    [],
+    [prepareSurface],
   );
 
   const changeSection = useCallback((target: SettingsSectionId): void => {

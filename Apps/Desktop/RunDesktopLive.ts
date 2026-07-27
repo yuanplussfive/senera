@@ -1,14 +1,16 @@
 import net from "node:net";
 import process from "node:process";
 import { sync as spawnSync } from "cross-spawn";
-import { probeDesktopLiveFrontend } from "./DesktopLiveFrontendServer.js";
-import { sleep } from "../../Source/AgentSystem/Core/AgentTiming.js";
 import { DesktopNativeModuleMaintenance } from "../../Build/DesktopNativeModuleMaintenance.js";
+import { isMainModule } from "../../Source/AgentSystem/Core/AgentPath.js";
+import { sleep } from "../../Source/AgentSystem/Core/AgentTiming.js";
 import {
   spawnSeneraInheritedProcess,
   terminateSeneraOwnedProcessWithEscalation,
   type SeneraInheritedOwnedProcess,
 } from "../../Source/AgentSystem/Execution/SeneraOwnedProcessSpawner.js";
+import { probeDesktopLiveFrontend } from "./DesktopLiveFrontendServer.js";
+import { acquireDesktopLiveLock, createDesktopLiveCleanup, type DesktopLiveLock } from "./DesktopLiveLifecycle.js";
 
 interface CommandInvocation {
   command: string;
@@ -17,37 +19,42 @@ interface CommandInvocation {
 }
 
 const DesktopChildTerminationGraceMs = 2_000;
-
 const configuredFrontendUrl = process.env.SENERA_DESKTOP_FRONTEND_URL?.trim();
 const defaultFrontendUrl = "http://127.0.0.1:5173";
 const runningChildren = new Set<SeneraInheritedOwnedProcess>();
-let shuttingDown = false;
+const nativeMaintenance = new DesktopNativeModuleMaintenance(process.cwd());
+let desktopLiveLock: DesktopLiveLock | undefined;
+let nativeDependenciesRequireRestore = false;
+let shutdownPromise: Promise<void> | undefined;
+let signalExitStarted = false;
+const cleanupDesktopLive = createDesktopLiveCleanup(cleanupDesktopLiveResources);
 
-void main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (isMainModule(import.meta.url)) {
+  void main().catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
 
 async function main(): Promise<void> {
-  const nativeMaintenance = new DesktopNativeModuleMaintenance(process.cwd());
-  await nativeMaintenance.clearRebuildMetadata();
-
-  const setupSteps = [
-    command("npm", ["run", "build"]),
-    command("electron-builder", ["install-app-deps", "--platform=win32", "--arch=x64"]),
-  ];
-
-  for (const step of setupSteps) {
-    const result = run(step);
-    if (result !== 0) {
-      process.exitCode = result;
-      await nativeMaintenance.restoreNodeCompatibility();
-      return;
-    }
-  }
-
-  registerShutdownHandlers();
+  desktopLiveLock = acquireDesktopLiveLock(process.cwd());
   try {
+    registerShutdownHandlers();
+    await nativeMaintenance.clearRebuildMetadata();
+    nativeDependenciesRequireRestore = true;
+
+    const setupSteps = [
+      command("npm", ["run", "build"]),
+      command("electron-builder", ["install-app-deps", "--platform=win32", "--arch=x64"]),
+    ];
+    for (const step of setupSteps) {
+      const result = run(step);
+      if (result !== 0) {
+        process.exitCode = result;
+        return;
+      }
+    }
+
     let frontendUrl = configuredFrontendUrl || defaultFrontendUrl;
     let frontendProbe = await probeDesktopLiveFrontend(frontendUrl);
     if (!configuredFrontendUrl && frontendProbe.kind === "invalid") {
@@ -76,8 +83,7 @@ async function main(): Promise<void> {
     );
     process.exitCode = await waitForExit(electronProcess);
   } finally {
-    await shutdownChildren();
-    await nativeMaintenance.restoreNodeCompatibility();
+    await cleanupDesktopLive();
   }
 }
 
@@ -110,7 +116,7 @@ async function findAvailableFrontendUrl(occupiedUrl: string): Promise<string> {
   for (let port = firstPort; port <= 65_535; port += 1) {
     if (await isPortAvailable(url.hostname, port)) {
       url.port = String(port);
-      return url.toString().replace(/\/$/, "");
+      return url.toString().replace(/\/$/u, "");
     }
   }
   throw new Error(`Could not find an available frontend port after ${firstPort - 1}.`);
@@ -129,19 +135,16 @@ function isPortAvailable(host: string, port: number): Promise<boolean> {
 
 function run(invocation: CommandInvocation): number {
   console.log(`\n> ${[invocation.command, ...invocation.arguments].join(" ")}`);
-
   const result = spawnSync(invocation.command, invocation.arguments, {
     cwd: process.cwd(),
     env: invocation.env ?? process.env,
     stdio: "inherit",
     windowsHide: true,
   });
-
   if (result.error) {
     console.error(result.error);
     return 1;
   }
-
   return result.status ?? 1;
 }
 
@@ -162,11 +165,7 @@ async function start(invocation: CommandInvocation): Promise<SeneraInheritedOwne
 }
 
 function command(name: string, args: readonly string[] = [], env?: NodeJS.ProcessEnv): CommandInvocation {
-  return {
-    command: name,
-    arguments: [...args],
-    env,
-  };
+  return { command: name, arguments: [...args], env };
 }
 
 async function waitForFrontend(url: string): Promise<void> {
@@ -197,21 +196,35 @@ async function waitForExit(ownedProcess: SeneraInheritedOwnedProcess): Promise<n
 function registerShutdownHandlers(): void {
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.once(signal, () => {
-      const nativeMaintenance = new DesktopNativeModuleMaintenance(process.cwd());
-      void shutdownChildren()
-        .then(() => nativeMaintenance.restoreNodeCompatibility())
-        .catch((error: unknown) => console.error(error))
-        .finally(() => process.exit(signal === "SIGINT" ? 130 : 143));
+      if (signalExitStarted) return;
+      signalExitStarted = true;
+      void cleanupDesktopLive()
+        .then(() => process.exit(signal === "SIGINT" ? 130 : 143))
+        .catch((error: unknown) => {
+          console.error(error);
+          process.exit(1);
+        });
     });
   }
 }
 
-async function shutdownChildren(): Promise<void> {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  await Promise.all([...runningChildren].map(killProcessTree));
+function shutdownChildren(): Promise<void> {
+  return (shutdownPromise ??= Promise.all(
+    [...runningChildren].map((ownedProcess) =>
+      terminateSeneraOwnedProcessWithEscalation(ownedProcess, DesktopChildTerminationGraceMs),
+    ),
+  ).then(() => undefined));
 }
 
-function killProcessTree(ownedProcess: SeneraInheritedOwnedProcess): Promise<void> {
-  return terminateSeneraOwnedProcessWithEscalation(ownedProcess, DesktopChildTerminationGraceMs);
+async function cleanupDesktopLiveResources(): Promise<void> {
+  try {
+    await shutdownChildren();
+    if (nativeDependenciesRequireRestore) {
+      nativeDependenciesRequireRestore = false;
+      await nativeMaintenance.restoreNodeCompatibility();
+    }
+  } finally {
+    desktopLiveLock?.release();
+    desktopLiveLock = undefined;
+  }
 }

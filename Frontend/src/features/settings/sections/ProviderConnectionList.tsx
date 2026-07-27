@@ -109,7 +109,7 @@ export function ProviderConnectionList({
                     {providerIdLabel(provider)}
                   </span>
                   {statusText ? (
-                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-ink-450">
+                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-ink-500">
                       <ProviderStatusIcon
                         loading={loading || operationPending}
                         catalog={catalog}

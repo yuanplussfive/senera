@@ -150,6 +150,27 @@ test("new provider presets remain editable after the identity snapshot arrives",
 
   expect(handleRef.current.selectedProviderId).toBe("beta");
   expect(handleRef.current.actions.connectionDraft?.BaseUrl).toBe("https://preset.example.test/v1");
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        onUpsertProviderEndpoint,
+        operations: {
+          beta: {
+            commandId: "add-request",
+            kind: "provider.endpoint.upsert",
+            status: "success",
+            updatedAt: "2026-07-12T00:00:00.000Z",
+          },
+        },
+        state: createState("alpha"),
+      }),
+    );
+  });
+
+  expect(handleRef.current.selectedProviderId).toBe("alpha");
+  expect(handleRef.current.actions.connectionDraft?.Id).toBe("alpha");
 });
 
 test("provider connection commits the latest draft and immediate patches", async () => {

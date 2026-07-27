@@ -2,7 +2,11 @@ import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentModelProviderEndpointConfig } from "../Types/AgentModelConfigTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentConfigSnapshot } from "./AgentConfigService.js";
-import { isAgentConfigRedactedSecret, AgentConfigSecretContract } from "./AgentConfigSecretContract.js";
+import {
+  AgentConfigSecretContract,
+  isAgentConfigRedactedSecret,
+  isAgentConfigSensitiveHeaderName,
+} from "./AgentConfigSecretContract.js";
 import { projectAgentConfigForm } from "./AgentConfigFormProjector.js";
 
 /**
@@ -10,8 +14,6 @@ import { projectAgentConfigForm } from "./AgentConfigFormProjector.js";
  * 快照离开进程边界前替换为占位符；回写时凭占位符按端点 Id 还原真实值，
  * 因此密钥永远不会进入前端内存，也不会因为用户保存配置而被占位符覆盖。
  */
-
-const SensitiveHeaderNamePattern = /auth|key|token|secret|cookie|password|credential|signature/i;
 
 interface AgentEndpointSecretFields {
   Id: string;
@@ -101,7 +103,7 @@ function redactAgentProviderEndpointSecrets(
     redacted.Headers = Object.fromEntries(
       Object.entries(endpoint.Headers).map(([name, value]) => [
         name,
-        value.length > 0 && SensitiveHeaderNamePattern.test(name)
+        value.length > 0 && isAgentConfigSensitiveHeaderName(name)
           ? AgentConfigSecretContract.RedactedPlaceholder
           : value,
       ]),

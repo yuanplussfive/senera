@@ -54,9 +54,11 @@ export function useProviderConnectionDraftQueue({
   const entriesRef = useRef<Map<string, ProviderDraftEntry>>(new Map());
   const timersRef = useRef<Map<string, number>>(new Map());
   const providersRef = useRef(providers);
+  const operationsRef = useRef(operations);
   const onPendingDraftSaveRef = useRef(onPendingDraftSave);
   const sendRef = useRef<(draft: ProviderEndpointDraft, manual?: boolean) => void>(() => undefined);
   providersRef.current = providers;
+  operationsRef.current = operations;
   onPendingDraftSaveRef.current = onPendingDraftSave;
   const providerListKey = JSON.stringify(providers.map(normalizeProviderEndpointDraft));
 
@@ -129,6 +131,17 @@ export function useProviderConnectionDraftQueue({
   const send = useCallback(
     (nextDraft: ProviderEndpointDraft, manual = false): void => {
       const providerId = nextDraft.Id;
+      // Never upsert a provider that is being deleted or renamed, or that no
+      // longer exists (except the pending-add flow): the backend appends on
+      // unknown ids, so a late draft save would re-create the removed provider.
+      const providerOperation = operationsRef.current[providerId];
+      const destructivePending =
+        providerOperation?.status === "pending" &&
+        (providerOperation.kind === "provider.endpoint.delete" ||
+          providerOperation.kind === "provider.endpoint.rename");
+      const missing =
+        pendingProviderDraftId !== providerId && !providersRef.current.some((provider) => provider.Id === providerId);
+      if (destructivePending || missing) return;
       const entry = entriesRef.current.get(providerId) ?? read(nextDraft);
       if (entry.active) {
         entriesRef.current.set(providerId, { ...entry, queuedDraft: nextDraft });

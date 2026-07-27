@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentConfigMigrationError } from "../Source/AgentSystem/Config/AgentConfigMigration.js";
+import { AgentConfigSecretCodec } from "../Source/AgentSystem/Config/AgentConfigSecretProtection.js";
 import { CurrentAgentConfigVersion } from "../Source/AgentSystem/Config/AgentConfigVersion.js";
 import { AgentJsonFileError } from "../Source/AgentSystem/Config/AgentJsonFileLoader.js";
 import { AgentConfigSqliteRepository } from "../Source/AgentSystem/Config/AgentConfigSqliteRepository.js";
@@ -57,9 +58,14 @@ function verifyLegacyJsonMigration(): void {
   assert.equal("MaxRepairAttempts" in (snapshot.value.AgentLoop ?? {}), false);
   assert.equal("LoadedTools" in (snapshot.value.AgentLoop ?? {}), false);
   assert.equal("DecisionActionDescription" in (snapshot.value.PluginDocumentation ?? {}), false);
-  assert.equal(fs.readFileSync(`${configPath}.v0.bak`, "utf8"), originalText);
+  assert.equal(snapshot.value.ModelProviderEndpoints?.[0]?.ApiKey, "test");
 
-  const persisted = JSON.parse(fs.readFileSync(configPath, "utf8")) as Record<string, unknown>;
+  const backupText = fs.readFileSync(`${configPath}.v0.bak`, "utf8");
+  assertProtectedApiKey(backupText);
+
+  const persistedText = fs.readFileSync(configPath, "utf8");
+  assertProtectedApiKey(persistedText);
+  const persisted = JSON.parse(persistedText) as Record<string, unknown>;
   assert.equal(persisted.ConfigVersion, CurrentAgentConfigVersion);
   assert.equal("Cli" in persisted, false);
   assert.equal((persisted.Defaults as Record<string, unknown>).Cli, undefined);
@@ -72,9 +78,16 @@ function verifyLegacyJsonMigration(): void {
       configPath,
     },
   });
-  assert.deepEqual(reloaded.snapshot().diagnostics, []);
+  const reloadedSnapshot = reloaded.snapshot();
+  assert.deepEqual(reloadedSnapshot.diagnostics, []);
+  assert.equal(reloadedSnapshot.value.ModelProviderEndpoints?.[0]?.ApiKey, "test");
   reloaded.close();
-  assert.equal(fs.readFileSync(`${configPath}.v0.bak`, "utf8"), originalText);
+  assert.equal(fs.readFileSync(`${configPath}.v0.bak`, "utf8"), backupText);
+}
+
+function assertProtectedApiKey(text: string): void {
+  assert.equal(text.includes('"ApiKey": "test"'), false);
+  assert.equal(text.includes('"ApiKey": "senera:secret:v1:'), true);
 }
 
 function verifyUnknownFieldsRemainErrors(): void {
@@ -148,7 +161,10 @@ function verifyInvalidStoredRevisionFailsWithoutJsonFallback(): void {
       }),
     /配置数据库中的配置结构无效/,
   );
-  assert.equal(fs.readFileSync(configPath, "utf8"), originalText);
+  const persistedText = fs.readFileSync(configPath, "utf8");
+  assertProtectedApiKey(persistedText);
+  const revealed = new AgentConfigSecretCodec({ workspaceRoot }).revealPayload(JSON.parse(persistedText) as unknown);
+  assert.deepEqual(revealed.value, currentConfig);
 }
 
 function createCurrentConfig(): Record<string, unknown> {

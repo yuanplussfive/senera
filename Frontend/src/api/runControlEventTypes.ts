@@ -5,7 +5,16 @@ export interface RunCancellationProgressData {
   message?: string;
 }
 
+/** 与后端 AgentRequestInvalidCode 保持一致（Source/AgentSystem/Events/AgentRunEventTypes.ts） */
+export type RequestInvalidCode =
+  | "approval_not_pending"
+  | "interaction_input_resolve_failed"
+  | "request_parse_failed"
+  | "session_fork_boundary_missing"
+  | "session_fork_target_exists";
+
 export interface RequestInvalidData {
+  code?: RequestInvalidCode;
   message: string;
   details?: unknown;
 }

@@ -5,11 +5,7 @@ import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { normalizeProviderEndpointDraft } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import type { ModelServiceState } from "./modelServiceState";
-import {
-  buildProviderEndpointMutationInput,
-  providerIdentitySnapshot,
-  sameProviderEndpoint,
-} from "./providerConnectionState";
+import { buildProviderEndpointMutationInput, sameProviderEndpoint } from "./providerConnectionState";
 import { useProviderConnectionDraftQueue } from "./useProviderConnectionDraftQueue";
 
 interface PendingProviderRename {
@@ -58,8 +54,12 @@ export interface ProviderConnectionActions {
   localError: string | null;
   showAddDialog: boolean;
   setShowAddDialog: (open: boolean) => void;
+  dismissAddDialog: () => void;
+  addPending: boolean;
+  addError: string | null;
   renameTarget: ProviderEndpointDraft | null;
   setRenameTarget: (provider: ProviderEndpointDraft | null) => void;
+  renameError: string | null;
   selectProvider: (provider: ProviderEndpointDraft) => boolean;
   commitAndSelectProvider: (provider: ProviderEndpointDraft) => boolean;
   discardAndSelectProvider: (provider: ProviderEndpointDraft) => void;
@@ -97,7 +97,8 @@ export function useProviderConnectionActions({
 }: UseProviderConnectionActionsInput): ProviderConnectionActions {
   const [draftProvider, setDraftProvider] = useState<ProviderEndpointDraft | null>(state.providers[0] ?? null);
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [renameTarget, setRenameTarget] = useState<ProviderEndpointDraft | null>(null);
+  const [renameTarget, setRenameTargetState] = useState<ProviderEndpointDraft | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [pendingProviderDraft, setPendingProviderDraft] = useState<PendingProviderDraft | null>(null);
   const [pendingProviderDraftConfirmation, setPendingProviderDraftConfirmation] =
     useState<PendingProviderDraftConfirmation | null>(null);
@@ -142,7 +143,14 @@ export function useProviderConnectionActions({
     if (pendingRenameProviderId && pendingRenameNextProviderId) {
       const renamedProvider = providers.find((provider) => provider.Id === pendingRenameNextProviderId);
       if (renamedProvider) {
-        setSelectedProviderId(renamedProvider.Id);
+        // Follow the rename only while the user is still on the old id — a
+        // click on another provider mid-rename must not be overridden.
+        if (
+          selectedProviderId === pendingRenameProviderId ||
+          !providers.some((provider) => provider.Id === selectedProviderId)
+        ) {
+          setSelectedProviderId(renamedProvider.Id);
+        }
         setPendingRename(null);
         return;
       }
@@ -152,10 +160,10 @@ export function useProviderConnectionActions({
         return;
       }
 
-      // Keep the old selection while a rename request is pending. A snapshot that
-      // replaces the old ID with the new one is handled above on the next render.
+      // Rename request still pending: keep whatever valid selection the user
+      // has; only restore the renaming provider when nothing else is selected.
       if (providers.some((provider) => provider.Id === pendingRenameProviderId)) {
-        if (selectedProviderId !== pendingRenameProviderId) {
+        if (!providers.some((provider) => provider.Id === selectedProviderId)) {
           setSelectedProviderId(pendingRenameProviderId);
         }
         return;
@@ -214,10 +222,9 @@ export function useProviderConnectionActions({
 
     if (pendingProviderDraftId === selectedProviderId) {
       if (!acceptedProvider || acceptedProvider.Id !== selectedProviderId) {
-        if (pendingAddStatus === "error") {
-          setPendingProviderDraft(null);
-          setPendingProviderDraftConfirmation(null);
-        }
+        // A failed add keeps its pending draft so the dialog can surface the
+        // error and offer Retry; dismissAddDialog() clears it when the user
+        // gives up. Clearing here would blank the error after a single frame.
         return;
       }
 
@@ -236,7 +243,6 @@ export function useProviderConnectionActions({
     }
   }, [
     acceptedProvider,
-    pendingAddStatus,
     pendingProviderDraftConfirmation,
     pendingProviderDraftConfirmationStatus,
     pendingProviderDraftId,
@@ -252,7 +258,12 @@ export function useProviderConnectionActions({
   const commitAndSelectProvider = (provider: ProviderEndpointDraft): boolean => {
     const currentEntry = acceptedProvider ? draftQueue.read(acceptedProvider) : undefined;
     const currentDirty = Boolean(currentEntry && !sameProviderEndpoint(currentEntry.synced, currentEntry.draft));
-    if (currentDirty && currentEntry && !currentEntry.error && !currentEntry.autoSaveBlocked) confirmDraft();
+    // Blocked edits (save error / offline) cannot be committed in passing;
+    // report failure so the caller can ask the user to keep or discard them.
+    if (currentDirty && currentEntry && (currentEntry.error || currentEntry.autoSaveBlocked)) {
+      return false;
+    }
+    if (currentDirty && currentEntry) confirmDraft();
     setSelectedProviderId(provider.Id);
     setDraftProvider(provider);
     return true;
@@ -283,7 +294,11 @@ export function useProviderConnectionActions({
   };
 
   const addProvider = (provider: ProviderEndpointDraft): void => {
-    const mutation = buildProviderEndpointMutationInput(providerIdentitySnapshot(provider));
+    // Send the full preset draft (BaseUrl/ApiVersion/Headers included) so the
+    // server-side endpoint matches what the editor shows. Registering the same
+    // draft keeps the queue baseline honest: the success snapshot matches it,
+    // so auto-save stays enabled for the new provider.
+    const mutation = buildProviderEndpointMutationInput(provider);
     if (!mutation.ok) {
       if (acceptedProvider) draftQueue.setError(acceptedProvider, mutation.message);
       return;
@@ -292,21 +307,47 @@ export function useProviderConnectionActions({
     if (requestId) {
       const nextDraft = normalizeProviderEndpointDraft({
         ...provider,
-        ...providerIdentitySnapshot(provider),
         Id: mutation.providerId,
       });
       draftQueue.registerActive(nextDraft, mutation.providerId, requestId);
       setSelectedProviderId(mutation.providerId);
       setDraftProvider(nextDraft);
       setPendingProviderDraft({ draft: nextDraft, requestId });
-      setShowAddDialog(false);
+      // The dialog stays open until the command resolves — closing on success
+      // (effect below) keeps a failed add from discarding the typed identity
+      // with nothing but a toast.
     }
+  };
+
+  useEffect(() => {
+    if (pendingAddStatus !== "success") return;
+    setShowAddDialog(false);
+    setPendingProviderDraft(null);
+    setPendingProviderDraftConfirmation(null);
+  }, [pendingAddStatus]);
+
+  const dismissAddDialog = (): void => {
+    // Abandon an in-flight or failed add: drop the pending draft so the editor
+    // does not stay pointed at a provider the server never accepted, and so a
+    // stale error does not resurface when the dialog reopens.
+    setShowAddDialog(false);
+    setPendingProviderDraft(null);
+    setPendingProviderDraftConfirmation(null);
+  };
+
+  const addPending = pendingAddStatus === "pending";
+  const addError = pendingAddStatus === "error" ? (pendingAddOperation?.message ?? null) : null;
+
+  const setRenameTarget = (provider: ProviderEndpointDraft | null): void => {
+    setRenameTargetState(provider);
+    setRenameError(null);
   };
 
   const renameProvider = (providerId: string, nextProviderId: string): void => {
     if (providerId === selectedProviderId && dirty) {
-      if (acceptedProvider)
-        draftQueue.setError(acceptedProvider, frontendMessage("settings.provider.pendingDraftError"));
+      // Surface the conflict inside the rename dialog — the connection
+      // editor's error area sits underneath the dialog overlay.
+      setRenameError(frontendMessage("settings.provider.pendingDraftError"));
       return;
     }
     const requestId = onRenameProviderEndpoint(providerId, nextProviderId);
@@ -360,8 +401,12 @@ export function useProviderConnectionActions({
     localError,
     showAddDialog,
     setShowAddDialog,
+    dismissAddDialog,
+    addPending,
+    addError,
     renameTarget,
     setRenameTarget,
+    renameError,
     selectProvider,
     commitAndSelectProvider,
     discardAndSelectProvider,

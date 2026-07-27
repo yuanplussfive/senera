@@ -2,24 +2,26 @@ import { createJSONStorage, type PersistOptions } from "zustand/middleware";
 import type { StoreState } from "./types";
 import { normalizeUserProfile } from "./userProfile";
 import type { MotionLevel } from "../../shared/motion";
+import { clampWorkflowDockWidth, DEFAULT_WORKFLOW_DOCK_WIDTH } from "../../shared/responsive/workflowDock";
 
 export const PERSIST_KEY = "senera-frontend@v1";
 
 type PersistedSessionState = Partial<
   Pick<
     StoreState,
-    | "defaultRightPanelCollapsed"
     | "defaultSidebarCollapsed"
+    | "defaultRightPanelCollapsed"
     | "motionLevel"
     | "selectedModelProviderId"
     | "selectedModelProviderIdsBySession"
     | "userProfile"
+    | "workflowDockWidth"
   >
 >;
 
 export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionState> = {
   name: PERSIST_KEY,
-  version: 5,
+  version: 6,
   storage: createJSONStorage(() => localStorage),
   // 后端是 SSOT；前端只缓存 UI 偏好 + 会话元数据（标题/时间）。
   // messages 不持久化 —— 后端 session.history 会权威回放。
@@ -30,6 +32,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
     selectedModelProviderId: state.selectedModelProviderId,
     selectedModelProviderIdsBySession: state.selectedModelProviderIdsBySession,
     userProfile: state.userProfile,
+    workflowDockWidth: state.workflowDockWidth,
   }),
   // 旧版本 localStorage 干净迁移
   migrate: (persisted: unknown, fromVersion: number) => {
@@ -43,6 +46,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       selectedModelProviderId: p.selectedModelProviderId,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(p.selectedModelProviderIdsBySession),
       userProfile: p.userProfile,
+      workflowDockWidth: readPersistedWorkflowDockWidth(p.workflowDockWidth),
     };
   },
   // 即便 migrate 漏掉字段，merge 兜底
@@ -60,6 +64,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       selectedModelProviderId: p.selectedModelProviderId ?? null,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(p.selectedModelProviderIdsBySession),
       userProfile: normalizeUserProfile(p.userProfile),
+      workflowDockWidth: readPersistedWorkflowDockWidth(p.workflowDockWidth),
       modelProviders: [],
       providerModelCatalogs: {},
       providerModelErrors: {},
@@ -100,6 +105,10 @@ function readPersistedBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function readPersistedWorkflowDockWidth(value: unknown): number {
+  return clampWorkflowDockWidth(typeof value === "number" ? value : DEFAULT_WORKFLOW_DOCK_WIDTH);
+}
+
 export function readPersistedSessionPreferences(rawValue: string | null): PersistedSessionState | null {
   if (!rawValue) return null;
   try {
@@ -116,6 +125,10 @@ export function readPersistedSessionPreferences(rawValue: string | null): Persis
         typeof state.selectedModelProviderId === "string" ? state.selectedModelProviderId : undefined,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(state.selectedModelProviderIdsBySession),
       userProfile: state.userProfile,
+      workflowDockWidth:
+        typeof state.workflowDockWidth === "number"
+          ? readPersistedWorkflowDockWidth(state.workflowDockWidth)
+          : undefined,
     };
   } catch {
     return null;

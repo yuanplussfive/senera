@@ -164,6 +164,14 @@ export function buildProviderEndpointMutationInput(
     ...connectionDraft,
     Id: providerId,
   });
+  // The backend schema requires BaseUrl to parse as a URL; reject locally so a
+  // half-typed value surfaces as an inline error instead of a rejected command.
+  if (endpoint.BaseUrl !== undefined && !isParseableUrl(endpoint.BaseUrl)) {
+    return {
+      ok: false,
+      message: frontendMessage("settings.provider.invalidBaseUrl"),
+    };
+  }
   return {
     ok: true,
     providerId,
@@ -171,6 +179,15 @@ export function buildProviderEndpointMutationInput(
       ? createJsonMergePatch(toProviderEndpointInput(baseDraft), endpoint, ["Id"] as const)
       : endpoint,
   };
+}
+
+function isParseableUrl(value: string): boolean {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function providerIdentitySnapshot(provider: ProviderEndpointDraft): ProviderEndpointDraft {

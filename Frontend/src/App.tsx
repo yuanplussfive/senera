@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { TooltipProvider, ErrorBoundary } from "./shared/ui";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
 import { buildUploadUrl } from "./api/uploadClient";
@@ -29,6 +29,7 @@ import { TerminalPanelStatus, TerminalRuntimeBoundary } from "./features/termina
 import { loadWebSettingsOverlayComponent, preloadWebSettingsSurface } from "./app/applicationModuleLoaders";
 import { SettingsSurfaceLoading } from "./app/SurfaceLoading";
 import { scheduleIdleTask } from "./shared/scheduling/scheduleIdleTask";
+import { frontendMessage } from "./i18n/frontendMessageCatalog";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
@@ -344,7 +345,9 @@ export function App({
     sandboxStatus,
     onSettingsIntent: preloadWebSettingsSurface,
     onOpenSettings: (section, returnFocus) => {
-      void settingsController.openSettings(section, returnFocus);
+      void settingsController
+        .openSettings(section, returnFocus)
+        .catch(() => toast.error(frontendMessage("settings.loadFailed")));
     },
   };
 

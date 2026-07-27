@@ -199,7 +199,8 @@ test("useSocketErrorToasts resolves history failures and tool failures from stor
     }),
     expect.objectContaining({
       variant: "error",
-      title: "工具调用失败: ShellCommandTool",
+      title: "工具调用失败：ShellCommandTool",
+      options: expect.objectContaining({ description: "exit 1" }),
     }),
   ]);
 });
@@ -347,7 +348,7 @@ test("useConfigMutationController rolls back disconnected sends and records prov
 
   send.mockReturnValue(true);
   await act(async () => {
-    handleRef.current.fetchProviderModels("openai", true);
+    handleRef.current.fetchProviderModels("openai", true, { Id: "openai", ApiKey: "secret" });
   });
   expect(handleRef.current.providerModelLoadingIds.openai).toBe(true);
 

@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
   Globe,
-  Loader2,
   AlertTriangle,
   RotateCcw,
   Braces,
@@ -18,6 +17,7 @@ import type { TimelineStep, TimelineStepKind } from "../../store/sessionStore";
 import { cn, formatDuration } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/motion";
+import { Spinner } from "../../shared/ui";
 import { readWorkflowHandlePositions, type StepNodeData, type WorkflowLayoutDirection } from "./layout";
 import { readStepStatusLabel } from "./stepPresentation";
 
@@ -47,9 +47,9 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
   const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
   const statusClass =
     step.status === "failed" || step.kind === "error"
-      ? "border-brick-300"
+      ? "border-brick-500"
       : step.status === "running"
-        ? "border-umber-300"
+        ? "border-umber-500"
         : "border-line-subtle";
   const iconClass =
     step.status === "failed" || step.kind === "error"
@@ -130,9 +130,9 @@ function ScopeNode({
   const handlePositions = readWorkflowHandlePositions(layoutDirection);
   const statusClass =
     group.status === "failed"
-      ? "border-brick-300"
+      ? "border-brick-500"
       : group.status === "running"
-        ? "border-umber-300"
+        ? "border-umber-500"
         : "border-line-subtle";
 
   return (
@@ -198,7 +198,7 @@ function StatusIcon({
         className="grid h-3 w-3 place-items-center"
       >
         {status === "running" ? (
-          <Loader2 className={cn("h-3 w-3 animate-spin", className)} />
+          <Spinner size="xs" className={className} />
         ) : status === "failed" || kind === "error" ? (
           <X className={cn("h-3 w-3", className)} />
         ) : (

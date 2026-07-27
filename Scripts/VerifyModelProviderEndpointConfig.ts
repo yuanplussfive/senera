@@ -112,7 +112,7 @@ assert.equal(overriddenDefaultEndpoint.ApiKey, "override-key");
 
 const sparseDeepSeekConfig: AgentSystemConfig = {
   DefaultModelProviderId: "deepseek-chat",
-  ModelProviderEndpoints: [{ Id: "deepseek", ApiKey: "deepseek-key" }],
+  ModelProviderEndpoints: [{ Id: "deepseek", Enabled: true, ApiKey: "deepseek-key" }],
   ModelProviders: [
     {
       Id: "deepseek-chat",

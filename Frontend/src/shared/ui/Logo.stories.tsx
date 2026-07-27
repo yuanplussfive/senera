@@ -15,7 +15,7 @@ export const Mark: Story = () => (
       {[16, 20, 24, 32].map((size) => (
         <div key={size} className="flex flex-col items-center gap-2">
           <LogoMark size={size} />
-          <span className="text-[11px] tabular-nums text-ink-450">{size}px</span>
+          <span className="text-[11px] tabular-nums text-ink-500">{size}px</span>
         </div>
       ))}
     </div>

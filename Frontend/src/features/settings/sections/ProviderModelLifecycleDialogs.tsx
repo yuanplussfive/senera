@@ -186,7 +186,7 @@ function ProviderRemovalDialog({
         <div className="space-y-4">
           {cascadeModels ? (
             <section className="rounded-lg border border-ink-200/70 bg-paper-100/65 p-3">
-              <h3 className="text-[12px] font-semibold text-ink-750">
+              <h3 className="text-[12px] font-semibold text-ink-800">
                 {frontendMessage("settings.modelLifecycle.affectedModels")}
               </h3>
               <ul className="mt-2 space-y-1 text-[12px] text-ink-600">
@@ -247,7 +247,7 @@ function ReplacementControl({
 }): JSX.Element {
   return (
     <label className="block space-y-1.5">
-      <span className="text-[12px] font-medium text-ink-750">
+      <span className="text-[12px] font-medium text-ink-800">
         {frontendMessage("settings.modelLifecycle.replacement.label")}
       </span>
       <select

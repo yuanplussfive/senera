@@ -2,7 +2,7 @@
   {
     "Id": "openai",
     "Icon": "openai",
-    "Enabled": true,
+    "Enabled": false,
     "Kind": "OpenAICompatible",
     "BaseUrl": "https://api.openai.com/v1",
     "ApiKey": "",
@@ -12,7 +12,7 @@
   {
     "Id": "deepseek",
     "Icon": "deepseek",
-    "Enabled": true,
+    "Enabled": false,
     "Kind": "OpenAICompatible",
     "BaseUrl": "https://api.deepseek.com/v1",
     "ApiKey": "",
@@ -22,7 +22,7 @@
   {
     "Id": "anthropic",
     "Icon": "anthropic",
-    "Enabled": true,
+    "Enabled": false,
     "Kind": "OpenAICompatible",
     "BaseUrl": "https://api.anthropic.com/v1",
     "ApiKey": "",
@@ -34,7 +34,7 @@
   {
     "Id": "gemini",
     "Icon": "gemini",
-    "Enabled": true,
+    "Enabled": false,
     "Kind": "OpenAICompatible",
     "BaseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
     "ApiKey": "",

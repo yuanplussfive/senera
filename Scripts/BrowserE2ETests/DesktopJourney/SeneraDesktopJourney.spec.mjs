@@ -15,6 +15,7 @@ test.beforeAll(async () => {
   harness = await createBrowserE2eHarness({ authenticationMode: "disabled" });
   userDataRoot = mkdtempSync(path.join(os.tmpdir(), "senera-desktop-browser-e2e-"));
   desktopApplication = await electron.launch({
+    chromiumSandbox: true,
     args: [path.resolve("Scripts", "BrowserE2ETests", "DesktopJourney", "electronDesktopHarness.cjs")],
     env: {
       ...process.env,

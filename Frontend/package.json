@@ -10,6 +10,8 @@
     "check.types": "tsc --noEmit",
     "check.governance": "node --import tsx ../Scripts/VerifyFrontendTestCoverage.ts",
     "check.ladle": "node --import tsx ../Scripts/VerifyFrontendLadleContracts.ts",
+    "ui.registry.view": "shadcn view",
+    "ui.registry.dry-run": "shadcn add --dry-run",
     "test.behavior": "node --import tsx ../Scripts/VerifyFrontendVitestSuite.ts",
     "test.coverage": "vitest run --config ../vitest.config.ts --coverage",
     "test": "npm run check.types && npm run check.governance && npm run check.ladle && npm run test.behavior",
@@ -31,6 +33,7 @@
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-tabs": "^1.1.21",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@shikijs/core": "^4.1.0",
     "@shikijs/engine-javascript": "^4.1.0",
@@ -62,5 +65,8 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "shadcn": "4.14.1"
   }
 }

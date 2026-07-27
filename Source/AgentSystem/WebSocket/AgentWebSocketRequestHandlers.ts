@@ -619,9 +619,11 @@ export class AgentWebSocketApprovalRequestHandlers {
         kind: AgentEventKinds.RequestInvalid,
         context: {},
         data: {
+          code: "approval_not_pending",
           message: agentErrorMessage("approval.requestNotPending", {
             approvalId: request.approvalId,
           }),
+          details: { approvalId: request.approvalId },
         },
       });
     }

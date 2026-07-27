@@ -34,7 +34,8 @@ describe("modelServiceState", () => {
     expect(state.providerCount).toBe(2);
     expect(state.enabledProviders).toBe(1);
     expect(state.selectedProvider?.Id).toBe("openai");
-    expect(state.selectedProviderModelList?.rows.map((row) => row.id)).toEqual(["gpt-4.1", "gpt-4.1-mini"]);
+    expect(state.selectedProviderModelList?.rows.map((row) => row.id)).toEqual(["gpt-4.1"]);
+    expect(state.selectedProviderModelList?.catalog?.models.map((row) => row.id)).toEqual(["gpt-4.1", "gpt-4.1-mini"]);
     expect(
       state.defaultSlots.map((slot) => ({
         id: slot.definition.id,
@@ -121,7 +122,7 @@ describe("modelServiceState", () => {
       ]),
     );
   });
-  it("uses configured-only and grouping behavior from model config helpers", () => {
+  it("keeps remote catalog models separate from configured rows", () => {
     const list = readProviderModelListState({
       catalogs: {
         openai: createCatalog("openai", [
@@ -141,9 +142,9 @@ describe("modelServiceState", () => {
       ],
       models: [{ Id: "openai/gpt-4.1", ProviderId: "openai", Endpoint: "chat", Model: "gpt-4.1" }],
       provider: { Id: "openai", Enabled: true },
-      configuredOnly: true,
     });
     expect(list.rows.map((row) => row.id)).toEqual(["gpt-4.1"]);
+    expect(list.catalog?.models.map((row) => row.id)).toEqual(["gpt-4.1", "text-embedding-3-small"]);
     expect(list.groups).toEqual([
       expect.objectContaining({
         label: "其他模型",

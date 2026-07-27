@@ -6,13 +6,13 @@ import { useConfigMutationController } from "../../../Frontend/src/app/useConfig
 import { resolvePluginSettingsEvent } from "../../../Frontend/src/app/usePluginSettingsCommands.ts";
 import { resolvePresetEvent } from "../../../Frontend/src/app/usePresetCommands.ts";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
+import { installMemoryLocalStorage, resetFrontendStore } from "../frontendStoreTestHarness.mjs";
 import { clearTestToastCalls, readTestToastCalls } from "../mocks/sonner.mjs";
-import { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } from "../../../Frontend/src/store/sessionStore.ts";
 
 beforeEach(() => {
-  installLocalStorage();
+  installMemoryLocalStorage();
   clearTestToastCalls();
-  resetStore();
+  resetFrontendStore();
 });
 afterEach(() => {
   cleanup();
@@ -89,7 +89,12 @@ test("useConfigMutationController handles offline commands and unmatched events 
 
   await act(async () => {
     expect(handleRef.current.saveConfig({ AgentLoop: {} })).toBe(null);
-    expect(handleRef.current.fetchProviderModels("openai")).toBeUndefined();
+    expect(
+      handleRef.current.fetchProviderModels("openai", false, {
+        Id: "openai",
+        ApiKey: "secret",
+      }),
+    ).toBeUndefined();
     expect(handleRef.current.savePluginConfig("demo", "enabled = true")).toBe(null);
     expect(handleRef.current.savePreset({ name: "default", format: "toml", content: "x = 1" })).toBe(null);
     expect(
@@ -108,6 +113,33 @@ test("useConfigMutationController handles offline commands and unmatched events 
       expect.objectContaining({ title: frontendMessage("preset.updateOffline") }),
     ]),
   );
+});
+
+test("useConfigMutationController starts header-only model discovery without an API key", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+
+  render(React.createElement(ConfigMutationHarness, { send, status: "open", handleRef }));
+
+  await act(async () => {
+    handleRef.current.fetchProviderModels("openai", true, {
+      Id: "openai",
+      BaseUrl: "https://api.openai.com/v1",
+      Headers: { "x-api-key": "header-secret" },
+    });
+  });
+
+  expect(send).toHaveBeenCalledWith({
+    type: "provider.models.fetch",
+    providerId: "openai",
+    force: true,
+    endpoint: {
+      Id: "openai",
+      BaseUrl: "https://api.openai.com/v1",
+      Headers: { "x-api-key": "header-secret" },
+    },
+  });
+  expect(handleRef.current.providerModelLoadingIds.openai).toBe(true);
 });
 
 test("useConfigMutationController ignores execution resource list snapshots without treating them as config commands", async () => {
@@ -217,7 +249,7 @@ test("useConfigMutationController covers enabled plugins, preset mutations, and 
 
   send.mockReturnValue(false);
   await act(async () => {
-    handleRef.current.fetchProviderModels("openai", true);
+    handleRef.current.fetchProviderModels("openai", true, { Id: "openai", ApiKey: "secret" });
   });
   expect(handleRef.current.providerModelLoadingIds).toEqual({});
 });
@@ -456,7 +488,7 @@ test("useConfigMutationController rolls back disconnected sends and records prov
 
   send.mockReturnValue(true);
   await act(async () => {
-    handleRef.current.fetchProviderModels("openai", true);
+    handleRef.current.fetchProviderModels("openai", true, { Id: "openai", ApiKey: "secret" });
   });
   expect(handleRef.current.providerModelLoadingIds.openai).toBe(true);
 
@@ -641,7 +673,7 @@ test("system config queue coalesces unsent provider patches by provider id", asy
   });
 });
 
-test("system config queue resolves active and queued operations when the socket closes", async () => {
+test("system config queue replays the exact active SQLite command and preserves queued work after reconnect", async () => {
   const send = vi.fn(() => true);
   const handleRef = { current: null };
   const view = render(
@@ -654,17 +686,17 @@ test("system config queue resolves active and queued operations when the socket 
   );
 
   await act(async () => {
-    handleRef.current.upsertProviderModel({
-      model: { Id: "active", ProviderId: "openai", Endpoint: "Responses", Model: "active" },
-    });
+    handleRef.current.saveConfig({ AgentLoop: { MaxSteps: 12 } });
     handleRef.current.deleteProviderModel({ modelId: "queued" });
   });
   expect(send).toHaveBeenCalledTimes(1);
+  const firstRequest = send.mock.calls[0][0];
+  expect(firstRequest).toMatchObject({ type: "config.update", baseRevision: 4 });
 
   await act(async () => {
     view.rerender(
       React.createElement(ConfigMutationHarness, {
-        configSnapshot: createConfigSnapshot(),
+        configSnapshot: createConfigSnapshot({ revision: 9 }),
         send,
         status: "idle",
         handleRef,
@@ -672,8 +704,85 @@ test("system config queue resolves active and queued operations when the socket 
     );
   });
 
-  expect(handleRef.current.providerModelOperations.active).toMatchObject({ status: "error" });
-  expect(handleRef.current.providerModelOperations.queued).toMatchObject({ status: "error" });
+  expect(handleRef.current.configOperation).toMatchObject({ status: "pending" });
+  expect(handleRef.current.providerModelOperations.queued).toMatchObject({ status: "pending" });
+  expect(readTestToastCalls()).not.toContainEqual(
+    expect.objectContaining({ title: frontendMessage("config.mainDisconnected") }),
+  );
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ConfigMutationHarness, {
+        configSnapshot: createConfigSnapshot({ revision: 9 }),
+        send,
+        status: "open",
+        handleRef,
+      }),
+    );
+  });
+
+  expect(send).toHaveBeenCalledTimes(2);
+  expect(send.mock.calls[1][0]).toEqual(firstRequest);
+
+  await act(async () => {
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.ConfigSnapshot, "config", {
+        ...createConfigSnapshot({ revision: 9 }),
+        operation: { commandId: firstRequest.commandId, kind: "config_update" },
+      }),
+    );
+  });
+
+  expect(send).toHaveBeenCalledTimes(3);
+  expect(send.mock.calls[2][0]).toMatchObject({ type: "provider.model.delete", modelId: "queued" });
+  expect(handleRef.current.configOperation).toMatchObject({ status: "success" });
+});
+
+test("system config queue does not replay an active JSON command without a durable receipt", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  const jsonSnapshot = createConfigSnapshot({ source: "json", revision: undefined, version: 7 });
+  const view = render(
+    React.createElement(ConfigMutationHarness, {
+      configSnapshot: jsonSnapshot,
+      send,
+      status: "open",
+      handleRef,
+    }),
+  );
+
+  await act(async () => {
+    handleRef.current.deleteProviderModel({ modelId: "legacy" });
+  });
+  expect(send).toHaveBeenCalledTimes(1);
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ConfigMutationHarness, {
+        configSnapshot: jsonSnapshot,
+        send,
+        status: "idle",
+        handleRef,
+      }),
+    );
+  });
+
+  expect(handleRef.current.providerModelOperations.legacy).toMatchObject({ status: "error" });
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({ title: frontendMessage("config.mainDisconnected") }),
+  );
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ConfigMutationHarness, {
+        configSnapshot: jsonSnapshot,
+        send,
+        status: "open",
+        handleRef,
+      }),
+    );
+  });
+  expect(send).toHaveBeenCalledTimes(1);
 });
 function ConfigMutationHarness({ configSnapshot = null, send, status, handleRef }) {
   const sendRef = useRef(send);
@@ -714,58 +823,5 @@ function event(kind, phase, data, overrides = {}) {
     timestamp: "2026-07-09T00:00:00.000Z",
     data,
     ...overrides,
-  };
-}
-
-function resetStore() {
-  clearPersistedStore();
-  useStore.setState({
-    sessions: {},
-    sessionOrder: [],
-    activeSessionId: null,
-    sidebarCollapsed: false,
-    rightPanelCollapsed: false,
-    viewedRunIdBySession: {},
-    historyLoadedIds: {},
-    historyLoadingIds: {},
-    historyFailedIds: {},
-    historyReplayBuffers: {},
-    historyStepBuffers: {},
-    historyEventRunIds: {},
-    historyActiveRequestIds: {},
-    missingOnServerIds: {},
-    pendingCreatedSessionIds: {},
-    pendingDeletedSessionIds: {},
-    modelProviders: [],
-    providerModelCatalogs: {},
-    providerModelErrors: {},
-    selectedModelProviderId: null,
-    pluginConfigs: [],
-    presets: [],
-    activePresetName: null,
-    presetsEnabled: true,
-    presetRootDir: "",
-    configSnapshot: null,
-    userProfile: DEFAULT_USER_PROFILE,
-  });
-}
-
-function installLocalStorage() {
-  const storage = new Map();
-  globalThis.localStorage = {
-    getItem: (key) => storage.get(key) ?? null,
-    setItem: (key, value) => {
-      storage.set(key, String(value));
-    },
-    removeItem: (key) => {
-      storage.delete(key);
-    },
-    clear: () => {
-      storage.clear();
-    },
-    key: (index) => [...storage.keys()][index] ?? null,
-    get length() {
-      return storage.size;
-    },
   };
 }

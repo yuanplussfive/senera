@@ -36,7 +36,11 @@ export function prepareAuthenticatedApplication(surface: AppSurface): Promise<vo
 }
 
 export function preloadWebSettingsSurface(): void {
-  observeSpeculativeLoad(loadWebSettingsOverlayModule());
+  observeSpeculativeLoad(prepareWebSettingsSurface());
+}
+
+export function prepareWebSettingsSurface(): Promise<void> {
+  return loadWebSettingsOverlayModule().then(() => undefined);
 }
 
 function observeSpeculativeLoad(load: Promise<unknown>): void {

@@ -1,9 +1,9 @@
-import { Check, CircleStop, LoaderCircle, ShieldCheck, X } from "lucide-react";
+import { Check, CircleStop, ShieldCheck, X } from "lucide-react";
 import type { ComponentType } from "react";
 import type { ApprovalDecision } from "../../api/approvalEventTypes";
 import type { ApprovalRunRecord } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { Button, MetaLabel } from "../../shared/ui";
+import { Button, MetaLabel, Spinner } from "../../shared/ui";
 
 export interface ApprovalRequestStripProps {
   approvals: ApprovalRunRecord[];
@@ -86,15 +86,15 @@ function ApprovalRequestItem({
   return (
     <section className="rounded-xl border border-line bg-surface-raised px-3 py-2.5 shadow-panel">
       <div className="flex min-w-0 flex-col gap-2.5 sm:flex-row sm:items-start">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-umber-700" />
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-umber-600" />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <span className="truncate text-[12.5px] font-semibold text-content-primary">{displayName}</span>
-            <MetaLabel size="sm" className="text-umber-700">
+            <MetaLabel size="sm" className="text-umber-600">
               {frontendMessage("approval.tool.pending")}
             </MetaLabel>
             {approval.rule ? (
-              <span className="rounded-[4px] bg-umber-50 px-1.5 py-0.5 font-mono text-[10px] text-umber-800">
+              <span className="rounded-[4px] bg-umber-50 px-1.5 py-0.5 font-mono text-[10px] text-umber-600">
                 {approval.rule}
               </span>
             ) : null}
@@ -143,7 +143,7 @@ function ApprovalDecisionButton({
 }): JSX.Element {
   const presentation = ApprovalDecisionPresentations[decision];
   const resolving = approval.resolutionPending === true && approval.pendingDecision === decision;
-  const Icon = resolving ? LoaderCircle : presentation.Icon;
+  const Icon = presentation.Icon;
   const label = resolving ? frontendMessage("approval.resolving") : presentation.label(approval);
 
   return (
@@ -155,7 +155,7 @@ function ApprovalDecisionButton({
       className={presentation.className}
       aria-label={label}
     >
-      <Icon className={`h-3.5 w-3.5${resolving ? " animate-spin" : ""}`} />
+      {resolving ? <Spinner size="sm" /> : <Icon className="h-3.5 w-3.5" />}
       {label}
     </Button>
   );

@@ -71,7 +71,7 @@ export const ImageUpload: Story = () => {
               type="button"
               className={cn(
                 "flex w-full cursor-pointer flex-col items-center justify-center border-2 border-dashed p-8 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-                isDragReject && "border-brick-400 bg-brick-50",
+                isDragReject && "border-brick-500 bg-brick-50",
                 isDragActive && !isDragReject && "border-accent-border-strong bg-accent-surface",
                 !isDragActive && "border-ink-300 bg-paper-100 hover:border-ink-400",
               )}
@@ -111,7 +111,7 @@ export const WithValidation: Story = () => {
               type="button"
               className={cn(
                 "flex w-full cursor-pointer flex-col items-center justify-center border-2 border-dashed p-10 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-                isDragReject && "border-brick-400 bg-brick-50",
+                isDragReject && "border-brick-500 bg-brick-50",
                 isDragActive && !isDragReject && "border-accent-border-strong bg-accent-surface",
                 !isDragActive && "border-ink-300 bg-paper-100 hover:border-ink-400",
               )}

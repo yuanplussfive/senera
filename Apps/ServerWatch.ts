@@ -1,44 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
+import { DevServerWatchedEntries, isDevServerWatchPathIgnored } from "./ServerWatchPolicy.js";
 
 const workspaceRoot = process.cwd();
 const RestartDebounceMs = 180;
 const RestartGraceMs = 2_500;
-
-const WatchedEntries = [
-  "Apps",
-  "Source",
-  "System",
-  "Plugins",
-  "Packages",
-  "Build",
-  "Native",
-  "baml_src",
-  "package.json",
-  "tsconfig.json",
-  "senera.config.json",
-  "senera.config.example.json",
-] as const;
-
-const IgnoredPathSegments = new Set([
-  ".git",
-  ".agents",
-  ".claude",
-  ".codex",
-  ".senera",
-  ".uploads",
-  ".trae-html-share-packages",
-  ".vite",
-  ".cache",
-  "coverage",
-  "Dist",
-  "dist",
-  "node_modules",
-  "Release",
-  "tmp",
-  "temp",
-]);
 
 let server: ChildProcess | undefined;
 let restartTimer: NodeJS.Timeout | undefined;
@@ -66,9 +33,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 
 function watchProjectFiles(): fs.FSWatcher[] {
   const active: fs.FSWatcher[] = [];
-  for (const entry of WatchedEntries) {
+  for (const entry of DevServerWatchedEntries) {
     const absolute = path.resolve(workspaceRoot, entry);
-    if (!fs.existsSync(absolute) || isIgnoredPath(absolute)) {
+    if (!fs.existsSync(absolute) || isDevServerWatchPathIgnored(workspaceRoot, absolute)) {
       continue;
     }
 
@@ -98,7 +65,7 @@ function watchDirectoryTree(directory: string): fs.FSWatcher[] {
   active.push(watchEntry(directory, directory));
   for (const child of fs.readdirSync(directory, { withFileTypes: true })) {
     const childPath = path.join(directory, child.name);
-    if (!child.isDirectory() || isIgnoredPath(childPath)) {
+    if (!child.isDirectory() || isDevServerWatchPathIgnored(workspaceRoot, childPath)) {
       continue;
     }
     active.push(...watchDirectoryTree(childPath));
@@ -109,7 +76,7 @@ function watchDirectoryTree(directory: string): fs.FSWatcher[] {
 function watchEntry(target: string, eventBaseDir: string, options: { recursive?: boolean } = {}): fs.FSWatcher {
   return fs.watch(target, options, (_eventType, filename) => {
     const changedPath = filename ? path.resolve(eventBaseDir, filename.toString()) : target;
-    if (isIgnoredPath(changedPath) || !hasPathStateChanged(changedPath)) {
+    if (isDevServerWatchPathIgnored(workspaceRoot, changedPath) || !hasPathStateChanged(changedPath)) {
       return;
     }
     scheduleRestart(changedPath);
@@ -210,21 +177,13 @@ async function stop(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   process.exit(signal === "SIGINT" ? 130 : 143);
 }
 
-function isIgnoredPath(absolutePath: string): boolean {
-  const relative = path.relative(workspaceRoot, absolutePath);
-  if (!relative || relative.startsWith("..")) {
-    return false;
-  }
-  return relative.split(path.sep).some((segment) => IgnoredPathSegments.has(segment));
-}
-
 function isRecursiveWatchUnsupported(error: unknown): boolean {
   const code = error && typeof error === "object" ? (error as { code?: unknown }).code : undefined;
   return code === "ERR_FEATURE_UNAVAILABLE_ON_PLATFORM" || code === "ERR_INVALID_ARG_VALUE";
 }
 
 function snapshotPathState(absolutePath: string): void {
-  if (isIgnoredPath(absolutePath)) {
+  if (isDevServerWatchPathIgnored(workspaceRoot, absolutePath)) {
     return;
   }
   pathState.set(absolutePath, readPathState(absolutePath));

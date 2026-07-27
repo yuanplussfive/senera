@@ -24,12 +24,7 @@ export function ConfirmLayer({
     <div className="absolute inset-0 z-30 grid place-items-center bg-ink-950/32 p-4">
       <div className="w-full max-w-sm rounded-lg border border-ink-200 bg-paper-50 p-4 shadow-soft">
         <div className="flex items-start gap-3">
-          <span
-            className={cn(
-              "grid h-8 w-8 shrink-0 place-items-center rounded-lg",
-              action.tone === "danger" ? "bg-brick-50 text-brick-600" : "bg-accent-surface text-accent-content",
-            )}
-          >
+          <span className={cn("mt-0.5 shrink-0", action.tone === "danger" ? "text-brick-600" : "text-accent-content")}>
             {action.tone === "danger" ? <AlertTriangle className="h-4 w-4" /> : <BadgeCheck className="h-4 w-4" />}
           </span>
           <div className="min-w-0 flex-1">
@@ -58,7 +53,7 @@ export function DropOverlay({ rejected }: { rejected: boolean }): JSX.Element {
     <div
       className={cn(
         "pointer-events-none absolute inset-2 z-20 grid place-items-center rounded-lg border border-dashed bg-paper-50 text-[13px] font-medium shadow-soft",
-        rejected ? "border-brick-300 text-brick-700" : "border-accent-border text-accent-content",
+        rejected ? "border-brick-500 text-brick-700" : "border-accent-border text-accent-content",
       )}
     >
       <span className="inline-flex items-center gap-2">

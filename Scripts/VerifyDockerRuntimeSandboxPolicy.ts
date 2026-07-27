@@ -162,6 +162,10 @@ assert.ok(
   "compose.yaml must expose directly editable administrator values without external variable interpolation.",
 );
 assert.ok(
+  compose.includes('SENERA_CONFIG_SECRET_KEY: "${SENERA_CONFIG_SECRET_KEY:-}"'),
+  "compose.yaml must allow an optional host-managed configuration secret key.",
+);
+assert.ok(
   !compose.includes("senera-admin:") && compose.includes("sandbox-worker:") && compose.includes("sandbox-runtime:"),
   "compose.yaml must use dedicated sandbox runtime and Worker services rather than an administrator sidecar.",
 );

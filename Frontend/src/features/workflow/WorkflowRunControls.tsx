@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Loader2, X as XIcon } from "lucide-react";
+import { Check, ChevronDown, X as XIcon } from "lucide-react";
 import type { RunRecord } from "../../store/sessionStore";
 import { cn, formatDuration, formatTime } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
+  Spinner,
 } from "../../shared/ui";
 import type { RunSummary } from "./runSummary";
 
@@ -101,7 +102,7 @@ function RunStatusIcon({ status, className }: { status: RunRecord["status"]; cla
   if (status === "running") {
     return (
       <span className={cn(baseClassName, "bg-umber-50 text-umber-600", className)} data-workflow-run-status={status}>
-        <Loader2 className="h-3 w-3 animate-spin" />
+        <Spinner size="xs" />
       </span>
     );
   }

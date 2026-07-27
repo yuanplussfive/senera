@@ -441,7 +441,7 @@
           "properties": {
             "ConfigVersion": {
               "type": "number",
-              "const": 5
+              "const": 6
             },
             "Defaults": {
               "type": "object",
@@ -2044,6 +2044,17 @@
               "type": "string",
               "minLength": 1
             },
+            "ModelProviderIdAliases": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "minLength": 1
+              },
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
             "ModelProviderEndpoints": {
               "type": "array",
               "items": {
@@ -3642,7 +3653,8 @@
             "Endpoint",
             "Model"
           ],
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "Complete model configuration. Replaces an existing model with the same Id; omitted optional overrides are cleared."
         },
         "group": {
           "type": "object",
@@ -3886,9 +3898,11 @@
               "Model"
             ],
             "additionalProperties": false
-          }
+          },
+          "description": "Complete model configurations to import. Existing Ids are skipped unless overwriteExisting is true."
         },
         "overwriteExisting": {
+          "description": "When true, completely replaces existing models with matching Ids; omitted optional overrides are cleared.",
           "type": "boolean"
         },
         "groupAssignments": {

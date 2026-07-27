@@ -153,7 +153,7 @@ macOS / Linux 创建配置文件：
 cp senera.config.example.json senera.config.json
 ```
 
-然后编辑 `senera.config.json`，填好模型服务的 `BaseUrl`、`ApiKey` 和 `Model`。`sandbox.archive` 是开发环境显式的 Bundle 准备步骤，会在 `Release/SandboxImage` 生成与正式包相同的压缩资产；服务启动本身只读取本地文件，不会自动下载或回退。启动后打开 `http://127.0.0.1:5173`。
+然后编辑 `senera.config.json`，填好模型服务的 `BaseUrl`、`ApiKey` 和 `Model`。首次读取后，`ApiKey` 和敏感请求头会以 AES-256-GCM 密文写回 JSON/SQLite；未设置 `SENERA_CONFIG_SECRET_KEY` 时，本地密钥保存在工作区 `.senera/config-secrets.key`。不要提交或丢失这个文件，生产环境建议改用独立注入的环境密钥。运行期间通过设置界面提交的配置由配置服务直接生效，并同步写回 JSON 镜像，不会触发开发服务器重启；直接编辑磁盘配置后需要显式重启开发服务。`sandbox.archive` 是开发环境显式的 Bundle 准备步骤，会在 `Release/SandboxImage` 生成与正式包相同的压缩资产；服务启动本身只读取本地文件，不会自动下载或回退。启动后打开 `http://127.0.0.1:5173`。
 
 仓库使用 npm workspaces，只需要在根目录执行一次 `npm ci`。依赖版本由根目录 `package-lock.json` 锁定；只有主动增删依赖时才使用 `npm install <package>`，并同时提交 `package.json` 和 `package-lock.json`。
 
@@ -165,6 +165,8 @@ cp senera.config.example.json senera.config.json
 
 - `ModelProviderEndpoints[]`：端点、BaseUrl、ApiKey。
 - `ModelProviders[]`：具体模型、协议类型、输出上限和前端展示信息。
+
+供应商重命名会同步迁移遵循 `providerId/model` 约定的模型 ID、默认模型、分组和运行时客户端引用；旧模型 ID 会保留为兼容别名，以便历史会话继续解析。
 
 支持的上游协议：
 

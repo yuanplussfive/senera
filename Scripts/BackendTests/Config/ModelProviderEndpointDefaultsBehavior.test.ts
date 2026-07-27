@@ -5,13 +5,51 @@ import {
   setDefaultProviderModel,
 } from "../../../Source/AgentSystem/Config/AgentProviderModelConfigCommands.js";
 import { AgentProviderModelDiscovery } from "../../../Source/AgentSystem/Config/AgentProviderModelDiscovery.js";
+import { migrateAgentConfigPayload } from "../../../Source/AgentSystem/Config/AgentConfigMigration.js";
+import { CurrentAgentConfigVersion } from "../../../Source/AgentSystem/Config/AgentConfigVersion.js";
 import {
   resolveModelProviderConfig,
   resolveModelProviderEndpointCatalog,
+  resolveModelProviderEndpointConfigs,
 } from "../../../Source/AgentSystem/Defaults/AgentModelProviderDefaults.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 describe("model provider endpoint defaults", () => {
+  it("keeps built-in endpoints disabled until they are explicitly configured", () => {
+    expect(resolveModelProviderEndpointConfigs({ ModelProviders: [] })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ Id: "openai", Enabled: false }),
+        expect.objectContaining({ Id: "deepseek", Enabled: false }),
+        expect.objectContaining({ Id: "anthropic", Enabled: false }),
+        expect.objectContaining({ Id: "gemini", Enabled: false }),
+      ]),
+    );
+  });
+
+  it("preserves v5 endpoint availability while keeping explicit disables", () => {
+    const migrated = migrateAgentConfigPayload({
+      ConfigVersion: 5,
+      ModelProviderEndpoints: [
+        { Id: "configured", BaseUrl: "https://configured.example.test/v1" },
+        { Id: "disabled", Enabled: false },
+      ],
+      ModelProviders: [
+        { Id: "configured/chat", ProviderId: "configured", Endpoint: "ChatCompletions", Model: "chat" },
+        { Id: "built-in/chat", ProviderId: "openai", Endpoint: "ChatCompletions", Model: "chat" },
+      ],
+    });
+
+    expect(migrated?.targetVersion).toBe(CurrentAgentConfigVersion);
+    expect(migrated?.config).toMatchObject({
+      ConfigVersion: CurrentAgentConfigVersion,
+      ModelProviderEndpoints: [
+        { Id: "configured", Enabled: true },
+        { Id: "disabled", Enabled: false },
+        { Id: "openai", Enabled: true },
+      ],
+    });
+  });
+
   it("uses the same effective built-in endpoint for UI projection and model runtime", () => {
     const config = deepSeekConfig();
     const endpoint = resolveModelProviderEndpointCatalog(config).resolve("deepseek");
@@ -34,7 +72,7 @@ describe("model provider endpoint defaults", () => {
   it("inherits omitted headers but respects explicit empty headers and base URLs", () => {
     const inherited = resolveModelProviderEndpointCatalog({
       ...deepSeekConfig(),
-      ModelProviderEndpoints: [{ Id: "anthropic", ApiKey: "secret" }],
+      ModelProviderEndpoints: [{ Id: "anthropic", Enabled: true, ApiKey: "secret" }],
       ModelProviders: [
         {
           Id: "anthropic-chat",
@@ -49,7 +87,7 @@ describe("model provider endpoint defaults", () => {
 
     const explicit = resolveModelProviderEndpointCatalog({
       ...deepSeekConfig(),
-      ModelProviderEndpoints: [{ Id: "anthropic", BaseUrl: "", Headers: {} }],
+      ModelProviderEndpoints: [{ Id: "anthropic", Enabled: true, BaseUrl: "", Headers: {} }],
     }).resolve("anthropic");
     expect(explicit.BaseUrl).toBe("");
     expect(explicit.Headers).toEqual({});
@@ -73,6 +111,55 @@ describe("model provider endpoint defaults", () => {
       new URL("https://api.deepseek.com/v1/models"),
       expect.objectContaining({ method: "GET" }),
     );
+    expect(new Headers(fetchImpl.mock.calls[0]?.[1]?.headers).get("authorization")).toBe("Bearer secret");
+  });
+
+  it("discovers models through a header-only endpoint without an API key", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ data: [{ id: "header-auth-model" }] }));
+    const discovery = new AgentProviderModelDiscovery({
+      configSnapshot: () => ({
+        ModelProviderEndpoints: [
+          {
+            Id: "custom",
+            Enabled: true,
+            BaseUrl: "https://models.example.test/v1",
+            Headers: { "X-API-Key": "header-secret" },
+          },
+        ],
+        ModelProviders: [],
+      }),
+      fetchImpl,
+    });
+
+    await expect(discovery.listProviderModels({ providerId: "custom" })).resolves.toMatchObject({
+      models: [{ id: "header-auth-model" }],
+    });
+    const headers = new Headers(fetchImpl.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("x-api-key")).toBe("header-secret");
+    expect(headers.get("authorization")).toBeNull();
+    expect(headers.get("accept")).toBe("application/json");
+  });
+
+  it("preserves an explicit authorization header when an API key is also configured", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ data: [] }));
+    const discovery = new AgentProviderModelDiscovery({
+      configSnapshot: () => ({
+        ModelProviderEndpoints: [
+          {
+            Id: "custom",
+            Enabled: true,
+            BaseUrl: "https://models.example.test/v1",
+            ApiKey: "fallback-key",
+            Headers: { Authorization: "Basic custom-authorization" },
+          },
+        ],
+        ModelProviders: [],
+      }),
+      fetchImpl,
+    });
+
+    await discovery.listProviderModels({ providerId: "custom" });
+    expect(new Headers(fetchImpl.mock.calls[0]?.[1]?.headers).get("authorization")).toBe("Basic custom-authorization");
   });
 
   it("rejects a default model whose custom endpoint has no effective base URL", () => {
@@ -139,7 +226,7 @@ describe("model provider endpoint defaults", () => {
 function deepSeekConfig(): AgentSystemConfig {
   return {
     DefaultModelProviderId: "deepseek-chat",
-    ModelProviderEndpoints: [{ Id: "deepseek", ApiKey: "secret" }],
+    ModelProviderEndpoints: [{ Id: "deepseek", Enabled: true, ApiKey: "secret" }],
     ModelProviders: [
       {
         Id: "deepseek-chat",

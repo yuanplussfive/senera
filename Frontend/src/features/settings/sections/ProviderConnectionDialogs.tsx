@@ -25,11 +25,17 @@ import { isProtectedProvider, providerPresets } from "./ProviderConnectionIdenti
 export function AddProviderDialog({
   open,
   providers,
+  pending = false,
+  error = null,
   onAdd,
   onOpenChange,
 }: {
   open: boolean;
   providers: readonly ProviderEndpointDraft[];
+  /** True while the add command is in flight; blocks resubmission. */
+  pending?: boolean;
+  /** Failure message from the add command, shown inside the dialog. */
+  error?: string | null;
   onAdd: (provider: ProviderEndpointDraft) => void;
   onOpenChange: (open: boolean) => void;
 }): JSX.Element {
@@ -49,7 +55,7 @@ export function AddProviderDialog({
 
   const submit = (): void => {
     const id = providerId.trim();
-    if (!id || duplicate || !preset) return;
+    if (!id || duplicate || pending || !preset) return;
     onAdd(
       normalizeProviderEndpointDraft({
         Id: id,
@@ -64,13 +70,19 @@ export function AddProviderDialog({
     );
   };
 
+  const handleOpenChange = (nextOpen: boolean): void => {
+    if (!nextOpen && pending) return;
+    onOpenChange(nextOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         title={frontendMessage("settings.provider.addCustomTitle")}
         description={frontendMessage("settings.provider.addCustomDescription")}
         className="min-h-[540px] w-[min(600px,calc(100vw_-_32px))]"
         bodyClassName="flex min-h-0 flex-1 flex-col px-8 pb-7 pt-3"
+        showClose={!pending}
       >
         <div className="grid gap-6">
           <FormField>
@@ -80,6 +92,7 @@ export function AddProviderDialog({
               value={providerId}
               placeholder={frontendMessage("settings.provider.namePlaceholder")}
               aria-invalid={duplicate}
+              disabled={pending}
               onChange={(event) => setProviderId(event.currentTarget.value)}
             />
             <FormHint>{frontendMessage("settings.provider.nameHint")}</FormHint>
@@ -91,7 +104,7 @@ export function AddProviderDialog({
               placeholder={frontendMessage("settings.provider.presetPlaceholder")}
               ariaLabel={frontendMessage("settings.provider.presetLabel")}
               options={providerPresets.map((entry) => ({ value: entry.id, label: entry.label }))}
-              disabled={false}
+              disabled={pending}
               triggerClassName="h-11 rounded-lg px-3.5 text-[14px] hover:border-ink-300"
               renderValue={(value) => {
                 const current = providerPresets.find((entry) => entry.id === value);
@@ -118,15 +131,16 @@ export function AddProviderDialog({
             <FormHint>{frontendMessage("settings.provider.presetHint")}</FormHint>
           </FormField>
           {duplicate ? <ProviderFormError message={frontendMessage("settings.provider.duplicate")} /> : null}
+          {error ? <ProviderFormError message={error} /> : null}
         </div>
         <DialogActions className="mt-auto">
-          <DialogActionButton onClick={() => onOpenChange(false)}>
+          <DialogActionButton disabled={pending} onClick={() => handleOpenChange(false)}>
             {frontendMessage("settings.action.cancel")}
           </DialogActionButton>
-          <DialogActionButton variant="primary" disabled={invalid} onClick={submit}>
+          <DialogActionButton variant="primary" disabled={invalid || pending} onClick={submit}>
             <span className="inline-flex items-center gap-1.5">
               <Plus className="h-3.5 w-3.5" />
-              {frontendMessage("settings.action.add")}
+              {frontendMessage(error ? "settings.action.retry" : "settings.action.add")}
             </span>
           </DialogActionButton>
         </DialogActions>
@@ -138,11 +152,14 @@ export function AddProviderDialog({
 export function RenameProviderDialog({
   provider,
   providers,
+  error,
   onOpenChange,
   onRename,
 }: {
   provider: ProviderEndpointDraft | null;
   providers: readonly ProviderEndpointDraft[];
+  /** Rename conflict reported by the actions layer (e.g. unsaved edits). */
+  error?: string | null;
   onOpenChange: (open: boolean) => void;
   onRename: (providerId: string, nextProviderId: string) => void;
 }): JSX.Element {
@@ -188,6 +205,7 @@ export function RenameProviderDialog({
           (providers.some((entry) => entry.Id === targetId) || isProtectedProvider(targetId)) ? (
             <ProviderFormError message={frontendMessage("settings.provider.nameConflict")} />
           ) : null}
+          {error ? <ProviderFormError message={error} /> : null}
         </div>
         <DialogActions className="mt-auto">
           <DialogActionButton onClick={() => onOpenChange(false)}>

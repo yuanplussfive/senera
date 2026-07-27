@@ -1,6 +1,6 @@
 import type { JsonConfigObject } from "../../shared/config/JsonConfigForm";
 import { ConfigSecretContract } from "../../api/generatedEventCatalog";
-import { FrontendDefaultLocale } from "../../i18n/frontendMessageCatalog";
+import { getFrontendLocale } from "../../i18n/frontendLocaleStore";
 import {
   readDefaultModelGroup,
   readDefaultModelGroupRules,
@@ -191,7 +191,7 @@ export function sortProviderRows(
     .sort((left, right) => {
       const enabledDiff = Number(providerEnabled(right.provider)) - Number(providerEnabled(left.provider));
       if (enabledDiff !== 0) return enabledDiff;
-      return providerIdLabel(left.provider).localeCompare(providerIdLabel(right.provider), FrontendDefaultLocale);
+      return providerIdLabel(left.provider).localeCompare(providerIdLabel(right.provider), getFrontendLocale());
     });
 }
 
@@ -219,6 +219,9 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
     ...optionalNumber("RetryBaseDelaySeconds", record.RetryBaseDelaySeconds),
     ...optionalNumber("RetryMaxDelaySeconds", record.RetryMaxDelaySeconds),
     ...optionalNumber("RetryAfterMaxDelaySeconds", record.RetryAfterMaxDelaySeconds),
+    ...optionalNumber("MaxResponseBytes", record.MaxResponseBytes),
+    ...optionalNumber("MaxSseEventBytes", record.MaxSseEventBytes),
+    ...optionalNumber("MaxSseEvents", record.MaxSseEvents),
   };
 }
 

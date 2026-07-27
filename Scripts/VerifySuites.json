@@ -33,6 +33,7 @@
         "VerifyPluginRuntimeBundleProjection.js",
         "VerifyToolSignatureMappingAndPlanValidation.js",
         "VerifyModelProviderEndpointConfig.js",
+        "VerifyProviderModelDomainCommands.js",
         "VerifyOpenAiCompatibleMessageProjection.js",
         "VerifyAgentConfigFormProjection.js",
         "VerifyModelTimeoutConfig.js",
@@ -87,7 +88,8 @@
         "VerifyDesktopRuntimeAssetSync.js",
         "VerifyDesktopRuntimePaths.js",
         "VerifyDesktopFrontendSource.js",
-        "VerifyDesktopLiveFrontendServer.js"
+        "VerifyDesktopLiveFrontendServer.js",
+        "VerifyDesktopLiveLifecycle.js"
       ]
     },
     "release": {

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer, useRef, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, type MutableRefObject } from "react";
 import { toast } from "sonner";
 import {
   EventKinds,
@@ -32,9 +32,27 @@ type Action =
   | { type: "finished"; providerId: string };
 const initialState: State = { configOperation: null, providerModelLoadingIds: {} };
 
+/** 后端不回包时的客户端兜底：超时后把 loading 归位并提示，避免 spinner 永转 */
+const PROVIDER_MODELS_TIMEOUT_MS = 30_000;
+
 export function useConfigCommands({ commandQueue, sendRef, statusRef }: ConfigCommandTransport) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const pendingRef = useRef(new Set<string>());
+  const providerModelTimersRef = useRef(new Map<string, number>());
+  const clearProviderModelTimer = useCallback((providerId: string): void => {
+    const timer = providerModelTimersRef.current.get(providerId);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      providerModelTimersRef.current.delete(providerId);
+    }
+  }, []);
+  useEffect(
+    () => () => {
+      for (const timer of providerModelTimersRef.current.values()) window.clearTimeout(timer);
+      providerModelTimersRef.current.clear();
+    },
+    [],
+  );
   const refreshConfig = useCallback(() => sendIfOpen(sendRef, statusRef, { type: "config.get" }), [sendRef, statusRef]);
   const refreshPluginConfigs = useCallback(
     () => sendIfOpen(sendRef, statusRef, { type: "plugin.config.list" }),
@@ -107,51 +125,67 @@ export function useConfigCommands({ commandQueue, sendRef, statusRef }: ConfigCo
         return;
       }
       dispatch({ type: "started", providerId });
-      if (!send({ type: "provider.models.fetch", providerId, force, endpoint })) {
+      if (!send({ type: "provider.models.fetch", providerId, force, ...(endpoint ? { endpoint } : {}) })) {
         dispatch({ type: "finished", providerId });
         toast.error(frontendMessage("config.providerModelsDisconnected"));
+        return;
       }
+      clearProviderModelTimer(providerId);
+      providerModelTimersRef.current.set(
+        providerId,
+        window.setTimeout(() => {
+          providerModelTimersRef.current.delete(providerId);
+          dispatch({ type: "finished", providerId });
+          toast.error(frontendMessage("config.providerModelsTimeout"));
+        }, PROVIDER_MODELS_TIMEOUT_MS),
+      );
     },
-    [sendRef, statusRef],
+    [clearProviderModelTimer, sendRef, statusRef],
   );
-  const ingestConfigCommandEvent = useCallback((env: EventEnvelope): boolean => {
-    if (env.kind === EventKinds.ProviderModelsSnapshot) {
-      dispatch({ type: "finished", providerId: (env.data as ProviderModelsSnapshotData).providerId });
+  const ingestConfigCommandEvent = useCallback(
+    (env: EventEnvelope): boolean => {
+      if (env.kind === EventKinds.ProviderModelsSnapshot) {
+        const providerId = (env.data as ProviderModelsSnapshotData).providerId;
+        clearProviderModelTimer(providerId);
+        dispatch({ type: "finished", providerId });
+        return true;
+      }
+      if (env.kind === EventKinds.ProviderModelsFailed) {
+        const data = env.data as ProviderModelsFailedData;
+        clearProviderModelTimer(data.providerId);
+        dispatch({ type: "finished", providerId: data.providerId });
+        toast.error(frontendMessage("config.providerModelsFailed"), { description: data.message });
+        return true;
+      }
+      if (env.kind !== EventKinds.ConfigSnapshot && env.kind !== EventKinds.ConfigFailed) return false;
+      const data = env.data as ConfigSnapshotData | ConfigFailedData;
+      const operation = readConfigCommandEventOperation(env);
+      const commandId = operation?.commandId;
+      if (!commandId || !pendingRef.current.has(commandId) || operation.kind !== "config_update") return false;
+      pendingRef.current.delete(commandId);
+      if (env.kind === EventKinds.ConfigSnapshot) {
+        dispatch({
+          type: "config",
+          operation: { commandId, kind: "config_update", status: "success", updatedAt: timestamp() },
+        });
+      } else if (env.kind === EventKinds.ConfigFailed) {
+        dispatch({
+          type: "config",
+          operation: {
+            commandId,
+            kind: "config_update",
+            status: "error",
+            message: (data as ConfigFailedData).message,
+            errorCode: readConfigFailureCode((data as ConfigFailedData).details),
+            updatedAt: timestamp(),
+          },
+        });
+        toast.error(frontendMessage("config.mainFailed"), { description: (data as ConfigFailedData).message });
+      } else return false;
       return true;
-    }
-    if (env.kind === EventKinds.ProviderModelsFailed) {
-      const data = env.data as ProviderModelsFailedData;
-      dispatch({ type: "finished", providerId: data.providerId });
-      toast.error(frontendMessage("config.providerModelsFailed"), { description: data.message });
-      return true;
-    }
-    if (env.kind !== EventKinds.ConfigSnapshot && env.kind !== EventKinds.ConfigFailed) return false;
-    const data = env.data as ConfigSnapshotData | ConfigFailedData;
-    const operation = readConfigCommandEventOperation(env);
-    const commandId = operation?.commandId;
-    if (!commandId || !pendingRef.current.has(commandId) || operation.kind !== "config_update") return false;
-    pendingRef.current.delete(commandId);
-    if (env.kind === EventKinds.ConfigSnapshot) {
-      dispatch({
-        type: "config",
-        operation: { commandId, kind: "config_update", status: "success", updatedAt: timestamp() },
-      });
-    } else if (env.kind === EventKinds.ConfigFailed) {
-      dispatch({
-        type: "config",
-        operation: {
-          commandId,
-          kind: "config_update",
-          status: "error",
-          message: (data as ConfigFailedData).message,
-          errorCode: readConfigFailureCode((data as ConfigFailedData).details),
-          updatedAt: timestamp(),
-        },
-      });
-      toast.error(frontendMessage("config.mainFailed"), { description: (data as ConfigFailedData).message });
-    } else return false;
-    return true;
-  }, []);
+    },
+    [clearProviderModelTimer],
+  );
   return useMemo(
     () => ({
       ...state,

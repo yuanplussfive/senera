@@ -20,3 +20,12 @@ export type { ModelServiceLayout, ModelServiceLayoutStore } from "./modelService
 export * from "./settingsLayout";
 export { readWindowControlsInsetWidth } from "./windowControlsLayout";
 export type { WindowControlsOverlayGeometry } from "./windowControlsLayout";
+export {
+  clampWorkflowDockWidth,
+  DEFAULT_WORKFLOW_DOCK_WIDTH,
+  MAX_WORKFLOW_DOCK_WIDTH,
+  MIN_WORKFLOW_DOCK_WIDTH,
+  MIN_WORKSPACE_MAIN_WIDTH,
+  readWorkflowDockWidthConstraints,
+} from "./workflowDock";
+export type { WorkflowDockWidthConstraints } from "./workflowDock";

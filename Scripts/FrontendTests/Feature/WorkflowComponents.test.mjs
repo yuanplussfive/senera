@@ -115,7 +115,7 @@ test("persistent workflow panel owns its tool header and only collapse control",
   expect(onClosePanel).toHaveBeenCalledTimes(1);
 });
 
-test("dock execution view uses a segmented header and raised run summary", () => {
+test("dock execution view hides its composed title and keeps the raised run summary", () => {
   const run = createRun({
     requestId: "run-dock",
     input: "Inspect the new dock prototype",
@@ -132,16 +132,12 @@ test("dock execution view uses a segmented header and raised run summary", () =>
   renderWithFrontendProviders(
     React.createElement(ThinkingTimeline, {
       presentation: "dock",
-      dockTabs: [
-        { id: "execution", label: "执行", active: true, onSelect: vi.fn() },
-        { id: "terminal", label: "终端", active: false, onSelect: vi.fn() },
-      ],
+      hidePanelTitle: true,
     }),
   );
 
-  expect(document.querySelector("[data-workflow-dock-tabs]")).toHaveClass("rounded-full", "bg-surface-subtle");
-  expect(screen.getByRole("tab", { name: "执行" })).toHaveClass("flex-1", "bg-surface-raised");
-  expect(screen.getByRole("tab", { name: "终端" })).toHaveAttribute("aria-selected", "false");
+  expect(document.querySelector("[data-workspace-tool-dock]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-window-drag-region]")).not.toBeInTheDocument();
   expect(document.querySelector("[data-workflow-run-summary]")).toHaveClass("rounded-[14px]", "bg-surface-raised");
   expect(document.querySelector("[data-workflow-run-status='completed']")).toHaveClass("bg-moss-50");
 });

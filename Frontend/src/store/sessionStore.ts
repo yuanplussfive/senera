@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { clampWorkflowDockWidth, DEFAULT_WORKFLOW_DOCK_WIDTH } from "../shared/responsive/workflowDock";
 import { immer } from "zustand/middleware/immer";
 import { DEFAULT_SESSION_TITLE } from "./session/defaults";
 import {
@@ -263,6 +264,7 @@ export interface StoreState {
   rightPanelCollapsed: boolean;
   defaultSidebarCollapsed: boolean;
   defaultRightPanelCollapsed: boolean;
+  workflowDockWidth: number;
   motionLevel: MotionLevel;
   /** 每个 session 当前在右栏查看的 run requestId；不存在则用最新 run */
   viewedRunIdBySession: Record<string, string>;
@@ -302,6 +304,8 @@ export interface StoreState {
   presetRootDir: string;
   configSnapshot: ConfigSnapshotData | null;
   userProfile: UserProfile;
+  /** 各目录快照是否已到达过一次；用于区分"尚未同步"与"确实为空"，避免空态闪现 */
+  catalogSynced: { sessions: boolean; presets: boolean; plugins: boolean };
 
   selectSession: (id: string) => void;
   toggleSidebar: () => void;
@@ -310,6 +314,7 @@ export interface StoreState {
   setRightPanelCollapsed: (collapsed: boolean) => void;
   setDefaultSidebarCollapsed: (collapsed: boolean) => void;
   setDefaultRightPanelCollapsed: (collapsed: boolean) => void;
+  setWorkflowDockWidth: (width: number) => void;
   setMotionLevel: (level: MotionLevel) => void;
   setViewedRun: (sessionId: string, requestId: string | undefined) => void;
   registerCreatingSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
@@ -358,6 +363,7 @@ export const useStore = create<StoreState>()(
       rightPanelCollapsed: true,
       defaultSidebarCollapsed: false,
       defaultRightPanelCollapsed: true,
+      workflowDockWidth: DEFAULT_WORKFLOW_DOCK_WIDTH,
       motionLevel: "full",
       viewedRunIdBySession: {},
       historyLoadedIds: {},
@@ -383,6 +389,7 @@ export const useStore = create<StoreState>()(
       presetRootDir: "",
       configSnapshot: null,
       userProfile: DEFAULT_USER_PROFILE,
+      catalogSynced: { sessions: false, presets: false, plugins: false },
 
       selectSession: (id) =>
         set((state) => {
@@ -420,6 +427,11 @@ export const useStore = create<StoreState>()(
         set((state) => {
           state.defaultRightPanelCollapsed = collapsed;
           state.rightPanelCollapsed = collapsed;
+        }),
+
+      setWorkflowDockWidth: (width) =>
+        set((state) => {
+          state.workflowDockWidth = clampWorkflowDockWidth(width);
         }),
 
       setMotionLevel: (level) =>
@@ -676,12 +688,14 @@ if (typeof window !== "undefined") {
     const nextDefaultSidebarCollapsed = preferences.defaultSidebarCollapsed ?? state.defaultSidebarCollapsed;
     const nextDefaultRightPanelCollapsed = preferences.defaultRightPanelCollapsed ?? state.defaultRightPanelCollapsed;
     const nextMotionLevel = preferences.motionLevel ?? state.motionLevel;
+    const nextWorkflowDockWidth = preferences.workflowDockWidth ?? state.workflowDockWidth;
     const nextSelectedModelProviderId = preferences.selectedModelProviderId ?? state.selectedModelProviderId;
     const nextSelectedModelProviderIdsBySession =
       preferences.selectedModelProviderIdsBySession ?? state.selectedModelProviderIdsBySession;
     const defaultSidebarChanged = nextDefaultSidebarCollapsed !== state.defaultSidebarCollapsed;
     const defaultRightPanelChanged = nextDefaultRightPanelCollapsed !== state.defaultRightPanelCollapsed;
     const motionLevelChanged = nextMotionLevel !== state.motionLevel;
+    const workflowDockWidthChanged = nextWorkflowDockWidth !== state.workflowDockWidth;
     const selectedModelProviderChanged = nextSelectedModelProviderId !== state.selectedModelProviderId;
     const selectedModelsBySessionChanged = !areStringRecordsEqual(
       nextSelectedModelProviderIdsBySession,
@@ -691,6 +705,7 @@ if (typeof window !== "undefined") {
       !defaultSidebarChanged &&
       !defaultRightPanelChanged &&
       !motionLevelChanged &&
+      !workflowDockWidthChanged &&
       !selectedModelProviderChanged &&
       !selectedModelsBySessionChanged
     ) {
@@ -702,6 +717,7 @@ if (typeof window !== "undefined") {
       ...(defaultSidebarChanged ? { sidebarCollapsed: nextDefaultSidebarCollapsed } : {}),
       ...(defaultRightPanelChanged ? { rightPanelCollapsed: nextDefaultRightPanelCollapsed } : {}),
       motionLevel: nextMotionLevel,
+      workflowDockWidth: nextWorkflowDockWidth,
       selectedModelProviderId: nextSelectedModelProviderId,
       selectedModelProviderIdsBySession: nextSelectedModelProviderIdsBySession,
     });

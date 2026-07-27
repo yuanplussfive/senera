@@ -2,7 +2,10 @@ import { type WebSocket, type RawData } from "ws";
 import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { matchByType } from "../Core/AgentMatch.js";
 import { AgentWebSocketRequestSchema, type AgentWebSocketRequest } from "./AgentWebSocketProtocol.js";
-import { projectAgentWebSocketRequestFailure } from "./AgentWebSocketRequestFailures.js";
+import {
+  projectAgentWebSocketParseFailure,
+  projectAgentWebSocketRequestFailure,
+} from "./AgentWebSocketRequestFailures.js";
 import {
   AgentWebSocketApprovalRequestHandlers,
   AgentWebSocketConfigRequestHandlers,
@@ -145,18 +148,22 @@ export class AgentWebSocketMessageRouter {
     }
 
     const parsed = AgentWebSocketRequestSchema.safeParse(rawRequest);
-    return parsed.success
-      ? {
-          ok: true,
-          request: parsed.data,
-        }
-      : {
-          ok: false,
-          event: requestInvalidEvent({
-            message: agentErrorMessage("websocket.requestInvalid"),
-            details: parsed.error.issues,
-          }),
-        };
+    if (parsed.success) {
+      return {
+        ok: true,
+        request: parsed.data,
+      };
+    }
+    const configFailure = projectAgentWebSocketParseFailure(rawRequest, parsed.error.issues, this.options.context);
+    return {
+      ok: false,
+      event:
+        configFailure ??
+        requestInvalidEvent({
+          message: agentErrorMessage("websocket.requestInvalid"),
+          details: parsed.error.issues,
+        }),
+    };
   }
 }
 
@@ -164,6 +171,6 @@ function requestInvalidEvent(data: { message: string; details?: unknown }): Agen
   return {
     kind: AgentEventKinds.RequestInvalid,
     context: {},
-    data,
+    data: { code: "request_parse_failed", ...data },
   };
 }

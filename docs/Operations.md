@@ -157,6 +157,18 @@ docker compose restart senera
 - `ModelProviderEndpoints[].ApiKey`
 - `ModelProviders[].Model`
 
+`ApiKey` 可以在首次配置时暂时以明文填写；运行时读取后会立即以 AES-256-GCM 密文写回 JSON 镜像和 SQLite 的全部配置 revision，配置迁移备份也使用密文。推荐通过设置页修改供应商凭据，避免直接操作已经由 SQLite 接管的 JSON 镜像。
+
+密钥优先从 `SENERA_CONFIG_SECRET_KEY` 读取，值必须是 32 字节随机数据的 base64url 编码。可以用 Node.js 生成：
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+密钥只能生成一次并持久保存，不要在每次启动时重新生成。Compose 已把宿主机变量映射进主服务；本地部署可以将 `SENERA_CONFIG_SECRET_KEY=<生成值>` 写入仓库已忽略的 `.env`，正式部署应使用平台提供的独立 secret。
+
+未设置该变量时，运行时会生成 `.senera/config-secrets.key`（Docker 数据目录下为 `/data/.senera/config-secrets.key`）。这个本地 key 能防止配置 JSON 或数据库被单独复制后直接读出 API key，但不能抵御同时取得数据目录和 key 文件的主机级攻击。备份时必须保留密钥，丢失或直接更换密钥会导致已有凭据无法解密。
+
 ## 上传容量与回收
 
 上传文件保存在 `Uploads.RootDir`，默认是数据目录中的 `.senera/uploads`。服务端按流处理 multipart 请求，不会先把整个请求读进内存，并同时执行以下限制：

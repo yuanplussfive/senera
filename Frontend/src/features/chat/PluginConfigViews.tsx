@@ -4,13 +4,14 @@ import { Code2, Settings2 } from "lucide-react";
 import type { TomlTableWithoutBigInt } from "smol-toml";
 import type { PluginConfigField, PluginConfigItem, PluginConfigSection } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { ScrollArea, SwitchTrack } from "../../shared/ui";
+import { ScrollArea, StateView, SwitchTrack, InlineError } from "../../shared/ui";
 import {
   ConfigFieldVisibilityControl,
   filterConfigFields,
   type ConfigFieldVisibility,
 } from "../../shared/config/ConfigFieldVisibility";
 import { FieldControl } from "./PluginConfigFields";
+import { ConfigDiagnosticsList } from "./ConfigDiagnostics";
 import { readDraftValue } from "./pluginConfigDraft";
 
 export type ConfigView = "settings" | "toml";
@@ -92,9 +93,7 @@ export function SettingsView({
       )}
     >
       {parseError ? (
-        <div className="mb-5 rounded-lg border border-brick-100 bg-brick-50 px-3 py-2 text-[12.5px] text-brick-700">
-          {frontendMessage("pluginConfig.sourceParseFailed")}
-        </div>
+        <InlineError className="mb-5 text-[12.5px]">{frontendMessage("pluginConfig.sourceParseFailed")}</InlineError>
       ) : null}
 
       <ConfigFieldVisibilityControl fields={allFields} value={fieldVisibility} onChange={setFieldVisibility} />
@@ -124,11 +123,15 @@ export function SettingsView({
             disabled={toolsDisabled || Boolean(parseError)}
             onSetToolEnabled={onSetToolEnabled}
           />
-          <div className="grid min-h-64 place-items-center rounded-lg border border-ink-200/70 bg-paper-50 text-[13px] text-ink-400 shadow-panel">
-            {fieldVisibility === "essential" && allFields.length > 0
-              ? frontendMessage("settings.config.noEssentialFields")
-              : frontendMessage("pluginConfig.noVisualFields")}
-          </div>
+          <StateView
+            status="empty"
+            className="min-h-64"
+            description={
+              fieldVisibility === "essential" && allFields.length > 0
+                ? frontendMessage("settings.config.noEssentialFields")
+                : frontendMessage("pluginConfig.noVisualFields")
+            }
+          />
         </div>
       )}
     </div>
@@ -191,27 +194,7 @@ export function Diagnostics({
     ...validationErrors.map((message) => ({ severity: "error" as const, message })),
     ...(saveError ? [{ severity: "error" as const, message: saveError }] : []),
   ];
-  if (items.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="mt-2 space-y-1">
-      {items.map((diagnostic, index) => (
-        <div
-          key={`${diagnostic.severity}-${index}`}
-          className={cn(
-            "rounded-md border px-2 py-1.5 text-[12px]",
-            diagnostic.severity === "error"
-              ? "border-brick-200 bg-brick-50 text-brick-700"
-              : "border-ink-200 bg-paper-100 text-umber-600",
-          )}
-        >
-          {diagnostic.message}
-        </div>
-      ))}
-    </div>
-  );
+  return <ConfigDiagnosticsList items={items} className="mt-2" />;
 }
 
 export function ConfigSourceNotice({ plugin }: { plugin: PluginConfigItem }): JSX.Element | null {

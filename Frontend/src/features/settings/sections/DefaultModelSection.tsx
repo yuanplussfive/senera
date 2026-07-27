@@ -1,13 +1,13 @@
 import { useMemo, useState, type ComponentType } from "react";
-import { BrainCircuit, Check, ListFilter, Loader2, Search, Target } from "lucide-react";
+import { BrainCircuit, Check, ListFilter, Search, Target } from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
-import { MenuSelect } from "../../../shared/ui";
+import { MenuSelect, Spinner, StateView } from "../../../shared/ui";
 import { findTopField } from "../../chat/modelConfigData";
 import { ModelProviderIcon, inferModelProviderIcon } from "../../chat/ModelProviderIcon";
 import { ConfigFieldRequirementLabel } from "../../../shared/config/ConfigFieldVisibility";
 import { cn } from "../../../lib/util";
-import { SettingsWorkspaceState } from "../SettingsWorkspaceSurface";
+
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import type { ConfigSettingsDraftState } from "./configSettingsDraftState";
 import { readModelServiceState } from "./modelServiceState";
@@ -56,10 +56,22 @@ export function DefaultModelSection({
   const defaultModelId = state?.defaultModel?.model.Id ?? "";
 
   if (!systemConfig) {
-    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingMain")}</SettingsWorkspaceState>;
+    return (
+      <StateView
+        status="loading"
+        className="min-h-[360px] bg-paper-50"
+        description={frontendMessage("settings.state.loadingMain")}
+      />
+    );
   }
   if (!snapshot || !modelSection || !state) {
-    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingDefaultModel")}</SettingsWorkspaceState>;
+    return (
+      <StateView
+        status="loading"
+        className="min-h-[360px] bg-paper-50"
+        description={frontendMessage("settings.state.loadingDefaultModel")}
+      />
+    );
   }
 
   return (
@@ -167,7 +179,7 @@ function ModelAssignmentRow({
   return (
     <div className="grid min-h-[76px] min-w-0 gap-3 bg-paper-50 px-3 py-3 md:grid-cols-[minmax(190px,0.8fr)_minmax(260px,1.2fr)] md:items-center">
       <div className="flex min-w-0 items-start gap-2.5">
-        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border border-ink-200/70 bg-paper-100 text-ink-450">
+        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border border-ink-200/70 bg-paper-100 text-ink-500">
           <AssignmentCapabilityIcon capability={field.modelSelection.capability} />
         </span>
         <div className="min-w-0">
@@ -175,7 +187,7 @@ function ModelAssignmentRow({
             <span className="text-[12.5px] font-medium text-ink-850">{field.label}</span>
             <ConfigFieldRequirementLabel required={field.modelSelection.required} />
           </div>
-          {field.description ? <p className="mt-0.5 text-[11px] leading-4 text-ink-450">{field.description}</p> : null}
+          {field.description ? <p className="mt-0.5 text-[11px] leading-4 text-ink-500">{field.description}</p> : null}
         </div>
       </div>
 
@@ -189,9 +201,9 @@ function ModelAssignmentRow({
           emptyState={frontendMessage("settings.model.noCandidates")}
           trailing={
             operation?.status === "pending" ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-ink-400" />
+              <Spinner size="sm" className="text-ink-400" />
             ) : operation?.status === "success" ? (
-              <Check className="h-3.5 w-3.5 text-moss-700" />
+              <Check className="h-3.5 w-3.5 text-moss-600" />
             ) : undefined
           }
           renderValue={(value, option) => (
@@ -240,7 +252,7 @@ function AssignmentOption({
 }): JSX.Element {
   const icon = candidate?.model.Icon ?? inferModelProviderIcon(candidate?.model.Model ?? label);
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-2", unavailable && "text-umber-700")}>
+    <span className={cn("inline-flex min-w-0 items-center gap-2", unavailable && "text-umber-600")}>
       <ModelProviderIcon icon={icon} size={16} />
       <span className="truncate">{label}</span>
     </span>
@@ -250,7 +262,7 @@ function AssignmentOption({
 function AssignmentGroupIcon({ groupId }: { groupId: string }): JSX.Element {
   const Icon: ComponentType<{ className?: string }> =
     groupId === "planning" ? BrainCircuit : groupId === "retrieval" ? Search : Target;
-  return <Icon className="h-3.5 w-3.5 text-ink-450" />;
+  return <Icon className="h-3.5 w-3.5 text-ink-500" />;
 }
 
 function AssignmentCapabilityIcon({

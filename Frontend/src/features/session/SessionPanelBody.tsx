@@ -1,6 +1,6 @@
 import { Search, X } from "lucide-react";
 import { LayoutGroup } from "framer-motion";
-import { ScrollArea } from "../../shared/ui";
+import { ScrollArea, StateView } from "../../shared/ui";
 import { MotionList, MotionListItem } from "../../shared/motion";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { SessionRecord } from "../../store/sessionStore";
@@ -9,6 +9,7 @@ import { EmptyState, SessionRow } from "./SessionRows";
 interface SessionPanelBodyProps {
   sessions: readonly SessionRecord[];
   totalSessionCount: number;
+  catalogSynced: boolean;
   query: string;
   onQueryChange: (query: string) => void;
   activeSessionId: string | null;
@@ -23,6 +24,7 @@ interface SessionPanelBodyProps {
 export function SessionPanelBody({
   sessions,
   totalSessionCount,
+  catalogSynced,
   query,
   onQueryChange,
   activeSessionId,
@@ -61,11 +63,17 @@ export function SessionPanelBody({
       <ScrollArea className="min-h-0 flex-1">
         <div className="pb-2">
           {totalSessionCount === 0 ? (
-            <EmptyState onNewSession={onNewSession} />
+            catalogSynced ? (
+              <EmptyState onNewSession={onNewSession} />
+            ) : (
+              <StateView status="loading" className="min-h-[200px] px-4" />
+            )
           ) : sessions.length === 0 ? (
-            <div className="px-3 py-10 text-center text-[12px] leading-5 text-content-secondary">
-              {frontendMessage("session.searchEmpty")}
-            </div>
+            <StateView
+              status="empty"
+              className="min-h-[120px] px-3"
+              description={frontendMessage("session.searchEmpty")}
+            />
           ) : (
             <LayoutGroup id="session-list-selection">
               <MotionList className="flex flex-col gap-0.5 pt-1">

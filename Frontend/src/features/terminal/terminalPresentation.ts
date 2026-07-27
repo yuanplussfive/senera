@@ -80,10 +80,10 @@ export function terminalStatusLabel(state: ExecutionResourceState): string {
 }
 
 const StatusIndicatorClassNames = {
-  starting: "bg-umber-400 motion-safe:animate-pulse",
+  starting: "bg-umber-500 animate-pulse",
   running: "bg-[var(--terminal-accent)]",
   completed: "bg-moss-400",
-  failed: "bg-brick-400",
+  failed: "bg-brick-500",
   cancelled: "bg-[var(--terminal-subtle)]",
 } as const satisfies Record<ExecutionResourceState, string>;
 

@@ -7,6 +7,9 @@ import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 const RECOVERY_POLL_DELAYS_MS = [1500, 2000, 3000, 5000] as const;
 
+/** 后端不回 completed 时的客户端兜底：超时转入失败态（失败态自带重试按钮） */
+const HISTORY_LOAD_TIMEOUT_MS = 30_000;
+
 export interface UseSessionHistoryRecoveryOptions {
   send: (request: WsRequest) => boolean;
   status: SocketStatus;
@@ -68,6 +71,14 @@ export function useSessionHistoryRecovery({
   const markHistoryLoading = useStore((state) => state.markHistoryLoading);
   const markHistoryLoadFailed = useStore((state) => state.markHistoryLoadFailed);
   const recoveryPollingAttemptRef = useRef(0);
+  const historyTimeoutTimersRef = useRef(new Map<string, number>());
+  useEffect(
+    () => () => {
+      for (const timer of historyTimeoutTimersRef.current.values()) window.clearTimeout(timer);
+      historyTimeoutTimersRef.current.clear();
+    },
+    [],
+  );
   const recoveryPollingKey = useStore((state) =>
     readRecoveryPollingKey({
       historyLoadingIds: state.historyLoadingIds,
@@ -82,7 +93,20 @@ export function useSessionHistoryRecovery({
       if (!ok) {
         markHistoryLoadFailed(sessionId);
         toast.error(frontendMessage("session.historyDisconnected"));
+        return ok;
       }
+      const existing = historyTimeoutTimersRef.current.get(sessionId);
+      if (existing !== undefined) window.clearTimeout(existing);
+      historyTimeoutTimersRef.current.set(
+        sessionId,
+        window.setTimeout(() => {
+          historyTimeoutTimersRef.current.delete(sessionId);
+          if (useStore.getState().historyLoadingIds[sessionId]) {
+            markHistoryLoadFailed(sessionId);
+            toast.error(frontendMessage("session.historyTimeout"));
+          }
+        }, HISTORY_LOAD_TIMEOUT_MS),
+      );
       return ok;
     },
     [markHistoryLoadFailed, markHistoryLoading, send],

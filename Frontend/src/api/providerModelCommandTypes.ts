@@ -36,6 +36,9 @@ export interface ProviderModelConfigInput {
   RetryBaseDelaySeconds?: number;
   RetryMaxDelaySeconds?: number;
   RetryAfterMaxDelaySeconds?: number;
+  MaxResponseBytes?: number;
+  MaxSseEventBytes?: number;
+  MaxSseEvents?: number;
 }
 
 export interface ProviderModelGroupAssignmentInput {
@@ -82,6 +85,7 @@ export type ProviderModelConfigRequest =
     })
   | (ConfigCommandRequestInput & {
       type: "provider.model.upsert";
+      /** Complete replacement for an existing model with the same Id. */
       model: ProviderModelConfigInput;
       group?: ProviderModelGroupAssignmentInput;
     })
@@ -92,7 +96,9 @@ export type ProviderModelConfigRequest =
     })
   | (ConfigCommandRequestInput & {
       type: "provider.model.bulkImport";
+      /** Complete model definitions. Existing Ids are skipped unless overwriteExisting is true. */
       models: ProviderModelConfigInput[];
+      /** Completely replace models with matching Ids instead of skipping them. */
       overwriteExisting?: boolean;
       groupAssignments?: ProviderModelBulkImportGroupAssignmentInput[];
     })

@@ -20,6 +20,8 @@ export type SystemConfigCommandDraft = SystemConfigCommandRequest extends infer 
 
 export type SystemConfigCommandTransportFailure = "config_unavailable" | "offline" | "disconnected";
 
+const COMMAND_RESPONSE_TIMEOUT_MS = 30_000;
+
 export interface SystemConfigCommandEnqueueInput {
   operationKind: ConfigOperationKind;
   request: SystemConfigCommandDraft | ((snapshot: ConfigSnapshotData) => SystemConfigCommandDraft);
@@ -29,6 +31,9 @@ export interface SystemConfigCommandEnqueueInput {
 
 interface QueuedSystemConfigCommand extends SystemConfigCommandEnqueueInput {
   commandId: string;
+  requestToSend?: SystemConfigCommandRequest;
+  awaitingResponse: boolean;
+  supportsDurableReplay?: boolean;
 }
 
 export interface SystemConfigCommandQueue {
@@ -49,8 +54,15 @@ export function useSystemConfigCommandQueue({
   const activeRef = useRef<QueuedSystemConfigCommand | null>(null);
   const queuedRef = useRef<QueuedSystemConfigCommand[]>([]);
   const statusRef = useRef(status);
+  const responseTimeoutRef = useRef<number | null>(null);
   latestSnapshotRef.current = configSnapshot ?? latestSnapshotRef.current;
   statusRef.current = status;
+
+  const clearResponseTimeout = useCallback((): void => {
+    if (responseTimeoutRef.current === null) return;
+    window.clearTimeout(responseTimeoutRef.current);
+    responseTimeoutRef.current = null;
+  }, []);
 
   const failCommand = useCallback(
     (command: QueuedSystemConfigCommand, failure: SystemConfigCommandTransportFailure) => {
@@ -60,25 +72,48 @@ export function useSystemConfigCommandQueue({
   );
 
   const pump = useCallback((): void => {
-    if (activeRef.current || statusRef.current !== "open") return;
+    if (statusRef.current !== "open") return;
     const send = sendRef.current;
     if (!send) return;
 
-    while (!activeRef.current) {
-      const command = queuedRef.current.shift();
-      if (!command) return;
+    while (true) {
+      const command = activeRef.current ?? queuedRef.current.shift();
+      if (!command || command.awaitingResponse) return;
       const snapshot = latestSnapshotRef.current;
       if (!snapshot) {
+        activeRef.current = null;
         failCommand(command, "config_unavailable");
         continue;
       }
-      const draft = typeof command.request === "function" ? command.request(snapshot) : command.request;
+
+      const requestToSend =
+        command.requestToSend ??
+        ({
+          ...(typeof command.request === "function" ? command.request(snapshot) : command.request),
+          commandId: command.commandId,
+        } as SystemConfigCommandRequest);
+      command.requestToSend = requestToSend;
+      command.supportsDurableReplay = snapshot.source === "sqlite";
       activeRef.current = command;
-      if (send({ ...draft, commandId: command.commandId } as SystemConfigCommandRequest)) return;
+      if (send(requestToSend)) {
+        command.awaitingResponse = true;
+        // Safety net: a command that never gets a matching ConfigSnapshot/ConfigFailed
+        // (e.g. rejected before reaching a handler) must not deadlock the queue forever.
+        clearResponseTimeout();
+        responseTimeoutRef.current = window.setTimeout(() => {
+          responseTimeoutRef.current = null;
+          const stalled = activeRef.current;
+          if (!stalled || stalled.commandId !== command.commandId) return;
+          activeRef.current = null;
+          failCommand(stalled, "disconnected");
+          pump();
+        }, COMMAND_RESPONSE_TIMEOUT_MS);
+        return;
+      }
       activeRef.current = null;
       failCommand(command, "disconnected");
     }
-  }, [failCommand, sendRef]);
+  }, [clearResponseTimeout, failCommand, sendRef]);
 
   const enqueue = useCallback(
     (input: SystemConfigCommandEnqueueInput): string | null => {
@@ -99,7 +134,7 @@ export function useSystemConfigCommandQueue({
         }
       }
 
-      const command: QueuedSystemConfigCommand = { ...input, commandId: generateId() };
+      const command: QueuedSystemConfigCommand = { ...input, commandId: generateId(), awaitingResponse: false };
       queuedRef.current.push(command);
       pump();
       return activeRef.current === command || queuedRef.current.includes(command) ? command.commandId : null;
@@ -123,10 +158,11 @@ export function useSystemConfigCommandQueue({
         return false;
       }
       activeRef.current = null;
+      clearResponseTimeout();
       pump();
       return true;
     },
-    [pump],
+    [clearResponseTimeout, pump],
   );
 
   useEffect(() => {
@@ -134,11 +170,16 @@ export function useSystemConfigCommandQueue({
       pump();
       return;
     }
-    const pending = [...(activeRef.current ? [activeRef.current] : []), ...queuedRef.current];
+    clearResponseTimeout();
+    const active = activeRef.current;
+    if (!active) return;
+    if (active.supportsDurableReplay) {
+      active.awaitingResponse = false;
+      return;
+    }
     activeRef.current = null;
-    queuedRef.current = [];
-    for (const command of pending) failCommand(command, "disconnected");
-  }, [failCommand, pump, status]);
+    failCommand(active, "disconnected");
+  }, [clearResponseTimeout, failCommand, pump, status]);
 
   return useMemo(() => ({ enqueue, ingest }), [enqueue, ingest]);
 }

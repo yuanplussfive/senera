@@ -5,7 +5,7 @@ import { friendlyDecisionKind } from "../../store/sessionStore";
 import { cn, formatTime, formatDuration } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
-import { MetaLabel, Sheet, SheetContent, Tooltip, useClipboardCopy } from "../../shared/ui";
+import { MetaLabel, Sheet, SheetContent, Skeleton, Tooltip, useClipboardCopy } from "../../shared/ui";
 import { readStepKindLabel, readStepStatusLabel } from "./stepPresentation";
 import { DataView } from "./DataView";
 
@@ -55,15 +55,15 @@ export function NodeDetailDrawer({ step, onClose }: NodeDetailDrawerProps): JSX.
 
 function DetailSkeleton(): JSX.Element {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" role="status" aria-busy="true" aria-label={frontendMessage("ui.loading")}>
       <div className="space-y-2 border-y border-ink-200/60 py-3">
-        <span className="block h-3 w-24 rounded-sm bg-ink-900/[0.05]" />
-        <span className="block h-3 w-40 rounded-sm bg-ink-900/[0.05]" />
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-3 w-40" />
       </div>
       <div className="space-y-2">
-        <span className="block h-3 w-16 rounded bg-ink-900/[0.05]" />
-        <span className="block h-4 w-full rounded bg-ink-900/[0.05]" />
-        <span className="block h-4 w-4/5 rounded bg-ink-900/[0.05]" />
+        <Skeleton className="h-3 w-16" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-4/5" />
       </div>
     </div>
   );
@@ -74,7 +74,7 @@ function Header({ step, onClose }: { step: TimelineStep; onClose: () => void }):
     <div className="flex h-14 items-center gap-2 border-b border-ink-200/60 px-5">
       <div className="min-w-0 flex-1">
         <h2 className="truncate text-[15px] font-semibold text-ink-950">{step.title}</h2>
-        <div className="mt-0.5 text-[10.5px] text-ink-450">{readStepKindLabel(step.kind)}</div>
+        <div className="mt-0.5 text-[10.5px] text-ink-500">{readStepKindLabel(step.kind)}</div>
       </div>
       <button
         type="button"
@@ -103,12 +103,16 @@ const Body = memo(function Body({ step }: { step: TimelineStep }): JSX.Element {
 
       {step.toolErrorMessage ? (
         <Section label={frontendMessage("workflow.node.section.error")}>
-          <div className="text-[13px] leading-5 text-brick-600">{step.toolErrorMessage}</div>
+          <div className="whitespace-pre-wrap break-words text-[13px] leading-5 text-brick-600">
+            {step.toolErrorMessage}
+          </div>
         </Section>
       ) : null}
       {step.errorMessage && step.errorMessage !== step.toolErrorMessage ? (
         <Section label={frontendMessage("workflow.node.section.error")}>
-          <div className="text-[13px] leading-5 text-brick-600">{step.errorMessage}</div>
+          <div className="whitespace-pre-wrap break-words text-[13px] leading-5 text-brick-600">
+            {step.errorMessage}
+          </div>
         </Section>
       ) : null}
 
@@ -254,6 +258,16 @@ function ToolResultPresentationView({
           <span className="break-all font-mono text-[12px] text-ink-500">{presentation.artifactUri}</span>
         </Section>
       ) : null}
+
+      {!presentation.summary &&
+      facts.length === 0 &&
+      evidence.length === 0 &&
+      changes.length === 0 &&
+      !presentation.artifactUri ? (
+        <div className="text-[12.5px] leading-5 text-content-secondary">
+          {frontendMessage("workflow.node.emptyResult")}
+        </div>
+      ) : null}
     </>
   );
 }
@@ -309,7 +323,7 @@ function MetaStrip({ step }: { step: TimelineStep }): JSX.Element {
     <dl className="divide-y divide-ink-200/60 border-y border-ink-200/70">
       {chips.map((chip, index) => (
         <div key={index} className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 py-1.5 text-[11.5px]">
-          <dt className="text-ink-450">{chip.label}</dt>
+          <dt className="text-ink-500">{chip.label}</dt>
           <dd
             className={cn(
               "min-w-0 break-words text-ink-800",

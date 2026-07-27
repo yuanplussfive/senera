@@ -43,7 +43,7 @@ export function AboutSettings({ environment }: { environment: SettingsEnvironmen
 function AboutValue({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,auto)] items-baseline gap-3 border-b border-ink-200/60 py-2.5">
-      <dt className="truncate text-[11px] text-ink-450">{label}</dt>
+      <dt className="truncate text-[11px] text-ink-500">{label}</dt>
       <dd className="max-w-full truncate text-right text-[12.5px] font-medium text-ink-850">{value}</dd>
     </div>
   );

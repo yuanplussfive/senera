@@ -7,8 +7,10 @@ import {
   type AgentToolContractBundle,
 } from "../Source/AgentSystem/ToolContracts/AgentToolContractTypes.js";
 import { readOptionalUtf8, synchronizeGeneratedFile } from "./GeneratedTextFile.js";
-import { AgentTypescriptToolContractProjector } from "./ToolContracts/AgentTypescriptToolContractProjector.js";
-import { sha256Hex } from "../Source/AgentSystem/Core/AgentHash.js";
+import {
+  AgentTypescriptToolContractProjector,
+  digestToolContractSource,
+} from "./ToolContracts/AgentTypescriptToolContractProjector.js";
 import { toPosixPath } from "../Scripts/Support/FileWalk.js";
 
 interface SourceToolManifest {
@@ -65,7 +67,7 @@ for (const { pluginRoot, manifestPath, manifest } of discoverPlugins(pluginColle
             identity: `${normalizeRelativePath(source.file)}#${source.type ?? "default"}`,
             file: normalizeRelativePath(source.file),
             ...(source.type ? { type: source.type } : {}),
-            sha256: sha256Hex(sourceText),
+            sha256: digestToolContractSource(sourceText),
           },
           inputSchema: annotateJsonSchema(structuredClone(input.jsonSchema), input.properties),
         },

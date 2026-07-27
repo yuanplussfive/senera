@@ -115,7 +115,7 @@ try {
     },
   );
 
-  const preserved = service.upsertProviderModel({
+  const modelReplaced = service.upsertProviderModel({
     commandId: nextCommandId(),
     model: {
       Id: "custom/model-a",
@@ -124,9 +124,9 @@ try {
       Model: "remote-model-a",
     },
   });
-  const preservedModel = findModel(preserved.value, "custom/model-a");
-  assert.equal(preservedModel.Endpoint, "Responses");
-  assert.equal(preservedModel.Temperature, 0.2);
+  const replacedModel = findModel(modelReplaced.value, "custom/model-a");
+  assert.equal(replacedModel.Endpoint, "Responses");
+  assert.equal(replacedModel.Temperature, undefined);
 
   const renamed = service.renameProviderEndpoint({
     commandId: nextCommandId(),
@@ -134,7 +134,8 @@ try {
     nextProviderId: "custom-renamed",
   });
   assert.equal(findEndpoint(renamed.value, "custom-renamed").BaseUrl, "https://custom.example.test/v1");
-  assert.equal(findModel(renamed.value, "custom/model-a").ProviderId, "custom-renamed");
+  assert.equal(findModel(renamed.value, "custom-renamed/model-a").ProviderId, "custom-renamed");
+  assert.equal(renamed.value.ModelProviderIdAliases?.["custom/model-a"], "custom-renamed/model-a");
   assert.equal(renamed.value.DefaultModelProviderId, "main");
   assert.throws(
     () =>
@@ -161,14 +162,14 @@ try {
 
   const defaultChanged = service.setDefaultProviderModel({
     commandId: nextCommandId(),
-    modelId: "custom/model-a",
+    modelId: "custom-renamed/model-a",
   });
-  assert.equal(defaultChanged.value.DefaultModelProviderId, "custom/model-a");
+  assert.equal(defaultChanged.value.DefaultModelProviderId, "custom-renamed/model-a");
   assert.throws(
     () =>
       service?.deleteProviderModel({
         commandId: nextCommandId(),
-        modelId: "custom/model-a",
+        modelId: "custom-renamed/model-a",
       }),
     /replacementDefaultModelId/,
   );
@@ -176,7 +177,7 @@ try {
     () =>
       service?.deleteProviderModel({
         commandId: nextCommandId(),
-        modelId: "custom/model-a",
+        modelId: "custom-renamed/model-a",
         replacementDefaultModelId: "missing",
       }),
     /DefaultModelProviderId=missing/,
@@ -184,12 +185,12 @@ try {
 
   const modelDeleted = service.deleteProviderModel({
     commandId: nextCommandId(),
-    modelId: "custom/model-a",
+    modelId: "custom-renamed/model-a",
     replacementDefaultModelId: "main",
   });
   assert.equal(modelDeleted.value.DefaultModelProviderId, "main");
   assert.equal(
-    modelDeleted.value.ModelProviders.some((model) => model.Id === "custom/model-a"),
+    modelDeleted.value.ModelProviders.some((model) => model.Id === "custom-renamed/model-a"),
     false,
   );
   assert.equal(modelDeleted.value.ModelGroups?.find((group) => group.Id === "reasoning")?.Strategies?.length ?? 0, 0);
@@ -198,7 +199,7 @@ try {
     commandId: nextCommandId(),
     models: [
       {
-        Id: "custom/model-b",
+        Id: "custom-renamed/model-b",
         ProviderId: "custom-renamed",
         Endpoint: "ChatCompletions",
         Model: "remote-model-b",
@@ -206,7 +207,7 @@ try {
     ],
   });
   assert.equal(
-    reimported.value.ModelProviders.some((model) => model.Id === "custom/model-b"),
+    reimported.value.ModelProviders.some((model) => model.Id === "custom-renamed/model-b"),
     true,
   );
 

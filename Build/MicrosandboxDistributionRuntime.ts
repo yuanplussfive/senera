@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   createAgentMicrosandboxCli,
   createAgentMicrosandboxImageArchive,
+  type AgentMicrosandboxCli,
   type AgentMicrosandboxPackageEntryResolver,
 } from "../Source/AgentSystem/Sandbox/AgentMicrosandboxCli.js";
 
@@ -32,6 +33,7 @@ export interface MicrosandboxDistributionProbe {
 
 export interface MicrosandboxDistributionRuntimeOptions {
   workspaceRoot: string;
+  cli?: AgentMicrosandboxCli;
   packageEntryResolver?: AgentMicrosandboxPackageEntryResolver;
   log?: (message: string) => void;
 }
@@ -40,10 +42,12 @@ export function createMicrosandboxDistributionRuntime(
   options: MicrosandboxDistributionRuntimeOptions,
 ): MicrosandboxDistributionRuntime {
   const log = options.log ?? (() => undefined);
-  const cli = createAgentMicrosandboxCli({
-    cwd: options.workspaceRoot,
-    packageEntryResolver: options.packageEntryResolver,
-  });
+  const cli =
+    options.cli ??
+    createAgentMicrosandboxCli({
+      cwd: options.workspaceRoot,
+      packageEntryResolver: options.packageEntryResolver,
+    });
   const imageArchive = createAgentMicrosandboxImageArchive(cli);
   const run = async (baseDir: string, arguments_: readonly string[]) => {
     await mkdir(baseDir, { recursive: true });
@@ -53,11 +57,14 @@ export function createMicrosandboxDistributionRuntime(
   return {
     async prepareImage(input) {
       log(`Preparing sandbox image ${input.reference} with pull policy ${input.pullPolicy}...`);
+      if (input.pullPolicy === "if-missing") {
+        await run(input.baseDir, ["image", "pull", "--quiet", input.reference]);
+      }
       await run(input.baseDir, [
         "run",
         "--quiet",
         "--pull",
-        input.pullPolicy,
+        "never",
         "--name",
         input.sandboxName,
         "--replace",

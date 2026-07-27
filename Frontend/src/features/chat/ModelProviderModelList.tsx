@@ -1,13 +1,12 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useMemo, useRef, useState } from "react";
-import { Loader2, Plus, RefreshCw, Search, Settings2, Star, Tags, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Search, Settings2, Star, Tags, Trash2 } from "lucide-react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { ScrollArea, Switch, Tooltip } from "../../shared/ui";
+import { ScrollArea, Spinner, Tooltip } from "../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
 import { defaultModelCapabilities, modelConfigId, providerEnabled, readModelCapabilities } from "./modelConfigData";
 import type {
-  ModelConfigLayoutMode,
   ModelProviderDraft,
   ProviderEndpointDraft,
   ProviderModelGroup,
@@ -22,7 +21,13 @@ import {
   iconButtonClassName,
 } from "./ModelConfigPrimitives";
 
-const EMPTY_PENDING_MODEL_IDS: ReadonlySet<string> = new Set();
+const EMPTY_PENDING_MODEL_IDS: ReadonlyMap<string, string> = new Map();
+
+function pendingModelOperationLabel(kind: string): string {
+  if (kind === "provider.model.delete") return frontendMessage("settings.modelManagement.removing");
+  if (kind === "provider.defaultModel.set") return frontendMessage("settings.modelManagement.settingDefault");
+  return frontendMessage("settings.modelManagement.adding");
+}
 const modelActionClassName =
   "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[10.5px] font-medium text-ink-650 transition hover:bg-ink-900/[0.05] hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50";
 const modelRemoveActionClassName =
@@ -34,6 +39,7 @@ export function ProviderModelList({
   error,
   loading,
   enabled,
+  canFetchModels,
   rows,
   groups,
   models,
@@ -41,11 +47,8 @@ export function ProviderModelList({
   defaultModelId,
   pendingModelIds = EMPTY_PENDING_MODEL_IDS,
   search,
-  configuredOnly,
   disabled,
-  layoutMode = "panel",
   onSearch,
-  onConfiguredOnlyChange,
   onOpenModelGroups,
   onFetch,
   onAddManualModel,
@@ -54,25 +57,22 @@ export function ProviderModelList({
   onConfigureModel,
   onSetDefaultModel,
   onRemoveModel,
-  onAddModel,
 }: {
   selectedProvider: ProviderEndpointDraft | null;
   catalog?: ProviderModelsSnapshotData;
   error?: ProviderModelsFailedData & { updatedAt: string };
   loading: boolean;
   enabled: boolean;
+  canFetchModels: boolean;
   rows: ProviderModelInfo[];
   groups: ProviderModelGroup[];
   models: ModelProviderDraft[];
   modelTemplate: Record<string, unknown>;
   defaultModelId: string;
-  pendingModelIds?: ReadonlySet<string>;
+  pendingModelIds?: ReadonlyMap<string, string>;
   search: string;
-  configuredOnly: boolean;
   disabled: boolean;
-  layoutMode?: ModelConfigLayoutMode;
   onSearch: (value: string) => void;
-  onConfiguredOnlyChange: (enabled: boolean) => void;
   onOpenModelGroups: () => void;
   onFetch: (force?: boolean) => void;
   onAddManualModel?: () => void;
@@ -81,9 +81,7 @@ export function ProviderModelList({
   onConfigureModel: (model: ProviderModelInfo) => void;
   onSetDefaultModel?: (model: ModelProviderDraft) => void;
   onRemoveModel?: (model: ModelProviderDraft) => void;
-  onAddModel?: (model: ProviderModelInfo) => void;
 }): JSX.Element {
-  const embedded = layoutMode === "embedded";
   const [compactSearchOpen, setCompactSearchOpen] = useState(false);
   const scrollTopRef = useRef<HTMLDivElement | null>(null);
   const groupRefs = useRef(new Map<string, HTMLElement>());
@@ -100,6 +98,7 @@ export function ProviderModelList({
       <ProviderModelRows
         selectedProvider={selectedProvider}
         enabled={enabled}
+        canFetchModels={canFetchModels}
         catalog={catalog}
         rows={rows}
         groups={groups}
@@ -111,7 +110,6 @@ export function ProviderModelList({
         onConfigureModel={onConfigureModel}
         onSetDefaultModel={onSetDefaultModel}
         onRemoveModel={onRemoveModel}
-        onAddModel={onAddModel}
         groupedCards={compactHeader}
         onGroupRef={(groupId, element) => {
           if (element) {
@@ -125,18 +123,18 @@ export function ProviderModelList({
   );
 
   return (
-    <div className={cn("flex min-h-0 flex-col", embedded ? "overflow-visible" : "h-full overflow-hidden")}>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {compactHeader ? (
         <div className="border-b border-ink-200/70 bg-paper-50 px-3 py-3">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <span className="text-[13.5px] font-semibold text-ink-900">{frontendMessage("config.model.title")}</span>
-              <span className="tabular-nums text-[11px] text-ink-450">{rows.length}</span>
+              <span className="tabular-nums text-[11px] text-ink-500">{rows.length}</span>
               <Tooltip content={frontendMessage("config.model.searchPlaceholder")} side="top">
                 <button
                   type="button"
                   disabled={disabled || !selectedProvider}
-                  className="grid h-8 w-8 place-items-center rounded-md text-ink-450 transition hover:bg-ink-900/[0.05] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-45"
+                  className="grid h-8 w-8 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-45"
                   onClick={() => setCompactSearchOpen((current) => !current)}
                   aria-label={frontendMessage("config.model.searchPlaceholder")}
                   aria-pressed={compactSearchOpen}
@@ -149,11 +147,11 @@ export function ProviderModelList({
               {showFetchAction ? (
                 <button
                   type="button"
-                  disabled={disabled || loading || !enabled || !selectedProvider?.Id}
+                  disabled={disabled || loading || !enabled || !canFetchModels || !selectedProvider?.Id}
                   className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[11.5px] font-medium text-ink-650 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-45"
                   onClick={() => onFetch(true)}
                 >
-                  {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  {loading ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
                   {frontendMessage("config.model.fetchList")}
                 </button>
               ) : null}
@@ -181,7 +179,7 @@ export function ProviderModelList({
       ) : (
         <ListHeader
           title={frontendMessage("config.model.title")}
-          subtitle={modelListSubtitle(selectedProvider, catalog, rows.length)}
+          subtitle={modelListSubtitle(selectedProvider, rows.length)}
           action={
             <div className="flex items-center gap-1.5">
               <Tooltip content={frontendMessage("config.model.modelGroups")} side="top">
@@ -195,16 +193,6 @@ export function ProviderModelList({
                   <Tags className="h-3.5 w-3.5" />
                 </button>
               </Tooltip>
-              <span className="inline-flex items-center gap-2 text-[11px] text-ink-600">
-                <span>{frontendMessage("config.model.configuredOnly")}</span>
-                <Switch
-                  checked={configuredOnly}
-                  disabled={disabled || !selectedProvider}
-                  ariaLabel={frontendMessage("config.model.configuredOnly")}
-                  className="h-8 w-10 justify-center"
-                  onCheckedChange={onConfiguredOnlyChange}
-                />
-              </span>
               {onAddManualModel ? (
                 <Tooltip content={frontendMessage("config.model.manualAdd")} side="top">
                   <button
@@ -222,12 +210,12 @@ export function ProviderModelList({
                 <Tooltip content={frontendMessage("config.model.fetchList")} side="top">
                   <button
                     type="button"
-                    disabled={disabled || loading || !enabled || !selectedProvider?.Id}
+                    disabled={disabled || loading || !enabled || !canFetchModels || !selectedProvider?.Id}
                     className={iconButtonClassName}
                     onClick={() => onFetch(true)}
                     aria-label={frontendMessage("config.model.fetchList")}
                   >
-                    {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    {loading ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
                   </button>
                 </Tooltip>
               ) : null}
@@ -244,16 +232,9 @@ export function ProviderModelList({
         </div>
       )}
       {compactHeader ? null : <ModelGroupSummary groups={groups} total={rows.length} onSelectGroup={scrollToGroup} />}
-      {embedded ? (
-        <div className="min-h-0">{modelRows}</div>
-      ) : (
-        <ScrollArea
-          className="min-h-0 flex-1 overflow-hidden"
-          viewportClassName="h-full pr-2 [scrollbar-gutter:stable]"
-        >
-          {modelRows}
-        </ScrollArea>
-      )}
+      <ScrollArea className="min-h-0 flex-1 overflow-hidden" viewportClassName="h-full pr-2 [scrollbar-gutter:stable]">
+        {modelRows}
+      </ScrollArea>
     </div>
   );
 }
@@ -261,6 +242,7 @@ export function ProviderModelList({
 function ProviderModelRows({
   selectedProvider,
   enabled,
+  canFetchModels,
   catalog,
   rows,
   groups,
@@ -272,24 +254,23 @@ function ProviderModelRows({
   onConfigureModel,
   onSetDefaultModel,
   onRemoveModel,
-  onAddModel,
   groupedCards,
   onGroupRef,
 }: {
   selectedProvider: ProviderEndpointDraft | null;
   enabled: boolean;
+  canFetchModels: boolean;
   catalog?: ProviderModelsSnapshotData;
   rows: ProviderModelInfo[];
   groups: ProviderModelGroup[];
   models: ModelProviderDraft[];
   modelTemplate: Record<string, unknown>;
   defaultModelId: string;
-  pendingModelIds: ReadonlySet<string>;
+  pendingModelIds: ReadonlyMap<string, string>;
   disabled: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
   onSetDefaultModel?: (model: ModelProviderDraft) => void;
   onRemoveModel?: (model: ModelProviderDraft) => void;
-  onAddModel?: (model: ProviderModelInfo) => void;
   groupedCards: boolean;
   onGroupRef: (groupId: string, element: HTMLElement | null) => void;
 }): JSX.Element {
@@ -306,11 +287,19 @@ function ProviderModelRows({
   if (!enabled) {
     return <EmptyList text={frontendMessage("config.model.providerDisabled")} />;
   }
-  if (!catalog && rows.length === 0) {
-    return <EmptyList text={frontendMessage("config.model.fetchHint")} />;
+  if (!canFetchModels && !catalog && rows.length === 0) {
+    return <EmptyList text={frontendMessage("config.model.apiKeyRequired")} />;
   }
   if (rows.length === 0) {
-    return <EmptyList text={frontendMessage("config.model.noMatches")} />;
+    return (
+      <EmptyList
+        text={
+          configuredByModel.size === 0
+            ? frontendMessage("config.model.noConfigured")
+            : frontendMessage("config.model.noMatches")
+        }
+      />
+    );
   }
 
   return (
@@ -338,13 +327,12 @@ function ProviderModelRows({
                 providerId={selectedProvider.Id}
                 configured={configuredByModel.get(model.id)}
                 defaultModelId={defaultModelId}
-                pending={pendingModelIds.has(modelConfigId(selectedProviderId, model.id))}
+                pendingKind={pendingModelIds.get(modelConfigId(selectedProviderId, model.id))}
                 modelTemplate={modelTemplate}
                 disabled={disabled}
                 onConfigureModel={onConfigureModel}
                 onSetDefaultModel={onSetDefaultModel}
                 onRemoveModel={onRemoveModel}
-                onAddModel={onAddModel}
               />
             ))}
           </div>
@@ -359,25 +347,24 @@ function ProviderModelRow({
   providerId,
   configured,
   defaultModelId,
-  pending,
+  pendingKind,
   modelTemplate,
   disabled,
   onConfigureModel,
   onSetDefaultModel,
   onRemoveModel,
-  onAddModel,
 }: {
   model: ProviderModelInfo;
   providerId: string;
   configured?: ModelProviderDraft;
   defaultModelId: string;
-  pending: boolean;
+  /** Operation kind pending for this model (upsert/delete/default-set), if any. */
+  pendingKind?: string;
   modelTemplate: Record<string, unknown>;
   disabled: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
   onSetDefaultModel?: (model: ModelProviderDraft) => void;
   onRemoveModel?: (model: ModelProviderDraft) => void;
-  onAddModel?: (model: ProviderModelInfo) => void;
 }): JSX.Element {
   const isDefault = configured?.Id === defaultModelId;
   const capabilities = configured
@@ -400,10 +387,9 @@ function ProviderModelRow({
       </span>
       <span className="flex flex-wrap items-center justify-end gap-1.5">
         <ConfiguredModelBadge isDefault={isDefault} configured={Boolean(configured)} />
-        {pending ? (
+        {pendingKind ? (
           <span className="inline-flex items-center gap-1.5 text-[10.5px] font-medium text-ink-600">
-            <Loader2 className="h-3 w-3 animate-spin text-accent-content" />{" "}
-            {frontendMessage("settings.modelManagement.adding")}
+            <Spinner size="xs" className="text-accent-content" /> {pendingModelOperationLabel(pendingKind)}
           </span>
         ) : configured && (onSetDefaultModel || onRemoveModel) ? (
           <>
@@ -439,7 +425,7 @@ function ProviderModelRow({
               </button>
             ) : null}
           </>
-        ) : configured || !onAddModel ? (
+        ) : (
           <button
             type="button"
             disabled={disabled || !providerId}
@@ -449,17 +435,6 @@ function ProviderModelRow({
             onClick={() => onConfigureModel(model)}
           >
             <Settings2 className="h-3.5 w-3.5" />
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={disabled || !providerId}
-            className={iconButtonClassName}
-            title={frontendMessage("config.model.addModel")}
-            aria-label={frontendMessage("config.model.addModel")}
-            onClick={() => onAddModel(model)}
-          >
-            <Plus className="h-3.5 w-3.5" />
           </button>
         )}
       </span>
@@ -504,7 +479,7 @@ function ModelGroupSummary({
       <div className="flex min-w-0 flex-wrap gap-1">
         <button
           type="button"
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-accent-border px-1.5 text-[11px] text-ink-750 transition-colors duration-150 hover:text-accent-content-hover"
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-accent-border px-1.5 text-[11px] text-ink-800 transition-colors duration-150 hover:text-accent-content-hover"
           onClick={() => onSelectGroup(null)}
           title={frontendMessage("config.model.allModelsTitle", { count: total })}
         >
@@ -530,23 +505,12 @@ function ModelGroupSummary({
   );
 }
 
-function modelListSubtitle(
-  selectedProvider: ProviderEndpointDraft | null,
-  catalog: ProviderModelsSnapshotData | undefined,
-  visibleRows: number,
-): string {
+function modelListSubtitle(selectedProvider: ProviderEndpointDraft | null, visibleRows: number): string {
   if (!selectedProvider) {
     return frontendMessage("config.model.selectProviderHint");
   }
   if (!providerEnabled(selectedProvider)) {
     return frontendMessage("config.model.providerDisabled");
   }
-  if (!catalog) {
-    return visibleRows > 0
-      ? frontendMessage("config.model.configuredCount", { count: visibleRows })
-      : frontendMessage("config.model.fetchToShow");
-  }
-  return visibleRows === catalog.models.length
-    ? frontendMessage("config.model.count", { count: catalog.models.length })
-    : frontendMessage("config.model.filteredCount", { visible: visibleRows, total: catalog.models.length });
+  return frontendMessage("config.model.configuredCount", { count: visibleRows });
 }

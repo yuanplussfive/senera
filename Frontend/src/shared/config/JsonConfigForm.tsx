@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ConfigFormFieldData, ConfigFormSectionData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { ScrollArea } from "../ui";
+import { ScrollArea, StateView } from "../ui";
 import { ConfigFieldVisibilityControl, type ConfigFieldVisibility } from "./ConfigFieldVisibility";
 import { JsonConfigFieldControl } from "./JsonConfigFieldControl";
 import { projectJsonConfigFieldVisibility } from "./JsonConfigFieldVisibility";
@@ -23,7 +23,7 @@ export function JsonConfigSettingsView({
   showSectionHeading = true,
   value,
   disabled,
-  emptyText = "没有可视化配置项",
+  emptyText = frontendMessage("config.form.empty"),
   onChange,
   onCommit,
 }: {
@@ -66,11 +66,15 @@ export function JsonConfigSettingsView({
           </div>
         </>
       ) : (
-        <div className="grid min-h-64 place-items-center border-y border-ink-200/70 bg-paper-50 text-[13px] text-ink-400">
-          {fieldVisibility === "essential" && allFields.length > 0
-            ? frontendMessage("settings.config.noEssentialFields")
-            : emptyText}
-        </div>
+        <StateView
+          status="empty"
+          className="min-h-64 border-y border-ink-200/70 bg-paper-50"
+          description={
+            fieldVisibility === "essential" && allFields.length > 0
+              ? frontendMessage("settings.config.noEssentialFields")
+              : emptyText
+          }
+        />
       )}
     </div>
   );
@@ -89,7 +93,7 @@ function JsonSectionNavigation({ sections }: { sections: ConfigFormSectionData[]
       aria-label={frontendMessage("settings.config.sectionNavigation")}
       className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-ink-200/70 pb-2"
     >
-      <span className="text-[11px] font-medium text-ink-450">
+      <span className="text-[11px] font-medium text-ink-500">
         {frontendMessage("settings.config.sectionNavigation")}:
       </span>
       {sections.map((section) => (

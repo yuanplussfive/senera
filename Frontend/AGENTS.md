@@ -12,6 +12,13 @@
 - `ChatComposer` 属于依赖上传、模型和预设运行时的业务组件，不要用空壳回调或假数据创建临时 Story；需要单独调整时先确定真实运行时边界。
 - 修改主题 token、`src/index.css` 中的公共组件样式或 `.ladle` 配置时，必须运行 Ladle 构建并检查受影响 Story。
 
+## 第三方组件源码
+
+- shadcn CLI 仅作为受控源码入口；详细流程见 `../docs/Development/FrontendComponentRegistry.md`。
+- 只运行项目固定版本提供的 `ui.registry.view` 和 `ui.registry.dry-run`，禁止 `init`、写入式 `add`、`--all` 和 `--overwrite`。
+- `src/shared/ui/_incoming` 不能提交或导入。适配后的公共组件直接进入 `src/shared/ui`，不保留平行的生成实现。
+- 默认只允许官方 Tailwind 3 registry。第三方 registry 必须先完成来源、许可证和依赖审查并加入白名单。
+
 ## 组件语义
 
 - 值选择使用 `MenuSelect`；按钮触发的操作集合使用 `DropdownMenu`；对象右键操作使用 `ContextMenu`。

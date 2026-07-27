@@ -258,7 +258,7 @@ const dialogActionVariantClasses: Record<DialogActionVariant, string> = {
     "border border-line bg-surface-panel text-content-secondary shadow-[0_1px_2px_rgb(33_30_24/0.04)] hover:border-line-strong hover:bg-surface-hover hover:text-content-primary",
   primary:
     "bg-accent-solid font-medium text-accent-on-solid shadow-accent hover:bg-accent-solid-hover active:bg-accent-solid-pressed",
-  danger: "bg-brick-500 font-medium text-paper-50 shadow-[0_1px_2px_rgb(146_64_14/0.24)] hover:bg-brick-600",
+  danger: "bg-brick-600 font-medium text-paper-50 shadow-[0_1px_2px_rgb(146_64_14/0.24)] hover:bg-brick-700",
 };
 
 export function DialogActions({ children, className }: DialogActionsProps): JSX.Element {

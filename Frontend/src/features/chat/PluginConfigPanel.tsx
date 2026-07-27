@@ -3,7 +3,7 @@ import { RefreshCw, RotateCcw, Search } from "lucide-react";
 import type { PluginConfigField, PluginConfigItem, PluginConfigMutationState } from "../../api/eventTypes";
 import type { SocketStatus } from "../../api/useAgentSocket";
 import { cn } from "../../lib/util";
-import { Button, ScrollArea, Switch, Tooltip } from "../../shared/ui";
+import { Button, ScrollArea, StateView, Switch, Tooltip } from "../../shared/ui";
 import {
   ConfigSourceNotice,
   Diagnostics,
@@ -14,6 +14,7 @@ import {
   ViewSwitch,
 } from "./PluginConfigViews";
 import { parseDraftToml, validatePluginConfigDraft, writeDraftFieldValue } from "./pluginConfigDraft";
+import { useStore } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { classifySettingsContentLayout, useObservedLayout } from "../../shared/responsive";
 export { readNumberDraftCommitValue, validatePluginConfigDraft, writeDraftFieldValue } from "./pluginConfigDraft";
@@ -72,6 +73,7 @@ export function PluginConfigContent({
   const [filterText, setFilterText] = useState("");
   const [compactDetailOpen, setCompactDetailOpen] = useState(false);
   const [, setEntryVersion] = useState(0);
+  const pluginsSynced = useStore((s) => s.catalogSynced.plugins);
   const draftEntriesRef = useRef<Map<string, PluginDraftEntry>>(new Map());
   const saveTimersRef = useRef<Map<string, number>>(new Map());
   const configurablePluginsRef = useRef<PluginConfigItem[]>([]);
@@ -535,10 +537,10 @@ export function PluginConfigContent({
                 <TomlView layoutMode={layoutMode} draft={draft} onChange={updateDraft} onCommit={flushSave} />
               )}
             </>
+          ) : pluginsSynced ? (
+            <StateView status="empty" className="flex-1" description={frontendMessage("pluginConfig.empty")} />
           ) : (
-            <div className="grid flex-1 place-items-center text-[13px] text-ink-400">
-              {frontendMessage("pluginConfig.empty")}
-            </div>
+            <StateView status="loading" className="flex-1" />
           )}
         </section>
       ) : null}
@@ -605,7 +607,7 @@ function PluginSelectorRows({
         );
       })}
       {plugins.length === 0 ? (
-        <div className="w-full px-3 py-5 text-center text-[12px] text-ink-400 lg:py-8">
+        <div className="w-full px-3 py-5 text-center text-[12px] text-ink-500 lg:py-8">
           {frontendMessage("pluginConfig.noMatches")}
         </div>
       ) : null}

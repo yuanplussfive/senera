@@ -55,6 +55,10 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
         migrateVersionFourToFive(working, migratedPaths, removedPaths);
         version = 5;
         break;
+      case 5:
+        migrateVersionFiveToSix(working, migratedPaths);
+        version = 6;
+        break;
       default:
         throw new AgentConfigMigrationError(`No migration is registered for configuration version ${version}.`);
     }
@@ -69,6 +73,33 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
     migratedPaths,
     removedPaths,
   };
+}
+
+function migrateVersionFiveToSix(config: Record<string, unknown>, migratedPaths: string[]): void {
+  const configuredEndpoints = Array.isArray(config.ModelProviderEndpoints) ? config.ModelProviderEndpoints : [];
+  const configuredIds = new Set<string>();
+  for (const [index, candidate] of configuredEndpoints.entries()) {
+    if (!isRecord(candidate)) continue;
+    if (typeof candidate.Id === "string" && candidate.Id.trim()) configuredIds.add(candidate.Id);
+    if (Object.hasOwn(candidate, "Enabled")) continue;
+    candidate.Enabled = true;
+    migratedPaths.push(`ModelProviderEndpoints[${index}].Enabled`);
+  }
+
+  const referencedEndpointIds = Array.isArray(config.ModelProviders)
+    ? config.ModelProviders.flatMap((candidate) =>
+        isRecord(candidate) && typeof candidate.ProviderId === "string" && candidate.ProviderId.trim()
+          ? [candidate.ProviderId]
+          : [],
+      )
+    : [];
+  const missingEndpointOverrides = [...new Set(referencedEndpointIds)]
+    .filter((providerId) => !configuredIds.has(providerId))
+    .map((providerId) => ({ Id: providerId, Enabled: true }));
+  if (missingEndpointOverrides.length === 0) return;
+
+  config.ModelProviderEndpoints = [...configuredEndpoints, ...missingEndpointOverrides];
+  migratedPaths.push("ModelProviderEndpoints");
 }
 
 function migrateVersionFourToFive(

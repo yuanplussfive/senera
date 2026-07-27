@@ -5,9 +5,10 @@ import { useWebSettingsController } from "../../../Frontend/src/app/useWebSettin
 import { settingsHistoryStateKey } from "../../../Frontend/src/app/appSurface.ts";
 
 let controller;
+let prepareSurface;
 
 function ControllerHarness() {
-  const value = useWebSettingsController();
+  const value = useWebSettingsController({ prepareSurface });
   useEffect(() => {
     controller = value;
   }, [value]);
@@ -16,6 +17,7 @@ function ControllerHarness() {
 
 beforeEach(() => {
   controller = undefined;
+  prepareSurface = vi.fn().mockResolvedValue(undefined);
   delete window.seneraDesktop;
   window.history.replaceState(null, "", "/workspace");
 });
@@ -43,12 +45,55 @@ describe("useWebSettingsController", () => {
     expect(window.location.search).toBe("?settings=model-service");
     expect(window.history.state).toMatchObject({ [settingsHistoryStateKey]: true });
     expect(controller.returnFocusRef.current).toBe(focusTarget);
+    expect(prepareSurface).toHaveBeenCalledTimes(1);
 
     act(() => controller.changeSection("appearance"));
     expect(pushState).toHaveBeenCalledTimes(1);
     expect(replaceState).toHaveBeenCalledTimes(1);
     expect(window.location.search).toBe("?settings=appearance");
     expect(controller.section).toBe("appearance");
+  });
+
+  it("keeps the workspace location stable until the settings module is ready", async () => {
+    let resolveSurface;
+    prepareSurface = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveSurface = resolve;
+        }),
+    );
+    const pushState = vi.spyOn(window.history, "pushState");
+
+    render(React.createElement(ControllerHarness));
+    await waitFor(() => expect(controller).toBeDefined());
+
+    let opening;
+    act(() => {
+      opening = controller.openSettings("appearance");
+    });
+    expect(controller.section).toBeNull();
+    expect(window.location.search).toBe("");
+    expect(pushState).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveSurface();
+      await opening;
+    });
+    expect(controller.section).toBe("appearance");
+    expect(window.location.search).toBe("?settings=appearance");
+  });
+
+  it("does not mutate navigation when settings preparation fails", async () => {
+    prepareSurface = vi.fn().mockRejectedValue(new Error("chunk unavailable"));
+    const pushState = vi.spyOn(window.history, "pushState");
+
+    render(React.createElement(ControllerHarness));
+    await waitFor(() => expect(controller).toBeDefined());
+
+    await expect(controller.openSettings("about")).rejects.toThrow("chunk unavailable");
+    expect(controller.section).toBeNull();
+    expect(window.location.search).toBe("");
+    expect(pushState).not.toHaveBeenCalled();
   });
 
   it("closes a direct settings link by removing the parameter without navigating away", async () => {

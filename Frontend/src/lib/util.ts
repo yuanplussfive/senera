@@ -1,14 +1,30 @@
 import { twMerge } from "tailwind-merge";
 import { clsx, type ClassValue } from "clsx";
-import { FrontendDefaultLocale } from "../i18n/frontendMessageCatalog";
+import { getFrontendLocale } from "../i18n/frontendLocaleStore";
 
-const integerFormatter = new Intl.NumberFormat(FrontendDefaultLocale);
-const shortTimeFormatter = new Intl.DateTimeFormat(FrontendDefaultLocale, {
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-});
+const integerFormatters = new Map<string, Intl.NumberFormat>();
+const shortTimeFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function getIntegerFormatter(locale: string): Intl.NumberFormat {
+  const existing = integerFormatters.get(locale);
+  if (existing) return existing;
+  const formatter = new Intl.NumberFormat(locale);
+  integerFormatters.set(locale, formatter);
+  return formatter;
+}
+
+function getShortTimeFormatter(locale: string): Intl.DateTimeFormat {
+  const existing = shortTimeFormatters.get(locale);
+  if (existing) return existing;
+  const formatter = new Intl.DateTimeFormat(locale, {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  shortTimeFormatters.set(locale, formatter);
+  return formatter;
+}
 
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
@@ -66,7 +82,7 @@ export function formatFileSize(bytes: number): string {
 }
 
 export function formatInteger(value: number): string {
-  return integerFormatter.format(value);
+  return getIntegerFormatter(getFrontendLocale()).format(value);
 }
 
 export function formatShortTime(iso: string): string {
@@ -74,7 +90,7 @@ export function formatShortTime(iso: string): string {
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return shortTimeFormatter.format(date);
+  return getShortTimeFormatter(getFrontendLocale()).format(date);
 }
 
 export function generateId(): string {

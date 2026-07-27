@@ -15,6 +15,9 @@ x-senera-runtime: &senera-runtime
     SENERA_ALLOWED_ORIGINS: "http://localhost:8787,http://127.0.0.1:8787"
     SENERA_ALLOW_INSECURE_HTTP: "true"
     SENERA_PUBLIC_WS_URL: ""
+    # Set this once in the host environment or the gitignored .env file.
+    # When empty, Senera persists a local key in /data/.senera instead.
+    SENERA_CONFIG_SECRET_KEY: "${SENERA_CONFIG_SECRET_KEY:-}"
     SENERA_GVISOR_WORKER_SOCKET: /run/senera-sandbox/worker.sock
     SENERA_RUNTIME_IMAGE_REFERENCE: *senera-image
     # Change these three values before the first start. They remain

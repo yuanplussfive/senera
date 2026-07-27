@@ -116,7 +116,6 @@ export interface ReadProviderModelListStateInput {
   models: ModelProviderDraft[];
   provider: ProviderEndpointDraft;
   search?: string;
-  configuredOnly?: boolean;
 }
 
 export interface DefaultAssistantModelCandidate {
@@ -169,7 +168,12 @@ export function readModelServiceState({
   const providers = readProviderEndpoints(readDraftOrEffectiveValue(draft, section, "ModelProviderEndpoints"));
   const models = readModelProviders(readDraftOrEffectiveValue(draft, section, "ModelProviders"));
   const modelGroups = readModelGroups(readDraftOrEffectiveValue(draft, section, "ModelGroups"));
-  const defaultModelId = readString(readDraftOrEffectiveValue(draft, section, "DefaultModelProviderId")) ?? "";
+  // Mirror the backend's implicit-default rule (AgentProviderModelConfigCommands
+  // readCurrentDefaultModelId): without an explicit DefaultModelProviderId the
+  // first configured model is the effective default, and deleting it requires a
+  // replacement. Deriving the same value here keeps the removal dialogs honest.
+  const defaultModelId =
+    readString(readDraftOrEffectiveValue(draft, section, "DefaultModelProviderId")) ?? models[0]?.Id ?? "";
   const selectedProvider = readSelectedProvider(providers, selectedProviderId);
   const selectedProviderModelList = selectedProvider
     ? readProviderModelListState({
@@ -234,7 +238,6 @@ export function readProviderModelListState({
   models,
   provider,
   search = "",
-  configuredOnly = false,
 }: ReadProviderModelListStateInput): ProviderModelListState {
   const catalog = provider.Id ? catalogs[provider.Id] : undefined;
   const rows = sortProviderModelRows({
@@ -243,7 +246,7 @@ export function readProviderModelListState({
       models,
       providerId: provider.Id,
       search,
-      configuredOnly,
+      configuredOnly: true,
     }),
     models,
     providerId: provider.Id,
@@ -510,7 +513,10 @@ function readProviderDiagnosticItems(
       group: "model_list",
       severity: "error",
       title: frontendMessage("settings.diagnostics.modelFetchFailed"),
-      detail: `${providerIdLabel(provider)}：${error.message}`,
+      detail: frontendMessage("settings.diagnostics.providerDetail", {
+        provider: providerIdLabel(provider),
+        message: error.message,
+      }),
       affectedProviderId: provider.Id,
       action: loadingIds[provider.Id] ? "none" : "fetch_models",
     });

@@ -1,5 +1,5 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { CircleAlert, LoaderCircle, MoreHorizontal, PencilLine, SquarePen, Trash2 } from "lucide-react";
+import { CircleAlert, MoreHorizontal, PencilLine, SquarePen, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/util";
@@ -12,6 +12,8 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
   IconButton,
+  Spinner,
+  StateView,
 } from "../../shared/ui";
 import { motionTimings, useMotionLevel } from "../../shared/motion";
 import { ContextSessionMenuItems, DropdownSessionMenuItems } from "./SessionMenuActions";
@@ -118,10 +120,9 @@ export function SessionRow({
           <div className="pointer-events-none relative z-20 min-w-0 overflow-hidden pr-1">
             <div className="flex min-w-0 items-center gap-1.5">
               {accent === "running" ? (
-                <LoaderCircle
-                  className="h-3 w-3 shrink-0 animate-spin text-umber-600"
-                  aria-label={frontendMessage("session.statusRunning")}
-                />
+                <span role="status" aria-label={frontendMessage("session.statusRunning")} className="shrink-0">
+                  <Spinner size="xs" className="text-umber-600" />
+                </span>
               ) : accent === "failed" ? (
                 <CircleAlert
                   className="h-3 w-3 shrink-0 text-brick-600"
@@ -172,16 +173,20 @@ export function SessionRow({
 
 export function EmptyState({ onNewSession }: { onNewSession: () => void }): JSX.Element {
   return (
-    <div className="mt-8 flex flex-col items-center px-4 text-center">
-      <div className="text-[13px] text-content-secondary">{frontendMessage("session.emptyTitle")}</div>
-      <button
-        type="button"
-        onClick={onNewSession}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium text-content-secondary transition hover:bg-surface-hover hover:text-content-primary"
-      >
-        <SquarePen className="h-3 w-3" />
-        {frontendMessage("session.emptyAction")}
-      </button>
-    </div>
+    <StateView
+      status="empty"
+      className="min-h-[200px] px-4"
+      description={frontendMessage("session.emptyTitle")}
+      action={
+        <button
+          type="button"
+          onClick={onNewSession}
+          className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium text-content-secondary transition hover:bg-surface-hover hover:text-content-primary"
+        >
+          <SquarePen className="h-3 w-3" />
+          {frontendMessage("session.emptyAction")}
+        </button>
+      }
+    />
   );
 }

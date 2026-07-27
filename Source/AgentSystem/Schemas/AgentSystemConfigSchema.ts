@@ -93,6 +93,7 @@ export const AgentSystemConfigSchema = z
       .strict()
       .optional(),
     DefaultModelProviderId: z.string().min(1).optional(),
+    ModelProviderIdAliases: z.record(z.string().min(1), z.string().min(1)).optional(),
     ModelProviderEndpoints: z.array(ModelProviderEndpointSchema).optional(),
     ModelProviders: z.array(ModelProviderSchema).min(1),
     ModelGroups: z.array(ModelGroupSchema).optional(),

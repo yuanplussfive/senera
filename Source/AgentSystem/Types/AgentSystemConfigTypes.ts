@@ -91,6 +91,7 @@ export interface AgentSystemConfig {
     };
   };
   DefaultModelProviderId?: string;
+  ModelProviderIdAliases?: Record<string, string>;
   ModelProviderEndpoints?: AgentModelProviderEndpointConfig[];
   ModelProviders: AgentModelProviderConfig[];
   ModelGroups?: AgentModelGroupConfig[];

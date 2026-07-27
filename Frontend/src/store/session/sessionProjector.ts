@@ -23,6 +23,7 @@ import { projectSessionHistoryEvent } from "./sessionHistoryProjector";
 import { deleteSessionRuntimeState, ingestSessionList, readFirstAvailableSessionId } from "./sessionListProjection";
 import { nowIso, syncSessionCountsFromLoadedMessages } from "./sessionProjectorCore";
 import { applyModelListSnapshotSelection, syncActiveSessionModelSelection } from "./sessionModelSelection";
+import { syncRunActiveFlags } from "./sessionRunProjection";
 import type { StoreState } from "./types";
 
 export { normalizeUserProfile } from "./userProfile";
@@ -56,20 +57,39 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
 
   switch (env.kind) {
     case EventKinds.RequestInvalid: {
-      const details = (env.data as RequestInvalidData).details;
-      const interactionId =
-        details && typeof details === "object" && "interactionId" in details
-          ? (details as { interactionId?: unknown }).interactionId
+      const data = env.data as RequestInvalidData;
+      const details = data.details;
+      const readDetail = (key: string): unknown =>
+        details && typeof details === "object" && key in details
+          ? (details as Record<string, unknown>)[key]
           : undefined;
-      if (typeof interactionId !== "string") return;
-      for (const session of Object.values(state.sessions)) {
-        for (const run of session.runs) {
-          const interaction = run.interactionInputs?.find((entry) => entry.interactionId === interactionId);
-          if (!interaction) continue;
-          interaction.resolutionPending = false;
-          interaction.pendingAction = undefined;
-          run.revision += 1;
-          return;
+      const interactionId = readDetail("interactionId");
+      if (typeof interactionId === "string") {
+        for (const session of Object.values(state.sessions)) {
+          for (const run of session.runs) {
+            const interaction = run.interactionInputs?.find((entry) => entry.interactionId === interactionId);
+            if (!interaction) continue;
+            interaction.resolutionPending = false;
+            interaction.pendingAction = undefined;
+            run.revision += 1;
+            return;
+          }
+        }
+        return;
+      }
+      const approvalId = readDetail("approvalId");
+      if (data.code === "approval_not_pending" && typeof approvalId === "string") {
+        for (const session of Object.values(state.sessions)) {
+          for (const run of session.runs) {
+            const approval = run.approvals?.find((entry) => entry.approvalId === approvalId);
+            if (!approval) continue;
+            approval.resolutionPending = false;
+            approval.pendingDecision = undefined;
+            if (approval.status === "pending") approval.status = "expired";
+            syncRunActiveFlags(run);
+            run.revision += 1;
+            return;
+          }
         }
       }
       return;
@@ -96,7 +116,9 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
     }
 
     case EventKinds.ConfigSnapshot: {
-      state.configSnapshot = env.data as ConfigSnapshotData;
+      const data = env.data as ConfigSnapshotData;
+      invalidateStaleProviderModelCatalogs(state, state.configSnapshot, data);
+      state.configSnapshot = data;
       return;
     }
 
@@ -109,6 +131,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
     case EventKinds.PluginConfigSnapshot: {
       const data = env.data as PluginConfigSnapshotData;
       state.pluginConfigs = data.plugins;
+      state.catalogSynced.plugins = true;
       return;
     }
 
@@ -118,6 +141,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       state.activePresetName = data.activePresetName;
       state.presetsEnabled = data.enabled;
       state.presetRootDir = data.rootDir;
+      state.catalogSynced.presets = true;
       return;
     }
 
@@ -185,6 +209,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
     case EventKinds.SessionListSnapshot: {
       const data = env.data as SessionListSnapshotData;
       ingestSessionList(state, data.sessions);
+      state.catalogSynced.sessions = true;
       return;
     }
 
@@ -320,4 +345,83 @@ function appendMissingByKey<T>(current: T[], retained: readonly T[], selectKey: 
 
 function isPendingDeleteResolutionEvent(kind: string): boolean {
   return kind === EventKinds.SessionClosed || kind === EventKinds.SessionNotFound;
+}
+
+/**
+ * A model catalog fetched with the old BaseUrl/ApiKey must not keep rendering
+ * as current after the endpoint's connection settings change (or the endpoint
+ * disappears). Mirrors the backend discovery fingerprint, minus Enabled —
+ * toggling an endpoint off does not change what its /models would return.
+ */
+function invalidateStaleProviderModelCatalogs(
+  state: StoreState,
+  previous: ConfigSnapshotData | null,
+  next: ConfigSnapshotData,
+): void {
+  if (!previous) return;
+  const previousConnections = readEndpointConnections(previous.value);
+  const nextConnections = readEndpointConnections(next.value);
+  const staleIds = [...Object.keys(state.providerModelCatalogs), ...Object.keys(state.providerModelErrors)].filter(
+    (providerId) => !endpointConnectionsEqual(previousConnections.get(providerId), nextConnections.get(providerId)),
+  );
+  for (const providerId of staleIds) {
+    delete state.providerModelCatalogs[providerId];
+    delete state.providerModelErrors[providerId];
+  }
+}
+
+interface EndpointConnection {
+  kind: unknown;
+  baseUrl: unknown;
+  apiKey: unknown;
+  apiVersion: unknown;
+  headers: Readonly<Record<string, unknown>> | undefined;
+}
+
+function readEndpointConnections(value: Record<string, unknown>): Map<string, EndpointConnection> {
+  const endpoints = Array.isArray(value.ModelProviderEndpoints) ? value.ModelProviderEndpoints : [];
+  const connections = new Map<string, EndpointConnection>();
+  for (const endpoint of endpoints) {
+    if (!endpoint || typeof endpoint !== "object" || Array.isArray(endpoint)) continue;
+    const record = endpoint as Record<string, unknown>;
+    if (typeof record.Id !== "string") continue;
+    connections.set(record.Id, {
+      kind: record.Kind,
+      baseUrl: record.BaseUrl,
+      apiKey: record.ApiKey,
+      apiVersion: record.ApiVersion,
+      headers:
+        record.Headers && typeof record.Headers === "object" && !Array.isArray(record.Headers)
+          ? (record.Headers as Record<string, unknown>)
+          : undefined,
+    });
+  }
+  return connections;
+}
+
+function endpointConnectionsEqual(
+  left: EndpointConnection | undefined,
+  right: EndpointConnection | undefined,
+): boolean {
+  if (!left || !right) return left === right;
+  return (
+    left.kind === right.kind &&
+    left.baseUrl === right.baseUrl &&
+    left.apiKey === right.apiKey &&
+    left.apiVersion === right.apiVersion &&
+    recordsEqual(left.headers, right.headers)
+  );
+}
+
+function recordsEqual(
+  left: Readonly<Record<string, unknown>> | undefined,
+  right: Readonly<Record<string, unknown>> | undefined,
+): boolean {
+  if (!left || !right) return left === right;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && left[key] === right[key])
+  );
 }
