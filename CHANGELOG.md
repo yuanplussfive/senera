@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.9.9](https://github.com/yuanplussfive/senera/compare/v1.9.8...v1.9.9) (2026-07-27)
+
+
+### 内部重构
+
+* **runtime:** 收敛运行时边界并完善验证流程 ([#88](https://github.com/yuanplussfive/senera/issues/88)) ([6f47639](https://github.com/yuanplussfive/senera/commit/6f476395610a07bd30c7144d50b1374f135f305a))
+
 ## [1.9.8](https://github.com/yuanplussfive/senera/compare/v1.9.7...v1.9.8) (2026-07-27)
 
 
