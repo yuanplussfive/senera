@@ -40,6 +40,8 @@ export type AgentDerivedSqliteUpgradeInput = AgentSqliteUpgradeInput & {
   readonly plan: Extract<AgentSqliteStoreReconciliation, { kind: "rebuild" }>;
 };
 
+export type AgentSqliteReinitializeInput = Omit<AgentSqliteUpgradeInput, "plan">;
+
 export interface AgentSqliteDataUpgradeInput {
   readonly id: string;
   readonly database: Database.Database;
@@ -127,6 +129,10 @@ export class AgentUpgradeSession {
   }
 
   prepareDerivedSqliteRebuild(input: AgentDerivedSqliteUpgradeInput): void {
+    this.prepareSqliteReinitialize(input);
+  }
+
+  prepareSqliteReinitialize(input: AgentSqliteReinitializeInput): void {
     const sourcePath = this.assertAllowedDataPath(input.databasePath);
     const participant = this.backupSqlite(input.database, {
       id: input.contract.id,
