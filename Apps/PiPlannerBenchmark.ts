@@ -9,9 +9,8 @@ import type { ActionPlanInput } from "../Source/AgentSystem/BamlClient/baml_clie
 import { AgentConfigLoader } from "../Source/AgentSystem/Config/AgentConfigLoader.js";
 import type { AgentModelTimingRecord } from "../Source/AgentSystem/ModelEndpoints/AgentModelTiming.js";
 import type { AgentBamlStructuredOutputTraceEvent } from "../Source/AgentSystem/BamlClient/AgentBamlStructuredOutputRunner.js";
-import { AgentPiAssistantCompiler } from "../Source/AgentSystem/PiProxy/AgentPiAssistantCompiler.js";
-import { AgentPiFinalAnswerGenerator } from "../Source/AgentSystem/PiProxy/AgentPiFinalAnswerGenerator.js";
 import { AgentPiPreparedActionLease } from "../Source/AgentSystem/PiProxy/AgentPiPreparedActionLease.js";
+import { createAgentPiProxyModelAdapter } from "../Source/AgentSystem/Runtime/AgentPiProxyModelAdapter.js";
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import type { AgentPiToolCard } from "../Source/AgentSystem/PiProxy/AgentPiAssistantMessageTypes.js";
 import type { PiOpenAiTool } from "../Source/AgentSystem/PiProxy/AgentPiOpenAiWireTypes.js";
@@ -94,21 +93,12 @@ async function main(): Promise<void> {
       timings.push(timing);
     },
   });
-  const compiler = new AgentPiAssistantCompiler({
-    modelProvider: provider,
-    actionPlannerConfig: plannerConfig,
-    timingSink: (timing) => {
-      timings.push(timing);
-    },
-  });
-  const finalAnswers = new AgentPiFinalAnswerGenerator(
-    provider,
-    plannerConfig.FinalAnswerClient,
-    undefined,
-    (timing) => {
-      timings.push(timing);
-    },
-  );
+  const proxyModels = createAgentPiProxyModelAdapter();
+  const timingSink = (timing: AgentModelTimingRecord): void => {
+    timings.push(timing);
+  };
+  const compiler = proxyModels.createCompiler(benchmarkConfig, provider, undefined, timingSink);
+  const finalAnswers = proxyModels.createFinalAnswerGenerator(benchmarkConfig, provider, undefined, timingSink);
 
   for (let index = 0; index < iterations; index += 1) {
     const iterationStartedAt = performance.now();

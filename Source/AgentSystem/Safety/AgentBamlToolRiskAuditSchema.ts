@@ -5,7 +5,7 @@ import {
   type ToolRiskAudit as BamlToolRiskAudit,
 } from "../BamlClient/baml_client/index.js";
 import { parseNormalizedBamlOutput, safeParseNormalizedBamlOutput } from "../BamlClient/AgentBamlOutputNormalizer.js";
-import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
+import { AgentStructuredOutputValidationError } from "../Diagnostics/AgentStructuredOutputValidationError.js";
 
 const NonEmptyStringSchema = z.string().trim().min(1);
 const StringListSchema = z.array(NonEmptyStringSchema).transform(uniqueTrimmed);
@@ -46,7 +46,7 @@ const ToolRiskAuditSchema = z
 export function parseToolRiskAudit(audit: BamlToolRiskAudit): BamlToolRiskAudit {
   const parsed = safeParseNormalizedBamlOutput(ToolRiskAuditSchema, audit);
   if (!parsed.success) {
-    throw new AgentActionPlannerValidationError(parsed.structuredIssues, parsed.normalized);
+    throw new AgentStructuredOutputValidationError(parsed.structuredIssues, parsed.normalized);
   }
   return parsed.data;
 }

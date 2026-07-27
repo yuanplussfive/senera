@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
 import { safeParseNormalizedBamlOutput } from "../BamlClient/AgentBamlOutputNormalizer.js";
 import { createAgentStructuredIssue, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
+import { AgentStructuredOutputValidationError } from "../Diagnostics/AgentStructuredOutputValidationError.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 type JsonValue = string | number | boolean | JsonValue[] | JsonObject;
@@ -57,12 +57,12 @@ export function parsePiControllerAction(
     projectImplicitFinalAnswerPlan(value, options.implicitFinalAnswerPlan),
   );
   if (!parsed.success) {
-    throw new AgentActionPlannerValidationError(parsed.structuredIssues, parsed.normalized);
+    throw new AgentStructuredOutputValidationError(parsed.structuredIssues, parsed.normalized);
   }
 
   const issues = validatePiControllerAction(parsed.data, options);
   if (issues.length > 0) {
-    throw new AgentActionPlannerValidationError(issues, parsed.normalized);
+    throw new AgentStructuredOutputValidationError(issues, parsed.normalized);
   }
 
   return parsed.data;
@@ -77,7 +77,7 @@ function projectImplicitFinalAnswerPlan(value: unknown, plan: string | undefined
 export function parsePiToolArgumentsDraft(value: unknown): ParsedPiToolArgumentsDraft {
   const parsed = safeParseNormalizedBamlOutput(PiToolArgumentsDraftSchema, value);
   if (!parsed.success) {
-    throw new AgentActionPlannerValidationError(parsed.structuredIssues, parsed.normalized);
+    throw new AgentStructuredOutputValidationError(parsed.structuredIssues, parsed.normalized);
   }
 
   return parsed.data;

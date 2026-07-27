@@ -10,10 +10,7 @@ import type {
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
 } from "../Source/AgentSystem/PiProxy/AgentPiAssistantMessageTypes.js";
-import type {
-  ResolvedAgentActionPlannerConfig,
-  ResolvedAgentModelProviderConfig,
-} from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 async function main(): Promise<void> {
   await verifyLargeOpenAiMessagesAreBudgetedForPlanning();
@@ -396,7 +393,6 @@ class FakePiCompilerClient implements AgentPiAssistantCompilerModelClient {
 function compiler(client: AgentPiAssistantCompilerModelClient): AgentPiAssistantCompiler {
   return new AgentPiAssistantCompiler({
     modelProvider,
-    actionPlannerConfig,
     client,
   });
 }
@@ -466,38 +462,6 @@ const modelProvider: ResolvedAgentModelProviderConfig = {
   RetryAfterMaxDelayMs: 60_000,
   Headers: {},
   Capabilities: {},
-};
-
-const actionPlannerConfig: ResolvedAgentActionPlannerConfig = {
-  Enabled: true,
-  MaxRepairAttempts: 1,
-  Evidence: {
-    StalledStepLag: 2,
-  },
-  Client: {
-    ModelProvider: modelProvider,
-    BaseUrl: "https://example.invalid/v1",
-    ApiKey: "test-key",
-    Model: "test-model",
-    Temperature: 0,
-    MaxTokens: -1,
-  },
-  PlanningClient: {
-    ModelProvider: modelProvider,
-    BaseUrl: "https://example.invalid/v1",
-    ApiKey: "test-key",
-    Model: "test-model",
-    Temperature: 0,
-    MaxTokens: -1,
-  },
-  FinalAnswerClient: {
-    ModelProvider: modelProvider,
-    BaseUrl: "https://example.invalid/v1",
-    ApiKey: "test-key",
-    Model: "test-model",
-    Temperature: 0,
-    MaxTokens: -1,
-  },
 };
 
 void main();

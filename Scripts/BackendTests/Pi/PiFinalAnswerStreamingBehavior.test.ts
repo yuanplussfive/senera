@@ -190,8 +190,10 @@ async function startApi(
   };
   const api = new AgentPiProxyHttpApi({
     configSnapshot: createConfig,
-    compilerFactory: () => compiler,
-    finalAnswerGeneratorFactory: () => generator,
+    modelFactory: {
+      createCompiler: () => compiler,
+      createFinalAnswerGenerator: () => generator,
+    },
   });
   const server = http.createServer((request, response) => void api.handle(request, response));
   await new Promise<void>((resolve, reject) => {

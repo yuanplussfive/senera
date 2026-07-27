@@ -1,22 +1,15 @@
 import { InteractionRunMode, type ActionPlanInput, type InteractionRoute } from "../BamlClient/baml_client/types.js";
 import { normalizeBamlOptionalFields } from "../BamlClient/AgentBamlOutputNormalizer.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
+import {
+  AgentInteractionRunModes,
+  type AgentInteractionRouteResult,
+  type AgentInteractionRunMode,
+} from "../Interaction/AgentInteractionRoute.js";
 import type { ParsedInteractionPreparation } from "./AgentActionPlannerSchema.js";
 
-export const AgentInteractionRunModes = {
-  DirectResponse: "direct_response",
-  ToolAgentLoop: "tool_agent_loop",
-} as const;
-
-export type AgentInteractionRunMode = (typeof AgentInteractionRunModes)[keyof typeof AgentInteractionRunModes];
-
-export interface AgentInteractionRouteResult {
-  mode: AgentInteractionRunMode;
-  objective: string;
-  preferredTools: string[];
-  discoveryQueries: string[];
-  raw: InteractionRoute;
-}
+export { AgentInteractionRunModes } from "../Interaction/AgentInteractionRoute.js";
+export type { AgentInteractionRouteResult, AgentInteractionRunMode } from "../Interaction/AgentInteractionRoute.js";
 
 export class AgentInteractionRouter {
   constructor(

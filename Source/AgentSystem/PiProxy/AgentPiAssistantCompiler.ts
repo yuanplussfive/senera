@@ -1,9 +1,7 @@
 import * as AjvModule from "ajv";
 import type { ValidateFunction } from "ajv";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
-import type { ResolvedAgentActionPlannerConfig } from "../Types/AgentConfigTypes.js";
-import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
-import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
+import { AgentStructuredOutputValidationError } from "../Diagnostics/AgentStructuredOutputValidationError.js";
 import { createToolCallId } from "../Core/AgentIds.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import {
@@ -24,9 +22,7 @@ import type {
 } from "./AgentPiAssistantMessageTypes.js";
 import type { PiOpenAiChatCompletionRequest, PiOpenAiTool } from "./AgentPiOpenAiWireTypes.js";
 import { AgentPiOpenAiPlanningProjector } from "./AgentPiOpenAiPlanningProjector.js";
-import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
-import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
-import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
+import type { AgentInteractionRouteResult } from "../Interaction/AgentInteractionRoute.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import { AgentPiAuthoritativeActionProjector } from "./AgentPiAuthoritativeActionProjector.js";
@@ -49,10 +45,7 @@ const EmptyObjectParameterSchema = {
 
 export interface AgentPiAssistantCompilerOptions {
   modelProvider: ResolvedAgentModelProviderConfig;
-  actionPlannerConfig: ResolvedAgentActionPlannerConfig;
-  client?: AgentPiAssistantCompilerModelClient;
-  usageSink?: AgentModelUsageSink;
-  timingSink?: AgentModelTimingSink;
+  client: AgentPiAssistantCompilerModelClient;
 }
 
 export interface AgentPiAssistantCompileRequest {
@@ -109,13 +102,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
     this.planningProjector = new AgentPiOpenAiPlanningProjector({
       modelProvider: options.modelProvider,
     });
-    this.client =
-      options.client ??
-      new AgentActionPlannerModelClient(options.modelProvider, options.actionPlannerConfig.PlanningClient, {
-        maxRepairAttempts: options.actionPlannerConfig.MaxRepairAttempts,
-        usageSink: options.usageSink,
-        timingSink: options.timingSink,
-      });
+    this.client = options.client;
   }
 
   async compile(input: AgentPiAssistantCompileRequest): Promise<AgentPiAssistantCompilation> {
@@ -178,7 +165,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
     });
     const issues = [...validateActionToolChoice(action, toolChoice), ...validateActionExecutionReadiness(action)];
     if (issues.length > 0) {
-      throw new AgentActionPlannerValidationError(issues, action);
+      throw new AgentStructuredOutputValidationError(issues, action);
     }
     return action;
   }
@@ -244,7 +231,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
   ): Promise<AgentPiAssistantMessage> {
     const readyCalls = this.readyCalls(action.calls ?? [], input.openAiRequest.parallelToolCalls !== false);
     if (readyCalls.length === 0) {
-      throw new AgentActionPlannerValidationError(
+      throw new AgentStructuredOutputValidationError(
         ["CallTools must include at least one immediately executable call."],
         action,
       );
@@ -264,7 +251,10 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
 
     const executable = materialized.flatMap((entry) => (entry.ok ? [entry.call] : []));
     if (executable.length === 0) {
-      throw new AgentActionPlannerValidationError(["No tool calls were executable after argument validation."], action);
+      throw new AgentStructuredOutputValidationError(
+        ["No tool calls were executable after argument validation."],
+        action,
+      );
     }
 
     return {
@@ -614,8 +604,8 @@ function validateActionExecutionReadiness(action: ParsedPiControllerAction): str
     : ["CallTools must include at least one immediately executable call."];
 }
 
-function isPlannerValidationError(error: unknown): error is AgentActionPlannerValidationError {
-  return error instanceof AgentActionPlannerValidationError;
+function isPlannerValidationError(error: unknown): error is AgentStructuredOutputValidationError {
+  return error instanceof AgentStructuredOutputValidationError;
 }
 
 function stringifyForRepair(value: unknown): string {

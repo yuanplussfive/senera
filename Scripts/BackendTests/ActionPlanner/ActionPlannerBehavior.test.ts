@@ -21,10 +21,8 @@ import {
   stringifyIssueValue,
   summarizePlannerFailure,
 } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerFailure.js";
-import {
-  AgentActionPlannerValidationError,
-  parseInteractionPreparation,
-} from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerSchema.js";
+import { parseInteractionPreparation } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerSchema.js";
+import { AgentStructuredOutputValidationError } from "../../../Source/AgentSystem/Diagnostics/AgentStructuredOutputValidationError.js";
 import {
   AgentBamlModelCallError,
   AgentBamlStructuredOutputError,
@@ -89,7 +87,7 @@ describe("ActionPlanner behavior", () => {
   });
 
   test("classifies validation failures as repairable and preserves invalid output for repair", () => {
-    const validation = new AgentActionPlannerValidationError(["calls.0.toolName: required"], { calls: [{}] });
+    const validation = new AgentStructuredOutputValidationError(["calls.0.toolName: required"], { calls: [{}] });
     const zodError = z.object({ answer: z.string() }).safeParse({ answer: 1 }).error;
 
     expect(isRepairablePlanningFailure(validation)).toBe(true);
@@ -101,7 +99,7 @@ describe("ActionPlanner behavior", () => {
   });
 
   test("recovers tool names from the structured planner failure cause chain", () => {
-    const validation = new AgentActionPlannerValidationError(["tool is not active"], {
+    const validation = new AgentStructuredOutputValidationError(["tool is not active"], {
       initialAction: {
         kind: "CallTools",
         calls: [{ toolName: "ShellCommandTool" }],

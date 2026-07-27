@@ -25,6 +25,7 @@ import {
 import { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
 import { AgentWebSocketCloseCodes, AgentWebSocketCloseReasons } from "./AgentWebSocketCloseContract.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { createAgentPiProxyModelAdapter } from "../Runtime/AgentPiProxyModelAdapter.js";
 
 export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 
@@ -84,6 +85,7 @@ export class AgentWebSocketServer {
       uploadApi: this.uploadApi,
       piProxyApi: new AgentPiProxyHttpApi({
         configSnapshot,
+        modelFactory: createAgentPiProxyModelAdapter(),
         onEvent: (event) => this.broadcast(event),
         diagnostics: options.piDiagnostics,
         maxRequestBytes: this.serverConfig.RequestMaxBytes,

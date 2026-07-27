@@ -5,7 +5,7 @@ import type {
   MemoryWriteResolutionResult as BamlMemoryWriteResolutionResult,
 } from "../BamlClient/baml_client/types.js";
 import { parseNormalizedBamlOutput } from "../BamlClient/AgentBamlOutputNormalizer.js";
-import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
+import { AgentStructuredOutputValidationError } from "../Diagnostics/AgentStructuredOutputValidationError.js";
 import { createAgentStructuredIssue, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
 import {
   AgentMemoryTypes,
@@ -100,7 +100,7 @@ export function parseMemoryLearningResult(
   });
 
   if (issues.length > 0) {
-    throw new AgentActionPlannerValidationError(issues, parsed);
+    throw new AgentStructuredOutputValidationError(issues, parsed);
   }
 
   return {
@@ -186,7 +186,7 @@ export function parseMemoryConsolidationResult(
   });
 
   if (issues.length > 0) {
-    throw new AgentActionPlannerValidationError(issues, parsed);
+    throw new AgentStructuredOutputValidationError(issues, parsed);
   }
 
   return {
@@ -278,7 +278,7 @@ export function parseMemoryWriteResolutionResult(
   }
 
   if (issues.length > 0) {
-    throw new AgentActionPlannerValidationError(issues, parsed);
+    throw new AgentStructuredOutputValidationError(issues, parsed);
   }
 
   return {

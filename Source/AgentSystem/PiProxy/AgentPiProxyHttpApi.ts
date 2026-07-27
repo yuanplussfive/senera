@@ -1,18 +1,9 @@
 import type http from "node:http";
 import { z } from "zod";
 import { AgentEventKinds, type AgentEventSink } from "../Events/AgentEvent.js";
-import {
-  resolveActionPlannerConfig,
-  resolveModelProviderCatalog,
-  resolveModelProviderConfig,
-  resolveServerConfig,
-} from "../AgentDefaults.js";
+import { resolveModelProviderCatalog, resolveModelProviderConfig, resolveServerConfig } from "../AgentDefaults.js";
 import type { AgentSystemConfig, ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
-import {
-  AgentPiAssistantCompiler,
-  type AgentPiAssistantCompileRequest,
-  type AgentPiAssistantCompilerPort,
-} from "./AgentPiAssistantCompiler.js";
+import type { AgentPiAssistantCompileRequest, AgentPiAssistantCompilerPort } from "./AgentPiAssistantCompiler.js";
 import { PiOpenAiChatCompletionRequestSchema } from "./AgentPiOpenAiWireTypes.js";
 import {
   AgentPiProxyContextHeader,
@@ -28,26 +19,16 @@ import {
   type AgentPiDiagnosticSink,
 } from "../Pi/AgentPiDiagnostics.js";
 import { projectPiModelsResponse } from "./AgentPiOpenAiResponseProjector.js";
-import { AgentPiFinalAnswerGenerator, type AgentPiFinalAnswerGeneratorPort } from "./AgentPiFinalAnswerGenerator.js";
+import type { AgentPiFinalAnswerGeneratorPort } from "./AgentPiFinalAnswerGenerator.js";
 import { createAgentPiOpenAiResponseWriter } from "./AgentPiOpenAiResponseWriter.js";
 import type { AgentPiAssistantCompilation, AgentPiAssistantMessage } from "./AgentPiAssistantMessageTypes.js";
 import { AgentModelUsageLedger, type AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
+import type { AgentPiProxyModelFactory } from "./AgentPiProxyModelFactory.js";
 
 export interface AgentPiProxyHttpApiOptions {
   configSnapshot: () => AgentSystemConfig;
-  compilerFactory?: (
-    config: AgentSystemConfig,
-    modelProvider: ResolvedAgentModelProviderConfig,
-    usageSink?: AgentModelUsageSink,
-    timingSink?: AgentModelTimingSink,
-  ) => AgentPiAssistantCompilerPort;
-  finalAnswerGeneratorFactory?: (
-    config: AgentSystemConfig,
-    modelProvider: ResolvedAgentModelProviderConfig,
-    usageSink?: AgentModelUsageSink,
-    timingSink?: AgentModelTimingSink,
-  ) => AgentPiFinalAnswerGeneratorPort;
+  modelFactory: AgentPiProxyModelFactory;
   onEvent?: AgentEventSink;
   diagnostics?: AgentPiDiagnosticSink;
   maxRequestBytes?: number;
@@ -122,8 +103,8 @@ export class AgentPiProxyHttpApi {
       runtime?.usageLedger?.record(call);
     };
     const timingSink: AgentModelTimingSink = (timing) => this.emitProxyDiagnostic(runtime, "model_timing", timing);
-    const compiler = this.compiler(config, provider, usageSink, timingSink);
-    const finalAnswers = this.finalAnswerGenerator(config, provider, usageSink, timingSink);
+    const compiler = this.options.modelFactory.createCompiler(config, provider, usageSink, timingSink);
+    const finalAnswers = this.options.modelFactory.createFinalAnswerGenerator(config, provider, usageSink, timingSink);
     const lifetime = new AgentPiProxyRequestLifetime(request, response);
     const requestStartedAt = performance.now();
     try {
@@ -170,40 +151,6 @@ export class AgentPiProxyHttpApi {
     } finally {
       lifetime.dispose();
     }
-  }
-
-  private compiler(
-    config: AgentSystemConfig,
-    provider: ResolvedAgentModelProviderConfig,
-    usageSink: AgentModelUsageSink,
-    timingSink: AgentModelTimingSink,
-  ): AgentPiAssistantCompilerPort {
-    if (this.options.compilerFactory) {
-      return this.options.compilerFactory(config, provider, usageSink, timingSink);
-    }
-    return new AgentPiAssistantCompiler({
-      modelProvider: provider,
-      actionPlannerConfig: resolveActionPlannerConfig(config, provider.Id),
-      usageSink,
-      timingSink,
-    });
-  }
-
-  private finalAnswerGenerator(
-    config: AgentSystemConfig,
-    provider: ResolvedAgentModelProviderConfig,
-    usageSink: AgentModelUsageSink,
-    timingSink: AgentModelTimingSink,
-  ): AgentPiFinalAnswerGeneratorPort {
-    if (this.options.finalAnswerGeneratorFactory) {
-      return this.options.finalAnswerGeneratorFactory(config, provider, usageSink, timingSink);
-    }
-    return new AgentPiFinalAnswerGenerator(
-      provider,
-      resolveActionPlannerConfig(config, provider.Id).FinalAnswerClient,
-      usageSink,
-      timingSink,
-    );
   }
 
   private async writeCompilation(options: {

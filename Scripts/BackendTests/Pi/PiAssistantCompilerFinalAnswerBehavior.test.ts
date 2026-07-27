@@ -8,7 +8,7 @@ import type {
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
 } from "../../../Source/AgentSystem/PiProxy/AgentPiAssistantMessageTypes.js";
-import { createModelProvider, createPlannerConfig } from "../Support/AgentTestFixtures.js";
+import { createModelProvider } from "../Support/AgentTestFixtures.js";
 import type { AgentRootCommand } from "../../../Source/AgentSystem/AgentRootCommand.js";
 import { InteractionRunMode, TurnContextMode } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
 import { AgentPiPreparedActionLease } from "../../../Source/AgentSystem/PiProxy/AgentPiPreparedActionLease.js";
@@ -479,7 +479,6 @@ class ToolArgumentCompilerClient implements AgentPiAssistantCompilerModelClient 
 function createCompiler(client: AgentPiAssistantCompilerModelClient): AgentPiAssistantCompiler {
   return new AgentPiAssistantCompiler({
     modelProvider: createModelProvider(),
-    actionPlannerConfig: createPlannerConfig(),
     client,
   });
 }

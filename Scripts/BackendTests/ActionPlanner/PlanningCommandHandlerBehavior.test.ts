@@ -19,7 +19,7 @@ import {
   createInteractionRoute,
   createTurnUnderstanding,
 } from "../Support/AgentTestFixtures.js";
-import { AgentActionPlannerValidationError } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerSchema.js";
+import { AgentStructuredOutputValidationError } from "../../../Source/AgentSystem/Diagnostics/AgentStructuredOutputValidationError.js";
 
 describe("Planning command handler behavior", () => {
   test("routes tool interactions through on-demand discovery, skill recommendations, and Pi root projection", async () => {
@@ -250,7 +250,7 @@ function createRuntimeFixture(
           candidateToolSets.push(candidateTools.map((tool) => structuredClone(tool)));
           if (options.promoteToolName && preparationCount === 1) {
             throw new Error("Preparation selected an inactive registered tool.", {
-              cause: new AgentActionPlannerValidationError(
+              cause: new AgentStructuredOutputValidationError(
                 [`calls.0.toolName: ${options.promoteToolName} is not active`],
                 {
                   initialAction: {

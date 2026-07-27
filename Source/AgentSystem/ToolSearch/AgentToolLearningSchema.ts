@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ToolLearningResult as BamlToolLearningResult } from "../BamlClient/baml_client/types.js";
 import { parseNormalizedBamlOutput } from "../BamlClient/AgentBamlOutputNormalizer.js";
-import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
+import { AgentStructuredOutputValidationError } from "../Diagnostics/AgentStructuredOutputValidationError.js";
 import { createAgentStructuredIssue, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
 
 const NonEmptyStringSchema = z.string().trim().min(1);
@@ -71,7 +71,7 @@ export function parseToolLearningResult(
   });
 
   if (issues.length > 0) {
-    throw new AgentActionPlannerValidationError(issues, parsed);
+    throw new AgentStructuredOutputValidationError(issues, parsed);
   }
 
   return parsed;

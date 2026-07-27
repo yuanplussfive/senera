@@ -1,4 +1,4 @@
-import { stableStringify } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type {
@@ -357,9 +357,9 @@ function readOpenAiContentAsText(content: PiOpenAiChatCompletionRequest["message
 function canonicalizeToolArguments(value: unknown): string {
   if (typeof value === "string") {
     const parsed = readJson(value);
-    return parsed === undefined ? value : stableStringify(parsed);
+    return parsed === undefined ? value : stringifyAgentCanonicalJson(parsed);
   }
-  return stableStringify(value ?? {});
+  return stringifyAgentCanonicalJson(value ?? {});
 }
 
 function readJson(value: string): unknown {

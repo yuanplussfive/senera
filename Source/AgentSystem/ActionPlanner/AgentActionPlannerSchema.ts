@@ -6,12 +6,8 @@ import {
   type TurnUnderstanding as BamlTurnUnderstanding,
 } from "../BamlClient/baml_client/index.js";
 import { parseNormalizedBamlOutput } from "../BamlClient/AgentBamlOutputNormalizer.js";
-import {
-  createAgentStructuredIssue,
-  createAgentStructuredIssueList,
-  formatAgentStructuredIssues,
-  type AgentStructuredIssue,
-} from "../Diagnostics/AgentStructuredIssue.js";
+import { createAgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
+import { AgentStructuredOutputValidationError } from "../Diagnostics/AgentStructuredOutputValidationError.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { parsePiControllerAction } from "../PiProxy/AgentPiAssistantMessageSchema.js";
 import type { ParsedPiControllerAction } from "../PiProxy/AgentPiAssistantMessageSchema.js";
@@ -39,13 +35,13 @@ export function parseTurnUnderstanding(
 ): BamlTurnUnderstanding {
   const parsed = parseNormalizedBamlOutput(TurnUnderstandingSchema, understanding);
   if (parsed.rawUserTurn !== input.currentUserTurn.content) {
-    throw new AgentActionPlannerValidationError(
+    throw new AgentStructuredOutputValidationError(
       [createAgentStructuredIssue(agentErrorMessage("actionPlanner.rawUserTurnMustMatch"), ["rawUserTurn"])],
       parsed,
     );
   }
   if (parsed.contextMode === TurnContextMode.None && (parsed.contextBasis || parsed.missingContext)) {
-    throw new AgentActionPlannerValidationError(
+    throw new AgentStructuredOutputValidationError(
       [
         createAgentStructuredIssue(agentErrorMessage("actionPlanner.contextNoneMustHaveNoContextFields"), [
           "contextMode",
@@ -55,7 +51,7 @@ export function parseTurnUnderstanding(
     );
   }
   if (parsed.contextMode !== TurnContextMode.Insufficient && parsed.missingContext) {
-    throw new AgentActionPlannerValidationError(
+    throw new AgentStructuredOutputValidationError(
       [
         createAgentStructuredIssue(agentErrorMessage("actionPlanner.missingContextOnlyForInsufficient"), [
           "missingContext",
@@ -65,7 +61,7 @@ export function parseTurnUnderstanding(
     );
   }
   if (parsed.contextMode !== TurnContextMode.None && !parsed.contextBasis) {
-    throw new AgentActionPlannerValidationError(
+    throw new AgentStructuredOutputValidationError(
       [createAgentStructuredIssue(agentErrorMessage("actionPlanner.contextBasisRequired"), ["contextBasis"])],
       parsed,
     );
@@ -88,21 +84,4 @@ export function parseInteractionPreparation(
     turnUnderstanding: understanding,
     initialAction,
   };
-}
-
-export class AgentActionPlannerValidationError extends Error {
-  readonly issueDetails: AgentStructuredIssue[];
-  readonly issues: string[];
-
-  constructor(
-    issues: readonly (string | AgentStructuredIssue)[],
-    readonly invalidDecision: unknown,
-  ) {
-    const issueDetails = createAgentStructuredIssueList(issues);
-    const messages = formatAgentStructuredIssues(issueDetails);
-    super(messages.join("\n"));
-    this.name = "AgentActionPlannerValidationError";
-    this.issueDetails = issueDetails;
-    this.issues = messages;
-  }
 }

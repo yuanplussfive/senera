@@ -5,7 +5,7 @@ import {
   BamlClientHttpError,
   BamlValidationError,
 } from "../BamlClient/baml_client/index.js";
-import { AgentActionPlannerValidationError } from "./AgentActionPlannerSchema.js";
+import { AgentStructuredOutputValidationError } from "../Diagnostics/AgentStructuredOutputValidationError.js";
 import {
   AgentBamlModelCallError,
   AgentBamlStructuredOutputError,
@@ -19,7 +19,7 @@ export interface RawActionPlanningFailure {
 }
 
 export function issueMessages(error: unknown): string[] {
-  if (error instanceof AgentActionPlannerValidationError) {
+  if (error instanceof AgentStructuredOutputValidationError) {
     return error.issues;
   }
 
@@ -35,7 +35,7 @@ export function issueMessages(error: unknown): string[] {
 }
 
 export function issueDetails(error: unknown): AgentStructuredIssue[] {
-  if (error instanceof AgentActionPlannerValidationError) {
+  if (error instanceof AgentStructuredOutputValidationError) {
     return error.issueDetails;
   }
 
@@ -51,8 +51,8 @@ export function issueDetails(error: unknown): AgentStructuredIssue[] {
 }
 
 export function stringifyIssueValue(error: unknown): string {
-  if (error instanceof AgentActionPlannerValidationError) {
-    return JSON.stringify(error.invalidDecision, null, 2);
+  if (error instanceof AgentStructuredOutputValidationError) {
+    return JSON.stringify(error.invalidOutput, null, 2);
   }
 
   if (error instanceof AgentBamlModelCallError) {
@@ -75,10 +75,10 @@ export function stringifyIssueValue(error: unknown): string {
 }
 
 export function normalizePlanningFailure(error: unknown): RawActionPlanningFailure {
-  return error instanceof AgentActionPlannerValidationError || error instanceof AgentBamlStructuredOutputError
+  return error instanceof AgentStructuredOutputValidationError || error instanceof AgentBamlStructuredOutputError
     ? {
         error,
-        invalidOutput: error instanceof AgentBamlStructuredOutputError ? error.rawOutput : error.invalidDecision,
+        invalidOutput: error instanceof AgentBamlStructuredOutputError ? error.rawOutput : error.invalidOutput,
       }
     : {
         error,
@@ -87,7 +87,7 @@ export function normalizePlanningFailure(error: unknown): RawActionPlanningFailu
 
 export function isRepairablePlanningFailure(error: unknown): boolean {
   return (
-    error instanceof AgentActionPlannerValidationError ||
+    error instanceof AgentStructuredOutputValidationError ||
     error instanceof AgentBamlStructuredOutputError ||
     error instanceof z.ZodError ||
     error instanceof BamlValidationError
@@ -123,7 +123,7 @@ export function summarizePlannerFailure(error: unknown): string {
     return withPlannerDetails("action_planner_invalid_structured_output", error.issues);
   }
 
-  if (error instanceof AgentActionPlannerValidationError || error instanceof z.ZodError) {
+  if (error instanceof AgentStructuredOutputValidationError || error instanceof z.ZodError) {
     return withPlannerDetails("action_planner_invalid_decision", issueMessages(error));
   }
 
@@ -138,8 +138,8 @@ export function collectPlannerFailureToolNames(error: unknown): string[] {
     if (value == null || visited.has(value)) return;
     if (typeof value === "object") visited.add(value);
 
-    if (value instanceof AgentActionPlannerValidationError) {
-      collectToolNames(value.invalidDecision, names);
+    if (value instanceof AgentStructuredOutputValidationError) {
+      collectToolNames(value.invalidOutput, names);
       return;
     }
     if (value instanceof AgentBamlModelCallError) {

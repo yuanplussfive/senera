@@ -1,7 +1,7 @@
 import { createOpaqueId } from "../Core/AgentIds.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentModelUsageLedger } from "../ModelEndpoints/AgentModelUsage.js";
-import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
+import type { AgentInteractionRouteResult } from "../Interaction/AgentInteractionRoute.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";

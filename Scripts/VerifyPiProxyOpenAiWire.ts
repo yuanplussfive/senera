@@ -23,6 +23,8 @@ import type {
   AgentPiAssistantCompileRequest,
   AgentPiAssistantCompilerPort,
 } from "../Source/AgentSystem/PiProxy/AgentPiAssistantCompiler.js";
+import type { AgentPiFinalAnswerGeneratorPort } from "../Source/AgentSystem/PiProxy/AgentPiFinalAnswerGenerator.js";
+import type { AgentPiProxyModelFactory } from "../Source/AgentSystem/PiProxy/AgentPiProxyModelFactory.js";
 import { projectSeneraModelProviderToPi } from "../Source/AgentSystem/Pi/AgentPiModelProjector.js";
 import { composePiProxyRequestHeaders } from "../Source/AgentSystem/Pi/AgentPiHarnessSessionPool.js";
 import { resolveModelProviderConfig, resolveUploadsConfig } from "../Source/AgentSystem/AgentDefaults.js";
@@ -229,7 +231,7 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
   const compiler = new SpyCompiler();
   const api = new AgentPiProxyHttpApi({
     configSnapshot: () => config,
-    compilerFactory: () => compiler,
+    modelFactory: modelFactory(() => compiler),
     onEvent: (event) => {
       events.push(event);
     },
@@ -343,14 +345,14 @@ async function verifyPiProxyModelProviderRouting(): Promise<void> {
   const selectedProviders: Array<Pick<ResolvedAgentModelProviderConfig, "Id" | "BaseUrl" | "Model">> = [];
   const api = new AgentPiProxyHttpApi({
     configSnapshot: () => routingConfig,
-    compilerFactory: (_config, selectedProvider) => {
+    modelFactory: modelFactory((_config, selectedProvider) => {
       selectedProviders.push({
         Id: selectedProvider.Id,
         BaseUrl: selectedProvider.BaseUrl,
         Model: selectedProvider.Model,
       });
       return new SpyCompiler();
-    },
+    }),
   });
 
   const selected = await postPiChatCompletion(api, {
@@ -439,6 +441,17 @@ class SpyCompiler implements AgentPiAssistantCompilerPort {
       ],
     };
   }
+}
+
+const unusedFinalAnswerGenerator: AgentPiFinalAnswerGeneratorPort = {
+  stream: () => Promise.reject(new Error("This verification path must not generate a final answer.")),
+};
+
+function modelFactory(createCompiler: AgentPiProxyModelFactory["createCompiler"]): AgentPiProxyModelFactory {
+  return {
+    createCompiler,
+    createFinalAnswerGenerator: () => unusedFinalAnswerGenerator,
+  };
 }
 
 function readRecord(value: unknown): Record<string, unknown> {

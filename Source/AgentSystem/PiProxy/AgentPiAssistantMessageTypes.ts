@@ -1,4 +1,4 @@
-import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
+import type { AgentInteractionRouteResult } from "../Interaction/AgentInteractionRoute.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 
