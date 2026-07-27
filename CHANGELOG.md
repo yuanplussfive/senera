@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.9.8](https://github.com/yuanplussfive/senera/compare/v1.9.7...v1.9.8) (2026-07-27)
+
+
+### 问题修复
+
+* 完善配置交互与数据库恢复 ([#86](https://github.com/yuanplussfive/senera/issues/86)) ([9e8534d](https://github.com/yuanplussfive/senera/commit/9e8534dace243c2dcd90033031b09181cccb5544))
+
 ## [1.9.7](https://github.com/yuanplussfive/senera/compare/v1.9.6...v1.9.7) (2026-07-25)
 
 
