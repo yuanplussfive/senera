@@ -6,6 +6,9 @@ import { toPosixRelative } from "./Support/FileWalk.js";
 
 const workspaceRoot = process.cwd();
 const agentSystemRoot = path.join(workspaceRoot, "Source", "AgentSystem");
+const piProxyRoot = path.join(agentSystemRoot, "PiProxy");
+const actionPlannerRoot = path.join(agentSystemRoot, "ActionPlanner");
+const agentSystemRuntimePath = path.join(agentSystemRoot, "Runtime", "AgentSystemRuntime.ts");
 
 const removedCompatibilityBarrels = [
   {
@@ -41,6 +44,7 @@ const violations = [
   ...moduleBoundaryFiles.flatMap((file) => inspectModuleBoundary(file)),
   ...handWrittenAgentSystemFiles.flatMap((file) => inspectExplicitAny(file)),
   ...removedCompatibilityBarrels.flatMap((barrel) => inspectRemovedBarrel(barrel)),
+  ...inspectRuntimeCompositionEntryPoint(),
 ];
 
 assert.deepEqual(violations, [], ["Agent type contract boundary verification failed.", ...violations].join("\n"));
@@ -66,6 +70,17 @@ function inspectModuleBoundary(file: string): string[] {
     const target = resolveTypeScriptModulePath(file, specifier);
     if (!target) {
       return;
+    }
+
+    if (isInsideDirectory(piProxyRoot, file) && isInsideDirectory(actionPlannerRoot, target)) {
+      const location = source.getLineAndCharacterOfPosition(node.moduleSpecifier.getStart(source));
+      issues.push(
+        [
+          `${toPosixRelative(workspaceRoot, file)}:${location.line + 1}:${location.character + 1}`,
+          "PiProxy must not import ActionPlanner",
+          "depend on a PiProxy port or a neutral contract and wire the implementation in Runtime.",
+        ].join(" - "),
+      );
     }
 
     const policy = removedCompatibilityBarrels.find((entry) => entry.target === target);
@@ -119,6 +134,41 @@ function inspectRemovedBarrel(policy: { target: string; label: string }): string
     : [];
 }
 
+function inspectRuntimeCompositionEntryPoint(): string[] {
+  const sourceText = ts.sys.readFile(agentSystemRuntimePath);
+  assert.ok(sourceText !== undefined, `Unable to read ${agentSystemRuntimePath}`);
+  const source = ts.createSourceFile(agentSystemRuntimePath, sourceText, ts.ScriptTarget.Latest, true);
+  const runtimeClass = source.statements.find(
+    (node): node is ts.ClassDeclaration => ts.isClassDeclaration(node) && node.name?.text === "AgentSystemRuntime",
+  );
+  if (!runtimeClass) {
+    return ["Source/AgentSystem/Runtime/AgentSystemRuntime.ts must declare AgentSystemRuntime."];
+  }
+
+  const constructors = runtimeClass.members.filter(ts.isConstructorDeclaration);
+  if (constructors.length !== 1) {
+    return ["AgentSystemRuntime must have one composition constructor."];
+  }
+
+  const parameters = constructors[0].parameters;
+  const type = parameters[0]?.type;
+  const usesCompositionOptions =
+    parameters.length === 1 &&
+    type !== undefined &&
+    ts.isTypeReferenceNode(type) &&
+    ts.isIdentifier(type.typeName) &&
+    type.typeName.text === "AgentSystemRuntimeCompositionOptions";
+
+  return usesCompositionOptions
+    ? []
+    : [
+        [
+          "AgentSystemRuntime constructor must accept only AgentSystemRuntimeCompositionOptions.",
+          "Add dependencies to the typed composition options and assemble them in AgentSystemRuntimeComposition.",
+        ].join(" "),
+      ];
+}
+
 function resolveTypeScriptModulePath(importer: string, specifier: string): string | undefined {
   if (!specifier.startsWith(".")) {
     return undefined;
@@ -136,4 +186,9 @@ function resolveTypeScriptModulePath(importer: string, specifier: string): strin
 
 function normalizePath(value: string): string {
   return path.normalize(value);
+}
+
+function isInsideDirectory(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative !== "" && !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative);
 }
