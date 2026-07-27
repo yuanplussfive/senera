@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { migrateAgentSqliteStore, planAgentSqliteStoreReconciliation } from "./AgentSqliteMigrationRunner.js";
+import {
+  AgentSqliteMigrationError,
+  AgentSqliteMigrationErrorCodes,
+  migrateAgentSqliteStore,
+  planAgentSqliteStoreReconciliation,
+  type AgentSqliteStoreReconciliation,
+} from "./AgentSqliteMigrationRunner.js";
 import { AgentSqliteStoreDataClasses, type AgentSqliteStoreContract } from "./AgentSqliteStoreContract.js";
 import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 
@@ -141,7 +147,7 @@ function openDerivedDatabase(
   try {
     configureConnection(database, profile);
     assertDatabaseIntegrity(database, contract.id);
-    const plan = planAgentSqliteStoreReconciliation(database, contract);
+    const plan = planDerivedStoreReconciliation(database, contract);
     if (plan.kind === "current") return database;
     if (plan.kind === "initialize") {
       migrateAgentSqliteStore(database, contract);
@@ -160,6 +166,28 @@ function openDerivedDatabase(
   const replacement = openRebuiltStoreDatabase(databasePath, profile, contract);
   upgradeSession?.markSqliteMigrationApplied(contract.id);
   return replacement;
+}
+
+function planDerivedStoreReconciliation(
+  database: Database.Database,
+  contract: AgentSqliteStoreContract,
+): AgentSqliteStoreReconciliation {
+  try {
+    return planAgentSqliteStoreReconciliation(database, contract);
+  } catch (error) {
+    if (!(error instanceof AgentSqliteMigrationError) || !isDerivedRebuildableError(error.code)) {
+      throw error;
+    }
+    return { kind: "rebuild" };
+  }
+}
+
+function isDerivedRebuildableError(code: AgentSqliteMigrationError["code"]): boolean {
+  return (
+    code === AgentSqliteMigrationErrorCodes.InvalidHistory ||
+    code === AgentSqliteMigrationErrorCodes.SchemaMismatch ||
+    code === AgentSqliteMigrationErrorCodes.UntrackedDatabase
+  );
 }
 
 function openRebuiltStoreDatabase(
@@ -196,20 +224,40 @@ function replaceStoreDatabase(
     staging.close();
   }
 
+  const previousPath = `${databasePath}.${randomUUID()}.replaced`;
+  const movedFiles: string[] = [];
   let committed = false;
   try {
-    removeDatabaseFiles(databasePath);
+    for (const filePath of databaseFilePaths(databasePath)) {
+      if (!fs.existsSync(filePath)) continue;
+      const movedPath = filePath.replace(databasePath, previousPath);
+      fs.renameSync(filePath, movedPath);
+      movedFiles.push(movedPath);
+    }
     fs.renameSync(stagingPath, databasePath);
     committed = true;
   } finally {
-    if (!committed) removeDatabaseFiles(stagingPath);
+    if (committed) {
+      removeDatabaseFiles(previousPath);
+    } else {
+      removeDatabaseFiles(stagingPath);
+      for (const movedPath of movedFiles.reverse()) {
+        const originalPath = movedPath.replace(previousPath, databasePath);
+        fs.renameSync(movedPath, originalPath);
+      }
+      removeDatabaseFiles(previousPath);
+    }
   }
 }
 
 function removeDatabaseFiles(databasePath: string): void {
-  for (const filePath of [databasePath, `${databasePath}-wal`, `${databasePath}-shm`]) {
+  for (const filePath of databaseFilePaths(databasePath)) {
     fs.rmSync(filePath, { force: true });
   }
+}
+
+function databaseFilePaths(databasePath: string): string[] {
+  return [databasePath, `${databasePath}-wal`, `${databasePath}-shm`];
 }
 
 function assertDatabaseIntegrity(database: Database.Database, storeId: string): void {

@@ -139,19 +139,45 @@ describe("SQLite database kernel", () => {
     unchanged.close();
   });
 
-  test("rejects an unrecognized derived database instead of deleting an arbitrary SQLite file", () => {
+  test("rebuilds an unrecognized derived database during the startup preflight", () => {
     const databasePath = temporaryDatabasePath("unknown-derived.sqlite");
     const unknown = new Database(databasePath);
     unknown.exec("CREATE TABLE unrelated_records (id INTEGER PRIMARY KEY) STRICT;");
     unknown.close();
 
-    expect(
-      () => new AgentSqliteDatabaseKernel({ databasePath, contract: AgentToolSearchLearningStoreContract }),
-    ).toThrowError(
-      expect.objectContaining<Partial<AgentSqliteMigrationError>>({
-        code: AgentSqliteMigrationErrorCodes.UntrackedDatabase,
-      }),
-    );
+    const rebuilt = new AgentSqliteDatabaseKernel({
+      databasePath,
+      contract: AgentToolSearchLearningStoreContract,
+    });
+    expect(userTable(rebuilt.connection, "unrelated_records")).toBe(false);
+    expect(userTable(rebuilt.connection, "tool_search_episodes")).toBe(true);
+    expect(recordedVersions(rebuilt.connection)).toEqual(declaredVersions(AgentToolSearchLearningStoreContract));
+    rebuilt.close();
+  });
+
+  test("rebuilds a legacy tool-search database with the old migration ledger", () => {
+    const databasePath = temporaryDatabasePath("legacy-tool-search.sqlite");
+    const legacy = new Database(databasePath);
+    legacy.exec(AgentToolSearchLearningStoreContract.migrations[0]!.sql);
+    legacy.exec(`
+      CREATE TABLE schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        checksum TEXT NOT NULL,
+        applied_at TEXT NOT NULL
+      ) STRICT;
+      INSERT INTO schema_migrations (version, name, checksum, applied_at)
+      VALUES (1, 'tool_search_memory_schema_baseline', 'legacy-checksum', '2026-07-20T13:55:08.186Z');
+    `);
+    legacy.close();
+
+    const rebuilt = new AgentSqliteDatabaseKernel({
+      databasePath,
+      contract: AgentToolSearchLearningStoreContract,
+    });
+    expect(userTable(rebuilt.connection, "schema_migrations")).toBe(false);
+    expect(recordedVersions(rebuilt.connection)).toEqual(declaredVersions(AgentToolSearchLearningStoreContract));
+    rebuilt.close();
   });
 
   test("rejects an explicitly identified different store instead of rebuilding over it", () => {

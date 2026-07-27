@@ -156,6 +156,14 @@ describe("upgrade lifecycle", () => {
     const databasePath = path.join(workspaceRoot, "ToolSearch.sqlite");
     const legacy = new Database(databasePath);
     legacy.exec(AgentToolSearchLearningStoreContract.legacySnapshots[0]!.snapshot);
+    legacy.exec(`
+      CREATE TABLE schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        checksum TEXT NOT NULL,
+        applied_at TEXT NOT NULL
+      ) STRICT;
+    `);
     legacy
       .prepare(
         "INSERT INTO tool_search_episodes (query, query_tokens, planner_tags, candidates, chosen_tools, outcome, calls, final_score, final_outcome, project_id, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -178,6 +186,7 @@ describe("upgrade lifecycle", () => {
     const restored = new Database(databasePath, { readonly: true });
     expect(restored.prepare("SELECT query FROM tool_search_episodes").all()).toEqual([{ query: "retained query" }]);
     expect(hasTable(restored, "__senera_schema_migrations")).toBe(false);
+    expect(hasTable(restored, "schema_migrations")).toBe(true);
     restored.close();
     expect(session.journal.readManifest("derived-upgrade")).toMatchObject({
       status: "rolled_back",
