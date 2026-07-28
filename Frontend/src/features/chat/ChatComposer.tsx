@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowUp, Check, ChevronDown, Paperclip, RotateCcw, Square, X } from "lucide-react";
 import type { UploadAttachmentData, ModelProviderListItem } from "../../api/eventTypes";
@@ -5,7 +6,7 @@ import type { UploadProgress } from "../../api/uploadClient";
 import { cn, formatFileSize } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useResponsiveMode } from "../../shared/responsive";
-import { MotionButton } from "../../shared/motion";
+import { MotionButton, MotionList, MotionPresenceItem, motionTimings, useMotionLevel } from "../../shared/motion";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -125,6 +126,8 @@ export function ChatComposer({
   };
 
   const canSend = !disabled && !attachments.uploading && value.trim().length > 0;
+  const { reduceMotion, disableMotion } = useMotionLevel();
+  const cancelButtonHidden = reduceMotion ? { opacity: 0 } : { opacity: 0, x: 4, scale: 0.96 };
 
   return (
     <div className="bg-transparent py-3 sm:py-4">
@@ -152,14 +155,12 @@ export function ChatComposer({
             multiple
             onChange={attachments.handleFileSelection}
           />
-          {attachments.pendingAttachments.length > 0 ? (
-            <AttachmentTray
-              attachments={attachments.pendingAttachments}
-              onRemove={attachments.removeAttachment}
-              onRetry={attachments.retryAttachment}
-              onPreviewUnavailable={attachments.markPreviewUnavailable}
-            />
-          ) : null}
+          <AttachmentTray
+            attachments={attachments.pendingAttachments}
+            onRemove={attachments.removeAttachment}
+            onRetry={attachments.retryAttachment}
+            onPreviewUnavailable={attachments.markPreviewUnavailable}
+          />
 
           <textarea
             ref={taRef}
@@ -211,53 +212,50 @@ export function ChatComposer({
               />
             </div>
 
-            {running ? (
-              <div className="flex shrink-0 items-center gap-1.5">
-                <Tooltip
-                  content={frontendMessage("chat.composer.inject")}
-                  side="top"
-                  shortcut={prefersCompactControls ? undefined : "↵"}
-                >
-                  <MotionButton
-                    onClick={() => submit("steer")}
-                    disabled={!canSend}
-                    className={cn(
-                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
-                      prefersCompactControls && "min-h-11 min-w-11",
-                      canSend
-                        ? "border-content-strong bg-content-strong text-content-inverse shadow-panel hover:border-accent-solid hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
-                        : "border-line-subtle bg-surface-muted text-content-disabled",
-                    )}
-                    aria-label="inject-current-run"
+            <div className="flex shrink-0 items-center gap-1.5">
+              <AnimatePresence initial={false}>
+                {running ? (
+                  <motion.div
+                    key="cancel-running"
+                    initial={disableMotion ? false : cancelButtonHidden}
+                    animate={{
+                      opacity: 1,
+                      x: 0,
+                      scale: 1,
+                      transition: disableMotion ? { duration: 0 } : motionTimings.fast,
+                    }}
+                    exit={{
+                      ...cancelButtonHidden,
+                      transition: disableMotion ? { duration: 0 } : { duration: 0.1, ease: motionTimings.fast.ease },
+                    }}
+                    className="shrink-0"
                   >
-                    <ArrowUp className="h-4 w-4" />
-                  </MotionButton>
-                </Tooltip>
-                <Tooltip
-                  content={frontendMessage("chat.composer.cancelRunning")}
-                  side="top"
-                  shortcut={prefersCompactControls ? undefined : "Esc"}
-                >
-                  <MotionButton
-                    onClick={onCancel}
-                    className={cn(
-                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200",
-                      prefersCompactControls && "min-h-11 min-w-11",
-                    )}
-                    aria-label="cancel"
-                  >
-                    <Square className="h-3.5 w-3.5 fill-current" />
-                  </MotionButton>
-                </Tooltip>
-              </div>
-            ) : (
+                    <Tooltip
+                      content={frontendMessage("chat.composer.cancelRunning")}
+                      side="top"
+                      shortcut={prefersCompactControls ? undefined : "Esc"}
+                    >
+                      <MotionButton
+                        onClick={onCancel}
+                        className={cn(
+                          "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200",
+                          prefersCompactControls && "min-h-11 min-w-11",
+                        )}
+                        aria-label="cancel"
+                      >
+                        <Square className="h-3.5 w-3.5 fill-current" />
+                      </MotionButton>
+                    </Tooltip>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
               <Tooltip
-                content={frontendMessage("chat.composer.send")}
+                content={frontendMessage(running ? "chat.composer.inject" : "chat.composer.send")}
                 side="top"
                 shortcut={prefersCompactControls ? undefined : "↵"}
               >
                 <MotionButton
-                  onClick={() => submit(undefined)}
+                  onClick={() => submit(running ? "steer" : undefined)}
                   disabled={!canSend}
                   className={cn(
                     "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
@@ -266,12 +264,12 @@ export function ChatComposer({
                       ? "border-content-strong bg-content-strong text-content-inverse shadow-panel hover:border-accent-solid hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
                       : "border-line-subtle bg-surface-muted text-content-disabled",
                   )}
-                  aria-label="send"
+                  aria-label={running ? "inject-current-run" : "send"}
                 >
                   <ArrowUp className="h-4 w-4" />
                 </MotionButton>
               </Tooltip>
-            )}
+            </div>
           </div>
         </div>
       </ConversationFrame>
@@ -298,119 +296,121 @@ function AttachmentTray({
   onPreviewUnavailable: (id: string) => void;
 }): JSX.Element {
   return (
-    <div className="flex flex-wrap gap-1.5 px-0.5 pb-1">
-      {attachments.map((entry) =>
-        entry.previewUrl ? (
-          <div
-            key={entry.id}
-            className={cn(
-              "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-surface-muted",
-              entry.status === "error" ? "border-brick-500" : "border-line-subtle",
-            )}
-          >
-            <img
-              src={entry.previewUrl}
-              alt={entry.fileName}
-              title={entry.fileName}
-              className="h-full w-full object-contain"
-              onError={() => onPreviewUnavailable(entry.id)}
-            />
-            {entry.status === "uploading" ? (
-              <span className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-ink-950/70 px-1 py-1">
-                <UploadProgressBar progress={entry.progress} className="min-w-0 flex-1 bg-paper-50/25" />
-                <span className="font-mono text-[9px] text-paper-50">{formatUploadProgress(entry.progress)}</span>
-              </span>
-            ) : null}
-            {entry.status === "error" ? (
-              <button
-                type="button"
-                onClick={() => onRetry(entry.id)}
-                title={entry.error ?? undefined}
-                aria-label={frontendMessage("ui.retry")}
-                className="absolute bottom-1 left-1 grid h-5 w-5 place-items-center rounded-full bg-brick-50 text-brick-600 transition hover:bg-brick-100"
-              >
-                <RotateCcw className="h-3 w-3" />
-              </button>
-            ) : null}
-            <IconButton
-              label={frontendMessage("chat.attachment.remove")}
-              tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
-              tooltipSide="top"
-              size="sm"
-              className="absolute right-0.5 top-0.5 bg-ink-950/70 text-paper-50 hover:bg-ink-900"
-              onClick={() => onRemove(entry.id)}
+    <MotionList className="flex flex-wrap gap-1.5 px-0.5 pb-1">
+      {attachments.map((entry) => (
+        <MotionPresenceItem key={entry.id} className={cn(entry.previewUrl && "shrink-0")}>
+          {entry.previewUrl ? (
+            <div
+              className={cn(
+                "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-surface-muted",
+                entry.status === "error" ? "border-brick-500" : "border-line-subtle",
+              )}
             >
-              <X className="h-3 w-3" />
-            </IconButton>
-          </div>
-        ) : (
-          <div
-            key={entry.id}
-            className={cn(
-              "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]",
-              entry.status === "uploading" && "min-w-[210px]",
-              entry.status === "error"
-                ? "border-brick-200 bg-brick-50 text-brick-700"
-                : "border-line-subtle bg-surface-raised text-content-secondary",
-            )}
-          >
-            <span className="relative shrink-0">
-              <FilePreviewIcon name={entry.fileName} mime={entry.mime ?? entry.attachment?.mime} />
+              <img
+                src={entry.previewUrl}
+                alt={entry.fileName}
+                title={entry.fileName}
+                className="h-full w-full object-contain"
+                onError={() => onPreviewUnavailable(entry.id)}
+              />
               {entry.status === "uploading" ? (
-                <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-surface-raised bg-surface-raised">
-                  <Spinner size="xs" className="h-2.5 w-2.5 text-accent-content" />
+                <span className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-ink-950/70 px-1 py-1">
+                  <UploadProgressBar progress={entry.progress} className="min-w-0 flex-1 bg-paper-50/25" />
+                  <span className="font-mono text-[9px] text-paper-50">{formatUploadProgress(entry.progress)}</span>
                 </span>
               ) : null}
               {entry.status === "error" ? (
-                <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-paper-50 bg-brick-50">
-                  <AlertCircle className="h-2.5 w-2.5 text-brick-500" />
-                </span>
+                <button
+                  type="button"
+                  onClick={() => onRetry(entry.id)}
+                  title={entry.error ?? undefined}
+                  aria-label={frontendMessage("ui.retry")}
+                  className="absolute bottom-1 left-1 grid h-5 w-5 place-items-center rounded-full bg-brick-50 text-brick-600 transition hover:bg-brick-100"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                </button>
               ) : null}
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 truncate">{entry.fileName}</span>
-                <span className="shrink-0 font-mono text-[10px] text-content-muted">{formatFileSize(entry.size)}</span>
+              <IconButton
+                label={frontendMessage("chat.attachment.remove")}
+                tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
+                tooltipSide="top"
+                size="sm"
+                className="absolute right-0.5 top-0.5 bg-ink-950/70 text-paper-50 hover:bg-ink-900"
+                onClick={() => onRemove(entry.id)}
+              >
+                <X className="h-3 w-3" />
+              </IconButton>
+            </div>
+          ) : (
+            <div
+              className={cn(
+                "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]",
+                entry.status === "uploading" && "min-w-[210px]",
+                entry.status === "error"
+                  ? "border-brick-200 bg-brick-50 text-brick-700"
+                  : "border-line-subtle bg-surface-raised text-content-secondary",
+              )}
+            >
+              <span className="relative shrink-0">
+                <FilePreviewIcon name={entry.fileName} mime={entry.mime ?? entry.attachment?.mime} />
                 {entry.status === "uploading" ? (
-                  <span className="shrink-0 font-mono text-[10px] text-accent-content">
-                    {formatUploadProgress(entry.progress)}
+                  <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-surface-raised bg-surface-raised">
+                    <Spinner size="xs" className="h-2.5 w-2.5 text-accent-content" />
+                  </span>
+                ) : null}
+                {entry.status === "error" ? (
+                  <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-paper-50 bg-brick-50">
+                    <AlertCircle className="h-2.5 w-2.5 text-brick-500" />
                   </span>
                 ) : null}
               </span>
-              {entry.previewUnavailable ? (
-                <span className="text-[10px] text-content-muted">
-                  {frontendMessage("chat.attachment.previewUnavailable")}
-                </span>
-              ) : null}
-              {entry.status === "error" ? (
-                <span className="flex min-w-0 items-center gap-1.5 text-[10px] text-brick-600">
-                  <span className="min-w-0 truncate" title={entry.error ?? undefined}>
-                    {entry.error ?? frontendMessage("upload.fileFailed")}
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 truncate">{entry.fileName}</span>
+                  <span className="shrink-0 font-mono text-[10px] text-content-muted">
+                    {formatFileSize(entry.size)}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => onRetry(entry.id)}
-                    className="shrink-0 font-medium underline underline-offset-2 hover:text-brick-700"
-                  >
-                    {frontendMessage("ui.retry")}
-                  </button>
+                  {entry.status === "uploading" ? (
+                    <span className="shrink-0 font-mono text-[10px] text-accent-content">
+                      {formatUploadProgress(entry.progress)}
+                    </span>
+                  ) : null}
                 </span>
-              ) : null}
-              {entry.status === "uploading" ? <UploadProgressBar progress={entry.progress} /> : null}
-            </span>
-            <IconButton
-              label={frontendMessage("chat.attachment.remove")}
-              tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
-              tooltipSide="top"
-              size="sm"
-              onClick={() => onRemove(entry.id)}
-            >
-              <X className="h-3 w-3" />
-            </IconButton>
-          </div>
-        ),
-      )}
-    </div>
+                {entry.previewUnavailable ? (
+                  <span className="text-[10px] text-content-muted">
+                    {frontendMessage("chat.attachment.previewUnavailable")}
+                  </span>
+                ) : null}
+                {entry.status === "error" ? (
+                  <span className="flex min-w-0 items-center gap-1.5 text-[10px] text-brick-600">
+                    <span className="min-w-0 truncate" title={entry.error ?? undefined}>
+                      {entry.error ?? frontendMessage("upload.fileFailed")}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onRetry(entry.id)}
+                      className="shrink-0 font-medium underline underline-offset-2 hover:text-brick-700"
+                    >
+                      {frontendMessage("ui.retry")}
+                    </button>
+                  </span>
+                ) : null}
+                {entry.status === "uploading" ? <UploadProgressBar progress={entry.progress} /> : null}
+              </span>
+              <IconButton
+                label={frontendMessage("chat.attachment.remove")}
+                tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
+                tooltipSide="top"
+                size="sm"
+                onClick={() => onRemove(entry.id)}
+              >
+                <X className="h-3 w-3" />
+              </IconButton>
+            </div>
+          )}
+        </MotionPresenceItem>
+      ))}
+    </MotionList>
   );
 }
 

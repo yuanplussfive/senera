@@ -17,6 +17,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { MotionIconSwap } from "../motion";
 import { Spinner, Tooltip, useClipboardCopy } from "../ui";
 import { CollapsibleCodeBlock } from "./CollapsibleCodeBlock";
 import { type CodeArtifact, readCodeArtifact } from "./CodeArtifactModel";
@@ -272,7 +273,9 @@ function CodeBlockHeader({
             className="markdown-renderer__code-iconbtn"
             aria-label={frontendMessage("code.copyLanguage", { language })}
           >
-            {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
+            <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
+              {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
+            </MotionIconSwap>
           </button>
         </Tooltip>
       </div>

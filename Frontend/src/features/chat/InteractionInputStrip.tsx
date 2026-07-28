@@ -8,6 +8,7 @@ import type {
   InteractionInputValue,
 } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { MotionList, MotionPresenceItem } from "../../shared/motion";
 import type { InteractionInputRunRecord } from "../../store/sessionStore";
 import { Button, InlineError, MetaLabel, Spinner } from "../../shared/ui";
 import { openExternalUrl } from "../../app/desktopBridge";
@@ -28,18 +29,18 @@ export function InteractionInputStrip({
   const pending = interactions.filter(
     (interaction) => interaction.status === "pending" || interaction.status === "external_pending",
   );
-  if (pending.length === 0) return null;
   return (
-    <div className="mb-3 flex flex-col gap-2">
+    <MotionList className="flex flex-col gap-2">
       {pending.map((interaction) => (
-        <InteractionInputItem
-          key={interaction.interactionId}
-          interaction={interaction}
-          disabled={disabled || interaction.resolutionPending === true}
-          onResolve={onResolve}
-        />
+        <MotionPresenceItem key={interaction.interactionId} className="last:mb-3">
+          <InteractionInputItem
+            interaction={interaction}
+            disabled={disabled || interaction.resolutionPending === true}
+            onResolve={onResolve}
+          />
+        </MotionPresenceItem>
       ))}
-    </div>
+    </MotionList>
   );
 }
 

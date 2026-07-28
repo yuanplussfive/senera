@@ -1,6 +1,7 @@
 import { Check, Copy, GitBranch, GitFork, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { MotionIconSwap } from "../../shared/motion";
 import { cn } from "../../lib/util";
 import {
   DropdownMenu,
@@ -69,7 +70,9 @@ export function MessageActions({
       )}
     >
       <ActionBtn label={frontendMessage("chat.action.copy")} onClick={() => void copyText(content)}>
-        {copied ? <Check className="h-3.5 w-3.5 text-moss-600" /> : <Copy className="h-3.5 w-3.5" />}
+        <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
+          {copied ? <Check className="h-3.5 w-3.5 text-moss-600" /> : <Copy className="h-3.5 w-3.5" />}
+        </MotionIconSwap>
       </ActionBtn>
 
       {secondaryIntents.length > 0 ? (

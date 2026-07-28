@@ -1,7 +1,9 @@
+import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import { ChevronDown, GitBranch } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { motionTimings, useMotionLevel } from "../../shared/motion";
 import type { RunRecord } from "../../store/sessionStore";
 import { summarizeRun } from "../workflow/runSummary";
 import { readRunStatusLabel } from "../workflow/stepPresentation";
@@ -19,6 +21,9 @@ export function ThinkingSummaryBar({
   onViewWorkflow?: () => void;
 }): JSX.Element | null {
   const [expanded, setExpanded] = useState(false);
+  const { reduceMotion, disableMotion } = useMotionLevel();
+  const detailHidden = reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 };
+  const detailVisible = reduceMotion ? { opacity: 1 } : { height: "auto", opacity: 1 };
 
   if (!run || (run.status === "running" && presentation !== "live-final-answer") || run.steps.length === 0) return null;
 
@@ -42,9 +47,33 @@ export function ThinkingSummaryBar({
             </span>
           ) : null}
         </span>
-        <ChevronDown className={cn("h-3 w-3 shrink-0 text-ink-400 transition-transform", expanded && "rotate-180")} />
+        <motion.span
+          animate={{ rotate: expanded ? 180 : 0 }}
+          transition={reduceMotion || disableMotion ? { duration: 0 } : motionTimings.base}
+          className="inline-flex shrink-0"
+        >
+          <ChevronDown className="h-3 w-3 text-ink-400" />
+        </motion.span>
       </button>
-      {expanded ? <SummaryDetail run={run} onViewWorkflow={onViewWorkflow} /> : null}
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.div
+            key="thinking-summary-detail"
+            initial={disableMotion ? false : detailHidden}
+            animate={{
+              ...detailVisible,
+              transition: disableMotion ? { duration: 0 } : motionTimings.base,
+            }}
+            exit={{
+              ...detailHidden,
+              transition: disableMotion ? { duration: 0 } : motionTimings.fast,
+            }}
+            className="overflow-hidden"
+          >
+            <SummaryDetail run={run} onViewWorkflow={onViewWorkflow} />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

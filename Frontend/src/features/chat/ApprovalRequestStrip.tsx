@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import type { ApprovalDecision } from "../../api/approvalEventTypes";
 import type { ApprovalRunRecord } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { MotionList, MotionPresenceItem } from "../../shared/motion";
 import { Button, MetaLabel, Spinner } from "../../shared/ui";
 
 export interface ApprovalRequestStripProps {
@@ -54,19 +55,19 @@ export function ApprovalRequestStrip({
   onResolve,
 }: ApprovalRequestStripProps): JSX.Element | null {
   const pendingApprovals = approvals.filter((approval) => approval.status === "pending");
-  if (pendingApprovals.length === 0) return null;
 
   return (
-    <div className="mb-3 flex flex-col gap-1.5">
+    <MotionList className="flex flex-col gap-1.5">
       {pendingApprovals.map((approval) => (
-        <ApprovalRequestItem
-          key={approval.approvalId}
-          approval={approval}
-          disabled={disabled || approval.resolutionPending === true}
-          onResolve={onResolve}
-        />
+        <MotionPresenceItem key={approval.approvalId} className="last:mb-3">
+          <ApprovalRequestItem
+            approval={approval}
+            disabled={disabled || approval.resolutionPending === true}
+            onResolve={onResolve}
+          />
+        </MotionPresenceItem>
       ))}
-    </div>
+    </MotionList>
   );
 }
 

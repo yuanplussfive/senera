@@ -2,6 +2,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useEffect, useMemo, useState } from "react";
 import { Check, Copy, Download, Eye, FileCode } from "lucide-react";
 import { cn } from "../../lib/util";
+import { MotionIconSwap } from "../motion";
 import { useAppearance } from "../theme";
 import { Dialog, DialogContent, Tooltip, useClipboardCopy } from "../ui";
 import { CodeArtifactSourceView } from "./CodeArtifactSourceView";
@@ -104,7 +105,9 @@ export function CodeArtifactViewer({
                   onClick={copyCode}
                   aria-label={frontendMessage("code.copy")}
                 >
-                  {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
+                    {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  </MotionIconSwap>
                 </button>
               </Tooltip>
               <Tooltip content={frontendMessage("code.download")} side="top">

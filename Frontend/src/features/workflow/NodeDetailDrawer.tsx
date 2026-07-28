@@ -4,6 +4,7 @@ import type { TimelineStep } from "../../store/sessionStore";
 import { friendlyDecisionKind } from "../../store/sessionStore";
 import { cn, formatTime, formatDuration } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { MotionIconSwap } from "../../shared/motion";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
 import { MetaLabel, Sheet, SheetContent, Skeleton, Tooltip, useClipboardCopy } from "../../shared/ui";
 import { readStepKindLabel, readStepStatusLabel } from "./stepPresentation";
@@ -384,7 +385,9 @@ function CopyButton({ value }: { value: unknown }): JSX.Element {
         className="grid h-5 w-5 place-items-center rounded text-ink-400 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
         aria-label="copy"
       >
-        {copied ? <Check className="h-3 w-3 text-moss-500" /> : <Copy className="h-3 w-3" />}
+        <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
+          {copied ? <Check className="h-3 w-3 text-moss-500" /> : <Copy className="h-3 w-3" />}
+        </MotionIconSwap>
       </button>
     </Tooltip>
   );

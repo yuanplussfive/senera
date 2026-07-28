@@ -65,7 +65,7 @@ test("chat composer waits for an attachment upload and sends the uploaded refere
     }),
   );
   expect(onSend).toHaveBeenCalledWith("Analyze this report", [attachment], undefined);
-  expect(screen.queryByText("report.txt")).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByText("report.txt")).not.toBeInTheDocument());
 });
 
 test("chat composer preserves failed attachments for removal and reports the upload error", async () => {
@@ -86,7 +86,7 @@ test("chat composer preserves failed attachments for removal and reports the upl
     );
   });
   await user.click(screen.getByRole("button", { name: "移除附件" }));
-  expect(screen.queryByText("broken.txt")).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByText("broken.txt")).not.toBeInTheDocument());
 });
 
 test("chat composer prevents disabled and running file drops without uploading", () => {
@@ -170,7 +170,7 @@ test("chat composer previews an original image and transfers its ownership after
 
   expect(onSend).toHaveBeenCalledWith("Inspect this image", [attachment], undefined);
   expect(previewApi.revokeObjectURL).not.toHaveBeenCalled();
-  expect(screen.queryByRole("img", { name: "photo.png" })).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole("img", { name: "photo.png" })).not.toBeInTheDocument());
 
   view.unmount();
   expect(previewApi.revokeObjectURL).toHaveBeenCalledWith("blob:senera-preview");
@@ -186,7 +186,8 @@ test("chat composer releases pending image previews when it unmounts", async () 
     document.querySelector("input[type='file']"),
     new File(["image"], "pending.png", { type: "image/png" }),
   );
-  expect(await screen.findByRole("img", { name: "pending.png" })).toBeVisible();
+  const pendingPreview = await screen.findByRole("img", { name: "pending.png" });
+  await waitFor(() => expect(pendingPreview).toBeVisible());
 
   view.unmount();
   expect(previewApi.revokeObjectURL).toHaveBeenCalledTimes(1);
