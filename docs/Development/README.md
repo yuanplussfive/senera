@@ -7,6 +7,7 @@
 - [新增模型端点开发手册](./AddModelEndpoint.md)
 - [前端设置工作台约束](./FrontendSettingsWorkbench.md)
 - [前端 Ladle 组件约束](./FrontendLadleConstraints.md)
+- [前端动效与设计 Skill 选型](./FrontendMotionPolicy.md)
 - [前端性能预算](./FrontendPerformanceBudgets.md)
 - [前端 Agent 工作区全面重构方案](./FrontendAgentWorkspaceRefactor.md)
 

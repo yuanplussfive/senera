@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { GlobalProvider } from "@ladle/react";
 import "../src/index.css";
+import "../src/styles/transitions.css";
 import { createAppearanceTokens, defaultAppearancePreference } from "../src/shared/theme/themeModel";
 
 export const Provider: GlobalProvider = ({ children }) => {

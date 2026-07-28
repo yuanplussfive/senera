@@ -12,7 +12,6 @@ export const dialogPresenceExitMs = 180;
 export const motionSprings = {
   snappy: { type: "spring", stiffness: 520, damping: 42 } satisfies Transition,
   soft: { type: "spring", stiffness: 360, damping: 34 } satisfies Transition,
-  drawer: { type: "spring", stiffness: 420, damping: 40, mass: 1 } satisfies Transition,
 };
 
 export const motionTimings = {
@@ -174,7 +173,12 @@ export function readDialogPanelTransition(
   if (level === "none") return { duration: 0 };
   if (level === "reduced") return motionTimings.base;
   if (preset === "modal") return state === "exit" ? motionTimings.modalClose : motionTimings.modalOpen;
-  return preset === "focus" ? motionTimings.dialog : motionTimings.dialog;
+  return motionTimings.dialog;
+}
+
+export function readDrawerTransition(level: MotionLevel, state: "show" | "exit" = "show"): Transition {
+  if (level === "none") return { duration: 0 };
+  return state === "exit" ? motionTimings.fast : motionTimings.dialog;
 }
 
 export function readDrawerVariants(level: MotionLevel, side: "left" | "right" = "right"): DrawerPanelVariants {
