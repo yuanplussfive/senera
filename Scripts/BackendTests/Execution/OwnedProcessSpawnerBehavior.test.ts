@@ -39,6 +39,13 @@ describe("owned process spawner behavior", () => {
     }
   });
 
+  test.runIf(process.platform === "win32")("resolves Windows command shims inside the Job Object", async () => {
+    const ownedProcess = await spawnSeneraInheritedProcess("npm", ["--version"], defaultSpawnOptions());
+
+    expect(ownedProcess.terminationBackend).toBe("windows-job");
+    await expect(ownedProcess.closed).resolves.toMatchObject({ exitCode: 0, signal: null });
+  });
+
   test.runIf(process.platform === "win32")(
     "does not retry a target outside the Job Object when target startup fails",
     async () => {

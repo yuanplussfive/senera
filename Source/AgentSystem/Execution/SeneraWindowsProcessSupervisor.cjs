@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const { spawn } = require("node:child_process");
+const crossSpawn = require("cross-spawn");
 
 const LaunchControlFd = 3;
 const LaunchStatusFd = 4;
@@ -46,13 +47,15 @@ launchControl.once("end", () => {
 });
 
 function launchTarget(request) {
-  const target = spawn(request.command, request.args, {
+  const parsed = crossSpawn._parse(request.command, request.args, {
     cwd: request.cwd,
     env: request.env,
     shell: false,
     stdio: "inherit",
     windowsHide: request.windowsHide,
   });
+  if (!parsed.file) throw commandNotFoundError(request.command);
+  const target = spawn(parsed.command, parsed.args, parsed.options);
   let started = false;
   target.once("spawn", () => {
     started = true;
@@ -65,6 +68,14 @@ function launchTarget(request) {
   target.once("exit", (exitCode) => {
     process.exitCode = normalizeExitCode(exitCode);
   });
+}
+
+function commandNotFoundError(command) {
+  const error = new Error(`spawn ${command} ENOENT`);
+  error.code = "ENOENT";
+  error.syscall = `spawn ${command}`;
+  error.path = command;
+  return error;
 }
 
 function parseLaunchRequest(source) {
