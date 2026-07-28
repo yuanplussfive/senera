@@ -23,6 +23,7 @@ export function ProviderConnectionList({
   errors,
   loadingProviderIds,
   selectedProviderId,
+  compact = false,
   disabled,
   onRequestAdd,
   onSelect,
@@ -34,6 +35,7 @@ export function ProviderConnectionList({
   errors: SettingsConfigCommands["providerModelErrors"];
   loadingProviderIds: SettingsConfigCommands["providerModelLoadingIds"];
   selectedProviderId: string | null;
+  compact?: boolean;
   disabled: boolean;
   onRequestAdd: () => void;
   onSelect: (provider: ProviderEndpointDraft) => void;
@@ -151,29 +153,52 @@ export function ProviderConnectionList({
     ) : (
       <EmptyList text={frontendMessage("settings.provider.addDescription")} />
     );
+  const addProviderButton = (
+    <button
+      type="button"
+      disabled={disabled}
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:pointer-events-none disabled:opacity-50"
+      onClick={onRequestAdd}
+      aria-label={frontendMessage("settings.provider.add")}
+      title={frontendMessage("settings.provider.add")}
+    >
+      <Plus className="h-4 w-4" />
+    </button>
+  );
 
   return (
     <div className="h-full min-h-0 overflow-hidden">
       <ScrollArea className="h-full min-h-0" viewportClassName="h-full">
         <div className="border-b border-ink-200/70 bg-paper-50 p-3">
-          <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="truncate text-[14px] font-semibold text-ink-900">
-                {frontendMessage("settings.model.serviceTitle")}
-              </div>
+          {compact ? (
+            <div className="flex min-w-0 items-center gap-2">
+              <SearchInput
+                value={providerSearch}
+                disabled={providers.length === 0}
+                placeholder={frontendMessage("settings.provider.searchPlaceholder")}
+                className="flex-1"
+                onChange={setProviderSearch}
+              />
+              {addProviderButton}
             </div>
-            <button
-              type="button"
-              disabled={disabled}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:pointer-events-none disabled:opacity-50"
-              onClick={onRequestAdd}
-              aria-label={frontendMessage("settings.provider.add")}
-              title={frontendMessage("settings.provider.add")}
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-          </div>
-          <SearchInput value={providerSearch} disabled={providers.length === 0} onChange={setProviderSearch} />
+          ) : (
+            <>
+              <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-[14px] font-semibold text-ink-900">
+                  {frontendMessage("settings.model.serviceTitle")}
+                </div>
+              </div>
+                {addProviderButton}
+              </div>
+              <SearchInput
+                value={providerSearch}
+                disabled={providers.length === 0}
+                placeholder={frontendMessage("settings.provider.searchPlaceholder")}
+                onChange={setProviderSearch}
+              />
+            </>
+          )}
         </div>
         {providerRows}
       </ScrollArea>

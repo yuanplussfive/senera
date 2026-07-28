@@ -101,6 +101,29 @@ test("chat header exposes one neutral workflow tool entry for panel toggling", a
   expect(onToggle).toHaveBeenCalledTimes(1);
 });
 
+test("chat header presents sandbox state as a quiet status mark with detail in the tooltip", async () => {
+  const user = userEvent.setup();
+  renderWithFrontendProviders(
+    React.createElement(ChatHeader, {
+      title: "Header controls test",
+      sandboxStatus: { state: "unavailable", reason: "runtime_missing" },
+    }),
+  );
+
+  const statusMark = screen.getByRole("status", { name: frontendMessage("sandbox.status.unavailable") });
+  expect(statusMark).toHaveAttribute("data-sandbox-status", "unavailable");
+  expect(statusMark).not.toHaveClass("border");
+  expect(statusMark.querySelector("[data-sandbox-status-indicator]")).toHaveClass("bg-brick-500");
+  expect(screen.queryByRole("button", { name: frontendMessage("sandbox.status.unavailable") })).not.toBeInTheDocument();
+  expect(screen.queryByText(frontendMessage("sandbox.status.unavailable"))).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: frontendMessage("terminal.panel.open") })).not.toBeInTheDocument();
+
+  await user.hover(statusMark);
+  const tooltip = await screen.findByRole("tooltip");
+  expect(tooltip).toHaveTextContent(frontendMessage("sandbox.status.unavailable"));
+  expect(tooltip).toHaveTextContent(frontendMessage("sandbox.status.unavailableSuffix"));
+});
+
 test("persistent workflow panel owns its tool header and only collapse control", async () => {
   const onClosePanel = vi.fn();
   const user = userEvent.setup();

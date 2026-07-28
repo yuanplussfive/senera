@@ -1,24 +1,19 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
-import { Check, Monitor, Moon, Palette, Pilcrow, Sun, Type } from "lucide-react";
-import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
+import { Check, Monitor, Moon, Palette, Sun } from "lucide-react";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { useMotionLevel, type MotionLevel } from "../motion";
 import {
-  fontScales,
-  type AppearanceFontFamily,
+  colorSchemes,
   type AppearancePreferenceUpdate,
   type AppearanceSnapshot,
   type ColorScheme,
   type ThemeMode,
 } from "./themeModel";
-import { colorSchemeGroups } from "./themeData";
 import {
   accentColorLabels,
   colorSchemeLabels,
-  fontFamilyLabels,
-  fontScaleLabels,
   readAccentSwatch,
-  readColorSchemeStory,
   readRecommendedAccent,
   readSchemeSwatchStrip,
   themeModeLabels,
@@ -66,14 +61,6 @@ const themeModeOptions = [
   Icon: typeof Monitor;
 }[];
 
-const fontFamilyOptions = [
-  { value: "brand", label: fontFamilyLabels.brand },
-  { value: "system", label: fontFamilyLabels.system },
-] as const satisfies readonly {
-  value: AppearanceFontFamily;
-  label: string;
-}[];
-
 export function AppearancePreferenceControl({ className }: { className?: string }): JSX.Element {
   const { preference } = useAppearance();
   const setPreference = useSetAppearancePreference();
@@ -93,24 +80,6 @@ export function AppearancePreferenceControl({ className }: { className?: string 
       />
 
       <ColorSchemeControl value={preference.colorScheme} onChange={(colorScheme) => setPreference({ colorScheme })} />
-
-      <SegmentedControl
-        label={frontendMessage("appearance.control.font")}
-        icon={<Type className="h-3.5 w-3.5" />}
-        options={fontFamilyOptions.map(({ value, label }) => ({ value, label }))}
-        value={preference.fontFamily}
-        onChange={(fontFamily) => setPreference({ fontFamily })}
-      />
-      <SegmentedControl
-        label={frontendMessage("appearance.control.fontScale")}
-        icon={<Pilcrow className="h-3.5 w-3.5" />}
-        options={fontScales.map((value) => ({
-          value,
-          label: fontScaleLabels[value],
-        }))}
-        value={preference.fontScale}
-        onChange={(fontScale) => setPreference({ fontScale })}
-      />
     </div>
   );
 }
@@ -128,63 +97,57 @@ function ColorSchemeControl({
         icon={<Palette className="h-3.5 w-3.5" />}
         label={frontendMessage("appearance.control.colorScheme")}
       />
-      <div className="space-y-3" role="radiogroup" aria-label={frontendMessage("appearance.control.colorScheme")}>
-        {colorSchemeGroups.map((group) => (
-          <div key={group.label}>
-            <div className="mb-1.5 text-[11px] font-medium text-content-secondary">
-              {frontendMessage(group.label as FrontendMessageKey)}
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {group.items.map((scheme) => {
-                const selected = value === scheme;
-                const recommended = readRecommendedAccent(scheme);
-                return (
-                  <button
-                    key={scheme}
-                    type="button"
-                    role="radio"
-                    aria-label={`${frontendMessage("appearance.control.colorScheme")}: ${colorSchemeLabels[scheme]}`}
-                    aria-checked={selected}
-                    onClick={() => onChange(scheme)}
-                    className={cn(
-                      "min-w-0 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow] duration-150",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-                      selected
-                        ? "border-accent-border-strong bg-accent-surface shadow-panel"
-                        : "border-line-subtle bg-surface-panel hover:border-line-strong hover:bg-surface-subtle",
-                    )}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-content-primary">
-                        {colorSchemeLabels[scheme]}
-                      </span>
-                      <span className="inline-flex shrink-0 items-center gap-1 text-[10.5px] text-content-secondary">
-                        <span
-                          className="h-2.5 w-2.5 rounded-full border border-line-subtle"
-                          style={{ background: readAccentSwatch(recommended) }}
-                          aria-hidden="true"
-                        />
-                        {accentColorLabels[recommended]}
-                      </span>
-                      {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-accent-content" /> : null}
-                    </span>
-                    <span className="mt-2 flex gap-1" aria-hidden="true">
-                      {readSchemeSwatchStrip(scheme).map((color, index) => (
-                        <span
-                          key={`${scheme}-${index}`}
-                          className="h-3 flex-1 rounded-[4px] border border-black/[0.04]"
-                          style={{ background: color }}
-                        />
-                      ))}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+      <div
+        className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+        role="radiogroup"
+        aria-label={frontendMessage("appearance.control.colorScheme")}
+      >
+        {colorSchemes.map((scheme) => {
+          const selected = value === scheme;
+          const recommended = readRecommendedAccent(scheme);
+          return (
+            <button
+              key={scheme}
+              type="button"
+              role="radio"
+              aria-label={`${frontendMessage("appearance.control.colorScheme")}: ${colorSchemeLabels[scheme]}`}
+              aria-checked={selected}
+              onClick={() => onChange(scheme)}
+              className={cn(
+                "min-w-0 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow] duration-150",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+                selected
+                  ? "border-accent-border-strong bg-accent-surface shadow-panel"
+                  : "border-line-subtle bg-surface-panel hover:border-line-strong hover:bg-surface-subtle",
+              )}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-content-primary">
+                  {colorSchemeLabels[scheme]}
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-1 text-[10.5px] text-content-secondary">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full border border-line-subtle"
+                    style={{ background: readAccentSwatch(recommended) }}
+                    aria-hidden="true"
+                  />
+                  {accentColorLabels[recommended]}
+                </span>
+                {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-accent-content" /> : null}
+              </span>
+              <span className="mt-2 flex gap-1" aria-hidden="true">
+                {readSchemeSwatchStrip(scheme).map((color, index) => (
+                  <span
+                    key={`${scheme}-${index}`}
+                    className="h-3 flex-1 rounded-[4px] border border-black/[0.04]"
+                    style={{ background: color }}
+                  />
+                ))}
+              </span>
+            </button>
+          );
+        })}
       </div>
-      <p className="mt-2 text-[11.5px] leading-5 text-content-secondary">{readColorSchemeStory(value)}</p>
     </div>
   );
 }

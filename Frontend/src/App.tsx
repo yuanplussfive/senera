@@ -79,10 +79,8 @@ export function App({
   const presetRootDir = useStore((s) => s.presetRootDir);
   const defaultSidebarCollapsed = useStore((s) => s.defaultSidebarCollapsed);
   const defaultRightPanelCollapsed = useStore((s) => s.defaultRightPanelCollapsed);
-  const motionLevel = useStore((s) => s.motionLevel);
   const setDefaultSidebarCollapsed = useStore((s) => s.setDefaultSidebarCollapsed);
   const setDefaultRightPanelCollapsed = useStore((s) => s.setDefaultRightPanelCollapsed);
-  const setMotionLevel = useStore((s) => s.setMotionLevel);
   const responsiveMode = useResponsiveMode();
   const { hasPersistentSessionPanel, hasPersistentWorkflowPanel } = responsiveMode;
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
@@ -104,15 +102,6 @@ export function App({
       );
     }
   }, []);
-
-  const handleOpenTerminalPanel = useCallback((): void => {
-    handleWorkflowDockToolChange("terminal");
-    if (hasPersistentWorkflowPanel) {
-      setRightPanelCollapsed(false);
-      return;
-    }
-    setWorkflowDrawerOpen(true);
-  }, [handleWorkflowDockToolChange, hasPersistentWorkflowPanel, setRightPanelCollapsed]);
 
   useEffect(() => {
     if (terminalPanelLoadState.status !== "loading") return;
@@ -409,7 +398,6 @@ export function App({
                   (hasPersistentWorkflowPanel ? rightPanelCollapsed : !workflowDrawerOpen)
                     ? handleOpenWorkflowPanel
                     : undefined,
-                onOpenTerminalPanel: activeId ? handleOpenTerminalPanel : undefined,
                 onRetryHistory: requestSessionHistory,
               }}
             />
@@ -440,12 +428,10 @@ export function App({
                 surface: "web",
               },
               values: { defaultSidebarCollapsed, defaultRightPanelCollapsed },
-              motionLevel,
               onValueChange: (id, value) => {
                 if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
                 if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
               },
-              onMotionLevelChange: setMotionLevel,
               pluginSettings: settingsRuntime.pluginSettings,
               systemConfig: settingsRuntime.systemConfig,
             }}

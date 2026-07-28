@@ -1,25 +1,18 @@
 import {
   Ban,
+  Box,
   CircleAlert,
   Clock3,
+  ListTree,
   MessageSquareText,
   PanelLeftOpen,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-  SquareTerminal,
 } from "lucide-react";
 import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
-import {
-  sandboxPreparationRatio,
-  sandboxStatusAvailabilitySuffix,
-  sandboxStatusDetail,
-} from "../sandbox/sandboxPreparationPresentation";
+import { sandboxStatusAvailabilitySuffix, sandboxStatusDetail } from "../sandbox/sandboxPreparationPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { IconButton, Tooltip } from "../../shared/ui";
 import { ToolDock } from "./ToolDock";
-import { ListTree } from "lucide-react";
 
 export function ChatHeader({
   title,
@@ -29,7 +22,6 @@ export function ChatHeader({
   sandboxStatus,
   onOpenSessionPanel,
   onOpenWorkflowPanel,
-  onOpenTerminalPanel,
 }: {
   title: string;
   runStatus?: "running" | "completed" | "failed" | "cancelled";
@@ -38,7 +30,6 @@ export function ChatHeader({
   sandboxStatus?: SandboxStatusSnapshotData | null;
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
-  onOpenTerminalPanel?: () => void;
 }): JSX.Element {
   return (
     <div
@@ -81,17 +72,6 @@ export function ChatHeader({
         </span>
       ) : null}
       <SandboxStatusBadge status={sandboxStatus} />
-      {onOpenTerminalPanel ? (
-        <IconButton
-          label={frontendMessage("terminal.panel.open")}
-          tooltip={frontendMessage("terminal.panel.open")}
-          tooltipSide="bottom"
-          onClick={onOpenTerminalPanel}
-          touchSafe
-        >
-          <SquareTerminal className="h-4 w-4" />
-        </IconButton>
-      ) : null}
       {onOpenWorkflowPanel ? (
         <ToolDock
           items={[
@@ -110,38 +90,35 @@ export function ChatHeader({
 
 function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | null }): JSX.Element {
   const presentation = readSandboxStatusPresentation(status);
-  const Icon = presentation.Icon;
-  const progressRatio = sandboxPreparationRatio(status?.progress);
 
   return (
     <Tooltip
-      content={<span className="max-w-[260px] whitespace-normal leading-5">{presentation.tooltip}</span>}
+      content={
+        <span className="max-w-[260px] whitespace-normal leading-5">
+          <span className="block font-medium text-paper-50">{presentation.label}</span>
+          <span className="mt-0.5 block text-ink-300">{presentation.tooltip}</span>
+        </span>
+      }
       side="bottom"
       align="end"
     >
-      <button
-        type="button"
-        className={cn(
-          "relative ml-1 inline-flex h-8 shrink-0 items-center gap-1.5 overflow-hidden rounded-md border px-2 text-[12px] transition",
-          presentation.className,
-        )}
+      <span
+        role="status"
+        tabIndex={0}
+        aria-label={presentation.label}
+        data-sandbox-status={status?.state ?? "unknown"}
+        className="relative ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-content-muted transition-colors duration-150 ease-out hover:bg-surface-hover hover:text-content-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
       >
-        <Icon className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline lg:hidden">{presentation.label}</span>
-        <span className="hidden max-w-[220px] truncate lg:inline">
-          {status?.state === "preparing" ? sandboxStatusDetail(status) : presentation.label}
-        </span>
-        {status?.state === "preparing" ? (
-          <span
-            className={cn(
-              "pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left bg-current opacity-40 transition-transform duration-200",
-              progressRatio === undefined && "animate-pulse",
-            )}
-            style={{ transform: `scaleX(${progressRatio ?? 1})` }}
-            aria-hidden="true"
-          />
-        ) : null}
-      </button>
+        <Box className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+        <span
+          className={cn(
+            "pointer-events-none absolute bottom-[6px] right-[6px] h-[5px] w-[5px] rounded-full ring-1 ring-surface-canvas",
+            presentation.indicatorClassName,
+          )}
+          data-sandbox-status-indicator
+          aria-hidden="true"
+        />
+      </span>
     </Tooltip>
   );
 }
@@ -149,8 +126,7 @@ function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | n
 function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null): {
   label: string;
   tooltip: string;
-  Icon: typeof Shield;
-  className: string;
+  indicatorClassName: string;
 } {
   const state = status?.state ?? "unknown";
   const detail = sandboxStatusDetail(status);
@@ -161,40 +137,34 @@ function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null
     disabled: {
       label: frontendMessage("sandbox.status.disabled"),
       tooltip: commonTooltip,
-      Icon: Shield,
-      className: "border-ink-200 bg-paper-100 text-ink-500 hover:bg-ink-900/[0.04]",
+      indicatorClassName: "bg-ink-300",
     },
     unknown: {
       label: frontendMessage("sandbox.status.unknown"),
       tooltip: commonTooltip,
-      Icon: Shield,
-      className: "border-ink-200 bg-paper-100 text-ink-500 hover:bg-ink-900/[0.04]",
+      indicatorClassName: "bg-ink-300",
     },
     preparing: {
       label: frontendMessage("sandbox.status.preparing"),
       tooltip: commonTooltip,
-      Icon: Shield,
-      className: "border-umber-200 bg-umber-50/70 text-umber-600 hover:bg-umber-50",
+      indicatorClassName: "bg-umber-500 motion-safe:animate-pulse",
     },
     ready: {
       label: frontendMessage("sandbox.status.ready"),
       tooltip: commonTooltip,
-      Icon: ShieldCheck,
-      className: "border-moss-100 bg-moss-50/70 text-moss-600 hover:bg-moss-50",
+      indicatorClassName: "bg-moss-500",
     },
     unavailable: {
       label: frontendMessage("sandbox.status.unavailable"),
       tooltip: commonTooltip,
-      Icon: ShieldAlert,
-      className: "border-brick-200 bg-brick-50/70 text-brick-700 hover:bg-brick-50",
+      indicatorClassName: "bg-brick-500",
     },
   } satisfies Record<
     SandboxRuntimeState,
     {
       label: string;
       tooltip: string;
-      Icon: typeof Shield;
-      className: string;
+      indicatorClassName: string;
     }
   >;
 

@@ -137,7 +137,7 @@ describe("createAppearanceStore", () => {
     storage.setItem(appearancePreferenceStorageKey, JSON.stringify({ themeMode: "dark", fontScale: "large" }));
     windowMock.emitStorage(appearancePreferenceStorageKey);
     expect(store.getSnapshot()).toMatchObject({
-      preference: { themeMode: "dark", fontScale: "large" },
+      preference: { themeMode: "dark", fontScale: "standard" },
       resolvedTheme: "dark",
     });
     expect(subscriber).toHaveBeenCalledTimes(1);

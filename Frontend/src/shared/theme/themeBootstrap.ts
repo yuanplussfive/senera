@@ -1,10 +1,8 @@
 import {
   accentColors,
-  appearanceFontFamilies,
   appearancePreferenceStorageKey,
   colorSchemes,
   defaultAppearancePreference,
-  fontScales,
   themeModes,
   type AppearancePreference,
 } from "./themeModel";
@@ -33,8 +31,8 @@ export function createAppearanceBootstrapConfig(): AppearanceBootstrapConfig {
       themeMode: [...themeModes],
       colorScheme: [...colorSchemes],
       accentColor: [...accentColors],
-      fontFamily: [...appearanceFontFamilies],
-      fontScale: [...fontScales],
+      fontFamily: [defaultAppearancePreference.fontFamily],
+      fontScale: [defaultAppearancePreference.fontScale],
     },
     accentColorByScheme: { ...recommendedAccentColors },
   };

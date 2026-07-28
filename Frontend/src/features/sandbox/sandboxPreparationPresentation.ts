@@ -26,17 +26,6 @@ export function sandboxProviderLabel(provider: string | undefined): string {
   }
 }
 
-export function sandboxPreparationRatio(progress?: SandboxPreparationProgressData): number | undefined {
-  const values =
-    progress?.downloadedBytes !== undefined && progress.totalBytes !== undefined
-      ? [progress.downloadedBytes, progress.totalBytes]
-      : progress?.completed !== undefined && progress.total !== undefined
-        ? [progress.completed, progress.total]
-        : undefined;
-  if (!values || values[1] <= 0) return undefined;
-  return Math.min(1, Math.max(0, values[0] / values[1]));
-}
-
 function describeSandboxPreparation(progress: SandboxPreparationProgressData): string {
   const progressCount = formatProgressCount(progress);
   switch (progress.stage) {

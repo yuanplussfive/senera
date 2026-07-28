@@ -17,9 +17,7 @@ const baseProps = {
     defaultSidebarCollapsed: false,
     defaultRightPanelCollapsed: true,
   },
-  motionLevel: "full",
   onValueChange: vi.fn(),
-  onMotionLevelChange: vi.fn(),
 };
 
 beforeEach(() => {
@@ -37,6 +35,7 @@ describe("SettingsWorkbench", () => {
     renderWithFrontendProviders(React.createElement(SettingsWorkbench, baseProps));
 
     expect(screen.getAllByRole("switch")).toHaveLength(2);
+    expect(screen.queryByText("动画")).not.toBeInTheDocument();
   });
 
   it("uses grouped navigation without migration cards or persistent sync badges", async () => {

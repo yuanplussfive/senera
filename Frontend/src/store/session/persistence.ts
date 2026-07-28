@@ -1,7 +1,6 @@
 import { createJSONStorage, type PersistOptions } from "zustand/middleware";
 import type { StoreState } from "./types";
 import { normalizeUserProfile } from "./userProfile";
-import type { MotionLevel } from "../../shared/motion";
 import { clampWorkflowDockWidth, DEFAULT_WORKFLOW_DOCK_WIDTH } from "../../shared/responsive/workflowDock";
 
 export const PERSIST_KEY = "senera-frontend@v1";
@@ -35,14 +34,13 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
     workflowDockWidth: state.workflowDockWidth,
   }),
   // 旧版本 localStorage 干净迁移
-  migrate: (persisted: unknown, fromVersion: number) => {
+  migrate: (persisted: unknown) => {
     if (!persisted || typeof persisted !== "object") return {};
     const p = persisted as Partial<StoreState> & Record<string, unknown>;
-    const motionLevel = fromVersion < 4 ? "full" : readPersistedMotionLevel(p.motionLevel);
     return {
       defaultSidebarCollapsed: readPersistedBoolean(p.defaultSidebarCollapsed, false),
       defaultRightPanelCollapsed: readPersistedBoolean(p.defaultRightPanelCollapsed, true),
-      motionLevel,
+      motionLevel: "full",
       selectedModelProviderId: p.selectedModelProviderId,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(p.selectedModelProviderIdsBySession),
       userProfile: p.userProfile,
@@ -60,7 +58,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       rightPanelCollapsed: defaultRightPanelCollapsed,
       defaultSidebarCollapsed,
       defaultRightPanelCollapsed,
-      motionLevel: readPersistedMotionLevel(p.motionLevel),
+      motionLevel: "full",
       selectedModelProviderId: p.selectedModelProviderId ?? null,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(p.selectedModelProviderIdsBySession),
       userProfile: normalizeUserProfile(p.userProfile),
@@ -97,10 +95,6 @@ function readPersistedModelSelectionBySession(value: unknown): Record<string, st
   );
 }
 
-function readPersistedMotionLevel(value: unknown): MotionLevel {
-  return value === "reduced" || value === "none" || value === "full" ? value : "full";
-}
-
 function readPersistedBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
@@ -120,7 +114,7 @@ export function readPersistedSessionPreferences(rawValue: string | null): Persis
         typeof state.defaultSidebarCollapsed === "boolean" ? state.defaultSidebarCollapsed : undefined,
       defaultRightPanelCollapsed:
         typeof state.defaultRightPanelCollapsed === "boolean" ? state.defaultRightPanelCollapsed : undefined,
-      motionLevel: readPersistedMotionLevel(state.motionLevel),
+      motionLevel: "full",
       selectedModelProviderId:
         typeof state.selectedModelProviderId === "string" ? state.selectedModelProviderId : undefined,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(state.selectedModelProviderIdsBySession),

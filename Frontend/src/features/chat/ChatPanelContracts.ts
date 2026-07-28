@@ -86,7 +86,6 @@ export interface ChatMessageActions {
 export interface ChatNavigationActions {
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
-  onOpenTerminalPanel?: () => void;
   onRetryHistory?: (sessionId: string) => void;
 }
 

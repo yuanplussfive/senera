@@ -43,21 +43,3 @@ export const preferenceSections = [
 ] as const;
 
 export type LayoutPreferenceId = (typeof preferenceSections)[number]["items"][number]["id"];
-
-export const motionLevelOptions = [
-  {
-    id: "full",
-    title: frontendMessage("settings.general.motionFullLabel"),
-    description: frontendMessage("settings.general.motionFullDescription"),
-  },
-  {
-    id: "reduced",
-    title: frontendMessage("settings.general.motionReducedLabel"),
-    description: frontendMessage("settings.general.motionReducedDescription"),
-  },
-  {
-    id: "none",
-    title: frontendMessage("settings.general.motionOffLabel"),
-    description: frontendMessage("settings.general.motionOffDescription"),
-  },
-] as const;

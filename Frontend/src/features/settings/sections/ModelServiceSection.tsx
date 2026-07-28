@@ -173,6 +173,7 @@ export function ModelServiceSection({
         errors={systemConfig.providerModelErrors}
         loadingProviderIds={systemConfig.providerModelLoadingIds}
         selectedProviderId={actions.acceptedProvider?.Id ?? null}
+        compact={layout === "compact"}
         disabled={false}
         onRequestAdd={() => actions.setShowAddDialog(true)}
         onSelect={(provider) => {

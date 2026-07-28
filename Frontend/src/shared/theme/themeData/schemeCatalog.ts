@@ -1,23 +1,4 @@
-import type { FrontendMessageKey } from "../../../i18n/frontendMessageCatalog";
 import type { AccentColor, ColorScheme } from "../themeModel";
-
-export const colorSchemeGroups = [
-  {
-    get label() {
-      return "appearance.group.original" as FrontendMessageKey;
-    },
-    items: ["senera", "classic", "mono", "forest"],
-  },
-  {
-    get label() {
-      return "appearance.group.new" as FrontendMessageKey;
-    },
-    items: ["sakura", "ocean", "lavender", "matcha", "honey", "celadon"],
-  },
-] as const satisfies readonly {
-  label: string;
-  items: readonly ColorScheme[];
-}[];
 
 export const recommendedAccentColors = {
   senera: "terra",
@@ -31,19 +12,6 @@ export const recommendedAccentColors = {
   honey: "apricot",
   celadon: "jade",
 } as const satisfies Record<ColorScheme, AccentColor>;
-
-export const colorSchemeStories = {
-  senera: "appearance.story.senera",
-  classic: "appearance.story.classic",
-  mono: "appearance.story.mono",
-  forest: "appearance.story.forest",
-  sakura: "appearance.story.sakura",
-  ocean: "appearance.story.ocean",
-  lavender: "appearance.story.lavender",
-  matcha: "appearance.story.matcha",
-  honey: "appearance.story.honey",
-  celadon: "appearance.story.celadon",
-} as const satisfies Record<ColorScheme, FrontendMessageKey>;
 
 export const colorSchemeSwatches = {
   senera: {

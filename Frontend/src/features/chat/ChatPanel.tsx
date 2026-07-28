@@ -45,7 +45,6 @@ export function ChatPanel({
           sandboxStatus={runtime.sandboxStatus}
           onOpenSessionPanel={navigationActions?.onOpenSessionPanel}
           onOpenWorkflowPanel={navigationActions?.onOpenWorkflowPanel}
-          onOpenTerminalPanel={navigationActions?.onOpenTerminalPanel}
         />
         <AnimatePresence mode="wait" initial={false}>
           {shouldShowHistoryRecovery ? (
