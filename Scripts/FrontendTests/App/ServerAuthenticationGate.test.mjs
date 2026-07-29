@@ -92,6 +92,19 @@ describe("server authentication gate", () => {
     expect(screen.queryByText("credential detail")).not.toBeInTheDocument();
   });
 
+  test("shows revalidation as an in-progress connection state", () => {
+    render(
+      React.createElement(ServerAuthenticationGate, {
+        state: { status: "revalidating" },
+        onLogin: vi.fn(),
+        onRetry: vi.fn(),
+      }),
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(frontendMessage("auth.reconnecting"));
+    expect(screen.queryByRole("button", { name: frontendMessage("auth.retry") })).not.toBeInTheDocument();
+  });
+
   test("does not invent a connection message when no server detail is available", () => {
     render(
       React.createElement(ServerAuthenticationGate, {

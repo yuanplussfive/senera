@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { EventKinds, type EventEnvelope } from "../api/eventTypes";
 import { useStore } from "../store/sessionStore";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { notifyError } from "../shared/ui/notifyError";
 
 export type SocketErrorToastVariant = "error" | "warning";
 
@@ -26,10 +27,11 @@ export function resolveSocketErrorToast(env: EventEnvelope, state: SocketErrorTo
     const session = env.sessionId ? state.sessions[env.sessionId] : null;
     const hasMatchingRun = session?.runs.some((run) => run.requestId === env.requestId) ?? false;
     const isHistoryLoadFailure = Boolean(env.sessionId && state.historyLoadingIds[env.sessionId] && !hasMatchingRun);
+    if (isHistoryLoadFailure) return null;
 
     return {
       variant: "error",
-      title: isHistoryLoadFailure ? frontendMessage("socket.historySyncFailed") : frontendMessage("socket.runFailed"),
+      title: frontendMessage("socket.runFailed"),
       description: readDataString(env.data, "message") ?? "",
     };
   }
@@ -78,7 +80,12 @@ export function showSocketErrorToast(env: EventEnvelope, state: SocketErrorToast
   if (toastConfig.variant === "warning") {
     toast.warning(toastConfig.title, { description: toastConfig.description });
   } else {
-    toast.error(toastConfig.title, { description: toastConfig.description });
+    notifyError({
+      title: toastConfig.title,
+      description: toastConfig.description,
+      diagnosticText: [toastConfig.title, toastConfig.description].filter(Boolean).join("\n"),
+      copyable: Boolean(toastConfig.description),
+    });
   }
   return true;
 }

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { clearTestToastCalls, readTestToastCalls, toast } from "sonner";
-import { installCopyableToasts } from "../../../Frontend/src/shared/ui/installCopyableToasts.ts";
+import { clearTestToastCalls, readTestToastCalls } from "sonner";
+import { notifyError } from "../../../Frontend/src/shared/ui/notifyError.ts";
 
 beforeEach(() => {
   clearTestToastCalls();
@@ -12,18 +12,38 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("toast actions", () => {
-  test("adds copy action only to error toasts", () => {
-    installCopyableToasts();
+describe("error toast actions", () => {
+  test("ordinary errors do not expose diagnostic copying", () => {
+    notifyError({ title: "Unable to save", description: "Check the highlighted fields" });
 
-    toast.success("Saved");
-    toast.info("Working");
-    toast.warning("Check this");
-    toast.message("Notice");
-    toast.error("Request failed", { description: "Backend unavailable" });
+    expect(readTestToastCalls()[0]?.options?.action).toBeUndefined();
+    expect(readTestToastCalls()[0]?.options?.cancel).toBeUndefined();
+  });
 
-    const calls = readTestToastCalls();
-    expect(calls.slice(0, 4).every(({ options }) => !options?.action && !options?.cancel)).toBe(true);
-    expect(calls[4]?.options?.action).toEqual(expect.objectContaining({ label: expect.any(String) }));
+  test("diagnostic copying is explicit and never occupies the cancel slot", () => {
+    notifyError({
+      title: "Tool call failed",
+      description: "exit 1",
+      diagnosticText: "Tool call failed\nexit 1",
+      copyable: true,
+    });
+
+    const options = readTestToastCalls()[0]?.options;
+    expect(options?.action).toEqual(expect.objectContaining({ label: expect.any(String) }));
+    expect(options?.cancel).toBeUndefined();
+  });
+
+  test("a primary recovery action is not displaced by diagnostic copying", () => {
+    const retry = { label: "Retry", onClick: vi.fn() };
+    notifyError({
+      title: "Request failed",
+      action: retry,
+      diagnosticText: "Request failed\ntrace",
+      copyable: true,
+    });
+
+    const options = readTestToastCalls()[0]?.options;
+    expect(options?.action).toBe(retry);
+    expect(options?.cancel).toBeUndefined();
   });
 });

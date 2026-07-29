@@ -20,7 +20,6 @@ import { useSocketErrorToasts } from "./app/useSocketErrorToasts";
 import { useSocketPostIngestEffects } from "./app/useSocketPostIngestEffects";
 import { useWorkflowNavigation } from "./app/useWorkflowNavigation";
 import { useResponsiveMode } from "./shared/responsive";
-import { installCopyableToasts } from "./shared/ui/installCopyableToasts";
 import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { useSettingsRuntime } from "./app/useSettingsRuntime";
 import { useWebSettingsController } from "./app/useWebSettingsController";
@@ -46,8 +45,6 @@ type TerminalPanelLoadState =
   | { status: "loading" }
   | { status: "ready"; Component: BackgroundTerminalPanelComponent }
   | { status: "error" };
-installCopyableToasts();
-
 export function App({
   onLogout,
   socketReconnectPolicy,

@@ -177,9 +177,9 @@ test("useSocketErrorToasts resolves history failures and tool failures from stor
       requestId: "missing_request",
     },
   );
-  expect(resolveSocketErrorToast(failure, useStore.getState()).title).toBe("历史同步失败");
+  expect(resolveSocketErrorToast(failure, useStore.getState())).toBeNull();
   act(() => {
-    expect(handleRef.current.notifySocketError(failure)).toBe(true);
+    expect(handleRef.current.notifySocketError(failure)).toBe(false);
   });
   act(() => {
     expect(
@@ -193,10 +193,6 @@ test("useSocketErrorToasts resolves history failures and tool failures from stor
   });
 
   expect(readTestToastCalls()).toEqual([
-    expect.objectContaining({
-      variant: "error",
-      title: "历史同步失败",
-    }),
     expect.objectContaining({
       variant: "error",
       title: "工具调用失败：ShellCommandTool",

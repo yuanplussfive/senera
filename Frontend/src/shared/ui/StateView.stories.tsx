@@ -16,6 +16,17 @@ export const ErrorWithRetry: Story = () => (
   </div>
 );
 
+export const ErrorWithCustomAction: Story = () => (
+  <div className="h-64 border border-line-subtle">
+    <StateView
+      status="error"
+      title="服务连接已中断"
+      description="重新连接后可以继续加载模型列表"
+      action={<RetryButton onRetry={() => undefined} label="重新连接" />}
+    />
+  </div>
+);
+
 export const Empty: Story = () => (
   <div className="h-64 border border-line-subtle">
     <StateView
@@ -28,8 +39,8 @@ export const Empty: Story = () => (
 
 export const InlineErrorRow: Story = () => (
   <div className="flex max-w-sm flex-col gap-4 p-8">
-    <InlineError>供应商密钥无效</InlineError>
-    <InlineError onRetry={() => undefined}>
+    <InlineError announce="assertive">供应商密钥无效</InlineError>
+    <InlineError announce="polite" onRetry={() => undefined} retryLabel="重新获取">
       模型列表获取失败，连接可能已断开，这里演示一条较长的错误信息的折行表现
     </InlineError>
   </div>

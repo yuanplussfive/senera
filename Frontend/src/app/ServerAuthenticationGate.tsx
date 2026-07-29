@@ -32,8 +32,8 @@ export function ServerAuthenticationGate({
   onLogin: (credentials: { loginName: string; password: string }) => Promise<void>;
   onRetry: () => Promise<void>;
 }): JSX.Element {
-  if (state.status === "loading") {
-    return <ServerAuthenticationLoading />;
+  if (state.status === "loading" || state.status === "revalidating") {
+    return <ServerAuthenticationLoading revalidating={state.status === "revalidating"} />;
   }
   if (state.status === "failed") {
     return (
@@ -49,8 +49,14 @@ export function ServerAuthenticationGate({
   return <LoginForm onLogin={onLogin} />;
 }
 
-export function ServerAuthenticationLoading(): JSX.Element {
-  return <AuthenticationStatus tone="loading" icon={<Spinner size="md" />} messageKey="auth.loading" />;
+export function ServerAuthenticationLoading({ revalidating = false }: { revalidating?: boolean }): JSX.Element {
+  return (
+    <AuthenticationStatus
+      tone="loading"
+      icon={<Spinner size="md" />}
+      messageKey={revalidating ? "auth.reconnecting" : "auth.loading"}
+    />
+  );
 }
 
 function LoginForm({
@@ -109,7 +115,11 @@ function LoginForm({
             required
           />
         </label>
-        {failed ? <InlineError className="mt-3">{frontendMessage("auth.loginFailed")}</InlineError> : null}
+        {failed ? (
+          <InlineError announce="assertive" className="mt-3">
+            {frontendMessage("auth.loginFailed")}
+          </InlineError>
+        ) : null}
         <button
           type="submit"
           disabled={submitting}
@@ -133,7 +143,7 @@ function AuthenticationStatus({
 }: {
   tone: "loading" | "failed";
   icon: JSX.Element;
-  messageKey?: "auth.loading" | "auth.connectionFailed";
+  messageKey?: "auth.loading" | "auth.reconnecting" | "auth.connectionFailed";
   message?: string;
   actionLabel?: string;
   onAction?: () => void;

@@ -299,13 +299,8 @@ function AttachmentTray({
     <MotionList className="flex flex-wrap gap-1.5 px-0.5 pb-1">
       {attachments.map((entry) => (
         <MotionPresenceItem key={entry.id} className={cn(entry.previewUrl && "shrink-0")}>
-          {entry.previewUrl ? (
-            <div
-              className={cn(
-                "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-surface-muted",
-                entry.status === "error" ? "border-brick-500" : "border-line-subtle",
-              )}
-            >
+          {entry.previewUrl && entry.status !== "error" ? (
+            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-line-subtle bg-surface-muted">
               <img
                 src={entry.previewUrl}
                 alt={entry.fileName}
@@ -318,17 +313,6 @@ function AttachmentTray({
                   <UploadProgressBar progress={entry.progress} className="min-w-0 flex-1 bg-paper-50/25" />
                   <span className="font-mono text-[9px] text-paper-50">{formatUploadProgress(entry.progress)}</span>
                 </span>
-              ) : null}
-              {entry.status === "error" ? (
-                <button
-                  type="button"
-                  onClick={() => onRetry(entry.id)}
-                  title={entry.error ?? undefined}
-                  aria-label={frontendMessage("ui.retry")}
-                  className="absolute bottom-1 left-1 grid h-5 w-5 place-items-center rounded-full bg-brick-50 text-brick-600 transition hover:bg-brick-100"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                </button>
               ) : null}
               <IconButton
                 label={frontendMessage("chat.attachment.remove")}
@@ -352,7 +336,11 @@ function AttachmentTray({
               )}
             >
               <span className="relative shrink-0">
-                <FilePreviewIcon name={entry.fileName} mime={entry.mime ?? entry.attachment?.mime} />
+                {entry.previewUrl ? (
+                  <img src={entry.previewUrl} alt="" className="h-8 w-8 rounded object-cover" />
+                ) : (
+                  <FilePreviewIcon name={entry.fileName} mime={entry.mime ?? entry.attachment?.mime} />
+                )}
                 {entry.status === "uploading" ? (
                   <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-surface-raised bg-surface-raised">
                     <Spinner size="xs" className="h-2.5 w-2.5 text-accent-content" />
@@ -389,9 +377,11 @@ function AttachmentTray({
                     <button
                       type="button"
                       onClick={() => onRetry(entry.id)}
-                      className="shrink-0 font-medium underline underline-offset-2 hover:text-brick-700"
+                      aria-label={frontendMessage("chat.attachment.retryUploadNamed", { name: entry.fileName })}
+                      className="inline-flex min-h-7 shrink-0 items-center gap-1 rounded-md px-2 font-medium text-brick-700 hover:bg-brick-100"
                     >
-                      {frontendMessage("ui.retry")}
+                      <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                      {frontendMessage("chat.attachment.retryUpload")}
                     </button>
                   </span>
                 ) : null}

@@ -83,7 +83,7 @@ test("marks history recovery as failed when the socket cannot accept the request
   expect(send).toHaveBeenCalledWith({ type: "session.history", sessionId: "disconnected", refresh: true });
   expect(useStore.getState().historyLoadingIds.disconnected).toBe(false);
   expect(useStore.getState().historyFailedIds.disconnected).toBe(true);
-  expect(readTestToastCalls()).toEqual([expect.objectContaining({ variant: "error" })]);
+  expect(readTestToastCalls()).toEqual([]);
 });
 
 test("retries unfinished history runs with increasing bounded polling delays", async () => {

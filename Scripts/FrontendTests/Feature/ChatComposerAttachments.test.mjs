@@ -68,7 +68,7 @@ test("chat composer waits for an attachment upload and sends the uploaded refere
   await waitFor(() => expect(screen.queryByText("report.txt")).not.toBeInTheDocument());
 });
 
-test("chat composer preserves failed attachments for removal and reports the upload error", async () => {
+test("chat composer keeps upload failures visible without duplicating them in a toast", async () => {
   uploadFileMock.mockRejectedValue(new Error("upload service unavailable"));
   const user = userEvent.setup();
   renderComposer(createComposerProps());
@@ -77,14 +77,9 @@ test("chat composer preserves failed attachments for removal and reports the upl
   await user.upload(fileInput, new File(["broken"], "broken.txt", { type: "text/plain" }));
 
   expect(await screen.findByText("broken.txt")).toBeVisible();
-  await waitFor(() => {
-    expect(readTestToastCalls()).toContainEqual(
-      expect.objectContaining({
-        variant: "error",
-        options: { description: "upload service unavailable" },
-      }),
-    );
-  });
+  expect(await screen.findByText("upload service unavailable")).toBeVisible();
+  expect(screen.getByRole("button", { name: "再次上传 broken.txt" })).toBeVisible();
+  expect(readTestToastCalls()).toEqual([]);
   await user.click(screen.getByRole("button", { name: "移除附件" }));
   await waitFor(() => expect(screen.queryByText("broken.txt")).not.toBeInTheDocument());
 });
