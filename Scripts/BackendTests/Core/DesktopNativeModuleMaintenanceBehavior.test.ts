@@ -34,6 +34,36 @@ describe("desktop native module maintenance", () => {
     expect(adapter.wait).not.toHaveBeenCalled();
   });
 
+  test("keeps a Node-compatible native module and clears stale Electron metadata", async () => {
+    const adapter = createAdapter();
+
+    await new DesktopNativeModuleMaintenance("C:/workspace", adapter).ensureNodeCompatibility();
+
+    expect(adapter.probe).toHaveBeenCalledWith("node", expect.any(Array), "C:/workspace");
+    expect(adapter.run).not.toHaveBeenCalled();
+    expect(adapter.removeFile).toHaveBeenCalledTimes(1);
+  });
+
+  test("restores Node compatibility after an interrupted Electron session", async () => {
+    const adapter = createAdapter({ probe: vi.fn().mockResolvedValue(false) });
+
+    await new DesktopNativeModuleMaintenance("C:/workspace", adapter).ensureNodeCompatibility();
+
+    expect(adapter.run).toHaveBeenCalledWith("npm", ["rebuild", "better-sqlite3"], "C:/workspace");
+    expect(adapter.removeFile).toHaveBeenCalledTimes(1);
+  });
+
+  test("rebuilds only declared native modules for Electron compatibility", async () => {
+    const adapter = createAdapter();
+
+    await new DesktopNativeModuleMaintenance("C:/workspace", adapter).rebuildForElectronCompatibility("42.5.0", "x64");
+
+    expect(adapter.run).toHaveBeenCalledWith(
+      "electron-rebuild",
+      ["--force", "--only", "better-sqlite3", "--version", "42.5.0", "--arch", "x64"],
+      "C:/workspace",
+    );
+  });
   test("restores every declared native module and clears rebuild metadata", async () => {
     const adapter = createAdapter();
 
@@ -66,6 +96,7 @@ function createAdapter(
 ): DesktopNativeModuleMaintenanceAdapter {
   return {
     removeFile: vi.fn().mockResolvedValue(undefined),
+    probe: vi.fn().mockResolvedValue(true),
     run: vi.fn().mockResolvedValue(0),
     wait: vi.fn().mockResolvedValue(undefined),
     ...overrides,

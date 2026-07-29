@@ -443,6 +443,7 @@ function inspectDesktopPackageConfig(): string[] {
       ? []
       : ["package.json build.extraMetadata.main must point to Dist/Apps/Desktop/Main.js."]),
     ...inspectDesktopPackageScript(),
+    ...inspectDesktopDevelopmentScripts(),
     ...inspectDesktopFileSet("Packages/ToolPluginSdk", "node_modules/@senera/tool-plugin-sdk"),
     ...inspectDesktopFileSet("Packages/TerminalSidecar", "node_modules/@senera/terminal-sidecar"),
     ...inspectDesktopExtraResource(".senera/sandbox-runtime/terminal-sidecar", "TerminalSidecarRuntime"),
@@ -465,6 +466,20 @@ function inspectDesktopPackageConfig(): string[] {
   ];
 }
 
+function inspectDesktopDevelopmentScripts(): string[] {
+  return ["Apps/Desktop/RunDesktop.ts", "Apps/Desktop/RunDesktopLive.ts"].flatMap((file) => {
+    const source = readTextFile(path.join(workspaceRoot, file));
+    return [
+      ...inspectTextIncludes(source, file, [
+        "nativeMaintenance.ensureNodeCompatibility()",
+        "nativeMaintenance.rebuildForElectronCompatibility()",
+      ]),
+      ...(source.includes("install-app-deps")
+        ? [`${file} must rebuild only governed Electron native modules instead of scanning every dependency.`]
+        : []),
+    ];
+  });
+}
 function inspectDesktopPackageScript(): string[] {
   const scriptPath = path.join(workspaceRoot, "Apps", "Desktop", "PackageDesktop.ts");
   const source = fs.readFileSync(scriptPath, "utf8");
