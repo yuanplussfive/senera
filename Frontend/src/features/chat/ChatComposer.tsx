@@ -5,6 +5,7 @@ import type { UploadAttachmentData, ModelProviderListItem } from "../../api/even
 import type { UploadProgress } from "../../api/uploadClient";
 import { cn, formatFileSize } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { useResponsiveMode } from "../../shared/responsive";
 import { MotionButton, MotionList, MotionPresenceItem, motionTimings, useMotionLevel } from "../../shared/motion";
 import {
@@ -34,6 +35,8 @@ const ACTIVE_LAYER_SELECTOR = '[role="dialog"], [role="alertdialog"], [role="men
 export interface ChatComposerProps {
   disabled: boolean;
   running: boolean;
+  value?: string;
+  onValueChange?: (value: string) => void;
   modelConfig: ChatModelConfig;
   presetConfig: ChatPresetConfig;
   runtime: {
@@ -48,13 +51,18 @@ export interface ChatComposerProps {
 export function ChatComposer({
   disabled,
   running,
+  value: controlledValue,
+  onValueChange,
   modelConfig,
   presetConfig,
   runtime,
   onSend,
   onCancel,
 }: ChatComposerProps): JSX.Element {
-  const [value, setValue] = useState("");
+  const locale = useFrontendLocale();
+  const [internalValue, setInternalValue] = useState("");
+  const value = controlledValue ?? internalValue;
+  const setValue = onValueChange ?? setInternalValue;
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachments = useComposerAttachments({
@@ -67,14 +75,18 @@ export function ChatComposer({
 
   const hint = useMemo(() => {
     if (running) {
-      return frontendMessage(prefersCompactControls ? "chat.composer.hintRunningCompact" : "chat.composer.hintRunning");
+      return frontendMessage(
+        prefersCompactControls ? "chat.composer.hintRunningCompact" : "chat.composer.hintRunning",
+        {},
+        locale,
+      );
     }
-    if (runtime.socketStatus === "open") return frontendMessage("chat.composer.hintOpen");
+    if (runtime.socketStatus === "open") return frontendMessage("chat.composer.hintOpen", {}, locale);
     if (runtime.socketStatus === "connecting" || runtime.socketStatus === "idle") {
-      return frontendMessage("chat.composer.hintIdle");
+      return frontendMessage("chat.composer.hintIdle", {}, locale);
     }
-    return frontendMessage("chat.composer.hintDisconnected");
-  }, [prefersCompactControls, runtime.socketStatus, running]);
+    return frontendMessage("chat.composer.hintDisconnected", {}, locale);
+  }, [locale, prefersCompactControls, runtime.socketStatus, running]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
@@ -99,6 +111,12 @@ export function ChatComposer({
     el.style.height = "auto";
     el.style.height = value ? `${Math.min(el.scrollHeight, textareaMaxHeight)}px` : "auto";
   }, [textareaMaxHeight, value]);
+
+  useEffect(() => {
+    if (controlledValue === undefined || !controlledValue || document.activeElement === taRef.current) return;
+    taRef.current?.focus();
+    taRef.current?.setSelectionRange(controlledValue.length, controlledValue.length);
+  }, [controlledValue]);
 
   const submit = (queueMode?: MessageQueueMode): void => {
     const text = value.trim();

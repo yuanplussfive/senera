@@ -31,10 +31,7 @@ export function ToolDock({ items }: { items: ToolDockItem[] }): JSX.Element | nu
           aria-expanded={Boolean(item.active)}
           disabled={item.disabled}
           onClick={item.onSelect}
-          className={cn(
-            "h-7 w-7 rounded-md",
-            item.active && "bg-ink-900/[0.07] text-ink-900 shadow-[inset_0_0_0_1px_rgb(var(--color-ink-200)/0.7)]",
-          )}
+          className={cn("h-7 w-7 rounded-md", item.active && "bg-ink-900/[0.07] text-ink-900")}
         >
           {item.icon}
         </IconButton>

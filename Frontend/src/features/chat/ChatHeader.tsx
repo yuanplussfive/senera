@@ -1,16 +1,18 @@
 import {
   Ban,
-  Box,
   CircleAlert,
   Clock3,
+  LoaderCircle,
   ListTree,
   MessageSquareText,
   PanelLeftOpen,
+  Shield,
+  ShieldAlert,
+  ShieldOff,
 } from "lucide-react";
 import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
 import { sandboxStatusAvailabilitySuffix, sandboxStatusDetail } from "../sandbox/sandboxPreparationPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { cn } from "../../lib/util";
 import { IconButton, Tooltip } from "../../shared/ui";
 import { ToolDock } from "./ToolDock";
 
@@ -49,7 +51,10 @@ export function ChatHeader({
           <PanelLeftOpen className="h-4 w-4" />
         </IconButton>
       ) : null}
-      <h1 className="min-w-0 flex-1 truncate text-[14.5px] font-semibold text-content-strong">{title}</h1>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5" data-chat-header-title>
+        <h1 className="min-w-0 truncate text-[14.5px] font-semibold text-content-strong">{title}</h1>
+        <SandboxStatusBadge status={sandboxStatus} />
+      </div>
       {waitingForApproval ? (
         <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-umber-200 bg-umber-50 px-2 py-0.5 font-mono text-[10px] text-umber-600">
           <Clock3 className="h-3 w-3" />
@@ -71,7 +76,6 @@ export function ChatHeader({
           {frontendMessage("workflow.run.status.cancelled")}
         </span>
       ) : null}
-      <SandboxStatusBadge status={sandboxStatus} />
       {onOpenWorkflowPanel ? (
         <ToolDock
           items={[
@@ -88,8 +92,10 @@ export function ChatHeader({
   );
 }
 
-function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | null }): JSX.Element {
+function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | null }): JSX.Element | null {
+  if (!status || status.state === "ready" || status.state === "unknown") return null;
   const presentation = readSandboxStatusPresentation(status);
+  const StatusIcon = presentation.Icon;
 
   return (
     <Tooltip
@@ -100,22 +106,20 @@ function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | n
         </span>
       }
       side="bottom"
-      align="end"
+      align="start"
+      delayDuration={150}
     >
       <span
         role="status"
         tabIndex={0}
         aria-label={presentation.label}
-        data-sandbox-status={status?.state ?? "unknown"}
-        className="relative ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-content-muted transition-colors duration-150 ease-out hover:bg-surface-hover hover:text-content-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+        data-sandbox-status={status.state}
+        data-window-no-drag
+        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-content-muted transition-colors duration-150 ease-out hover:text-content-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
       >
-        <Box className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-        <span
-          className={cn(
-            "pointer-events-none absolute bottom-[6px] right-[6px] h-[5px] w-[5px] rounded-full ring-1 ring-surface-canvas",
-            presentation.indicatorClassName,
-          )}
-          data-sandbox-status-indicator
+        <StatusIcon
+          className={`h-3.5 w-3.5 ${presentation.iconClassName ?? ""}`}
+          strokeWidth={1.8}
           aria-hidden="true"
         />
       </span>
@@ -126,7 +130,8 @@ function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | n
 function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null): {
   label: string;
   tooltip: string;
-  indicatorClassName: string;
+  Icon: typeof Shield;
+  iconClassName?: string;
 } {
   const state = status?.state ?? "unknown";
   const detail = sandboxStatusDetail(status);
@@ -137,34 +142,36 @@ function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null
     disabled: {
       label: frontendMessage("sandbox.status.disabled"),
       tooltip: commonTooltip,
-      indicatorClassName: "bg-ink-300",
+      Icon: ShieldOff,
     },
     unknown: {
       label: frontendMessage("sandbox.status.unknown"),
       tooltip: commonTooltip,
-      indicatorClassName: "bg-ink-300",
+      Icon: Shield,
     },
     preparing: {
       label: frontendMessage("sandbox.status.preparing"),
       tooltip: commonTooltip,
-      indicatorClassName: "bg-umber-500 motion-safe:animate-pulse",
+      Icon: LoaderCircle,
+      iconClassName: "motion-safe:animate-spin",
     },
     ready: {
       label: frontendMessage("sandbox.status.ready"),
       tooltip: commonTooltip,
-      indicatorClassName: "bg-moss-500",
+      Icon: Shield,
     },
     unavailable: {
       label: frontendMessage("sandbox.status.unavailable"),
       tooltip: commonTooltip,
-      indicatorClassName: "bg-brick-500",
+      Icon: ShieldAlert,
     },
   } satisfies Record<
     SandboxRuntimeState,
     {
       label: string;
       tooltip: string;
-      indicatorClassName: string;
+      Icon: typeof Shield;
+      iconClassName?: string;
     }
   >;
 

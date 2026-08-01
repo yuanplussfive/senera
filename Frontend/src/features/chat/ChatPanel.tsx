@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
+import { useState } from "react";
 import { useStore, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
 import { useChatState } from "../../store/selectors/chatSelectors";
 import { ErrorBoundary } from "../../shared/ui";
@@ -19,6 +20,7 @@ export function ChatPanel({
   messageActions,
   navigationActions,
 }: ChatPanelProps): JSX.Element {
+  const [composerValue, setComposerValue] = useState("");
   const activeId = useStore((s) => s.activeSessionId);
   const { session, historyLoaded, historyLoading, historyFailed } = useChatState(activeId);
   const { level, reduceMotion, disableMotion } = useMotionLevel();
@@ -66,9 +68,7 @@ export function ChatPanel({
           ) : messages.length === 0 && !isRunning ? (
             <ChatContentMotion key={`empty:${activeId ?? "none"}`} motionLevel={effectiveMotionLevel}>
               <div className="flex flex-1 items-center justify-center px-8 py-16 sm:px-12">
-                <EmptyChatState
-                  onSelectSuggestion={runtime.socketStatus === "open" ? messageActions.onSend : undefined}
-                />
+                <EmptyChatState onSelectSuggestion={runtime.socketStatus === "open" ? setComposerValue : undefined} />
               </div>
             </ChatContentMotion>
           ) : (
@@ -97,6 +97,8 @@ export function ChatPanel({
         <ChatComposer
           disabled={composerDisabled}
           running={!!isRunning}
+          value={composerValue}
+          onValueChange={setComposerValue}
           modelConfig={modelConfig}
           presetConfig={presetConfig}
           runtime={{

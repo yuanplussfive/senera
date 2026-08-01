@@ -102,10 +102,11 @@ describe("server authentication gate", () => {
     );
 
     expect(screen.getByRole("status")).toHaveTextContent(frontendMessage("auth.reconnecting"));
+    expect(screen.getByRole("status")).toHaveTextContent(frontendMessage("auth.reconnectingDescription"));
     expect(screen.queryByRole("button", { name: frontendMessage("auth.retry") })).not.toBeInTheDocument();
   });
 
-  test("does not invent a connection message when no server detail is available", () => {
+  test("shows a quiet connection failure with an icon-only retry action", () => {
     render(
       React.createElement(ServerAuthenticationGate, {
         state: { status: "failed", error: new Error("Failed to fetch") },
@@ -114,10 +115,13 @@ describe("server authentication gate", () => {
       }),
     );
 
-    expect(screen.queryByText(frontendMessage("auth.connectionFailed"))).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(frontendMessage("auth.connectionFailed"));
+    expect(screen.getByRole("heading", { name: "Senera" })).toBeVisible();
+    expect(screen.getByRole("button", { name: frontendMessage("auth.retry") })).toHaveTextContent("");
+    expect(document.querySelector("[data-auth-workspace-shell]")).not.toBeInTheDocument();
   });
 
-  test("shows the server-provided failure detail and offers retry", async () => {
+  test("keeps server diagnostics out of the quiet failure state and offers retry", async () => {
     const retry = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
     render(
@@ -128,7 +132,7 @@ describe("server authentication gate", () => {
       }),
     );
 
-    expect(screen.getByText("Backend unavailable")).toBeVisible();
+    expect(screen.queryByText("Backend unavailable")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: frontendMessage("auth.retry") }));
     expect(retry).toHaveBeenCalledTimes(1);
   });

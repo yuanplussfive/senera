@@ -1,5 +1,5 @@
 import React from "react";
-import { act, cleanup, screen } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -17,16 +17,29 @@ const { UploadPreviewProvider } = await import("../../../Frontend/src/features/c
 const { ScrollToBottomButton } = await import("../../../Frontend/src/features/chat/ScrollToBottomButton.tsx");
 const { MessageActions } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { MessageList, readMessageListItemKey } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
-const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
+const { frontendMessage, FrontendLocales } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
+const { setFrontendLocale } = await import("../../../Frontend/src/i18n/frontendLocaleStore.ts");
 const { readMessageActionIntents } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } =
   await import("../../../Frontend/src/store/sessionStore.ts");
 
 afterEach(() => {
   cleanup();
+  setFrontendLocale(FrontendLocales.ZhCn);
   vi.clearAllMocks();
   vi.restoreAllMocks();
   clearPersistedStore();
+});
+
+test("chat composer updates its memoized hint when the frontend locale changes", async () => {
+  setFrontendLocale(FrontendLocales.ZhCn);
+  renderWithFrontendProviders(withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps())));
+
+  expect(screen.getByPlaceholderText("跟 senera 说点什么")).toBeInTheDocument();
+
+  act(() => setFrontendLocale(FrontendLocales.EnUs));
+
+  await waitFor(() => expect(screen.getByPlaceholderText("Tell senera what to do")).toBeInTheDocument());
 });
 
 test("message actions expose fork only for stable mutable request boundaries", () => {
@@ -245,7 +258,7 @@ test("chat model selector keeps the current conversation choice and exposes the 
   expect(onApplyDefaultModel).toHaveBeenCalledTimes(1);
 });
 
-test("chat panel routes grouped message actions through the empty state", async () => {
+test("chat panel fills the composer from an empty-state suggestion without sending", async () => {
   const onSend = vi.fn();
   const user = userEvent.setup();
   resetChatStore({
@@ -281,7 +294,9 @@ test("chat panel routes grouped message actions through the empty state", async 
   await user.click(screen.getByRole("button", { name: "整理日志" }));
 
   expect(screen.getByText("空会话")).toBeInTheDocument();
-  expect(onSend).toHaveBeenCalledWith("整理日志");
+  expect(onSend).not.toHaveBeenCalled();
+  expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveValue("整理日志");
+  expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveFocus();
 });
 
 test("chat panel shows the conversation skeleton before history loading is marked", () => {

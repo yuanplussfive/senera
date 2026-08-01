@@ -1,19 +1,43 @@
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { ApprovalRequestStrip } from "../../../Frontend/src/features/chat/ApprovalRequestStrip.tsx";
 import { EmptyChatState } from "../../../Frontend/src/features/chat/EmptyChatState.tsx";
 import { InteractionInputStrip } from "../../../Frontend/src/features/chat/InteractionInputStrip.tsx";
 import { LogoMark } from "../../../Frontend/src/shared/ui/Logo.tsx";
+import { FrontendLocales } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
+import { setFrontendLocale } from "../../../Frontend/src/i18n/frontendLocaleStore.ts";
 
 const { openExternalUrl } = vi.hoisted(() => ({ openExternalUrl: vi.fn() }));
 vi.mock("../../../Frontend/src/app/desktopBridge.ts", () => ({ openExternalUrl }));
 
 afterEach(() => {
   cleanup();
+  setFrontendLocale(FrontendLocales.ZhCn);
+  delete window.__SENERA_RUNTIME_CONFIG__?.emptySuggestions;
   vi.restoreAllMocks();
   openExternalUrl.mockReset();
+});
+
+test("built-in empty chat suggestions update with the frontend locale", () => {
+  window.__SENERA_RUNTIME_CONFIG__ ??= {};
+  window.__SENERA_RUNTIME_CONFIG__.emptySuggestions = [
+    "整理今天的工作优先级",
+    "分析一段错误日志",
+    "把需求拆成可执行步骤",
+  ];
+  setFrontendLocale(FrontendLocales.ZhCn);
+
+  render(React.createElement(EmptyChatState));
+
+  expect(screen.getByRole("heading", { name: "今天想做点什么？" })).toBeInTheDocument();
+  expect(screen.getByText("整理今天的工作优先级")).toBeInTheDocument();
+
+  act(() => setFrontendLocale(FrontendLocales.EnUs));
+
+  expect(screen.getByRole("heading", { name: "What do you want to do today?" })).toBeInTheDocument();
+  expect(screen.getByText("Prioritize today's work")).toBeInTheDocument();
 });
 
 test("approval strip resolves the selected pending tool approval", async () => {

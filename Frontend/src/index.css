@@ -507,7 +507,17 @@ html[data-senera-window-controls="custom"] [data-workflow-dock-titlebar-spacer] 
 
 html[data-senera-desktop-window="true"]
   [data-window-drag-region]
-  :is(button, a, input, textarea, select, [role="button"], [role="separator"], [contenteditable="true"]) {
+  :is(
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    [role="button"],
+    [role="separator"],
+    [contenteditable="true"],
+    [data-window-no-drag]
+  ) {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
