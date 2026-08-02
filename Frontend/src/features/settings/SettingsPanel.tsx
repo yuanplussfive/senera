@@ -7,7 +7,7 @@ export function SettingsPanel({
   children,
 }: {
   title: string;
-  description: string;
+  description?: string;
   children: ReactNode;
 }): JSX.Element {
   return (
@@ -16,7 +16,7 @@ export function SettingsPanel({
         <MetaLabel as="h3" size="sm">
           {title}
         </MetaLabel>
-        <p className="mt-1 text-[12px] leading-5 text-ink-500">{description}</p>
+        {description ? <p className="mt-1 text-[12px] leading-5 text-ink-500">{description}</p> : null}
       </div>
       {children}
     </section>

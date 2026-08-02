@@ -83,5 +83,6 @@ describe("desktop window chrome", () => {
     expect(document.querySelector("[data-desktop-window-controls]")).toHaveClass("z-40");
     expect(document.querySelector(".fixed.inset-0")).toHaveClass("z-50");
     expect(screen.getByRole("dialog", { name: "模态窗口" })).toHaveClass("z-50");
+    expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
   });
 });

@@ -291,7 +291,11 @@ export function readStoredAppearancePreference(readStorageValue: (key: string) =
   try {
     const raw = readStorageValue(appearancePreferenceStorageKey);
     if (!raw) return defaultAppearancePreference;
-    return normalizeAppearancePreference(JSON.parse(raw));
+    return {
+      ...normalizeAppearancePreference(JSON.parse(raw)),
+      fontFamily: defaultAppearancePreference.fontFamily,
+      fontScale: defaultAppearancePreference.fontScale,
+    };
   } catch {
     return defaultAppearancePreference;
   }

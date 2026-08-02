@@ -15,7 +15,7 @@ export const MotionButton = forwardRef<HTMLButtonElement, HTMLMotionProps<"butto
         type={type}
         whileTap={tapScale ? { scale: tapScale } : undefined}
         transition={motionTimings.fast}
-        className={cn(className)}
+        className={cn("select-none", className)}
         {...props}
       >
         {children}

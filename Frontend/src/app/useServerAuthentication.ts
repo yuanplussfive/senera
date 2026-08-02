@@ -10,6 +10,7 @@ import { AuthenticationSessionStates } from "../api/generatedEventCatalog";
 
 export type ServerAuthenticationState =
   | { readonly status: "loading" }
+  | { readonly status: "revalidating" }
   | { readonly status: "anonymous" }
   | { readonly status: "authenticated"; readonly authentication: ServerAuthorizedAuthentication }
   | { readonly status: "failed"; readonly error: Error };
@@ -40,6 +41,7 @@ export function useServerAuthentication(
 
   const refresh = useCallback(async (): Promise<void> => {
     const operation = ++operationRef.current;
+    setState((current) => (current.status === "loading" ? current : { status: "revalidating" }));
     try {
       const request = readServerAuthentication(httpBaseUrl);
       if (!initialRequestStartedRef.current) {

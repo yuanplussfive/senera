@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   accentColors,
-  appearanceFontFamilies,
   appearancePreferenceStorageKey,
   colorSchemes,
   defaultAppearancePreference,
-  fontScales,
   themeModes,
 } from "../../../Frontend/src/shared/theme/themeModel.ts";
 import {
@@ -23,8 +21,8 @@ describe("themeBootstrap", () => {
         themeMode: [...themeModes],
         colorScheme: [...colorSchemes],
         accentColor: [...accentColors],
-        fontFamily: [...appearanceFontFamilies],
-        fontScale: [...fontScales],
+        fontFamily: [defaultAppearancePreference.fontFamily],
+        fontScale: [defaultAppearancePreference.fontScale],
       },
       accentColorByScheme: recommendedAccentColors,
     });

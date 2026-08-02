@@ -1,4 +1,5 @@
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { useFrontendLocale } from "../i18n/useFrontendLocale";
 import { ListTree, PanelRightClose, SquareTerminal } from "lucide-react";
 import { motion, type Transition } from "framer-motion";
 import { cn } from "../lib/util";
@@ -66,17 +67,15 @@ export type WorkflowDockTool = "execution" | "terminal";
 const WORKFLOW_DOCK_ITEMS = [
   {
     id: "execution",
-    label: frontendMessage("workflow.dock.execution"),
-    tooltip: frontendMessage("workflow.dock.execution"),
+    messageKey: "workflow.dock.execution",
     Icon: ListTree,
   },
   {
     id: "terminal",
-    label: frontendMessage("workflow.dock.terminal"),
-    tooltip: frontendMessage("workflow.dock.terminal"),
+    messageKey: "workflow.dock.terminal",
     Icon: SquareTerminal,
   },
-] as const satisfies readonly { id: WorkflowDockTool; label: string; tooltip: string; Icon: typeof ListTree }[];
+] as const;
 
 type WorkflowDockPanelProps = {
   hidePanelTitle?: boolean;
@@ -149,6 +148,7 @@ export function AppShell({
   onWorkflowDrawerOpenChange,
   responsiveMode,
 }: AppShellProps): JSX.Element {
+  const locale = useFrontendLocale();
   const sidebarCollapsed = useStore((state) => state.sidebarCollapsed);
   const rightPanelCollapsed = useStore((state) => state.rightPanelCollapsed);
   const workflowDockWidth = useStore((state) => state.workflowDockWidth);
@@ -296,7 +296,7 @@ export function AppShell({
             data-workflow-dock-tabs
             data-workflow-dock-tabs-list
           >
-            {WORKFLOW_DOCK_ITEMS.map(({ id, label }) => (
+            {WORKFLOW_DOCK_ITEMS.map(({ id, messageKey }) => (
               <TabsTrigger
                 key={id}
                 value={id}
@@ -311,7 +311,7 @@ export function AppShell({
                     data-workflow-dock-active-indicator={presentation}
                   />
                 ) : null}
-                <span className="relative z-10 min-w-0 truncate">{label}</span>
+                <span className="relative z-10 min-w-0 truncate">{frontendMessage(messageKey, {}, locale)}</span>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -437,7 +437,7 @@ export function AppShell({
                 initial={disableMotion || reduceMotion ? false : { opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={workflowPanelTransition}
-                className="pointer-events-auto absolute right-0 flex flex-col items-center gap-1 rounded-full border border-line-subtle bg-surface-raised p-1 shadow-[var(--theme-overlay-shadow)]"
+                className="pointer-events-auto absolute right-0 flex flex-col items-center gap-1 rounded-full border border-line-subtle bg-surface-raised p-1"
                 style={{
                   top: "calc(var(--senera-titlebar-height, 0px) + 12px)",
                   width: WORKFLOW_DOCK_CAPSULE_WIDTH,
@@ -446,11 +446,11 @@ export function AppShell({
                 aria-label={frontendMessage("workflow.dock.label")}
                 data-workflow-dock-capsule
               >
-                {WORKFLOW_DOCK_ITEMS.map(({ id, tooltip, Icon }) => (
+                {WORKFLOW_DOCK_ITEMS.map(({ id, messageKey, Icon }) => (
                   <IconButton
                     key={id}
-                    label={tooltip}
-                    tooltip={tooltip}
+                    label={frontendMessage(messageKey, {}, locale)}
+                    tooltip={frontendMessage(messageKey, {}, locale)}
                     tooltipSide="bottom"
                     tone="muted"
                     aria-expanded={false}

@@ -55,6 +55,10 @@ function verifyGlobalProvider(): void {
 
   assert.ok(imports.includes("../src/index.css"), "Ladle Provider must load the real src/index.css.");
   assert.ok(
+    imports.includes("../src/styles/transitions.css"),
+    "Ladle Provider must load the production transition styles.",
+  );
+  assert.ok(
     imports.includes("../src/shared/theme/themeModel"),
     "Ladle Provider must create tokens through the real theme model.",
   );

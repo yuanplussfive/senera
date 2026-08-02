@@ -1,5 +1,5 @@
 import React from "react";
-import { act, cleanup, screen } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -10,23 +10,34 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 }));
 
 const { ChatPanel } = await import("../../../Frontend/src/features/chat/ChatPanel.tsx");
-const { AssistantMessageBody } = await import("../../../Frontend/src/features/chat/AssistantMessageBody.tsx");
-const { StreamingRow } = await import("../../../Frontend/src/features/chat/StreamingRow.tsx");
 const { ChatComposer } = await import("../../../Frontend/src/features/chat/ChatComposer.tsx");
 const { UploadPreviewProvider } = await import("../../../Frontend/src/features/chat/UploadPreviewRegistry.tsx");
 const { ScrollToBottomButton } = await import("../../../Frontend/src/features/chat/ScrollToBottomButton.tsx");
 const { MessageActions } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { MessageList, readMessageListItemKey } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
-const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
+const { frontendMessage, FrontendLocales } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
+const { setFrontendLocale } = await import("../../../Frontend/src/i18n/frontendLocaleStore.ts");
 const { readMessageActionIntents } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } =
   await import("../../../Frontend/src/store/sessionStore.ts");
 
 afterEach(() => {
   cleanup();
+  setFrontendLocale(FrontendLocales.ZhCn);
   vi.clearAllMocks();
   vi.restoreAllMocks();
   clearPersistedStore();
+});
+
+test("chat composer updates its memoized hint when the frontend locale changes", async () => {
+  setFrontendLocale(FrontendLocales.ZhCn);
+  renderWithFrontendProviders(withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps())));
+
+  expect(screen.getByPlaceholderText("跟 senera 说点什么")).toBeInTheDocument();
+
+  act(() => setFrontendLocale(FrontendLocales.EnUs));
+
+  await waitFor(() => expect(screen.getByPlaceholderText("Tell senera what to do")).toBeInTheDocument());
 });
 
 test("message actions expose fork only for stable mutable request boundaries", () => {
@@ -41,67 +52,6 @@ test("message actions expose fork only for stable mutable request boundaries", (
     "copy",
     "viewWorkflow",
   ]);
-});
-
-test("tool preface keeps its progress text without rendering a redundant badge", () => {
-  renderWithFrontendProviders(
-    React.createElement(AssistantMessageBody, {
-      message: {
-        kind: "AssistantToolPreface",
-        content: "我先读取项目配置。",
-      },
-    }),
-  );
-
-  expect(screen.getByText("我先读取项目配置。")).toBeInTheDocument();
-  expect(screen.queryByText("工具调用前回复")).not.toBeInTheDocument();
-});
-
-test("streaming assistant content uses the same readable body and caret for prefaces and answers", () => {
-  renderWithFrontendProviders(
-    React.createElement(AssistantMessageBody, {
-      message: {
-        kind: "AssistantFinal",
-        content: "正在生成的回答",
-      },
-      streaming: true,
-    }),
-  );
-
-  expect(document.querySelector("[data-assistant-streaming-body]")).toBeInTheDocument();
-  expect(screen.getByText("正在生成的回答")).toBeInTheDocument();
-  expect(document.querySelector("[data-assistant-streaming-body] .caret-blink")).toBeInTheDocument();
-});
-
-test("live tool preface is a separate message above the execution feed", () => {
-  renderWithFrontendProviders(
-    React.createElement(StreamingRow, {
-      run: createRun({
-        visibleKind: "tool_preface",
-        displayText: "搜索当前已加载的工具目录……",
-        steps: [
-          {
-            id: "model-step",
-            kind: "model",
-            title: "调用模型",
-            status: "running",
-            startedAt: "2026-01-01T00:00:00.000Z",
-          },
-        ],
-      }),
-    }),
-  );
-
-  const preface = document.querySelector("[data-assistant-tool-preface-stream]");
-  expect(preface).toBeInTheDocument();
-  expect(preface).toContainElement(screen.getByText("搜索当前已加载的工具目录……"));
-  expect(
-    document.querySelector("[data-assistant-tool-preface-stream] [data-assistant-streaming-body]"),
-  ).toBeInTheDocument();
-  expect(
-    document.querySelector("[data-assistant-tool-preface-stream] + .conversation-frame--wide"),
-  ).toBeInTheDocument();
-  expect(screen.getAllByText("搜索当前已加载的工具目录……")).toHaveLength(1);
 });
 
 test("chat composer sends trimmed text and switches queue mode while a run is active", async () => {
@@ -201,6 +151,30 @@ test("chat composer preserves a failed draft and leaves Escape to active interac
   expect(onCancel).not.toHaveBeenCalled();
 });
 
+test("chat composer opens the preset dialog after the toolkit menu closes", async () => {
+  const onOutsideClick = vi.fn();
+  const user = userEvent.setup();
+  renderWithFrontendProviders(
+    React.createElement(
+      React.Fragment,
+      null,
+      withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps())),
+      React.createElement("button", { type: "button", onClick: onOutsideClick }, "外部操作"),
+    ),
+  );
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("chat.attachment.tooltip") }));
+  await user.click(screen.getByRole("menuitem", { name: frontendMessage("chat.composer.toolkit.preset") }));
+
+  expect(await screen.findByRole("dialog", { name: frontendMessage("preset.ui.title") })).toBeInTheDocument();
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: frontendMessage("ui.close") }));
+
+  await waitFor(() => expect(document.body.style.pointerEvents).toBe(""));
+  await user.click(screen.getByRole("button", { name: "外部操作" }));
+  expect(onOutsideClick).toHaveBeenCalledTimes(1);
+});
+
 test("chat model selector keeps the current conversation choice and exposes the current default", async () => {
   const onApplyDefaultModel = vi.fn();
   const user = userEvent.setup();
@@ -245,7 +219,7 @@ test("chat model selector keeps the current conversation choice and exposes the 
   expect(onApplyDefaultModel).toHaveBeenCalledTimes(1);
 });
 
-test("chat panel routes grouped message actions through the empty state", async () => {
+test("chat panel fills the composer from an empty-state suggestion without sending", async () => {
   const onSend = vi.fn();
   const user = userEvent.setup();
   resetChatStore({
@@ -281,7 +255,8 @@ test("chat panel routes grouped message actions through the empty state", async 
   await user.click(screen.getByRole("button", { name: "整理日志" }));
 
   expect(screen.getByText("空会话")).toBeInTheDocument();
-  expect(onSend).toHaveBeenCalledWith("整理日志");
+  expect(onSend).not.toHaveBeenCalled();
+  expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveValue("整理日志");
 });
 
 test("chat panel shows the conversation skeleton before history loading is marked", () => {

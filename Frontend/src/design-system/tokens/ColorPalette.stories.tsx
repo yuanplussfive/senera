@@ -1,6 +1,6 @@
 import type { Story } from "@ladle/react";
 import { colorSchemes, createAppearanceTokens, defaultAppearancePreference } from "../../shared/theme/themeModel";
-import { colorSchemeLabels, readColorSchemeStory } from "../../shared/theme/appearancePresentation";
+import { colorSchemeLabels } from "../../shared/theme/appearancePresentation";
 
 const colorRanges = {
   paper: [50, 100, 200, 300, 400],
@@ -86,10 +86,7 @@ export const AllSchemes: Story = () => (
 
       return (
         <div key={scheme} className="space-y-4">
-          <div className="flex items-center gap-3">
-            <h3 className="text-ink-900 text-lg font-medium">{colorSchemeLabels[scheme]}</h3>
-            <span className="text-ink-500 text-sm">— {readColorSchemeStory(scheme)}</span>
-          </div>
+          <h3 className="text-ink-900 text-lg font-medium">{colorSchemeLabels[scheme]}</h3>
 
           <div className="grid grid-cols-5 gap-2">
             {colorRanges.paper.map((shade) => {

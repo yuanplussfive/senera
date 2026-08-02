@@ -168,7 +168,7 @@ test.describe("authenticationMode=disabled", () => {
     await page.keyboard.press("Shift+Tab");
     await expect(save).toBeFocused();
 
-    await dialog.getByRole("button", { name: "关闭窗口" }).click();
+    await dialog.getByRole("button", { name: "关闭" }).click();
     await expect(dialog).toBeHidden();
     await expect(trigger).toBeFocused();
   });

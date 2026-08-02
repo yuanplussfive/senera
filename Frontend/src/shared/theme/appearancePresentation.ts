@@ -1,22 +1,12 @@
 import {
   defaultAppearancePreference,
   type AccentColor,
-  type AppearanceFontFamily,
   type AppearancePreference,
   type ColorScheme,
-  type FontScale,
   type ThemeMode,
 } from "./themeModel";
-import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
-import { colorSchemeStories, colorSchemeSwatches, recommendedAccentColors } from "./themeData";
-
-export type AppearancePreferenceId = keyof AppearancePreference;
-
-export interface AppearanceSummaryItem {
-  id: AppearancePreferenceId;
-  label: string;
-  value: string;
-}
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { colorSchemeSwatches, recommendedAccentColors } from "./themeData";
 
 export interface AppearanceTokenRow {
   label: string;
@@ -92,78 +82,6 @@ export const accentColorLabels = {
   },
 } as const satisfies Record<AccentColor, string>;
 
-export const fontFamilyLabels = {
-  get brand() {
-    return frontendMessage("appearance.fontFamily.brand");
-  },
-  get system() {
-    return frontendMessage("appearance.fontFamily.system");
-  },
-} as const satisfies Record<AppearanceFontFamily, string>;
-
-export const fontScaleLabels = {
-  get compact() {
-    return frontendMessage("appearance.fontScale.compact");
-  },
-  get standard() {
-    return frontendMessage("appearance.fontScale.standard");
-  },
-  get comfortable() {
-    return frontendMessage("appearance.fontScale.comfortable");
-  },
-  get large() {
-    return frontendMessage("appearance.fontScale.large");
-  },
-} as const satisfies Record<FontScale, string>;
-
-const appearanceFieldLabels = {
-  get themeMode() {
-    return frontendMessage("appearance.control.theme");
-  },
-  get colorScheme() {
-    return frontendMessage("appearance.control.colorScheme");
-  },
-  get accentColor() {
-    return frontendMessage("appearance.control.accent");
-  },
-  get fontFamily() {
-    return frontendMessage("appearance.control.font");
-  },
-  get fontScale() {
-    return frontendMessage("appearance.control.fontScale");
-  },
-} as const satisfies Record<AppearancePreferenceId, string>;
-
-export function createAppearanceSummary(preference: AppearancePreference): AppearanceSummaryItem[] {
-  return [
-    {
-      id: "themeMode",
-      label: appearanceFieldLabels.themeMode,
-      value: themeModeLabels[preference.themeMode],
-    },
-    {
-      id: "colorScheme",
-      label: appearanceFieldLabels.colorScheme,
-      value: colorSchemeLabels[preference.colorScheme],
-    },
-    {
-      id: "accentColor",
-      label: appearanceFieldLabels.accentColor,
-      value: accentColorLabels[preference.accentColor],
-    },
-    {
-      id: "fontFamily",
-      label: appearanceFieldLabels.fontFamily,
-      value: fontFamilyLabels[preference.fontFamily],
-    },
-    {
-      id: "fontScale",
-      label: appearanceFieldLabels.fontScale,
-      value: fontScaleLabels[preference.fontScale],
-    },
-  ];
-}
-
 export function isDefaultAppearancePreference(preference: AppearancePreference): boolean {
   return (
     preference.themeMode === defaultAppearancePreference.themeMode &&
@@ -191,10 +109,6 @@ export function readSchemeSwatch(value: ColorScheme): string {
 export function readSchemeSwatchStrip(value: ColorScheme): string[] {
   const swatch = colorSchemeSwatches[value];
   return [...swatch.paper.slice(0, 3), ...swatch.ink.slice(0, 2)].map(toRgbColor);
-}
-
-export function readColorSchemeStory(value: ColorScheme): string {
-  return frontendMessage(colorSchemeStories[value] as FrontendMessageKey);
 }
 
 export function readRecommendedAccent(value: ColorScheme): AccentColor {

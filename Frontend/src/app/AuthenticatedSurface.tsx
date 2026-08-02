@@ -30,7 +30,6 @@ export function AuthenticatedSurface({
   const defaultRightPanelCollapsed = useStore((state) => state.defaultRightPanelCollapsed);
   const setDefaultSidebarCollapsed = useStore((state) => state.setDefaultSidebarCollapsed);
   const setDefaultRightPanelCollapsed = useStore((state) => state.setDefaultRightPanelCollapsed);
-  const setMotionLevel = useStore((state) => state.setMotionLevel);
 
   return (
     <AppMotionProvider level={motionLevel}>
@@ -40,12 +39,10 @@ export function AuthenticatedSurface({
             <LazyDesktopSettingsSurface
               initialSection={settingsSection}
               values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
-              motionLevel={motionLevel}
               onValueChange={(id, value) => {
                 if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
                 if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
               }}
-              onMotionLevelChange={setMotionLevel}
               socketReconnectPolicy={socketReconnectPolicy}
             />
           </Suspense>

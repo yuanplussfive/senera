@@ -21,9 +21,7 @@ export function SettingsWorkbench({
   shellActions,
   environment,
   values,
-  motionLevel,
   onValueChange,
-  onMotionLevelChange,
   pluginSettings,
   systemConfig,
 }: SettingsWorkbenchProps): JSX.Element {
@@ -121,9 +119,7 @@ export function SettingsWorkbench({
         activeSection={activeSection}
         configDraftState={configDraftState}
         environment={environment}
-        motionLevel={motionLevel}
         onEntityDraftChange={setEntityDraftDirty}
-        onMotionLevelChange={onMotionLevelChange}
         onValueChange={onValueChange}
         pluginSettings={pluginSettings}
         systemConfig={systemConfig}

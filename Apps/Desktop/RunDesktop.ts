@@ -7,12 +7,11 @@ interface CommandInvocation {
   arguments: string[];
 }
 
-const steps = [
+const setupSteps = [
   command("npm", ["run", "build"]),
   command("npm", ["--workspace", "senera-frontend", "run", "build"]),
-  command("electron-builder", ["install-app-deps", "--platform=win32", "--arch=x64"]),
-  command("electron", ["Dist/Apps/Desktop/Main.js"]),
 ];
+const launchStep = command("electron", ["Dist/Apps/Desktop/Main.js"]);
 
 void runDesktop().then(
   (exitCode) => {
@@ -27,17 +26,25 @@ void runDesktop().then(
 async function runDesktop(): Promise<number> {
   const nativeMaintenance = new DesktopNativeModuleMaintenance(process.cwd());
   let exitCode = 0;
-  await nativeMaintenance.clearRebuildMetadata();
+  let nativeDependenciesRequireRestore = false;
+  await nativeMaintenance.ensureNodeCompatibility();
   try {
-    for (const step of steps) {
+    for (const step of setupSteps) {
       const result = run(step);
       if (result !== 0) {
         exitCode = result;
         break;
       }
     }
+    if (exitCode === 0) {
+      await nativeMaintenance.rebuildForElectronCompatibility();
+      nativeDependenciesRequireRestore = true;
+      exitCode = run(launchStep);
+    }
   } finally {
-    await nativeMaintenance.restoreNodeCompatibility();
+    if (nativeDependenciesRequireRestore) {
+      await nativeMaintenance.restoreNodeCompatibility();
+    }
   }
   return exitCode;
 }

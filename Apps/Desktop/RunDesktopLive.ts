@@ -40,13 +40,9 @@ async function main(): Promise<void> {
   desktopLiveLock = acquireDesktopLiveLock(process.cwd());
   try {
     registerShutdownHandlers();
-    await nativeMaintenance.clearRebuildMetadata();
-    nativeDependenciesRequireRestore = true;
+    await nativeMaintenance.ensureNodeCompatibility();
 
-    const setupSteps = [
-      command("npm", ["run", "build"]),
-      command("electron-builder", ["install-app-deps", "--platform=win32", "--arch=x64"]),
-    ];
+    const setupSteps = [command("npm", ["run", "build"])];
     for (const step of setupSteps) {
       const result = run(step);
       if (result !== 0) {
@@ -54,6 +50,9 @@ async function main(): Promise<void> {
         return;
       }
     }
+
+    await nativeMaintenance.rebuildForElectronCompatibility();
+    nativeDependenciesRequireRestore = true;
 
     let frontendUrl = configuredFrontendUrl || defaultFrontendUrl;
     let frontendProbe = await probeDesktopLiveFrontend(frontendUrl);

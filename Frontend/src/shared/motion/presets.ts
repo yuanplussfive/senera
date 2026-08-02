@@ -8,11 +8,11 @@ export type DialogPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTr
 export type DrawerPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export type OverlayVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export const dialogPresenceExitMs = 180;
+export const overlayPresenceExitMs = dialogPresenceExitMs;
 
 export const motionSprings = {
   snappy: { type: "spring", stiffness: 520, damping: 42 } satisfies Transition,
   soft: { type: "spring", stiffness: 360, damping: 34 } satisfies Transition,
-  drawer: { type: "spring", stiffness: 420, damping: 40, mass: 1 } satisfies Transition,
 };
 
 export const motionTimings = {
@@ -21,10 +21,17 @@ export const motionTimings = {
   dialog: { duration: 0.16, ease: easeOut } satisfies Transition,
   modalOpen: { duration: 0.16, ease: easeOut } satisfies Transition,
   modalClose: { duration: 0.1, ease: easeOut } satisfies Transition,
+  drawerOpen: { duration: 0.16, ease: easeOut } satisfies Transition,
+  drawerClose: { duration: 0.12, ease: easeOut } satisfies Transition,
   slow: { duration: 0.18, ease: easeOut } satisfies Transition,
   selection: { duration: 0.24, ease: easeInOut } satisfies Transition,
   panelOpen: { duration: 0.28, ease: easeOut } satisfies Transition,
   panelClose: { duration: 0.22, ease: easeOut } satisfies Transition,
+  menuOpen: { duration: 0.22, ease: [0.2, 0.8, 0.2, 1] } satisfies Transition,
+  menuClose: { duration: 0.19, ease: [0.4, 0, 0.2, 1] } satisfies Transition,
+  menuCheck: { duration: 0.22, ease: [0.2, 0.9, 0.2, 1.25] } satisfies Transition,
+  menuItem: { duration: 0.15, ease: "linear" } satisfies Transition,
+  iconRotate: { duration: 0.2, ease: [0.4, 0, 0.2, 1] } satisfies Transition,
 };
 
 export const motionRules = {
@@ -174,7 +181,12 @@ export function readDialogPanelTransition(
   if (level === "none") return { duration: 0 };
   if (level === "reduced") return motionTimings.base;
   if (preset === "modal") return state === "exit" ? motionTimings.modalClose : motionTimings.modalOpen;
-  return preset === "focus" ? motionTimings.dialog : motionTimings.dialog;
+  return motionTimings.dialog;
+}
+
+export function readDrawerTransition(level: MotionLevel, state: "show" | "exit" = "show"): Transition {
+  if (level === "none") return { duration: 0 };
+  return state === "exit" ? motionTimings.drawerClose : motionTimings.drawerOpen;
 }
 
 export function readDrawerVariants(level: MotionLevel, side: "left" | "right" = "right"): DrawerPanelVariants {

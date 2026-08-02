@@ -28,7 +28,7 @@ test("pending provider additions cannot be dismissed as if the command were canc
 
   expect(cancel).toBeDisabled();
   expect(providerId).toBeDisabled();
-  expect(screen.queryByRole("button", { name: frontendMessage("desktop.window.close") })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: frontendMessage("ui.close") })).not.toBeInTheDocument();
 
   fireEvent.keyDown(document, { key: "Escape" });
   fireEvent.click(cancel);

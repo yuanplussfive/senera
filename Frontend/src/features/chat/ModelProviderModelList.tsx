@@ -1,8 +1,10 @@
+import { AnimatePresence, motion } from "framer-motion";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useMemo, useRef, useState } from "react";
-import { Plus, RefreshCw, Search, Settings2, Star, Tags, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Search, Settings2, Star, Tags, Trash2, X } from "lucide-react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
+import { MotionIconSwap, motionTimings, useMotionLevel } from "../../shared/motion";
 import { ScrollArea, Spinner, Tooltip } from "../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
 import { defaultModelCapabilities, modelConfigId, providerEnabled, readModelCapabilities } from "./modelConfigData";
@@ -83,6 +85,9 @@ export function ProviderModelList({
   onRemoveModel?: (model: ModelProviderDraft) => void;
 }): JSX.Element {
   const [compactSearchOpen, setCompactSearchOpen] = useState(false);
+  const { reduceMotion, disableMotion } = useMotionLevel();
+  const compactSearchHidden = reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 };
+  const compactSearchVisible = reduceMotion ? { opacity: 1 } : { height: "auto", opacity: 1 };
   const scrollTopRef = useRef<HTMLDivElement | null>(null);
   const groupRefs = useRef(new Map<string, HTMLElement>());
   const scrollToGroup = (groupId: string | null): void => {
@@ -139,7 +144,9 @@ export function ProviderModelList({
                   aria-label={frontendMessage("config.model.searchPlaceholder")}
                   aria-pressed={compactSearchOpen}
                 >
-                  <Search className="h-4 w-4" />
+                  <MotionIconSwap stateKey={compactSearchOpen ? "close" : "search"}>
+                    {compactSearchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+                  </MotionIconSwap>
                 </button>
               </Tooltip>
             </div>
@@ -170,11 +177,27 @@ export function ProviderModelList({
               ) : null}
             </div>
           </div>
-          {compactSearchOpen ? (
-            <div className="mt-2.5">
-              <SearchInput value={search} disabled={disabled || !selectedProvider} onChange={onSearch} />
-            </div>
-          ) : null}
+          <AnimatePresence initial={false}>
+            {compactSearchOpen ? (
+              <motion.div
+                key="compact-model-search"
+                initial={disableMotion ? false : compactSearchHidden}
+                animate={{
+                  ...compactSearchVisible,
+                  transition: disableMotion ? { duration: 0 } : motionTimings.base,
+                }}
+                exit={{
+                  ...compactSearchHidden,
+                  transition: disableMotion ? { duration: 0 } : motionTimings.fast,
+                }}
+                className="overflow-hidden"
+              >
+                <div className="mt-2.5">
+                  <SearchInput value={search} disabled={disabled || !selectedProvider} onChange={onSearch} />
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </div>
       ) : (
         <ListHeader

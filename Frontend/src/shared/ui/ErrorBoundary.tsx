@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, type ErrorInfo, type ReactNode, useId } from "react";
 import { AlertCircle } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Button } from "./Button";
@@ -73,16 +73,19 @@ interface DefaultErrorFallbackProps {
 
 function DefaultErrorFallback({ onReset, onReload, presentation }: DefaultErrorFallbackProps): JSX.Element {
   const appPresentation = presentation === "app";
+  const titleId = useId();
+  const Container = appPresentation ? "main" : "section";
+  const Heading = appPresentation ? "h1" : "h2";
   return (
-    <main
+    <Container
       className={cn(
         "flex w-full items-start justify-center bg-[var(--theme-bg)] px-4 py-6 sm:px-6",
         appPresentation ? "min-h-dvh pt-[clamp(32px,12vh,120px)]" : "h-full",
       )}
       role="alert"
+      aria-labelledby={titleId}
     >
-      <section
-        aria-labelledby="error-boundary-title"
+      <div
         className={cn(
           "w-full bg-paper-100",
           appPresentation
@@ -93,9 +96,9 @@ function DefaultErrorFallback({ onReset, onReload, presentation }: DefaultErrorF
         <div className="flex items-start gap-4">
           <AlertCircle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-brick-600" />
           <div className="min-w-0 flex-1">
-            <h1 id="error-boundary-title" className="text-[15px] font-semibold text-ink-950 sm:text-[16px]">
+            <Heading id={titleId} className="text-[15px] font-semibold text-ink-950 sm:text-[16px]">
               {frontendMessage("app.errorBoundary.title")}
-            </h1>
+            </Heading>
             <p className="mt-1.5 max-w-[64ch] text-[13px] leading-5 text-ink-600">
               {frontendMessage("app.errorBoundary.description")}
             </p>
@@ -111,7 +114,7 @@ function DefaultErrorFallback({ onReset, onReload, presentation }: DefaultErrorF
             </div>
           </div>
         </div>
-      </section>
-    </main>
+      </div>
+    </Container>
   );
 }

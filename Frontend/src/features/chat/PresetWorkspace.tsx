@@ -4,7 +4,7 @@ import { cva } from "class-variance-authority";
 import { BadgeCheck, Check, CircleOff, Power, PowerOff, Save, ScrollText, Trash2 } from "lucide-react";
 import type { PresetFormat, PresetItem } from "../../api/eventTypes";
 import { cn, formatInteger, formatShortTime } from "../../lib/util";
-import { Button, ScrollArea, Spinner, StateView } from "../../shared/ui";
+import { Button, IconButton, Spinner, StateView } from "../../shared/ui";
 import { ConfigDiagnosticsList } from "./ConfigDiagnostics";
 import {
   PresetEditorLanguages,
@@ -76,19 +76,16 @@ export function PresetTextEditorFallback({
   );
 }
 
-const statusPillClass = cva(
-  "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] shadow-sm",
-  {
-    variants: {
-      state: {
-        active: "border-accent-border bg-accent-surface text-accent-content",
-        busy: "border-ink-200 bg-paper-50 text-ink-500",
-        dirty: "border-ink-200 bg-paper-100 text-umber-600",
-        idle: "border-ink-200 bg-paper-50 text-ink-500",
-      },
+const statusPillClass = cva("inline-flex h-6 shrink-0 items-center gap-1 rounded-md border px-1.5 text-[11px]", {
+  variants: {
+    state: {
+      active: "border-accent-border bg-accent-surface text-accent-content",
+      busy: "border-ink-200 bg-paper-50 text-ink-500",
+      dirty: "border-ink-200 bg-paper-100 text-umber-600",
+      idle: "border-ink-200 bg-paper-50 text-ink-500",
     },
   },
-);
+});
 
 export function PresetWorkspace({
   busy,
@@ -131,8 +128,14 @@ export function PresetWorkspace({
   onSave: (activate: boolean) => void;
   onToggleActive: () => void;
 }): JSX.Element {
+  const stats = useMemo(() => readEditorStats(draftContent), [draftContent]);
+  const jsonIssue = useMemo(
+    () => (draftFormat === "json" && draftContent.trim() ? validateDraft(draftFormat, draftContent) : null),
+    [draftContent, draftFormat],
+  );
+
   return (
-    <section className="flex min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[var(--theme-config-panel-bg)]">
+    <section className="flex min-h-0 w-full min-w-0 flex-col overflow-hidden bg-surface-panel">
       <PresetToolbar
         busy={busy}
         deleting={deleting}
@@ -153,7 +156,7 @@ export function PresetWorkspace({
 
       <Diagnostics items={diagnostics} />
 
-      <div className="min-h-0 flex-1 bg-[var(--theme-config-panel-bg)] p-3 sm:p-4">
+      <div className="min-h-0 flex-1 bg-surface-subtle p-3 sm:p-4">
         <PresetEditor
           content={draftContent}
           format={draftFormat}
@@ -162,90 +165,18 @@ export function PresetWorkspace({
           onChange={onContentChange}
         />
       </div>
-    </section>
-  );
-}
 
-export function PresetInspector({
-  active,
-  content,
-  dirty,
-  format,
-  name,
-  preset,
-  tokenState,
-}: {
-  active: boolean;
-  content: string;
-  dirty: boolean;
-  format: PresetFormat;
-  name: string;
-  preset: PresetItem | null;
-  tokenState: PresetTokenState;
-}): JSX.Element {
-  const stats = useMemo(() => readEditorStats(content), [content]);
-  const jsonIssue = useMemo(
-    () => (format === "json" && content.trim() ? validateDraft(format, content) : null),
-    [content, format],
-  );
-  const formatLabel = PresetFormatOptions.find((option) => option.value === format)?.label ?? format;
-  const displayName = readPresetDisplayName(name || preset?.name || "");
-  const statusLabel = readPresetStatusLabel({ active, dirty, jsonIssue });
-
-  return (
-    <aside className="flex h-full min-h-0 w-full min-w-0 flex-col border-l border-ink-200/70 bg-[var(--theme-config-nav-bg)]">
-      <div className="shrink-0 border-b border-ink-200/70 px-3.5 py-3.5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[12px] font-semibold text-ink-900">{frontendMessage("preset.ui.overview")}</div>
-            <div className="mt-1 truncate font-mono text-[11px] text-ink-500">
-              {displayName || frontendMessage("preset.ui.unnamed")}
-            </div>
-          </div>
-          <span
-            className={cn(
-              "shrink-0 border px-1.5 py-0.5 text-[10.5px]",
-              jsonIssue
-                ? "border-brick-200 bg-brick-50 text-brick-700"
-                : dirty
-                  ? "border-ink-200 bg-paper-100 text-umber-600"
-                  : active
-                    ? "border-accent-border bg-accent-surface text-accent-content"
-                    : "border-ink-200 bg-paper-50 text-ink-500",
-            )}
-          >
-            {statusLabel}
-          </span>
-        </div>
-      </div>
-
-      <PresetMetricGrid
-        formatLabel={formatLabel}
+      <PresetStatusBar
+        active={selectedIsActive}
+        busy={busy}
+        dirty={dirty}
+        format={draftFormat}
+        jsonIssue={jsonIssue}
         stats={stats}
         tokenState={tokenState}
-        updatedAt={preset?.updatedAt ?? null}
+        updatedAt={selected?.updatedAt ?? null}
       />
-
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="divide-y divide-ink-200/70">
-          <PresetInfoSection
-            displayName={displayName}
-            formatLabel={formatLabel}
-            statusLabel={statusLabel}
-            updatedAt={preset?.updatedAt ?? null}
-          />
-
-          {jsonIssue ? (
-            <section className="px-3.5 py-3">
-              <div className="text-[11px] font-medium text-brick-600">{frontendMessage("preset.ui.validation")}</div>
-              <div className="mt-2 whitespace-pre-wrap break-words border-l-2 border-brick-500 pl-2.5 text-[11.5px] leading-5 text-brick-600">
-                {jsonIssue}
-              </div>
-            </section>
-          ) : null}
-        </div>
-      </ScrollArea>
-    </aside>
+    </section>
   );
 }
 
@@ -284,9 +215,9 @@ function PresetToolbar({
 }): JSX.Element {
   const displayDraftName = readPresetDisplayName(draftName);
   return (
-    <div className="shrink-0 border-b border-ink-200/70 bg-[var(--theme-config-panel-bg)] px-3.5 py-3.5 sm:px-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:items-center">
+    <div className="shrink-0 border-b border-line-subtle bg-surface-panel px-3.5 py-3 sm:px-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <StatusPill active={selectedIsActive} dirty={dirty} busy={busy} />
           <input
             value={displayDraftName}
@@ -294,18 +225,30 @@ function PresetToolbar({
             placeholder="preset"
             spellCheck={false}
             aria-label={frontendMessage("preset.ui.name")}
-            className="h-9 min-w-0 flex-1 rounded-lg border border-ink-200 bg-paper-50 px-3 font-mono text-[12.5px] text-ink-800 shadow-sm outline-none transition placeholder:text-ink-400 focus:border-accent-border focus:ring-2 focus:ring-accent-focus"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-surface-panel px-3 font-mono text-[12.5px] text-content-primary shadow-sm outline-none transition placeholder:text-content-muted focus:border-accent-border focus:ring-2 focus:ring-accent-focus"
           />
-          <FormatSwitch value={draftFormat} onChange={onFormatChange} />
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          <FormatSwitch value={draftFormat} onChange={onFormatChange} />
+          <span className="mx-0.5 hidden h-5 w-px bg-line-subtle sm:block" />
+          <IconButton
+            label={frontendMessage("preset.ui.delete")}
+            tooltip={frontendMessage("preset.ui.delete")}
+            size="md"
+            tone="danger"
+            disabled={!selected || deleting}
+            onClick={onDelete}
+            className="bg-surface-panel"
+          >
+            {deleting ? <Spinner size="sm" /> : <Trash2 className="h-3.5 w-3.5" />}
+          </IconButton>
           <Button
             size="sm"
             variant={selectedIsActive ? "outline" : "ghost"}
             disabled={!selected || settingActive}
             onClick={onToggleActive}
-            className="h-9 bg-paper-50"
+            className="h-9 bg-surface-panel"
           >
             {settingActive ? (
               <Spinner size="sm" />
@@ -318,21 +261,10 @@ function PresetToolbar({
           </Button>
           <Button
             size="sm"
-            variant="ghost"
-            disabled={!selected || deleting}
-            onClick={onDelete}
-            className="h-9 text-brick-600 hover:bg-brick-50 hover:text-brick-700"
-          >
-            {deleting ? <Spinner size="sm" /> : <Trash2 className="h-3.5 w-3.5" />}
-            {frontendMessage("preset.ui.delete")}
-          </Button>
-          <span className="mx-0.5 hidden h-6 w-px bg-ink-200/80 sm:block" />
-          <Button
-            size="sm"
             variant="outline"
             disabled={saving || importing}
             onClick={() => onSave(false)}
-            className="h-9 bg-paper-50"
+            className="h-9 bg-surface-panel"
           >
             {saving ? <Spinner size="sm" /> : <Save className="h-3.5 w-3.5" />}
             {frontendMessage("preset.ui.save")}
@@ -369,20 +301,20 @@ function PresetEditor({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden border border-ink-200/80 bg-paper-50 shadow-panel">
-      <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-ink-200/70 bg-[var(--theme-config-toolbar-bg)] px-3.5">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden border border-line-subtle bg-paper-50 shadow-panel">
+      <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-line-subtle bg-surface-subtle px-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="grid h-7 w-7 place-items-center border border-ink-200/70 bg-paper-50 text-ink-500">
+          <span className="grid h-6 w-6 place-items-center rounded border border-line-subtle bg-surface-panel text-content-muted">
             <ScrollText className="h-3.5 w-3.5" />
           </span>
-          <span className="text-[11px] font-medium text-ink-600">{formatLabel}</span>
+          <span className="text-[11px] font-medium text-content-secondary">{formatLabel}</span>
           {jsonIssue ? (
             <span className="truncate rounded-md bg-brick-50 px-1.5 py-0.5 text-[11px] text-brick-700">
               {frontendMessage("preset.ui.jsonFailed")}
             </span>
           ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-2 text-[10.5px] tabular-nums text-ink-400">
+        <div className="flex shrink-0 items-center gap-2 text-[10.5px] tabular-nums text-content-muted">
           <span>{formatTokenState(tokenState)}</span>
           <span>{frontendMessage("preset.ui.lineCount", { count: formatInteger(stats.lines) })}</span>
           <span>{frontendMessage("preset.ui.characterCount", { count: formatInteger(stats.characters) })}</span>
@@ -408,77 +340,51 @@ function PresetEditor({
   );
 }
 
-function PresetMetricGrid({
-  formatLabel,
+function PresetStatusBar({
+  active,
+  busy,
+  dirty,
+  format,
+  jsonIssue,
   stats,
   tokenState,
   updatedAt,
 }: {
-  formatLabel: string;
+  active: boolean;
+  busy: boolean;
+  dirty: boolean;
+  format: PresetFormat;
+  jsonIssue: string | null;
   stats: PresetEditorStats;
   tokenState: PresetTokenState;
   updatedAt: string | null;
 }): JSX.Element {
+  const formatLabel = PresetFormatOptions.find((option) => option.value === format)?.label ?? format;
+  const statusLabel = readPresetStatusLabel({ active, dirty, jsonIssue });
+
   return (
-    <div className="shrink-0 border-b border-ink-200/70">
-      <div className="grid grid-cols-2">
-        <MetricCell label="Token" value={formatTokenState(tokenState)} />
-        <MetricCell label={frontendMessage("preset.ui.characters")} value={formatInteger(stats.characters)} />
-        <MetricCell label={frontendMessage("preset.ui.lines")} value={formatInteger(stats.lines)} />
-        <MetricCell label={frontendMessage("preset.ui.bytes")} value={formatInteger(stats.bytes)} />
-      </div>
-      <div className="grid grid-cols-[72px_minmax(0,1fr)] border-t border-ink-200/70 px-3.5 py-2 text-[11.5px] leading-5">
-        <span className="text-ink-400">{frontendMessage("preset.ui.format")}</span>
-        <span className="min-w-0 truncate text-ink-700">{formatLabel}</span>
+    <div className="flex shrink-0 items-center justify-between gap-3 border-t border-line-subtle bg-surface-subtle px-3.5 py-2 text-[11px] text-content-secondary sm:px-4">
+      <div className="flex min-w-0 items-center gap-2">
+        <StatusPill active={active} dirty={dirty} busy={busy} />
+        <span className="truncate text-content-muted">{formatLabel}</span>
         {updatedAt ? (
-          <>
-            <span className="text-ink-400">{frontendMessage("preset.ui.updated")}</span>
-            <span className="min-w-0 truncate text-ink-700">{formatShortTime(updatedAt)}</span>
-          </>
+          <span className="hidden truncate text-content-muted sm:inline">{formatShortTime(updatedAt)}</span>
         ) : null}
+        <span className="truncate text-content-muted">· {statusLabel}</span>
       </div>
-    </div>
-  );
-}
-
-function MetricCell({ label, value }: { label: string; value: string }): JSX.Element {
-  return (
-    <div className="border-r border-t border-ink-200/70 px-3.5 py-2 first:border-t-0 [&:nth-child(2)]:border-r-0 [&:nth-child(2)]:border-t-0 [&:nth-child(4)]:border-r-0">
-      <div className="text-[10.5px] text-ink-400">{label}</div>
-      <div className="mt-0.5 truncate text-[12.5px] tabular-nums text-ink-800">{value}</div>
-    </div>
-  );
-}
-
-function PresetInfoSection({
-  displayName,
-  formatLabel,
-  statusLabel,
-  updatedAt,
-}: {
-  displayName: string;
-  formatLabel: string;
-  statusLabel: string;
-  updatedAt: string | null;
-}): JSX.Element {
-  return (
-    <section className="px-3.5 py-3">
-      <div className="text-[11px] font-medium text-ink-500">{frontendMessage("preset.ui.fileInfo")}</div>
-      <dl className="mt-2 divide-y divide-ink-200/70 border-y border-ink-200/70">
-        <InfoRow label={frontendMessage("preset.ui.nameLabel")} value={displayName || "未命名预设"} />
-        <InfoRow label={frontendMessage("preset.ui.format")} value={formatLabel} />
-        <InfoRow label={frontendMessage("preset.ui.status")} value={statusLabel} />
-        {updatedAt ? <InfoRow label={frontendMessage("preset.ui.updated")} value={formatShortTime(updatedAt)} /> : null}
-      </dl>
-    </section>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }): JSX.Element {
-  return (
-    <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-2 py-1.5 text-[11.5px] leading-5">
-      <dt className="text-ink-400">{label}</dt>
-      <dd className="min-w-0 truncate text-ink-700">{value}</dd>
+      <div className="flex shrink-0 items-center gap-2 tabular-nums">
+        <span>{formatTokenState(tokenState)}</span>
+        <span className="hidden sm:inline">·</span>
+        <span className="hidden sm:inline">
+          {frontendMessage("preset.ui.characterCount", { count: formatInteger(stats.characters) })}
+        </span>
+        <span className="hidden sm:inline">·</span>
+        <span className="hidden sm:inline">
+          {frontendMessage("preset.ui.lineCount", { count: formatInteger(stats.lines) })}
+        </span>
+        <span>·</span>
+        <span>{frontendMessage("preset.ui.bytes", { count: formatInteger(stats.bytes) })}</span>
+      </div>
     </div>
   );
 }
@@ -500,13 +406,7 @@ function StatusPill({ active, dirty, busy }: { active: boolean; dirty: boolean; 
   const state = busy ? "busy" : dirty ? "dirty" : active ? "active" : "idle";
   return (
     <span className={statusPillClass({ state })}>
-      {busy ? (
-        <Spinner size="sm" />
-      ) : active ? (
-        <BadgeCheck className="h-3.5 w-3.5" />
-      ) : (
-        <CircleOff className="h-3.5 w-3.5" />
-      )}
+      {busy ? <Spinner size="sm" /> : active ? <BadgeCheck className="h-3 w-3" /> : <CircleOff className="h-3 w-3" />}
       {label}
     </span>
   );
@@ -520,14 +420,16 @@ function FormatSwitch({
   onChange: (value: PresetFormat) => void;
 }): JSX.Element {
   return (
-    <div className="grid h-9 shrink-0 grid-cols-3 rounded-lg border border-ink-200 bg-paper-50 p-1 shadow-sm">
+    <div className="grid h-9 shrink-0 grid-cols-3 rounded-lg border border-line bg-surface-panel p-1 shadow-sm">
       {PresetFormatOptions.map((item) => (
         <button
           key={item.value}
           type="button"
           className={cn(
             "inline-flex min-w-12 items-center justify-center rounded-md px-2 text-[11px] font-medium transition",
-            value === item.value ? "bg-paper-50 text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-800",
+            value === item.value
+              ? "bg-surface-panel text-content-primary shadow-sm"
+              : "text-content-muted hover:text-content-primary",
           )}
           onClick={() => onChange(item.value)}
         >
@@ -548,7 +450,7 @@ function Diagnostics({
   }
 
   return (
-    <div className="shrink-0 border-b border-ink-200/60 bg-paper-50 px-3 py-2 sm:px-5">
+    <div className="shrink-0 border-b border-line-subtle bg-paper-50 px-3 py-2 sm:px-5">
       <ConfigDiagnosticsList items={items} />
     </div>
   );

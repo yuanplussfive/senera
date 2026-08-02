@@ -56,10 +56,11 @@ test("restores an existing session and sends its CSRF token when signing out", a
   expect(handleRef.current.state).toEqual({ status: "anonymous" });
 });
 
-test("moves from a failed status through retry into an anonymous sign-in state", async () => {
+test("moves from a failed status through revalidation into an anonymous sign-in state", async () => {
+  const retryRequest = deferredPromise();
   authenticationApi.read
     .mockRejectedValueOnce(new Error("network unavailable"))
-    .mockResolvedValueOnce({ state: "anonymous" });
+    .mockImplementationOnce(() => retryRequest.promise);
   const handleRef = { current: null };
 
   render(React.createElement(AuthenticationHarness, { handleRef }));
@@ -68,8 +69,15 @@ test("moves from a failed status through retry into an anonymous sign-in state",
     expect(handleRef.current.state).toMatchObject({ status: "failed", error: new Error("network unavailable") });
   });
 
+  let refresh;
+  act(() => {
+    refresh = handleRef.current.refresh();
+  });
+  expect(handleRef.current.state).toEqual({ status: "revalidating" });
+
+  retryRequest.resolve({ state: "anonymous" });
   await act(async () => {
-    await handleRef.current.refresh();
+    await refresh;
   });
 
   expect(handleRef.current.state).toEqual({ status: "anonymous" });

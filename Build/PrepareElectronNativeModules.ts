@@ -27,7 +27,7 @@ export async function prepareElectronNativeModules(workspaceRoot: string): Promi
   stageRoot: string;
   prepared: boolean;
 }> {
-  const electronVersion = readPackageVersion(path.join(workspaceRoot, "node_modules", "electron"));
+  const electronVersion = readInstalledElectronVersion(workspaceRoot);
   const stageRoot = resolveElectronNativeStageRoot(workspaceRoot, electronVersion, process.arch);
   const fingerprint = await nativeStageFingerprint(workspaceRoot, electronVersion, process.arch);
   if (isCurrentStage(stageRoot, fingerprint)) return { stageRoot, prepared: false };
@@ -82,20 +82,31 @@ export function resolveElectronNativeStageRoot(
   return path.join(workspaceRoot, ElectronNativeStageDirectory, `electron-${electronVersion}-${architecture}`);
 }
 
+export function readInstalledElectronVersion(workspaceRoot: string): string {
+  return readPackageVersion(path.join(workspaceRoot, "node_modules", "electron"));
+}
+
+export function createElectronNativeRebuildArguments(
+  electronVersion: string,
+  architecture: NodeJS.Architecture,
+  moduleDirectory?: string,
+): string[] {
+  return [
+    "--force",
+    "--only",
+    ElectronNativeModuleNames.join(","),
+    ...(moduleDirectory ? ["--module-dir", moduleDirectory] : []),
+    "--version",
+    electronVersion,
+    "--arch",
+    architecture,
+  ];
+}
+
 function rebuildNativeModules(stagingRoot: string, electronVersion: string, architecture: NodeJS.Architecture): void {
   const result = spawnSync(
     "electron-rebuild",
-    [
-      "--force",
-      "--only",
-      ElectronNativeModuleNames.join(","),
-      "--module-dir",
-      stagingRoot,
-      "--version",
-      electronVersion,
-      "--arch",
-      architecture,
-    ],
+    createElectronNativeRebuildArguments(electronVersion, architecture, stagingRoot),
     {
       cwd: stagingRoot,
       stdio: "inherit",

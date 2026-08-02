@@ -9,18 +9,33 @@ import { MenuItemContent, menuItemClassName, menuSeparatorClassName, menuSurface
 export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
+export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
+
+function dropdownTransformOrigin(
+  side: "top" | "right" | "bottom" | "left" | undefined,
+  align: "start" | "center" | "end" | undefined,
+): string {
+  const horizontalOrigin =
+    side === "left" ? "100%" : side === "right" ? "0%" : align === "start" ? "0%" : align === "end" ? "100%" : "50%";
+  const verticalOrigin =
+    side === "top" ? "100%" : side === "bottom" ? "0%" : align === "start" ? "0%" : align === "end" ? "100%" : "50%";
+  return `${horizontalOrigin} ${verticalOrigin}`;
+}
 
 interface ContentProps extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content> {
   className?: string;
 }
 
 export const DropdownMenuContent = forwardRef<HTMLDivElement, ContentProps>(
-  ({ className, sideOffset = 6, collisionPadding = 8, children, ...props }, ref) => (
+  ({ className, side = "bottom", align = "center", sideOffset = 6, collisionPadding = 8, children, ...props }, ref) => (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         ref={ref}
+        side={side}
+        align={align}
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
+        style={{ transformOrigin: dropdownTransformOrigin(side, align) }}
         className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
         {...props}
       >
@@ -86,14 +101,16 @@ export const DropdownMenuMeta = forwardRef<HTMLDivElement, MetaProps>(
     <div
       ref={ref}
       className={cn(
-        "flex min-h-10 items-center gap-2.5 rounded-md px-2.5 py-2 text-[12px] leading-5 text-ink-500",
+        "flex min-h-9 items-center gap-2.5 rounded-[10px] px-2 py-2 text-[13px] leading-5 text-black/[0.600]",
         className,
       )}
       {...props}
     >
-      {icon ? <span className="grid h-4 w-4 shrink-0 place-items-center text-ink-500">{icon}</span> : null}
+      {icon ? (
+        <span className="grid h-[18px] w-[18px] shrink-0 place-items-center text-black/[0.451]">{icon}</span>
+      ) : null}
       <span className="min-w-0 flex-1 truncate">{children}</span>
-      {value ? <span className="shrink-0 text-[11px] text-ink-400">{value}</span> : null}
+      {value ? <span className="shrink-0 text-[11px] text-black/[0.302]">{value}</span> : null}
     </div>
   ),
 );
@@ -110,18 +127,18 @@ export const DropdownMenuCheckboxItem = forwardRef<
       ref={ref}
       checked={checked}
       className={cn(
-        "relative flex min-h-10 cursor-pointer select-none items-center rounded-md px-2.5 py-2 pl-8 text-[13px] leading-5 outline-none",
-        "transition-[background-color,color] duration-100",
+        "group relative flex min-h-9 cursor-pointer select-none items-center gap-2.5 rounded-[10px] px-2 py-2 text-left text-[14px] leading-5 text-black/[0.902] outline-none",
+        "transition-[background-color,color,transform] duration-[var(--menu-item-dur)]",
         isCoarsePointer && "min-h-11",
-        "text-content-primary data-[highlighted]:bg-accent-surface data-[highlighted]:text-accent-content",
+        "data-[highlighted]:bg-black/[0.031] active:scale-[0.985]",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-45",
         className,
       )}
       {...props}
     >
-      <span className="absolute left-2.5 grid h-4 w-4 place-items-center text-accent-content">
-        <DropdownMenuPrimitive.ItemIndicator>
-          <Check className="h-3.5 w-3.5" />
+      <span className="grid h-[18px] w-[18px] shrink-0 place-items-center">
+        <DropdownMenuPrimitive.ItemIndicator asChild>
+          <Check className="menu-check h-4 w-4 text-[oklch(0.6234_0.2055_256.39)]" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       <span className="min-w-0 flex-1 truncate">{children}</span>

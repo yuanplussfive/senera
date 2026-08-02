@@ -101,6 +101,52 @@ test("chat header exposes one neutral workflow tool entry for panel toggling", a
   expect(onToggle).toHaveBeenCalledTimes(1);
 });
 
+test("chat header shows only actionable sandbox states beside the title with detail in the tooltip", async () => {
+  const user = userEvent.setup();
+  renderWithFrontendProviders(
+    React.createElement(ChatHeader, {
+      title: "Header controls test",
+      sandboxStatus: { state: "unavailable", reason: "runtime_missing" },
+    }),
+  );
+
+  const statusMark = screen.getByRole("status", { name: frontendMessage("sandbox.status.unavailable") });
+  expect(statusMark).toHaveAttribute("data-sandbox-status", "unavailable");
+  expect(statusMark).toHaveAttribute("data-window-no-drag");
+  expect(statusMark).not.toHaveClass("border");
+  expect(statusMark).toHaveClass("text-content-muted");
+  expect(statusMark.className).not.toMatch(/bg-(brick|umber)|text-(brick|umber)|shadow/);
+  expect(document.querySelector("[data-chat-header-title]")).toContainElement(statusMark);
+  expect(screen.queryByRole("button", { name: frontendMessage("sandbox.status.unavailable") })).not.toBeInTheDocument();
+  expect(screen.queryByText(frontendMessage("sandbox.status.unavailable"))).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: frontendMessage("terminal.panel.open") })).not.toBeInTheDocument();
+
+  await user.hover(statusMark);
+  const tooltip = await screen.findByRole("tooltip");
+  expect(tooltip).toHaveTextContent(frontendMessage("sandbox.status.unavailable"));
+  expect(tooltip).toHaveTextContent(frontendMessage("sandbox.status.unavailableSuffix"));
+});
+
+test("chat header hides healthy and unsynchronized sandbox states", () => {
+  const { rerender } = renderWithFrontendProviders(
+    React.createElement(ChatHeader, {
+      title: "Healthy sandbox",
+      sandboxStatus: { state: "ready" },
+    }),
+  );
+
+  expect(document.querySelector("[data-sandbox-status]")).not.toBeInTheDocument();
+
+  rerender(
+    React.createElement(ChatHeader, {
+      title: "Unsynchronized sandbox",
+      sandboxStatus: { state: "unknown" },
+    }),
+  );
+
+  expect(document.querySelector("[data-sandbox-status]")).not.toBeInTheDocument();
+});
+
 test("persistent workflow panel owns its tool header and only collapse control", async () => {
   const onClosePanel = vi.fn();
   const user = userEvent.setup();

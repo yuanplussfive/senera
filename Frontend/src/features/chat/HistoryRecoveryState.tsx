@@ -1,8 +1,6 @@
-import { motion } from "framer-motion";
 import { AlertCircle } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/motion";
 import { ConversationFrame, RetryButton, Skeleton } from "../../shared/ui";
 
 export function HistoryRecoveryState({
@@ -16,9 +14,6 @@ export function HistoryRecoveryState({
   onRetry?: () => void;
   retryDisabled?: boolean;
 }): JSX.Element {
-  const { level, reduceMotion, disableMotion } = useMotionLevel();
-  const effectiveMotionLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
-
   if (failed) {
     return (
       <div className="flex flex-1 flex-col justify-end px-4 pb-8 sm:px-6">
@@ -33,7 +28,13 @@ export function HistoryRecoveryState({
                 {frontendMessage("session.historyFailedDescription")}
               </p>
             </div>
-            {onRetry ? <RetryButton onRetry={onRetry} disabled={retryDisabled} /> : null}
+            {retryDisabled ? (
+              <span role="status" className="shrink-0 text-[12px] font-medium text-ink-500">
+                {frontendMessage("session.historyWaitingForConnection")}
+              </span>
+            ) : onRetry ? (
+              <RetryButton onRetry={onRetry} label={frontendMessage("session.historyRetry")} />
+            ) : null}
           </div>
         </div>
       </div>
@@ -51,38 +52,15 @@ export function HistoryRecoveryState({
     >
       <div className="flex w-full flex-col gap-4">
         {Array.from({ length: rows }).map((_, index) => (
-          <HistorySkeletonRow
-            key={index}
-            index={index}
-            role={index % 2 === 0 ? "user" : "assistant"}
-            motionLevel={effectiveMotionLevel}
-          />
+          <HistorySkeletonRow key={index} index={index} role={index % 2 === 0 ? "user" : "assistant"} />
         ))}
       </div>
     </div>
   );
 }
 
-function HistorySkeletonRow({
-  role,
-  index,
-  motionLevel,
-}: {
-  role: "user" | "assistant";
-  index: number;
-  motionLevel: MotionLevel;
-}): JSX.Element {
-  const isUser = role === "user";
-  return (
-    <motion.div
-      initial={motionLevel === "none" ? false : "hidden"}
-      animate="show"
-      variants={readHistoryRowVariants(motionLevel, isUser)}
-      transition={motionLevel === "none" ? { duration: 0 } : { ...motionTimings.base, delay: index * 0.045 }}
-    >
-      {isUser ? <UserMessageSkeleton index={index} /> : <AssistantMessageSkeleton index={index} />}
-    </motion.div>
-  );
+function HistorySkeletonRow({ role, index }: { role: "user" | "assistant"; index: number }): JSX.Element {
+  return role === "user" ? <UserMessageSkeleton index={index} /> : <AssistantMessageSkeleton index={index} />;
 }
 
 function UserMessageSkeleton({ index }: { index: number }): JSX.Element {
@@ -110,23 +88,4 @@ function AssistantMessageSkeleton({ index }: { index: number }): JSX.Element {
       </div>
     </ConversationFrame>
   );
-}
-
-function readHistoryRowVariants(level: MotionLevel, isUser: boolean) {
-  if (level === "none") {
-    return {
-      hidden: { opacity: 1 },
-      show: { opacity: 1 },
-    };
-  }
-  if (level === "reduced") {
-    return {
-      hidden: { opacity: 0 },
-      show: { opacity: 1 },
-    };
-  }
-  return {
-    hidden: { opacity: 0, x: isUser ? 8 : -8, y: 3 },
-    show: { opacity: 1, x: 0, y: 0 },
-  };
 }

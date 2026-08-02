@@ -1,5 +1,6 @@
 import { Check, Copy } from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
+import { MotionIconSwap } from "../../../shared/motion";
 import { IconButton, useClipboardCopy } from "../../../shared/ui";
 import type { SettingsEnvironment } from "../SettingsWorkbenchContracts";
 import { SettingsPanel } from "../SettingsPanel";
@@ -64,7 +65,9 @@ function CommandRow({ label, command }: { label: string; command: string }): JSX
         tone="muted"
         onClick={() => void copyText(command)}
       >
-        {copied ? <Check className="h-3.5 w-3.5 text-accent-content" /> : <Copy className="h-3.5 w-3.5" />}
+        <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
+          {copied ? <Check className="h-3.5 w-3.5 text-accent-content" /> : <Copy className="h-3.5 w-3.5" />}
+        </MotionIconSwap>
       </IconButton>
     </div>
   );

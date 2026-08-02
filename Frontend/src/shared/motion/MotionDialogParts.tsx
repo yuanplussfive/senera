@@ -2,9 +2,9 @@ import { motion } from "framer-motion";
 import type { HTMLMotionProps } from "framer-motion";
 import { forwardRef } from "react";
 import {
-  motionTimings,
   readDialogPanelTransition,
   readDialogPanelVariants,
+  readDrawerTransition,
   readDrawerVariants,
   readOverlayTransition,
   readOverlayVariants,
@@ -42,8 +42,8 @@ export const MotionDialogOverlay = forwardRef<HTMLDivElement, MotionDialogOverla
       initial={variants.hidden}
       animate={variants[animationState]}
       transition={readOverlayTransition(effectiveLevel, animationState)}
-      style={{ ...style, pointerEvents, willChange: "opacity" }}
       {...props}
+      style={{ ...style, pointerEvents, willChange: "opacity" }}
     />
   );
 });
@@ -65,8 +65,8 @@ export const MotionDialogContent = forwardRef<HTMLDivElement, MotionDialogConten
         initial={usesCustomVariants ? initial : initial === false ? false : defaultVariants.hidden}
         animate={usesCustomVariants ? animationState : defaultVariants[animationState]}
         transition={transition ?? readDialogPanelTransition(effectiveLevel, motionPreset, animationState)}
-        style={{ ...style, pointerEvents, willChange: "opacity, transform" }}
         {...props}
+        style={{ ...style, pointerEvents, willChange: "opacity, transform" }}
       />
     );
   },
@@ -86,9 +86,9 @@ export const MotionSheetContent = forwardRef<HTMLDivElement, MotionSheetContentP
         ref={ref}
         initial={state === "open" ? false : variants.hidden}
         animate={variants[animationState]}
-        transition={disableMotion ? { duration: 0 } : motionTimings.dialog}
-        style={{ ...style, pointerEvents, willChange: "transform" }}
+        transition={readDrawerTransition(effectiveLevel, animationState)}
         {...props}
+        style={{ ...style, pointerEvents, willChange: "transform" }}
       />
     );
   },

@@ -7,16 +7,13 @@ export {
 export {
   accentColorLabels,
   colorSchemeLabels,
-  createAppearanceSummary,
-  fontFamilyLabels,
-  fontScaleLabels,
   isDefaultAppearancePreference,
   readAccentSwatch,
   readAppearanceTokenRows,
   readSchemeSwatch,
   themeModeLabels,
 } from "./appearancePresentation";
-export type { AppearanceSummaryItem, AppearanceTokenRow } from "./appearancePresentation";
+export type { AppearanceTokenRow } from "./appearancePresentation";
 export type {
   AccentColor,
   AppearanceFontFamily,

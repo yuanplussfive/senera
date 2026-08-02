@@ -45,7 +45,7 @@ describe("session persistence migration", () => {
       workflowDockWidth: 420,
     });
   });
-  it("keeps persisted motion level when migrating current preferences", () => {
+  it("normalizes persisted motion preferences to the product default", () => {
     const migrate = sessionPersistOptions.migrate;
     expect(migrate).toBeDefined();
     const migrated = migrate?.(
@@ -63,7 +63,7 @@ describe("session persistence migration", () => {
     );
     expect(migrated).toMatchObject({
       defaultSidebarCollapsed: true,
-      motionLevel: "reduced",
+      motionLevel: "full",
       workflowDockWidth: 555,
     });
   });
@@ -122,7 +122,7 @@ describe("readPersistedSessionPreferences", () => {
     ).toEqual({
       defaultSidebarCollapsed: true,
       defaultRightPanelCollapsed: false,
-      motionLevel: "reduced",
+      motionLevel: "full",
       selectedModelProviderId: "main",
       selectedModelProviderIdsBySession: { topic_a: "main" },
       userProfile: undefined,

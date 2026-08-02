@@ -256,7 +256,7 @@ export const AgentDefaults = {
       WebSocketUrl: "",
       ModelLabel: "senera",
       UserName: "you",
-      EmptySuggestions: ["整理今天的工作优先级", "分析一段错误日志", "把需求拆成可执行步骤"],
+      EmptySuggestions: [],
     },
   },
   Server: {

@@ -11,6 +11,8 @@ import {
 } from "../../../Frontend/src/shared/responsive/index.ts";
 import {
   readDialogPanelVariants,
+  readDrawerTransition,
+  readDrawerVariants,
   readFocusPanelVariants,
   readTapScale,
 } from "../../../Frontend/src/shared/motion/index.ts";
@@ -137,6 +139,16 @@ test("motion presets expose deterministic reduced-motion variants", () => {
   expect(readTapScale("full")).toBeLessThan(1);
   expect(readDialogPanelVariants("none").hidden).toEqual({ opacity: 0 });
   expect(readFocusPanelVariants("reduced").hidden).toEqual({ opacity: 0 });
+});
+
+test("drawer motion preserves direction while reducing movement and closing faster", () => {
+  expect(readDrawerVariants("full", "left").hidden).toEqual({ opacity: 1, x: "-100%" });
+  expect(readDrawerVariants("reduced", "right").hidden).toEqual({ opacity: 0 });
+  expect(readDrawerVariants("none", "right").exit).toEqual({ opacity: 1, x: "100%" });
+  expect(readDrawerTransition("full", "show").duration).toBe(0.16);
+  expect(readDrawerTransition("full", "exit").duration).toBe(0.12);
+  expect(readDrawerTransition("reduced", "exit").duration).toBe(0.12);
+  expect(readDrawerTransition("none", "show")).toEqual({ duration: 0 });
 });
 
 function createMediaQueryList(media, matches, listenerCounts) {

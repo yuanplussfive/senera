@@ -43,6 +43,32 @@ test("error boundary hides diagnostics and resets after its key changes", async 
   }
 });
 
+test("component presentation avoids main landmarks and uses a unique labelled alert", () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const preventExpectedError = (event) => event.preventDefault();
+  window.addEventListener("error", preventExpectedError);
+
+  try {
+    render(
+      React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(ErrorBoundary, null, React.createElement(ThrowingChild, { shouldThrow: true })),
+        React.createElement(ErrorBoundary, null, React.createElement(ThrowingChild, { shouldThrow: true })),
+      ),
+    );
+
+    expect(screen.queryByRole("main")).not.toBeInTheDocument();
+    const alerts = screen.getAllByRole("alert");
+    const labelledBy = alerts.map((alert) => alert.getAttribute("aria-labelledby"));
+    expect(labelledBy.every(Boolean)).toBe(true);
+    expect(new Set(labelledBy).size).toBe(alerts.length);
+    for (const id of labelledBy) expect(document.getElementById(id)).toBeInTheDocument();
+  } finally {
+    window.removeEventListener("error", preventExpectedError);
+  }
+});
+
 test("app presentation provides localized retry and reload actions", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   const reload = vi.fn();

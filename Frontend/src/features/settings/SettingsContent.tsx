@@ -22,9 +22,7 @@ export function SettingsContent({
   activeSection,
   configDraftState,
   environment,
-  motionLevel,
   onEntityDraftChange,
-  onMotionLevelChange,
   onValueChange,
   pluginSettings,
   systemConfig,
@@ -38,9 +36,7 @@ export function SettingsContent({
     activeSection,
     configDraftState,
     environment,
-    motionLevel,
     onEntityDraftChange,
-    onMotionLevelChange,
     onValueChange,
     pluginSettings,
     systemConfig,
@@ -62,9 +58,7 @@ function renderSettingsContent({
   activeSection,
   configDraftState,
   environment,
-  motionLevel,
   onEntityDraftChange,
-  onMotionLevelChange,
   onValueChange,
   pluginSettings,
   systemConfig,
@@ -78,14 +72,7 @@ function renderSettingsContent({
     case "appearance":
       return <AppearanceSettings />;
     case "general":
-      return (
-        <GeneralSettings
-          values={values}
-          motionLevel={motionLevel}
-          onValueChange={onValueChange}
-          onMotionLevelChange={onMotionLevelChange}
-        />
-      );
+      return <GeneralSettings values={values} onValueChange={onValueChange} />;
     case "runtime":
     case "planning":
     case "retrieval":

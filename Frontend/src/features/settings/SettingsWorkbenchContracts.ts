@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import type { PluginSettingsCommandsHandle } from "../../app/usePluginSettingsCommands";
-import type { MotionLevel } from "../../shared/motion";
 import type { LayoutPreferenceId } from "../session/types";
 import type { SettingsSystemConfigHandle } from "./SettingsContracts";
 import type { SettingsSectionId } from "./types";
@@ -19,9 +18,7 @@ export interface SettingsWorkbenchProps {
   shellActions?: ReactNode;
   environment: SettingsEnvironment;
   values: Record<LayoutPreferenceId, boolean>;
-  motionLevel: MotionLevel;
   onValueChange: (id: LayoutPreferenceId, value: boolean) => void;
-  onMotionLevelChange: (level: MotionLevel) => void;
   pluginSettings?: PluginSettingsCommandsHandle;
   systemConfig?: SettingsSystemConfigHandle;
 }

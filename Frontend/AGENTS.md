@@ -1,6 +1,6 @@
 # Frontend Agent 工作规则
 
-在修改本目录前，先阅读 `../docs/Development/FrontendLadleConstraints.md`。这里的规则适用于人工和 Agent 修改。
+在修改本目录前，先阅读 `../docs/Development/FrontendMotionPolicy.md` 和 `../docs/Development/FrontendLadleConstraints.md`。前者定义设计 Skill、动效技术与依赖边界，后者定义公共组件和 Ladle 契约。这里的规则适用于人工和 Agent 修改。
 
 ## 公共组件与 Ladle
 

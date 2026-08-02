@@ -18,16 +18,12 @@ const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 export function DesktopSettingsSurface({
   initialSection,
   values,
-  motionLevel,
   onValueChange,
-  onMotionLevelChange,
   socketReconnectPolicy,
 }: {
   initialSection: SettingsSectionId;
   values: ComponentProps<typeof SettingsWorkbench>["values"];
-  motionLevel: ComponentProps<typeof SettingsWorkbench>["motionLevel"];
   onValueChange: ComponentProps<typeof SettingsWorkbench>["onValueChange"];
-  onMotionLevelChange: ComponentProps<typeof SettingsWorkbench>["onMotionLevelChange"];
   socketReconnectPolicy: AgentSocketReconnectPolicy;
 }): JSX.Element {
   const [section, setSection] = useState(initialSection);
@@ -85,9 +81,7 @@ export function DesktopSettingsSurface({
           surface: "desktop",
         }}
         values={values}
-        motionLevel={motionLevel}
         onValueChange={onValueChange}
-        onMotionLevelChange={onMotionLevelChange}
         pluginSettings={runtime.pluginSettings}
         systemConfig={runtime.systemConfig}
       />

@@ -84,3 +84,13 @@ export const WithoutDescription: Story = () => {
     </div>
   );
 };
+
+export const InitiallyOpenDialog: Story = () => (
+  <div className="flex min-h-[400px] items-center justify-center p-8">
+    <Dialog defaultOpen>
+      <DialogContent motionPreset="modal" title="构建任务完成" description="前端生产包已生成。">
+        <p className="text-sm text-ink-700">相关产物已保存到当前工作区。</p>
+      </DialogContent>
+    </Dialog>
+  </div>
+);

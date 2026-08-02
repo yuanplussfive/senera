@@ -95,10 +95,11 @@ export function StateView({
             {resolvedDescription}
           </div>
         ) : null}
-        {isError && onRetry ? (
+        {action ? (
+          <div className="mt-3">{action}</div>
+        ) : isError && onRetry ? (
           <RetryButton onRetry={onRetry} disabled={retryDisabled} label={retryLabel} className="mt-3" />
         ) : null}
-        {!isError && action ? <div className="mt-3">{action}</div> : null}
       </div>
     </div>
   );
@@ -112,16 +113,23 @@ export function InlineError({
   children,
   onRetry,
   retryDisabled,
+  retryLabel,
+  announce = false,
+  id,
   className,
 }: {
   children: ReactNode;
   onRetry?: () => void;
   retryDisabled?: boolean;
+  retryLabel?: ReactNode;
+  announce?: "polite" | "assertive" | false;
+  id?: string;
   className?: string;
 }): JSX.Element {
   return (
     <div
-      role="alert"
+      id={id}
+      role={announce === "assertive" ? "alert" : announce === "polite" ? "status" : undefined}
       className={cn("flex min-w-0 items-start gap-1.5 text-[12px] leading-5 text-brick-600", className)}
     >
       <AlertCircle aria-hidden="true" className="mt-[3px] h-3.5 w-3.5 shrink-0" />
@@ -133,7 +141,7 @@ export function InlineError({
           disabled={retryDisabled}
           className="shrink-0 font-medium underline underline-offset-2 hover:text-brick-700 disabled:pointer-events-none disabled:opacity-50"
         >
-          {frontendMessage("ui.retry")}
+          {retryLabel ?? frontendMessage("ui.retry")}
         </button>
       ) : null}
     </div>

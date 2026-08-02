@@ -166,6 +166,17 @@
   --modal-scale-close: 0.96;
   --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --dialog-presence-exit-dur: 320ms;
+  --menu-open-dur: 220ms;
+  --menu-close-dur: 190ms;
+  --menu-open-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --menu-close-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --menu-check-dur: 220ms;
+  --menu-check-opacity-dur: 160ms;
+  --menu-check-ease: cubic-bezier(0.2, 0.9, 0.2, 1.25);
+  --menu-item-dur: 150ms;
+  --menu-item-ease: linear;
+  --icon-rotate-dur: 200ms;
+  --icon-rotate-ease: cubic-bezier(0.4, 0, 0.2, 1);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -423,6 +434,58 @@ html[data-motion-level="none"] *::after {
   }
 }
 
+/* ----- 菜单动效 ----- */
+.menu-surface {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.965);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--menu-close-dur) var(--menu-close-ease),
+    transform var(--menu-open-dur) var(--menu-open-ease),
+    visibility 0s linear var(--menu-open-dur);
+  will-change: transform, opacity;
+}
+
+.menu-surface[data-state="open"] {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+
+@starting-style {
+  .menu-surface[data-state="open"] {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.965);
+  }
+}
+
+.menu-check {
+  opacity: 0;
+  transform: scale(0.5);
+  transition:
+    opacity var(--menu-check-opacity-dur) var(--menu-item-ease),
+    transform var(--menu-check-dur) var(--menu-check-ease);
+}
+
+[data-state="checked"] .menu-check,
+[data-state="indeterminate"] .menu-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+html[data-motion-level="reduced"] .menu-surface,
+html[data-motion-level="none"] .menu-surface {
+  transition: none;
+}
+
+html[data-motion-level="reduced"] .menu-check,
+html[data-motion-level="none"] .menu-check {
+  transition: none;
+}
+
 /* ----- 选中文字 ----- */
 ::selection {
   background: var(--theme-selection-bg);
@@ -507,7 +570,17 @@ html[data-senera-window-controls="custom"] [data-workflow-dock-titlebar-spacer] 
 
 html[data-senera-desktop-window="true"]
   [data-window-drag-region]
-  :is(button, a, input, textarea, select, [role="button"], [role="separator"], [contenteditable="true"]) {
+  :is(
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    [role="button"],
+    [role="separator"],
+    [contenteditable="true"],
+    [data-window-no-drag]
+  ) {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }

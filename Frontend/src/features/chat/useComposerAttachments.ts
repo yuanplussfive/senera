@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import type { UploadAttachmentData } from "../../api/eventTypes";
 import { uploadFile, type UploadProgress } from "../../api/uploadClient";
 import { isImageFilePreview } from "../../lib/filePreview";
 import { errorMessage, generateId } from "../../lib/util";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useUploadPreviewRegistry } from "./UploadPreviewRegistry";
 
 export type PendingAttachment = {
@@ -100,7 +98,6 @@ export function useComposerAttachments(options: ComposerAttachmentsOptions): Com
           setPendingAttachments((current) =>
             current.map((entry) => (entry.id === id ? { ...entry, status: "error", error: message } : entry)),
           );
-          toast.error(frontendMessage("upload.fileFailed"), { description: message });
         });
     },
     [uploadCsrfToken, uploadUrl],
