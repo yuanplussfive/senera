@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowUp, Check, ChevronDown, Paperclip, RotateCcw, Square, X } from "lucide-react";
+import { AlertCircle, ArrowUp, Check, ChevronDown, Globe, Paperclip, Plus, Puzzle, RotateCcw, Square, Wand2, X } from "lucide-react";
 import type { UploadAttachmentData, ModelProviderListItem } from "../../api/eventTypes";
 import type { UploadProgress } from "../../api/uploadClient";
 import { cn, formatFileSize } from "../../lib/util";
@@ -196,17 +196,39 @@ export function ChatComposer({
 
           <div className="flex min-w-0 items-center gap-2 pt-0.5">
             <div className="flex min-w-0 flex-1 items-center gap-1">
-              <IconButton
-                label="attach"
-                tooltip={frontendMessage("chat.attachment.tooltip")}
-                tooltipSide="top"
-                tone="muted"
-                disabled={disabled || running}
-                onClick={() => fileInputRef.current?.click()}
-                touchSafe
-              >
-                <Paperclip className="h-4 w-4" />
-              </IconButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild disabled={disabled || running}>
+                  <IconButton
+                    label={frontendMessage("chat.attachment.tooltip")}
+                    tooltip={frontendMessage("chat.composer.toolkit.tooltip")}
+                    tooltipSide="top"
+                    tone="muted"
+                    disabled={disabled || running}
+                    touchSafe
+                    className="[&[data-state=open]>svg]:rotate-45"
+                  >
+                    <Plus className="h-4 w-4 transition-transform duration-[var(--icon-rotate-dur)] ease-[var(--icon-rotate-ease)]" />
+                  </IconButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top">
+                  <DropdownMenuItem
+                    icon={<Paperclip className="h-4 w-4" />}
+                    onSelect={() => fileInputRef.current?.click()}
+                  >
+                    {frontendMessage("chat.composer.toolkit.fileAndImage")}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem icon={<Puzzle className="h-4 w-4" />} disabled>
+                    {frontendMessage("chat.composer.toolkit.plugins")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem icon={<Wand2 className="h-4 w-4" />} disabled>
+                    {frontendMessage("chat.composer.toolkit.skills")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem icon={<Globe className="h-4 w-4" />} disabled>
+                    {frontendMessage("chat.composer.toolkit.webSearch")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <PresetControl
                 disabled={disabled || running}
                 enabled={presetConfig.presetsEnabled}
@@ -504,7 +526,7 @@ function ModelSelector({
               className="h-10 py-2"
               icon={
                 active ? (
-                  <Check className="h-3.5 w-3.5 text-accent-content" />
+                  <Check className="h-3.5 w-3.5 text-[oklch(0.6234_0.2055_256.39)]" />
                 ) : (
                   <ModelProviderIcon icon={model.icon} size={14} />
                 )
