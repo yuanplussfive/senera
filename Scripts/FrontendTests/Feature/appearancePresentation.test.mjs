@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { isDefaultAppearancePreference, readAppearanceTokenRows } from "../../../Frontend/src/shared/theme/appearancePresentation.ts";
+import {
+  isDefaultAppearancePreference,
+  readAppearanceTokenRows,
+} from "../../../Frontend/src/shared/theme/appearancePresentation.ts";
 import { defaultAppearancePreference } from "../../../Frontend/src/shared/theme/themeModel.ts";
 describe("appearancePresentation", () => {
   it("detects whether a preference still uses the default appearance contract", () => {

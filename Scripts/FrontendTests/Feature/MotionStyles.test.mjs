@@ -1,8 +1,17 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const transitionsCss = readFileSync(resolve(process.cwd(), "Frontend/src/styles/transitions.css"), "utf8");
+const transitionsCssPath = [
+  resolve(process.cwd(), "Frontend/src/styles/transitions.css"),
+  resolve(process.cwd(), "src/styles/transitions.css"),
+].find((candidate) => existsSync(candidate));
+
+if (!transitionsCssPath) {
+  throw new Error("Unable to locate Frontend/src/styles/transitions.css");
+}
+
+const transitionsCss = readFileSync(transitionsCssPath, "utf8");
 
 describe("shared motion styles", () => {
   it("uses responsive easing for the menu exit", () => {

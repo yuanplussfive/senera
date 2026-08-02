@@ -184,11 +184,11 @@ export function ProviderConnectionList({
           ) : (
             <>
               <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="truncate text-[14px] font-semibold text-ink-900">
-                  {frontendMessage("settings.model.serviceTitle")}
+                <div className="min-w-0">
+                  <div className="truncate text-[14px] font-semibold text-ink-900">
+                    {frontendMessage("settings.model.serviceTitle")}
+                  </div>
                 </div>
-              </div>
                 {addProviderButton}
               </div>
               <SearchInput

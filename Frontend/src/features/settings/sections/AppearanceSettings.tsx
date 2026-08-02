@@ -19,11 +19,7 @@ export function AppearanceSettings(): JSX.Element {
       <AppearancePreferenceControl />
       {!usesDefault ? (
         <div className="mt-4 flex justify-end border-t border-ink-200/60 pt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setAppearancePreference(defaultAppearancePreference)}
-          >
+          <Button variant="outline" size="sm" onClick={() => setAppearancePreference(defaultAppearancePreference)}>
             <RotateCcw className="h-3.5 w-3.5" />
             {frontendMessage("settings.appearance.reset")}
           </Button>
