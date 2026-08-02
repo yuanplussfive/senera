@@ -119,7 +119,7 @@ test("chat composer keeps uploaded attachments when sending is rejected", async 
     document.querySelector("input[type='file']"),
     new File(["retry"], "retry.txt", { type: "text/plain" }),
   );
-  expect(await screen.findByText("retry.txt")).toBeVisible();
+  await waitFor(() => expect(screen.getByText("retry.txt")).toBeVisible());
   await user.type(screen.getByRole("textbox"), "Try again");
   await user.click(screen.getByRole("button", { name: "send" }));
 

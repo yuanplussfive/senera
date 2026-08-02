@@ -214,6 +214,30 @@ test("chat composer preserves a failed draft and leaves Escape to active interac
   expect(onCancel).not.toHaveBeenCalled();
 });
 
+test("chat composer opens the preset dialog after the toolkit menu closes", async () => {
+  const onOutsideClick = vi.fn();
+  const user = userEvent.setup();
+  renderWithFrontendProviders(
+    React.createElement(
+      React.Fragment,
+      null,
+      withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps())),
+      React.createElement("button", { type: "button", onClick: onOutsideClick }, "外部操作"),
+    ),
+  );
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("chat.attachment.tooltip") }));
+  await user.click(screen.getByRole("menuitem", { name: frontendMessage("chat.composer.toolkit.preset") }));
+
+  expect(await screen.findByRole("dialog", { name: frontendMessage("preset.ui.title") })).toBeInTheDocument();
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: frontendMessage("ui.close") }));
+
+  await waitFor(() => expect(document.body.style.pointerEvents).toBe(""));
+  await user.click(screen.getByRole("button", { name: "外部操作" }));
+  expect(onOutsideClick).toHaveBeenCalledTimes(1);
+});
+
 test("chat model selector keeps the current conversation choice and exposes the current default", async () => {
   const onApplyDefaultModel = vi.fn();
   const user = userEvent.setup();

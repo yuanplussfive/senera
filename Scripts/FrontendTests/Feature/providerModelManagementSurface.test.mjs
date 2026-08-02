@@ -47,7 +47,7 @@ test("model editor stays open after a failed save so the draft can be retried", 
 
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /重试|Retry/ })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "关闭窗口" }));
+  await user.click(screen.getByRole("button", { name: "关闭" }));
   expect(screen.getByRole("dialog")).toBeInTheDocument();
 });
 

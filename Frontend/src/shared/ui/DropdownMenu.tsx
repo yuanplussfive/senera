@@ -9,8 +9,12 @@ import { MenuItemContent, menuItemClassName, menuSeparatorClassName, menuSurface
 export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
+export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
 
-function dropdownTransformOrigin(side: "top" | "right" | "bottom" | "left" | undefined, align: "start" | "center" | "end" | undefined): string {
+function dropdownTransformOrigin(
+  side: "top" | "right" | "bottom" | "left" | undefined,
+  align: "start" | "center" | "end" | undefined,
+): string {
   const horizontalOrigin =
     side === "left" ? "100%" : side === "right" ? "0%" : align === "start" ? "0%" : align === "end" ? "100%" : "50%";
   const verticalOrigin =
@@ -102,7 +106,9 @@ export const DropdownMenuMeta = forwardRef<HTMLDivElement, MetaProps>(
       )}
       {...props}
     >
-      {icon ? <span className="grid h-[18px] w-[18px] shrink-0 place-items-center text-black/[0.451]">{icon}</span> : null}
+      {icon ? (
+        <span className="grid h-[18px] w-[18px] shrink-0 place-items-center text-black/[0.451]">{icon}</span>
+      ) : null}
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {value ? <span className="shrink-0 text-[11px] text-black/[0.302]">{value}</span> : null}
     </div>

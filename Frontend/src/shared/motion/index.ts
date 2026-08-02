@@ -12,6 +12,7 @@ export {
   motionRules,
   motionSprings,
   motionTimings,
+  overlayPresenceExitMs,
   readDialogPanelTransition,
   readDialogPanelVariants,
   readDrawerTransition,

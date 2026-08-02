@@ -30,7 +30,7 @@ export const DialogOverlay = forwardRef<HTMLDivElement, React.ComponentPropsWith
     <DialogPrimitive.Overlay ref={ref} asChild {...props}>
       <MotionDialogOverlay
         className={cn(
-          "dialog-presence fixed inset-0 z-50 bg-[var(--theme-dialog-backdrop)] [will-change:opacity]",
+          "dialog-presence fixed inset-0 z-50 bg-[var(--theme-overlay-backdrop,var(--theme-sheet-backdrop))] [will-change:opacity]",
           className,
         )}
         style={mergeDialogPresenceStyle(style)}
@@ -126,13 +126,13 @@ const DialogContentFrame = forwardRef<
           transition={content.contentTransition}
         >
           {content.showHeader ? (
-            <div className="flex items-start gap-4 bg-surface-panel px-8 pb-4 pt-7">
+            <div className="flex select-none items-start gap-4 px-5 pb-3 pt-4">
               <div className="min-w-0 flex-1">
-                <DialogPrimitive.Title className="text-[20px] font-semibold leading-7 text-content-strong">
+                <DialogPrimitive.Title className="text-[16px] font-medium leading-6 text-ink-900">
                   {content.title ?? ""}
                 </DialogPrimitive.Title>
                 {content.description ? (
-                  <DialogPrimitive.Description className="mt-1.5 text-[13px] leading-5 text-content-secondary">
+                  <DialogPrimitive.Description className="mt-1 text-[14px] leading-5 text-ink-500">
                     {content.description}
                   </DialogPrimitive.Description>
                 ) : null}
@@ -142,13 +142,12 @@ const DialogContentFrame = forwardRef<
                   <button
                     type="button"
                     className={cn(
-                      "grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg text-content-muted",
-                      "cursor-pointer",
-                      "transition-colors duration-150 ease-out",
-                      "hover:bg-surface-hover hover:text-content-primary",
+                      "grid h-8 w-8 flex-shrink-0 cursor-pointer select-none place-items-center rounded-[10px] text-ink-500",
+                      "transition-[background-color,color] duration-[var(--menu-item-dur)]",
+                      "hover:bg-ink-900/[0.05] hover:text-ink-900",
                       "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
                     )}
-                    aria-label={frontendMessage("desktop.window.close")}
+                    aria-label={frontendMessage("ui.close")}
                   >
                     <X className="h-[18px] w-[18px]" />
                   </button>
@@ -208,7 +207,12 @@ export const DialogContent = forwardRef<
   ) => (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Content ref={ref} asChild {...props}>
+      <DialogPrimitive.Content
+        ref={ref}
+        asChild
+        {...(!description ? { "aria-describedby": undefined } : {})}
+        {...props}
+      >
         <DialogContentFrame
           className={cn(
             "dialog-presence",
@@ -221,7 +225,7 @@ export const DialogContent = forwardRef<
             "flex flex-col overflow-hidden [will-change:opacity,transform]",
             placement === "inset" && "min-h-0 flex-1",
             className,
-            "rounded-[10px] border border-line bg-surface-panel",
+            "rounded-2xl border border-ink-200 bg-paper-50 shadow-[var(--theme-overlay-shadow)]",
           )}
           title={title}
           description={description}
@@ -262,7 +266,7 @@ const dialogActionVariantClasses: Record<DialogActionVariant, string> = {
 };
 
 export function DialogActions({ children, className }: DialogActionsProps): JSX.Element {
-  return <div className={cn("flex justify-end gap-2 border-t border-ink-200/70 pt-5", className)}>{children}</div>;
+  return <div className={cn("flex justify-end gap-2", className)}>{children}</div>;
 }
 
 export const DialogActionButton = forwardRef<HTMLButtonElement, DialogActionButtonProps>(

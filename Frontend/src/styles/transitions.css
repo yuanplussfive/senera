@@ -50,6 +50,7 @@
 }
 
 .dialog-presence[data-state="closed"] {
+  pointer-events: none !important;
   animation: dialog-presence-exit var(--dialog-presence-exit-dur) linear both;
 }
 

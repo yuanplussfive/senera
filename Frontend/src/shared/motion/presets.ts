@@ -8,6 +8,7 @@ export type DialogPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTr
 export type DrawerPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export type OverlayVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export const dialogPresenceExitMs = 180;
+export const overlayPresenceExitMs = dialogPresenceExitMs;
 
 export const motionSprings = {
   snappy: { type: "spring", stiffness: 520, damping: 42 } satisfies Transition,
@@ -20,6 +21,8 @@ export const motionTimings = {
   dialog: { duration: 0.16, ease: easeOut } satisfies Transition,
   modalOpen: { duration: 0.16, ease: easeOut } satisfies Transition,
   modalClose: { duration: 0.1, ease: easeOut } satisfies Transition,
+  drawerOpen: { duration: 0.16, ease: easeOut } satisfies Transition,
+  drawerClose: { duration: 0.12, ease: easeOut } satisfies Transition,
   slow: { duration: 0.18, ease: easeOut } satisfies Transition,
   selection: { duration: 0.24, ease: easeInOut } satisfies Transition,
   panelOpen: { duration: 0.28, ease: easeOut } satisfies Transition,
@@ -183,7 +186,7 @@ export function readDialogPanelTransition(
 
 export function readDrawerTransition(level: MotionLevel, state: "show" | "exit" = "show"): Transition {
   if (level === "none") return { duration: 0 };
-  return state === "exit" ? motionTimings.fast : motionTimings.dialog;
+  return state === "exit" ? motionTimings.drawerClose : motionTimings.drawerOpen;
 }
 
 export function readDrawerVariants(level: MotionLevel, side: "left" | "right" = "right"): DrawerPanelVariants {

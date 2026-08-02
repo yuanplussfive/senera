@@ -11,7 +11,7 @@ import {
 } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { MotionDialogOverlay, MotionSheetContent, useMotionLevel } from "../motion";
+import { MotionDialogOverlay, MotionSheetContent, overlayPresenceExitMs, useMotionLevel } from "../motion";
 
 export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
@@ -21,8 +21,7 @@ export const SheetTitle = DialogPrimitive.Title;
 export const SheetDescription = DialogPrimitive.Description;
 
 export const sheetOverlayClassName =
-  "dialog-presence fixed inset-0 z-50 bg-[var(--theme-sheet-backdrop)] [will-change:opacity]";
-const sheetPresenceExitMs = 240;
+  "dialog-presence fixed inset-0 z-50 bg-[var(--theme-overlay-backdrop,var(--theme-sheet-backdrop))] [will-change:opacity]";
 const sheetDeferredContentDelayMs = 96;
 
 type SheetPresenceStyle = CSSProperties & {
@@ -30,7 +29,7 @@ type SheetPresenceStyle = CSSProperties & {
 };
 
 const sheetPresenceStyle = {
-  "--dialog-presence-exit-dur": `${sheetPresenceExitMs}ms`,
+  "--dialog-presence-exit-dur": `${overlayPresenceExitMs}ms`,
 } satisfies SheetPresenceStyle;
 
 function mergeSheetPresenceStyle(style?: CSSProperties): SheetPresenceStyle {
@@ -68,14 +67,16 @@ interface SheetChildrenMountState {
   dataState?: string;
   deferContentMount: boolean;
   deferredContentReady: boolean;
+  mountChildren: boolean;
 }
 
 export function shouldMountSheetChildren({
   dataState,
   deferContentMount,
   deferredContentReady,
+  mountChildren,
 }: SheetChildrenMountState): boolean {
-  if (dataState === "closed") return false;
+  if (dataState === "closed") return mountChildren;
   return !deferContentMount || deferredContentReady;
 }
 
@@ -119,6 +120,7 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
     const { reduceMotion, disableMotion } = useMotionLevel();
     const shouldDeferContentMount = deferContentMount && !reduceMotion && !disableMotion;
     const [deferredContentReady, setDeferredContentReady] = useState(!shouldDeferContentMount);
+    const [mountChildren, setMountChildren] = useState(dataState !== "closed");
     const liveContent: SheetContentSnapshot = {
       children,
       className,
@@ -137,6 +139,7 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
       dataState,
       deferContentMount: shouldDeferContentMount,
       deferredContentReady,
+      mountChildren,
     });
 
     useEffect(() => {
@@ -156,6 +159,16 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
       return () => window.clearTimeout(timeoutId);
     }, [dataState, shouldDeferContentMount]);
 
+    // Keep the last open snapshot mounted until its exit transition completes.
+    useEffect(() => {
+      if (dataState !== "closed") {
+        setMountChildren(true);
+        return;
+      }
+      const timeoutId = window.setTimeout(() => setMountChildren(false), overlayPresenceExitMs + 40);
+      return () => window.clearTimeout(timeoutId);
+    }, [dataState]);
+
     return (
       <MotionSheetContent
         ref={ref}
@@ -172,7 +185,7 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
         {...props}
       >
         {content.showHeader && (content.title || content.showClose) ? (
-          <div className="flex min-h-14 items-start gap-3 border-b border-ink-200/70 bg-paper-50 px-4 py-3.5">
+          <div className="flex min-h-14 select-none items-start gap-3 border-b border-ink-200/70 bg-paper-50 px-4 py-3.5">
             <div className="min-w-0 flex-1">
               {content.title ? (
                 <DialogPrimitive.Title className="truncate text-[13.5px] font-medium text-ink-900">
@@ -190,13 +203,14 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
                 <button
                   type="button"
                   className={cn(
-                    "grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-ink-500 transition",
-                    "hover:bg-ink-900/[0.05] hover:text-ink-800",
-                    "focus:outline-none",
+                    "grid h-8 w-8 shrink-0 cursor-pointer select-none place-items-center rounded-[10px] text-ink-500",
+                    "transition-[background-color,color] duration-[var(--menu-item-dur)]",
+                    "hover:bg-ink-900/[0.05] hover:text-ink-900",
+                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
                   )}
                   aria-label={frontendMessage("ui.close")}
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-[18px] w-[18px]" />
                 </button>
               </DialogPrimitive.Close>
             ) : null}

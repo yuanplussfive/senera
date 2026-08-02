@@ -1,6 +1,20 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowUp, Check, ChevronDown, Globe, Paperclip, Plus, Puzzle, RotateCcw, Square, Wand2, X } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowUp,
+  BookUser,
+  Check,
+  ChevronDown,
+  Globe,
+  Paperclip,
+  Plus,
+  Puzzle,
+  RotateCcw,
+  Square,
+  Wand2,
+  X,
+} from "lucide-react";
 import type { UploadAttachmentData, ModelProviderListItem } from "../../api/eventTypes";
 import type { UploadProgress } from "../../api/uploadClient";
 import { cn, formatFileSize } from "../../lib/util";
@@ -11,6 +25,7 @@ import { MotionButton, MotionList, MotionPresenceItem, motionTimings, useMotionL
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -63,6 +78,9 @@ export function ChatComposer({
   const [internalValue, setInternalValue] = useState("");
   const value = controlledValue ?? internalValue;
   const setValue = onValueChange ?? setInternalValue;
+  const [presetOpen, setPresetOpen] = useState(false);
+  const [toolkitOpen, setToolkitOpen] = useState(false);
+  const openPresetAfterToolkitCloseRef = useRef(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachments = useComposerAttachments({
@@ -117,6 +135,12 @@ export function ChatComposer({
     taRef.current?.focus();
     taRef.current?.setSelectionRange(controlledValue.length, controlledValue.length);
   }, [controlledValue]);
+
+  useEffect(() => {
+    if (toolkitOpen || !openPresetAfterToolkitCloseRef.current) return;
+    openPresetAfterToolkitCloseRef.current = false;
+    setPresetOpen(true);
+  }, [toolkitOpen]);
 
   const submit = (queueMode?: MessageQueueMode): void => {
     const text = value.trim();
@@ -196,7 +220,7 @@ export function ChatComposer({
 
           <div className="flex min-w-0 items-center gap-2 pt-0.5">
             <div className="flex min-w-0 flex-1 items-center gap-1">
-              <DropdownMenu>
+              <DropdownMenu open={toolkitOpen} onOpenChange={setToolkitOpen}>
                 <DropdownMenuTrigger asChild disabled={disabled || running}>
                   <IconButton
                     label={frontendMessage("chat.attachment.tooltip")}
@@ -210,7 +234,7 @@ export function ChatComposer({
                     <Plus className="h-4 w-4 transition-transform duration-[var(--icon-rotate-dur)] ease-[var(--icon-rotate-ease)]" />
                   </IconButton>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="top">
+                <DropdownMenuContent align="start" side="top" sideOffset={6} alignOffset={6}>
                   <DropdownMenuItem
                     icon={<Paperclip className="h-4 w-4" />}
                     onSelect={() => fileInputRef.current?.click()}
@@ -218,6 +242,14 @@ export function ChatComposer({
                     {frontendMessage("chat.composer.toolkit.fileAndImage")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    icon={<BookUser className="h-4 w-4" />}
+                    onSelect={() => {
+                      openPresetAfterToolkitCloseRef.current = true;
+                    }}
+                  >
+                    {frontendMessage("chat.composer.toolkit.preset")}
+                  </DropdownMenuItem>
                   <DropdownMenuItem icon={<Puzzle className="h-4 w-4" />} disabled>
                     {frontendMessage("chat.composer.toolkit.plugins")}
                   </DropdownMenuItem>
@@ -229,18 +261,24 @@ export function ChatComposer({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <PresetControl
-                disabled={disabled || running}
-                enabled={presetConfig.presetsEnabled}
-                rootDir={presetConfig.presetRootDir}
-                presets={presetConfig.presets}
-                activePresetName={presetConfig.activePresetName}
-                operations={presetConfig.presetOperations}
-                onRefresh={presetConfig.onRefreshPresets}
-                onSave={presetConfig.onSavePreset}
-                onDelete={presetConfig.onDeletePreset}
-                onSetActive={presetConfig.onSetActivePreset}
-              />
+            </div>
+
+            <PresetControl
+              open={presetOpen}
+              onOpenChange={setPresetOpen}
+              disabled={disabled || running}
+              enabled={presetConfig.presetsEnabled}
+              rootDir={presetConfig.presetRootDir}
+              presets={presetConfig.presets}
+              activePresetName={presetConfig.activePresetName}
+              operations={presetConfig.presetOperations}
+              onRefresh={presetConfig.onRefreshPresets}
+              onSave={presetConfig.onSavePreset}
+              onDelete={presetConfig.onDeletePreset}
+              onSetActive={presetConfig.onSetActivePreset}
+            />
+
+            <div className="flex shrink-0 items-center gap-1.5">
               <ModelSelector
                 disabled={disabled || running}
                 models={modelConfig.modelProviders}
@@ -250,9 +288,6 @@ export function ChatComposer({
                 onUseDefault={modelConfig.onApplyDefaultModel}
                 prefersCompactControls={prefersCompactControls}
               />
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1.5">
               <AnimatePresence initial={false}>
                 {running ? (
                   <motion.div
@@ -514,28 +549,32 @@ function ModelSelector({
           <ChevronDown className="h-3 w-3 shrink-0 text-content-muted" />
         </MotionButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side="top" className="w-[min(280px,calc(100vw-24px))]">
+      <DropdownMenuContent align="end" side="bottom" sideOffset={6} className="w-[min(262px,calc(100vw-48px))]">
         <DropdownMenuLabel>{frontendMessage("chat.model.currentConversation")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {chatModels.map((model) => {
-          const active = model.id === selected?.id;
-          return (
-            <DropdownMenuItem
-              key={model.id}
-              onSelect={() => onSelect(model.id)}
-              className="h-10 py-2"
-              icon={
-                active ? (
-                  <Check className="h-3.5 w-3.5 text-[oklch(0.6234_0.2055_256.39)]" />
-                ) : (
-                  <ModelProviderIcon icon={model.icon} size={14} />
-                )
-              }
-            >
-              <span className="min-w-0 truncate text-[13px] text-content-primary">{readModelSelectorLabel(model)}</span>
-            </DropdownMenuItem>
-          );
-        })}
+        <DropdownMenuGroup className="max-h-[min(360px,calc(100dvh-200px))] overflow-y-auto scrollbar-thin pr-1">
+          {chatModels.map((model) => {
+            const active = model.id === selected?.id;
+            return (
+              <DropdownMenuItem
+                key={model.id}
+                onSelect={() => onSelect(model.id)}
+                className="h-10 py-2"
+                icon={
+                  active ? (
+                    <Check className="h-3.5 w-3.5 text-[oklch(0.6234_0.2055_256.39)]" />
+                  ) : (
+                    <ModelProviderIcon icon={model.icon} size={14} />
+                  )
+                }
+              >
+                <span className="min-w-0 truncate text-[13px] text-content-primary">
+                  {readModelSelectorLabel(model)}
+                </span>
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuGroup>
         {!usesDefault && defaultModel && onUseDefault ? (
           <>
             <DropdownMenuSeparator />
