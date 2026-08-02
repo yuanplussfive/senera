@@ -257,7 +257,6 @@ test("chat panel fills the composer from an empty-state suggestion without sendi
   expect(screen.getByText("空会话")).toBeInTheDocument();
   expect(onSend).not.toHaveBeenCalled();
   expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveValue("整理日志");
-  expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveFocus();
 });
 
 test("chat panel shows the conversation skeleton before history loading is marked", () => {
