@@ -102,6 +102,13 @@ assert.ok(
   "Docker must enter through the audited root bootstrap instead of running the application directly as root or node.",
 );
 assert.ok(
+  dockerfile.includes("COPY --from=builder --chown=node:node /app/Frontend/dist ./Frontend/dist") &&
+    dockerfile.includes("RUN install -d -o node -g node /data") &&
+    dockerfile.indexOf("RUN install -d -o node -g node /data") < dockerfile.indexOf('VOLUME ["/data"]') &&
+    !dockerfile.includes("chown -R node:node /data"),
+  "Docker runtime must create the managed data root before declaring its volume and assign copied assets directly.",
+);
+assert.ok(
   dockerfile.includes("HEALTHCHECK") && dockerfile.includes("setpriv --reuid=node --regid=node --clear-groups -- node"),
   "Docker health checks must run with the unprivileged application identity.",
 );

@@ -43,14 +43,14 @@ ENV SENERA_SERVER_PORT=8787
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/Dist ./Dist
-COPY --from=builder /app/Frontend/dist ./Frontend/dist
+COPY --from=builder --chown=node:node /app/Frontend/dist ./Frontend/dist
 COPY --from=builder /app/McpServers ./McpServers
 COPY --from=builder /app/System ./System
 COPY --from=builder /app/Packages ./Packages
 COPY --from=builder /app/senera.config.example.json ./senera.config.example.json
 COPY --chmod=755 Apps/DockerEntrypoint.sh /usr/local/bin/senera-container-entrypoint
 
-RUN chown -R node:node /data /app/Frontend/dist
+RUN install -d -o node -g node /data
 
 VOLUME ["/data"]
 EXPOSE 8787
