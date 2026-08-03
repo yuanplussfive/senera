@@ -101,6 +101,7 @@
     "required": ["document"],
     "additionalProperties": false
   },
+  "observationProjection": "observations/DocumentExtract.projection.json",
   "permissions": ["uploads:read"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": { "Lifecycle": "Immediate", "ProtocolVersion": 2, "ResultAssessment": "ProcessExit" },

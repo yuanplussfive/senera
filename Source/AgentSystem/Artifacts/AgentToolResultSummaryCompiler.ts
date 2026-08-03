@@ -36,9 +36,13 @@ export interface AgentToolResultSummaryCompilerInput {
 export interface AgentToolResultSummaryTokenPolicy {
   headlineTokens: number;
   summaryTokens: number;
+  summarySourceCharacters: number;
   factValueTokens: number;
+  factSourceCharacters: number;
   changeSummaryTokens: number;
+  changeSourceCharacters: number;
   limitationTokens: number;
+  limitationSourceCharacters: number;
   maxFacts: number;
   maxChanges: number;
 }
@@ -46,9 +50,13 @@ export interface AgentToolResultSummaryTokenPolicy {
 const DefaultToolResultSummaryTokenPolicy = {
   headlineTokens: 64,
   summaryTokens: 700,
+  summarySourceCharacters: 8_192,
   factValueTokens: 160,
+  factSourceCharacters: 2_048,
   changeSummaryTokens: 128,
+  changeSourceCharacters: 2_048,
   limitationTokens: 80,
+  limitationSourceCharacters: 1_024,
   maxFacts: 64,
   maxChanges: 64,
 } as const satisfies AgentToolResultSummaryTokenPolicy;
@@ -75,7 +83,8 @@ export class AgentToolResultSummaryCompiler {
       facts,
       changes,
     });
-    const summaryPreview = this.tokenProjector.previewText(sourceSummary, this.policy.summaryTokens);
+    const boundedSourceSummary = boundSourceText(sourceSummary, this.policy.summarySourceCharacters);
+    const summaryPreview = this.tokenProjector.previewText(boundedSourceSummary.text, this.policy.summaryTokens);
     const headlinePreview = this.tokenProjector.previewText(
       this.buildHeadline(input, summaryPreview.text, facts, changes),
       this.policy.headlineTokens,
@@ -83,6 +92,9 @@ export class AgentToolResultSummaryCompiler {
     const limitations = this.projectLimitations([
       ...(summaryPreview.truncated
         ? ["Summary was token-truncated; retrieve the artifact for the full projection."]
+        : []),
+      ...(boundedSourceSummary.truncated
+        ? ["Summary source exceeded its projection character limit; retrieve the artifact for the full result."]
         : []),
       ...(projectedFacts.omitted > 0
         ? [`${projectedFacts.omitted} evidence facts were omitted from the context projection.`]
@@ -178,7 +190,10 @@ export class AgentToolResultSummaryCompiler {
         return [
           {
             name,
-            value: this.tokenProjector.previewText(value, this.policy.factValueTokens).text,
+            value: this.tokenProjector.previewText(
+              boundSourceText(value, this.policy.factSourceCharacters).text,
+              this.policy.factValueTokens,
+            ).text,
             evidenceUri: entry.evidenceUri,
             kind: entry.kind,
             confidence: entry.confidence,
@@ -200,7 +215,10 @@ export class AgentToolResultSummaryCompiler {
           kind: entry.kind,
           status: entry.status,
           key: entry.kind === "evidence" ? entry.summary : entry.key,
-          summary: this.tokenProjector.previewText(entry.summary, this.policy.changeSummaryTokens).text,
+          summary: this.tokenProjector.previewText(
+            boundSourceText(entry.summary, this.policy.changeSourceCharacters).text,
+            this.policy.changeSummaryTokens,
+          ).text,
         }) satisfies AgentToolResultSummaryChange,
     );
     const workspaceChanges = (workspace?.changes ?? []).map(
@@ -209,8 +227,10 @@ export class AgentToolResultSummaryCompiler {
           kind: "workspace",
           status: entry.status,
           key: entry.path,
-          summary: this.tokenProjector.previewText(`${entry.status}: ${entry.path}`, this.policy.changeSummaryTokens)
-            .text,
+          summary: this.tokenProjector.previewText(
+            boundSourceText(`${entry.status}: ${entry.path}`, this.policy.changeSourceCharacters).text,
+            this.policy.changeSummaryTokens,
+          ).text,
         }) satisfies AgentToolResultSummaryChange,
     );
     return limitItems(uniqueChanges([...deltaChanges, ...workspaceChanges]), this.policy.maxChanges);
@@ -269,7 +289,11 @@ export class AgentToolResultSummaryCompiler {
 
   private projectLimitations(values: readonly string[]): string[] {
     return uniqueStrings(values).map(
-      (value) => this.tokenProjector.previewText(value, this.policy.limitationTokens).text,
+      (value) =>
+        this.tokenProjector.previewText(
+          boundSourceText(value, this.policy.limitationSourceCharacters).text,
+          this.policy.limitationTokens,
+        ).text,
     );
   }
 
@@ -289,6 +313,11 @@ export class AgentToolResultSummaryCompiler {
       ...(input.workspace ? ["workspace"] : []),
     ]);
   }
+}
+
+function boundSourceText(value: string, maximumCharacters: number): { text: string; truncated: boolean } {
+  const limit = Number.isFinite(maximumCharacters) ? Math.max(0, Math.floor(maximumCharacters)) : 0;
+  return value.length <= limit ? { text: value, truncated: false } : { text: value.slice(0, limit), truncated: true };
 }
 
 function limitItems<T>(items: readonly T[], limit: number): { items: T[]; omitted: number } {

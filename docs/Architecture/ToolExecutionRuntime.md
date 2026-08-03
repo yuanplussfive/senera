@@ -34,7 +34,9 @@ Each package owns a standard MCP Server implementation. Persistent clients are p
 
 ## Results and evidence
 
-The immediate model observation and durable artifact are separate outputs. A bounded, redacted result remains in the next model turn; artifacts add raw retrieval, evidence, workspace changes, and audit history. Incremental stdout/stderr and progress events are an out-of-band UI surface and never replace the terminal observation.
+The immediate model observation and durable artifact are separate outputs. The artifact recorder commits the complete redacted result before `AgentToolObservationContextCompiler` builds a bounded source view. System Tools own package-local declarative projection files; MCP keeps standard `outputSchema` and `structuredContent` and receives the host's generic bounded projection. See [Tool Observation Projection](./ToolObservationProjection.md).
+
+Structural limits run before exact tokenization. Pi then allocates the remaining turn budget across already-bounded observations in one `prepare()` pass. Every partial view records omissions and retains its artifact URI. Incremental stdout/stderr and progress events are an out-of-band UI surface and never replace the terminal observation.
 
 Every executed call carries one authoritative three-axis `outcome`:
 

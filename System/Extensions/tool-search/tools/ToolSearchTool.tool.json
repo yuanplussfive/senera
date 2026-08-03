@@ -1,5 +1,6 @@
 {
   "name": "ToolSearchTool",
+  "observationProjection": "observations/default.projection.json",
   "description": "搜索当前工作区已注册工具，返回适合任务的工具名和用途。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

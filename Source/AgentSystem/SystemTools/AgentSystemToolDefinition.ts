@@ -9,6 +9,7 @@ import type {
   ToolRuntimeManifest,
   ToolSearchManifest,
 } from "../Types/AgentToolContractTypes.js";
+import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolObservationProjectionTypes.js";
 import type { ConfigFormDocument } from "../Config/AgentConfigFormDocument.js";
 import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
 
@@ -36,6 +37,7 @@ export interface AgentSystemToolMetadata {
   readonly search?: ToolSearchManifest;
   readonly evidenceCapabilities?: readonly ToolEvidenceCapabilityManifest[];
   readonly artifacts?: ToolArtifactPolicyManifest;
+  readonly observation: AgentToolObservationProjectionManifest;
 }
 
 export interface AgentSystemToolDefinition<

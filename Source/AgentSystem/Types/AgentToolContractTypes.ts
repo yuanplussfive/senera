@@ -57,20 +57,6 @@ export const ToolResultAssessmentPolicies = {
 export type ToolResultAssessmentPolicy =
   (typeof ToolResultAssessmentPolicies)[keyof typeof ToolResultAssessmentPolicies];
 
-export interface ToolObservationManifest {
-  MaxTokens?: number;
-  IncludeArtifactProjection?: boolean;
-  Continuation?: ToolObservationContinuationManifest;
-}
-
-export interface ToolObservationContinuationManifest {
-  Kind: "session" | "cursor" | "offset" | "artifact";
-  Handle: string;
-  Cursor?: string;
-  State?: string;
-  TerminalStates?: string[];
-}
-
 export interface ToolRuntimeManifest {
   Lifecycle: "Immediate" | "OneShot" | "Persistent" | "RemoteJob";
   ProtocolVersion?: typeof AgentHostToolProtocolVersion;
@@ -140,7 +126,6 @@ export interface ToolManifest {
   Handler: ToolHandlerManifest;
   Execution: ToolExecutionManifest;
   Runtime: ToolRuntimeManifest;
-  Observation?: ToolObservationManifest;
   Search?: ToolSearchManifest;
   EvidenceCapabilities?: ToolEvidenceCapabilityManifest[];
   Approval?: ToolApprovalManifest;

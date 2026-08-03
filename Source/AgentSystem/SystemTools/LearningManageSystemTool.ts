@@ -4,6 +4,7 @@ import { AgentLearningDomains, AgentLearningStates } from "../ToolSearch/AgentLe
 import { AgentToolSearchMemory } from "../ToolSearch/AgentToolSearchMemory.js";
 import { createAgentToolSearchProjectId } from "../ToolSearch/AgentToolSearchProject.js";
 import { defineSystemTool } from "./AgentSystemToolDefinition.js";
+import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 
 const LearningManageActions = {
   Status: "status",
@@ -141,6 +142,7 @@ export const LearningManageSystemTool = defineSystemTool({
     priority: 2,
   },
   metadata: {
+    observation: StandardAgentToolObservationProjection,
     description: "Inspect learning status, recent episodes, one failure or skip, and revision-bound Skill terms.",
     permissions: ["filesystem:read:.senera/data/tool-search"],
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },

@@ -12,6 +12,7 @@ import {
 } from "./AgentMcpPackageTypes.js";
 import type { AgentMcpPackageExecutionPolicy } from "./AgentMcpPackageExecutionPolicy.js";
 import type { AgentExtensionOwner } from "../Types/AgentExtensionRuntimeTypes.js";
+import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 
 const contractProjector = new AgentJsonSchemaPromptContractProjector();
 
@@ -56,6 +57,7 @@ export function projectAgentMcpPackageTools(
       ResultAssessment: ToolResultAssessmentPolicies.ProcessExit,
       Capabilities: { Cancellation: true },
     },
+    observationProjection: StandardAgentToolObservationProjection,
     sources: [],
     search: { Summary: declaration.description ?? declaration.name },
     evidenceCapabilities: [],

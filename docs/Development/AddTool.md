@@ -43,11 +43,20 @@ McpServers/example/
 }
 ```
 
-The MCP server owns tool schemas through `tools/list`. Use `@modelcontextprotocol/sdk`, forward cancellation signals to I/O, and return standard `content` plus optional `structuredContent`. Do not add generic timeout fields, a custom stdout protocol, plaintext Secrets, a package `.env`, or a Senera tool schema.
+The MCP server owns tool schemas through `tools/list`. Use `@modelcontextprotocol/sdk`, forward cancellation signals to I/O, and return standard `content` plus optional `structuredContent`. Do not add generic timeout fields, a custom stdout protocol, plaintext Secrets, a package `.env`, a Senera tool schema, or a Senera observation projection file.
 
 ## System extension
 
-Create `System/Extensions/<id>/extension.json` and one contract per `hostTool` contribution. The manifest owns package metadata and references a capability already registered by Senera. Contracts own tool input/output, execution, runtime, resource, search and artifact policies.
+Create `System/Extensions/<id>/extension.json`, one contract per `hostTool` contribution, and at least one package-local observation projection. The manifest owns package metadata and references a capability already registered by Senera. Contracts own tool input/output, execution, runtime, resource, search and artifact policies.
+
+```text
+System/Extensions/example/
+  extension.json
+  tools/ExampleTool.tool.json
+  observations/default.projection.json
+```
+
+The Tool contract references `observationProjection`. Declare protocol sources and explicit structural limits in that file; do not select payload fields by name in runtime code. Use RFC 6901 `pointer` only when a Tool intentionally projects one subvalue. The runtime centrally preserves identity, status, artifact URI, and the canonical failure envelope. See [Tool Observation Projection](../Architecture/ToolObservationProjection.md).
 
 Host implementation code stays under `Source/AgentSystem/SystemTools` or another host-owned module and is registered in code. A package cannot name a module to import. For a Zod-defined tool, run:
 

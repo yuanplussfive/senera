@@ -1,24 +1,27 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { readAgentString, readAgentUnknownRecord, type AgentUnknownRecord } from "../Core/AgentUnknownValue.js";
-import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import { allocateAgentTokenBudget } from "../Text/AgentTokenAllocation.js";
+import { AgentTokenBudgetOracle, type AgentTokenBudgetInspection } from "../Text/AgentTokenBudgetOracle.js";
+import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
+import { AgentToolObservationStructuralProjector } from "../ToolRuntime/AgentToolObservationStructuralProjector.js";
+import type { AgentToolObservationStructuralLimits } from "../Types/AgentToolObservationProjectionTypes.js";
 import {
+  AgentPiToolObservationSourceViewProtocol,
   AgentPiToolObservationStatuses,
   agentPiToolObservationIdentity,
   createAgentPiToolObservation,
   createAgentPiToolObservationContextView,
   isAgentPiObservationContextProjected,
+  isAgentPiObservationSourceBounded,
   isAgentPiToolResultMessage,
+  projectAgentPiToolObservationFallback,
   readAgentPiMessageTextContent,
   readAgentPiObservationBatchId,
   readAgentPiToolObservation,
   readAgentPiToolObservationStatus,
-  projectAgentPiToolObservationFallback,
   writeAgentPiMessageTextContent,
   type AgentPiToolObservation,
 } from "./AgentPiToolObservation.js";
-
-const MaximumExactProjectionBytesPerToken = 32;
 
 export interface AgentPiToolObservationBatchProjectionOptions {
   readonly model: string;
@@ -30,8 +33,14 @@ export interface AgentPiToolObservationBatchInspection {
   readonly candidateCount: number;
   readonly availableTokens: number;
   readonly minimumTokens: number;
-  readonly completeTokens: number;
+  readonly completeTokens?: number;
+  readonly completeMeasurement: AgentTokenBudgetInspection["kind"];
   readonly requiresProjection: boolean;
+}
+
+export interface AgentPiPreparedToolObservationBatch {
+  readonly inspection: AgentPiToolObservationBatchInspection;
+  readonly messages: AgentMessage[];
 }
 
 interface ProjectionCandidate {
@@ -42,16 +51,30 @@ interface ProjectionCandidate {
   readonly minimum: AgentUnknownRecord;
   readonly minimumText: string;
   readonly minimumTokens: number;
-  readonly completeTokens: number;
-  readonly requiresProjection: boolean;
+  readonly completeText: string;
+  readonly completeCost: AgentTokenBudgetInspection;
 }
+
+const LegacyObservationLimits: AgentToolObservationStructuralLimits = {
+  maxDepth: 8,
+  maxArrayItems: 24,
+  maxObjectProperties: 40,
+  maxStringCharacters: 1_024,
+  maxTotalCharacters: 8_192,
+  maxNodes: 256,
+};
+
+const LegacyObservationMaximumOmissions = 24;
 
 export class AgentPiToolObservationBatchProjector {
   private readonly tokenProjector: AgentTokenProjector;
+  private readonly tokenOracle: AgentTokenBudgetOracle;
+  private readonly structuralProjector = new AgentToolObservationStructuralProjector();
   private readonly committedViews = new Map<string, string>();
 
   constructor(private readonly options: AgentPiToolObservationBatchProjectionOptions) {
     this.tokenProjector = new AgentTokenProjector(options.model);
+    this.tokenOracle = new AgentTokenBudgetOracle(options.model);
   }
 
   pendingObservationIdentities(messages: readonly AgentMessage[]): string[] {
@@ -91,9 +114,9 @@ export class AgentPiToolObservationBatchProjector {
           ...incompleteObservationEnvelope(observation, "grounded_digest"),
           detail: compactRecord({
             semantic_digest: observation.semantic_digest,
-            retrieval: observation.retrieval,
-            continuation: observation.continuation,
-            delta: observation.delta,
+            retrieval: observation.retrieval ?? readAgentUnknownRecord(observation.detail)?.retrieval,
+            continuation: observation.continuation ?? readAgentUnknownRecord(observation.detail)?.continuation,
+            delta: observation.delta ?? readAgentUnknownRecord(observation.detail)?.delta,
           }),
         }),
       );
@@ -101,35 +124,21 @@ export class AgentPiToolObservationBatchProjector {
     return true;
   }
 
-  inspect(messages: readonly AgentMessage[]): AgentPiToolObservationBatchInspection {
+  prepare(messages: readonly AgentMessage[]): AgentPiPreparedToolObservationBatch {
     this.reconcileCommittedViews(messages);
-    const projectedMessages = this.applyCommittedViews(messages);
-    const candidates = this.collectCandidates(projectedMessages);
-    const availableTokens = this.availableBatchTokens(projectedMessages, candidates);
-    const minimumTokens = candidates.reduce((total, candidate) => total + candidate.minimumTokens, 0);
-    const completeTokens = candidates.reduce((total, candidate) => total + candidate.completeTokens, 0);
-    return {
-      candidateCount: candidates.length,
-      availableTokens,
-      minimumTokens,
-      completeTokens,
-      requiresProjection: completeTokens > availableTokens,
-    };
-  }
-
-  project(messages: readonly AgentMessage[]): AgentMessage[] {
-    this.reconcileCommittedViews(messages);
-    const projectedMessages = this.applyCommittedViews(messages);
-    const candidates = this.collectCandidates(projectedMessages);
-    if (candidates.length === 0) return projectedMessages;
+    const committedMessages = this.applyCommittedViews(messages);
+    const candidates = this.collectCandidates(committedMessages);
+    const availableTokens = this.availableBatchTokens(committedMessages, candidates);
+    const inspection = inspectBatch(candidates, availableTokens);
+    if (candidates.length === 0) return { inspection, messages: committedMessages };
 
     const allocations = allocateAgentTokenBudget(
       candidates.map((candidate) => ({
         identity: candidate.identity,
         minimumTokens: candidate.minimumTokens,
-        desiredTokens: candidate.completeTokens,
+        desiredTokens: desiredCandidateTokens(candidate.completeCost, this.maximumCandidateTokens()),
       })),
-      this.availableBatchTokens(projectedMessages, candidates),
+      availableTokens,
     );
     const replacements = new Map<number, AgentMessage>(
       candidates.map((candidate) => {
@@ -140,7 +149,14 @@ export class AgentPiToolObservationBatchProjector {
         return [candidate.index, writeAgentPiMessageTextContent(candidate.message, content)];
       }),
     );
-    return projectedMessages.map((message, index) => replacements.get(index) ?? message);
+    return {
+      inspection,
+      messages: committedMessages.map((message, index) => replacements.get(index) ?? message),
+    };
+  }
+
+  project(messages: readonly AgentMessage[]): AgentMessage[] {
+    return this.prepare(messages).messages;
   }
 
   private applyCommittedViews(messages: readonly AgentMessage[]): AgentMessage[] {
@@ -170,17 +186,14 @@ export class AgentPiToolObservationBatchProjector {
   private collectCandidates(messages: readonly AgentMessage[]): ProjectionCandidate[] {
     return messages.flatMap((message, index) => {
       if (!isAgentPiToolResultMessage(message)) return [];
-      const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
-      if (!observation || isAgentPiObservationContextProjected(observation)) return [];
+      const sourceObservation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
+      if (!sourceObservation || isAgentPiObservationContextProjected(sourceObservation)) return [];
 
+      const observation = this.boundLegacyObservation(sourceObservation);
       const minimum = incompleteObservation(observation, {});
       const minimumText = JSON.stringify(minimum);
       const complete = completeObservation(observation);
-      const maximumCompleteTokens = this.maximumCandidateTokens();
-      const requiresProjection =
-        Buffer.byteLength(JSON.stringify(complete), "utf8") >
-        maximumCompleteTokens * MaximumExactProjectionBytesPerToken;
-      const completeTokens = requiresProjection ? maximumCompleteTokens : this.tokenProjector.countJson(complete);
+      const completeText = JSON.stringify(complete);
       return [
         {
           index,
@@ -190,10 +203,36 @@ export class AgentPiToolObservationBatchProjector {
           minimum,
           minimumText,
           minimumTokens: this.tokenProjector.countJson(minimum),
-          completeTokens,
-          requiresProjection,
+          completeText,
+          completeCost: this.tokenOracle.inspectJson(complete, this.maximumCandidateTokens()),
         },
       ];
+    });
+  }
+
+  private boundLegacyObservation(observation: AgentPiToolObservation): AgentPiToolObservation {
+    if (isAgentPiObservationSourceBounded(observation)) return observation;
+    const detail = this.structuralProjector.project(
+      projectAgentPiToolObservationFallback(observation),
+      LegacyObservationLimits,
+      LegacyObservationMaximumOmissions,
+    );
+    if (detail.complete) return observation;
+    return createAgentPiToolObservation({
+      ...requiredObservationEnvelope(observation),
+      observation_view: {
+        type: AgentPiToolObservationSourceViewProtocol.type,
+        complete: false,
+        mode: "legacy_structural_fallback",
+        omission_count: detail.omissionCount,
+        omissions: detail.omissions,
+        artifact_fallback: {
+          strategy: "reference",
+          required_when_truncated: true,
+          available: readAgentString(observation.artifact_uri) !== undefined,
+        },
+      },
+      detail: detail.value,
     });
   }
 
@@ -216,8 +255,8 @@ export class AgentPiToolObservationBatchProjector {
   }
 
   private projectObservation(candidate: ProjectionCandidate, tokenLimit: number): string {
-    if (!candidate.requiresProjection && candidate.completeTokens <= tokenLimit) {
-      return JSON.stringify(completeObservation(candidate.observation));
+    if (candidate.completeCost.kind === "exact" && candidate.completeCost.tokens <= tokenLimit) {
+      return candidate.completeText;
     }
 
     const envelope = incompleteObservationEnvelope(candidate.observation);
@@ -227,9 +266,38 @@ export class AgentPiToolObservationBatchProjector {
       projectAgentPiToolObservationFallback(candidate.observation),
       detailBudget,
     );
-    const projectedText = JSON.stringify({ ...envelope, detail: detail.projectedValue });
+    const projectedText = JSON.stringify({ ...envelope, detail: detail.value });
     return this.tokenProjector.previewText(projectedText, tokenLimit).truncated ? candidate.minimumText : projectedText;
   }
+}
+
+function inspectBatch(
+  candidates: readonly ProjectionCandidate[],
+  availableTokens: number,
+): AgentPiToolObservationBatchInspection {
+  const minimumTokens = candidates.reduce((total, candidate) => total + candidate.minimumTokens, 0);
+  const costs = candidates.map((candidate) => candidate.completeCost);
+  const completeMeasurement = costs.some((cost) => cost.kind === "unknown")
+    ? "unknown"
+    : costs.some((cost) => cost.kind === "overBudget")
+      ? "overBudget"
+      : "exact";
+  const completeTokens =
+    completeMeasurement === "exact"
+      ? costs.reduce((total, cost) => total + (cost.kind === "exact" ? cost.tokens : 0), 0)
+      : undefined;
+  return {
+    candidateCount: candidates.length,
+    availableTokens,
+    minimumTokens,
+    completeTokens,
+    completeMeasurement,
+    requiresProjection: completeTokens === undefined || completeTokens > availableTokens,
+  };
+}
+
+function desiredCandidateTokens(cost: AgentTokenBudgetInspection, maximumTokens: number): number {
+  return cost.kind === "exact" ? cost.tokens : maximumTokens;
 }
 
 function completeObservation(observation: AgentPiToolObservation): AgentUnknownRecord {
@@ -237,10 +305,7 @@ function completeObservation(observation: AgentPiToolObservation): AgentUnknownR
   return {
     ...observation,
     batch_id: batchId,
-    context_view: createAgentPiToolObservationContextView({
-      complete: true,
-      batch_id: batchId,
-    }),
+    context_view: createAgentPiToolObservationContextView({ complete: true, batch_id: batchId }),
   };
 }
 
@@ -255,11 +320,7 @@ function incompleteObservationEnvelope(
   const batchId = readAgentPiObservationBatchId(observation);
   return {
     ...requiredObservationEnvelope(observation),
-    context_view: createAgentPiToolObservationContextView({
-      complete: false,
-      mode,
-      batch_id: batchId,
-    }),
+    context_view: createAgentPiToolObservationContextView({ complete: false, mode, batch_id: batchId }),
   };
 }
 
@@ -285,7 +346,7 @@ function requiredObservationEnvelope(observation: AgentPiToolObservation): Agent
               message: readAgentString(error?.message),
             })
           : undefined,
-      continuation: observation.continuation,
+      continuation: observation.continuation ?? readAgentUnknownRecord(observation.detail)?.continuation,
     }),
   );
 }

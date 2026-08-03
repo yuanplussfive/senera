@@ -10,6 +10,7 @@ export {
 
 export const AgentPiToolObservationProtocol = defineSeneraProtocol("tool_observation", 1);
 export const AgentPiToolObservationContextViewProtocol = defineSeneraProtocol("tool_observation_context_view", 1);
+export const AgentPiToolObservationSourceViewProtocol = defineSeneraProtocol("tool_observation_source_view", 1);
 
 const AgentPiToolObservationSchema = z
   .object({
@@ -110,6 +111,10 @@ export function isAgentPiObservationContextProjected(observation: AgentPiToolObs
   return AgentPiToolObservationContextViewSchema.safeParse(observation.context_view).success;
 }
 
+export function isAgentPiObservationSourceBounded(observation: AgentPiToolObservation): boolean {
+  return readAgentUnknownRecord(observation.observation_view)?.type === AgentPiToolObservationSourceViewProtocol.type;
+}
+
 export function agentPiToolObservationIdentity(observation: AgentPiToolObservation): string {
   return [
     readAgentPiObservationBatchId(observation),
@@ -119,10 +124,14 @@ export function agentPiToolObservationIdentity(observation: AgentPiToolObservati
 }
 
 export function projectAgentPiToolObservationDetail(observation: AgentPiToolObservation): AgentUnknownRecord {
+  const detail = readAgentUnknownRecord(observation.detail);
+  if (detail) return detail;
   return projectObservationKeys(observation, AgentPiToolObservationDetailKeys);
 }
 
 export function projectAgentPiToolObservationFallback(observation: AgentPiToolObservation): AgentUnknownRecord {
+  const detail = readAgentUnknownRecord(observation.detail);
+  if (detail) return detail;
   return projectObservationKeys(observation, AgentPiToolObservationFallbackKeys);
 }
 

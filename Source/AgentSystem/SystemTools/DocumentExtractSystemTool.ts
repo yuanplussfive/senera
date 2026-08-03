@@ -8,6 +8,7 @@ import {
   DefaultAgentDocumentToolConfiguration,
 } from "../Documents/AgentDocumentToolConfiguration.js";
 import { defineSystemTool } from "./AgentSystemToolDefinition.js";
+import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import { resolveAgentSystemUpload } from "./AgentSystemUpload.js";
 
 const DocumentExtractInput = z
@@ -248,6 +249,7 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
       },
     },
     metadata: {
+      observation: StandardAgentToolObservationProjection,
       description: "Probe or extract text, structure, metadata, and warnings from a user-uploaded document.",
       permissions: ["uploads:read"],
       execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },

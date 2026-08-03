@@ -1,0 +1,107 @@
+{
+  "$schema": "https://schemas.senera.ai/tool-observation-projection/v1.json",
+  "schemaVersion": 1,
+  "maxTokens": 2048,
+  "maxOmissions": 24,
+  "artifactFallback": { "strategy": "reference", "requiredWhenTruncated": true },
+  "sources": [
+    {
+      "source": "headline",
+      "mode": "text",
+      "priority": "essential",
+      "maxTokens": 128,
+      "limits": {
+        "maxDepth": 1,
+        "maxArrayItems": 4,
+        "maxObjectProperties": 8,
+        "maxStringCharacters": 2048,
+        "maxTotalCharacters": 2048,
+        "maxNodes": 16
+      }
+    },
+    {
+      "source": "summary",
+      "mode": "text",
+      "priority": "high",
+      "maxTokens": 512,
+      "limits": {
+        "maxDepth": 1,
+        "maxArrayItems": 4,
+        "maxObjectProperties": 8,
+        "maxStringCharacters": 2048,
+        "maxTotalCharacters": 2048,
+        "maxNodes": 16
+      }
+    },
+    {
+      "source": "retrieval",
+      "mode": "json",
+      "priority": "high",
+      "maxTokens": 256,
+      "limits": {
+        "maxDepth": 8,
+        "maxArrayItems": 32,
+        "maxObjectProperties": 48,
+        "maxStringCharacters": 2048,
+        "maxTotalCharacters": 12288,
+        "maxNodes": 384
+      }
+    },
+    {
+      "source": "result",
+      "mode": "auto",
+      "priority": "normal",
+      "maxTokens": 1024,
+      "limits": {
+        "maxDepth": 8,
+        "maxArrayItems": 32,
+        "maxObjectProperties": 48,
+        "maxStringCharacters": 2048,
+        "maxTotalCharacters": 12288,
+        "maxNodes": 384
+      }
+    },
+    {
+      "source": "evidence",
+      "mode": "orderedArray",
+      "priority": "normal",
+      "maxTokens": 512,
+      "limits": {
+        "maxDepth": 8,
+        "maxArrayItems": 32,
+        "maxObjectProperties": 48,
+        "maxStringCharacters": 2048,
+        "maxTotalCharacters": 12288,
+        "maxNodes": 384
+      }
+    },
+    {
+      "source": "delta",
+      "mode": "orderedArray",
+      "priority": "normal",
+      "maxTokens": 384,
+      "limits": {
+        "maxDepth": 8,
+        "maxArrayItems": 32,
+        "maxObjectProperties": 48,
+        "maxStringCharacters": 2048,
+        "maxTotalCharacters": 12288,
+        "maxNodes": 384
+      }
+    },
+    {
+      "source": "limitations",
+      "mode": "orderedArray",
+      "priority": "low",
+      "maxTokens": 192,
+      "limits": {
+        "maxDepth": 8,
+        "maxArrayItems": 32,
+        "maxObjectProperties": 48,
+        "maxStringCharacters": 2048,
+        "maxTotalCharacters": 12288,
+        "maxNodes": 384
+      }
+    }
+  ]
+}

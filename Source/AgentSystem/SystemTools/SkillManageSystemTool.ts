@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AgentManagedExtensionService } from "../ManagedExtensions/AgentManagedExtensionService.js";
 import { AgentSkillRecommendedToolsSchema } from "../Skills/AgentSkillToolBinding.js";
 import { defineSystemTool } from "./AgentSystemToolDefinition.js";
+import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 
 const SkillName = z.string().trim().min(1).describe("Lowercase kebab-case Skill directory name.");
 const SkillDescription = z.string().trim().min(1).describe("Trigger-focused Skill description.");
@@ -60,6 +61,7 @@ export const SkillManageSystemTool = defineSystemTool({
     skills: ["skill-creator"],
   },
   metadata: {
+    observation: StandardAgentToolObservationProjection,
     description:
       "Create, update, validate, or remove a standard Skill package under .senera/skills, including optional bindings to registered tools.",
     permissions: ["filesystem:write:.senera/skills"],

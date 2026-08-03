@@ -1,5 +1,6 @@
 {
   "name": "ShellCommandTool",
+  "observationProjection": "observations/default.projection.json",
   "description": "在策略选择的工作区执行边界内运行显式方言的 shell 命令，用于测试、构建、git、诊断和脚本；文件编辑不要走 shell。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

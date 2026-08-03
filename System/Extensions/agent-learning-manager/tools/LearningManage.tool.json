@@ -294,6 +294,7 @@
       }
     ]
   },
+  "observationProjection": "observations/LearningManage.projection.json",
   "permissions": ["filesystem:read:.senera/data/tool-search"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": { "Lifecycle": "Immediate", "ProtocolVersion": 2, "ResultAssessment": "ProcessExit" },

@@ -86,6 +86,7 @@
     "required": ["status", "action", "name", "diagnostics", "recommendedTools", "guidance"],
     "additionalProperties": false
   },
+  "observationProjection": "observations/SkillManage.projection.json",
   "permissions": ["filesystem:write:.senera/skills"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
   "runtime": { "Lifecycle": "Immediate", "ProtocolVersion": 2, "ResultAssessment": "ProcessExit" },

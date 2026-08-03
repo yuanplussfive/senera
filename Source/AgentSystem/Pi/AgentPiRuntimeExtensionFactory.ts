@@ -34,7 +34,10 @@ import {
 } from "./AgentPiCodingAgentSessionFrame.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic, type AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 import { renderPiSystemPromptFrame } from "./AgentPiPromptFrameProjector.js";
-import { AgentPiToolObservationBatchProjector } from "./AgentPiToolObservationBatchProjector.js";
+import {
+  AgentPiToolObservationBatchProjector,
+  type AgentPiToolObservationBatchInspection,
+} from "./AgentPiToolObservationBatchProjector.js";
 import type { AgentPiToolObservationDigester } from "./AgentPiToolObservationDigester.js";
 import { projectAgentPiToolResultStatus } from "./AgentPiToolResultPolicy.js";
 import type { AgentPiProviderProjection } from "./AgentPiTypes.js";
@@ -151,20 +154,19 @@ export class AgentPiRuntimeExtensionFactory {
             messages: event.messages,
             toolCallIndex: toolIndexResult.index,
           });
-          const inspection = observationProjector.inspect(bridgeResult.messages);
-          if (digestSession && snapshot.tokenBudget && inspection.requiresProjection) {
-            await this.enrichToolObservations({
+          let prepared = snapshot.tokenBudget ? observationProjector.prepare(bridgeResult.messages) : undefined;
+          if (digestSession && snapshot.tokenBudget && prepared?.inspection.requiresProjection) {
+            const changed = await this.enrichToolObservations({
               digestSession,
               observationProjector,
               messages: bridgeResult.messages,
-              inspection,
+              inspection: prepared.inspection,
               frame: snapshot,
               tokenBudget: snapshot.tokenBudget,
             });
+            if (changed) prepared = observationProjector.prepare(bridgeResult.messages);
           }
-          const toolMessages = snapshot.tokenBudget
-            ? observationProjector.project(bridgeResult.messages)
-            : bridgeResult.messages;
+          const toolMessages = prepared?.messages ?? bridgeResult.messages;
           return {
             messages: snapshot.tokenBudget
               ? applyAgentPiContextPolicy(
@@ -184,10 +186,10 @@ export class AgentPiRuntimeExtensionFactory {
     digestSession: ReturnType<AgentPiToolObservationDigester["createSession"]>;
     observationProjector: AgentPiToolObservationBatchProjector;
     messages: readonly AgentMessage[];
-    inspection: ReturnType<AgentPiToolObservationBatchProjector["inspect"]>;
+    inspection: AgentPiToolObservationBatchInspection;
     frame: AgentPiCodingAgentSessionFrame;
     tokenBudget: AgentTurnTokenBudget;
-  }): Promise<void> {
+  }): Promise<boolean> {
     const sourceIdentities = input.observationProjector.pendingObservationIdentities(input.messages);
     const objective = input.frame.rootCommand?.objective;
     try {
@@ -202,7 +204,9 @@ export class AgentPiRuntimeExtensionFactory {
       });
       if (input.observationProjector.commitCondensedBatch(enriched, sourceIdentities)) {
         input.digestSession.release(input.messages, { objective, sourceIdentities });
+        return true;
       }
+      return false;
     } catch (error) {
       await emitAgentPiDiagnostic(input.frame.diagnostics ?? this.options.diagnostics, {
         context: agentPiDiagnosticContext(input.frame),
@@ -210,6 +214,7 @@ export class AgentPiRuntimeExtensionFactory {
         name: "tool-observation.digest.failed",
         details: { message: errorMessage(error) },
       });
+      return false;
     }
   }
 }

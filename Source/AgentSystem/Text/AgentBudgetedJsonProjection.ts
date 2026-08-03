@@ -141,24 +141,37 @@ export class AgentBudgetedJsonProjector {
     tokenLimit: number,
     ancestors: WeakSet<object>,
   ): unknown[] {
-    for (const [index, entry] of source.entries()) {
-      const child = containerSkeleton(entry);
-      target.push(child);
-      if (!this.fits(view, tokenLimit)) {
-        target.pop();
-        this.recordOmission(view, omissions, [...path, index], source.length - index);
-        break;
-      }
-      if (isExpandableContainer(entry)) {
-        target[index] = this.expand(entry, child, view, omissions, [...path, index], tokenLimit, ancestors);
-        continue;
-      }
-      target[index] = normalizeJsonScalar(entry);
-      if (!this.fits(view, tokenLimit)) {
-        target.pop();
-        this.recordOmission(view, omissions, [...path, index], source.length - index);
-        break;
-      }
+    const normalized = normalizeCompletePrefix(source);
+    const prefixLength = largestFittingPrefix(normalized.length, (length) => {
+      replaceArray(target, normalized.slice(0, length));
+      return this.fits(view, tokenLimit);
+    });
+    replaceArray(target, normalized.slice(0, prefixLength));
+    if (prefixLength >= source.length) return target;
+
+    const overflow = source[prefixLength];
+    if (prefixLength >= normalized.length || !isExpandableContainer(overflow)) {
+      this.recordOmission(view, omissions, [...path, prefixLength], source.length - prefixLength);
+      return target;
+    }
+    const child = containerSkeleton(overflow);
+    target.push(child);
+    if (!this.fits(view, tokenLimit)) {
+      target.pop();
+      this.recordOmission(view, omissions, [...path, prefixLength], source.length - prefixLength);
+      return target;
+    }
+    target[prefixLength] = this.expand(
+      overflow,
+      child,
+      view,
+      omissions,
+      [...path, prefixLength],
+      tokenLimit,
+      ancestors,
+    );
+    if (prefixLength + 1 < source.length) {
+      this.recordOmission(view, omissions, [...path, prefixLength + 1], source.length - prefixLength - 1);
     }
     return target;
   }
@@ -173,24 +186,36 @@ export class AgentBudgetedJsonProjector {
     ancestors: WeakSet<object>,
   ): Record<string, unknown> {
     const entries = Object.entries(source).filter(([, value]) => value !== undefined);
-    for (const [index, [key, entry]] of entries.entries()) {
-      const child = containerSkeleton(entry);
-      target[key] = child;
-      if (!this.fits(view, tokenLimit)) {
-        delete target[key];
-        this.recordOmission(view, omissions, [...path, key], entries.length - index);
-        break;
-      }
-      if (isExpandableContainer(entry)) {
-        target[key] = this.expand(entry, child, view, omissions, [...path, key], tokenLimit, ancestors);
-        continue;
-      }
-      target[key] = normalizeJsonScalar(entry);
-      if (!this.fits(view, tokenLimit)) {
-        delete target[key];
-        this.recordOmission(view, omissions, [...path, key], entries.length - index);
-        break;
-      }
+    const normalized = normalizeCompleteObjectPrefix(entries);
+    const prefixLength = largestFittingPrefix(normalized.length, (length) => {
+      replaceObject(target, normalized.slice(0, length));
+      return this.fits(view, tokenLimit);
+    });
+    replaceObject(target, normalized.slice(0, prefixLength));
+    if (prefixLength >= entries.length) return target;
+
+    const overflow = entries[prefixLength];
+    if (!overflow) return target;
+    const [key, value] = overflow;
+    if (prefixLength >= normalized.length || !isExpandableContainer(value)) {
+      this.recordOmission(view, omissions, [...path, key], entries.length - prefixLength);
+      return target;
+    }
+    const child = containerSkeleton(value);
+    target[key] = child;
+    if (!this.fits(view, tokenLimit)) {
+      delete target[key];
+      this.recordOmission(view, omissions, [...path, key], entries.length - prefixLength);
+      return target;
+    }
+    target[key] = this.expand(value, child, view, omissions, [...path, key], tokenLimit, ancestors);
+    if (prefixLength + 1 < entries.length) {
+      this.recordOmission(
+        view,
+        omissions,
+        [...path, entries[prefixLength + 1]?.[0] ?? prefixLength + 1],
+        entries.length - prefixLength - 1,
+      );
     }
     return target;
   }
@@ -206,15 +231,63 @@ export class AgentBudgetedJsonProjector {
   }
 
   private attachOmissions(view: PartialJsonView, omissions: readonly ProjectionOmission[], tokenLimit: number): void {
-    for (const omission of omissions) {
-      const current = view.omissions ?? [];
-      view.omissions = [...current, omission];
-      if (!this.fits(view, tokenLimit)) {
-        view.omissions = current.length > 0 ? current : undefined;
-        break;
-      }
+    const retained = largestFittingPrefix(omissions.length, (length) => {
+      view.omissions = length > 0 ? omissions.slice(0, length) : undefined;
+      return this.fits(view, tokenLimit);
+    });
+    view.omissions = retained > 0 ? omissions.slice(0, retained) : undefined;
+  }
+}
+
+function largestFittingPrefix(length: number, apply: (length: number) => boolean): number {
+  let low = 0;
+  let high = length;
+  let best = 0;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (apply(middle)) {
+      best = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
     }
   }
+  return best;
+}
+
+function normalizeCompletePrefix(values: readonly unknown[]): unknown[] {
+  const normalized: unknown[] = [];
+  for (const value of values) {
+    try {
+      normalized.push(normalizeJsonValue(value));
+    } catch {
+      break;
+    }
+  }
+  return normalized;
+}
+
+function normalizeCompleteObjectPrefix(
+  entries: readonly (readonly [string, unknown])[],
+): Array<readonly [string, unknown]> {
+  const normalized: Array<readonly [string, unknown]> = [];
+  for (const [key, value] of entries) {
+    try {
+      normalized.push([key, normalizeJsonValue(value)]);
+    } catch {
+      break;
+    }
+  }
+  return normalized;
+}
+
+function replaceArray(target: unknown[], values: readonly unknown[]): void {
+  target.splice(0, target.length, ...values);
+}
+
+function replaceObject(target: Record<string, unknown>, entries: readonly (readonly [string, unknown])[]): void {
+  for (const key of Object.keys(target)) delete target[key];
+  for (const [key, value] of entries) target[key] = value;
 }
 
 function createPartialView(value: unknown): PartialJsonView {

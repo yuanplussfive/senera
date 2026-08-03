@@ -1,5 +1,6 @@
 {
   "name": "ShellStartTool",
+  "observationProjection": "observations/resource.projection.json",
   "description": "启动可恢复、可增量读取和交互控制的后台 shell 进程。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

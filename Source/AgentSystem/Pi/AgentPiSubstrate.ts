@@ -129,6 +129,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       config: options.config,
       registry: options.registry,
       execution: new AgentPiToolExecutionBridge({
+        model: this.provider.model.id,
         executeToolCall: options.toolCallExecutor.execute.bind(options.toolCallExecutor),
         recordToolArtifacts: options.artifactRecorder.record.bind(options.artifactRecorder),
         resourceScheduler: new AgentToolResourceScheduler(resourceClaims),

@@ -32,6 +32,7 @@
     "required": ["uploadUri", "name", "mime", "size", "task", "answer", "model"],
     "additionalProperties": false
   },
+  "observationProjection": "observations/ImageAnalyze.projection.json",
   "permissions": ["uploads:read", "model:vision"],
   "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
   "runtime": { "Lifecycle": "Immediate", "ProtocolVersion": 2, "ResultAssessment": "ProcessExit" },

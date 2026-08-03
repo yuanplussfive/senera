@@ -1,5 +1,6 @@
 {
   "name": "ExecutionResourceWrite",
+  "observationProjection": "observations/resource.projection.json",
   "description": "向后台执行资源 stdin 写入文本并处理流背压。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

@@ -113,24 +113,6 @@ export const ToolRuntimeSchema = z
   })
   .strict();
 
-const ToolObservationContinuationSchema = z
-  .object({
-    Kind: z.enum(["session", "cursor", "offset", "artifact"]),
-    Handle: z.string().min(1),
-    Cursor: z.string().min(1).optional(),
-    State: z.string().min(1).optional(),
-    TerminalStates: z.array(z.string().min(1)).optional(),
-  })
-  .strict();
-
-const ToolObservationSchema = z
-  .object({
-    MaxTokens: z.number().int().min(1).optional(),
-    IncludeArtifactProjection: z.boolean().optional(),
-    Continuation: ToolObservationContinuationSchema.optional(),
-  })
-  .strict();
-
 export const ToolSchema = z
   .object({
     Name: z.string().min(1),
@@ -140,7 +122,6 @@ export const ToolSchema = z
     Handler: ToolHandlerSchema,
     Execution: ToolExecutionSchema,
     Runtime: ToolRuntimeSchema,
-    Observation: ToolObservationSchema.optional(),
     Search: ToolSearchSchema.optional(),
     EvidenceCapabilities: z.array(ToolEvidenceCapabilitySchema).optional(),
     Approval: ToolApprovalSchema.optional(),

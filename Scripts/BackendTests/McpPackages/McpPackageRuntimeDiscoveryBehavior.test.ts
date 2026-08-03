@@ -33,10 +33,16 @@ describe("MCP package runtime discovery", () => {
     });
     try {
       await runtime.initialize();
-      expect(runtime.registry.getTool("mcp__weather__forecast")?.handler).toMatchObject({
+      const weatherTool = runtime.registry.getTool("mcp__weather__forecast");
+      expect(weatherTool?.handler).toMatchObject({
         kind: "McpTool",
         tool: "forecast",
         server: { transport: "stdio", env: { QWEATHER_API_KEY: "test-key" } },
+      });
+      expect(weatherTool?.observationProjection).toMatchObject({
+        schemaVersion: 1,
+        artifactFallback: { strategy: "reference" },
+        sources: expect.arrayContaining([expect.objectContaining({ source: "result", mode: "auto" })]),
       });
       expect(runtime.registry.getTool("mcp__web_research__search")?.handler).toMatchObject({
         kind: "McpTool",

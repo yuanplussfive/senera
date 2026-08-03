@@ -1,6 +1,7 @@
 import type { AgentMcpRuntimeEndpoint } from "../McpPackages/AgentMcpPackageTypes.js";
 import type { AgentPromptContractView } from "../Prompt/AgentPromptContractTypes.js";
 import type { AgentExtensionOwner } from "./AgentExtensionRuntimeTypes.js";
+import type { AgentToolObservationProjectionManifest } from "./AgentToolObservationProjectionTypes.js";
 import type {
   AgentToolDiscoverySource,
   ToolApprovalManifest,
@@ -8,7 +9,6 @@ import type {
   ToolEvidenceCapabilityManifest,
   ToolExecutionManifest,
   ToolLoadingMode,
-  ToolObservationManifest,
   ToolResourceArgumentManifest,
   ToolRuntimeManifest,
   ToolSearchManifest,
@@ -44,7 +44,7 @@ export interface RegisteredTool {
   handler: RegisteredToolHandler;
   execution: ToolExecutionManifest;
   runtime: ToolRuntimeManifest;
-  observation?: ToolObservationManifest;
+  observationProjection?: AgentToolObservationProjectionManifest;
   sources: readonly AgentToolDiscoverySource[];
   search?: ToolSearchManifest;
   evidenceCapabilities: ToolEvidenceCapabilityManifest[];

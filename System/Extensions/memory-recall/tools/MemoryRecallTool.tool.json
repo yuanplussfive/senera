@@ -1,5 +1,6 @@
 {
   "name": "MemoryRecallTool",
+  "observationProjection": "observations/default.projection.json",
   "description": "召回长期记忆中的用户画像、偏好、知识和剧情状态；未命中时返回普通历史对话片段。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

@@ -7,6 +7,7 @@ import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { AgentImageVisionModelClient } from "../Vision/AgentImageVisionModelClient.js";
 import { resolveAgentVisionProvider } from "../Vision/AgentVisionProviderResolver.js";
 import { defineSystemTool } from "./AgentSystemToolDefinition.js";
+import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import { resolveAgentSystemUpload } from "./AgentSystemUpload.js";
 
 const ImageAnalyzeInput = z
@@ -190,6 +191,7 @@ export function createImageAnalyzeSystemTool(
       },
     },
     metadata: {
+      observation: StandardAgentToolObservationProjection,
       description: "Analyze an uploaded image or screenshot for visible evidence, OCR, or a specific question.",
       permissions: ["uploads:read", "model:vision"],
       execution: { Targets: ["Local"], Network: "Allow", Workspace: "ReadOnly" },

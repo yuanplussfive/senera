@@ -1,5 +1,6 @@
 {
   "name": "WorkspaceApplyPatch",
+  "observationProjection": "observations/default.projection.json",
   "description": "对工作区应用 Codex-like 高层补丁，支持新增、hunk 更新、删除、移动和目录操作；Skill/MCP 候选通过完整预检后原子提交。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

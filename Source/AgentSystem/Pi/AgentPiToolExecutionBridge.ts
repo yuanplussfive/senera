@@ -3,7 +3,8 @@ import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolE
 import type { AskUserControlResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
-import { renderOpenAiToolObservationContent } from "../ToolRuntime/AgentToolObservationRenderer.js";
+import { AgentToolObservationContextCompiler } from "../ToolRuntime/AgentToolObservationContextCompiler.js";
+import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import { redactArtifactSecrets, redactArtifactToolOutcome } from "../Artifacts/AgentArtifactRedaction.js";
 import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
 import { AgentPiToolResultStatuses, type AgentPiToolExecutionInput, type AgentPiToolResult } from "./AgentPiTypes.js";
@@ -19,6 +20,7 @@ import {
 import { createAgentPiToolObservation } from "./AgentPiToolObservation.js";
 
 export interface AgentPiToolExecutionBridgeOptions {
+  model: string;
   executeToolCall: AgentToolCallExecutor["execute"];
   recordToolArtifacts: AgentToolExecutionArtifactRecorder["record"];
   resourceScheduler?: Pick<AgentToolResourceScheduler, "run">;
@@ -26,7 +28,11 @@ export interface AgentPiToolExecutionBridgeOptions {
 }
 
 export class AgentPiToolExecutionBridge {
-  constructor(private readonly options: AgentPiToolExecutionBridgeOptions) {}
+  private readonly observationCompiler: AgentToolObservationContextCompiler;
+
+  constructor(private readonly options: AgentPiToolExecutionBridgeOptions) {
+    this.observationCompiler = new AgentToolObservationContextCompiler({ model: options.model });
+  }
 
   async execute(input: AgentPiToolExecutionInput): Promise<AgentPiToolResult> {
     const operation = () => this.executeWithLease(input);
@@ -120,10 +126,13 @@ export class AgentPiToolExecutionBridge {
   ): AgentPiToolResult {
     const tool = input.tool;
     const outcome = redactArtifactToolOutcome(result.outcome, result.artifactPolicy);
-    const content = renderOpenAiToolObservationContent(
+    const projection = tool.observationProjection ?? StandardAgentToolObservationProjection;
+    const observation = this.observationCompiler.compile(
       projectToolObservation(result, outcome, batchId),
-      tool.observation,
+      projection,
+      input.context.tokenBudget?.availableTokens(projection.maxTokens),
     );
+    const content = JSON.stringify(observation);
 
     return {
       content: [
@@ -141,18 +150,18 @@ function projectToolObservation(
   result: ExecutedToolCallResult,
   outcome: AgentToolExecutionOutcome,
   batchId: string,
-): Record<string, unknown> {
+): import("../ToolRuntime/AgentToolObservationContextCompiler.js").AgentToolObservationContextCompilerInput {
   const error = readAgentToolFailure(outcome);
   return {
     callId: result.callId,
     batchId,
-    name: result.name,
+    toolName: result.name,
     arguments: redactArtifactSecrets(result.arguments, result.artifactPolicy),
     process: redactArtifactSecrets(result.process, result.artifactPolicy),
     outcome,
     status: outcome.assessment.status,
-    execution_status: outcome.execution.status,
-    output_availability: outcome.output.availability,
+    executionStatus: outcome.execution.status,
+    outputAvailability: outcome.output.availability,
     result: redactArtifactSecrets(result.result, result.artifactPolicy),
     error,
     artifact: result.artifact,

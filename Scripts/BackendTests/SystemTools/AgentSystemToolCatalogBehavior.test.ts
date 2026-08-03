@@ -20,6 +20,7 @@ import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRunti
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 import { listDefaultAgentHostCapabilityNames } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
+import { StandardAgentToolObservationProjection } from "../../../Source/AgentSystem/ToolRuntime/AgentToolObservationProjectionPlan.js";
 
 describe("System Tool catalog", () => {
   test("registers code-defined host handlers while contracts remain package-owned", () => {
@@ -55,6 +56,18 @@ describe("System Tool catalog", () => {
       contract: { outputSchema: undefined },
     });
     expect(registry.getTool("TavilySearchTool")).toBeUndefined();
+    for (const tool of registry.listTools()) {
+      expect(tool.observationProjection).toMatchObject({
+        schemaVersion: 1,
+        artifactFallback: { strategy: "reference" },
+      });
+      expect(tool.observationProjection?.sources.length).toBeGreaterThan(0);
+    }
+    expect(registry.getTool("ExecutionResourceInspect")?.observationProjection?.continuation).toMatchObject({
+      kind: "cursor",
+      handle: "/resourceId",
+      cursor: "/cursor",
+    });
 
     const extensions = catalog.listExtensions();
     expect(extensions).toHaveLength(12);
@@ -71,6 +84,7 @@ describe("System Tool catalog", () => {
     try {
       const packageRoot = path.join(root, "incomplete-localization");
       fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
+      writeObservationProjection(packageRoot);
       writeJson(path.join(packageRoot, "tools", "Test.tool.json"), minimalContract("TestTool"));
       writeJson(path.join(packageRoot, "extension.json"), {
         ...extensionManifest("incomplete-localization", "tools/Test.tool.json", "shell.run"),
@@ -383,6 +397,59 @@ describe("System Tool catalog", () => {
     }
   });
 
+  test("rejects observation projection paths that escape their extension package", () => {
+    const root = createTemporaryDirectory("senera-system-observation-path");
+    try {
+      const packageRoot = path.join(root, "path-test");
+      fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
+      writeJson(path.join(root, "outside.projection.json"), StandardAgentToolObservationProjection);
+      writeJson(path.join(packageRoot, "tools", "Test.tool.json"), {
+        ...minimalContract("TestTool"),
+        observationProjection: "../outside.projection.json",
+      });
+      writeJson(
+        path.join(packageRoot, "extension.json"),
+        extensionManifest("path-test", "tools/Test.tool.json", "shell.run"),
+      );
+
+      expect(() =>
+        new AgentSystemExtensionCatalog().registerRoot(new AgentExtensionRegistry(), root, {
+          capabilities: new Set(["shell.run"]),
+        }),
+      ).toThrow(/must remain inside its extension package/u);
+    } finally {
+      removeDirectory(root);
+    }
+  });
+
+  test("includes the external observation projection in the registered contract digest", () => {
+    const root = createTemporaryDirectory("senera-system-observation-digest");
+    try {
+      const packageRoot = path.join(root, "digest-test");
+      fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
+      writeObservationProjection(packageRoot);
+      writeJson(path.join(packageRoot, "tools", "Test.tool.json"), minimalContract("TestTool"));
+      writeJson(
+        path.join(packageRoot, "extension.json"),
+        extensionManifest("digest-test", "tools/Test.tool.json", "shell.run"),
+      );
+      const firstRegistry = new AgentExtensionRegistry();
+      new AgentSystemExtensionCatalog().registerRoot(firstRegistry, root, { capabilities: new Set(["shell.run"]) });
+      const firstDigest = firstRegistry.getTool("TestTool")?.contract?.digest;
+
+      writeJson(path.join(packageRoot, "observations", "default.projection.json"), {
+        ...StandardAgentToolObservationProjection,
+        maxTokens: StandardAgentToolObservationProjection.maxTokens + 1,
+      });
+      const secondRegistry = new AgentExtensionRegistry();
+      new AgentSystemExtensionCatalog().registerRoot(secondRegistry, root, { capabilities: new Set(["shell.run"]) });
+
+      expect(secondRegistry.getTool("TestTool")?.contract?.digest).not.toBe(firstDigest);
+    } finally {
+      removeDirectory(root);
+    }
+  });
+
   test("rejects host capabilities that are not pre-registered", () => {
     const root = createTemporaryDirectory("senera-system-extension-capability");
     try {
@@ -435,6 +502,7 @@ function extensionManifest(id: string, contract: string, capability: string) {
 function minimalContract(name: string) {
   return {
     name,
+    observationProjection: "observations/default.projection.json",
     description: `${name} test contract.`,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     permissions: [],
@@ -454,6 +522,7 @@ function writeConfigurableExtension(
 ): string {
   const packageRoot = path.join(root, id);
   fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
+  writeObservationProjection(packageRoot);
   writeJson(path.join(packageRoot, "tools", "Test.tool.json"), minimalContract("TestTool"));
   writeJson(path.join(packageRoot, "config.schema.json"), schema);
   if (ui) writeJson(path.join(packageRoot, "ui.schema.json"), ui);
@@ -493,4 +562,10 @@ function localizedTestText(value: string): Record<"zh-CN" | "en-US", string> {
 
 function writeJson(filePath: string, value: unknown): void {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function writeObservationProjection(packageRoot: string): void {
+  const directory = path.join(packageRoot, "observations");
+  fs.mkdirSync(directory, { recursive: true });
+  writeJson(path.join(directory, "default.projection.json"), StandardAgentToolObservationProjection);
 }

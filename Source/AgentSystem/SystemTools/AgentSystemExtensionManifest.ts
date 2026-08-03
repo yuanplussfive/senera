@@ -11,6 +11,7 @@ import {
   ToolRuntimeSchema,
   ToolSearchSchema,
 } from "../Schemas/AgentToolContractSchema.js";
+import { AgentToolObservationProjectionSchema } from "../Schemas/AgentToolObservationProjectionSchema.js";
 
 export const AgentSystemExtensionManifestFileName = "extension.json";
 
@@ -25,6 +26,7 @@ export const AgentSystemToolContractSchema = z
     description: z.string().trim().min(1),
     inputSchema: JsonObjectSchema,
     outputSchema: AgentSystemExtensionJsonSchema.optional(),
+    observationProjection: z.string().trim().min(1),
     permissions: z.array(z.string()).default([]),
     execution: ToolExecutionSchema,
     runtime: ToolRuntimeSchema,
@@ -94,6 +96,7 @@ export const AgentSystemExtensionManifestSchema = z
 export type AgentSystemToolContract = z.infer<typeof AgentSystemToolContractSchema>;
 export type AgentSystemExtensionManifest = z.infer<typeof AgentSystemExtensionManifestSchema>;
 export type AgentSystemHostToolContribution = z.infer<typeof HostToolContributionSchema>;
+export { AgentToolObservationProjectionSchema };
 
 function isObjectJsonSchema(schema: Record<string, unknown>): boolean {
   if (schema.type === "object") return true;

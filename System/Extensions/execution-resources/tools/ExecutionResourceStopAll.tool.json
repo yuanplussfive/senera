@@ -1,5 +1,6 @@
 {
   "name": "ExecutionResourceStopAll",
+  "observationProjection": "observations/collection.projection.json",
   "description": "停止当前会话拥有的全部活动后台终端和进程。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

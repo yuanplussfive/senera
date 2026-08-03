@@ -1,5 +1,6 @@
 {
   "name": "ExecutionResourceWait",
+  "observationProjection": "observations/resource.projection.json",
   "description": "等待后台资源的新输出或终态并返回游标后的增量事件。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

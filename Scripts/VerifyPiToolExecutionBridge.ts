@@ -54,6 +54,7 @@ async function verifyToolResultProjection(): Promise<void> {
   });
   const calls: Array<{ request: unknown; context: AgentToolCallExecutionContext }> = [];
   const bridge = new AgentPiToolExecutionBridge({
+    model: "test-model",
     executeToolCall: async (request, context) => {
       calls.push({ request, context });
       return {
@@ -97,8 +98,7 @@ async function verifyToolResultProjection(): Promise<void> {
   const text = result.content[0]?.type === "text" ? result.content[0].text : "";
   assert.match(text, /senera\.tool_observation\.v1/);
   assert.match(text, /evidence_uri/);
-  assert.match(text, /projection/);
-  assert.match(text, /complete current projection/);
+  assert.match(text, /senera:\/\/artifact\/art_0123456789abcdef01234567/);
 }
 
 async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
@@ -110,6 +110,7 @@ async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
     toolExposure: new AgentToolExposureState(toolAccessGrant),
   });
   const bridge = new AgentPiToolExecutionBridge({
+    model: "test-model",
     executeToolCall: async () => ({
       kind: "ToolResults",
       value: [
@@ -136,11 +137,18 @@ async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
       context: { toolAccessGrant, piTurnContextId: contextId },
     });
     const text = result.content[0]?.type === "text" ? result.content[0].text : "";
-    const observation = JSON.parse(text) as { result?: { text?: string } };
+    const observation = JSON.parse(text) as {
+      artifact_uri?: string;
+      observation_view?: { complete?: boolean };
+      detail?: { result?: { text?: string } };
+    };
     const captured = turnContexts.takeExecutedToolResult(contextId, "call_large");
 
-    assert.equal(observation.result?.text, hugeText);
-    assert.deepEqual(captured?.result, observation.result);
+    assert.equal(observation.artifact_uri, artifact.artifactUri);
+    assert.equal(observation.observation_view?.complete, false);
+    assert.notEqual(observation.detail?.result?.text, hugeText);
+    assert.deepEqual(captured?.result, { text: hugeText });
+    assert.equal(text.includes(hugeText), false);
     assert.equal(JSON.stringify(result.details).includes("workspace-result"), false);
   } finally {
     turnContexts.release(contextId);
@@ -149,6 +157,7 @@ async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
 
 async function verifyAskUserProjection(): Promise<void> {
   const bridge = new AgentPiToolExecutionBridge({
+    model: "test-model",
     executeToolCall: async () => ({
       kind: "AskUser",
       value: {
@@ -191,6 +200,7 @@ async function verifyStructuredToolErrorProjection(): Promise<void> {
     diagnostics: [{ message: "工具名称冲突", pointer: "/Tools/0/Name" }],
   };
   const bridge = new AgentPiToolExecutionBridge({
+    model: "test-model",
     executeToolCall: async () => ({
       kind: "ToolResults",
       value: [
