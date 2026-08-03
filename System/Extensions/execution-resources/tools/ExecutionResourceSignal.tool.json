@@ -1,0 +1,64 @@
+{
+  "name": "ExecutionResourceSignal",
+  "observationProjection": "observations/resource.projection.json",
+  "description": "向后台进程树发送 interrupt、terminate 或 kill 信号。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "resourceId": {
+        "type": "string"
+      },
+      "signal": {
+        "type": "string",
+        "enum": ["interrupt", "terminate", "kill"]
+      }
+    },
+    "required": ["resourceId", "signal"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": ["process:shell"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "execution",
+      "Title": "Execution",
+      "Description": "Shell commands, processes, terminals, builds, tests, and other executable workloads."
+    }
+  ],
+  "search": {
+    "Summary": "向后台进程树发送 interrupt、terminate 或 kill 信号。",
+    "Capabilities": [
+      {
+        "Id": "execution.resource-signal",
+        "Facets": {
+          "Actions": ["interrupt", "terminate", "kill"],
+          "Targets": ["execution-resource", "process-tree"],
+          "Effects": ["process-control"]
+        }
+      }
+    ],
+    "Tags": ["后台进程", "进程信号", "取消"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Summary": {
+      "Template": "{{ toolName }} resource {{ result.resourceId }}: {{ result.state }}",
+      "ArtifactTemplate": "- resourceId: {{ result.resourceId }}\n  state: {{ result.state }}\n  cursor: {{ result.cursor }}{% if result.exitCode != blank %}\n  exitCode: {{ result.exitCode }}{% endif %}{% if result.signal %}\n  signal: {{ result.signal }}{% endif %}{% if result.truncated %}\n  outputHistoryTruncated: true{% endif %}{% for event in result.events %}{% if event.kind == 'output' %}\n\n[{{ event.stream }} cursor={{ event.cursor }}]\n{{ event.text }}{% elsif event.kind == 'state' %}\n\n[state cursor={{ event.cursor }}] {{ event.state }}{% if event.reason %}: {{ event.reason }}{% endif %}{% endif %}{% endfor %}"
+    }
+  }
+}

@@ -1,0 +1,55 @@
+import { randomBytes } from "node:crypto";
+import { resolveServerConfig } from "../AgentDefaults.js";
+import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+
+const RuntimeApiKeyBytes = 32;
+
+export const AgentPiProxyProtocol = {
+  providerId: "senera-pi-proxy",
+  modelApi: "openai-completions",
+  apiKey: randomBytes(RuntimeApiKeyBytes).toString("base64url"),
+  basePath: "/v1",
+  routes: {
+    models: "/v1/models",
+    chatCompletions: "/v1/chat/completions",
+  },
+} as const;
+
+export type AgentPiProxyModelApi = typeof AgentPiProxyProtocol.modelApi;
+
+export const AgentPiProxyContextHeader = "x-senera-pi-context-id";
+export const AgentPiProxyModelProviderHeader = "x-senera-model-provider-id";
+
+export function encodePiProxyModelProviderHeaderValue(modelProviderId: string): string {
+  return encodeURIComponent(modelProviderId);
+}
+
+export function decodePiProxyModelProviderHeaderValue(headerValue: string): string {
+  try {
+    return decodeURIComponent(headerValue);
+  } catch {
+    return headerValue;
+  }
+}
+
+export function composePiProxyRequestHeaders(
+  providerHeaders: Readonly<Record<string, string>>,
+  contextId?: string,
+): Record<string, string> {
+  return contextId ? { ...providerHeaders, [AgentPiProxyContextHeader]: contextId } : { ...providerHeaders };
+}
+
+const ClientHostByBindHost = new Map([
+  ["0.0.0.0", "127.0.0.1"],
+  ["::", "[::1]"],
+  ["[::]", "[::1]"],
+]);
+
+export function resolveAgentPiProxyBaseUrl(config: AgentSystemConfig): string {
+  const server = resolveServerConfig(config);
+  return `http://${resolveClientHost(server.Host)}:${server.Port}${AgentPiProxyProtocol.basePath}`;
+}
+
+function resolveClientHost(bindHost: string): string {
+  return ClientHostByBindHost.get(bindHost) ?? bindHost;
+}

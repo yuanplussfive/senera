@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schemas.senera.ai/tool-observation-projection/v1.json",
+  "schemaVersion": 1,
+  "maxTokens": 2048,
+  "maxOmissions": 16,
+  "artifactFallback": {
+    "strategy": "reference",
+    "requiredWhenTruncated": true
+  },
+  "continuation": {
+    "kind": "cursor",
+    "handle": "/resourceId",
+    "cursor": "/cursor",
+    "state": "/state",
+    "terminalStates": ["completed", "failed", "cancelled"]
+  },
+  "sources": [
+    {
+      "source": "continuation",
+      "mode": "json",
+      "priority": "essential",
+      "maxTokens": 192,
+      "limits": {
+        "maxDepth": 3,
+        "maxArrayItems": 0,
+        "maxObjectProperties": 8,
+        "maxStringCharacters": 256,
+        "maxTotalCharacters": 1024,
+        "maxNodes": 16
+      }
+    },
+    {
+      "source": "summary",
+      "mode": "text",
+      "priority": "high",
+      "maxTokens": 384,
+      "limits": {
+        "maxDepth": 1,
+        "maxArrayItems": 0,
+        "maxObjectProperties": 0,
+        "maxStringCharacters": 3072,
+        "maxTotalCharacters": 3072,
+        "maxNodes": 2
+      }
+    },
+    {
+      "source": "result",
+      "mode": "json",
+      "priority": "normal",
+      "maxTokens": 1536,
+      "limits": {
+        "maxDepth": 7,
+        "maxArrayItems": 48,
+        "maxObjectProperties": 48,
+        "maxStringCharacters": 4096,
+        "maxTotalCharacters": 16384,
+        "maxNodes": 512
+      }
+    }
+  ]
+}

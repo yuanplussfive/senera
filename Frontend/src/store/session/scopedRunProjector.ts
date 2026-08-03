@@ -1,0 +1,304 @@
+import {
+  EventKinds,
+  type ExecutionResourceOutputData,
+  type ExecutionResourceStateData,
+  type AssistantMessageCreatedData,
+  type EventEnvelope,
+  type ModelStartedData,
+  type PromptSummaryData,
+  type RunFailedData,
+  type ToolCallResultDetailData,
+  type ToolCallCompletedData,
+  type ToolCallFailedData,
+  type ToolCallOutputData,
+  type ToolCallProgressData,
+  type ToolCallStartedData,
+  type ToolCallsPlannedData,
+} from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { resolveBackendMessage } from "../../i18n/backendMessage";
+import { summarizeToolPlan, toolPlanTitle, truncate } from "./sessionPresentation";
+import { currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
+import { touchRun } from "./sessionRunProjection";
+import { timelineScopeFromEvent, toolBatchFromEvent } from "./timelineProjection";
+import { mergeToolResultPresentation, readToolResultPresentation } from "./toolResultPresentation";
+import { projectToolOutput, projectToolProgress } from "./toolRuntimeProjection";
+import type { StoreState } from "./types";
+
+export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): boolean {
+  const parentRequestId = env.scope?.parentRequestId;
+  if (!parentRequestId) return false;
+
+  const sessionId = env.sessionId;
+  if (!sessionId) return true;
+
+  const session = ensureSession(state, sessionId);
+  const run = currentRun(session, parentRequestId);
+  if (!run) return true;
+
+  const scope = timelineScopeFromEvent(env);
+
+  switch (env.kind) {
+    case EventKinds.PromptSummary: {
+      const data = env.data as PromptSummaryData;
+      upsertStep(run, {
+        id: scopedStepId(env, "prompt"),
+        kind: "prompt",
+        title: scopedStepTitle(env, frontendMessage("workflow.plan.promptRendered")),
+        description: scopedStepDescription(
+          env,
+          frontendMessage("workflow.projection.promptStats", {
+            chars: data.chars,
+            lines: data.lines,
+          }),
+        ),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        promptChars: data.chars,
+        promptLines: data.lines,
+        promptTokenCount: data.tokenCount,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ModelStarted: {
+      const data = env.data as ModelStartedData;
+      const modelName = data.provider?.model ?? data.model;
+      upsertStep(run, {
+        id: scopedStepId(env, "model"),
+        kind: "model",
+        title: scopedStepTitle(env, frontendMessage("workflow.feed.callingModel")),
+        description: scopedStepDescription(env, modelName),
+        status: "running",
+        startedAt: env.timestamp,
+        modelName,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ModelCompleted: {
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "model"));
+      if (step) {
+        step.status = "done";
+        step.endedAt = env.timestamp;
+        touchRun(run);
+      }
+      return true;
+    }
+    case EventKinds.ToolCallsPlanned: {
+      const data = env.data as ToolCallsPlannedData;
+      const toolBatch = toolBatchFromEvent(env, undefined, data.toolCount);
+      upsertStep(run, {
+        id: scopedStepId(env, "tool-plan", toolBatch.id),
+        kind: "tool",
+        title: scopedStepTitle(env, toolPlanTitle(data)),
+        description: scopedStepDescription(env, summarizeToolPlan(data)),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        toolBatch,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ToolCallStarted: {
+      const data = env.data as ToolCallStartedData;
+      upsertStep(run, {
+        id: scopedStepId(env, "tool", data.callId),
+        kind: "tool",
+        title: scopedStepTitle(env, frontendMessage("workflow.projection.toolCall", { toolName: data.toolName })),
+        status: "running",
+        startedAt: env.timestamp,
+        toolName: data.toolName,
+        callId: data.callId,
+        toolBatch: toolBatchFromEvent(env, data),
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ToolCallOutput: {
+      const data = env.data as ToolCallOutputData;
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.callId));
+      if (step) {
+        projectToolOutput(step, data);
+        touchRun(run);
+      }
+      return true;
+    }
+
+    case EventKinds.ToolCallProgress: {
+      const data = env.data as ToolCallProgressData;
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.callId));
+      if (step) {
+        projectToolProgress(step, data);
+        touchRun(run);
+      }
+      return true;
+    }
+
+    case EventKinds.ExecutionResourceOutput: {
+      const data = env.data as ExecutionResourceOutputData;
+      if (!data.toolCallId) return true;
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.toolCallId));
+      if (step) {
+        projectToolOutput(step, {
+          toolName: data.toolName ?? step.toolName ?? "ExecutionResource",
+          callId: data.toolCallId,
+          stream: data.stream,
+          outputSequence: data.cursor,
+          text: data.text,
+          byteLength: data.byteLength,
+          totalBytes: data.totalBytes,
+          resourceId: data.resourceId,
+        });
+        touchRun(run);
+      }
+      return true;
+    }
+
+    case EventKinds.ExecutionResourceState: {
+      const data = env.data as ExecutionResourceStateData;
+      if (!data.toolCallId) return true;
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.toolCallId));
+      if (step) {
+        projectToolProgress(step, {
+          toolName: data.toolName ?? step.toolName ?? "ExecutionResource",
+          callId: data.toolCallId,
+          progressSequence: data.cursor,
+          message: data.reason ? `${data.state}: ${data.reason}` : data.state,
+          resourceId: data.resourceId,
+        });
+        touchRun(run);
+      }
+      return true;
+    }
+
+    case EventKinds.ToolCallCompleted: {
+      const data = env.data as ToolCallCompletedData;
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.callId));
+      if (step) {
+        step.status = "done";
+        step.endedAt = env.timestamp;
+        step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
+        step.toolPreview = step.toolPresentation?.headline;
+        touchRun(run);
+      }
+      return true;
+    }
+
+    case EventKinds.ToolCallFailed: {
+      const data = env.data as ToolCallFailedData;
+      const message = resolveBackendMessage(data) ?? data.message;
+      const id = scopedStepId(env, "tool", data.callId);
+      const step = run.steps.find((entry) => entry.id === id);
+      if (step) {
+        step.status = "failed";
+        step.endedAt = env.timestamp;
+        step.toolErrorMessage = message;
+        touchRun(run);
+      } else {
+        upsertStep(run, {
+          id,
+          kind: "tool",
+          title: scopedStepTitle(
+            env,
+            frontendMessage("workflow.projection.toolCallFailed", { toolName: data.toolName }),
+          ),
+          status: "failed",
+          startedAt: env.timestamp,
+          endedAt: env.timestamp,
+          toolName: data.toolName,
+          callId: data.callId,
+          toolBatch: toolBatchFromEvent(env, data),
+          toolErrorMessage: message,
+          scope,
+        });
+      }
+      return true;
+    }
+
+    case EventKinds.ToolCallResultDetail: {
+      const data = env.data as ToolCallResultDetailData;
+      const step = run.steps.find((item) => item.id === scopedStepId(env, "tool", data.callId));
+      if (step) {
+        step.toolResult = data.value;
+        step.toolPresentation = mergeToolResultPresentation(
+          step.toolPresentation,
+          readToolResultPresentation(data.value),
+        );
+        step.toolPreview = step.toolPresentation?.headline ?? step.toolPreview;
+        touchRun(run);
+      }
+      return true;
+    }
+    case EventKinds.AssistantMessageCreated: {
+      const data = env.data as AssistantMessageCreatedData;
+      const title =
+        data.kind === "ask_user"
+          ? frontendMessage("workflow.projection.assistantAskUser")
+          : data.kind === "tool_preface"
+            ? frontendMessage("workflow.projection.assistantToolPreface")
+            : frontendMessage("workflow.projection.assistantFinalAnswer");
+      upsertStep(run, {
+        id: scopedStepId(env, "assistant-message", data.messageId),
+        kind: data.kind === "tool_preface" ? "decision" : "answer",
+        title: scopedStepTitle(env, title),
+        description: truncate(data.content, 60),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        decisionKind: data.kind,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.RunFailed: {
+      const data = env.data as RunFailedData;
+      const message = resolveBackendMessage(data) ?? data.message;
+      upsertStep(run, {
+        id: scopedStepId(env, "error"),
+        kind: "error",
+        title: scopedStepTitle(env, frontendMessage("workflow.projection.runFailed")),
+        description: scopedStepDescription(env, message),
+        status: "failed",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        errorMessage: message,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ModelDelta:
+    case EventKinds.RunStarted:
+    case EventKinds.RunCompleted:
+    case EventKinds.RunCancelled:
+      return true;
+
+    default:
+      return true;
+  }
+}
+
+function scopedStepId(env: EventEnvelope, slot: string, detail?: string | number): string {
+  return [env.scope?.workflowName, env.scope?.role, env.scope?.jobId, env.requestId, env.step ?? 0, slot, detail]
+    .filter((value) => value !== undefined && value !== "")
+    .join(":");
+}
+
+function scopedStepTitle(env: EventEnvelope, title: string): string {
+  const owner = env.scope?.role === "merge" ? frontendMessage("workflow.scope.merge") : env.scope?.agentName;
+  return owner ? `${owner} · ${title}` : title;
+}
+
+function scopedStepDescription(env: EventEnvelope, description?: string): string | undefined {
+  const workflowName = env.scope?.workflowName;
+  if (!workflowName) return description;
+  return description ? `${workflowName} · ${description}` : workflowName;
+}

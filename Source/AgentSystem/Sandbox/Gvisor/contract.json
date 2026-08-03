@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "id": "senera-gvisor-oci-runtime",
+  "provider": "gvisor",
+  "runtime": {
+    "strategy": "registered",
+    "name": "runsc",
+    "platform": "linux"
+  },
+  "container": {
+    "labels": {
+      "ai.senera.sandbox-provider": "gvisor"
+    }
+  }
+}

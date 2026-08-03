@@ -1,0 +1,99 @@
+{% if RootCommand %}
+<senera_root_command>
+  <authority>{{ RootCommand.authority | escape }}</authority>
+  <scope>
+    <priority>highest_runtime_instruction</priority>
+    <lifetime>current_model_request_only</lifetime>
+    <memory_policy>do_not_copy_to_history_or_long_term_memory</memory_policy>
+  </scope>
+
+  <roleplay_control>
+    <preset_enabled>{{ RoleplayPreset.enabled }}</preset_enabled>
+    <priority>roleplay_preset_below_root_command</priority>
+    <instruction>如果存在 roleplay_preset，只把它用于语气、视角、称呼、角色连续性和叙事风格；工具调用、事实准确性、代码任务、输出格式、用户最新请求和安全边界始终服从 senera_root_command。</instruction>
+  </roleplay_control>
+
+  <runtime_control>
+    <action>{{ RootCommand.action | escape }}</action>
+    <output_mode>{{ RootCommand.outputMode | escape }}</output_mode>
+    <tool_access>{{ RootCommand.toolAccess | escape }}</tool_access>
+    <allowed_tools>
+{% for tool in RootCommand.toolAccessGrant.exposedToolNames %}
+      <tool>{{ tool | escape }}</tool>
+{% endfor %}
+    </allowed_tools>
+{% if RootCommand.forbiddenOutputs.size > 0 %}
+    <forbidden_outputs>
+{% for item in RootCommand.forbiddenOutputs %}
+      <item>{{ item | escape }}</item>
+{% endfor %}
+    </forbidden_outputs>
+{% endif %}
+  </runtime_control>
+
+  <task>
+    <objective>{{ RootCommand.objective | escape }}</objective>
+{% if RootCommand.instruction %}
+    <instruction>{{ RootCommand.instruction | escape }}</instruction>
+{% endif %}
+    <insufficiency_policy>{{ RootCommand.insufficiencyPolicy | escape }}</insufficiency_policy>
+{% if RootCommand.toolAccessGrant.preferredToolNames.size > 0 %}
+    <preferred_tools>
+{% for tool in RootCommand.toolAccessGrant.preferredToolNames %}
+      <tool>{{ tool | escape }}</tool>
+{% endfor %}
+    </preferred_tools>
+{% endif %}
+{% if RootCommand.toolSearchQueries.size > 0 %}
+    <tool_search_queries>
+{% for query in RootCommand.toolSearchQueries %}
+      <query>{{ query | escape }}</query>
+{% endfor %}
+    </tool_search_queries>
+{% endif %}
+{% if RootCommand.needs.size > 0 %}
+    <capability_needs>
+{% for need in RootCommand.needs %}
+      <need>
+{% if need.actions.size > 0 %}
+        <actions>{% for item in need.actions %}<item>{{ item | escape }}</item>{% endfor %}</actions>
+{% endif %}
+{% if need.targets.size > 0 %}
+        <targets>{% for item in need.targets %}<item>{{ item | escape }}</item>{% endfor %}</targets>
+{% endif %}
+{% if need.inputs.size > 0 %}
+        <inputs>{% for item in need.inputs %}<item>{{ item | escape }}</item>{% endfor %}</inputs>
+{% endif %}
+{% if need.outputs.size > 0 %}
+        <outputs>{% for item in need.outputs %}<item>{{ item | escape }}</item>{% endfor %}</outputs>
+{% endif %}
+{% if need.evidence.size > 0 %}
+        <evidence>{% for item in need.evidence %}<item>{{ item | escape }}</item>{% endfor %}</evidence>
+{% endif %}
+{% if need.effects.size > 0 %}
+        <effects>{% for item in need.effects %}<item>{{ item | escape }}</item>{% endfor %}</effects>
+{% endif %}
+      </need>
+{% endfor %}
+    </capability_needs>
+{% endif %}
+  </task>
+
+  <visible_output_contract>
+    <audience>{{ RootCommand.visibleOutput.audience | escape }}</audience>
+    <start>{{ RootCommand.visibleOutput.start | escape }}</start>
+    <format>{{ RootCommand.visibleOutput.format | escape }}</format>
+    <rules>
+{% for rule in RootCommand.visibleOutput.rules %}
+      <rule>
+        <name>{{ rule.name | escape }}</name>
+        <value>{{ rule.value | escape }}</value>
+{% if rule.instruction %}
+        <instruction>{{ rule.instruction | escape }}</instruction>
+{% endif %}
+      </rule>
+{% endfor %}
+    </rules>
+  </visible_output_contract>
+</senera_root_command>
+{% endif %}

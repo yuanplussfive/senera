@@ -1,0 +1,201 @@
+import { z } from "zod";
+
+const AgentPiCompactionSchema = z
+  .object({
+    Enabled: z.boolean().optional(),
+  })
+  .strict();
+
+export const AgentLoopSchema = z
+  .object({
+    PiTurnLeaseTimeoutSeconds: z.number().positive().optional(),
+    RunSettlementTimeoutSeconds: z.number().positive().max(300).optional(),
+    PiSessions: z
+      .object({
+        RootDir: z.string().min(1).optional(),
+        MaxCachedSessions: z.number().int().min(0).optional(),
+        Compaction: AgentPiCompactionSchema.optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const ToolExecutionSchema = z
+  .object({
+    TimeoutSeconds: z.number().positive().optional(),
+    MaxStdoutBytes: z.number().int().min(1).optional(),
+    MaxStderrBytes: z.number().int().min(1).optional(),
+    Environment: z
+      .object({
+        Inherit: z.enum(["all", "allowlist", "none"]).optional(),
+        IncludeOnly: z.array(z.string().min(1)).optional(),
+        Exclude: z.array(z.string().min(1)).optional(),
+        Set: z.record(z.string(), z.string()).optional(),
+      })
+      .strict()
+      .optional(),
+    Resources: z
+      .object({
+        MaxActive: z.number().int().min(1).max(1_000).optional(),
+        MaxBufferedBytes: z.number().int().min(1_024).optional(),
+        MaxInputBytes: z.number().int().min(1).optional(),
+        MaxWaitSeconds: z.number().positive().max(300).optional(),
+        IdleTtlSeconds: z.number().positive().optional(),
+        TerminalTtlSeconds: z.number().positive().optional(),
+        SweepIntervalSeconds: z.number().positive().optional(),
+        TerminationGraceSeconds: z.number().positive().max(60).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const SandboxRuntimeSchema = z
+  .object({
+    Enabled: z.boolean().optional(),
+    Provider: z.enum(["auto", "microsandbox", "gvisor", "docker-engine"]).optional(),
+    BaseDir: z.string().min(1).optional(),
+    Gvisor: z
+      .object({
+        WorkerSocketPath: z.string().trim().min(1).optional(),
+        PreparationTimeoutSeconds: z.number().positive().max(300).optional(),
+      })
+      .strict()
+      .optional(),
+    Provisioning: z
+      .discriminatedUnion("Kind", [
+        z
+          .object({
+            Kind: z.literal("Oci"),
+            Images: z.array(z.string().trim().min(1)).min(1),
+            Registry: z
+              .object({
+                Authentication: z
+                  .discriminatedUnion("Kind", [
+                    z.object({ Kind: z.literal("Anonymous") }).strict(),
+                    z
+                      .object({
+                        Kind: z.literal("Basic"),
+                        UsernameEnvironmentVariable: z.string().trim().min(1),
+                        PasswordEnvironmentVariable: z.string().trim().min(1),
+                      })
+                      .strict(),
+                  ])
+                  .optional(),
+                Insecure: z.boolean().optional(),
+                CertificateFiles: z.array(z.string().trim().min(1)).optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict(),
+        z
+          .object({
+            Kind: z.literal("ReleaseBundle"),
+          })
+          .strict(),
+      ])
+      .optional(),
+  })
+  .strict();
+
+export const PresetsSchema = z
+  .object({
+    Enabled: z.boolean().optional(),
+    RootDir: z.string().min(1).optional(),
+    StateFile: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const ArtifactsSchema = z
+  .object({
+    RootDir: z.string().min(1).optional(),
+    SummaryMaxChars: z.number().int().min(256).optional(),
+    RawJsonMaxBytes: z.number().int().min(1024).optional(),
+    TextFileMaxBytes: z.number().int().min(1024).optional(),
+    MemoryReadMaxArtifacts: z.number().int().positive().optional(),
+    MemoryReadMaxRefs: z.number().int().positive().optional(),
+    MemoryReadMaxConcurrency: z.number().int().positive().optional(),
+    MemoryReadStructuredJsonMaxTokens: z.number().int().positive().optional(),
+    OutputCaptureMaxBytes: z.number().int().min(1024).optional(),
+    MaxStoredBytes: z.number().int().positive().optional(),
+    MaxArtifacts: z.number().int().positive().optional(),
+    RetentionHours: z.number().positive().optional(),
+    IncompleteRetentionHours: z.number().positive().optional(),
+    MaintenanceIntervalMinutes: z.number().positive().optional(),
+    MaintenanceMaxConcurrency: z.number().int().positive().optional(),
+  })
+  .strict();
+
+export const UploadsSchema = z
+  .object({
+    RootDir: z.string().min(1).optional(),
+    MaxFileBytes: z.number().int().min(1).optional(),
+    MaxRequestBytes: z.number().int().min(1).optional(),
+    MaxFilesPerRequest: z.number().int().min(1).optional(),
+    MaxConcurrentUploads: z.number().int().min(1).optional(),
+    MaxStoredBytes: z.number().int().min(1).optional(),
+    RetentionHours: z.number().int().min(1).optional(),
+    MaintenanceIntervalMinutes: z.number().int().min(1).optional(),
+  })
+  .strict();
+
+export const ConfigStoreSchema = z
+  .object({
+    Enabled: z.boolean().optional(),
+    Kind: z.literal("sqlite").optional(),
+    MirrorJson: z.boolean().optional(),
+    RevisionRetentionCount: z.number().int().min(1).max(10_000).optional(),
+    CommandReceiptRetentionHours: z.number().int().min(1).max(8_760).optional(),
+    CommandReceiptMaxCount: z.number().int().min(1).max(100_000).optional(),
+  })
+  .strict();
+
+export const ServerSchema = z
+  .object({
+    Host: z.string().min(1).optional(),
+    Port: z.number().int().min(1).max(65535).optional(),
+    HotReload: z.boolean().optional(),
+    RequestMaxBytes: z.number().int().min(1).optional(),
+    AccessControl: z
+      .object({
+        Mode: z.enum(["auto", "required", "disabled"]).optional(),
+        AccountFile: z.string().min(1).optional(),
+        AllowedOrigins: z.array(z.string().url()).optional(),
+        TrustedProxyAddresses: z.array(z.string().min(1)).optional(),
+        AllowInsecureLoopback: z.boolean().optional(),
+        AllowInsecureHttp: z.boolean().optional(),
+        Session: z
+          .object({
+            AbsoluteTtlHours: z.number().int().min(1).max(72).optional(),
+            IdleTtlHours: z.number().int().min(1).max(72).optional(),
+            MaxSessions: z.number().int().min(1).max(100).optional(),
+          })
+          .strict()
+          .optional(),
+        Limits: z
+          .object({
+            MaxConnections: z.number().int().min(1).max(10_000).optional(),
+            MaxConnectionsPerClient: z.number().int().min(1).max(1_000).optional(),
+            MaxRateLimitClients: z.number().int().min(1).max(1_000_000).optional(),
+            UpgradeRequestsPerMinute: z.number().int().min(1).max(100_000).optional(),
+            HttpRequestsPerMinute: z.number().int().min(1).max(100_000).optional(),
+            MessagesPerMinute: z.number().int().min(1).max(100_000).optional(),
+            LoginAttemptsPerMinute: z.number().int().min(1).max(10_000).optional(),
+            HeartbeatIntervalSeconds: z.number().int().min(5).max(3_600).optional(),
+            IdleSocketTimeoutSeconds: z.number().int().min(10).max(86_400).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const PersistenceSchema = z
+  .object({
+    Kind: z.union([z.literal("sqlite"), z.literal("memory")]).optional(),
+  })
+  .strict();

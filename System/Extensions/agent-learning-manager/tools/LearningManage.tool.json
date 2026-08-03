@@ -1,0 +1,327 @@
+{
+  "name": "LearningManage",
+  "description": "Inspect learning status, recent episodes, one failure or skip, and revision-bound Skill terms.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "enum": ["status", "list", "inspect", "skill_terms"] },
+      "episodeId": { "description": "Learning episode id required by inspect.", "type": "string", "minLength": 1 },
+      "skillName": { "description": "Optional Skill name filter for skill_terms.", "type": "string", "minLength": 1 },
+      "limit": {
+        "description": "Number of records required by list and skill_terms.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      }
+    },
+    "required": ["action"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "const": "status" },
+          "projectId": { "type": "string" },
+          "episodeCount": { "type": "number" },
+          "episodeGroups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "domain": { "type": "string", "enum": ["tool_routing", "skill_routing"] },
+                "state": { "type": "string", "enum": ["observed", "learned", "skipped", "failed"] },
+                "count": { "type": "number" }
+              },
+              "required": ["domain", "state", "count"],
+              "additionalProperties": false
+            }
+          },
+          "skillTermCount": { "type": "number" }
+        },
+        "required": ["action", "projectId", "episodeCount", "episodeGroups", "skillTermCount"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "const": "list" },
+          "episodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "domain": { "type": "string", "enum": ["tool_routing", "skill_routing"] },
+                "state": { "type": "string", "enum": ["observed", "learned", "skipped", "failed"] },
+                "reason": { "type": "string" },
+                "error": { "type": "string" },
+                "attempts": { "type": "number" },
+                "projectId": { "type": "string" },
+                "sessionId": { "type": "string" },
+                "requestId": { "type": "string" },
+                "query": { "type": "string" },
+                "subjects": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": { "type": "string", "enum": ["tool", "skill"] },
+                      "name": { "type": "string" },
+                      "revision": { "type": "string" }
+                    },
+                    "required": ["kind", "name"],
+                    "additionalProperties": false
+                  }
+                },
+                "context": {
+                  "type": "object",
+                  "properties": {
+                    "rawUserTurn": { "type": "string" },
+                    "standaloneRequest": { "type": "string" },
+                    "contextMode": { "type": "string" },
+                    "contextBasis": { "type": "string" },
+                    "candidates": { "type": "array", "items": { "type": "string" } },
+                    "chosenTools": { "type": "array", "items": { "type": "string" } },
+                    "activeSkills": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" },
+                          "revision": { "type": "string" },
+                          "matchedTerms": { "type": "array", "items": { "type": "string" } }
+                        },
+                        "required": ["name", "revision", "matchedTerms"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "rawUserTurn",
+                    "standaloneRequest",
+                    "contextMode",
+                    "contextBasis",
+                    "candidates",
+                    "chosenTools",
+                    "activeSkills"
+                  ],
+                  "additionalProperties": false
+                },
+                "outcome": {
+                  "type": "object",
+                  "properties": {
+                    "outcome": { "type": "string", "enum": ["success", "failure", "unknown"] },
+                    "score": { "type": "number" },
+                    "calls": {
+                      "type": "array",
+                      "items": { "type": "object", "properties": {}, "additionalProperties": {} }
+                    },
+                    "final": { "type": "object", "properties": {}, "additionalProperties": {} }
+                  },
+                  "required": ["outcome", "score", "calls", "final"],
+                  "additionalProperties": false
+                },
+                "createdAtMs": { "type": "number" },
+                "updatedAtMs": { "type": "number" }
+              },
+              "required": [
+                "id",
+                "domain",
+                "state",
+                "reason",
+                "error",
+                "attempts",
+                "projectId",
+                "sessionId",
+                "requestId",
+                "query",
+                "subjects",
+                "context",
+                "outcome",
+                "createdAtMs",
+                "updatedAtMs"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["action", "episodes"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "const": "inspect" },
+          "found": { "type": "boolean" },
+          "episode": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "domain": { "type": "string", "enum": ["tool_routing", "skill_routing"] },
+              "state": { "type": "string", "enum": ["observed", "learned", "skipped", "failed"] },
+              "reason": { "type": "string" },
+              "error": { "type": "string" },
+              "attempts": { "type": "number" },
+              "projectId": { "type": "string" },
+              "sessionId": { "type": "string" },
+              "requestId": { "type": "string" },
+              "query": { "type": "string" },
+              "subjects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "enum": ["tool", "skill"] },
+                    "name": { "type": "string" },
+                    "revision": { "type": "string" }
+                  },
+                  "required": ["kind", "name"],
+                  "additionalProperties": false
+                }
+              },
+              "context": {
+                "type": "object",
+                "properties": {
+                  "rawUserTurn": { "type": "string" },
+                  "standaloneRequest": { "type": "string" },
+                  "contextMode": { "type": "string" },
+                  "contextBasis": { "type": "string" },
+                  "candidates": { "type": "array", "items": { "type": "string" } },
+                  "chosenTools": { "type": "array", "items": { "type": "string" } },
+                  "activeSkills": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": { "type": "string" },
+                        "revision": { "type": "string" },
+                        "matchedTerms": { "type": "array", "items": { "type": "string" } }
+                      },
+                      "required": ["name", "revision", "matchedTerms"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "rawUserTurn",
+                  "standaloneRequest",
+                  "contextMode",
+                  "contextBasis",
+                  "candidates",
+                  "chosenTools",
+                  "activeSkills"
+                ],
+                "additionalProperties": false
+              },
+              "outcome": {
+                "type": "object",
+                "properties": {
+                  "outcome": { "type": "string", "enum": ["success", "failure", "unknown"] },
+                  "score": { "type": "number" },
+                  "calls": {
+                    "type": "array",
+                    "items": { "type": "object", "properties": {}, "additionalProperties": {} }
+                  },
+                  "final": { "type": "object", "properties": {}, "additionalProperties": {} }
+                },
+                "required": ["outcome", "score", "calls", "final"],
+                "additionalProperties": false
+              },
+              "createdAtMs": { "type": "number" },
+              "updatedAtMs": { "type": "number" }
+            },
+            "required": [
+              "id",
+              "domain",
+              "state",
+              "reason",
+              "error",
+              "attempts",
+              "projectId",
+              "sessionId",
+              "requestId",
+              "query",
+              "subjects",
+              "context",
+              "outcome",
+              "createdAtMs",
+              "updatedAtMs"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": ["action", "found"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "const": "skill_terms" },
+          "terms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "projectId": { "type": "string" },
+                "skillName": { "type": "string" },
+                "skillRevision": { "type": "string" },
+                "term": { "type": "string" },
+                "source": { "type": "string" },
+                "support": { "type": "number" },
+                "weight": { "type": "number" },
+                "lastSeenAt": { "type": "number" }
+              },
+              "required": [
+                "projectId",
+                "skillName",
+                "skillRevision",
+                "term",
+                "source",
+                "support",
+                "weight",
+                "lastSeenAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["action", "terms"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "observationProjection": "observations/LearningManage.projection.json",
+  "permissions": ["filesystem:read:.senera/data/tool-search"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": { "Lifecycle": "Immediate", "ProtocolVersion": 2, "ResultAssessment": "ProcessExit" },
+  "resources": [],
+  "sources": [],
+  "search": {
+    "Summary": "查看 Tool/Skill 路由学习状态、跳过原因、失败详情和 Skill 触发词。",
+    "Tags": ["学习诊断", "Skill 学习", "Tool 学习", "可观测性"],
+    "Capabilities": [
+      {
+        "Id": "learning.inspect",
+        "Title": "Learning diagnostics",
+        "Description": "Inspect routing-learning observations and learned Skill terms without modifying them.",
+        "Facets": {
+          "Actions": ["status", "list", "inspect"],
+          "Targets": ["learning-episode", "skill-routing-term", "tool-routing"],
+          "Inputs": ["episode-id", "skill-name", "limit"],
+          "Outputs": ["learning-status", "skip-reason", "failure-detail", "skill-term"],
+          "Effects": ["none"]
+        },
+        "Aliases": ["为什么没有学到", "查看学习记录", "检查 Skill 触发词"],
+        "Risk": { "SideEffect": "none", "Permission": "read" }
+      }
+    ],
+    "UseCases": ["诊断学习数据库为空、模型学习失败、Skill 未被再次激活或某条经验被跳过。"],
+    "Examples": ["查看最近 20 条学习记录", "检查 csv-column-selector 学到的触发词"],
+    "Avoid": ["不要用于创建、发布或删除 Skill。"]
+  },
+  "evidenceCapabilities": []
+}

@@ -1,0 +1,42 @@
+{
+  "manifest_version": "0.3",
+  "name": "web-research",
+  "display_name": "Web Research",
+  "version": "1.0.0",
+  "description": "Source-backed web research through Tavily.",
+  "author": {
+    "name": "Senera"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "mcp/server.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/mcp/server.mjs"],
+      "env": {
+        "TAVILY_API_KEY": "${user_config.TAVILY_API_KEY}",
+        "TAVILY_BASE_URL": "${user_config.TAVILY_BASE_URL}"
+      }
+    }
+  },
+  "user_config": {
+    "TAVILY_API_KEY": {
+      "type": "string",
+      "title": "Tavily API key",
+      "description": "API key issued by Tavily.",
+      "sensitive": true,
+      "required": true
+    },
+    "TAVILY_BASE_URL": {
+      "type": "string",
+      "title": "API base URL",
+      "default": "https://api.tavily.com"
+    }
+  },
+  "_meta": {
+    "ai.senera/execution": {
+      "targets": ["local"],
+      "preferred": "local"
+    }
+  }
+}

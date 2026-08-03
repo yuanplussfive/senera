@@ -1,0 +1,20 @@
+{
+  "formatVersion": 5,
+  "distributionId": "senera-node-runtime",
+  "archiveVersion": "1.0.3",
+  "microsandboxVersion": "0.6.4",
+  "target": "x64",
+  "sourceImage": "docker.io/library/node@sha256:8607a9064d4a571140998ae9e52a3b3fcf9cff361d04642d5971e6cd76d39e27",
+  "runtimeImage": "senera.local/senera-node-runtime:1.0.3-x64",
+  "configDigest": "sha256:29a39ccfd8591e4c25c3eea52538c98a2f45e1cd3909eea4e0ab7fb9065382bc",
+  "asset": {
+    "format": "oci",
+    "mediaType": "application/vnd.oci.image.layout.v1.tar",
+    "compression": "gzip",
+    "compressedMediaType": "application/gzip",
+    "fileName": "SeneraSandboxImage-1.0.3-x64.oci.tar.gz",
+    "sizeBytes": 80189766,
+    "uncompressedSizeBytes": 232759808,
+    "sha256": "f180b3f659bcd5567643bd2aed23bfdf6057b2446ddd4f2208ec567a71f72d2c"
+  }
+}

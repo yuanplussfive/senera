@@ -1,0 +1,291 @@
+import { useMemo, useRef, useState } from "react";
+import { Activity, Archive, FileCode2, FileJson2, PencilLine, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { useResponsiveMode } from "../../shared/responsive";
+import { useStore, type SessionRecord, type UserProfile } from "../../store/sessionStore";
+import { cn } from "../../lib/util";
+import { ConfirmationDialog, RenameDialog } from "./SessionDialogs";
+import { UserFooter } from "./ProfileFooter";
+import { SessionHeader } from "./SessionChrome";
+import { SessionPanelBody } from "./SessionPanelBody";
+import type { ConfirmationIntent, SessionMenuSection } from "./types";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import type { SettingsSectionId } from "../settings/types";
+import type { SandboxStatusSnapshotData } from "../../api/eventTypes";
+
+interface Props {
+  onNewSession: () => void;
+  onCloseSession: (id: string) => void;
+  onCloseSessions: (ids: string[]) => void;
+  onCompactSession: (id: string) => void;
+  onExportSession: (id: string, format: "jsonl" | "html") => void;
+  onInspectSessionRuntime: (id: string) => void;
+  onRenameSession: (id: string, title: string) => boolean;
+  userProfile: UserProfile;
+  onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
+  onLogout?: () => Promise<void>;
+  socketStatus: string;
+  sandboxStatus?: SandboxStatusSnapshotData | null;
+  onSettingsIntent?: () => void;
+  onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
+  presentation?: "auto" | "panel";
+  onSessionSelected?: () => void;
+  onClosePanel?: () => void;
+}
+
+type RenameIntent = {
+  sessionId: string;
+  title: string;
+};
+
+export function SessionList({
+  onNewSession,
+  onCloseSession,
+  onCloseSessions,
+  onCompactSession,
+  onExportSession,
+  onInspectSessionRuntime,
+  onRenameSession,
+  userProfile,
+  onUpdateUserProfile,
+  onLogout,
+  socketStatus,
+  sandboxStatus,
+  onSettingsIntent,
+  onOpenSettings,
+  presentation = "auto",
+  onSessionSelected,
+  onClosePanel,
+}: Props): JSX.Element {
+  const sessions = useStore((s) => s.sessions);
+  const order = useStore((s) => s.sessionOrder);
+  const active = useStore((s) => s.activeSessionId);
+  const historyLoadingIds = useStore((s) => s.historyLoadingIds);
+  const sessionCatalogSynced = useStore((s) => s.catalogSynced.sessions);
+  const select = useStore((s) => s.selectSession);
+  const toggleSidebar = useStore((s) => s.toggleSidebar);
+  const sidebarCollapsed = useStore((s) => s.sidebarCollapsed);
+  const { viewport } = useResponsiveMode();
+  const showInlineRowActions = viewport === "mobile" || viewport === "tablet";
+
+  const [confirmation, setConfirmation] = useState<ConfirmationIntent | null>(null);
+  const [renaming, setRenaming] = useState<RenameIntent | null>(null);
+  const dialogReturnFocusRef = useRef<HTMLElement | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const sessionList = useMemo(
+    () => order.map((id) => sessions[id]).filter((session): session is SessionRecord => !!session),
+    [order, sessions],
+  );
+
+  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();
+  const filteredSessions = normalizedSearchQuery
+    ? sessionList.filter((session) => session.title.toLocaleLowerCase().includes(normalizedSearchQuery))
+    : sessionList;
+
+  const activeSession = active ? sessions[active] : undefined;
+  const piSessionCommandDisabled = !activeSession || socketStatus !== "open" || Boolean(activeSession.activeRequestId);
+
+  const openRename = (session: SessionRecord, returnFocus: HTMLElement | null = null): void => {
+    dialogReturnFocusRef.current = returnFocus?.isConnected ? returnFocus : null;
+    setRenaming({ sessionId: session.sessionId, title: session.title });
+    setRenameDraft(session.title);
+  };
+
+  const submitRename = (): void => {
+    if (!renaming) return;
+    const nextTitle = renameDraft.trim();
+    if (!nextTitle) {
+      toast.error(frontendMessage("session.renameEmpty"));
+      return;
+    }
+    if (onRenameSession(renaming.sessionId, nextTitle) === false) return;
+    setRenaming(null);
+    toast.success(frontendMessage("session.renameSucceeded"));
+  };
+
+  const confirmDeleteSession = (session: SessionRecord, returnFocus: HTMLElement | null = null): void => {
+    dialogReturnFocusRef.current = returnFocus?.isConnected ? returnFocus : null;
+    setConfirmation({
+      title: frontendMessage("session.deleteCurrentTitle"),
+      description: frontendMessage("session.deleteCurrentDescription", { title: session.title }),
+      confirmLabel: frontendMessage("session.deleteCurrentConfirm"),
+      tone: "danger",
+      details: [
+        frontendMessage("session.deleteCurrentDetailRecords"),
+        frontendMessage("session.deleteCurrentDetailRefresh"),
+      ],
+      onConfirm: () => {
+        onCloseSession(session.sessionId);
+        toast.success(frontendMessage("session.deleteRequested"));
+      },
+    });
+  };
+
+  const confirmDeleteAllSessions = (): void => {
+    const ids = sessionList.map((session) => session.sessionId);
+    if (ids.length === 0) return;
+    setConfirmation({
+      title: frontendMessage("session.deleteAllHistory"),
+      description: frontendMessage("session.deleteAllDescription", { count: ids.length }),
+      confirmLabel: frontendMessage("session.deleteAllConfirm"),
+      tone: "danger",
+      details: [frontendMessage("session.deleteAllDetailRequests"), frontendMessage("session.deleteAllDetailRefresh")],
+      onConfirm: () => {
+        onCloseSessions(ids);
+        toast.success(frontendMessage("session.bulkDeleteRequested", { count: ids.length }));
+      },
+    });
+  };
+
+  const menuSections = [
+    {
+      section: frontendMessage("session.currentSection"),
+      items: [
+        {
+          id: "rename",
+          label: frontendMessage("session.renameCurrent"),
+          icon: <PencilLine className="h-3.5 w-3.5" />,
+          disabled: !activeSession,
+          onSelect: () => activeSession && openRename(activeSession),
+        },
+        {
+          id: "delete-current",
+          label: frontendMessage("session.deleteCurrentTitle"),
+          icon: <Trash2 className="h-3.5 w-3.5" />,
+          destructive: true,
+          disabled: !activeSession,
+          onSelect: () => activeSession && confirmDeleteSession(activeSession),
+        },
+      ],
+    },
+    {
+      section: frontendMessage("session.piSection"),
+      items: [
+        {
+          id: "pi-status",
+          label: frontendMessage("session.piStatus"),
+          icon: <Activity className="h-3.5 w-3.5" />,
+          disabled: piSessionCommandDisabled,
+          onSelect: () => activeSession && onInspectSessionRuntime(activeSession.sessionId),
+        },
+        {
+          id: "pi-compact",
+          label: frontendMessage("session.piCompact"),
+          icon: <Archive className="h-3.5 w-3.5" />,
+          disabled: piSessionCommandDisabled,
+          onSelect: () => activeSession && onCompactSession(activeSession.sessionId),
+        },
+        {
+          id: "pi-export-jsonl",
+          label: frontendMessage("session.piExportJsonl"),
+          icon: <FileJson2 className="h-3.5 w-3.5" />,
+          disabled: piSessionCommandDisabled,
+          onSelect: () => activeSession && onExportSession(activeSession.sessionId, "jsonl"),
+        },
+        {
+          id: "pi-export-html",
+          label: frontendMessage("session.piExportHtml"),
+          icon: <FileCode2 className="h-3.5 w-3.5" />,
+          disabled: piSessionCommandDisabled,
+          onSelect: () => activeSession && onExportSession(activeSession.sessionId, "html"),
+        },
+      ],
+    },
+    {
+      section: frontendMessage("session.historySection"),
+      items: [
+        {
+          id: "delete-all",
+          label: frontendMessage("session.deleteAllHistory"),
+          icon: <Trash2 className="h-3.5 w-3.5" />,
+          destructive: true,
+          disabled: sessionList.length === 0,
+          onSelect: confirmDeleteAllSessions,
+        },
+      ],
+    },
+  ] satisfies readonly SessionMenuSection[];
+
+  const compactSidebar = presentation === "auto" && sidebarCollapsed;
+  const panelWidthClass = presentation === "panel" ? "w-full" : compactSidebar ? "w-[58px]" : "w-[246px]";
+
+  const content = (
+    <aside
+      className={cn(
+        "flex h-full shrink-0 flex-col bg-surface-sidebar transition-[width] duration-300 ease-[cubic-bezier(.32,.72,.35,1)]",
+        presentation === "auto"
+          ? "overflow-hidden rounded-2xl border border-line-subtle [box-shadow:var(--theme-surface-shadow)]"
+          : "border-r border-line-subtle",
+        panelWidthClass,
+      )}
+      data-session-sidebar
+      data-session-surface={presentation}
+      data-collapsed={compactSidebar}
+      data-ui-chrome
+    >
+      <SessionHeader
+        collapsed={compactSidebar}
+        menuSections={menuSections}
+        onNewSession={onNewSession}
+        onToggleSidebar={onClosePanel ?? toggleSidebar}
+      />
+
+      {compactSidebar ? null : (
+        <SessionPanelBody
+          sessions={filteredSessions}
+          totalSessionCount={sessionList.length}
+          catalogSynced={sessionCatalogSynced}
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+          activeSessionId={active}
+          historyLoadingIds={historyLoadingIds}
+          showInlineRowActions={showInlineRowActions}
+          onNewSession={onNewSession}
+          onSelectSession={(sessionId) => {
+            select(sessionId);
+            onSessionSelected?.();
+          }}
+          onRenameSession={openRename}
+          onDeleteSession={confirmDeleteSession}
+        />
+      )}
+
+      <UserFooter
+        collapsed={compactSidebar}
+        profile={userProfile}
+        socketStatus={socketStatus}
+        sandboxStatus={sandboxStatus}
+        onSettingsIntent={onSettingsIntent}
+        onOpenSettings={onOpenSettings}
+        onUpdateProfile={onUpdateUserProfile}
+        onLogout={onLogout}
+      />
+    </aside>
+  );
+
+  return (
+    <>
+      {content}
+      <RenameDialog
+        open={!!renaming}
+        value={renameDraft}
+        title={renaming?.title ?? ""}
+        returnFocus={dialogReturnFocusRef.current}
+        onValueChange={setRenameDraft}
+        onOpenChange={(open) => {
+          if (!open) setRenaming(null);
+        }}
+        onSubmit={submitRename}
+      />
+      <ConfirmationDialog
+        intent={confirmation}
+        returnFocus={dialogReturnFocusRef.current}
+        onOpenChange={(open) => {
+          if (!open) setConfirmation(null);
+        }}
+      />
+    </>
+  );
+}

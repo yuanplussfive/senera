@@ -1,0 +1,270 @@
+export interface AgentLoopConfig {
+  PiTurnLeaseTimeoutSeconds?: number;
+  RunSettlementTimeoutSeconds?: number;
+  PiSessions?: AgentPiSessionsConfig;
+}
+
+export interface AgentPiSessionsConfig {
+  RootDir?: string;
+  MaxCachedSessions?: number;
+  Compaction?: AgentPiCompactionConfig;
+}
+
+export interface AgentPiCompactionConfig {
+  Enabled?: boolean;
+}
+
+export interface ResolvedAgentPiSessionsConfig {
+  RootDir: string;
+  MaxCachedSessions: number;
+  Compaction: ResolvedAgentPiCompactionConfig;
+}
+
+export interface ResolvedAgentPiCompactionConfig {
+  Enabled: boolean;
+}
+
+export interface ResolvedAgentLoopConfig {
+  PiTurnLeaseTimeoutSeconds: number;
+  PiTurnLeaseTimeoutMs: number;
+  RunSettlementTimeoutSeconds: number;
+  RunSettlementTimeoutMs: number;
+  PiSessions: ResolvedAgentPiSessionsConfig;
+}
+
+export interface AgentToolExecutionConfig {
+  TimeoutSeconds?: number;
+  MaxStdoutBytes?: number;
+  MaxStderrBytes?: number;
+  Environment?: AgentProcessEnvironmentConfig;
+  Resources?: AgentExecutionResourcesConfig;
+}
+
+export interface AgentProcessEnvironmentConfig {
+  Inherit?: "all" | "allowlist" | "none";
+  IncludeOnly?: string[];
+  Exclude?: string[];
+  Set?: Record<string, string>;
+}
+
+export interface AgentExecutionResourcesConfig {
+  MaxActive?: number;
+  MaxBufferedBytes?: number;
+  MaxInputBytes?: number;
+  MaxWaitSeconds?: number;
+  IdleTtlSeconds?: number;
+  TerminalTtlSeconds?: number;
+  SweepIntervalSeconds?: number;
+  TerminationGraceSeconds?: number;
+}
+
+export interface ResolvedAgentToolExecutionConfig {
+  TimeoutMs: number;
+  MaxStdoutBytes: number;
+  MaxStderrBytes: number;
+  Environment: Required<AgentProcessEnvironmentConfig>;
+  Resources: ResolvedAgentExecutionResourcesConfig;
+}
+
+export interface ResolvedAgentExecutionResourcesConfig extends Required<AgentExecutionResourcesConfig> {
+  MaxWaitMs: number;
+  IdleTtlMs: number;
+  TerminalTtlMs: number;
+  SweepIntervalMs: number;
+  TerminationGraceMs: number;
+}
+
+export interface AgentSandboxRuntimeConfig {
+  Enabled?: boolean;
+  Provider?: AgentSandboxProviderPreference;
+  BaseDir?: string;
+  Provisioning?: AgentSandboxProvisioningConfig;
+  Gvisor?: AgentGvisorRuntimeConfig;
+}
+
+export interface ResolvedAgentSandboxRuntimeConfig {
+  Enabled: boolean;
+  Provider: AgentSandboxProviderPreference;
+  BaseDir: string;
+  Provisioning: ResolvedAgentSandboxProvisioningConfig;
+  Gvisor: Required<AgentGvisorRuntimeConfig>;
+}
+
+export type AgentSandboxProviderPreference = "auto" | "microsandbox" | "gvisor" | "docker-engine";
+
+export interface AgentGvisorRuntimeConfig {
+  WorkerSocketPath?: string;
+  PreparationTimeoutSeconds?: number;
+}
+
+export type AgentSandboxProvisioningConfig =
+  | {
+      Kind: "Oci";
+      Images: string[];
+      Registry?: AgentSandboxRegistryConfig;
+    }
+  | {
+      Kind: "ReleaseBundle";
+    };
+
+export type ResolvedAgentSandboxProvisioningConfig = AgentSandboxProvisioningConfig;
+
+export interface AgentSandboxRegistryConfig {
+  Authentication?: AgentSandboxRegistryAuthenticationConfig;
+  Insecure?: boolean;
+  CertificateFiles?: string[];
+}
+
+export type AgentSandboxRegistryAuthenticationConfig =
+  | { Kind: "Anonymous" }
+  | {
+      Kind: "Basic";
+      UsernameEnvironmentVariable: string;
+      PasswordEnvironmentVariable: string;
+    };
+
+export interface AgentPresetsConfig {
+  Enabled?: boolean;
+  RootDir?: string;
+  StateFile?: string;
+}
+
+export interface ResolvedAgentPresetsConfig {
+  Enabled: boolean;
+  RootDir: string;
+  StateFile: string;
+}
+
+export interface AgentArtifactsConfig {
+  RootDir?: string;
+  SummaryMaxChars?: number;
+  RawJsonMaxBytes?: number;
+  TextFileMaxBytes?: number;
+  MemoryReadMaxArtifacts?: number;
+  MemoryReadMaxRefs?: number;
+  MemoryReadMaxConcurrency?: number;
+  MemoryReadStructuredJsonMaxTokens?: number;
+  OutputCaptureMaxBytes?: number;
+  MaxStoredBytes?: number;
+  MaxArtifacts?: number;
+  RetentionHours?: number;
+  IncompleteRetentionHours?: number;
+  MaintenanceIntervalMinutes?: number;
+  MaintenanceMaxConcurrency?: number;
+}
+
+export interface ResolvedAgentArtifactsConfig {
+  RootDir: string;
+  SummaryMaxChars: number;
+  RawJsonMaxBytes: number;
+  TextFileMaxBytes: number;
+  MemoryReadMaxArtifacts: number;
+  MemoryReadMaxRefs: number;
+  MemoryReadMaxConcurrency: number;
+  MemoryReadStructuredJsonMaxTokens: number;
+  OutputCaptureMaxBytes: number;
+  MaxStoredBytes: number;
+  MaxArtifacts: number;
+  RetentionHours: number;
+  IncompleteRetentionHours: number;
+  MaintenanceIntervalMinutes: number;
+  MaintenanceMaxConcurrency: number;
+}
+
+export interface AgentUploadsConfig {
+  RootDir?: string;
+  MaxFileBytes?: number;
+  MaxRequestBytes?: number;
+  MaxFilesPerRequest?: number;
+  MaxConcurrentUploads?: number;
+  MaxStoredBytes?: number;
+  RetentionHours?: number;
+  MaintenanceIntervalMinutes?: number;
+}
+
+export interface ResolvedAgentUploadsConfig {
+  RootDir: string;
+  MaxFileBytes: number;
+  MaxRequestBytes: number;
+  MaxFilesPerRequest: number;
+  MaxConcurrentUploads: number;
+  MaxStoredBytes: number;
+  RetentionHours: number;
+  MaintenanceIntervalMinutes: number;
+}
+
+export interface AgentConfigStoreConfig {
+  Enabled?: boolean;
+  Kind?: "sqlite";
+  MirrorJson?: boolean;
+  RevisionRetentionCount?: number;
+  CommandReceiptRetentionHours?: number;
+  CommandReceiptMaxCount?: number;
+}
+
+export interface ResolvedAgentPersistenceConfig {
+  Kind: "sqlite" | "memory";
+}
+
+export interface ResolvedAgentConfigStoreConfig {
+  Enabled: boolean;
+  Kind: "sqlite";
+  MirrorJson: boolean;
+  RevisionRetentionCount: number;
+  CommandReceiptRetentionHours: number;
+  CommandReceiptMaxCount: number;
+}
+
+export type AgentServerAccessMode = "auto" | "required" | "disabled";
+
+export interface AgentServerSessionConfig {
+  AbsoluteTtlHours?: number;
+  IdleTtlHours?: number;
+  MaxSessions?: number;
+}
+
+export interface AgentServerConnectionLimitsConfig {
+  MaxConnections?: number;
+  MaxConnectionsPerClient?: number;
+  MaxRateLimitClients?: number;
+  UpgradeRequestsPerMinute?: number;
+  HttpRequestsPerMinute?: number;
+  MessagesPerMinute?: number;
+  LoginAttemptsPerMinute?: number;
+  HeartbeatIntervalSeconds?: number;
+  IdleSocketTimeoutSeconds?: number;
+}
+
+export interface AgentServerAccessControlConfig {
+  Mode?: AgentServerAccessMode;
+  AccountFile?: string;
+  AllowedOrigins?: string[];
+  TrustedProxyAddresses?: string[];
+  AllowInsecureLoopback?: boolean;
+  AllowInsecureHttp?: boolean;
+  Session?: AgentServerSessionConfig;
+  Limits?: AgentServerConnectionLimitsConfig;
+}
+
+export interface AgentServerConfig {
+  Host?: string;
+  Port?: number;
+  HotReload?: boolean;
+  RequestMaxBytes?: number;
+  AccessControl?: AgentServerAccessControlConfig;
+}
+
+export interface ResolvedAgentServerAccessControlConfig {
+  Mode: AgentServerAccessMode;
+  AccountFile: string;
+  AllowedOrigins: string[];
+  TrustedProxyAddresses: string[];
+  AllowInsecureLoopback: boolean;
+  AllowInsecureHttp: boolean;
+  Session: Required<AgentServerSessionConfig>;
+  Limits: Required<AgentServerConnectionLimitsConfig>;
+}
+
+export interface ResolvedAgentServerConfig extends Required<Omit<AgentServerConfig, "AccessControl">> {
+  AccessControl: ResolvedAgentServerAccessControlConfig;
+}

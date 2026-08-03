@@ -1,0 +1,244 @@
+import { z } from "zod";
+import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
+import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
+import { createToolProcessSuccessResponse, toolProcessFailureResult } from "./AgentToolProcessEnvelope.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
+import { cancelledToolProcessResult } from "./AgentToolCancellation.js";
+import { resolveArtifactsConfig, resolveToolExecutionConfig } from "../AgentDefaults.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import {
+  SeneraExecutionError,
+  SeneraExecutionErrorCodes,
+  type SeneraExecutionErrorCode,
+} from "../Execution/SeneraExecutionTypes.js";
+import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
+import type { AgentToolExecutionPlan } from "./AgentToolExecutionPlan.js";
+import { SeneraShellCommandSpecSchema } from "../Execution/SeneraShellCommand.js";
+import { openAgentHostToolReportingScope } from "./AgentToolHostCapabilityRegistry.js";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { createSeneraOutputSpool } from "../Execution/SeneraOutputSpool.js";
+import { assertInsideRoot } from "../Artifacts/AgentArtifactLocator.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { resolveAgentToolCallTimeoutMs } from "./AgentToolDeadline.js";
+
+const ShellExecutionProfileName = "host-shell";
+
+const ShellCommandArgumentsSchema = z
+  .object({
+    command: SeneraShellCommandSpecSchema,
+    cwd: z.string().trim().min(1).optional(),
+    timeoutMs: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(30 * 60 * 1000)
+      .optional(),
+    justification: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export const runShellCommandHostTool: AgentHostToolHandler = async (args, context) => {
+  const parsed = ShellCommandArgumentsSchema.safeParse(args);
+  if (!parsed.success) {
+    return shellFailure({
+      code: AgentExecutionErrorCodes.InvalidToolArguments,
+      message: agentErrorMessage("tool.shellArgumentsInvalid"),
+      details: {
+        phase: AgentToolProcessErrorPhases.RuntimeExecution,
+        issues: parsed.error.issues,
+        toolName: context.tool.name,
+      },
+      diagnostics: parsed.error.issues.map((issue) => ({
+        message: issue.message,
+        pointer: `/${issue.path.join("/")}`,
+        path: issue.path.map((entry) => (typeof entry === "number" ? entry : String(entry))),
+      })),
+    });
+  }
+
+  const cwdResult = await context.executionEnv.canonicalPath(parsed.data.cwd ?? ".");
+  if (!cwdResult.ok) {
+    const message = cwdResult.error.message;
+    return shellFailure({
+      code: AgentExecutionErrorCodes.InvalidToolArguments,
+      message,
+      details: {
+        phase: AgentToolProcessErrorPhases.RuntimeExecution,
+        cwd: parsed.data.cwd,
+        workspaceRoot: context.workspaceRoot,
+      },
+      diagnostics: [
+        {
+          message,
+          pointer: "/cwd",
+          path: ["cwd"],
+          suggestion: agentErrorMessage("tool.shellCwdSuggestion"),
+        },
+      ],
+    });
+  }
+
+  const toolExecution = resolveToolExecutionConfig(context.config);
+  const timeoutMs = resolveAgentToolCallTimeoutMs(context.config, parsed.data.timeoutMs);
+  const artifactsConfig = resolveArtifactsConfig(context.config);
+  const executionProfile = createAgentShellExecutionProfile(context.tool, requireExecutionPlan(context));
+  const reporting = openAgentHostToolReportingScope(context);
+  let outputSpool: Awaited<ReturnType<typeof createSeneraOutputSpool>> | undefined;
+  let cleanupOutputSpool = false;
+  try {
+    outputSpool = await createSeneraOutputSpool(
+      assertInsideRoot(
+        context.workspaceRoot,
+        path.resolve(context.workspaceRoot, artifactsConfig.RootDir, ".spool"),
+        `artifact spool 根目录超出工作区：${artifactsConfig.RootDir}`,
+      ),
+      randomUUID(),
+      {
+        maxBytes: artifactsConfig.OutputCaptureMaxBytes,
+        metadata: {
+          sessionId: context.sessionId,
+          requestId: context.requestId,
+          toolCallId: context.toolCallId,
+        },
+      },
+    );
+    const result = await context.executionEnv.executeShell({
+      command: parsed.data.command.script,
+      dialect: parsed.data.command.dialect,
+      cwd: cwdResult.value,
+      timeoutMs,
+      limits: {
+        timeoutMs,
+        maxStdoutBytes: toolExecution.MaxStdoutBytes,
+        maxStderrBytes: toolExecution.MaxStderrBytes,
+      },
+      signal: context.signal,
+      onOutput: (chunk) => reporting.reporter.output(chunk),
+      outputOverflow: "truncate",
+      outputSpool,
+      profile: executionProfile,
+    });
+    cleanupOutputSpool = result.outputCapture === undefined;
+    return {
+      response: createToolProcessSuccessResponse({
+        command: parsed.data.command.script,
+        shellDialect: parsed.data.command.dialect,
+        cwd: cwdResult.value,
+        exitCode: result.exitCode,
+        signal: result.signal,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        stdoutBytes: result.stdoutBytes,
+        stderrBytes: result.stderrBytes,
+        stdoutTruncated: result.stdoutTruncated,
+        stderrTruncated: result.stderrTruncated,
+      }),
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      signal: result.signal,
+      outputCapture: result.outputCapture,
+    };
+  } catch (error) {
+    const failure = shellExecutionFailure({
+      error,
+      command: parsed.data.command.script,
+      cwd: cwdResult.value,
+      timeoutMs,
+      signal: context.signal,
+    });
+    failure.outputCapture = outputSpool?.descriptor;
+    return failure;
+  } finally {
+    await reporting.close();
+    if (cleanupOutputSpool) await outputSpool?.cleanup();
+  }
+};
+
+export function createAgentShellExecutionProfile(
+  tool: Parameters<AgentHostToolHandler>[1]["tool"],
+  executionPlan: AgentToolExecutionPlan,
+): SeneraProcessExecutionProfile {
+  const local = executionPlan.backend === "local";
+  return {
+    name: ShellExecutionProfileName,
+    kind: "shell",
+    backend: executionPlan.backend,
+    sandbox: local
+      ? undefined
+      : {
+          network: executionPlan.network,
+          workspaceMount: executionPlan.workspaceMount,
+        },
+  };
+}
+
+function requireExecutionPlan(context: Parameters<AgentHostToolHandler>[1]): AgentToolExecutionPlan {
+  if (!context.executionPlan) {
+    throw new Error(`Tool ${context.tool.name} is missing its resolved execution plan.`);
+  }
+  return context.executionPlan;
+}
+
+function shellFailure(error: NonNullable<AgentToolProcessRunResult["response"]["error"]>): AgentToolProcessRunResult {
+  return toolProcessFailureResult(error);
+}
+
+function shellExecutionFailure(input: {
+  error: unknown;
+  command: string;
+  cwd: string;
+  timeoutMs: number;
+  signal?: AbortSignal;
+}): AgentToolProcessRunResult {
+  const message = errorMessage(input.error);
+  const code = shellErrorCode(input.error);
+  if (input.signal?.aborted || code === AgentExecutionErrorCodes.ToolProcessCancelled) {
+    return cancelledToolProcessResult({
+      signal: input.signal,
+      phase: "runtime",
+      command: input.command,
+      cwd: input.cwd,
+    });
+  }
+
+  return shellFailure({
+    code,
+    message:
+      code === AgentExecutionErrorCodes.ToolProcessTimeout
+        ? agentErrorMessage("tool.shellCommandTimeout", {
+            timeoutMs: input.timeoutMs,
+            command: input.command,
+          })
+        : message,
+    details: {
+      phase:
+        code === AgentExecutionErrorCodes.ToolProcessSpawnFailed
+          ? AgentToolProcessErrorPhases.ProcessSpawn
+          : AgentToolProcessErrorPhases.RuntimeExecution,
+      cwd: input.cwd,
+      command: input.command,
+      timeoutMs: input.timeoutMs,
+      seneraExecutionCode: input.error instanceof SeneraExecutionError ? input.error.code : undefined,
+    },
+  });
+}
+
+const AgentShellErrorCodeBySeneraCode = {
+  [SeneraExecutionErrorCodes.Aborted]: AgentExecutionErrorCodes.ToolProcessCancelled,
+  [SeneraExecutionErrorCodes.InvalidWorkspacePath]: AgentExecutionErrorCodes.InvalidToolArguments,
+  [SeneraExecutionErrorCodes.Timeout]: AgentExecutionErrorCodes.ToolProcessTimeout,
+  [SeneraExecutionErrorCodes.StdoutLimitExceeded]: AgentExecutionErrorCodes.ToolProcessStdoutLimitExceeded,
+  [SeneraExecutionErrorCodes.StderrLimitExceeded]: AgentExecutionErrorCodes.ToolProcessStderrLimitExceeded,
+  [SeneraExecutionErrorCodes.SandboxUnavailable]: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
+  [SeneraExecutionErrorCodes.SpawnFailed]: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
+  [SeneraExecutionErrorCodes.CleanupFailed]: AgentExecutionErrorCodes.ToolExecutionError,
+  [SeneraExecutionErrorCodes.Unknown]: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
+} satisfies Record<SeneraExecutionErrorCode, (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes]>;
+
+function shellErrorCode(error: unknown): (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes] {
+  return error instanceof SeneraExecutionError
+    ? AgentShellErrorCodeBySeneraCode[error.code]
+    : AgentExecutionErrorCodes.ToolProcessSpawnFailed;
+}

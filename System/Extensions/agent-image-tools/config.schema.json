@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "model": {
+      "default": { "modelProviderId": "" },
+      "type": "object",
+      "properties": { "modelProviderId": { "default": "", "type": "string", "maxLength": 256 } },
+      "additionalProperties": false
+    },
+    "input": {
+      "default": { "maxImageBytes": 52428800 },
+      "type": "object",
+      "properties": {
+        "maxImageBytes": { "default": 52428800, "type": "integer", "minimum": 1024, "maximum": 104857600 }
+      },
+      "additionalProperties": false
+    },
+    "prompt": {
+      "default": {
+        "systemPrompt": "Analyze only visible evidence in the supplied image. State uncertainty and do not infer hidden content."
+      },
+      "type": "object",
+      "properties": {
+        "systemPrompt": {
+          "default": "Analyze only visible evidence in the supplied image. State uncertainty and do not infer hidden content.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

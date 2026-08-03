@@ -1,0 +1,516 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { useMemo, useRef, useState } from "react";
+import { Plus, RefreshCw, Search, Settings2, Star, Tags, Trash2 } from "lucide-react";
+import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
+import { cn } from "../../lib/util";
+import { ScrollArea, Spinner, Tooltip } from "../../shared/ui";
+import { inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
+import { defaultModelCapabilities, modelConfigId, providerEnabled, readModelCapabilities } from "./modelConfigData";
+import type {
+  ModelProviderDraft,
+  ProviderEndpointDraft,
+  ProviderModelGroup,
+  ProviderModelInfo,
+} from "./modelConfigTypes";
+import { CapabilityIconStrip } from "./ModelCapabilityControls";
+import {
+  EmptyList,
+  ListHeader,
+  ProviderCatalogStatus,
+  SearchInput,
+  iconButtonClassName,
+} from "./ModelConfigPrimitives";
+
+const EMPTY_PENDING_MODEL_IDS: ReadonlyMap<string, string> = new Map();
+
+function pendingModelOperationLabel(kind: string): string {
+  if (kind === "provider.model.delete") return frontendMessage("settings.modelManagement.removing");
+  if (kind === "provider.defaultModel.set") return frontendMessage("settings.modelManagement.settingDefault");
+  return frontendMessage("settings.modelManagement.adding");
+}
+const modelActionClassName =
+  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[10.5px] font-medium text-ink-650 transition hover:bg-ink-900/[0.05] hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50";
+const modelRemoveActionClassName =
+  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[10.5px] font-medium text-brick-700 transition hover:bg-brick-50 disabled:pointer-events-none disabled:opacity-50";
+
+export function ProviderModelList({
+  selectedProvider,
+  catalog,
+  error,
+  loading,
+  enabled,
+  canFetchModels,
+  rows,
+  groups,
+  models,
+  modelTemplate,
+  defaultModelId,
+  pendingModelIds = EMPTY_PENDING_MODEL_IDS,
+  search,
+  disabled,
+  onSearch,
+  onOpenModelGroups,
+  onFetch,
+  onAddManualModel,
+  showFetchAction = true,
+  compactHeader = false,
+  onConfigureModel,
+  onSetDefaultModel,
+  onRemoveModel,
+}: {
+  selectedProvider: ProviderEndpointDraft | null;
+  catalog?: ProviderModelsSnapshotData;
+  error?: ProviderModelsFailedData & { updatedAt: string };
+  loading: boolean;
+  enabled: boolean;
+  canFetchModels: boolean;
+  rows: ProviderModelInfo[];
+  groups: ProviderModelGroup[];
+  models: ModelProviderDraft[];
+  modelTemplate: Record<string, unknown>;
+  defaultModelId: string;
+  pendingModelIds?: ReadonlyMap<string, string>;
+  search: string;
+  disabled: boolean;
+  onSearch: (value: string) => void;
+  onOpenModelGroups: () => void;
+  onFetch: (force?: boolean) => void;
+  onAddManualModel?: () => void;
+  showFetchAction?: boolean;
+  compactHeader?: boolean;
+  onConfigureModel: (model: ProviderModelInfo) => void;
+  onSetDefaultModel?: (model: ModelProviderDraft) => void;
+  onRemoveModel?: (model: ModelProviderDraft) => void;
+}): JSX.Element {
+  const [compactSearchOpen, setCompactSearchOpen] = useState(false);
+  const scrollTopRef = useRef<HTMLDivElement | null>(null);
+  const groupRefs = useRef(new Map<string, HTMLElement>());
+  const scrollToGroup = (groupId: string | null): void => {
+    const target = groupId === null ? scrollTopRef.current : groupRefs.current.get(groupId);
+    target?.scrollIntoView({
+      block: "start",
+      behavior: "smooth",
+    });
+  };
+  const modelRows = (
+    <>
+      <div ref={scrollTopRef} />
+      <ProviderModelRows
+        selectedProvider={selectedProvider}
+        enabled={enabled}
+        canFetchModels={canFetchModels}
+        catalog={catalog}
+        rows={rows}
+        groups={groups}
+        models={models}
+        modelTemplate={modelTemplate}
+        defaultModelId={defaultModelId}
+        pendingModelIds={pendingModelIds}
+        disabled={disabled}
+        onConfigureModel={onConfigureModel}
+        onSetDefaultModel={onSetDefaultModel}
+        onRemoveModel={onRemoveModel}
+        groupedCards={compactHeader}
+        onGroupRef={(groupId, element) => {
+          if (element) {
+            groupRefs.current.set(groupId, element);
+          } else {
+            groupRefs.current.delete(groupId);
+          }
+        }}
+      />
+    </>
+  );
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      {compactHeader ? (
+        <div className="border-b border-ink-200/70 bg-paper-50 px-3 py-3">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="text-[13.5px] font-semibold text-ink-900">{frontendMessage("config.model.title")}</span>
+              <span className="tabular-nums text-[11px] text-ink-500">{rows.length}</span>
+              <Tooltip content={frontendMessage("config.model.searchPlaceholder")} side="top">
+                <button
+                  type="button"
+                  disabled={disabled || !selectedProvider}
+                  className="grid h-8 w-8 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-45"
+                  onClick={() => setCompactSearchOpen((current) => !current)}
+                  aria-label={frontendMessage("config.model.searchPlaceholder")}
+                  aria-pressed={compactSearchOpen}
+                >
+                  <Search className="h-4 w-4" />
+                </button>
+              </Tooltip>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {showFetchAction ? (
+                <button
+                  type="button"
+                  disabled={disabled || loading || !enabled || !canFetchModels || !selectedProvider?.Id}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[11.5px] font-medium text-ink-650 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-45"
+                  onClick={() => onFetch(true)}
+                >
+                  {loading ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  {frontendMessage("config.model.fetchList")}
+                </button>
+              ) : null}
+              {onAddManualModel ? (
+                <Tooltip content={frontendMessage("config.model.customModel")} side="top">
+                  <button
+                    type="button"
+                    disabled={disabled || !selectedProvider}
+                    className={iconButtonClassName}
+                    onClick={onAddManualModel}
+                    aria-label={frontendMessage("config.model.addCustomModel")}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </Tooltip>
+              ) : null}
+            </div>
+          </div>
+          {compactSearchOpen ? (
+            <div className="mt-2.5">
+              <SearchInput value={search} disabled={disabled || !selectedProvider} onChange={onSearch} />
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <ListHeader
+          title={frontendMessage("config.model.title")}
+          subtitle={modelListSubtitle(selectedProvider, rows.length)}
+          action={
+            <div className="flex items-center gap-1.5">
+              <Tooltip content={frontendMessage("config.model.modelGroups")} side="top">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  className={iconButtonClassName}
+                  onClick={onOpenModelGroups}
+                  aria-label={frontendMessage("config.model.modelGroups")}
+                >
+                  <Tags className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+              {onAddManualModel ? (
+                <Tooltip content={frontendMessage("config.model.manualAdd")} side="top">
+                  <button
+                    type="button"
+                    disabled={disabled || !selectedProvider}
+                    className={iconButtonClassName}
+                    onClick={onAddManualModel}
+                    aria-label={frontendMessage("config.model.manualAdd")}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </Tooltip>
+              ) : null}
+              {showFetchAction ? (
+                <Tooltip content={frontendMessage("config.model.fetchList")} side="top">
+                  <button
+                    type="button"
+                    disabled={disabled || loading || !enabled || !canFetchModels || !selectedProvider?.Id}
+                    className={iconButtonClassName}
+                    onClick={() => onFetch(true)}
+                    aria-label={frontendMessage("config.model.fetchList")}
+                  >
+                    {loading ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  </button>
+                </Tooltip>
+              ) : null}
+            </div>
+          }
+        />
+      )}
+      {compactHeader ? null : (
+        <div className="grid gap-2 border-b border-ink-200/70 bg-paper-50/75 p-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <SearchInput value={search} disabled={disabled || !selectedProvider} onChange={onSearch} />
+          <div className="flex min-w-0 items-center justify-end gap-1.5">
+            <ProviderCatalogStatus catalog={catalog} error={error} loading={loading} disabled={!enabled} />
+          </div>
+        </div>
+      )}
+      {compactHeader ? null : <ModelGroupSummary groups={groups} total={rows.length} onSelectGroup={scrollToGroup} />}
+      <ScrollArea className="min-h-0 flex-1 overflow-hidden" viewportClassName="h-full pr-2 [scrollbar-gutter:stable]">
+        {modelRows}
+      </ScrollArea>
+    </div>
+  );
+}
+
+function ProviderModelRows({
+  selectedProvider,
+  enabled,
+  canFetchModels,
+  catalog,
+  rows,
+  groups,
+  models,
+  modelTemplate,
+  defaultModelId,
+  pendingModelIds,
+  disabled,
+  onConfigureModel,
+  onSetDefaultModel,
+  onRemoveModel,
+  groupedCards,
+  onGroupRef,
+}: {
+  selectedProvider: ProviderEndpointDraft | null;
+  enabled: boolean;
+  canFetchModels: boolean;
+  catalog?: ProviderModelsSnapshotData;
+  rows: ProviderModelInfo[];
+  groups: ProviderModelGroup[];
+  models: ModelProviderDraft[];
+  modelTemplate: Record<string, unknown>;
+  defaultModelId: string;
+  pendingModelIds: ReadonlyMap<string, string>;
+  disabled: boolean;
+  onConfigureModel: (model: ProviderModelInfo) => void;
+  onSetDefaultModel?: (model: ModelProviderDraft) => void;
+  onRemoveModel?: (model: ModelProviderDraft) => void;
+  groupedCards: boolean;
+  onGroupRef: (groupId: string, element: HTMLElement | null) => void;
+}): JSX.Element {
+  const selectedProviderId = selectedProvider?.Id ?? "";
+  const configuredByModel = useMemo(
+    () =>
+      new Map(models.filter((model) => model.ProviderId === selectedProviderId).map((model) => [model.Model, model])),
+    [models, selectedProviderId],
+  );
+
+  if (!selectedProvider) {
+    return <EmptyList text={frontendMessage("config.model.addProviderFirst")} />;
+  }
+  if (!enabled) {
+    return <EmptyList text={frontendMessage("config.model.providerDisabled")} />;
+  }
+  if (!canFetchModels && !catalog && rows.length === 0) {
+    return <EmptyList text={frontendMessage("config.model.apiKeyRequired")} />;
+  }
+  if (rows.length === 0) {
+    return (
+      <EmptyList
+        text={
+          configuredByModel.size === 0
+            ? frontendMessage("config.model.noConfigured")
+            : frontendMessage("config.model.noMatches")
+        }
+      />
+    );
+  }
+
+  return (
+    <div>
+      {groups.map((group) => (
+        <section key={group.id} className={cn("border-b border-ink-200/70 last:border-b-0")}>
+          <div
+            ref={(element) => onGroupRef(group.id, element)}
+            className={cn(
+              "flex scroll-mt-0 items-center justify-between border-b border-ink-200/70 bg-paper-100 px-3",
+              groupedCards ? "h-9" : "sticky top-0 z-[1] h-8",
+            )}
+          >
+            <span className="flex min-w-0 items-center gap-1.5">
+              <ModelProviderIcon icon={group.icon} size={14} className="rounded" />
+              <span className="truncate text-[11.5px] font-semibold text-ink-700">{group.label}</span>
+            </span>
+            <span className="tabular-nums text-[10.5px] text-ink-400">{group.rows.length}</span>
+          </div>
+          <div className="divide-y divide-ink-200/70">
+            {group.rows.map((model) => (
+              <ProviderModelRow
+                key={model.id}
+                model={model}
+                providerId={selectedProvider.Id}
+                configured={configuredByModel.get(model.id)}
+                defaultModelId={defaultModelId}
+                pendingKind={pendingModelIds.get(modelConfigId(selectedProviderId, model.id))}
+                modelTemplate={modelTemplate}
+                disabled={disabled}
+                onConfigureModel={onConfigureModel}
+                onSetDefaultModel={onSetDefaultModel}
+                onRemoveModel={onRemoveModel}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function ProviderModelRow({
+  model,
+  providerId,
+  configured,
+  defaultModelId,
+  pendingKind,
+  modelTemplate,
+  disabled,
+  onConfigureModel,
+  onSetDefaultModel,
+  onRemoveModel,
+}: {
+  model: ProviderModelInfo;
+  providerId: string;
+  configured?: ModelProviderDraft;
+  defaultModelId: string;
+  /** Operation kind pending for this model (upsert/delete/default-set), if any. */
+  pendingKind?: string;
+  modelTemplate: Record<string, unknown>;
+  disabled: boolean;
+  onConfigureModel: (model: ProviderModelInfo) => void;
+  onSetDefaultModel?: (model: ModelProviderDraft) => void;
+  onRemoveModel?: (model: ModelProviderDraft) => void;
+}): JSX.Element {
+  const isDefault = configured?.Id === defaultModelId;
+  const capabilities = configured
+    ? readModelCapabilities(configured, modelTemplate)
+    : defaultModelCapabilities(modelTemplate);
+
+  return (
+    <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 transition hover:bg-paper-100/80 [content-visibility:auto] [contain-intrinsic-size:52px]">
+      <ModelProviderIcon icon={configured?.Icon ?? inferModelProviderIcon(model.id)} size={22} className="rounded" />
+      <span className="min-w-0">
+        <span className="block truncate font-mono text-[12px] text-ink-850" title={model.id}>
+          {model.id}
+        </span>
+        <span className="mt-1 flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[10.5px] text-ink-400">
+            {model.ownedBy || frontendMessage("config.model.providerModel")}
+          </span>
+          <CapabilityIconStrip capabilities={capabilities} />
+        </span>
+      </span>
+      <span className="flex flex-wrap items-center justify-end gap-1.5">
+        <ConfiguredModelBadge isDefault={isDefault} configured={Boolean(configured)} />
+        {pendingKind ? (
+          <span className="inline-flex items-center gap-1.5 text-[10.5px] font-medium text-ink-600">
+            <Spinner size="xs" className="text-accent-content" /> {pendingModelOperationLabel(pendingKind)}
+          </span>
+        ) : configured && (onSetDefaultModel || onRemoveModel) ? (
+          <>
+            <button
+              type="button"
+              disabled={disabled || !providerId}
+              className={modelActionClassName}
+              onClick={() => onConfigureModel(model)}
+            >
+              <Settings2 className="h-3 w-3" />
+              {frontendMessage("chat.model.configure")}
+            </button>
+            {!isDefault && onSetDefaultModel ? (
+              <button
+                type="button"
+                disabled={disabled || !providerId}
+                className={modelActionClassName}
+                onClick={() => onSetDefaultModel(configured)}
+              >
+                <Star className="h-3 w-3" />
+                {frontendMessage("chat.model.setDefault")}
+              </button>
+            ) : null}
+            {onRemoveModel ? (
+              <button
+                type="button"
+                disabled={disabled || !providerId}
+                className={modelRemoveActionClassName}
+                onClick={() => onRemoveModel(configured)}
+              >
+                <Trash2 className="h-3 w-3" />
+                {frontendMessage("chat.model.remove")}
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <button
+            type="button"
+            disabled={disabled || !providerId}
+            className={iconButtonClassName}
+            title={frontendMessage("chat.model.configure")}
+            aria-label={frontendMessage("chat.model.configure")}
+            onClick={() => onConfigureModel(model)}
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function ConfiguredModelBadge({
+  isDefault,
+  configured,
+}: {
+  isDefault: boolean;
+  configured: boolean;
+}): JSX.Element | null {
+  if (isDefault) {
+    return (
+      <span className="text-[10.5px] font-medium text-accent-content">{frontendMessage("config.model.default")}</span>
+    );
+  }
+  if (configured) {
+    // TODO: this is a configured-state badge, not model enablement. Persisted
+    // model Enabled plus runtime filtering require a backend contract first.
+    return <span className="text-[10.5px] text-ink-500">{frontendMessage("settings.modelManagement.added")}</span>;
+  }
+  return null;
+}
+
+function ModelGroupSummary({
+  groups,
+  total,
+  onSelectGroup,
+}: {
+  groups: ProviderModelGroup[];
+  total: number;
+  onSelectGroup: (groupId: string | null) => void;
+}): JSX.Element | null {
+  if (groups.length === 0) {
+    return null;
+  }
+  return (
+    <div className="border-b border-ink-200/70 bg-paper-50 px-2.5 py-2">
+      <div className="flex min-w-0 flex-wrap gap-1">
+        <button
+          type="button"
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-accent-border px-1.5 text-[11px] text-ink-800 transition-colors duration-150 hover:text-accent-content-hover"
+          onClick={() => onSelectGroup(null)}
+          title={frontendMessage("config.model.allModelsTitle", { count: total })}
+        >
+          <Tags className="h-3.5 w-3.5" />
+          <span className="font-medium">{frontendMessage("config.model.allModels")}</span>
+          <span className="tabular-nums text-[10px] text-ink-400">{total}</span>
+        </button>
+        {groups.map((group) => (
+          <button
+            type="button"
+            key={group.id}
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-transparent px-1.5 text-[11px] text-ink-650 transition-colors duration-150 hover:border-ink-350 hover:text-ink-850"
+            title={`${group.label}: ${group.rows.length}`}
+            onClick={() => onSelectGroup(group.id)}
+          >
+            <ModelProviderIcon icon={group.icon} size={14} className="rounded" />
+            <span className="max-w-24 truncate font-medium">{group.label}</span>
+            <span className="tabular-nums text-[10px] text-ink-400">{group.rows.length}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function modelListSubtitle(selectedProvider: ProviderEndpointDraft | null, visibleRows: number): string {
+  if (!selectedProvider) {
+    return frontendMessage("config.model.selectProviderHint");
+  }
+  if (!providerEnabled(selectedProvider)) {
+    return frontendMessage("config.model.providerDisabled");
+  }
+  return frontendMessage("config.model.configuredCount", { count: visibleRows });
+}

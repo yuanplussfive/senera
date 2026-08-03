@@ -1,0 +1,101 @@
+import type Database from "better-sqlite3";
+import type { AgentConfigRevisionRecord } from "./AgentConfigSqliteRepository.js";
+
+export interface AgentConfigRevisionRow {
+  revision: number;
+  config_json: string;
+  source: AgentConfigRevisionRecord["source"];
+  created_at: string;
+}
+
+export interface AgentConfigCommandReceiptRow {
+  command_id: string;
+  operation_kind: string;
+  payload_hash: string;
+  revision: number;
+  created_at: string;
+}
+
+export interface AgentConfigSqlStatements {
+  readonly selectLatestRevision: Database.Statement<[], AgentConfigRevisionRow>;
+  readonly selectNextRevision: Database.Statement<[], { revision: number }>;
+  readonly selectRevision: Database.Statement<[number], AgentConfigRevisionRow>;
+  readonly selectAllRevisions: Database.Statement<[], AgentConfigRevisionRow>;
+  readonly selectCommandReceipt: Database.Statement<[string], AgentConfigCommandReceiptRow>;
+  readonly insertRevision: Database.Statement;
+  readonly insertCommandReceipt: Database.Statement;
+  readonly deleteExpiredCommandReceipts: Database.Statement<[string]>;
+  readonly deleteExcessCommandReceipts: Database.Statement<[number]>;
+  readonly deleteUnretainedRevisions: Database.Statement<[number]>;
+  readonly updateRevisionConfig: Database.Statement;
+}
+
+export function prepareAgentConfigSqlStatements(database: Database.Database): AgentConfigSqlStatements {
+  return {
+    selectLatestRevision: database.prepare(`
+      SELECT revision, config_json, source, created_at
+      FROM config_revisions
+      ORDER BY revision DESC
+      LIMIT 1
+    `),
+    selectNextRevision: database.prepare(`
+      SELECT COALESCE(MAX(revision), 0) + 1 AS revision
+      FROM config_revisions
+    `),
+    selectRevision: database.prepare(`
+      SELECT revision, config_json, source, created_at
+      FROM config_revisions
+      WHERE revision = ?
+    `),
+    selectAllRevisions: database.prepare(`
+      SELECT revision, config_json, source, created_at
+      FROM config_revisions
+      ORDER BY revision ASC
+    `),
+    selectCommandReceipt: database.prepare(`
+      SELECT command_id, operation_kind, payload_hash, revision, created_at
+      FROM config_command_receipts
+      WHERE command_id = ?
+    `),
+    insertRevision: database.prepare(`
+      INSERT INTO config_revisions (revision, config_json, source, created_at)
+      VALUES (@revision, @config_json, @source, @created_at)
+    `),
+    insertCommandReceipt: database.prepare(`
+      INSERT INTO config_command_receipts (command_id, operation_kind, payload_hash, revision, created_at)
+      VALUES (@command_id, @operation_kind, @payload_hash, @revision, @created_at)
+    `),
+    deleteExpiredCommandReceipts: database.prepare(`
+      DELETE FROM config_command_receipts
+      WHERE created_at < ?
+    `),
+    deleteExcessCommandReceipts: database.prepare(`
+      DELETE FROM config_command_receipts
+      WHERE command_id IN (
+        SELECT command_id
+        FROM config_command_receipts
+        ORDER BY created_at DESC, command_id DESC
+        LIMIT -1 OFFSET ?
+      )
+    `),
+    deleteUnretainedRevisions: database.prepare(`
+      DELETE FROM config_revisions
+      WHERE revision NOT IN (
+        SELECT revision
+        FROM config_revisions
+        ORDER BY revision DESC
+        LIMIT ?
+      )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM config_command_receipts receipt
+          WHERE receipt.revision = config_revisions.revision
+        )
+    `),
+    updateRevisionConfig: database.prepare(`
+      UPDATE config_revisions
+      SET config_json = @config_json
+      WHERE revision = @revision
+    `),
+  };
+}

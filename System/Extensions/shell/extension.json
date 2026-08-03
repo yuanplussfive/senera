@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "shell",
+  "version": "1.0.0",
+  "displayName": {
+    "zh-CN": "命令执行",
+    "en-US": "Shell Commands"
+  },
+  "description": {
+    "zh-CN": "在受控执行环境中运行一次性 Shell 命令。",
+    "en-US": "Runs one-shot shell commands in a controlled execution environment."
+  },
+  "priority": 90,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/ShellCommandTool.tool.json",
+      "capability": "shell.run",
+      "recommendedForSkills": []
+    }
+  ]
+}

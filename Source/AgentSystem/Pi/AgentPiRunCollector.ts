@@ -1,0 +1,292 @@
+import type { AgentEvent as AgentSessionEvent } from "@earendil-works/pi-agent-core";
+import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
+import { AgentEventKinds, type AgentDomainEvent, type AgentEventSink } from "../Events/AgentEvent.js";
+import { emitAgentEvent } from "../Events/AgentEvent.js";
+import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
+import { clampField, type StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
+import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
+import { AgentRunActivities } from "../Events/AgentRunEventTypes.js";
+import { AgentRunActivityReporter, type AgentRunActivityHandle } from "../Events/AgentRunActivityReporter.js";
+import {
+  emitAgentPiDiagnostic,
+  projectPiSessionDiagnosticEvent,
+  type AgentPiDiagnosticSink,
+} from "../Diagnostics/AgentPiDiagnostics.js";
+
+export interface AgentPiRunCollectorOptions {
+  sessionId?: string;
+  requestId: string;
+  step: number;
+  onEvent?: AgentEventSink;
+  diagnostics?: AgentPiDiagnosticSink;
+  streamModelDeltas?: boolean;
+  piTurnContextId?: string;
+  turnContexts: Pick<AgentPiTurnContextStore, "readToolCallBatchId" | "takeExecutedToolResult">;
+  activityReporter?: AgentRunActivityReporter;
+}
+
+export interface AgentPiRunProjection {
+  traces: StepTrace[];
+  executedTools: ExecutedToolCallResult[];
+}
+
+interface ActiveToolTrace {
+  seq: number;
+  toolName: string;
+  callId: string;
+  args: unknown;
+}
+
+export class AgentPiRunCollector {
+  private readonly eventFactory = new AgentLoopEventFactory();
+  private readonly activityReporter: AgentRunActivityReporter;
+  private readonly traces: StepTrace[] = [];
+  private readonly activeToolTraces = new Map<string, ActiveToolTrace>();
+  private readonly executedTools: ExecutedToolCallResult[] = [];
+  private pending = Promise.resolve();
+  private textDelta = "";
+  private activeAssistantResponse?: AgentRunActivityHandle;
+
+  constructor(private readonly options: AgentPiRunCollectorOptions) {
+    this.activityReporter =
+      options.activityReporter ??
+      new AgentRunActivityReporter({
+        sessionId: options.sessionId,
+        requestId: options.requestId,
+        step: options.step,
+        onEvent: options.onEvent,
+      });
+  }
+
+  collect(event: AgentSessionEvent): Promise<void> {
+    this.pending = this.pending.then(
+      () => this.projectEvent(event),
+      () => this.projectEvent(event),
+    );
+    return this.pending;
+  }
+
+  async drain(): Promise<void> {
+    await this.pending;
+  }
+
+  snapshot(): AgentPiRunProjection {
+    return {
+      traces: [...this.traces],
+      executedTools: [...this.executedTools],
+    };
+  }
+
+  private async projectEvent(event: AgentSessionEvent): Promise<void> {
+    if (event.type !== "message_update") {
+      await emitAgentPiDiagnostic(
+        this.options.diagnostics,
+        projectPiSessionDiagnosticEvent({
+          context: {
+            sessionId: this.options.sessionId,
+            requestId: this.options.requestId,
+            step: this.options.step,
+          },
+          event,
+        }),
+      );
+    }
+
+    switch (event.type) {
+      case "message_start":
+        await this.messageStarted(event);
+        break;
+      case "message_update": {
+        const projected = this.messageUpdated(event);
+        if (projected) await this.emit(projected);
+        break;
+      }
+      case "message_end":
+        await this.messageEnded(event);
+        break;
+      case "tool_execution_start":
+        await this.emit(this.toolExecutionStarted(event));
+        break;
+      case "tool_execution_end":
+        for (const projected of this.toolExecutionEnded(event)) {
+          await this.emit(projected);
+        }
+        break;
+    }
+  }
+
+  private async messageStarted(event: Extract<AgentSessionEvent, { type: "message_start" }>): Promise<void> {
+    if (event.message.role !== "assistant") return;
+    if (this.activeAssistantResponse) {
+      throw new Error("Pi emitted overlapping assistant message lifecycles.");
+    }
+    this.textDelta = "";
+    this.activeAssistantResponse = await this.activityReporter.start(AgentRunActivities.GeneratingResponse);
+  }
+
+  private async messageEnded(event: Extract<AgentSessionEvent, { type: "message_end" }>): Promise<void> {
+    if (event.message.role !== "assistant") return;
+    const activity = this.activeAssistantResponse;
+    this.activeAssistantResponse = undefined;
+    await activity?.complete();
+  }
+
+  private toolExecutionStarted(event: Extract<AgentSessionEvent, { type: "tool_execution_start" }>): AgentDomainEvent {
+    const seq = this.traces.length + this.activeToolTraces.size;
+    this.activeToolTraces.set(event.toolCallId, {
+      seq,
+      toolName: event.toolName,
+      callId: event.toolCallId,
+      args: event.args,
+    });
+    return this.eventFactory.toolCallStarted(
+      this.options.requestId,
+      this.options.step,
+      seq,
+      event.toolName,
+      event.toolCallId,
+      { batchId: this.batchIdFor(event.toolCallId) },
+    );
+  }
+
+  private toolExecutionEnded(
+    event: Extract<AgentSessionEvent, { type: "tool_execution_end" }>,
+  ): readonly AgentDomainEvent[] {
+    const active = this.activeToolTraces.get(event.toolCallId) ?? {
+      seq: this.traces.length,
+      toolName: event.toolName,
+      callId: event.toolCallId,
+      args: undefined,
+    };
+    this.activeToolTraces.delete(event.toolCallId);
+
+    const captured = this.options.turnContexts.takeExecutedToolResult(this.options.piTurnContextId, event.toolCallId);
+    const presentation =
+      captured?.presentation ?? (captured ? projectAgentToolResultPresentation(captured) : undefined);
+    const executed = captured && presentation ? { ...captured, presentation } : captured;
+    if (executed) {
+      this.executedTools.push(executed);
+    }
+    const trace = this.buildToolTrace(active, event, executed);
+    this.traces.push(trace);
+
+    const lifecycle = event.isError
+      ? this.eventFactory.toolCallFailed(
+          this.options.requestId,
+          this.options.step,
+          active.seq,
+          event.toolName,
+          event.toolCallId,
+          readToolErrorMessage(event.result),
+          undefined,
+          { batchId: this.batchIdFor(event.toolCallId) },
+        )
+      : this.eventFactory.toolCallCompleted(
+          this.options.requestId,
+          this.options.step,
+          active.seq,
+          event.toolName,
+          event.toolCallId,
+          presentation,
+          { batchId: this.batchIdFor(event.toolCallId) },
+        );
+    return [
+      lifecycle,
+      this.eventFactory.toolCallResultDetail(
+        this.options.requestId,
+        this.options.step,
+        active.seq,
+        event.toolName,
+        event.toolCallId,
+        executed ?? event.result,
+        { batchId: this.batchIdFor(event.toolCallId) },
+      ),
+    ];
+  }
+
+  private messageUpdated(event: Extract<AgentSessionEvent, { type: "message_update" }>): AgentDomainEvent | undefined {
+    if (this.options.streamModelDeltas === false) {
+      return undefined;
+    }
+
+    const text = extractText(event.message);
+    if (text.length <= this.textDelta.length || !text.startsWith(this.textDelta)) {
+      this.textDelta = text;
+      return undefined;
+    }
+
+    const delta = text.slice(this.textDelta.length);
+    this.textDelta = text;
+    return delta.length > 0
+      ? {
+          kind: AgentEventKinds.ModelDelta,
+          context: {
+            requestId: this.options.requestId,
+            step: this.options.step,
+          },
+          data: {
+            text: delta,
+          },
+        }
+      : undefined;
+  }
+
+  private buildToolTrace(
+    active: ActiveToolTrace,
+    event: Extract<AgentSessionEvent, { type: "tool_execution_end" }>,
+    executed: ExecutedToolCallResult | undefined,
+  ): StepTrace {
+    return {
+      step: this.options.step,
+      seq: active.seq,
+      kind: "tool",
+      status: event.isError ? "failed" : "done",
+      toolName: event.toolName,
+      callId: event.toolCallId,
+      batchId: this.batchIdFor(event.toolCallId),
+      toolArgs: clampField(executed?.arguments ?? active.args),
+      toolPreview: executed?.presentation?.headline,
+      toolPresentation: executed?.presentation,
+      toolResult: clampField(executed?.result ?? event.result),
+      toolErrorMessage: event.isError ? readToolErrorMessage(event.result) : undefined,
+    };
+  }
+
+  private batchIdFor(callId: string): string | undefined {
+    return this.options.turnContexts.readToolCallBatchId(this.options.piTurnContextId, callId);
+  }
+
+  private async emit(event: AgentDomainEvent): Promise<void> {
+    await emitAgentEvent(this.options.onEvent, event);
+  }
+}
+
+function readToolErrorMessage(value: unknown): string {
+  return readFirstTextContent(value) ?? "Pi 工具执行失败。";
+}
+
+function readFirstTextContent(value: unknown): string | undefined {
+  const content = readRecord(value)?.content;
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+  const text = content
+    .map((entry) => readRecord(entry))
+    .find((entry) => entry?.type === "text" && typeof entry.text === "string")?.text;
+  return typeof text === "string" && text.length > 0 ? text : undefined;
+}
+
+function extractText(message: unknown): string {
+  const record = readRecord(message);
+  const content = record?.content;
+  return Array.isArray(content)
+    ? content
+        .flatMap((entry) => {
+          const item = readRecord(entry);
+          return item?.type === "text" && typeof item.text === "string" ? [item.text] : [];
+        })
+        .join("")
+    : "";
+}

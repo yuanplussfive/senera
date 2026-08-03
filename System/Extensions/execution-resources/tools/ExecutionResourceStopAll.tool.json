@@ -1,0 +1,56 @@
+{
+  "name": "ExecutionResourceStopAll",
+  "observationProjection": "observations/collection.projection.json",
+  "description": "停止当前会话拥有的全部活动后台终端和进程。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "additionalProperties": {
+      "not": {}
+    },
+    "definitions": {}
+  },
+  "permissions": ["process:shell"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "execution",
+      "Title": "Execution",
+      "Description": "Shell commands, processes, terminals, builds, tests, and other executable workloads."
+    }
+  ],
+  "search": {
+    "Summary": "停止当前会话拥有的全部活动后台终端和进程。",
+    "Capabilities": [
+      {
+        "Id": "execution.resource-stop-all",
+        "Facets": {
+          "Actions": ["stop", "terminate"],
+          "Targets": ["execution-resource", "terminal", "process"],
+          "Effects": ["process-control"]
+        }
+      }
+    ],
+    "Tags": ["后台终端", "全部停止", "会话控制"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Summary": {
+      "Template": "{{ toolName }} returned {{ result.resources | size }} execution resources",
+      "ArtifactTemplate": "{% for resource in result.resources %}- resourceId: {{ resource.resourceId }}\n  kind: {{ resource.kind }}\n  state: {{ resource.state }}\n  command: {{ resource.command }}\n  cwd: {{ resource.cwd }}\n  cursor: {{ resource.cursor }}\n{% endfor %}"
+    }
+  }
+}

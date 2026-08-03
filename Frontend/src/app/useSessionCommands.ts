@@ -1,0 +1,192 @@
+import { useCallback, type MutableRefObject } from "react";
+import { toast } from "sonner";
+import type { WsRequest } from "../api/eventTypes";
+import type { SocketStatus } from "../api/useAgentSocket";
+import { generateId } from "../lib/util";
+import { DEFAULT_SESSION_TITLE, useStore, type StoreState, type UserProfile } from "../store/sessionStore";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
+
+export interface UseSessionCommandsOptions {
+  send: (request: WsRequest) => boolean;
+  serverKnownSessionIdsRef: MutableRefObject<Set<string>>;
+  status: SocketStatus;
+  defaultModelProviderId: string | null;
+}
+
+export interface SessionCommandsHandle {
+  closeSession: (sessionId: string) => void;
+  closeSessions: (sessionIds: string[]) => void;
+  compactSession: (sessionId: string) => void;
+  createSession: () => void;
+  exportSession: (sessionId: string, format: "jsonl" | "html") => void;
+  inspectSessionRuntime: (sessionId: string) => void;
+  renameSession: (sessionId: string, title: string) => boolean;
+  updateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
+}
+
+export function readUniqueSessionIds(sessionIds: readonly string[]): string[] {
+  return [...new Set(sessionIds)].filter(Boolean);
+}
+
+export function normalizeSessionTitle(title: string): string | null {
+  const nextTitle = title.trim();
+  return nextTitle ? nextTitle : null;
+}
+
+export function findReusableEmptySessionId({
+  sessions,
+  sessionOrder,
+}: Pick<StoreState, "sessions" | "sessionOrder">): string | undefined {
+  return sessionOrder.find((sessionId) => {
+    const session = sessions[sessionId];
+    if (!session || session.status === "closed" || session.title !== DEFAULT_SESSION_TITLE) return false;
+    return (
+      session.entryCount === 0 &&
+      session.messageCount === 0 &&
+      session.messages.length === 0 &&
+      session.runs.length === 0 &&
+      !session.activeRequestId
+    );
+  });
+}
+
+export function useSessionCommands({
+  send,
+  serverKnownSessionIdsRef,
+  status,
+  defaultModelProviderId,
+}: UseSessionCommandsOptions): SessionCommandsHandle {
+  const clearAllSessions = useStore((state) => state.clearAllSessions);
+  const registerSession = useStore((state) => state.registerCreatingSession);
+  const removeSession = useStore((state) => state.removeSession);
+  const renameStoreSession = useStore((state) => state.renameSession);
+  const selectSession = useStore((state) => state.selectSession);
+  const setUserProfile = useStore((state) => state.setUserProfile);
+
+  const createSession = useCallback((): void => {
+    const reusableSessionId = findReusableEmptySessionId(useStore.getState());
+    if (reusableSessionId) {
+      selectSession(reusableSessionId);
+      return;
+    }
+
+    if (status !== "open") {
+      toast.warning(frontendMessage("session.createOffline"));
+      return;
+    }
+
+    const sessionId = generateId();
+    const ok = send({
+      type: "session.create",
+      sessionId,
+    });
+    if (!ok) {
+      toast.error(frontendMessage("session.createDisconnected"));
+      return;
+    }
+
+    registerSession(sessionId, undefined, defaultModelProviderId);
+    serverKnownSessionIdsRef.current.add(sessionId);
+  }, [defaultModelProviderId, registerSession, selectSession, send, serverKnownSessionIdsRef, status]);
+
+  const closeSession = useCallback(
+    (sessionId: string): void => {
+      const ok = send({ type: "session.close", sessionId });
+      if (!ok) {
+        toast.error(frontendMessage("session.deleteDisconnected"));
+        return;
+      }
+      removeSession(sessionId);
+    },
+    [removeSession, send],
+  );
+
+  const closeSessions = useCallback(
+    (sessionIds: string[]): void => {
+      const uniqueIds = readUniqueSessionIds(sessionIds);
+      if (uniqueIds.length === 0) return;
+
+      const sentIds: string[] = [];
+      uniqueIds.forEach((sessionId) => {
+        const ok = send({ type: "session.close", sessionId });
+        if (ok) {
+          sentIds.push(sessionId);
+          serverKnownSessionIdsRef.current.delete(sessionId);
+        }
+      });
+
+      if (sentIds.length > 0) {
+        clearAllSessions(sentIds);
+      }
+      if (sentIds.length < uniqueIds.length) {
+        toast.error(
+          frontendMessage("session.bulkDeletePartialFailed", {
+            count: uniqueIds.length - sentIds.length,
+          }),
+        );
+      }
+    },
+    [clearAllSessions, send, serverKnownSessionIdsRef],
+  );
+
+  const renameSession = useCallback(
+    (sessionId: string, title: string): boolean => {
+      const nextTitle = normalizeSessionTitle(title);
+      if (!nextTitle) return false;
+
+      if (status !== "open" || !send({ type: "session.rename", sessionId, title: nextTitle })) {
+        toast.error(frontendMessage("session.renameDisconnected"));
+        return false;
+      }
+      renameStoreSession(sessionId, nextTitle);
+      return true;
+    },
+    [renameStoreSession, send, status],
+  );
+
+  const sendPiSessionCommand = useCallback(
+    (request: Extract<WsRequest, { type: "session.compact" | "session.runtime_status" | "session.export" }>): void => {
+      if (status !== "open" || !send(request)) {
+        toast.error(frontendMessage("session.piCommandDisconnected"));
+      }
+    },
+    [send, status],
+  );
+
+  const compactSession = useCallback(
+    (sessionId: string): void => sendPiSessionCommand({ type: "session.compact", sessionId }),
+    [sendPiSessionCommand],
+  );
+
+  const inspectSessionRuntime = useCallback(
+    (sessionId: string): void => sendPiSessionCommand({ type: "session.runtime_status", sessionId }),
+    [sendPiSessionCommand],
+  );
+
+  const exportSession = useCallback(
+    (sessionId: string, format: "jsonl" | "html"): void =>
+      sendPiSessionCommand({ type: "session.export", sessionId, format }),
+    [sendPiSessionCommand],
+  );
+
+  const updateUserProfile = useCallback(
+    (profile: Pick<UserProfile, "name" | "avatarDataUrl">): void => {
+      setUserProfile(profile);
+      if (status === "open") {
+        send({ type: "profile.update", profile });
+      }
+    },
+    [send, setUserProfile, status],
+  );
+
+  return {
+    closeSession,
+    closeSessions,
+    compactSession,
+    createSession,
+    exportSession,
+    inspectSessionRuntime,
+    renameSession,
+    updateUserProfile,
+  };
+}

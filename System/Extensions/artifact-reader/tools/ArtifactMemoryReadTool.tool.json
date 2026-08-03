@@ -1,0 +1,327 @@
+{
+  "name": "ArtifactReadTool",
+  "observationProjection": "observations/default.projection.json",
+  "description": "按 artifactUri 读取已经落地的 artifact 资源；JSON 默认分页返回已发布结构索引，并通过 typed query 执行完整元素投影。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "artifactUris": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["item"],
+        "additionalProperties": false,
+        "description": "One or more canonical artifact memory URIs, for example \"senera://artifact/art_1234567890abcdef12345678\"."
+      },
+      "refs": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "summary",
+                "projection",
+                "evidence",
+                "delta",
+                "raw",
+                "rawBlob",
+                "rawPreview",
+                "workspaceDiff",
+                "workspacePatch",
+                "stdout",
+                "stderr"
+              ]
+            }
+          }
+        },
+        "required": ["item"],
+        "additionalProperties": false,
+        "description": "Memory refs to load. Omit to read projection only."
+      },
+      "maxBytesPerRef": {
+        "type": "number",
+        "description": "Optional per-ref response budget. Runtime caps this at the artifact text-file budget."
+      },
+      "startBytePerRef": {
+        "type": "number",
+        "description": "UTF-8 byte offset applied to each requested ref. Use a prior range.nextStartByte to continue."
+      },
+      "refRanges": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string",
+              "enum": [
+                "summary",
+                "projection",
+                "evidence",
+                "delta",
+                "raw",
+                "rawBlob",
+                "rawPreview",
+                "workspaceDiff",
+                "workspacePatch",
+                "stdout",
+                "stderr"
+              ]
+            },
+            "maxBytes": {
+              "type": "number"
+            },
+            "startByte": {
+              "type": "number"
+            }
+          },
+          "required": ["ref", "maxBytes"],
+          "additionalProperties": false
+        },
+        "description": "Optional per-ref ranges. This avoids applying one offset/budget to unrelated refs."
+      },
+      "jsonView": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "index"
+              },
+              "cursor": {
+                "type": "string",
+                "description": "Opaque index nextCursor. It cannot be used by a query view."
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "query"
+              },
+              "sourcePath": {
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["item"],
+                "additionalProperties": false,
+                "description": "Object keys leading to the array that should be streamed. Use an empty array for a root array."
+              },
+              "select": {
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["item"],
+                "additionalProperties": false,
+                "description": "Optional fields to retain from each matching object."
+              },
+              "where": {
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "operator": {
+                          "type": "string",
+                          "enum": ["eq", "ne", "gt", "gte", "lt", "lte", "contains", "exists", "not_exists"]
+                        },
+                        "value": {}
+                      },
+                      "required": ["field", "operator"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["item"],
+                "additionalProperties": false,
+                "description": "Optional deterministic predicates. Comparison operators require value; exists operators do not."
+              },
+              "cursor": {
+                "type": "string",
+                "description": "Opaque query nextCursor. It cannot be used by an index view."
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
+          }
+        ],
+        "description": "Typed JSON view. Omit it or choose index to page structure metadata; choose query to stream complete array items."
+      }
+    },
+    "required": ["artifactUris"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": ["filesystem:read:artifacts"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "artifact",
+      "Title": "Artifact",
+      "Description": "Persisted artifact content and evidence available to the current agent."
+    }
+  ],
+  "search": {
+    "Summary": "按 artifactUri 读取 artifact 资源；JSON 使用已发布结构索引、受控查询、字段投影和游标分页。",
+    "Capabilities": [
+      {
+        "Id": "artifact.read",
+        "Title": "Artifact resource read",
+        "Description": "Load persisted artifact projections or evidence records by canonical artifact URI.",
+        "Facets": {
+          "Actions": ["read", "hydrate", "inspect"],
+          "Targets": ["artifact-resource", "artifact-projection", "artifact-evidence"],
+          "Inputs": ["artifact-uri", "artifact-uri-list", "artifact-ref"],
+          "Outputs": [
+            "artifact-resource",
+            "projection-text",
+            "evidence-json",
+            "raw-json",
+            "raw-blob",
+            "raw-preview",
+            "stdout-text",
+            "stderr-text"
+          ],
+          "Evidence": ["artifact-resource"],
+          "Effects": ["read-only"]
+        },
+        "Aliases": ["读取产物", "展开证据", "read artifact", "hydrate artifact evidence"],
+        "Risk": {
+          "SideEffect": "read-only",
+          "Permission": "artifact-read"
+        }
+      }
+    ],
+    "UseCases": ["历史工具结果、网页搜索结果、artifact projection、evidence 结构索引和大型 JSON 字段投影。"],
+    "Examples": [
+      "senera artifact projection",
+      "artifactUri evidence.json",
+      "结构化证据读取",
+      "projection artifact memory"
+    ],
+    "Avoid": [
+      "artifactUri 缺失时先使用当前上下文或检索工具定位证据引用。",
+      "只需要轻量 facts 就能回答时不要读取完整 artifact。",
+      "JSON 首次读取使用 jsonView.kind=index；根据索引中的数组字段改用 jsonView.kind=query、sourcePath 和 select。两类 nextCursor 只能回传给相同 kind，不要使用 rawBlob 猜测结构边界。"
+    ],
+    "Tags": ["证据读取", "产物读取", "结构化投影", "历史资料"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "artifact_memory",
+        "Records": "$.artifacts.item[*]",
+        "Slots": {
+          "artifactUri": "$.artifactUri",
+          "artifactId": "$.artifactId",
+          "status": "$.status",
+          "message": "$.message",
+          "availableRefCount": "$.availableRefCount",
+          "memoryCount": "$.memoryCount",
+          "loadedRefs": "$.memories.item[*].ref",
+          "unavailableRefCount": "$.unavailableRefCount",
+          "failedRefCount": "$.failedRefCount",
+          "refStatuses": "$.refResults.item[*].status"
+        },
+        "Identity": {
+          "Parts": ["artifactUri", "status"]
+        },
+        "Presentation": {
+          "Locator": "{{ artifactUri }}",
+          "Display": "artifact memory {{ status }}: {{ artifactUri }}",
+          "Label": "{{ artifactUri }}",
+          "Source": "{{ message }}"
+        },
+        "Confidence": 0.9,
+        "Metadata": {
+          "status": "$.status",
+          "availableRefCount": "$.availableRefCount",
+          "memoryCount": "$.memoryCount",
+          "unavailableRefCount": "$.unavailableRefCount",
+          "failedRefCount": "$.failedRefCount"
+        },
+        "ModelProjection": {
+          "Slots": [
+            "artifactUri",
+            "artifactId",
+            "status",
+            "message",
+            "availableRefCount",
+            "memoryCount",
+            "loadedRefs",
+            "unavailableRefCount",
+            "failedRefCount",
+            "refStatuses"
+          ]
+        },
+        "PlannerMemory": {
+          "Facts": [
+            "artifactUri",
+            "artifactId",
+            "status",
+            "availableRefCount",
+            "memoryCount",
+            "loadedRefs",
+            "unavailableRefCount",
+            "failedRefCount",
+            "refStatuses"
+          ],
+          "ArtifactUri": "artifactUri",
+          "ArtifactRefsSlot": "loadedRefs"
+        },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.status }} {{ e.slots.artifactUri }} (loaded={{ e.slots.memoryCount }} unavailable={{ e.slots.unavailableRefCount }} failed={{ e.slots.failedRefCount }})\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} artifact memory\n  uri: {{ e.slots.artifactUri }}\n  status: {{ e.slots.status }}\n  availableRefs: {{ e.slots.availableRefCount }}\n  loadedRefs: {{ e.slots.memoryCount }}\n  unavailableRefs: {{ e.slots.unavailableRefCount }}\n  failedRefs: {{ e.slots.failedRefCount }}\n  message: {{ e.slots.message }}\n{% endfor %}"
+        }
+      }
+    ],
+    "Summary": {
+      "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+      "ArtifactTemplate": "{% for artifact in result.artifacts.item %}- sourceArtifactUri: {{ artifact.artifactUri }}\n  status: {{ artifact.status }}\n  loadedRefs: {{ artifact.memoryCount }}\n  unavailableRefs: {{ artifact.unavailableRefCount }}\n  failedRefs: {{ artifact.failedRefCount }}\n{% for read in artifact.refResults.item %}  - ref={{ read.ref }} status={{ read.status }} message={{ read.message }}\n{% endfor %}{% for memory in artifact.memories.item %}\n## {{ memory.ref }} bytes={{ memory.range.startByte }}..{{ memory.range.endByte }}/{{ memory.range.totalBytes }} complete={{ memory.range.complete }}{% if memory.range.nextStartByte %} nextStartByte={{ memory.range.nextStartByte }}{% endif %}{% if memory.view %} jsonView kind={{ memory.view.kind }}{% if memory.view.rootType %} rootType={{ memory.view.rootType }} fields={{ memory.view.fieldCount }} startField={{ memory.view.startFieldIndex }} returnedFields={{ memory.view.returnedFieldCount }} remainingFields={{ memory.view.remainingFieldCount }} complete={{ memory.view.complete }}{% if memory.view.blockedAtFieldIndex %} blockedAtFieldIndex={{ memory.view.blockedAtFieldIndex }}{% endif %}{% else %} returned={{ memory.view.returned }} scanned={{ memory.view.scanned }} complete={{ memory.view.complete }}{% if memory.view.blockedAtIndex %} blockedAtIndex={{ memory.view.blockedAtIndex }}{% endif %}{% endif %}{% if memory.view.nextCursor %} nextCursor={{ memory.view.nextCursor }}{% endif %}{% endif %}\n{{ memory.content }}\n{% endfor %}{% endfor %}"
+    }
+  }
+}

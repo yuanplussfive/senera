@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "memory-recall",
+  "version": "1.0.0",
+  "displayName": {
+    "zh-CN": "长期记忆召回",
+    "en-US": "Long-Term Memory Recall"
+  },
+  "description": {
+    "zh-CN": "查询已经沉淀的长期记忆；未命中时降级召回普通历史对话。",
+    "en-US": "Recalls consolidated long-term memories and falls back to conversation history when needed."
+  },
+  "priority": 8,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/MemoryRecallTool.tool.json",
+      "capability": "memory.recall",
+      "recommendedForSkills": []
+    }
+  ]
+}

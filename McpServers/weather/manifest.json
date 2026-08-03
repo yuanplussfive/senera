@@ -1,0 +1,55 @@
+{
+  "manifest_version": "0.3",
+  "name": "weather",
+  "display_name": "Weather",
+  "version": "1.0.0",
+  "description": "Current weather and forecast data from QWeather.",
+  "author": {
+    "name": "Senera"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "mcp/server.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/mcp/server.mjs"],
+      "env": {
+        "QWEATHER_API_KEY": "${user_config.QWEATHER_API_KEY}",
+        "QWEATHER_API_HOST": "${user_config.QWEATHER_API_HOST}",
+        "WEATHER_LANG": "${user_config.WEATHER_LANG}",
+        "WEATHER_UNIT": "${user_config.WEATHER_UNIT}"
+      }
+    }
+  },
+  "user_config": {
+    "QWEATHER_API_KEY": {
+      "type": "string",
+      "title": "QWeather API key",
+      "description": "API key issued by QWeather.",
+      "sensitive": true,
+      "required": true
+    },
+    "QWEATHER_API_HOST": {
+      "type": "string",
+      "title": "API host",
+      "default": "https://devapi.qweather.com"
+    },
+    "WEATHER_LANG": {
+      "type": "string",
+      "title": "Response language",
+      "default": "zh"
+    },
+    "WEATHER_UNIT": {
+      "type": "string",
+      "title": "Unit system",
+      "enum": ["m", "i"],
+      "default": "m"
+    }
+  },
+  "_meta": {
+    "ai.senera/execution": {
+      "targets": ["local"],
+      "preferred": "local"
+    }
+  }
+}

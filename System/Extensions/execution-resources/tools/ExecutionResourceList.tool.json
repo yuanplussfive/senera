@@ -1,0 +1,53 @@
+{
+  "name": "ExecutionResourceList",
+  "observationProjection": "observations/collection.projection.json",
+  "description": "列出当前会话拥有的后台终端和进程资源。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "additionalProperties": {
+      "not": {}
+    },
+    "definitions": {}
+  },
+  "permissions": ["process:shell"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit"
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "execution",
+      "Title": "Execution",
+      "Description": "Shell commands, processes, terminals, builds, tests, and other executable workloads."
+    }
+  ],
+  "search": {
+    "Summary": "列出当前会话拥有的后台终端和进程资源。",
+    "Capabilities": [
+      {
+        "Id": "execution.resource-list",
+        "Facets": {
+          "Actions": ["list", "inspect"],
+          "Targets": ["execution-resource", "terminal", "process"],
+          "Outputs": ["resource-list", "process-state"]
+        }
+      }
+    ],
+    "Tags": ["后台终端", "资源列表", "会话控制"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Summary": {
+      "Template": "{{ toolName }} returned {{ result.resources | size }} execution resources",
+      "ArtifactTemplate": "{% for resource in result.resources %}- resourceId: {{ resource.resourceId }}\n  kind: {{ resource.kind }}\n  state: {{ resource.state }}\n  command: {{ resource.command }}\n  cwd: {{ resource.cwd }}\n  cursor: {{ resource.cursor }}\n{% endfor %}"
+    }
+  }
+}

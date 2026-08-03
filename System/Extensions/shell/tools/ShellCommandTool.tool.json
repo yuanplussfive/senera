@@ -1,0 +1,177 @@
+{
+  "name": "ShellCommandTool",
+  "observationProjection": "observations/default.projection.json",
+  "description": "在策略选择的工作区执行边界内运行显式方言的 shell 命令，用于测试、构建、git、诊断和脚本；文件编辑不要走 shell。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "const": "shell"
+          },
+          "dialect": {
+            "type": "string",
+            "enum": ["posix-sh", "powershell"]
+          },
+          "script": {
+            "type": "string"
+          }
+        },
+        "required": ["mode", "dialect", "script"],
+        "additionalProperties": false,
+        "description": "executionTarget=Sandbox uses Linux/posix-sh; executionTarget=Local uses the host shell."
+      },
+      "cwd": {
+        "type": "string",
+        "description": "执行目录，相对工作区根目录；默认 \".\"。必须留在工作区内。优先使用工作区相对路径。"
+      },
+      "timeoutMs": {
+        "type": "number",
+        "description": "请求更短的命令执行时间，单位毫秒；省略时使用宿主 ToolExecution deadline，不能延长宿主上限。"
+      },
+      "justification": {
+        "type": "string",
+        "description": "简短说明为什么需要执行该命令，便于用户查看执行记录。"
+      }
+    },
+    "required": ["command"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": ["process:shell", "filesystem:workspace"],
+  "execution": {
+    "Targets": ["Sandbox", "Local"],
+    "Network": "Allow",
+    "Workspace": "ReadWrite"
+  },
+  "runtime": {
+    "Lifecycle": "OneShot",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "Unassessed",
+    "Capabilities": {
+      "OutputStreaming": true,
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "execution",
+      "Title": "Execution",
+      "Description": "Shell commands, processes, terminals, builds, tests, and other executable workloads."
+    }
+  ],
+  "search": {
+    "Summary": "在策略选择的工作区执行边界内运行显式方言的 shell 命令，用于测试、构建、git、诊断和脚本；文件编辑不要走 shell。",
+    "Capabilities": [
+      {
+        "Id": "host.shell-command",
+        "Title": "Policy-routed shell command",
+        "Description": "Run an explicitly typed shell command in the policy-selected workspace execution boundary.",
+        "Facets": {
+          "Actions": ["run", "execute", "test", "build", "check", "inspect", "slice-file", "search"],
+          "Targets": [
+            "shell",
+            "process",
+            "workspace",
+            "file-fragment",
+            "project-inspection",
+            "test-suite",
+            "build-system"
+          ],
+          "Inputs": ["command", "cwd", "timeout"],
+          "Outputs": ["exit-code", "stdout", "stderr", "shell-execution"],
+          "Evidence": ["shell-execution"],
+          "Effects": ["process", "may-write-workspace", "network-possible"]
+        },
+        "Aliases": [
+          "运行命令",
+          "终端",
+          "run tests",
+          "npm run check",
+          "git status",
+          "PowerShell Get-Content",
+          "PowerShell Get-Command",
+          "sed file slice",
+          "rg search"
+        ],
+        "Risk": {
+          "SideEffect": "process",
+          "Permission": "shell",
+          "Notes": ["Commands can read, write, spawn processes, or access network depending on the command."]
+        }
+      }
+    ],
+    "UseCases": [
+      "需要运行测试、构建、类型检查、git、脚本或系统命令时使用。",
+      "需要验证刚才的文件修改是否通过时使用。",
+      "需要用当前平台 shell 快速读取文件片段、列目录、组合多个只读检查或运行 rg 时使用。"
+    ],
+    "Examples": [
+      "npm run check",
+      "git status",
+      "node --version",
+      "Windows PowerShell: $c=Get-Content -Path Source\\AgentSystem\\Execution\\SeneraShellPlatform.ts; $c[0..80]",
+      "Windows PowerShell: Get-Command pm2 -ErrorAction SilentlyContinue",
+      "Linux/macOS sh: sed -n '1,80p' Source/AgentSystem/Execution/SeneraShellPlatform.ts",
+      "rg \"WorkspaceApplyPatch\" Source System"
+    ],
+    "Avoid": [
+      "不要用于直接编辑文件；工作区文件变更优先使用 WorkspaceApplyPatch。",
+      "需要读取或搜索工作区时使用受控命令，并把文件修改交给 WorkspaceApplyPatch。",
+      "不要在未知影响范围内执行删除、移动、覆盖、安装或网络命令。"
+    ],
+    "Tags": ["命令执行", "项目构建", "测试检查", "代码处理", "终端操作"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "shell_execution",
+        "Records": "$",
+        "Slots": {
+          "cwd": "$.cwd",
+          "command": "$.command",
+          "exitCode": "$.exitCode",
+          "signal": "$.signal",
+          "stdout": "$.stdout",
+          "stderr": "$.stderr"
+        },
+        "Identity": {
+          "Parts": ["cwd", "command", "exitCode"]
+        },
+        "Presentation": {
+          "Locator": "{{ cwd }}",
+          "Display": "shell exit {{ exitCode }}: {{ command }}",
+          "Label": "{{ command }}",
+          "Source": "{% if stderr != blank %}{{ stderr }}{% else %}{{ stdout }}{% endif %}"
+        },
+        "Confidence": 0.74,
+        "Metadata": {
+          "cwd": "$.cwd",
+          "exitCode": "$.exitCode",
+          "signal": "$.signal"
+        },
+        "ModelProjection": {
+          "Slots": ["cwd", "command", "exitCode", "signal"]
+        },
+        "PlannerMemory": {
+          "Facts": ["cwd", "command", "exitCode", "signal"],
+          "ArtifactRefs": ["evidence", "projection"]
+        },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} shell exit {{ e.slots.exitCode }}: {{ e.slots.command }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} shell execution\n  cwd: {{ e.slots.cwd }}\n  command: {{ e.slots.command }}\n  exitCode: {{ e.slots.exitCode }}{% if e.slots.signal %}\n  signal: {{ e.slots.signal }}{% endif %}\n  output: {{ e.source }}\n{% endfor %}"
+        }
+      }
+    ],
+    "Summary": {
+      "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+      "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+    }
+  }
+}

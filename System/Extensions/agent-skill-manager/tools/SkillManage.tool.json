@@ -1,0 +1,119 @@
+{
+  "name": "SkillManage",
+  "description": "Create, update, validate, or remove a standard Skill package under .senera/skills, including optional bindings to registered tools.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "const": "create" },
+          "name": { "type": "string", "minLength": 1, "description": "Lowercase kebab-case Skill directory name." },
+          "description": { "type": "string", "minLength": 1, "description": "Trigger-focused Skill description." },
+          "instructions": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Initial or replacement SKILL.md instructions."
+          },
+          "recommendedTools": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Exact registered tool names to prioritize whenever this Skill activates. Omit when no specific tool is required."
+          }
+        },
+        "required": ["action", "name", "description", "instructions"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "const": "update" },
+          "name": { "type": "string", "minLength": 1, "description": "Lowercase kebab-case Skill directory name." },
+          "description": { "type": "string", "minLength": 1, "description": "Trigger-focused Skill description." },
+          "instructions": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Initial or replacement SKILL.md instructions."
+          },
+          "recommendedTools": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Exact registered tool names to prioritize whenever this Skill activates. Omit when no specific tool is required."
+          }
+        },
+        "required": ["action", "name"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "const": "validate" },
+          "name": { "type": "string", "minLength": 1, "description": "Lowercase kebab-case Skill directory name." }
+        },
+        "required": ["action", "name"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "const": "remove" },
+          "name": { "type": "string", "minLength": 1, "description": "Lowercase kebab-case Skill directory name." }
+        },
+        "required": ["action", "name"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "status": { "type": "string", "enum": ["created", "updated", "valid", "removed"] },
+      "action": { "type": "string", "enum": ["create", "update", "validate", "remove"] },
+      "name": { "type": "string" },
+      "path": { "type": "string" },
+      "diagnostics": {
+        "type": "object",
+        "properties": {
+          "item": { "type": "array", "items": { "type": "object", "properties": {}, "additionalProperties": {} } }
+        },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "recommendedTools": { "type": "array", "items": { "type": "string" } },
+      "guidance": { "type": "string" }
+    },
+    "required": ["status", "action", "name", "diagnostics", "recommendedTools", "guidance"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/SkillManage.projection.json",
+  "permissions": ["filesystem:write:.senera/skills"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
+  "runtime": { "Lifecycle": "Immediate", "ProtocolVersion": 2, "ResultAssessment": "ProcessExit" },
+  "resources": [],
+  "sources": [],
+  "search": {
+    "Summary": "创建、更新、校验或移除标准 SKILL.md 技能包。",
+    "Tags": ["创建技能", "Skill", "工作流", "技能包", "热更新"],
+    "Capabilities": [
+      {
+        "Id": "skill.manage",
+        "Title": "Skill management",
+        "Description": "Manage draft and published standard Skill packages in the workspace.",
+        "Facets": {
+          "Actions": ["create", "update", "validate", "remove"],
+          "Targets": ["skill", "skill-package"],
+          "Inputs": ["name", "description", "instructions", "recommended-tools"],
+          "Outputs": ["skill-package", "diagnostics"],
+          "Effects": ["workspace-change", "runtime-refresh"]
+        },
+        "Aliases": ["创建 skill", "添加技能", "校验 skill", "更新工作流"],
+        "Risk": { "SideEffect": "workspace-change", "Permission": "write" }
+      }
+    ],
+    "UseCases": ["用户要求创建可复用工作流、维护 SKILL.md 或发布 Skill 包。"],
+    "Examples": ["创建一个 JSON 字段选择 Skill", "校验刚写好的技能"],
+    "Avoid": ["不要用于创建原生工具、MCP server 或普通项目源码。"]
+  },
+  "evidenceCapabilities": []
+}

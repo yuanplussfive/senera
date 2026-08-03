@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 2,
+  "distribution": "nano",
+  "source": {
+    "repository": "https://github.com/yuanplussfive/senera",
+    "branch": "main",
+    "commit": "1a8c87524d1e2b94a6c6e4dddf23d239f45fa64c"
+  },
+  "runtime": {
+    "sandbox": {
+      "provider": "microsandbox",
+      "bundle": {
+        "distributionId": "senera-node-runtime",
+        "archiveVersion": "1.0.3",
+        "microsandboxVersion": "0.6.4",
+        "target": "x64",
+        "runtimeImage": "senera.local/senera-node-runtime:1.0.3-x64",
+        "configDigest": "sha256:29a39ccfd8591e4c25c3eea52538c98a2f45e1cd3909eea4e0ab7fb9065382bc",
+        "asset": {
+          "fileName": "SeneraSandboxImage-1.0.3-x64.oci.tar.gz",
+          "sizeBytes": 80189766,
+          "sha256": "f180b3f659bcd5567643bd2aed23bfdf6057b2446ddd4f2208ec567a71f72d2c"
+        }
+      }
+    }
+  }
+}

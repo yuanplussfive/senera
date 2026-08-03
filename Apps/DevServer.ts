@@ -1,0 +1,22 @@
+import { startSeneraServer } from "./ServerRuntime.js";
+import { resolveAgentSandboxDevelopmentBundleRoot } from "../Source/AgentSystem/Sandbox/AgentSandboxBundlePaths.js";
+import { AgentSandboxRuntimeProviders } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
+import { ensureSeneraDevelopmentConfig } from "./RuntimeConfigBootstrap.js";
+
+const workspaceRoot = process.cwd();
+const configPath = ensureSeneraDevelopmentConfig(workspaceRoot);
+const handle = await startSeneraServer({
+  configPath,
+  sandboxBundleRoot: resolveAgentSandboxDevelopmentBundleRoot(workspaceRoot),
+  sandboxProvider: AgentSandboxRuntimeProviders.Microsandbox,
+});
+
+let shutdownPromise: Promise<void> | undefined;
+const shutdown = (): void => {
+  shutdownPromise ??= handle.stop().finally(() => {
+    process.exit(0);
+  });
+};
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

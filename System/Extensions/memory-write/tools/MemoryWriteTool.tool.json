@@ -1,0 +1,192 @@
+{
+  "name": "MemoryWriteTool",
+  "observationProjection": "observations/default.projection.json",
+  "description": "把用户明确要求记住的内容直接写入长期记忆。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "operation": {
+        "type": "string",
+        "enum": ["create", "reinforce", "update", "supersede"],
+        "description": "默认 create；reinforce/update/supersede 需要 targetMemoryUri。"
+      },
+      "type": {
+        "type": "string",
+        "enum": ["profile", "preference", "knowledge", "scene"],
+        "description": "长期记忆类型。"
+      },
+      "subject": {
+        "type": "string",
+        "description": "记忆主体，例如 assistant_work_style、用户饮料偏好。"
+      },
+      "claim": {
+        "type": "string",
+        "description": "需要长期记住的具体陈述。"
+      },
+      "howToApply": {
+        "type": "string",
+        "description": "以后如何使用这条记忆。"
+      },
+      "tags": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["item"],
+        "additionalProperties": false,
+        "description": "简短分类标签。"
+      },
+      "triggers": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["item"],
+        "additionalProperties": false,
+        "description": "未来哪些自然表达应召回这条记忆。"
+      },
+      "confidence": {
+        "type": "number",
+        "description": "模型对这条显式记忆的置信度，0 到 1。"
+      },
+      "targetMemoryUri": {
+        "type": "string",
+        "description": "update/supersede 目标记忆 URI。"
+      },
+      "reason": {
+        "type": "string",
+        "description": "可选写入原因。"
+      }
+    },
+    "required": ["type", "subject", "claim", "howToApply", "tags", "triggers", "confidence"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": ["memory:write"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadWrite"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "memory",
+      "Title": "Memory",
+      "Description": "Persisted conversation memory and artifact evidence available to the current agent."
+    }
+  ],
+  "search": {
+    "Summary": "把用户明确要求记住的内容直接写入长期记忆。",
+    "Capabilities": [
+      {
+        "Id": "memory.write",
+        "Title": "长期记忆写入",
+        "Description": "Write explicit user-requested memories directly into active long-term memory.",
+        "Facets": {
+          "Actions": ["write", "remember", "reinforce", "update", "supersede"],
+          "Targets": ["long-term-memory", "user-profile", "preference", "knowledge", "scene-state"],
+          "Inputs": ["explicit-memory", "memory-type", "memory-update"],
+          "Outputs": ["memory_write", "memory-item"],
+          "Evidence": ["memory_write"],
+          "Effects": ["persistent-write"]
+        },
+        "Aliases": ["记住这个", "记录偏好", "以后都这样", "写入长期记忆"],
+        "Risk": {
+          "SideEffect": "persistent-write",
+          "Permission": "memory-write"
+        }
+      }
+    ],
+    "UseCases": ["用户明确要求记住偏好、画像、知识、设定或要求更新已有长期记忆。"],
+    "Examples": ["记住我喜欢无糖咖啡", "以后写代码不要硬编码", "把这个设定长期保存", "更新这条记忆"],
+    "Avoid": ["没有用户明确要求记住时不要调用。", "临时工具结果和普通任务结论不要直接写长期记忆。"],
+    "Tags": ["长期记忆", "记忆写入", "用户偏好", "用户画像", "知识"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "memory_write",
+        "Records": "$.memories.item[*]",
+        "Slots": {
+          "memoryUri": "$.memoryUri",
+          "operation": "$.operation",
+          "type": "$.type",
+          "subject": "$.subject",
+          "claim": "$.claim",
+          "howToApply": "$.howToApply",
+          "tags": "$.tags.item",
+          "triggers": "$.triggers.item",
+          "sourceRefs": "$.sourceRefs.item",
+          "status": "$.status",
+          "confidence": "$.confidence",
+          "targetMemoryUri": "$.targetMemoryUri",
+          "updatedAt": "$.updatedAt"
+        },
+        "Identity": {
+          "Parts": ["memoryUri", "operation"]
+        },
+        "Presentation": {
+          "Locator": "{{ memoryUri }}",
+          "Display": "{{ operation }} memory: {{ subject }}",
+          "Label": "{{ subject }}",
+          "Source": "{{ claim }}"
+        },
+        "Confidence": 0.9,
+        "Metadata": {
+          "operation": "$.operation",
+          "type": "$.type",
+          "targetMemoryUri": "$.targetMemoryUri"
+        },
+        "ModelProjection": {
+          "Slots": [
+            "memoryUri",
+            "operation",
+            "type",
+            "subject",
+            "claim",
+            "howToApply",
+            "tags",
+            "triggers",
+            "sourceRefs",
+            "status",
+            "confidence",
+            "updatedAt"
+          ]
+        },
+        "PlannerMemory": {
+          "Facts": ["memoryUri", "operation", "type", "subject", "claim", "howToApply", "status"],
+          "ArtifactRefs": ["projection", "evidence"]
+        },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.operation }} long-term memory {{ e.slots.subject }}: {{ e.slots.claim }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} memory write\n  uri: {{ e.slots.memoryUri }}\n  operation: {{ e.slots.operation }}\n  type: {{ e.slots.type }}\n  subject: {{ e.slots.subject }}\n  claim: {{ e.slots.claim }}\n  apply: {{ e.slots.howToApply }}\n  confidence: {{ e.slots.confidence }}\n  sourceRefs: {{ e.slots.sourceRefs }}\n{% endfor %}"
+        }
+      }
+    ],
+    "Summary": {
+      "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+      "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}"
+    }
+  }
+}

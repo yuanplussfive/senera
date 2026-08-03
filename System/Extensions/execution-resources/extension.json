@@ -1,0 +1,65 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "execution-resources",
+  "version": "1.0.0",
+  "displayName": {
+    "zh-CN": "执行资源",
+    "en-US": "Execution Resources"
+  },
+  "description": {
+    "zh-CN": "启动并控制可恢复的长时间运行执行资源。",
+    "en-US": "Starts and controls resumable long-running execution resources."
+  },
+  "priority": 91,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceInspect.tool.json",
+      "capability": "execution.resource.inspect",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceList.tool.json",
+      "capability": "execution.resource.list",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceResize.tool.json",
+      "capability": "execution.resource.resize",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceSignal.tool.json",
+      "capability": "execution.resource.signal",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceStopAll.tool.json",
+      "capability": "execution.resource.stop_all",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceWait.tool.json",
+      "capability": "execution.resource.wait",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceWrite.tool.json",
+      "capability": "execution.resource.write",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ShellStartTool.tool.json",
+      "capability": "shell.start",
+      "recommendedForSkills": []
+    }
+  ]
+}

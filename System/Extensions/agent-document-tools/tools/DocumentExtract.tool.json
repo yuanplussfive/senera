@@ -1,0 +1,111 @@
+{
+  "name": "DocumentExtract",
+  "description": "Probe or extract text, structure, metadata, and warnings from a user-uploaded document.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "uploadUri": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Exact senera-upload URI supplied by the runtime."
+      },
+      "mode": { "default": "auto", "type": "string", "enum": ["auto", "probe", "extract"] }
+    },
+    "required": ["uploadUri"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "document": {
+        "type": "object",
+        "properties": {
+          "uploadUri": { "type": "string" },
+          "name": { "type": "string" },
+          "mime": { "type": "string" },
+          "size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "sha256": { "type": "string" },
+          "status": { "type": "string", "enum": ["probed", "extracted"] },
+          "probe": { "type": "object", "properties": {}, "additionalProperties": {} },
+          "extraction": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "const": "extracted" },
+              "parser": { "type": "string" },
+              "fileType": { "type": "string" },
+              "textPreview": { "type": "string" },
+              "markdownPreview": { "type": "string" },
+              "textLength": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "markdownLength": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "metadata": { "type": "object", "propertyNames": { "type": "string" }, "additionalProperties": {} },
+              "structure": {
+                "type": "object",
+                "properties": {
+                  "topLevelNodeCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "attachmentCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "warningCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                },
+                "required": ["topLevelNodeCount", "attachmentCount", "warningCount"],
+                "additionalProperties": false
+              },
+              "chunks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "index": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                    "text": { "type": "string" },
+                    "length": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                    "metadata": { "type": "object", "propertyNames": { "type": "string" }, "additionalProperties": {} }
+                  },
+                  "required": ["index", "text", "length"],
+                  "additionalProperties": false
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string", "enum": ["warning", "info", "error"] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" }
+                  },
+                  "required": ["type", "code", "message"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "status",
+              "parser",
+              "fileType",
+              "textPreview",
+              "markdownPreview",
+              "textLength",
+              "markdownLength",
+              "metadata",
+              "structure",
+              "chunks",
+              "warnings"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": ["uploadUri", "name", "mime", "size", "sha256", "status", "probe"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["document"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/DocumentExtract.projection.json",
+  "permissions": ["uploads:read"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": { "Lifecycle": "Immediate", "ProtocolVersion": 2, "ResultAssessment": "ProcessExit" },
+  "resources": [],
+  "sources": [],
+  "evidenceCapabilities": []
+}

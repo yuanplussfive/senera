@@ -1,0 +1,292 @@
+{
+  "name": "WorkspaceApplyPatch",
+  "observationProjection": "observations/default.projection.json",
+  "description": "对工作区应用 Codex-like 高层补丁，支持新增、hunk 更新、删除、移动和目录操作；Skill/MCP 候选通过完整预检后原子提交。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "operations": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "add"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "path", "content"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "update"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "patch": {
+                  "type": "string"
+                },
+                "expectedSha256": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "path", "patch"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "replace"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "expectedSha256": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "path", "content"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "delete"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "expectedSha256": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "move"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "destination": {
+                  "type": "string"
+                },
+                "patch": {
+                  "type": "string"
+                },
+                "expectedSha256": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "source", "destination"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "createDirectory"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "deleteDirectory"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "recursive": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["kind", "path"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "description": "一个逻辑补丁内的文件/目录操作。每个路径只能出现一次；同一文件多个修改应合并成一个 hunk patch。"
+      },
+      "dryRun": {
+        "type": "boolean",
+        "description": "true 时只校验并计算计划，不写入磁盘。"
+      },
+      "fuzzFactor": {
+        "type": "number",
+        "description": "允许的 hunk 上下文模糊匹配行数。默认 0，最大 3。"
+      }
+    },
+    "required": ["operations"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": ["filesystem:read:workspace", "filesystem:write:workspace"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadWrite"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Capabilities": {
+      "Progress": true,
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "workspace",
+      "Title": "Workspace",
+      "Description": "Files, directories, and source code in the current workspace."
+    }
+  ],
+  "search": {
+    "Summary": "应用高层工作区补丁，并在提交前完整验证受影响的 Skill/MCP 候选。",
+    "Tags": ["文件编辑", "代码修改", "apply_patch", "unified diff", "工作区写入"],
+    "Capabilities": [
+      {
+        "Id": "workspace.apply-patch",
+        "Title": "Workspace apply patch",
+        "Description": "Apply high-level workspace patch operations without oldText/newText replacement.",
+        "Facets": {
+          "Actions": ["patch", "edit", "add", "delete", "move", "mkdir"],
+          "Targets": ["workspace", "file", "directory", "source-code", "configuration", "documentation"],
+          "Inputs": ["operations", "unified-hunk", "content", "dryRun", "fuzzFactor"],
+          "Outputs": ["workspace-patch-result", "workspace-file-change", "workspace-diff"],
+          "Evidence": ["workspace-patch-result", "workspace-diff"],
+          "Effects": ["write-workspace"]
+        },
+        "Aliases": ["apply patch", "应用补丁", "修改代码", "新增文件", "删除文件", "移动文件"],
+        "Risk": {
+          "SideEffect": "write-workspace",
+          "Permission": "write",
+          "Notes": [
+            "Changes workspace files unless dryRun is true.",
+            "Destructive delete operations require the normal workspace write approval path."
+          ]
+        }
+      }
+    ],
+    "UseCases": [
+      "需要像 Codex apply_patch 一样表达代码修改时使用。",
+      "需要新增文件、删除文件、移动文件或创建目录时使用。",
+      "需要一次创建或修改完整的 .senera/skills 或 .senera/mcp 包时使用。",
+      "已读取目标文件内容，并能生成 unified hunk patch 时使用。"
+    ],
+    "Examples": ["新增一个 TypeScript 文件", "用 @@ hunk 修改已有函数", "移动文件并同时修正导出名", "dryRun 预览补丁"],
+    "Avoid": [
+      "只读查询不要使用。",
+      "不知道已有文件内容时先用 ShellCommandTool 读取或搜索，再生成补丁。",
+      "不要把 oldText/newText 替换格式传给本工具。"
+    ]
+  },
+  "evidenceCapabilities": [],
+  "approval": {
+    "Mode": "ask",
+    "Reason": "应用工作区文件补丁。"
+  },
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "workspace_patch_result",
+        "Records": "$",
+        "Slots": {
+          "text": "$.text",
+          "applied": "$.applied",
+          "dryRun": "$.dryRun",
+          "operationCount": "$.operationCount"
+        },
+        "Identity": {
+          "Parts": ["text", "operationCount"]
+        },
+        "Presentation": {
+          "Locator": "workspace-patch",
+          "Display": "Workspace patch",
+          "Label": "Workspace patch",
+          "Source": "{{ text }}"
+        },
+        "Confidence": 0.92,
+        "Metadata": {
+          "applied": "$.applied",
+          "dryRun": "$.dryRun",
+          "operationCount": "$.operationCount"
+        },
+        "ModelProjection": {
+          "Slots": ["text", "applied", "dryRun", "operationCount"]
+        },
+        "PlannerMemory": {
+          "Facts": ["text", "applied", "dryRun", "operationCount"],
+          "ArtifactRefs": ["evidence", "projection", "workspaceDiff", "workspacePatch"]
+        },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace patch: {{ e.slots.text }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace patch\n  text: {{ e.slots.text }}\n  applied: {{ e.slots.applied }}\n  dryRun: {{ e.slots.dryRun }}\n  operationCount: {{ e.slots.operationCount }}\n{% endfor %}"
+        }
+      }
+    ],
+    "Summary": {
+      "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+      "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+    },
+    "Workspace": {
+      "Capture": "declared",
+      "Paths": [
+        {
+          "Selector": "$.operations[*].path"
+        },
+        {
+          "Selector": "$.operations[*].source"
+        },
+        {
+          "Selector": "$.operations[*].destination"
+        },
+        {
+          "Selector": "$.changedPaths[*]"
+        }
+      ],
+      "MaxFileBytes": 262144,
+      "MaxFiles": 64,
+      "MaxDirectoryDepth": 1,
+      "CaptureContent": "text",
+      "PatchContextLines": 3
+    }
+  }
+}

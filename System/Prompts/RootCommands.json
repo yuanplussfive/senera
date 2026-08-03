@@ -1,0 +1,215 @@
+{
+  "rootCommands": [
+    {
+      "Action": "answer",
+      "OutputMode": "final_text",
+      "ToolAccess": "disabled",
+      "Objective": "直接回答最新用户请求。",
+      "InsufficiencyPolicy": "如果当前上下文不足以确认事实，直接说明无法从现有上下文确认，不要调用工具。",
+      "AllowedTools": [
+        {
+          "Source": "None"
+        }
+      ],
+      "ForbiddenOutputs": ["internal_context_xml"],
+      "VisibleOutput": {
+        "Audience": "user",
+        "Start": "answer_body",
+        "Format": "final_text",
+        "Rules": [
+          {
+            "Name": "meta_speech",
+            "Value": "forbidden",
+            "Instruction": "不要用确认句、寒暄、执行声明或“我会直接回答”开头。"
+          },
+          {
+            "Name": "acknowledge_instruction",
+            "Value": "forbidden",
+            "Instruction": "不要向用户确认你正在遵守本轮指令。"
+          },
+          {
+            "Name": "mention_runtime_control",
+            "Value": "forbidden",
+            "Instruction": "不要提到 RootCommand、输出模式、修复流程、校验器或内部协议。"
+          },
+          {
+            "Name": "first_sentence",
+            "Value": "answer_body",
+            "Instruction": "首句必须回答用户问题本身。"
+          }
+        ],
+        "Repair": {
+          "Instruction": "只输出可直接展示给用户的答案正文；不要确认修复，不要解释输出模式，不要提到工具策略或内部控制。",
+          "Rules": [
+            {
+              "Name": "start",
+              "Value": "answer_body",
+              "Instruction": "从答案正文第一句开始。"
+            },
+            {
+              "Name": "meta_speech",
+              "Value": "forbidden",
+              "Instruction": "不要输出“好的”“我将”“我直接回答”等元话语。"
+            }
+          ]
+        }
+      },
+      "IncludeToolCatalog": false
+    },
+    {
+      "Action": "ask_user",
+      "OutputMode": "open",
+      "ToolAccess": "restricted",
+      "Objective": "向用户提出继续任务所必需的问题。",
+      "InsufficiencyPolicy": "只通过允许的提问工具请求必要信息，不要自行补全关键缺失事实。",
+      "AllowedTools": [
+        {
+          "Source": "NamedLoaded",
+          "Names": ["AskUserTool"]
+        }
+      ],
+      "ForbiddenOutputs": ["final_answer", "unregistered_tools"],
+      "VisibleOutput": {
+        "Audience": "runtime",
+        "Start": "pi_tool_turn",
+        "Format": "pi_tool_calls_or_final_text",
+        "Rules": [
+          {
+            "Name": "tool_call_format",
+            "Value": "pi_custom_tools",
+            "Instruction": "需要提问时使用 AskUserTool；不要把提问伪装成最终回答。"
+          },
+          {
+            "Name": "final_answer",
+            "Value": "blocked_until_user_input",
+            "Instruction": "缺少必要用户输入时不要继续完成任务。"
+          },
+          {
+            "Name": "tool_name_source",
+            "Value": "allowed_tools",
+            "Instruction": "工具名只能来自 allowed_tools。"
+          }
+        ],
+        "Repair": {
+          "Instruction": "按 Pi 工具调用协议发起必要提问；如果无法使用提问工具，说明缺少用户输入。",
+          "Rules": [
+            {
+              "Name": "tool_call_format",
+              "Value": "pi_custom_tools",
+              "Instruction": "只使用允许的提问工具。"
+            },
+            {
+              "Name": "final_answer",
+              "Value": "allowed_only_when_question_unavailable",
+              "Instruction": "没有可用提问工具时，直接说明缺少的用户输入。"
+            }
+          ]
+        }
+      },
+      "IncludeToolCatalog": false
+    },
+    {
+      "Action": "discover_tools",
+      "OutputMode": "open",
+      "ToolAccess": "discovery_only",
+      "Objective": "搜索当前任务需要的工具能力。",
+      "InsufficiencyPolicy": "只调用工具发现能力，不要猜测未展示的工具名。",
+      "AllowedTools": [
+        {
+          "Source": "HostCapability",
+          "Capability": "tool.search"
+        }
+      ],
+      "ForbiddenOutputs": ["final_answer", "business_tool_calls", "unregistered_tools"],
+      "VisibleOutput": {
+        "Audience": "runtime",
+        "Start": "pi_tool_turn",
+        "Format": "pi_tool_calls_or_final_text",
+        "Rules": [
+          {
+            "Name": "tool_call_format",
+            "Value": "pi_custom_tools",
+            "Instruction": "需要发现能力时使用工具发现能力；不要猜测未注册工具名。"
+          },
+          {
+            "Name": "final_answer",
+            "Value": "allowed_when_discovery_unavailable",
+            "Instruction": "没有可用发现工具时，说明缺少工具能力。"
+          },
+          {
+            "Name": "tool_name_source",
+            "Value": "allowed_tools",
+            "Instruction": "工具名只能来自 allowed_tools。"
+          }
+        ],
+        "Repair": {
+          "Instruction": "按 Pi 工具调用协议搜索工具能力；如果无法搜索，说明缺少的能力。",
+          "Rules": [
+            {
+              "Name": "tool_call_format",
+              "Value": "pi_custom_tools",
+              "Instruction": "只使用允许的发现工具。"
+            },
+            {
+              "Name": "tool_name_source",
+              "Value": "allowed_tools",
+              "Instruction": "工具名只能来自 allowed_tools。"
+            }
+          ]
+        }
+      },
+      "IncludeToolCatalog": false
+    },
+    {
+      "Action": "use_tools",
+      "OutputMode": "open",
+      "ToolAccess": "restricted",
+      "Objective": "调用允许的工具取得完成当前任务所需的事实或执行结果。",
+      "InsufficiencyPolicy": "如果允许工具不足以完成任务，只调用工具发现能力或停止并说明阻塞，不要编造工具名。",
+      "AllowedTools": [
+        {
+          "Source": "Registered"
+        }
+      ],
+      "ForbiddenOutputs": ["final_answer", "unregistered_tools"],
+      "VisibleOutput": {
+        "Audience": "runtime",
+        "Start": "pi_tool_turn",
+        "Format": "pi_tool_calls_or_final_text",
+        "Rules": [
+          {
+            "Name": "tool_call_format",
+            "Value": "pi_custom_tools",
+            "Instruction": "需要工具时使用 Pi 提供的自定义工具；不要伪造工具结果。"
+          },
+          {
+            "Name": "final_answer_after_tools",
+            "Value": "required",
+            "Instruction": "工具结果足够后，直接生成用户可读答案。"
+          },
+          {
+            "Name": "tool_name_source",
+            "Value": "allowed_tools",
+            "Instruction": "工具名只能来自 allowed_tools。"
+          }
+        ],
+        "Repair": {
+          "Instruction": "按 Pi 工具调用协议继续；如果不能调用可用工具，直接说明缺少的能力或信息。",
+          "Rules": [
+            {
+              "Name": "tool_call_format",
+              "Value": "pi_custom_tools",
+              "Instruction": "不要伪造工具结果。"
+            },
+            {
+              "Name": "final_answer",
+              "Value": "allowed_when_ready",
+              "Instruction": "已有足够工具结果时，直接给用户最终答案。"
+            }
+          ]
+        }
+      },
+      "IncludeToolCatalog": false
+    }
+  ]
+}

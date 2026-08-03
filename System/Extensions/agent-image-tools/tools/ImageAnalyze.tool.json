@@ -1,0 +1,42 @@
+{
+  "name": "ImageAnalyze",
+  "description": "Analyze an uploaded image or screenshot for visible evidence, OCR, or a specific question.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "uploadUri": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Exact senera-upload URI supplied by the runtime."
+      },
+      "task": { "default": "describe", "type": "string", "enum": ["describe", "ocr", "question"] },
+      "question": { "type": "string", "minLength": 1 }
+    },
+    "required": ["uploadUri"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "uploadUri": { "type": "string" },
+      "name": { "type": "string" },
+      "mime": { "type": "string" },
+      "size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+      "task": { "type": "string", "enum": ["describe", "ocr", "question"] },
+      "question": { "type": "string" },
+      "answer": { "type": "string" },
+      "model": { "type": "string" }
+    },
+    "required": ["uploadUri", "name", "mime", "size", "task", "answer", "model"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/ImageAnalyze.projection.json",
+  "permissions": ["uploads:read", "model:vision"],
+  "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
+  "runtime": { "Lifecycle": "Immediate", "ProtocolVersion": 2, "ResultAssessment": "ProcessExit" },
+  "resources": [],
+  "sources": [],
+  "evidenceCapabilities": []
+}

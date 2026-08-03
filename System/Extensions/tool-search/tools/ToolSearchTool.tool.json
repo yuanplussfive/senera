@@ -1,0 +1,123 @@
+{
+  "name": "ToolSearchTool",
+  "observationProjection": "observations/default.projection.json",
+  "description": "搜索当前工作区已注册工具，返回适合任务的工具名和用途。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "需要完成的任务、问题、错误文本或希望寻找的能力。"
+      },
+      "preferredSources": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "优先检索的工具来源；仅影响排序，不排除其他来源。可用值由当前扩展注册表动态注入。"
+      },
+      "includeLoaded": {
+        "type": "boolean",
+        "description": "是否包含当前已经加载进提示词的工具；默认 false。"
+      }
+    },
+    "required": ["query"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": [],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "tools",
+      "Title": "Tools",
+      "Description": "Capabilities contributed by the currently loaded extension catalog."
+    }
+  ],
+  "search": {
+    "Summary": "搜索当前工作区已注册工具，返回适合任务的工具名和用途。",
+    "Capabilities": [
+      {
+        "Id": "tool.catalog-search",
+        "Title": "Tool catalog search",
+        "Description": "Search registered tools and expose matching tool cards in the current request.",
+        "Facets": {
+          "Actions": ["search", "discover", "route"],
+          "Targets": ["tool-catalog", "capability-catalog", "runtime-tools"],
+          "Inputs": ["task", "query", "capability-need"],
+          "Outputs": ["tool-candidate", "matched-capability", "routing-hint"],
+          "Evidence": ["tool-candidate"],
+          "Effects": ["read-only", "context-load"]
+        },
+        "Aliases": ["工具发现", "查找能力", "load matching tools", "discover available tool"],
+        "Risk": {
+          "SideEffect": "context-load",
+          "Permission": "none",
+          "Notes": ["Only searches registered tool metadata."]
+        }
+      }
+    ],
+    "UseCases": ["不确定该调用哪个工具时先搜索工具目录。", "需要把隐藏工具加载进当前请求。"],
+    "Examples": ["网页搜索工具发现", "文件编辑工具发现", "workspace code search tool", "动态工具能力检索"],
+    "Tags": ["能力发现", "工具检索", "动态加载", "工具选择"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "tool_candidate",
+        "Records": "$.tools.item[*]",
+        "Slots": {
+          "name": "$.name",
+          "title": "$.title",
+          "summary": "$.summary",
+          "score": "$.score",
+          "reason": "$.reason"
+        },
+        "Identity": {
+          "Parts": ["name"]
+        },
+        "Presentation": {
+          "Locator": "tool:{{ name }}",
+          "Display": "tool candidate: {{ title }}",
+          "Label": "{{ title }}",
+          "Source": "{{ summary }}"
+        },
+        "Confidence": 0.8,
+        "Metadata": {
+          "score": "$.score",
+          "reason": "$.reason"
+        },
+        "ModelProjection": {
+          "Slots": ["name", "title", "summary", "score", "reason"]
+        },
+        "PlannerMemory": {
+          "Facts": ["name", "title", "score", "reason"],
+          "ArtifactRefs": ["evidence", "projection"]
+        },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} tool: {{ e.slots.name }} - {{ e.slots.title }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} tool: {{ e.slots.name }}\n  title: {{ e.slots.title }}\n  summary: {{ e.slots.summary }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}\n{% endfor %}"
+        }
+      }
+    ],
+    "Summary": {
+      "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+      "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+    }
+  }
+}
