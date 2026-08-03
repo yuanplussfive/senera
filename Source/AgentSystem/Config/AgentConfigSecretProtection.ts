@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { findAgentWorkspaceRoot, resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import { AgentSecretEnvelopeCodec, isAgentSecretEnvelope } from "../Security/AgentSecretEnvelopeCodec.js";
 import { isAgentConfigSensitiveHeaderName } from "./AgentConfigSecretContract.js";
@@ -82,6 +83,10 @@ export class AgentConfigSecretCodec {
 
   revealConfig(config: AgentSystemConfig): AgentConfigSecretDecodeResult<AgentSystemConfig> {
     return this.revealPayload(config) as AgentConfigSecretDecodeResult<AgentSystemConfig>;
+  }
+
+  digestCanonicalJson(value: unknown, context: string): string {
+    return this.secrets.digest(stringifyAgentCanonicalJson(value), `senera/config/${context}`);
   }
 
   revealPayload<T>(payload: T): AgentConfigSecretDecodeResult<T> {

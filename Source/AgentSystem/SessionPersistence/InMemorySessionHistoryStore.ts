@@ -8,7 +8,7 @@ import type {
   AgentSessionCursorPageRequest,
   AgentSessionForkHistory,
   AgentSessionForkSnapshot,
-  AgentSessionHistorySnapshot,
+  AgentSessionHistoryView,
   AgentSessionTurnCommit,
   AgentStepTraceCursor,
   AgentStepTracePageRequest,
@@ -32,7 +32,7 @@ export class InMemorySessionHistoryStore {
     return this.entries.messageCount(sessionId);
   }
 
-  captureSnapshot(session: AgentSession): AgentSessionHistorySnapshot {
+  captureSnapshot(session: AgentSession): AgentSessionHistoryView {
     return {
       session: { ...session, conversation: [] },
       entryCount: this.entries.entryCount(session.id),

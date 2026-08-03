@@ -1,3 +1,4 @@
+import { createHmac, randomBytes } from "node:crypto";
 import type {
   AgentModelProviderEndpointConfig,
   AgentSystemConfig,
@@ -9,7 +10,7 @@ import {
 } from "../Defaults/AgentModelProviderDefaults.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { isAgentUnknownRecord, readAgentTrimmedString } from "../Core/AgentUnknownValue.js";
-import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 
 export interface AgentProviderModelInfo {
   id: string;
@@ -45,6 +46,7 @@ interface CachedProviderModels {
 type ProviderModelsRequestIdentity = string;
 
 const DISCOVERY_TIMEOUT_MS = 20_000;
+const ProviderModelsRequestIdentityKey = randomBytes(32);
 export const AgentProviderModelDiscoveryCacheDefaults = {
   MaxEntries: 64,
   TtlMs: 5 * 60_000,
@@ -238,13 +240,18 @@ function parseModelInfo(value: unknown): AgentProviderModelInfo | null {
 function providerModelsRequestIdentity(
   endpoint: ResolvedAgentModelProviderEndpointConfig,
 ): ProviderModelsRequestIdentity {
-  return sha256HexOfCanonicalJson({
-    Kind: endpoint.Kind,
-    BaseUrl: endpoint.BaseUrl,
-    ApiKey: endpoint.ApiKey,
-    ApiVersion: endpoint.ApiVersion,
-    Headers: { ...endpoint.Headers },
-  });
+  return createHmac("sha256", ProviderModelsRequestIdentityKey)
+    .update(
+      stringifyAgentCanonicalJson({
+        Kind: endpoint.Kind,
+        BaseUrl: endpoint.BaseUrl,
+        ApiKey: endpoint.ApiKey,
+        ApiVersion: endpoint.ApiVersion,
+        Headers: { ...endpoint.Headers },
+      }),
+      "utf8",
+    )
+    .digest("hex");
 }
 
 function withTrailingSlash(value: string): string {

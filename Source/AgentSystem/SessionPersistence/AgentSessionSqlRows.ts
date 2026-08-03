@@ -15,7 +15,7 @@ export interface SessionListRow extends SessionRow {
   message_count: number;
 }
 
-export interface SessionHistorySnapshotRow extends SessionListRow {
+export interface SessionHistoryViewRow extends SessionListRow {
   entry_high_water_mark: number | null;
   step_trace_high_water_mark: number | null;
   run_snapshot_high_water_mark: number | null;

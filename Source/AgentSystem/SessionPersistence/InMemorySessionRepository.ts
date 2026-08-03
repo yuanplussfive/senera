@@ -21,7 +21,7 @@ import type {
   AgentSessionCursorPageRequest,
   AgentSessionForkHistory,
   AgentSessionForkSnapshot,
-  AgentSessionHistorySnapshot,
+  AgentSessionHistoryView,
   AgentSessionRepository,
   AgentSessionTurnCommit,
   AgentStepTraceCursor,
@@ -67,7 +67,7 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     return session ? { ...session, conversation: this.history.loadEntries(sessionId) } : undefined;
   }
 
-  captureHistorySnapshot(sessionId: string): AgentSessionHistorySnapshot | undefined {
+  captureHistorySnapshot(sessionId: string): AgentSessionHistoryView | undefined {
     const session = this.sessions.get(sessionId);
     return session ? this.history.captureSnapshot(session) : undefined;
   }

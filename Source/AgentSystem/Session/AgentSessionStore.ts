@@ -4,7 +4,7 @@ import type {
   AgentSessionCursorPage,
   AgentSessionCursorPageRequest,
   AgentSessionRepository,
-  AgentSessionHistorySnapshot,
+  AgentSessionHistoryView,
   AgentStepTraceCursor,
   AgentStepTracePageRequest,
   AgentSessionTurnCommit,
@@ -364,7 +364,7 @@ export class AgentSessionStore {
     return this.repository.loadFirstUserMessage(sessionId);
   }
 
-  captureHistorySnapshot(sessionId: string): AgentSessionHistorySnapshot | undefined {
+  captureHistorySnapshot(sessionId: string): AgentSessionHistoryView | undefined {
     return this.repository.captureHistorySnapshot(sessionId);
   }
 

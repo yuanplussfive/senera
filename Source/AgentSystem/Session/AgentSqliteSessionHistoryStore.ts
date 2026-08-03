@@ -22,7 +22,7 @@ import type {
   AgentSessionCursorPageRequest,
   AgentSessionForkHistory,
   AgentSessionForkSnapshot,
-  AgentSessionHistorySnapshot,
+  AgentSessionHistoryView,
   AgentSessionTurnCommit,
   AgentStepTraceCursor,
   AgentStepTracePageRequest,
@@ -46,8 +46,8 @@ export class AgentSqliteSessionHistoryStore {
     this.traces = new AgentSqliteSessionTraceStore(db, stmts);
   }
 
-  captureSnapshot(sessionId: string): AgentSessionHistorySnapshot | undefined {
-    const row = this.stmts.selectSessionHistorySnapshot.get(sessionId);
+  captureSnapshot(sessionId: string): AgentSessionHistoryView | undefined {
+    const row = this.stmts.selectSessionHistoryView.get(sessionId);
     if (!row) return undefined;
     return {
       session: { ...rowToAgentSession(row), conversation: [] },

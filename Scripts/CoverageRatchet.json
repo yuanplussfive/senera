@@ -8,24 +8,24 @@
       "total": {
         "lines": 64,
         "functions": 61,
-        "branches": 53,
+        "branches": 54,
         "statements": 61
       },
       "groups": {}
     },
     "backend": {
       "total": {
-        "lines": 65,
-        "functions": 62,
-        "branches": 50,
-        "statements": 63
+        "lines": 73,
+        "functions": 72,
+        "branches": 58,
+        "statements": 71
       },
       "groups": {
         "Source/AgentSystem/{ActionPlanner,Auth,Execution,Memory,ModelEndpoints,Pi,Session,Text,ToolSearch,Uploads,Xml}/**/*.ts": {
-          "lines": 73,
-          "functions": 72,
-          "branches": 58,
-          "statements": 72
+          "lines": 78,
+          "functions": 78,
+          "branches": 62,
+          "statements": 76
         }
       }
     }

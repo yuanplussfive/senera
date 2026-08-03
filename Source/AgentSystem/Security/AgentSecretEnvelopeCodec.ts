@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { isFileExistsError, isMissingFileError } from "../Core/AgentFs.js";
@@ -46,6 +46,14 @@ export class AgentSecretEnvelopeCodec {
     const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
     const tag = cipher.getAuthTag();
     return `${SecretEnvelopePrefix}${nonce.toString("base64url")}.${tag.toString("base64url")}.${ciphertext.toString("base64url")}`;
+  }
+
+  digest(value: string | NodeJS.ArrayBufferView, context: string): string {
+    const hmac = createHmac("sha256", this.readKey(true));
+    hmac.update(context, "utf8");
+    hmac.update("\u0000", "utf8");
+    hmac.update(value);
+    return hmac.digest("hex");
   }
 
   open(envelope: string, context: string, label: string): string {

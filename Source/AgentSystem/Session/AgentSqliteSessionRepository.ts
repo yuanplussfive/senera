@@ -27,7 +27,7 @@ import type {
   AgentSessionForkHistory,
   AgentSessionCursorPage,
   AgentSessionCursorPageRequest,
-  AgentSessionHistorySnapshot,
+  AgentSessionHistoryView,
   AgentSessionRepository,
   AgentStepTraceCursor,
   AgentStepTracePageRequest,
@@ -119,7 +119,7 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     return session;
   }
 
-  captureHistorySnapshot(sessionId: string): AgentSessionHistorySnapshot | undefined {
+  captureHistorySnapshot(sessionId: string): AgentSessionHistoryView | undefined {
     return this.history.captureSnapshot(sessionId);
   }
 

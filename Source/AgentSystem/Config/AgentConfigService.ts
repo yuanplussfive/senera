@@ -44,7 +44,7 @@ import {
 import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 import { migrateAgentConfigPayload, type AgentConfigMigrationResult } from "./AgentConfigMigration.js";
 import { errorMessage } from "../Core/AgentErrors.js";
-import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { AgentConfigSecretCodec } from "./AgentConfigSecretProtection.js";
 
 export type AgentConfigSnapshotSource = "sqlite" | "json";
@@ -373,7 +373,7 @@ export class AgentConfigService {
     transform: (current: Pick<AgentConfigSnapshot, "value" | "version" | "revision">) => AgentSystemConfig,
     source: AgentConfigRevisionRecord["source"],
   ): AgentConfigSnapshot {
-    const payloadHash = createConfigCommandPayloadHash(operationKind, payload);
+    const payloadHash = this.secretCodec.digestCanonicalJson({ operationKind, payload }, "config-command-payload");
     const commandTimestamp = new Date().toISOString();
     if (!this.usesSqliteStore()) {
       if (this.options.source.kind !== "json") {
@@ -559,7 +559,7 @@ export class AgentConfigService {
   private assertSecretPersistenceRoundTrip(config: AgentSystemConfig): void {
     const protectedConfig = this.secretCodec.protectConfig(config);
     const revealedConfig = AgentSystemConfigSchema.parse(this.secretCodec.revealConfig(protectedConfig).value);
-    if (sha256HexOfCanonicalJson(revealedConfig) !== sha256HexOfCanonicalJson(config)) {
+    if (stringifyAgentCanonicalJson(revealedConfig) !== stringifyAgentCanonicalJson(config)) {
       throw new Error("Configuration secret protection dry-run did not preserve the configuration payload.");
     }
   }
@@ -579,10 +579,6 @@ export class AgentConfigService {
 
 export function loadConfigFile(filePath: string): AgentSystemConfig {
   return AgentConfigLoader.load(filePath);
-}
-
-function createConfigCommandPayloadHash(operationKind: string, payload: unknown): string {
-  return sha256HexOfCanonicalJson({ operationKind, payload });
 }
 
 function diagnosticsForRepair(repair: AgentConfigRepairResult): AgentConfigDiagnostic[] {

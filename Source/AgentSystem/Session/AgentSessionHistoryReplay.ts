@@ -5,7 +5,7 @@ import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type {
   AgentSessionCursorPage,
-  AgentSessionHistorySnapshot,
+  AgentSessionHistoryView,
   AgentSessionCursorPageRequest,
   AgentStepTraceCursor,
   AgentStepTracePageRequest,
@@ -30,7 +30,7 @@ export interface AgentSessionHistoryReplayOptions {
 }
 
 export interface AgentSessionHistoryReplayStore {
-  captureHistorySnapshot(sessionId: string): AgentSessionHistorySnapshot | undefined;
+  captureHistorySnapshot(sessionId: string): AgentSessionHistoryView | undefined;
   loadConversationPage(
     sessionId: string,
     request: AgentSessionCursorPageRequest,
@@ -109,7 +109,7 @@ export class AgentSessionHistoryReplay {
   private async captureHistorySnapshot(request: {
     sessionId: string;
     onEvent?: AgentEventSink;
-  }): Promise<AgentSessionHistorySnapshot | undefined> {
+  }): Promise<AgentSessionHistoryView | undefined> {
     const snapshot = this.options.store.captureHistorySnapshot(request.sessionId);
     if (snapshot) return snapshot;
     await emitAgentEvent(request.onEvent, this.options.eventFactory.notFound(request.sessionId, "session.history"));
@@ -118,7 +118,7 @@ export class AgentSessionHistoryReplay {
 
   private async emitHistoryStarted(
     request: { sessionId: string; refresh?: boolean; onEvent?: AgentEventSink },
-    snapshot: AgentSessionHistorySnapshot,
+    snapshot: AgentSessionHistoryView,
   ): Promise<void> {
     await emitAgentEvent(request.onEvent, {
       kind: AgentEventKinds.SessionHistoryStarted,
@@ -134,7 +134,7 @@ export class AgentSessionHistoryReplay {
 
   private async emitEntryPages(
     request: { sessionId: string; onEvent?: AgentEventSink },
-    snapshot: AgentSessionHistorySnapshot,
+    snapshot: AgentSessionHistoryView,
   ): Promise<void> {
     if (snapshot.entryHighWaterMark === undefined) return;
 
@@ -169,7 +169,7 @@ export class AgentSessionHistoryReplay {
 
   private async emitStepRunPages(
     request: { sessionId: string; onEvent?: AgentEventSink },
-    historySnapshot: AgentSessionHistorySnapshot,
+    historySnapshot: AgentSessionHistoryView,
   ): Promise<void> {
     if (historySnapshot.stepTraceHighWaterMark !== undefined) {
       let cursor: AgentStepTraceCursor | undefined;
@@ -250,7 +250,7 @@ export class AgentSessionHistoryReplay {
 
   private async emitRunEventPages(
     request: { sessionId: string; onEvent?: AgentEventSink },
-    snapshot: AgentSessionHistorySnapshot,
+    snapshot: AgentSessionHistoryView,
   ): Promise<void> {
     const recovery = new AgentSessionHistoryWaitRecovery();
     if (snapshot.runEventHighWaterMark !== undefined) {

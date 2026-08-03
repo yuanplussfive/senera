@@ -73,7 +73,12 @@ async function main(): Promise<void> {
   assert.equal(typeof pi.lastSessionOptions?.piTurnContextId, "string");
   assert.equal(readTurnContext(runtime.piTurnContexts, pi.lastSessionOptions?.piTurnContextId), undefined);
 
-  assert.deepEqual(pi.session.assignedHistoryTexts(), ["之前的上下文", "之前的回答"]);
+  const assignedHistory = pi.session.assignedHistoryTexts();
+  assert.equal(assignedHistory.length, 2);
+  assert.ok(assignedHistory[0]?.includes("<historical_user_turn>"));
+  assert.ok(assignedHistory[0]?.includes("<request_id>previous-request</request_id>"));
+  assert.ok(assignedHistory[0]?.includes("<content>之前的上下文</content>"));
+  assert.equal(assignedHistory[1], "之前的回答");
   assert.deepEqual(pi.session.prompts, ["检查当前工作区"]);
   assert.deepEqual(pi.session.promptOptions, [
     {

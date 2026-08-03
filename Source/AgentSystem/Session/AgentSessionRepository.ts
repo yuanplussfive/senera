@@ -58,7 +58,7 @@ export interface AgentSessionTurnCommit {
   commandId?: string;
 }
 
-export interface AgentSessionHistorySnapshot {
+export interface AgentSessionHistoryView {
   readonly session: AgentSession;
   readonly entryCount: number;
   readonly messageCount: number;
@@ -107,7 +107,7 @@ export interface AgentSessionCatalogReader {
 }
 
 export interface AgentSessionPagedHistoryReader {
-  captureHistorySnapshot(sessionId: string): AgentSessionHistorySnapshot | undefined;
+  captureHistorySnapshot(sessionId: string): AgentSessionHistoryView | undefined;
   loadStepTracePage(
     sessionId: string,
     request: AgentStepTracePageRequest,

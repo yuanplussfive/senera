@@ -31,12 +31,13 @@ assert.deepEqual(
   ["user", "assistant"],
 );
 const historicalUser = projection.history[0];
-assert.equal(
+const historicalUserText =
   historicalUser?.role === "user" && Array.isArray(historicalUser.content) && historicalUser.content[0]?.type === "text"
     ? historicalUser.content[0].text
-    : undefined,
-  "Previous request",
-);
+    : undefined;
+assert.ok(historicalUserText?.includes("<historical_user_turn>"));
+assert.ok(historicalUserText?.includes("<request_id>previous</request_id>"));
+assert.ok(historicalUserText?.includes("<content>Previous request</content>"));
 assert.equal(
   projection.history[1]?.role === "assistant" && projection.history[1].content[0]?.type === "text"
     ? projection.history[1].content[0].text

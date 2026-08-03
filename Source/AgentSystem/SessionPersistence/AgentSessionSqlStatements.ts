@@ -9,7 +9,7 @@ import type {
   RunSnapshotPageRow,
   RunSnapshotRow,
   SessionListRow,
-  SessionHistorySnapshotRow,
+  SessionHistoryViewRow,
   SessionHistoryMutationRow,
   SessionForkMutationRow,
   SessionCommandRow,
@@ -28,7 +28,7 @@ export interface AgentSessionSqlStatements {
   selectSession: Database.Statement<[string], SessionRow>;
   selectSessionMetadata: Database.Statement<[], SessionRow>;
   selectSessionList: Database.Statement<[], SessionListRow>;
-  selectSessionHistorySnapshot: Database.Statement<[string], SessionHistorySnapshotRow>;
+  selectSessionHistoryView: Database.Statement<[string], SessionHistoryViewRow>;
   selectPendingHistoryMutations: Database.Statement<[], SessionHistoryMutationRow>;
   selectPendingHistoryMutation: Database.Statement<[string], SessionHistoryMutationRow>;
   stageHistoryMutation: Database.Statement;
@@ -128,7 +128,7 @@ export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSe
       GROUP BY s.id
       ORDER BY s.updated_at DESC
     `),
-    selectSessionHistorySnapshot: db.prepare<[string], SessionHistorySnapshotRow>(`
+    selectSessionHistoryView: db.prepare<[string], SessionHistoryViewRow>(`
       SELECT
         s.id, s.title, s.status, s.created_at, s.updated_at, s.active_request_id, s.metadata,
         COUNT(e.id) AS entry_count,

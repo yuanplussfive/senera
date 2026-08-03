@@ -40,6 +40,11 @@ interface ModelProviderIconRuleDocument {
 const ModelProviderIconRuleConfig = iconRules as ModelProviderIconRuleDocument;
 
 export const ModelProviderIconNames = ModelProviderIconRuleConfig.icons;
+const ModelProviderIconNameSet = new Set(ModelProviderIconNames);
+const DefaultModelProviderIconName =
+  ModelProviderIconRuleConfig.defaultIcon && ModelProviderIconNameSet.has(ModelProviderIconRuleConfig.defaultIcon)
+    ? ModelProviderIconRuleConfig.defaultIcon
+    : (ModelProviderIconNames[0] ?? "openai");
 
 export type ModelProviderIconName = string;
 
@@ -68,9 +73,8 @@ export function ModelProviderIcon({ icon, className, size = 16 }: ModelProviderI
 }
 
 export function readModelProviderIconSrc(icon: string, baseUrl: string = import.meta.env.BASE_URL): string {
-  if (icon.startsWith("/")) return icon;
-  const assetName = icon.endsWith(".svg") ? icon : `${icon}.svg`;
-  return `${withTrailingSlash(baseUrl)}icons/model-providers/${assetName}`;
+  const assetName = normalizeModelProviderIconName(icon);
+  return `${withTrailingSlash(baseUrl)}icons/model-providers/${encodeURIComponent(assetName)}.svg`;
 }
 
 export function inferModelProviderIcon(value: string, fallbackToDefault = true): ModelProviderIconName | undefined {
@@ -119,4 +123,12 @@ function iconRuleMatches(match: IconRuleMatchKind, source: string, values: reado
 
 function withTrailingSlash(value: string): string {
   return value.endsWith("/") ? value : `${value}/`;
+}
+
+function normalizeModelProviderIconName(value: string): string {
+  const candidate = value
+    .trim()
+    .toLowerCase()
+    .replace(/\.svg$/u, "");
+  return ModelProviderIconNameSet.has(candidate) ? candidate : DefaultModelProviderIconName;
 }
