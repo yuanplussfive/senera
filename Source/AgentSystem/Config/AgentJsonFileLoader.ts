@@ -1,11 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import parseJson from "json-parse-even-better-errors";
-import jsonSourceMap, { type JsonSourceLocation } from "json-source-map";
+import jsonSourceMap from "json-source-map";
 import { type ZodError, type ZodType } from "zod";
 import type { AgentSourceFrame } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { AgentSourceDiagnosticBuilder } from "../Diagnostics/AgentSourceDiagnostic.js";
+import { agentJsonPathToPointer } from "../Diagnostics/AgentJsonPointer.js";
+import { AgentJsonSourceLocator } from "../Diagnostics/AgentJsonSourceLocator.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import type { AgentErrorMessageKey, AgentMessageParams } from "../I18n/AgentMessageCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 
 export interface AgentJsonLocation {
   line: number;
@@ -24,12 +28,14 @@ export interface AgentJsonDiagnostic {
 
 export type AgentJsonPayloadTransform = (payload: unknown) => unknown;
 
-export class AgentJsonFileError extends Error {
+export class AgentJsonFileError extends AgentLocalizedError {
   constructor(
-    message: string,
+    messageKey: AgentErrorMessageKey,
+    messageParams: AgentMessageParams,
     readonly diagnostic: AgentJsonDiagnostic,
+    readonly diagnostics: readonly AgentJsonDiagnostic[] = [diagnostic],
   ) {
-    super(message);
+    super(messageKey, messageParams);
   }
 }
 
@@ -48,15 +54,14 @@ export class AgentJsonFileLoader {
       } catch (error) {
         const parseError = error as Error & { position?: number };
         throw new AgentJsonFileError(
-          agentErrorMessage("json.syntaxError", {
-            filePath: absolutePath,
-          }),
+          "json.syntaxError",
+          { filePath: absolutePath },
           {
             filePath: absolutePath,
             message: parseError.message,
             location:
               typeof parseError.position === "number"
-                ? this.locationFromPosition(text, parseError.position)
+                ? sourceBuilder.positionFromOffset(parseError.position)
                 : undefined,
             frame:
               typeof parseError.position === "number"
@@ -67,9 +72,8 @@ export class AgentJsonFileLoader {
       }
 
       throw new AgentJsonFileError(
-        agentErrorMessage("json.syntaxError", {
-          filePath: absolutePath,
-        }),
+        "json.syntaxError",
+        { filePath: absolutePath },
         {
           filePath: absolutePath,
           message: agentErrorMessage("json.parseFailed"),
@@ -79,68 +83,35 @@ export class AgentJsonFileLoader {
 
     const result = schema.safeParse(transform ? transform(mapped.data) : mapped.data);
     if (!result.success) {
-      const firstIssue = result.error.issues[0];
-      const pointer = firstIssue ? this.zodPathToPointer(firstIssue.path) : "";
-      const sourceLocation = pointer
-        ? (mapped.pointers[pointer]?.value ?? mapped.pointers[pointer]?.key)
-        : mapped.pointers[""]?.value;
+      const sourceLocator = new AgentJsonSourceLocator(text, mapped.pointers);
+      const diagnostics = result.error.issues.map((issue) => {
+        const pointer = agentJsonPathToPointer(
+          issue.path.map((part) => (typeof part === "number" ? part : String(part))),
+        );
+        const sourceLocation = sourceLocator.locate(pointer, issue.message);
+        return {
+          filePath: absolutePath,
+          message: issue.message,
+          pointer,
+          location: sourceLocation.position,
+          frame: sourceLocation.frame,
+          issues: [issue],
+        } satisfies AgentJsonDiagnostic;
+      });
+      const primary = diagnostics[0] ?? {
+        filePath: absolutePath,
+        message: agentErrorMessage("json.validationErrorFallback"),
+      };
 
       throw new AgentJsonFileError(
-        agentErrorMessage("json.validationError", {
-          filePath: absolutePath,
-        }),
-        {
-          filePath: absolutePath,
-          message: this.formatZodError(result.error),
-          pointer,
-          location: sourceLocation ? this.fromJsonSourceLocation(sourceLocation) : undefined,
-          frame: sourceLocation
-            ? sourceBuilder.fromLineColumn(
-                firstIssue?.message ?? agentErrorMessage("json.validationErrorFallback"),
-                sourceLocation.line + 1,
-                sourceLocation.column + 1,
-              ).frame
-            : undefined,
-          issues: result.error.issues,
-        },
+        "json.validationError",
+        { filePath: absolutePath },
+        { ...primary, message: this.formatZodError(result.error), issues: result.error.issues },
+        diagnostics,
       );
     }
 
     return result.data;
-  }
-
-  private locationFromPosition(text: string, position: number): AgentJsonLocation {
-    let line = 1;
-    let column = 1;
-
-    for (let index = 0; index < position && index < text.length; index += 1) {
-      if (text[index] === "\n") {
-        line += 1;
-        column = 1;
-      } else {
-        column += 1;
-      }
-    }
-
-    return {
-      line,
-      column,
-      position,
-    };
-  }
-
-  private fromJsonSourceLocation(location: JsonSourceLocation): AgentJsonLocation {
-    return {
-      line: location.line + 1,
-      column: location.column + 1,
-      position: location.pos,
-    };
-  }
-
-  private zodPathToPointer(path: PropertyKey[]): string {
-    return path.length === 0
-      ? ""
-      : `/${path.map((part) => String(part).replace(/~/g, "~0").replace(/\//g, "~1")).join("/")}`;
   }
 
   private formatZodError(error: ZodError): string {

@@ -1,52 +1,35 @@
-# Artifacts 模块导览
+# Artifacts
 
-Artifacts 模块负责把工具调用过程落盘为可追溯证据包。
+Artifacts records a tool call as a traceable evidence package while keeping the immediate model observation bounded.
 
-## 阅读顺序
+- `AgentToolExecutionArtifactRecorder` coordinates a result batch, deterministic projection, directory reservation, and publication collaborators.
+- `AgentArtifactPublicationRecovery` validates retry identity, merges Session owners, and restores verified published refs.
+- `AgentToolArtifactFilePublisher` owns file receipts, manifest publication, writing markers, and output-spool commit/failure handling.
+- `AgentArtifactDeltaProjection` projects evidence/workspace deltas without filesystem access.
+- `AgentArtifactEvidenceProjection` and `AgentArtifactTemplateProjection` derive facts and summaries from normalized tool policy.
+- `AgentArtifactRedaction` applies structured and stream redaction.
+- `AgentWorkspaceChangeCapture` records declared workspace changes.
+- `AgentArtifactLocator` resolves artifact and evidence URIs.
+- `SeneraOutputSpool` preserves bounded stdout/stderr independently of live UI projection.
 
-1. `AgentToolExecutionArtifactRecorder.ts`：工具执行 artifact 主入口。
-2. `AgentArtifactEvidenceProjection.ts`：按 artifact policy 从工具结果生成 evidence。
-3. `AgentArtifactTemplateProjection.ts`：渲染 summary、projection 和 evidence 展示模板。
-4. `AgentArtifactRedaction.ts`：按插件声明脱敏输入和原始输出。
-5. `AgentToolWorkspaceArtifactRecorder.ts` / `AgentWorkspaceArtifactWriter.ts`：workspace 变更文件写入。
-6. `AgentArtifactFileWriter.ts` / `AgentArtifactStableJson.ts`：artifact 文件和稳定哈希基础能力。
-7. `AgentArtifactJsonSelector.ts`：按 manifest selector 从 JSON 结果中提取字段。
-8. `AgentEvidenceUri.ts`：evidence URI 生成和解析。
-9. `AgentWorkspaceChangeCapture.ts`：工具执行前后工作区快照入口。
-10. `AgentWorkspaceCapturePolicy.ts` / `AgentWorkspacePathSelector.ts`：workspace capture 的 manifest 策略解析和路径 selector 解析。
-11. `AgentWorkspaceSnapshotBuilder.ts` / `AgentWorkspaceSnapshotDiff.ts` / `AgentWorkspaceSnapshotUtils.ts`：workspace 快照构建、差异计算和文件 hash / 文本检测工具。
-12. `AgentArtifactLocator.ts`：通过 URI 查找 artifact 文件。
-13. `SeneraOutputSpool.ts`：执行层共享的异步 stdout/stderr spool；Shell 和 MCP 插件输出都通过同一捕获合同落地，预览受限时仍可通过 artifact ref 分页读取已保留内容。spool 自带 session/request marker，由 retention 负责回收崩溃遗留目录。
+Raw output, model projection, and durable evidence are separate surfaces. Evidence must remain traceable through an URI. Tool artifact policy is already normalized by the registry; this module must not branch on a tool or MCP package name. Spool data is removed only after artifact commit and retained for diagnosis when sealing or commit fails.
 
-## 扩展规则
+Artifact publication is one transaction: reserve the deterministic directory, write `.artifact-writing`, materialize workspace capture and all artifacts, then hard-link `manifest.json` as the one-time commit marker. A reservation cannot be reused. Before that marker exists, readers discover no artifact; any failure leaves a failed marker and retains its output spool for diagnosis. After commit, every readable ref has a SHA-256 receipt covering the exact byte length and content. The same path verifies text, JSON, output streams, and workspace patches. Redaction happens before identity hashes are derived, so persisted identity and persisted bytes describe the same redacted record.
 
-- 工具原始输出和模型可见投影分开。
-- 可复用事实必须通过 evidence URI 追溯。
-- 脱敏规则来自插件 artifact policy。
-- 工作区变更捕获由插件 manifest 声明 selector。
-- Shell stdout/stderr 与 MCP SDK `reportOutput()` 都由执行层统一 spool，recorder 负责复制到 `stdout` / `stderr` refs；插件不需要自定义输出落盘逻辑。
-- spool 的状态依次由 `open`、`sealed`、`committed` / `failed` 表示；artifact 提交成功后才允许删除，失败时保留原始输出供维护服务回收或后续诊断。
-- artifact ref 读取必须使用返回的 UTF-8 `nextStartByte`，不要重复请求已经标记为 complete、unavailable 或 failed 的范围。
-- 新增 artifact 行为必须补 artifact policy 验证。
+The recorder must not parse committed manifests or manage receipt maps. Retry recovery belongs only to `AgentArtifactPublicationRecovery`; first-publication file layout and spool state belong only to `AgentToolArtifactFilePublisher`. Both receive explicit structured inputs and must not infer behavior from tool names or payload shape.
 
-## 流输出脱敏
+Receipts establish bundle consistency, not hostile-workspace provenance: a manifest and a signing key stored beside the artifact can be replaced together. When export or cross-machine authenticity is required, anchor the canonical manifest digest in protected execution persistence or attach a detached signature whose private key is outside the workspace. A self-hash in the same mutable directory is intentionally not treated as a security feature.
 
-结构化结果使用 `Redact.Keys` 和 `Redact.Paths`，stdout/stderr 使用独立的声明式规则：
+Large structured refs remain exact on disk and are read through a deterministic view pipeline. While a JSON ref is persisted, `stream-json` also produces a constant-memory NDJSON structure sidecar containing root type, top-level field types, and array item counts. Root indexes page that sealed sidecar directly from the cursor byte boundary. An index request with `sourcePath` regenerates only that nested object's structural stream from the verified raw file; its cursor binds the source path, source identity, derived structure identity, and model-visible projection policy. This avoids eagerly materializing recursive indexes while preserving complete-record pagination.
 
-```json
-{
-  "Redact": {
-    "Streams": ["stderr"],
-    "Transforms": [
-      {
-        "Pattern": "sk-[A-Za-z0-9_-]+",
-        "Replacement": "[REDACTED]",
-        "Streams": ["stdout", "stderr"],
-        "WindowChars": 4096
-      }
-    ]
-  }
-}
-```
+`AgentArtifactJsonQuery` validates the typed query AST, streams the original JSON, assembles only matching array elements, and uses the active model tokenizer to stop each page at a complete element boundary. Index and query cursors are distinct protocols. They bind continuation state to the source hash, a tagged index identity (`sidecar` content digest or derived nested-path identity) or query identity, and model-visible projection policy, so a cursor becomes invalid when any relevant input changes. Manifest discovery is capability-driven: supported content records are validated independently, unknown capabilities remain forward-compatible, and `schemaVersion` metadata never gates readability. JSON/TOON/CSV are presentation choices above this boundary and must never replace the durable raw ref.
 
-`Streams` 会把指定流整体替换为 `[REDACTED]`；`Transforms` 在 artifact recorder 内部以有界流处理，能覆盖跨读取块的匹配，不会把完整 stdout/stderr 读入内存。未声明 `Streams` 的 transform 默认作用于两个流。插件只声明规则，不需要自行复制、解析或清理输出文件。非法正则、非法窗口或超过窗口的跨边界匹配会明确使 artifact 写入失败，并保留半成品标记供维护服务回收。
+Artifact Liquid templates are parsed during system-tool publication with strict filter handling and Liquid's static global-variable analysis. The preflight validates every declared path against a fixed artifact/evidence scope and the tool's input/output JSON Schemas; closed schema objects reject misspelled members, while declared dynamic maps such as evidence slots remain dynamic. Loop-local variables are preserved, so missing roots, members, and filter typos fail at publication rather than rendering as empty output at runtime.
+
+## Session ownership
+
+A committed Artifact can be referenced by more than one product session after a fork. New manifests write both the legacy-compatible primary `sessionId` and the normalized `sessionIds` owner set. Readers merge both fields, trim and deduplicate IDs, and sort them deterministically, so older single-owner bundles remain readable without a migration pass.
+
+Fork retention adds the target owner only to Artifacts whose `requestId` is included in the fork snapshot and whose source owner is present. Truncate releases the current session owner only for removed request IDs. Session close releases that session from every complete Artifact; the directory is deleted only when no owner remains. Incomplete bundles and output spools remain single-owner because they cannot be shared before publication.
+
+Owner changes run through the same serialized maintenance queue and `AgentArtifactFileWriter` atomic JSON replacement as other metadata updates. They participate in the Session durable mutation saga: a failed fork removes the target owner, while a history mutation journal remains pending until request-scoped owner release and the SQLite commit both succeed. Retention code must never infer ownership from directory names or delete a shared bundle merely because its primary `sessionId` closed.

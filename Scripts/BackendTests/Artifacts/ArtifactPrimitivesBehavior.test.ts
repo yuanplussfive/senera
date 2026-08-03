@@ -10,7 +10,7 @@ import {
   stableArtifactHash,
   stableArtifactStringify,
 } from "../../../Source/AgentSystem/Artifacts/AgentArtifactStableJson.js";
-import { ToolArtifactPolicySchema } from "../../../Source/AgentSystem/Schemas/PluginArtifactManifestSchema.js";
+import { ToolArtifactPolicySchema } from "../../../Source/AgentSystem/Schemas/AgentArtifactContractSchema.js";
 
 describe("artifact primitive contracts", () => {
   test("redacts nested key patterns and exact array paths without mutating input", () => {
@@ -56,6 +56,7 @@ describe("artifact primitive contracts", () => {
       requestId: "Request / unsafe",
       step: 2,
       callIndex: 3,
+      callId: "call-3",
       toolName: "Tool Name",
       argsHash: "args",
       resultHash: "result",
@@ -69,6 +70,7 @@ describe("artifact primitive contracts", () => {
         workspaceRoot: path.resolve("workspace"),
         rootDir: "../outside",
         step: 0,
+        callId: "call-outside",
         toolName: "tool",
         argsHash: "a",
         resultHash: "b",

@@ -1,29 +1,31 @@
 import {
-  AgentToolResultPresentationType,
+  AgentToolResultPresentationProtocol,
   type AgentToolResultPresentation,
   type AgentToolResultPresentationChange,
   type AgentToolResultPresentationEvidence,
   type AgentToolResultPresentationFact,
-  type AgentToolResultPresentationStatus,
   type ExecutedToolCallResult,
 } from "../Types/ToolRuntimeTypes.js";
+import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
+import { projectAgentExecutedToolResultStatus, readAgentToolFailure } from "./AgentToolResultOutcome.js";
 
 /**
  * Separates the model's complete tool observation from the compact, human
- * readable result surface. Plugin evidence owns the display wording.
+ * readable result surface. Tool evidence owns the display wording.
  */
 export function projectAgentToolResultPresentation(result: ExecutedToolCallResult): AgentToolResultPresentation {
-  const status = readStatus(result);
+  const status = projectAgentExecutedToolResultStatus(result);
   const evidence = projectEvidence(result);
   const changes = projectChanges(result);
   const facts = projectFacts(result);
+  const failure = readAgentToolFailure(result.outcome);
   const fallback = readResultText(result.result);
-  const headline = evidence[0]?.display ?? changes[0]?.summary ?? fallback ?? result.name;
+  const headline = failure?.message ?? evidence[0]?.display ?? changes[0]?.summary ?? fallback ?? result.name;
   const summary = buildSummary(evidence, changes, fallback, headline);
 
   return {
-    type: AgentToolResultPresentationType,
-    version: 1,
+    type: AgentToolResultPresentationProtocol.type,
+    version: AgentToolResultPresentationProtocol.version,
     status,
     headline,
     summary,
@@ -31,18 +33,8 @@ export function projectAgentToolResultPresentation(result: ExecutedToolCallResul
     evidence,
     changes,
     artifactUri: result.artifact?.artifactUri,
+    failure,
   };
-}
-
-function readStatus(result: ExecutedToolCallResult): AgentToolResultPresentationStatus {
-  if (
-    readRecord(result.result)?.error ||
-    (result.process.exitCode !== null && result.process.exitCode !== 0) ||
-    result.process.signal
-  ) {
-    return "failure";
-  }
-  return result.result === undefined || result.result === null ? "empty" : "success";
 }
 
 function projectEvidence(result: ExecutedToolCallResult): AgentToolResultPresentationEvidence[] {
@@ -175,8 +167,4 @@ function uniqueText(values: readonly (string | undefined)[]): string[] {
     seen.add(normalized);
     return [normalized];
   });
-}
-
-function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }

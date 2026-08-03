@@ -16,7 +16,7 @@ export function createSeneraLocalPersistentProcessSpawner(
     environmentPolicy instanceof SeneraProcessEnvironmentPolicy
       ? environmentPolicy
       : new SeneraProcessEnvironmentPolicy(environmentPolicy);
-  return async (command, args, options) => {
+  return persistentSpawner(["local"], async (command, args, options) => {
     assertSeneraExecutionNotAborted(options.signal);
 
     const ownedProcess = await spawnSeneraOwnedProcess(
@@ -41,7 +41,7 @@ export function createSeneraLocalPersistentProcessSpawner(
     persistentChild.once("close", () => options.signal?.removeEventListener("abort", abort));
     if (options.signal?.aborted) abort();
     return persistentChild;
-  };
+  });
 }
 
 class SeneraLocalPersistentProcessChild implements SeneraPersistentProcessChild {
@@ -130,7 +130,7 @@ export function createSeneraAuthorizedPersistentProcessSpawner(
 ): SeneraPersistentProcessSpawner {
   const local =
     options.local ?? createSeneraLocalPersistentProcessSpawner(options.environmentPolicy, options.terminateProcessTree);
-  return async (command, args, spawnOptions) => {
+  return persistentSpawner(["local"], async (command, args, spawnOptions) => {
     if (spawnOptions.signal?.aborted) {
       throw new SeneraExecutionError(SeneraExecutionErrorCodes.Aborted, "aborted");
     }
@@ -142,5 +142,12 @@ export function createSeneraAuthorizedPersistentProcessSpawner(
       );
     }
     return local(command, args, spawnOptions);
-  };
+  });
+}
+
+function persistentSpawner(
+  supportedBackends: SeneraPersistentProcessSpawner["supportedBackends"],
+  spawn: SeneraPersistentProcessSpawner,
+): SeneraPersistentProcessSpawner {
+  return Object.assign(spawn, { supportedBackends });
 }

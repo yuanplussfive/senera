@@ -116,7 +116,7 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         'runtime_uid="$(docker exec "$container_id"',
         "docker compose down --volumes --remove-orphans",
         "docker compose exec -T --user node senera node Dist/Scripts/VerifyDockerNativeSqlite.js",
-        "docker compose exec -T --user node senera node Dist/Scripts/VerifyDockerUserPluginWrite.js",
+        "docker compose exec -T --user node senera node Dist/Scripts/VerifyDockerSkillWrite.js",
       ]),
     );
     if (smokeJob.includes("/dev/kvm") || smokeJob.includes("NET_ADMIN")) {

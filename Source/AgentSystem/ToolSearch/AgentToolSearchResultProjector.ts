@@ -1,7 +1,26 @@
-import type { AgentToolSearchResult } from "./AgentToolSearchIndex.js";
+import { z } from "zod";
+import { AgentToolDisclosureLevels, type AgentDisclosedToolSearchResult } from "./AgentToolDisclosurePlanner.js";
 import type { ToolSearchArguments } from "./AgentToolSearchToolProtocol.js";
 
-export function buildToolSearchResultProjection(args: ToolSearchArguments, results: readonly AgentToolSearchResult[]) {
+const ToolSearchResultDisclosureSchema = z.object({
+  tools: z.object({
+    item: z.array(
+      z.object({
+        name: z.string().trim().min(1),
+        disclosure: z.enum([
+          AgentToolDisclosureLevels.Reference,
+          AgentToolDisclosureLevels.Preview,
+          AgentToolDisclosureLevels.Callable,
+        ]),
+      }),
+    ),
+  }),
+});
+
+export function buildToolSearchResultProjection(
+  args: ToolSearchArguments,
+  results: readonly AgentDisclosedToolSearchResult[],
+) {
   return {
     query: args.query,
     preferredSources: {
@@ -11,11 +30,11 @@ export function buildToolSearchResultProjection(args: ToolSearchArguments, resul
       item: results.map((result) => ({
         name: result.toolName,
         title: result.title,
+        disclosure: result.disclosure,
         sources: {
           item: result.sources,
         },
         summary: result.summary,
-        whenToUse: result.whenToUse,
         score: result.score,
         matchedTerms: {
           item: result.matchedTerms,
@@ -44,41 +63,35 @@ export function buildToolSearchResultProjection(args: ToolSearchArguments, resul
           })),
         },
         reason: renderSearchReason(result),
+        ...previewFields(result),
       })),
     },
     guidance:
       results.length > 0
-        ? "这些工具会在下一轮提示词中展开完整能力卡片；下一步需要工具时只调用其中最匹配的工具。"
+        ? "仅 disclosure=callable 的工具已加载完整调用契约，可以直接调用。preview/reference 是候选信息；如需调用，请用准确工具名再次搜索以提升披露级别。"
         : "没有找到匹配工具；换更具体的任务、对象、路径、错误文本或能力关键词重新搜索。",
   };
 }
 
 export function readToolNamesFromSearchResult(result: unknown): string[] {
-  if (!result || typeof result !== "object" || Array.isArray(result)) {
-    return [];
-  }
-
-  const tools = (result as Record<string, unknown>).tools;
-  if (!tools || typeof tools !== "object" || Array.isArray(tools)) {
-    return [];
-  }
-
-  const item = (tools as Record<string, unknown>).item;
-  if (!Array.isArray(item)) {
-    return [];
-  }
-
-  return item.flatMap((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      return [];
-    }
-
-    const name = (entry as Record<string, unknown>).name;
-    return typeof name === "string" && name.trim().length > 0 ? [name.trim()] : [];
-  });
+  const parsed = ToolSearchResultDisclosureSchema.safeParse(result);
+  return parsed.success
+    ? parsed.data.tools.item
+        .filter((entry) => entry.disclosure === AgentToolDisclosureLevels.Callable)
+        .map((entry) => entry.name)
+    : [];
 }
 
-function renderSearchReason(result: AgentToolSearchResult): string {
+function previewFields(result: AgentDisclosedToolSearchResult) {
+  return result.disclosure === AgentToolDisclosureLevels.Reference
+    ? {}
+    : {
+        whenToUse: result.whenToUse,
+        parameters: result.parameterSummary,
+      };
+}
+
+function renderSearchReason(result: AgentDisclosedToolSearchResult): string {
   const capabilities = result.matchedCapabilities.map((capability) =>
     capability.matchedFacets.length > 0 ? `${capability.id} (${capability.matchedFacets.join(", ")})` : capability.id,
   );

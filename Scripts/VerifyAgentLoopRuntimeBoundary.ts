@@ -8,10 +8,9 @@ import { AgentLoopSchema } from "../Source/AgentSystem/Schemas/AgentRuntimeConfi
 const workspaceRoot = resolveWorkspaceRoot();
 
 const files = {
-  stateTypes: readSource("Source/AgentSystem/Loop/AgentLoopStateTypes.ts"),
-  stateMachine: readSource("Source/AgentSystem/Loop/AgentLoopStateMachine.ts"),
-  reducer: readSource("Source/AgentSystem/Loop/AgentLoopTransitionReducer.ts"),
   loop: readSource("Source/AgentSystem/Loop/AgentLoop.ts"),
+  preparation: readSource("Source/AgentSystem/Loop/AgentTurnPreparationService.ts"),
+  piTurn: readSource("Source/AgentSystem/Pi/AgentPiTurnExecutor.ts"),
   runtimeTypes: readSource("Source/AgentSystem/Types/AgentRuntimeConfigTypes.ts"),
 };
 const formDocument = JSON.parse(readSource("Source/AgentSystem/Config/AgentSystemConfig.form.json")) as {
@@ -31,8 +30,7 @@ const exampleConfig = JSON.parse(readSource("senera.config.example.json")) as {
 
 assertNoAgentLoopMaxSteps();
 assertNoOuterLoopRepairAttempts();
-assertNoFailedLoopState();
-assertNoDeadMachineConfig();
+assertNoOuterPlanningRuntime();
 assertPiRuntimeFieldsRemain();
 
 console.log("Agent loop runtime boundary verified.");
@@ -61,26 +59,21 @@ function assertNoOuterLoopRepairAttempts() {
   assert.equal(files.runtimeTypes.includes("MaxRepairAttempts"), false);
 }
 
-function assertNoFailedLoopState() {
-  assert.equal(files.stateTypes.includes("FailedAgentLoopMachineState"), false);
-  assert.equal(files.stateTypes.includes('kind: "failed"'), false);
-  assert.equal(files.loop.includes('state.kind === "failed"'), false);
-}
-
-function assertNoDeadMachineConfig() {
-  for (const [name, content] of Object.entries({
-    stateTypes: files.stateTypes,
-    stateMachine: files.stateMachine,
-    reducer: files.reducer,
-    loop: files.loop,
-  })) {
+function assertNoOuterPlanningRuntime() {
+  for (const retiredSymbol of [
+    "prepare_interaction",
+    "PrepareTurn",
+    "AgentLoopStateMachine",
+    "AgentPiPreparedActionLease",
+  ]) {
+    assert.equal(files.loop.includes(retiredSymbol), false, `AgentLoop must not reference ${retiredSymbol}.`);
     assert.equal(
-      content.includes("AgentLoopMachineConfig"),
+      files.preparation.includes(retiredSymbol),
       false,
-      `${name} must not carry an unused AgentLoopMachineConfig.`,
+      `Turn preparation must not reference ${retiredSymbol}.`,
     );
+    assert.equal(files.piTurn.includes(retiredSymbol), false, `Pi turn must not reference ${retiredSymbol}.`);
   }
-  assert.equal(files.reducer.includes("void this.config"), false);
 }
 
 function assertPiRuntimeFieldsRemain() {

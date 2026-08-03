@@ -2,9 +2,11 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { writeFileAtomic } from "../Core/AgentFs.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 export type SeneraOutputStream = "stdout" | "stderr";
 export const SeneraOutputSpoolMarkerFileName = ".output-spool.json";
+export const SeneraOutputSpoolSchemaVersion = 1 as const;
 
 export type SeneraOutputSpoolState = "open" | "sealed" | "failed" | "committed";
 
@@ -43,7 +45,7 @@ export async function createSeneraOutputSpool(
   await fsp.mkdir(directory, { recursive: true });
   const markerPath = path.join(directory, SeneraOutputSpoolMarkerFileName);
   await writeSpoolMarker(markerPath, {
-    schemaVersion: 1,
+    schemaVersion: SeneraOutputSpoolSchemaVersion,
     kind: "senera-output-spool",
     state: "open",
     createdAt: new Date().toISOString(),
@@ -174,9 +176,9 @@ export async function updateSeneraOutputSpoolState(
 async function updateSpoolMarkerState(markerPath: string, state: SeneraOutputSpoolState): Promise<void> {
   const marker = await fsp
     .readFile(markerPath, "utf8")
-    .then((value) => JSON.parse(value) as Record<string, unknown>)
+    .then((value) => parseJsonText(value, "Output spool metadata") as Record<string, unknown>)
     .catch(() => ({
-      schemaVersion: 1,
+      schemaVersion: SeneraOutputSpoolSchemaVersion,
       kind: "senera-output-spool",
       createdAt: new Date().toISOString(),
     }));

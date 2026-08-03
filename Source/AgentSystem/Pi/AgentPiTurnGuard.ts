@@ -1,4 +1,5 @@
 import { AgentCancellationError, readAbortMessage, throwIfAborted } from "../Core/AgentCancellation.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 export interface AgentPiTurnGuardOptions<T> {
   phase: string;
@@ -8,13 +9,12 @@ export interface AgentPiTurnGuardOptions<T> {
   run: () => Promise<T>;
 }
 
-export class AgentPiTurnPhaseTimeoutError extends Error {
+export class AgentPiTurnPhaseTimeoutError extends AgentBaseError {
   constructor(
     readonly phase: string,
     readonly timeoutMs: number,
   ) {
     super(`Pi 阶段超时：${phase}，超过 ${timeoutMs}ms。`);
-    this.name = "AgentPiTurnPhaseTimeoutError";
   }
 }
 

@@ -1,5 +1,6 @@
 import type { SeneraPersistentProcessChild } from "../Execution/SeneraPersistentProcessTypes.js";
 import type { SeneraTerminalChild, SeneraTerminalDimensions } from "../Execution/SeneraTerminalTypes.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 import {
   AgentExecutionResourceSignals,
   type AgentExecutionResourceKind,
@@ -9,7 +10,7 @@ import {
 
 export type AgentExecutionResourceExitSignal = NodeJS.Signals | number | null;
 
-export class AgentExecutionResourceTransportCloseError extends Error {
+export class AgentExecutionResourceTransportCloseError extends AgentBaseError {
   constructor(
     readonly kind: AgentExecutionResourceKind,
     readonly pid: number | undefined,
@@ -23,7 +24,6 @@ export class AgentExecutionResourceTransportCloseError extends Error {
             ? signalFailures[0]
             : new AggregateError(signalFailures, "Execution resource termination signals failed."),
     });
-    this.name = "AgentExecutionResourceTransportCloseError";
   }
 }
 

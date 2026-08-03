@@ -101,7 +101,7 @@ describe("model HTTP transport", () => {
     const events = [
       'data: {"choices":[{"delta":{"content":"你"}}]}\n\n',
       'data: {"choices":[{"delta":{"content":"好"}}]}\n\n',
-      'data: {"choices":[],"usage":{"prompt_tokens":8,"completion_tokens":2,"total_tokens":10}}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":8,"completion_tokens":2,"total_tokens":10}}\n\n',
       "data: [DONE]\n\n",
     ];
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createSseResponse(events, [35, 71])));
@@ -116,6 +116,12 @@ describe("model HTTP transport", () => {
             totalTokens: (event.usage as { total_tokens?: number }).total_tokens,
           })
         : undefined,
+      completion:
+        (event.choices as Array<{ finish_reason?: string }> | undefined)?.[0]?.finish_reason === undefined
+          ? undefined
+          : {
+              finishReason: (event.choices as Array<{ finish_reason?: string }>)[0]?.finish_reason,
+            },
     }));
 
     await expect(collectModelStream(stream)).resolves.toEqual([
@@ -128,6 +134,7 @@ describe("model HTTP transport", () => {
       outputTokens: 2,
       totalTokens: 10,
     });
+    expect(stream.completion).toEqual({ finishReason: "stop" });
   });
 
   test("surfaces malformed stream data and honors pre-aborted request lifetimes", async () => {

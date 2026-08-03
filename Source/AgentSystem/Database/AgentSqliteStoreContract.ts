@@ -1,4 +1,5 @@
 import { sha256Hex } from "../Core/AgentHash.js";
+import { isAgentUnknownRecord as isRecord } from "../Core/AgentUnknownValue.js";
 
 export const AgentSqliteStoreDataClasses = {
   Authoritative: "authoritative",
@@ -196,8 +197,4 @@ function assertKnownKeys(value: object, keys: readonly string[], context: string
   if (unknown.length > 0) {
     throw new Error(`${context} contains unsupported contract keys: ${unknown.join(", ")}.`);
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -1,4 +1,3 @@
-import path from "node:path";
 import type Database from "better-sqlite3";
 import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
 import { uniqueTrimmed } from "./AgentMemoryCollections.js";
@@ -50,8 +49,6 @@ import type {
   AgentMemoryType,
 } from "./AgentMemorySourceRepository.js";
 import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
-
-export const DefaultAgentMemoryDatabasePath = ".senera/Memory.sqlite";
 
 export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepository {
   private readonly kernel: AgentSqliteDatabaseKernel;
@@ -283,47 +280,45 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
   }
 
   enqueueMemoryLearningJob(episodeUri: string, nowMs: number): void {
-    this.statements.enqueueMemoryLearningJobStmt.run(episodeUri, nowMs, nowMs);
+    this.statements.enqueueMemoryLearningJob(episodeUri, nowMs);
   }
 
   resetRunningMemoryLearningJobs(nowMs: number): void {
-    this.statements.resetRunningMemoryLearningJobsStmt.run(nowMs, nowMs);
+    this.statements.resetRunningMemoryLearningJobs(nowMs);
   }
 
   listDueMemoryLearningJobs(nowMs: number, limit: number): AgentMemoryLearningJobRecord[] {
-    return this.statements.listDueMemoryLearningJobsStmt.all(nowMs, limit).map(memoryLearningJobFromStorageRow);
+    return this.statements.listDueMemoryLearningJobs(nowMs, limit).map(memoryLearningJobFromStorageRow);
   }
 
   nextMemoryLearningJobAtMs(): number | undefined {
-    return this.statements.nextMemoryLearningJobAtStmt.get()?.next_attempt_at_ms ?? undefined;
+    return this.statements.nextMemoryLearningJobAtMs();
   }
 
   markMemoryLearningJobRunning(episodeUri: string, nowMs: number): AgentMemoryLearningJobRecord | undefined {
-    const updated = this.statements.markMemoryLearningJobRunningStmt.run(nowMs, episodeUri);
-    if (updated.changes === 0) return undefined;
-    const row = this.statements.selectMemoryLearningJobStmt.get(episodeUri);
+    const row = this.statements.markMemoryLearningJobRunning(episodeUri, nowMs);
     return row ? memoryLearningJobFromStorageRow(row) : undefined;
   }
 
   markMemoryLearningJobCompleted(episodeUri: string, nowMs: number): void {
-    this.statements.markMemoryLearningJobCompletedStmt.run(nowMs, nowMs, episodeUri);
+    this.statements.markMemoryLearningJobCompleted(episodeUri, nowMs);
   }
 
   markMemoryLearningJobFailed(
     episodeUri: string,
     input: { terminal: boolean; nextAttemptAtMs: number; lastError: string; updatedAtMs: number },
   ): void {
-    this.statements.markMemoryLearningJobFailedStmt.run(
+    this.statements.markMemoryLearningJobFailed(
+      episodeUri,
       failedAgentMemoryLearningJobStatus(input.terminal),
       input.nextAttemptAtMs,
       input.lastError,
       input.updatedAtMs,
-      episodeUri,
     );
   }
 
   listMemoryLearningJobs(): AgentMemoryLearningJobRecord[] {
-    return this.statements.listMemoryLearningJobsStmt.all().map(memoryLearningJobFromStorageRow);
+    return this.statements.listMemoryLearningJobs().map(memoryLearningJobFromStorageRow);
   }
 
   close(): void {
@@ -395,11 +390,4 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
       );
     }
   }
-}
-
-export function resolveAgentMemoryDatabasePath(
-  workspaceRoot: string,
-  databasePath = DefaultAgentMemoryDatabasePath,
-): string {
-  return path.isAbsolute(databasePath) ? path.normalize(databasePath) : path.resolve(workspaceRoot, databasePath);
 }

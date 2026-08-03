@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { parseJsonText } from "./AgentJsonParsing.js";
 
 const AgentProductMetadataSchema = z
   .object({
@@ -14,5 +15,5 @@ export interface AgentProductMetadata {
 
 export function readAgentProductMetadata(resourceRoot: string): AgentProductMetadata {
   const packagePath = path.join(resourceRoot, "package.json");
-  return AgentProductMetadataSchema.parse(JSON.parse(fs.readFileSync(packagePath, "utf8")));
+  return AgentProductMetadataSchema.parse(parseJsonText(fs.readFileSync(packagePath, "utf8"), "package.json"));
 }

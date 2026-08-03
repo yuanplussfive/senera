@@ -13,12 +13,21 @@ export interface AgentSourceFrame {
 }
 
 export interface AgentSourceDiagnostic {
+  severity?: "error" | "warning";
+  code?: string;
   message: string;
+  filePath?: string;
   pointer?: string;
-  path?: Array<string | number>;
+  path?: readonly (string | number)[];
   position?: AgentSourcePosition;
   frame?: AgentSourceFrame;
   suggestion?: string;
+  context?: Readonly<Record<string, unknown>>;
+  diff?: {
+    previousFilePath: string;
+    candidateFilePath: string;
+    hunk: string;
+  };
 }
 
 export class AgentSourceDiagnosticBuilder {

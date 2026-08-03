@@ -5,7 +5,7 @@ import {
 } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExecutionReporter.js";
 
 describe("tool execution reporter output sink", () => {
-  test("persists plugin output even when live output projection is disabled", async () => {
+  test("persists tool output even when live output projection is disabled", async () => {
     const chunks: Buffer[] = [];
     const sink: AgentToolOutputSink = {
       write: (_stream, data) => {
@@ -20,9 +20,9 @@ describe("tool execution reporter output sink", () => {
       capabilities: { progress: false, outputStreaming: false },
     });
 
-    reporter.outputText({ stream: "stdout", text: "complete plugin output" });
+    reporter.outputText({ stream: "stdout", text: "complete tool output" });
     await reporter.flush();
 
-    expect(Buffer.concat(chunks).toString("utf8")).toBe("complete plugin output");
+    expect(Buffer.concat(chunks).toString("utf8")).toBe("complete tool output");
   });
 });

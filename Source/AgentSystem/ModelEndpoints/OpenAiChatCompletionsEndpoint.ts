@@ -6,6 +6,7 @@ import { resolveAgentModelCompatibility } from "./ModelCompatibility.js";
 import { buildOpenAiInput } from "./OpenAiMessageProjection.js";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
 import { ModelUsageNumberWireSchema, projectModelUsageNumber } from "./ModelUsageWireSchema.js";
+import { createAgentModelCompletionMetadata } from "./AgentModelCompletion.js";
 
 const OpenAiUsageSchema = z
   .object({
@@ -45,6 +46,7 @@ const ChatCompletionBodySchema = z
         z
           .object({
             usage: OpenAiUsageSchema,
+            finish_reason: z.string().nullish(),
             message: z
               .object({
                 content: TextContentSchema,
@@ -66,6 +68,7 @@ const ChatCompletionStreamEventSchema = z
         z
           .object({
             usage: OpenAiUsageSchema,
+            finish_reason: z.string().nullish(),
             delta: z
               .object({
                 content: TextContentSchema,
@@ -101,6 +104,9 @@ export class OpenAiChatCompletionsEndpoint implements TextGenerationEndpoint {
     return {
       text: readTextContent(body.choices?.[0]?.message?.content),
       usage: projectOpenAiUsage(body.usage ?? body.choices?.[0]?.usage),
+      completion: createAgentModelCompletionMetadata({
+        finishReason: body.choices?.[0]?.finish_reason ?? undefined,
+      }),
     };
   }
 
@@ -126,6 +132,9 @@ export class OpenAiChatCompletionsEndpoint implements TextGenerationEndpoint {
         return {
           textDelta: readTextContent(parsed.choices?.[0]?.delta?.content),
           usage: projectOpenAiUsage(parsed.usage ?? parsed.choices?.[0]?.usage),
+          completion: createAgentModelCompletionMetadata({
+            finishReason: parsed.choices?.[0]?.finish_reason ?? undefined,
+          }),
         };
       },
       undefined,

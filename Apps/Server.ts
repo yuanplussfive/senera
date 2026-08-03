@@ -1,5 +1,4 @@
 import { startSeneraServer } from "./ServerRuntime.js";
-import { createCompiledAgentMcpRuntimeModuleResolver } from "../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
 import { resolveAgentSandboxDevelopmentBundleRoot } from "../Source/AgentSystem/Sandbox/AgentSandboxBundlePaths.js";
 import { startSeneraGvisorWorkerProcess } from "./GvisorWorkerProcess.js";
 import { ensureSeneraDevelopmentConfig } from "./RuntimeConfigBootstrap.js";
@@ -23,7 +22,6 @@ async function main(): Promise<void> {
   });
   const handle = await startSeneraServer({
     configPath,
-    runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(workspaceRoot),
     sandboxBundleRoot: resolveAgentSandboxDevelopmentBundleRoot(workspaceRoot),
     sandboxProvider: worker?.provider,
     dockerEngineWorker: worker?.client,

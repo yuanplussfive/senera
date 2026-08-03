@@ -4,12 +4,7 @@ import {
   type AgentConversationEntry,
 } from "./AgentConversation.js";
 import type { AgentConversationEntryMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
-import type {
-  AgentPlannerJournalEntryRecord,
-  AgentToolEvidenceMemoryEntryRecord,
-} from "../Memory/AgentPlannerMemory.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
-import type { AgentOpenAiTranscriptMessage } from "./AgentOpenAiTranscript.js";
 
 export class AgentConversationProjector {
   projectUserInput(
@@ -30,23 +25,6 @@ export class AgentConversationProjector {
     };
   }
 
-  projectOpenAiTranscript(
-    requestId: string,
-    messages: readonly AgentOpenAiTranscriptMessage[],
-    timestamp = this.now(),
-    metadata?: AgentConversationEntryMetadata,
-    scope?: string | number,
-  ): Extract<AgentConversationEntry, { kind: "openai.transcript" }> {
-    return {
-      kind: AgentConversationEntryKinds.OpenAiTranscript,
-      id: createConversationEntryId(requestId, "openai_transcript", scope),
-      requestId,
-      timestamp,
-      messages: [...messages],
-      metadata,
-    };
-  }
-
   projectAssistantDecision(
     requestId: string,
     xml: string,
@@ -60,57 +38,6 @@ export class AgentConversationProjector {
       requestId,
       timestamp,
       xml,
-      metadata,
-    };
-  }
-
-  projectContextToolResults(
-    requestId: string,
-    xml: string,
-    timestamp = this.now(),
-    metadata?: AgentConversationEntryMetadata,
-    scope?: string | number,
-  ): Extract<AgentConversationEntry, { kind: "context.tool_results" }> {
-    return {
-      kind: AgentConversationEntryKinds.ContextToolResults,
-      id: createConversationEntryId(requestId, "tool_results", scope),
-      requestId,
-      timestamp,
-      xml,
-      metadata,
-    };
-  }
-
-  projectPlannerJournal(
-    requestId: string,
-    record: AgentPlannerJournalEntryRecord,
-    timestamp = this.now(),
-    metadata?: AgentConversationEntryMetadata,
-    scope?: string | number,
-  ): Extract<AgentConversationEntry, { kind: "planner.journal" }> {
-    return {
-      kind: AgentConversationEntryKinds.PlannerJournal,
-      id: createConversationEntryId(requestId, "planner", scope ?? record.step),
-      requestId,
-      timestamp,
-      record,
-      metadata,
-    };
-  }
-
-  projectToolEvidenceMemory(
-    requestId: string,
-    record: AgentToolEvidenceMemoryEntryRecord,
-    timestamp = this.now(),
-    metadata?: AgentConversationEntryMetadata,
-    scope?: string | number,
-  ): Extract<AgentConversationEntry, { kind: "tool.evidence_memory" }> {
-    return {
-      kind: AgentConversationEntryKinds.ToolEvidenceMemory,
-      id: createConversationEntryId(requestId, "evidence_memory", scope ?? record.step),
-      requestId,
-      timestamp,
-      record,
       metadata,
     };
   }

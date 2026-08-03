@@ -74,7 +74,7 @@ Docker 镜像运行的是标准 Node.js 22，不是 Electron，因此不需要�
 
 默认 `compose.yaml` 做了这些事情：
 
-- `senera-data:/data`：配置、数据库、会话和用户插件。
+- `senera-data:/data`：配置、数据库、会话、artifact 和工作区 Skills。
 - `8787:8787`：宿主机所有网络接口发布 `8787`，访问控制仍由精确 Origin 白名单和管理员认证负责。
 - `sandbox-runtime`：由 Compose 按标准 Registry 流程拉取并执行一次版本探测，成功后镜像留在 Docker Engine 本地存储。
 - `sandbox-worker`：网络隔离、只读的受限 Worker；它独占 Docker Engine Socket，主服务只持有控制 Socket。
@@ -83,8 +83,9 @@ Docker 不会把 Sandbox 请求改为本机执行。`runsc` 未注册时，启�
 
 应用进程和镜像健康检查都以 `node` 运行。镜像必须先以 root 进入权限准备入口，因此手工执行容器内诊断命令时应显式沿用应用身份，例如 `docker compose exec -T --user node senera id`；不要依赖 `docker exec` 的默认用户。
 
-镜像内置的用户插件会在容器启动时同步到 `/data/Plugins`。该目录属于数据卷，插件的
-`PluginConfig.toml` 会保留用户修改；放入该目录的自定义插件也不会被启动同步清理。
+工作区 Skill 位于数据卷的 `/data/.senera/skills`。它由运行时用户直接维护，不会在容器启动时被内置资源覆盖；官方只读 Skills 和 MCP packages 随镜像位于 `/app/System/Skills` 与 `/app/McpServers`。
+
+运行时数据库不接受配置路径，统一由工作区布局解析并按领域存放：配置修订与本地密钥位于 `.senera/data/config/`，会话位于 `.senera/data/sessions/`，长期记忆位于 `.senera/data/memory/`，Tool/Skill 路由学习位于 `.senera/data/tool-search/`。升级时旧数据库文件族会整体迁移，WAL、SHM 和 recovery 文件不会被拆散；当新旧库同时存在时，旧库保存在对应领域的 `legacy/` 目录，不覆盖当前库。
 
 如果服务器上 `8787` 已被占用，在启动前指定另一个主机端口：
 
@@ -167,7 +168,7 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 
 密钥只能生成一次并持久保存，不要在每次启动时重新生成。Compose 已把宿主机变量映射进主服务；本地部署可以将 `SENERA_CONFIG_SECRET_KEY=<生成值>` 写入仓库已忽略的 `.env`，正式部署应使用平台提供的独立 secret。
 
-未设置该变量时，运行时会生成 `.senera/config-secrets.key`（Docker 数据目录下为 `/data/.senera/config-secrets.key`）。这个本地 key 能防止配置 JSON 或数据库被单独复制后直接读出 API key，但不能抵御同时取得数据目录和 key 文件的主机级攻击。备份时必须保留密钥，丢失或直接更换密钥会导致已有凭据无法解密。
+未设置该变量时，运行时会生成 `.senera/data/config/config-secrets.key`（Docker 数据目录下为 `/data/.senera/data/config/config-secrets.key`）。这个本地 key 能防止配置 JSON 或数据库被单独复制后直接读出 API key，但不能抵御同时取得数据目录和 key 文件的主机级攻击。备份时必须保留密钥，丢失或直接更换密钥会导致已有凭据无法解密。
 
 ## 上传容量与回收
 

@@ -7,6 +7,8 @@ import {
   getAgentEventSpec,
 } from "./AgentEventCatalog.js";
 import type { AgentEventEnvelope } from "./AgentEventBase.js";
+import { agentStringOrEmpty, agentUnknownRecordOrEmpty } from "../Core/AgentUnknownValue.js";
+import { readAgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
 
 type RunEventHistoryDataProjector = (data: unknown) => unknown;
 
@@ -29,17 +31,19 @@ const RunEventHistoryDataProjectors = new Map<AgentEventKind, RunEventHistoryDat
   [
     AgentEventKinds.ModelCompleted,
     (data) => ({
-      ...readRecord(data),
+      ...agentUnknownRecordOrEmpty(data),
       text: "",
     }),
   ],
   [
     AgentEventKinds.RunFailed,
     (data) => {
-      const record = readRecord(data);
+      const record = agentUnknownRecordOrEmpty(data);
+      const localizedMessage = readAgentLocalizedMessage(record.localizedMessage);
       return {
-        message: readString(record.message),
+        message: agentStringOrEmpty(record.message),
         code: readOptionalString(record.code),
+        ...(localizedMessage ? { localizedMessage } : {}),
       };
     },
   ],
@@ -72,14 +76,6 @@ function shouldPersistRunEvent(envelope: AgentEventEnvelope): boolean {
 
   const spec = getAgentEventSpec(envelope.kind);
   return RunEventHistoryPhases.has(spec.phase);
-}
-
-function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function readString(value: unknown): string {
-  return typeof value === "string" ? value : "";
 }
 
 function readOptionalString(value: unknown): string | undefined {

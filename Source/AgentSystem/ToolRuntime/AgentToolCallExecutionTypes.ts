@@ -1,5 +1,8 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import type { AgentToolTokenBudget } from "../Text/AgentTurnTokenBudget.js";
+import type { AgentToolAccessGrant } from "./AgentToolAccessGrant.js";
+import type { AgentToolExposureState } from "./AgentToolExposureState.js";
 
 export type AgentToolCallExecutionResult =
   | {
@@ -23,14 +26,17 @@ export interface AgentToolCallExecutionContext {
   requestId?: string;
   step?: number;
   onEvent?: AgentEventSink;
-  loadedToolNames?: readonly string[];
+  toolAccessGrant: AgentToolAccessGrant;
+  toolExposure?: AgentToolExposureState;
   batchId?: string;
   signal?: AbortSignal;
+  tokenBudget?: AgentToolTokenBudget;
 }
 
 export interface AgentToolCallExecutionRequest {
   name: string;
   arguments?: Record<string, unknown>;
+  expectedContractDigest?: string | null;
   callId?: string;
   index?: number;
 }

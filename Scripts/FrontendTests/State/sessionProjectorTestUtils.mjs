@@ -20,6 +20,8 @@ export function createTestState() {
     historyStepBuffers: {},
     historyEventRunIds: {},
     historyActiveRequestIds: {},
+    processedEventIds: {},
+    processedEventIdOrder: [],
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
@@ -29,7 +31,6 @@ export function createTestState() {
     selectedModelProviderId: null,
     defaultModelProviderId: null,
     selectedModelProviderIdsBySession: {},
-    pluginConfigs: [],
     presets: [],
     activePresetName: null,
     presetsEnabled: true,
@@ -62,6 +63,7 @@ export function createTestState() {
 
 export function createEvent(kind, data, overrides = {}) {
   return {
+    eventId: overrides.eventId,
     channel: "agent.event",
     kind,
     layer: overrides.layer ?? "progress",

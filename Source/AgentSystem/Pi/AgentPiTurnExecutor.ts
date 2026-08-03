@@ -1,21 +1,15 @@
 import { createModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
-import type { AgentLoopCommand, AgentLoopCommandResult } from "../Loop/AgentLoopStateTypes.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import { AgentRunActivities } from "../Events/AgentRunEventTypes.js";
 import { AgentRunActivityReporter } from "../Events/AgentRunActivityReporter.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
-import { createToolEvidenceMemoryEntries } from "../Memory/AgentPlannerMemory.js";
-import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import type { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
-import type { AgentOpenAiTranscriptMessage } from "../Conversation/AgentOpenAiTranscript.js";
-import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { buildAnswerTrace } from "../Runtime/AgentStepTrace.js";
 import { AgentPiRunCollector } from "./AgentPiRunCollector.js";
-import { AgentPiOpenAiTranscriptProjector } from "./AgentPiOpenAiTranscriptProjector.js";
-import type { AgentPiRuntimeService, AgentPiSessionResult } from "./AgentPiSubstrate.js";
+import { AgentPiConversationProjector } from "./AgentPiConversationProjector.js";
+import type { AgentPiRuntimeService, AgentPiSessionResult } from "./AgentPiRuntimeTypes.js";
 import type { AgentPiActiveSessionRegistry } from "./AgentPiActiveSessionRegistry.js";
-import { withPiProxyRuntimeContext } from "../PiProxy/AgentPiProxyRuntimeContext.js";
-import { AgentPiPreparedActionLease } from "../PiProxy/AgentPiPreparedActionLease.js";
+import type { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntime.js";
+import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
 import {
   AgentModelUsageLedger,
   AgentModelUsageSources,
@@ -26,19 +20,27 @@ import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes
 import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic, type AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 import { runAgentPiGuardedPhase } from "./AgentPiTurnGuard.js";
+import { AgentPiToolPlanCoordinator } from "../PiShared/AgentPiToolPlanCoordinator.js";
+import { projectAgentPiPlanningSkills } from "../PiShared/AgentPiPlanningTypes.js";
+import { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
+import { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
+import type { AgentPiTurnRequest, AgentPiTurnResult } from "./AgentPiTurnTypes.js";
+
+type AgentPiTurnRuntimeService = Pick<AgentPiRuntimeService, "model" | "leaseTurn">;
 
 export interface AgentPiTurnRuntimePort {
   services: {
-    pi: AgentPiRuntimeService;
+    pi: AgentPiTurnRuntimeService;
     piSessions: AgentPiActiveSessionRegistry;
+    retrieval: Pick<AgentToolSearchRuntime, "afterToolResults">;
   };
   modelProviderConfig: ResolvedAgentModelProviderConfig;
   agentLoopConfig: Pick<ResolvedAgentLoopConfig, "PiTurnLeaseTimeoutMs">;
   tokenEstimator: {
     estimate(text: string): { tokenCount: number };
   };
-  conversationProjector: Pick<AgentConversationProjector, "projectOpenAiTranscript">;
   piDiagnostics?: AgentPiDiagnosticSink;
+  piTurnContexts: AgentPiTurnContextStore;
 }
 
 export interface AgentPiTurnExecutorOptions {
@@ -64,24 +66,11 @@ const PiTurnPhases = {
 } as const;
 
 export class AgentPiTurnExecutor {
-  private readonly conversation = new AgentPiOpenAiTranscriptProjector({
-    onIssue: (issue) => {
-      void emitAgentPiDiagnostic(this.options.runtime.piDiagnostics, {
-        context: { requestId: issue.requestId },
-        source: AgentPiDiagnosticSources.Session,
-        name: issue.name,
-        details: issue,
-      });
-    },
-  });
+  private readonly conversation = new AgentPiConversationProjector();
 
   constructor(private readonly options: AgentPiTurnExecutorOptions) {}
 
-  async run(
-    command: Extract<AgentLoopCommand, { kind: "run_pi_turn" }>,
-    onEvent?: AgentEventSink,
-    signal?: AbortSignal,
-  ): Promise<AgentLoopCommandResult> {
+  async run(command: AgentPiTurnRequest, onEvent?: AgentEventSink, signal?: AbortSignal): Promise<AgentPiTurnResult> {
     const model = this.options.runtime.services.pi.model();
     const activities = new AgentRunActivityReporter({
       sessionId: command.sessionId,
@@ -98,7 +87,13 @@ export class AgentPiTurnExecutor {
       }),
     );
     const usageLedger = activeAgentModelUsageLedger() ?? new AgentModelUsageLedger();
-    return withPiProxyRuntimeContext(
+    const toolExposure = new AgentToolExposureState(command.toolAccessGrant);
+    const tokenBudget = new AgentTurnTokenBudget({
+      model: model.id,
+      contextWindowTokens: model.contextWindow,
+      outputReserveTokens: model.maxTokens,
+    });
+    return this.options.runtime.piTurnContexts.withContext(
       {
         sessionId: command.sessionId,
         requestId: command.requestId,
@@ -106,13 +101,14 @@ export class AgentPiTurnExecutor {
         onEvent,
         diagnostics: this.options.runtime.piDiagnostics,
         rootCommand: command.rootCommand,
-        interactionRoute: command.interactionRoute,
-        turnUnderstanding: command.turnUnderstanding,
-        activeSkills: [...command.activeSkills],
+        toolAccessGrant: command.toolAccessGrant,
+        toolExposure,
+        activeSkills: projectAgentPiPlanningSkills(command.activeSkills),
         usageLedger,
-        preparedAction: new AgentPiPreparedActionLease(command.initialAction),
+        toolPlan: new AgentPiToolPlanCoordinator(),
+        tokenBudget,
       },
-      (piProxyRuntimeContextId) => {
+      (piTurnContextId) => {
         const collector = new AgentPiRunCollector({
           sessionId: command.sessionId,
           requestId: command.requestId,
@@ -120,15 +116,18 @@ export class AgentPiTurnExecutor {
           onEvent,
           diagnostics: this.options.runtime.piDiagnostics,
           streamModelDeltas: true,
-          piProxyRuntimeContextId,
+          piTurnContextId,
+          turnContexts: this.options.runtime.piTurnContexts,
           activityReporter: activities,
         });
         return this.runWithContext(
           command,
           collector,
           projected,
-          piProxyRuntimeContextId,
+          piTurnContextId,
           usageLedger,
+          toolExposure,
+          tokenBudget,
           activities,
           signal,
           onEvent,
@@ -138,15 +137,17 @@ export class AgentPiTurnExecutor {
   }
 
   private async runWithContext(
-    command: Extract<AgentLoopCommand, { kind: "run_pi_turn" }>,
+    command: AgentPiTurnRequest,
     collector: AgentPiRunCollector,
-    projected: ReturnType<AgentPiOpenAiTranscriptProjector["project"]>,
-    piProxyRuntimeContextId: string,
+    projected: ReturnType<AgentPiConversationProjector["project"]>,
+    piTurnContextId: string,
     usageLedger: AgentModelUsageLedger,
+    toolExposure: AgentToolExposureState,
+    tokenBudget: AgentTurnTokenBudget,
     activities: AgentRunActivityReporter,
     signal?: AbortSignal,
     onEvent?: AgentEventSink,
-  ): Promise<AgentLoopCommandResult> {
+  ): Promise<AgentPiTurnResult> {
     let session: AgentPiSessionResult["session"] | undefined;
     let unsubscribe: (() => void) | undefined;
     let unregisterActiveSession: (() => void) | undefined;
@@ -177,47 +178,46 @@ export class AgentPiTurnExecutor {
               step: command.step,
               input: command.input,
               systemPrompt: command.prompt,
-              conversationEntries: command.conversationEntries,
               visibleToolNames: command.loadedToolNames,
+              toolAccessGrant: command.toolAccessGrant,
+              toolExposure,
               onEvent,
               signal,
-              piProxyRuntimeContextId,
+              piTurnContextId,
               activeSkills: command.activeSkills,
               rootCommand: command.rootCommand,
-              turnUnderstanding: command.turnUnderstanding,
+              tokenBudget,
             }),
           sessionLeaseTimeoutMs,
           signal,
         ),
       );
-      session = sessionResult.session;
+      const activeSession = sessionResult.session;
+      session = activeSession;
       unregisterActiveSession = command.sessionId
         ? this.options.runtime.services.piSessions.register({
             sessionId: command.sessionId,
             requestId: command.requestId,
             step: command.step,
-            session,
+            session: activeSession,
           })
         : undefined;
       await this.emitDiagnostic(command, PiTurnTraceEvents.SessionLeaseCompleted, {
         piSessionId: sessionResult.piSessionId,
         historyMigrationRequired: sessionResult.historyMigrationRequired,
-        activeTools: readSessionActiveToolNames(session),
+        activeTools: readSessionActiveToolNames(activeSession),
       });
 
-      unsubscribe = session.subscribe((event) => collector.collect(event));
+      unsubscribe = activeSession.subscribe((event) => collector.collect(event));
       throwIfAborted(signal);
       if (sessionResult.historyMigrationRequired) {
-        await activities.track(AgentRunActivities.SynchronizingContext, () => session!.setHistory(projected.history));
+        await activities.track(AgentRunActivities.SynchronizingContext, () =>
+          activeSession.setHistory(projected.history),
+        );
       }
 
-      const piBranchBoundaryId = await session.markTurnBoundary(command.requestId);
+      const piBranchBoundaryId = await activeSession.markTurnBoundary(command.requestId);
       await command.onPiBranchBoundary?.(piBranchBoundaryId);
-
-      const compactIfNeeded = session.compactIfNeeded?.bind(session);
-      if (compactIfNeeded) {
-        await activities.track(AgentRunActivities.EvaluatingContext, () => compactIfNeeded(signal));
-      }
 
       await this.emitDiagnostic(command, PiTurnTraceEvents.PromptStarted, {
         inputChars: projected.input.length,
@@ -227,9 +227,9 @@ export class AgentPiTurnExecutor {
           phase: PiTurnPhases.Prompt,
           timeoutMs: turnTimeoutMs,
           signal,
-          abort: () => session?.abort().catch(() => undefined),
+          abort: () => activeSession.abort().catch(() => undefined),
           run: () =>
-            session!.prompt(projected.input, {
+            activeSession.prompt(projected.input, {
               expandPromptTemplates: false,
               source: "extension",
             }),
@@ -250,46 +250,37 @@ export class AgentPiTurnExecutor {
       await this.emitDiagnostic(command, PiTurnTraceEvents.CollectorDrainCompleted);
       throwIfAborted(signal);
 
-      const responseText = session.getLastAssistantText() ?? "";
+      const responseText = activeSession.getLastAssistantText() ?? "";
       const runtimeProjection = collector.snapshot();
+      this.options.runtime.services.retrieval.afterToolResults({
+        requestId: command.requestId,
+        userInput: command.input,
+        sessionId: command.sessionId,
+        loadedTools: command.loadedToolNames,
+        execution: { value: [...runtimeProjection.executedTools] },
+        activeSkills: command.activeSkills,
+      });
       const modelProvider = createModelProviderMetadata(this.options.runtime.modelProviderConfig);
       const usage =
         usageLedger.aggregate() ??
         createLocalTurnUsage(this.options.runtime.tokenEstimator, command.prompt, responseText);
-      const conversationEntries = this.buildConversationEntries(
-        command,
-        responseText,
-        runtimeProjection.executedTools,
-        runtimeProjection.openAiMessages,
-      );
       await this.emitDiagnostic(command, PiTurnTraceEvents.TurnCompleted, {
         responseChars: responseText.length,
         toolCalls: runtimeProjection.executedTools.length,
       });
 
       return {
-        kind: "succeeded",
-        output: {
-          kind: "pi_turn_completed",
-          requestId: command.requestId,
-          step: command.step,
-          responseText,
-          modelProvider,
-          usage,
-          conversationEntries,
-          messages: [
-            ...command.messages,
-            {
-              role: "assistant",
-              content: responseText,
-            },
-          ],
-          stepTraces: [
-            ...runtimeProjection.traces,
-            buildAnswerTrace(command.step, runtimeProjection.traces.length, "final_answer"),
-          ],
-          executedTools: runtimeProjection.executedTools,
-        },
+        requestId: command.requestId,
+        step: command.step,
+        responseText,
+        modelProvider,
+        usage,
+        conversationEntries: [],
+        stepTraces: [
+          ...runtimeProjection.traces,
+          buildAnswerTrace(command.step, runtimeProjection.traces.length, "final_answer"),
+        ],
+        executedTools: runtimeProjection.executedTools,
       };
     } catch (error) {
       await this.emitDiagnostic(command, PiTurnTraceEvents.TurnFailed, errorPayload(error));
@@ -328,11 +319,7 @@ export class AgentPiTurnExecutor {
     }
   }
 
-  private async emitDiagnostic(
-    command: Extract<AgentLoopCommand, { kind: "run_pi_turn" }>,
-    name: string,
-    details?: unknown,
-  ): Promise<void> {
+  private async emitDiagnostic(command: AgentPiTurnRequest, name: string, details?: unknown): Promise<void> {
     await emitAgentPiDiagnostic(this.options.runtime.piDiagnostics, {
       context: {
         sessionId: command.sessionId,
@@ -343,48 +330,6 @@ export class AgentPiTurnExecutor {
       name,
       details,
     });
-  }
-
-  private buildConversationEntries(
-    command: Extract<AgentLoopCommand, { kind: "run_pi_turn" }>,
-    _responseText: string,
-    results: readonly ExecutedToolCallResult[],
-    openAiMessages: readonly AgentOpenAiTranscriptMessage[],
-  ): AgentConversationEntry[] {
-    const timestamp = new Date().toISOString();
-    return [
-      ...this.buildOpenAiTranscriptEntries(command, openAiMessages, timestamp),
-      ...createToolEvidenceMemoryEntries({
-        requestId: command.requestId,
-        step: command.step,
-        results,
-        timestamp,
-      }),
-    ];
-  }
-
-  private buildOpenAiTranscriptEntries(
-    command: Extract<AgentLoopCommand, { kind: "run_pi_turn" }>,
-    openAiMessages: readonly AgentOpenAiTranscriptMessage[],
-    timestamp = new Date().toISOString(),
-  ): AgentConversationEntry[] {
-    if (openAiMessages.length === 0) {
-      return [];
-    }
-
-    return [
-      this.options.runtime.conversationProjector.projectOpenAiTranscript(
-        command.requestId,
-        [
-          {
-            role: "user",
-            content: command.input,
-          },
-          ...openAiMessages,
-        ],
-        timestamp,
-      ),
-    ];
   }
 }
 

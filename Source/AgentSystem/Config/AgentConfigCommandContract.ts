@@ -1,5 +1,8 @@
 import { AgentConfigCommandSchemaCatalog, type AgentConfigCommandSchemaId } from "./AgentConfigCommandSchemaCatalog.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { isAgentUnknownRecord as isRecord } from "../Core/AgentUnknownValue.js";
+
+export const AgentConfigCommandContractFormatVersion = 1 as const;
 
 export interface AgentConfigMergePatchContract {
   readonly schema: AgentConfigCommandSchemaId;
@@ -8,12 +11,12 @@ export interface AgentConfigMergePatchContract {
 }
 
 export interface AgentConfigCommandContractDefinition {
-  readonly formatVersion: 1;
+  readonly formatVersion: typeof AgentConfigCommandContractFormatVersion;
   readonly operations: Readonly<Record<string, AgentConfigMergePatchContract>>;
 }
 
 export interface AgentConfigCommandRuntimeContract {
-  readonly formatVersion: 1;
+  readonly formatVersion: typeof AgentConfigCommandContractFormatVersion;
   readonly id: string;
   readonly version: number;
   readonly name: string;
@@ -24,7 +27,11 @@ export interface AgentConfigCommandRuntimeContract {
 export function loadAgentConfigCommandRuntimeContract(value: unknown): AgentConfigCommandRuntimeContract {
   if (!isRecord(value)) throw new TypeError("Configuration command runtime contract must be an object.");
   assertKnownKeys(value, ["formatVersion", "id", "version", "name", "definitionChecksum", "definition"]);
-  if (value.formatVersion !== 1) throw new Error("Configuration command runtime contract formatVersion must be 1.");
+  if (value.formatVersion !== AgentConfigCommandContractFormatVersion) {
+    throw new Error(
+      `Configuration command runtime contract formatVersion must be ${AgentConfigCommandContractFormatVersion}.`,
+    );
+  }
   const id = readIdentifier(value.id, "contract id");
   const version = readPositiveInteger(value.version, "contract version");
   const name = readIdentifier(value.name, "contract version name");
@@ -34,13 +41,24 @@ export function loadAgentConfigCommandRuntimeContract(value: unknown): AgentConf
   if (actualChecksum !== definitionChecksum) {
     throw new Error(`Configuration command contract ${id} v${version} definition checksum mismatch.`);
   }
-  return Object.freeze({ formatVersion: 1, id, version, name, definitionChecksum, definition });
+  return Object.freeze({
+    formatVersion: AgentConfigCommandContractFormatVersion,
+    id,
+    version,
+    name,
+    definitionChecksum,
+    definition,
+  });
 }
 
 export function loadAgentConfigCommandDefinition(value: unknown): AgentConfigCommandContractDefinition {
   if (!isRecord(value)) throw new TypeError("Configuration command definition must be an object.");
   assertKnownKeys(value, ["formatVersion", "operations"]);
-  if (value.formatVersion !== 1) throw new Error("Configuration command definition formatVersion must be 1.");
+  if (value.formatVersion !== AgentConfigCommandContractFormatVersion) {
+    throw new Error(
+      `Configuration command definition formatVersion must be ${AgentConfigCommandContractFormatVersion}.`,
+    );
+  }
   if (!isRecord(value.operations) || Object.keys(value.operations).length === 0) {
     throw new Error("Configuration command definition operations must be a non-empty object.");
   }
@@ -50,7 +68,10 @@ export function loadAgentConfigCommandDefinition(value: unknown): AgentConfigCom
       readMergePatchContract(contract, operation),
     ]),
   );
-  return Object.freeze({ formatVersion: 1, operations: Object.freeze(operations) });
+  return Object.freeze({
+    formatVersion: AgentConfigCommandContractFormatVersion,
+    operations: Object.freeze(operations),
+  });
 }
 
 export function checksumAgentConfigCommandDefinition(definition: AgentConfigCommandContractDefinition): string {
@@ -112,8 +133,4 @@ function assertKnownKeys(value: object, knownKeys: readonly string[]): void {
   const unsupported = Object.keys(value).filter((key) => !known.has(key));
   if (unsupported.length > 0)
     throw new Error(`Unsupported configuration command contract keys: ${unsupported.join(", ")}.`);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

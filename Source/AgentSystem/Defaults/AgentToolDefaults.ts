@@ -97,7 +97,15 @@ export function resolveToolLearningConfig(config: AgentSystemConfig): ResolvedAg
 
 export function resolveMemoryLearningConfig(config: AgentSystemConfig): ResolvedAgentMemoryLearningConfig {
   const defaults = resolveAgentDefaults(config);
+  const provider = resolveModelProviderConfig(config, defaults.MemoryLearning.Client.ModelProviderId);
   return {
+    ...defaults.MemoryLearning,
+    ...config.MemoryLearning,
+    Client: resolveActionPlannerClientConfig({
+      config,
+      baseProvider: provider,
+      configuredClient: mergeActionPlannerClientConfig(defaults.MemoryLearning.Client, config.MemoryLearning?.Client),
+    }),
     Promotion: {
       ...defaults.MemoryLearning.Promotion,
       ...config.MemoryLearning?.Promotion,

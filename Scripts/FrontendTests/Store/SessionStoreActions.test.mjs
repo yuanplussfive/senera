@@ -23,6 +23,8 @@ beforeEach(() => {
     historyStepBuffers: {},
     historyEventRunIds: {},
     historyActiveRequestIds: {},
+    processedEventIds: {},
+    processedEventIdOrder: [],
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
@@ -30,6 +32,59 @@ beforeEach(() => {
     selectedModelProviderId: null,
     defaultModelProviderId: null,
     selectedModelProviderIdsBySession: {},
+    systemTools: [],
+    systemExtensions: [],
+    mcpServers: [],
+    toolSettingsSynced: { systemTools: false, mcpServers: false },
+  });
+});
+
+test("ingest projects tool settings snapshots without credential values", () => {
+  const store = useStore.getState();
+  store.ingest({
+    channel: "agent.event",
+    kind: EventKinds.SystemToolSnapshot,
+    layer: "snapshot",
+    phase: "config",
+    sequence: 1,
+    timestamp: "2026-08-01T00:00:00.000Z",
+    data: {
+      extensions: [],
+      tools: [{ name: "ShellCommandTool", title: "Shell", description: "", extension: "core", loading: "always" }],
+    },
+  });
+  store.ingest({
+    channel: "agent.event",
+    kind: EventKinds.McpServerSnapshot,
+    layer: "snapshot",
+    phase: "config",
+    sequence: 2,
+    timestamp: "2026-08-01T00:00:01.000Z",
+    data: {
+      servers: [
+        {
+          id: "web-research",
+          packageName: "web-research",
+          source: "bundled",
+          transport: "stdio",
+          status: "configured",
+          credentials: [
+            { name: "TAVILY_API_KEY", required: true, configured: true, source: "vault", updatedAt: "2026-08-01" },
+          ],
+        },
+      ],
+    },
+  });
+
+  expect(useStore.getState()).toMatchObject({
+    toolSettingsSynced: { systemTools: true, mcpServers: true },
+    systemTools: [{ name: "ShellCommandTool" }],
+    mcpServers: [
+      {
+        id: "web-research",
+        credentials: [{ name: "TAVILY_API_KEY", configured: true, source: "vault" }],
+      },
+    ],
   });
 });
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import type {
   AgentToolLearningTermAggregate,
   AgentToolSearchEpisode,
@@ -21,7 +22,7 @@ const LearnedKeywordColumnSchema = z.array(
     })
     .strict(),
 );
-const ToolCallColumnSchema = z.array(
+export const ToolCallColumnSchema = z.array(
   z
     .object({
       toolName: z.string().min(1),
@@ -35,11 +36,14 @@ const ToolCallColumnSchema = z.array(
       hasWorkspaceChanges: z.boolean(),
       errorCode: z.string().default(""),
       error: z.string(),
+      failureKind: z.string().optional(),
+      failureSource: z.string().optional(),
+      retryable: z.boolean().optional(),
       score: z.number(),
     })
     .strict(),
 );
-const FinalOutcomeColumnSchema = z
+export const FinalOutcomeColumnSchema = z
   .object({
     toolExecutionSucceeded: z.boolean(),
     producedEvidence: z.boolean(),
@@ -137,5 +141,5 @@ function stringifyJsonColumn<T>(schema: z.ZodType<T>, value: T): string {
 }
 
 function parseJsonColumn<T>(schema: z.ZodType<T>, value: string): T {
-  return schema.parse(JSON.parse(value) as unknown);
+  return schema.parse(parseJsonText(value, "Tool search memory column"));
 }

@@ -2,17 +2,18 @@ import type { AgentToolResult, AgentToolUpdateCallback, AgentTool } from "@earen
 import type { TSchema } from "typebox";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
-import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import type { AgentToolTokenBudget } from "../Text/AgentTurnTokenBudget.js";
+import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
+import type { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
+import type { AgentPiToolDetails } from "./AgentPiToolResultDetails.js";
 
-export type AgentPiToolDetails = {
-  senera: {
-    toolName: string;
-    artifactUri?: string;
-    callId?: string;
-  };
-};
+export {
+  AgentPiToolResultStatuses,
+  type AgentPiToolResultStatus,
+  type AgentPiToolDetails,
+} from "./AgentPiToolResultDetails.js";
 
 export type AgentPiToolSchema = TSchema & Record<string, unknown>;
 export type AgentPiToolDefinition = AgentTool<AgentPiToolSchema, AgentPiToolDetails>;
@@ -25,11 +26,13 @@ export interface AgentPiToolProjectionContext {
   step?: number;
   onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
-  piProxyRuntimeContextId?: string;
+  toolAccessGrant?: AgentToolAccessGrant;
+  toolExposure?: AgentToolExposureState;
+  piTurnContextId?: string;
   signal?: AbortSignal;
   activeSkills?: readonly AgentActivatedSkill[];
   rootCommand?: AgentRootCommand;
-  turnUnderstanding?: TurnUnderstanding;
+  tokenBudget?: AgentToolTokenBudget;
 }
 
 export interface AgentPiToolExecutionInput {

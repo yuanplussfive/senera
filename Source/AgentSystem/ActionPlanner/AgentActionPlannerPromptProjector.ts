@@ -1,7 +1,21 @@
 import { z } from "zod";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
-import { compactObject } from "./AgentActionPlannerProjectionUtils.js";
 import { decodePlannerTimelinePayload } from "./AgentPlannerTimelinePayload.js";
+import {
+  buildCompactionSummarySystemMessages,
+  extractPlannerCompactionSummary,
+} from "./AgentActionPlannerCompactionSummaryInjector.js";
+import { formatTimelineTurnContent, type TimelineTurnInput } from "./AgentPlannerTimelineBlockRegistry.js";
+import { DefaultAgentPlannerContextProjectorRegistry } from "./AgentPlannerContextProjectorRegistry.js";
+import {
+  promptXmlChildren,
+  promptXmlJson,
+  promptXmlNode,
+  promptXmlText,
+  serializePromptXml,
+  type AgentPromptXmlNode,
+} from "./AgentPromptXml.js";
 
 export interface ProjectedActionPlannerPrompt {
   systemPrompt: string;
@@ -12,8 +26,6 @@ const PlannerPromptKeys = {
   Context: "context",
   Directive: "directive",
   Timeline: "timeline",
-  PlannerInput: "plannerInput",
-  Turn: "turn",
 } as const;
 
 const PlannerPromptEnvelopeSchema = z
@@ -86,24 +98,19 @@ function projectPlannerConversationMessages(
   const envelope = readPlannerPromptEnvelope(final.content);
   const context = envelope[PlannerPromptKeys.Context];
   const timeline = readPlannerTimeline(context[PlannerPromptKeys.Timeline]);
-  const plannerInput = {
-    ...omitRecordKeys(context, [PlannerPromptKeys.Timeline]),
-    [PlannerPromptKeys.Directive]: envelope[PlannerPromptKeys.Directive],
-  };
 
-  return [
-    ...timeline.map(projectTimelineTurnMessage),
-    {
-      role: "user",
-      content: serializePlannerMessage({
-        [PlannerPromptKeys.PlannerInput]: plannerInput,
-      }),
-    },
-  ];
+  const { summaryText, sanitizedContext } = extractPlannerCompactionSummary(context);
+  const compactionSummaryMessages = buildCompactionSummarySystemMessages(summaryText);
+
+  const contextWithoutTimeline = omitRecordKeys(sanitizedContext, [PlannerPromptKeys.Timeline]);
+  const plannerInputMessage = buildPlannerInputMessage(contextWithoutTimeline, envelope[PlannerPromptKeys.Directive]);
+
+  return [...compactionSummaryMessages, ...timeline.map(projectTimelineTurnMessage), plannerInputMessage];
 }
 
 function readPlannerPromptEnvelope(value: string): z.infer<typeof PlannerPromptEnvelopeSchema> {
-  const parsed = PlannerPromptEnvelopeSchema.safeParse(JSON.parse(value) as unknown);
+  const raw = parseJsonText(value, "Action planner prompt envelope");
+  const parsed = PlannerPromptEnvelopeSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Invalid action planner prompt envelope: ${parsed.error.message}`);
   }
@@ -123,25 +130,40 @@ function readPlannerTimeline(value: unknown): PlannerTimelineTurnRecord[] {
 }
 
 function projectTimelineTurnMessage(turn: PlannerTimelineTurnRecord): AgentLanguageModelMessage {
+  const input: TimelineTurnInput = {
+    index: turn.index,
+    role: turn.role,
+    kind: turn.kind,
+    step: turn.step,
+    content: turn.content,
+    payload: decodePlannerTimelinePayload(turn.payloadJson ?? undefined),
+    evidenceUris: turn.evidenceUris,
+    artifactUris: turn.artifactUris,
+  };
   return {
     role: turn.role,
-    content: serializePlannerMessage({
-      [PlannerPromptKeys.Turn]: compactObject({
-        index: turn.index,
-        role: turn.role,
-        kind: turn.kind,
-        step: turn.step,
-        content: turn.payloadJson ? undefined : turn.content,
-        payload: decodePlannerTimelinePayload(turn.payloadJson ?? undefined),
-        evidenceUris: turn.evidenceUris,
-        artifactUris: turn.artifactUris,
-      }),
-    }),
+    content: formatTimelineTurnContent(input),
   };
 }
 
-function serializePlannerMessage(value: unknown): string {
-  return JSON.stringify(value);
+function buildPlannerInputMessage(context: Record<string, unknown>, directive: unknown): AgentLanguageModelMessage {
+  const sections = [...projectDirective(directive), ...DefaultAgentPlannerContextProjectorRegistry.project(context)];
+
+  return {
+    role: "user",
+    content: serializePromptXml(promptXmlNode("planner_input", promptXmlChildren(sections))),
+  };
+}
+
+function projectDirective(directive: unknown): readonly AgentPromptXmlNode[] {
+  if (typeof directive === "string") {
+    const value = directive.trim();
+    return value ? [promptXmlNode("directive", promptXmlText(value))] : [];
+  }
+  if (directive !== undefined && directive !== null) {
+    return [promptXmlNode("directive", promptXmlJson(directive))];
+  }
+  return [];
 }
 
 function omitRecordKeys(record: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {

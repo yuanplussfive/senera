@@ -1,29 +1,37 @@
-# ToolSearch 模块导览
+# ToolSearch
 
-ToolSearch 模块负责工具发现、工具排序、工具使用记忆和工具学习。
+ToolSearch indexes registered Tools and Skills, ranks relevant candidates, controls progressive Tool disclosure, and records Tool/Skill routing experience. Conversation facts remain owned by `Memory`.
 
-## 阅读顺序
+Bootstrap System Tools are always merged from the registry and do not enter the search index. Dynamic MCP tools and Skills are projected into one capability document model and one `AgentCapabilitySearchIndex`. Search documents are derived from descriptions, authoritative contracts, capabilities, tags, examples, and discovery sources; the index never scans extension directories or contains a hard-coded capability list.
 
-1. `AgentToolSearchRuntime.ts`：系统工具搜索入口，负责把请求转成候选工具集合。
-2. `AgentToolSearchIndex.ts`：工具索引入口，负责构建文档并合并多路排序。
-3. `AgentToolSearchDocumentBuilder.ts`：从插件契约、能力、标签和参数生成搜索文档。
-4. `AgentToolSearchRankPipeline.ts` / `AgentToolSearchReranker.ts`：BM25、精确匹配、来源偏好、记忆信号和重排序融合。
-5. `AgentToolSearchMemory.ts`：工具使用记忆入口，负责记录 episode、查询记忆证据和返回工具使用模式。
-6. `AgentToolSearchMemoryTypes.ts` / `AgentToolSearchMemoryProjection.ts`：记忆契约和学习聚合算法。
-7. `AgentToolSearchMemoryStore.ts`：存储兼容出口和数据库路径解析。
-8. `AgentToolSearchSqliteMemoryStore.ts` / `AgentToolSearchInMemoryStore.ts`：SQLite 和内存存储实现。
-9. `AgentToolSearchMemoryRows.ts` / `AgentToolSearchMemoryCodec.ts` / `AgentToolSearchMemorySqlSchema.ts` / `AgentToolSearchMemorySqlStatements.ts`：行类型、JSON 列编解码、schema 和 SQL statements。
-10. `AgentToolSearchUsageMemory.ts`：把一次运行中的工具调用结果投影成可学习 episode。
-11. `AgentToolLearningRuntime.ts` / `AgentToolLearningSchema.ts`：工具学习模型调用和结构化结果校验。
-12. `AgentToolSearchToolProtocol.ts` / `AgentToolSearchResultProjector.ts`：系统工具参数和返回结果投影。
+Retrieval is hybrid by design. BM25 supplies exact and identifier-sensitive recall, `VectorModels.Embedding` supplies cross-language semantic recall, learned usage contributes revision-bound evidence, RRF merges rankers, the local feature reranker applies deterministic domain signals, MMR removes redundant candidates, and `VectorModels.Rerank` performs the final cross-encoder ordering over the small recalled set. Tool and Skill routing use the same lexical, embedding, document-cache, and remote-rerank services. An unavailable vector channel is observable but does not fail lexical retrieval; an aborted turn still propagates cancellation.
 
-## 扩展规则
+`ToolSearch.Embedding` owns only retrieval policy (`Enabled` and `ScoreThreshold`). Provider, model, dimensions, batching, input limits, timeout, and retry policy are owned exclusively by `VectorModels.Embedding`. The same separation applies to remote reranking: ToolSearch decides whether reranking participates, while `VectorModels.Rerank` owns transport configuration.
 
-- 新增工具搜索策略时优先扩展 rank pipeline，不直接改 runtime。
-- 工具学习只记录结构化 episode 和聚合结果，不写临时反馈概念。
-- 搜索文档字段来自插件契约和 manifest，不在 runtime 里硬编码工具名单。
-- 插件通过 `Discovery.Sources` 声明泛化来源；相同来源 ID 可以由多个插件共同贡献，但标题和说明必须一致。
-- 工具默认继承插件来源，也可以通过 `Search.SourceIds` 选择子集；引用未声明来源时拒绝加载 manifest。
-- `preferredSources` 的枚举由当前已加载插件目录生成，只提供软排序信号，不过滤其他相关候选。
-- 发现层不执行副作用安全过滤；审批、OPA 和执行环境在实际工具调用时处理风险。
-- 新增工具搜索行为优先扩展工具签名映射、Pi 工具桥接或插件 artifact 核心验证，避免新增零散专项脚本。
+Learning is an observable side path. Every episode reaches `learned`, `skipped`, or `failed` without changing the main task result. Skill experience is tied to the active Skill revision, and ambiguous multi-Skill attribution is skipped rather than copied to every active Skill. Static descriptions remain authoritative; learned triggers only improve recall and ordering.
+
+Safety is enforced at execution time by approval, OPA, resource projection, and the selected execution environment. Search ranking must not duplicate those policies.
+
+## Turn retrieval contract
+
+Every user turn performs retrieval against the current input. A compatible session snapshot is only a warm cache: fresh semantic hits replace its dynamic candidates, while a zero-hit query retains the warm candidates so short follow-ups such as "continue" do not lose useful tools. Bootstrap tools are always merged from the registry.
+
+`AgentTurnPreparationService` activates Skills, merges their recommendations as soft ranking inputs, and creates the initial exposure from this retrieval result. It does not call a planner or synthesize another hidden query. During the Pi turn, the ToolSearch tool can issue additional explicit queries and progressively disclose more tools from the immutable authorization grant. Recommendations and preferred tools never filter unrelated authorized tools.
+
+## Cache identity and invalidation
+
+Capability indexes and embeddings are content-addressed, not revision-label-addressed. The catalog identity is a canonical hash of each document's stable ID, kind, declared revision, and complete `semanticText`. The embedding identity is a canonical hash of `(embedding model, document ID, SHA-256(semanticText))`. Changing only a description, example, capability, parameter summary, owner text, or embedding model therefore invalidates the affected vector even when a producer forgot to bump its revision string.
+
+The shared embedding cache is a bounded `AgentLruCache`. Its capacity scales with the active catalog, accesses refresh recency, and catalog refresh removes identities that are no longer reachable. Query vectors are not mixed into the document cache. A failed embedding channel remains observable and falls back to lexical retrieval; cancellation is never converted into fallback success.
+
+`ToolSearchTool` returns a catalog revision and progressively disclosed candidates:
+
+| Level       | Model-facing data                                 | Callable |
+| ----------- | ------------------------------------------------- | -------- |
+| `reference` | name, title, summary, source, relevance evidence  | no       |
+| `preview`   | reference fields, use cases, parameter summary    | no       |
+| `callable`  | preview fields plus registry-backed Tool exposure | yes      |
+
+The disclosure planner combines the retrieval relevance frontier with the live turn token budget. Only `callable` names are sent to `AgentToolExposureState`; the host then resolves the authoritative Schema from the registry. Search output can neither publish a Schema nor expand the immutable turn authorization grant. A precise follow-up search by Tool name can promote a reference or preview without starting a new conversation.
+
+MCP `notifications/tools/list_changed` is handled by the MCP SDK's negotiated list-change support. Refreshed declarations pass the same JSON Schema validation as startup discovery, replace one server owner transactionally, and invalidate the search index. Invalid updates leave the previous catalog installed.

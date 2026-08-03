@@ -1,104 +1,68 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { AgentHostCapabilityNames } from "../AgentDefaultHostCapabilities.js";
-import {
-  readArray,
-  readRecord,
-  readString,
-  stableStringify,
-  uniqueStrings,
-} from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
-import { type AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import { AgentPlannerMemoryProjector } from "../Memory/AgentPlannerMemory.js";
+import { readAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import type { PlannerEvidenceMemoryItem } from "../BamlClient/baml_client/types.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import type { AgentPiArtifactReference } from "./AgentPiArtifactIndex.js";
+import { projectAgentPiArtifactReferences } from "./AgentPiArtifactIndex.js";
 import type { AgentPiToolProjectionContext } from "./AgentPiTypes.js";
+import {
+  AgentPiContextPolicyProtocol,
+  AgentPiContextPolicyCustomType,
+} from "../PiShared/AgentPiContextPolicyProtocol.js";
 
-export const AgentPiContextPolicyEnvelopeType = "senera.pi_context_policy.v1";
-export const AgentPiContextPolicyCustomType = "senera.pi_context_policy";
+export {
+  AgentPiContextPolicyProtocol,
+  AgentPiContextPolicyCustomType,
+} from "../PiShared/AgentPiContextPolicyProtocol.js";
+
+export interface AgentPiContextPolicyBudget {
+  readonly contextWindowTokens: number;
+  readonly outputReserveTokens: number;
+}
 
 export interface AgentPiContextPolicyFrame {
   requestId?: string;
   model: string;
   createdAt: string;
-  historicalEvidence: AgentPiContextEvidenceItem[];
   retrievalTools: AgentPiContextRetrievalTool[];
 }
 
 export interface AgentPiContextPolicyFrameInput {
   requestId?: string;
   model: string;
-  conversationEntries: readonly AgentConversationEntry[];
   registeredTools: readonly RegisteredTool[];
   visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"];
   createdAt?: string;
 }
 
-export interface AgentPiContextEvidenceItem {
-  evidenceUri: string;
-  kind: string;
-  label?: string;
-  display?: string;
-  locator?: string;
-  toolName?: string;
-  artifactUri?: string;
-  facts: AgentPiContextFactItem[];
-  artifactRefs: string[];
-  source: "history" | "current_tool_result";
-}
-
-export interface AgentPiContextFactItem {
-  name: string;
-  value: string;
-}
-
 export interface AgentPiContextRetrievalTool {
   toolName: string;
   capability: string;
-  summary?: string;
-  capabilityIds: string[];
-  inputs: string[];
-  outputs: string[];
-  evidenceKinds: string[];
 }
 
 interface AgentPiContextPolicyEnvelope {
-  type: typeof AgentPiContextPolicyEnvelopeType;
+  type: typeof AgentPiContextPolicyProtocol.type;
   authority: "runtime_context";
   requestId?: string;
   instruction: string;
-  evidence: AgentPiContextEvidenceItem[];
+  evidence: [];
   artifacts: AgentPiContextArtifactItem[];
   retrievalTools: AgentPiContextRetrievalTool[];
-  policy: {
-    evidence: string;
-    artifact: string;
-    memory: string;
-  };
   stats: {
-    historicalEvidence: number;
-    currentToolEvidence: number;
-    totalEvidence: number;
-    omittedEvidence: number;
-    artifacts: number;
+    archivedArtifacts: number;
+    alreadyVisibleArtifacts: number;
+    includedArtifacts: number;
+    omittedArtifacts: number;
     retrievalTools: number;
   };
 }
 
 interface AgentPiContextArtifactItem {
   artifactUri: string;
-  evidenceUris: string[];
+  toolNames: string[];
   refs: string[];
 }
-
-const ContextPolicyLimits = {
-  maxEvidenceItems: 24,
-  maxFactsPerEvidence: 8,
-  maxArtifactRefs: 12,
-  maxRetrievalTools: 8,
-  maxStringTokens: 200,
-  maxEnvelopeTokens: 6_000,
-} as const;
 
 const RetrievalCapabilities = new Set<string>([
   AgentHostCapabilityNames.ArtifactMemoryRead,
@@ -106,14 +70,13 @@ const RetrievalCapabilities = new Set<string>([
 ]);
 
 const RuntimeInstruction = [
-  "This message is Senera runtime context, not a user request.",
-  "Use the indexed evidence only as compact facts.",
-  "When exact artifact content, full evidence, or durable memory is required, call an available retrieval tool instead of guessing.",
-  "The latest ordinary user message remains the task to answer.",
+  "This message is a compact index of artifacts removed from the active Pi message history.",
+  "Use an artifact retrieval tool with an exact artifactUri when archived content is required.",
+  "Use memory retrieval to locate older omitted artifacts.",
+  "Current tool results remain authoritative and are not duplicated here.",
 ].join(" ");
 
 export class AgentPiContextPolicy {
-  private readonly memoryProjector = new AgentPlannerMemoryProjector();
   private readonly tokenProjector: AgentTokenProjector;
 
   constructor(private readonly model: string) {
@@ -125,333 +88,146 @@ export class AgentPiContextPolicy {
       requestId: input.requestId,
       model: input.model,
       createdAt: input.createdAt ?? new Date().toISOString(),
-      historicalEvidence: this.projectHistoricalEvidence(input),
-      retrievalTools: this.projectRetrievalTools(input),
+      retrievalTools: projectRetrievalTools(input),
     };
   }
 
-  apply(messages: readonly AgentMessage[], frame: AgentPiContextPolicyFrame): AgentMessage[] {
-    try {
-      const baseMessages = messages.filter((message) => !isContextPolicyMessage(message));
-      const currentEvidence = projectCurrentToolEvidence(baseMessages, this.tokenProjector);
-      const envelope = buildContextEnvelope(frame, currentEvidence);
-      if (!shouldInjectContextEnvelope(envelope)) {
-        return [...baseMessages];
-      }
+  apply(
+    messages: readonly AgentMessage[],
+    frame: AgentPiContextPolicyFrame,
+    archivedArtifacts: readonly AgentPiArtifactReference[],
+    budget: AgentPiContextPolicyBudget,
+  ): AgentMessage[] {
+    const baseMessages = messages.filter((message) => !isContextPolicyMessage(message));
+    const activeArtifactUris = new Set(
+      projectAgentPiArtifactReferences(baseMessages).map((reference) => reference.artifactUri),
+    );
+    const candidates = archivedArtifacts
+      .filter((reference) => !activeArtifactUris.has(reference.artifactUri))
+      .map(projectArchivedArtifact)
+      .reverse();
+    if (candidates.length === 0) return baseMessages;
 
-      return [createContextPolicyMessage(envelope, frame.createdAt, this.tokenProjector), ...baseMessages];
-    } catch {
-      return [...messages];
-    }
-  }
-
-  private projectHistoricalEvidence(input: AgentPiContextPolicyFrameInput): AgentPiContextEvidenceItem[] {
-    return this.memoryProjector
-      .projectEvidenceMemory(input.conversationEntries, {
-        excludeEvidenceRequestId: input.requestId,
-      })
-      .map((evidence) => projectPlannerEvidence(evidence, "history", this.tokenProjector))
-      .slice(-ContextPolicyLimits.maxEvidenceItems);
-  }
-
-  private projectRetrievalTools(input: AgentPiContextPolicyFrameInput): AgentPiContextRetrievalTool[] {
-    return input.registeredTools
-      .filter((tool) => isVisibleTool(tool, input.visibleToolNames))
-      .flatMap((tool) => projectRetrievalTool(tool, this.tokenProjector))
-      .slice(0, ContextPolicyLimits.maxRetrievalTools);
+    const tokenLimit = availableContextTokens(baseMessages, budget, this.tokenProjector);
+    const message = selectContextPolicyMessage({
+      frame,
+      candidates,
+      archivedArtifactCount: archivedArtifacts.length,
+      alreadyVisibleArtifactCount: archivedArtifacts.length - candidates.length,
+      tokenLimit,
+      tokenProjector: this.tokenProjector,
+    });
+    return message ? [message, ...baseMessages] : baseMessages;
   }
 }
 
 export function applyAgentPiContextPolicy(
   messages: readonly AgentMessage[],
   frame: AgentPiContextPolicyFrame | undefined,
+  archivedArtifacts: readonly AgentPiArtifactReference[],
+  budget: AgentPiContextPolicyBudget,
 ): AgentMessage[] {
-  return frame ? new AgentPiContextPolicy(frame.model).apply(messages, frame) : [...messages];
+  return frame
+    ? new AgentPiContextPolicy(frame.model).apply(messages, frame, archivedArtifacts, budget)
+    : [...messages];
 }
 
-function buildContextEnvelope(
-  frame: AgentPiContextPolicyFrame,
-  currentEvidence: readonly AgentPiContextEvidenceItem[],
-): AgentPiContextPolicyEnvelope {
-  const evidence = mergeEvidence([...frame.historicalEvidence, ...currentEvidence]).slice(
-    -ContextPolicyLimits.maxEvidenceItems,
-  );
-  const artifacts = projectArtifacts(evidence);
+function selectContextPolicyMessage(input: {
+  frame: AgentPiContextPolicyFrame;
+  candidates: readonly AgentPiContextArtifactItem[];
+  archivedArtifactCount: number;
+  alreadyVisibleArtifactCount: number;
+  tokenLimit: number;
+  tokenProjector: AgentTokenProjector;
+}): AgentMessage | undefined {
+  let lower = 0;
+  let upper = input.candidates.length;
+  let selected: AgentMessage | undefined;
+
+  while (lower <= upper) {
+    const count = Math.floor((lower + upper) / 2);
+    const message = createContextPolicyMessage(
+      buildContextEnvelope({
+        frame: input.frame,
+        artifacts: input.candidates.slice(0, count),
+        archivedArtifactCount: input.archivedArtifactCount,
+        alreadyVisibleArtifactCount: input.alreadyVisibleArtifactCount,
+        omittedArtifactCount: input.candidates.length - count,
+      }),
+      input.frame.createdAt,
+    );
+    if (input.tokenProjector.countJson(message) <= input.tokenLimit) {
+      if (count > 0) selected = message;
+      lower = count + 1;
+    } else {
+      upper = count - 1;
+    }
+  }
+
+  return selected;
+}
+
+function buildContextEnvelope(input: {
+  frame: AgentPiContextPolicyFrame;
+  artifacts: readonly AgentPiContextArtifactItem[];
+  archivedArtifactCount: number;
+  alreadyVisibleArtifactCount: number;
+  omittedArtifactCount: number;
+}): AgentPiContextPolicyEnvelope {
   return {
-    type: AgentPiContextPolicyEnvelopeType,
+    type: AgentPiContextPolicyProtocol.type,
     authority: "runtime_context",
-    requestId: frame.requestId,
+    requestId: input.frame.requestId,
     instruction: RuntimeInstruction,
-    evidence,
-    artifacts,
-    retrievalTools: frame.retrievalTools,
-    policy: {
-      evidence: "Evidence entries are compact projections; do not treat them as complete raw tool output.",
-      artifact: "Use an artifact retrieval tool when artifactUri/ref details are needed beyond the indexed facts.",
-      memory:
-        "Use a memory retrieval tool when durable user preferences, profile, knowledge, or older conversation state are needed.",
-    },
+    evidence: [],
+    artifacts: [...input.artifacts],
+    retrievalTools: input.frame.retrievalTools,
     stats: {
-      historicalEvidence: frame.historicalEvidence.length,
-      currentToolEvidence: currentEvidence.length,
-      totalEvidence: evidence.length,
-      omittedEvidence: 0,
-      artifacts: artifacts.length,
-      retrievalTools: frame.retrievalTools.length,
+      archivedArtifacts: input.archivedArtifactCount,
+      alreadyVisibleArtifacts: input.alreadyVisibleArtifactCount,
+      includedArtifacts: input.artifacts.length,
+      omittedArtifacts: input.omittedArtifactCount,
+      retrievalTools: input.frame.retrievalTools.length,
     },
   };
-}
-
-function shouldInjectContextEnvelope(envelope: AgentPiContextPolicyEnvelope): boolean {
-  return envelope.evidence.length > 0 || envelope.artifacts.length > 0;
 }
 
 function createContextPolicyMessage(
   envelope: AgentPiContextPolicyEnvelope,
   createdAt: string,
-  tokenProjector: AgentTokenProjector,
-): AgentMessage {
-  const content = serializeContextEnvelope(envelope, tokenProjector);
+): Extract<AgentMessage, { role: "custom" }> {
   return {
     role: "custom",
     customType: AgentPiContextPolicyCustomType,
-    content,
+    content: JSON.stringify(envelope),
     display: false,
-    details: envelope,
     timestamp: Date.parse(createdAt) || Date.now(),
-  } as AgentMessage;
-}
-
-function serializeContextEnvelope(envelope: AgentPiContextPolicyEnvelope, tokenProjector: AgentTokenProjector): string {
-  let current = envelope;
-  let content = JSON.stringify(current, null, 2);
-  let omittedEvidence = 0;
-
-  while (
-    tokenProjector.previewText(content, ContextPolicyLimits.maxEnvelopeTokens).truncated &&
-    current.evidence.length > 1
-  ) {
-    const keep = Math.max(1, Math.floor(current.evidence.length * 0.75));
-    omittedEvidence += current.evidence.length - keep;
-    current = withEnvelopeEvidence(current, current.evidence.slice(-keep), omittedEvidence);
-    content = JSON.stringify(current, null, 2);
-  }
-
-  return content;
-}
-
-function withEnvelopeEvidence(
-  envelope: AgentPiContextPolicyEnvelope,
-  evidence: AgentPiContextEvidenceItem[],
-  omittedEvidence: number,
-): AgentPiContextPolicyEnvelope {
-  const artifacts = projectArtifacts(evidence);
-  return {
-    ...envelope,
-    evidence,
-    artifacts,
-    stats: {
-      ...envelope.stats,
-      totalEvidence: evidence.length,
-      omittedEvidence,
-      artifacts: artifacts.length,
-    },
   };
 }
 
-function isContextPolicyMessage(message: AgentMessage): boolean {
-  const record = readRecord(message);
-  return record?.role === "custom" && record.customType === AgentPiContextPolicyCustomType;
-}
-
-function projectPlannerEvidence(
-  evidence: PlannerEvidenceMemoryItem,
-  source: AgentPiContextEvidenceItem["source"],
-  tokenProjector: AgentTokenProjector,
-): AgentPiContextEvidenceItem {
-  return compactEvidence(
-    {
-      evidenceUri: evidence.evidenceUri,
-      kind: evidence.kind,
-      label: evidence.label,
-      display: evidence.display,
-      locator: evidence.locator,
-      toolName: evidence.toolName,
-      artifactUri: evidence.artifactUri,
-      facts: evidence.facts.map((fact) => ({
-        name: fact.name,
-        value: fact.value,
-      })),
-      artifactRefs: evidence.artifactRefs,
-      source,
-    },
-    tokenProjector,
-  );
-}
-
-function projectCurrentToolEvidence(
+function availableContextTokens(
   messages: readonly AgentMessage[],
+  budget: AgentPiContextPolicyBudget,
   tokenProjector: AgentTokenProjector,
-): AgentPiContextEvidenceItem[] {
-  return messages.flatMap((message) => {
-    const record = readRecord(message);
-    if (record?.role !== "toolResult") {
-      return [];
-    }
-
-    const observation = readToolObservation(readTextContent(record.content));
-    if (!observation) {
-      return [];
-    }
-
-    const toolName = readString(record.toolName);
-    const observationArtifactUri = readString(observation.artifact_uri ?? observation.artifactUri);
-    return readArray(observation.evidence).flatMap((entry) => {
-      const evidence = readRecord(entry);
-      const evidenceUri = readString(evidence?.evidence_uri ?? evidence?.evidenceUri);
-      if (!evidenceUri) {
-        return [];
-      }
-
-      return compactEvidence(
-        {
-          evidenceUri,
-          kind: readString(evidence?.kind) ?? "tool_observation",
-          label: readString(evidence?.label),
-          display: readString(evidence?.display),
-          locator: readString(evidence?.locator),
-          toolName,
-          artifactUri: readString(evidence?.artifact_uri ?? evidence?.artifactUri) ?? observationArtifactUri,
-          facts: readEvidenceFacts(evidence),
-          artifactRefs: uniqueStrings(
-            readArray(evidence?.artifact_refs ?? evidence?.artifactRefs).flatMap((ref) =>
-              typeof ref === "string" ? [ref] : [],
-            ),
-          ),
-          source: "current_tool_result",
-        },
-        tokenProjector,
-      );
-    });
-  });
+): number {
+  const messageTokens = messages.reduce((total, message) => total + tokenProjector.countJson(message), 0);
+  return Math.max(0, Math.floor(budget.contextWindowTokens) - Math.floor(budget.outputReserveTokens) - messageTokens);
 }
 
-function readToolObservation(content: string): Record<string, unknown> | undefined {
-  try {
-    const parsed = readRecord(JSON.parse(content) as unknown);
-    return parsed?.type === "senera.tool_observation.v1" ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function readTextContent(content: unknown): string {
-  if (typeof content === "string") {
-    return content;
-  }
-  return readArray(content)
-    .flatMap((entry) => {
-      const record = readRecord(entry);
-      return record?.type === "text" && typeof record.text === "string" ? [record.text] : [];
-    })
-    .join("");
-}
-
-function readEvidenceFacts(evidence: Record<string, unknown> | undefined): AgentPiContextFactItem[] {
-  return readArray(evidence?.facts ?? evidence?.slots).flatMap((entry) => {
-    const fact = readRecord(entry);
-    const name = readString(fact?.name);
-    const value = readString(fact?.value);
-    return name && value ? [{ name, value }] : [];
-  });
-}
-
-function compactEvidence(
-  evidence: AgentPiContextEvidenceItem,
-  tokenProjector: AgentTokenProjector,
-): AgentPiContextEvidenceItem {
+function projectArchivedArtifact(reference: AgentPiArtifactReference): AgentPiContextArtifactItem {
   return {
-    evidenceUri: clampText(evidence.evidenceUri, tokenProjector),
-    kind: clampText(evidence.kind, tokenProjector),
-    label: clampOptionalText(evidence.label, tokenProjector),
-    display: clampOptionalText(evidence.display, tokenProjector),
-    locator: clampOptionalText(evidence.locator, tokenProjector),
-    toolName: clampOptionalText(evidence.toolName, tokenProjector),
-    artifactUri: clampOptionalText(evidence.artifactUri, tokenProjector),
-    facts: evidence.facts
-      .filter((fact) => fact.name.trim().length > 0 && fact.value.trim().length > 0)
-      .slice(0, ContextPolicyLimits.maxFactsPerEvidence)
-      .map((fact) => ({
-        name: clampText(fact.name, tokenProjector),
-        value: clampText(fact.value, tokenProjector),
-      })),
-    artifactRefs: uniqueStrings(evidence.artifactRefs)
-      .slice(0, ContextPolicyLimits.maxArtifactRefs)
-      .map((ref) => clampText(ref, tokenProjector)),
-    source: evidence.source,
+    artifactUri: reference.artifactUri,
+    toolNames: [...reference.toolNames],
+    refs: [...reference.refs],
   };
 }
 
-function mergeEvidence(items: readonly AgentPiContextEvidenceItem[]): AgentPiContextEvidenceItem[] {
-  const byIdentity = new Map<string, AgentPiContextEvidenceItem>();
-  for (const item of items) {
-    byIdentity.set(evidenceIdentity(item), item);
-  }
-  return [...byIdentity.values()];
-}
-
-function evidenceIdentity(item: AgentPiContextEvidenceItem): string {
-  return stableStringify({
-    evidenceUri: item.evidenceUri,
-    kind: item.kind,
-    artifactUri: item.artifactUri,
-    source: item.source,
+function projectRetrievalTools(input: AgentPiContextPolicyFrameInput): AgentPiContextRetrievalTool[] {
+  return input.registeredTools.flatMap((tool) => {
+    if (!isVisibleTool(tool, input.visibleToolNames)) return [];
+    if (tool.handler.kind !== "HostCapability" || !RetrievalCapabilities.has(tool.handler.capability)) return [];
+    return [{ toolName: tool.name, capability: tool.handler.capability }];
   });
-}
-
-function projectArtifacts(evidence: readonly AgentPiContextEvidenceItem[]): AgentPiContextArtifactItem[] {
-  const artifacts = new Map<string, AgentPiContextArtifactItem>();
-  for (const item of evidence) {
-    if (!item.artifactUri) {
-      continue;
-    }
-    const current = artifacts.get(item.artifactUri) ?? {
-      artifactUri: item.artifactUri,
-      evidenceUris: [],
-      refs: [],
-    };
-    current.evidenceUris.push(item.evidenceUri);
-    current.refs.push(...item.artifactRefs);
-    artifacts.set(item.artifactUri, {
-      artifactUri: current.artifactUri,
-      evidenceUris: uniqueStrings(current.evidenceUris),
-      refs: uniqueStrings(current.refs),
-    });
-  }
-  return [...artifacts.values()];
-}
-
-function projectRetrievalTool(
-  tool: RegisteredTool,
-  tokenProjector: AgentTokenProjector,
-): AgentPiContextRetrievalTool[] {
-  if (tool.handler.kind !== "HostCapability" || !RetrievalCapabilities.has(tool.handler.capability)) {
-    return [];
-  }
-
-  return [
-    {
-      toolName: tool.name,
-      capability: tool.handler.capability,
-      summary: clampOptionalText(tool.search?.Summary ?? tool.plugin.manifest.Plugin.Description, tokenProjector),
-      capabilityIds: uniqueStrings((tool.search?.Capabilities ?? []).map((capability) => capability.Id)),
-      inputs: uniqueStrings((tool.search?.Capabilities ?? []).flatMap((capability) => capability.Facets?.Inputs ?? [])),
-      outputs: uniqueStrings(
-        (tool.search?.Capabilities ?? []).flatMap((capability) => capability.Facets?.Outputs ?? []),
-      ),
-      evidenceKinds: uniqueStrings(tool.evidenceCapabilities.map((capability) => capability.Produces)),
-    },
-  ];
 }
 
 function isVisibleTool(
@@ -461,10 +237,7 @@ function isVisibleTool(
   return !visibleToolNames || visibleToolNames.includes(tool.name);
 }
 
-function clampOptionalText(value: string | undefined, tokenProjector: AgentTokenProjector): string | undefined {
-  return value ? clampText(value, tokenProjector) : undefined;
-}
-
-function clampText(value: string, tokenProjector: AgentTokenProjector): string {
-  return tokenProjector.previewText(value, ContextPolicyLimits.maxStringTokens).text;
+function isContextPolicyMessage(message: AgentMessage): boolean {
+  const record = readAgentUnknownRecord(message);
+  return record?.role === "custom" && record.customType === AgentPiContextPolicyCustomType;
 }

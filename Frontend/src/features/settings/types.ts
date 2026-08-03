@@ -1,5 +1,4 @@
 import {
-  Boxes,
   FolderCog,
   Gauge,
   Info,
@@ -9,6 +8,8 @@ import {
   Search,
   SlidersHorizontal,
   Target,
+  ServerCog,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
@@ -49,7 +50,18 @@ export const settingsSections = [
     "settings.section.retrieval.label",
     "settings.section.retrieval.description",
   ),
-  defineSettingsSection("skills", Boxes, "settings.section.skills.label", "settings.section.skills.description"),
+  defineSettingsSection(
+    "system-tools",
+    Wrench,
+    "settings.section.systemTools.label",
+    "settings.section.systemTools.description",
+  ),
+  defineSettingsSection(
+    "mcp-servers",
+    ServerCog,
+    "settings.section.mcpServers.label",
+    "settings.section.mcpServers.description",
+  ),
   defineSettingsSection(
     "general",
     SlidersHorizontal,

@@ -1,6 +1,12 @@
 import { Transform } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
-import type { ToolArtifactPolicyManifest } from "../Types/PluginManifestTypes.js";
+import type { ToolArtifactPolicyManifest } from "../Types/AgentToolContractTypes.js";
+import { readAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
+import {
+  AgentToolAssessmentStatuses,
+  isAgentToolExecutionOutcome,
+  type AgentToolExecutionOutcome,
+} from "../ToolRuntime/AgentToolResultOutcome.js";
 
 const DefaultArtifactRedactionWindowChars = 4_096;
 const DefaultArtifactRedactionReplacement = "[REDACTED]";
@@ -15,6 +21,35 @@ export function redactArtifactSecrets(value: unknown, policy: ToolArtifactPolicy
   const keyPatterns = (policy?.Redact?.Keys ?? []).map((pattern) => new RegExp(pattern, "i"));
   const pathSelectors = new Set(policy?.Redact?.Paths ?? []);
   return redactValue(value, keyPatterns, pathSelectors, "$", policy);
+}
+
+export function redactArtifactToolOutcome(
+  outcome: AgentToolExecutionOutcome,
+  policy: ToolArtifactPolicyManifest | undefined,
+): AgentToolExecutionOutcome {
+  if (outcome.assessment.status !== AgentToolAssessmentStatuses.Failure) return outcome;
+  const errorView = readAgentUnknownRecord(redactArtifactSecrets({ error: outcome.assessment.error }, policy));
+  const redacted: unknown = {
+    ...outcome,
+    assessment: {
+      ...outcome.assessment,
+      error: errorView?.error,
+    },
+  };
+  if (isAgentToolExecutionOutcome(redacted)) return redacted;
+  return {
+    ...outcome,
+    assessment: {
+      status: AgentToolAssessmentStatuses.Failure,
+      error: {
+        code: outcome.assessment.error.code,
+        kind: outcome.assessment.error.kind,
+        source: outcome.assessment.error.source,
+        retryable: outcome.assessment.error.retryable,
+        message: DefaultArtifactRedactionReplacement,
+      },
+    },
+  };
 }
 
 function redactValue(

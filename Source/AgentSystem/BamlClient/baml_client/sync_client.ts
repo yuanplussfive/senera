@@ -22,7 +22,7 @@ import type { BamlRuntime, FunctionResult, BamlCtxManager, Image, Audio, Pdf, Vi
 import { toBamlError, BamlAbortError, ClientRegistry, type HTTPRequest } from "@boundaryml/baml"
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types.js"
 import type * as types from "./types.js"
-import type {ActionPlanInput, ActionRunState, EvidenceSlot, ExecutionDeltaOp, InteractionPreparation, InteractionRoute, InteractionRunMode, MemoryCandidate, MemoryConsolidationAction, MemoryConsolidationResult, MemoryLearningResult, MemoryWriteDecision, MemoryWriteResolutionResult, PiCompactionDecision, PiCompactionSummary, PiControllerAction, PiControllerActionKind, PiPlannedToolCall, PiToolArgumentsDraft, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerRoleplayPreset, PlannerRoleplayPresetDocument, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolLearningRecord, ToolLearningResult, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel, TurnContextMode, TurnUnderstanding} from "./types.js"
+import type {ActionPlanInput, ActionRunState, AskUserDecision, AskUserDecisionKind, DirectDecision, DirectDecisionKind, EvidenceSlot, ExecuteDecision, ExecuteDecisionKind, ExecutionDeltaOp, GroundedDigest, GroundedDigestEntry, MemoryCandidate, MemoryConsolidationAction, MemoryConsolidationResult, MemoryLearningResult, MemoryWriteDecision, MemoryWriteResolutionResult, PiToolArgumentsDraft, PlanFragment, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerRoleplayPreset, PlannerRoleplayPresetDocument, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolLearningRecord, ToolLearningResult, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import { HttpRequest, HttpStreamRequest } from "./sync_request.js"
 import { LlmResponseParser, LlmStreamParser } from "./parser.js"
@@ -147,10 +147,10 @@ export class BamlSyncClient {
     }
   }
   
-  CompactPiSession(
+  CondenseToolObservations(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
-  ): types.PiCompactionSummary {
+  ): types.GroundedDigest {
     try {
       const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
       const __signal__ = __options__.signal;
@@ -178,7 +178,7 @@ export class BamlSyncClient {
       }
 
       const __raw__ = this.runtime.callFunctionSync(
-        "CompactPiSession",
+        "CondenseToolObservations",
         {
           "promptJson": promptJson
         },
@@ -191,7 +191,7 @@ export class BamlSyncClient {
         __signal__,
         __options__.watchers,
       )
-      return __raw__.parsed(false) as types.PiCompactionSummary
+      return __raw__.parsed(false) as types.GroundedDigest
     } catch (error: any) {
       throw toBamlError(error);
     }
@@ -247,6 +247,56 @@ export class BamlSyncClient {
     }
   }
   
+  EvolveTurn(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.DirectDecision | types.AskUserDecision | types.ExecuteDecision {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "EvolveTurn",
+        {
+          "promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.DirectDecision | types.AskUserDecision | types.ExecuteDecision
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
   FillPiToolArguments(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -292,56 +342,6 @@ export class BamlSyncClient {
         __options__.watchers,
       )
       return __raw__.parsed(false) as types.PiToolArgumentsDraft
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
-  GeneratePiFinalAnswer(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): string {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "GeneratePiFinalAnswer",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as string
     } catch (error: any) {
       throw toBamlError(error);
     }
@@ -447,10 +447,10 @@ export class BamlSyncClient {
     }
   }
   
-  PrepareInteraction(
+  RepairControllerDecision(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
-  ): types.InteractionPreparation {
+  ): types.DirectDecision | types.AskUserDecision | types.ExecuteDecision {
     try {
       const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
       const __signal__ = __options__.signal;
@@ -478,7 +478,7 @@ export class BamlSyncClient {
       }
 
       const __raw__ = this.runtime.callFunctionSync(
-        "PrepareInteraction",
+        "RepairControllerDecision",
         {
           "promptJson": promptJson
         },
@@ -491,57 +491,7 @@ export class BamlSyncClient {
         __signal__,
         __options__.watchers,
       )
-      return __raw__.parsed(false) as types.InteractionPreparation
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairInteractionPreparation(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): types.InteractionPreparation {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "RepairInteractionPreparation",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as types.InteractionPreparation
+      return __raw__.parsed(false) as types.DirectDecision | types.AskUserDecision | types.ExecuteDecision
     } catch (error: any) {
       throw toBamlError(error);
     }
@@ -697,106 +647,6 @@ export class BamlSyncClient {
     }
   }
   
-  RepairPiAction(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): types.PiControllerAction {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "RepairPiAction",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as types.PiControllerAction
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairPiCompaction(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): types.PiCompactionSummary {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "RepairPiCompaction",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as types.PiCompactionSummary
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
   RepairPiToolArguments(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -897,6 +747,56 @@ export class BamlSyncClient {
     }
   }
   
+  RepairToolObservationDigest(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.GroundedDigest {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "RepairToolObservationDigest",
+        {
+          "promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.GroundedDigest
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
   RepairToolRiskAudit(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -992,56 +892,6 @@ export class BamlSyncClient {
         __options__.watchers,
       )
       return __raw__.parsed(false) as types.MemoryWriteResolutionResult
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
-  SelectPiAction(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): types.PiControllerAction {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "SelectPiAction",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as types.PiControllerAction
     } catch (error: any) {
       throw toBamlError(error);
     }

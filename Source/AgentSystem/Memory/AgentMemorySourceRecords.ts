@@ -1,6 +1,4 @@
-import { AgentConversationEntryKinds } from "../Conversation/AgentConversation.js";
 import { compactObject } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
-import type { AgentToolEvidenceMemoryEntryRecord } from "./AgentPlannerMemory.js";
 import { memorySourceUri, stableMemoryId } from "./AgentMemoryIdentity.js";
 import { projectMemoryTime } from "./AgentMemoryTime.js";
 import { previewAgentText } from "../Text/AgentTextProjection.js";
@@ -11,6 +9,7 @@ import type {
   AgentMemorySourceRecord,
 } from "./AgentMemorySourceRepository.js";
 import { terminalText } from "./AgentMemoryTerminalText.js";
+import type { ToolArtifactEvidenceRecord } from "../Types/ToolRuntimeTypes.js";
 
 const MemorySourceTextLimits = {
   textContentChars: 4_000,
@@ -30,7 +29,7 @@ export function buildSources(
       role: "user",
       key: input.userEntry.id,
       textContent: input.userEntry.content,
-      summary: input.turnUnderstanding?.standaloneRequest ?? input.userEntry.content,
+      summary: input.userEntry.content,
       conversationEntryId: input.userEntry.id,
       createdAt: input.userEntry.timestamp,
     }),
@@ -48,29 +47,29 @@ export function buildSources(
   ];
 
   const artifactSources = new Map<string, AgentMemorySourceRecord>();
-  for (const entry of input.conversationEntries) {
-    if (entry.kind !== AgentConversationEntryKinds.ToolEvidenceMemory) {
-      continue;
-    }
+  for (const result of input.executedTools) {
+    const artifact = result.artifact;
+    if (!artifact) continue;
 
-    if (entry.record.artifactUri) {
+    if (artifact.artifactUri) {
       artifactSources.set(
-        entry.record.artifactUri,
+        artifact.artifactUri,
         buildSource({
           input,
           episode,
           sourceKind: "artifact",
           role: "tool",
-          key: entry.record.artifactUri,
-          conversationEntryId: entry.id,
-          artifactUri: entry.record.artifactUri,
-          toolName: entry.record.toolName,
-          createdAt: entry.timestamp,
+          key: artifact.artifactUri,
+          conversationEntryId: input.assistantEntry.id,
+          artifactUri: artifact.artifactUri,
+          toolName: result.name,
+          createdAt: input.completedAt,
+          metadata: { callId: result.callId },
         }),
       );
     }
 
-    for (const evidence of entry.record.evidence) {
+    for (const evidence of artifact.evidence) {
       sources.push(
         buildSource({
           input,
@@ -79,12 +78,13 @@ export function buildSources(
           role: "tool",
           key: evidence.evidenceUri,
           summary: evidence.display || evidence.label || evidence.kind,
-          conversationEntryId: entry.id,
+          conversationEntryId: input.assistantEntry.id,
           evidenceUri: evidence.evidenceUri,
-          artifactUri: evidence.artifactUri,
-          toolName: evidence.toolName,
-          createdAt: entry.timestamp,
+          artifactUri: evidence.plannerMemory.artifactUri ?? artifact.artifactUri,
+          toolName: result.name,
+          createdAt: input.completedAt,
           metadata: {
+            callId: result.callId,
             evidence: projectMemoryEvidenceSource(evidence),
           },
         }),
@@ -150,21 +150,18 @@ function buildSource(input: {
   };
 }
 
-function projectMemoryEvidenceSource(
-  evidence: AgentToolEvidenceMemoryEntryRecord["evidence"][number],
-): Record<string, unknown> {
+function projectMemoryEvidenceSource(evidence: ToolArtifactEvidenceRecord): Record<string, unknown> {
   return compactObject({
     evidenceUri: evidence.evidenceUri,
     kind: evidence.kind,
     locator: evidence.locator,
     display: evidence.display,
     label: evidence.label,
-    toolName: evidence.toolName,
-    artifactUri: evidence.artifactUri,
-    facts: evidence.facts.map((fact) => ({
+    artifactUri: evidence.plannerMemory.artifactUri,
+    facts: evidence.plannerMemory.facts.map((fact) => ({
       name: fact.name,
       value: previewAgentText(fact.value, MemorySourceTextLimits.factChars),
     })),
-    artifactRefs: evidence.artifactRefs,
+    artifactRefs: evidence.plannerMemory.artifactRefs,
   });
 }

@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ActionPlanInput,  ActionRunState,  EvidenceSlot,  ExecutionDeltaOp,  InteractionPreparation,  InteractionRoute,  InteractionRunMode,  MemoryCandidate,  MemoryConsolidationAction,  MemoryConsolidationResult,  MemoryLearningResult,  MemoryWriteDecision,  MemoryWriteResolutionResult,  PiCompactionDecision,  PiCompactionSummary,  PiControllerAction,  PiControllerActionKind,  PiPlannedToolCall,  PiToolArgumentsDraft,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerRoleplayPreset,  PlannerRoleplayPresetDocument,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolLearningRecord,  ToolLearningResult,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel,  TurnContextMode,  TurnUnderstanding } from "./types.js"
+import type {  ActionPlanInput,  ActionRunState,  AskUserDecision,  AskUserDecisionKind,  DirectDecision,  DirectDecisionKind,  EvidenceSlot,  ExecuteDecision,  ExecuteDecisionKind,  ExecutionDeltaOp,  GroundedDigest,  GroundedDigestEntry,  MemoryCandidate,  MemoryConsolidationAction,  MemoryConsolidationResult,  MemoryLearningResult,  MemoryWriteDecision,  MemoryWriteResolutionResult,  PiToolArgumentsDraft,  PlanFragment,  PlannedToolCall,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerRoleplayPreset,  PlannerRoleplayPresetDocument,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolLearningRecord,  ToolLearningResult,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -38,7 +38,6 @@ export interface StreamState<T> {
 export namespace partial_types {
     export interface ActionPlanInput {
       currentUserTurn?: PlannerCurrentUserTurn | null
-      turnUnderstanding?: TurnUnderstanding | null
       roleplayPreset?: PlannerRoleplayPreset | null
       runState?: ActionRunState | null
       timeline: PlannerTimelineTurn[]
@@ -57,19 +56,28 @@ export namespace partial_types {
       warnings: RepeatedCallWarning[]
       calls: PlannerToolCallStateItem[]
     }
+    export interface AskUserDecision {
+      kind?: types.AskUserDecisionKind | null
+      question?: string | null
+    }
+    export interface DirectDecision {
+      kind?: types.DirectDecisionKind | null
+      response?: string | null
+    }
     export interface EvidenceSlot {
       name?: string | null
       value?: string | null
     }
-    export interface InteractionPreparation {
-      turnUnderstanding?: TurnUnderstanding | null
-      initialAction?: PiControllerAction | null
+    export interface ExecuteDecision {
+      kind?: types.ExecuteDecisionKind | null
+      fragment?: PlanFragment | null
     }
-    export interface InteractionRoute {
-      mode?: types.InteractionRunMode | null
-      objective?: string | null
-      preferredTools: string[]
-      discoveryQueries: string[]
+    export interface GroundedDigest {
+      entries: GroundedDigestEntry[]
+    }
+    export interface GroundedDigestEntry {
+      text?: string | null
+      sources: string[]
     }
     export interface MemoryCandidate {
       type?: string | null
@@ -119,38 +127,20 @@ export namespace partial_types {
     export interface MemoryWriteResolutionResult {
       decision?: MemoryWriteDecision | null
     }
-    export interface PiCompactionDecision {
-      decision?: string | null
-      rationale?: string | null
-    }
-    export interface PiCompactionSummary {
-      goals: string[]
-      constraints: string[]
-      completed: string[]
-      inProgress: string[]
-      blocked: string[]
-      decisions: PiCompactionDecision[]
-      nextSteps: string[]
-      criticalContext: string[]
-    }
-    export interface PiControllerAction {
-      kind?: types.PiControllerActionKind | null
-      answerPlan?: string[] | null
-      question?: string | null
-      preface?: string | null
-      calls?: PiPlannedToolCall[] | null
-    }
-    export interface PiPlannedToolCall {
-      toolName?: string | null
-      purpose?: string | null
-      required?: boolean | null
-      dependsOn?: number[] | null
-      argumentHints?: Record<string, ToolCallArgumentValue> | null
-    }
     export interface PiToolArgumentsDraft {
       arguments: Record<string, ToolCallArgumentValue>
       missingInputs: string[]
       assumptions: string[]
+    }
+    export interface PlanFragment {
+      preface?: string | null
+      calls: PlannedToolCall[]
+    }
+    export interface PlannedToolCall {
+      toolName?: string | null
+      purpose?: string | null
+      required?: boolean | null
+      dependsOn?: number[] | null
     }
     export interface PlannerActiveSkill {
       name?: string | null
@@ -236,6 +226,9 @@ export namespace partial_types {
       resultKind?: string | null
       argumentsPreview?: string | null
       error?: string | null
+      failureKind?: string | null
+      failureSource?: string | null
+      retryable?: boolean | null
     }
     export interface ProgressSignals {
       totalToolCalls?: number | null
@@ -321,13 +314,8 @@ export namespace partial_types {
       matchedConcerns: string[]
       safeAlternative?: string | null
     }
-    export interface TurnUnderstanding {
-      rawUserTurn?: string | null
-      standaloneRequest?: string | null
-      contextMode?: types.TurnContextMode | null
-      contextBasis?: string | null
-      missingContext?: string | null
-    }
+export type ControllerDecision = DirectDecision | AskUserDecision | ExecuteDecision | null
+
 export interface ToolCallArgumentValue {
   [key: string]: string | number | boolean | ToolCallArgumentValue[] | Record<string, ToolCallArgumentValue> | null
 }

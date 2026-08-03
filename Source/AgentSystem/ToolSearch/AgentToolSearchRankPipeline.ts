@@ -1,7 +1,7 @@
-import type MiniSearch from "minisearch";
 import type { ResolvedAgentToolSearchConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
+import { AgentCapabilityKinds, type AgentCapabilitySearchIndex } from "./AgentCapabilitySearchIndex.js";
 import { AgentToolSearchReranker } from "./AgentToolSearchReranker.js";
 import type {
   AgentToolSearchOptions,
@@ -28,7 +28,7 @@ export class AgentToolSearchRankPipeline {
   constructor(
     private readonly config: ResolvedAgentToolSearchConfig,
     private readonly tokenizer: AgentToolSearchTokenizer,
-    private readonly miniSearch: MiniSearch<ToolSearchDocument>,
+    private readonly capabilityIndex: AgentCapabilitySearchIndex,
     private readonly docs: readonly ToolSearchDocument[],
     private readonly docsByTool: ReadonlyMap<string, ToolSearchDocument>,
   ) {
@@ -73,6 +73,7 @@ export class AgentToolSearchRankPipeline {
     return {
       bm25,
       exact: this.exactRank(queryTokens, candidateNames),
+      semantic: this.semanticRank(options.semanticEvidence ?? [], candidateNames),
       memory: this.memoryRank(options.memoryEvidence ?? [], candidateNames),
       priority: this.priorityRank(candidateNames),
       source: this.sourcePreferenceRank(options.preferredSourceIds ?? [], candidateNames),
@@ -80,12 +81,22 @@ export class AgentToolSearchRankPipeline {
   }
 
   private bm25Rank(query: string, candidateNames: Set<string>): AgentToolSearchRankMap {
-    const results = this.miniSearch
-      .search(query, {
-        filter: (result) => candidateNames.has(String(result.toolName)),
-      })
+    const results = this.capabilityIndex
+      .lexical(query, AgentCapabilityKinds.Tool, candidateNames)
       .sort((left, right) => right.score - left.score);
-    return toRankMap(results.map((result) => String(result.toolName)));
+    return toRankMap(results.map((result) => result.name));
+  }
+
+  private semanticRank(
+    evidence: readonly NonNullable<AgentToolSearchOptions["semanticEvidence"]>[number][],
+    candidateNames: Set<string>,
+  ): AgentToolSearchRankMap {
+    return toRankMap(
+      evidence
+        .filter((entry) => candidateNames.has(entry.toolName))
+        .sort((left, right) => right.score - left.score || left.toolName.localeCompare(right.toolName))
+        .map((entry) => entry.toolName),
+    );
   }
 
   private exactRank(queryTokens: string[], candidateNames: Set<string>): AgentToolSearchRankMap {
@@ -220,9 +231,11 @@ export class AgentToolSearchRankPipeline {
     memoryEvidence: readonly AgentToolSearchMemoryEvidence[],
   ): Set<string> {
     const lexical = new Set([...rankers.bm25.keys(), ...rankers.exact.keys()]);
+    const semantic = new Set(rankers.semantic.keys());
     const memory = this.qualifiedMemoryCandidates(memoryEvidence, rankers.memory);
     const expand = MemoryExpansionPolicies[this.config.Ranking.MemoryExpansion.Mode];
-    return new Set([...lexical, ...expand({ lexical, memory })]);
+    const recalled = new Set([...lexical, ...semantic]);
+    return new Set([...recalled, ...expand({ lexical: recalled, memory })]);
   }
 
   private qualifiedMemoryCandidates(

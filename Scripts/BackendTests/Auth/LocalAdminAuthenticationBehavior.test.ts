@@ -148,6 +148,23 @@ describe("bounded rate limiting", () => {
     bucket.consume("first");
     expect(bucket.consume("second").allowed).toBe(true);
   });
+
+  test("updates LRU order without sorting the tracked client set", () => {
+    const bucket = new AgentTokenBucket({ capacity: 1, refillPeriodMs: 1_000, maxEntries: 2, now: () => 0 });
+    bucket.consume("first");
+    bucket.consume("second");
+    expect(bucket.consume("first").allowed).toBe(false);
+
+    bucket.consume("third");
+    expect(bucket.consume("first").allowed).toBe(false);
+    expect(bucket.consume("second").allowed).toBe(true);
+  });
+
+  test("rejects invalid bucket policies", () => {
+    expect(() => new AgentTokenBucket({ capacity: 0, refillPeriodMs: 1_000, maxEntries: 1 })).toThrow(/capacity/);
+    expect(() => new AgentTokenBucket({ capacity: 1, refillPeriodMs: 0, maxEntries: 1 })).toThrow(/refillPeriodMs/);
+    expect(() => new AgentTokenBucket({ capacity: 1, refillPeriodMs: 1_000, maxEntries: 0 })).toThrow(/maxEntries/);
+  });
 });
 
 describe("server access guard", () => {

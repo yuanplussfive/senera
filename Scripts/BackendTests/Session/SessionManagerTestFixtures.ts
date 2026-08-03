@@ -7,7 +7,6 @@ import {
   AgentEventPhases,
   type AgentDomainEvent,
 } from "../../../Source/AgentSystem/Events/AgentEvent.js";
-import { InteractionRunMode } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
 import { createAgentTurnPreparationSnapshot } from "../../../Source/AgentSystem/Loop/AgentTurnPreparationSnapshot.js";
 import { AgentDefaults } from "../../../Source/AgentSystem/AgentDefaults.js";
 import { AgentSessionManager } from "../../../Source/AgentSystem/Session/AgentSessionManager.js";
@@ -16,6 +15,7 @@ import {
   type SqliteSessionRepository,
 } from "../../../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
 import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSessionStore.js";
+import { toolRootCommand } from "../Support/AgentTestFixtures.js";
 
 export function createManagerFixture(
   options: Partial<ConstructorParameters<typeof AgentSessionManager>[0]> & {
@@ -24,7 +24,6 @@ export function createManagerFixture(
 ) {
   const repository = options.repository ?? new InMemorySessionRepository();
   const store = new AgentSessionStore({ repository });
-  store.hydrate();
   const { repository: _repository, ...managerOptions } = options;
   const manager = new AgentSessionManager({
     loopFactory: () => ({ run: async () => completedRun("generated-request") }),
@@ -88,28 +87,23 @@ export function completedRun(requestId: string) {
     decisionXml: "<agent_result><final_answer>done</final_answer></agent_result>",
     usage: { source: "local_estimate" as const, inputTokens: 1, outputTokens: 1 },
     conversationEntries: [assistantEntry(requestId, "done")],
+    executedTools: [],
     stepTraces: [],
   };
 }
 
 export function turnPreparation(input: string) {
+  const rootCommand = {
+    ...toolRootCommand(),
+    objective: input,
+    instruction: input,
+  };
   return createAgentTurnPreparationSnapshot({
     runtimeFingerprint: "runtime-a",
     userInput: input,
-    route: {
-      mode: "direct_response",
-      objective: input,
-      preferredTools: [],
-      discoveryQueries: [],
-      raw: {
-        mode: InteractionRunMode.DirectResponse,
-        objective: input,
-        preferredTools: [],
-        discoveryQueries: [],
-      },
-    },
     loadedToolNames: [],
-    initialAction: { kind: "FinalAnswer", answerPlan: ["Answer the request."] },
+    toolAccessGrant: rootCommand.toolAccessGrant,
+    rootCommand,
     activeSkills: [],
   });
 }

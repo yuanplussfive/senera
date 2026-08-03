@@ -1,22 +1,11 @@
-# Schemas 模块
+# Schemas
 
-`Schemas` 存放运行时配置和插件 manifest 的 Zod 校验契约。这里不做业务编排，只定义输入边界。
+`Schemas` contains Zod contracts for runtime configuration and registered tool metadata. It defines input boundaries only; filesystem discovery and runtime composition belong to their owning modules.
 
-## 模块职责
+- `AgentSystemConfigSchema.ts` composes the top-level configuration.
+- `AgentToolContractSchema.ts` validates execution, runtime, search, resource, approval, observation, and artifact policy fields shared by System Tools.
+- `AgentArtifactContractSchema.ts` validates artifact and evidence declarations.
+- `AgentRootCommandContractSchema.ts` validates root-command policy assets.
+- `AgentToolSearchContractSchema.ts` validates discovery and routing metadata.
 
-- `AgentSystemConfigSchema.ts`：系统配置 schema 顶层装配。
-- `Agent*ConfigSchema.ts`：按配置领域拆分的配置 schema。
-- `PluginManifestSchema.ts`：插件 manifest schema 兼容出口。
-- `PluginManifestTopLevelSchema.ts`：插件 manifest 顶层结构。
-- `PluginManifestSharedSchema.ts`：插件 kind、entry、decision action、security、prompting 等共享结构。
-- `PluginSearchManifestSchema.ts`：工具/技能搜索字段和 capability 结构。
-- `PluginArtifactManifestSchema.ts`：工具 artifact policy、evidence、workspace capture 结构。
-- `PluginToolManifestSchema.ts`：工具 manifest 结构。
-- `PluginSkillManifestSchema.ts`：技能 manifest 结构。
-- `PluginRootCommandManifestSchema.ts`：root command 和 visible output 结构。
-
-## 边界规则
-
-- schema 文件只表达字段契约，不读取文件系统、数据库或插件目录。
-- 对外导入优先使用 `PluginManifestSchema.ts` 和 `AgentSystemConfigSchema.ts` 兼容入口。
-- 新增 manifest 子域时先增加对应 schema，再更新 `Types/PluginManifestTypes.ts` 和验证脚本。
+Legacy MCP package documents are validated by `McpPackages/AgentMcpPackageSchema.ts`; MCPB and Registry documents are owned by their descriptor adapters and normalize to the shared extension input model. System extension manifests and contracts are validated by `SystemTools/AgentSystemToolSource.ts`. Standard `SKILL.md` frontmatter is validated by `Skills/AgentSkillScanner.ts`. Do not merge external standards into one authoring schema or add a second schema for the same source format.

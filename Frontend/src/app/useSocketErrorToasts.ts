@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { EventKinds, type EventEnvelope } from "../api/eventTypes";
 import { useStore } from "../store/sessionStore";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { resolveBackendMessage } from "../i18n/backendMessage";
 
 export type SocketErrorToastVariant = "error" | "warning";
 
@@ -30,7 +31,7 @@ export function resolveSocketErrorToast(env: EventEnvelope, state: SocketErrorTo
     return {
       variant: "error",
       title: isHistoryLoadFailure ? frontendMessage("socket.historySyncFailed") : frontendMessage("socket.runFailed"),
-      description: readDataString(env.data, "message") ?? "",
+      description: resolveBackendMessage(env.data) ?? "",
     };
   }
 
@@ -47,12 +48,12 @@ export function resolveSocketErrorToast(env: EventEnvelope, state: SocketErrorTo
       title: frontendMessage("socket.toolCallFailed", {
         toolName: readDataString(env.data, "toolName") ?? "",
       }),
-      description: readDataString(env.data, "message"),
+      description: resolveBackendMessage(env.data),
     };
   }
 
   if (env.kind === EventKinds.RequestInvalid) {
-    const message = readDataString(env.data, "message") ?? "";
+    const message = resolveBackendMessage(env.data) ?? "";
     if (readDataString(env.data, "code") === "approval_not_pending") {
       return {
         variant: "warning",

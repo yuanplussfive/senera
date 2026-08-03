@@ -4,530 +4,279 @@ import {
   type AgentPiAssistantCompilerModelClient,
 } from "../../../Source/AgentSystem/PiProxy/AgentPiAssistantCompiler.js";
 import type {
-  AgentPiControllerActionInput,
+  AgentPiControllerDecisionInput,
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
 } from "../../../Source/AgentSystem/PiProxy/AgentPiAssistantMessageTypes.js";
-import { createModelProvider } from "../Support/AgentTestFixtures.js";
-import type { AgentRootCommand } from "../../../Source/AgentSystem/AgentRootCommand.js";
-import { InteractionRunMode, TurnContextMode } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
-import { AgentPiPreparedActionLease } from "../../../Source/AgentSystem/PiProxy/AgentPiPreparedActionLease.js";
+import { createModelProvider, toolAccessGrant } from "../Support/AgentTestFixtures.js";
+import { createAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
+import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 
-describe("Pi assistant final-answer compilation", () => {
-  test("projects a validated FinalAnswer into a separate generation input", async () => {
-    const client = new FinalAnswerCompilerClient({
-      kind: "FinalAnswer",
-      answerPlan: ["State the verified result.", "Mention the supporting observation."],
+describe("Pi assistant controller compilation", () => {
+  test("returns a complete Direct response from one controller model call", async () => {
+    const client = new CompilerClient([{ kind: "Direct", response: "Dependency injection supplies dependencies." }]);
+
+    const compilation = await createCompiler(client).compile({
+      toolAccessGrant: toolAccessGrant(),
+      request: {
+        model: "test-model",
+        messages: [{ role: "user", content: "Explain dependency injection." }],
+      },
     });
+
+    expect(compilation).toEqual({
+      kind: "final_text",
+      content: "Dependency injection supplies dependencies.",
+      toolCalls: [],
+    });
+    expect(client.evolveInputs).toHaveLength(1);
+    expect(client.fillInputs).toHaveLength(0);
+  });
+
+  test("loads the authoritative schema only after tool selection", async () => {
+    const parameters = {
+      type: "object",
+      properties: { query: { type: "string", description: "q".repeat(100_000) } },
+      required: ["query"],
+      additionalProperties: false,
+    };
+    const client = new CompilerClient([
+      {
+        kind: "Execute",
+        fragment: {
+          preface: "Searching current sources.",
+          calls: [{ toolName: "LargeSearchTool", purpose: "Find the current release.", required: true }],
+        },
+      },
+    ]);
+    client.argumentResults.set("LargeSearchTool", {
+      arguments: { query: "current release" },
+      missingInputs: [],
+      assumptions: [],
+    });
+
+    const compilation = await createCompiler(client).compile({
+      toolAccessGrant: toolAccessGrant(["LargeSearchTool"], ["LargeSearchTool"]),
+      request: {
+        model: "test-model",
+        messages: [{ role: "user", content: "Search for the current release." }],
+        tools: [tool("LargeSearchTool", parameters, "Search current external sources.")],
+      },
+    });
+
+    expect(compilation).toMatchObject({
+      kind: "tool_calls",
+      toolCalls: [{ name: "LargeSearchTool", arguments: { query: "current release" } }],
+    });
+    expect(client.evolveInputs[0]?.routingCards).toEqual([
+      expect.objectContaining({
+        name: "LargeSearchTool",
+        inputs: ["arguments.query: string (required)"],
+      }),
+    ]);
+    expect(client.evolveInputs[0]?.routingCards[0]).not.toHaveProperty("parameterContract");
+    expect(client.fillInputs[0]?.tool.parameters).toEqual(parameters);
+  });
+
+  test("orders preferred tools first without excluding another granted tool", async () => {
+    const client = new CompilerClient([
+      {
+        kind: "Execute",
+        fragment: {
+          preface: "Using the best available tool.",
+          calls: [{ toolName: "ToolB", purpose: "Use the non-preferred granted tool.", required: true }],
+        },
+      },
+    ]);
+
+    const compilation = await createCompiler(client).compile({
+      toolAccessGrant: toolAccessGrant(["ToolA", "ToolB", "ToolC"], ["ToolA"]),
+      request: {
+        model: "test-model",
+        messages: [{ role: "user", content: "Use ToolB." }],
+        tools: [
+          tool("ToolB", { type: "object", properties: {} }),
+          tool("ToolC", { type: "object", properties: {} }),
+          tool("ToolA", { type: "object", properties: {} }),
+        ],
+      },
+    });
+
+    expect(client.evolveInputs[0]?.routingCards.map((card) => card.name)).toEqual(["ToolA", "ToolB", "ToolC"]);
+    expect(compilation).toMatchObject({ kind: "tool_calls", toolCalls: [{ name: "ToolB" }] });
+  });
+
+  test("projects tools discovered earlier in the same turn from the live exposure generation", async () => {
+    const client = new CompilerClient([{ kind: "Direct", response: "Weather is available." }]);
+    const grant = createAgentToolAccessGrant({
+      authorizedToolNames: ["ToolSearchTool", "WeatherTool"],
+      exposedToolNames: ["ToolSearchTool"],
+    });
+    const toolExposure = new AgentToolExposureState(grant);
+    toolExposure.expose(["WeatherTool"]);
+
+    await createCompiler(client).compile({
+      toolAccessGrant: grant,
+      request: {
+        model: "test-model",
+        messages: [{ role: "user", content: "Find the weather tool, then use it." }],
+        tools: [
+          tool("ToolSearchTool", { type: "object", properties: {} }),
+          tool("WeatherTool", { type: "object", properties: {} }),
+        ],
+      },
+      runtime: { requestId: "request-live-exposure", toolExposure },
+    });
+
+    expect(client.evolveInputs[0]?.seneraRuntime.toolExposure.generation).toBe(1);
+    expect(client.evolveInputs[0]?.routingCards.map((card) => card.name)).toEqual(["WeatherTool", "ToolSearchTool"]);
+  });
+
+  test("rejects request tools outside the authoritative access grant", async () => {
+    const client = new CompilerClient([]);
+
+    await expect(
+      createCompiler(client).compile({
+        toolAccessGrant: toolAccessGrant(["ToolA"]),
+        request: {
+          model: "test-model",
+          messages: [{ role: "user", content: "Use a tool." }],
+          tools: [tool("ToolA", { type: "object", properties: {} }), tool("ToolB", { type: "object", properties: {} })],
+        },
+      }),
+    ).rejects.toThrow("ToolB");
+    expect(client.evolveInputs).toHaveLength(0);
+  });
+
+  test("fills independent tool arguments concurrently", async () => {
+    const client = new ConcurrentArgumentCompilerClient();
     const compiler = createCompiler(client);
 
     const compilation = await compiler.compile({
+      toolAccessGrant: toolAccessGrant(["ReadFirst", "ReadSecond"], ["ReadFirst", "ReadSecond"]),
       request: {
         model: "test-model",
-        messages: [{ role: "user", content: "What was verified?" }],
-      },
-      runtime: {
-        requestId: "request-final-answer",
-        rootCommand: toolRootCommand(),
-        activeSkills: [{ name: "analysis" }],
+        messages: [{ role: "user", content: "Read both files." }],
+        tools: [tool("ReadFirst", requiredPathSchema()), tool("ReadSecond", requiredPathSchema())],
       },
     });
 
-    expect(compilation).toMatchObject({
-      kind: "final_answer",
-      decisionSource: "model",
-      input: {
-        answerPlan: ["State the verified result.", "Mention the supporting observation."],
-        openAiRequest: {
-          model: "test-model",
-          messages: [{ role: "user", content: "What was verified?" }],
-        },
-        seneraRuntime: {
-          modelProviderId: "test-provider",
-          model: "test-model",
-          rootCommand: toolRootCommand(),
-          activeSkills: [{ name: "analysis" }],
-        },
-      },
-    });
-    expect(client.repairRequests).toHaveLength(0);
+    expect(compilation.kind).toBe("tool_calls");
+    expect(client.maximumConcurrentFills).toBe(2);
   });
 
-  test("skips duplicate action selection for an authoritative direct-response route", async () => {
-    const client = new FinalAnswerCompilerClient(new Error("SelectPiAction should not run."));
-    const compilation = await createCompiler(client).compile({
-      request: {
-        model: "test-model",
-        messages: [{ role: "user", content: "Explain the current state." }],
-        tools: [],
-        tool_choice: "none",
-      },
-      runtime: {
-        requestId: "request-direct-answer",
-        rootCommand: answerRootCommand(),
-        interactionRoute: directRoute(),
-        turnUnderstanding: {
-          rawUserTurn: "Explain the current state.",
-          standaloneRequest: "Explain the current state.",
-          contextMode: TurnContextMode.None,
-          contextBasis: "",
-          missingContext: "",
-        },
-      },
+  test("repairs an invalid controller decision before any tool is dispatched", async () => {
+    const client = new CompilerClient([{ kind: "Execute", fragment: { preface: "Invalid.", calls: [] } }], {
+      kind: "Direct",
+      response: "No tool call is required.",
     });
-
-    expect(client.selectInputs).toHaveLength(0);
-    expect(compilation).toMatchObject({
-      kind: "final_answer",
-      decisionSource: "runtime",
-      input: {
-        answerPlan: ["Explain the current state from the conversation context."],
-      },
-    });
-  });
-
-  test("consumes a prepared action exactly once before returning to model selection", async () => {
-    const client = new FinalAnswerCompilerClient({
-      kind: "FinalAnswer",
-      answerPlan: ["Use the model-selected fallback plan."],
-    });
-    const compiler = createCompiler(client);
-    const preparedAction = new AgentPiPreparedActionLease({
-      kind: "FinalAnswer",
-      answerPlan: ["Use the prepared plan."],
-    });
-    const request = {
-      request: {
-        model: "test-model",
-        messages: [{ role: "user" as const, content: "Summarize the state." }],
-      },
-      runtime: {
-        requestId: "request-prepared-answer",
-        rootCommand: toolRootCommand(),
-        preparedAction,
-      },
-    };
-
-    await expect(compiler.compile(request)).resolves.toMatchObject({
-      kind: "final_answer",
-      decisionSource: "preparation",
-      input: { answerPlan: ["Use the prepared plan."] },
-    });
-    expect(client.selectInputs).toHaveLength(0);
-
-    await expect(compiler.compile(request)).resolves.toMatchObject({
-      kind: "final_answer",
-      decisionSource: "model",
-      input: { answerPlan: ["Use the model-selected fallback plan."] },
-    });
-    expect(client.selectInputs).toHaveLength(1);
-  });
-
-  test("falls back to model selection when a prepared action references an unavailable tool", async () => {
-    const client = new FinalAnswerCompilerClient({
-      kind: "FinalAnswer",
-      answerPlan: ["Explain that the requested external lookup is unavailable."],
-    });
-    const compilation = await createCompiler(client).compile({
-      request: {
-        model: "test-model",
-        messages: [{ role: "user", content: "Search the web." }],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "WorkspaceReadFile",
-              description: "Read one workspace file.",
-              parameters: { type: "object", properties: {} },
-            },
-          },
-        ],
-      },
-      runtime: {
-        requestId: "request-stale-prepared-tool",
-        rootCommand: toolRootCommand(),
-        preparedAction: new AgentPiPreparedActionLease({
-          kind: "CallTools",
-          preface: "Searching the web.",
-          calls: [
-            {
-              toolName: "TavilySearchTool",
-              purpose: "Search current web sources.",
-              required: true,
-            },
-          ],
-        }),
-      },
-    });
-
-    expect(client.selectInputs).toHaveLength(1);
-    expect(compilation).toMatchObject({
-      kind: "final_answer",
-      decisionSource: "model",
-    });
-  });
-
-  test("materializes schema-valid prepared tool calls without another model request", async () => {
-    const client = new FinalAnswerCompilerClient(new Error("No model stage should run."));
-    const compilation = await createCompiler(client).compile({
-      request: {
-        model: "test-model",
-        messages: [{ role: "user", content: "Read package.json." }],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "WorkspaceReadFile",
-              description: "Read one workspace file.",
-              parameters: {
-                type: "object",
-                properties: { path: { type: "string" } },
-                required: ["path"],
-                additionalProperties: false,
-              },
-            },
-          },
-        ],
-      },
-      runtime: {
-        requestId: "request-prepared-tool",
-        rootCommand: toolRootCommand(),
-        preparedAction: new AgentPiPreparedActionLease({
-          kind: "CallTools",
-          preface: "Reading the project manifest.",
-          calls: [
-            {
-              toolName: "WorkspaceReadFile",
-              purpose: "Read package.json.",
-              required: true,
-              argumentHints: { path: "package.json" },
-            },
-          ],
-        }),
-      },
-    });
-
-    expect(compilation).toMatchObject({
-      kind: "tool_calls",
-      content: "Reading the project manifest.",
-      toolCalls: [{ name: "WorkspaceReadFile", arguments: { path: "package.json" } }],
-    });
-    expect(client.selectInputs).toHaveLength(0);
-  });
-
-  test("validates prepared arguments against the complete schema when its planning card is truncated", async () => {
-    const client = new FinalAnswerCompilerClient(new Error("No model stage should run."));
-    const compilation = await createCompiler(client).compile({
-      request: {
-        model: "test-model",
-        messages: [{ role: "user", content: "Search for the current release." }],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "LargeSearchTool",
-              description: "Search current external sources.",
-              parameters: {
-                type: "object",
-                properties: {
-                  query: { type: "string", description: "q".repeat(100_000) },
-                },
-                required: ["query"],
-                additionalProperties: false,
-              },
-            },
-          },
-        ],
-      },
-      runtime: {
-        requestId: "request-large-tool-schema",
-        rootCommand: toolRootCommand(),
-        preparedAction: new AgentPiPreparedActionLease({
-          kind: "CallTools",
-          preface: "Searching current sources.",
-          calls: [
-            {
-              toolName: "LargeSearchTool",
-              purpose: "Find the current release.",
-              required: true,
-              argumentHints: { query: "current release" },
-            },
-          ],
-        }),
-      },
-    });
-
-    expect(compilation).toMatchObject({
-      kind: "tool_calls",
-      toolCalls: [{ name: "LargeSearchTool", arguments: { query: "current release" } }],
-    });
-    expect(client.selectInputs).toHaveLength(0);
-  });
-
-  test("fills model-selected arguments from the complete schema after bounded tool planning", async () => {
-    const client = new ToolArgumentCompilerClient();
-    const compilation = await createCompiler(client).compile({
-      request: {
-        model: "test-model",
-        messages: [{ role: "user", content: "Search for the current release." }],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "LargeSearchTool",
-              description: "Search current external sources.",
-              parameters: {
-                type: "object",
-                properties: {
-                  query: { type: "string", description: "q".repeat(100_000) },
-                },
-                required: ["query"],
-                additionalProperties: false,
-              },
-            },
-          },
-        ],
-      },
-      runtime: {
-        requestId: "request-fill-large-tool-schema",
-        rootCommand: toolRootCommand(),
-      },
-    });
-
-    expect(compilation).toMatchObject({
-      kind: "tool_calls",
-      toolCalls: [{ name: "LargeSearchTool", arguments: { query: "current release" } }],
-    });
-    expect(client.selectInputs[0]?.candidateTools[0]?.parameterContract).toMatchObject({
-      format: "json_schema_outline",
-      rootTypes: ["object"],
-      properties: [{ path: "query", types: ["string"], required: true }],
-      omittedProperties: 0,
-    });
-    expect(client.fillInputs[0]?.tool.parameters).toMatchObject({
-      type: "object",
-      required: ["query"],
-    });
-  });
-
-  test("repairs legacy FinalAnswer output that still contains user-visible answer text", async () => {
-    const client = new FinalAnswerCompilerClient(
-      {
-        kind: "FinalAnswer",
-        answer: "Legacy user-visible text.",
-      },
-      {
-        kind: "FinalAnswer",
-        answerPlan: ["Generate the answer from the conversation evidence."],
-      },
-    );
 
     const compilation = await createCompiler(client).compile({
-      request: {
-        model: "test-model",
-        messages: [{ role: "user", content: "Answer from the evidence." }],
-      },
+      toolAccessGrant: toolAccessGrant(),
+      request: { model: "test-model", messages: [{ role: "user", content: "Answer directly." }] },
     });
 
+    expect(compilation).toEqual({ kind: "final_text", content: "No tool call is required.", toolCalls: [] });
     expect(client.repairRequests).toHaveLength(1);
-    expect(client.repairRequests[0]).toMatchObject({
-      invalidAction: expect.stringContaining("Legacy user-visible text."),
-    });
-    expect(client.repairRequests[0]?.issues.join(" ")).toContain("answer");
-    expect(compilation).toMatchObject({
-      kind: "final_answer",
-      input: {
-        answerPlan: ["Generate the answer from the conversation evidence."],
-      },
-    });
-  });
-
-  test("projects one bounded tool catalog and keeps transcript observations index-only", async () => {
-    const client = new FinalAnswerCompilerClient({
-      kind: "FinalAnswer",
-      answerPlan: ["Summarize the observed tool result."],
-    });
-
-    await createCompiler(client).compile({
-      request: {
-        model: "test-model",
-        messages: [
-          { role: "user", content: "Inspect the result." },
-          {
-            role: "assistant",
-            content: "Checking.",
-            tool_calls: [
-              {
-                id: "call-large",
-                type: "function",
-                function: { name: "LargeTool", arguments: '{"query":"status"}' },
-              },
-            ],
-          },
-          {
-            role: "tool",
-            tool_call_id: "call-large",
-            content: JSON.stringify({ status: "success", summary: "Complete", raw: "x".repeat(100_000) }),
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "LargeTool",
-              description: "d".repeat(100_000),
-              parameters: {
-                type: "object",
-                properties: {
-                  query: { type: "string", description: "s".repeat(100_000) },
-                },
-              },
-            },
-          },
-        ],
-      },
-    });
-
-    const input = client.selectInputs[0];
-    expect(input).toBeDefined();
-    expect(input).not.toHaveProperty("allowedTools");
-    expect(input?.openAiRequest).not.toHaveProperty("tools");
-    expect(JSON.stringify(input?.candidateTools).length).toBeLessThan(12_000);
-    expect(JSON.stringify(input?.candidateTools)).not.toContain("senera.token_preview.v1");
-    expect(input?.candidateTools[0]?.parameterContract.format).toBe("json_schema_outline");
-    expect(input?.openAiRequest.toolTranscript[0]?.observation).toEqual({
-      status: "success",
-      summary: "Complete",
-      evidenceUris: [],
-    });
+    expect(client.fillInputs).toHaveLength(0);
   });
 });
 
-class FinalAnswerCompilerClient implements AgentPiAssistantCompilerModelClient {
-  readonly selectInputs: AgentPiControllerActionInput[] = [];
+class CompilerClient implements AgentPiAssistantCompilerModelClient {
+  readonly evolveInputs: AgentPiControllerDecisionInput[] = [];
+  readonly fillInputs: AgentPiToolArgumentsInput[] = [];
   readonly repairRequests: Array<{
-    input: AgentPiControllerActionInput;
-    invalidAction: string;
+    input: AgentPiControllerDecisionInput;
+    invalidDecision: string;
     issues: string[];
   }> = [];
+  readonly argumentResults = new Map<string, unknown>();
 
   constructor(
-    private readonly selectedAction: unknown,
-    private readonly repairedAction: unknown = selectedAction,
+    private readonly decisions: unknown[],
+    private readonly repairedDecision: unknown = decisions.at(-1),
   ) {}
 
-  async selectPiAction(input: AgentPiControllerActionInput): Promise<unknown> {
-    this.selectInputs.push(input);
-    return this.selectedAction;
+  async evolveTurn(input: AgentPiControllerDecisionInput): Promise<unknown> {
+    this.evolveInputs.push(input);
+    const decision = this.decisions.shift();
+    if (decision === undefined) throw new Error("Unexpected turn evolution.");
+    return decision;
   }
 
-  async repairPiAction(request: {
-    input: AgentPiControllerActionInput;
-    invalidAction: string;
+  async repairControllerDecision(request: {
+    input: AgentPiControllerDecisionInput;
+    invalidDecision: string;
     issues: string[];
   }): Promise<unknown> {
     this.repairRequests.push(request);
-    return this.repairedAction;
-  }
-
-  async fillPiToolArguments(_input: AgentPiToolArgumentsInput): Promise<never> {
-    throw new Error("FinalAnswer compilation must not fill tool arguments.");
-  }
-
-  async repairPiToolArguments(_input: AgentPiToolArgumentsRepairInput): Promise<never> {
-    throw new Error("FinalAnswer compilation must not repair tool arguments.");
-  }
-}
-
-class ToolArgumentCompilerClient implements AgentPiAssistantCompilerModelClient {
-  readonly selectInputs: AgentPiControllerActionInput[] = [];
-  readonly fillInputs: AgentPiToolArgumentsInput[] = [];
-
-  async selectPiAction(input: AgentPiControllerActionInput): Promise<unknown> {
-    this.selectInputs.push(input);
-    return {
-      kind: "CallTools",
-      preface: "Searching current sources.",
-      calls: [
-        {
-          toolName: "LargeSearchTool",
-          purpose: "Find the current release.",
-          required: true,
-        },
-      ],
-    };
-  }
-
-  async repairPiAction(): Promise<never> {
-    throw new Error("The selected action should be valid.");
+    return this.repairedDecision;
   }
 
   async fillPiToolArguments(input: AgentPiToolArgumentsInput): Promise<unknown> {
     this.fillInputs.push(input);
+    return (
+      this.argumentResults.get(input.call.toolName) ?? {
+        arguments: {},
+        missingInputs: [],
+        assumptions: [],
+      }
+    );
+  }
+
+  async repairPiToolArguments(_input: AgentPiToolArgumentsRepairInput): Promise<never> {
+    throw new Error("Unexpected argument repair.");
+  }
+}
+
+class ConcurrentArgumentCompilerClient extends CompilerClient {
+  private activeFills = 0;
+  maximumConcurrentFills = 0;
+
+  constructor() {
+    super([
+      {
+        kind: "Execute",
+        fragment: {
+          preface: "Reading both files.",
+          calls: [
+            { toolName: "ReadFirst", purpose: "Read the first file.", required: true },
+            { toolName: "ReadSecond", purpose: "Read the second file.", required: true },
+          ],
+        },
+      },
+    ]);
+  }
+
+  override async fillPiToolArguments(input: AgentPiToolArgumentsInput): Promise<unknown> {
+    this.activeFills += 1;
+    this.maximumConcurrentFills = Math.max(this.maximumConcurrentFills, this.activeFills);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    this.activeFills -= 1;
     return {
-      arguments: { query: "current release" },
+      arguments: { path: input.call.toolName === "ReadFirst" ? "first.txt" : "second.txt" },
       missingInputs: [],
       assumptions: [],
     };
   }
-
-  async repairPiToolArguments(): Promise<never> {
-    throw new Error("The generated arguments should be valid.");
-  }
 }
 
 function createCompiler(client: AgentPiAssistantCompilerModelClient): AgentPiAssistantCompiler {
-  return new AgentPiAssistantCompiler({
-    modelProvider: createModelProvider(),
-    client,
-  });
+  return new AgentPiAssistantCompiler({ modelProvider: createModelProvider(), client });
 }
 
-function toolRootCommand(): AgentRootCommand {
+function tool(name: string, parameters: Record<string, unknown>, description = `${name} description`) {
   return {
-    authority: "senera_runtime_root",
-    action: "use_tools",
-    outputMode: "open",
-    toolAccess: "restricted",
-    objective: "Use tools when required.",
-    instruction: "Inspect the requested state.",
-    allowedTools: [],
-    forbiddenOutputs: [],
-    insufficiencyPolicy: "ask",
-    preferredTools: [],
-    toolSearchQueries: [],
-    needs: [],
-    includeToolCatalog: false,
-    visibleOutput: {
-      audience: "runtime",
-      start: "",
-      format: "text",
-      rules: [],
-      repair: { instruction: "", rules: [] },
-    },
+    type: "function" as const,
+    function: { name, description, parameters },
   };
 }
 
-function answerRootCommand(): AgentRootCommand {
+function requiredPathSchema() {
   return {
-    ...toolRootCommand(),
-    action: "answer",
-    objective: "Answer the user directly.",
-    instruction: null,
-  };
-}
-
-function directRoute() {
-  return {
-    mode: "direct_response" as const,
-    objective: "Explain the current state from the conversation context.",
-    preferredTools: [],
-    discoveryQueries: [],
-    raw: {
-      mode: InteractionRunMode.DirectResponse,
-      objective: "Explain the current state from the conversation context.",
-      preferredTools: [],
-      discoveryQueries: [],
-    },
+    type: "object",
+    properties: { path: { type: "string" } },
+    required: ["path"],
+    additionalProperties: false,
   };
 }

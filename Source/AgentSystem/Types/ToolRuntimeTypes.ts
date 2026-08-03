@@ -2,11 +2,17 @@ import type {
   AgentToolProcessResponseType,
   AgentToolProcessResponseVersion,
 } from "../ToolRuntime/AgentToolProcessEnvelope.js";
-import type { RegisteredTool } from "./PluginRuntimeTypes.js";
-import type { ToolArtifactPolicyManifest } from "./PluginManifestTypes.js";
+import type { RegisteredTool } from "./AgentToolRuntimeTypes.js";
+import type { ToolArtifactPolicyManifest } from "./AgentToolContractTypes.js";
 import type { AgentToolResultSummary } from "./AgentToolResultSummaryTypes.js";
 import type { SeneraOutputSpoolDescriptor } from "../Execution/SeneraOutputSpool.js";
 import type { AgentToolExecutionPlan } from "../ToolRuntime/AgentToolExecutionPlan.js";
+import type {
+  AgentToolAssessmentStatus,
+  AgentToolExecutionOutcome,
+  AgentToolFailure,
+} from "../ToolRuntime/AgentToolResultOutcome.js";
+import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
 
 export interface ExecutedToolCallResult {
   callId: string;
@@ -16,27 +22,29 @@ export interface ExecutedToolCallResult {
   process: {
     exitCode: number | null;
     signal: NodeJS.Signals | null;
+    stdout: string;
     stderr: string;
   };
   outputCapture?: SeneraOutputSpoolDescriptor;
   result: unknown;
+  outcome: AgentToolExecutionOutcome;
   artifact?: ExecutedToolCallArtifact;
   presentation?: AgentToolResultPresentation;
   artifactPolicy?: ToolArtifactPolicyManifest;
   workspaceCapture?: ToolWorkspaceCaptureResult;
 }
 
-export const AgentToolResultPresentationType = "senera.tool_result_presentation.v1";
+export const AgentToolResultPresentationProtocol = defineSeneraProtocol("tool_result_presentation", 1);
 
-export type AgentToolResultPresentationStatus = "success" | "failure" | "empty";
+export type AgentToolResultPresentationStatus = AgentToolAssessmentStatus;
 
 /**
  * User-facing projection of a tool result. The raw result remains on
  * ExecutedToolCallResult.result for inspection and model observation.
  */
 export interface AgentToolResultPresentation {
-  type: typeof AgentToolResultPresentationType;
-  version: 1;
+  type: typeof AgentToolResultPresentationProtocol.type;
+  version: typeof AgentToolResultPresentationProtocol.version;
   status: AgentToolResultPresentationStatus;
   headline: string;
   summary?: string;
@@ -44,6 +52,7 @@ export interface AgentToolResultPresentation {
   evidence: AgentToolResultPresentationEvidence[];
   changes: AgentToolResultPresentationChange[];
   artifactUri?: string;
+  failure?: AgentToolFailure;
 }
 
 export interface AgentToolResultPresentationFact {
@@ -183,10 +192,10 @@ export interface ToolArtifactDeltaRecord {
 export interface ToolExecutionContext {
   tool: RegisteredTool;
   arguments: Record<string, unknown>;
-  registry: AgentPluginRegistryLike;
+  registry: AgentExtensionRegistryLike;
 }
 
-export interface AgentPluginRegistryLike {
+export interface AgentExtensionRegistryLike {
   getTool(name: string): RegisteredTool | undefined;
 }
 
@@ -202,7 +211,7 @@ export interface AgentToolProcessError {
     maxStdoutBytes?: number;
     maxStderrBytes?: number;
     actualBytes?: number;
-    pluginName?: string;
+    extensionName?: string;
     toolName?: string;
     exitCode?: number | null;
     signal?: NodeJS.Signals | null;
@@ -210,10 +219,18 @@ export interface AgentToolProcessError {
   };
 }
 
-export interface AgentToolProcessResponse {
-  type: AgentToolProcessResponseType;
-  version: AgentToolProcessResponseVersion;
-  ok: boolean;
-  result?: unknown;
-  error?: AgentToolProcessError;
-}
+export type AgentToolProcessResponse =
+  | {
+      type: AgentToolProcessResponseType;
+      version: AgentToolProcessResponseVersion;
+      ok: true;
+      result?: unknown;
+      error?: never;
+    }
+  | {
+      type: AgentToolProcessResponseType;
+      version: AgentToolProcessResponseVersion;
+      ok: false;
+      result?: never;
+      error: AgentToolProcessError;
+    };

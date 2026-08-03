@@ -1,8 +1,0 @@
-{
-  "contractSourceVersion": 1,
-  "tools": {
-    "MemoryRecallTool": {
-      "file": "./ToolSignature.ts"
-    }
-  }
-}

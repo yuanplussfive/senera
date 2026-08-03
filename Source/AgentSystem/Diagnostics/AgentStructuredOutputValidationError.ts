@@ -3,8 +3,9 @@ import {
   formatAgentStructuredIssues,
   type AgentStructuredIssue,
 } from "./AgentStructuredIssue.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
-export class AgentStructuredOutputValidationError extends Error {
+export class AgentStructuredOutputValidationError extends AgentBaseError {
   readonly issueDetails: AgentStructuredIssue[];
   readonly issues: string[];
 
@@ -15,7 +16,6 @@ export class AgentStructuredOutputValidationError extends Error {
     const issueDetails = createAgentStructuredIssueList(issues);
     const messages = formatAgentStructuredIssues(issueDetails);
     super(messages.join("\n"));
-    this.name = "AgentStructuredOutputValidationError";
     this.issueDetails = issueDetails;
     this.issues = messages;
   }

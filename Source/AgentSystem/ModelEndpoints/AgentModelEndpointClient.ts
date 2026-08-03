@@ -9,7 +9,7 @@ import type {
 import { resolveModelProviderConfig } from "../AgentDefaults.js";
 import { createModelProviderMetadata, type AgentModelProviderMetadata } from "./AgentModelMetadata.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { ModelHttpClient } from "./ModelHttpClient.js";
 import type { TextGenerationEndpoint } from "./ModelEndpointTypes.js";
 import { createModelEndpoint } from "./ModelEndpointTypes.js";
@@ -27,11 +27,9 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
   constructor(config: AgentSystemConfig, modelProviderId?: string) {
     this.providerConfig = resolveModelProviderConfig(config, modelProviderId);
     if (!this.providerConfig.ApiKey?.trim()) {
-      throw new Error(
-        agentErrorMessage("model.apiKeyMissing", {
-          providerId: this.providerConfig.Id,
-        }),
-      );
+      throw new AgentLocalizedError("model.apiKeyMissing", {
+        providerId: this.providerConfig.Id,
+      });
     }
 
     this.metadata = createModelProviderMetadata(this.providerConfig);
@@ -53,7 +51,7 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
 
     await this.emitCompleted(request, result.text, usage);
 
-    return { text: result.text, usage };
+    return { text: result.text, usage, completion: result.completion };
   }
 
   async stream(request: AgentLanguageModelRequest): Promise<AgentLanguageModelStream> {
@@ -92,6 +90,9 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
       get usage() {
         return usage;
       },
+      get completion() {
+        return stream.completion;
+      },
       abort: () => stream.abort(),
       [Symbol.asyncIterator]: () => chunks,
     };
@@ -117,7 +118,7 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
     for await (const chunk of stream) {
       text = chunk.accumulatedText;
     }
-    return { text, usage: stream.usage };
+    return { text, usage: stream.usage, completion: stream.completion };
   }
 
   private async emitCompleted(

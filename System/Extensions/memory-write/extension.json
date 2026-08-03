@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "memory-write",
+  "version": "1.0.0",
+  "displayName": {
+    "zh-CN": "长期记忆写入",
+    "en-US": "Long-Term Memory Write"
+  },
+  "description": {
+    "zh-CN": "把用户明确要求记住的内容直接写入活动长期记忆。",
+    "en-US": "Writes information the user explicitly asks to remember into active long-term memory."
+  },
+  "priority": 8,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/MemoryWriteTool.tool.json",
+      "capability": "memory.write",
+      "recommendedForSkills": []
+    }
+  ]
+}

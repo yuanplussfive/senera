@@ -31,7 +31,7 @@ export function renderJsonConfigFieldInput(
       />
     );
   }
-  if (field.type !== "record" && field.options && field.options.length > 0) {
+  if (field.type !== "record" && ((field.options?.length ?? 0) > 0 || field.modelSelection)) {
     return <OptionControl field={field} value={value} disabled={disabled} onChange={onChange} />;
   }
   if (field.type === "number") {
@@ -100,7 +100,7 @@ function OptionControl({
   onChange: (value: unknown) => void;
 }): JSX.Element {
   const options = field.options ?? [];
-  if (options.length <= 4) {
+  if (!field.modelSelection && options.length <= 4) {
     return (
       <div className="grid w-full grid-cols-1 gap-1.5 sm:grid-cols-2">
         {options.map((option) => {
@@ -133,12 +133,16 @@ function OptionControl({
       disabled={disabled}
       onChange={(event) => {
         const next = options.find((option) => String(option) === event.currentTarget.value);
-        if (next !== undefined) onChange(next);
+        if (next !== undefined) {
+          onChange(next);
+          return;
+        }
+        if (field.modelSelection && event.currentTarget.value === "") onChange("");
       }}
       className={jsonConfigInputClassName}
     >
       <option value="" disabled={field.required !== false}>
-        {frontendMessage("config.form.selectPlaceholder")}
+        {field.placeholder ?? frontendMessage("config.form.selectPlaceholder")}
       </option>
       {options.map((option) => (
         <option key={String(option)} value={String(option)}>

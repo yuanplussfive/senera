@@ -1,13 +1,12 @@
 import type {
-  ActionPlanInput,
   MemoryConsolidationResult as BamlMemoryConsolidationResult,
   MemoryLearningResult as BamlMemoryLearningResult,
   MemoryWriteResolutionResult as BamlMemoryWriteResolutionResult,
-  PiControllerAction as BamlPiControllerAction,
+  ControllerDecision as BamlControllerDecision,
   PiToolArgumentsDraft as BamlPiToolArgumentsDraft,
   ToolRiskAudit as BamlToolRiskAudit,
   ToolLearningResult as BamlToolLearningResult,
-  PiCompactionSummary as BamlPiCompactionSummary,
+  GroundedDigest as BamlGroundedDigest,
 } from "../BamlClient/baml_client/types.js";
 import type {
   ResolvedAgentActionPlannerClientConfig,
@@ -21,21 +20,19 @@ import type {
   AgentToolLearningPromptInput,
 } from "./AgentLearningPromptJson.js";
 import type {
-  AgentPiControllerActionInput,
-  AgentPiToolCard,
+  AgentPiControllerDecisionInput,
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
-} from "../PiProxy/AgentPiAssistantMessageTypes.js";
+} from "../PiShared/AgentPiPlanningTypes.js";
 import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 import { AgentActionPlannerModelTransport } from "./AgentActionPlannerModelTransport.js";
 import { resolvePlannerProvider } from "./AgentActionPlannerProviderResolver.js";
 import { AgentActionPlannerStructuredCaller } from "./AgentActionPlannerStructuredCaller.js";
 import { AgentActionPlannerCoreModelCalls } from "./AgentActionPlannerCoreModelCalls.js";
 import { AgentActionPlannerLearningModelCalls } from "./AgentActionPlannerLearningModelCalls.js";
-import type { AgentPiCompactionPromptInput } from "../Pi/AgentPiCompactionPrompt.js";
+import type { AgentPiToolObservationDigestPromptInput } from "../Pi/AgentPiToolObservationDigestPrompt.js";
 import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
-import type { ParsedInteractionPreparation } from "./AgentActionPlannerSchema.js";
 
 export class AgentActionPlannerModelClient {
   readonly providerConfig: ResolvedAgentModelProviderConfig;
@@ -61,29 +58,22 @@ export class AgentActionPlannerModelClient {
     this.learning = new AgentActionPlannerLearningModelCalls(caller);
   }
 
-  prepareInteraction(
-    input: ActionPlanInput,
-    options?: { candidateTools?: readonly AgentPiToolCard[]; signal?: AbortSignal },
-  ): Promise<ParsedInteractionPreparation> {
-    return this.core.prepareInteraction(input, options);
-  }
-
-  selectPiAction(
-    input: AgentPiControllerActionInput,
+  evolveTurn(
+    input: AgentPiControllerDecisionInput,
     options?: { signal?: AbortSignal },
-  ): Promise<BamlPiControllerAction> {
-    return this.core.selectPiAction(input, options);
+  ): Promise<BamlControllerDecision> {
+    return this.core.evolveTurn(input, options);
   }
 
-  repairPiAction(
+  repairControllerDecision(
     options: {
-      input: AgentPiControllerActionInput;
-      invalidAction: string;
+      input: AgentPiControllerDecisionInput;
+      invalidDecision: string;
       issues: string[];
     },
     requestOptions?: { signal?: AbortSignal },
-  ): Promise<BamlPiControllerAction> {
-    return this.core.repairPiAction(options, requestOptions);
+  ): Promise<BamlControllerDecision> {
+    return this.core.repairControllerDecision(options, requestOptions);
   }
 
   fillPiToolArguments(
@@ -118,22 +108,22 @@ export class AgentActionPlannerModelClient {
     return this.core.repairToolRiskAudit(options, requestOptions);
   }
 
-  compactPiSession(
-    input: AgentPiCompactionPromptInput,
+  condenseToolObservations(
+    input: AgentPiToolObservationDigestPromptInput,
     options?: { signal?: AbortSignal },
-  ): Promise<BamlPiCompactionSummary> {
-    return this.core.compactPiSession(input, options);
+  ): Promise<BamlGroundedDigest> {
+    return this.core.condenseToolObservations(input, options);
   }
 
-  repairPiCompaction(
+  repairToolObservationDigest(
     options: {
-      input: AgentPiCompactionPromptInput;
-      invalidSummary: string;
+      input: AgentPiToolObservationDigestPromptInput;
+      invalidDigest: string;
       issues: string[];
     },
     requestOptions?: { signal?: AbortSignal },
-  ): Promise<BamlPiCompactionSummary> {
-    return this.core.repairPiCompaction(options, requestOptions);
+  ): Promise<BamlGroundedDigest> {
+    return this.core.repairToolObservationDigest(options, requestOptions);
   }
 
   learnToolUse(
@@ -207,12 +197,4 @@ export class AgentActionPlannerModelClient {
   ): Promise<BamlMemoryWriteResolutionResult> {
     return this.learning.repairMemoryWriteResolution(options, requestOptions);
   }
-}
-
-/** The narrow planner capability required by turn understanding and routing. */
-export interface AgentActionPlannerCoreClient {
-  prepareInteraction(
-    input: ActionPlanInput,
-    options?: { candidateTools?: readonly AgentPiToolCard[]; signal?: AbortSignal },
-  ): Promise<ParsedInteractionPreparation>;
 }

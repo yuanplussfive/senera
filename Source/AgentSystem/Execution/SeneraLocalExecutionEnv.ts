@@ -31,7 +31,9 @@ import { isSeneraShellDialectCompatible } from "./SeneraShellCommand.js";
 import { createSeneraLocalPersistentProcessSpawner } from "./SeneraPersistentProcessSpawner.js";
 import { SeneraWorkspaceBoundary, SeneraWorkspaceBoundaryError } from "./SeneraWorkspaceBoundary.js";
 import {
+  AgentResourceAccessAuthorities,
   AgentResourceAccessIntents,
+  type AgentResourceAccessAuthority,
   type AgentResourceAccessIntent,
   type SeneraResourceAccessAuthorizer,
 } from "./SeneraResourceAccess.js";
@@ -43,6 +45,7 @@ import type {
 import { createSeneraLocalTerminalSpawner } from "./SeneraTerminalSpawner.js";
 import type { SeneraTerminalChild, SeneraTerminalSpawner, SeneraTerminalSpawnOptions } from "./SeneraTerminalTypes.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { isPathWithin } from "../Core/AgentPath.js";
 
 // exec() is an internal convenience path, but it must stay bounded like every other
 // output channel. Mirrors AgentDefaults.ToolExecution.MaxStdoutBytes (64 MiB), which
@@ -55,27 +58,57 @@ export interface SeneraLocalExecutionEnvOptions {
   persistentProcessSpawner?: SeneraPersistentProcessSpawner;
   terminalSpawner?: SeneraTerminalSpawner;
   resourceAccessPolicy?: SeneraResourceAccessAuthorizer;
+  resourceAccessAuthority?: AgentResourceAccessAuthority;
+}
+
+interface SeneraLocalExecutionEnvSharedState {
+  readonly ownedTempRoots: Map<string, SeneraWorkspaceBoundary>;
 }
 
 export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   readonly workspaceRoot: string;
   readonly cwd: string;
-  private readonly ownedTempRoots = new Map<string, SeneraWorkspaceBoundary>();
+  readonly capabilities;
+  private readonly ownedTempRoots: Map<string, SeneraWorkspaceBoundary>;
   private readonly workspaceBoundary: SeneraWorkspaceBoundary;
   private readonly processBackend: SeneraProcessExecutionBackend;
   private readonly persistentProcessSpawner: SeneraPersistentProcessSpawner;
   private readonly terminalSpawner: SeneraTerminalSpawner;
+  private readonly resourceAccessPolicy?: SeneraResourceAccessAuthorizer;
+  private readonly resourceAccessAuthority: AgentResourceAccessAuthority;
 
-  constructor(options: SeneraLocalExecutionEnvOptions) {
+  constructor(options: SeneraLocalExecutionEnvOptions, sharedState?: SeneraLocalExecutionEnvSharedState) {
     this.workspaceRoot = path.resolve(options.workspaceRoot);
     this.cwd = this.workspaceRoot;
+    this.ownedTempRoots = sharedState?.ownedTempRoots ?? new Map();
+    this.resourceAccessAuthority = options.resourceAccessAuthority ?? AgentResourceAccessAuthorities.Tool;
     this.workspaceBoundary = new SeneraWorkspaceBoundary({
       workspaceRoot: this.workspaceRoot,
       policy: options.resourceAccessPolicy,
+      authority: this.resourceAccessAuthority,
     });
+    this.resourceAccessPolicy = options.resourceAccessPolicy;
     this.processBackend = options.processBackend ?? new SeneraNodeProcessBackend();
     this.persistentProcessSpawner = options.persistentProcessSpawner ?? createSeneraLocalPersistentProcessSpawner();
+    this.capabilities = {
+      persistentProcessBackends: this.persistentProcessSpawner.supportedBackends ?? ["local"],
+    };
     this.terminalSpawner = options.terminalSpawner ?? createSeneraLocalTerminalSpawner();
+  }
+
+  withResourceAccessAuthority(authority: AgentResourceAccessAuthority): SeneraExecutionEnv {
+    if (authority === this.resourceAccessAuthority) return this;
+    return new SeneraLocalExecutionEnv(
+      {
+        workspaceRoot: this.workspaceRoot,
+        processBackend: this.processBackend,
+        persistentProcessSpawner: this.persistentProcessSpawner,
+        terminalSpawner: this.terminalSpawner,
+        resourceAccessPolicy: this.resourceAccessPolicy,
+        resourceAccessAuthority: authority,
+      },
+      { ownedTempRoots: this.ownedTempRoots },
+    );
   }
 
   async executeShell(request: SeneraShellExecutionRequest): Promise<SeneraShellExecutionResult> {
@@ -133,7 +166,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     args: readonly string[],
     options: SeneraPersistentProcessSpawnOptions,
   ): Promise<SeneraPersistentProcessChild> => {
-    const cwd = await this.resolveWorkspaceCwd(options.cwd);
+    const cwd = await this.resolvePersistentProcessCwd(options.cwd, options.profile?.hostCwdRoot);
     return this.persistentProcessSpawner(command, args, {
       ...options,
       cwd,
@@ -453,6 +486,28 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     }
   }
 
+  private async resolvePersistentProcessCwd(
+    value: string | undefined,
+    hostCwdRoot: string | undefined,
+  ): Promise<string> {
+    if (!hostCwdRoot) return this.resolveWorkspaceCwd(value);
+    try {
+      return (
+        await new SeneraWorkspaceBoundary({ workspaceRoot: hostCwdRoot, linkPolicy: "deny" }).resolve(
+          value,
+          AgentResourceAccessIntents.Execute,
+        )
+      ).absolutePath;
+    } catch (error) {
+      throw new SeneraExecutionError(
+        SeneraExecutionErrorCodes.InvalidWorkspacePath,
+        errorMessage(error),
+        { cwd: value ?? ".", hostCwdRoot },
+        error instanceof Error ? error : undefined,
+      );
+    }
+  }
+
   private async resolveFilePath(value: string, intent: AgentResourceAccessIntent): Promise<Result<string, FileError>> {
     const target = await this.resolveFileTarget(value, intent);
     return target.ok ? ok(target.value.absolutePath) : target;
@@ -492,8 +547,8 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   }
 
   private boundaryForAddressedPath(value: string): SeneraWorkspaceBoundary | undefined {
-    if (isPathInside(this.workspaceRoot, value)) return this.workspaceBoundary;
-    return [...this.ownedTempRoots].find(([root]) => isPathInside(root, value))?.[1];
+    if (isPathWithin(this.workspaceRoot, value)) return this.workspaceBoundary;
+    return [...this.ownedTempRoots].find(([root]) => isPathWithin(root, value))?.[1];
   }
 
   private async atomicWrite(
@@ -539,11 +594,6 @@ function ok<TValue>(value: TValue): Result<TValue, never> {
 
 function err<TError>(error: TError): Result<never, TError> {
   return { ok: false, error };
-}
-
-function isPathInside(root: string, value: string): boolean {
-  const relative = path.relative(path.resolve(root), path.resolve(value));
-  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 function toBoundaryFileError(error: unknown, filePath: string): FileError {

@@ -227,7 +227,7 @@ function task(taskId: string) {
 
 function clientOptions(interactionInput: AgentInteractionInputRuntime) {
   return {
-    server: { id: "elicitation", command: "test", args: [], cwd: process.cwd() },
+    server: { id: "elicitation", revision: "test", command: "test", args: [], cwd: process.cwd() },
     requestTimeoutMs: 1_000,
     spawnPersistentProcess: vi.fn(),
     executionProfile: { name: "elicitation", kind: "mcp-server", backend: "local" } as const,

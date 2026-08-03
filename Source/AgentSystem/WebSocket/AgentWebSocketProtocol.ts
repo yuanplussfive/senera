@@ -10,6 +10,8 @@ import { AgentProviderEndpointPatchSchema } from "../Config/AgentConfigCommandSc
 import { SeneraTerminalDimensionLimits } from "../Execution/SeneraTerminalTypes.js";
 import { AgentApprovalDecisions } from "../Approvals/AgentApprovalTypes.js";
 import { AgentInteractionInputActions } from "../Interaction/AgentInteractionInputTypes.js";
+import { AgentPiSessionExportFormats } from "../Pi/AgentPiSessionManagement.js";
+import { AgentExtensionInputValueSchema } from "../Extensions/AgentExtensionInput.js";
 
 const AgentInteractionInputValueSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.array(z.string())]);
 
@@ -117,6 +119,26 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("session.compact"),
+      sessionId: z.string().min(1),
+      customInstructions: z.string().trim().min(1).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("session.runtime_status"),
+      sessionId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("session.export"),
+      sessionId: z.string().min(1),
+      format: z.enum(AgentPiSessionExportFormats),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("session.list"),
     })
     .strict(),
@@ -150,6 +172,53 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("config.get"),
+    })
+    .strict(),
+  z.object({ type: z.literal("systemTool.list") }).strict(),
+  z.object({ type: z.literal("mcpServer.list") }).strict(),
+  z
+    .object({
+      type: z.literal("mcpServer.restart"),
+      serverId: z.string().trim().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("mcpInput.set"),
+      serverId: z.string().trim().min(1),
+      inputId: z.string().trim().min(1),
+      value: AgentExtensionInputValueSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("mcpInput.delete"),
+      serverId: z.string().trim().min(1),
+      inputId: z.string().trim().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("mcpInput.update"),
+      requestId: z.string().trim().min(1),
+      serverId: z.string().trim().min(1),
+      values: z.record(z.string().trim().min(1), AgentExtensionInputValueSchema),
+      deletes: z.array(z.string().trim().min(1)).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("mcpCredential.set"),
+      serverId: z.string().trim().min(1),
+      name: z.string().trim().min(1),
+      value: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("mcpCredential.delete"),
+      serverId: z.string().trim().min(1),
+      name: z.string().trim().min(1),
     })
     .strict(),
   z
@@ -224,28 +293,6 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       type: z.literal("provider.defaultModel.set"),
       ...AgentConfigCommandRequestSchema,
       modelId: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("plugin.config.list"),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("plugin.config.update"),
-      requestId: z.string().min(1).optional(),
-      pluginName: z.string().min(1),
-      toml: z.string(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("plugin.config.set_enabled"),
-      requestId: z.string().min(1).optional(),
-      pluginName: z.string().min(1),
-      toolName: z.string().min(1).optional(),
-      enabled: z.boolean(),
     })
     .strict(),
   z

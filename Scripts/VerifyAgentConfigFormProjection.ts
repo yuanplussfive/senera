@@ -95,8 +95,19 @@ const modelSelections = form.sections.flatMap((section) =>
 );
 assert.deepEqual(
   modelSelections.map((selection) => selection.id),
-  ["assistant", "planner-base", "action-planner", "final-answer", "tool-learning", "embedding", "rerank"],
+  [
+    "assistant",
+    "planner-base",
+    "action-planner",
+    "final-answer",
+    "tool-learning",
+    "memory-learning",
+    "embedding",
+    "rerank",
+  ],
 );
+assert.equal(findField(form, ["ToolLearning", "Client", "MaxTokens"]).effectiveValue, -1);
+assert.equal(findField(form, ["MemoryLearning", "Client", "MaxTokens"]).effectiveValue, -1);
 assert.deepEqual(findField(form, ["VectorModels", "Embedding", "Model"]).modelSelection?.providerPath, [
   "VectorModels",
   "Embedding",

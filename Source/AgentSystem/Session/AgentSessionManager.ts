@@ -4,83 +4,55 @@ import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import { matchByKind } from "../Core/AgentMatch.js";
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
-import type { AgentLoopRunner } from "../Loop/AgentLoopRunner.js";
-import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
-import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import { AgentMemoryService, type AgentMemoryLearningSink } from "../Memory/AgentMemoryService.js";
-import type { AgentMemorySourceRepository } from "../Memory/AgentMemorySourceRepository.js";
-import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
-import type { AgentPiSessionMutationPort } from "../Pi/AgentPiSessionMutationService.js";
-import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
+import { projectAgentMessage } from "../I18n/AgentMessageProjection.js";
+import { AgentMemoryService } from "../Memory/AgentMemoryService.js";
+import type { AgentPiSessionExportFormat } from "../Pi/AgentPiSessionManagement.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
-import type { AgentSession } from "./AgentSession.js";
 import { AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
 import { AgentSessionHistoryReplay } from "./AgentSessionHistoryReplay.js";
 import { AgentSessionRunCoordinator } from "./AgentSessionRunCoordinator.js";
-import { AgentSessionStore, type AgentSessionCloseResult } from "./AgentSessionStore.js";
+import { AgentSessionStore } from "./AgentSessionStore.js";
 import { AgentSessionTitleProjector } from "./AgentSessionTitleProjector.js";
 import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
 import { resolveAgentPiSessionLifecycle } from "../Pi/AgentPiSessionLifecycleMetadata.js";
-import {
-  AgentSessionMessageDispositions,
-  type AgentSessionMessageDisposition,
-} from "./AgentSessionMessageDisposition.js";
-import { AgentSessionControlEpoch } from "./AgentSessionControlEpoch.js";
+import type { AgentSessionMessageDisposition } from "./AgentSessionMessageDisposition.js";
 import type { AgentSessionMessageQueueMode } from "./AgentSessionMessageQueueMode.js";
-import type { AgentSessionRunControlPolicy } from "./AgentSessionRunControlPolicy.js";
-import type { AgentSessionRunResource } from "./AgentSessionRunResource.js";
-import type { AgentSessionResource } from "./AgentSessionResource.js";
-import { releaseAgentLifecycleResources } from "../Core/AgentLifecycleResource.js";
-import { resolveAgentSessionLifecycle, withAgentSessionCloseFailure } from "./AgentSessionLifecycleMetadata.js";
-import {
-  AgentSessionHistoryMutationCoordinator,
-  type AgentSessionHistoryMutationResult,
-} from "./AgentSessionHistoryMutationCoordinator.js";
-import { AgentKeyedLeaseQueue } from "../Core/AgentKeyedLeaseQueue.js";
+import { AgentSessionHistoryMutationCoordinator } from "./AgentSessionHistoryMutationCoordinator.js";
 import { createOpaqueId } from "../Core/AgentIds.js";
-import { errorMessage } from "../Core/AgentErrors.js";
+import { AgentSessionOperations } from "./AgentSessionOperation.js";
+import { AgentSessionAdmissionCoordinator } from "./AgentSessionAdmissionCoordinator.js";
+import { AgentSessionForkCoordinator } from "./AgentSessionForkCoordinator.js";
+import { AgentSessionCloseCoordinator } from "./AgentSessionCloseCoordinator.js";
+import { AgentSessionPiManagementController } from "./AgentSessionPiManagementController.js";
+import type { AgentSessionManagerOptions } from "./AgentSessionManagerOptions.js";
+import { AgentSessionMessageCoordinator } from "./AgentSessionMessageCoordinator.js";
+import { AgentSessionHistoryController } from "./AgentSessionHistoryController.js";
 
-export interface AgentSessionManagerOptions {
-  loopFactory: (modelProviderId?: string) => AgentLoopRunner;
-  store?: AgentSessionStore;
-  conversationPolicy?: AgentConversationPolicy;
-  conversationProjector?: AgentConversationProjector;
-  memoryService?: AgentMemoryService;
-  memorySourceRepository?: AgentMemorySourceRepository;
-  memoryLearning?: AgentMemoryLearningSink;
-  logger?: AgentLogger;
-  runResources?: readonly AgentSessionRunResource[];
-  sessionResources?: readonly AgentSessionResource[];
-  piSessions?: AgentPiActiveSessionRegistry;
-  piDiagnostics?: AgentPiDiagnosticSink;
-  piSessionMutations?: AgentPiSessionMutationPort;
-  runControl: AgentSessionRunControlPolicy;
-  artifactSessionCleanup?: {
-    removeSessionArtifacts(sessionId: string): Promise<unknown>;
-  };
-}
-
-export type { AgentMemoryLearningSink } from "../Memory/AgentMemoryService.js";
+export type { AgentMemoryLearningSink, AgentSessionManagerOptions } from "./AgentSessionManagerOptions.js";
 
 export class AgentSessionManager {
   private readonly store: AgentSessionStore;
   private readonly memory: AgentMemoryService;
   private readonly eventFactory: AgentSessionEventFactory;
-  private readonly historyReplay: AgentSessionHistoryReplay;
   private readonly runCoordinator: AgentSessionRunCoordinator;
+  private readonly messageCoordinator: AgentSessionMessageCoordinator;
+  private readonly historyController: AgentSessionHistoryController;
   private readonly titleProjector: AgentSessionTitleProjector;
-  private readonly historyMutations: AgentSessionHistoryMutationCoordinator;
+  private readonly forkCoordinator: AgentSessionForkCoordinator;
+  private readonly closeCoordinator: AgentSessionCloseCoordinator;
+  private readonly piManagement: AgentSessionPiManagementController;
   private readyPromise?: Promise<void>;
-  private readonly controlEpoch = new AgentSessionControlEpoch();
-  private readonly sessionAdmissions = new AgentKeyedLeaseQueue<string>();
-  private readonly regenerationLineages = new Map<string, AgentSessionRegenerationLineage>();
+  private readonly sessionAdmissions: AgentSessionAdmissionCoordinator;
+  private shutdownPromise?: Promise<void>;
 
   constructor(private readonly options: AgentSessionManagerOptions) {
     const conversationPolicy = options.conversationPolicy ?? new AgentConversationPolicy();
     const conversationProjector = options.conversationProjector ?? new AgentConversationProjector();
 
     this.store = options.store ?? new AgentSessionStore();
+    this.sessionAdmissions = new AgentSessionAdmissionCoordinator({
+      retain: (sessionId) => this.store.retainWorkingSession(sessionId),
+    });
     this.memory =
       options.memoryService ??
       new AgentMemoryService({
@@ -88,28 +60,73 @@ export class AgentSessionManager {
         sourceRepository: options.memorySourceRepository,
       });
     this.eventFactory = new AgentSessionEventFactory(conversationPolicy);
-    this.historyReplay = new AgentSessionHistoryReplay({
+    this.piManagement = new AgentSessionPiManagementController({
       store: this.store,
-      conversationPolicy,
+      service: options.piSessionManagement,
+      events: this.eventFactory,
+      ready: () => this.ready(),
+    });
+    const historyReplay = new AgentSessionHistoryReplay({
+      store: this.store,
       eventFactory: this.eventFactory,
+    });
+    const historyMutations = new AgentSessionHistoryMutationCoordinator({
+      store: this.store,
+      piSessions: options.piSessionMutations,
+      memory: this.memory,
+      artifacts: options.artifactSessionCleanup,
     });
     this.runCoordinator = new AgentSessionRunCoordinator({
       store: this.store,
-      conversationPolicy,
       conversationProjector,
+      conversationPolicy,
       memory: this.memory,
       logger: options.logger,
       runResources: options.runResources,
       piSessions: options.piSessions,
       piDiagnostics: options.piDiagnostics,
+      historyMutations,
       runControl: options.runControl,
       loopFactory: options.loopFactory,
     });
-    this.titleProjector = new AgentSessionTitleProjector((sessionId) => this.store.loadConversation(sessionId));
-    this.runCoordinator.cleanupOrphanedRunningSnapshots();
-    this.historyMutations = new AgentSessionHistoryMutationCoordinator({
+    this.messageCoordinator = new AgentSessionMessageCoordinator({
       store: this.store,
+      admissions: this.sessionAdmissions,
+      events: this.eventFactory,
+      runs: this.runCoordinator,
+      ready: () => this.ready(),
+      recoverHistory: async (sessionId) => {
+        await historyMutations.recoverSession(sessionId);
+      },
+    });
+    this.historyController = new AgentSessionHistoryController({
+      store: this.store,
+      admissions: this.sessionAdmissions,
+      replay: historyReplay,
+      mutations: historyMutations,
+      runs: this.runCoordinator,
+      messages: this.messageCoordinator,
+      ready: () => this.ready(),
+      logger: options.logger,
+    });
+    this.titleProjector = new AgentSessionTitleProjector((sessionId) => this.store.loadFirstUserMessage(sessionId));
+    this.runCoordinator.cleanupOrphanedRunningSnapshots();
+    this.closeCoordinator = new AgentSessionCloseCoordinator({
+      store: this.store,
+      runs: this.runCoordinator,
+      memory: this.memory,
       piSessions: options.piSessionMutations,
+      resources: options.sessionResources,
+      artifacts: options.artifactSessionCleanup,
+      logger: options.logger,
+    });
+    this.forkCoordinator = new AgentSessionForkCoordinator({
+      store: this.store,
+      admissions: this.sessionAdmissions,
+      piManagement: options.piSessionManagement,
+      piMutations: options.piSessionMutations,
+      artifacts: options.artifactSessionCleanup,
+      recoverSourceHistory: (sessionId) => this.historyController.recoverSession(sessionId),
     });
     void this.ready().catch(() => undefined);
   }
@@ -125,11 +142,20 @@ export class AgentSessionManager {
     return guarded;
   }
 
+  beginShutdown(): void {
+    this.runCoordinator.beginShutdown();
+  }
+
+  shutdown(): Promise<void> {
+    this.beginShutdown();
+    return (this.shutdownPromise ??= this.runCoordinator.shutdown());
+  }
+
   async createSession(request: { sessionId?: string; onEvent?: AgentEventSink }): Promise<void> {
     await this.sessionAdmissions.run(request.sessionId ?? createOpaqueId("automatic_session_creation"), async () => {
       await this.ready();
       const opened = this.store.open(request.sessionId);
-      await this.recoverSessionHistoryMutation(opened.session.id);
+      await this.historyController.recoverSession(opened.session.id);
 
       await emitAgentEvent(
         request.onEvent,
@@ -144,26 +170,20 @@ export class AgentSessionManager {
   async closeSession(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<void> {
     await this.sessionAdmissions.run(request.sessionId, async () => {
       await this.ready();
-      this.controlEpoch.issue(request.sessionId);
+      this.historyController.invalidate(request.sessionId);
       const lookup = this.store.get(request.sessionId);
 
       await matchByKind(lookup, {
         missing: async ({ sessionId }) => {
-          await emitAgentEvent(request.onEvent, this.eventFactory.notFound(sessionId, "session.close"));
+          await emitAgentEvent(request.onEvent, this.eventFactory.notFound(sessionId, AgentSessionOperations.Close));
         },
         found: async ({ session }) => {
-          let closed: AgentSessionCloseResult;
-          try {
-            closed = await this.cleanupAndDeleteSession(session);
-          } catch (error) {
-            this.persistSessionCloseFailure(session, error);
-            throw error;
-          }
+          const closed = await this.closeCoordinator.close(session);
           await emitAgentEvent(
             request.onEvent,
             matchByKind(closed, {
               closed: ({ session: current }) => this.eventFactory.closed(current),
-              missing: ({ sessionId }) => this.eventFactory.notFound(sessionId, "session.close"),
+              missing: ({ sessionId }) => this.eventFactory.notFound(sessionId, AgentSessionOperations.Close),
             }),
           );
         },
@@ -171,75 +191,10 @@ export class AgentSessionManager {
     });
   }
 
-  private async releaseSessionResources(session: AgentSession): Promise<void> {
-    const piSession = resolveAgentPiSessionLifecycle(session.metadata);
-    const piReset = piSession.initialized
-      ? this.options.piSessionMutations?.reset({
-          sessionId: session.id,
-          modelProviderId: piSession.modelProviderId,
-        })
-      : undefined;
-    const [piOutcome, resourceFailures] = await Promise.all([
-      piReset ? Promise.allSettled([piReset]) : Promise.resolve([]),
-      releaseAgentLifecycleResources(this.options.sessionResources ?? [], { sessionId: session.id }),
-    ]);
-    const failures: unknown[] = [];
-    for (const outcome of piOutcome) {
-      if (outcome.status === "fulfilled") continue;
-      failures.push(outcome.reason);
-      this.options.logger?.warn("session.pi_resource.cleanup_failed", {
-        sessionId: session.id,
-        error: serializeError(outcome.reason),
-      });
-    }
-    for (const failure of resourceFailures) {
-      failures.push(failure.error);
-      this.options.logger?.warn("session.resource.cleanup_failed", {
-        sessionId: session.id,
-        resource: failure.resourceId,
-        error: serializeError(failure.error),
-      });
-    }
-    if (failures.length === 1) throw failures[0];
-    if (failures.length > 1) throw new AggregateError(failures, `Session ${session.id} cleanup failed.`);
-  }
-
-  private async cleanupAndDeleteSession(session: AgentSession): Promise<AgentSessionCloseResult> {
-    await this.runCoordinator.discardActiveRun(session);
-    await this.releaseSessionResources(session);
-    await this.options.artifactSessionCleanup?.removeSessionArtifacts(session.id);
-    this.memory.deleteSession(session.id);
-    this.regenerationLineages.delete(session.id);
-    const closed = this.store.close(session.id);
-    if (closed.kind === "missing") {
-      throw new Error(`Session ${session.id} disappeared during close cleanup.`);
-    }
-    return closed;
-  }
-
-  private persistSessionCloseFailure(session: AgentSession, error: unknown): void {
-    session.metadata = withAgentSessionCloseFailure(session.metadata, {
-      requestedAt: new Date().toISOString(),
-      failures: cleanupFailureMessages(error),
-    });
-    session.updatedAt = new Date().toISOString();
-    this.store.persistMetadata(session);
-  }
-
   private async recoverRuntimeState(): Promise<void> {
-    await this.recoverPendingHistoryMutations();
-    for (const session of this.store.listSessions()) {
-      if (!resolveAgentSessionLifecycle(session.metadata).close) continue;
-      try {
-        await this.cleanupAndDeleteSession(session);
-      } catch (error) {
-        this.persistSessionCloseFailure(session, error);
-        this.options.logger?.warn("session.close_recovery.failed", {
-          sessionId: session.id,
-          error: serializeError(error),
-        });
-      }
-    }
+    await this.forkCoordinator.recoverAll();
+    await this.historyController.recoverAll();
+    await this.closeCoordinator.recoverAll();
   }
 
   async submitMessage(request: {
@@ -253,89 +208,7 @@ export class AgentSessionManager {
     onEvent?: AgentEventSink;
     preparation?: AgentTurnPreparationSnapshot;
   }): Promise<void> {
-    const { completion } = await this.acceptMessage(request);
-    await completion;
-  }
-
-  private async acceptMessage(request: {
-    sessionId: string;
-    requestId?: string;
-    modelProviderId?: string;
-    input: string;
-    attachments?: AgentUploadAttachment[];
-    disposition?: AgentSessionMessageDisposition;
-    queueMode?: AgentSessionMessageQueueMode;
-    onEvent?: AgentEventSink;
-    preparation?: AgentTurnPreparationSnapshot;
-  }): Promise<{ completion?: Promise<void> }> {
-    return this.sessionAdmissions.run(request.sessionId, () => this.acceptMessageUnderAdmission(request));
-  }
-
-  private async acceptMessageUnderAdmission(request: {
-    sessionId: string;
-    requestId?: string;
-    modelProviderId?: string;
-    input: string;
-    attachments?: AgentUploadAttachment[];
-    disposition?: AgentSessionMessageDisposition;
-    queueMode?: AgentSessionMessageQueueMode;
-    onEvent?: AgentEventSink;
-    preparation?: AgentTurnPreparationSnapshot;
-  }): Promise<{ completion?: Promise<void> }> {
-    let completion: Promise<void> | undefined;
-    await this.ready();
-    let lookup = this.store.get(request.sessionId);
-    if (lookup.kind === "missing" && request.disposition === AgentSessionMessageDispositions.CreateIfMissing) {
-      const opened = this.store.open(request.sessionId);
-      lookup = { kind: "found", session: opened.session };
-      await emitAgentEvent(
-        request.onEvent,
-        matchByKind(opened, {
-          created: ({ session }) => this.eventFactory.created(session),
-          existing: ({ session }) => this.eventFactory.snapshot(session),
-        }),
-      );
-    }
-
-    await matchByKind(lookup, {
-      missing: async ({ sessionId }) => {
-        await emitAgentEvent(request.onEvent, this.eventFactory.notFound(sessionId, "session.message"));
-      },
-      found: async ({ session }) => {
-        await this.recoverSessionHistoryMutation(session.id);
-        const gate = this.runCoordinator.assertAvailable(session);
-        await matchByKind(gate, {
-          available: ({ current }) => {
-            completion = this.runCoordinator.runTurn(current, request);
-          },
-          busy: async ({ current }) => {
-            if (request.queueMode) {
-              const queued = await this.runCoordinator.enqueueActiveRunMessage({
-                session: current,
-                requestId: request.requestId,
-                input: request.input,
-                attachments: request.attachments,
-                queueMode: request.queueMode,
-                onEvent: request.onEvent,
-              });
-              if (queued) return;
-
-              const refreshed = this.runCoordinator.assertAvailable(current);
-              if (refreshed.kind === "available") {
-                completion = this.runCoordinator.runTurn(refreshed.current, request);
-                return;
-              }
-            }
-
-            await emitAgentEvent(
-              request.onEvent,
-              this.eventFactory.busy(current, "session.message", request.requestId),
-            );
-          },
-        });
-      },
-    });
-    return { completion };
+    await this.messageCoordinator.submit(request);
   }
 
   listSessions(): Array<{
@@ -361,11 +234,7 @@ export class AgentSessionManager {
   }
 
   async replayHistory(request: { sessionId: string; refresh?: boolean; onEvent?: AgentEventSink }): Promise<void> {
-    await this.sessionAdmissions.run(request.sessionId, async () => {
-      await this.ready();
-      await this.recoverSessionHistoryMutation(request.sessionId);
-      await this.historyReplay.replay(request);
-    });
+    await this.historyController.replay(request);
   }
 
   recordRunEvent(envelope: AgentEventEnvelope): void {
@@ -390,7 +259,10 @@ export class AgentSessionManager {
       await this.ready();
       const lookup = this.store.get(request.sessionId);
       if (lookup.kind === "missing") {
-        await emitAgentEvent(request.onEvent, this.eventFactory.notFound(request.sessionId, "session.close"));
+        await emitAgentEvent(
+          request.onEvent,
+          this.eventFactory.notFound(request.sessionId, AgentSessionOperations.Close),
+        );
         return;
       }
 
@@ -401,7 +273,7 @@ export class AgentSessionManager {
 
   async cancelActiveRun(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<boolean> {
     await this.ready();
-    this.controlEpoch.issue(request.sessionId);
+    this.historyController.invalidate(request.sessionId);
     this.runCoordinator.requestActiveRunCancellation(request.sessionId);
     return this.sessionAdmissions.run(request.sessionId, () => this.runCoordinator.cancelActiveRun(request));
   }
@@ -412,24 +284,7 @@ export class AgentSessionManager {
     onEvent?: AgentEventSink;
     preparation?: AgentTurnPreparationSnapshot;
   }): Promise<void> {
-    await this.sessionAdmissions.run(request.sessionId, async () => {
-      await this.ready();
-      this.controlEpoch.issue(request.sessionId);
-      const lookup = this.store.get(request.sessionId);
-      let truncated: AgentSessionHistoryMutationResult | undefined;
-      if (lookup.kind === "found") {
-        await this.runCoordinator.discardActiveRun(lookup.session);
-        const preparation = request.preparation ?? this.store.loadTurnPreparation(request.sessionId, request.requestId);
-        truncated = await this.historyMutations.truncate({
-          session: lookup.session,
-          fromRequestId: request.requestId,
-          preparation,
-        });
-      }
-      this.deleteMutationMemory(truncated);
-      this.regenerationLineages.delete(request.sessionId);
-      await this.emitSessionTruncated(request, { removedEntries: truncated?.removedEntries ?? 0 });
-    });
+    await this.historyController.truncate(request);
   }
 
   async regenerateFromRequest(request: {
@@ -441,76 +296,7 @@ export class AgentSessionManager {
     attachments?: AgentUploadAttachment[];
     onEvent?: AgentEventSink;
   }): Promise<void> {
-    await this.ready();
-    const token = this.controlEpoch.issue(request.sessionId);
-    this.runCoordinator.requestActiveRunCancellation(request.sessionId);
-    let completion: Promise<void> | undefined;
-    await this.sessionAdmissions.run(request.sessionId, async () => {
-      if (!this.controlEpoch.isCurrent(token)) {
-        await this.emitSupersededRegeneration(request);
-        return;
-      }
-
-      const inheritedLineage = this.resolveRegenerationLineage(request.sessionId, request.fromRequestId);
-      const preparation =
-        this.store.loadTurnPreparation(request.sessionId, request.fromRequestId) ?? inheritedLineage?.preparation;
-      const lookup = this.store.get(request.sessionId);
-      if (lookup.kind === "found") {
-        await this.discardActiveRunForRegeneration(lookup.session, {
-          requestId: request.requestId,
-          onEvent: request.onEvent,
-        });
-      }
-      if (!this.controlEpoch.isCurrent(token)) {
-        await this.emitSupersededRegeneration(request);
-        return;
-      }
-
-      const truncationRequestId = this.resolveRegenerationTruncationRequestId(
-        request.sessionId,
-        request.fromRequestId,
-        inheritedLineage?.currentRequestId,
-      );
-      const mutationResult =
-        lookup.kind === "found"
-          ? await this.historyMutations.truncate({
-              session: lookup.session,
-              fromRequestId: truncationRequestId,
-              preparation,
-            })
-          : undefined;
-      this.deleteMutationMemory(mutationResult);
-      this.regenerationLineages.set(request.sessionId, {
-        sourceRequestId: inheritedLineage?.sourceRequestId ?? request.fromRequestId,
-        currentRequestId: request.requestId,
-        preparation,
-      });
-      await this.emitSessionTruncated(
-        {
-          sessionId: request.sessionId,
-          requestId: truncationRequestId,
-          replacementRequestId: request.requestId,
-          onEvent: request.onEvent,
-        },
-        { removedEntries: mutationResult?.removedEntries ?? 0 },
-      );
-      if (!this.controlEpoch.isCurrent(token)) {
-        await this.emitSupersededRegeneration(request);
-        return;
-      }
-
-      const accepted = await this.acceptMessageUnderAdmission({
-        sessionId: request.sessionId,
-        requestId: request.requestId,
-        modelProviderId: request.modelProviderId,
-        input: request.input,
-        attachments: request.attachments,
-        preparation,
-        onEvent: request.onEvent,
-      });
-      completion = accepted.completion;
-    });
-    await completion;
+    await this.historyController.regenerate(request);
   }
 
   async forkSession(request: {
@@ -520,11 +306,13 @@ export class AgentSessionManager {
     onEvent?: AgentEventSink;
   }): Promise<void> {
     await this.ready();
-    await this.recoverSessionHistoryMutation(request.sourceSessionId);
-    const result = this.store.fork(request);
+    const result = await this.forkCoordinator.fork(request);
     switch (result.kind) {
       case "source_missing":
-        await emitAgentEvent(request.onEvent, this.eventFactory.notFound(result.sourceSessionId, "session.fork"));
+        await emitAgentEvent(
+          request.onEvent,
+          this.eventFactory.notFound(result.sourceSessionId, AgentSessionOperations.Fork),
+        );
         return;
       case "target_exists":
         await emitAgentEvent(request.onEvent, {
@@ -532,7 +320,7 @@ export class AgentSessionManager {
           context: { sessionId: result.sessionId },
           data: {
             code: "session_fork_target_exists",
-            message: agentErrorMessage("session.forkTargetExists", { sessionId: result.sessionId }),
+            ...projectAgentMessage("session.forkTargetExists", { sessionId: result.sessionId }),
           },
         });
         return;
@@ -542,9 +330,15 @@ export class AgentSessionManager {
           context: { sessionId: result.sourceSessionId },
           data: {
             code: "session_fork_boundary_missing",
-            message: agentErrorMessage("session.forkBoundaryMissing", { requestId: result.requestId }),
+            ...projectAgentMessage("session.forkBoundaryMissing", { requestId: result.requestId }),
           },
         });
+        return;
+      case "pi_unavailable":
+        await this.piManagement.emitUnavailable(request, AgentSessionOperations.Fork);
+        return;
+      case "pi_failed":
+        await this.rejectPiSessionFork(result.sessionId, request.onEvent);
         return;
       case "forked":
         await emitAgentEvent(request.onEvent, this.eventFactory.created(result.session));
@@ -563,8 +357,82 @@ export class AgentSessionManager {
             createdAt: result.session.createdAt,
           },
         });
-        await this.historyReplay.replay({ sessionId: result.session.id, onEvent: request.onEvent });
+        await this.historyController.replay({ sessionId: result.session.id, onEvent: request.onEvent });
     }
+  }
+
+  compactSession(request: { sessionId: string; customInstructions?: string; onEvent?: AgentEventSink }): Promise<void> {
+    return this.piManagement.run(
+      request,
+      AgentSessionOperations.Compact,
+      (service, modelProviderId) =>
+        service.compact({
+          sessionId: request.sessionId,
+          modelProviderId,
+          customInstructions: request.customInstructions,
+        }),
+      (result) => ({
+        kind: AgentEventKinds.SessionCompacted,
+        context: { sessionId: request.sessionId },
+        data: {
+          sessionId: request.sessionId,
+          tokensBefore: result.tokensBefore,
+          estimatedTokensAfter: result.estimatedTokensAfter,
+        },
+      }),
+    );
+  }
+
+  async emitPiSessionRuntimeStatus(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<void> {
+    await this.ready();
+    const lookup = this.store.get(request.sessionId);
+    if (lookup.kind === "missing") {
+      await emitAgentEvent(
+        request.onEvent,
+        this.eventFactory.notFound(request.sessionId, AgentSessionOperations.RuntimeStatus),
+      );
+      return;
+    }
+
+    const lifecycle = resolveAgentPiSessionLifecycle(lookup.session.metadata);
+    const runtime =
+      lifecycle.initialized && this.options.piSessionManagement
+        ? await this.options.piSessionManagement.status({
+            sessionId: request.sessionId,
+            modelProviderId: lifecycle.modelProviderId,
+          })
+        : undefined;
+    await emitAgentEvent(request.onEvent, {
+      kind: AgentEventKinds.SessionRuntimeStatus,
+      context: { sessionId: request.sessionId },
+      data: {
+        sessionId: request.sessionId,
+        available: runtime !== undefined,
+        runtime,
+      },
+    });
+  }
+
+  exportPiSession(request: {
+    sessionId: string;
+    format: AgentPiSessionExportFormat;
+    onEvent?: AgentEventSink;
+  }): Promise<void> {
+    return this.piManagement.run(
+      request,
+      AgentSessionOperations.Export,
+      (service, modelProviderId) =>
+        service.export({
+          sessionId: request.sessionId,
+          modelProviderId,
+          format: request.format,
+        }),
+      (result) => ({
+        kind: AgentEventKinds.SessionExported,
+        context: { sessionId: request.sessionId },
+        data: result,
+      }),
+    );
   }
 
   async emitSessionListSnapshot(request: { onEvent?: AgentEventSink }): Promise<void> {
@@ -576,151 +444,14 @@ export class AgentSessionManager {
     });
   }
 
-  private persistTruncatedSessionMetadata(session: AgentSession | undefined): void {
-    if (!session) {
-      return;
-    }
-
-    session.updatedAt = new Date().toISOString();
-    this.store.persistMetadata(session);
-  }
-
-  private async discardActiveRunForRegeneration(
-    session: AgentSession,
-    progress: { requestId: string; onEvent?: AgentEventSink },
-  ): Promise<void> {
-    if (!this.runCoordinator.hasActiveRun(session.id)) {
-      await this.runCoordinator.discardActiveRun(session);
-      return;
-    }
-
-    const startedAt = performance.now();
-    await this.emitRegenerationCancellationProgress(session.id, progress, { stage: "started" });
-    try {
-      await this.runCoordinator.discardActiveRun(session);
-      await this.emitRegenerationCancellationProgress(session.id, progress, {
-        stage: "completed",
-        durationMs: elapsedMilliseconds(startedAt),
-      });
-    } catch (error) {
-      await this.emitRegenerationCancellationProgress(session.id, progress, {
-        stage: "failed",
-        durationMs: elapsedMilliseconds(startedAt),
-        message: errorMessage(error),
-      });
-      throw error;
-    }
-  }
-
-  private async emitRegenerationCancellationProgress(
-    sessionId: string,
-    progress: { requestId: string; onEvent?: AgentEventSink },
-    data: {
-      stage: "started" | "completed" | "failed";
-      durationMs?: number;
-      message?: string;
-    },
-  ): Promise<void> {
-    try {
-      await emitAgentEvent(progress.onEvent, {
-        kind: AgentEventKinds.RunCancellationProgress,
-        context: { sessionId, requestId: progress.requestId },
-        data,
-      });
-    } catch (error) {
-      this.options.logger?.warn("session.regeneration_cancellation.telemetry_failed", {
-        sessionId,
-        requestId: progress.requestId,
-        stage: data.stage,
-        error: serializeError(error),
-      });
-    }
-  }
-
-  private async recoverPendingHistoryMutations(): Promise<void> {
-    for (const result of await this.historyMutations.recoverAll()) {
-      this.deleteMutationMemory(result);
-    }
-  }
-
-  private async recoverSessionHistoryMutation(sessionId: string): Promise<void> {
-    this.deleteMutationMemory(await this.historyMutations.recoverSession(sessionId));
-  }
-
-  private deleteMutationMemory(result: AgentSessionHistoryMutationResult | undefined): void {
-    if (!result) return;
-    this.memory.deleteFromSessionRequest(result.mutation.sessionId, result.mutation.fromRequestId);
-  }
-
-  private emitSessionTruncated(
-    request: {
-      sessionId: string;
-      requestId: string;
-      replacementRequestId?: string;
-      onEvent?: AgentEventSink;
-    },
-    result: AgentSessionTruncationResult,
-  ): Promise<void> {
-    return emitAgentEvent(request.onEvent, {
-      kind: AgentEventKinds.SessionTruncated,
-      context: { sessionId: request.sessionId },
+  private async rejectPiSessionFork(sessionId: string, onEvent?: AgentEventSink): Promise<void> {
+    await emitAgentEvent(onEvent, {
+      kind: AgentEventKinds.RequestInvalid,
+      context: { sessionId },
       data: {
-        sessionId: request.sessionId,
-        fromRequestId: request.requestId,
-        removedEntries: result.removedEntries,
-        replacementRequestId: request.replacementRequestId,
+        code: "session_pi_fork_failed",
+        ...projectAgentMessage("session.forkPiFailed"),
       },
     });
   }
-
-  private emitSupersededRegeneration(request: {
-    sessionId: string;
-    requestId: string;
-    onEvent?: AgentEventSink;
-  }): Promise<void> {
-    return emitAgentEvent(request.onEvent, {
-      kind: AgentEventKinds.RunCancelled,
-      context: { sessionId: request.sessionId, requestId: request.requestId },
-      data: { reason: "user_cancelled" },
-    });
-  }
-
-  private resolveRegenerationLineage(
-    sessionId: string,
-    requestId: string,
-  ): AgentSessionRegenerationLineage | undefined {
-    const lineage = this.regenerationLineages.get(sessionId);
-    return lineage && (lineage.sourceRequestId === requestId || lineage.currentRequestId === requestId)
-      ? lineage
-      : undefined;
-  }
-
-  private resolveRegenerationTruncationRequestId(
-    sessionId: string,
-    requestedId: string,
-    inheritedCurrentId: string | undefined,
-  ): string {
-    const requestIds = new Set(this.store.loadConversation(sessionId).map((entry) => entry.requestId));
-    if (requestIds.has(requestedId)) return requestedId;
-    return inheritedCurrentId && requestIds.has(inheritedCurrentId) ? inheritedCurrentId : requestedId;
-  }
-}
-
-interface AgentSessionTruncationResult {
-  readonly removedEntries: number;
-}
-
-interface AgentSessionRegenerationLineage {
-  readonly sourceRequestId: string;
-  readonly currentRequestId: string;
-  readonly preparation?: AgentTurnPreparationSnapshot;
-}
-
-function elapsedMilliseconds(startedAt: number): number {
-  return Math.max(0, Math.round((performance.now() - startedAt) * 100) / 100);
-}
-
-function cleanupFailureMessages(error: unknown): string[] {
-  if (error instanceof AggregateError) return error.errors.flatMap(cleanupFailureMessages);
-  return [errorMessage(error)];
 }

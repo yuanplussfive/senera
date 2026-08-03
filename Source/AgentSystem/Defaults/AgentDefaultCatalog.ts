@@ -7,6 +7,7 @@ import type {
   ResolvedAgentDefaultsConfig,
 } from "./AgentDefaultValueTypes.js";
 import { moduleDirPath } from "../Core/AgentPath.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import { SeneraDefaultTerminationGraceMs } from "../Execution/SeneraTerminationPolicy.js";
 import { AgentPiSessionCacheDefaults } from "../Pi/AgentPiSessionCachePolicy.js";
 import { AgentToolSearchMemoryExpansionModes } from "../Types/AgentToolAndMemoryConfigTypes.js";
@@ -15,19 +16,12 @@ import { SeneraDefaultProcessEnvironmentIncludeOnly } from "../Execution/SeneraP
 
 const Mebibyte = 1024 * 1024;
 const DefaultLargePayloadBytes = 64 * Mebibyte;
-const DefaultModelProviderEndpoints = JSON.parse(
+const DefaultModelProviderEndpoints = parseJsonText(
   fs.readFileSync(path.join(moduleDirPath(import.meta.url), "AgentDefaultModelProviderEndpoints.json"), "utf8"),
+  "Default model provider catalog",
 ) as ResolvedAgentModelProviderEndpointConfig[];
 
 export const AgentDefaults = {
-  PluginRoots: {
-    System: ["./System/Plugins"],
-    User: ["./Plugins"],
-  },
-  PluginDiscovery: {
-    ManifestFileName: "PluginManifest.json",
-    ConfigFileName: "PluginConfig.toml",
-  },
   ModelProviderEndpoints: DefaultModelProviderEndpoints,
   ModelRuntime: {
     Kind: "OpenAICompatible",
@@ -43,7 +37,7 @@ export const AgentDefaults = {
       DeveloperRole: false,
       StreamingUsage: true,
     },
-    ContextWindowTokens: -1,
+    ContextWindowTokens: 128_000,
     MaxModelOutputTokens: -1,
     Temperature: 0,
     MaxOutputTokens: -1,
@@ -102,28 +96,15 @@ export const AgentDefaults = {
       MaxCachedSessions: AgentPiSessionCacheDefaults.Capacity,
       Compaction: {
         Enabled: true,
-        TriggerRatio: 0.8,
-        HardLimitRatio: 0.95,
-        TargetRatio: 0.5,
-        SummaryMaxTokens: 4096,
-        TimeoutSeconds: 120,
-        TimeoutMs: 120000,
-        UnknownContextWindowTokens: 128000,
-        UnknownModelOutputTokens: 8192,
       },
     },
   },
   ToolSearch: {
     Embedding: {
-      Enabled: false,
-      Model: "text-embedding-3-large",
-      Dimensions: -1,
-      BatchSize: 64,
-      InputMaxChars: -1,
+      Enabled: true,
       ScoreThreshold: 0,
     },
     Memory: {
-      DatabasePath: ".senera/ToolSearchLearning.sqlite",
       MaxEpisodes: 5000,
       HalfLifeDays: 30,
     },
@@ -182,6 +163,12 @@ export const AgentDefaults = {
     },
   },
   MemoryLearning: {
+    Enabled: true,
+    MaxRepairAttempts: 1,
+    Client: {
+      Temperature: 0.1,
+      MaxTokens: -1,
+    },
     Promotion: {
       MinSupport: 2,
       MaxClusterSize: 8,
@@ -217,12 +204,10 @@ export const AgentDefaults = {
     SummaryMaxChars: 2400,
     RawJsonMaxBytes: DefaultLargePayloadBytes,
     TextFileMaxBytes: DefaultLargePayloadBytes,
-    MemoryReadStructuredJsonMaxBytes: 8 * Mebibyte,
     MemoryReadMaxArtifacts: 16,
     MemoryReadMaxRefs: 8,
     MemoryReadMaxConcurrency: 4,
-    MemoryReadCacheMaxBytes: 134217728,
-    MemoryReadCacheMaxEntries: 64,
+    MemoryReadStructuredJsonMaxTokens: 4_000,
     OutputCaptureMaxBytes: DefaultLargePayloadBytes,
     MaxStoredBytes: 10 * 1024 * 1024 * 1024,
     MaxArtifacts: 10_000,
@@ -279,6 +264,7 @@ export const AgentDefaults = {
       Limits: {
         MaxConnections: 64,
         MaxConnectionsPerClient: 8,
+        MaxRateLimitClients: 4_096,
         UpgradeRequestsPerMinute: 30,
         HttpRequestsPerMinute: 60,
         MessagesPerMinute: 100,
@@ -290,13 +276,14 @@ export const AgentDefaults = {
   },
   Persistence: {
     Kind: "sqlite",
-    DatabasePath: ".senera/senera.db",
   },
   ConfigStore: {
     Enabled: true,
     Kind: "sqlite",
-    DatabasePath: ".senera/Config.sqlite",
     MirrorJson: true,
+    RevisionRetentionCount: 256,
+    CommandReceiptRetentionHours: 168,
+    CommandReceiptMaxCount: 4_096,
   },
 } as const satisfies Omit<ResolvedAgentDefaultsConfig, "ModelRuntime" | "ToolExecution" | "VectorModels"> & {
   ModelRuntime: AgentModelRuntimeDefaultsConfig;

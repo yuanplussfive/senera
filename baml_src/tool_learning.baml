@@ -33,7 +33,7 @@ function LearnToolUse(promptJson: string) -> ToolLearningResult {
     - reason must be one concise sentence.
     - confidence must be between 0 and 1.
     - Return records as an empty array when the episode has no reusable tool-use lesson.
-    - Read plannerInput from the latest user JSON object's plannerInput property.
+    - Read plannerInput from the latest user message's <planner_input> XML document. <directive> maps to directive and <extra_context> contains the remaining plannerInput fields as escaped canonical JSON data.
     - plannerInput.directive.stage is learnToolUse.
 
     {{ ctx.output_format }}
@@ -56,7 +56,7 @@ function RepairToolLearning(promptJson: string) -> ToolLearningResult {
     - Use only exact sourceTerms from plannerInput.candidateSourceTerms.
     - Remove invalid records rather than inventing unsupported tags.
     - Do not output explanations, markdown, XML, or chain-of-thought.
-    - Read plannerInput from the latest user JSON object's plannerInput property.
+    - Read plannerInput from the latest user message's <planner_input> XML document. <directive> maps to directive and <extra_context> contains the remaining plannerInput fields as escaped canonical JSON data.
     - plannerInput.directive.stage is repairToolLearning.
 
     {{ ctx.output_format }}

@@ -51,9 +51,9 @@ describe("process environment policy", () => {
     expect(
       policy.project(
         { PATH: "runtime-path", OPENAI_API_KEY: "host-secret", CUSTOM_SECRET: "host-secret" },
-        { TAVILY_API_KEY: "plugin-declared" },
+        { TAVILY_API_KEY: "tool-declared" },
       ),
-    ).toEqual({ PATH: "runtime-path", TAVILY_API_KEY: "plugin-declared" });
+    ).toEqual({ PATH: "runtime-path", TAVILY_API_KEY: "tool-declared" });
   });
 
   it("uses the restricted allowlist when constructed without options", () => {

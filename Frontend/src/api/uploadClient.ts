@@ -1,5 +1,6 @@
 import type { UploadAttachmentData } from "./eventTypes";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { resolveBackendMessage, type BackendMessageData } from "../i18n/backendMessage";
 
 export interface UploadResponse {
   ok: true;
@@ -8,9 +9,8 @@ export interface UploadResponse {
 
 export interface UploadErrorResponse {
   ok: false;
-  error?: {
+  error?: BackendMessageData & {
     code?: string;
-    message?: string;
   };
 }
 
@@ -143,7 +143,7 @@ function readUploadErrorMessage(payload: unknown): string {
   if (!isRecord(payload) || payload.ok !== false || !isRecord(payload.error)) {
     return frontendMessage("upload.failed");
   }
-  return typeof payload.error.message === "string" ? payload.error.message : frontendMessage("upload.failed");
+  return resolveBackendMessage(payload.error) ?? frontendMessage("upload.failed");
 }
 
 function isUploadAttachment(value: unknown): value is UploadAttachmentData {

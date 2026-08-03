@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from "react";
 import { ChevronRight, ExternalLink, FileText } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { readNonBlankString as readString } from "../../lib/unknownValue";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
 
 /**
@@ -458,10 +459,6 @@ export function formatLineRange(frame: SourceFrame): string {
   }
   if (frame.focusLine !== undefined) return `L${frame.focusLine}`;
   return "source";
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 function readNumber(value: unknown): number | undefined {

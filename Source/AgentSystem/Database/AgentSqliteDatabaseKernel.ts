@@ -13,6 +13,7 @@ import { AgentSqliteStoreDataClasses, type AgentSqliteStoreContract } from "./Ag
 import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { nodeErrorCode } from "../Core/AgentFs.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 export const AgentSqliteJournalModes = {
   Wal: "WAL",
@@ -427,10 +428,9 @@ function assertDatabaseIntegrity(database: Database.Database, storeId: string): 
   }
 }
 
-class AgentSqliteDatabaseIntegrityError extends Error {
+class AgentSqliteDatabaseIntegrityError extends AgentBaseError {
   constructor(message: string) {
     super(message);
-    this.name = "AgentSqliteDatabaseIntegrityError";
   }
 }
 

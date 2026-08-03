@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { cp, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { isAgentUnknownRecord as isRecord } from "../../Core/AgentUnknownValue.js";
 import { PassThrough, type Duplex, type Readable } from "node:stream";
 import { finished } from "node:stream/promises";
 import Docker from "dockerode";
@@ -14,6 +15,7 @@ import {
 } from "./AgentGvisorRuntimeContract.js";
 import type { SeneraTerminalSignal } from "../../Execution/SeneraTerminalTypes.js";
 import { AgentSandboxPreparationStages, type AgentSandboxPreparationProgress } from "../AgentSandboxRuntimeTypes.js";
+import { isPathWithin } from "../../Core/AgentPath.js";
 import { selectAgentSandboxProvider } from "../AgentSandboxProviderSelection.js";
 import { AgentSandboxRuntimeProviders } from "../AgentSandboxRuntimeTypes.js";
 import type { AgentSandboxProviderPreference } from "../../Types/AgentRuntimeConfigTypes.js";
@@ -392,7 +394,7 @@ export class AgentGvisorDockerEngineRuntime implements AgentGvisorDockerRuntime 
 
   private assertCopySource(sourcePath: string): void {
     const resolved = path.resolve(sourcePath);
-    if (this.copySourceRoots.some((root) => isPathInside(root, resolved))) return;
+    if (this.copySourceRoots.some((root) => isPathWithin(root, resolved))) return;
     throw new Error(`${this.provider()} file source is outside the worker allowlist: ${sourcePath}`);
   }
 }
@@ -437,11 +439,6 @@ function serializeTmpfsOptions(entry: { sizeMiB: number; mode: string; noSuid: b
 
 function dockerSignal(signal: SeneraTerminalSignal): string {
   return { interrupt: "SIGINT", terminate: "SIGTERM", kill: "SIGKILL" }[signal];
-}
-
-function isPathInside(root: string, value: string): boolean {
-  const relative = path.relative(root, value);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function compareDockerApiVersions(left: string, right: string): number {
@@ -494,8 +491,4 @@ function resolveRuntimeName(
 function onceAsync(operation: () => Promise<void>): () => Promise<void> {
   let promise: Promise<void> | undefined;
   return () => (promise ??= operation());
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

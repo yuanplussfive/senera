@@ -10,7 +10,8 @@ Config 模块负责配置的读取、数据库镜像、表单投影和模型列�
 4. `AgentConfigFormProjector.ts`：配置表单投影入口。
 5. `AgentConfigFormDocument.ts` / `AgentConfigFormFieldProjector.ts` / `AgentConfigEffectiveProjector.ts`：表单说明文件校验、字段投影和 effective 配置投影。
 6. `AgentProviderModelDiscovery.ts`：通过供应商接口发现可用模型。
-7. `AgentSystemConfig.form.json`：表单结构定义。
+7. `AgentProviderModelConfigCommands.ts`：Provider/Model 命令兼容导出入口；具体实现分布在 `AgentProviderEndpointConfigCommands.ts`、`AgentProviderModelConfigMutations.ts`、`AgentProviderModelConfigInvariants.ts` 和 `AgentProviderModelConfigCommandTypes.ts`。
+8. `AgentSystemConfig.form.json`：表单结构定义。
 
 ## 扩展规则
 
@@ -19,6 +20,11 @@ Config 模块负责配置的读取、数据库镜像、表单投影和模型列�
 - 需要前端编辑时，先改 `AgentSystemConfig.form.json`，必要时再扩展 form projector 和前端配置 UI。
 - 供应商凭据属于 provider endpoint，模型能力属于 model 配置。
 - `ModelProviderEndpoints[].ApiKey` 在内存和 WebSocket 快照中保持明文语义，只能在 JSON/SQLite 持久化边界加解密；新增存储路径不得绕过 `AgentConfigSecretCodec`。
+- 配置命令幂等是有界协议：`CommandReceiptRetentionHours` 定义重试时间窗，`CommandReceiptMaxCount` 提供高流量硬上限。超出窗口或上限的 command ID 可以作为新命令再次使用。
+- SQLite 清理先删除过期和超额 command receipt，再删除不在最近 `RevisionRetentionCount` 且不再被有效 receipt 引用的 revision；清理与命令提交使用同一事务。JSON source 的进程内 receipt ledger 必须应用相同策略。
 - Provider rename 必须同步迁移规范模型 ID 及其配置引用，并保留 `ModelProviderIdAliases`，避免历史会话引用立即失效。
+- Provider/Model mutation 只负责构造下一份配置；跨端点、模型、默认值、group 和 alias 的一致性规则集中在 invariants 模块。旧 commands 文件只作为稳定 import boundary，禁止重新堆叠命令实现。
+- Provider model discovery cache 使用 endpoint 配置的规范 SHA-256 身份摘要，而不在缓存键中保留 API key 或 headers 原文。缓存由显式 `maxEntries`/`ttlMs` 策略约束，命中时更新 LRU；配置、凭据或过期时间变化都会重新请求。
+- `Server.AccessControl.Limits.MaxRateLimitClients` 是登录、HTTP、upgrade 和消息令牌桶可跟踪客户端数的共同上限；它约束内存和淘汰成本，不改变各自每分钟的配额。
 - 用户可编辑时间单位用秒，运行时内部再转换。
 - 新增配置必须补配置投影或配置服务验证。

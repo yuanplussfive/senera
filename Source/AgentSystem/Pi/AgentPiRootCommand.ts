@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import { moduleDirPath } from "../Core/AgentPath.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 interface AgentPiRootCommandPolicy {
   OutputMode: AgentRootCommand["outputMode"];
@@ -55,8 +56,9 @@ export function projectPiToolAgentRootCommand(rootCommand: AgentRootCommand): Ag
 }
 
 function readPiRootCommandPolicy(): AgentPiRootCommandPolicy {
-  return JSON.parse(
+  return parseJsonText(
     fs.readFileSync(path.join(moduleDirPath(import.meta.url), "AgentPiRootCommandPolicy.json"), "utf8"),
+    "Pi root command policy",
   ) as AgentPiRootCommandPolicy;
 }
 

@@ -3,6 +3,9 @@ import type { AgentEventContext, AgentEventEnvelope } from "../Events/AgentEvent
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { AgentPiSessionRuntimeStatus } from "../Pi/AgentPiSessionManagement.js";
+import type { AgentSessionOperation } from "./AgentSessionOperation.js";
+import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
 
 export type AgentSessionDomainEvent =
   | {
@@ -29,6 +32,7 @@ export type AgentSessionDomainEvent =
         rejectedRequestId?: string;
         operation: "session.message" | "session.close";
         message: string;
+        localizedMessage?: AgentLocalizedMessage;
       };
     }
   | {
@@ -36,8 +40,9 @@ export type AgentSessionDomainEvent =
       context: Required<Pick<AgentEventContext, "sessionId">>;
       data: {
         sessionId: string;
-        operation: "session.message" | "session.close" | "session.history" | "session.fork";
+        operation: AgentSessionOperation;
         message: string;
+        localizedMessage?: AgentLocalizedMessage;
       };
     }
   | {
@@ -117,6 +122,33 @@ export type AgentSessionDomainEvent =
         throughRequestId: string;
         title: string;
         createdAt: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionCompacted;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        tokensBefore: number;
+        estimatedTokensAfter?: number;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionRuntimeStatus;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        available: boolean;
+        runtime?: AgentPiSessionRuntimeStatus;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionExported;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        format: "jsonl" | "html";
+        path: string;
       };
     };
 

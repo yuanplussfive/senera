@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { ToolArtifactPolicyManifest } from "../Types/PluginManifestTypes.js";
+import type { ToolArtifactPolicyManifest } from "../Types/AgentToolContractTypes.js";
 import type { ToolWorkspaceSnapshot } from "../Types/ToolRuntimeTypes.js";
 import {
   type AgentWorkspaceChangeCaptureOptions,

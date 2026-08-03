@@ -1,20 +1,12 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { InMemoryToolSearchMemoryStore } from "../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryStore.js";
 import { verificationConfigPath } from "./VerificationConfig.js";
-
-interface VerificationConfigDocument {
-  Defaults: {
-    ToolSearch: {
-      Memory: {
-        DatabasePath: string;
-      };
-    };
-  };
-}
 
 export interface IsolatedVerificationRuntimeConfig {
   readonly configPath: string;
+  createToolSearchMemoryStore(): InMemoryToolSearchMemoryStore;
   dispose(): Promise<void>;
 }
 
@@ -27,12 +19,12 @@ export async function createIsolatedVerificationRuntimeConfig(
 ): Promise<IsolatedVerificationRuntimeConfig> {
   const tempRoot = await mkdtemp(path.join(tmpdir(), "senera-runtime-verification-"));
   const sourceConfigPath = verificationConfigPath(sourceRoot);
-  const config = JSON.parse(await readFile(sourceConfigPath, "utf8")) as VerificationConfigDocument;
-  config.Defaults.ToolSearch.Memory.DatabasePath = path.join(tempRoot, "ToolSearchLearning.sqlite");
+  const config = JSON.parse(await readFile(sourceConfigPath, "utf8")) as unknown;
   const configPath = path.join(tempRoot, path.basename(sourceConfigPath));
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
   return {
     configPath,
+    createToolSearchMemoryStore: () => new InMemoryToolSearchMemoryStore(),
     dispose: () => rm(tempRoot, { recursive: true, force: true }),
   };
 }

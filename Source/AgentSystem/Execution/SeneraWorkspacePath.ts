@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isPathWithin } from "../Core/AgentPath.js";
 
 export function resolveWorkspacePath(
   workspaceRoot: string,
@@ -7,10 +8,9 @@ export function resolveWorkspacePath(
 ): { ok: true; absolutePath: string } | { ok: false; message: string } {
   const root = path.resolve(workspaceRoot);
   const absolutePath = path.resolve(root, value ?? ".");
-  const relative = path.relative(root, absolutePath);
-  const inside = relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-
-  return inside ? { ok: true, absolutePath } : { ok: false, message: `路径超出工作区：${value ?? "."}` };
+  return isPathWithin(root, absolutePath)
+    ? { ok: true, absolutePath }
+    : { ok: false, message: `路径超出工作区：${value ?? "."}` };
 }
 
 export function workspaceRelativePath(workspaceRoot: string, absolutePath: string): string {
@@ -23,7 +23,7 @@ export async function validateWorkspaceMutationPath(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const root = path.resolve(workspaceRoot);
   const target = path.resolve(absolutePath);
-  if (!isPathInside(root, target)) {
+  if (!isSameOrNestedPath(root, target)) {
     return { ok: false, message: `路径超出工作区：${absolutePath}` };
   }
 
@@ -46,7 +46,7 @@ export async function validateWorkspaceMutationPath(
       return { ok: false, message: `工作区写入路径不能经过符号链接或目录联接：${absolutePath}` };
     }
     const canonical = await fs.realpath(cursor);
-    if (!isPathInside(canonicalRoot, canonical)) {
+    if (!isSameOrNestedPath(canonicalRoot, canonical)) {
       return { ok: false, message: `工作区写入路径解析后超出工作区：${absolutePath}` };
     }
   }
@@ -54,9 +54,12 @@ export async function validateWorkspaceMutationPath(
   return { ok: true };
 }
 
-function isPathInside(root: string, value: string): boolean {
-  const relative = path.relative(path.resolve(root), path.resolve(value));
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+export function isSameOrNestedPath(root: string, value: string): boolean {
+  return isPathWithin(root, value);
+}
+
+export function workspacePathsOverlap(left: string, right: string): boolean {
+  return isSameOrNestedPath(left, right) || isSameOrNestedPath(right, left);
 }
 
 function isNodeError(value: unknown): value is NodeJS.ErrnoException {

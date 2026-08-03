@@ -158,26 +158,11 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
   }
 
   deleteSession(sessionId: string): void {
-    for (const episode of this.episodes.values()) {
-      if (episode.sessionId !== sessionId) {
-        continue;
-      }
-      this.episodes.delete(episode.uri);
-      this.sourcesByEpisode.delete(episode.uri);
-      this.learningJobs.delete(episode.uri);
-    }
-    for (const item of this.items.values()) {
-      if (item.sessionId === sessionId) {
-        this.items.delete(item.uri);
-        this.deleteObservationsForMemory(item.uri);
-        this.deleteVectorsForMemory(item.uri);
-      }
-    }
-    for (const candidate of this.candidates.values()) {
-      if (candidate.sessionId === sessionId) {
-        this.candidates.delete(candidate.uri);
-      }
-    }
+    this.deleteEpisodes(
+      new Set(
+        [...this.episodes.values()].filter((episode) => episode.sessionId === sessionId).map((episode) => episode.uri),
+      ),
+    );
   }
 
   deleteFromSessionRequest(sessionId: string, requestId: string): void {
@@ -187,25 +172,13 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
     if (!target) {
       return;
     }
-    for (const episode of this.episodes.values()) {
-      if (episode.sessionId === sessionId && episode.startedAt >= target.startedAt) {
-        this.episodes.delete(episode.uri);
-        this.sourcesByEpisode.delete(episode.uri);
-        this.learningJobs.delete(episode.uri);
-        for (const item of this.items.values()) {
-          if (item.sourceEpisodeUri === episode.uri) {
-            this.items.delete(item.uri);
-            this.deleteObservationsForMemory(item.uri);
-            this.deleteVectorsForMemory(item.uri);
-          }
-        }
-        for (const candidate of this.candidates.values()) {
-          if (candidate.sourceEpisodeUri === episode.uri) {
-            this.candidates.delete(candidate.uri);
-          }
-        }
-      }
-    }
+    this.deleteEpisodes(
+      new Set(
+        [...this.episodes.values()]
+          .filter((episode) => episode.sessionId === sessionId && episode.startedAt >= target.startedAt)
+          .map((episode) => episode.uri),
+      ),
+    );
   }
 
   listEpisodes(sessionId: string): AgentMemoryEpisodeRecord[] {
@@ -444,20 +417,35 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
     return buildMemoryObservation(episode, memoryUri, action, observedAt, writeSequence);
   }
 
-  private deleteVectorsForMemory(memoryUri: string): void {
-    for (const key of this.vectors.keys()) {
-      if (key.startsWith(`${memoryUri}\0`)) {
-        this.vectors.delete(key);
-      }
+  private deleteEpisodes(episodeUris: ReadonlySet<string>): void {
+    if (episodeUris.size === 0) return;
+
+    for (const episodeUri of episodeUris) {
+      this.episodes.delete(episodeUri);
+      this.sourcesByEpisode.delete(episodeUri);
+      this.learningJobs.delete(episodeUri);
     }
+    for (const candidate of this.candidates.values()) {
+      if (episodeUris.has(candidate.sourceEpisodeUri)) this.candidates.delete(candidate.uri);
+    }
+
+    const affectedMemoryUris = new Set<string>();
+    for (const observation of this.observations.values()) {
+      if (!episodeUris.has(observation.sourceEpisodeUri)) continue;
+      this.observations.delete(observation.uri);
+      affectedMemoryUris.add(observation.memoryUri);
+    }
+    for (const memoryUri of affectedMemoryUris) this.refreshObservationWriteSequence(memoryUri);
   }
 
-  private deleteObservationsForMemory(memoryUri: string): void {
-    for (const observation of this.observations.values()) {
-      if (observation.memoryUri === memoryUri) {
-        this.observations.delete(observation.uri);
-      }
+  private refreshObservationWriteSequence(memoryUri: string): void {
+    const writeSequence = [...this.observations.values()]
+      .filter((observation) => observation.memoryUri === memoryUri)
+      .reduce((maximum, observation) => Math.max(maximum, observation.writeSequence), 0);
+    if (writeSequence > 0) {
+      this.observationWriteSequences.set(memoryUri, writeSequence);
+    } else {
+      this.observationWriteSequences.delete(memoryUri);
     }
-    this.observationWriteSequences.delete(memoryUri);
   }
 }

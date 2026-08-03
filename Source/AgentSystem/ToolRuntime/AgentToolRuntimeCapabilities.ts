@@ -1,9 +1,9 @@
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import type { ToolRuntimeCapabilitiesManifest, ToolRuntimeManifest } from "../Types/PluginManifestTypes.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import type { ToolRuntimeCapabilitiesManifest, ToolRuntimeManifest } from "../Types/AgentToolContractTypes.js";
 import {
-  inspectPluginToolRuntimeCapabilityContract,
-  inspectPluginToolRuntimeContract,
-} from "../Types/PluginToolRuntimeContract.js";
+  inspectAgentToolRuntimeCapabilityContract,
+  inspectAgentToolRuntimeContract,
+} from "../Types/AgentToolRuntimeContract.js";
 
 export interface AgentToolRuntimeCapabilities {
   lifecycle: "immediate" | "one-shot" | "persistent" | "remote-job";
@@ -38,12 +38,12 @@ export function resolveAgentToolRuntimeCapabilities(tool: RegisteredTool): Agent
 
 export function explainUnsupportedAgentToolRuntime(tool: RegisteredTool): string[] {
   return [
-    ...inspectPluginToolRuntimeContract({
+    ...inspectAgentToolRuntimeContract({
       handlerKind: tool.handler.kind,
       lifecycle: tool.runtime.Lifecycle,
       protocolVersion: tool.runtime.ProtocolVersion,
     }),
-    ...inspectPluginToolRuntimeCapabilityContract({
+    ...inspectAgentToolRuntimeCapabilityContract({
       handlerKind: tool.handler.kind,
       lifecycle: tool.runtime.Lifecycle,
       capabilities: tool.runtime.Capabilities,

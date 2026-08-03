@@ -5,7 +5,7 @@ import { terminalText } from "./AgentMemoryTerminalText.js";
 
 export function buildEpisode(input: AgentMemoryCompletedTurnInput): AgentMemoryEpisodeRecord {
   const episodeId = stableMemoryId("ep", [input.sessionId, input.requestId]);
-  const standaloneRequest = input.turnUnderstanding?.standaloneRequest?.trim() || input.userEntry.content;
+  const standaloneRequest = input.userEntry.content;
   const assistantText = terminalText(input.terminal);
   const startedTime = projectMemoryTime(input.startedAt);
   const completedTime = projectMemoryTime(input.completedAt);
@@ -17,8 +17,8 @@ export function buildEpisode(input: AgentMemoryCompletedTurnInput): AgentMemoryE
     status: "completed",
     rawUserText: input.userEntry.content,
     standaloneRequest,
-    contextMode: String(input.turnUnderstanding?.contextMode ?? ""),
-    contextBasis: input.turnUnderstanding?.contextBasis ?? "",
+    contextMode: "",
+    contextBasis: "",
     topic: standaloneRequest,
     summary: assistantText,
     startedAt: input.startedAt,

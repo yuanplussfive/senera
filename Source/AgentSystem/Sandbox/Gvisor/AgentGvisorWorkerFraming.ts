@@ -3,6 +3,7 @@ import {
   type AgentGvisorWorkerClientMessage,
   type AgentGvisorWorkerServerMessage,
 } from "./AgentGvisorWorkerProtocol.js";
+import { parseJsonText } from "../../Core/AgentJsonParsing.js";
 
 export type AgentGvisorWorkerMessage = AgentGvisorWorkerClientMessage | AgentGvisorWorkerServerMessage;
 
@@ -30,7 +31,7 @@ export class AgentGvisorWorkerFrameDecoder {
       if (this.buffered.byteLength < length + 4) break;
       const payload = this.buffered.subarray(4, length + 4);
       this.buffered = this.buffered.subarray(length + 4);
-      frames.push(JSON.parse(payload.toString("utf8")) as unknown);
+      frames.push(parseJsonText(payload.toString("utf8"), "gVisor worker frame") as unknown);
     }
     return frames;
   }

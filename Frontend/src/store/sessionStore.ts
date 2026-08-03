@@ -41,13 +41,15 @@ import {
   type InteractionInputSchema,
   type ModelProviderMetadata,
   type ModelProviderListItem,
+  type McpServerSettingsItem,
   type PresetItem,
   type ProviderModelsFailedData,
   type ProviderModelsSnapshotData,
-  type PluginConfigItem,
   type SessionHistoryStepsData,
   type UploadAttachmentData,
   type UserProfileData,
+  type SystemToolSettingsItem,
+  type SystemExtensionSettingsItem,
 } from "../api/eventTypes";
 
 export { DEFAULT_SESSION_TITLE } from "./session/defaults";
@@ -282,6 +284,9 @@ export interface StoreState {
   historyEventRunIds: Record<string, Record<string, boolean>>;
   /** 历史事件可能改写 activeRequestId；这里保留服务端实时快照用于回放收尾。 */
   historyActiveRequestIds: Record<string, string | null>;
+  /** 当前前端生命周期内已经投影的服务端事件，用于 live/replay 全局幂等。 */
+  processedEventIds: Record<string, string | null>;
+  processedEventIdOrder: string[];
   /** 已确认不在后端存在、仅本地残留的 sessionId */
   missingOnServerIds: Record<string, boolean>;
   /** 本地刚创建、尚未被 session.list 快照确认的 sessionId */
@@ -297,15 +302,18 @@ export interface StoreState {
   defaultModelProviderId: string | null;
   /** Local per-conversation selections. The backend still receives the chosen id per request. */
   selectedModelProviderIdsBySession: Record<string, string>;
-  pluginConfigs: PluginConfigItem[];
   presets: PresetItem[];
   activePresetName: string | null;
   presetsEnabled: boolean;
   presetRootDir: string;
   configSnapshot: ConfigSnapshotData | null;
+  systemTools: SystemToolSettingsItem[];
+  systemExtensions: SystemExtensionSettingsItem[];
+  mcpServers: McpServerSettingsItem[];
+  toolSettingsSynced: { systemTools: boolean; mcpServers: boolean };
   userProfile: UserProfile;
   /** 各目录快照是否已到达过一次；用于区分"尚未同步"与"确实为空"，避免空态闪现 */
-  catalogSynced: { sessions: boolean; presets: boolean; plugins: boolean };
+  catalogSynced: { sessions: boolean; presets: boolean };
 
   selectSession: (id: string) => void;
   toggleSidebar: () => void;
@@ -373,6 +381,8 @@ export const useStore = create<StoreState>()(
       historyStepBuffers: {},
       historyEventRunIds: {},
       historyActiveRequestIds: {},
+      processedEventIds: {},
+      processedEventIdOrder: [],
       missingOnServerIds: {},
       pendingCreatedSessionIds: {},
       pendingDeletedSessionIds: {},
@@ -382,14 +392,17 @@ export const useStore = create<StoreState>()(
       selectedModelProviderId: null,
       defaultModelProviderId: null,
       selectedModelProviderIdsBySession: {},
-      pluginConfigs: [],
       presets: [],
       activePresetName: null,
       presetsEnabled: true,
       presetRootDir: "",
       configSnapshot: null,
+      systemTools: [],
+      systemExtensions: [],
+      mcpServers: [],
+      toolSettingsSynced: { systemTools: false, mcpServers: false },
       userProfile: DEFAULT_USER_PROFILE,
-      catalogSynced: { sessions: false, presets: false, plugins: false },
+      catalogSynced: { sessions: false, presets: false },
 
       selectSession: (id) =>
         set((state) => {
@@ -518,9 +531,7 @@ export const useStore = create<StoreState>()(
         set((state) => {
           state.pendingDeletedSessionIds[sessionId] = true;
           delete state.pendingCreatedSessionIds[sessionId];
-          delete state.sessions[sessionId];
-          delete state.selectedModelProviderIdsBySession[sessionId];
-          state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
+          deleteSessionRuntimeState(state, sessionId);
           if (state.activeSessionId === sessionId) {
             state.activeSessionId = state.sessionOrder[0] ?? null;
           }

@@ -1,12 +1,13 @@
-import { describe, expect, test } from "vitest";
-import { InteractionRunMode, TurnContextMode } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
-import { AgentLoopStateMachine } from "../../../Source/AgentSystem/Loop/AgentLoopStateMachine.js";
+import { describe, expect, test, vi } from "vitest";
+import type { AgentRootCommand } from "../../../Source/AgentSystem/AgentRootCommand.js";
 import {
-  AgentTurnPreparationSnapshotSchemaVersion,
   createAgentTurnPreparationSnapshot,
   isAgentTurnPreparationReusable,
   parseAgentTurnPreparationSnapshot,
+  withAgentTurnPreparationBoundary,
 } from "../../../Source/AgentSystem/Loop/AgentTurnPreparationSnapshot.js";
+import { AgentTurnPreparationService } from "../../../Source/AgentSystem/Loop/AgentTurnPreparationService.js";
+import { toolAccessGrant } from "../Support/AgentTestFixtures.js";
 
 describe("Turn preparation behavior", () => {
   test("reuses a preparation only for the same input and runtime generation", () => {
@@ -32,89 +33,105 @@ describe("Turn preparation behavior", () => {
     ).toBe(false);
   });
 
-  test("starts a prepared turn at prompt rendering without understanding or routing commands", () => {
-    const transition = new AgentLoopStateMachine().start({
-      sessionId: "session-a",
-      requestId: "request-new",
-      input: "Inspect the workspace",
-      loadedToolNames: [],
-      preparation: preparation(),
-    });
-
-    expect(transition.command).toMatchObject({
-      kind: "render_prompt",
-      requestId: "request-new",
-      loadedToolNames: ["WorkspaceListFiles"],
-    });
-    expect(transition.events.map((event) => event.kind)).toEqual(["run.started", "interaction.routed"]);
-    expect(transition.state).toMatchObject({
-      turnUnderstanding: { standaloneRequest: "Inspect the workspace" },
-      interactionRoute: { mode: "tool_agent_loop", objective: "Inspect the workspace" },
-      activeSkills: [],
-      initialAction: {
-        kind: "CallTools",
-        calls: [{ toolName: "WorkspaceListFiles" }],
+  test("prepares skills, tool exposure, and root authority without a model call", async () => {
+    const resolvePlannedLoadedTools = vi.fn(async () => ["ToolSearchTool", "WorkspaceListFiles"]);
+    const rememberAutoSearch = vi.fn();
+    const buildRootCommand = vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames));
+    const service = new AgentTurnPreparationService({
+      services: {
+        retrieval: { resolvePlannedLoadedTools, rememberAutoSearch },
+        promptContext: {
+          activateSkills: async () => [],
+          recommendedSkillTools: () => ["WorkspaceListFiles"],
+          buildRootCommand,
+        },
       },
     });
+
+    const prepared = await service.prepare({
+      requestId: "request-a",
+      userInput: "Inspect the workspace",
+      loadedToolNames: ["ToolSearchTool"],
+    });
+
+    expect(resolvePlannedLoadedTools).toHaveBeenCalledWith({
+      input: "Inspect the workspace",
+      currentLoadedTools: ["ToolSearchTool"],
+      currentSetPolicy: "retain",
+      preferredTools: ["WorkspaceListFiles"],
+      discover: true,
+      queries: [],
+      needs: [],
+    });
+    expect(buildRootCommand).toHaveBeenCalledWith({
+      decision: {
+        action: "use_tools",
+        useTools: {
+          preferredTools: ["WorkspaceListFiles"],
+          instruction: "Inspect the workspace",
+          needs: [],
+        },
+      },
+      loadedToolNames: ["ToolSearchTool", "WorkspaceListFiles"],
+    });
+    expect(rememberAutoSearch).toHaveBeenCalledWith("request-a", "Inspect the workspace", prepared.loadedToolNames);
+    expect(prepared.toolAccessGrant.exposedToolNames).toEqual(prepared.loadedToolNames);
   });
 
-  test("rejects obsolete snapshots and validates prepared actions against the visible tool set", () => {
+  test("rejects obsolete or internally inconsistent snapshots structurally", () => {
     const snapshot = preparation();
 
     expect(parseAgentTurnPreparationSnapshot(snapshot)).toMatchObject({
-      schemaVersion: AgentTurnPreparationSnapshotSchemaVersion,
-      initialAction: { kind: "CallTools" },
+      runtimeFingerprint: "runtime-a",
+      loadedToolNames: ["WorkspaceListFiles"],
     });
-    expect(
-      parseAgentTurnPreparationSnapshot({
-        ...snapshot,
-        schemaVersion: AgentTurnPreparationSnapshotSchemaVersion - 1,
-      }),
-    ).toBeUndefined();
-    expect(
-      parseAgentTurnPreparationSnapshot({
-        ...snapshot,
-        loadedToolNames: [],
-      }),
-    ).toBeUndefined();
+    expect(parseAgentTurnPreparationSnapshot({ ...snapshot, route: { mode: "tool_agent_loop" } })).toBeUndefined();
+    expect(parseAgentTurnPreparationSnapshot({ ...snapshot, loadedToolNames: [] })).toBeUndefined();
+  });
+
+  test("reconstructs the immutable access grant when adding a Pi branch boundary", () => {
+    const snapshot = preparation();
+    const bounded = withAgentTurnPreparationBoundary(snapshot, "branch-a");
+
+    expect(bounded.piBranchBoundaryId).toBe("branch-a");
+    expect(bounded.toolAccessGrant).not.toBe(snapshot.toolAccessGrant);
+    expect(Object.isFrozen(bounded.toolAccessGrant)).toBe(true);
+    expect(Object.isFrozen(bounded.toolAccessGrant.exposedToolNames)).toBe(true);
   });
 });
 
 function preparation() {
+  const command = rootCommand(["WorkspaceListFiles"]);
   return createAgentTurnPreparationSnapshot({
     runtimeFingerprint: "runtime-a",
     userInput: "Inspect the workspace",
-    turnUnderstanding: {
-      rawUserTurn: "Inspect the workspace",
-      standaloneRequest: "Inspect the workspace",
-      contextMode: TurnContextMode.None,
-      contextBasis: "",
-      missingContext: "",
-    },
-    route: {
-      mode: "tool_agent_loop",
-      objective: "Inspect the workspace",
-      preferredTools: ["WorkspaceListFiles"],
-      discoveryQueries: [],
-      raw: {
-        mode: InteractionRunMode.ToolAgentLoop,
-        objective: "Inspect the workspace",
-        preferredTools: ["WorkspaceListFiles"],
-        discoveryQueries: [],
-      },
-    },
     loadedToolNames: ["WorkspaceListFiles"],
-    initialAction: {
-      kind: "CallTools",
-      preface: "Inspecting the workspace.",
-      calls: [
-        {
-          toolName: "WorkspaceListFiles",
-          purpose: "List workspace files.",
-          required: true,
-        },
-      ],
-    },
+    toolAccessGrant: command.toolAccessGrant,
+    rootCommand: command,
     activeSkills: [],
   });
+}
+
+function rootCommand(loadedToolNames: readonly string[]): AgentRootCommand {
+  return {
+    authority: "senera_runtime_root",
+    action: "use_tools",
+    outputMode: "open",
+    toolAccess: "restricted",
+    objective: "Complete the current request.",
+    instruction: "Inspect the workspace",
+    toolAccessGrant: toolAccessGrant(loadedToolNames, loadedToolNames),
+    forbiddenOutputs: ["unregistered_tools"],
+    insufficiencyPolicy: "Report missing capabilities.",
+    toolSearchQueries: [],
+    needs: [],
+    includeToolCatalog: false,
+    visibleOutput: {
+      audience: "runtime",
+      start: "pi_tool_turn",
+      format: "openai_tool_calls_or_final_text",
+      rules: [],
+      repair: { instruction: "Retry using the tool protocol.", rules: [] },
+    },
+  };
 }

@@ -12,6 +12,8 @@ class FakeMicrosandboxModule {
   readonly createdImages: string[] = [];
   readonly Sandbox = {
     builder: (name: string) => new FakeSandboxBuilder(name, this.createdImages, this.runtimeAvailable),
+    listWith: async () => [],
+    remove: async () => undefined,
   };
 
   constructor(private readonly runtimeAvailable: boolean) {}
@@ -44,6 +46,19 @@ class FakeSandboxBuilder {
   }
 
   memory(_value: number): this {
+    return this;
+  }
+
+  ephemeral(enabled: boolean): this {
+    assert.equal(enabled, false);
+    return this;
+  }
+
+  labels(labels: Record<string, string>): this {
+    assert.deepEqual(labels, {
+      "senera.owner": "senera",
+      "senera.purpose": "runtime-preparation",
+    });
     return this;
   }
 

@@ -1,6 +1,7 @@
 import { type AgentCancellationError } from "../Core/AgentCancellation.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentSession } from "./AgentSession.js";
+import type { StoredRunSnapshot } from "./AgentSessionRepository.js";
 import { type AgentSessionStore } from "./AgentSessionStore.js";
 import { clearAgentSessionCancellation, resolveAgentSessionLifecycle } from "./AgentSessionLifecycleMetadata.js";
 
@@ -48,11 +49,15 @@ export class AgentSessionRunSnapshotWriter {
 
   reconcileOrphanedRunningSnapshots(): void {
     const now = new Date().toISOString();
-    for (const session of this.store.listSessions()) {
+    const runningBySession = new Map<string, StoredRunSnapshot[]>();
+    for (const snapshot of this.store.loadRunningRunSnapshots()) {
+      const snapshots = runningBySession.get(snapshot.sessionId) ?? [];
+      snapshots.push(snapshot);
+      runningBySession.set(snapshot.sessionId, snapshots);
+    }
+    for (const session of this.store.listSessionMetadata()) {
       const cancellation = resolveAgentSessionLifecycle(session.metadata).cancellation;
-      const snapshots = this.store.loadRunSnapshots(session.id);
-      for (const snapshot of snapshots) {
-        if (snapshot.status !== "running") continue;
+      for (const snapshot of runningBySession.get(session.id) ?? []) {
         const cancelled = cancellation?.requestId === snapshot.requestId;
         this.store.persistRunSnapshot({
           ...snapshot,

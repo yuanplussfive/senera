@@ -23,15 +23,12 @@ import type {
 } from "./AgentModelConfigTypes.js";
 import type { CurrentAgentConfigVersion } from "../Config/AgentConfigVersion.js";
 
+export interface AgentSystemExtensionConfig {
+  Enabled?: boolean;
+  Configuration?: Record<string, unknown>;
+}
+
 export interface AgentDefaultsConfig {
-  PluginRoots?: {
-    System?: string[];
-    User?: string[];
-  };
-  PluginDiscovery?: {
-    ManifestFileName?: string;
-    ConfigFileName?: string;
-  };
   ToolExecution?: AgentToolExecutionConfig;
   SandboxRuntime?: AgentSandboxRuntimeConfig;
   AgentLoop?: AgentLoopConfig;
@@ -47,7 +44,6 @@ export interface AgentDefaultsConfig {
   Server?: AgentServerConfig;
   Persistence?: {
     Kind?: "sqlite" | "memory";
-    DatabasePath?: string;
   };
   ConfigStore?: AgentConfigStoreConfig;
 }
@@ -55,14 +51,6 @@ export interface AgentDefaultsConfig {
 export interface AgentSystemConfig {
   ConfigVersion?: typeof CurrentAgentConfigVersion;
   Defaults?: AgentDefaultsConfig;
-  PluginRoots?: {
-    System?: string[];
-    User?: string[];
-  };
-  PluginDiscovery?: {
-    ManifestFileName?: string;
-    ConfigFileName?: string;
-  };
   XmlProtocol?: {
     MaxDepth?: number;
     MaxTextLength?: number;
@@ -73,7 +61,7 @@ export interface AgentSystemConfig {
   };
   ToolExecution?: AgentToolExecutionConfig;
   SandboxRuntime?: AgentSandboxRuntimeConfig;
-  PluginDocumentation?: {
+  ToolDocumentation?: {
     Markdown?: {
       MinNonEmptyLines?: number;
       ExcludePathFragments?: string[];
@@ -84,10 +72,6 @@ export interface AgentSystemConfig {
       TriggerSection?: string;
       AvoidSection?: string;
       RequiredSections?: string[];
-    };
-    PromptXml?: {
-      XmlFenceLanguages?: string[];
-      CodeFenceLanguages?: string[];
     };
   };
   DefaultModelProviderId?: string;
@@ -108,7 +92,7 @@ export interface AgentSystemConfig {
   Server?: AgentServerConfig;
   Persistence?: {
     Kind?: "sqlite" | "memory";
-    DatabasePath?: string;
   };
   ConfigStore?: AgentConfigStoreConfig;
+  Extensions?: Record<string, AgentSystemExtensionConfig>;
 }

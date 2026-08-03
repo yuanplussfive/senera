@@ -1,14 +1,15 @@
-import { AgentMarkdownPromptXmlRenderer } from "../Xml/AgentMarkdownPromptXmlRenderer.js";
-import { normalizeMarkdownSectionText } from "../Xml/AgentMarkdownSections.js";
+import { normalizeMarkdownSectionText } from "../Prompt/AgentMarkdownSections.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
+import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import { AgentPromptDocumentationReader } from "../Prompt/AgentPromptDocumentationReader.js";
 import { resolveAgentPromptSections } from "../Prompt/AgentPromptSectionResolver.js";
 import type { AgentPiToolExecutionBridge } from "./AgentPiToolExecutionBridge.js";
 import type { AgentPiToolDefinition, AgentPiToolProjectionContext } from "./AgentPiTypes.js";
 import { projectAgentToolInvocationSchema } from "../ToolRuntime/AgentToolExecutionPlan.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { orderToolNamesByPreference } from "../ToolRuntime/AgentToolAccessGrant.js";
 
 export interface AgentPiToolRuntimeContractProjector {
   projectToolInvocationSchema(tool: RegisteredTool, schema: Readonly<Record<string, unknown>>): Record<string, unknown>;
@@ -17,7 +18,7 @@ export interface AgentPiToolRuntimeContractProjector {
 
 export interface AgentPiToolRegistryProjectorOptions {
   config: AgentSystemConfig;
-  registry: AgentPluginRegistry;
+  registry: AgentExtensionRegistry;
   execution: AgentPiToolExecutionBridge;
   runtimeContracts?: AgentPiToolRuntimeContractProjector;
 }
@@ -38,41 +39,54 @@ export class AgentPiToolRegistryProjector {
   private readonly documentationReader: AgentPromptDocumentationReader;
 
   constructor(private readonly options: AgentPiToolRegistryProjectorOptions) {
-    this.documentationReader = new AgentPromptDocumentationReader(
-      new AgentMarkdownPromptXmlRenderer({
-        xmlFenceLanguages: options.config.PluginDocumentation?.PromptXml?.XmlFenceLanguages,
-        codeFenceLanguages: options.config.PluginDocumentation?.PromptXml?.CodeFenceLanguages,
-      }),
-    );
+    this.documentationReader = new AgentPromptDocumentationReader();
   }
 
   project(context: AgentPiToolProjectionContext = {}): AgentPiToolDefinition[] {
-    return this.createToolSet(context.visibleToolNames).materialize(() => context);
+    const toolAccessGrant = context.toolAccessGrant;
+    const exposure = context.toolExposure?.snapshot();
+    return this.createToolSet(
+      exposure?.exposedToolNames ?? toolAccessGrant?.exposedToolNames ?? context.visibleToolNames,
+      exposure?.preferredToolNames ?? toolAccessGrant?.preferredToolNames,
+    ).materialize(() => context);
   }
 
   names(visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"]): string[] {
     return this.visibleTools(visibleToolNames).map((tool) => tool.name);
   }
 
-  createToolSet(visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"]): AgentPiToolSet {
-    const tools = this.visibleTools(visibleToolNames);
-    const descriptors = tools.map((tool) => this.projectDescriptor(tool));
+  createToolSet(
+    visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"],
+    preferredToolNames: readonly string[] = [],
+  ): AgentPiToolSet {
+    const tools = this.visibleTools(visibleToolNames, preferredToolNames);
+    const projections = tools.map((tool) => ({ tool, descriptor: this.projectDescriptor(tool) }));
+    const descriptors = projections.map(({ descriptor }) => descriptor);
     const activeToolNames = descriptors.map((descriptor) => descriptor.name);
     const fingerprint = sha256HexOfCanonicalJson(descriptors);
     return {
       fingerprint,
       activeToolNames,
-      materialize: (context) => tools.map((tool, index) => this.materializeTool(tool, descriptors[index]!, context)),
+      materialize: (context) =>
+        projections.map(({ tool, descriptor }) => this.materializeTool(tool, descriptor, context)),
     };
   }
 
-  private visibleTools(visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"]): RegisteredTool[] {
+  private visibleTools(
+    visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"],
+    preferredToolNames: readonly string[] = [],
+  ): RegisteredTool[] {
+    const registered = this.options.registry.listTools();
     if (!visibleToolNames) {
-      return this.options.registry.listTools();
+      return registered;
     }
 
     const visible = new Set(visibleToolNames);
-    return this.options.registry.listTools().filter((tool) => visible.has(tool.name));
+    const byName = new Map(registered.filter((tool) => visible.has(tool.name)).map((tool) => [tool.name, tool]));
+    return orderToolNamesByPreference([...byName.keys()], preferredToolNames).flatMap((toolName) => {
+      const tool = byName.get(toolName);
+      return tool ? [tool] : [];
+    });
   }
 
   private materializeTool(
@@ -94,15 +108,16 @@ export class AgentPiToolRegistryProjector {
   }
 
   private projectDescriptor(tool: RegisteredTool): Omit<AgentPiToolDefinition, "execute"> {
+    const owner = resolveAgentToolOwner(tool);
     const staticSchema = tool.contract?.arguments?.jsonSchema ?? EmptyObjectParameterSchema;
     const runtimeSchema =
       this.options.runtimeContracts?.projectToolInvocationSchema(tool, staticSchema) ?? staticSchema;
     return Object.freeze({
       name: tool.name,
-      label: tool.plugin.manifest.Plugin.Title ?? tool.name,
+      label: owner.title ?? tool.name,
       description: this.projectDescription(tool),
       parameters: projectAgentToolInvocationSchema(tool, runtimeSchema),
-      executionMode: "sequential" as const,
+      executionMode: "parallel" as const,
     });
   }
 
@@ -111,7 +126,7 @@ export class AgentPiToolRegistryProjector {
     const document = this.documentationReader.readMarkdownSections(tool.descriptionFile);
     const summary = normalizeMarkdownSectionText(document.sections.get(sections.summary));
     const trigger = normalizeMarkdownSectionText(document.sections.get(sections.trigger));
-    const fallback = tool.search?.Summary ?? tool.plugin.manifest.Plugin.Description ?? "";
+    const fallback = tool.search?.Summary ?? resolveAgentToolOwner(tool).description ?? "";
 
     const description = [
       summary || fallback,
@@ -129,7 +144,7 @@ function normalizeToolParams(value: unknown): Record<string, unknown> {
 }
 
 function resolveConfiguredToolDescriptionSections(config: AgentSystemConfig) {
-  const configured = config.PluginDocumentation?.ToolDescription;
+  const configured = config.ToolDocumentation?.ToolDescription;
   return resolveAgentPromptSections({
     summary: configured?.SummarySection,
     trigger: configured?.TriggerSection,

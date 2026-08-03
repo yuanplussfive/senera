@@ -6,17 +6,17 @@ import {
   AgentApprovalStatuses,
 } from "../Approvals/AgentApprovalTypes.js";
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import { AgentPermissionActions, type AgentPermissionDecision } from "./AgentSafetyTypes.js";
 import type { AgentToolApprovalPolicy, AgentToolApprovalPolicyInput } from "./AgentToolApprovalPolicy.js";
 
-export class AgentToolPermissionDeniedError extends Error {
+export class AgentToolPermissionDeniedError extends AgentBaseError {
   constructor(
     message: string,
     readonly decision: AgentPermissionDecision,
   ) {
     super(message);
-    this.name = "AgentToolPermissionDeniedError";
   }
 }
 

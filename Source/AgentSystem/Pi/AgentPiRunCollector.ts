@@ -1,16 +1,19 @@
 import type { AgentEvent as AgentSessionEvent } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
+import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
 import { AgentEventKinds, type AgentDomainEvent, type AgentEventSink } from "../Events/AgentEvent.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
 import { clampField, type StepTrace } from "../Runtime/AgentStepTrace.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
-import type { AgentOpenAiTranscriptMessage } from "../Conversation/AgentOpenAiTranscript.js";
-import { readPiProxyToolCallBatchId, takePiProxyExecutedToolResult } from "../PiProxy/AgentPiProxyRuntimeContext.js";
+import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
 import { AgentRunActivities } from "../Events/AgentRunEventTypes.js";
 import { AgentRunActivityReporter, type AgentRunActivityHandle } from "../Events/AgentRunActivityReporter.js";
-import { projectPiSessionDiagnosticEvent, type AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
+import {
+  emitAgentPiDiagnostic,
+  projectPiSessionDiagnosticEvent,
+  type AgentPiDiagnosticSink,
+} from "../Diagnostics/AgentPiDiagnostics.js";
 
 export interface AgentPiRunCollectorOptions {
   sessionId?: string;
@@ -19,14 +22,14 @@ export interface AgentPiRunCollectorOptions {
   onEvent?: AgentEventSink;
   diagnostics?: AgentPiDiagnosticSink;
   streamModelDeltas?: boolean;
-  piProxyRuntimeContextId?: string;
+  piTurnContextId?: string;
+  turnContexts: Pick<AgentPiTurnContextStore, "readToolCallBatchId" | "takeExecutedToolResult">;
   activityReporter?: AgentRunActivityReporter;
 }
 
 export interface AgentPiRunProjection {
   traces: StepTrace[];
   executedTools: ExecutedToolCallResult[];
-  openAiMessages: AgentOpenAiTranscriptMessage[];
 }
 
 interface ActiveToolTrace {
@@ -42,7 +45,6 @@ export class AgentPiRunCollector {
   private readonly traces: StepTrace[] = [];
   private readonly activeToolTraces = new Map<string, ActiveToolTrace>();
   private readonly executedTools: ExecutedToolCallResult[] = [];
-  private readonly openAiMessages: AgentOpenAiTranscriptMessage[] = [];
   private pending = Promise.resolve();
   private textDelta = "";
   private activeAssistantResponse?: AgentRunActivityHandle;
@@ -74,13 +76,13 @@ export class AgentPiRunCollector {
     return {
       traces: [...this.traces],
       executedTools: [...this.executedTools],
-      openAiMessages: [...this.openAiMessages],
     };
   }
 
   private async projectEvent(event: AgentSessionEvent): Promise<void> {
     if (event.type !== "message_update") {
-      await this.options.diagnostics?.(
+      await emitAgentPiDiagnostic(
+        this.options.diagnostics,
         projectPiSessionDiagnosticEvent({
           context: {
             sessionId: this.options.sessionId,
@@ -111,9 +113,6 @@ export class AgentPiRunCollector {
         for (const projected of this.toolExecutionEnded(event)) {
           await this.emit(projected);
         }
-        break;
-      case "turn_end":
-        this.recordOpenAiTurn(event);
         break;
     }
   }
@@ -163,7 +162,7 @@ export class AgentPiRunCollector {
     };
     this.activeToolTraces.delete(event.toolCallId);
 
-    const captured = takePiProxyExecutedToolResult(this.options.piProxyRuntimeContextId, event.toolCallId);
+    const captured = this.options.turnContexts.takeExecutedToolResult(this.options.piTurnContextId, event.toolCallId);
     const presentation =
       captured?.presentation ?? (captured ? projectAgentToolResultPresentation(captured) : undefined);
     const executed = captured && presentation ? { ...captured, presentation } : captured;
@@ -256,73 +255,12 @@ export class AgentPiRunCollector {
   }
 
   private batchIdFor(callId: string): string | undefined {
-    return readPiProxyToolCallBatchId(this.options.piProxyRuntimeContextId, callId);
+    return this.options.turnContexts.readToolCallBatchId(this.options.piTurnContextId, callId);
   }
 
   private async emit(event: AgentDomainEvent): Promise<void> {
     await emitAgentEvent(this.options.onEvent, event);
   }
-
-  private recordOpenAiTurn(event: Extract<AgentSessionEvent, { type: "turn_end" }>): void {
-    const assistant = projectOpenAiAssistantMessage(event.message);
-    if (assistant) {
-      this.openAiMessages.push(assistant);
-    }
-    for (const result of event.toolResults) {
-      this.openAiMessages.push(projectOpenAiToolResultMessage(result));
-    }
-  }
-}
-
-function projectOpenAiAssistantMessage(message: unknown): AgentOpenAiTranscriptMessage | undefined {
-  const record = readRecord(message) as AssistantMessage | undefined;
-  if (!record || record.role !== "assistant" || !Array.isArray(record.content)) {
-    return undefined;
-  }
-
-  const text = record.content.flatMap((entry) => (entry.type === "text" ? [entry.text] : [])).join("");
-  const toolCalls = record.content.flatMap((entry) =>
-    entry.type === "toolCall"
-      ? [
-          {
-            id: entry.id,
-            type: "function" as const,
-            function: {
-              name: entry.name,
-              arguments: JSON.stringify(entry.arguments ?? {}),
-            },
-          },
-        ]
-      : [],
-  );
-
-  return {
-    role: "assistant",
-    content: text.length > 0 ? text : null,
-    ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
-  };
-}
-
-function projectOpenAiToolResultMessage(result: ToolResultMessage): AgentOpenAiTranscriptMessage {
-  return {
-    role: "tool",
-    tool_call_id: result.toolCallId,
-    content: readToolResultContent(result),
-  };
-}
-
-function readToolResultContent(result: ToolResultMessage): string {
-  const text = result.content.flatMap((entry) => (entry.type === "text" ? [entry.text] : [])).join("");
-  if (text.trim().length > 0) {
-    return text;
-  }
-
-  return JSON.stringify({
-    type: "senera.tool_observation.v1",
-    tool_name: result.toolName,
-    status: result.isError ? "failure" : "success",
-    content: result.content,
-  });
 }
 
 function readToolErrorMessage(value: unknown): string {
@@ -351,8 +289,4 @@ function extractText(message: unknown): string {
         })
         .join("")
     : "";
-}
-
-function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }

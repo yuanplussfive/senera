@@ -10,7 +10,7 @@ import { buildPlannedToolSearchQueries } from "../../../Source/AgentSystem/ToolS
 import { AgentToolSearchIndex } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchIndex.js";
 import type { ToolSearchDocument } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchTypes.js";
 import type { AgentToolSearchRegistryReader } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchIndex.js";
-import type { RegisteredTool } from "../../../Source/AgentSystem/Types/PluginRuntimeTypes.js";
+import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import type { ResolvedAgentToolSearchConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 describe("ToolSearch core", () => {
@@ -44,8 +44,8 @@ describe("ToolSearch core", () => {
     const doc = {
       toolName: "WorkspaceReadFile",
       title: "Read file",
-      pluginName: "workspace",
-      pluginTitle: "Workspace",
+      ownerName: "workspace",
+      ownerTitle: "Workspace",
       sourceText: "workspace Workspace Files and source code in the current workspace.",
       sourceIds: ["workspace"],
       sources: [
@@ -119,8 +119,15 @@ describe("ToolSearch core", () => {
         text: "write workspace path file filesystem",
         facets: ["write", "workspace", "path", "file", "filesystem"],
       },
+      {
+        text: "update docs",
+        facets: ["write", "workspace", "path", "file", "filesystem"],
+      },
     ]);
     expect(buildPlannedToolSearchQueries({ input: "hello" }, (text) => text.split(/\s+/))).toEqual([]);
+    expect(
+      buildPlannedToolSearchQueries({ input: "find weather", discover: true }, (text) => text.split(/\s+/)),
+    ).toEqual([{ text: "find weather", facets: [] }]);
   });
 
   test("indexes registered tools and ranks by capability without score coupling", () => {
@@ -329,40 +336,18 @@ function createTool(options: {
 }): RegisteredTool {
   const sourceId = options.sourceId ?? "workspace";
   return {
-    loading: "Dynamic",
-    plugin: {
-      rootPath: "",
-      rootKind: "System",
-      manifestPath: "",
-      config: {
-        fileName: "PluginConfig.toml",
-        path: "",
-        exists: false,
-        source: "default",
-        templateExists: false,
-        needsUserConfig: false,
-        toml: "",
-        sections: [],
-        runtime: {
-          enabled: true,
-          tools: {},
-        },
-        diagnostics: [],
-      },
-      manifest: {
-        ManifestVersion: 2,
-        Plugin: {
-          Name: `${options.name}Plugin`,
-          Title: options.title,
-          Version: "1.0.0",
-          Kind: "Tool",
-          Description: options.summary,
-        },
-        Prompting: {
-          Priority: options.priority,
-        },
-      },
+    owner: {
+      kind: "mcp",
+      name: `${options.name}-owner`,
+      title: options.title,
+      description: options.summary,
+      rootPath: process.cwd(),
+      revision: "test",
+      priority: options.priority,
+      trusted: false,
+      requiresApproval: false,
     },
+    loading: "Dynamic",
     name: options.name,
     permissions: [],
     sources: [
@@ -376,7 +361,12 @@ function createTool(options: {
       },
     ],
     handler: { kind: "HostCapability", capability: options.name },
-    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
+    runtime: {
+      Lifecycle: "Immediate",
+      ProtocolVersion: 2,
+      ResultAssessment: "ProcessExit",
+      Capabilities: { Cancellation: true },
+    },
     execution: {
       Targets: ["Local"],
       Network: "Deny",
@@ -409,14 +399,9 @@ function createToolSearchConfig(): ResolvedAgentToolSearchConfig {
   return {
     Embedding: {
       Enabled: false,
-      Model: "",
-      Dimensions: -1,
-      BatchSize: 64,
-      InputMaxChars: 12000,
       ScoreThreshold: 0,
     },
     Memory: {
-      DatabasePath: "",
       MaxEpisodes: 100,
       HalfLifeDays: 30,
     },

@@ -1,4 +1,5 @@
 import koffi from "koffi";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 const JobObjectExtendedLimitInformationClass = 9;
 const JobObjectLimitKillOnJobClose = 0x0000_2000;
@@ -66,13 +67,12 @@ const CloseHandle = Kernel32.func("bool __stdcall CloseHandle(SENERA_WINDOWS_HAN
 ) => boolean;
 const GetLastError = Kernel32.func("uint32_t __stdcall GetLastError()") as unknown as () => number;
 
-export class AgentWindowsJobObjectError extends Error {
+export class AgentWindowsJobObjectError extends AgentBaseError {
   constructor(
     readonly operation: string,
     readonly windowsErrorCode: number,
   ) {
     super(`${operation} failed with Windows error ${windowsErrorCode}.`);
-    this.name = "AgentWindowsJobObjectError";
   }
 }
 

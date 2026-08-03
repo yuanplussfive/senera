@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { pipeline, Transform, type Readable, type TransformCallback } from "node:stream";
 import busboy from "busboy";
 import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredentialedCors.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { projectAgentErrorMessage, projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import { formatAgentUploadUri } from "./AgentUploadLocator.js";
 import { isAgentInlineImageMime } from "./AgentUploadMime.js";
 import { AgentUploadError, AgentUploadFailureKinds, type AgentUploadStore } from "./AgentUploadStore.js";
@@ -87,7 +87,7 @@ export class AgentUploadHttpApi {
         ok: false,
         error: {
           code: "forbidden_origin",
-          message: agentErrorMessage("auth.requestDenied"),
+          ...projectAgentMessage("auth.requestDenied"),
         },
       });
       return;
@@ -119,7 +119,7 @@ export class AgentUploadHttpApi {
         ok: false,
         error: {
           code: error instanceof AgentUploadError ? error.code : "upload_failed",
-          message: error instanceof AgentUploadError ? error.message : agentErrorMessage("upload.failed"),
+          ...projectAgentErrorMessage(error, "upload.failed"),
         },
       });
     }
@@ -131,7 +131,7 @@ export class AgentUploadHttpApi {
         ok: false,
         error: {
           code: "method_not_allowed",
-          message: agentErrorMessage("upload.methodPostOnly"),
+          ...projectAgentMessage("upload.methodPostOnly"),
         },
       });
       return;
@@ -154,7 +154,7 @@ export class AgentUploadHttpApi {
         ok: false,
         error: {
           code: "method_not_allowed",
-          message: agentErrorMessage("upload.contentMethodReadOnly"),
+          ...projectAgentMessage("upload.contentMethodReadOnly"),
         },
       });
       return;
@@ -172,7 +172,7 @@ export class AgentUploadHttpApi {
         ok: false,
         error: {
           code: "upload_content_unsupported",
-          message: agentErrorMessage("upload.contentUnsupported"),
+          ...projectAgentMessage("upload.contentUnsupported"),
         },
       });
       return;
@@ -363,7 +363,7 @@ export class AgentUploadHttpApi {
       ok: false,
       error: {
         code: "upload_content_not_found",
-        message: agentErrorMessage("upload.contentNotFound"),
+        ...projectAgentMessage("upload.contentNotFound"),
       },
     });
   }

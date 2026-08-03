@@ -96,15 +96,25 @@ export class AgentGvisorWorkerSocketClient implements SeneraGvisorWorkerClient {
     socket.once("close", () => {
       if (!events.settled) fail(new Error("gVisor worker connection closed before execution completed."));
     });
-    await writeFrame(socket, {
-      type: "start",
-      protocolVersion: AgentGvisorWorkerProtocolVersion,
-      request,
-    });
-    const id = await ready.catch((error: unknown) => {
+    const startup = withOptionalDeadline(
+      ready,
+      request.limits.timeoutMs,
+      () => new Error(`gVisor worker did not become ready within ${request.limits.timeoutMs}ms.`),
+      () => socket.destroy(),
+    );
+    let id: string;
+    try {
+      await writeFrame(socket, {
+        type: "start",
+        protocolVersion: AgentGvisorWorkerProtocolVersion,
+        request,
+      });
+      id = await startup;
+    } catch (error) {
       socket.destroy();
+      void startup.catch(() => undefined);
       throw error;
-    });
+    }
     return {
       id,
       events,
@@ -125,11 +135,13 @@ export class AgentGvisorWorkerSocketClient implements SeneraGvisorWorkerClient {
     let timer: NodeJS.Timeout | undefined;
     try {
       return await new Promise<AgentGvisorWorkerServerMessage>((resolve, reject) => {
-        timer = setTimeout(() => {
-          socket.destroy();
-          reject(new Error(`gVisor worker request exceeded ${timeoutMs}ms.`));
-        }, timeoutMs);
-        timer.unref();
+        if (hasDeadline(timeoutMs)) {
+          timer = setTimeout(() => {
+            socket.destroy();
+            reject(new Error(`gVisor worker request exceeded ${timeoutMs}ms.`));
+          }, timeoutMs);
+          timer.unref();
+        }
         socket.on("data", (chunk) => {
           try {
             for (const value of decoder.push(Buffer.from(chunk))) {
@@ -160,23 +172,43 @@ export class AgentGvisorWorkerSocketClient implements SeneraGvisorWorkerClient {
 
 async function connectSocket(socketPath: string, timeoutMs: number): Promise<net.Socket> {
   const socket = net.createConnection(socketPath);
-  let timer: NodeJS.Timeout | undefined;
   try {
-    await Promise.race([
-      once(socket, "connect"),
-      once(socket, "error").then(([error]) => Promise.reject(error)),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`Unable to connect to gVisor worker within ${timeoutMs}ms.`)),
-          timeoutMs,
-        );
-        timer.unref();
-      }),
-    ]);
+    await withOptionalDeadline(
+      Promise.race([once(socket, "connect"), once(socket, "error").then(([error]) => Promise.reject(error))]),
+      timeoutMs,
+      () => new Error(`Unable to connect to gVisor worker within ${timeoutMs}ms.`),
+      () => socket.destroy(),
+    );
     return socket;
   } catch (error) {
     socket.destroy();
     throw error;
+  }
+}
+
+function hasDeadline(timeoutMs: number): boolean {
+  return Number.isFinite(timeoutMs) && timeoutMs > 0;
+}
+
+async function withOptionalDeadline<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  createError: () => Error,
+  onTimeout?: () => void,
+): Promise<T> {
+  if (!hasDeadline(timeoutMs)) return operation;
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          onTimeout?.();
+          reject(createError());
+        }, timeoutMs);
+        timer.unref();
+      }),
+    ]);
   } finally {
     if (timer) clearTimeout(timer);
   }

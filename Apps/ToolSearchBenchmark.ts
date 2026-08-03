@@ -2,7 +2,7 @@ import path from "node:path";
 import process from "node:process";
 import { parseArgs } from "node:util";
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
-import { ToolLoadingModes } from "../Source/AgentSystem/Types/PluginToolManifestTypes.js";
+import { ToolLoadingModes } from "../Source/AgentSystem/Types/AgentToolContractTypes.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 
 const DefaultPrompts = [
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
   try {
     const tools = runtime.registry.listTools();
     const bootstrapTools = tools.filter((tool) => tool.loading === ToolLoadingModes.Bootstrap).map((tool) => tool.name);
-    const results = prompts.map((prompt) => benchmarkPrompt(runtime, prompt, bootstrapTools));
+    const results = await Promise.all(prompts.map((prompt) => benchmarkPrompt(runtime, prompt, bootstrapTools)));
     process.stdout.write(
       `${JSON.stringify(
         {
@@ -54,11 +54,11 @@ async function main(): Promise<void> {
   }
 }
 
-function benchmarkPrompt(runtime: AgentSystemRuntime, prompt: string, bootstrapTools: readonly string[]) {
+async function benchmarkPrompt(runtime: AgentSystemRuntime, prompt: string, bootstrapTools: readonly string[]) {
   const startedAt = performance.now();
-  const loadedTools = runtime.toolSearch.resolveInitialLoadedTools(prompt);
+  const loadedTools = await runtime.toolSearch.resolveInitialLoadedTools(prompt);
   const durationMs = elapsedMilliseconds(startedAt);
-  const ranked = runtime.toolSearch.search({
+  const ranked = await runtime.toolSearch.search({
     query: prompt,
     includeLoaded: false,
     loadedToolNames: bootstrapTools,

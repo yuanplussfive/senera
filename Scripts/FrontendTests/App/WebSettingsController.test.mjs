@@ -134,16 +134,16 @@ describe("useWebSettingsController", () => {
     render(React.createElement(ControllerHarness));
     await waitFor(() => expect(controller).toBeDefined());
     await act(async () => {
-      await controller.openSettings("skills");
+      await controller.openSettings("runtime");
     });
     act(() => controller.setPendingChanges(true));
 
     window.history.replaceState(null, "", "/workspace");
     act(() => window.dispatchEvent(new PopStateEvent("popstate", { state: null })));
 
-    expect(controller.section).toBe("skills");
+    expect(controller.section).toBe("runtime");
     expect(controller.closeConfirmationOpen).toBe(true);
-    expect(window.location.search).toBe("?settings=skills");
+    expect(window.location.search).toBe("?settings=runtime");
     expect(window.history.state).toMatchObject({ [settingsHistoryStateKey]: true });
 
     const back = vi.spyOn(window.history, "back");
@@ -156,7 +156,7 @@ describe("useWebSettingsController", () => {
     render(React.createElement(ControllerHarness));
     await waitFor(() => expect(controller).toBeDefined());
     await act(async () => {
-      await controller.openSettings("system");
+      await controller.openSettings("storage");
     });
 
     const cleanEvent = new Event("beforeunload", { cancelable: true });

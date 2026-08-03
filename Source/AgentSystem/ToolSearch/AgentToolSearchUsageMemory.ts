@@ -5,7 +5,10 @@ import { type PendingToolSearch, ToolSearchToolName } from "./AgentToolSearchRun
 import { readToolNamesFromSearchResult } from "./AgentToolSearchResultProjector.js";
 import { assessToolSearchEpisode } from "./AgentToolSearchEpisodeScorer.js";
 import type { AgentToolLearningEpisodeDraft } from "./AgentToolLearningRuntime.js";
-import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
+import { AgentLearningDomains, AgentLearningStates } from "./AgentLearningEpisodeTypes.js";
+import { createAgentLearningEpisode } from "./AgentLearningEpisodeFactory.js";
+import type { AgentSkillLearningRuntime } from "./AgentSkillLearningRuntime.js";
 
 export interface AgentToolLearningSink {
   enqueue(draft: AgentToolLearningEpisodeDraft): void;
@@ -19,6 +22,7 @@ export class AgentToolSearchUsageMemory {
     private readonly projectId: string,
     private readonly learningConfig: ResolvedAgentToolLearningConfig,
     private readonly learningRuntime?: AgentToolLearningSink,
+    private readonly skillLearningRuntime?: Pick<AgentSkillLearningRuntime, "learn">,
   ) {}
 
   rememberSearch(requestId: string, search: PendingToolSearch): void {
@@ -30,40 +34,25 @@ export class AgentToolSearchUsageMemory {
     this.pendingSearches.delete(requestId);
   }
 
-  recordToolUsage(requestId: string, results: ExecutedToolCallResult[], turnUnderstanding?: TurnUnderstanding): void {
-    if (!this.learningConfig.Enabled) {
-      this.pendingSearches.delete(requestId);
-      return;
-    }
-
+  recordToolUsage(options: {
+    requestId: string;
+    userInput: string;
+    sessionId?: string;
+    results: ExecutedToolCallResult[];
+    activeSkills?: readonly AgentActivatedSkill[];
+  }): void {
+    const { requestId, results, userInput } = options;
     const chosenTools = results.map((result) => result.name).filter((name) => name !== ToolSearchToolName);
-    if (chosenTools.length === 0) {
-      return;
-    }
-
-    const pending = this.pendingSearches.get(requestId);
-    if (!pending || pending.length === 0) {
-      return;
-    }
-
-    const relevant = [...pending]
-      .reverse()
-      .find((entry) => chosenTools.some((name) => entry.candidates.includes(name)));
-    if (!relevant) {
-      return;
-    }
-
+    const pending = this.pendingSearches.get(requestId) ?? [];
+    const relevant =
+      [...pending].reverse().find((entry) => chosenTools.some((name) => entry.candidates.includes(name))) ??
+      (chosenTools.length === 0 ? pending.at(-1) : undefined);
     const assessment = assessToolSearchEpisode(results.filter((result) => result.name !== ToolSearchToolName));
-    if (assessment.outcome !== "success") {
-      this.pendingSearches.delete(requestId);
-      return;
-    }
-
     const episode = {
-      query: relevant.query,
-      queryTokens: relevant.queryTokens,
-      plannerTags: relevant.plannerTags,
-      candidates: relevant.candidates,
+      query: relevant?.query ?? userInput,
+      queryTokens: relevant?.queryTokens ?? [],
+      plannerTags: relevant?.plannerTags ?? [],
+      candidates: relevant?.candidates ?? [],
       chosenTools,
       outcome: assessment.outcome,
       calls: assessment.calls,
@@ -72,15 +61,61 @@ export class AgentToolSearchUsageMemory {
       projectId: this.projectId,
       timestamp: Date.now(),
     } satisfies Omit<AgentToolSearchEpisode, "learnedKeywords">;
-    const rawUserTurn = turnUnderstanding?.rawUserTurn ?? relevant.query;
-    const standaloneRequest = turnUnderstanding?.standaloneRequest ?? relevant.query;
-    this.learningRuntime?.enqueue({
+    const rawUserTurn = userInput;
+    const standaloneRequest = relevant?.query ?? userInput;
+    const draftBase = {
       episode,
+      requestId,
+      sessionId: options.sessionId,
       rawUserTurn,
       standaloneRequest,
-      contextMode: turnUnderstanding?.contextMode ?? "None",
-      contextBasis: turnUnderstanding?.contextBasis ?? "",
+      contextMode: "None",
+      contextBasis: "",
+      activeSkills: options.activeSkills ?? [],
+    };
+    this.skillLearningRuntime?.learn(draftBase);
+
+    if (!this.learningConfig.Enabled || (pending.length === 0 && chosenTools.length === 0)) {
+      this.pendingSearches.delete(requestId);
+      return;
+    }
+
+    const observation = createAgentLearningEpisode({
+      domain: AgentLearningDomains.ToolRouting,
+      requestId,
+      sessionId: options.sessionId,
+      rawUserTurn,
+      standaloneRequest,
+      contextMode: draftBase.contextMode,
+      contextBasis: draftBase.contextBasis,
+      activeSkills: draftBase.activeSkills,
+      episode,
+      subjects: chosenTools.map((name) => ({ kind: "tool", name })),
     });
+    this.memory.recordLearningEpisode(observation);
+    const skipReason =
+      chosenTools.length === 0
+        ? "no non-discovery tool was executed after ToolSearch"
+        : !relevant
+          ? "no selected tool matched a pending ToolSearch candidate"
+          : assessment.outcome !== "success"
+            ? "selected tool execution did not produce a grounded successful outcome"
+            : undefined;
+    if (skipReason) {
+      this.memory.resolveLearningEpisode(observation.id, {
+        state: AgentLearningStates.Skipped,
+        reason: skipReason,
+        updatedAtMs: Date.now(),
+      });
+    } else if (this.learningRuntime) {
+      this.learningRuntime?.enqueue({ ...draftBase, learningEpisodeId: observation.id });
+    } else {
+      this.memory.resolveLearningEpisode(observation.id, {
+        state: AgentLearningStates.Skipped,
+        reason: "tool learning runtime is unavailable",
+        updatedAtMs: Date.now(),
+      });
+    }
     this.pendingSearches.delete(requestId);
   }
 

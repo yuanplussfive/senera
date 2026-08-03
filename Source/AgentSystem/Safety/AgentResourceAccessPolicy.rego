@@ -37,7 +37,25 @@ decision := {
   "riskSignals": resource_risk_signals,
 } if {
   input.resource.intent in data.senera.tool_approval.ResourceAccess.MutationIntents
-  protected_path(input.resource.relativePath)
+  input.resource.domain in data.senera.tool_approval.ResourceAccess.ProtectedMutationDomains
+} else := {
+  "decision": "deny",
+  "reason": data.senera.tool_approval.Reasons.ResourceManagedExtensionRootMutation,
+  "rule": "resource.managed_extension.root_mutation",
+  "riskSignals": resource_risk_signals,
+} if {
+  input.resource.intent in data.senera.tool_approval.ResourceAccess.MutationIntents
+  input.resource.domain in data.senera.tool_approval.ResourceAccess.ManagedExtensionDomains
+  input.resource.domainRoot
+} else := {
+  "decision": "deny",
+  "reason": data.senera.tool_approval.Reasons.ResourceManagedExtensionMutation,
+  "rule": "resource.managed_extension.unvalidated_mutation",
+  "riskSignals": resource_risk_signals,
+} if {
+  input.resource.intent in data.senera.tool_approval.ResourceAccess.MutationIntents
+  input.resource.domain in data.senera.tool_approval.ResourceAccess.ManagedExtensionDomains
+  not input.resource.authority in data.senera.tool_approval.ResourceAccess.ManagedExtensionPublisherAuthorities
 } else := {
   "decision": "deny",
   "reason": data.senera.tool_approval.Reasons.ResourceFinalLinkMutation,
@@ -55,22 +73,20 @@ decision := {
   input.resource.containment == "inside"
 }
 
-protected_path(relative_path) if {
-  some protected in data.senera.tool_approval.ResourceAccess.ProtectedRelativePaths
-  relative_path == protected
-}
-
-protected_path(relative_path) if {
-  some protected in data.senera.tool_approval.ResourceAccess.ProtectedRelativePaths
-  startswith(relative_path, sprintf("%s/", [protected]))
-}
-
 resource_risk_signals contains sprintf("resource.scope:%s", [input.resource.scope]) if {
   input.resource.scope
 }
 
 resource_risk_signals contains sprintf("resource.intent:%s", [input.resource.intent]) if {
   input.resource.intent
+}
+
+resource_risk_signals contains sprintf("resource.domain:%s", [input.resource.domain]) if {
+  input.resource.domain
+}
+
+resource_risk_signals contains sprintf("resource.authority:%s", [input.resource.authority]) if {
+  input.resource.authority
 }
 
 resource_risk_signals contains sprintf("resource.containment:%s", [input.resource.containment]) if {

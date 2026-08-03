@@ -2,6 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { moduleDirPath } from "../Core/AgentPath.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
+
+export const AgentSandboxDistributionFormatVersion = 5 as const;
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 const Sha256DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
@@ -49,7 +52,7 @@ const AgentSandboxDistributionTargetSchema = z
 
 export const AgentSandboxDistributionContractSchema = z
   .object({
-    formatVersion: z.literal(5),
+    formatVersion: z.literal(AgentSandboxDistributionFormatVersion),
     id: DistributionIdSchema,
     archiveVersion: StableVersionSchema,
     microsandboxVersion: StableVersionSchema,
@@ -103,7 +106,7 @@ export const AgentSandboxRuntimeImageLabels = Object.freeze({
 
 export const AgentSandboxArchiveManifestSchema = z
   .object({
-    formatVersion: z.literal(5),
+    formatVersion: z.literal(AgentSandboxDistributionFormatVersion),
     distributionId: DistributionIdSchema,
     archiveVersion: StableVersionSchema,
     microsandboxVersion: StableVersionSchema,
@@ -148,7 +151,9 @@ export function resolveAgentSandboxDistributionTarget(
 
 export function readAgentSandboxDistributionContract(): AgentSandboxDistributionContract {
   const contractPath = path.join(moduleDirPath(import.meta.url), "Distribution", "contract.json");
-  return AgentSandboxDistributionContractSchema.parse(JSON.parse(fs.readFileSync(contractPath, "utf8")));
+  return AgentSandboxDistributionContractSchema.parse(
+    parseJsonText(fs.readFileSync(contractPath, "utf8"), "Sandbox distribution contract"),
+  );
 }
 
 export function resolveAgentSandboxBundleLocation(

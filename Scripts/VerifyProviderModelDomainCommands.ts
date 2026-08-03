@@ -4,6 +4,7 @@ import path from "node:path";
 import { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentConfigStaleWriteError } from "../Source/AgentSystem/Config/AgentProviderModelConfigCommands.js";
 import { AgentConfigCommandIdConflictError } from "../Source/AgentSystem/Config/AgentConfigSqliteRepository.js";
+import { resolveAgentWorkspaceLayout } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { removeTemporaryWorkspace } from "./Support/TemporaryWorkspace.js";
 
@@ -292,7 +293,7 @@ function createService(seedConfig: AgentSystemConfig): AgentConfigService {
     workspaceRoot,
     source: {
       kind: "sqlite",
-      databasePath: path.join(workspaceRoot, ".senera", "Config.sqlite"),
+      databasePath: resolveAgentWorkspaceLayout(workspaceRoot).databases.config,
       seedConfig,
     },
   });

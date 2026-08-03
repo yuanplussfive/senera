@@ -3,43 +3,51 @@ import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolE
 import type { AskUserControlResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import { renderOpenAiToolObservationContent } from "../ToolRuntime/AgentToolObservationRenderer.js";
-import { redactArtifactSecrets } from "../Artifacts/AgentArtifactRedaction.js";
-import { readRecord, stringifyPreview } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
+import { redactArtifactSecrets, redactArtifactToolOutcome } from "../Artifacts/AgentArtifactRedaction.js";
+import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
+import { AgentPiToolResultStatuses, type AgentPiToolExecutionInput, type AgentPiToolResult } from "./AgentPiTypes.js";
+import type { AgentToolResourceScheduler } from "../ToolRuntime/AgentToolResourceScheduler.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import {
-  readPiProxyToolCallBatchId,
-  registerPiProxyExecutedToolResult,
-} from "../PiProxy/AgentPiProxyRuntimeContext.js";
-import type { AgentPiToolExecutionInput, AgentPiToolResult } from "./AgentPiTypes.js";
+  AgentToolAssessmentStatuses,
+  AgentToolExecutionStatuses,
+  AgentToolOutputAvailabilities,
+  readAgentToolFailure,
+  type AgentToolExecutionOutcome,
+} from "../ToolRuntime/AgentToolResultOutcome.js";
+import { createAgentPiToolObservation } from "./AgentPiToolObservation.js";
 
 export interface AgentPiToolExecutionBridgeOptions {
   executeToolCall: AgentToolCallExecutor["execute"];
   recordToolArtifacts: AgentToolExecutionArtifactRecorder["record"];
-  model: string;
-}
-
-export class AgentPiToolExecutionError extends Error {
-  constructor(
-    message: string,
-    readonly details: unknown,
-  ) {
-    super(message);
-    this.name = "AgentPiToolExecutionError";
-  }
+  resourceScheduler?: Pick<AgentToolResourceScheduler, "run">;
+  turnContexts: Pick<AgentPiTurnContextStore, "readToolCallBatchId" | "registerExecutedToolResult">;
 }
 
 export class AgentPiToolExecutionBridge {
   constructor(private readonly options: AgentPiToolExecutionBridgeOptions) {}
 
   async execute(input: AgentPiToolExecutionInput): Promise<AgentPiToolResult> {
+    const operation = () => this.executeWithLease(input);
+    return this.options.resourceScheduler
+      ? this.options.resourceScheduler.run(input.tool, input.params, operation, input.signal)
+      : operation();
+  }
+
+  private async executeWithLease(input: AgentPiToolExecutionInput): Promise<AgentPiToolResult> {
+    const toolAccessGrant = input.context.toolAccessGrant;
+    if (!toolAccessGrant) throw new AgentLocalizedError("toolAccess.missingGrant");
     const requestId = input.context.requestId ?? createRequestId();
     const step = input.context.step ?? 1;
-    const batchId = readPiProxyToolCallBatchId(input.context.piProxyRuntimeContextId, input.toolCallId);
+    const batchId =
+      this.options.turnContexts.readToolCallBatchId(input.context.piTurnContextId, input.toolCallId) ??
+      `${requestId}:${step}`;
     const execution = await this.options.executeToolCall(
       {
         name: input.tool.name,
         arguments: input.params,
+        expectedContractDigest: input.tool.contract?.digest ?? null,
         callId: input.toolCallId,
       },
       {
@@ -47,14 +55,16 @@ export class AgentPiToolExecutionBridge {
         requestId,
         step,
         onEvent: input.context.onEvent,
-        loadedToolNames: input.context.visibleToolNames,
+        toolAccessGrant,
+        toolExposure: input.context.toolExposure,
         batchId,
         signal: input.signal,
+        tokenBudget: input.context.tokenBudget,
       },
     );
 
     if (execution.kind === "AskUser") {
-      return this.projectAskUser(input.tool.name, execution.value);
+      return this.projectAskUser(input.tool.name, input.toolCallId, batchId, execution.value);
     }
 
     const [recorded] = await this.options.recordToolArtifacts({
@@ -64,46 +74,56 @@ export class AgentPiToolExecutionBridge {
       results: execution.value,
     });
     const result = recorded ?? execution.value[0];
-    if (result) {
-      registerPiProxyExecutedToolResult(input.context.piProxyRuntimeContextId, input.toolCallId, result);
-    }
-    const error = readStructuredToolError(result?.result);
-    if (error) {
-      throw new AgentPiToolExecutionError(error.message, projectToolFailureDetails(result));
-    }
-
-    return this.projectToolResult(input.tool, result);
+    if (!result) throw new Error("Tool execution completed without a result.");
+    this.options.turnContexts.registerExecutedToolResult(input.context.piTurnContextId, input.toolCallId, result);
+    return this.projectToolResult(input, result, batchId);
   }
 
-  private projectAskUser(toolName: string, result: AskUserControlResult): AgentPiToolResult {
+  private projectAskUser(
+    toolName: string,
+    toolCallId: string,
+    batchId: string,
+    result: AskUserControlResult,
+  ): AgentPiToolResult {
     return {
       content: [
         {
           type: "text",
-          text: `工具 ${toolName} 需要用户输入：${result.question}`,
+          text: JSON.stringify(
+            createAgentPiToolObservation({
+              tool_name: toolName,
+              call_id: toolCallId,
+              batch_id: batchId,
+              status: "waiting",
+              summary: result.question,
+              control: result,
+            }),
+          ),
         },
       ],
       details: {
         senera: {
           toolName,
+          status: AgentPiToolResultStatuses.Success,
+          executionStatus: AgentToolExecutionStatuses.Completed,
+          outputAvailability: AgentToolOutputAvailabilities.Complete,
         },
       },
       terminate: true,
     };
   }
 
-  private projectToolResult(tool: RegisteredTool, result: ExecutedToolCallResult | undefined): AgentPiToolResult {
-    const content = result
-      ? renderOpenAiToolObservationContent(projectToolObservation(result), {
-          model: this.options.model,
-          observation: tool.observation,
-        })
-      : JSON.stringify({
-          type: "senera.tool_observation.v1",
-          tool_name: tool.name,
-          status: "empty",
-          summary: "Tool returned no result.",
-        });
+  private projectToolResult(
+    input: AgentPiToolExecutionInput,
+    result: ExecutedToolCallResult,
+    batchId: string,
+  ): AgentPiToolResult {
+    const tool = input.tool;
+    const outcome = redactArtifactToolOutcome(result.outcome, result.artifactPolicy);
+    const content = renderOpenAiToolObservationContent(
+      projectToolObservation(result, outcome, batchId),
+      tool.observation,
+    );
 
     return {
       content: [
@@ -112,46 +132,53 @@ export class AgentPiToolExecutionBridge {
           text: content,
         },
       ],
-      details: {
-        senera: {
-          toolName: tool.name,
-          artifactUri: result?.artifact?.artifactUri,
-          callId: result?.callId,
-        },
-      },
+      details: projectToolDetails(tool.name, result, outcome),
     };
   }
 }
 
-function projectToolFailureDetails(result: ExecutedToolCallResult | undefined): Record<string, unknown> | undefined {
-  if (!result) return undefined;
-  return {
-    toolName: result.name,
-    callId: result.callId,
-    artifactUri: result.artifact?.artifactUri,
-    presentation: result.presentation,
-  };
-}
-
-function readStructuredToolError(value: unknown): { message: string } | undefined {
-  const error = readRecord(value)?.error;
-  const record = readRecord(error);
-  if (!record) {
-    return undefined;
-  }
-
-  return {
-    message: String(record.message ?? stringifyPreview(record)),
-  };
-}
-
-function projectToolObservation(result: ExecutedToolCallResult): Record<string, unknown> {
+function projectToolObservation(
+  result: ExecutedToolCallResult,
+  outcome: AgentToolExecutionOutcome,
+  batchId: string,
+): Record<string, unknown> {
+  const error = readAgentToolFailure(outcome);
   return {
     callId: result.callId,
+    batchId,
     name: result.name,
-    arguments: result.arguments,
-    process: result.process,
+    arguments: redactArtifactSecrets(result.arguments, result.artifactPolicy),
+    process: redactArtifactSecrets(result.process, result.artifactPolicy),
+    outcome,
+    status: outcome.assessment.status,
+    execution_status: outcome.execution.status,
+    output_availability: outcome.output.availability,
     result: redactArtifactSecrets(result.result, result.artifactPolicy),
+    error,
     artifact: result.artifact,
+  };
+}
+
+function projectToolDetails(
+  toolName: string,
+  result: ExecutedToolCallResult,
+  outcome: AgentToolExecutionOutcome,
+): AgentPiToolResult["details"] {
+  const context = {
+    toolName,
+    artifactUri: result.artifact?.artifactUri,
+    callId: result.callId,
+    executionStatus: outcome.execution.status,
+    outputAvailability: outcome.output.availability,
+  };
+  return {
+    senera:
+      outcome.assessment.status === AgentToolAssessmentStatuses.Failure
+        ? {
+            ...context,
+            status: AgentPiToolResultStatuses.Failure,
+            error: outcome.assessment.error,
+          }
+        : { ...context, status: outcome.assessment.status },
   };
 }

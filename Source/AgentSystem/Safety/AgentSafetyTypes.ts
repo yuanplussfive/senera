@@ -1,10 +1,7 @@
-import type {
-  PluginRootKind,
-  PluginSecurityManifest,
-  ToolApprovalManifest,
-  ToolSearchCapabilityRiskManifest,
-} from "../Types/PluginManifestTypes.js";
+import type { ToolApprovalManifest, ToolSearchCapabilityRiskManifest } from "../Types/AgentToolContractTypes.js";
+import type { AgentExtensionOwnerKind } from "../Types/AgentExtensionRuntimeTypes.js";
 import type { AgentToolExecutionPlan } from "../ToolRuntime/AgentToolExecutionPlan.js";
+import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
 
 export const AgentPermissionActions = {
   Allow: "allow",
@@ -23,19 +20,22 @@ export interface AgentToolPermissionRequest {
   toolName: string;
   arguments: Record<string, unknown>;
   executionPlan?: AgentToolExecutionPlan;
-  visibleToolNames?: readonly string[];
+  toolAccessGrant: AgentToolAccessGrant;
   tool?: AgentToolSafetyMetadata;
 }
 
 export interface AgentToolSafetyMetadata {
-  pluginName: string;
-  pluginTitle?: string;
-  rootKind: PluginRootKind;
+  extensionName: string;
+  extensionTitle?: string;
+  ownerKind: AgentExtensionOwnerKind;
   approval?: ToolApprovalManifest;
   permissions: readonly string[];
   capabilityRisks: readonly ToolSearchCapabilityRiskManifest[];
   capabilityEffects: readonly string[];
-  security?: PluginSecurityManifest;
+  security?: {
+    TrustLevel?: "System" | "Local" | "External" | "Untrusted";
+    RequiresApproval?: boolean;
+  };
   executionTargets?: readonly string[];
 }
 

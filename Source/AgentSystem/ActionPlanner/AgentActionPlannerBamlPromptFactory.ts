@@ -1,9 +1,6 @@
 import { ClientRegistry } from "@boundaryml/baml";
 import { b as baml } from "../BamlClient/baml_client/index.js";
-import type { ActionPlanInput } from "../BamlClient/baml_client/types.js";
 import type { AgentBamlModelRequest } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
-import { buildActionPlannerPromptJson } from "./AgentActionPlannerPromptJson.js";
-import { projectActionPlannerBamlRequestBody } from "./AgentActionPlannerPromptProjector.js";
 import {
   type AgentMemoryConsolidationPromptInput,
   type AgentMemoryLearningPromptInput,
@@ -15,43 +12,31 @@ import {
   buildToolLearningPromptJson,
 } from "./AgentLearningPromptJson.js";
 import type {
-  AgentPiControllerActionInput,
-  AgentPiFinalAnswerInput,
+  AgentPiControllerDecisionInput,
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
-  AgentPiToolCard,
-} from "../PiProxy/AgentPiAssistantMessageTypes.js";
+} from "../PiShared/AgentPiPlanningTypes.js";
 import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 import { buildBamlToolRiskAuditPromptJson } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
-import { type AgentPiCompactionPromptInput, buildAgentPiCompactionPromptJson } from "../Pi/AgentPiCompactionPrompt.js";
-import { projectPlainBamlRequestBody } from "./AgentActionPlannerPromptProjector.js";
+import {
+  type AgentPiToolObservationDigestPromptInput,
+  buildAgentPiToolObservationDigestPromptJson,
+} from "../Pi/AgentPiToolObservationDigestPrompt.js";
+import {
+  projectActionPlannerBamlRequestBody,
+  projectPlainBamlRequestBody,
+} from "./AgentActionPlannerPromptProjector.js";
 
 export type AgentActionPlannerBamlFunctionArgs =
   | {
-      functionName: "PrepareInteraction";
-      input: ActionPlanInput;
-      candidateTools: AgentPiToolCard[];
+      functionName: "EvolveTurn";
+      input: AgentPiControllerDecisionInput;
     }
   | {
-      functionName: "RepairInteractionPreparation";
-      input: ActionPlanInput;
-      candidateTools: AgentPiToolCard[];
-      invalidPreparation: string;
+      functionName: "RepairControllerDecision";
+      input: AgentPiControllerDecisionInput;
+      invalidDecision: string;
       issues: string[];
-    }
-  | {
-      functionName: "SelectPiAction";
-      input: AgentPiControllerActionInput;
-    }
-  | {
-      functionName: "RepairPiAction";
-      input: AgentPiControllerActionInput;
-      invalidAction: string;
-      issues: string[];
-    }
-  | {
-      functionName: "GeneratePiFinalAnswer";
-      input: AgentPiFinalAnswerInput;
     }
   | {
       functionName: "FillPiToolArguments";
@@ -112,13 +97,13 @@ export type AgentActionPlannerBamlFunctionArgs =
       issues: string[];
     }
   | {
-      functionName: "CompactPiSession";
-      input: AgentPiCompactionPromptInput;
+      functionName: "CondenseToolObservations";
+      input: AgentPiToolObservationDigestPromptInput;
     }
   | {
-      functionName: "RepairPiCompaction";
-      input: AgentPiCompactionPromptInput;
-      invalidSummary: string;
+      functionName: "RepairToolObservationDigest";
+      input: AgentPiToolObservationDigestPromptInput;
+      invalidDigest: string;
       issues: string[];
     };
 
@@ -142,42 +127,19 @@ export class AgentActionPlannerBamlPromptFactory {
     };
 
     switch (args.functionName) {
-      case "PrepareInteraction":
-        return baml.request.PrepareInteraction(
-          buildActionPlannerPromptJson(args.input, args.candidateTools, {
-            stage: "prepareInteraction",
+      case "EvolveTurn":
+        return baml.request.EvolveTurn(
+          buildPiPromptJson(args.input, {
+            stage: "evolveTurn",
           }),
           options,
         );
-      case "RepairInteractionPreparation":
-        return baml.request.RepairInteractionPreparation(
-          buildActionPlannerPromptJson(args.input, args.candidateTools, {
-            stage: "repairInteractionPreparation",
-            invalidPreparation: args.invalidPreparation,
+      case "RepairControllerDecision":
+        return baml.request.RepairControllerDecision(
+          buildPiPromptJson(args.input, {
+            stage: "repairControllerDecision",
+            invalidDecision: args.invalidDecision,
             issues: args.issues,
-          }),
-          options,
-        );
-      case "SelectPiAction":
-        return baml.request.SelectPiAction(
-          buildPiPromptJson(args.input, {
-            stage: "selectPiAction",
-          }),
-          options,
-        );
-      case "RepairPiAction":
-        return baml.request.RepairPiAction(
-          buildPiPromptJson(args.input, {
-            stage: "repairPiAction",
-            invalidAction: args.invalidAction,
-            issues: args.issues,
-          }),
-          options,
-        );
-      case "GeneratePiFinalAnswer":
-        return baml.request.GeneratePiFinalAnswer(
-          buildPiPromptJson(args.input, {
-            stage: "generatePiFinalAnswer",
           }),
           options,
         );
@@ -272,18 +234,18 @@ export class AgentActionPlannerBamlPromptFactory {
           }),
           options,
         );
-      case "CompactPiSession":
-        return baml.request.CompactPiSession(
-          buildAgentPiCompactionPromptJson(args.input, {
-            stage: "compactPiSession",
+      case "CondenseToolObservations":
+        return baml.request.CondenseToolObservations(
+          buildAgentPiToolObservationDigestPromptJson(args.input, {
+            stage: "condenseToolObservations",
           }),
           options,
         );
-      case "RepairPiCompaction":
-        return baml.request.RepairPiCompaction(
-          buildAgentPiCompactionPromptJson(args.input, {
-            stage: "repairPiCompaction",
-            invalidSummary: args.invalidSummary,
+      case "RepairToolObservationDigest":
+        return baml.request.RepairToolObservationDigest(
+          buildAgentPiToolObservationDigestPromptJson(args.input, {
+            stage: "repairToolObservationDigest",
+            invalidDigest: args.invalidDigest,
             issues: args.issues,
           }),
           options,
@@ -296,7 +258,7 @@ function projectPromptForBamlFunction(
   functionName: AgentActionPlannerBamlFunctionArgs["functionName"],
   body: Record<string, unknown>,
 ) {
-  return functionName === "CompactPiSession" || functionName === "RepairPiCompaction"
+  return functionName === "CondenseToolObservations" || functionName === "RepairToolObservationDigest"
     ? projectPlainBamlRequestBody(body)
     : projectActionPlannerBamlRequestBody(body);
 }

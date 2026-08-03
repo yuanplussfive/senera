@@ -147,6 +147,26 @@ describe("Session manager behavior", () => {
     });
   });
 
+  test("persists close intent before releasing external resources", async () => {
+    const observedStates: Array<string | undefined> = [];
+    const fixture = createManagerFixture({
+      sessionResources: [
+        {
+          id: "intent-observer",
+          release: async () => {
+            const lookup = fixture.store.get("session-close-intent");
+            observedStates.push(lookup.kind === "found" ? lookup.session.metadata?.lifecycle?.close?.state : undefined);
+          },
+        },
+      ],
+    });
+    await fixture.manager.createSession({ sessionId: "session-close-intent" });
+
+    await fixture.manager.closeSession({ sessionId: "session-close-intent" });
+
+    expect(observedStates).toEqual(["cleanup_pending"]);
+  });
+
   test("releases session resources only after the active run has settled", async () => {
     const activeStarted = createDeferred<void>();
     const cancellationObserved = createDeferred<void>();
@@ -242,6 +262,11 @@ describe("Session manager behavior", () => {
         title: "Release investigation",
         onEvent: collect(events),
       });
+      await fixture.manager.submitMessage({
+        sessionId: "session-title",
+        requestId: "request-after-rename",
+        input: "Continue the investigation",
+      });
       await fixture.manager.emitSessionListSnapshot({ onEvent: collect(events) });
 
       expect(events.map((event) => event.kind)).toEqual([
@@ -254,6 +279,7 @@ describe("Session manager behavior", () => {
           title: "Release investigation",
         }),
       ]);
+      expect(repository.loadSession("session-title")?.metadata?.title).toBe("Release investigation");
     } finally {
       repository.close();
       removeDirectory(dir);
@@ -352,7 +378,7 @@ describe("Session manager behavior", () => {
 
     expect(observedConversationRequestIds).toEqual([["request-a", "request-a", "request-replacement"]]);
     expect(observedPreparations).toEqual([
-      expect.objectContaining({ route: expect.objectContaining({ objective: "B" }) }),
+      expect.objectContaining({ rootCommand: expect.objectContaining({ instruction: "B" }) }),
     ]);
     expect(rewind).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -663,10 +689,66 @@ describe("Session manager behavior", () => {
     expect(observedPreparations).toEqual([
       expect.objectContaining({
         piBranchBoundaryId: "boundary-lineage",
-        route: expect.objectContaining({ objective: "B" }),
+        rootCommand: expect.objectContaining({ instruction: "B" }),
       }),
     ]);
     expect(fixture.store.loadConversation("session-regeneration-lineage").map((entry) => entry.requestId)).toEqual([
+      "request-lineage-2",
+      "request-lineage-2",
+    ]);
+  });
+
+  test("restores regeneration lineage and preparation after manager reconstruction", async () => {
+    let firstInvocation = 0;
+    const first = createManagerFixture({
+      loopFactory: () => ({
+        run: async (request) => {
+          firstInvocation += 1;
+          if (firstInvocation === 1) {
+            await request.onPreparation?.(turnPreparation("B"));
+            await request.onPiBranchBoundary?.("boundary-persisted-lineage");
+          }
+          return completedRun(request.requestId);
+        },
+      }),
+    });
+    await first.manager.createSession({ sessionId: "session-persisted-lineage" });
+    await first.manager.submitMessage({
+      sessionId: "session-persisted-lineage",
+      requestId: "request-source",
+      input: "B",
+    });
+    await first.manager.regenerateFromRequest({
+      sessionId: "session-persisted-lineage",
+      fromRequestId: "request-source",
+      requestId: "request-lineage-1",
+      input: "B",
+    });
+
+    const observedPreparations: unknown[] = [];
+    const reconstructed = createManagerFixture({
+      repository: first.repository,
+      loopFactory: () => ({
+        run: async (request) => {
+          observedPreparations.push(request.preparation);
+          return completedRun(request.requestId);
+        },
+      }),
+    });
+    await reconstructed.manager.regenerateFromRequest({
+      sessionId: "session-persisted-lineage",
+      fromRequestId: "request-source",
+      requestId: "request-lineage-2",
+      input: "B",
+    });
+
+    expect(observedPreparations).toEqual([
+      expect.objectContaining({
+        piBranchBoundaryId: "boundary-persisted-lineage",
+        rootCommand: expect.objectContaining({ instruction: "B" }),
+      }),
+    ]);
+    expect(reconstructed.store.loadConversation("session-persisted-lineage").map((entry) => entry.requestId)).toEqual([
       "request-lineage-2",
       "request-lineage-2",
     ]);

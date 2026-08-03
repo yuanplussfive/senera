@@ -53,6 +53,4 @@ export function toolBatchForTrace(requestId: string, trace: StepTraceDto): NonNu
   };
 }
 
-function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
+import { unknownRecordOrEmpty as readRecord } from "../../lib/unknownValue";

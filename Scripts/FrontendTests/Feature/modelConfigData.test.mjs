@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  copyModelRuntimeTemplate,
   normalizeModelProviderDraft,
   readProviderModelRows,
 } from "../../../Frontend/src/features/chat/modelConfigData.ts";
@@ -32,6 +33,20 @@ describe("model configuration helpers", () => {
       RetryBaseDelaySeconds: 0.5,
       RetryMaxDelaySeconds: 12,
       RetryAfterMaxDelaySeconds: 45,
+    });
+  });
+
+  it("copies response and streaming guards into newly configured models", () => {
+    expect(
+      copyModelRuntimeTemplate({
+        MaxResponseBytes: 67_108_864,
+        MaxSseEventBytes: 8_388_608,
+        MaxSseEvents: 100_000,
+      }),
+    ).toEqual({
+      MaxResponseBytes: 67_108_864,
+      MaxSseEventBytes: 8_388_608,
+      MaxSseEvents: 100_000,
     });
   });
 });

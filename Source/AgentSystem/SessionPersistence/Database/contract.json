@@ -41,6 +41,46 @@
       "migrationSha256": "24c898f7fafe8cbcd89a5b68700f1875e86cd3056077fbfada69d7d08527b988",
       "snapshot": "snapshots/0005.schema.sql",
       "snapshotSha256": "712ea5ce2b11cc2bc34583bcda6e62d912bd31261d777a7a43bca0169a6e9bb2"
+    },
+    {
+      "version": 6,
+      "name": "session-fork-mutations",
+      "migration": "migrations/0006-session-fork-mutations.sql",
+      "migrationSha256": "52a9589e3696054170298378db3ee3330a3db0e7ec496d2543f16ee8f5bce857",
+      "snapshot": "snapshots/0006.schema.sql",
+      "snapshotSha256": "9dea3ef24824d454d6a59a61b9f867e9082f31771d224535fbbf21b28dbc9a5c"
+    },
+    {
+      "version": 7,
+      "name": "session-command-integrity",
+      "migration": "migrations/0007-session-command-integrity.sql",
+      "migrationSha256": "540be3d65341d5193ed82626c960294c09076f767af0f27fa181d6e6383ef290",
+      "snapshot": "snapshots/0007.schema.sql",
+      "snapshotSha256": "0b3a8fd157b68a175daf8d0ef6b206fee20a3b1cb8426ce0b951aac84af63188"
+    },
+    {
+      "version": 8,
+      "name": "session-request-event-lookup",
+      "migration": "migrations/0008-session-request-event-lookup.sql",
+      "migrationSha256": "2f27e754ea71662e9083965ed257f3193d73acc2cda68c8f8f3ce984e73e5fcf",
+      "snapshot": "snapshots/0008.schema.sql",
+      "snapshotSha256": "282ba233f0703a408ffce8d4ed73e6e2bbdf3a0ace1a55c9095e683e1ad5aaca"
+    },
+    {
+      "version": 9,
+      "name": "run-snapshot-history-sequence",
+      "migration": "migrations/0009-run-snapshot-history-sequence.sql",
+      "migrationSha256": "60aba567b04dc8bb2af63b0425392bd92d121f4e225e54de18e9b688b379dd61",
+      "snapshot": "snapshots/0009.schema.sql",
+      "snapshotSha256": "3e7d3d88b20c984e67edd36b9e85a80b2f201318e7581b0df1ec1e261df18e56"
+    },
+    {
+      "version": 10,
+      "name": "run-snapshot-revisions",
+      "migration": "migrations/0010-run-snapshot-revisions.sql",
+      "migrationSha256": "077b9bdb8247e5af822056ee583b384260aa3739602fa28bd802099368ae1703",
+      "snapshot": "snapshots/0010.schema.sql",
+      "snapshotSha256": "3d8f13b2c8794532914a052ec33cd803ba9f2166146db811302bfd4ce3585cb1"
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { AgentConfigLoader } from "../Config/AgentConfigLoader.js";
 import { resolveConfigStoreConfig } from "../AgentDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentConfigFormSnapshot } from "../Types/ConfigFormTypes.js";
@@ -36,6 +37,10 @@ import {
   persistMigratedAgentConfigJson,
   writeAgentConfigJsonMirror,
 } from "./AgentConfigServicePaths.js";
+import {
+  projectAgentConfigHistoryRetentionPolicy,
+  type AgentConfigHistoryRetentionPolicy,
+} from "./AgentConfigHistoryRetention.js";
 import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 import { migrateAgentConfigPayload, type AgentConfigMigrationResult } from "./AgentConfigMigration.js";
 import { errorMessage } from "../Core/AgentErrors.js";
@@ -50,7 +55,6 @@ export interface AgentConfigSnapshot {
   value: AgentSystemConfig;
   source: AgentConfigSnapshotSource;
   revision?: number;
-  databasePath?: string;
   diagnostics: AgentConfigDiagnostic[];
   form: AgentConfigFormSnapshot;
 }
@@ -107,7 +111,10 @@ export class AgentConfigService {
   private repository?: AgentConfigSqliteRepository;
   private repositoryPath?: string;
   private readonly secretCodec: AgentConfigSecretCodec;
-  private readonly jsonCommandReceipts = new Map<string, { operationKind: string; payloadHash: string }>();
+  private readonly jsonCommandReceipts = new Map<
+    string,
+    { operationKind: string; payloadHash: string; createdAt: string }
+  >();
 
   constructor(
     private readonly options: {
@@ -120,6 +127,7 @@ export class AgentConfigService {
     this.secretCodec = options.secretCodec ?? new AgentConfigSecretCodec({ workspaceRoot: options.workspaceRoot });
     try {
       this.snapshotValue = this.initialize(1);
+      this.maintainSqliteHistory();
     } catch (error) {
       this.closeRepository();
       throw error;
@@ -214,6 +222,7 @@ export class AgentConfigService {
   }
   reloadFromSources(): AgentConfigSnapshot {
     this.snapshotValue = this.initialize(this.snapshotValue.version + 1);
+    this.maintainSqliteHistory();
     return this.snapshotValue;
   }
 
@@ -268,7 +277,7 @@ export class AgentConfigService {
       };
     }
 
-    const databasePath = this.resolveDatabasePath(jsonConfig);
+    const databasePath = this.resolveDatabasePath();
     const repository = this.repositoryForPath(databasePath);
     const latest = repository.latestRevision()
       ? this.readLatestValidRevision(repository)
@@ -276,12 +285,12 @@ export class AgentConfigService {
           revision: repository.appendRevision({
             config: jsonConfig,
             source: "json_import",
+            retention: this.historyRetention(jsonConfig),
           }),
           repaired: { kind: "none" } as const,
         };
     return this.snapshotFromRevision(latest.revision.config, latest.revision, {
       path: source.configPath,
-      databasePath,
       version,
       diagnostics: [...migrationDiagnostics, ...diagnosticsForRepair(latest.repaired)],
     });
@@ -309,10 +318,10 @@ export class AgentConfigService {
       const revision = repository.appendRevision({
         config: seedConfig,
         source: "seed",
+        retention: this.historyRetention(seedConfig),
       });
       return this.snapshotFromRevision(revision.config, revision, {
         path: this.readSourceLabel(source),
-        databasePath,
         version,
         diagnostics: [],
       });
@@ -322,7 +331,6 @@ export class AgentConfigService {
 
     return this.snapshotFromRevision(loaded.revision.config, loaded.revision, {
       path: this.readSourceLabel(source),
-      databasePath,
       version,
       diagnostics: diagnosticsForRepair(loaded.repaired),
     });
@@ -366,10 +374,12 @@ export class AgentConfigService {
     source: AgentConfigRevisionRecord["source"],
   ): AgentConfigSnapshot {
     const payloadHash = createConfigCommandPayloadHash(operationKind, payload);
+    const commandTimestamp = new Date().toISOString();
     if (!this.usesSqliteStore()) {
       if (this.options.source.kind !== "json") {
         throw new Error("JSON configuration command requires a JSON configuration source.");
       }
+      this.pruneJsonCommandReceipts(commandTimestamp, this.historyRetention(this.snapshotValue.value));
       const receipt = this.jsonCommandReceipts.get(input.commandId);
       if (receipt) {
         if (receipt.operationKind !== operationKind || receipt.payloadHash !== payloadHash) {
@@ -387,7 +397,8 @@ export class AgentConfigService {
         diagnostics: [],
         form: projectAgentConfigForm(config),
       };
-      this.jsonCommandReceipts.set(input.commandId, { operationKind, payloadHash });
+      this.jsonCommandReceipts.set(input.commandId, { operationKind, payloadHash, createdAt: commandTimestamp });
+      this.pruneJsonCommandReceipts(commandTimestamp, this.historyRetention(config));
       return this.snapshotValue;
     }
 
@@ -398,6 +409,8 @@ export class AgentConfigService {
         operationKind,
         payloadHash,
         source,
+        createdAt: commandTimestamp,
+        retention: this.historyRetention(this.snapshotValue.value),
       },
       (current) =>
         this.validateConfig(
@@ -413,10 +426,13 @@ export class AgentConfigService {
         this.options.source.kind === "json"
           ? this.options.source.configPath
           : this.readSourceLabel(this.options.source),
-      databasePath,
       diagnostics: [],
     });
     const store = resolveConfigStoreConfig(result.revision.config);
+    this.repositoryForPath(databasePath).pruneHistory(
+      projectAgentConfigHistoryRetentionPolicy(store),
+      commandTimestamp,
+    );
     this.writeCommittedJsonMirror(result.revision.config, store.MirrorJson);
     return this.snapshotValue;
   }
@@ -428,7 +444,7 @@ export class AgentConfigService {
   private activeDatabasePath(): string {
     return this.options.source.kind === "sqlite"
       ? this.resolveSqliteSourceDatabasePath(this.options.source)
-      : this.resolveDatabasePath(this.snapshotValue.value);
+      : this.resolveDatabasePath();
   }
 
   private writeCommittedJsonMirror(config: AgentSystemConfig, enabled: boolean): void {
@@ -465,6 +481,7 @@ export class AgentConfigService {
           revision: repository.appendRevision({
             config: result.data,
             source: "migration",
+            retention: this.historyRetention(result.data),
           }),
           repaired: {
             kind: "migrated",
@@ -484,11 +501,9 @@ export class AgentConfigService {
       };
     }
 
-    throw new Error(
-      agentErrorMessage("config.databaseInvalid", {
-        issues: formatConfigIssues(result.error.issues),
-      }),
-    );
+    throw new AgentLocalizedError("config.databaseInvalid", {
+      issues: formatConfigIssues(result.error.issues),
+    });
   }
 
   private snapshotFromRevision(
@@ -496,7 +511,6 @@ export class AgentConfigService {
     revision: AgentConfigRevisionRecord,
     options: {
       path: string;
-      databasePath: string;
       version?: number;
       diagnostics: AgentConfigDiagnostic[];
     },
@@ -507,7 +521,6 @@ export class AgentConfigService {
       value: config,
       source: "sqlite",
       revision: revision.revision,
-      databasePath: options.databasePath,
       diagnostics: options.diagnostics,
       form: projectAgentConfigForm(config),
     };
@@ -518,6 +531,31 @@ export class AgentConfigService {
     return AgentSystemConfigSchema.parse(migrated?.config ?? config);
   }
 
+  private historyRetention(config: AgentSystemConfig): AgentConfigHistoryRetentionPolicy {
+    return projectAgentConfigHistoryRetentionPolicy(resolveConfigStoreConfig(config));
+  }
+
+  private maintainSqliteHistory(): void {
+    if (!this.usesSqliteStore()) return;
+    this.repositoryForPath(this.activeDatabasePath()).pruneHistory(this.historyRetention(this.snapshotValue.value));
+  }
+
+  private pruneJsonCommandReceipts(now: string, retention: AgentConfigHistoryRetentionPolicy): void {
+    const cutoff = Date.parse(now) - retention.commandReceiptRetentionHours * 60 * 60 * 1_000;
+    for (const [commandId, receipt] of this.jsonCommandReceipts) {
+      if (Date.parse(receipt.createdAt) < cutoff) this.jsonCommandReceipts.delete(commandId);
+    }
+    const overflow = this.jsonCommandReceipts.size - retention.commandReceiptMaxCount;
+    if (overflow <= 0) return;
+    const expired = [...this.jsonCommandReceipts.entries()]
+      .sort(
+        ([leftId, left], [rightId, right]) =>
+          left.createdAt.localeCompare(right.createdAt) || leftId.localeCompare(rightId),
+      )
+      .slice(0, overflow);
+    for (const [commandId] of expired) this.jsonCommandReceipts.delete(commandId);
+  }
+
   private assertSecretPersistenceRoundTrip(config: AgentSystemConfig): void {
     const protectedConfig = this.secretCodec.protectConfig(config);
     const revealedConfig = AgentSystemConfigSchema.parse(this.secretCodec.revealConfig(protectedConfig).value);
@@ -526,8 +564,8 @@ export class AgentConfigService {
     }
   }
 
-  private resolveDatabasePath(config: AgentSystemConfig): string {
-    return resolveConfigStoreDatabasePath(this.options.workspaceRoot, config);
+  private resolveDatabasePath(): string {
+    return resolveConfigStoreDatabasePath(this.options.workspaceRoot);
   }
 
   private resolveSqliteSourceDatabasePath(source: Extract<AgentConfigSourceOptions, { kind: "sqlite" }>): string {

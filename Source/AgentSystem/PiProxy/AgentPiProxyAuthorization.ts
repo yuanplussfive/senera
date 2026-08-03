@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type http from "node:http";
-import { AgentPiProxyProtocol } from "./AgentPiProxyContract.js";
+import { AgentPiProxyProtocol } from "../PiShared/AgentPiProxyProtocol.js";
 
 const BearerPrefix = "Bearer ";
 const Ipv4MappedPrefix = "::ffff:";

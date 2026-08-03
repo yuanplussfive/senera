@@ -1,4 +1,4 @@
-import type { ToolArtifactPolicyManifest, ToolArtifactWorkspaceManifest } from "../Types/PluginManifestTypes.js";
+import type { ToolArtifactPolicyManifest, ToolArtifactWorkspaceManifest } from "../Types/AgentToolContractTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { AgentWorkspaceArtifactWriter } from "./AgentWorkspaceArtifactWriter.js";
 import type { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";

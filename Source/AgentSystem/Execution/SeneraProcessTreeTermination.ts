@@ -1,5 +1,6 @@
 import kill from "tree-kill";
 import { sleep, withDeadline } from "../Core/AgentTiming.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 const SeneraProcessTreeProbeIntervalMs = 25;
 
@@ -14,7 +15,7 @@ export interface SeneraProcessTreeTerminationDiagnostics {
   readonly forceAcknowledged: boolean;
 }
 
-export class SeneraProcessTreeTerminationError extends Error {
+export class SeneraProcessTreeTerminationError extends AgentBaseError {
   constructor(
     readonly diagnostics: SeneraProcessTreeTerminationDiagnostics,
     readonly failures: readonly unknown[],
@@ -27,7 +28,6 @@ export class SeneraProcessTreeTerminationError extends Error {
             ? failures[0]
             : new AggregateError(failures, "Process-tree termination attempts failed."),
     });
-    this.name = "SeneraProcessTreeTerminationError";
   }
 }
 

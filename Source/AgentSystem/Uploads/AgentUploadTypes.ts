@@ -19,6 +19,20 @@ export const AgentUploadAttachmentListSchema = z.array(AgentUploadAttachmentSche
 
 export type AgentUploadAttachment = z.infer<typeof AgentUploadAttachmentSchema>;
 
+export const AgentResolvedUploadResourceSchema = z
+  .object({
+    uploadUri: z.string().min(1),
+    filePath: z.string().min(1),
+    name: z.string().min(1),
+    mime: z.string().min(1),
+    declaredMime: z.string().min(1).optional(),
+    size: z.number().int().nonnegative(),
+    sha256: z.string().min(1),
+  })
+  .strict();
+
+export type AgentResolvedUploadResource = z.infer<typeof AgentResolvedUploadResourceSchema>;
+
 export const AgentUploadManifestSchema = z
   .object({
     uploadId: z.string().min(1),

@@ -9,6 +9,29 @@ export function resolveFrom(basePath: string, targetPath: string): string {
   return path.resolve(basePath, targetPath);
 }
 
+/** Returns the platform-relative path when target is inside root, including root itself. */
+export function relativePathWithin(root: string, target: string): string | undefined {
+  const relative = path.relative(path.resolve(root), path.resolve(target));
+  return path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`) ? undefined : relative;
+}
+
+export function isPathWithin(root: string, target: string): boolean {
+  return relativePathWithin(root, target) !== undefined;
+}
+
+export function isSamePath(left: string, right: string): boolean {
+  return path.relative(path.resolve(left), path.resolve(right)) === "";
+}
+
+export function fileSystemPathIdentity(value: string, platform: NodeJS.Platform = process.platform): string {
+  const normalized = path.resolve(value);
+  return platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+export function toPosixPath(value: string): string {
+  return value.split(path.sep).join("/");
+}
+
 export function toFileUrl(filePath: string): string {
   const normalized = path.resolve(filePath).replace(/\\/g, "/");
   return `file:///${normalized.replace(/^\/+/, "")}`;
@@ -34,25 +57,8 @@ export function toRuntimeModulePath(filePath: string): string {
     return absolute;
   }
 
-  const pluginRelativePath = runtimePluginRelativePath(absolute);
-  if (pluginRelativePath) {
-    return path.resolve(runtimeAppRoot(), "Dist", pluginRelativePath).replace(/\.ts$/i, ".js");
-  }
-
   const relative = path.relative(runtimeAppRoot(), absolute);
   return path.resolve(runtimeAppRoot(), "Dist", relative).replace(/\.ts$/i, ".js");
-}
-
-function runtimePluginRelativePath(filePath: string): string | undefined {
-  const normalized = path.normalize(filePath);
-  for (const marker of [`${path.sep}System${path.sep}Plugins${path.sep}`, `${path.sep}Plugins${path.sep}`]) {
-    const index = normalized.lastIndexOf(marker);
-    if (index >= 0) {
-      return normalized.slice(index + path.sep.length);
-    }
-  }
-
-  return undefined;
 }
 
 function runtimeAppRoot(): string {

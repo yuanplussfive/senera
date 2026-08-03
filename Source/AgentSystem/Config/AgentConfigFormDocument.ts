@@ -3,8 +3,14 @@ import path from "node:path";
 import { z } from "zod";
 import { moduleDirPath } from "../Core/AgentPath.js";
 import { formatZodIssue } from "../Diagnostics/AgentValidationIssue.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import { readAgentConfigFieldContract } from "./AgentConfigFieldContractCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
+import {
+  AgentExtensionLocalizedTextSchema,
+  type AgentExtensionLocalizedText,
+} from "../Extensions/AgentExtensionLocalization.js";
+import { AgentConfigFormVersion } from "../Types/ConfigFormTypes.js";
+import { listAgentConfigLeafPaths, readAgentConfigFieldContract } from "./AgentConfigFieldContractCatalog.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 const FormSchemaPath = path.join(moduleDirPath(import.meta.url), "AgentSystemConfig.form.json");
 
@@ -57,11 +63,11 @@ const ConfigFormModelSelectionSchema = z
     }
   });
 
-type ConfigFormFieldSchemaInput = {
+export type ConfigFormFieldDefinition<TText = string> = {
   path: string[];
-  label: string;
-  description?: string;
-  placeholder?: string;
+  label: TText;
+  description?: TText;
+  placeholder?: TText;
   type: z.infer<typeof ConfigFormFieldTypeSchema>;
   required: boolean;
   essential: boolean;
@@ -78,7 +84,7 @@ type ConfigFormFieldSchemaInput = {
   level?: z.infer<typeof ConfigFormFieldLevelSchema>;
   addLabel?: string;
   itemLabelPath?: string[];
-  itemFields?: ConfigFormFieldSchemaInput[];
+  itemFields?: ConfigFormFieldDefinition<TText>[];
   defaultValue?: unknown;
   defaultItem?: Record<string, unknown>;
   keyPlaceholder?: string;
@@ -86,63 +92,109 @@ type ConfigFormFieldSchemaInput = {
   modelSelection?: z.infer<typeof ConfigFormModelSelectionSchema>;
 };
 
-const ConfigFormFieldSchema: z.ZodType<ConfigFormFieldSchemaInput> = z.lazy(() =>
-  z
-    .object({
-      path: z.array(z.string().min(1)).min(1),
-      label: z.string().min(1),
-      description: z.string().min(1).optional(),
-      placeholder: z.string().min(1).optional(),
-      type: ConfigFormFieldTypeSchema,
-      required: z.boolean(),
-      essential: z.boolean(),
-      itemType: ConfigFormFieldTypeSchema.optional(),
-      options: z.array(ConfigFormFieldOptionValueSchema).optional(),
-      optionLabels: z.record(z.string(), z.string()).optional(),
-      min: z.number().optional(),
-      max: z.number().optional(),
-      minLength: z.number().int().min(0).optional(),
-      maxLength: z.number().int().min(1).optional(),
-      step: z.number().optional(),
-      secret: z.boolean().optional(),
-      multiline: z.boolean().optional(),
-      level: ConfigFormFieldLevelSchema.optional(),
-      addLabel: z.string().min(1).optional(),
-      itemLabelPath: z.array(z.string().min(1)).optional(),
-      itemFields: z.array(ConfigFormFieldSchema).optional(),
-      defaultValue: z.unknown().optional(),
-      defaultItem: z.record(z.string(), z.unknown()).optional(),
-      keyPlaceholder: z.string().min(1).optional(),
-      valuePlaceholder: z.string().min(1).optional(),
-      modelSelection: ConfigFormModelSelectionSchema.optional(),
-    })
-    .strict(),
-);
+export type ConfigFormSectionDefinition<TText = string> = {
+  id: string;
+  label: TText;
+  description?: TText;
+  icon?: string;
+  level?: z.infer<typeof ConfigFormFieldLevelSchema>;
+  fields?: ConfigFormFieldDefinition<TText>[];
+};
 
-const ConfigFormSectionSchema = z
-  .object({
-    id: z.string().min(1),
-    label: z.string().min(1),
-    description: z.string().min(1).optional(),
-    icon: z.string().min(1).optional(),
-    level: ConfigFormFieldLevelSchema.optional(),
-    fields: z.array(ConfigFormFieldSchema).optional(),
-  })
-  .strict();
-
-const ConfigFormDocumentSchema = z
-  .object({
-    form: z
+function createConfigFormFieldSchema<TText>(textSchema: z.ZodType<TText>): z.ZodType<ConfigFormFieldDefinition<TText>> {
+  const fieldSchema: z.ZodType<ConfigFormFieldDefinition<TText>> = z.lazy(() =>
+    z
       .object({
-        version: z.literal(1),
-        sections: z.array(ConfigFormSectionSchema).optional(),
+        path: z.array(z.string().min(1)).min(1),
+        label: textSchema,
+        description: textSchema.optional(),
+        placeholder: textSchema.optional(),
+        type: ConfigFormFieldTypeSchema,
+        required: z.boolean(),
+        essential: z.boolean(),
+        itemType: ConfigFormFieldTypeSchema.optional(),
+        options: z.array(ConfigFormFieldOptionValueSchema).optional(),
+        optionLabels: z.record(z.string(), z.string()).optional(),
+        min: z.number().optional(),
+        max: z.number().optional(),
+        minLength: z.number().int().min(0).optional(),
+        maxLength: z.number().int().min(1).optional(),
+        step: z.number().optional(),
+        secret: z.boolean().optional(),
+        multiline: z.boolean().optional(),
+        level: ConfigFormFieldLevelSchema.optional(),
+        addLabel: z.string().min(1).optional(),
+        itemLabelPath: z.array(z.string().min(1)).optional(),
+        itemFields: z.array(fieldSchema).optional(),
+        defaultValue: z.unknown().optional(),
+        defaultItem: z.record(z.string(), z.unknown()).optional(),
+        keyPlaceholder: z.string().min(1).optional(),
+        valuePlaceholder: z.string().min(1).optional(),
+        modelSelection: ConfigFormModelSelectionSchema.optional(),
       })
       .strict(),
+  );
+  return fieldSchema;
+}
+
+function createConfigFormSectionSchema<TText>(
+  textSchema: z.ZodType<TText>,
+  fieldSchema: z.ZodType<ConfigFormFieldDefinition<TText>>,
+): z.ZodType<ConfigFormSectionDefinition<TText>> {
+  return z
+    .object({
+      id: z.string().min(1),
+      label: textSchema,
+      description: textSchema.optional(),
+      icon: z.string().min(1).optional(),
+      level: ConfigFormFieldLevelSchema.optional(),
+      fields: z.array(fieldSchema).optional(),
+    })
+    .strict();
+}
+
+const ConfigFormCoverageOmissionSchema = z
+  .object({
+    path: z.array(z.string().min(1)).min(1),
+    recursive: z.boolean().optional(),
+    reason: z.string().min(1),
   })
   .strict();
 
-export type ConfigFormFieldDefinition = z.infer<typeof ConfigFormFieldSchema>;
-export type ConfigFormDocument = z.infer<typeof ConfigFormDocumentSchema>;
+type ConfigFormCoverageOmission = z.infer<typeof ConfigFormCoverageOmissionSchema>;
+
+export type ConfigFormDocument<TText = string> = {
+  form: {
+    version: typeof AgentConfigFormVersion;
+    sections?: ConfigFormSectionDefinition<TText>[];
+    coverage?: { omissions?: ConfigFormCoverageOmission[] };
+  };
+};
+
+function createConfigFormDocumentSchema<TText>(textSchema: z.ZodType<TText>): z.ZodType<ConfigFormDocument<TText>> {
+  const fieldSchema = createConfigFormFieldSchema(textSchema);
+  const sectionSchema = createConfigFormSectionSchema(textSchema, fieldSchema);
+  return z
+    .object({
+      form: z
+        .object({
+          version: z.literal(AgentConfigFormVersion),
+          sections: z.array(sectionSchema).optional(),
+          coverage: z
+            .object({
+              omissions: z.array(ConfigFormCoverageOmissionSchema).optional(),
+            })
+            .strict()
+            .optional(),
+        })
+        .strict(),
+    })
+    .strict();
+}
+
+export const ConfigFormDocumentSchema = createConfigFormDocumentSchema(z.string().min(1));
+export const LocalizedConfigFormDocumentSchema = createConfigFormDocumentSchema(AgentExtensionLocalizedTextSchema);
+export type LocalizedConfigFormDocument = ConfigFormDocument<AgentExtensionLocalizedText>;
 
 let cachedDocument: ConfigFormDocument | undefined;
 
@@ -151,18 +203,71 @@ export function readConfigFormDocument(): ConfigFormDocument {
     return cachedDocument;
   }
 
-  const result = ConfigFormDocumentSchema.safeParse(JSON.parse(fs.readFileSync(FormSchemaPath, "utf8")));
+  const result = ConfigFormDocumentSchema.safeParse(
+    parseJsonText(fs.readFileSync(FormSchemaPath, "utf8"), "Config form document"),
+  );
   if (!result.success) {
-    throw new Error(
-      agentErrorMessage("config.formDocumentInvalid", {
-        issues: result.error.issues.map((issue) => formatZodIssue(issue)).join("; "),
-      }),
-    );
+    throw new AgentLocalizedError("config.formDocumentInvalid", {
+      issues: result.error.issues.map((issue) => formatZodIssue(issue)).join("; "),
+    });
   }
 
   assertConfigFormRequiredDeclarations(result.data);
+  assertConfigFormCoverage(result.data);
   cachedDocument = result.data;
   return cachedDocument;
+}
+
+function assertConfigFormCoverage(document: ConfigFormDocument): void {
+  const declared = new Set<string>();
+  for (const section of document.form.sections ?? []) {
+    for (const field of section.fields ?? []) collectDeclaredFieldPaths(field, [], declared);
+  }
+
+  const omissions = document.form.coverage?.omissions ?? [];
+  const schemaPaths = listAgentConfigLeafPaths();
+  const uncovered = schemaPaths.filter((path) => {
+    if (declared.has(configPathKey(path))) return false;
+    return !omissions.some((omission) => omissionCoversPath(omission, path));
+  });
+  if (uncovered.length > 0) {
+    throw new Error(`Agent config form does not account for schema fields: ${uncovered.map(renderPath).join(", ")}.`);
+  }
+
+  const unusedOmissions = omissions.filter(
+    (omission) => !schemaPaths.some((path) => omissionCoversPath(omission, path)),
+  );
+  if (unusedOmissions.length > 0) {
+    throw new Error(
+      `Agent config form coverage omissions do not match schema fields: ${unusedOmissions
+        .map((omission) => renderPath(omission.path))
+        .join(", ")}.`,
+    );
+  }
+}
+
+function collectDeclaredFieldPaths(
+  field: ConfigFormFieldDefinition,
+  basePath: readonly string[],
+  declared: Set<string>,
+): void {
+  const path = [...basePath, ...field.path];
+  declared.add(configPathKey(path));
+  for (const itemField of field.itemFields ?? []) collectDeclaredFieldPaths(itemField, path, declared);
+}
+
+function omissionCoversPath(omission: ConfigFormCoverageOmission, path: readonly string[]): boolean {
+  if (omission.path.length > path.length) return false;
+  if (!omission.path.every((part, index) => path[index] === part)) return false;
+  return omission.recursive === true || omission.path.length === path.length;
+}
+
+function configPathKey(path: readonly string[]): string {
+  return path.join("\u001f");
+}
+
+function renderPath(path: readonly string[]): string {
+  return path.join(".");
 }
 
 function assertConfigFormRequiredDeclarations(document: ConfigFormDocument): void {

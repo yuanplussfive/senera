@@ -7,6 +7,7 @@ import { AgentConfigSecretCodec } from "../Source/AgentSystem/Config/AgentConfig
 import { CurrentAgentConfigVersion } from "../Source/AgentSystem/Config/AgentConfigVersion.js";
 import { AgentJsonFileError } from "../Source/AgentSystem/Config/AgentJsonFileLoader.js";
 import { AgentConfigSqliteRepository } from "../Source/AgentSystem/Config/AgentConfigSqliteRepository.js";
+import { resolveAgentWorkspaceLayout } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const tempRoot = path.join(process.cwd(), ".senera", "tmp", "verify-config-json-migration");
@@ -57,7 +58,6 @@ function verifyLegacyJsonMigration(): void {
   assert.equal("MaxSteps" in (snapshot.value.AgentLoop ?? {}), false);
   assert.equal("MaxRepairAttempts" in (snapshot.value.AgentLoop ?? {}), false);
   assert.equal("LoadedTools" in (snapshot.value.AgentLoop ?? {}), false);
-  assert.equal("DecisionActionDescription" in (snapshot.value.PluginDocumentation ?? {}), false);
   assert.equal(snapshot.value.ModelProviderEndpoints?.[0]?.ApiKey, "test");
 
   const backupText = fs.readFileSync(`${configPath}.v0.bak`, "utf8");
@@ -140,7 +140,7 @@ function verifyInvalidStoredRevisionFailsWithoutJsonFallback(): void {
   const originalText = `${JSON.stringify(currentConfig, null, 2)}\n`;
   fs.writeFileSync(configPath, originalText, "utf8");
 
-  const repository = new AgentConfigSqliteRepository(path.join(workspaceRoot, ".senera", "Config.sqlite"));
+  const repository = new AgentConfigSqliteRepository(resolveAgentWorkspaceLayout(workspaceRoot).databases.config);
   repository.appendRevision({
     config: {
       ...currentConfig,
@@ -208,16 +208,6 @@ function createLegacyConfig(): Record<string, unknown> {
       MaxRepairAttempts: 7,
       Client: { Provider: "legacy-model" },
       FinalAnswerClient: { Provider: "openai-generic" },
-    },
-    PluginDocumentation: {
-      ToolDescription: {
-        MinNonEmptyLines: 1,
-        SummarySection: "Summary",
-        TriggerSection: "Trigger",
-        AvoidSection: "Avoid",
-        RequiredSections: ["Summary"],
-      },
-      DecisionActionDescription: "Deprecated legacy description",
     },
     ModelProviderEndpoints: [
       {

@@ -82,6 +82,9 @@ export function ModelOptionsDialog({
     modelTemplate,
     "RetryAfterMaxDelaySeconds",
   );
+  const maxResponseBytes = readNumberWithTemplate(model.MaxResponseBytes, modelTemplate, "MaxResponseBytes");
+  const maxSseEventBytes = readNumberWithTemplate(model.MaxSseEventBytes, modelTemplate, "MaxSseEventBytes");
+  const maxSseEvents = readNumberWithTemplate(model.MaxSseEvents, modelTemplate, "MaxSseEvents");
   const contextWindowTokens = readNumberWithTemplate(model.ContextWindowTokens, modelTemplate, "ContextWindowTokens");
   const maxModelOutputTokens = readNumberWithTemplate(
     model.MaxModelOutputTokens,
@@ -155,10 +158,10 @@ export function ModelOptionsDialog({
                 <NumberRow
                   label={frontendMessage("config.model.contextWindow")}
                   value={contextWindowTokens}
-                  min={-1}
+                  min={1}
                   step={1}
                   disabled={disabled}
-                  placeholder="-1"
+                  placeholder="128000"
                   onChange={(ContextWindowTokens) => onChange({ ContextWindowTokens })}
                 />
                 <NumberRow
@@ -267,6 +270,33 @@ export function ModelOptionsDialog({
                   disabled={disabled}
                   placeholder="-1"
                   onChange={(MaxRequestSeconds) => onChange({ MaxRequestSeconds })}
+                />
+                <NumberRow
+                  label={frontendMessage("config.model.maxResponseBytes")}
+                  value={maxResponseBytes}
+                  min={1}
+                  step={1048576}
+                  disabled={disabled}
+                  placeholder="67108864"
+                  onChange={(MaxResponseBytes) => onChange({ MaxResponseBytes })}
+                />
+                <NumberRow
+                  label={frontendMessage("config.model.maxSseEventBytes")}
+                  value={maxSseEventBytes}
+                  min={1}
+                  step={1048576}
+                  disabled={disabled}
+                  placeholder="8388608"
+                  onChange={(MaxSseEventBytes) => onChange({ MaxSseEventBytes })}
+                />
+                <NumberRow
+                  label={frontendMessage("config.model.maxSseEvents")}
+                  value={maxSseEvents}
+                  min={1}
+                  step={1}
+                  disabled={disabled}
+                  placeholder="100000"
+                  onChange={(MaxSseEvents) => onChange({ MaxSseEvents })}
                 />
                 <NumberRow
                   label={frontendMessage("config.model.networkRetries")}

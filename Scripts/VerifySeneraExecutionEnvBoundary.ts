@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import path from "node:path";
 import {
   AgentHostCapabilityNames,
   createDefaultHostCapabilityRegistry,
@@ -11,8 +10,8 @@ import type {
 } from "../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
 import { AgentToolRunner } from "../Source/AgentSystem/ToolRuntime/AgentToolRunner.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
-import type { LoadedPlugin, RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
-import type { AgentPluginRegistryLike } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import type { RegisteredTool } from "../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
+import type { AgentExtensionRegistryLike } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 
 const WorkspaceRoot = process.cwd();
 const VerificationConfig: AgentSystemConfig = {
@@ -38,8 +37,7 @@ const VerificationConfig: AgentSystemConfig = {
 
 async function main(): Promise<void> {
   const executionEnv = new SpySeneraExecutionEnv({ workspaceRoot: WorkspaceRoot });
-  const plugin = createPlugin();
-  const shellTool = createTool(plugin);
+  const shellTool = createTool();
   const runner = new AgentToolRunner(
     VerificationConfig,
     WorkspaceRoot,
@@ -70,59 +68,34 @@ class SpySeneraExecutionEnv extends SeneraLocalExecutionEnv {
   }
 }
 
-function createPlugin(): LoadedPlugin {
-  return {
-    rootPath: WorkspaceRoot,
-    rootKind: "System",
-    manifestPath: path.join(WorkspaceRoot, "PluginManifest.json"),
-    config: {
-      fileName: "PluginConfig.toml",
-      path: path.join(WorkspaceRoot, "PluginConfig.toml"),
-      exists: false,
-      source: "default",
-      templateExists: false,
-      needsUserConfig: false,
-      toml: "",
-      sections: [],
-      runtime: { enabled: true, tools: {} },
-      diagnostics: [],
-    },
-    manifest: {
-      ManifestVersion: 2,
-      Plugin: { Name: "VerifySeneraExecutionEnvPlugin", Version: "0.0.0", Kind: "Tool" },
-      Tools: [
-        {
-          Name: "ShellCommandTool",
-          Handler: { Kind: "HostCapability", Capability: AgentHostCapabilityNames.ShellRun },
-          Runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 },
-          Execution: DefaultExecution,
-        },
-      ],
-    },
-  };
-}
-
 const DefaultExecution = {
   Targets: ["Local"],
   Network: "Deny",
   Workspace: "ReadWrite",
-} satisfies import("../Source/AgentSystem/Types/PluginManifestTypes.js").ToolExecutionManifest;
+} satisfies import("../Source/AgentSystem/Types/AgentToolContractTypes.js").ToolExecutionManifest;
 
-function createTool(plugin: LoadedPlugin): RegisteredTool {
+function createTool(): RegisteredTool {
   return {
-    plugin,
+    owner: {
+      kind: "system",
+      name: "verify-execution-env",
+      rootPath: WorkspaceRoot,
+      revision: "test",
+      trusted: true,
+      requiresApproval: false,
+    },
     name: "ShellCommandTool",
     loading: "Dynamic",
     permissions: [],
     sources: [],
     handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.ShellRun },
-    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 },
+    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
     execution: DefaultExecution,
     evidenceCapabilities: [],
   };
 }
 
-function createRegistry(tools: readonly RegisteredTool[]): AgentPluginRegistryLike {
+function createRegistry(tools: readonly RegisteredTool[]): AgentExtensionRegistryLike {
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   return { getTool: (name) => byName.get(name) };
 }

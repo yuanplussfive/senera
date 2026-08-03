@@ -3,11 +3,8 @@ import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessT
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
-import {
-  DefaultAgentMemoryDatabasePath,
-  resolveAgentMemoryDatabasePath,
-  SqliteAgentMemorySourceRepository,
-} from "./AgentMemorySourceRepository.js";
+import { SqliteAgentMemorySourceRepository } from "./AgentMemorySourceRepository.js";
+import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import { recallConversationTurns } from "./AgentMemoryConversationRecall.js";
 import {
   exactRefMemoryRanking,
@@ -61,7 +58,7 @@ export const recallMemoryHostTool: AgentHostToolHandler = async (args, context) 
   }
 
   const repository = new SqliteAgentMemorySourceRepository(
-    resolveAgentMemoryDatabasePath(context.workspaceRoot, DefaultAgentMemoryDatabasePath),
+    resolveAgentWorkspaceLayout(context.workspaceRoot).databases.memory,
   );
   try {
     throwIfAborted(context.signal);
@@ -74,7 +71,7 @@ export const recallMemoryHostTool: AgentHostToolHandler = async (args, context) 
     );
   } catch (error) {
     return memoryRecallFailure({
-      code: AgentExecutionErrorCodes.PluginExecutionError,
+      code: AgentExecutionErrorCodes.ToolExecutionError,
       message: errorMessage(error),
       details: {
         phase: AgentToolProcessErrorPhases.RuntimeExecution,

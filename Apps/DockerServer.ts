@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { startSeneraServer } from "./ServerRuntime.js";
-import { createCompiledAgentMcpRuntimeModuleResolver } from "../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
-import { syncRuntimeDirectory } from "./RuntimeAssetSync.js";
 import {
   resolveFrontendConfig,
   resolveSandboxRuntimeConfig,
@@ -30,13 +28,6 @@ const ConfigPath = resolveWorkspacePath(process.env.AGENT_CONFIG_PATH?.trim() ||
 const FrontendRoot = path.join(AppRoot, "Frontend", "dist");
 const ExampleConfigPath = path.join(AppRoot, "senera.config.example.json");
 const RuntimeConfigFileName = "senera-runtime-config.js";
-const PluginConfigFileName = "PluginConfig.toml";
-const DockerUserPluginRoot = path.join(WorkspaceRoot, "Plugins");
-const DockerPluginRoots = {
-  System: [path.join(AppRoot, "System", "Plugins")],
-  User: [DockerUserPluginRoot],
-} as const;
-const BundledDockerUserPluginRoot = path.join(AppRoot, "Plugins");
 const DockerSandboxRuntime = {
   BaseDir: "/data/.senera/sandbox-runtime",
 } as const;
@@ -55,7 +46,6 @@ await main();
 
 async function main(): Promise<void> {
   fs.mkdirSync(WorkspaceRoot, { recursive: true });
-  syncBundledUserPlugins();
   ensureFrontendBundleExists();
   ensureRuntimeConfigFile({ configPath: ConfigPath, templatePath: ExampleConfigPath });
 
@@ -79,7 +69,6 @@ async function main(): Promise<void> {
     configPath: ConfigPath,
     staticFrontendRoot: FrontendRoot,
     resourcesPath: AppRoot,
-    runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(AppRoot),
     runtimeConfigProjection: runtimeProjection,
     sandboxRuntimePrepared: true,
     sandboxProvider,
@@ -100,12 +89,6 @@ async function main(): Promise<void> {
   });
 }
 
-function syncBundledUserPlugins(): void {
-  syncRuntimeDirectory(BundledDockerUserPluginRoot, DockerUserPluginRoot, {
-    preserveFileNames: [PluginConfigFileName],
-  });
-}
-
 function ensureFrontendBundleExists(): void {
   const indexPath = path.join(FrontendRoot, "index.html");
   if (fs.existsSync(indexPath)) {
@@ -120,10 +103,6 @@ function createDockerRuntimeProjection(
 ): (config: AgentSystemConfig) => AgentSystemConfig {
   return (config) => ({
     ...config,
-    PluginRoots: {
-      System: [...DockerPluginRoots.System],
-      User: [...DockerPluginRoots.User],
-    },
     SandboxRuntime: {
       ...config.SandboxRuntime,
       ...DockerSandboxRuntime,

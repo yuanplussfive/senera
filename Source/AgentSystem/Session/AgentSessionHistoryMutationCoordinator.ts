@@ -15,16 +15,30 @@ import {
   type AgentSessionPiMutation,
 } from "./AgentSessionHistoryMutation.js";
 import type { AgentSessionStore } from "./AgentSessionStore.js";
+import type { AgentMemoryService } from "../Memory/AgentMemoryService.js";
+import type { AgentSessionArtifactLifecycle } from "./AgentSessionArtifactLifecycle.js";
 
 export interface AgentSessionHistoryMutationCoordinatorOptions {
   readonly store: AgentSessionStore;
   readonly piSessions?: AgentPiSessionMutationPort;
+  readonly memory?: Pick<AgentMemoryService, "deleteFromSessionRequest">;
+  readonly artifacts?: Pick<AgentSessionArtifactLifecycle, "removeSessionArtifactsFromRequests">;
 }
 
 export interface AgentSessionHistoryMutationResult {
+  readonly kind: "committed";
   readonly mutation: AgentSessionHistoryMutation;
   readonly removedEntries: number;
 }
+
+export interface AgentSessionHistoryMutationBoundaryMissing {
+  readonly kind: "boundary_missing";
+  readonly sessionId: string;
+  readonly requestId: string;
+}
+
+export type AgentSessionHistoryMutationOutcome =
+  AgentSessionHistoryMutationResult | AgentSessionHistoryMutationBoundaryMissing;
 
 export class AgentSessionHistoryMutationCoordinator {
   private readonly leases = new AgentKeyedLeaseQueue<string>();
@@ -51,10 +65,18 @@ export class AgentSessionHistoryMutationCoordinator {
     session: AgentSession;
     fromRequestId: string;
     preparation?: AgentTurnPreparationSnapshot;
-  }): Promise<AgentSessionHistoryMutationResult> {
+  }): Promise<AgentSessionHistoryMutationOutcome> {
     return this.leases.run(request.session.id, async () => {
       const pending = this.options.store.loadPendingHistoryMutation(request.session.id);
       if (pending) await this.recoverMutation(pending);
+
+      if (!this.options.store.hasRequest(request.session.id, request.fromRequestId)) {
+        return {
+          kind: "boundary_missing",
+          sessionId: request.session.id,
+          requestId: request.fromRequestId,
+        };
+      }
 
       const mutation = createHistoryMutation(request.session, request.fromRequestId, request.preparation);
       this.options.store.stageHistoryMutation(mutation);
@@ -75,6 +97,7 @@ export class AgentSessionHistoryMutationCoordinator {
     session: AgentSession,
   ): Promise<AgentSessionHistoryMutationResult> {
     const piState = await this.applyPiMutation(mutation);
+    await this.applyOwnedHistoryCleanup(mutation);
     const committedSession: AgentSession = {
       ...session,
       updatedAt: new Date().toISOString(),
@@ -84,9 +107,17 @@ export class AgentSessionHistoryMutationCoordinator {
           : withAgentPiSessionLifecycle(session.metadata, piState, readModelProviderId(mutation.pi)),
     };
     return {
+      kind: "committed",
       mutation,
       removedEntries: this.options.store.commitHistoryMutation(mutation, committedSession),
     };
+  }
+
+  private async applyOwnedHistoryCleanup(mutation: AgentSessionHistoryMutation): Promise<void> {
+    const requestIds = this.options.store.requestIdsFrom(mutation.sessionId, mutation.fromRequestId);
+    if (requestIds.length === 0) return;
+    await this.options.artifacts?.removeSessionArtifactsFromRequests(mutation.sessionId, requestIds);
+    this.options.memory?.deleteFromSessionRequest(mutation.sessionId, mutation.fromRequestId);
   }
 
   private async applyPiMutation(

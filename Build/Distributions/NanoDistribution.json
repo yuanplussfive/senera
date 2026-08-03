@@ -12,6 +12,7 @@
       ".editorconfig",
       ".gitattributes",
       ".npmrc",
+      ".senera/skills",
       "LICENSE",
       "package.json",
       "package-lock.json",
@@ -23,7 +24,7 @@
       "Source",
       "Frontend",
       "Packages",
-      "Plugins",
+      "McpServers",
       "System",
       "baml_src",
       ":(exclude,glob)Source/AgentSystem/Sandbox/Gvisor/AgentGvisorDockerRuntime.ts",
@@ -99,7 +100,6 @@
       "Apps/ServerRuntime.ts",
       "Apps/ServerWatch.ts",
       "Apps/ServerWatchPolicy.ts",
-      "Plugins/**/*.ts",
       "Source/**/*.ts",
       "System/**/*.ts"
     ]

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { PencilLine, Trash2 } from "lucide-react";
+import { Activity, Archive, FileCode2, FileJson2, PencilLine, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useStore, type SessionRecord, type UserProfile } from "../../store/sessionStore";
@@ -17,6 +17,9 @@ interface Props {
   onNewSession: () => void;
   onCloseSession: (id: string) => void;
   onCloseSessions: (ids: string[]) => void;
+  onCompactSession: (id: string) => void;
+  onExportSession: (id: string, format: "jsonl" | "html") => void;
+  onInspectSessionRuntime: (id: string) => void;
   onRenameSession: (id: string, title: string) => boolean;
   userProfile: UserProfile;
   onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
@@ -39,6 +42,9 @@ export function SessionList({
   onNewSession,
   onCloseSession,
   onCloseSessions,
+  onCompactSession,
+  onExportSession,
+  onInspectSessionRuntime,
   onRenameSession,
   userProfile,
   onUpdateUserProfile,
@@ -79,6 +85,7 @@ export function SessionList({
     : sessionList;
 
   const activeSession = active ? sessions[active] : undefined;
+  const piSessionCommandDisabled = !activeSession || socketStatus !== "open" || Boolean(activeSession.activeRequestId);
 
   const openRename = (session: SessionRecord, returnFocus: HTMLElement | null = null): void => {
     dialogReturnFocusRef.current = returnFocus?.isConnected ? returnFocus : null;
@@ -150,6 +157,39 @@ export function SessionList({
           destructive: true,
           disabled: !activeSession,
           onSelect: () => activeSession && confirmDeleteSession(activeSession),
+        },
+      ],
+    },
+    {
+      section: frontendMessage("session.piSection"),
+      items: [
+        {
+          id: "pi-status",
+          label: frontendMessage("session.piStatus"),
+          icon: <Activity className="h-3.5 w-3.5" />,
+          disabled: piSessionCommandDisabled,
+          onSelect: () => activeSession && onInspectSessionRuntime(activeSession.sessionId),
+        },
+        {
+          id: "pi-compact",
+          label: frontendMessage("session.piCompact"),
+          icon: <Archive className="h-3.5 w-3.5" />,
+          disabled: piSessionCommandDisabled,
+          onSelect: () => activeSession && onCompactSession(activeSession.sessionId),
+        },
+        {
+          id: "pi-export-jsonl",
+          label: frontendMessage("session.piExportJsonl"),
+          icon: <FileJson2 className="h-3.5 w-3.5" />,
+          disabled: piSessionCommandDisabled,
+          onSelect: () => activeSession && onExportSession(activeSession.sessionId, "jsonl"),
+        },
+        {
+          id: "pi-export-html",
+          label: frontendMessage("session.piExportHtml"),
+          icon: <FileCode2 className="h-3.5 w-3.5" />,
+          disabled: piSessionCommandDisabled,
+          onSelect: () => activeSession && onExportSession(activeSession.sessionId, "html"),
         },
       ],
     },

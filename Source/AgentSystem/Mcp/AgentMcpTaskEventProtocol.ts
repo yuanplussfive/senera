@@ -1,11 +1,7 @@
 import { z } from "zod";
-import {
-  TaskEventCapabilityName,
-  TaskEventNotificationMethod,
-  TaskEventPageLimit,
-  TaskEventProtocolVersion,
-  TaskEventsReadMethod,
-} from "@senera/tool-plugin-sdk/protocol";
+import { AgentMcpProtocol } from "./AgentMcpProtocol.js";
+
+const TaskEvents = AgentMcpProtocol.taskEvents;
 
 const TaskOutputEventSchema = z.object({
   taskId: z.string().min(1),
@@ -34,7 +30,7 @@ const TaskProgressEventSchema = z.object({
 export const AgentMcpTaskEventSchema = z.discriminatedUnion("kind", [TaskOutputEventSchema, TaskProgressEventSchema]);
 
 export const AgentMcpTaskEventNotificationSchema = z.object({
-  method: z.literal(TaskEventNotificationMethod),
+  method: z.literal(TaskEvents.notification),
   params: z.object({
     event: AgentMcpTaskEventSchema,
     outputToken: z.string().min(1).optional(),
@@ -43,16 +39,16 @@ export const AgentMcpTaskEventNotificationSchema = z.object({
 });
 
 export const AgentMcpTaskEventsReadRequestSchema = z.object({
-  method: z.literal(TaskEventsReadMethod),
+  method: z.literal(TaskEvents.read),
   params: z.object({
     taskId: z.string().min(1),
     afterCursor: z.number().int().nonnegative().optional(),
-    limit: z.number().int().positive().max(TaskEventPageLimit).optional(),
+    limit: z.number().int().positive().max(TaskEvents.pageLimit).optional(),
   }),
 });
 
 export const AgentMcpTaskEventsReadResultSchema = z.object({
-  events: z.array(AgentMcpTaskEventSchema).max(TaskEventPageLimit),
+  events: z.array(AgentMcpTaskEventSchema).max(TaskEvents.pageLimit),
   nextCursor: z.number().int().nonnegative(),
   hasMore: z.boolean(),
 });
@@ -63,11 +59,11 @@ export function supportsAgentMcpTaskEvents(capabilities: unknown): boolean {
   if (!capabilities || typeof capabilities !== "object" || Array.isArray(capabilities)) return false;
   const experimental = Reflect.get(capabilities, "experimental");
   if (!experimental || typeof experimental !== "object" || Array.isArray(experimental)) return false;
-  const capability = Reflect.get(experimental, TaskEventCapabilityName);
+  const capability = Reflect.get(experimental, TaskEvents.capability);
   return (
     capability !== null &&
     typeof capability === "object" &&
     !Array.isArray(capability) &&
-    Reflect.get(capability, "version") === TaskEventProtocolVersion
+    Reflect.get(capability, "version") === TaskEvents.version
   );
 }

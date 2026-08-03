@@ -24,7 +24,6 @@ export function SettingsWorkbench({
   motionLevel,
   onValueChange,
   onMotionLevelChange,
-  pluginSettings,
   systemConfig,
 }: SettingsWorkbenchProps): JSX.Element {
   useFrontendLocale();
@@ -47,8 +46,8 @@ export function SettingsWorkbench({
   });
   const activeSection = readSettingsSection(section);
   const settingsSearchEntries = useMemo(
-    () => createSettingsSearchEntries(systemConfig?.configSnapshot?.form.sections, pluginSettings?.pluginConfigs),
-    [pluginSettings?.pluginConfigs, systemConfig?.configSnapshot?.form.sections],
+    () => createSettingsSearchEntries(systemConfig?.configSnapshot?.form.sections),
+    [systemConfig?.configSnapshot?.form.sections],
   );
   const groupedResults = useMemo(
     () =>
@@ -125,7 +124,6 @@ export function SettingsWorkbench({
         onEntityDraftChange={setEntityDraftDirty}
         onMotionLevelChange={onMotionLevelChange}
         onValueChange={onValueChange}
-        pluginSettings={pluginSettings}
         systemConfig={systemConfig}
         values={values}
       />
@@ -134,7 +132,7 @@ export function SettingsWorkbench({
 }
 
 function usesOwnSectionHeader(sectionId: SettingsSectionId): boolean {
-  return sectionId === "model-service" || sectionId === "default-model" || sectionId === "skills";
+  return sectionId === "model-service" || sectionId === "default-model";
 }
 
 function noop(): void {}

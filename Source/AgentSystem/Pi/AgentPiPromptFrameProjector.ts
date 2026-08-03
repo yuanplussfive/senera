@@ -1,7 +1,7 @@
 import { encodeXML } from "entities";
 import {
   formatPromptTemplateInvocation,
-  formatSkillsForSystemPrompt,
+  formatSkillInvocation,
   type PromptTemplate,
   type Skill,
 } from "@earendil-works/pi-agent-core";
@@ -22,8 +22,12 @@ export interface AgentPiSelectedPromptTemplateFrame {
   selectionScore?: number;
 }
 
-export function renderPiHarnessSystemPrompt(input: AgentPiPromptFrameInput): string {
-  return [input.systemPrompt, formatSkillsForSystemPrompt([...input.skills]), renderSelectedPromptTemplateFrame(input)]
+export function renderPiSystemPromptFrame(input: AgentPiPromptFrameInput): string {
+  return [
+    input.systemPrompt,
+    ...input.skills.map((skill) => formatSkillInvocation(skill)),
+    renderSelectedPromptTemplateFrame(input),
+  ]
     .filter(hasPromptText)
     .join("\n\n");
 }
@@ -54,7 +58,7 @@ function renderSelectedPromptTemplateFrame(input: AgentPiPromptFrameInput): stri
 
   return [
     "The following Pi execution resources were selected automatically for this turn.",
-    "Treat them as task-specific workflow constraints for the Pi harness. They are not examples and should not be copied into the final answer unless directly useful.",
+    "Treat them as task-specific workflow constraints for the Coding Agent. They are not examples and should not be copied into the final answer unless directly useful.",
     "",
     "<pi_execution_resources>",
     ...input.selectedPromptTemplates.map(renderSelectedPromptTemplate),

@@ -1,11 +1,5 @@
 import type { AgentDomainEvent } from "../Events/AgentEvent.js";
 import type { AgentProjectedTerminalResult } from "../Runtime/AgentExecutionProjector.js";
-import type { AgentActionPlanResult } from "../ActionPlanner/AgentActionPlannerTypes.js";
-import type { AgentActionPlannerStageEvent } from "../ActionPlanner/AgentActionPlannerTelemetry.js";
-import type { AgentRootCommand } from "../AgentRootCommand.js";
-import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
-import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
-import { AgentLoopPlannerEventFactory } from "./AgentLoopPlannerEventFactory.js";
 import { AgentLoopPromptEventFactory } from "./AgentLoopPromptEventFactory.js";
 import { AgentLoopRunEventFactory } from "./AgentLoopRunEventFactory.js";
 import { AgentLoopToolEventFactory } from "./AgentLoopToolEventFactory.js";
@@ -14,7 +8,6 @@ import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
 export class AgentLoopEventFactory {
   private readonly runEvents = new AgentLoopRunEventFactory();
   private readonly promptEvents = new AgentLoopPromptEventFactory();
-  private readonly plannerEvents = new AgentLoopPlannerEventFactory();
   private readonly toolEvents = new AgentLoopToolEventFactory();
 
   runStarted(requestId: string, input: string): AgentDomainEvent {
@@ -23,31 +16,6 @@ export class AgentLoopEventFactory {
 
   promptRendered(requestId: string, step: number, prompt: string, tokenCount: number): AgentDomainEvent[] {
     return this.promptEvents.promptRendered(requestId, step, prompt, tokenCount);
-  }
-
-  actionPlanned(
-    requestId: string,
-    step: number,
-    plan: AgentActionPlanResult,
-    loadedToolNames: string[],
-    rootCommand?: AgentRootCommand,
-    activeSkills: readonly AgentActivatedSkill[] = [],
-  ): AgentDomainEvent[] {
-    return this.plannerEvents.actionPlanned(requestId, step, plan, loadedToolNames, rootCommand, activeSkills);
-  }
-
-  interactionRouted(
-    requestId: string,
-    step: number,
-    route: AgentInteractionRouteResult,
-    loadedToolNames: string[],
-    rootCommand?: AgentRootCommand,
-  ): AgentDomainEvent[] {
-    return this.plannerEvents.interactionRouted(requestId, step, route, loadedToolNames, rootCommand);
-  }
-
-  actionPlannerStage(requestId: string, step: number, event: AgentActionPlannerStageEvent): AgentDomainEvent {
-    return this.plannerEvents.actionPlannerStage(requestId, step, event);
   }
 
   toolCallsPlanned(

@@ -6,248 +6,98 @@ import {
   AgentConversationEntryKinds,
   createConversationEntryId,
 } from "../Source/AgentSystem/Conversation/AgentConversation.js";
-import { AgentConversationPolicy } from "../Source/AgentSystem/Conversation/AgentConversationPolicy.js";
-import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
-import { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
-import { SqliteAgentMemorySourceRepository } from "../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
-import { AgentMemoryService } from "../Source/AgentSystem/Memory/AgentMemoryService.js";
-import type { AgentMemoryCompletedTurnInput } from "../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
-import type { AgentCompletedRunResult } from "../Source/AgentSystem/Runtime/AgentExecutionProjector.js";
-import { AgentSessionRunCoordinator } from "../Source/AgentSystem/Session/AgentSessionRunCoordinator.js";
-import { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
-import type { AgentLoop } from "../Source/AgentSystem/Loop/AgentLoop.js";
-import { AgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
+import {
+  SqliteAgentMemorySourceRepository,
+  type AgentMemoryCompletedTurnInput,
+} from "../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
+import type { ExecutedToolCallResult } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import { AgentToolSuccessOutcome } from "../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
 
-const runControl = {
-  settlementTimeoutMs: AgentDefaults.AgentLoop.RunSettlementTimeoutMs,
-};
+const timestamp = "2026-07-08T10:00:00.000Z";
+const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-memory-source-"));
+const repository = new SqliteAgentMemorySourceRepository(path.join(temporaryRoot, "Memory.sqlite"));
 
-const fixedTimestamp = "2026-07-08T10:00:00.000Z";
-const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-memory-source-"));
+try {
+  const input = completedTurnInput();
+  const first = repository.recordCompletedTurn(input);
+  const second = repository.recordCompletedTurn(input);
+  const persisted = repository.listSources(second.episode.uri);
 
-async function main(): Promise<void> {
-  try {
-    verifySqliteSourceIdempotency();
-    await verifyCoordinatorRecordsOnlyFreshEntries();
-    await verifyCoordinatorLogsMemoryFailures();
-    console.log("Memory source idempotency verification passed.");
-  } finally {
-    fs.rmSync(tempRoot, { recursive: true, force: true });
-  }
+  assert.equal(first.sources.length, 4);
+  assert.equal(second.sources.length, 4);
+  assert.equal(persisted.length, 4);
+  assert.equal(persisted.filter((source) => source.evidenceUri === "senera://evidence/duplicate").length, 1);
+  assert.equal(persisted.filter((source) => source.artifactUri === "senera://artifact/duplicate").length, 2);
+  console.log("Memory source idempotency verified.");
+} finally {
+  repository.close();
+  fs.rmSync(temporaryRoot, { recursive: true, force: true });
 }
 
-function verifySqliteSourceIdempotency(): void {
-  const repository = new SqliteAgentMemorySourceRepository(path.join(tempRoot, "Memory.sqlite"));
-  try {
-    const input = completedTurnInput("verify-memory-session", "verify-memory-request");
-
-    const first = repository.recordCompletedTurn(input);
-    const second = repository.recordCompletedTurn(input);
-    const persisted = repository.listSources(second.episode.uri);
-
-    assert.equal(first.sources.length, 4);
-    assert.equal(second.sources.length, 4);
-    assert.equal(persisted.length, 4);
-    assert.equal(persisted.filter((source) => source.evidenceUri === "evidence://duplicate").length, 1);
-    assert.equal(
-      persisted.filter((source) => source.sourceKind === "artifact" && source.artifactUri === "artifact://duplicate")
-        .length,
-      1,
-    );
-  } finally {
-    repository.close();
-  }
-}
-
-async function verifyCoordinatorRecordsOnlyFreshEntries(): Promise<void> {
-  const store = new AgentSessionStore();
-  const opened = store.open("verify-memory-fresh-session");
-  const historicalEntry = evidenceEntry("historical-request", "historical-evidence", "artifact://historical");
-  opened.session.conversation = [historicalEntry];
-  store.persistEntries(opened.session.id, [historicalEntry]);
-
-  const repository = new RecordingMemorySourceRepository();
-  const memory = new AgentMemoryService({ sourceRepository: repository });
-  const coordinator = new AgentSessionRunCoordinator({
-    store,
-    conversationPolicy: new AgentConversationPolicy(),
-    conversationProjector: new AgentConversationProjector(),
-    memory,
-    runControl,
-    loopFactory: () =>
-      ({
-        run: async (): Promise<AgentCompletedRunResult> => ({
-          terminal: {
-            kind: "FinalAnswer",
-            content: "Done.",
-          },
-          decisionXml: "<final_answer>Done.</final_answer>",
-          conversationEntries: [historicalEntry, evidenceEntry("fresh-request", "fresh-evidence", "artifact://fresh")],
-          stepTraces: [],
-        }),
-      }) as unknown as AgentLoop,
-  });
-
-  try {
-    await coordinator.runTurn(opened.session, {
-      requestId: "fresh-request",
-      input: "Record fresh memory only.",
-    });
-
-    assert.equal(repository.inputs.length, 1);
-    assert.deepEqual(
-      repository.inputs[0]?.conversationEntries.map((entry) => entry.id),
-      [
-        createConversationEntryId("fresh-request", "evidence_memory", 1),
-        createConversationEntryId("fresh-request", "assistant"),
-      ],
-    );
-  } finally {
-    memory.close();
-  }
-}
-
-async function verifyCoordinatorLogsMemoryFailures(): Promise<void> {
-  const store = new AgentSessionStore();
-  const opened = store.open("verify-memory-logger-session");
-  const output = new MemoryOutputStream();
-  const memory = new AgentMemoryService({
-    sourceRepository: new FailingMemorySourceRepository(),
-  });
-  const coordinator = new AgentSessionRunCoordinator({
-    store,
-    conversationPolicy: new AgentConversationPolicy(),
-    conversationProjector: new AgentConversationProjector(),
-    memory,
-    logger: new AgentLogger({ output: output as unknown as NodeJS.WriteStream }),
-    runControl,
-    loopFactory: () =>
-      ({
-        run: async (): Promise<AgentCompletedRunResult> => ({
-          terminal: {
-            kind: "FinalAnswer",
-            content: "Done.",
-          },
-          decisionXml: "<final_answer>Done.</final_answer>",
-          conversationEntries: [],
-          stepTraces: [],
-        }),
-      }) as unknown as AgentLoop,
-  });
-
-  try {
-    await coordinator.runTurn(opened.session, {
-      requestId: "logger-request",
-      input: "Do not fail the run when memory persistence fails.",
-    });
-
-    assert.match(output.text, /memory\.record_completed_turn\.failed/);
-    assert.equal(opened.session.status, "idle");
-  } finally {
-    memory.close();
-  }
-}
-
-function completedTurnInput(sessionId: string, requestId: string): AgentMemoryCompletedTurnInput {
+function completedTurnInput(): AgentMemoryCompletedTurnInput {
+  const requestId = "verify-memory-request";
   const userEntry = {
     id: createConversationEntryId(requestId, "user"),
     requestId,
-    timestamp: fixedTimestamp,
+    timestamp,
     kind: AgentConversationEntryKinds.UserMessage,
     content: "Remember this duplicate evidence once.",
   } as const;
   const assistantEntry = {
     id: createConversationEntryId(requestId, "assistant"),
     requestId,
-    timestamp: fixedTimestamp,
+    timestamp,
     kind: AgentConversationEntryKinds.AssistantDecision,
-    xml: "<final_answer>Done.</final_answer>",
+    xml: "Done.",
   } as const;
   return {
-    sessionId,
+    sessionId: "verify-memory-session",
     requestId,
-    startedAt: fixedTimestamp,
-    completedAt: fixedTimestamp,
+    startedAt: timestamp,
+    completedAt: timestamp,
     userEntry,
     assistantEntry,
-    terminal: {
-      kind: "FinalAnswer",
-      content: "Done.",
-    },
-    conversationEntries: [
-      evidenceEntry(requestId, "duplicate-a", "artifact://duplicate"),
-      evidenceEntry(requestId, "duplicate-b", "artifact://duplicate"),
-    ],
+    terminal: { kind: "FinalAnswer", content: "Done." },
+    conversationEntries: [userEntry, assistantEntry],
+    executedTools: [toolResult("call-a"), toolResult("call-b")],
   };
 }
 
-function evidenceEntry(
-  requestId: string,
-  evidenceLabel: string,
-  artifactUri: string,
-): Extract<AgentMemoryCompletedTurnInput["conversationEntries"][number], { kind: "tool.evidence_memory" }> {
+function toolResult(callId: string): ExecutedToolCallResult {
   return {
-    id: createConversationEntryId(requestId, "evidence_memory", 1),
-    requestId,
-    timestamp: fixedTimestamp,
-    kind: AgentConversationEntryKinds.ToolEvidenceMemory,
-    record: {
-      requestId,
-      step: 1,
-      toolName: "WorkspaceReadFile",
-      artifactId: "artifact-duplicate",
-      artifactUri,
-      artifactPath: "Source/example.ts",
+    callId,
+    name: "WorkspaceReadFile",
+    arguments: { path: "Source/example.ts" },
+    process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+    result: { content: "example" },
+    outcome: AgentToolSuccessOutcome,
+    artifact: {
+      artifactId: "duplicate",
+      artifactUri: "senera://artifact/duplicate",
+      artifactPath: ".senera/artifacts/duplicate",
+      relativePath: "duplicate",
+      manifestPath: ".senera/artifacts/duplicate/manifest.json",
+      files: {},
+      summary: "Example source file.",
       evidence: [
         {
-          evidenceUri: "evidence://duplicate",
+          key: "duplicate",
+          evidenceUri: "senera://evidence/duplicate",
           kind: "file",
-          locator: `Source/example.ts#${evidenceLabel}`,
-          display: evidenceLabel,
-          label: evidenceLabel,
-          toolName: "WorkspaceReadFile",
-          artifactUri,
-          facts: [],
-          artifactRefs: [],
+          locator: "Source/example.ts",
+          display: "Source/example.ts",
+          label: "Source/example.ts",
+          source: "WorkspaceReadFile",
+          confidence: 1,
+          modelSlots: [],
+          plannerMemory: {
+            facts: [],
+            artifactRefs: ["raw"],
+            artifactUri: "senera://artifact/duplicate",
+          },
         },
       ],
-      createdAt: fixedTimestamp,
+      delta: [],
     },
   };
 }
-
-class RecordingMemorySourceRepository extends SqliteAgentMemorySourceRepository {
-  readonly inputs: AgentMemoryCompletedTurnInput[] = [];
-
-  constructor() {
-    super(path.join(tempRoot, "RecordingMemory.sqlite"));
-  }
-
-  override recordCompletedTurn(input: AgentMemoryCompletedTurnInput) {
-    this.inputs.push(input);
-    return super.recordCompletedTurn(input);
-  }
-}
-
-class FailingMemorySourceRepository extends SqliteAgentMemorySourceRepository {
-  constructor() {
-    super(path.join(tempRoot, "FailingMemory.sqlite"));
-  }
-
-  override recordCompletedTurn(_input: AgentMemoryCompletedTurnInput): never {
-    throw new Error("synthetic memory failure");
-  }
-}
-
-class MemoryOutputStream {
-  text = "";
-  readonly isTTY = false;
-  readonly columns = 120;
-
-  write(chunk: string | Uint8Array): boolean {
-    this.text += chunk.toString();
-    return true;
-  }
-}
-
-await main();

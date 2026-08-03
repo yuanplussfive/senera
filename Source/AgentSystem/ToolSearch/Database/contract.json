@@ -9,6 +9,14 @@
       "migrationSha256": "6176cb1f781ba43eae15528b83bd00f7f4cb74b6527c8e4a84eeed0864d88bff",
       "snapshot": "snapshots/0001.schema.sql",
       "snapshotSha256": "569c3bd325b9ac740e46b01d5ae144a06e8fc050b543d1eebc0fec35727f0e08"
+    },
+    {
+      "version": 2,
+      "name": "learning-observability-and-skills",
+      "migration": "migrations/0002-learning-observability-and-skills.sql",
+      "migrationSha256": "75a6ad9a4bf058c8dc1b933b69d8c473973c7462159a1d87f3c69854d29fff1d",
+      "snapshot": "snapshots/0002.schema.sql",
+      "snapshotSha256": "215b4abaee76162bcd26d7bdd4c23dac43c50c164d10145a1aa61cd75bcbf28e"
     }
   ],
   "legacySnapshots": [

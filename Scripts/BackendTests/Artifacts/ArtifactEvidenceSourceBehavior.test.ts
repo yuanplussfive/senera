@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { collectArtifactEvidence } from "../../../Source/AgentSystem/Artifacts/AgentArtifactEvidenceProjection.js";
-import type { ToolArtifactPolicyManifest } from "../../../Source/AgentSystem/Types/PluginManifestTypes.js";
-import { createToolEvidenceMemoryEntries } from "../../../Source/AgentSystem/Memory/AgentPlannerMemory.js";
+import type { ToolArtifactPolicyManifest } from "../../../Source/AgentSystem/Types/AgentToolContractTypes.js";
+import { InMemoryAgentMemorySourceRepository } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
+import { AgentConversationEntryKinds } from "../../../Source/AgentSystem/Conversation/AgentConversation.js";
+import { AgentToolSuccessOutcome } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
 
 describe("Artifact evidence source projection", () => {
   test("projects source artifact URI and hydrated refs from declarative slots", () => {
@@ -62,16 +64,35 @@ describe("Artifact evidence source projection", () => {
       ],
     });
 
-    const [memoryEntry] = createToolEvidenceMemoryEntries({
+    const recorded = new InMemoryAgentMemorySourceRepository().recordCompletedTurn({
+      sessionId: "session-1",
       requestId: "request-1",
-      step: 1,
-      results: [
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:00:01.000Z",
+      userEntry: {
+        id: "request-1:user",
+        requestId: "request-1",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        kind: AgentConversationEntryKinds.UserMessage,
+        content: "Read the artifact.",
+      },
+      assistantEntry: {
+        id: "request-1:assistant",
+        requestId: "request-1",
+        timestamp: "2026-01-01T00:00:01.000Z",
+        kind: AgentConversationEntryKinds.AssistantDecision,
+        xml: "Artifact loaded.",
+      },
+      terminal: { kind: "FinalAnswer", content: "Artifact loaded." },
+      conversationEntries: [],
+      executedTools: [
         {
           callId: "call-1",
           name: "ArtifactMemoryReadTool",
           arguments: {},
-          process: { exitCode: 0, signal: null, stderr: "" },
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
           result: {},
+          outcome: AgentToolSuccessOutcome,
           artifact: {
             artifactId: "art_trace",
             artifactUri: "senera://artifact/art_89abcdef0123456701234567",
@@ -86,9 +107,14 @@ describe("Artifact evidence source projection", () => {
         },
       ],
     });
-    expect(memoryEntry.record.evidence[0]).toMatchObject({
+    expect(recorded.sources.find((source) => source.sourceKind === "tool_evidence")).toMatchObject({
       artifactUri: "senera://artifact/art_0123456789abcdef01234567",
-      artifactRefs: ["raw", "evidence"],
+      metadata: {
+        callId: "call-1",
+        evidence: {
+          artifactRefs: ["raw", "evidence"],
+        },
+      },
     });
   });
 });

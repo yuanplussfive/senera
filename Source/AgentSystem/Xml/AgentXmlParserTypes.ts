@@ -3,6 +3,7 @@ import type { AgentTextBudgetEvaluator } from "../Text/AgentTextBudget.js";
 import type { AgentXmlProtocolPolicy } from "./AgentXmlPolicy.js";
 import type { AgentXmlErrorCode } from "./AgentXmlStatus.js";
 import type { AgentXmlSourceHelper } from "./AgentXmlSourceHelper.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 export interface ParsedXmlRoot {
   rootName: string;
@@ -13,7 +14,7 @@ export interface ParsedXmlRoot {
 
 export type AgentXmlParseErrorCode = AgentXmlErrorCode;
 
-export class AgentXmlParseError extends Error {
+export class AgentXmlParseError extends AgentBaseError {
   constructor(
     message: string,
     readonly diagnostics: AgentSourceDiagnostic[],

@@ -250,7 +250,10 @@ export function App({
   const {
     closeSession: handleCloseSession,
     closeSessions: handleCloseSessions,
+    compactSession: handleCompactSession,
     createSession: handleNewSession,
+    exportSession: handleExportSession,
+    inspectSessionRuntime: handleInspectSessionRuntime,
     renameSession: handleRenameSession,
     updateUserProfile: handleUpdateUserProfile,
   } = useSessionCommands({
@@ -337,6 +340,9 @@ export function App({
     onNewSession: handleNewSession,
     onCloseSession: handleCloseSession,
     onCloseSessions: handleCloseSessions,
+    onCompactSession: handleCompactSession,
+    onExportSession: handleExportSession,
+    onInspectSessionRuntime: handleInspectSessionRuntime,
     onRenameSession: handleRenameSession,
     userProfile,
     onUpdateUserProfile: handleUpdateUserProfile,
@@ -446,7 +452,6 @@ export function App({
                 if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
               },
               onMotionLevelChange: setMotionLevel,
-              pluginSettings: settingsRuntime.pluginSettings,
               systemConfig: settingsRuntime.systemConfig,
             }}
           />

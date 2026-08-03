@@ -1,12 +1,9 @@
 import { AgentHostCapabilityNames } from "../AgentDefaultHostCapabilities.js";
 import { buildAgentRootCommand } from "../AgentRootCommand.js";
-import { AgentSkillActivationService } from "../Skills/AgentSkillActivation.js";
-import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
-import { compareLoadedPluginsForPrompting } from "../Plugin/AgentPluginOrdering.js";
+import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import { EmptyAgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
-import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import type { LoadedPlugin, RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import { AgentMarkdownPromptXmlRenderer } from "../Xml/AgentMarkdownPromptXmlRenderer.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
 import { buildAgentExecutionEnvironmentContext } from "./AgentExecutionEnvironmentContext.js";
 import type {
   AgentPromptContext,
@@ -14,7 +11,6 @@ import type {
   AgentPromptRootCommandOptions,
 } from "./AgentPromptContextTypes.js";
 import { AgentPromptDocumentationReader } from "./AgentPromptDocumentationReader.js";
-import { AgentPromptSkillContextProjector } from "./AgentPromptSkillContextProjector.js";
 import { resolveAgentPromptSections } from "./AgentPromptSectionResolver.js";
 import { AgentPromptToolContextProjector } from "./AgentPromptToolContextProjector.js";
 
@@ -23,32 +19,18 @@ export type {
   AgentPromptContextOptions,
   AgentPromptRootCommandOptions,
   AgentPromptSectionOptions,
-  AgentPromptSkillCatalogContext,
-  AgentPromptSkillContext,
-  AgentPromptSkillMatchedFieldContext,
   AgentPromptToolContext,
 } from "./AgentPromptContextTypes.js";
 
 export class AgentPromptContextBuilder {
-  private readonly skillActivation: AgentSkillActivationService;
   private readonly toolContextProjector: AgentPromptToolContextProjector;
-  private readonly skillContextProjector: AgentPromptSkillContextProjector;
 
   constructor(
-    private readonly registry: AgentPluginRegistry,
-    config: AgentSystemConfig,
+    private readonly registry: AgentExtensionRegistry,
     private readonly workspaceRoot: string = process.cwd(),
   ) {
-    this.skillActivation = new AgentSkillActivationService(registry);
-
-    const documentationReader = new AgentPromptDocumentationReader(
-      new AgentMarkdownPromptXmlRenderer({
-        xmlFenceLanguages: config.PluginDocumentation?.PromptXml?.XmlFenceLanguages,
-        codeFenceLanguages: config.PluginDocumentation?.PromptXml?.CodeFenceLanguages,
-      }),
-    );
+    const documentationReader = new AgentPromptDocumentationReader();
     this.toolContextProjector = new AgentPromptToolContextProjector(documentationReader);
-    this.skillContextProjector = new AgentPromptSkillContextProjector(documentationReader);
   }
 
   buildBaseContext(options: AgentPromptContextOptions = {}): AgentPromptContext {
@@ -64,19 +46,12 @@ export class AgentPromptContextBuilder {
     const promptToolNameSet = new Set(this.resolvePromptToolNames(rootCommand, loadedTools));
     const toolCards = tools
       .filter((tool) => promptToolNameSet.has(tool.name))
-      .sort((left, right) => this.comparePromptPriority(left.plugin, right.plugin))
+      .sort(comparePromptPriority)
       .map((tool) => this.toolContextProjector.projectTool(tool, toolSections));
 
     return {
       ExecutionEnvironment: buildAgentExecutionEnvironmentContext(this.workspaceRoot),
       ToolCards: toolCards,
-      ActiveSkills: this.skillContextProjector.projectActiveSkills(
-        options.activeSkills ??
-          this.skillActivation.activate({
-            input: options.skillQuery,
-            rootCommand,
-          }),
-      ),
       ToolDiscoveryToolName: this.resolveVisibleToolDiscoveryToolName(loadedTools, promptToolNameSet),
       RootCommand: rootCommand,
       RoleplayPreset: options.roleplayPreset ?? EmptyAgentRoleplayPresetContext,
@@ -93,6 +68,7 @@ export class AgentPromptContextBuilder {
     return buildAgentRootCommand({
       decision: options.decision,
       loadedTools,
+      registeredTools: this.registry.listTools(),
       policy,
     });
   }
@@ -118,7 +94,7 @@ export class AgentPromptContextBuilder {
     if (!rootCommand) {
       return loadedTools.map((tool) => tool.name);
     }
-    return rootCommand.includeToolCatalog ? rootCommand.allowedTools : [];
+    return rootCommand.includeToolCatalog ? rootCommand.toolAccessGrant.exposedToolNames : [];
   }
 
   private resolveVisibleToolDiscoveryToolName(
@@ -131,8 +107,10 @@ export class AgentPromptContextBuilder {
     )?.name;
     return toolDiscoveryToolName && promptToolNameSet.has(toolDiscoveryToolName) ? toolDiscoveryToolName : null;
   }
+}
 
-  private comparePromptPriority(left: LoadedPlugin, right: LoadedPlugin): number {
-    return compareLoadedPluginsForPrompting(left, right);
-  }
+function comparePromptPriority(left: RegisteredTool, right: RegisteredTool): number {
+  const leftOwner = resolveAgentToolOwner(left);
+  const rightOwner = resolveAgentToolOwner(right);
+  return (leftOwner.priority ?? 100) - (rightOwner.priority ?? 100) || left.name.localeCompare(right.name);
 }

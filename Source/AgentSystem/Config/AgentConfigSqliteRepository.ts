@@ -9,6 +9,14 @@ import {
   type AgentConfigSqlStatements,
 } from "./AgentConfigSqlStatements.js";
 import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
+import { AgentDefaults } from "../Defaults/AgentDefaultCatalog.js";
+import {
+  assertAgentConfigHistoryRetentionPolicy,
+  projectAgentConfigHistoryRetentionPolicy,
+  type AgentConfigHistoryRetentionPolicy,
+} from "./AgentConfigHistoryRetention.js";
 
 export interface AgentConfigRevisionRecord {
   revision: number;
@@ -21,6 +29,7 @@ export interface AgentConfigWriteInput {
   config: AgentSystemConfig;
   source: AgentConfigRevisionRecord["source"];
   createdAt?: string;
+  retention?: AgentConfigHistoryRetentionPolicy;
 }
 
 export interface AgentConfigCommandWriteInput {
@@ -29,6 +38,12 @@ export interface AgentConfigCommandWriteInput {
   payloadHash: string;
   source: AgentConfigRevisionRecord["source"];
   createdAt?: string;
+  retention?: AgentConfigHistoryRetentionPolicy;
+}
+
+export interface AgentConfigHistoryPruneResult {
+  readonly commandReceipts: number;
+  readonly revisions: number;
 }
 
 export interface AgentConfigCommandWriteResult {
@@ -48,7 +63,9 @@ const AgentConfigSecretStorageMigration = Object.freeze({
   targetVersion: 1,
 });
 
-export class AgentConfigCommandIdConflictError extends Error {
+const DefaultConfigHistoryRetentionPolicy = projectAgentConfigHistoryRetentionPolicy(AgentDefaults.ConfigStore);
+
+export class AgentConfigCommandIdConflictError extends AgentBaseError {
   readonly code = "config_command_id_conflict";
 
   constructor(
@@ -57,7 +74,6 @@ export class AgentConfigCommandIdConflictError extends Error {
     readonly received: { operationKind: string; payloadHash: string },
   ) {
     super(`Configuration commandId was reused with a different command: ${commandId}`);
-    this.name = "AgentConfigCommandIdConflictError";
   }
 }
 
@@ -94,6 +110,7 @@ export class AgentConfigSqliteRepository {
 
   appendRevision(input: AgentConfigWriteInput): AgentConfigRevisionRecord {
     const createdAt = input.createdAt ?? new Date().toISOString();
+    const retention = assertAgentConfigHistoryRetentionPolicy(input.retention ?? DefaultConfigHistoryRetentionPolicy);
     const insert = this.db.transaction(() => {
       const nextRevision = this.nextRevision();
       this.statements.insertRevision.run({
@@ -102,6 +119,7 @@ export class AgentConfigSqliteRepository {
         source: input.source,
         created_at: createdAt,
       });
+      this.pruneHistoryRows(createdAt, retention);
       return nextRevision;
     });
 
@@ -119,7 +137,9 @@ export class AgentConfigSqliteRepository {
     transform: (current: AgentConfigRevisionRecord) => AgentSystemConfig,
   ): AgentConfigCommandWriteResult {
     const createdAt = input.createdAt ?? new Date().toISOString();
+    const retention = assertAgentConfigHistoryRetentionPolicy(input.retention ?? DefaultConfigHistoryRetentionPolicy);
     const execute = this.db.transaction((): AgentConfigCommandWriteResult => {
+      this.pruneHistoryRows(createdAt, retention);
       const receipt = this.statements.selectCommandReceipt.get(input.commandId);
       if (receipt) {
         if (receipt.operation_kind !== input.operationKind || receipt.payload_hash !== input.payloadHash) {
@@ -154,6 +174,7 @@ export class AgentConfigSqliteRepository {
         revision,
         created_at: createdAt,
       });
+      this.pruneHistoryRows(createdAt, retention);
       return {
         revision: {
           revision,
@@ -169,6 +190,14 @@ export class AgentConfigSqliteRepository {
     return execute.immediate();
   }
 
+  pruneHistory(
+    retention: AgentConfigHistoryRetentionPolicy = DefaultConfigHistoryRetentionPolicy,
+    now = new Date().toISOString(),
+  ): AgentConfigHistoryPruneResult {
+    const policy = assertAgentConfigHistoryRetentionPolicy(retention);
+    return this.db.transaction(() => this.pruneHistoryRows(now, policy)).immediate();
+  }
+
   close(): void {
     this.kernel.close();
   }
@@ -180,13 +209,21 @@ export class AgentConfigSqliteRepository {
   }
 
   private rowToRevision(row: AgentConfigRevisionRow): AgentConfigRevisionRecord {
-    const parsed = JSON.parse(row.config_json) as AgentSystemConfig;
+    const parsed = parseJsonText(row.config_json, "Agent config revision") as AgentSystemConfig;
     return {
       revision: row.revision,
       config: this.secretCodec.revealConfig(parsed).value,
       source: row.source,
       createdAt: row.created_at,
     };
+  }
+
+  private pruneHistoryRows(now: string, retention: AgentConfigHistoryRetentionPolicy): AgentConfigHistoryPruneResult {
+    const cutoff = configReceiptCutoff(now, retention.commandReceiptRetentionHours);
+    const expired = this.statements.deleteExpiredCommandReceipts.run(cutoff).changes;
+    const excess = this.statements.deleteExcessCommandReceipts.run(retention.commandReceiptMaxCount).changes;
+    const revisions = this.statements.deleteUnretainedRevisions.run(retention.revisionRetentionCount).changes;
+    return { commandReceipts: expired + excess, revisions };
   }
 
   private protectLegacyRevisionSecrets(databasePath: string, upgradeSession?: AgentUpgradeSession): void {
@@ -212,6 +249,12 @@ export class AgentConfigSqliteRepository {
   }
 }
 
+function configReceiptCutoff(now: string, retentionHours: number): string {
+  const timestamp = Date.parse(now);
+  if (!Number.isFinite(timestamp)) throw new RangeError(`Invalid config history maintenance timestamp: ${now}`);
+  return new Date(timestamp - retentionHours * 60 * 60 * 1_000).toISOString();
+}
+
 function inspectRevisionSecretStorage(
   database: Database.Database,
   secretCodec: AgentConfigSecretCodec,
@@ -220,7 +263,7 @@ function inspectRevisionSecretStorage(
   let protectedSecretsFound = false;
   const statements = prepareAgentConfigSqlStatements(database);
   for (const row of statements.selectAllRevisions.all()) {
-    const revealed = secretCodec.revealPayload(JSON.parse(row.config_json) as unknown);
+    const revealed = secretCodec.revealPayload(parseJsonText(row.config_json, "Agent config revision") as unknown);
     plaintextSecretsFound ||= revealed.plaintextSecretsFound;
     protectedSecretsFound ||= revealed.protectedSecretsFound;
   }
@@ -231,7 +274,7 @@ function protectRevisionSecretStorage(database: Database.Database, secretCodec: 
   database.pragma("secure_delete = ON");
   const statements = prepareAgentConfigSqlStatements(database);
   const rewrites = statements.selectAllRevisions.all().flatMap((row) => {
-    const revealed = secretCodec.revealPayload(JSON.parse(row.config_json) as unknown);
+    const revealed = secretCodec.revealPayload(parseJsonText(row.config_json, "Agent config revision") as unknown);
     return revealed.plaintextSecretsFound
       ? [
           {

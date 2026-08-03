@@ -25,7 +25,7 @@ The remaining group count is not a quality score. Each remaining hit below has a
 | `ProviderConnectionList.tsx`, `VectorModelConfigView.tsx`           | Stock green status pills                                   | Neutral surfaces with the project moss color used only for state text      |
 | `PresetOverlays.tsx`                                                | Blur overlays and large-radius floating panels             | Opaque surfaces, 8px radius, no backdrop blur                              |
 | `ScrollToBottomButton.tsx`                                          | Floating pill with blur, ring, and wide shadow             | 8px radius and one compact, colorless shadow                               |
-| `PluginConfigViews.tsx`, model dialogs, provider lifecycle dialogs  | Product surfaces still using `rounded-xl`                  | Unified to `rounded-lg`                                                    |
+| Settings views, model dialogs, provider lifecycle dialogs           | Product surfaces still using `rounded-xl`                  | Unified to `rounded-lg`                                                    |
 | `ChatComposer.tsx`                                                  | Regular UI guidance inherited monospace                    | UI sans for guidance; monospace retained on keyboard keys and file metrics |
 | `ProfileFooter.tsx`, `SessionRows.tsx`                              | Connection and session summaries rendered as terminal text | UI sans with tabular numerals where needed                                 |
 | `ThinkingSummaryBar.tsx`, `WorkflowRunControls.tsx`, `StepNode.tsx` | Summary labels and status copy rendered as terminal text   | UI sans; durations and counts use tabular numerals                         |

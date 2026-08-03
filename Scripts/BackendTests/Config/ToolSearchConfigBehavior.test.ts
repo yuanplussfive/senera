@@ -36,6 +36,20 @@ describe("tool search configuration", () => {
     ).toBe(true);
   });
 
+  test("keeps retrieval policy separate from vector model transport settings", () => {
+    expect(
+      ToolSearchSchema.safeParse({
+        Embedding: { Enabled: true, ScoreThreshold: 0.35 },
+      }).success,
+    ).toBe(true);
+    expect(
+      ToolSearchSchema.safeParse({
+        Embedding: { Model: "duplicate-model-setting" },
+      }).success,
+    ).toBe(false);
+    expect(resolveToolSearchConfig(config()).Embedding.Enabled).toBe(true);
+  });
+
   test.each([
     { Memory: { Kind: "memory" } },
     { Ranking: { MaxResults: 0 } },
@@ -110,11 +124,44 @@ describe("tool search configuration", () => {
     expect(migrated).toMatchObject({
       sourceVersion: 3,
       targetVersion: CurrentAgentConfigVersion,
-      removedPaths: ["ToolSearch.Memory.Kind", "Defaults.ToolSearch.Memory.Kind"],
+      removedPaths: ["ToolSearch.Memory.Kind", "Defaults.ToolSearch.Memory.Kind", "ToolSearch.Memory.DatabasePath"],
       config: {
         ConfigVersion: CurrentAgentConfigVersion,
-        ToolSearch: { Memory: { DatabasePath: ".senera/tools.sqlite" } },
+        ToolSearch: { Memory: {} },
         Defaults: { ToolSearch: { Memory: { MaxEpisodes: 500 } } },
+      },
+    });
+  });
+
+  test("removes retired ToolSearch embedding transport settings", () => {
+    const migrated = migrateAgentConfigPayload({
+      ConfigVersion: 8,
+      ToolSearch: {
+        Embedding: {
+          Enabled: true,
+          ModelProviderId: "embedding/model",
+          Model: "embedding-model",
+          Dimensions: 1024,
+          BatchSize: 32,
+          InputMaxChars: 12000,
+          ScoreThreshold: 0.2,
+        },
+      },
+    });
+
+    expect(migrated).toMatchObject({
+      sourceVersion: 8,
+      targetVersion: CurrentAgentConfigVersion,
+      removedPaths: [
+        "ToolSearch.Embedding.ModelProviderId",
+        "ToolSearch.Embedding.Model",
+        "ToolSearch.Embedding.Dimensions",
+        "ToolSearch.Embedding.BatchSize",
+        "ToolSearch.Embedding.InputMaxChars",
+      ],
+      config: {
+        ConfigVersion: CurrentAgentConfigVersion,
+        ToolSearch: { Embedding: { Enabled: true, ScoreThreshold: 0.2 } },
       },
     });
   });

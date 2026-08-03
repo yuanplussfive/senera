@@ -1,4 +1,4 @@
-import type { AgentActionCapabilityNeed } from "../ActionPlanner/AgentActionPlanner.js";
+import type { AgentActionCapabilityNeed } from "../ActionPlanner/AgentActionPlannerTypes.js";
 
 export interface PlannedToolSearchQuery {
   text: string;
@@ -20,7 +20,8 @@ export function buildPlannedToolSearchQueries(
 
   const needTexts = (options.needs ?? []).map(capabilityNeedText).filter(Boolean);
   const facets = uniqueNonEmpty(needTexts.flatMap((text) => tokenize(text)));
-  return uniqueNonEmpty([...(options.queries ?? []), ...needTexts]).map((text) => ({
+  const contextualQueries = options.discover ? [options.input] : [];
+  return uniqueNonEmpty([...(options.queries ?? []), ...needTexts, ...contextualQueries]).map((text) => ({
     text,
     facets,
   }));

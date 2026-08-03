@@ -4,6 +4,7 @@ import type { AgentPermissionAction, AgentPermissionDecision, AgentToolPermissio
 import { AgentPermissionActions } from "./AgentSafetyTypes.js";
 import type { AgentToolGuardrailAuditor } from "./AgentToolGuardrailAudit.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { readAgentNonEmptyString } from "../Core/AgentUnknownValue.js";
 
 export interface AgentToolApprovalPolicyInput extends AgentToolPermissionRequest {
   messages?: readonly unknown[];
@@ -24,14 +25,14 @@ export interface AgentToolApprovalPolicyOptions {
 }
 
 export class AgentCompositeToolApprovalPolicy implements AgentToolApprovalPolicy {
-  private readonly manifestPolicy = new AgentManifestToolApprovalPolicy();
+  private readonly declaredPolicy = new AgentDeclaredToolApprovalPolicy();
 
   constructor(private readonly options: AgentToolApprovalPolicyOptions = {}) {}
 
   async decideToolCall(input: AgentToolApprovalPolicyInput): Promise<AgentPermissionDecision> {
-    const manifestDecision = await this.manifestPolicy.decideToolCall(input);
+    const declaredDecision = await this.declaredPolicy.decideToolCall(input);
     const opaDecision = this.options.opa ? await this.decideWithOpa(input, this.options.opa) : undefined;
-    const deterministicDecision = strongestPermissionDecision([opaDecision, manifestDecision]);
+    const deterministicDecision = strongestPermissionDecision([opaDecision, declaredDecision]);
     if (deterministicDecision.action === AgentPermissionActions.Deny) {
       return deterministicDecision;
     }
@@ -102,14 +103,14 @@ function strongestPermissionDecision(
   } as AgentPermissionDecision;
 }
 
-export class AgentManifestToolApprovalPolicy implements AgentToolApprovalPolicy {
+export class AgentDeclaredToolApprovalPolicy implements AgentToolApprovalPolicy {
   async decideToolCall(input: AgentToolApprovalPolicyInput): Promise<AgentPermissionDecision> {
     const approval = input.tool?.approval;
     if (approval) {
       return {
         action: approval.Mode,
-        rule: `manifest.tool.${approval.Mode}`,
-        reason: approval.Reason ?? manifestToolReason(input.toolName, approval.Mode),
+        rule: `tool.declaration.${approval.Mode}`,
+        reason: approval.Reason ?? declaredToolReason(input.toolName, approval.Mode),
         riskSignals: [],
       };
     }
@@ -117,8 +118,8 @@ export class AgentManifestToolApprovalPolicy implements AgentToolApprovalPolicy 
     if (input.tool?.security?.RequiresApproval) {
       return {
         action: AgentPermissionActions.Ask,
-        rule: "manifest.plugin.requires-approval",
-        reason: `插件 ${input.tool.pluginName} 要求工具调用前确认。`,
+        rule: "extension.requires-approval",
+        reason: `扩展 ${input.tool.extensionName} 要求工具调用前确认。`,
         riskSignals: [],
       };
     }
@@ -126,8 +127,8 @@ export class AgentManifestToolApprovalPolicy implements AgentToolApprovalPolicy 
     if (!input.tool) {
       return {
         action: AgentPermissionActions.Ask,
-        rule: "manifest.unknown-tool",
-        reason: `工具 ${input.toolName} 未在插件注册表中声明，执行前需要确认。`,
+        rule: "tool.unregistered",
+        reason: `工具 ${input.toolName} 未在扩展注册表中声明，执行前需要确认。`,
         riskSignals: [],
       };
     }
@@ -135,15 +136,15 @@ export class AgentManifestToolApprovalPolicy implements AgentToolApprovalPolicy 
     if (input.tool.security?.TrustLevel === "Untrusted") {
       return {
         action: AgentPermissionActions.Ask,
-        rule: "manifest.plugin.untrusted",
-        reason: `插件 ${input.tool.pluginName} 未受信任，执行前需要确认。`,
+        rule: "extension.untrusted",
+        reason: `扩展 ${input.tool.extensionName} 未受信任，执行前需要确认。`,
         riskSignals: [],
       };
     }
 
     return {
       action: AgentPermissionActions.Allow,
-      rule: "manifest.default",
+      rule: "tool.declaration.default",
       reason: `工具 ${input.toolName} 未声明需要审批。`,
       riskSignals: [],
     };
@@ -154,9 +155,9 @@ function projectOpaInput(input: AgentToolApprovalPolicyInput): Record<string, un
   return {
     tool: {
       name: input.toolName,
-      pluginName: input.tool?.pluginName,
-      pluginTitle: input.tool?.pluginTitle,
-      rootKind: input.tool?.rootKind,
+      extensionName: input.tool?.extensionName,
+      extensionTitle: input.tool?.extensionTitle,
+      ownerKind: input.tool?.ownerKind,
       approval: input.tool?.approval,
       permissions: input.tool?.permissions ?? [],
       capabilities: {
@@ -168,7 +169,7 @@ function projectOpaInput(input: AgentToolApprovalPolicyInput): Record<string, un
     execution: input.executionPlan,
     toolCallId: input.toolCallId,
     args: input.arguments,
-    visibleToolNames: input.visibleToolNames,
+    toolAccessGrant: input.toolAccessGrant,
     runtimeContext: input.runtimeContext ?? {
       requestId: input.requestId,
       step: input.step,
@@ -211,13 +212,13 @@ function readPolicyDecisionReason(decision: PolicyDecision): string | undefined 
 
 function readPolicyReason(result: unknown): string | undefined {
   return result && typeof result === "object" && !Array.isArray(result)
-    ? readString((result as Record<string, unknown>).reason)
+    ? readAgentNonEmptyString((result as Record<string, unknown>).reason)
     : undefined;
 }
 
 function readPolicyRule(result: unknown): string | undefined {
   return result && typeof result === "object" && !Array.isArray(result)
-    ? readString((result as Record<string, unknown>).rule)
+    ? readAgentNonEmptyString((result as Record<string, unknown>).rule)
     : undefined;
 }
 
@@ -226,15 +227,11 @@ function readPolicyRiskSignals(result: unknown): readonly string[] | undefined {
     return undefined;
   }
   const value = (result as Record<string, unknown>).riskSignals;
-  return Array.isArray(value) ? value.flatMap((item) => readString(item) ?? []) : undefined;
+  return Array.isArray(value) ? value.flatMap((item) => readAgentNonEmptyString(item) ?? []) : undefined;
 }
 
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function manifestToolReason(toolName: string, action: AgentPermissionAction): string {
-  return `工具 ${toolName} 的 Manifest 审批模式为 ${action}。`;
+function declaredToolReason(toolName: string, action: AgentPermissionAction): string {
+  return `工具 ${toolName} 声明的审批模式为 ${action}。`;
 }
 
 function policyDecisionReason(toolName: string, action: AgentPermissionAction): string {

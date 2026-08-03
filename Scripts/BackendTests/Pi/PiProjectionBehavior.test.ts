@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { DEFAULT_COMPACTION_SETTINGS } from "@earendil-works/pi-coding-agent";
 import { projectSeneraModelProviderToPi } from "../../../Source/AgentSystem/Pi/AgentPiModelProjector.js";
 import {
   AgentPiContextPolicy,
@@ -12,18 +13,26 @@ import type {
   AgentSystemConfig,
   ResolvedAgentModelProviderConfig,
 } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
-import type { RegisteredTool } from "../../../Source/AgentSystem/Types/PluginRuntimeTypes.js";
+import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import { AgentModelEndpointKinds } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelEndpointContract.js";
 import {
-  AgentPiProxyProtocol,
-  resolveAgentPiProxyBaseUrl,
-} from "../../../Source/AgentSystem/PiProxy/AgentPiProxyContract.js";
-import {
   AgentPiProxyModelProviderHeader,
+  AgentPiProxyProtocol,
   encodePiProxyModelProviderHeaderValue,
-} from "../../../Source/AgentSystem/PiProxy/AgentPiProxyRuntimeContext.js";
+  resolveAgentPiProxyBaseUrl,
+} from "../../../Source/AgentSystem/PiShared/AgentPiProxyProtocol.js";
+import { projectPiModelsResponse } from "../../../Source/AgentSystem/PiProxy/AgentPiOpenAiResponseProjector.js";
+import { AgentTokenProjector } from "../../../Source/AgentSystem/Text/AgentTokenProjection.js";
+import { AgentPiToolObservationProtocol } from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
 
 describe("Pi projection behavior", () => {
+  test("projects every distinct configured model in the proxy catalog", () => {
+    expect(projectPiModelsResponse(["model-a", "model-b", "model-a"]).data.map(({ id }) => id)).toEqual([
+      "model-a",
+      "model-b",
+    ]);
+  });
+
   test.each(AgentModelEndpointKinds)("projects %s providers through the local Pi proxy", (endpoint) => {
     const provider = createProvider({
       Endpoint: endpoint,
@@ -80,22 +89,21 @@ describe("Pi projection behavior", () => {
     expect(isAsciiHeaderValue(projected.headers[AgentPiProxyModelProviderHeader] ?? "")).toBe(true);
   });
 
-  test("uses bounded model metadata when provider limits are unknown", () => {
+  test("uses the resolved context window and bounded output metadata when output limits are unknown", () => {
     const projected = projectSeneraModelProviderToPi(
-      createProvider({ ContextWindowTokens: -1, MaxModelOutputTokens: -1, MaxOutputTokens: -1 }),
+      createProvider({ ContextWindowTokens: 64_000, MaxModelOutputTokens: -1, MaxOutputTokens: -1 }),
       createConfig(),
     );
 
-    expect(projected.model.contextWindow).toBe(128_000);
-    expect(projected.model.maxTokens).toBe(8_192);
+    expect(projected.model.contextWindow).toBe(64_000);
+    expect(projected.model.maxTokens).toBe(DEFAULT_COMPACTION_SETTINGS.reserveTokens);
   });
 
-  test("injects a single hidden runtime context message with current tool evidence and retrieval tools", () => {
+  test("injects archived artifact locators without duplicating active tool evidence", () => {
     const policy = new AgentPiContextPolicy("test-model");
     const frame = policy.createFrame({
       requestId: "request-1",
       model: "test-model",
-      conversationEntries: [],
       registeredTools: [
         createRetrievalTool("ArtifactMemoryTool", AgentHostCapabilityNames.ArtifactMemoryRead),
         createRetrievalTool("HiddenMemoryTool", AgentHostCapabilityNames.MemoryRecall),
@@ -112,7 +120,7 @@ describe("Pi projection behavior", () => {
           {
             type: "text",
             text: JSON.stringify({
-              type: "senera.tool_observation.v1",
+              type: AgentPiToolObservationProtocol.type,
               artifact_uri: "senera://artifact/weather",
               evidence: [
                 {
@@ -137,8 +145,13 @@ describe("Pi projection behavior", () => {
       },
     ] satisfies AgentMessage[];
 
-    const once = policy.apply(messages, frame);
-    const twice = applyAgentPiContextPolicy(once, frame);
+    const archivedArtifacts = [
+      artifactReference("senera://artifact/archived", "ArchivedTool"),
+      artifactReference("senera://artifact/weather", "WeatherTool"),
+    ];
+    const budget = { contextWindowTokens: 4_096, outputReserveTokens: 512 };
+    const once = policy.apply(messages, frame, archivedArtifacts, budget);
+    const twice = applyAgentPiContextPolicy(once, frame, archivedArtifacts, budget);
     const contextMessages = twice.filter((message) => isContextMessage(message));
 
     expect(contextMessages).toHaveLength(1);
@@ -147,45 +160,83 @@ describe("Pi projection behavior", () => {
       content: [{ type: "text", text: "天气怎么样" }],
     });
 
-    const details = readContextDetails(contextMessages[0]);
-    expect(details).toBeDefined();
-    const contextDetails = details as {
-      evidence: Array<{
-        evidenceUri: string;
-        toolName?: string;
-        artifactUri?: string;
-        artifactRefs: string[];
-        facts: Array<{ name: string; value: string }>;
-      }>;
-      artifacts: Array<{ artifactUri: string; evidenceUris: string[]; refs: string[] }>;
-      retrievalTools: Array<{ toolName: string; summary?: string }>;
-      stats: { currentToolEvidence: number; retrievalTools: number };
-    };
-    expect(contextDetails.evidence).toEqual([
-      expect.objectContaining({
-        evidenceUri: "senera://evidence/weather-beijing",
-        toolName: "WeatherTool",
-        artifactUri: "senera://artifact/weather-source",
-        artifactRefs: ["raw", "evidence"],
-        facts: [{ name: "city", value: "Beijing" }],
-      }),
-    ]);
+    const contextDetails = readContextContent(contextMessages[0]);
+    expect(contextDetails.evidence).toEqual([]);
     expect(contextDetails.artifacts).toEqual([
       {
-        artifactUri: "senera://artifact/weather-source",
-        evidenceUris: ["senera://evidence/weather-beijing"],
-        refs: ["raw", "evidence"],
+        artifactUri: "senera://artifact/archived",
+        toolNames: ["ArchivedTool"],
+        refs: ["projection"],
       },
     ]);
     expect(contextDetails.retrievalTools).toEqual([
-      expect.objectContaining({
+      {
         toolName: "ArtifactMemoryTool",
-        summary: "ArtifactMemoryTool description",
-      }),
+        capability: AgentHostCapabilityNames.ArtifactMemoryRead,
+      },
     ]);
     expect(contextDetails.stats).toMatchObject({
-      currentToolEvidence: 1,
+      archivedArtifacts: 2,
+      alreadyVisibleArtifacts: 1,
+      includedArtifacts: 1,
+      omittedArtifacts: 0,
       retrievalTools: 1,
+    });
+  });
+
+  test("does not add a parallel context message when every artifact is already visible in Pi", () => {
+    const policy = new AgentPiContextPolicy("test-model");
+    const frame = policy.createFrame({
+      model: "test-model",
+      registeredTools: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const messages = [toolResultWithArtifact("senera://artifact/visible")];
+
+    expect(
+      policy.apply(messages, frame, [artifactReference("senera://artifact/visible", "VisibleTool")], {
+        contextWindowTokens: 1_024,
+        outputReserveTokens: 128,
+      }),
+    ).toEqual(messages);
+  });
+
+  test("fits a large archived index into the dynamic remaining context budget", () => {
+    const model = "test-model";
+    const policy = new AgentPiContextPolicy(model);
+    const frame = policy.createFrame({
+      model,
+      registeredTools: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const messages: AgentMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Find the most recent archived result." }],
+        timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+      },
+    ];
+    const artifacts = Array.from({ length: 200 }, (_, index) =>
+      artifactReference(`senera://artifact/archive-${index.toString().padStart(3, "0")}`, `Tool${index}`),
+    );
+    const budget = { contextWindowTokens: 900, outputReserveTokens: 200 };
+    const projected = policy.apply(messages, frame, artifacts, budget);
+    const contextMessage = projected.find((message) => isContextMessage(message));
+    const context = readContextContent(contextMessage);
+    const projectedTokens = projected.reduce(
+      (total, message) => total + new AgentTokenProjector(model).countJson(message),
+      0,
+    );
+
+    expect(projectedTokens).toBeLessThanOrEqual(budget.contextWindowTokens - budget.outputReserveTokens);
+    expect(context.artifacts.length).toBeGreaterThan(0);
+    expect(context.artifacts.length).toBeLessThan(artifacts.length);
+    expect(context.artifacts[0]?.artifactUri).toBe("senera://artifact/archive-199");
+    expect(context.stats).toMatchObject({
+      archivedArtifacts: artifacts.length,
+      alreadyVisibleArtifacts: 0,
+      includedArtifacts: context.artifacts.length,
+      omittedArtifacts: artifacts.length - context.artifacts.length,
     });
   });
 });
@@ -200,6 +251,7 @@ function createProvider(overrides: Partial<ResolvedAgentModelProviderConfig> = {
     ApiKey: "secret",
     ApiVersion: "",
     Model: "test-model",
+    ContextWindowTokens: 128_000,
     Temperature: 0,
     MaxOutputTokens: 1_024,
     Stream: true,
@@ -235,39 +287,27 @@ function createConfig(overrides: Partial<AgentSystemConfig> = {}): AgentSystemCo
 
 function createRetrievalTool(name: string, capability: string): RegisteredTool {
   return {
-    loading: "Dynamic",
-    plugin: {
-      rootPath: "",
-      rootKind: "System",
-      manifestPath: "",
-      config: {
-        fileName: "PluginConfig.toml",
-        path: "",
-        exists: false,
-        source: "default",
-        templateExists: false,
-        needsUserConfig: false,
-        toml: "",
-        sections: [],
-        runtime: { enabled: true, tools: {} },
-        diagnostics: [],
-      },
-      manifest: {
-        ManifestVersion: 2,
-        Plugin: {
-          Name: `${name}Plugin`,
-          Title: name,
-          Version: "1.0.0",
-          Kind: "Tool",
-          Description: `${name} description`,
-        },
-      },
+    owner: {
+      kind: "system",
+      name: `${name}-owner`,
+      title: name,
+      description: `${name} description`,
+      rootPath: process.cwd(),
+      revision: "test",
+      trusted: true,
+      requiresApproval: false,
     },
+    loading: "Dynamic",
     name,
     permissions: [],
     sources: [],
     handler: { kind: "HostCapability", capability },
-    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
+    runtime: {
+      Lifecycle: "Immediate",
+      ProtocolVersion: 2,
+      ResultAssessment: "ProcessExit",
+      Capabilities: { Cancellation: true },
+    },
     execution: {
       Targets: ["Local"],
       Network: "Deny",
@@ -286,8 +326,48 @@ function isContextMessage(message: AgentMessage): boolean {
   );
 }
 
-function readContextDetails(message: AgentMessage | undefined): unknown {
-  return typeof message === "object" && message !== null && "details" in message ? message.details : undefined;
+function readContextContent(message: AgentMessage | undefined): {
+  evidence: unknown[];
+  artifacts: Array<{ artifactUri: string; toolNames: string[]; refs: string[] }>;
+  retrievalTools: Array<{ toolName: string; capability: string }>;
+  stats: {
+    archivedArtifacts: number;
+    alreadyVisibleArtifacts: number;
+    includedArtifacts: number;
+    omittedArtifacts: number;
+    retrievalTools: number;
+  };
+} {
+  if (message?.role !== "custom" || typeof message.content !== "string") {
+    throw new Error("Expected a serialized Pi context policy message.");
+  }
+  return JSON.parse(message.content) as ReturnType<typeof readContextContent>;
+}
+
+function artifactReference(artifactUri: string, toolName: string) {
+  return {
+    artifactUri,
+    toolNames: [toolName],
+    callIds: [],
+    evidenceUris: [],
+    refs: ["projection"],
+  };
+}
+
+function toolResultWithArtifact(artifactUri: string): AgentMessage {
+  return {
+    role: "toolResult",
+    toolCallId: "call-visible",
+    toolName: "VisibleTool",
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ type: AgentPiToolObservationProtocol.type, artifact_uri: artifactUri }),
+      },
+    ],
+    isError: false,
+    timestamp: Date.now(),
+  };
 }
 
 function isAsciiHeaderValue(value: string): boolean {

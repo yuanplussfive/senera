@@ -5,6 +5,7 @@ import {
   AgentMcpTaskInputRequiredError,
   AgentMcpToolClient,
 } from "../../../Source/AgentSystem/Mcp/AgentMcpToolClient.js";
+import { AgentMcpTaskEventPageLimit } from "../../../Source/AgentSystem/Mcp/AgentMcpProtocol.js";
 import { AgentInteractionInputRuntime } from "../../../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
 
 describe("MCP task recovery", () => {
@@ -87,11 +88,69 @@ describe("MCP task recovery", () => {
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({
         method: "senera/tasks/events",
-        params: expect.objectContaining({ taskId: "task-events", afterCursor: 1 }),
+        params: expect.objectContaining({
+          taskId: "task-events",
+          afterCursor: 1,
+          limit: AgentMcpTaskEventPageLimit,
+        }),
       }),
       expect.anything(),
       expect.any(Object),
     );
+  });
+
+  it("continues replay across multiple advancing event pages", async () => {
+    const cursor = { value: 0 };
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        events: [
+          {
+            taskId: "task-pages",
+            cursor: 1,
+            timestamp: "2026-07-17T00:00:01.000Z",
+            kind: "output",
+            output: { stream: "stdout", text: "first", byteLength: 5 },
+          },
+        ],
+        nextCursor: 1,
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        events: [
+          {
+            taskId: "task-pages",
+            cursor: 2,
+            timestamp: "2026-07-17T00:00:02.000Z",
+            kind: "output",
+            output: { stream: "stdout", text: "second", byteLength: 6 },
+          },
+        ],
+        nextCursor: 2,
+        hasMore: false,
+      })
+      .mockResolvedValue({ events: [], nextCursor: 2, hasMore: false });
+    const result = { content: [{ type: "text", text: "complete" }] };
+    const raw = fakeClient({
+      capabilities: taskEventCapabilities(),
+      request,
+      getTask: vi.fn(async () => task("task-pages", "completed")),
+      getTaskResult: vi.fn(async () => result),
+    });
+    const client = new AgentMcpToolClient(raw as never, clientOptions());
+    const output: string[] = [];
+
+    await expect(
+      client.reattachTask("task-pages", {
+        resumableEvents: true,
+        taskEventCursor: cursor,
+        onOutput: (event) => output.push(event.text),
+      }),
+    ).resolves.toEqual(result);
+
+    expect(output).toEqual(["first", "second"]);
+    expect(cursor.value).toBe(2);
+    expect(request.mock.calls.slice(0, 2).map(([input]) => input.params.afterCursor)).toEqual([0, 1]);
   });
 
   it("rejects resumable event calls when the server did not negotiate the capability", async () => {
@@ -170,6 +229,18 @@ describe("MCP task recovery", () => {
     expect(raw.experimental.tasks.getTask).toHaveBeenCalledTimes(2);
   });
 
+  it("applies the request timeout per poll without limiting total RemoteJob lifetime", async () => {
+    const states = [task("task-long", "working", 10), task("task-long", "completed")];
+    const getTask = vi.fn(async (_taskId: string, _options: unknown) => states.shift()!);
+    const result = { content: [{ type: "text", text: "completed" }] };
+    const raw = fakeClient({ getTask, getTaskResult: vi.fn(async () => result) });
+    const client = new AgentMcpToolClient(raw as never, clientOptions(undefined, 5));
+
+    await expect(client.reattachTask("task-long")).resolves.toEqual(result);
+    expect(getTask).toHaveBeenCalledTimes(2);
+    expect(getTask.mock.calls[1]?.[1]).toMatchObject({ timeout: 5, maxTotalTimeout: 5 });
+  });
+
   it("cancels a reattached task when its owning tool call is aborted", async () => {
     const controller = new AbortController();
     const cancelTask = vi.fn(async () => task("task-cancel", "cancelled"));
@@ -190,10 +261,10 @@ describe("MCP task recovery", () => {
   });
 });
 
-function clientOptions(interactionInput?: AgentInteractionInputRuntime) {
+function clientOptions(interactionInput?: AgentInteractionInputRuntime, requestTimeoutMs = 1_000) {
   return {
-    server: { id: "test", command: "test", args: [], cwd: process.cwd() },
-    requestTimeoutMs: 1_000,
+    server: { id: "test", revision: "test", command: "test", args: [], cwd: process.cwd() },
+    requestTimeoutMs,
     spawnPersistentProcess: vi.fn(),
     executionProfile: { name: "test", kind: "mcp-server", backend: "local" } as const,
     terminationGraceMs: 100,

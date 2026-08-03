@@ -2,12 +2,17 @@ import { constants } from "node:fs";
 import { lstat, open, realpath, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import {
+  AgentResourceAccessAuthorities,
   AgentResourceAccessIntents,
+  type AgentResourceAccessAuthority,
   type AgentResourceAccessFacts,
   type AgentResourceAccessIntent,
   type SeneraResourceAccessAuthorizer,
 } from "./SeneraResourceAccess.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
+import { isPathWithin, isSamePath } from "../Core/AgentPath.js";
+import { classifyAgentWorkspaceResource } from "../Core/AgentWorkspaceLayout.js";
 
 declare const CanonicalWorkspacePathBrand: unique symbol;
 
@@ -26,7 +31,7 @@ export interface SeneraOpenedWorkspaceFile {
   readonly handle: FileHandle;
 }
 
-export class SeneraWorkspaceBoundaryError extends Error {
+export class SeneraWorkspaceBoundaryError extends AgentBaseError {
   constructor(
     readonly code:
       "invalid_path" | "outside_workspace" | "link_not_allowed" | "unresolved_path" | "path_changed" | "policy_denied",
@@ -35,7 +40,6 @@ export class SeneraWorkspaceBoundaryError extends Error {
     cause?: Error,
   ) {
     super(message, cause ? { cause } : undefined);
-    this.name = "SeneraWorkspaceBoundaryError";
   }
 }
 
@@ -43,6 +47,7 @@ export interface SeneraWorkspaceBoundaryOptions {
   readonly workspaceRoot: string;
   readonly scope?: AgentResourceAccessFacts["scope"];
   readonly policy?: SeneraResourceAccessAuthorizer;
+  readonly authority?: AgentResourceAccessAuthority;
   readonly linkPolicy?: "allow_internal" | "deny";
 }
 
@@ -94,7 +99,7 @@ export class SeneraWorkspaceBoundary {
       const current = await this.resolve(initial.addressedPath, intent);
       const [openedStat, currentStat] = await Promise.all([handle.stat(), lstat(current.absolutePath)]);
       if (
-        !samePath(initial.absolutePath, current.absolutePath) ||
+        !isSamePath(initial.absolutePath, current.absolutePath) ||
         currentStat.isSymbolicLink() ||
         !sameFileIdentity(openedStat, currentStat)
       ) {
@@ -127,7 +132,7 @@ export class SeneraWorkspaceBoundary {
     const relativePath = toPortableRelativePath(lexicalRelative);
     if (!isInsidePath(this.workspaceRoot, candidate)) {
       return {
-        facts: this.resourceFacts(intent, relativePath, "outside", "none", "unknown"),
+        facts: this.resourceFacts(intent, relativePath, "outside", "none", "unknown", candidate),
       };
     }
 
@@ -135,7 +140,7 @@ export class SeneraWorkspaceBoundary {
     const finalStat = await lstatIfPresent(candidate);
     if (finalStat.kind === "error") {
       return {
-        facts: this.resourceFacts(intent, relativePath, "unknown", finalStat.linkTraversal, "unknown"),
+        facts: this.resourceFacts(intent, relativePath, "unknown", finalStat.linkTraversal, "unknown", candidate),
       };
     }
 
@@ -143,7 +148,7 @@ export class SeneraWorkspaceBoundary {
     const anchor = finalStat.value ? candidate : await nearestExistingAncestor(candidate, this.workspaceRoot);
     if (!anchor) {
       return {
-        facts: this.resourceFacts(intent, relativePath, "unknown", "broken", finalEntry),
+        facts: this.resourceFacts(intent, relativePath, "unknown", "broken", finalEntry, candidate),
       };
     }
 
@@ -152,7 +157,7 @@ export class SeneraWorkspaceBoundary {
       const suffix = path.relative(anchor, candidate);
       const canonicalTarget = path.resolve(canonicalAnchor, suffix);
       const containment = isInsidePath(canonicalRoot, canonicalTarget) ? "inside" : "outside";
-      const traversedLink = !samePath(anchor, canonicalAnchor) || finalEntry === "link";
+      const traversedLink = !isSamePath(anchor, canonicalAnchor) || finalEntry === "link";
       const linkTraversal = traversedLink ? (containment === "inside" ? "internal" : "external") : "none";
       const executable =
         containment === "inside" &&
@@ -161,7 +166,7 @@ export class SeneraWorkspaceBoundary {
       return {
         addressedPath: candidate,
         absolutePath: executable ? asCanonicalPath(canonicalTarget) : undefined,
-        facts: this.resourceFacts(intent, relativePath, containment, linkTraversal, finalEntry),
+        facts: this.resourceFacts(intent, relativePath, containment, linkTraversal, finalEntry, canonicalTarget),
       };
     } catch (error) {
       return {
@@ -171,6 +176,7 @@ export class SeneraWorkspaceBoundary {
           "unknown",
           isMissingError(error) ? "broken" : "none",
           finalEntry,
+          candidate,
         ),
       };
     }
@@ -182,10 +188,15 @@ export class SeneraWorkspaceBoundary {
     containment: AgentResourceAccessFacts["containment"],
     linkTraversal: AgentResourceAccessFacts["linkTraversal"],
     finalEntry: AgentResourceAccessFacts["finalEntry"],
+    canonicalTarget: string,
   ): AgentResourceAccessFacts {
+    const scope = this.options.scope ?? "workspace";
+    const classification = classifyAgentWorkspaceResource(this.workspaceRoot, canonicalTarget, scope);
     return {
-      scope: this.options.scope ?? "workspace",
+      scope,
       intent,
+      authority: this.options.authority ?? AgentResourceAccessAuthorities.Tool,
+      ...classification,
       relativePath,
       containment,
       linkTraversal,
@@ -222,7 +233,7 @@ async function nearestExistingAncestor(candidate: string, root: string): Promise
     const stat = await lstatIfPresent(current);
     if (stat.kind === "error") return undefined;
     if (stat.value) return current;
-    if (samePath(current, root)) return undefined;
+    if (isSamePath(current, root)) return undefined;
     current = path.dirname(current);
   }
   return undefined;
@@ -236,12 +247,7 @@ function entryKind(stat: Awaited<ReturnType<typeof lstat>>): AgentResourceAccess
 }
 
 function isInsidePath(root: string, target: string): boolean {
-  const relative = path.relative(root, target);
-  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
-}
-
-function samePath(left: string, right: string): boolean {
-  return path.relative(left, right) === "";
+  return isPathWithin(root, target);
 }
 
 function toPortableRelativePath(value: string): string {

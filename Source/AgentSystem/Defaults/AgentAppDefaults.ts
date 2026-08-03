@@ -4,29 +4,11 @@ import type {
   ResolvedAgentFrontendConfig,
   ResolvedAgentConfigStoreConfig,
   ResolvedAgentPersistenceConfig,
-  ResolvedAgentPluginDiscoveryConfig,
-  ResolvedAgentPluginRootsConfig,
   ResolvedAgentUploadsConfig,
 } from "../Types/AgentConfigTypes.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { buildWebSocketUrl, readConfiguredString } from "./AgentDefaultHelpers.js";
 import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
-
-export function resolvePluginRootsConfig(config: AgentSystemConfig): ResolvedAgentPluginRootsConfig {
-  const defaults = resolveAgentDefaults(config);
-  return {
-    System: config.PluginRoots?.System ?? [...defaults.PluginRoots.System],
-    User: config.PluginRoots?.User ?? [...defaults.PluginRoots.User],
-  };
-}
-
-export function resolvePluginDiscoveryConfig(config: AgentSystemConfig): ResolvedAgentPluginDiscoveryConfig {
-  const defaults = resolveAgentDefaults(config);
-  return {
-    ...defaults.PluginDiscovery,
-    ...config.PluginDiscovery,
-  };
-}
 
 export function resolveArtifactsConfig(config: AgentSystemConfig): ResolvedAgentArtifactsConfig {
   const defaults = resolveAgentDefaults(config);
@@ -43,10 +25,10 @@ export function resolveUploadsConfig(config: AgentSystemConfig): ResolvedAgentUp
     ...config.Uploads,
   };
   if (uploads.MaxRequestBytes < uploads.MaxFileBytes) {
-    throw new Error(agentErrorMessage("upload.requestLimitBelowFileLimit"));
+    throw new AgentLocalizedError("upload.requestLimitBelowFileLimit");
   }
   if (uploads.MaxStoredBytes < uploads.MaxFileBytes) {
-    throw new Error(agentErrorMessage("upload.storageLimitBelowFileLimit"));
+    throw new AgentLocalizedError("upload.storageLimitBelowFileLimit");
   }
   return uploads;
 }

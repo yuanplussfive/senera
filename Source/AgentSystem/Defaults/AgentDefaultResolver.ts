@@ -9,14 +9,6 @@ export function resolveAgentDefaults(
   const defaults = config?.Defaults;
 
   return {
-    PluginRoots: {
-      System: defaults?.PluginRoots?.System ?? [...AgentDefaults.PluginRoots.System],
-      User: defaults?.PluginRoots?.User ?? [...AgentDefaults.PluginRoots.User],
-    },
-    PluginDiscovery: {
-      ...AgentDefaults.PluginDiscovery,
-      ...defaults?.PluginDiscovery,
-    },
     ModelProviderEndpoints: AgentDefaults.ModelProviderEndpoints.map((endpoint) => ({ ...endpoint })),
     ModelRuntime: {
       ...AgentDefaults.ModelRuntime,
@@ -64,10 +56,6 @@ export function resolveAgentDefaults(
         Compaction: {
           ...AgentDefaults.AgentLoop.PiSessions.Compaction,
           ...defaults?.AgentLoop?.PiSessions?.Compaction,
-          TimeoutMs: secondsToMilliseconds(
-            defaults?.AgentLoop?.PiSessions?.Compaction?.TimeoutSeconds ??
-              AgentDefaults.AgentLoop.PiSessions.Compaction.TimeoutSeconds,
-          ),
         },
       },
       PiTurnLeaseTimeoutMs: secondsToMilliseconds(
@@ -132,6 +120,12 @@ export function resolveAgentDefaults(
       },
     },
     MemoryLearning: {
+      ...AgentDefaults.MemoryLearning,
+      ...defaults?.MemoryLearning,
+      Client: {
+        ...AgentDefaults.MemoryLearning.Client,
+        ...defaults?.MemoryLearning?.Client,
+      },
       Promotion: {
         ...AgentDefaults.MemoryLearning.Promotion,
         ...defaults?.MemoryLearning?.Promotion,

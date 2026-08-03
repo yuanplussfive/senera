@@ -26,7 +26,7 @@ describe("settings location", () => {
   });
 
   it("reads canonical and legacy settings links", () => {
-    expect(readWebSettingsSection({ pathname: "/", search: "?settings=skills", hash: "" })).toBe("skills");
+    expect(readWebSettingsSection({ pathname: "/", search: "?settings=skills", hash: "" })).toBe("model-service");
     expect(readWebSettingsSection({ pathname: "/", search: "?surface=settings&section=appearance", hash: "" })).toBe(
       "appearance",
     );
@@ -38,10 +38,10 @@ describe("settings location", () => {
     expect(
       buildWebSettingsLocation(
         { pathname: "/chat/one", search: "?surface=settings&section=appearance&foo=1", hash: "#/settings/appearance" },
-        "skills",
+        "runtime",
       ),
-    ).toBe("/chat/one?foo=1&settings=skills");
-    expect(buildWebSettingsLocation({ pathname: "/chat/one", search: "?foo=1&settings=skills", hash: "" }, null)).toBe(
+    ).toBe("/chat/one?foo=1&settings=runtime");
+    expect(buildWebSettingsLocation({ pathname: "/chat/one", search: "?foo=1&settings=runtime", hash: "" }, null)).toBe(
       "/chat/one?foo=1",
     );
     expect(buildWebSettingsLocation({ pathname: "/settings/appearance", search: "?foo=1", hash: "" }, "about")).toBe(

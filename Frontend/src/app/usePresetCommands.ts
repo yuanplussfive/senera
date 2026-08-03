@@ -14,6 +14,7 @@ import {
 import type { SocketStatus } from "../api/useAgentSocket";
 import { generateId } from "../lib/util";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { resolveBackendMessage } from "../i18n/backendMessage";
 import { useStore } from "../store/sessionStore";
 
 type PendingPresetOperation = {
@@ -89,7 +90,7 @@ export function resolvePresetEvent(
       return {
         kind: "preset_failed",
         requestId,
-        message: data.message,
+        message: resolveBackendMessage(data) ?? data.message,
       };
     }
   }

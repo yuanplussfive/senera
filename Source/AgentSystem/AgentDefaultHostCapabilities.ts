@@ -25,7 +25,12 @@ export const AgentHostCapabilityNames = {
   MemoryWrite: "memory.write",
   WorkspaceApplyPatch: "workspace.apply_patch",
   AskUser: "conversation.ask_user",
+  SkillManage: "extensions.skill.manage",
 } as const;
+
+export function listDefaultAgentHostCapabilityNames(): ReadonlySet<string> {
+  return new Set(Object.values(AgentHostCapabilityNames));
+}
 
 export function createDefaultHostCapabilityRegistry(
   options: {

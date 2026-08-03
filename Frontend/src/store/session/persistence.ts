@@ -80,6 +80,8 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       historyStepBuffers: {},
       historyEventRunIds: {},
       historyActiveRequestIds: {},
+      processedEventIds: {},
+      processedEventIdOrder: [],
       missingOnServerIds: {},
       pendingCreatedSessionIds: {},
       pendingDeletedSessionIds: {},

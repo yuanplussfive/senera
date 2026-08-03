@@ -6,6 +6,7 @@ import {
   type SessionBusyData,
 } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { resolveBackendMessage } from "../../i18n/backendMessage";
 import { bumpSessionMessageCount, currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
 import { createRunRecord, touchRun } from "./sessionRunProjection";
 import { truncate } from "./sessionPresentation";
@@ -54,6 +55,7 @@ export const runLifecycleEventHandlers = {
     const terminal = data.stage === "completed" || data.stage === "failed";
     const component = data.component ? frontendMessage(cancellationComponentMessages[data.component]) : undefined;
     const duration = data.durationMs === undefined ? undefined : `${data.durationMs}ms`;
+    const message = resolveBackendMessage(data);
     upsertStep(run, {
       id: `${run.requestId}-cancellation`,
       kind: "error",
@@ -64,7 +66,7 @@ export const runLifecycleEventHandlers = {
             ? "run.cancellation.failed"
             : "run.cancellation.started",
       ),
-      description: [component, duration, data.message].filter(Boolean).join(" · ") || undefined,
+      description: [component, duration, message].filter(Boolean).join(" · ") || undefined,
       status: data.stage === "failed" || data.stage === "component_failed" ? "failed" : terminal ? "done" : "running",
       startedAt: env.timestamp,
       endedAt: terminal ? env.timestamp : undefined,
@@ -91,6 +93,7 @@ export const runLifecycleEventHandlers = {
     if (!sessionId) return;
     const session = ensureSession(state, sessionId);
     const data = env.data as RunFailedData;
+    const message = resolveBackendMessage(data) ?? data.message;
     const run = currentRun(session, env.requestId);
     if (!run && state.historyLoadingIds[sessionId]) {
       if (
@@ -117,17 +120,17 @@ export const runLifecycleEventHandlers = {
         id: `${run.requestId}-error`,
         kind: "error",
         title: frontendMessage("workflow.projection.runFailed"),
-        description: data.message,
+        description: message,
         status: "failed",
         startedAt: env.timestamp,
         endedAt: env.timestamp,
-        errorMessage: data.message,
+        errorMessage: message,
       });
     }
     session.messages.push({
       id: `${env.requestId ?? "run"}-error`,
       role: "system",
-      content: data.message,
+      content: message,
       createdAt: env.timestamp,
       kind: "Error",
       requestId: env.requestId,
@@ -142,6 +145,7 @@ export const runLifecycleEventHandlers = {
     const session = state.sessions[sessionId];
     if (!session) return;
     const data = env.data as SessionBusyData;
+    const message = resolveBackendMessage(data) ?? data.message;
     const rejectedRequestId = data.rejectedRequestId || env.requestId;
     if (!rejectedRequestId || rejectedRequestId === data.activeRequestId) return;
     const run = session.runs.find((item) => item.requestId === rejectedRequestId);
@@ -153,11 +157,11 @@ export const runLifecycleEventHandlers = {
         id: `${run.requestId}-busy`,
         kind: "error",
         title: frontendMessage("workflow.projection.runBusy"),
-        description: data.message,
+        description: message,
         status: "failed",
         startedAt: env.timestamp,
         endedAt: env.timestamp,
-        errorMessage: data.message,
+        errorMessage: message,
       });
     }
     if (session.activeRequestId === rejectedRequestId) {

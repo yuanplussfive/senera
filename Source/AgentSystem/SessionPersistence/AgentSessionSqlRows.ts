@@ -15,11 +15,29 @@ export interface SessionListRow extends SessionRow {
   message_count: number;
 }
 
+export interface SessionHistorySnapshotRow extends SessionListRow {
+  entry_high_water_mark: number | null;
+  step_trace_high_water_mark: number | null;
+  run_snapshot_high_water_mark: number | null;
+  run_event_high_water_mark: number | null;
+}
+
 export interface SessionHistoryMutationRow {
   mutation_id: string;
   session_id: string;
   kind: string;
   from_request_id: string;
+  pi_kind: string;
+  pi_entry_id: string | null;
+  model_provider_id: string | null;
+  created_at: string;
+}
+
+export interface SessionForkMutationRow {
+  mutation_id: string;
+  source_session_id: string;
+  target_session_id: string;
+  through_request_id: string;
   pi_kind: string;
   pi_entry_id: string | null;
   model_provider_id: string | null;
@@ -34,6 +52,20 @@ export interface EntryRow {
   timestamp: string;
   sequence: number;
   data: string;
+}
+
+export interface RequestSequenceRangeRow {
+  first_sequence: number | null;
+  last_sequence: number | null;
+}
+
+export interface RequestIdRow {
+  request_id: string;
+  first_sequence: number;
+}
+
+export interface RequestIdOnlyRow {
+  request_id: string;
 }
 
 export interface RunEventRow {
@@ -63,6 +95,11 @@ export interface StepTraceRow {
   data: string;
 }
 
+export interface StepTraceRunKeyRow {
+  request_id: string;
+  turn_sequence: number;
+}
+
 export interface RunSnapshotRow {
   session_id: string;
   request_id: string;
@@ -73,6 +110,21 @@ export interface RunSnapshotRow {
   ended_at: string | null;
   error_message: string | null;
   model_provider: string | null;
+}
+
+export interface RunSnapshotPageRow extends RunSnapshotRow {
+  history_sequence: number;
+}
+
+export interface SessionCommandRow {
+  session_id: string;
+  command_id: string;
+  operation_kind: string;
+  payload_hash: string;
+  request_id: string;
+  state: "running" | "completed" | "failed" | "cancelled";
+  created_at: string;
+  updated_at: string;
 }
 
 export interface TurnPreparationRow {

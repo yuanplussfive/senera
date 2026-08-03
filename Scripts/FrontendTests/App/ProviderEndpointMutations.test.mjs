@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
-import { resolveProviderEndpointMutationEvent } from "../../../Frontend/src/app/providerEndpointMutations.ts";
+import { resolveConfigEntityMutationEvent } from "../../../Frontend/src/app/configEntityMutation.ts";
+import { isProviderEndpointOperationKind } from "../../../Frontend/src/app/providerEndpointMutations.ts";
 
 describe("provider endpoint mutation helpers", () => {
   it("matches endpoint success by command id and operation kind", () => {
-    const pending = new Map([["req-upsert", { kind: "provider.endpoint.upsert", providerId: "custom-openai" }]]);
+    const pending = new Map([["req-upsert", { kind: "provider.endpoint.upsert", entityId: "custom-openai" }]]);
 
     expect(
-      resolveProviderEndpointMutationEvent(
+      resolveConfigEntityMutationEvent(
         event(EventKinds.ConfigSnapshot, {
           ...configSnapshot({ revision: 13, version: 5 }),
           operation: {
@@ -16,20 +17,20 @@ describe("provider endpoint mutation helpers", () => {
           },
         }),
         pending,
+        isProviderEndpointOperationKind,
       ),
     ).toEqual({
-      kind: "success",
-      operationKind: "provider.endpoint.upsert",
-      providerId: "custom-openai",
+      outcome: "success",
       commandId: "req-upsert",
+      mutation: { kind: "provider.endpoint.upsert", entityId: "custom-openai" },
     });
   });
 
   it("preserves backend failure messages for matching endpoint operations", () => {
-    const pending = new Map([["req-rename", { kind: "provider.endpoint.rename", providerId: "custom-openai" }]]);
+    const pending = new Map([["req-rename", { kind: "provider.endpoint.rename", entityId: "custom-openai" }]]);
 
     expect(
-      resolveProviderEndpointMutationEvent(
+      resolveConfigEntityMutationEvent(
         event(EventKinds.ConfigFailed, {
           configPath: "Config.toml",
           message: "stale revision",
@@ -39,21 +40,21 @@ describe("provider endpoint mutation helpers", () => {
           },
         }),
         pending,
+        isProviderEndpointOperationKind,
       ),
     ).toEqual({
-      kind: "failure",
-      operationKind: "provider.endpoint.rename",
-      providerId: "custom-openai",
+      outcome: "failure",
       commandId: "req-rename",
       message: "stale revision",
+      mutation: { kind: "provider.endpoint.rename", entityId: "custom-openai" },
     });
   });
 
   it("does not mistake model operations or mismatched endpoint kinds for connection success", () => {
-    const pending = new Map([["req-endpoint", { kind: "provider.endpoint.delete", providerId: "custom-openai" }]]);
+    const pending = new Map([["req-endpoint", { kind: "provider.endpoint.delete", entityId: "custom-openai" }]]);
 
     expect(
-      resolveProviderEndpointMutationEvent(
+      resolveConfigEntityMutationEvent(
         event(EventKinds.ConfigSnapshot, {
           ...configSnapshot({ version: 5 }),
           operation: {
@@ -62,11 +63,12 @@ describe("provider endpoint mutation helpers", () => {
           },
         }),
         pending,
+        isProviderEndpointOperationKind,
       ),
     ).toBeNull();
 
     expect(
-      resolveProviderEndpointMutationEvent(
+      resolveConfigEntityMutationEvent(
         event(EventKinds.ConfigSnapshot, {
           ...configSnapshot({ version: 5 }),
           operation: {
@@ -75,6 +77,7 @@ describe("provider endpoint mutation helpers", () => {
           },
         }),
         pending,
+        isProviderEndpointOperationKind,
       ),
     ).toBeNull();
   });

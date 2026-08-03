@@ -4,7 +4,6 @@ import { type WebSocket, WebSocketServer } from "ws";
 import type { AgentDomainEvent } from "../Events/AgentEvent.js";
 import { resolvePresetsConfig, resolveServerConfig, resolveUploadsConfig } from "../AgentDefaults.js";
 import { AgentLogger } from "../Diagnostics/AgentLogger.js";
-import { AgentPluginConfigManager } from "../Plugin/AgentPluginConfigManager.js";
 import { AgentPresetManager } from "../Presets/AgentPresetManager.js";
 import { AgentUploadHttpApi } from "../Uploads/AgentUploadHttpApi.js";
 import { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
@@ -26,8 +25,11 @@ import { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
 import { AgentWebSocketCloseCodes, AgentWebSocketCloseReasons } from "./AgentWebSocketCloseContract.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { createAgentPiProxyModelAdapter } from "../Runtime/AgentPiProxyModelAdapter.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
+
+const ServerShutdownGraceMs = 250;
 
 export class AgentWebSocketServer {
   private readonly serverConfig: ReturnType<typeof resolveServerConfig>;
@@ -40,21 +42,18 @@ export class AgentWebSocketServer {
   private httpServer?: http.Server;
   private server?: WebSocketServer;
   private heartbeatTimer?: NodeJS.Timeout;
+  private acceptingConnections = false;
+  private stopPromise?: Promise<void>;
 
   constructor(private readonly options: AgentWebSocketServerOptions) {
     this.logger = options.logger ?? new AgentLogger();
     const configSnapshot = (): ReturnType<AgentWebSocketRequestContext["configSnapshot"]> =>
       options.configSnapshot?.() ?? options.config;
-    const pluginConfigManager =
-      options.pluginConfigManager ??
-      new AgentPluginConfigManager({
-        workspaceRoot: options.workspaceRoot ?? process.cwd(),
-        configSnapshot,
-      });
     const providerModelDiscovery = new AgentProviderModelDiscovery({
       configSnapshot,
     });
     const sandboxRuntimeService = options.sandboxRuntimeService ?? new AgentSandboxRuntimeService();
+    const piTurnContexts = options.piTurnContexts;
 
     this.serverConfig = resolveServerConfig(options.config);
     this.accessGuard = new AgentServerAccessGuard({
@@ -68,7 +67,7 @@ export class AgentWebSocketServer {
       maxBufferedBytes: this.serverConfig.RequestMaxBytes,
       persistence: options.eventPersistence,
     });
-    const uploadStore = createUploadStore(options, configSnapshot);
+    const uploadStore = options.uploadStore ?? createUploadStore(options, configSnapshot);
     this.uploadApi = new AgentUploadHttpApi({
       store: uploadStore,
       isOriginAllowed: (origin) => this.accessGuard.allowsOrigin(origin),
@@ -89,6 +88,7 @@ export class AgentWebSocketServer {
         onEvent: (event) => this.broadcast(event),
         diagnostics: options.piDiagnostics,
         maxRequestBytes: this.serverConfig.RequestMaxBytes,
+        turnContexts: piTurnContexts,
       }),
       staticFrontendApi: options.staticFrontendRoot
         ? new AgentStaticFrontendHttpApi({ rootDir: options.staticFrontendRoot })
@@ -104,7 +104,6 @@ export class AgentWebSocketServer {
         configService: options.configService,
         sessionManager: options.sessionManager,
         userProfileManager: options.userProfileManager,
-        pluginConfigManager,
         providerModelDiscovery,
         presetManagerFactory: () => createPresetManager(options, configSnapshot()),
         approvalRuntime: options.approvalRuntime,
@@ -112,6 +111,7 @@ export class AgentWebSocketServer {
         sandboxRuntimeService,
         executionResources: options.executionResources,
         workspaceRoot: options.workspaceRoot ?? process.cwd(),
+        mcpManagement: options.mcpManagement,
       },
       sendEnvelope: (socket, event) => this.eventSender.sendEnvelope(socket, event),
       broadcast: (event) => this.broadcast(event),
@@ -120,8 +120,10 @@ export class AgentWebSocketServer {
   }
 
   async start(): Promise<void> {
+    if (this.stopPromise) throw new Error("WebSocket server is stopping or stopped.");
+    if (this.httpServer || this.server) throw new Error("WebSocket server has already been started.");
     this.httpServer = http.createServer((request, response) => {
-      void this.httpRouter.handle(request, response);
+      void this.httpRouter.handle(request, response).catch((error) => this.handleHttpFailure(response, error));
     });
     this.httpServer.headersTimeout = 10_000;
     this.httpServer.requestTimeout = 60_000;
@@ -153,32 +155,83 @@ export class AgentWebSocketServer {
       };
       this.httpServer!.once("listening", handleListening);
       this.httpServer!.once("error", handleStartupError);
+      this.acceptingConnections = true;
       this.httpServer!.listen(this.serverConfig.Port, this.serverConfig.Host);
+    }).catch((error: unknown) => {
+      this.acceptingConnections = false;
+      throw error;
     });
     this.uploadApi.startMaintenance();
     this.heartbeatTimer = setInterval(() => this.heartbeat(), this.accessGuard.heartbeatIntervalMs);
     this.heartbeatTimer.unref();
   }
 
-  async stop(): Promise<void> {
-    await this.uploadApi.stopMaintenance();
+  stop(): Promise<void> {
+    this.acceptingConnections = false;
+    return (this.stopPromise ??= this.stopServer());
+  }
+
+  private async stopServer(): Promise<void> {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = undefined;
     }
-    for (const socket of this.server?.clients ?? []) {
+    const webSocketServer = this.server;
+    const httpServer = this.httpServer;
+    for (const socket of webSocketServer?.clients ?? []) {
       socket.close(1001, "Server shutting down");
     }
-    this.server?.close();
-    this.httpServer?.close();
-    await this.eventSender.close();
+    httpServer?.closeIdleConnections?.();
+    const forceCloseTimer = setTimeout(() => {
+      for (const socket of webSocketServer?.clients ?? []) socket.terminate();
+      httpServer?.closeAllConnections?.();
+    }, ServerShutdownGraceMs);
+    forceCloseTimer.unref();
+    const settlements = await Promise.allSettled([
+      this.uploadApi.stopMaintenance(),
+      closeWebSocketServer(webSocketServer),
+      closeHttpServer(httpServer),
+      this.eventSender.close(),
+    ]).finally(() => clearTimeout(forceCloseTimer));
+    this.server = undefined;
+    this.httpServer = undefined;
+    const failures = settlements.flatMap((result) => (result.status === "rejected" ? [result.reason] : []));
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateError(failures, "WebSocket server shutdown failed.");
   }
 
   broadcast(event: AgentDomainEvent): Promise<void> {
     return this.eventSender.broadcast(this.server?.clients ?? [], event);
   }
 
+  private handleHttpFailure(response: http.ServerResponse, error: unknown): void {
+    this.logger.error("HTTP 请求处理失败", {
+      error: errorMessage(error),
+    });
+    if (response.headersSent) {
+      response.destroy();
+      return;
+    }
+    response.writeHead(500, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    response.end(
+      JSON.stringify({
+        ok: false,
+        error: {
+          code: "internal_error",
+          message: agentErrorMessage("websocket.httpRequestFailed"),
+        },
+      }),
+    );
+  }
+
   private handleUpgrade(request: http.IncomingMessage, socket: Duplex, head: Buffer): void {
+    if (!this.acceptingConnections) {
+      socket.destroy();
+      return;
+    }
     if (new URL(request.url ?? "/", "http://senera.local").pathname !== "/") {
       this.rejectUpgrade(socket, { status: 403, code: "forbidden_origin" });
       return;
@@ -289,6 +342,28 @@ export class AgentWebSocketServer {
     });
     process.exitCode = 1;
   }
+}
+
+function closeWebSocketServer(server: WebSocketServer | undefined): Promise<void> {
+  if (!server) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    try {
+      server.close((error) => (error ? reject(error) : resolve()));
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function closeHttpServer(server: http.Server | undefined): Promise<void> {
+  if (!server || !server.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    try {
+      server.close((error) => (error ? reject(error) : resolve()));
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
 function createUploadStore(

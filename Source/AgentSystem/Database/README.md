@@ -14,6 +14,8 @@
 
 `runtime.json` 是生成的版本化模块产物，内含已验证的 SQL 和快照。运行时代码通过标准 JSON 模块契约导入它，因此 Node、Electron、Docker、Vitest 和打包器都不需要转换文件系统 URL。不要直接编辑它。
 
+运行时 CRUD 查询保留在对应领域的 `*SqlStatements.ts` 中，并通过 `AgentSql.agentSql` 声明为禁止表达式插值的静态 SQL 模板。所有状态、标识和业务值都使用 SQLite 命名参数绑定；领域 statement facade 负责注入固定状态并把类型化方法暴露给 repository，repository 不直接操作裸 `Database.Statement`。不要为运行时查询引入自定义 SQL 分段解析器。只有迁移和 schema 快照使用独立 `.sql` 资源文件。
+
 新增迁移后运行 `npm run generate.database-contracts`。它会把每个版本应用到全新的 SQLite 数据库、为每个版本写出规范的 `sqlite_master` 快照并刷新 manifest 哈希。`npm run verify.database-contracts` 检查已提交资源是否最新，它在每次构建前运行。`Build/CopyRuntimeAssets.ts` 会把 JSON 和 SQL 资源复制进 `Dist`，因此开发、Docker 和桌面打包运行时加载的是同一份契约。
 
 运行时把所有权信息和不可变迁移账本保存在 `__senera_database_contract` 和 `__senera_schema_migrations`。这些控制表不进入领域快照。

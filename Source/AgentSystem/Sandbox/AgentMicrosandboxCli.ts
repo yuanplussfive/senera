@@ -10,6 +10,7 @@ import { createGunzip } from "node:zlib";
 import { z } from "zod";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { nodeErrorCode } from "../Core/AgentFs.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 const execFileAsync = promisify(execFile);
 const MicrosandboxPackageSchema = z
@@ -205,7 +206,7 @@ export async function resolveAgentMicrosandboxPackage(
 
 async function readOptionalPackageJson(filePath: string): Promise<unknown | undefined> {
   try {
-    return JSON.parse(await readFile(filePath, "utf8")) as unknown;
+    return parseJsonText(await readFile(filePath, "utf8"), "Microsandbox CLI output");
   } catch (error) {
     if (nodeErrorCode(error) === "ENOENT") return undefined;
     throw error;

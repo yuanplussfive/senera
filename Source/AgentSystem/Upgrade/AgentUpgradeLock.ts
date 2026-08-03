@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 const UpgradeLockFileName = ".upgrade.lock";
 
@@ -44,7 +45,7 @@ export function acquireAgentUpgradeLock(upgradeRoot: string, now = (): Date => n
 
 function readLockRecord(lockPath: string): UpgradeLockRecord | undefined {
   try {
-    const value = JSON.parse(fs.readFileSync(lockPath, "utf8")) as Partial<UpgradeLockRecord>;
+    const value = parseJsonText(fs.readFileSync(lockPath, "utf8"), "Upgrade lock file") as Partial<UpgradeLockRecord>;
     return Number.isSafeInteger(value.pid) && Number(value.pid) > 0 && typeof value.acquiredAt === "string"
       ? { pid: Number(value.pid), acquiredAt: value.acquiredAt }
       : undefined;

@@ -4,12 +4,25 @@ import {
   AgentConversationEntryKinds,
   type AgentConversationEntry,
 } from "../../../Source/AgentSystem/Conversation/AgentConversation.js";
+import { AgentSqliteDatabaseKernel } from "../../../Source/AgentSystem/Database/AgentSqliteDatabaseKernel.js";
 import { recallAgentMemories } from "../../../Source/AgentSystem/Memory/AgentMemoryRecallRuntime.js";
-import { SqliteAgentMemorySourceRepository } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
+import {
+  InMemoryAgentMemorySourceRepository,
+  SqliteAgentMemorySourceRepository,
+} from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import type {
   AgentMemoryCompletedTurnInput,
   AgentMemoryConsolidationActionRecord,
+  AgentMemorySourceRepository,
 } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
+import {
+  episodeToRow,
+  memoryItemToRow,
+  memoryItemVectorToRow,
+  memoryObservationToRow,
+} from "../../../Source/AgentSystem/Memory/AgentMemoryRowMapper.js";
+import { AgentMemoryDatabaseContract } from "../../../Source/AgentSystem/Memory/AgentMemorySqlSchema.js";
+import { prepareAgentMemorySqlStatements } from "../../../Source/AgentSystem/Memory/AgentMemorySqlStatements.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
@@ -173,6 +186,125 @@ describe("Memory persistence behavior", () => {
       repository.close();
     }
   });
+
+  test("migrates the v3 item family without losing item, vector, or observation data", () => {
+    const databasePath = createDatabasePath();
+    const seedRepository = new InMemoryAgentMemorySourceRepository();
+    const seed = seedLongTermMemory(
+      seedRepository,
+      "session-v3-migration",
+      "request-v3-migration",
+      "2026-01-01T00:00:00.000Z",
+    );
+    const version3Kernel = new AgentSqliteDatabaseKernel({
+      databasePath,
+      contract: {
+        ...AgentMemoryDatabaseContract,
+        migrations: AgentMemoryDatabaseContract.migrations.slice(0, 3),
+      },
+    });
+    try {
+      const statements = prepareAgentMemorySqlStatements(version3Kernel.connection);
+      statements.upsertEpisodeStmt.run(episodeToRow(seed.episode));
+      statements.insertMemoryItemStmt.run(memoryItemToRow(seed.memory));
+      statements.insertMemoryObservationStmt.run(memoryObservationToRow(seed.observation));
+      statements.upsertMemoryItemVectorStmt.run(memoryItemVectorToRow(seed.vector));
+    } finally {
+      version3Kernel.close();
+    }
+
+    const migrated = new SqliteAgentMemorySourceRepository(databasePath);
+    try {
+      expect(migrated.findMemoryItemsByUris([seed.memory.uri])).toEqual([
+        expect.objectContaining({ uri: seed.memory.uri }),
+      ]);
+      expect(migrated.listMemoryItemVectors(seed.vector.model)).toEqual([
+        expect.objectContaining({ memoryUri: seed.memory.uri, embedding: seed.vector.embedding }),
+      ]);
+      expect(migrated.listMemoryObservations(seed.memory.uri)).toEqual([
+        expect.objectContaining({ uri: seed.observation.uri, writeSequence: 1 }),
+      ]);
+    } finally {
+      migrated.close();
+    }
+  });
+});
+
+describe.each([
+  {
+    implementation: "SQLite",
+    create: (): AgentMemorySourceRepository => new SqliteAgentMemorySourceRepository(createDatabasePath()),
+  },
+  {
+    implementation: "in-memory",
+    create: (): AgentMemorySourceRepository => new InMemoryAgentMemorySourceRepository(),
+  },
+])("$implementation memory item lifetime", ({ create }) => {
+  test("keeps promoted items and vectors when their source session is deleted", () => {
+    const repository = create();
+    try {
+      const seed = seedLongTermMemory(
+        repository,
+        "session-delete-source",
+        "request-delete-source",
+        "2026-01-01T00:00:00.000Z",
+      );
+      repository.enqueueMemoryLearningJob(seed.episode.uri, 1_000);
+
+      repository.deleteSession("session-delete-source");
+
+      expect(repository.listEpisodes("session-delete-source")).toEqual([]);
+      expect(repository.listMemoryCandidatesForEpisode(seed.episode.uri)).toEqual([]);
+      expect(repository.listMemoryLearningJobs()).toEqual([]);
+      expect(repository.findMemoryItemsByUris([seed.memory.uri])).toEqual([
+        expect.objectContaining({ uri: seed.memory.uri }),
+      ]);
+      expect(repository.listMemoryItemVectors(seed.vector.model)).toEqual([
+        expect.objectContaining({ memoryUri: seed.memory.uri }),
+      ]);
+      expect(repository.listMemoryObservations(seed.memory.uri)).toEqual([]);
+
+      const next = repository.recordCompletedTurn(
+        completedTurn("session-next-source", "request-next-source", "2026-01-02T00:00:00.000Z"),
+      );
+      repository.applyMemoryLearning({
+        episode: next.episode,
+        learnedAt: "2026-01-02T00:01:00.000Z",
+        actions: [learningAction({ operation: "reinforce", targetMemoryUri: seed.memory.uri })],
+      });
+      expect(repository.listMemoryObservations(seed.memory.uri)).toEqual([
+        expect.objectContaining({ writeSequence: 1, sourceEpisodeUri: next.episode.uri }),
+      ]);
+    } finally {
+      repository.close();
+    }
+  });
+
+  test("keeps promoted items and vectors when source history is truncated", () => {
+    const repository = create();
+    try {
+      repository.recordCompletedTurn(
+        completedTurn("session-truncate-source", "request-before", "2026-01-01T00:00:00.000Z"),
+      );
+      const seed = seedLongTermMemory(
+        repository,
+        "session-truncate-source",
+        "request-truncated",
+        "2026-01-02T00:00:00.000Z",
+      );
+
+      repository.deleteFromSessionRequest("session-truncate-source", "request-truncated");
+
+      expect(repository.listEpisodes("session-truncate-source").map((episode) => episode.requestId)).toEqual([
+        "request-before",
+      ]);
+      expect(repository.findMemoryItemsByUris([seed.memory.uri])).toHaveLength(1);
+      expect(repository.listMemoryItemVectors(seed.vector.model)).toHaveLength(1);
+      expect(repository.listMemoryObservations(seed.memory.uri)).toEqual([]);
+    } finally {
+      repository.close();
+    }
+  });
 });
 
 const memoryTestConfig: AgentSystemConfig = {
@@ -203,6 +335,39 @@ function createDatabasePath(): string {
   return path.join(directory, "Memory.sqlite");
 }
 
+function seedLongTermMemory(
+  repository: AgentMemorySourceRepository,
+  sessionId: string,
+  requestId: string,
+  startedAt: string,
+) {
+  const recorded = repository.recordCompletedTurn(completedTurn(sessionId, requestId, startedAt));
+  const candidate = repository.recordMemoryCandidates({
+    episode: recorded.episode,
+    learnedAt: startedAt,
+    candidates: [candidateDraft(recorded.sources[0]!.uri)],
+  })[0];
+  if (!candidate) throw new Error("Expected a memory candidate.");
+  const memory = repository.applyMemoryLearning({
+    episode: recorded.episode,
+    learnedAt: startedAt,
+    actions: [learningAction({ candidateUris: [candidate.uri] })],
+  })[0];
+  if (!memory) throw new Error("Expected a promoted memory item.");
+  repository.upsertMemoryItemVectors([
+    {
+      memoryUri: memory.uri,
+      model: "lifetime-test-embedding",
+      embedding: [0.25, 0.75],
+      updatedAt: startedAt,
+    },
+  ]);
+  const observation = repository.listMemoryObservations(memory.uri)[0];
+  const vector = repository.listMemoryItemVectors("lifetime-test-embedding")[0];
+  if (!observation || !vector) throw new Error("Expected memory observation and vector records.");
+  return { episode: recorded.episode, candidate, memory, observation, vector };
+}
+
 function completedTurn(sessionId: string, requestId: string, startedAt: string): AgentMemoryCompletedTurnInput {
   const userEntry: Extract<AgentConversationEntry, { kind: "user.message" }> = {
     id: `${requestId}:user`,
@@ -230,6 +395,7 @@ function completedTurn(sessionId: string, requestId: string, startedAt: string):
       content: "Use a preview before stable promotion.",
     },
     conversationEntries: [userEntry, assistantEntry],
+    executedTools: [],
   };
 }
 

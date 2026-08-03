@@ -1,11 +1,9 @@
 import { describe, expect, test } from "vitest";
-import type { AgentEvent, AgentHarness } from "@earendil-works/pi-agent-core";
-import { AgentConversationProjector } from "../../../Source/AgentSystem/Conversation/AgentConversationProjector.js";
+import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import { AgentEventKinds } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentRunActivities, AgentRunActivityStates } from "../../../Source/AgentSystem/Events/AgentRunEventTypes.js";
-import type { AgentLoopCommand } from "../../../Source/AgentSystem/Loop/AgentLoopStateTypes.js";
+import type { AgentPiTurnRequest } from "../../../Source/AgentSystem/Pi/AgentPiTurnTypes.js";
 import { AgentPiActiveSessionRegistry } from "../../../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
-import { AgentPiHarnessSession } from "../../../Source/AgentSystem/Pi/AgentPiHarnessSession.js";
 import { AgentPiRunCollector } from "../../../Source/AgentSystem/Pi/AgentPiRunCollector.js";
 import {
   AgentPiSessionMutationService,
@@ -22,34 +20,11 @@ import {
   type AgentPiDiagnosticEvent,
 } from "../../../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 import type { AgentPiModelProjection } from "../../../Source/AgentSystem/Pi/AgentPiTypes.js";
+import { emptyAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
+import { toolRootCommand } from "../Support/AgentTestFixtures.js";
+import { AgentPiTurnContextRegistry } from "../../../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
 
 describe("Pi streaming stability", () => {
-  test("awaits asynchronous core-event subscribers through the harness adapter", async () => {
-    const harness = new AwaitingHarness();
-    const session = new AgentPiHarnessSession(harness as unknown as AgentHarness, {
-      model: createModel(),
-      tools: [],
-    });
-    let releaseListener!: () => void;
-    const listenerGate = new Promise<void>((resolve) => {
-      releaseListener = resolve;
-    });
-    let listenerSettled = false;
-
-    session.subscribe(async () => {
-      await listenerGate;
-      listenerSettled = true;
-    });
-
-    const delivery = harness.dispatch(messageUpdate("partial"));
-    await Promise.resolve();
-    expect(listenerSettled).toBe(false);
-
-    releaseListener();
-    await delivery;
-    expect(listenerSettled).toBe(true);
-  });
-
   test("projects ordered model deltas without emitting internal diagnostics as domain events", async () => {
     const emitted: Array<{ kind: string; data: unknown }> = [];
     const collector = new AgentPiRunCollector({
@@ -58,6 +33,7 @@ describe("Pi streaming stability", () => {
       onEvent: async (event) => {
         emitted.push(event);
       },
+      turnContexts: new AgentPiTurnContextRegistry(),
     });
 
     await collector.collect(messageUpdate("first"));
@@ -80,6 +56,7 @@ describe("Pi streaming stability", () => {
       onEvent: async (event) => {
         emitted.push(event as { kind: string; data: Record<string, unknown> });
       },
+      turnContexts: new AgentPiTurnContextRegistry(),
     });
 
     await collector.collect(assistantMessageEvent("message_start", ""));
@@ -157,9 +134,14 @@ describe("Pi streaming stability", () => {
       services: {
         pi: {
           rewindSession: async () => true,
+          resetSession: async () => false,
+          forkSession: async () => false,
+          compactSession: async () => undefined,
+          sessionStatus: async () => undefined,
+          exportSession: async () => undefined,
         },
       },
-    } as unknown as AgentPiSessionMutationRuntime;
+    } satisfies AgentPiSessionMutationRuntime;
     const mutations = new AgentPiSessionMutationService({
       acquireRuntime: () => ({
         runtime,
@@ -178,18 +160,28 @@ describe("Pi streaming stability", () => {
         entryId: "turn-boundary",
       }),
     ).resolves.toBe(true);
+    await expect(mutations.reset({ sessionId: "missing-session" })).resolves.toBe(false);
+    await expect(mutations.status({ sessionId: "missing-session" })).resolves.toBeUndefined();
 
-    expect(releases).toBe(1);
+    expect(releases).toBe(3);
     expect(diagnostics).toEqual([
       expect.objectContaining({
         source: AgentPiDiagnosticSources.Substrate,
         name: "session.rewind.completed",
         details: expect.objectContaining({
-          mutated: true,
+          outcome: "completed",
           runtimeAcquireMs: expect.any(Number),
           operationMs: expect.any(Number),
           durationMs: expect.any(Number),
         }),
+      }),
+      expect.objectContaining({
+        name: "session.reset.completed",
+        details: expect.objectContaining({ outcome: "unchanged" }),
+      }),
+      expect.objectContaining({
+        name: "session.status.completed",
+        details: expect.objectContaining({ outcome: "unavailable" }),
       }),
     ]);
   });
@@ -253,21 +245,6 @@ describe("Pi streaming stability", () => {
     expect(Object.keys(diagnostic.details as Record<string, unknown>)).toHaveLength(25);
   });
 });
-
-class AwaitingHarness {
-  private listener: ((event: AgentEvent) => void | Promise<void>) | undefined;
-
-  subscribe(listener: (event: AgentEvent) => void | Promise<void>): () => void {
-    this.listener = listener;
-    return () => {
-      this.listener = undefined;
-    };
-  }
-
-  async dispatch(event: AgentEvent): Promise<void> {
-    await this.listener?.(event);
-  }
-}
 
 function messageUpdate(text: string): AgentEvent {
   return {
@@ -373,8 +350,9 @@ function createTurnRuntime(session: BackpressurePiSession): AgentPiTurnRuntimePo
           piSessionId: "backpressure-session",
           historyMigrationRequired: false,
         }),
-      } as AgentPiTurnRuntimePort["services"]["pi"],
+      },
       piSessions: new AgentPiActiveSessionRegistry(),
+      retrieval: { afterToolResults: () => [] },
     },
     modelProviderConfig: {
       Id: "backpressure-model",
@@ -386,21 +364,21 @@ function createTurnRuntime(session: BackpressurePiSession): AgentPiTurnRuntimePo
     tokenEstimator: {
       estimate: (text: string) => ({ tokenCount: text.length }),
     },
-    conversationProjector: new AgentConversationProjector(),
+    piTurnContexts: new AgentPiTurnContextRegistry(),
   };
 }
 
-function createRunPiTurnCommand(): Extract<AgentLoopCommand, { kind: "run_pi_turn" }> {
+function createRunPiTurnCommand(): AgentPiTurnRequest {
   return {
-    kind: "run_pi_turn",
     sessionId: "backpressure-session",
     requestId: "backpressure-request",
     step: 1,
     input: "stream this response",
     prompt: "stream this response",
-    messages: [],
     conversationEntries: [],
+    rootCommand: toolRootCommand(),
     loadedToolNames: [],
+    toolAccessGrant: emptyAgentToolAccessGrant(),
     activeSkills: [],
   };
 }

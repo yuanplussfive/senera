@@ -1,7 +1,6 @@
 import {
   resolveModelProviderConfig,
   resolveMemoryLearningConfig,
-  resolveToolLearningConfig,
   resolveVectorModelsConfig,
 } from "../AgentDefaults.js";
 import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
@@ -71,7 +70,6 @@ export interface AgentMemoryLearningRuntimeDependencies {
 
 export type AgentMemoryLearningRuntimeDependencyFactory = (input: {
   systemConfig: AgentSystemConfig;
-  learningConfig: ReturnType<typeof resolveToolLearningConfig>;
   memoryLearningConfig: ResolvedAgentMemoryLearningConfig;
 }) => AgentMemoryLearningRuntimeDependencies;
 
@@ -132,15 +130,13 @@ export class AgentMemoryLearningRuntime {
 
   async learn(recordedTurn: AgentMemoryRecordedTurn): Promise<void> {
     const systemConfig = this.options.configSnapshot();
-    const learningConfig = resolveToolLearningConfig(systemConfig);
     const memoryLearningConfig = resolveMemoryLearningConfig(systemConfig);
-    if (!learningConfig.Enabled) {
+    if (!memoryLearningConfig.Enabled) {
       return;
     }
 
     const { learningClient, vectorClient, writeResolver } = this.createDependencies({
       systemConfig,
-      learningConfig,
       memoryLearningConfig,
     });
     const recordedCandidates = await this.loadOrCreateCandidates(recordedTurn, learningClient, vectorClient);
@@ -191,6 +187,10 @@ export class AgentMemoryLearningRuntime {
     try {
       await this.learn(recordedTurn);
       this.options.repository.markMemoryLearningJobCompleted(job.episodeUri, this.now());
+      this.options.logger?.info("memory.learning.completed", {
+        requestId: recordedTurn.episode.requestId,
+        attempt: claimed.attempts,
+      });
       this.recordedTurns.delete(job.episodeUri);
     } catch (error) {
       const message = errorMessage(error);
@@ -203,7 +203,7 @@ export class AgentMemoryLearningRuntime {
         lastError: message,
         updatedAtMs: now,
       });
-      this.options.logger?.warn("memory.learning.failed", {
+      this.options.logger?.warn(terminal ? "memory.learning.failed" : "memory.learning.retry_scheduled", {
         message,
         requestId: recordedTurn.episode.requestId,
         standaloneRequest: recordedTurn.episode.standaloneRequest,
@@ -404,7 +404,6 @@ export class AgentMemoryLearningRuntime {
 
   private createDependencies(input: {
     systemConfig: AgentSystemConfig;
-    learningConfig: ReturnType<typeof resolveToolLearningConfig>;
     memoryLearningConfig: ResolvedAgentMemoryLearningConfig;
   }): AgentMemoryLearningRuntimeDependencies {
     if (this.options.createDependencies) {
@@ -413,14 +412,14 @@ export class AgentMemoryLearningRuntime {
 
     const model = resolveModelProviderConfig(input.systemConfig);
     const vectorConfig = resolveVectorModelsConfig(input.systemConfig);
-    const client = new AgentActionPlannerModelClient(model, input.learningConfig.Client, {
-      maxRepairAttempts: input.learningConfig.MaxRepairAttempts,
+    const client = new AgentActionPlannerModelClient(model, input.memoryLearningConfig.Client, {
+      maxRepairAttempts: input.memoryLearningConfig.MaxRepairAttempts,
     });
     const vectorClient = new AgentVectorModelClient(vectorConfig);
     return {
       learningClient: new AgentMemoryLearningModelClient({
         client,
-        maxRepairAttempts: input.learningConfig.MaxRepairAttempts,
+        maxRepairAttempts: input.memoryLearningConfig.MaxRepairAttempts,
       }),
       vectorClient,
       writeResolver: new AgentMemoryWriteResolver({
@@ -429,7 +428,7 @@ export class AgentMemoryLearningRuntime {
         vectorClient,
         memoryLearningConfig: input.memoryLearningConfig,
         embeddingModel: vectorConfig.Embedding.Model,
-        maxRepairAttempts: input.learningConfig.MaxRepairAttempts,
+        maxRepairAttempts: input.memoryLearningConfig.MaxRepairAttempts,
       }),
     };
   }

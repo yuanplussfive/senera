@@ -7,8 +7,6 @@ import {
   ArtifactsSchema,
   ConfigStoreSchema,
   PersistenceSchema,
-  PluginDiscoverySchema,
-  PluginRootsSchema,
   PresetsSchema,
   SandboxRuntimeSchema,
   ServerSchema,
@@ -23,10 +21,15 @@ import {
 } from "./AgentToolMemoryConfigSchema.js";
 import { CurrentAgentConfigVersion } from "../Config/AgentConfigVersion.js";
 
+const AgentSystemExtensionConfigSchema = z
+  .object({
+    Enabled: z.boolean().optional(),
+    Configuration: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
 const AgentDefaultsSchema = z
   .object({
-    PluginRoots: PluginRootsSchema.optional(),
-    PluginDiscovery: PluginDiscoverySchema.optional(),
     ToolExecution: ToolExecutionSchema.optional(),
     SandboxRuntime: SandboxRuntimeSchema.optional(),
     AgentLoop: AgentLoopSchema.optional(),
@@ -49,8 +52,6 @@ export const AgentSystemConfigSchema = z
   .object({
     ConfigVersion: z.literal(CurrentAgentConfigVersion).optional(),
     Defaults: AgentDefaultsSchema.optional(),
-    PluginRoots: PluginRootsSchema.optional(),
-    PluginDiscovery: PluginDiscoverySchema.optional(),
     XmlProtocol: z
       .object({
         MaxDepth: z.number().int().min(1).optional(),
@@ -64,7 +65,7 @@ export const AgentSystemConfigSchema = z
       .optional(),
     ToolExecution: ToolExecutionSchema.optional(),
     SandboxRuntime: SandboxRuntimeSchema.optional(),
-    PluginDocumentation: z
+    ToolDocumentation: z
       .object({
         Markdown: z
           .object({
@@ -82,13 +83,6 @@ export const AgentSystemConfigSchema = z
             RequiredSections: z.array(z.string().min(1)),
           })
           .strict(),
-        PromptXml: z
-          .object({
-            XmlFenceLanguages: z.array(z.string().min(1)).optional(),
-            CodeFenceLanguages: z.array(z.string().min(1)).optional(),
-          })
-          .strict()
-          .optional(),
       })
       .strict()
       .optional(),
@@ -110,5 +104,6 @@ export const AgentSystemConfigSchema = z
     Server: ServerSchema.optional(),
     Persistence: PersistenceSchema.optional(),
     ConfigStore: ConfigStoreSchema.optional(),
+    Extensions: z.record(z.string().trim().min(1), AgentSystemExtensionConfigSchema).optional(),
   })
   .strict();

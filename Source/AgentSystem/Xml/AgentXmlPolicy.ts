@@ -39,8 +39,6 @@ export interface AgentXmlProtocolSpec {
     userMessage: string;
     userMessageContent: string;
     attachments: string;
-    toolEvidenceMemory: string;
-    toolResults: string;
   };
   items: {
     toolCall: string;
@@ -67,7 +65,6 @@ export interface AgentXmlProtocolPolicy {
   protocol: AgentXmlProtocolSpec;
   arrayElementNames: ReadonlySet<string>;
   arrayElementNameSuffix: string;
-  xmlFenceLanguages: ReadonlySet<string>;
   forbiddenSyntaxRules: readonly AgentXmlForbiddenSyntaxRule[];
   allowBooleanAttributes: boolean;
   maxDecisionTokens: number;
@@ -102,8 +99,6 @@ export const AgentDefaultXmlProtocolSpec = {
     userMessage: "user_message",
     userMessageContent: "content",
     attachments: "attachments",
-    toolEvidenceMemory: "tool_evidence_memory",
-    toolResults: "tool_results",
   },
   items: {
     toolCall: "tool_call",
@@ -184,11 +179,6 @@ export function createXmlProtocolPolicy(config: AgentSystemConfig): AgentXmlProt
     protocol,
     arrayElementNames: new Set(listXmlArrayElementNames(protocol, config.XmlProtocol?.ArrayElementNames ?? [])),
     arrayElementNameSuffix: protocol.arrayElementNameSuffix,
-    xmlFenceLanguages: new Set(
-      ["", "xml", ...(config.PluginDocumentation?.PromptXml?.XmlFenceLanguages ?? [])].map((item) =>
-        item.trim().toLowerCase(),
-      ),
-    ),
     forbiddenSyntaxRules: [
       { pattern: /<!DOCTYPE/i, label: "DOCTYPE" },
       { pattern: /<!ENTITY/i, label: "ENTITY" },

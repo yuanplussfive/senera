@@ -17,7 +17,7 @@ const endpointProtocols = [
     name: "OpenAI Chat Completions",
     endpoint: "ChatCompletions",
     completeResponse: {
-      choices: [{ message: { content: [{ text: "Hello " }, { text: "world" }] } }],
+      choices: [{ message: { content: [{ text: "Hello " }, { text: "world" }] }, finish_reason: "stop" }],
       usage: {
         prompt_tokens: 10,
         completion_tokens: 4,
@@ -27,9 +27,10 @@ const endpointProtocols = [
       },
     },
     completeText: "Hello world",
+    expectedCompletion: { finishReason: "stop" },
     streamEvent: { choices: [{ delta: { content: "delta" } }] },
     usageEvent: {
-      choices: [],
+      choices: [{ delta: {}, finish_reason: "stop" }],
       usage: {
         prompt_tokens: 10,
         completion_tokens: 4,
@@ -65,6 +66,7 @@ const endpointProtocols = [
     name: "OpenAI Responses",
     endpoint: "Responses",
     completeResponse: {
+      status: "completed",
       output: [{ content: [{ text: "Response " }, { text: "text" }] }],
       usage: {
         input_tokens: 12,
@@ -75,10 +77,12 @@ const endpointProtocols = [
       },
     },
     completeText: "Response text",
+    expectedCompletion: { status: "completed" },
     streamEvent: { type: "response.output_text.delta", delta: "delta" },
     usageEvent: {
       type: "response.completed",
       response: {
+        status: "completed",
         usage: {
           input_tokens: 12,
           output_tokens: 5,
@@ -109,6 +113,7 @@ const endpointProtocols = [
     name: "Claude Messages",
     endpoint: "ClaudeMessages",
     completeResponse: {
+      stop_reason: "end_turn",
       content: [
         { type: "tool_use", text: "ignored" },
         { type: "text", text: "Claude " },
@@ -122,9 +127,11 @@ const endpointProtocols = [
       },
     },
     completeText: "Claude text",
+    expectedCompletion: { finishReason: "end_turn" },
     streamEvent: { type: "content_block_delta", delta: { text: "delta" } },
     usageEvent: {
       type: "message_delta",
+      delta: { stop_reason: "end_turn" },
       usage: {
         input_tokens: 8,
         output_tokens: 3,
@@ -153,7 +160,7 @@ const endpointProtocols = [
     name: "Google Generate Content",
     endpoint: "GoogleGenerateContent",
     completeResponse: {
-      candidates: [{ content: { parts: [{ text: "Google " }, { text: "text" }] } }],
+      candidates: [{ content: { parts: [{ text: "Google " }, { text: "text" }] }, finishReason: "STOP" }],
       usageMetadata: {
         promptTokenCount: 11,
         candidatesTokenCount: 4,
@@ -163,8 +170,10 @@ const endpointProtocols = [
       },
     },
     completeText: "Google text",
+    expectedCompletion: { finishReason: "STOP" },
     streamEvent: { candidates: [{ content: { parts: [{ text: "delta" }] } }] },
     usageEvent: {
+      candidates: [{ finishReason: "STOP" }],
       usageMetadata: {
         promptTokenCount: 11,
         candidatesTokenCount: 4,
@@ -206,6 +215,7 @@ describe("model endpoint protocol adapters", () => {
     await expect(endpoint.complete(createModelRequest())).resolves.toEqual({
       text: protocol.completeText,
       usage: protocol.expectedUsage,
+      completion: protocol.expectedCompletion,
     });
 
     const request = http.jsonRequests[0];
@@ -236,7 +246,11 @@ describe("model endpoint protocol adapters", () => {
       expect(request.query).toEqual({ alt: "sse" });
     }
     expect(request.projectEvent(protocol.streamEvent)).toEqual({ textDelta: "delta", usage: undefined });
-    expect(request.projectEvent(protocol.usageEvent)).toEqual({ textDelta: "", usage: protocol.expectedUsage });
+    expect(request.projectEvent(protocol.usageEvent)).toEqual({
+      textDelta: "",
+      usage: protocol.expectedUsage,
+      completion: protocol.expectedCompletion,
+    });
     if (protocol.endpoint === "ChatCompletions") {
       expect(readRecord(request.payload)).toMatchObject({ stream_options: { include_usage: true } });
     }

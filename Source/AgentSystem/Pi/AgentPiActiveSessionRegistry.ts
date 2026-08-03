@@ -1,4 +1,4 @@
-import type { AgentPiSession } from "./AgentPiSubstrate.js";
+import type { AgentPiSession } from "./AgentPiRuntimeTypes.js";
 
 export interface AgentPiActiveSessionHandle {
   sessionId: string;

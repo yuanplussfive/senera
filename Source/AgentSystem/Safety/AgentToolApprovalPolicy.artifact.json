@@ -9,20 +9,20 @@
     "policies": [
       {
         "file": "AgentToolApprovalPolicy.rego",
-        "sha256": "3903cccbd9f1d6808e20da7cd61de6ec28459a5c93c4dc7e9a69067fbe6657c5"
+        "sha256": "799d7d583215a88fbea8d7c4138263fcd85040335e2ed42b10c268c0f413d6a9"
       },
       {
         "file": "AgentResourceAccessPolicy.rego",
-        "sha256": "22513b543b8ef84dff52ba1ac86cc51ef7cb232febbdcba42c66819f82a88b78"
+        "sha256": "889288126814ec42ff488bba59a9b5f99df45161225160405423b3e85cc73bcd"
       }
     ],
     "data": {
       "file": "AgentToolApprovalPolicy.data.json",
-      "sha256": "751067c55f3c610b0f674beac783bfbe95c0b4ec5269a631280840cda06fc369"
+      "sha256": "f99a47bc59833795c97d5a8d1f46dac9eb5c89a51cf9bfcc1d7c4d5d9cb567dd"
     },
     "wasm": {
       "file": "AgentToolApprovalPolicy.wasm",
-      "sha256": "5af8a270ada34007e3675d85243fc74a01d7698e7065b7e86c84e16fa0a3458f"
+      "sha256": "7caabe0737ac486c967dc3895a747e540050b3ae44872b5eaaa10502755d9ad1"
     }
   }
 }

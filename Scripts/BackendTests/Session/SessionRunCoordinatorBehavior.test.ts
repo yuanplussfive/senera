@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { AgentCancellationError } from "../../../Source/AgentSystem/Core/AgentCancellation.js";
-import { AgentConversationPolicy } from "../../../Source/AgentSystem/Conversation/AgentConversationPolicy.js";
 import { AgentConversationProjector } from "../../../Source/AgentSystem/Conversation/AgentConversationProjector.js";
+import { AgentConversationPolicy } from "../../../Source/AgentSystem/Conversation/AgentConversationPolicy.js";
 import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import type { AgentLoopRunner } from "../../../Source/AgentSystem/Loop/AgentLoopRunner.js";
 import { AgentMemoryService } from "../../../Source/AgentSystem/Memory/AgentMemoryService.js";
@@ -12,12 +12,17 @@ import type { AgentCompletedRunResult } from "../../../Source/AgentSystem/Runtim
 import { createDeferred, waitForAbort } from "../Support/AsyncTestFixtures.js";
 import { InMemorySessionRepository } from "../../../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
 import { AgentSessionStatuses } from "../../../Source/AgentSystem/Session/AgentSession.js";
-import { AgentSessionRunCoordinator } from "../../../Source/AgentSystem/Session/AgentSessionRunCoordinator.js";
+import {
+  AgentSessionRunCoordinator,
+  AgentSessionRunCoordinatorShuttingDownError,
+} from "../../../Source/AgentSystem/Session/AgentSessionRunCoordinator.js";
 import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSessionStore.js";
 import { AgentSessionMessageQueueModes } from "../../../Source/AgentSystem/Session/AgentSessionMessageQueueMode.js";
 import { AgentDefaults } from "../../../Source/AgentSystem/AgentDefaults.js";
 import { AgentInteractionInputRuntime } from "../../../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
 import { createAgentRequestCancellationResource } from "../../../Source/AgentSystem/Session/AgentSessionRunResource.js";
+import { AgentSessionHistoryMutationCoordinator } from "../../../Source/AgentSystem/Session/AgentSessionHistoryMutationCoordinator.js";
+import { AgentSessionCommandConflictError } from "../../../Source/AgentSystem/Session/AgentSessionCommand.js";
 
 describe("Session run coordinator behavior", () => {
   test("persists a successful turn, records memory, and releases the session", async () => {
@@ -74,7 +79,6 @@ describe("Session run coordinator behavior", () => {
     });
     expect(fixture.store.loadConversation(fixture.session.id).map((entry) => entry.kind)).toEqual([
       "user.message",
-      "openai.transcript",
       "assistant.decision",
     ]);
     expect(fixture.store.loadStepTraces(fixture.session.id)).toEqual([
@@ -145,6 +149,31 @@ describe("Session run coordinator behavior", () => {
     });
   });
 
+  test("does not erase a warm tool snapshot when a direct turn returns no loaded tools", async () => {
+    const loop: AgentLoopRunner = {
+      preparationFingerprint: "runtime-tools-v1",
+      run: async (request) => ({
+        ...completedRun(request.requestId),
+        loadedToolNames: [],
+      }),
+    };
+    const fixture = createCoordinatorFixture({ loop });
+    fixture.session.metadata = {
+      toolAvailability: {
+        runtimeFingerprint: "runtime-tools-v1",
+        loadedToolNames: ["ToolSearchTool", "WeatherTool"],
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    };
+
+    await fixture.coordinator.runTurn(fixture.session, {
+      requestId: "request-direct",
+      input: "Thanks",
+    });
+
+    expect(fixture.session.metadata.toolAvailability?.loadedToolNames).toEqual(["ToolSearchTool", "WeatherTool"]);
+  });
+
   test("keeps a committed run completed when terminal publication fails", async () => {
     const fixture = createCoordinatorFixture({
       loop: {
@@ -184,6 +213,112 @@ describe("Session run coordinator behavior", () => {
       ]),
     );
     expect(fixture.session.status).toBe(AgentSessionStatuses.Idle);
+  });
+
+  test("replays a matching durable command without executing the loop twice", async () => {
+    const run = vi.fn(async (request: Parameters<AgentLoopRunner["run"]>[0]) => {
+      await request.commitTerminalEvents?.([
+        {
+          eventId: "event-idempotent-completed",
+          kind: AgentEventKinds.RunCompleted,
+          context: { requestId: request.requestId },
+          data: {},
+        },
+      ]);
+      return completedRun(request.requestId);
+    });
+    const fixture = createCoordinatorFixture({ loop: { run } });
+    const replayedEvents: AgentDomainEvent[] = [];
+
+    await fixture.coordinator.runTurn(fixture.session, {
+      requestId: "request-idempotent",
+      input: "Inspect once",
+    });
+    await fixture.coordinator.runTurn(fixture.session, {
+      requestId: "request-idempotent",
+      input: "Inspect once",
+      onEvent: (event) => {
+        replayedEvents.push(event);
+      },
+    });
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(fixture.store.loadConversation(fixture.session.id)).toHaveLength(2);
+    expect(replayedEvents.map((event) => event.kind)).toEqual([
+      AgentEventKinds.RunStarted,
+      AgentEventKinds.RunCompleted,
+    ]);
+    expect(replayedEvents.map((event) => event.eventId)).toEqual(
+      fixture.store.loadRunEventsForRequest(fixture.session.id, "request-idempotent").map((event) => event.eventId),
+    );
+  });
+
+  test("rejects request id reuse with a different canonical payload", async () => {
+    const run = vi.fn(async (request: Parameters<AgentLoopRunner["run"]>[0]) => completedRun(request.requestId));
+    const fixture = createCoordinatorFixture({ loop: { run } });
+
+    await fixture.coordinator.runTurn(fixture.session, {
+      requestId: "request-conflict",
+      input: "Original request",
+    });
+
+    await expect(
+      fixture.coordinator.runTurn(fixture.session, {
+        requestId: "request-conflict",
+        input: "Different request",
+      }),
+    ).rejects.toBeInstanceOf(AgentSessionCommandConflictError);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(fixture.store.loadConversation(fixture.session.id)).toHaveLength(2);
+  });
+
+  test("does not expose uncommitted terminal entries when terminal persistence fails", async () => {
+    const fixture = createCoordinatorFixture({
+      loop: { run: async (request) => completedRun(request.requestId) },
+    });
+    vi.spyOn(fixture.store, "persistTurnCommit").mockImplementation(() => {
+      throw new Error("terminal storage unavailable");
+    });
+
+    await expect(
+      fixture.coordinator.runTurn(fixture.session, {
+        requestId: "request-terminal-commit-failure",
+        input: "Do not leak the answer",
+      }),
+    ).rejects.toThrow("terminal storage unavailable");
+
+    expect(fixture.session.status).toBe(AgentSessionStatuses.Running);
+    expect(fixture.session.conversation.map((entry) => entry.kind)).toEqual(["user.message"]);
+    expect(fixture.store.loadConversation(fixture.session.id).map((entry) => entry.kind)).toEqual(["user.message"]);
+    expect(fixture.store.loadRunSnapshots(fixture.session.id)).toEqual([
+      expect.objectContaining({ requestId: "request-terminal-commit-failure", status: "running" }),
+    ]);
+  });
+
+  test("quiesces active runs before shutdown completes and rejects future runs", async () => {
+    const pending = createPendingLoop();
+    const fixture = createCoordinatorFixture({ loop: pending.loop });
+    const run = fixture.coordinator.runTurn(fixture.session, {
+      requestId: "request-shutdown",
+      input: "Wait for shutdown",
+    });
+    await pending.started;
+
+    const shutdown = fixture.coordinator.shutdown();
+    await Promise.all([run, shutdown]);
+
+    expect(fixture.store.loadRunSnapshots(fixture.session.id)).toEqual([
+      expect.objectContaining({ requestId: "request-shutdown", status: "cancelled" }),
+    ]);
+    expect(fixture.store.loadCommand(fixture.session.id, "request-shutdown")).toEqual(
+      expect.objectContaining({ state: "cancelled" }),
+    );
+    await expect(
+      fixture.coordinator.runTurn(fixture.session, {
+        requestId: "request-after-shutdown",
+        input: "Must be rejected",
+      }),
+    ).rejects.toBeInstanceOf(AgentSessionRunCoordinatorShuttingDownError);
   });
 
   test("stores failure state and emits a contextual failure event", async () => {
@@ -510,6 +645,51 @@ describe("Session run coordinator behavior", () => {
     await run;
   });
 
+  test("renders queued attachments for Pi and records their parent run", async () => {
+    const pendingLoop = createPendingLoop();
+    const piSessions = new AgentPiActiveSessionRegistry();
+    const fixture = createCoordinatorFixture({ loop: pendingLoop.loop, piSessions });
+    const pi = new RecordingPiQueueSession();
+    const run = fixture.coordinator.runTurn(fixture.session, {
+      requestId: "request-active",
+      input: "Inspect the workspace",
+    });
+    await pendingLoop.started;
+    const unregister = piSessions.register({
+      sessionId: fixture.session.id,
+      requestId: "request-active",
+      step: 2,
+      session: pi as unknown as AgentPiSession,
+    });
+
+    await fixture.coordinator.enqueueActiveRunMessage({
+      session: fixture.session,
+      requestId: "request-attachment",
+      input: "Inspect the attachment",
+      attachments: [
+        {
+          uploadUri: "senera://upload/upload-a",
+          name: "report.txt",
+          mime: "text/plain",
+          size: 12,
+          status: "uploaded",
+        },
+      ],
+      queueMode: AgentSessionMessageQueueModes.Steer,
+    });
+
+    expect(pi.steered[0]).toContain("<current_user_message>");
+    expect(pi.steered[0]).toContain("<uploadUri>senera://upload/upload-a</uploadUri>");
+    expect(fixture.store.loadConversation(fixture.session.id).at(-1)?.metadata?.queue).toEqual({
+      parentRequestId: "request-active",
+      mode: AgentSessionMessageQueueModes.Steer,
+    });
+
+    unregister();
+    await fixture.coordinator.cancelActiveRun({ sessionId: fixture.session.id });
+    await run;
+  });
+
   test("waits for the run even when Pi abort rejects first", async () => {
     const runStarted = createDeferred<void>();
     const allowRunToSettle = createDeferred<void>();
@@ -571,11 +751,16 @@ describe("Session run coordinator behavior", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
+    const fullSnapshotReader = vi.spyOn(fixture.sessionRepository, "loadRunSnapshots").mockImplementation(() => {
+      throw new Error("Full run-snapshot loading is forbidden during restart recovery.");
+    });
 
     expect(fixture.coordinator.assertAvailable(fixture.session).kind).toBe("available");
     fixture.coordinator.cleanupOrphanedRunningSnapshots();
 
     expect(fixture.session).toMatchObject({ status: AgentSessionStatuses.Idle, activeRequest: undefined });
+    expect(fullSnapshotReader).not.toHaveBeenCalled();
+    fullSnapshotReader.mockRestore();
     expect(fixture.store.loadRunSnapshots(fixture.session.id)).toEqual([
       expect.objectContaining({ status: "failed", errorMessage: expect.stringContaining("后端重启") }),
     ]);
@@ -592,11 +777,14 @@ function createCoordinatorFixture(options: {
   const store = new AgentSessionStore({ repository: sessionRepository });
   const session = store.open("session-test").session;
   const memoryRepository = new InMemoryAgentMemorySourceRepository();
+  const memory = new AgentMemoryService({ sourceRepository: memoryRepository });
+  const historyMutations = new AgentSessionHistoryMutationCoordinator({ store, memory });
   const coordinator = new AgentSessionRunCoordinator({
     store,
-    conversationPolicy: new AgentConversationPolicy(),
     conversationProjector: new AgentConversationProjector(),
-    memory: new AgentMemoryService({ sourceRepository: memoryRepository }),
+    conversationPolicy: new AgentConversationPolicy(),
+    memory,
+    historyMutations,
     piSessions: options.piSessions,
     runResources: [
       ...(options.runResources ?? []),
@@ -609,7 +797,7 @@ function createCoordinatorFixture(options: {
     },
     loopFactory: () => options.loop,
   });
-  return { coordinator, memoryRepository, session, store };
+  return { coordinator, memoryRepository, session, sessionRepository, store };
 }
 
 function requestInteractionInput(runtime: AgentInteractionInputRuntime, requestId: string): Promise<unknown> {
@@ -630,8 +818,7 @@ function requestInteractionInput(runtime: AgentInteractionInputRuntime, requestI
   });
 }
 
-function completedRun(requestId: string): AgentCompletedRunResult {
-  const projector = new AgentConversationProjector();
+function completedRun(_requestId: string): AgentCompletedRunResult {
   return {
     terminal: { kind: "FinalAnswer", content: "Inspection complete." },
     decisionXml: "<agent_result><final_answer>Inspection complete.</final_answer></agent_result>",
@@ -643,18 +830,8 @@ function completedRun(requestId: string): AgentCompletedRunResult {
       model: "test-model",
     },
     usage: { source: "local_estimate", inputTokens: 10, outputTokens: 4 },
-    conversationEntries: [
-      projector.projectOpenAiTranscript(
-        requestId,
-        [
-          {
-            role: "assistant",
-            content: "Inspection complete.",
-          },
-        ],
-        "2026-01-01T00:01:00.000Z",
-      ),
-    ],
+    conversationEntries: [],
+    executedTools: [],
     stepTraces: [{ step: 1, seq: 0, kind: "answer", status: "done" }],
   };
 }

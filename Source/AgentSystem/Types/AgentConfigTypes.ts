@@ -44,8 +44,6 @@ export type {
   ResolvedAgentLoopConfig,
   ResolvedAgentPiCompactionConfig,
   ResolvedAgentPersistenceConfig,
-  ResolvedAgentPluginDiscoveryConfig,
-  ResolvedAgentPluginRootsConfig,
   ResolvedAgentPresetsConfig,
   ResolvedAgentSandboxRuntimeConfig,
   ResolvedAgentServerAccessControlConfig,

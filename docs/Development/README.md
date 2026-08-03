@@ -5,6 +5,8 @@
 - [新增工具开发手册](./AddTool.md)
 - [新增运行时事件开发手册](./AddRuntimeEvent.md)
 - [新增模型端点开发手册](./AddModelEndpoint.md)
+- [Skill 生命周期与外部扩展边界](./ManagedExtensions.md)
+- [学习系统边界与诊断](./Learning.md)
 - [前端设置工作台约束](./FrontendSettingsWorkbench.md)
 - [前端 Ladle 组件约束](./FrontendLadleConstraints.md)
 - [前端性能预算](./FrontendPerformanceBudgets.md)

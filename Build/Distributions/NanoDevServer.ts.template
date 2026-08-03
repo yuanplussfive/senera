@@ -1,5 +1,4 @@
 import { startSeneraServer } from "./ServerRuntime.js";
-import { createSourceAgentMcpRuntimeModuleResolver } from "../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
 import { resolveAgentSandboxDevelopmentBundleRoot } from "../Source/AgentSystem/Sandbox/AgentSandboxBundlePaths.js";
 import { AgentSandboxRuntimeProviders } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
 import { ensureSeneraDevelopmentConfig } from "./RuntimeConfigBootstrap.js";
@@ -8,7 +7,6 @@ const workspaceRoot = process.cwd();
 const configPath = ensureSeneraDevelopmentConfig(workspaceRoot);
 const handle = await startSeneraServer({
   configPath,
-  runtimeModuleResolver: createSourceAgentMcpRuntimeModuleResolver(workspaceRoot),
   sandboxBundleRoot: resolveAgentSandboxDevelopmentBundleRoot(workspaceRoot),
   sandboxProvider: AgentSandboxRuntimeProviders.Microsandbox,
 });

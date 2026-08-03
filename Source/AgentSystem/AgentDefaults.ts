@@ -8,8 +8,6 @@ export {
   resolveConfigStoreConfig,
   resolveFrontendConfig,
   resolvePersistenceConfig,
-  resolvePluginDiscoveryConfig,
-  resolvePluginRootsConfig,
   resolveServerConfig,
   resolveUploadsConfig,
 } from "./Defaults/AgentAppDefaults.js";

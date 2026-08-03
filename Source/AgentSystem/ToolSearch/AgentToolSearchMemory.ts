@@ -1,4 +1,5 @@
 import type { ResolvedAgentToolSearchConfig } from "../Types/AgentConfigTypes.js";
+import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import {
   AgentToolSearchMemoryBetaPrior,
   confidenceFromSupport,
@@ -8,7 +9,7 @@ import {
   singleTermWeights,
   weightedSimilarity,
 } from "./AgentToolSearchMemoryProjection.js";
-import { SqliteToolSearchMemoryStore, resolveToolSearchMemoryDatabasePath } from "./AgentToolSearchMemoryStore.js";
+import { SqliteToolSearchMemoryStore } from "./AgentToolSearchMemoryStore.js";
 import type {
   AgentToolLearningSignal,
   AgentToolSearchEpisode,
@@ -17,6 +18,13 @@ import type {
   AgentToolUsePattern,
   AgentToolUsePatternMatch,
 } from "./AgentToolSearchMemoryTypes.js";
+import type {
+  AgentLearningEpisode,
+  AgentLearningEpisodeResolution,
+  AgentLearningSummary,
+  AgentSkillLearningEvidence,
+  AgentSkillLearningTermAggregate,
+} from "./AgentLearningEpisodeTypes.js";
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 
 export type {
@@ -39,12 +47,25 @@ export class AgentToolSearchMemory {
     store?: AgentToolSearchMemoryStore,
   ) {
     this.store =
-      store ??
-      new SqliteToolSearchMemoryStore(resolveToolSearchMemoryDatabasePath(workspaceRoot, config.Memory.DatabasePath));
+      store ?? new SqliteToolSearchMemoryStore(resolveAgentWorkspaceLayout(workspaceRoot).databases.toolSearch);
   }
 
   record(episode: AgentToolSearchEpisode): void {
     this.store.add(episode, projectLearningProjection(episode, this.tokenizer));
+    this.store.prune(this.config.Memory.MaxEpisodes);
+  }
+
+  commitToolLearning(
+    episode: AgentToolSearchEpisode,
+    learningEpisodeId: string,
+    resolution: AgentLearningEpisodeResolution,
+  ): void {
+    this.store.commitToolLearning(
+      episode,
+      projectLearningProjection(episode, this.tokenizer),
+      learningEpisodeId,
+      resolution,
+    );
     this.store.prune(this.config.Memory.MaxEpisodes);
   }
 
@@ -140,6 +161,87 @@ export class AgentToolSearchMemory {
       .sort((left, right) => right.score - left.score || left.toolName.localeCompare(right.toolName))
       .slice(0, options.limit)
       .map(({ score: _score, ...pattern }) => pattern);
+  }
+
+  recordLearningEpisode(episode: AgentLearningEpisode): void {
+    this.store.recordLearningEpisode(episode);
+  }
+
+  resolveLearningEpisode(id: string, resolution: AgentLearningEpisodeResolution): void {
+    this.store.resolveLearningEpisode(id, resolution);
+  }
+
+  learningEpisodes(projectId: string, limit: number): AgentLearningEpisode[] {
+    return this.store.learningEpisodes(projectId, limit);
+  }
+
+  learningEpisode(projectId: string, id: string): AgentLearningEpisode | undefined {
+    return this.store.learningEpisode(projectId, id);
+  }
+
+  learningSummary(projectId: string): AgentLearningSummary {
+    return this.store.learningSummary(projectId);
+  }
+
+  skillLearningTerms(projectId: string, skillName?: string): AgentSkillLearningTermAggregate[] {
+    return this.store
+      .skillLearningTerms(projectId)
+      .filter((term) => !skillName || term.skillName === skillName)
+      .sort((left, right) => right.lastSeenAt - left.lastSeenAt || left.term.localeCompare(right.term));
+  }
+
+  addSkillLearningTerms(terms: readonly AgentSkillLearningTermAggregate[]): void {
+    if (terms.length > 0) this.store.addSkillLearningTerms(terms);
+  }
+
+  commitSkillLearning(
+    terms: readonly AgentSkillLearningTermAggregate[],
+    learningEpisodeId: string,
+    resolution: AgentLearningEpisodeResolution,
+  ): void {
+    this.store.commitSkillLearning(terms, learningEpisodeId, resolution);
+  }
+
+  rankSkills(options: {
+    queryTokens: readonly string[];
+    projectId: string;
+    revisions: ReadonlyMap<string, string>;
+    now?: number;
+  }): AgentSkillLearningEvidence[] {
+    const query = new Set(options.queryTokens);
+    if (query.size === 0 || options.revisions.size === 0) return [];
+    const now = options.now ?? Date.now();
+    const evidence = new Map<string, { revision: string; mass: number; support: number; terms: Set<string> }>();
+    for (const term of this.store.skillLearningTerms(options.projectId)) {
+      const revision = options.revisions.get(term.skillName);
+      if (!revision || revision !== term.skillRevision) continue;
+      const similarity = weightedSimilarity(query, singleTermWeights(term.term, term.weight, this.tokenizer));
+      if (similarity <= 0) continue;
+      const decay = this.timeDecay(now - term.lastSeenAt, this.config.Memory.HalfLifeDays);
+      const current = evidence.get(term.skillName) ?? {
+        revision,
+        mass: 0,
+        support: 0,
+        terms: new Set<string>(),
+      };
+      current.mass += term.support * similarity * decay;
+      current.support += term.support;
+      current.terms.add(term.term);
+      evidence.set(term.skillName, current);
+    }
+    return [...evidence.entries()]
+      .map(([skillName, value]) => {
+        const confidence = confidenceFromSupport(value.mass);
+        return {
+          skillName,
+          skillRevision: value.revision,
+          evidence: value.mass,
+          confidence,
+          rankScore: confidence * Math.log1p(value.mass),
+          terms: [...value.terms].sort(),
+        };
+      })
+      .sort((left, right) => right.rankScore - left.rankScore || left.skillName.localeCompare(right.skillName));
   }
 
   close(): void {

@@ -4,6 +4,7 @@ import type {
   ToolArtifactEvidenceRecord,
 } from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolSearchEpisodeCall, AgentToolSearchFinalOutcome } from "./AgentToolSearchMemory.js";
+import { readAgentToolFailure } from "../ToolRuntime/AgentToolResultOutcome.js";
 
 export interface AgentToolSearchEpisodeAssessment {
   calls: AgentToolSearchEpisodeCall[];
@@ -15,7 +16,7 @@ export interface AgentToolSearchEpisodeAssessment {
 export function assessToolSearchEpisode(results: readonly ExecutedToolCallResult[]): AgentToolSearchEpisodeAssessment {
   const calls = results.map((result) => assessToolCall(result));
   const finalOutcome = {
-    toolExecutionSucceeded: calls.length > 0 && calls.every((call) => call.status !== "failure"),
+    toolExecutionSucceeded: calls.length > 0 && calls.every((call) => call.status === "success"),
     producedEvidence: calls.some((call) => call.hasEvidence),
     producedArtifact: calls.some((call) => call.hasArtifact),
     changedWorkspace: calls.some((call) => call.hasWorkspaceChanges),
@@ -32,13 +33,13 @@ export function assessToolSearchEpisode(results: readonly ExecutedToolCallResult
 }
 
 function assessToolCall(result: ExecutedToolCallResult): AgentToolSearchEpisodeCall {
-  const toolError = readToolError(result);
+  const toolError = readAgentToolFailure(result.outcome);
   const artifact = result.artifact;
   const evidenceUris = readEvidenceUris(artifact?.evidence ?? []);
   const evidenceKinds = readEvidenceKinds(artifact?.evidence ?? []);
   const artifactUris = artifact?.artifactUri ? [artifact.artifactUri] : [];
   const hasWorkspaceChanges = hasChangedWorkspace(artifact);
-  const status = toolError.message ? "failure" : isEmptyToolResult(result) ? "empty" : "success";
+  const status = toolError ? "failure" : isEmptyToolResult(result) ? "empty" : "success";
   const producedUsefulOutcome = Boolean(artifact) || evidenceUris.length > 0 || hasWorkspaceChanges;
 
   return {
@@ -51,39 +52,17 @@ function assessToolCall(result: ExecutedToolCallResult): AgentToolSearchEpisodeC
     hasArtifact: Boolean(artifact),
     hasEvidence: evidenceUris.length > 0,
     hasWorkspaceChanges,
-    errorCode: toolError.code,
-    error: toolError.message,
+    errorCode: toolError?.code ?? "",
+    error: toolError?.message ?? "",
+    failureKind: toolError?.kind,
+    failureSource: toolError?.source,
+    retryable: toolError?.retryable,
     score: status === "success" && producedUsefulOutcome ? 1 : 0,
   };
 }
 
-function readToolError(result: ExecutedToolCallResult): { code: string; message: string } {
-  const protocolError = readErrorField(result.result);
-  if (protocolError) {
-    return protocolError;
-  }
-
-  const message = [result.process.stderr].find((value) => value.trim().length > 0)?.trim() ?? "";
-  return { code: "", message };
-}
-
-function readErrorField(value: unknown): { code: string; message: string } | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-
-  const error = (value as Record<string, unknown>).error;
-  if (typeof error === "string" && error.trim().length > 0) {
-    return { code: "", message: error.trim() };
-  }
-  if (!error || typeof error !== "object" || Array.isArray(error)) {
-    return undefined;
-  }
-
-  const record = error as Record<string, unknown>;
-  const code = typeof record.code === "string" ? record.code.trim() : "";
-  const message = typeof record.message === "string" ? record.message.trim() : "";
-  return code || message ? { code, message } : undefined;
+export function isGroundedSuccessfulToolSearchCall(call: AgentToolSearchEpisodeCall): boolean {
+  return call.status === "success" && (call.hasEvidence || call.hasArtifact || call.hasWorkspaceChanges);
 }
 
 function readEvidenceUris(evidence: readonly ToolArtifactEvidenceRecord[]): string[] {

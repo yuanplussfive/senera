@@ -2,8 +2,11 @@ import { createReadStream } from "node:fs";
 import { access, open, readdir, rename, rm, stat, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { compactRecord } from "../Core/AgentCollections.js";
+import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
 import { createOpaqueId } from "../Core/AgentIds.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 export interface AgentPiSessionHistoryMaintenanceOptions {
   sessionsRoot: string;
@@ -149,7 +152,7 @@ export class AgentPiSessionHistoryMaintenance {
 function projectPiSessionLine(line: string): ProjectedLine {
   let entry: unknown;
   try {
-    entry = JSON.parse(line);
+    entry = parseJsonText(line, "Session history line");
   } catch {
     return { line, changed: false, invalid: true };
   }
@@ -164,7 +167,7 @@ function projectPiSessionLine(line: string): ProjectedLine {
   const executed = readRecord(senera.executed);
   const artifact = readRecord(executed?.artifact);
   const { result: _result, executed: _executed, ...metadata } = senera;
-  const compactDetails = compactObject({
+  const compactDetails = compactRecord({
     ...metadata,
     toolName: metadata.toolName ?? executed?.name ?? message.toolName,
     artifactUri: metadata.artifactUri ?? artifact?.artifactUri,
@@ -240,12 +243,4 @@ function projectProgress(progress: MutableProgress): AgentPiSessionHistoryMainte
     invalidEntries: progress.invalidEntries,
     reclaimableBytes: progress.reclaimableBytes,
   };
-}
-
-function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
-}
-
-function compactObject(value: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 }

@@ -8,18 +8,12 @@ export const ToolSearchSchema = z
     Embedding: z
       .object({
         Enabled: z.boolean().optional(),
-        ModelProviderId: z.string().min(1).optional(),
-        Model: z.string().min(1).optional(),
-        Dimensions: disabledOrPositiveInteger("ToolSearch.Embedding.Dimensions").optional(),
-        BatchSize: z.number().int().min(1).optional(),
-        InputMaxChars: disabledOrPositiveInteger("ToolSearch.Embedding.InputMaxChars").optional(),
         ScoreThreshold: z.number().min(-1).max(1).optional(),
       })
       .strict()
       .optional(),
     Memory: z
       .object({
-        DatabasePath: z.string().min(1).optional(),
         MaxEpisodes: z.number().int().min(1).optional(),
         HalfLifeDays: z.number().positive().optional(),
       })
@@ -108,6 +102,9 @@ export const ToolLearningSchema = z
 
 export const MemoryLearningSchema = z
   .object({
+    Enabled: z.boolean().optional(),
+    MaxRepairAttempts: z.number().int().min(0).optional(),
+    Client: ActionPlannerClientSchema("MemoryLearning.Client").optional(),
     Promotion: z
       .object({
         MinSupport: z.number().int().min(1).optional(),

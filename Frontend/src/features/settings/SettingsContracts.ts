@@ -1,10 +1,15 @@
 import type {
   ConfigMutationState,
   ConfigSnapshotData,
+  McpInputValue,
+  McpInputMutationState,
+  McpServerSettingsItem,
   ProviderModelEndpointInput,
   ProviderModelEndpointPatchInput,
   ProviderModelsFailedData,
   ProviderModelsSnapshotData,
+  SystemToolSettingsItem,
+  SystemExtensionSettingsItem,
 } from "../../api/eventTypes";
 import type { ConfigMutationController } from "../../app/useConfigMutationController";
 import type { ProviderEndpointDeleteOptions } from "../../app/providerEndpointMutations";
@@ -29,11 +34,6 @@ export interface SettingsConfigCommands {
   setDefaultProviderModel: (modelId: string) => string | null;
 }
 
-export interface SettingsPluginCommands {
-  pluginConfigs: readonly { diagnostics?: readonly { severity: "error" | "warning" }[] }[];
-  pluginConfigOperations: Record<string, { status: string }>;
-}
-
 /**
  * Composed handle passed as `SettingsWorkbenchProps.systemConfig`. The controller
  * receives the current config snapshot as an input, while provider catalogs and
@@ -42,6 +42,14 @@ export interface SettingsPluginCommands {
  */
 export interface SettingsSystemConfigHandle extends ConfigMutationController {
   configSnapshot: ConfigSnapshotData | null;
+  systemTools: readonly SystemToolSettingsItem[];
+  systemExtensions: readonly SystemExtensionSettingsItem[];
+  mcpServers: readonly McpServerSettingsItem[];
+  mcpInputOperation: McpInputMutationState | null;
+  toolSettingsSynced: { readonly systemTools: boolean; readonly mcpServers: boolean };
   providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
   providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
+  refreshToolSettings: () => boolean;
+  updateMcpInputs: (serverId: string, values: Record<string, McpInputValue>, deletes?: string[]) => string | null;
+  restartMcpServer: (serverId: string) => boolean;
 }

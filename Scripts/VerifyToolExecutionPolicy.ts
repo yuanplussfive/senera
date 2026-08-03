@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
-import path from "node:path";
 import {
   AgentToolExecutionTargetError,
   resolveAgentToolInvocation,
 } from "../Source/AgentSystem/ToolRuntime/AgentToolExecutionPlan.js";
-import type { LoadedPlugin, RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
-import type { ToolExecutionManifest } from "../Source/AgentSystem/Types/PluginManifestTypes.js";
+import type { RegisteredTool } from "../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
+import type { ToolExecutionManifest } from "../Source/AgentSystem/Types/AgentToolContractTypes.js";
 
 const workspaceRoot = process.cwd();
 
@@ -59,55 +58,23 @@ function main(): void {
   console.log("Tool execution plan verification passed.");
 }
 
-function createPlugin(): LoadedPlugin {
-  const pluginRoot = path.join(workspaceRoot, "System", "Plugins", "VerifyExecutionPlugin");
-  return {
-    rootPath: pluginRoot,
-    rootKind: "System",
-    manifestPath: path.join(pluginRoot, "PluginManifest.json"),
-    config: {
-      fileName: "PluginConfig.toml",
-      path: path.join(pluginRoot, "PluginConfig.toml"),
-      exists: false,
-      source: "default",
-      templateExists: false,
-      needsUserConfig: false,
-      toml: "",
-      sections: [],
-      runtime: { enabled: true, tools: {} },
-      diagnostics: [],
-    },
-    manifest: {
-      ManifestVersion: 2,
-      Plugin: { Name: "VerifyExecutionPlugin", Version: "0.0.0", Kind: "Tool" },
-      Tools: [
-        {
-          Name: "VerifyTool",
-          Handler: { Kind: "HostCapability", Capability: "verify" },
-          Runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 },
-          Execution: DefaultExecution,
-        },
-      ],
-    },
-  };
-}
-
-const DefaultExecution = {
-  Targets: ["Sandbox"],
-  Network: "Deny",
-  Workspace: "ReadOnly",
-} satisfies ToolExecutionManifest;
-
 function createTool(input: { permissions?: string[]; execution: ToolExecutionManifest }): RegisteredTool {
   return {
-    plugin: createPlugin(),
+    owner: {
+      kind: "system",
+      name: "verify-execution",
+      rootPath: workspaceRoot,
+      revision: "test",
+      trusted: true,
+      requiresApproval: false,
+    },
     name: "VerifyTool",
     loading: "Dynamic",
     permissions: input.permissions ?? [],
     sources: [],
     execution: input.execution,
     handler: { kind: "HostCapability", capability: "verify" },
-    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 },
+    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
     evidenceCapabilities: [],
   };
 }

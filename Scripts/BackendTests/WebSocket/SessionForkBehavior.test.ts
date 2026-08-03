@@ -41,4 +41,44 @@ describe("Session fork WebSocket behavior", () => {
       onEvent: sendEvent,
     });
   });
+
+  test("validates and forwards Pi session management requests", async () => {
+    expect(AgentWebSocketRequestSchema.safeParse({ type: "session.compact", sessionId: "session-a" }).success).toBe(
+      true,
+    );
+    expect(
+      AgentWebSocketRequestSchema.safeParse({
+        type: "session.export",
+        sessionId: "session-a",
+        format: "jsonl",
+      }).success,
+    ).toBe(true);
+    expect(
+      AgentWebSocketRequestSchema.safeParse({
+        type: "session.export",
+        sessionId: "session-a",
+        format: "text",
+      }).success,
+    ).toBe(false);
+
+    const compactSession = vi.fn(async () => {});
+    const emitPiSessionRuntimeStatus = vi.fn(async () => {});
+    const exportPiSession = vi.fn(async () => {});
+    const handler = new AgentWebSocketSessionRequestHandlers({
+      sessionManager: { compactSession, emitPiSessionRuntimeStatus, exportPiSession },
+    } as unknown as AgentWebSocketRequestContext);
+    const sendEvent = vi.fn();
+
+    await handler.compact({ type: "session.compact", sessionId: "session-a" }, sendEvent);
+    await handler.runtimeStatus({ type: "session.runtime_status", sessionId: "session-a" }, sendEvent);
+    await handler.export({ type: "session.export", sessionId: "session-a", format: "html" }, sendEvent);
+
+    expect(compactSession).toHaveBeenCalledWith({
+      sessionId: "session-a",
+      customInstructions: undefined,
+      onEvent: sendEvent,
+    });
+    expect(emitPiSessionRuntimeStatus).toHaveBeenCalledWith({ sessionId: "session-a", onEvent: sendEvent });
+    expect(exportPiSession).toHaveBeenCalledWith({ sessionId: "session-a", format: "html", onEvent: sendEvent });
+  });
 });

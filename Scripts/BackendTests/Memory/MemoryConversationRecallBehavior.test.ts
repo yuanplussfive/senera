@@ -19,7 +19,6 @@ import type {
   AgentMemoryItemRecord,
 } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
-import { createTurnUnderstanding } from "../Support/AgentTestFixtures.js";
 
 describe("Memory conversation recall behavior", () => {
   test("falls back to ordinary conversation turns when no durable memory matches", async () => {
@@ -214,9 +213,7 @@ function completedTurn(input: {
       content: input.assistantText,
     },
     conversationEntries: [userEntry, assistantEntry],
-    turnUnderstanding: createTurnUnderstanding(input.userText, {
-      standaloneRequest: input.userText,
-    }),
+    executedTools: [],
   };
 }
 

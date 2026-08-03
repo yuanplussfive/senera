@@ -1,7 +1,9 @@
 import { createParser } from "eventsource-parser";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import type { AgentLanguageModelStreamChunk } from "./AgentLanguageModel.js";
 import type { JsonObject } from "./ModelEndpointTypes.js";
 import type { AgentModelUsageValue } from "./AgentModelUsage.js";
+import type { AgentModelCompletionMetadata } from "./AgentModelCompletion.js";
 import { readAbortFailure } from "./ModelHttpAbort.js";
 import { ModelRequestTimeoutError, ModelResponseLimitError } from "./ModelHttpErrors.js";
 import { parseModelHttpJsonObject } from "./ModelHttpJson.js";
@@ -15,6 +17,7 @@ export async function* parseModelEventStreamText(
     dispose: () => void;
     normalizeError: (error: unknown) => Error;
     onUsage?: (usage: AgentModelUsageValue) => void;
+    onCompletion?: (completion: AgentModelCompletionMetadata) => void;
     maxResponseBytes: number;
     maxEventBytes: number;
     maxEvents: number;
@@ -33,7 +36,8 @@ export async function* parseModelEventStreamText(
       if (Buffer.byteLength(event.data, "utf8") > options.maxEventBytes) {
         throw new ModelResponseLimitError("SSE event", options.maxEventBytes);
       }
-      events.push(parseModelHttpJsonObject(JSON.parse(event.data) as unknown));
+      const parsedEvent = parseJsonText(event.data, "SSE event data");
+      events.push(parseModelHttpJsonObject(parsedEvent));
     },
     onError: (error) => {
       throw error;
@@ -73,6 +77,7 @@ export async function* parseModelEventStreamText(
         if (!event) continue;
         const projection = projectEvent(event);
         if (projection.usage) options.onUsage?.(projection.usage);
+        if (projection.completion) options.onCompletion?.(projection.completion);
         const textDelta = projection.textDelta ?? "";
         if (!textDelta) continue;
         if (!firstTokenSeen) {
@@ -100,6 +105,7 @@ export async function* parseModelEventStreamText(
 export interface ModelSseEventProjection {
   textDelta?: string;
   usage?: AgentModelUsageValue;
+  completion?: AgentModelCompletionMetadata;
 }
 
 function readStreamChunk(

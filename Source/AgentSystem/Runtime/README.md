@@ -1,6 +1,6 @@
 # Runtime 模块
 
-`Runtime` 是 Agent 系统的装配层，负责把配置、插件、模型、规划器、工具执行、提示词上下文和运行时服务组装成一次可运行的系统实例。
+`Runtime` 是 Agent 系统的装配层，负责把配置、System Tools、MCP packages、Skills、模型、规划器、工具执行和运行时服务组装成一次可运行的系统实例。
 
 ## 模块职责
 

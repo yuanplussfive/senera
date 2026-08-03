@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type http from "node:http";
 import { type WebSocket } from "ws";
 import type { ResolvedAgentServerConfig } from "../Types/AgentConfigTypes.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { AgentAdminSessionStore, type AgentAdminSession, type AgentServerPrincipal } from "./AgentAdminSessionStore.js";
 import {
   AgentLocalAdminAccountStore,
@@ -77,10 +77,27 @@ export class AgentServerAccessGuard {
       maxSessions: options.server.AccessControl.Session.MaxSessions,
       now: options.now,
     });
-    this.loginAttempts = createRateLimiter(options.server.AccessControl.Limits.LoginAttemptsPerMinute, options.now);
-    this.httpRequests = createRateLimiter(options.server.AccessControl.Limits.HttpRequestsPerMinute, options.now);
-    this.upgradeAttempts = createRateLimiter(options.server.AccessControl.Limits.UpgradeRequestsPerMinute, options.now);
-    this.messages = createRateLimiter(options.server.AccessControl.Limits.MessagesPerMinute, options.now);
+    const maxRateLimitClients = options.server.AccessControl.Limits.MaxRateLimitClients;
+    this.loginAttempts = createRateLimiter(
+      options.server.AccessControl.Limits.LoginAttemptsPerMinute,
+      maxRateLimitClients,
+      options.now,
+    );
+    this.httpRequests = createRateLimiter(
+      options.server.AccessControl.Limits.HttpRequestsPerMinute,
+      maxRateLimitClients,
+      options.now,
+    );
+    this.upgradeAttempts = createRateLimiter(
+      options.server.AccessControl.Limits.UpgradeRequestsPerMinute,
+      maxRateLimitClients,
+      options.now,
+    );
+    this.messages = createRateLimiter(
+      options.server.AccessControl.Limits.MessagesPerMinute,
+      maxRateLimitClients,
+      options.now,
+    );
 
     this.assertConfiguration();
   }
@@ -342,13 +359,13 @@ export class AgentServerAccessGuard {
   private assertConfiguration(): void {
     const externalHost = !isLoopbackHost(this.options.server.Host);
     if (this.options.server.AccessControl.Mode === "disabled" && externalHost) {
-      throw new Error(agentErrorMessage("auth.publicAccessControlRequired"));
+      throw new AgentLocalizedError("auth.publicAccessControlRequired");
     }
     if (!this.required) {
       return;
     }
     if (externalHost && this.options.server.AccessControl.AllowedOrigins.length === 0) {
-      throw new Error(agentErrorMessage("auth.allowedOriginsRequired"));
+      throw new AgentLocalizedError("auth.allowedOriginsRequired");
     }
     this.accountStore.require();
   }
@@ -412,11 +429,11 @@ export function isLoopbackHost(host: string): boolean {
   return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
 }
 
-function createRateLimiter(capacity: number, now: (() => number) | undefined): AgentTokenBucket {
+function createRateLimiter(capacity: number, maxEntries: number, now: (() => number) | undefined): AgentTokenBucket {
   return new AgentTokenBucket({
     capacity,
     refillPeriodMs: MinuteMs,
-    maxEntries: 4_096,
+    maxEntries,
     now,
   });
 }

@@ -37,15 +37,13 @@ export const EventKinds = {
   SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
   SessionForked: "session.forked",
+  SessionCompacted: "session.compacted",
+  SessionRuntimeStatus: "session.runtime_status",
+  SessionExported: "session.exported",
   RunStarted: "run.started",
   RunActivityChanged: "run.activity.changed",
   RunCancellationProgress: "run.cancellation.progress",
   PromptSummary: "prompt.summary",
-  ActionPlannerStageStarted: "action.planner.stage.started",
-  ActionPlannerStageCompleted: "action.planner.stage.completed",
-  ActionPlannerStageFailed: "action.planner.stage.failed",
-  InteractionRouted: "interaction.routed",
-  ActionPlanned: "action.planned",
   ModelStarted: "model.started",
   ModelDelta: "model.delta",
   ModelCompleted: "model.completed",
@@ -78,12 +76,249 @@ export const EventKinds = {
   ModelListSnapshot: "model.list.snapshot",
   ProviderModelsSnapshot: "provider.models.snapshot",
   ProviderModelsFailed: "provider.models.failed",
-  PluginConfigSnapshot: "plugin.config.snapshot",
   ProfileSnapshot: "profile.snapshot",
   PresetSnapshot: "preset.snapshot",
   PresetFailed: "preset.failed",
+  SystemToolSnapshot: "system_tool.snapshot",
+  McpServerSnapshot: "mcp_server.snapshot",
 } as const;
 export type EventKind = (typeof EventKinds)[keyof typeof EventKinds];
+
+export const EventChannels = {
+  AgentEvent: "agent.event",
+} as const;
+export type EventChannel = (typeof EventChannels)[keyof typeof EventChannels];
+
+export const EventSpecs = {
+  "session.created": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "session.snapshot": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "session.closed": {
+    layer: "terminal",
+    phase: "session",
+  },
+  "session.busy": {
+    layer: "error",
+    phase: "session",
+  },
+  "session.not_found": {
+    layer: "error",
+    phase: "session",
+  },
+  "session.list.snapshot": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "session.history.started": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "session.history.chunk": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "session.history.steps": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "session.run_history.chunk": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "session.history.completed": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "session.truncated": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "session.forked": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "session.compacted": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "session.runtime_status": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "session.exported": {
+    layer: "snapshot",
+    phase: "session",
+  },
+  "run.started": {
+    layer: "progress",
+    phase: "run",
+  },
+  "run.activity.changed": {
+    layer: "progress",
+    phase: "run",
+  },
+  "run.cancellation.progress": {
+    layer: "progress",
+    phase: "run",
+  },
+  "prompt.summary": {
+    layer: "progress",
+    phase: "prompt",
+  },
+  "model.started": {
+    layer: "progress",
+    phase: "model",
+  },
+  "model.delta": {
+    layer: "progress",
+    phase: "model",
+  },
+  "model.completed": {
+    layer: "snapshot",
+    phase: "model",
+  },
+  "tool.calls.planned": {
+    layer: "progress",
+    phase: "tool",
+  },
+  "tool.call.started": {
+    layer: "progress",
+    phase: "tool",
+  },
+  "tool.call.output": {
+    layer: "progress",
+    phase: "tool",
+  },
+  "tool.call.progress": {
+    layer: "progress",
+    phase: "tool",
+  },
+  "tool.call.completed": {
+    layer: "progress",
+    phase: "tool",
+  },
+  "tool.call.failed": {
+    layer: "error",
+    phase: "tool",
+  },
+  "tool.call.result.detail": {
+    layer: "snapshot",
+    phase: "tool",
+  },
+  "assistant.message.created": {
+    layer: "progress",
+    phase: "run",
+  },
+  "approval.requested": {
+    layer: "progress",
+    phase: "approval",
+  },
+  "approval.resolved": {
+    layer: "progress",
+    phase: "approval",
+  },
+  "interaction.input.requested": {
+    layer: "progress",
+    phase: "tool",
+  },
+  "interaction.input.resolved": {
+    layer: "progress",
+    phase: "tool",
+  },
+  "execution.resource.created": {
+    layer: "snapshot",
+    phase: "tool",
+  },
+  "execution.resource.output": {
+    layer: "progress",
+    phase: "tool",
+  },
+  "execution.resource.state": {
+    layer: "snapshot",
+    phase: "tool",
+  },
+  "execution.resource.resized": {
+    layer: "snapshot",
+    phase: "tool",
+  },
+  "execution.resource.removed": {
+    layer: "snapshot",
+    phase: "tool",
+  },
+  "execution.resource.snapshot": {
+    layer: "snapshot",
+    phase: "tool",
+  },
+  "sandbox.status.snapshot": {
+    layer: "snapshot",
+    phase: "sandbox",
+  },
+  "run.completed": {
+    layer: "terminal",
+    phase: "run",
+  },
+  "run.failed": {
+    layer: "error",
+    phase: "run",
+  },
+  "run.cancelled": {
+    layer: "terminal",
+    phase: "run",
+  },
+  "request.invalid": {
+    layer: "error",
+    phase: "request",
+  },
+  "config.reloaded": {
+    layer: "snapshot",
+    phase: "config",
+  },
+  "config.failed": {
+    layer: "error",
+    phase: "config",
+  },
+  "config.snapshot": {
+    layer: "snapshot",
+    phase: "config",
+  },
+  "model.list.snapshot": {
+    layer: "snapshot",
+    phase: "config",
+  },
+  "provider.models.snapshot": {
+    layer: "snapshot",
+    phase: "config",
+  },
+  "provider.models.failed": {
+    layer: "error",
+    phase: "config",
+  },
+  "profile.snapshot": {
+    layer: "snapshot",
+    phase: "config",
+  },
+  "preset.snapshot": {
+    layer: "snapshot",
+    phase: "config",
+  },
+  "preset.failed": {
+    layer: "error",
+    phase: "config",
+  },
+  "system_tool.snapshot": {
+    layer: "snapshot",
+    phase: "config",
+  },
+  "mcp_server.snapshot": {
+    layer: "snapshot",
+    phase: "config",
+  },
+} as const satisfies Record<EventKind, { readonly layer: EventLayer; readonly phase: EventPhase }>;
 
 export const AuthenticationSessionStates = {
   Disabled: "disabled",

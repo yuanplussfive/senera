@@ -353,7 +353,7 @@ jobs:
           fi
 
           docker compose exec -T --user node senera node Dist/Scripts/VerifyDockerNativeSqlite.js
-          docker compose exec -T --user node senera node Dist/Scripts/VerifyDockerUserPluginWrite.js
+          docker compose exec -T --user node senera node Dist/Scripts/VerifyDockerSkillWrite.js
 
   container:
     name: Publish Verified Release

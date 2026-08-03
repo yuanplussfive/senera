@@ -14,8 +14,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 COPY package.json package-lock.json .npmrc ./
 COPY Frontend/package.json ./Frontend/package.json
 COPY Packages ./Packages
-COPY System/Plugins ./System/Plugins
-COPY Plugins ./Plugins
 
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --ignore-scripts
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm rebuild better-sqlite3 --build-from-source
@@ -46,14 +44,13 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/Dist ./Dist
 COPY --from=builder /app/Frontend/dist ./Frontend/dist
+COPY --from=builder /app/McpServers ./McpServers
 COPY --from=builder /app/System ./System
-COPY --from=builder /app/Plugins ./Plugins
 COPY --from=builder /app/Packages ./Packages
 COPY --from=builder /app/senera.config.example.json ./senera.config.example.json
 COPY --chmod=755 Apps/DockerEntrypoint.sh /usr/local/bin/senera-container-entrypoint
 
-RUN mkdir -p /data/Plugins \
-  && chown -R node:node /data /app/Frontend/dist
+RUN chown -R node:node /data /app/Frontend/dist
 
 VOLUME ["/data"]
 EXPOSE 8787

@@ -3,7 +3,7 @@ export function limitText(value: string, maxChars: number): string {
 }
 
 export function toJsonObject(value: unknown): Record<string, unknown> {
-  return JSON.parse(JSON.stringify(value ?? {})) as Record<string, unknown>;
+  return structuredClone(value ?? {}) as Record<string, unknown>;
 }
 
 export function countLines(value: string): number {

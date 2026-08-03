@@ -1,13 +1,11 @@
 import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
 import type { AgentModelProviderListItem } from "../Types/AgentConfigTypes.js";
-import type { AgentPluginConfigSnapshotItem } from "../Types/PluginConfigTypes.js";
 import type { AgentUserProfile } from "../Session/AgentUserProfile.js";
 import type { AgentPresetOperationResult, AgentPresetSnapshot } from "../Presets/AgentPresetTypes.js";
 import type { AgentConfigDiagnostic, AgentConfigSnapshot, AgentConfigSnapshotSource } from "./AgentConfigService.js";
 import type { AgentProviderModelSnapshot } from "./AgentProviderModelDiscovery.js";
-
-export type AgentPluginConfigOperationKind = "list" | "update" | "set_enabled";
+import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
 
 export type AgentSystemConfigOperationKind =
   | "config_update"
@@ -18,12 +16,6 @@ export type AgentSystemConfigOperationKind =
   | "provider.model.delete"
   | "provider.model.bulkImport"
   | "provider.defaultModel.set";
-
-export interface AgentPluginConfigOperationResult {
-  requestId?: string;
-  kind: AgentPluginConfigOperationKind;
-  pluginName?: string;
-}
 
 export interface AgentSystemConfigOperationResult {
   commandId: string;
@@ -38,7 +30,6 @@ export type AgentConfigDomainEvent =
         configPath: string;
         source?: AgentConfigSnapshotSource;
         revision?: number;
-        databasePath?: string;
         diagnostics?: AgentConfigDiagnostic[];
       };
     }
@@ -48,8 +39,9 @@ export type AgentConfigDomainEvent =
       data: {
         configPath: string;
         message: string;
+        localizedMessage?: AgentLocalizedMessage;
         details?: unknown;
-        operation?: AgentPluginConfigOperationResult | AgentSystemConfigOperationResult;
+        operation?: AgentSystemConfigOperationResult;
       };
     }
   | {
@@ -71,15 +63,8 @@ export type AgentConfigDomainEvent =
       data: {
         providerId: string;
         message: string;
+        localizedMessage?: AgentLocalizedMessage;
         details?: unknown;
-      };
-    }
-  | {
-      kind: typeof AgentEventKinds.PluginConfigSnapshot;
-      context: AgentEventContext;
-      data: {
-        plugins: AgentPluginConfigSnapshotItem[];
-        operation?: AgentPluginConfigOperationResult;
       };
     }
   | {
@@ -104,6 +89,7 @@ export type AgentConfigDomainEvent =
       context: AgentEventContext;
       data: {
         message: string;
+        localizedMessage?: AgentLocalizedMessage;
         details?: unknown;
         operation?: AgentPresetOperationResult;
       };

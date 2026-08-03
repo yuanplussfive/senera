@@ -45,10 +45,14 @@
 | `execution.resource.stop_all` | 停止指定会话拥有的全部活动后台执行资源。 |
 | `execution.resource.write` | 向指定后台终端或进程写入输入。 |
 | `interaction.input.resolve` | 提交 MCP 表单交互结果：接受并返回字段、明确拒绝或取消。 |
+| `mcpCredential.delete` | 删除指定 MCP 服务声明的已存凭证。 |
+| `mcpCredential.set` | 写入指定 MCP 服务声明的加密凭证。 |
+| `mcpInput.delete` | 删除指定 MCP 服务的已存输入。 |
+| `mcpInput.set` | 按描述符声明的类型保存 MCP 输入；Secret 进入加密 Vault。 |
+| `mcpInput.update` | 原子校验并批量保存或清除指定 MCP 服务的输入。 |
+| `mcpServer.list` | 获取 MCP 服务及其脱敏凭证状态。 |
+| `mcpServer.restart` | 使指定 MCP 服务的运行时连接在下一轮重新建立。 |
 | `model.list` | 获取已配置模型提供方及默认模型。 |
-| `plugin.config.list` | 获取可配置插件及其诊断信息。 |
-| `plugin.config.set_enabled` | 切换插件或插件内单个工具的启用状态。 |
-| `plugin.config.update` | 保存一个插件的 TOML 配置。 |
 | `preset.delete` | 删除指定预设。 |
 | `preset.list` | 获取角色预设列表与当前激活项。 |
 | `preset.save` | 创建或更新预设，并可在保存后激活。 |
@@ -66,14 +70,18 @@
 | `sandbox.status` | 获取当前沙箱运行时状态和降级信息。 |
 | `session.cancel` | 取消会话当前正在执行的请求。 |
 | `session.close` | 关闭并从服务端删除会话。 |
+| `session.compact` | 使用 Pi 会话压缩器压缩指定会话的当前上下文分支。 |
 | `session.create` | 创建会话；可选指定会话和模型提供方。 |
+| `session.export` | 将指定 Pi 会话的当前分支导出为 JSONL 或 HTML。 |
 | `session.fork` | 复制指定请求及之前的完整可重放状态，创建独立会话分支。 |
 | `session.history` | 拉取指定会话的可重放历史；`refresh` 用于主动重新同步。 |
 | `session.list` | 获取服务端当前可用会话的摘要列表。 |
 | `session.message` | 向会话提交用户输入，可附带上传附件或队列模式。 |
 | `session.regenerate` | 从指定请求起截断旧分支，并在同一命令中提交替代输入。 |
 | `session.rename` | 更新会话显示标题。 |
+| `session.runtime_status` | 获取指定 Pi 会话的上下文占用、消息、工具调用和 token 统计。 |
 | `session.truncate_from` | 从指定请求起截断会话历史。 |
+| `systemTool.list` | 获取常驻系统工具目录。 |
 
 ### 请求示例
 
@@ -108,6 +116,7 @@
 
 ```json
 {
+  "eventId": "event_01J00000000000000000000000",
   "channel": "agent.event",
   "kind": "model.delta",
   "layer": "progress",
@@ -123,6 +132,7 @@
 
 | 字段 | 含义 |
 | --- | --- |
+| `eventId` | 服务端事件的稳定身份；客户端使用它对实时投递、重连和历史回放做幂等去重。 |
 | `channel` | 固定为 `agent.event`。 |
 | `kind` | 下方目录中的稳定事件标识。 |
 | `layer` | 投递语义：`progress`、`snapshot`、`terminal` 或 `error`。 |
@@ -152,15 +162,13 @@
 | `session.history.completed` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.truncated` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.forked` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
+| `session.compacted` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
+| `session.runtime_status` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
+| `session.exported` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `run.started` | `progress` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `run.activity.changed` | `progress` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `run.cancellation.progress` | `progress` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `prompt.summary` | `progress` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
-| `action.planner.stage.started` | `progress` | `decision` | [规划事件类型](../../Source/AgentSystem/Events/AgentPlannerEventTypes.ts) |
-| `action.planner.stage.completed` | `progress` | `decision` | [规划事件类型](../../Source/AgentSystem/Events/AgentPlannerEventTypes.ts) |
-| `action.planner.stage.failed` | `error` | `decision` | [规划事件类型](../../Source/AgentSystem/Events/AgentPlannerEventTypes.ts) |
-| `interaction.routed` | `progress` | `decision` | [规划事件类型](../../Source/AgentSystem/Events/AgentPlannerEventTypes.ts) |
-| `action.planned` | `progress` | `decision` | [规划事件类型](../../Source/AgentSystem/Events/AgentPlannerEventTypes.ts) |
 | `model.started` | `progress` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
 | `model.delta` | `progress` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
 | `model.completed` | `snapshot` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
@@ -193,10 +201,11 @@
 | `model.list.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `provider.models.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `provider.models.failed` | `error` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
-| `plugin.config.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `profile.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `preset.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `preset.failed` | `error` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
+| `system_tool.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
+| `mcp_server.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 
 ## 会话回放与恢复
 

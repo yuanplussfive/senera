@@ -31,7 +31,6 @@ const EventMessageCatalog: Record<string, string> = {
   "config.reloaded": "配置已热更新",
   "config.failed": "配置热更新失败",
   "model.list.snapshot": "模型列表已同步",
-  "plugin.config.snapshot": "插件配置已同步",
   "profile.snapshot": "用户资料已同步",
 };
 

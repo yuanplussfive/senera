@@ -8,18 +8,22 @@ import {
 } from "./AgentWebSocketRequestFailures.js";
 import {
   AgentWebSocketApprovalRequestHandlers,
-  AgentWebSocketConfigRequestHandlers,
-  AgentWebSocketExecutionResourceRequestHandlers,
   AgentWebSocketInteractionInputRequestHandlers,
+} from "./AgentWebSocketInteractionRequestHandlers.js";
+import { AgentWebSocketConfigRequestHandlers } from "./AgentWebSocketConfigRequestHandlers.js";
+import { AgentWebSocketExecutionResourceRequestHandlers } from "./AgentWebSocketExecutionResourceRequestHandlers.js";
+import {
   AgentWebSocketPresetRequestHandlers,
   AgentWebSocketProfileRequestHandlers,
-  AgentWebSocketSandboxRequestHandlers,
-  AgentWebSocketSessionRequestHandlers,
-} from "./AgentWebSocketRequestHandlers.js";
+  AgentWebSocketToolSettingsRequestHandlers,
+} from "./AgentWebSocketSettingsRequestHandlers.js";
+import { AgentWebSocketSandboxRequestHandlers } from "./AgentWebSocketSandboxRequestHandlers.js";
+import { AgentWebSocketSessionRequestHandlers } from "./AgentWebSocketSessionRequestHandlers.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
+import { projectAgentErrorMessage, projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import { AgentWebSocketRequestScheduler } from "./AgentWebSocketRequestScheduler.js";
-import { errorMessage } from "../Core/AgentErrors.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 export class AgentWebSocketMessageRouter {
   private readonly session: AgentWebSocketSessionRequestHandlers;
@@ -30,6 +34,7 @@ export class AgentWebSocketMessageRouter {
   private readonly interactionInput: AgentWebSocketInteractionInputRequestHandlers;
   private readonly sandbox: AgentWebSocketSandboxRequestHandlers;
   private readonly executionResources: AgentWebSocketExecutionResourceRequestHandlers;
+  private readonly toolSettings: AgentWebSocketToolSettingsRequestHandlers;
   private readonly scheduler = new AgentWebSocketRequestScheduler();
 
   constructor(
@@ -48,6 +53,7 @@ export class AgentWebSocketMessageRouter {
     this.interactionInput = new AgentWebSocketInteractionInputRequestHandlers(options.context);
     this.sandbox = new AgentWebSocketSandboxRequestHandlers(options.context);
     this.executionResources = new AgentWebSocketExecutionResourceRequestHandlers(options.context);
+    this.toolSettings = new AgentWebSocketToolSettingsRequestHandlers(options.context);
   }
 
   async handleMessage(socket: WebSocket, data: RawData): Promise<void> {
@@ -91,12 +97,23 @@ export class AgentWebSocketMessageRouter {
       "session.truncate_from": (entry) => this.session.truncateFrom(entry, sendEvent),
       "session.regenerate": (entry) => this.session.regenerate(entry, sendEvent),
       "session.fork": (entry) => this.session.fork(entry, sendEvent),
+      "session.compact": (entry) => this.session.compact(entry, sendEvent),
+      "session.runtime_status": (entry) => this.session.runtimeStatus(entry, sendEvent),
+      "session.export": (entry) => this.session.export(entry, sendEvent),
       "session.list": () => this.session.list(sendEvent),
       "session.history": (entry) => this.session.history(entry, sendEvent),
       "session.rename": (entry) => this.session.rename(entry, sendEvent),
       "model.list": () => this.config.listModels(sendEvent),
       "provider.models.fetch": (entry) => this.config.fetchProviderModels(entry, sendEvent),
       "config.get": () => this.config.getConfig(sendEvent),
+      "systemTool.list": () => this.toolSettings.listSystemTools(sendEvent),
+      "mcpServer.list": () => this.toolSettings.listMcpServers(sendEvent),
+      "mcpServer.restart": (entry) => this.toolSettings.restart(entry, sendEvent),
+      "mcpInput.set": (entry) => this.toolSettings.setInput(entry, sendEvent),
+      "mcpInput.delete": (entry) => this.toolSettings.deleteInput(entry, sendEvent),
+      "mcpInput.update": (entry) => this.toolSettings.updateInputs(entry, sendEvent),
+      "mcpCredential.set": (entry) => this.toolSettings.setCredential(entry, sendEvent),
+      "mcpCredential.delete": (entry) => this.toolSettings.deleteCredential(entry, sendEvent),
       "config.update": (entry) => this.config.updateConfig(entry, sendEvent),
       "provider.endpoint.upsert": (entry) => this.config.upsertProviderEndpoint(entry, sendEvent),
       "provider.endpoint.delete": (entry) => this.config.deleteProviderEndpoint(entry, sendEvent),
@@ -105,9 +122,6 @@ export class AgentWebSocketMessageRouter {
       "provider.model.delete": (entry) => this.config.deleteProviderModel(entry, sendEvent),
       "provider.model.bulkImport": (entry) => this.config.bulkImportProviderModels(entry, sendEvent),
       "provider.defaultModel.set": (entry) => this.config.setDefaultProviderModel(entry, sendEvent),
-      "plugin.config.list": () => this.config.listPluginConfig(sendEvent),
-      "plugin.config.update": (entry) => this.config.updatePluginConfig(entry, sendEvent),
-      "plugin.config.set_enabled": (entry) => this.config.setPluginEnabled(entry, sendEvent),
       "preset.list": () => this.preset.list(sendEvent),
       "preset.save": (entry) => this.preset.save(entry, sendEvent),
       "preset.delete": (entry) => this.preset.delete(entry, sendEvent),
@@ -137,12 +151,12 @@ export class AgentWebSocketMessageRouter {
       } {
     let rawRequest: unknown;
     try {
-      rawRequest = JSON.parse(data.toString("utf8"));
+      rawRequest = parseJsonText(data.toString("utf8"), "WebSocket request body");
     } catch (error) {
       return {
         ok: false,
         event: requestInvalidEvent({
-          message: errorMessage(error),
+          ...projectAgentErrorMessage(error, "websocket.requestInvalid"),
         }),
       };
     }
@@ -160,14 +174,18 @@ export class AgentWebSocketMessageRouter {
       event:
         configFailure ??
         requestInvalidEvent({
-          message: agentErrorMessage("websocket.requestInvalid"),
+          ...projectAgentMessage("websocket.requestInvalid"),
           details: parsed.error.issues,
         }),
     };
   }
 }
 
-function requestInvalidEvent(data: { message: string; details?: unknown }): AgentDomainEvent {
+function requestInvalidEvent(data: {
+  message: string;
+  localizedMessage?: AgentLocalizedMessage;
+  details?: unknown;
+}): AgentDomainEvent {
   return {
     kind: AgentEventKinds.RequestInvalid,
     context: {},

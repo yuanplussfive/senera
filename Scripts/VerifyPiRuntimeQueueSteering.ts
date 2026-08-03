@@ -143,6 +143,7 @@ class QueueAwareFakeLoop {
         },
         decisionXml: "已整理。",
         conversationEntries: [],
+        executedTools: [],
         stepTraces: [],
       };
     } finally {

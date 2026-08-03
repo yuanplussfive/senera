@@ -15,8 +15,9 @@ import type { ConfigSettingsDraftState } from "./sections/configSettingsDraftSta
 import { DefaultModelSection } from "./sections/DefaultModelSection";
 import { GeneralSettings } from "./sections/GeneralSettings";
 import { ModelServiceSection } from "./sections/ModelServiceSection";
+import { McpServersSection } from "./sections/McpServersSection";
 import { projectSectionConfigFields } from "./sections/runtimeModelAssignments";
-import { SkillSettingsSection } from "./sections/SkillSettingsSection";
+import { SystemToolsSection } from "./sections/SystemToolsSection";
 
 export function SettingsContent({
   activeSection,
@@ -26,7 +27,6 @@ export function SettingsContent({
   onEntityDraftChange,
   onMotionLevelChange,
   onValueChange,
-  pluginSettings,
   systemConfig,
   values,
 }: SettingsContentProps & {
@@ -42,7 +42,6 @@ export function SettingsContent({
     onEntityDraftChange,
     onMotionLevelChange,
     onValueChange,
-    pluginSettings,
     systemConfig,
     values,
   });
@@ -66,7 +65,6 @@ function renderSettingsContent({
   onEntityDraftChange,
   onMotionLevelChange,
   onValueChange,
-  pluginSettings,
   systemConfig,
   values,
 }: SettingsContentProps & {
@@ -105,8 +103,10 @@ function renderSettingsContent({
       );
     case "model-service":
       return <ModelServiceSection systemConfig={systemConfig} onDirtyChange={onEntityDraftChange} />;
-    case "skills":
-      return <SkillSettingsSection pluginSettings={pluginSettings} onDirtyChange={onEntityDraftChange} />;
+    case "system-tools":
+      return <SystemToolsSection systemConfig={systemConfig} onDirtyChange={onEntityDraftChange} />;
+    case "mcp-servers":
+      return <McpServersSection systemConfig={systemConfig} onDirtyChange={onEntityDraftChange} />;
     case "about":
       return <AboutSettings environment={environment} />;
   }
@@ -232,7 +232,7 @@ function DraftBackedSection({
 }
 
 function isFullHeightWorkspace(sectionId: SettingsSectionId): boolean {
-  return sectionId === "model-service" || sectionId === "skills";
+  return sectionId === "model-service" || sectionId === "system-tools" || sectionId === "mcp-servers";
 }
 
 function sectionWidthClassName(sectionId: SettingsSectionId): string {

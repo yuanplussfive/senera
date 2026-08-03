@@ -1,4 +1,6 @@
 import { CurrentAgentConfigVersion } from "./AgentConfigVersion.js";
+import { isAgentUnknownRecord as isRecord } from "../Core/AgentUnknownValue.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 export interface AgentConfigMigrationResult {
   config: unknown;
@@ -8,10 +10,9 @@ export interface AgentConfigMigrationResult {
   removedPaths: string[];
 }
 
-export class AgentConfigMigrationError extends Error {
+export class AgentConfigMigrationError extends AgentBaseError {
   constructor(message: string) {
     super(message);
-    this.name = "AgentConfigMigrationError";
   }
 }
 
@@ -59,6 +60,18 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
         migrateVersionFiveToSix(working, migratedPaths);
         version = 6;
         break;
+      case 6:
+        migrateVersionSixToSeven(working, removedPaths);
+        version = 7;
+        break;
+      case 7:
+        migrateVersionSevenToEight(working, removedPaths);
+        version = 8;
+        break;
+      case 8:
+        migrateVersionEightToNine(working, removedPaths);
+        version = 9;
+        break;
       default:
         throw new AgentConfigMigrationError(`No migration is registered for configuration version ${version}.`);
     }
@@ -73,6 +86,75 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
     migratedPaths,
     removedPaths,
   };
+}
+
+const RetiredToolSearchEmbeddingProperties = [
+  "ModelProviderId",
+  "Model",
+  "Dimensions",
+  "BatchSize",
+  "InputMaxChars",
+] as const;
+
+function migrateVersionEightToNine(config: Record<string, unknown>, removedPaths: string[]): void {
+  removeRetiredToolSearchEmbeddingProperties(config, "", removedPaths);
+  const defaults = config.Defaults;
+  if (isRecord(defaults)) removeRetiredToolSearchEmbeddingProperties(defaults, "Defaults.", removedPaths);
+}
+
+function removeRetiredToolSearchEmbeddingProperties(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const toolSearch = container.ToolSearch;
+  if (!isRecord(toolSearch) || !isRecord(toolSearch.Embedding)) return;
+  for (const property of RetiredToolSearchEmbeddingProperties) {
+    if (removeProperty(toolSearch.Embedding, property)) {
+      removedPaths.push(`${prefix}ToolSearch.Embedding.${property}`);
+    }
+  }
+}
+
+function migrateVersionSevenToEight(config: Record<string, unknown>, removedPaths: string[]): void {
+  if (!Array.isArray(config.ModelProviders)) return;
+  for (const [index, provider] of config.ModelProviders.entries()) {
+    if (!isRecord(provider) || provider.ContextWindowTokens !== -1) continue;
+    delete provider.ContextWindowTokens;
+    removedPaths.push(`ModelProviders[${index}].ContextWindowTokens`);
+  }
+}
+
+function migrateVersionSixToSeven(config: Record<string, unknown>, removedPaths: string[]): void {
+  removeDatabasePathConfiguration(config, "", removedPaths);
+  const defaults = config.Defaults;
+  if (isRecord(defaults)) removeDatabasePathConfiguration(defaults, "Defaults.", removedPaths);
+}
+
+function removeDatabasePathConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  removeNestedProperty(container, ["Persistence", "DatabasePath"], prefix, removedPaths);
+  removeNestedProperty(container, ["ConfigStore", "DatabasePath"], prefix, removedPaths);
+  removeNestedProperty(container, ["ToolSearch", "Memory", "DatabasePath"], prefix, removedPaths);
+}
+
+function removeNestedProperty(
+  container: Record<string, unknown>,
+  pathParts: readonly string[],
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const parent = pathParts
+    .slice(0, -1)
+    .reduce<Record<string, unknown> | undefined>(
+      (current, part) => (current && isRecord(current[part]) ? current[part] : undefined),
+      container,
+    );
+  const property = pathParts.at(-1);
+  if (parent && property && removeProperty(parent, property)) removedPaths.push(`${prefix}${pathParts.join(".")}`);
 }
 
 function migrateVersionFiveToSix(config: Record<string, unknown>, migratedPaths: string[]): void {
@@ -211,15 +293,6 @@ function migrateVersionZeroToOne(
   if (isRecord(defaults)) {
     migrateLegacyContainer(defaults, "Defaults.", modelProviderIds, migratedPaths, removedPaths);
   }
-
-  const pluginDocumentation = config.PluginDocumentation;
-  if (isRecord(pluginDocumentation) && removeProperty(pluginDocumentation, "DecisionActionDescription")) {
-    removedPaths.push("PluginDocumentation.DecisionActionDescription");
-    if (Object.keys(pluginDocumentation).length === 0) {
-      delete config.PluginDocumentation;
-      removedPaths.push("PluginDocumentation");
-    }
-  }
 }
 
 function migrateLegacyContainer(
@@ -340,10 +413,6 @@ function ensureRecord(container: Record<string, unknown>, key: string): Record<s
   return next;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function cloneJsonValue(value: unknown): unknown {
-  return JSON.parse(JSON.stringify(value)) as unknown;
+  return structuredClone(value);
 }

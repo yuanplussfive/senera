@@ -1,18 +1,14 @@
 import { type AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentTerminalResult } from "../Runtime/AgentExecutionProjector.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
-import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
+import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentMemoryLearningJobRecord } from "./AgentMemoryLearningJob.js";
 
 export { DefaultAgentMemoryTimeZone } from "./AgentMemoryTime.js";
 export { InMemoryAgentMemorySourceRepository } from "./AgentMemoryInMemorySourceRepository.js";
 export { AgentMemoryLearningJobStatuses, AgentMemoryLearningJobStatusValues } from "./AgentMemoryLearningJob.js";
 export type { AgentMemoryLearningJobRecord, AgentMemoryLearningJobStatus } from "./AgentMemoryLearningJob.js";
-export {
-  DefaultAgentMemoryDatabasePath,
-  resolveAgentMemoryDatabasePath,
-  SqliteAgentMemorySourceRepository,
-} from "./AgentMemorySqliteSourceRepository.js";
+export { SqliteAgentMemorySourceRepository } from "./AgentMemorySqliteSourceRepository.js";
 
 export type AgentMemoryEpisodeStatus = "completed" | "memory_anchor";
 export type AgentMemorySourceKind = "user_message" | "assistant_final" | "tool_evidence" | "artifact";
@@ -223,8 +219,8 @@ export interface AgentMemoryCompletedTurnInput {
   userEntry: Extract<AgentConversationEntry, { kind: "user.message" }>;
   assistantEntry: Extract<AgentConversationEntry, { kind: "assistant.decision" }>;
   terminal: AgentTerminalResult;
-  turnUnderstanding?: TurnUnderstanding;
   conversationEntries: readonly AgentConversationEntry[];
+  executedTools: readonly ExecutedToolCallResult[];
   modelProvider?: AgentModelProviderMetadata;
 }
 

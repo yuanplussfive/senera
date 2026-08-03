@@ -1,6 +1,5 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { AgentEvent as AgentSessionEvent, AgentMessage, AgentState } from "@earendil-works/pi-agent-core";
-import { AgentConversationEntryKinds } from "../../../Source/AgentSystem/Conversation/AgentConversation.js";
 import { AgentConversationProjector } from "../../../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentPiActiveSessionRegistry } from "../../../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
@@ -13,13 +12,16 @@ import {
   AgentPiTurnExecutor,
   type AgentPiTurnRuntimePort,
 } from "../../../Source/AgentSystem/Pi/AgentPiTurnExecutor.js";
-import type { AgentLoopCommand } from "../../../Source/AgentSystem/Loop/AgentLoopStateTypes.js";
+import type { AgentPiTurnRequest } from "../../../Source/AgentSystem/Pi/AgentPiTurnTypes.js";
 import type { ResolvedAgentModelProviderConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { AgentPiDiagnosticEvent } from "../../../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 import { AgentRunActivities, AgentRunActivityStates } from "../../../Source/AgentSystem/Events/AgentRunEventTypes.js";
+import { emptyAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
+import { toolRootCommand } from "../Support/AgentTestFixtures.js";
+import { AgentPiTurnContextRegistry } from "../../../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
 
 describe("Pi turn executor behavior", () => {
-  test("migrates history, records the transcript, and clears the active session after a completed turn", async () => {
+  test("migrates product conversation history and clears the active session after a completed turn", async () => {
     const fixture = new PiTurnRuntimeFixture();
     const command = createPiTurnCommand();
     const events: AgentDomainEvent[] = [];
@@ -29,23 +31,26 @@ describe("Pi turn executor behavior", () => {
     });
 
     expect(result).toMatchObject({
-      kind: "succeeded",
-      output: {
-        kind: "pi_turn_completed",
-        responseText: "The workspace inspection is complete.",
-      },
+      responseText: "The workspace inspection is complete.",
     });
-    if (result.kind !== "succeeded" || result.output.kind !== "pi_turn_completed") {
-      throw new Error("Expected a completed Pi turn.");
-    }
-    expect(fixture.session.historyTexts()).toEqual(["Earlier request", "Earlier response"]);
+    const historyTexts = fixture.session.historyTexts();
+    expect(historyTexts).toHaveLength(2);
+    expect(historyTexts[0]).toContain("<historical_user_turn>");
+    expect(historyTexts[0]).toContain("<request_id>previous-request</request_id>");
+    expect(historyTexts[0]).toContain("<content>Earlier request</content>");
+    expect(historyTexts[1]).toBe("Earlier response");
     expect(fixture.session.prompts).toEqual(["Inspect the workspace"]);
     expect(fixture.activeSessions.get(command.sessionId!)).toBeUndefined();
     expect(fixture.session.disposed).toBe(true);
     expect(fixture.session.unsubscribeCount).toBe(1);
-    expect(result.output.conversationEntries).toEqual([
-      expect.objectContaining({ kind: AgentConversationEntryKinds.OpenAiTranscript }),
-    ]);
+    expect(fixture.afterToolResults).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: command.requestId,
+        sessionId: command.sessionId,
+        activeSkills: command.activeSkills,
+      }),
+    );
+    expect(result.conversationEntries).toEqual([]);
     expect(events.some((event) => event.kind === AgentEventKinds.ModelDelta)).toBe(true);
     expect(
       events
@@ -73,7 +78,7 @@ describe("Pi turn executor behavior", () => {
 
     const result = await new AgentPiTurnExecutor({ runtime: fixture.runtime }).run(createPiTurnCommand());
 
-    expect(result).toMatchObject({ kind: "succeeded" });
+    expect(result.responseText).toBe("The workspace inspection is complete.");
     expect(fixture.session.historyTexts()).toEqual([]);
     expect(fixture.session.prompts).toEqual(["Inspect the workspace"]);
   });
@@ -107,7 +112,7 @@ describe("Pi turn executor behavior", () => {
     expect(fixture.activeSessions.get(command.sessionId!)).toBeDefined();
 
     fixture.session.completePrompt();
-    await expect(pending).resolves.toMatchObject({ kind: "succeeded" });
+    await expect(pending).resolves.toMatchObject({ responseText: "The workspace inspection is complete." });
   });
 
   test("does not report lease cancellation before a non-cooperative lease has settled", async () => {
@@ -171,6 +176,7 @@ const modelProviderConfig: ResolvedAgentModelProviderConfig = {
   ApiKey: "test-key",
   ApiVersion: "",
   Model: "test-model",
+  ContextWindowTokens: 128_000,
   Temperature: 0,
   MaxOutputTokens: -1,
   Stream: true,
@@ -189,6 +195,7 @@ class PiTurnRuntimeFixture {
   readonly diagnostics: AgentPiDiagnosticEvent[] = [];
   readonly session: ScriptedPiSession;
   readonly runtime: AgentPiTurnRuntimePort;
+  readonly afterToolResults = vi.fn(() => []);
   lastSessionOptions?: AgentPiSessionOptions;
   private resolveSessionCreateStarted!: () => void;
   private resolveSessionCreate!: () => void;
@@ -218,11 +225,6 @@ class PiTurnRuntimeFixture {
       services: {
         pi: {
           model: () => piModel(),
-          toolDefinitions: () => [],
-          activeToolNames: () => [],
-          planningToolCards: () => [],
-          rewindSession: async () => false,
-          resetSession: async () => false,
           leaseTurn: async (options) => {
             this.lastSessionOptions = options;
             this.resolveSessionCreateStarted();
@@ -241,6 +243,7 @@ class PiTurnRuntimeFixture {
           },
         },
         piSessions: this.activeSessions,
+        retrieval: { afterToolResults: this.afterToolResults },
       },
       modelProviderConfig: {
         ...modelProviderConfig,
@@ -249,10 +252,10 @@ class PiTurnRuntimeFixture {
       },
       agentLoopConfig: { PiTurnLeaseTimeoutMs: 5_000 },
       tokenEstimator: { estimate: (text) => ({ tokenCount: text.length }) },
-      conversationProjector: new AgentConversationProjector(),
       piDiagnostics: (event) => {
         this.diagnostics.push(event);
       },
+      piTurnContexts: new AgentPiTurnContextRegistry(),
     };
   }
 
@@ -399,38 +402,22 @@ class ScriptedPiSession implements AgentPiSession {
   }
 }
 
-function createPiTurnCommand(): Extract<AgentLoopCommand, { kind: "run_pi_turn" }> {
+function createPiTurnCommand(): AgentPiTurnRequest {
   const projector = new AgentConversationProjector();
   return {
-    kind: "run_pi_turn",
     sessionId: "pi-test-session",
     requestId: "pi-test-request",
     step: 1,
     input: "Inspect the workspace",
     prompt: "<agent_system>test</agent_system>",
-    messages: [{ role: "user", content: "Inspect the workspace" }],
     conversationEntries: [
-      projector.projectOpenAiTranscript(
-        "previous-request",
-        [
-          {
-            role: "user",
-            content: "Earlier request",
-          },
-          {
-            role: "assistant",
-            content: "Earlier response",
-          },
-        ],
-        "2026-01-01T00:00:00.000Z",
-      ),
+      projector.projectUserInput("previous-request", "Earlier request", "2026-01-01T00:00:00.000Z"),
+      projector.projectAssistantDecision("previous-request", "Earlier response", "2026-01-01T00:00:01.000Z"),
       projector.projectUserInput("pi-test-request", "Inspect the workspace", "2026-01-01T00:01:00.000Z"),
     ],
-    rootCommand: {
-      authority: "senera_runtime_root",
-      objective: "Inspect the workspace",
-    } as Extract<AgentLoopCommand, { kind: "run_pi_turn" }>["rootCommand"],
+    rootCommand: toolRootCommand(),
     loadedToolNames: [],
+    toolAccessGrant: emptyAgentToolAccessGrant(),
     activeSkills: [],
   };
 }

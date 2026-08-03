@@ -1,8 +1,7 @@
 import type http from "node:http";
-import type { AgentLanguageModelStream } from "../ModelEndpoints/AgentLanguageModel.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import type { AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
-import type { AgentPiAssistantMessage } from "./AgentPiAssistantMessageTypes.js";
+import type { AgentPiAssistantMessage } from "../PiShared/AgentPiPlanningTypes.js";
 import {
   AgentPiChatCompletionStreamProjector,
   projectPiChatCompletionResponse,
@@ -10,14 +9,6 @@ import {
 
 export interface AgentPiOpenAiResponseWriter {
   writeMessage(message: AgentPiAssistantMessage): Promise<string>;
-  writeFinalAnswer(stream: AgentLanguageModelStream): Promise<string>;
-}
-
-export class AgentPiFinalAnswerEmptyError extends Error {
-  constructor() {
-    super(agentErrorMessage("pi.finalAnswerEmpty"));
-    this.name = "AgentPiFinalAnswerEmptyError";
-  }
 }
 
 export function createAgentPiOpenAiResponseWriter(options: {
@@ -45,17 +36,8 @@ class AgentPiOpenAiJsonResponseWriter implements AgentPiOpenAiResponseWriter {
     return message.content;
   }
 
-  async writeFinalAnswer(stream: AgentLanguageModelStream): Promise<string> {
-    const content = await collectFinalAnswer(stream);
-    await this.writeProjectedMessage({ kind: "final_text", content, toolCalls: [] }, stream.usage);
-    return content;
-  }
-
-  private async writeProjectedMessage(
-    message: AgentPiAssistantMessage,
-    streamUsage?: AgentModelUsageValue,
-  ): Promise<void> {
-    writeJson(this.response, projectPiChatCompletionResponse(this.model, message, this.usage() ?? streamUsage));
+  private async writeProjectedMessage(message: AgentPiAssistantMessage): Promise<void> {
+    writeJson(this.response, projectPiChatCompletionResponse(this.model, message, this.usage()));
     await this.onFirstOutput?.();
   }
 }
@@ -85,35 +67,6 @@ class AgentPiOpenAiSseResponseWriter implements AgentPiOpenAiResponseWriter {
     return message.content;
   }
 
-  async writeFinalAnswer(stream: AgentLanguageModelStream): Promise<string> {
-    let content = "";
-    let pending = "";
-    try {
-      for await (const chunk of stream) {
-        content += chunk.textDelta;
-        pending += chunk.textDelta;
-        if (!pending.trim()) continue;
-
-        await this.startFinalAnswer();
-        await writeSseEvent(this.response, this.projector.textDeltaEvent(pending));
-        pending = "";
-      }
-
-      if (!content.trim()) throw new AgentPiFinalAnswerEmptyError();
-      if (pending) {
-        await this.startFinalAnswer();
-        await writeSseEvent(this.response, this.projector.textDeltaEvent(pending));
-      }
-      await writeSseEvent(this.response, this.projector.finishEvent("stop"));
-      await this.writeUsage(stream.usage);
-      this.finish();
-      return content;
-    } catch (error) {
-      stream.abort();
-      throw error;
-    }
-  }
-
   private start(): void {
     if (this.started) return;
     this.response.writeHead(200, {
@@ -122,13 +75,6 @@ class AgentPiOpenAiSseResponseWriter implements AgentPiOpenAiResponseWriter {
       Connection: "keep-alive",
     });
     this.started = true;
-  }
-
-  private async startFinalAnswer(): Promise<void> {
-    if (this.started) return;
-    this.start();
-    await writeSseEvent(this.response, this.projector.roleEvent());
-    await this.notifyFirstOutput();
   }
 
   private async notifyFirstOutput(): Promise<void> {
@@ -145,18 +91,6 @@ class AgentPiOpenAiSseResponseWriter implements AgentPiOpenAiResponseWriter {
     const event = this.projector.usageEvent(this.usage() ?? streamUsage);
     if (event) await writeSseEvent(this.response, event);
   }
-}
-
-async function collectFinalAnswer(stream: AgentLanguageModelStream): Promise<string> {
-  let content = "";
-  try {
-    for await (const chunk of stream) content += chunk.textDelta;
-  } catch (error) {
-    stream.abort();
-    throw error;
-  }
-  if (!content.trim()) throw new AgentPiFinalAnswerEmptyError();
-  return content;
 }
 
 async function writeSseEvent(response: http.ServerResponse, event: unknown): Promise<void> {
@@ -177,7 +111,7 @@ function waitForDrain(response: http.ServerResponse): Promise<void> {
     };
     const onClose = (): void => {
       cleanup();
-      reject(new Error(agentErrorMessage("pi.responseClosedDuringBackpressure")));
+      reject(new AgentLocalizedError("pi.responseClosedDuringBackpressure"));
     };
     const onError = (error: Error): void => {
       cleanup();

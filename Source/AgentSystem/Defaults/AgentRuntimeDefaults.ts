@@ -10,19 +10,10 @@ export function resolveAgentLoopConfig(config: AgentSystemConfig) {
   const defaults = resolveAgentDefaults(config);
   const { PiTurnLeaseTimeoutSeconds, RunSettlementTimeoutSeconds, PiSessions, ...configuredAgentLoop } =
     config.AgentLoop ?? {};
-  const compaction = PiSessions?.Compaction;
   const resolvedCompaction = {
     ...defaults.AgentLoop.PiSessions.Compaction,
-    ...compaction,
-    TimeoutMs:
-      optionalSecondsToMilliseconds(compaction?.TimeoutSeconds) ?? defaults.AgentLoop.PiSessions.Compaction.TimeoutMs,
+    ...PiSessions?.Compaction,
   };
-  if (
-    resolvedCompaction.TargetRatio >= resolvedCompaction.TriggerRatio ||
-    resolvedCompaction.TriggerRatio >= resolvedCompaction.HardLimitRatio
-  ) {
-    throw new Error("Pi 会话压缩比例必须满足 TargetRatio < TriggerRatio < HardLimitRatio。");
-  }
   return {
     ...defaults.AgentLoop,
     ...configuredAgentLoop,

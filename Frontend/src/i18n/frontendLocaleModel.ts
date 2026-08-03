@@ -5,6 +5,8 @@ export const FrontendLocales = {
 
 export type FrontendLocale = (typeof FrontendLocales)[keyof typeof FrontendLocales];
 
+export type FrontendLocalizedText = Readonly<Record<FrontendLocale, string>>;
+
 export const FrontendDefaultLocale = FrontendLocales.ZhCn;
 
 export function isFrontendLocale(value: string): value is FrontendLocale {
@@ -13,4 +15,11 @@ export function isFrontendLocale(value: string): value is FrontendLocale {
 
 export function resolveFrontendLocale(value: string | null | undefined): FrontendLocale {
   return value && isFrontendLocale(value) ? value : FrontendDefaultLocale;
+}
+
+export function resolveFrontendLocalizedText(
+  text: FrontendLocalizedText,
+  locale: FrontendLocale = FrontendDefaultLocale,
+): string {
+  return text[locale] || text[FrontendDefaultLocale];
 }

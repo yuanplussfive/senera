@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
+import { projectAgentMessage } from "../I18n/AgentMessageProjection.js";
+import { readStreamJsonBody } from "../Core/AgentJsonParsing.js";
 import { applyCredentialedCors, writeCorsPreflight } from "./AgentCredentialedCors.js";
 import { AgentServerAccessGuard, type AgentAccessFailure } from "./AgentServerAccessGuard.js";
 import {
@@ -57,7 +59,7 @@ export class AgentAuthenticationHttpApi {
     }
     this.writeJson(response, 405, {
       ok: false,
-      error: { code: "method_not_allowed", message: agentErrorMessage("auth.methodNotAllowed") },
+      error: { code: "method_not_allowed", ...projectAgentMessage("auth.methodNotAllowed") },
     });
   }
 
@@ -100,11 +102,15 @@ export class AgentAuthenticationHttpApi {
   private async handleLogin(request: IncomingMessage, response: ServerResponse): Promise<void> {
     let body: unknown;
     try {
-      body = await readJsonBody(request, 8 * 1024);
+      body = await readStreamJsonBody(request, {
+        maximumBytes: 8 * 1024,
+        contextLabel: "Authentication request body",
+        onTooLarge: () => new AgentLocalizedError("auth.requestTooLarge"),
+      });
     } catch {
       this.writeJson(response, 400, {
         ok: false,
-        error: { code: "invalid_request", message: agentErrorMessage("auth.invalidRequest") },
+        error: { code: "invalid_request", ...projectAgentMessage("auth.invalidRequest") },
       });
       return;
     }
@@ -112,7 +118,7 @@ export class AgentAuthenticationHttpApi {
     if (!parsed.success) {
       this.writeJson(response, 400, {
         ok: false,
-        error: { code: "invalid_request", message: agentErrorMessage("auth.invalidRequest") },
+        error: { code: "invalid_request", ...projectAgentMessage("auth.invalidRequest") },
       });
       return;
     }
@@ -152,9 +158,8 @@ export class AgentAuthenticationHttpApi {
     if (failure.status === 401) {
       response.setHeader("WWW-Authenticate", 'Session realm="senera"');
     }
-    const message =
-      failure.status === 401 ? agentErrorMessage("auth.loginRejected") : agentErrorMessage("auth.requestDenied");
-    this.writeJson(response, failure.status, { ok: false, error: { code: failure.code, message } });
+    const message = projectAgentMessage(failure.status === 401 ? "auth.loginRejected" : "auth.requestDenied");
+    this.writeJson(response, failure.status, { ok: false, error: { code: failure.code, ...message } });
   }
 
   private writeJson(response: ServerResponse, status: number, payload: unknown): void {
@@ -168,19 +173,4 @@ export class AgentAuthenticationHttpApi {
   private pathname(request: IncomingMessage): string {
     return new URL(request.url ?? "/", "http://senera.local").pathname;
   }
-}
-
-async function readJsonBody(request: IncomingMessage, maximumBytes: number): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  let length = 0;
-  for await (const chunk of request) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    length += buffer.length;
-    if (length > maximumBytes) {
-      throw new Error(agentErrorMessage("auth.requestTooLarge"));
-    }
-    chunks.push(buffer);
-  }
-  const text = Buffer.concat(chunks).toString("utf8");
-  return text.trim() ? (JSON.parse(text) as unknown) : {};
 }

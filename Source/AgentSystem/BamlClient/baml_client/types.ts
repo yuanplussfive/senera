@@ -47,21 +47,22 @@ export function all_succeeded<CheckName extends string>(checks: Record<CheckName
 export function get_checks<CheckName extends string>(checks: Record<CheckName, Check>): Check[] {
     return Object.values(checks)
 }
+export enum AskUserDecisionKind {
+  AskUser = "AskUser",
+}
+
+export enum DirectDecisionKind {
+  Direct = "Direct",
+}
+
+export enum ExecuteDecisionKind {
+  Execute = "Execute",
+}
+
 export enum ExecutionDeltaOp {
   AddCall = "AddCall",
   AddEvidence = "AddEvidence",
   AddWarning = "AddWarning",
-}
-
-export enum InteractionRunMode {
-  DirectResponse = "DirectResponse",
-  ToolAgentLoop = "ToolAgentLoop",
-}
-
-export enum PiControllerActionKind {
-  FinalAnswer = "FinalAnswer",
-  AskUser = "AskUser",
-  CallTools = "CallTools",
 }
 
 export enum ToolCallStatus {
@@ -83,15 +84,8 @@ export enum ToolRiskLevel {
   Critical = "Critical",
 }
 
-export enum TurnContextMode {
-  None = "None",
-  Used = "Used",
-  Insufficient = "Insufficient",
-}
-
 export interface ActionPlanInput {
   currentUserTurn: PlannerCurrentUserTurn
-  turnUnderstanding?: TurnUnderstanding | null
   roleplayPreset?: PlannerRoleplayPreset | null
   runState: ActionRunState
   timeline: PlannerTimelineTurn[]
@@ -114,23 +108,38 @@ export interface ActionRunState {
   
 }
 
+export interface AskUserDecision {
+  kind: AskUserDecisionKind
+  question: string
+  
+}
+
+export interface DirectDecision {
+  kind: DirectDecisionKind
+  response: string
+  
+}
+
 export interface EvidenceSlot {
   name: string
   value: string
   
 }
 
-export interface InteractionPreparation {
-  turnUnderstanding: TurnUnderstanding
-  initialAction: PiControllerAction
+export interface ExecuteDecision {
+  kind: ExecuteDecisionKind
+  fragment: PlanFragment
   
 }
 
-export interface InteractionRoute {
-  mode: InteractionRunMode
-  objective: string
-  preferredTools: string[]
-  discoveryQueries: string[]
+export interface GroundedDigest {
+  entries: GroundedDigestEntry[]
+  
+}
+
+export interface GroundedDigestEntry {
+  text: string
+  sources: string[]
   
 }
 
@@ -194,46 +203,24 @@ export interface MemoryWriteResolutionResult {
   
 }
 
-export interface PiCompactionDecision {
-  decision: string
-  rationale: string
-  
-}
-
-export interface PiCompactionSummary {
-  goals: string[]
-  constraints: string[]
-  completed: string[]
-  inProgress: string[]
-  blocked: string[]
-  decisions: PiCompactionDecision[]
-  nextSteps: string[]
-  criticalContext: string[]
-  
-}
-
-export interface PiControllerAction {
-  kind: PiControllerActionKind
-  answerPlan?: string[] | null
-  question?: string | null
-  preface?: string | null
-  calls?: PiPlannedToolCall[] | null
-  
-}
-
-export interface PiPlannedToolCall {
-  toolName: string
-  purpose: string
-  required: boolean
-  dependsOn?: number[] | null
-  argumentHints?: Record<string, ToolCallArgumentValue> | null
-  
-}
-
 export interface PiToolArgumentsDraft {
   arguments: Record<string, ToolCallArgumentValue>
   missingInputs: string[]
   assumptions: string[]
+  
+}
+
+export interface PlanFragment {
+  preface: string
+  calls: PlannedToolCall[]
+  
+}
+
+export interface PlannedToolCall {
+  toolName: string
+  purpose: string
+  required: boolean
+  dependsOn?: number[] | null
   
 }
 
@@ -339,6 +326,9 @@ export interface PlannerToolCallStateItem {
   resultKind: string
   argumentsPreview: string
   error: string
+  failureKind: string
+  failureSource: string
+  retryable?: boolean | null
   
 }
 
@@ -448,14 +438,7 @@ export interface ToolRiskAudit {
   
 }
 
-export interface TurnUnderstanding {
-  rawUserTurn: string
-  standaloneRequest: string
-  contextMode: TurnContextMode
-  contextBasis: string
-  missingContext: string
-  
-}
+export type ControllerDecision = DirectDecision | AskUserDecision | ExecuteDecision
 
 export interface ToolCallArgumentValue {
   [key: string]: ToolCallArgumentValue

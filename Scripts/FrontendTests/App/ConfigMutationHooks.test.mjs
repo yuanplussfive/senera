@@ -2,7 +2,6 @@ import React from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
-import { resolvePluginSettingsEvent } from "../../../Frontend/src/app/usePluginSettingsCommands.ts";
 import { resolvePresetEvent } from "../../../Frontend/src/app/usePresetCommands.ts";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 import { installMemoryLocalStorage, resetFrontendStore } from "../frontendStoreTestHarness.mjs";
@@ -21,62 +20,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-});
-
-test("useConfigMutationController tracks plugin config requests through success snapshots", async () => {
-  const send = vi.fn(() => true);
-  const handleRef = { current: null };
-
-  render(
-    React.createElement(ConfigMutationHarness, {
-      send,
-      status: "open",
-      handleRef,
-    }),
-  );
-
-  let requestId = null;
-  await act(async () => {
-    requestId = handleRef.current.savePluginConfig("WeatherToolPlugin", "Enabled = true");
-  });
-
-  expect(requestId).toEqual(expect.any(String));
-  expect(send).toHaveBeenLastCalledWith({
-    type: "plugin.config.update",
-    requestId,
-    pluginName: "WeatherToolPlugin",
-    toml: "Enabled = true",
-  });
-  expect(handleRef.current.pluginConfigOperations[requestId]).toEqual(
-    expect.objectContaining({
-      pluginName: "WeatherToolPlugin",
-      kind: "update",
-      status: "pending",
-    }),
-  );
-
-  await act(async () => {
-    expect(
-      handleRef.current.ingestConfigMutationEvent(
-        event(EventKinds.PluginConfigSnapshot, "config", {
-          plugins: [],
-          operation: {
-            requestId,
-            kind: "update",
-            pluginName: "WeatherToolPlugin",
-          },
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  expect(handleRef.current.pluginConfigOperations[requestId]).toEqual(
-    expect.objectContaining({
-      kind: "update",
-      status: "success",
-    }),
-  );
-  expect(readTestToastCalls()).not.toContainEqual(expect.objectContaining({ variant: "success" }));
 });
 
 test("useConfigMutationController handles offline commands and unmatched events without claiming them", async () => {
@@ -99,7 +42,6 @@ test("useConfigMutationController handles offline commands and unmatched events 
         ApiKey: "secret",
       }),
     ).toBeUndefined();
-    expect(handleRef.current.savePluginConfig("demo", "enabled = true")).toBe(null);
     expect(handleRef.current.savePreset({ name: "default", format: "toml", content: "x = 1" })).toBe(null);
     expect(
       handleRef.current.ingestConfigMutationEvent(
@@ -113,7 +55,6 @@ test("useConfigMutationController handles offline commands and unmatched events 
     expect.arrayContaining([
       expect.objectContaining({ title: frontendMessage("config.mainOffline") }),
       expect.objectContaining({ title: frontendMessage("config.providerModelsOffline") }),
-      expect.objectContaining({ title: frontendMessage("pluginConfig.saveOffline") }),
       expect.objectContaining({ title: frontendMessage("preset.updateOffline") }),
     ]),
   );
@@ -181,50 +122,32 @@ test("useConfigMutationController sends refresh commands and cleans up failed se
 
   await act(async () => {
     handleRef.current.refreshConfig();
-    handleRef.current.refreshPluginConfigs();
     handleRef.current.refreshPresets();
   });
-  expect(send.mock.calls.map(([request]) => request)).toEqual([
-    { type: "config.get" },
-    { type: "plugin.config.list" },
-    { type: "preset.list" },
-  ]);
+  expect(send.mock.calls.map(([request]) => request)).toEqual([{ type: "config.get" }, { type: "preset.list" }]);
 
   send.mockImplementation(() => false);
   await act(async () => {
-    expect(handleRef.current.savePluginConfig("demo", "enabled = true")).toBe(null);
     expect(handleRef.current.savePreset({ name: "default", format: "toml", content: "x = 1" })).toBe(null);
   });
-  expect(handleRef.current.pluginConfigOperations).toEqual({});
   expect(handleRef.current.presetOperations).toEqual({});
 });
 
-test("useConfigMutationController covers enabled plugins, preset mutations, and failed catalog sends", async () => {
+test("useConfigMutationController covers preset mutations and failed catalog sends", async () => {
   const send = vi.fn(() => true);
   const handleRef = { current: null };
   render(React.createElement(ConfigMutationHarness, { send, status: "open", handleRef }));
 
-  let enabledRequest;
   let deletePresetRequest;
   let activePresetRequest;
   await act(async () => {
-    enabledRequest = handleRef.current.setPluginEnabled("demo", true, "tool");
     deletePresetRequest = handleRef.current.deletePreset("old");
     activePresetRequest = handleRef.current.setActivePreset(null);
   });
-  expect(enabledRequest).toBeTypeOf("string");
   expect(deletePresetRequest).toBeTypeOf("string");
   expect(activePresetRequest).toBeTypeOf("string");
 
   await act(async () => {
-    expect(
-      handleRef.current.ingestConfigMutationEvent(
-        event(EventKinds.ConfigFailed, "config", {
-          message: "plugin rejected",
-          operation: { requestId: enabledRequest, kind: "set_enabled" },
-        }),
-      ),
-    ).toBe(true);
     expect(
       handleRef.current.ingestConfigMutationEvent(
         event(EventKinds.PresetSnapshot, "config", {
@@ -240,10 +163,6 @@ test("useConfigMutationController covers enabled plugins, preset mutations, and 
         }),
       ),
     ).toBe(true);
-  });
-  expect(handleRef.current.pluginConfigOperations[enabledRequest]).toMatchObject({
-    status: "error",
-    kind: "set_enabled",
   });
   expect(handleRef.current.presetOperations[deletePresetRequest]).toMatchObject({ status: "success", kind: "delete" });
   expect(handleRef.current.presetOperations[activePresetRequest]).toMatchObject({
@@ -341,25 +260,19 @@ test("useConfigMutationController covers provider model commands and acknowledge
   expect(handleRef.current.providerModelOperations.old.status).toBe("error");
 });
 
-test("useConfigMutationController confirms enabled-plugin and active-preset successes", async () => {
+test("useConfigMutationController confirms active-preset successes", async () => {
   const send = vi.fn(() => true);
   const handleRef = { current: null };
   render(React.createElement(ConfigMutationHarness, { send, status: "open", handleRef }));
-  let pluginId;
   let presetId;
   await act(async () => {
-    pluginId = handleRef.current.setPluginEnabled("demo", false);
     presetId = handleRef.current.setActivePreset("default");
   });
   await act(async () => {
     handleRef.current.ingestConfigMutationEvent(
-      event(EventKinds.PluginConfigSnapshot, "config", { operation: { requestId: pluginId } }),
-    );
-    handleRef.current.ingestConfigMutationEvent(
       event(EventKinds.PresetSnapshot, "config", { operation: { requestId: presetId, name: "default" } }),
     );
   });
-  expect(handleRef.current.pluginConfigOperations[pluginId]).toMatchObject({ status: "success", kind: "set_enabled" });
   expect(handleRef.current.presetOperations[presetId]).toMatchObject({ status: "success", kind: "set_active" });
 });
 
@@ -385,18 +298,8 @@ test("useConfigMutationController rolls back provider model sends that disconnec
   );
 });
 
-test("plugin event resolver ignores unrelated events", () => {
-  expect(resolvePluginSettingsEvent(event(EventKinds.RunStarted, "run", { input: "x" }), new Set())).toBe(null);
-});
-
-test("plugin and preset event resolvers cover success projections", () => {
+test("preset event resolver covers success projections", () => {
   const pending = new Set(["request-1"]);
-  expect(
-    resolvePluginSettingsEvent(
-      event(EventKinds.PluginConfigSnapshot, "config", { operation: { requestId: "request-1" } }),
-      pending,
-    ),
-  ).toMatchObject({ kind: "plugin_config_success" });
   expect(
     resolvePresetEvent(
       event(EventKinds.PresetSnapshot, "config", { operation: { requestId: "request-1", name: "default" } }),

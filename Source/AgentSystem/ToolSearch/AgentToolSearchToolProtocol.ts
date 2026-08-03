@@ -1,8 +1,17 @@
 import { z } from "zod";
+import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessTypes.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { ToolSearchToolName } from "./AgentToolSearchRuntimeTypes.js";
+
+export const AgentToolDiscoveryProtocol = defineSeneraProtocol("tool_discovery", 1);
+
+export function createAgentToolDiscoveryResult<T extends Record<string, unknown>>(
+  fields: T,
+): T & { type: typeof AgentToolDiscoveryProtocol.type } {
+  return { ...fields, type: AgentToolDiscoveryProtocol.type };
+}
 
 export const ToolSearchArgumentsSchema = z
   .object({

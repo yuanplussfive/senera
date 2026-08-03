@@ -21,6 +21,36 @@ import {
 } from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerProtocol.js";
 
 describe("gVisor worker server", () => {
+  test("treats a zero timeout as no deadline for worker requests and execution startup", async () => {
+    const fixture = await createWorkerFixture();
+    try {
+      const client = new AgentGvisorWorkerSocketClient({ socketPath: fixture.socketPath });
+      await expect(client.probe({ timeoutMs: 0 })).resolves.toMatchObject({ isolation: "gvisor" });
+      await expect(client.prepare({ timeoutMs: 0 })).resolves.toBeUndefined();
+
+      const process = await client.start(createExecutionRequest(0));
+      await process.endInput();
+      fixture.runtime.complete({ exitCode: 0, signal: null });
+
+      await expect(readEvents(process.events)).resolves.toEqual([{ kind: "exit", code: 0, signal: null }]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test("applies the execution deadline while waiting for the worker ready frame", async () => {
+    const fixture = await createSilentWorkerFixture();
+    try {
+      const client = new AgentGvisorWorkerSocketClient({ socketPath: fixture.socketPath });
+      await expect(client.start(createExecutionRequest(25))).rejects.toThrow(
+        "gVisor worker did not become ready within 25ms.",
+      );
+      await expect(fixture.connectionClosed).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test("keeps the execution socket open for streamed input after the start frame", async () => {
     const fixture = await createWorkerFixture();
     try {
@@ -132,7 +162,7 @@ async function createWorkerFixture(provider: "gvisor" | "docker-engine" = "gviso
   };
 }
 
-function createExecutionRequest(): AgentGvisorExecutionRequest {
+function createExecutionRequest(timeoutMs = 10_000): AgentGvisorExecutionRequest {
   return {
     requestId: "request-1",
     command: "/bin/sh",
@@ -144,7 +174,41 @@ function createExecutionRequest(): AgentGvisorExecutionRequest {
     network: "disabled",
     rootfsCopies: [],
     writableMounts: [],
-    limits: { cpus: 1, memoryMiB: 256, processCount: 64, timeoutMs: 10_000 },
+    limits: { cpus: 1, memoryMiB: 256, processCount: 64, timeoutMs },
+  };
+}
+
+async function createSilentWorkerFixture(): Promise<{
+  socketPath: string;
+  connectionClosed: Promise<void>;
+  close(): Promise<void>;
+}> {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "senera-gvisor-silent-worker-"));
+  const socketPath =
+    process.platform === "win32"
+      ? `\\\\.\\pipe\\senera-gvisor-silent-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      : path.join(temporaryRoot, "worker.sock");
+  let resolveConnectionClosed!: () => void;
+  const connectionClosed = new Promise<void>((resolve) => {
+    resolveConnectionClosed = resolve;
+  });
+  const server = net.createServer((socket) => {
+    socket.resume();
+    socket.once("close", () => resolveConnectionClosed());
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(socketPath, resolve);
+  });
+  return {
+    socketPath,
+    connectionClosed,
+    close: async () => {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+      await rm(temporaryRoot, { recursive: true, force: true });
+    },
   };
 }
 

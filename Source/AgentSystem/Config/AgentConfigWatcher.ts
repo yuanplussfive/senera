@@ -4,7 +4,7 @@ import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentEventKinds, type AgentEventSink } from "../Events/AgentEvent.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
-import { errorMessage } from "../Core/AgentErrors.js";
+import { projectAgentErrorMessage } from "../I18n/AgentMessageProjection.js";
 
 export interface AgentConfigSnapshot {
   path: string;
@@ -76,7 +76,7 @@ export class AgentConfigWatcher {
           context: {},
           data: {
             configPath: this.options.configPath,
-            message: errorMessage(error),
+            ...projectAgentErrorMessage(error, "config.operationFailed"),
             details: serializeError(error),
           },
         });

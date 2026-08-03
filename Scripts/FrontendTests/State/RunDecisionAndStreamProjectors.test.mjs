@@ -63,7 +63,7 @@ test("regeneration truncation acknowledgement preserves the optimistic replaceme
   expect(state.sessions[TestSessionId].activeRequestId).toBe(replacementRequestId);
 });
 
-test("decision events project prompt, route, planner stage, and fallback plan state", () => {
+test("prompt summary projects deterministic preparation metrics", () => {
   const state = createTestState();
 
   applyEvent(state, createEvent(EventKinds.RunStarted, { input: "检查项目测试" }, { sequence: 1 }));
@@ -79,86 +79,16 @@ test("decision events project prompt, route, planner stage, and fallback plan st
       { step: 1, sequence: 2, phase: "prompt" },
     ),
   );
-  applyEvent(
-    state,
-    createEvent(
-      EventKinds.InteractionRouted,
-      {
-        mode: "tool_agent_loop",
-        objective: "检查项目测试",
-        preferredTools: ["WorkspaceReadFile"],
-        discoveryQueries: ["tests"],
-        loadedTools: ["SystemTool", "WorkspaceSearchFiles"],
-        expectedOutputMode: "open",
-      },
-      { step: 1, sequence: 3, phase: "decision" },
-    ),
-  );
-  applyEvent(
-    state,
-    createEvent(
-      EventKinds.ActionPlannerStageStarted,
-      {
-        stage: "prepareInteraction",
-      },
-      { step: 1, sequence: 4, phase: "decision" },
-    ),
-  );
-  applyEvent(
-    state,
-    createEvent(
-      EventKinds.ActionPlannerStageCompleted,
-      {
-        stage: "prepareInteraction",
-        selectedAction: "CallTools",
-        repaired: false,
-        turnUnderstanding: {
-          rawUserTurn: "检查项目测试",
-          standaloneRequest: "检查项目测试覆盖情况",
-          contextMode: "Used",
-          contextBasis: "当前会话",
-          missingContext: "",
-        },
-      },
-      { step: 1, sequence: 5, phase: "decision" },
-    ),
-  );
-  applyEvent(
-    state,
-    createEvent(
-      EventKinds.ActionPlanned,
-      {
-        status: "fallback",
-        preferredTools: [],
-        toolSearchQueries: [],
-        loadedTools: [],
-        reason: "planner unavailable",
-      },
-      { step: 2, sequence: 6, phase: "decision" },
-    ),
-  );
-
   const run = readTestRun(state);
   expect(run.expectedOutputMode).toBe("unknown");
   expect(run.steps.map((step) => [step.kind, step.status])).toEqual([
     ["understand", "done"],
     ["prompt", "done"],
-    ["decision", "done"],
-    ["decision", "done"],
-    ["decision", "done"],
   ]);
   expect(run.steps.find((step) => step.kind === "prompt")).toMatchObject({
     promptChars: 1200,
     promptLines: 42,
     promptTokenCount: 330,
-  });
-  expect(run.steps.find((step) => step.id.includes("prepareInteraction"))).toMatchObject({
-    status: "done",
-    decisionKind: "CallTools",
-  });
-  expect(run.steps.at(-1)).toMatchObject({
-    title: "规划行动 · 回退",
-    decisionKind: undefined,
   });
 });
 
@@ -277,33 +207,26 @@ test("run activity updates the left-side live status without creating workflow s
   expect(readTestRun(state).liveActivity).toBeUndefined();
 });
 
-test("planner intent classifies the next stream as a preface and the following stream as an answer", () => {
+test("authoritative assistant events classify a tool preface and the following answer", () => {
   const state = createTestState();
 
   applyEvent(state, createEvent(EventKinds.RunStarted, { input: "搜索工作区工具" }, { sequence: 1 }));
   applyEvent(
     state,
     createEvent(
-      EventKinds.ActionPlannerStageCompleted,
-      { stage: "prepareInteraction", selectedAction: "CallTools" },
+      EventKinds.AssistantMessageCreated,
+      {
+        messageId: "tool-preface",
+        kind: "tool_preface",
+        content: "我先搜索当前已加载的工具。",
+        terminal: false,
+      },
       { step: 1, sequence: 2, phase: "decision" },
-    ),
-  );
-  applyEvent(
-    state,
-    createEvent(EventKinds.ModelStarted, { model: "test-model" }, { step: 1, sequence: 3, phase: "model" }),
-  );
-  applyEvent(
-    state,
-    createEvent(
-      EventKinds.ModelDelta,
-      { text: "我先搜索当前已加载的工具。" },
-      { step: 1, sequence: 4, phase: "model" },
     ),
   );
 
   let run = readTestRun(state);
-  expect(run.visibleKind).toBe("tool_preface");
+  expect(run.visibleKind).toBe("tool_calls");
   expect(run.decisionMode).toBe("tool_candidate");
 
   applyEvent(
@@ -317,7 +240,7 @@ test("planner intent classifies the next stream as a preface and the following s
         executionMode: "sequential",
         batchId: "batch-search",
       },
-      { step: 1, sequence: 5, phase: "tool" },
+      { step: 1, sequence: 3, phase: "tool" },
     ),
   );
   applyEvent(
@@ -325,12 +248,21 @@ test("planner intent classifies the next stream as a preface and the following s
     createEvent(
       EventKinds.ToolCallStarted,
       { index: 0, toolName: "AgentToolSearch", callId: "call-search" },
-      { step: 1, sequence: 6, phase: "tool" },
+      { step: 1, sequence: 4, phase: "tool" },
     ),
   );
   applyEvent(
     state,
-    createEvent(EventKinds.ModelDelta, { text: "工具结果已经足够。" }, { step: 1, sequence: 7, phase: "model" }),
+    createEvent(
+      EventKinds.AssistantMessageCreated,
+      {
+        messageId: "final-answer",
+        kind: "final_answer",
+        content: "工具结果已经足够。",
+        terminal: true,
+      },
+      { step: 1, sequence: 5, phase: "model" },
+    ),
   );
 
   run = readTestRun(state);

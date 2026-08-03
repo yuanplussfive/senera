@@ -5,8 +5,8 @@ import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
 export interface AgentToolSearchRerankDocument {
   toolName: string;
   title: string;
-  pluginName: string;
-  pluginTitle: string;
+  ownerName: string;
+  ownerTitle: string;
   sourceText: string;
   tags: string;
   summary: string;
@@ -44,7 +44,7 @@ type TextFeatureField = {
 const TextFeatureFields = [
   { feature: "field.tool_name", read: (doc) => doc.toolName },
   { feature: "field.title", read: (doc) => doc.title },
-  { feature: "field.plugin", read: (doc) => `${doc.pluginName} ${doc.pluginTitle}` },
+  { feature: "field.owner", read: (doc) => `${doc.ownerName} ${doc.ownerTitle}` },
   { feature: "field.sources", read: (doc) => doc.sourceText },
   { feature: "field.tags", read: (doc) => doc.tags },
   { feature: "field.summary", read: (doc) => doc.summary },
@@ -60,6 +60,7 @@ export const AgentToolSearchRerankDefaultWeights = {
   "base.rrf": 0.42,
   "rank.bm25": 0.18,
   "rank.exact": 0.18,
+  "rank.semantic": 0.18,
   "rank.memory": 0.14,
   "rank.priority": 0.06,
   "rank.source": 0.18,
@@ -67,7 +68,7 @@ export const AgentToolSearchRerankDefaultWeights = {
   "match.information": 0.18,
   "field.tool_name": 0.18,
   "field.title": 0.14,
-  "field.plugin": 0.08,
+  "field.owner": 0.08,
   "field.sources": 0.18,
   "field.tags": 0.24,
   "field.summary": 0.13,

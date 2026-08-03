@@ -7,9 +7,9 @@
     "ManifestDeny": "工具 Manifest 明确禁止本次调用。",
     "ManifestAsk": "工具 Manifest 明确要求执行前确认。",
     "ManifestAllow": "工具 Manifest 明确允许自动执行。",
-    "MissingTool": "工具未在插件注册表中声明，执行前需要确认。",
-    "RequiresApproval": "插件安全声明要求工具调用前确认。",
-    "Untrusted": "插件未受信任，执行前需要确认。",
+    "MissingTool": "工具未在扩展注册表中声明，执行前需要确认。",
+    "RequiresApproval": "工具安全声明要求调用前确认。",
+    "Untrusted": "工具来源未受信任，执行前需要确认。",
     "RiskPermission": "工具声明了高影响权限，执行前需要确认。",
     "RiskSideEffect": "工具会产生进程、工作区或持久化副作用，执行前需要确认。",
     "ToolPermission": "工具权限包含高影响操作，执行前需要确认。",
@@ -21,6 +21,8 @@
     "ResourceUnresolved": "资源真实路径无法可靠解析，已拒绝访问。",
     "ResourceLinkEscape": "资源路径经过工作区外部链接或损坏链接。",
     "ResourceProtectedMutation": "受保护的工作区区域不允许由普通工具修改。",
+    "ResourceManagedExtensionMutation": "Skill 和 MCP 包只能由通过候选校验的工作区发布事务修改。",
+    "ResourceManagedExtensionRootMutation": "不允许修改 Skill 或 MCP 集合根目录。",
     "ResourceFinalLinkMutation": "不允许通过普通文件操作修改或删除最终链接条目。",
     "ResourceAllowed": "资源位于已授权文件系统边界内。"
   },
@@ -41,6 +43,8 @@
     "DeniedContainments": ["outside", "unknown"],
     "DeniedLinkTraversals": ["external", "broken"],
     "MutationIntents": ["create", "replace", "remove"],
-    "ProtectedRelativePaths": [".git", ".agents", ".codex", ".senera"]
+    "ProtectedMutationDomains": ["host-state", "repository-metadata"],
+    "ManagedExtensionDomains": ["managed-skill", "managed-mcp"],
+    "ManagedExtensionPublisherAuthorities": ["managed-extension-publisher"]
   }
 }

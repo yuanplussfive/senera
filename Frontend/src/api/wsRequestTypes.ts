@@ -28,12 +28,34 @@ export type WsRequest =
       attachments?: UploadAttachmentData[];
     }
   | { type: "session.fork"; sourceSessionId: string; sessionId: string; throughRequestId: string }
+  | { type: "session.compact"; sessionId: string; customInstructions?: string }
+  | { type: "session.runtime_status"; sessionId: string }
+  | { type: "session.export"; sessionId: string; format: "jsonl" | "html" }
   | { type: "session.list" }
   | { type: "session.history"; sessionId: string; refresh?: boolean }
   | { type: "session.rename"; sessionId: string; title: string }
   | { type: "model.list" }
   | { type: "provider.models.fetch"; providerId: string; force?: boolean; endpoint?: ProviderModelEndpointInput }
   | { type: "config.get" }
+  | { type: "systemTool.list" }
+  | { type: "mcpServer.list" }
+  | { type: "mcpServer.restart"; serverId: string }
+  | {
+      type: "mcpInput.set";
+      serverId: string;
+      inputId: string;
+      value: string | number | boolean | string[] | number[] | boolean[];
+    }
+  | { type: "mcpInput.delete"; serverId: string; inputId: string }
+  | {
+      type: "mcpInput.update";
+      requestId: string;
+      serverId: string;
+      values: Record<string, string | number | boolean | string[] | number[] | boolean[]>;
+      deletes?: string[];
+    }
+  | { type: "mcpCredential.set"; serverId: string; name: string; value: string }
+  | { type: "mcpCredential.delete"; serverId: string; name: string }
   | {
       type: "config.update";
       commandId: string;
@@ -42,9 +64,6 @@ export type WsRequest =
       config: Record<string, unknown>;
     }
   | ProviderModelConfigRequest
-  | { type: "plugin.config.list" }
-  | { type: "plugin.config.update"; requestId?: string; pluginName: string; toml: string }
-  | { type: "plugin.config.set_enabled"; requestId?: string; pluginName: string; toolName?: string; enabled: boolean }
   | { type: "preset.list" }
   | { type: "preset.save"; requestId?: string; name: string; format: PresetFormat; content: string; activate?: boolean }
   | { type: "preset.delete"; requestId?: string; name: string }

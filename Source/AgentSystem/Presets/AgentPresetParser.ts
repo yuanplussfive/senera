@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { AgentPresetFormat, AgentParsedPresetDocument, AgentPresetFileRecord } from "./AgentPresetTypes.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 export class AgentPresetParser {
   parse(record: AgentPresetFileRecord): AgentParsedPresetDocument {
@@ -7,7 +8,7 @@ export class AgentPresetParser {
       return {
         ...record,
         title: titleFromFileName(record.name),
-        parsedJson: JSON.parse(record.content),
+        parsedJson: parseJsonText(record.content, "Preset JSON content"),
       };
     }
 
@@ -23,7 +24,7 @@ export class AgentPresetParser {
 
   validateContent(format: AgentPresetFormat, content: string): void {
     if (format === "json") {
-      JSON.parse(content);
+      parseJsonText(content, "Preset JSON content");
     }
   }
 }

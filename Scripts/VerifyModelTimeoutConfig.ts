@@ -7,8 +7,6 @@ import {
   resolveFrontendConfig,
   resolveModelProviderConfig,
   resolvePersistenceConfig,
-  resolvePluginDiscoveryConfig,
-  resolvePluginRootsConfig,
   resolveToolExecutionConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
@@ -36,17 +34,8 @@ function parseConfig(config: AgentSystemConfig): AgentSystemConfig {
 }
 
 const parsedBase = parseConfig(baseConfig);
-assert.deepEqual(resolvePluginRootsConfig(parsedBase), {
-  System: ["./System/Plugins"],
-  User: ["./Plugins"],
-});
-assert.deepEqual(resolvePluginDiscoveryConfig(parsedBase), {
-  ManifestFileName: "PluginManifest.json",
-  ConfigFileName: "PluginConfig.toml",
-});
 assert.deepEqual(resolvePersistenceConfig(parsedBase), {
   Kind: "sqlite",
-  DatabasePath: ".senera/senera.db",
 });
 assert.equal(resolveToolExecutionConfig(parsedBase).TimeoutMs, 120000);
 assert.equal(resolveAgentLoopConfig(parsedBase).PiTurnLeaseTimeoutMs, 120000);
@@ -55,10 +44,6 @@ assert.equal(resolveAgentDefaults(parsedBase).Server.Port, 8787);
 const configuredDefaults = parseConfig({
   ...baseConfig,
   Defaults: {
-    PluginRoots: {
-      System: ["./SystemTools"],
-      User: ["./ExternalTools"],
-    },
     ToolExecution: {
       TimeoutSeconds: 90,
     },
@@ -92,10 +77,6 @@ const configuredDefaults = parseConfig({
     RunSettlementTimeoutSeconds: 3,
   },
 });
-assert.deepEqual(resolvePluginRootsConfig(configuredDefaults), {
-  System: ["./SystemTools"],
-  User: ["./ExternalTools"],
-});
 assert.equal(resolveToolExecutionConfig(configuredDefaults).TimeoutMs, 90000);
 assert.equal(resolveAgentLoopConfig(configuredDefaults).PiTurnLeaseTimeoutMs, 7000);
 assert.equal(resolveAgentLoopConfig(configuredDefaults).RunSettlementTimeoutMs, 3000);
@@ -118,7 +99,7 @@ assert.equal(defaulted.ProviderId, "test-endpoint");
 assert.equal(defaulted.ApiKey, "test");
 assert.equal(defaulted.Kind, "OpenAICompatible");
 assert.equal(defaulted.Temperature, 0);
-assert.equal(defaulted.ContextWindowTokens, -1);
+assert.equal(defaulted.ContextWindowTokens, 128_000);
 assert.equal(defaulted.MaxModelOutputTokens, -1);
 assert.equal(defaulted.MaxOutputTokens, -1);
 assert.equal(defaulted.Stream, true);
@@ -138,6 +119,7 @@ const configured = resolveModelProviderConfig(
         TimeoutSeconds: 30,
         FirstTokenTimeoutSeconds: 5,
         MaxRequestSeconds: 180,
+        ContextWindowTokens: 64_000,
         RetryBaseDelaySeconds: 0.5,
         RetryMaxDelaySeconds: 12,
         RetryAfterMaxDelaySeconds: 45,
@@ -148,6 +130,7 @@ const configured = resolveModelProviderConfig(
 assert.equal(configured.TimeoutMs, 30000);
 assert.equal(configured.FirstTokenTimeoutMs, 5000);
 assert.equal(configured.MaxRequestMs, 180000);
+assert.equal(configured.ContextWindowTokens, 64_000);
 assert.equal(configured.RetryBaseDelayMs, 500);
 assert.equal(configured.RetryMaxDelayMs, 12000);
 assert.equal(configured.RetryAfterMaxDelayMs, 45000);
@@ -189,6 +172,18 @@ assert.throws(() =>
       {
         ...baseConfig.ModelProviders[0],
         FirstTokenTimeoutSeconds: 0,
+      },
+    ],
+  }),
+);
+
+assert.throws(() =>
+  parseConfig({
+    ...baseConfig,
+    ModelProviders: [
+      {
+        ...baseConfig.ModelProviders[0],
+        ContextWindowTokens: -1,
       },
     ],
   }),

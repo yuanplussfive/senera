@@ -1,8 +1,12 @@
-import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { RegisteredTool } from "../../../Source/AgentSystem/Types/PluginRuntimeTypes.js";
-import type { SeneraExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
+import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
+import {
+  SeneraExecutionError,
+  SeneraExecutionErrorCodes,
+  type SeneraExecutionEnv,
+} from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
 import { runShellCommandHostTool } from "../../../Source/AgentSystem/ToolRuntime/AgentShellCommandRuntime.js";
+import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
 
 describe("Shell command runtime", () => {
   it("uses the resolved sandbox execution plan without a local fallback path", async () => {
@@ -143,6 +147,68 @@ describe("Shell command runtime", () => {
     expect(result.response.ok).toBe(true);
     expect(events).toEqual([]);
   });
+
+  it("clamps a requested command timeout to the host tool deadline", async () => {
+    const executeShell = vi.fn(async () => ({ stdout: "ok", stderr: "", exitCode: 0, signal: null }));
+    const workspaceRoot = process.cwd();
+    const tool = shellTool();
+
+    await runShellCommandHostTool(
+      { command: shellCommand("echo bounded"), timeoutMs: 5_000 },
+      {
+        tool,
+        config: { ModelProviders: [], ToolExecution: { TimeoutSeconds: 1 } },
+        workspaceRoot,
+        registry: { getTool: () => tool },
+        executionEnv: {
+          canonicalPath: async () => ({ ok: true, value: workspaceRoot }),
+          executeShell,
+        } as never,
+        executionPlan: sandboxPlan(),
+      },
+    );
+
+    expect(executeShell).toHaveBeenCalledWith(
+      expect.objectContaining({ timeoutMs: 1_000, limits: expect.objectContaining({ timeoutMs: 1_000 }) }),
+    );
+  });
+
+  it.each([
+    {
+      label: "an untyped error whose message resembles cancellation",
+      error: new Error("aborted"),
+      expectedCode: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
+    },
+    {
+      label: "a typed execution cancellation",
+      error: new SeneraExecutionError(SeneraExecutionErrorCodes.Aborted, "execution cancelled"),
+      expectedCode: AgentExecutionErrorCodes.ToolProcessCancelled,
+    },
+  ])("classifies $label by protocol semantics", async ({ error, expectedCode }) => {
+    const workspaceRoot = process.cwd();
+    const tool = shellTool();
+    const result = await runShellCommandHostTool(
+      { command: shellCommand("echo outcome") },
+      {
+        tool,
+        config: { ModelProviders: [] },
+        workspaceRoot,
+        registry: { getTool: () => tool },
+        executionEnv: {
+          canonicalPath: async () => ({ ok: true, value: workspaceRoot }),
+          executeShell: async () => {
+            throw error;
+          },
+        } as never,
+        executionPlan: sandboxPlan(),
+      },
+    );
+
+    expect(result.response).toMatchObject({
+      ok: false,
+      error: { code: expectedCode },
+    });
+  });
 });
 
 function shellCommand(script: string) {
@@ -150,9 +216,18 @@ function shellCommand(script: string) {
 }
 
 function shellTool(outputStreaming = true): RegisteredTool {
-  const manifestPath = path.resolve("System", "Plugins", "AgentShellToolPlugin", "PluginManifest.json");
   return {
+    owner: {
+      kind: "system",
+      name: "shell",
+      title: "Shell Tool",
+      rootPath: process.cwd(),
+      revision: "test",
+      trusted: true,
+      requiresApproval: false,
+    },
     name: "ShellCommandTool",
+    loading: "Bootstrap",
     permissions: ["process:shell", "filesystem:workspace"],
     execution: {
       Targets: ["Sandbox", "Local"],
@@ -163,23 +238,12 @@ function shellTool(outputStreaming = true): RegisteredTool {
     runtime: {
       Lifecycle: "OneShot",
       ProtocolVersion: 2,
+      ResultAssessment: "Unassessed",
       Capabilities: { OutputStreaming: outputStreaming, Cancellation: true },
     },
-    plugin: {
-      rootKind: "System",
-      rootPath: path.dirname(manifestPath),
-      manifestPath,
-      manifest: {
-        Plugin: {
-          Name: "AgentShellToolPlugin",
-          Title: "Shell Tool",
-          Version: "0.1.0",
-          Kind: "Tool",
-        },
-        Security: { TrustLevel: "System" },
-      },
-    },
-  } as RegisteredTool;
+    sources: [],
+    evidenceCapabilities: [],
+  };
 }
 
 function sandboxPlan() {

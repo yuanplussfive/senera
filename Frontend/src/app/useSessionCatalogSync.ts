@@ -20,9 +20,10 @@ export function buildConnectionOpenSyncRequests(userProfile: UserProfile): WsReq
     { type: "session.list" },
     { type: "config.get" },
     { type: "model.list" },
-    { type: "plugin.config.list" },
     { type: "preset.list" },
     { type: "sandbox.status" },
+    { type: "systemTool.list" },
+    { type: "mcpServer.list" },
   ];
 
   if (userProfile.syncState === "pending") {
@@ -40,10 +41,11 @@ export function buildManualRefreshRequests(): WsRequest[] {
     { type: "session.list" },
     { type: "config.get" },
     { type: "model.list" },
-    { type: "plugin.config.list" },
     { type: "preset.list" },
     { type: "profile.get" },
     { type: "sandbox.status" },
+    { type: "systemTool.list" },
+    { type: "mcpServer.list" },
   ];
 }
 

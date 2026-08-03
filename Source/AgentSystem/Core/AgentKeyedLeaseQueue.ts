@@ -1,6 +1,6 @@
 import { AgentCancellationError, readAbortMessage, throwIfAborted } from "./AgentCancellation.js";
 
-export type AgentLeaseRelease = () => void;
+type AgentLeaseRelease = () => void;
 
 export class AgentKeyedLeaseQueue<TKey> {
   private readonly tails = new Map<TKey, Promise<void>>();

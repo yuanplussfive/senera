@@ -56,7 +56,7 @@ export const AgentGvisorExecutionRequestSchema = z
         timeoutMs: z
           .number()
           .int()
-          .positive()
+          .nonnegative()
           .max(RuntimePolicy.limits.maxExecutionSeconds * 1000),
       })
       .strict(),

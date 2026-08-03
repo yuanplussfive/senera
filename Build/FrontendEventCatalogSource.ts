@@ -1,4 +1,10 @@
-import { AgentEventKinds, AgentEventLayers, AgentEventPhases } from "../Source/AgentSystem/Events/AgentEventCatalog.js";
+import {
+  AgentEventChannels,
+  AgentEventKinds,
+  AgentEventLayers,
+  AgentEventPhases,
+  AgentEventSpecTable,
+} from "../Source/AgentSystem/Events/AgentEventCatalog.js";
 import { AgentAuthenticationSessionStates } from "../Source/AgentSystem/Auth/AgentAuthenticationProtocol.js";
 import { AgentConfigSecretContract } from "../Source/AgentSystem/Config/AgentConfigSecretContract.js";
 import {
@@ -22,6 +28,11 @@ export function renderFrontendEventCatalogSource(): string {
     renderConstObject("EventKinds", AgentEventKinds),
     "export type EventKind = (typeof EventKinds)[keyof typeof EventKinds];",
     "",
+    renderConstObject("EventChannels", AgentEventChannels),
+    "export type EventChannel = (typeof EventChannels)[keyof typeof EventChannels];",
+    "",
+    renderEventSpecs(),
+    "",
     renderConstObject("AuthenticationSessionStates", AgentAuthenticationSessionStates),
     "export type AuthenticationSessionState = (typeof AuthenticationSessionStates)[keyof typeof AuthenticationSessionStates];",
     "",
@@ -32,6 +43,20 @@ export function renderFrontendEventCatalogSource(): string {
     "",
     renderConstObject("WebSocketCloseReasons", AgentWebSocketCloseReasons),
     "",
+  ].join("\n");
+}
+
+function renderEventSpecs(): string {
+  const entries = Object.entries(AgentEventSpecTable).flatMap(([kind, spec]) => [
+    `  ${JSON.stringify(kind)}: {`,
+    `    layer: ${JSON.stringify(spec.layer)},`,
+    `    phase: ${JSON.stringify(spec.phase)},`,
+    "  },",
+  ]);
+  return [
+    "export const EventSpecs = {",
+    ...entries,
+    "} as const satisfies Record<EventKind, { readonly layer: EventLayer; readonly phase: EventPhase }>;",
   ].join("\n");
 }
 

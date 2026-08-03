@@ -23,7 +23,7 @@ export const ModelProviderSchema = z
     ProviderId: z.string().min(1),
     Icon: z.string().min(1).optional(),
     Capabilities: ModelCapabilitiesSchema.optional(),
-    ContextWindowTokens: disabledOrPositiveInteger("ContextWindowTokens").optional(),
+    ContextWindowTokens: z.number().int().positive().optional(),
     MaxModelOutputTokens: disabledOrPositiveInteger("MaxModelOutputTokens").optional(),
     Endpoint: ModelEndpointSchema,
     Model: z.string().min(1),

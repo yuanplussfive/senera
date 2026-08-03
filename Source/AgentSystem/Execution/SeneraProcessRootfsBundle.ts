@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { isPathWithin } from "../Core/AgentPath.js";
 import { SeneraExecutionError, SeneraExecutionErrorCodes } from "./SeneraExecutionTypes.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 const RootfsBundleDefaults = {
   tempPrefix: "senera-rootfs-bundle-",
@@ -53,7 +55,7 @@ export async function createSeneraProcessRootfsBundle(input: {
 }
 
 function assertPackageRootInsideWorkspace(input: { workspaceRoot: string; packageRoot: string }): void {
-  if (isPathInside(input.workspaceRoot, input.packageRoot)) return;
+  if (isPathWithin(input.workspaceRoot, input.packageRoot)) return;
 
   throw new SeneraExecutionError(
     SeneraExecutionErrorCodes.InvalidWorkspacePath,
@@ -99,8 +101,9 @@ async function resolveDependencies(input: {
 }
 
 async function readPackageDependencies(packageRoot: string): Promise<Record<string, string>> {
-  const packageJson = JSON.parse(
+  const packageJson = parseJsonText(
     await readFile(path.join(packageRoot, RootfsBundleDefaults.packageJsonFileName), "utf8"),
+    "package.json",
   ) as {
     dependencies?: Record<string, string>;
   };
@@ -116,7 +119,7 @@ function resolveDependencyRoot(input: {
   const resolved = input.spec.startsWith("file:")
     ? path.resolve(input.packageRoot, input.spec.slice("file:".length))
     : path.resolve(input.workspaceRoot, "node_modules", ...input.name.split("/"));
-  return isPathInside(input.workspaceRoot, resolved) &&
+  return isPathWithin(input.workspaceRoot, resolved) &&
     existsSync(path.join(resolved, RootfsBundleDefaults.packageJsonFileName))
     ? {
         name: input.name,
@@ -153,9 +156,4 @@ function relativeFromWorkspace(workspaceRoot: string, value: string): string {
 
 function cleanupBundle(bundleRoot: string): void {
   rmSync(bundleRoot, { recursive: true, force: true });
-}
-
-function isPathInside(root: string, value: string): boolean {
-  const relative = path.relative(path.resolve(root), path.resolve(value));
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }

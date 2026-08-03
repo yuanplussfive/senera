@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { AgentPluginRegistry } from "../../../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import { AgentSeneraOpaPolicyClient } from "../../../Source/AgentSystem/Safety/AgentSeneraOpaPolicyClient.js";
 import { createAgentOpaWasmPolicyClient } from "../../../Source/AgentSystem/Safety/AgentOpaWasmPolicyClient.js";
 import {
@@ -10,6 +10,8 @@ import {
   readAgentToolApprovalPolicyArtifact,
   resolveAgentToolApprovalPolicyArtifactDirectory,
 } from "../../../Source/AgentSystem/Safety/AgentToolApprovalPolicyArtifact.js";
+import { AgentWorkspaceResourceDomains } from "../../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
+import { AgentResourceAccessAuthorities } from "../../../Source/AgentSystem/Execution/SeneraResourceAccess.js";
 
 const policyDirectory = resolveAgentToolApprovalPolicyArtifactDirectory(path.join(process.cwd(), "Source"));
 
@@ -48,7 +50,7 @@ describe("OPA tool approval policy", () => {
 
   it("fails closed when the verified WASM artifact cannot be loaded", async () => {
     const client = new AgentSeneraOpaPolicyClient({
-      registry: new AgentPluginRegistry(),
+      registry: new AgentExtensionRegistry(),
       artifactLoader: async () => {
         throw new Error("corrupt policy artifact");
       },
@@ -164,20 +166,20 @@ function policyCases() {
       expected: { decision: "requires-approval", rule: "tool.registry.missing" },
     },
     {
-      name: "plugin approval requirement before manifest allow",
+      name: "tool approval requirement before manifest allow",
       input: withTool({
         approval: { Mode: "allow" },
         security: { RequiresApproval: true, TrustLevel: "System" },
       }),
-      expected: { decision: "requires-approval", rule: "plugin.security.requires_approval" },
+      expected: { decision: "requires-approval", rule: "tool.security.requires_approval" },
     },
     {
-      name: "untrusted plugin before manifest allow",
+      name: "untrusted tool before manifest allow",
       input: withTool({
         approval: { Mode: "allow" },
         security: { RequiresApproval: false, TrustLevel: "Untrusted" },
       }),
-      expected: { decision: "requires-approval", rule: "plugin.security.untrusted" },
+      expected: { decision: "requires-approval", rule: "tool.security.untrusted" },
     },
     {
       name: "high impact risk permission before manifest allow",
@@ -249,8 +251,51 @@ function resourcePolicyCases() {
     },
     {
       name: "protected workspace mutation",
-      input: withResource({ intent: "replace", relativePath: ".git/config" }),
+      input: withResource({
+        intent: "replace",
+        relativePath: ".git/config",
+        domain: AgentWorkspaceResourceDomains.RepositoryMetadata,
+      }),
       expected: { decision: "deny", rule: "resource.protected.mutation" },
+    },
+    {
+      name: "host state mutation",
+      input: withResource({
+        intent: "replace",
+        relativePath: ".senera/data/config/config.sqlite",
+        domain: AgentWorkspaceResourceDomains.HostState,
+      }),
+      expected: { decision: "deny", rule: "resource.protected.mutation" },
+    },
+    {
+      name: "unvalidated managed Skill mutation",
+      input: withResource({
+        intent: "replace",
+        relativePath: ".senera/skills/example/SKILL.md",
+        domain: AgentWorkspaceResourceDomains.ManagedSkill,
+      }),
+      expected: { decision: "deny", rule: "resource.managed_extension.unvalidated_mutation" },
+    },
+    {
+      name: "validated managed MCP mutation",
+      input: withResource({
+        intent: "replace",
+        relativePath: ".senera/mcp/example/.mcp.json",
+        domain: AgentWorkspaceResourceDomains.ManagedMcp,
+        authority: AgentResourceAccessAuthorities.ManagedExtensionPublisher,
+      }),
+      expected: { decision: "allow", rule: "resource.allowed" },
+    },
+    {
+      name: "managed extension collection root mutation",
+      input: withResource({
+        intent: "remove",
+        relativePath: ".senera/skills",
+        domain: AgentWorkspaceResourceDomains.ManagedSkill,
+        domainRoot: true,
+        authority: AgentResourceAccessAuthorities.ManagedExtensionPublisher,
+      }),
+      expected: { decision: "deny", rule: "resource.managed_extension.root_mutation" },
     },
     {
       name: "final link mutation",
@@ -264,6 +309,9 @@ function safeResource() {
   return {
     scope: "workspace",
     intent: "read",
+    authority: AgentResourceAccessAuthorities.Tool,
+    domain: AgentWorkspaceResourceDomains.WorkspaceContent,
+    domainRoot: false,
     relativePath: "notes/readme.txt",
     containment: "inside",
     linkTraversal: "none",

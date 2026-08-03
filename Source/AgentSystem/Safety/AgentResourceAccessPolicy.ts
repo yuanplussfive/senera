@@ -1,6 +1,8 @@
 import { normalizeOpaDecision, type PolicyClient } from "@ai-sdk/policy-opa";
 import { AgentToolApprovalPolicyArtifactContract } from "./AgentToolApprovalPolicyArtifact.js";
 import type { AgentResourceAccessFacts } from "../Execution/SeneraResourceAccess.js";
+import { agentUnknownRecordOrEmpty, readAgentNonEmptyString } from "../Core/AgentUnknownValue.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 export {
   AgentResourceAccessIntents,
@@ -15,10 +17,9 @@ export interface AgentResourceAccessDecision {
   readonly riskSignals: readonly string[];
 }
 
-export class AgentResourceAccessDeniedError extends Error {
+export class AgentResourceAccessDeniedError extends AgentBaseError {
   constructor(readonly decision: AgentResourceAccessDecision) {
     super(decision.reason);
-    this.name = "AgentResourceAccessDeniedError";
   }
 }
 
@@ -39,18 +40,12 @@ export class AgentResourceAccessPolicy {
 }
 
 function readDecisionMetadata(value: unknown): Omit<AgentResourceAccessDecision, "action"> {
-  const record = readRecord(value);
+  const record = agentUnknownRecordOrEmpty(value);
   return {
-    rule: readString(record.rule) ?? "resource.unknown",
-    reason: readString(record.reason) ?? "资源访问策略没有返回原因。",
-    riskSignals: Array.isArray(record.riskSignals) ? record.riskSignals.flatMap((item) => readString(item) ?? []) : [],
+    rule: readAgentNonEmptyString(record.rule) ?? "resource.unknown",
+    reason: readAgentNonEmptyString(record.reason) ?? "资源访问策略没有返回原因。",
+    riskSignals: Array.isArray(record.riskSignals)
+      ? record.riskSignals.flatMap((item) => readAgentNonEmptyString(item) ?? [])
+      : [],
   };
-}
-
-function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
 }

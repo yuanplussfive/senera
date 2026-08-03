@@ -1,7 +1,8 @@
 import type { PolicyClient } from "@ai-sdk/policy-opa";
 import { moduleDirPath } from "../Core/AgentPath.js";
-import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
+import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
 import {
   AgentToolApprovalPolicyArtifactContract,
   type AgentToolApprovalPolicyArtifactBundle,
@@ -10,10 +11,12 @@ import {
   readAgentToolApprovalPolicyData,
 } from "./AgentToolApprovalPolicyArtifact.js";
 import { createAgentOpaWasmPolicyClient } from "./AgentOpaWasmPolicyClient.js";
+import { readStringArray, uniqueStrings } from "../Core/AgentCollections.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { readAgentNonEmptyString } from "../Core/AgentUnknownValue.js";
 
 export interface AgentSeneraOpaPolicyClientOptions {
-  readonly registry: AgentPluginRegistry;
+  readonly registry: AgentExtensionRegistry;
   readonly artifactLoader?: () =>
     AgentToolApprovalPolicyArtifactBundle | Promise<AgentToolApprovalPolicyArtifactBundle>;
 }
@@ -161,7 +164,7 @@ function evaluateFailClosedPolicy(
 function projectPolicyInput(
   pathName: string,
   input: unknown,
-  registry: AgentPluginRegistry,
+  registry: AgentExtensionRegistry,
 ): AgentToolApprovalPolicyInputShape | AgentResourceAccessPolicyInputShape {
   if (pathName === AgentToolApprovalPolicyArtifactContract.entrypoints.toolDecision) {
     return enrichPolicyInput(readPolicyInput(input), registry);
@@ -174,15 +177,15 @@ function projectPolicyInput(
 
 function enrichPolicyInput(
   input: AgentToolApprovalPolicyInputShape,
-  registry: AgentPluginRegistry,
+  registry: AgentExtensionRegistry,
 ): AgentToolApprovalPolicyInputShape {
-  const toolName = readString(input.tool?.name);
+  const toolName = readAgentNonEmptyString(input.tool?.name);
   const tool = toolName ? registry.getTool(toolName) : undefined;
   const risks = [...readRiskRecords(input.tool?.capabilities?.risks), ...registeredToolRisks(tool)];
   const effects = [
-    ...readStringArray(input.tool?.capabilities?.effects),
+    ...readStringArray(input.tool?.capabilities?.effects, { rejectBlank: true }),
     ...registeredToolEffects(tool),
-    ...risks.flatMap((risk) => readString(risk.SideEffect) ?? []),
+    ...risks.flatMap((risk) => readAgentNonEmptyString(risk.SideEffect) ?? []),
   ];
 
   return {
@@ -192,16 +195,25 @@ function enrichPolicyInput(
       name: toolName,
       registered: Boolean(tool),
       approval: tool?.approval ?? input.tool?.approval,
-      permissions: uniqueStrings([...readStringArray(input.tool?.permissions), ...(tool?.permissions ?? [])]),
+      permissions: uniqueStrings([
+        ...readStringArray(input.tool?.permissions, { rejectBlank: true }),
+        ...(tool?.permissions ?? []),
+      ]),
       capabilities: {
         risks,
         effects: uniqueStrings(effects),
       },
-      security: tool?.plugin.manifest.Security ?? input.tool?.security,
+      security: tool
+        ? {
+            TrustLevel: resolveAgentToolOwner(tool).trusted ? "System" : "External",
+            RequiresApproval: resolveAgentToolOwner(tool).requiresApproval,
+          }
+        : input.tool?.security,
     } as AgentToolApprovalPolicyInputShape["tool"] & { registered: boolean },
     execution: {
-      target: readString(input.execution?.target),
-      availableTargets: tool?.execution.Targets ?? readStringArray(input.execution?.availableTargets),
+      target: readAgentNonEmptyString(input.execution?.target),
+      availableTargets:
+        tool?.execution.Targets ?? readStringArray(input.execution?.availableTargets, { rejectBlank: true }),
     },
   };
 }
@@ -212,16 +224,16 @@ function buildFacts(input: AgentToolApprovalPolicyInputShape): AgentToolApproval
   const risks = readRiskRecords(input.tool?.capabilities?.risks);
 
   return {
-    approvalMode: readString(approval?.Mode),
-    approvalReason: readString(approval?.Reason),
+    approvalMode: readAgentNonEmptyString(approval?.Mode),
+    approvalReason: readAgentNonEmptyString(approval?.Reason),
     toolRegistered: input.tool && "registered" in input.tool ? input.tool.registered === true : false,
     securityRequiresApproval: security?.RequiresApproval === true,
-    trustLevel: readString(security?.TrustLevel),
-    toolPermissions: readStringArray(input.tool?.permissions),
-    riskPermissions: uniqueStrings(risks.flatMap((risk) => readString(risk.Permission) ?? [])),
+    trustLevel: readAgentNonEmptyString(security?.TrustLevel),
+    toolPermissions: readStringArray(input.tool?.permissions, { rejectBlank: true }),
+    riskPermissions: uniqueStrings(risks.flatMap((risk) => readAgentNonEmptyString(risk.Permission) ?? [])),
     riskSideEffects: uniqueStrings([
-      ...readStringArray(input.tool?.capabilities?.effects),
-      ...risks.flatMap((risk) => readString(risk.SideEffect) ?? []),
+      ...readStringArray(input.tool?.capabilities?.effects, { rejectBlank: true }),
+      ...risks.flatMap((risk) => readAgentNonEmptyString(risk.SideEffect) ?? []),
     ]),
   };
 }
@@ -282,16 +294,4 @@ function readRiskRecords(values: readonly unknown[] | undefined): Array<{
       ? [value as { readonly Permission?: unknown; readonly SideEffect?: unknown }]
       : [],
   );
-}
-
-function readStringArray(values: readonly unknown[] | undefined): string[] {
-  return (values ?? []).flatMap((value) => readString(value) ?? []);
-}
-
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values.filter((value) => value.length > 0))];
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
 }

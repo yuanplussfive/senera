@@ -1,13 +1,17 @@
-export const AgentToolResultSummaryType = "senera.tool_result_summary.v1";
+import type { AgentToolAssessmentStatus, AgentToolFailure } from "../ToolRuntime/AgentToolResultOutcome.js";
+import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
 
-export type AgentToolResultSummaryStatus = "success" | "failure" | "empty";
+export const AgentToolResultSummaryProtocol = defineSeneraProtocol("tool_result_summary", 1);
+
+export type AgentToolResultSummaryStatus = AgentToolAssessmentStatus;
 
 export interface AgentToolResultSummary {
-  type: typeof AgentToolResultSummaryType;
-  version: 1;
+  type: typeof AgentToolResultSummaryProtocol.type;
+  version: typeof AgentToolResultSummaryProtocol.version;
   toolName: string;
   callId: string;
   status: AgentToolResultSummaryStatus;
+  failure?: AgentToolFailure;
   artifactUri: string;
   headline: string;
   summary: string;

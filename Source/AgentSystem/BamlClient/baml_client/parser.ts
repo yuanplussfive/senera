@@ -23,7 +23,7 @@ import { toBamlError } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
 import type { partial_types } from "./partial_types.js"
 import type * as types from "./types.js"
-import type {ActionPlanInput, ActionRunState, EvidenceSlot, ExecutionDeltaOp, InteractionPreparation, InteractionRoute, InteractionRunMode, MemoryCandidate, MemoryConsolidationAction, MemoryConsolidationResult, MemoryLearningResult, MemoryWriteDecision, MemoryWriteResolutionResult, PiCompactionDecision, PiCompactionSummary, PiControllerAction, PiControllerActionKind, PiPlannedToolCall, PiToolArgumentsDraft, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerRoleplayPreset, PlannerRoleplayPresetDocument, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolLearningRecord, ToolLearningResult, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel, TurnContextMode, TurnUnderstanding} from "./types.js"
+import type {ActionPlanInput, ActionRunState, AskUserDecision, AskUserDecisionKind, DirectDecision, DirectDecisionKind, EvidenceSlot, ExecuteDecision, ExecuteDecisionKind, ExecutionDeltaOp, GroundedDigest, GroundedDigestEntry, MemoryCandidate, MemoryConsolidationAction, MemoryConsolidationResult, MemoryLearningResult, MemoryWriteDecision, MemoryWriteResolutionResult, PiToolArgumentsDraft, PlanFragment, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerRoleplayPreset, PlannerRoleplayPresetDocument, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolLearningRecord, ToolLearningResult, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 
 export class LlmResponseParser {
@@ -53,24 +53,24 @@ export class LlmResponseParser {
     }
   }
   
-  CompactPiSession(
+  CondenseToolObservations(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): types.PiCompactionSummary {
+  ): types.GroundedDigest {
     try {
       const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
       const __env__: Record<string, string> = Object.fromEntries(
         Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
       );
       return this.runtime.parseLlmResponse(
-        "CompactPiSession",
+        "CondenseToolObservations",
         llmResponse,
         false,
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
         __baml_options__?.clientRegistry,
         __env__,
-      ) as types.PiCompactionSummary
+      ) as types.GroundedDigest
     } catch (error) {
       throw toBamlError(error);
     }
@@ -99,6 +99,29 @@ export class LlmResponseParser {
     }
   }
   
+  EvolveTurn(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.DirectDecision | types.AskUserDecision | types.ExecuteDecision {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "EvolveTurn",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.DirectDecision | types.AskUserDecision | types.ExecuteDecision
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
   FillPiToolArguments(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -117,29 +140,6 @@ export class LlmResponseParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as types.PiToolArgumentsDraft
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  GeneratePiFinalAnswer(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): string {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "GeneratePiFinalAnswer",
-        llmResponse,
-        false,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as string
     } catch (error) {
       throw toBamlError(error);
     }
@@ -191,47 +191,24 @@ export class LlmResponseParser {
     }
   }
   
-  PrepareInteraction(
+  RepairControllerDecision(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): types.InteractionPreparation {
+  ): types.DirectDecision | types.AskUserDecision | types.ExecuteDecision {
     try {
       const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
       const __env__: Record<string, string> = Object.fromEntries(
         Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
       );
       return this.runtime.parseLlmResponse(
-        "PrepareInteraction",
+        "RepairControllerDecision",
         llmResponse,
         false,
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
         __baml_options__?.clientRegistry,
         __env__,
-      ) as types.InteractionPreparation
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairInteractionPreparation(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): types.InteractionPreparation {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "RepairInteractionPreparation",
-        llmResponse,
-        false,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as types.InteractionPreparation
+      ) as types.DirectDecision | types.AskUserDecision | types.ExecuteDecision
     } catch (error) {
       throw toBamlError(error);
     }
@@ -306,52 +283,6 @@ export class LlmResponseParser {
     }
   }
   
-  RepairPiAction(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): types.PiControllerAction {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "RepairPiAction",
-        llmResponse,
-        false,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as types.PiControllerAction
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairPiCompaction(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): types.PiCompactionSummary {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "RepairPiCompaction",
-        llmResponse,
-        false,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as types.PiCompactionSummary
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
   RepairPiToolArguments(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -398,6 +329,29 @@ export class LlmResponseParser {
     }
   }
   
+  RepairToolObservationDigest(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.GroundedDigest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "RepairToolObservationDigest",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.GroundedDigest
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
   RepairToolRiskAudit(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -439,29 +393,6 @@ export class LlmResponseParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as types.MemoryWriteResolutionResult
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  SelectPiAction(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): types.PiControllerAction {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "SelectPiAction",
-        llmResponse,
-        false,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as types.PiControllerAction
     } catch (error) {
       throw toBamlError(error);
     }
@@ -496,24 +427,24 @@ export class LlmStreamParser {
     }
   }
   
-  CompactPiSession(
+  CondenseToolObservations(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): partial_types.PiCompactionSummary {
+  ): partial_types.GroundedDigest {
     try {
       const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
       const __env__: Record<string, string> = Object.fromEntries(
         Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
       );
       return this.runtime.parseLlmResponse(
-        "CompactPiSession",
+        "CondenseToolObservations",
         llmResponse,
         true,
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
         __baml_options__?.clientRegistry,
         __env__,
-      ) as partial_types.PiCompactionSummary
+      ) as partial_types.GroundedDigest
     } catch (error) {
       throw toBamlError(error);
     }
@@ -542,6 +473,29 @@ export class LlmStreamParser {
     }
   }
   
+  EvolveTurn(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.DirectDecision | partial_types.AskUserDecision | partial_types.ExecuteDecision {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "EvolveTurn",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.DirectDecision | partial_types.AskUserDecision | partial_types.ExecuteDecision
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
   FillPiToolArguments(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -560,29 +514,6 @@ export class LlmStreamParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as partial_types.PiToolArgumentsDraft
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  GeneratePiFinalAnswer(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): string {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "GeneratePiFinalAnswer",
-        llmResponse,
-        true,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as string
     } catch (error) {
       throw toBamlError(error);
     }
@@ -634,47 +565,24 @@ export class LlmStreamParser {
     }
   }
   
-  PrepareInteraction(
+  RepairControllerDecision(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): partial_types.InteractionPreparation {
+  ): partial_types.DirectDecision | partial_types.AskUserDecision | partial_types.ExecuteDecision {
     try {
       const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
       const __env__: Record<string, string> = Object.fromEntries(
         Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
       );
       return this.runtime.parseLlmResponse(
-        "PrepareInteraction",
+        "RepairControllerDecision",
         llmResponse,
         true,
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
         __baml_options__?.clientRegistry,
         __env__,
-      ) as partial_types.InteractionPreparation
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairInteractionPreparation(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): partial_types.InteractionPreparation {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "RepairInteractionPreparation",
-        llmResponse,
-        true,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as partial_types.InteractionPreparation
+      ) as partial_types.DirectDecision | partial_types.AskUserDecision | partial_types.ExecuteDecision
     } catch (error) {
       throw toBamlError(error);
     }
@@ -749,52 +657,6 @@ export class LlmStreamParser {
     }
   }
   
-  RepairPiAction(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): partial_types.PiControllerAction {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "RepairPiAction",
-        llmResponse,
-        true,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as partial_types.PiControllerAction
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairPiCompaction(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): partial_types.PiCompactionSummary {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "RepairPiCompaction",
-        llmResponse,
-        true,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as partial_types.PiCompactionSummary
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
   RepairPiToolArguments(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -841,6 +703,29 @@ export class LlmStreamParser {
     }
   }
   
+  RepairToolObservationDigest(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.GroundedDigest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "RepairToolObservationDigest",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.GroundedDigest
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
   RepairToolRiskAudit(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -882,29 +767,6 @@ export class LlmStreamParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as partial_types.MemoryWriteResolutionResult
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  SelectPiAction(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): partial_types.PiControllerAction {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "SelectPiAction",
-        llmResponse,
-        true,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as partial_types.PiControllerAction
     } catch (error) {
       throw toBamlError(error);
     }

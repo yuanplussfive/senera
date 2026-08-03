@@ -6,11 +6,11 @@ import {
   resolveArtifactsConfig,
   resolveConfigStoreConfig,
   resolveFrontendConfig,
-  resolveMemoryLearningConfig,
   resolveModelProviderEndpointConfigs,
   resolveModelProviderRuntimeDefaults,
   resolvePersistenceConfig,
   resolvePresetsConfig,
+  resolveSandboxRuntimeConfig,
   resolveServerConfig,
   resolveToolExecutionConfig,
   resolveToolSearchConfig,
@@ -23,11 +23,12 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
   return {
     ...config,
     AgentLoop: resolveAgentLoopConfig(config),
+    SandboxRuntime: resolveSandboxRuntimeConfig(config),
     ToolExecution: projectResolvedToolExecution(config),
     ToolSearch: resolveToolSearchConfig(config),
     VectorModels: projectResolvedVectorModels(config),
     ToolLearning: projectResolvedToolLearning(config),
-    MemoryLearning: resolveMemoryLearningConfig(config),
+    MemoryLearning: projectResolvedMemoryLearning(config),
     Presets: resolvePresetsConfig(config),
     Artifacts: resolveArtifactsConfig(config),
     Uploads: resolveUploadsConfig(config),
@@ -36,14 +37,16 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
     Server: resolveServerConfig(config),
     Persistence: resolvePersistenceConfig(config),
     ConfigStore: resolveConfigStoreConfig(config),
+    Extensions: config.Extensions,
     Defaults: {
       ...config.Defaults,
       AgentLoop: resolveAgentLoopConfig(config),
+      SandboxRuntime: resolveSandboxRuntimeConfig(config),
       ToolExecution: projectResolvedToolExecution(config),
       ToolSearch: resolveToolSearchConfig(config),
       VectorModels: projectResolvedVectorModels(config),
       ToolLearning: projectResolvedToolLearning(config),
-      MemoryLearning: resolveMemoryLearningConfig(config),
+      MemoryLearning: projectResolvedMemoryLearning(config),
       Presets: resolvePresetsConfig(config),
       Artifacts: resolveArtifactsConfig(config),
       Uploads: resolveUploadsConfig(config),
@@ -94,6 +97,17 @@ function projectResolvedToolLearning(config: AgentSystemConfig): NonNullable<Age
     Enabled: configured?.Enabled ?? defaults.Enabled,
     MaxRepairAttempts: configured?.MaxRepairAttempts ?? defaults.MaxRepairAttempts,
     Patterns: { ...defaults.Patterns, ...configured?.Patterns },
+    Client: projectResolvedPlannerClient(mergeActionPlannerClientConfig(defaults.Client, configured?.Client)),
+  };
+}
+
+function projectResolvedMemoryLearning(config: AgentSystemConfig): NonNullable<AgentSystemConfig["MemoryLearning"]> {
+  const defaults = resolveAgentDefaults(config).MemoryLearning;
+  const configured = config.MemoryLearning;
+  return {
+    Enabled: configured?.Enabled ?? defaults.Enabled,
+    MaxRepairAttempts: configured?.MaxRepairAttempts ?? defaults.MaxRepairAttempts,
+    Promotion: { ...defaults.Promotion, ...configured?.Promotion },
     Client: projectResolvedPlannerClient(mergeActionPlannerClientConfig(defaults.Client, configured?.Client)),
   };
 }

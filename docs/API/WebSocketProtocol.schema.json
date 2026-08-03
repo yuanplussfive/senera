@@ -274,6 +274,72 @@
       "properties": {
         "type": {
           "type": "string",
+          "const": "session.compact"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "customInstructions": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.runtime_status"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.export"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "jsonl",
+            "html"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "format"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
           "const": "session.list"
         }
       },
@@ -420,6 +486,248 @@
       "properties": {
         "type": {
           "type": "string",
+          "const": "systemTool.list"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "mcpServer.list"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "mcpServer.restart"
+        },
+        "serverId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "serverId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "mcpInput.set"
+        },
+        "serverId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "boolean"
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "serverId",
+        "inputId",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "mcpInput.delete"
+        },
+        "serverId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "serverId",
+        "inputId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "mcpInput.update"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serverId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "values": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "boolean"
+                }
+              }
+            ]
+          }
+        },
+        "deletes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "type",
+        "requestId",
+        "serverId",
+        "values"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "mcpCredential.set"
+        },
+        "serverId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "serverId",
+        "name",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "mcpCredential.delete"
+        },
+        "serverId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "serverId",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
           "const": "config.update"
         },
         "commandId": {
@@ -441,45 +749,11 @@
           "properties": {
             "ConfigVersion": {
               "type": "number",
-              "const": 6
+              "const": 9
             },
             "Defaults": {
               "type": "object",
               "properties": {
-                "PluginRoots": {
-                  "type": "object",
-                  "properties": {
-                    "System": {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1
-                      }
-                    },
-                    "User": {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1
-                      }
-                    }
-                  },
-                  "additionalProperties": false
-                },
-                "PluginDiscovery": {
-                  "type": "object",
-                  "properties": {
-                    "ManifestFileName": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "ConfigFileName": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "additionalProperties": false
-                },
                 "ToolExecution": {
                   "type": "object",
                   "properties": {
@@ -741,40 +1015,6 @@
                           "properties": {
                             "Enabled": {
                               "type": "boolean"
-                            },
-                            "TriggerRatio": {
-                              "type": "number",
-                              "minimum": 0.5,
-                              "maximum": 0.95
-                            },
-                            "HardLimitRatio": {
-                              "type": "number",
-                              "minimum": 0.6,
-                              "maximum": 1
-                            },
-                            "TargetRatio": {
-                              "type": "number",
-                              "minimum": 0.2,
-                              "maximum": 0.8
-                            },
-                            "SummaryMaxTokens": {
-                              "type": "integer",
-                              "minimum": 512,
-                              "maximum": 32768
-                            },
-                            "TimeoutSeconds": {
-                              "type": "number",
-                              "exclusiveMinimum": 0
-                            },
-                            "UnknownContextWindowTokens": {
-                              "type": "integer",
-                              "minimum": 16384,
-                              "maximum": 9007199254740991
-                            },
-                            "UnknownModelOutputTokens": {
-                              "type": "integer",
-                              "minimum": 512,
-                              "maximum": 131072
                             }
                           },
                           "additionalProperties": false
@@ -794,45 +1034,6 @@
                         "Enabled": {
                           "type": "boolean"
                         },
-                        "ModelProviderId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "Model": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "Dimensions": {
-                          "anyOf": [
-                            {
-                              "type": "number",
-                              "const": -1
-                            },
-                            {
-                              "type": "integer",
-                              "minimum": 1,
-                              "maximum": 9007199254740991
-                            }
-                          ]
-                        },
-                        "BatchSize": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 9007199254740991
-                        },
-                        "InputMaxChars": {
-                          "anyOf": [
-                            {
-                              "type": "number",
-                              "const": -1
-                            },
-                            {
-                              "type": "integer",
-                              "minimum": 1,
-                              "maximum": 9007199254740991
-                            }
-                          ]
-                        },
                         "ScoreThreshold": {
                           "type": "number",
                           "minimum": -1,
@@ -844,10 +1045,6 @@
                     "Memory": {
                       "type": "object",
                       "properties": {
-                        "DatabasePath": {
-                          "type": "string",
-                          "minLength": 1
-                        },
                         "MaxEpisodes": {
                           "type": "integer",
                           "minimum": 1,
@@ -1127,6 +1324,42 @@
                 "MemoryLearning": {
                   "type": "object",
                   "properties": {
+                    "Enabled": {
+                      "type": "boolean"
+                    },
+                    "MaxRepairAttempts": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "Client": {
+                      "type": "object",
+                      "properties": {
+                        "ModelProviderId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "Temperature": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 2
+                        },
+                        "MaxTokens": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "const": -1
+                            },
+                            {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 9007199254740991
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    },
                     "Promotion": {
                       "type": "object",
                       "properties": {
@@ -1190,11 +1423,6 @@
                       "minimum": 1024,
                       "maximum": 9007199254740991
                     },
-                    "MemoryReadStructuredJsonMaxBytes": {
-                      "type": "integer",
-                      "minimum": 1024,
-                      "maximum": 9007199254740991
-                    },
                     "MemoryReadMaxArtifacts": {
                       "type": "integer",
                       "exclusiveMinimum": 0,
@@ -1210,14 +1438,9 @@
                       "exclusiveMinimum": 0,
                       "maximum": 9007199254740991
                     },
-                    "MemoryReadCacheMaxBytes": {
+                    "MemoryReadStructuredJsonMaxTokens": {
                       "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "MemoryReadCacheMaxEntries": {
-                      "type": "integer",
-                      "minimum": 0,
+                      "exclusiveMinimum": 0,
                       "maximum": 9007199254740991
                     },
                     "OutputCaptureMaxBytes": {
@@ -1565,6 +1788,11 @@
                               "minimum": 1,
                               "maximum": 1000
                             },
+                            "MaxRateLimitClients": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000000
+                            },
                             "UpgradeRequestsPerMinute": {
                               "type": "integer",
                               "minimum": 1,
@@ -1618,10 +1846,6 @@
                           "const": "memory"
                         }
                       ]
-                    },
-                    "DatabasePath": {
-                      "type": "string",
-                      "minLength": 1
                     }
                   },
                   "additionalProperties": false
@@ -1636,49 +1860,26 @@
                       "type": "string",
                       "const": "sqlite"
                     },
-                    "DatabasePath": {
-                      "type": "string",
-                      "minLength": 1
-                    },
                     "MirrorJson": {
                       "type": "boolean"
+                    },
+                    "RevisionRetentionCount": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10000
+                    },
+                    "CommandReceiptRetentionHours": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 8760
+                    },
+                    "CommandReceiptMaxCount": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100000
                     }
                   },
                   "additionalProperties": false
-                }
-              },
-              "additionalProperties": false
-            },
-            "PluginRoots": {
-              "type": "object",
-              "properties": {
-                "System": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "User": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                }
-              },
-              "additionalProperties": false
-            },
-            "PluginDiscovery": {
-              "type": "object",
-              "properties": {
-                "ManifestFileName": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "ConfigFileName": {
-                  "type": "string",
-                  "minLength": 1
                 }
               },
               "additionalProperties": false
@@ -1952,7 +2153,7 @@
               },
               "additionalProperties": false
             },
-            "PluginDocumentation": {
+            "ToolDocumentation": {
               "type": "object",
               "properties": {
                 "Markdown": {
@@ -2012,26 +2213,6 @@
                     "AvoidSection",
                     "RequiredSections"
                   ],
-                  "additionalProperties": false
-                },
-                "PromptXml": {
-                  "type": "object",
-                  "properties": {
-                    "XmlFenceLanguages": {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1
-                      }
-                    },
-                    "CodeFenceLanguages": {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1
-                      }
-                    }
-                  },
                   "additionalProperties": false
                 }
               },
@@ -2152,17 +2333,9 @@
                     "additionalProperties": false
                   },
                   "ContextWindowTokens": {
-                    "anyOf": [
-                      {
-                        "type": "number",
-                        "const": -1
-                      },
-                      {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 9007199254740991
-                      }
-                    ]
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
                   },
                   "MaxModelOutputTokens": {
                     "anyOf": [
@@ -2380,40 +2553,6 @@
                       "properties": {
                         "Enabled": {
                           "type": "boolean"
-                        },
-                        "TriggerRatio": {
-                          "type": "number",
-                          "minimum": 0.5,
-                          "maximum": 0.95
-                        },
-                        "HardLimitRatio": {
-                          "type": "number",
-                          "minimum": 0.6,
-                          "maximum": 1
-                        },
-                        "TargetRatio": {
-                          "type": "number",
-                          "minimum": 0.2,
-                          "maximum": 0.8
-                        },
-                        "SummaryMaxTokens": {
-                          "type": "integer",
-                          "minimum": 512,
-                          "maximum": 32768
-                        },
-                        "TimeoutSeconds": {
-                          "type": "number",
-                          "exclusiveMinimum": 0
-                        },
-                        "UnknownContextWindowTokens": {
-                          "type": "integer",
-                          "minimum": 16384,
-                          "maximum": 9007199254740991
-                        },
-                        "UnknownModelOutputTokens": {
-                          "type": "integer",
-                          "minimum": 512,
-                          "maximum": 131072
                         }
                       },
                       "additionalProperties": false
@@ -2433,45 +2572,6 @@
                     "Enabled": {
                       "type": "boolean"
                     },
-                    "ModelProviderId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "Model": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "Dimensions": {
-                      "anyOf": [
-                        {
-                          "type": "number",
-                          "const": -1
-                        },
-                        {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 9007199254740991
-                        }
-                      ]
-                    },
-                    "BatchSize": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 9007199254740991
-                    },
-                    "InputMaxChars": {
-                      "anyOf": [
-                        {
-                          "type": "number",
-                          "const": -1
-                        },
-                        {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 9007199254740991
-                        }
-                      ]
-                    },
                     "ScoreThreshold": {
                       "type": "number",
                       "minimum": -1,
@@ -2483,10 +2583,6 @@
                 "Memory": {
                   "type": "object",
                   "properties": {
-                    "DatabasePath": {
-                      "type": "string",
-                      "minLength": 1
-                    },
                     "MaxEpisodes": {
                       "type": "integer",
                       "minimum": 1,
@@ -2766,6 +2862,42 @@
             "MemoryLearning": {
               "type": "object",
               "properties": {
+                "Enabled": {
+                  "type": "boolean"
+                },
+                "MaxRepairAttempts": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "Client": {
+                  "type": "object",
+                  "properties": {
+                    "ModelProviderId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "Temperature": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 2
+                    },
+                    "MaxTokens": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "const": -1
+                        },
+                        {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
                 "Promotion": {
                   "type": "object",
                   "properties": {
@@ -2829,11 +2961,6 @@
                   "minimum": 1024,
                   "maximum": 9007199254740991
                 },
-                "MemoryReadStructuredJsonMaxBytes": {
-                  "type": "integer",
-                  "minimum": 1024,
-                  "maximum": 9007199254740991
-                },
                 "MemoryReadMaxArtifacts": {
                   "type": "integer",
                   "exclusiveMinimum": 0,
@@ -2849,14 +2976,9 @@
                   "exclusiveMinimum": 0,
                   "maximum": 9007199254740991
                 },
-                "MemoryReadCacheMaxBytes": {
+                "MemoryReadStructuredJsonMaxTokens": {
                   "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "MemoryReadCacheMaxEntries": {
-                  "type": "integer",
-                  "minimum": 0,
+                  "exclusiveMinimum": 0,
                   "maximum": 9007199254740991
                 },
                 "OutputCaptureMaxBytes": {
@@ -3204,6 +3326,11 @@
                           "minimum": 1,
                           "maximum": 1000
                         },
+                        "MaxRateLimitClients": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000000
+                        },
                         "UpgradeRequestsPerMinute": {
                           "type": "integer",
                           "minimum": 1,
@@ -3257,10 +3384,6 @@
                       "const": "memory"
                     }
                   ]
-                },
-                "DatabasePath": {
-                  "type": "string",
-                  "minLength": 1
                 }
               },
               "additionalProperties": false
@@ -3275,15 +3398,49 @@
                   "type": "string",
                   "const": "sqlite"
                 },
-                "DatabasePath": {
-                  "type": "string",
-                  "minLength": 1
-                },
                 "MirrorJson": {
                   "type": "boolean"
+                },
+                "RevisionRetentionCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000
+                },
+                "CommandReceiptRetentionHours": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8760
+                },
+                "CommandReceiptMaxCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100000
                 }
               },
               "additionalProperties": false
+            },
+            "Extensions": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "minLength": 1
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "Enabled": {
+                    "type": "boolean"
+                  },
+                  "Configuration": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "additionalProperties": false
+              }
             }
           },
           "required": [
@@ -3527,17 +3684,9 @@
               "additionalProperties": false
             },
             "ContextWindowTokens": {
-              "anyOf": [
-                {
-                  "type": "number",
-                  "const": -1
-                },
-                {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 9007199254740991
-                }
-              ]
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
             },
             "MaxModelOutputTokens": {
               "anyOf": [
@@ -3771,17 +3920,9 @@
                 "additionalProperties": false
               },
               "ContextWindowTokens": {
-                "anyOf": [
-                  {
-                    "type": "number",
-                    "const": -1
-                  },
-                  {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 9007199254740991
-                  }
-                ]
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
               },
               "MaxModelOutputTokens": {
                 "anyOf": [
@@ -3962,75 +4103,6 @@
         "type",
         "commandId",
         "modelId"
-      ],
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "plugin.config.list"
-        }
-      },
-      "required": [
-        "type"
-      ],
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "plugin.config.update"
-        },
-        "requestId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "pluginName": {
-          "type": "string",
-          "minLength": 1
-        },
-        "toml": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "type",
-        "pluginName",
-        "toml"
-      ],
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "plugin.config.set_enabled"
-        },
-        "requestId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "pluginName": {
-          "type": "string",
-          "minLength": 1
-        },
-        "toolName": {
-          "type": "string",
-          "minLength": 1
-        },
-        "enabled": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "type",
-        "pluginName",
-        "enabled"
       ],
       "additionalProperties": false
     },

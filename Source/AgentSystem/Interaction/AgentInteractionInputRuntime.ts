@@ -1,6 +1,7 @@
-import * as AjvModule from "ajv";
+import { Ajv } from "ajv";
 import type { ErrorObject, ValidateFunction } from "ajv";
 import { createOpaqueId } from "../Core/AgentIds.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { AgentEventKinds, emitAgentEvent, type AgentEventSink } from "../Events/AgentEvent.js";
 import {
   AgentInteractionInputActions,
@@ -14,8 +15,6 @@ import {
   type AgentInteractionInputWaitOptions,
 } from "./AgentInteractionInputTypes.js";
 import { resolveAgentExternalUrl } from "./AgentExternalUrlPolicy.js";
-
-const Ajv = (AjvModule.default ?? AjvModule) as unknown as typeof import("ajv").default;
 
 interface PendingInteractionInput {
   readonly request: AgentInteractionInputRequest;
@@ -41,20 +40,18 @@ interface ActiveExternalInteraction {
   readonly resolveCompletion?: (completion: AgentExternalInteractionCompletion) => void;
 }
 
-export class AgentInteractionInputNotPendingError extends Error {
+export class AgentInteractionInputNotPendingError extends AgentBaseError {
   constructor(readonly interactionId: string) {
     super(`Interaction input ${interactionId} is no longer pending.`);
-    this.name = "AgentInteractionInputNotPendingError";
   }
 }
 
-export class AgentInteractionInputValidationError extends Error {
+export class AgentInteractionInputValidationError extends AgentBaseError {
   constructor(
     readonly interactionId: string,
     readonly errors: readonly ErrorObject[],
   ) {
     super(`Interaction input ${interactionId} does not match the requested schema.`);
-    this.name = "AgentInteractionInputValidationError";
   }
 }
 

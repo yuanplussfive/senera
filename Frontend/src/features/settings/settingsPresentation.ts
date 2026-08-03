@@ -1,8 +1,8 @@
-import type { ConfigFormSectionData, PluginConfigItem } from "../../api/eventTypes";
+import type { ConfigFormSectionData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { isSettingsSectionId, type SettingsSectionDefinition, type SettingsSectionId } from "./types";
 
-export type SettingsSectionGroupId = "model" | "capabilities" | "personal" | "system";
+export type SettingsSectionGroupId = "model" | "capabilities" | "tools" | "personal" | "system";
 
 export interface SettingsSectionGroupDefinition {
   id: SettingsSectionGroupId;
@@ -15,7 +15,7 @@ export interface SettingsSectionSearchDetail {
   value: string;
 }
 
-export type SettingsSearchEntryKind = "field" | "skill" | "tool";
+export type SettingsSearchEntryKind = "field";
 
 export interface SettingsSearchEntry {
   sectionId: SettingsSectionId;
@@ -36,12 +36,8 @@ export interface GroupedSettingsSectionSearchResult {
 
 export const settingsSectionGroups = [
   defineSettingsSectionGroup("model", "settings.group.model", ["model-service", "default-model"]),
-  defineSettingsSectionGroup("capabilities", "settings.group.capabilities", [
-    "runtime",
-    "planning",
-    "retrieval",
-    "skills",
-  ]),
+  defineSettingsSectionGroup("capabilities", "settings.group.capabilities", ["runtime", "planning", "retrieval"]),
+  defineSettingsSectionGroup("tools", "settings.group.tools", ["system-tools", "mcp-servers"]),
   defineSettingsSectionGroup("personal", "settings.group.personal", ["general", "appearance"]),
   defineSettingsSectionGroup("system", "settings.group.system", ["storage", "about"]),
 ] as const satisfies readonly SettingsSectionGroupDefinition[];
@@ -97,7 +93,7 @@ export function searchSettingsSectionResults(
     );
     if (matchingEntry) {
       details.push({
-        label: frontendMessage(readSettingsSearchEntryLabelKey(matchingEntry.kind)),
+        label: frontendMessage("settings.search.field"),
         value: matchingEntry.label,
       });
     } else if (tokens.some((token) => section.description.toLocaleLowerCase().includes(token))) {
@@ -131,7 +127,6 @@ export function readSettingsSectionGroup(sectionId: SettingsSectionId): Settings
 
 export function createSettingsSearchEntries(
   configSections: readonly ConfigFormSectionData[] = [],
-  plugins: readonly PluginConfigItem[] = [],
 ): SettingsSearchEntry[] {
   const entries: SettingsSearchEntry[] = [];
 
@@ -149,41 +144,5 @@ export function createSettingsSearchEntries(
     }
   }
 
-  for (const plugin of plugins) {
-    const pluginSearchText = [plugin.name, plugin.title, plugin.description ?? ""].join(" ");
-    entries.push({
-      sectionId: "skills",
-      kind: "skill",
-      label: plugin.title || plugin.name,
-      searchText: pluginSearchText,
-    });
-    for (const section of plugin.sections) {
-      for (const field of section.fields) {
-        entries.push({
-          sectionId: "skills",
-          kind: "field",
-          label: field.label,
-          searchText: [pluginSearchText, field.key, field.path.join(" "), field.description ?? ""].join(" "),
-        });
-      }
-    }
-    for (const tool of plugin.tools) {
-      entries.push({
-        sectionId: "skills",
-        kind: "tool",
-        label: tool.name,
-        searchText: [pluginSearchText, tool.name, tool.summary ?? ""].join(" "),
-      });
-    }
-  }
-
   return entries;
-}
-
-function readSettingsSearchEntryLabelKey(
-  kind: SettingsSearchEntryKind,
-): "settings.search.field" | "settings.search.skill" | "settings.search.tool" {
-  if (kind === "field") return "settings.search.field";
-  if (kind === "skill") return "settings.search.skill";
-  return "settings.search.tool";
 }

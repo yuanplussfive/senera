@@ -1,6 +1,6 @@
 import type { ExecutionEnv } from "@earendil-works/pi-agent-core";
 import type { SeneraProcessExecutionProfile } from "./SeneraExecutionProfile.js";
-import type { AgentResourceAccessIntent } from "./SeneraResourceAccess.js";
+import type { AgentResourceAccessAuthority, AgentResourceAccessIntent } from "./SeneraResourceAccess.js";
 import type { FileError, Result } from "@earendil-works/pi-agent-core";
 import type {
   SeneraPersistentProcessChild,
@@ -9,6 +9,7 @@ import type {
 import type { SeneraTerminalChild, SeneraTerminalSpawnOptions } from "./SeneraTerminalTypes.js";
 import type { SeneraShellDialect } from "./SeneraShellCommand.js";
 import type { SeneraOutputSpool, SeneraOutputSpoolDescriptor } from "./SeneraOutputSpool.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 export const SeneraExecutionErrorCodes = {
   Aborted: "aborted",
@@ -24,7 +25,7 @@ export const SeneraExecutionErrorCodes = {
 
 export type SeneraExecutionErrorCode = (typeof SeneraExecutionErrorCodes)[keyof typeof SeneraExecutionErrorCodes];
 
-export class SeneraExecutionError extends Error {
+export class SeneraExecutionError extends AgentBaseError {
   constructor(
     readonly code: SeneraExecutionErrorCode,
     message: string,
@@ -32,7 +33,6 @@ export class SeneraExecutionError extends Error {
     cause?: Error,
   ) {
     super(message, cause ? { cause } : undefined);
-    this.name = "SeneraExecutionError";
   }
 }
 
@@ -77,7 +77,11 @@ export interface SeneraShellExecutionResult {
 
 export interface SeneraExecutionEnv extends ExecutionEnv {
   readonly workspaceRoot: string;
+  readonly capabilities: {
+    readonly persistentProcessBackends: readonly ("local" | "sandbox")[];
+  };
   resolveResourcePath(value: string, intent: AgentResourceAccessIntent): Promise<Result<string, FileError>>;
+  withResourceAccessAuthority(authority: AgentResourceAccessAuthority): SeneraExecutionEnv;
   executeShell(request: SeneraShellExecutionRequest): Promise<SeneraShellExecutionResult>;
   spawnPersistentProcess(
     command: string,

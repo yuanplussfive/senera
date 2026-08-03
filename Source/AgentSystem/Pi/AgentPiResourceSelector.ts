@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import MiniSearch from "minisearch";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
-import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import { AgentToolSearchTokenizer } from "../ToolSearch/AgentToolSearchTokenizer.js";
 import {
@@ -9,11 +8,10 @@ import {
   capabilityRiskText,
   capabilitySearchText,
 } from "../ToolSearch/AgentToolSearchCapabilities.js";
-import type { RegisteredTemplate } from "../Types/PluginRuntimeTypes.js";
+import type { RegisteredTemplate } from "../Types/AgentToolRuntimeTypes.js";
 
 export interface AgentPiResourceSelectionInput {
   input?: string;
-  turnUnderstanding?: TurnUnderstanding;
   rootCommand?: AgentRootCommand;
   activeSkills?: readonly AgentActivatedSkill[];
 }
@@ -33,7 +31,7 @@ export interface AgentPiSelectedPromptTemplate {
 interface TemplateSearchDocument {
   id: string;
   templateName: string;
-  pluginName: string;
+  ownerName: string;
   description: string;
   summary: string;
   tags: string;
@@ -65,7 +63,7 @@ export class AgentPiResourceSelector {
       idField: "id",
       fields: [
         "templateName",
-        "pluginName",
+        "ownerName",
         "description",
         "summary",
         "tags",
@@ -109,7 +107,7 @@ export class AgentPiResourceSelector {
     return {
       id: stableTemplateDocumentId(template),
       templateName: template.name,
-      pluginName: template.plugin.manifest.Plugin.Name,
+      ownerName: "system",
       description: template.description ?? "",
       summary: search?.Summary ?? "",
       tags: (search?.Tags ?? []).join(" "),
@@ -129,12 +127,10 @@ export class AgentPiResourceSelector {
   private buildQuery(input: AgentPiResourceSelectionInput): string {
     return [
       input.input,
-      input.turnUnderstanding?.standaloneRequest,
-      input.turnUnderstanding?.contextBasis,
       input.rootCommand?.action,
       input.rootCommand?.objective,
       input.rootCommand?.instruction,
-      ...(input.rootCommand?.preferredTools ?? []),
+      ...(input.rootCommand?.toolAccessGrant.preferredToolNames ?? []),
       ...(input.rootCommand?.toolSearchQueries ?? []),
       ...(input.rootCommand?.needs.flatMap((need) => [
         ...need.actions,
@@ -170,7 +166,7 @@ function templateResourceMetadata(template: RegisteredTemplate, key: string): st
 }
 
 function stableTemplateDocumentId(template: RegisteredTemplate): string {
-  return crypto.createHash("sha1").update(`${template.plugin.manifest.Plugin.Name}:${template.name}`).digest("hex");
+  return crypto.createHash("sha1").update(`${template.path}:${template.name}`).digest("hex");
 }
 
 function hasText(value: string | undefined | null): value is string {

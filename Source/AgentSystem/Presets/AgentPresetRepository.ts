@@ -2,6 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import type { AgentPresetFileRecord, AgentPresetFormat, AgentPresetState } from "./AgentPresetTypes.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 export interface AgentPresetRepositoryOptions {
   workspaceRoot: string;
@@ -71,7 +72,7 @@ export class AgentPresetRepository {
     if (!fs.existsSync(stateFile)) {
       return { activePresetName: null };
     }
-    const parsed = JSON.parse(await fsp.readFile(stateFile, "utf8")) as Partial<AgentPresetState>;
+    const parsed = parseJsonText(await fsp.readFile(stateFile, "utf8"), "Preset state") as Partial<AgentPresetState>;
     return {
       activePresetName: typeof parsed.activePresetName === "string" ? parsed.activePresetName : null,
     };

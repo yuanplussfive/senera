@@ -1,4 +1,5 @@
 import { EventKinds, type EventEnvelope } from "../api/eventTypes";
+import { isUnknownRecord as isRecord } from "../lib/unknownValue";
 
 export interface ConfigCommandEventOperation {
   commandId: string;
@@ -13,8 +14,4 @@ export function readConfigCommandEventOperation(event: EventEnvelope): ConfigCom
     return undefined;
   }
   return { commandId: operation.commandId, kind: operation.kind };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

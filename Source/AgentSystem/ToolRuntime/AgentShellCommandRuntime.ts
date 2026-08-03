@@ -20,6 +20,7 @@ import { randomUUID } from "node:crypto";
 import { createSeneraOutputSpool } from "../Execution/SeneraOutputSpool.js";
 import { assertInsideRoot } from "../Artifacts/AgentArtifactLocator.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { resolveAgentToolCallTimeoutMs } from "./AgentToolDeadline.js";
 
 const ShellExecutionProfileName = "host-shell";
 
@@ -79,6 +80,7 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
   }
 
   const toolExecution = resolveToolExecutionConfig(context.config);
+  const timeoutMs = resolveAgentToolCallTimeoutMs(context.config, parsed.data.timeoutMs);
   const artifactsConfig = resolveArtifactsConfig(context.config);
   const executionProfile = createAgentShellExecutionProfile(context.tool, requireExecutionPlan(context));
   const reporting = openAgentHostToolReportingScope(context);
@@ -105,9 +107,9 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
       command: parsed.data.command.script,
       dialect: parsed.data.command.dialect,
       cwd: cwdResult.value,
-      timeoutMs: parsed.data.timeoutMs,
+      timeoutMs,
       limits: {
-        timeoutMs: toolExecution.TimeoutMs,
+        timeoutMs,
         maxStdoutBytes: toolExecution.MaxStdoutBytes,
         maxStderrBytes: toolExecution.MaxStderrBytes,
       },
@@ -143,7 +145,7 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
       error,
       command: parsed.data.command.script,
       cwd: cwdResult.value,
-      timeoutMs: parsed.data.timeoutMs ?? toolExecution.TimeoutMs,
+      timeoutMs,
       signal: context.signal,
     });
     failure.outputCapture = outputSpool?.descriptor;
@@ -191,7 +193,8 @@ function shellExecutionFailure(input: {
   signal?: AbortSignal;
 }): AgentToolProcessRunResult {
   const message = errorMessage(input.error);
-  if (input.signal?.aborted || message === "aborted") {
+  const code = shellErrorCode(input.error);
+  if (input.signal?.aborted || code === AgentExecutionErrorCodes.ToolProcessCancelled) {
     return cancelledToolProcessResult({
       signal: input.signal,
       phase: "runtime",
@@ -199,8 +202,6 @@ function shellExecutionFailure(input: {
       cwd: input.cwd,
     });
   }
-
-  const code = shellErrorCode(input.error);
 
   return shellFailure({
     code,
@@ -232,7 +233,7 @@ const AgentShellErrorCodeBySeneraCode = {
   [SeneraExecutionErrorCodes.StderrLimitExceeded]: AgentExecutionErrorCodes.ToolProcessStderrLimitExceeded,
   [SeneraExecutionErrorCodes.SandboxUnavailable]: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
   [SeneraExecutionErrorCodes.SpawnFailed]: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
-  [SeneraExecutionErrorCodes.CleanupFailed]: AgentExecutionErrorCodes.PluginExecutionError,
+  [SeneraExecutionErrorCodes.CleanupFailed]: AgentExecutionErrorCodes.ToolExecutionError,
   [SeneraExecutionErrorCodes.Unknown]: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
 } satisfies Record<SeneraExecutionErrorCode, (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes]>;
 

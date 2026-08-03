@@ -1,14 +1,15 @@
 import type { AgentConfigFormField } from "../Types/ConfigFormTypes.js";
 import type { ConfigFormFieldDefinition } from "./AgentConfigFormDocument.js";
+import { isAgentUnknownRecord as isRecord } from "../Core/AgentUnknownValue.js";
 
-export function projectConfigFormField(options: {
-  field: ConfigFormFieldDefinition;
+export function projectConfigFormField<TText>(options: {
+  field: ConfigFormFieldDefinition<TText>;
   section: string;
   source: Record<string, unknown>;
   inheritedSource: Record<string, unknown>;
   effectiveSource: Record<string, unknown>;
   basePath: readonly string[];
-}): AgentConfigFormField {
+}): AgentConfigFormField<TText> {
   const fullPath = [...options.basePath, ...options.field.path];
   const key = options.field.path[options.field.path.length - 1] ?? "";
   const value = readValueAtPath(options.source, fullPath);
@@ -79,8 +80,4 @@ function readValueAtPath(source: Record<string, unknown>, pathParts: readonly st
     current = isRecord(current) ? current[part] : undefined;
   }
   return current;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

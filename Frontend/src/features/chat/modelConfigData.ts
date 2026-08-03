@@ -1,6 +1,7 @@
 import type { JsonConfigObject } from "../../shared/config/JsonConfigForm";
 import { ConfigSecretContract } from "../../api/generatedEventCatalog";
 import { getFrontendLocale } from "../../i18n/frontendLocaleStore";
+import { isUnknownRecord as isRecord, readTrimmedString as readString } from "../../lib/unknownValue";
 import {
   readDefaultModelGroup,
   readDefaultModelGroupRules,
@@ -86,6 +87,9 @@ export function copyModelRuntimeTemplate(template: Record<string, unknown>): Par
     ...optionalNumber("RetryBaseDelaySeconds", template.RetryBaseDelaySeconds),
     ...optionalNumber("RetryMaxDelaySeconds", template.RetryMaxDelaySeconds),
     ...optionalNumber("RetryAfterMaxDelaySeconds", template.RetryAfterMaxDelaySeconds),
+    ...optionalNumber("MaxResponseBytes", template.MaxResponseBytes),
+    ...optionalNumber("MaxSseEventBytes", template.MaxSseEventBytes),
+    ...optionalNumber("MaxSseEvents", template.MaxSseEvents),
   };
 }
 
@@ -492,9 +496,7 @@ export function readModelGroupMatch(value: unknown): ModelProviderRuleMatchKind 
     : "prefix";
 }
 
-export function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
-}
+export { isRecord, readString };
 
 export function readStringArray(value: unknown): string[] {
   return Array.isArray(value)
@@ -508,10 +510,6 @@ export function readNumber(value: unknown): number | undefined {
 
 export function readBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 export const ModelCapabilityKeys = [

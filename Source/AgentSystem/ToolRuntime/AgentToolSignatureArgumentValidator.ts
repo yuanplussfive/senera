@@ -1,9 +1,7 @@
-import * as AjvModule from "ajv";
+import { Ajv } from "ajv";
 import type { ValidateFunction } from "ajv";
 import { formatAjvIssue } from "../Diagnostics/AgentValidationIssue.js";
 import type { AgentPromptContractView } from "../Prompt/AgentPromptContractTypes.js";
-
-const Ajv = (AjvModule.default ?? AjvModule) as unknown as typeof import("ajv").default;
 
 const ajv = new Ajv({
   allErrors: true,
@@ -18,13 +16,27 @@ export function validateToolSignatureArguments(input: {
   args: Record<string, unknown>;
   path: Array<string | number>;
 }): string[] {
-  const validate = validatorFor(input.contract.jsonSchema);
-  return validate(input.args)
+  return validateToolContractValue({
+    schema: input.contract.jsonSchema,
+    value: input.args,
+    path: input.path,
+    label: "arguments",
+  });
+}
+
+export function validateToolContractValue(input: {
+  schema: Readonly<Record<string, unknown>>;
+  value: unknown;
+  path: Array<string | number>;
+  label: string;
+}): string[] {
+  const validate = validatorFor(input.schema);
+  return validate(input.value)
     ? []
     : (validate.errors ?? []).map((error) =>
         formatAjvIssue(error, {
           rootPath: input.path,
-          rootLabel: "arguments",
+          rootLabel: input.label,
           numericPathStyle: "brackets",
         }),
       );
@@ -34,7 +46,7 @@ export function assertToolContractSchema(schema: Record<string, unknown>): void 
   validatorFor(schema);
 }
 
-function validatorFor(schema: Record<string, unknown>): ValidateFunction {
+function validatorFor(schema: Readonly<Record<string, unknown>>): ValidateFunction {
   const cached = validators.get(schema);
   if (cached) {
     return cached;

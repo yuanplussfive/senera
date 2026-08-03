@@ -1,6 +1,6 @@
 import path from "node:path";
 import { createTwoFilesPatch } from "diff";
-import type { ToolArtifactWorkspaceManifest } from "../Types/PluginManifestTypes.js";
+import type { ToolArtifactWorkspaceManifest } from "../Types/AgentToolContractTypes.js";
 import type {
   ToolWorkspaceCaptureResult,
   ToolWorkspaceChange,
@@ -9,6 +9,7 @@ import type {
 } from "../Types/ToolRuntimeTypes.js";
 import { assertInsideRoot, toPosixPath } from "./AgentArtifactLocator.js";
 import type { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
+import type { AgentArtifactFileReceipt } from "./AgentArtifactIntegrity.js";
 
 export interface AgentWorkspaceArtifactWriterOptions {
   workspaceRoot: string;
@@ -29,6 +30,7 @@ export interface WrittenWorkspaceArtifacts {
     generated: boolean;
     changeCount: number;
   };
+  patchReceipt: AgentArtifactFileReceipt;
 }
 
 interface WorkspaceContentWriteResult {
@@ -54,7 +56,11 @@ export class AgentWorkspaceArtifactWriter {
       this.annotatePatchReference(change, before.byPath, after.byPath),
     );
     const patchText = this.buildUnifiedPatch(changes, before.byPath, after.byPath);
-    await this.options.fileWriter.writeText(this.options.files.workspacePatch, patchText, Number.MAX_SAFE_INTEGER);
+    const patchReceipt = await this.options.fileWriter.writeText(
+      this.options.files.workspacePatch,
+      patchText,
+      Number.MAX_SAFE_INTEGER,
+    );
 
     return {
       before: before.snapshot,
@@ -66,6 +72,7 @@ export class AgentWorkspaceArtifactWriter {
         generated: patchText.trim().length > 0,
         changeCount: changes.filter((change) => change.patch?.status === "generated").length,
       },
+      patchReceipt,
     };
   }
 

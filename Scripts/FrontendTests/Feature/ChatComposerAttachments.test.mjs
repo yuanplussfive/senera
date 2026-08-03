@@ -213,13 +213,6 @@ function createComposerProps(overrides = {}) {
       selectedModelProviderId: null,
       onSelectModelProvider: vi.fn(),
     },
-    pluginConfig: {
-      pluginConfigs: [],
-      pluginConfigOperations: {},
-      onRefreshPluginConfigs: vi.fn(),
-      onSavePluginConfig: vi.fn(() => null),
-      onSetPluginEnabled: vi.fn(() => null),
-    },
     systemConfig: {
       configSnapshot: null,
       configOperation: null,

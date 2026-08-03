@@ -1,35 +1,33 @@
-import * as AjvModule from "ajv";
+import { Ajv } from "ajv";
 import type { ValidateFunction } from "ajv";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import { AgentStructuredOutputValidationError } from "../Diagnostics/AgentStructuredOutputValidationError.js";
 import { createToolCallId } from "../Core/AgentIds.js";
+import { agentUnknownRecordOrEmpty } from "../Core/AgentUnknownValue.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import {
-  parsePiControllerAction,
-  parsePiToolArgumentsDraft,
-  type ParsedPiControllerAction,
-  type ParsedPiToolArgumentsDraft,
-} from "./AgentPiAssistantMessageSchema.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
+import { parsePiToolArgumentsDraft, type ParsedPiToolArgumentsDraft } from "./AgentPiAssistantMessageSchema.js";
+import { parseControllerDecision, type ParsedControllerDecision } from "../Interaction/AgentControllerDecision.js";
 import type {
   AgentPiAssistantCompilation,
   AgentPiAssistantMessage,
   AgentPiAssistantMessageCompileInput,
-  AgentPiControllerActionInput,
+  AgentPiControllerDecisionInput,
   AgentPiPlannedToolCall,
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
   AgentPiToolContract,
-} from "./AgentPiAssistantMessageTypes.js";
+} from "../PiShared/AgentPiPlanningTypes.js";
 import type { PiOpenAiChatCompletionRequest, PiOpenAiTool } from "./AgentPiOpenAiWireTypes.js";
 import { AgentPiOpenAiPlanningProjector } from "./AgentPiOpenAiPlanningProjector.js";
-import type { AgentInteractionRouteResult } from "../Interaction/AgentInteractionRoute.js";
-import type { AgentRootCommand } from "../AgentRootCommand.js";
-import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
-import { AgentPiAuthoritativeActionProjector } from "./AgentPiAuthoritativeActionProjector.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { formatAjvIssue } from "../Diagnostics/AgentValidationIssue.js";
-
-const Ajv = (AjvModule.default ?? AjvModule) as unknown as typeof import("ajv").default;
+import type { AgentPiReadyToolPlanNode, AgentPiToolPlanCoordinator } from "../PiShared/AgentPiToolPlanCoordinator.js";
+import { matchByKind } from "../Core/AgentMatch.js";
+import { orderToolNamesByPreference, type AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
+import { validateAgentPiCompletion } from "./AgentPiCompletionGate.js";
+import { AgentPiContextPolicyProtocol } from "../PiShared/AgentPiContextPolicyProtocol.js";
+import type { AgentPiTurnContext } from "../PiShared/AgentPiTurnContext.js";
 
 const ajv = new Ajv({
   allErrors: true,
@@ -50,17 +48,14 @@ export interface AgentPiAssistantCompilerOptions {
 
 export interface AgentPiAssistantCompileRequest {
   request: PiOpenAiChatCompletionRequest;
+  toolAccessGrant: AgentToolAccessGrant;
   signal?: AbortSignal;
-  runtime?: {
-    sessionId?: string;
-    requestId?: string;
-    step?: number;
-    rootCommand?: AgentRootCommand;
-    interactionRoute?: AgentInteractionRouteResult;
-    turnUnderstanding?: TurnUnderstanding;
-    activeSkills?: unknown[];
-    preparedAction?: import("./AgentPiPreparedActionLease.js").AgentPiPreparedActionLeasePort;
-  };
+  runtime?: Partial<
+    Pick<
+      AgentPiTurnContext,
+      "sessionId" | "requestId" | "step" | "rootCommand" | "activeSkills" | "toolExposure" | "toolPlan" | "tokenBudget"
+    >
+  >;
 }
 
 export interface AgentPiAssistantCompilerPort {
@@ -68,11 +63,11 @@ export interface AgentPiAssistantCompilerPort {
 }
 
 export interface AgentPiAssistantCompilerModelClient {
-  selectPiAction(input: AgentPiControllerActionInput, options?: { signal?: AbortSignal }): Promise<unknown>;
-  repairPiAction(
+  evolveTurn(input: AgentPiControllerDecisionInput, options?: { signal?: AbortSignal }): Promise<unknown>;
+  repairControllerDecision(
     options: {
-      input: AgentPiControllerActionInput;
-      invalidAction: string;
+      input: AgentPiControllerDecisionInput;
+      invalidDecision: string;
       issues: string[];
     },
     requestOptions?: { signal?: AbortSignal },
@@ -89,14 +84,20 @@ interface AgentPiToolChoiceConstraint {
 }
 
 interface AgentPiControllerContext {
-  input: AgentPiControllerActionInput;
+  input: AgentPiControllerDecisionInput;
   toolContracts: ReadonlyMap<string, AgentPiToolContract>;
+}
+
+interface AgentPiMaterializableToolCall {
+  readonly call: AgentPiPlannedToolCall;
+  readonly planIndex: number;
+  readonly nodeId?: string;
+  readonly preface: string;
 }
 
 export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
   private readonly client: AgentPiAssistantCompilerModelClient;
   private readonly planningProjector: AgentPiOpenAiPlanningProjector;
-  private readonly authoritativeActions = new AgentPiAuthoritativeActionProjector();
 
   constructor(private readonly options: AgentPiAssistantCompilerOptions) {
     this.planningProjector = new AgentPiOpenAiPlanningProjector({
@@ -106,142 +107,148 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
   }
 
   async compile(input: AgentPiAssistantCompileRequest): Promise<AgentPiAssistantCompilation> {
-    const toolChoice = resolveToolChoiceConstraint(input.request);
+    const toolExposure = input.runtime?.toolExposure?.snapshot() ?? {
+      generation: 0,
+      exposedToolNames: input.toolAccessGrant.exposedToolNames,
+      preferredToolNames: input.toolAccessGrant.preferredToolNames,
+    };
+    const toolChoice = resolveToolChoiceConstraint(input.request, input.toolAccessGrant, toolExposure.exposedToolNames);
     const controller = this.buildControllerContext(input, toolChoice.allowedTools);
     const promptInput = controller.input;
-    const preparedAction = input.runtime?.preparedAction?.take();
-    const validatedPreparedAction = preparedAction ? this.parsePreparedAction(preparedAction, toolChoice) : undefined;
-    const authoritativeAction =
-      validatedPreparedAction ??
-      this.authoritativeActions.project({
-        input: promptInput,
-        toolExecutionRequired: toolChoice.toolsRequired,
-      });
-    if (authoritativeAction) {
-      return this.projectAction(
-        authoritativeAction,
-        promptInput,
-        controller.toolContracts,
-        input.signal,
-        validatedPreparedAction ? "preparation" : "runtime",
-      );
+    input.runtime?.tokenBudget?.observeModelInput(promptInput);
+    const toolPlan = input.runtime?.toolPlan;
+    toolPlan?.reconcile(promptInput.openAiRequest.toolTranscript);
+    promptInput.seneraRuntime.planState = toolPlan?.state();
+    const pendingCalls = toolPlan?.ready(promptInput.openAiRequest.parallelToolCalls !== false) ?? [];
+    if (pendingCalls.length > 0) {
+      return this.projectToolCalls(pendingCalls, promptInput, controller.toolContracts, input.signal, toolPlan);
     }
-    const action = await this.selectAction(promptInput, toolChoice, input.signal);
+    const decision = await this.evolveTurn(promptInput, toolChoice, input.signal, toolPlan);
 
-    return this.projectAction(action, promptInput, controller.toolContracts, input.signal, "model");
+    return this.projectDecision(decision, promptInput, controller.toolContracts, input.signal, toolPlan);
   }
 
-  private async selectAction(
-    input: AgentPiControllerActionInput,
+  private async evolveTurn(
+    input: AgentPiControllerDecisionInput,
     toolChoice: AgentPiToolChoiceConstraint,
     signal: AbortSignal | undefined,
-  ): Promise<ParsedPiControllerAction> {
-    const rawAction = await this.client.selectPiAction(input, {
+    toolPlan: AgentPiToolPlanCoordinator | undefined,
+  ): Promise<ParsedControllerDecision> {
+    const rawDecision = await this.client.evolveTurn(input, {
       signal,
     });
     try {
-      return this.parseAction(rawAction, toolChoice);
+      return this.parseDecision(rawDecision, toolChoice, toolPlan);
     } catch (error) {
       if (!isPlannerValidationError(error)) {
         throw error;
       }
-      const repaired = await this.client.repairPiAction(
+      const repaired = await this.client.repairControllerDecision(
         {
           input,
-          invalidAction: stringifyForRepair(rawAction),
+          invalidDecision: stringifyForRepair(rawDecision),
           issues: error.issues,
         },
         {
           signal,
         },
       );
-      return this.parseAction(repaired, toolChoice);
+      return this.parseDecision(repaired, toolChoice, toolPlan);
     }
   }
 
-  private parseAction(rawAction: unknown, toolChoice: AgentPiToolChoiceConstraint): ParsedPiControllerAction {
-    const action = parsePiControllerAction(rawAction, {
+  private parseDecision(
+    rawDecision: unknown,
+    toolChoice: AgentPiToolChoiceConstraint,
+    toolPlan?: AgentPiToolPlanCoordinator,
+  ): ParsedControllerDecision {
+    const decision = parseControllerDecision(rawDecision, {
       allowedTools: toolChoice.allowedTools,
     });
-    const issues = [...validateActionToolChoice(action, toolChoice), ...validateActionExecutionReadiness(action)];
+    const issues = [
+      ...validateDecisionToolChoice(decision, toolChoice),
+      ...validateDecisionExecutionReadiness(decision),
+      ...validateAgentPiCompletion(decision, toolPlan),
+    ];
     if (issues.length > 0) {
-      throw new AgentStructuredOutputValidationError(issues, action);
+      throw new AgentStructuredOutputValidationError(issues, decision);
     }
-    return action;
+    return decision;
   }
 
-  private parsePreparedAction(
-    rawAction: unknown,
-    toolChoice: AgentPiToolChoiceConstraint,
-  ): ParsedPiControllerAction | undefined {
-    try {
-      return this.parseAction(rawAction, toolChoice);
-    } catch (error) {
-      if (isPlannerValidationError(error)) return undefined;
-      throw error;
-    }
-  }
-
-  private async projectAction(
-    action: ParsedPiControllerAction,
-    input: AgentPiControllerActionInput,
+  private async projectDecision(
+    decision: ParsedControllerDecision,
+    input: AgentPiControllerDecisionInput,
     toolContracts: ReadonlyMap<string, AgentPiToolContract>,
     signal: AbortSignal | undefined,
-    decisionSource: "model" | "runtime" | "preparation",
+    toolPlan: AgentPiToolPlanCoordinator | undefined,
   ): Promise<AgentPiAssistantCompilation> {
-    const projectors = {
-      FinalAnswer: async () => this.projectFinalAnswer(action, input, decisionSource),
-      AskUser: async () => ({
+    return matchByKind(decision, {
+      Direct: async (direct) => ({
         kind: "final_text" as const,
-        content: action.question?.trim() ?? "",
+        content: direct.response,
         toolCalls: [],
       }),
-      CallTools: async () => this.projectToolCallsAction(action, input, toolContracts, signal),
-    } satisfies Record<ParsedPiControllerAction["kind"], () => Promise<AgentPiAssistantCompilation>>;
-
-    return projectors[action.kind]();
+      AskUser: async (ask) => ({
+        kind: "final_text" as const,
+        content: ask.question,
+        toolCalls: [],
+      }),
+      Execute: (execute) => this.projectToolCallsDecision(execute, input, toolContracts, signal, toolPlan),
+    });
   }
 
-  private projectFinalAnswer(
-    action: ParsedPiControllerAction,
-    input: AgentPiControllerActionInput,
-    decisionSource: "model" | "runtime" | "preparation",
-  ): Extract<AgentPiAssistantCompilation, { kind: "final_answer" }> {
-    return {
-      kind: "final_answer",
-      decisionSource,
-      input: {
-        openAiRequest: {
-          model: input.openAiRequest.model,
-          messages: [...input.openAiRequest.messages],
-          toolTranscript: input.openAiRequest.toolTranscript.map((entry) => ({ ...entry })),
-          projection: { ...input.openAiRequest.projection },
-        },
-        seneraRuntime: { ...input.seneraRuntime },
-        answerPlan: [...(action.answerPlan ?? [])],
-      },
-    };
-  }
-
-  private async projectToolCallsAction(
-    action: ParsedPiControllerAction,
-    input: AgentPiControllerActionInput,
+  private async projectToolCallsDecision(
+    decision: Extract<ParsedControllerDecision, { kind: "Execute" }>,
+    input: AgentPiControllerDecisionInput,
     toolContracts: ReadonlyMap<string, AgentPiToolContract>,
     signal: AbortSignal | undefined,
+    toolPlan: AgentPiToolPlanCoordinator | undefined,
   ): Promise<AgentPiAssistantMessage> {
-    const readyCalls = this.readyCalls(action.calls ?? [], input.openAiRequest.parallelToolCalls !== false);
+    const parallelToolCalls = input.openAiRequest.parallelToolCalls !== false;
+    const fragment = decision.fragment;
+    const readyCalls = toolPlan
+      ? this.acceptToolPlan(toolPlan, fragment, parallelToolCalls)
+      : this.readyCalls(fragment.calls, parallelToolCalls).map((entry) => ({
+          ...entry,
+          preface: fragment.preface,
+        }));
     if (readyCalls.length === 0) {
-      throw new AgentStructuredOutputValidationError(
-        ["CallTools must include at least one immediately executable call."],
-        action,
-      );
+      throw new AgentStructuredOutputValidationError([agentErrorMessage("pi.executeMissingReadyCall")], decision);
     }
 
+    return this.projectToolCalls(readyCalls, input, toolContracts, signal, toolPlan);
+  }
+
+  private acceptToolPlan(
+    toolPlan: AgentPiToolPlanCoordinator,
+    fragment: Extract<ParsedControllerDecision, { kind: "Execute" }>["fragment"],
+    parallelToolCalls: boolean,
+  ): AgentPiReadyToolPlanNode[] {
+    toolPlan.accept(fragment.preface, fragment.calls);
+    return toolPlan.ready(parallelToolCalls);
+  }
+
+  private async projectToolCalls(
+    readyCalls: readonly AgentPiMaterializableToolCall[],
+    input: AgentPiControllerDecisionInput,
+    toolContracts: ReadonlyMap<string, AgentPiToolContract>,
+    signal: AbortSignal | undefined,
+    toolPlan: AgentPiToolPlanCoordinator | undefined,
+  ): Promise<AgentPiAssistantMessage> {
     const materialized = await Promise.all(
       readyCalls.map((entry) => this.materializeToolCall(entry, input, toolContracts, signal)),
     );
+    for (const entry of materialized) {
+      if (!entry.ok && entry.entry.nodeId) toolPlan?.reject(entry.entry.nodeId, entry.message);
+    }
     const requiredFailure = materialized.find((entry) => !entry.ok && entry.required);
     if (requiredFailure && !requiredFailure.ok) {
+      for (const entry of materialized) {
+        if (entry.ok && entry.entry.nodeId) {
+          toolPlan?.reject(entry.entry.nodeId, agentErrorMessage("pi.requiredSiblingInvalid"));
+        }
+      }
       return {
         kind: "final_text",
         content: requiredFailure.message,
@@ -251,36 +258,44 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
 
     const executable = materialized.flatMap((entry) => (entry.ok ? [entry.call] : []));
     if (executable.length === 0) {
-      throw new AgentStructuredOutputValidationError(
-        ["No tool calls were executable after argument validation."],
-        action,
-      );
+      throw new AgentStructuredOutputValidationError([agentErrorMessage("pi.noExecutableToolCalls")], readyCalls);
+    }
+
+    for (const entry of materialized) {
+      if (!entry.ok || !entry.entry.nodeId) continue;
+      const callId = entry.call.id;
+      if (!callId) {
+        throw new AgentStructuredOutputValidationError(
+          [agentErrorMessage("pi.materializedToolCallMissingId")],
+          entry.call,
+        );
+      }
+      toolPlan?.dispatch(entry.entry.nodeId, callId);
     }
 
     return {
       kind: "tool_calls",
-      content: action.preface?.trim() ?? "",
+      content: readyCalls.find((entry) => entry.preface)?.preface ?? "",
       toolCalls: executable,
     };
   }
 
   private async materializeToolCall(
-    entry: {
-      call: AgentPiPlannedToolCall;
-      planIndex: number;
-    },
-    input: AgentPiControllerActionInput,
+    entry: AgentPiMaterializableToolCall,
+    input: AgentPiControllerDecisionInput,
     toolContracts: ReadonlyMap<string, AgentPiToolContract>,
     signal: AbortSignal | undefined,
   ): Promise<
     | {
         ok: true;
         call: NonNullable<AgentPiAssistantMessage["toolCalls"][number]>;
+        entry: AgentPiMaterializableToolCall;
       }
     | {
         ok: false;
         required: boolean;
         message: string;
+        entry: AgentPiMaterializableToolCall;
       }
   > {
     const tool = toolContracts.get(entry.call.toolName);
@@ -289,6 +304,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
         ok: false,
         required: entry.call.required,
         message: agentErrorMessage("pi.toolUnavailable", { toolName: entry.call.toolName }),
+        entry,
       };
     }
 
@@ -308,6 +324,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
         ok: false,
         required: entry.call.required,
         message: formatArgumentFailure(entry.call, issues),
+        entry,
       };
     }
 
@@ -318,6 +335,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
         name: entry.call.toolName,
         arguments: draft.arguments,
       },
+      entry,
     };
   }
 
@@ -325,11 +343,6 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
     input: AgentPiToolArgumentsInput,
     signal: AbortSignal | undefined,
   ): Promise<ParsedPiToolArgumentsDraft> {
-    const hinted = this.argumentsFromHints(input);
-    if (hinted) {
-      return hinted;
-    }
-
     const draft = parsePiToolArgumentsDraft(
       await this.client.fillPiToolArguments(input, {
         signal,
@@ -352,20 +365,6 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
         },
       ),
     );
-  }
-
-  private argumentsFromHints(input: AgentPiToolArgumentsInput): ParsedPiToolArgumentsDraft | undefined {
-    const hints = input.call.argumentHints;
-    if (!hints) {
-      return undefined;
-    }
-
-    const draft = parsePiToolArgumentsDraft({
-      arguments: hints,
-      missingInputs: [],
-      assumptions: [],
-    });
-    return this.argumentDraftIssues(draft, input.tool).length === 0 ? draft : undefined;
   }
 
   private argumentDraftIssues(
@@ -406,26 +405,44 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
     const tools = input.request.tools ?? [];
     const base = this.buildPromptInput(input);
     const allowed = new Set(allowedTools);
-    const candidateTools = tools.filter((tool) => allowed.has(tool.function.name));
+    const selectedByName = new Map(
+      tools.filter((tool) => allowed.has(tool.function.name)).map((tool) => [tool.function.name, tool]),
+    );
+    const selectedTools = orderToolNamesByPreference(
+      [...selectedByName.keys()],
+      input.runtime?.toolExposure?.snapshot().preferredToolNames ?? input.toolAccessGrant.preferredToolNames,
+    ).flatMap((toolName) => {
+      const tool = selectedByName.get(toolName);
+      return tool ? [tool] : [];
+    });
     return {
       input: {
         ...base,
-        candidateTools: this.planningProjector.projectToolCards(candidateTools),
+        routingCards: this.planningProjector.projectToolCards(selectedTools),
       },
-      toolContracts: new Map(candidateTools.map((tool) => [tool.function.name, authoritativeToolCard(tool)])),
+      toolContracts: new Map(selectedTools.map((tool) => [tool.function.name, authoritativeToolCard(tool)])),
     };
   }
 
   private buildPromptInput(input: AgentPiAssistantCompileRequest): AgentPiAssistantMessageCompileInput {
+    const conversationSummaryText = this.planningProjector.detectCompactionSummaryText(input.request.messages);
     return {
       openAiRequest: this.planningProjector.project(input.request),
       seneraRuntime: {
+        protocols: {
+          contextPolicy: AgentPiContextPolicyProtocol,
+        },
         modelProviderId: this.options.modelProvider.Id,
         model: this.options.modelProvider.Model,
+        toolAccessGrant: input.toolAccessGrant,
+        toolExposure: input.runtime?.toolExposure?.snapshot() ?? {
+          generation: 0,
+          exposedToolNames: input.toolAccessGrant.exposedToolNames,
+          preferredToolNames: input.toolAccessGrant.preferredToolNames,
+        },
         rootCommand: input.runtime?.rootCommand,
-        interactionRoute: input.runtime?.interactionRoute,
-        turnUnderstanding: input.runtime?.turnUnderstanding,
         activeSkills: input.runtime?.activeSkills,
+        ...(conversationSummaryText ? { conversationSummaryText } : {}),
       },
     };
   }
@@ -437,12 +454,6 @@ function authoritativeToolCard(tool: PiOpenAiTool): AgentPiToolContract {
     description: tool.function.description,
     parameters: structuredClone(tool.function.parameters),
   });
-}
-
-function deepFreeze<T>(value: T): T {
-  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
-  for (const nested of Object.values(value as Record<string, unknown>)) deepFreeze(nested);
-  return Object.freeze(value);
 }
 
 function toolNames(tools: readonly PiOpenAiTool[]): string[] {
@@ -484,8 +495,21 @@ function formatArgumentFailure(call: AgentPiPlannedToolCall, issues: readonly st
   return [agentErrorMessage("pi.toolArgumentsUnsafe", { toolName: call.toolName }), ...issues.slice(0, 6)].join("\n");
 }
 
-function resolveToolChoiceConstraint(request: PiOpenAiChatCompletionRequest): AgentPiToolChoiceConstraint {
-  const requestTools = toolNames(request.tools ?? []);
+function resolveToolChoiceConstraint(
+  request: PiOpenAiChatCompletionRequest,
+  toolAccessGrant: AgentToolAccessGrant,
+  exposedToolNames: readonly string[],
+): AgentPiToolChoiceConstraint {
+  const requestedToolNames = toolNames(request.tools ?? []);
+  const granted = new Set(toolAccessGrant.authorizedToolNames);
+  const ungranted = requestedToolNames.filter((toolName) => !granted.has(toolName));
+  if (ungranted.length > 0) {
+    throw new AgentLocalizedError("pi.requestToolOutsideGrant", {
+      toolNames: [...new Set(ungranted)].join(", "),
+    });
+  }
+  const exposed = new Set(exposedToolNames);
+  const requestTools = requestedToolNames.filter((toolName) => exposed.has(toolName));
   const allowedToolChoice = readAllowedToolChoice(request.tool_choice, requestTools);
   if (allowedToolChoice) {
     return allowedToolChoice;
@@ -535,7 +559,7 @@ function readAllowedToolChoice(
   if (record.type !== "allowed_tools") {
     return undefined;
   }
-  const allowedToolsRecord = readRecord(record.allowed_tools);
+  const allowedToolsRecord = agentUnknownRecordOrEmpty(record.allowed_tools);
   const declaredTools = Array.isArray(allowedToolsRecord.tools) ? allowedToolsRecord.tools : [];
   const declaredNames = new Set(
     declaredTools.flatMap((tool) => {
@@ -570,38 +594,41 @@ function readFunctionToolName(toolChoice: unknown): string | undefined {
   return typeof name === "string" && name.trim() ? name : undefined;
 }
 
-function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function validateActionToolChoice(action: ParsedPiControllerAction, toolChoice: AgentPiToolChoiceConstraint): string[] {
+function validateDecisionToolChoice(
+  decision: ParsedControllerDecision,
+  toolChoice: AgentPiToolChoiceConstraint,
+): string[] {
   const issues: string[] = [];
-  if (toolChoice.mode === "none" && action.kind === "CallTools") {
-    issues.push("tool_choice forbids tool calls.");
+  if (toolChoice.mode === "none" && decision.kind === "Execute") {
+    issues.push(agentErrorMessage("pi.toolChoiceForbidsTools"));
   }
-  if (toolChoice.toolsRequired && action.kind !== "CallTools") {
-    issues.push("tool_choice requires a tool call.");
+  if (toolChoice.toolsRequired && decision.kind !== "Execute") {
+    issues.push(agentErrorMessage("pi.toolChoiceRequiresTool"));
   }
-  if (toolChoice.requiredToolName && action.kind === "CallTools") {
-    const invalid = (action.calls ?? []).find((call) => call.toolName !== toolChoice.requiredToolName);
+  if (toolChoice.requiredToolName && decision.kind === "Execute") {
+    const invalid = decision.fragment.calls.find((call) => call.toolName !== toolChoice.requiredToolName);
     if (invalid) {
-      issues.push(`tool_choice requires tool ${toolChoice.requiredToolName}.`);
+      issues.push(
+        agentErrorMessage("pi.toolChoiceRequiresNamedTool", {
+          toolName: toolChoice.requiredToolName,
+        }),
+      );
     }
   }
   if (toolChoice.toolsRequired && toolChoice.allowedTools.length === 0) {
-    issues.push("tool_choice references no available tool.");
+    issues.push(agentErrorMessage("pi.toolChoiceWithoutAvailableTool"));
   }
   return issues;
 }
 
-function validateActionExecutionReadiness(action: ParsedPiControllerAction): string[] {
-  if (action.kind !== "CallTools") {
+function validateDecisionExecutionReadiness(decision: ParsedControllerDecision): string[] {
+  if (decision.kind !== "Execute") {
     return [];
   }
-  const calls = action.calls ?? [];
+  const calls = decision.fragment.calls;
   return calls.some((call) => (call.dependsOn ?? []).length === 0)
     ? []
-    : ["CallTools must include at least one immediately executable call."];
+    : [agentErrorMessage("pi.executeMissingReadyCall")];
 }
 
 function isPlannerValidationError(error: unknown): error is AgentStructuredOutputValidationError {
@@ -615,3 +642,4 @@ function stringifyForRepair(value: unknown): string {
     return String(value);
   }
 }
+import { deepFreeze } from "../Core/AgentDeepFreeze.js";

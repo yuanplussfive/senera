@@ -2,8 +2,8 @@ import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 import type { AgentToolHostCapabilityRegistry } from "./AgentToolHostCapabilityRegistry.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import type { AgentPluginRegistryLike } from "../Types/ToolRuntimeTypes.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import type { AgentExtensionRegistryLike } from "../Types/ToolRuntimeTypes.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { toolProcessFailureResult } from "./AgentToolProcessEnvelope.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
@@ -13,22 +13,33 @@ import { explainUnsupportedAgentToolRuntime } from "./AgentToolRuntimeCapabiliti
 import { resolveAgentToolRuntimeCapabilities } from "./AgentToolRuntimeCapabilities.js";
 import { AgentToolExecutionReporter } from "./AgentToolExecutionReporter.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
-import {
-  createCompiledAgentMcpRuntimeModuleResolver,
-  type AgentMcpRuntimeModuleResolver,
-} from "../Mcp/AgentMcpRuntimeModuleResolver.js";
+import { projectAgentToolResourceArguments } from "./AgentToolResourceArgumentProjector.js";
+import { createAgentDefaultToolResourceCapabilities } from "./AgentToolResourceCapabilities.js";
 import { resolveArtifactsConfig } from "../AgentDefaults.js";
 import { createSeneraOutputSpool, updateSeneraOutputSpoolState } from "../Execution/SeneraOutputSpool.js";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { assertInsideRoot } from "../Artifacts/AgentArtifactLocator.js";
-import { validateToolSignatureArguments } from "./AgentToolSignatureArgumentValidator.js";
+import { validateToolContractValue, validateToolSignatureArguments } from "./AgentToolSignatureArgumentValidator.js";
 import {
   AgentToolExecutionTargetError,
   bindAgentToolInvocationToExecutionPlan,
   resolveAgentToolInvocation,
   type AgentToolExecutionPlan,
 } from "./AgentToolExecutionPlan.js";
+import type { AgentToolTokenBudget } from "../Text/AgentTurnTokenBudget.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { readAbortMessage } from "../Core/AgentCancellation.js";
+import {
+  openAgentToolDeadline,
+  readAgentToolDeadlineExceeded,
+  type AgentToolDeadlineExceededError,
+} from "./AgentToolDeadline.js";
+import type { AgentToolExposureState } from "./AgentToolExposureState.js";
+import type { AgentMcpToolsChangedHandler } from "../Mcp/AgentMcpToolCatalogChange.js";
+import type { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
+import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
+import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -47,8 +58,10 @@ export interface AgentToolRunnerContext {
   configPath?: string;
   onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
+  toolExposure?: AgentToolExposureState;
   signal?: AbortSignal;
   executionPlan?: AgentToolExecutionPlan;
+  tokenBudget?: AgentToolTokenBudget;
 }
 
 export class AgentToolRunner implements AgentToolRunnerLike {
@@ -58,17 +71,23 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     private readonly config: AgentSystemConfig,
     private readonly workspaceRoot: string,
     private readonly hostCapabilities: AgentToolHostCapabilityRegistry,
-    private readonly registry: AgentPluginRegistryLike,
+    private readonly registry: AgentExtensionRegistryLike,
     private readonly executionEnv: SeneraExecutionEnv,
-    runtimeModuleResolver: AgentMcpRuntimeModuleResolver = createCompiledAgentMcpRuntimeModuleResolver(process.cwd()),
     interactionInput?: AgentInteractionInputRuntime,
+    modelProviderId?: string,
+    onMcpToolsChanged?: AgentMcpToolsChangedHandler,
+    mcpClientPool?: AgentMcpToolClientPool,
+    mcpSampling?: AgentMcpSamplingHandler,
+    private readonly uploadStore?: AgentUploadStore,
   ) {
     this.mcpRunner = new AgentMcpToolRunner({
       config,
-      workspaceRoot,
-      runtimeModuleResolver,
       executionEnv,
       interactionInput,
+      modelProviderId,
+      onToolsChanged: onMcpToolsChanged,
+      clientPool: mcpClientPool,
+      sampling: mcpSampling,
     });
   }
 
@@ -80,6 +99,33 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     tool: RegisteredTool,
     args: Record<string, unknown>,
     context: AgentToolRunnerContext = {},
+  ): Promise<AgentToolProcessRunResult> {
+    if (resolveAgentToolRuntimeCapabilities(tool).lifecycle === "remote-job") {
+      try {
+        return await this.runInvocation(tool, args, context);
+      } catch (error) {
+        return this.invocationFailure(tool, error, context.signal);
+      }
+    }
+    const deadline = openAgentToolDeadline(this.config, context.signal);
+    const scopedContext = { ...context, signal: deadline.signal };
+    try {
+      const result = await this.runInvocation(tool, args, scopedContext);
+      const exceeded = readAgentToolDeadlineExceeded(deadline.signal);
+      return exceeded ? this.deadlineFailure(tool, exceeded) : result;
+    } catch (error) {
+      const exceeded = readAgentToolDeadlineExceeded(deadline.signal);
+      if (exceeded) return this.deadlineFailure(tool, exceeded);
+      return this.invocationFailure(tool, error, context.signal);
+    } finally {
+      deadline.close();
+    }
+  }
+
+  private async runInvocation(
+    tool: RegisteredTool,
+    args: Record<string, unknown>,
+    context: AgentToolRunnerContext,
   ): Promise<AgentToolProcessRunResult> {
     let invocation;
     try {
@@ -129,7 +175,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     }
     const runtime = resolveAgentToolRuntimeCapabilities(tool);
     const outputSpool = runtime.outputStreaming
-      ? await createPluginOutputSpool(this.config, this.workspaceRoot, {
+      ? await createToolOutputSpool(this.config, this.workspaceRoot, {
           sessionId: context.sessionId,
           requestId: context.requestId,
           toolCallId: context.toolCallId,
@@ -202,11 +248,50 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       throw executionFailure;
     }
     if (!result) throw new Error("Tool runner completed without a result.");
+    result = this.validateSuccessfulResult(tool, result);
     if (outputSpool && !result.outputCapture) {
       return { ...result, outputCapture: outputSpool.descriptor };
     }
     if (outputSpool && spoolSealed) await outputSpool.cleanup();
     return result;
+  }
+
+  private deadlineFailure(tool: RegisteredTool, error: AgentToolDeadlineExceededError): AgentToolProcessRunResult {
+    return this.failure(
+      error.message,
+      { toolName: tool.name, timeoutMs: error.timeoutMs },
+      AgentExecutionErrorCodes.ToolProcessTimeout,
+      AgentToolProcessErrorPhases.RuntimeExecution,
+    );
+  }
+
+  private invocationFailure(tool: RegisteredTool, error: unknown, signal?: AbortSignal): AgentToolProcessRunResult {
+    const cancelled = signal?.aborted === true;
+    return this.failure(
+      cancelled ? readAbortMessage(signal) : errorMessage(error),
+      { toolName: tool.name },
+      cancelled ? AgentExecutionErrorCodes.ToolProcessCancelled : AgentExecutionErrorCodes.ToolExecutionError,
+      AgentToolProcessErrorPhases.RuntimeExecution,
+    );
+  }
+
+  private validateSuccessfulResult(tool: RegisteredTool, result: AgentToolProcessRunResult): AgentToolProcessRunResult {
+    const outputSchema = tool.contract?.outputSchema;
+    if (!result.response.ok || !outputSchema) return result;
+    const issues = validateToolContractValue({
+      schema: outputSchema,
+      value: result.response.result,
+      path: [tool.name],
+      label: "result",
+    });
+    if (issues.length === 0) return result;
+    const failure = this.failure(
+      agentErrorMessage("tool.resultInvalid", { toolName: tool.name }),
+      { toolName: tool.name, issues },
+      AgentExecutionErrorCodes.ToolResultSchemaInvalid,
+      AgentToolProcessErrorPhases.ResponseValidation,
+    );
+    return { ...result, response: failure.response };
   }
 
   private async runHostCapability(
@@ -234,13 +319,25 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       );
     }
 
-    return handler(args, {
+    const projectedArguments = await projectAgentToolResourceArguments(
+      args,
+      tool.handler.resources ?? [],
+      createAgentDefaultToolResourceCapabilities({
+        config: this.config,
+        workspaceRoot: this.workspaceRoot,
+        executionEnv: this.executionEnv,
+        uploadStore: this.uploadStore,
+      }),
+    );
+
+    return handler(projectedArguments, {
       tool,
       config: this.config,
       configPath: context.configPath,
       workspaceRoot: this.workspaceRoot,
       registry: this.registry,
       executionEnv: this.executionEnv,
+      uploadStore: this.uploadStore,
       sessionId: context.sessionId,
       requestId: context.requestId,
       step: context.step,
@@ -248,9 +345,11 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       batchId: context.batchId,
       onEvent: context.onEvent,
       visibleToolNames: context.visibleToolNames,
+      toolExposure: context.toolExposure,
       signal: context.signal,
       executionPlan: context.executionPlan,
       reporter,
+      tokenBudget: context.tokenBudget,
     });
   }
 
@@ -258,19 +357,20 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     message: string,
     details: Record<string, unknown>,
     code: (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes] = AgentExecutionErrorCodes.ToolProcessConfigurationInvalid,
+    phase: (typeof AgentToolProcessErrorPhases)[keyof typeof AgentToolProcessErrorPhases] = AgentToolProcessErrorPhases.ConfigurationValidation,
   ): AgentToolProcessRunResult {
     return toolProcessFailureResult({
       code,
       message,
       details: {
-        phase: AgentToolProcessErrorPhases.ConfigurationValidation,
+        phase,
         ...details,
       },
     });
   }
 }
 
-async function createPluginOutputSpool(
+async function createToolOutputSpool(
   config: AgentSystemConfig,
   workspaceRoot: string,
   metadata: { sessionId?: string; requestId?: string; toolCallId?: string },

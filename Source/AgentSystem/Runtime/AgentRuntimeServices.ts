@@ -1,4 +1,3 @@
-import type { AgentActionPlanner } from "../ActionPlanner/AgentActionPlanner.js";
 import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import type { AgentPromptContextBuilder } from "../Prompt/AgentPromptContextBuilder.js";
 import type { AgentPresetManager } from "../Presets/AgentPresetManager.js";
@@ -6,14 +5,9 @@ import type { AgentSkillActivationService } from "../Skills/AgentSkillActivation
 import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecutionArtifactRecorder.js";
 import type { AgentToolCatalogProjector } from "../ToolRuntime/AgentToolCatalogProjector.js";
 import type { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntime.js";
-import type { AgentPiRuntimeService, AgentPiSubstrate } from "../Pi/AgentPiSubstrate.js";
+import type { AgentPiSubstrate } from "../Pi/AgentPiSubstrate.js";
+import type { AgentPiRuntimeService } from "../Pi/AgentPiRuntimeTypes.js";
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
-
-export interface AgentPlanningService {
-  prepareInteraction(
-    options: Parameters<AgentActionPlanner["prepareInteraction"]>[0],
-  ): ReturnType<AgentActionPlanner["prepareInteraction"]>;
-}
 
 export interface AgentRetrievalService {
   resolveInitialLoadedTools(
@@ -65,13 +59,11 @@ export interface AgentRuntimeServices {
   execution: AgentExecutionService;
   pi: AgentPiRuntimeService;
   piSessions: AgentPiActiveSessionRegistry;
-  planning: AgentPlanningService;
   retrieval: AgentRetrievalService;
   promptContext: AgentPromptContextService;
 }
 
 export interface AgentRuntimeServiceDependencies {
-  actionPlanner: AgentActionPlanner;
   artifactRecorder: AgentToolExecutionArtifactRecorder;
   toolCallExecutor: AgentToolCallExecutor;
   piSessionRegistry: AgentPiActiveSessionRegistry;
@@ -91,9 +83,6 @@ export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServ
     },
     pi: dependencies.piSubstrate,
     piSessions: dependencies.piSessionRegistry,
-    planning: {
-      prepareInteraction: (options) => dependencies.actionPlanner.prepareInteraction(options),
-    },
     retrieval: {
       resolveInitialLoadedTools: (...args) => dependencies.toolSearch.resolveInitialLoadedTools(...args),
       resolvePlannedLoadedTools: (options) => dependencies.toolSearch.resolvePlannedLoadedTools(options),

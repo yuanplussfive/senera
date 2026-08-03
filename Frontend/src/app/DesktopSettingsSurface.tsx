@@ -48,7 +48,7 @@ export function DesktopSettingsSurface({
   sendRef.current = send;
   statusRef.current = status;
   const runtime = useSettingsRuntime({ sendRef, statusRef });
-  settingsEventHandlerRef.current = runtime.controller.ingestConfigMutationEvent;
+  settingsEventHandlerRef.current = runtime.ingestSettingsEvent;
   const bridge = readDesktopBridge();
 
   useEffect(() => {
@@ -88,7 +88,6 @@ export function DesktopSettingsSurface({
         motionLevel={motionLevel}
         onValueChange={onValueChange}
         onMotionLevelChange={onMotionLevelChange}
-        pluginSettings={runtime.pluginSettings}
         systemConfig={runtime.systemConfig}
       />
       <DiscardDraftDialog

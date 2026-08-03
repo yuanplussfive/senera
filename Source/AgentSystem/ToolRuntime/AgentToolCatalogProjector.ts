@@ -1,9 +1,10 @@
-import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
+import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
 import type {
   ToolEvidenceCapabilityManifest,
   ToolSearchCapabilityFacetsManifest,
-} from "../Types/PluginManifestTypes.js";
+} from "../Types/AgentToolContractTypes.js";
 import {
   resolveAgentToolRuntimeCapabilities,
   type AgentToolRuntimeCapabilities,
@@ -44,7 +45,7 @@ export interface AgentToolCatalogCapabilityItem {
 }
 
 export class AgentToolCatalogProjector {
-  constructor(private readonly registry: AgentPluginRegistry) {}
+  constructor(private readonly registry: AgentExtensionRegistry) {}
 
   list(): AgentToolCatalogItem[] {
     return this.registry.listTools().map((tool) => this.project(tool));
@@ -60,12 +61,13 @@ export class AgentToolCatalogProjector {
   }
 
   private project(tool: RegisteredTool): AgentToolCatalogItem {
+    const owner = resolveAgentToolOwner(tool);
     const search = tool.search;
     return {
       name: tool.name,
-      title: tool.plugin.manifest.Plugin.Title ?? tool.name,
-      summary: search?.Summary ?? tool.plugin.manifest.Plugin.Description ?? "",
-      rootKind: tool.plugin.rootKind,
+      title: owner.title ?? tool.name,
+      summary: search?.Summary ?? owner.description ?? "",
+      rootKind: owner.kind === "system" ? "System" : "User",
       capabilities: (search?.Capabilities ?? []).map((capability) => ({
         id: capability.Id,
         title: capability.Title ?? capability.Id,

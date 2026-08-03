@@ -5,15 +5,16 @@ import {
   agentActionToolSearchQueries,
   type AgentActionCapabilityNeed,
   type AgentActionDecision,
-} from "./ActionPlanner/AgentActionPlanner.js";
-import type { RegisteredTool } from "./Types/PluginRuntimeTypes.js";
+} from "./ActionPlanner/AgentActionPlannerTypes.js";
+import type { RegisteredTool } from "./Types/AgentToolRuntimeTypes.js";
 import type {
   RootCommandManifest,
   RootCommandToolSelectorManifest,
   RootCommandVisibleOutputManifest,
   RootCommandVisibleOutputRuleManifest,
-} from "./Types/PluginManifestTypes.js";
-import { agentErrorMessage } from "./I18n/AgentMessageCatalog.js";
+} from "./Types/AgentToolContractTypes.js";
+import { AgentLocalizedError } from "./I18n/AgentLocalizedError.js";
+import { createAgentToolAccessGrant, type AgentToolAccessGrant } from "./ToolRuntime/AgentToolAccessGrant.js";
 
 export type AgentRootCommandToolAccess = RootCommandManifest["ToolAccess"];
 export type AgentRootOutputMode = RootCommandManifest["OutputMode"];
@@ -25,10 +26,9 @@ export interface AgentRootCommand {
   toolAccess: AgentRootCommandToolAccess;
   objective: string;
   instruction: string | null;
-  allowedTools: string[];
+  toolAccessGrant: AgentToolAccessGrant;
   forbiddenOutputs: string[];
   insufficiencyPolicy: string;
-  preferredTools: string[];
   toolSearchQueries: string[];
   needs: AgentActionCapabilityNeed[];
   includeToolCatalog: boolean;
@@ -57,23 +57,30 @@ export interface AgentRootCommandVisibleOutputRepair {
 export function buildAgentRootCommand(options: {
   decision: AgentActionDecision;
   loadedTools: readonly Pick<RegisteredTool, "name" | "handler">[];
+  registeredTools: readonly Pick<RegisteredTool, "name" | "handler">[];
   policy: RootCommandManifest;
 }): AgentRootCommand {
   if (options.policy.Action !== options.decision.action) {
-    throw new Error(
-      agentErrorMessage("rootCommand.policyActionMismatch", {
-        policyAction: options.policy.Action,
-        decisionAction: options.decision.action,
-      }),
-    );
+    throw new AgentLocalizedError("rootCommand.policyActionMismatch", {
+      policyAction: options.policy.Action,
+      decisionAction: options.decision.action,
+    });
   }
 
   const preferredTools = agentActionPreferredTools(options.decision);
   const toolSearchQueries = agentActionToolSearchQueries(options.decision);
   const instruction = agentActionInstruction(options.decision).trim();
-  const allowedTools = resolveAllowedToolNames(options.policy.AllowedTools, {
-    loadedTools: options.loadedTools,
-    preferredTools,
+  const authorizedToolNames = resolveAuthorizedToolNames(
+    options.policy.AllowedTools,
+    options.loadedTools,
+    options.registeredTools,
+  );
+  const authorized = new Set(authorizedToolNames);
+  const exposedToolNames = options.loadedTools.map((tool) => tool.name).filter((toolName) => authorized.has(toolName));
+  const toolAccessGrant = createAgentToolAccessGrant({
+    authorizedToolNames,
+    exposedToolNames,
+    preferredToolNames: preferredTools,
   });
 
   return {
@@ -83,10 +90,9 @@ export function buildAgentRootCommand(options: {
     toolAccess: options.policy.ToolAccess,
     objective: options.policy.Objective,
     instruction: instruction.length > 0 ? instruction : null,
-    allowedTools,
+    toolAccessGrant,
     forbiddenOutputs: options.policy.ForbiddenOutputs,
     insufficiencyPolicy: options.policy.InsufficiencyPolicy,
-    preferredTools,
     toolSearchQueries,
     needs: agentActionCapabilityNeeds(options.decision),
     includeToolCatalog: options.policy.IncludeToolCatalog,
@@ -115,43 +121,34 @@ function projectVisibleOutputRule(value: RootCommandVisibleOutputRuleManifest): 
   };
 }
 
-function resolveAllowedToolNames(
+function resolveAuthorizedToolNames(
   selectors: readonly RootCommandToolSelectorManifest[],
-  scope: RootCommandToolScope,
+  loadedTools: readonly Pick<RegisteredTool, "name" | "handler">[],
+  registeredTools: readonly Pick<RegisteredTool, "name" | "handler">[],
 ): string[] {
-  const names = selectors.flatMap((selector) => readSelectorToolNames(selector, scope));
+  const names = selectors.flatMap((selector) => readSelectorToolNames(selector, loadedTools, registeredTools));
   return [...new Set(names)];
 }
 
-function readSelectorToolNames(selector: RootCommandToolSelectorManifest, scope: RootCommandToolScope): string[] {
+function readSelectorToolNames(
+  selector: RootCommandToolSelectorManifest,
+  loadedTools: readonly Pick<RegisteredTool, "name" | "handler">[],
+  registeredTools: readonly Pick<RegisteredTool, "name" | "handler">[],
+): string[] {
   switch (selector.Source) {
     case "None":
       return [];
     case "Loaded":
-      return scope.loadedTools.map((tool) => tool.name);
+      return loadedTools.map((tool) => tool.name);
+    case "Registered":
+      return registeredTools.map((tool) => tool.name);
     case "NamedLoaded": {
       const requested = new Set(selector.Names);
-      return scope.loadedTools.filter((tool) => requested.has(tool.name)).map((tool) => tool.name);
+      return loadedTools.filter((tool) => requested.has(tool.name)).map((tool) => tool.name);
     }
     case "HostCapability":
-      return scope.loadedTools
+      return registeredTools
         .filter((tool) => tool.handler.kind === "HostCapability" && tool.handler.capability === selector.Capability)
         .map((tool) => tool.name);
-    case "PreferredLoaded":
-      return filterPreferredLoadedToolNames(scope);
-    case "PreferredLoadedOrLoaded": {
-      const preferred = filterPreferredLoadedToolNames(scope);
-      return preferred.length > 0 ? preferred : scope.loadedTools.map((tool) => tool.name);
-    }
   }
-}
-
-function filterPreferredLoadedToolNames(scope: RootCommandToolScope): string[] {
-  const loaded = new Set(scope.loadedTools.map((tool) => tool.name));
-  return [...new Set([...scope.preferredTools])].filter((toolName) => loaded.has(toolName));
-}
-
-interface RootCommandToolScope {
-  loadedTools: readonly Pick<RegisteredTool, "name" | "handler">[];
-  preferredTools: readonly string[];
 }

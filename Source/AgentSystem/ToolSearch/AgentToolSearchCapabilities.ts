@@ -3,7 +3,7 @@ import type {
   ToolSearchCapabilityFacetsManifest,
   ToolSearchCapabilityManifest,
   ToolSearchCapabilityRiskManifest,
-} from "../Types/PluginManifestTypes.js";
+} from "../Types/AgentToolContractTypes.js";
 import type { AgentToolSearchCapabilityMatch, ToolSearchDocument } from "./AgentToolSearchTypes.js";
 
 export function matchToolCapabilities(

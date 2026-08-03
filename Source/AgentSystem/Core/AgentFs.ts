@@ -16,6 +16,46 @@ export function isFileExistsError(error: unknown): boolean {
   return nodeErrorCode(error) === "EEXIST";
 }
 
+export interface AgentRegularTextFileSnapshot {
+  readonly content: string;
+  readonly mtimeMs: number;
+  readonly ctimeMs: number;
+  readonly size: number;
+}
+
+export function readRegularTextFileSnapshotSync(
+  filePath: string,
+  subject = "File",
+  previous?: AgentRegularTextFileSnapshot,
+): AgentRegularTextFileSnapshot {
+  const noFollow = typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0;
+  const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | noFollow);
+  try {
+    const stat = fs.fstatSync(descriptor);
+    if (!stat.isFile()) throw new Error(`${subject} is not a regular file: ${filePath}`);
+    if (
+      previous &&
+      previous.mtimeMs === stat.mtimeMs &&
+      previous.ctimeMs === stat.ctimeMs &&
+      previous.size === stat.size
+    ) {
+      return previous;
+    }
+    return {
+      content: fs.readFileSync(descriptor, "utf8"),
+      mtimeMs: stat.mtimeMs,
+      ctimeMs: stat.ctimeMs,
+      size: stat.size,
+    };
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+export function readRegularTextFileSync(filePath: string, subject = "File"): string {
+  return readRegularTextFileSnapshotSync(filePath, subject).content;
+}
+
 export interface AgentAtomicWriteOptions {
   /** 目标文件权限（如 0o600）。 */
   mode?: number;

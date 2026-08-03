@@ -1,3 +1,5 @@
+import { AgentBaseError } from "../Core/AgentBaseError.js";
+
 export const AgentExecutionResourceErrorCodes = {
   InvalidOwner: "execution_resource_invalid_owner",
   NotFound: "execution_resource_not_found",
@@ -13,13 +15,12 @@ export const AgentExecutionResourceErrorCodes = {
 export type AgentExecutionResourceErrorCode =
   (typeof AgentExecutionResourceErrorCodes)[keyof typeof AgentExecutionResourceErrorCodes];
 
-export class AgentExecutionResourceError extends Error {
+export class AgentExecutionResourceError extends AgentBaseError {
   constructor(
     readonly code: AgentExecutionResourceErrorCode,
     message: string,
     readonly details: Record<string, unknown> = {},
   ) {
     super(message);
-    this.name = "AgentExecutionResourceError";
   }
 }

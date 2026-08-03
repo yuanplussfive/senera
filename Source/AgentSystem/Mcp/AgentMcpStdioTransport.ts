@@ -15,6 +15,7 @@ import {
 } from "../Execution/SeneraProcessTreeTermination.js";
 import { sleep } from "../Core/AgentTiming.js";
 import { toError } from "../Core/AgentErrors.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 const McpDiagnosticStderrLimitBytes = 16 * 1024;
 const McpErrorSummaryChars = 512;
@@ -31,7 +32,7 @@ const AgentMcpStdioTransportStates = {
 
 type AgentMcpStdioTransportState = (typeof AgentMcpStdioTransportStates)[keyof typeof AgentMcpStdioTransportStates];
 
-export class AgentMcpStdioStartupError extends Error {
+export class AgentMcpStdioStartupError extends AgentBaseError {
   constructor(
     readonly command: string,
     readonly exitCode: number | null | undefined,
@@ -41,11 +42,10 @@ export class AgentMcpStdioStartupError extends Error {
     const outcome = signal ? `signal ${signal}` : `exit code ${exitCode ?? "unknown"}`;
     const summary = summarizeDiagnostic(stderr);
     super(`MCP stdio server exited during startup with ${outcome}.${summary ? ` stderr: ${summary}` : ""}`);
-    this.name = "AgentMcpStdioStartupError";
   }
 }
 
-export class AgentMcpStdioConnectionClosedError extends Error {
+export class AgentMcpStdioConnectionClosedError extends AgentBaseError {
   constructor(
     readonly command: string,
     readonly pid: number | undefined,
@@ -57,11 +57,10 @@ export class AgentMcpStdioConnectionClosedError extends Error {
     const outcome = signal ? `signal ${signal}` : `exit code ${exitCode ?? "unknown"}`;
     const summary = summarizeDiagnostic(stderr);
     super(`${target} closed unexpectedly with ${outcome}.${summary ? ` stderr: ${summary}` : ""}`);
-    this.name = "AgentMcpStdioConnectionClosedError";
   }
 }
 
-export class AgentMcpStdioTransportCloseError extends Error {
+export class AgentMcpStdioTransportCloseError extends AgentBaseError {
   constructor(
     readonly command: string,
     readonly pid: number | undefined,
@@ -75,7 +74,6 @@ export class AgentMcpStdioTransportCloseError extends Error {
             ? signalFailures[0]
             : new AggregateError(signalFailures, "MCP stdio termination signals failed."),
     });
-    this.name = "AgentMcpStdioTransportCloseError";
   }
 }
 

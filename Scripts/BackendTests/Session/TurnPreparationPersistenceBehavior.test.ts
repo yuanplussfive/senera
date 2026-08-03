@@ -1,10 +1,9 @@
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { InteractionRunMode } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
 import { createAgentTurnPreparationSnapshot } from "../../../Source/AgentSystem/Loop/AgentTurnPreparationSnapshot.js";
 import { SqliteSessionRepository } from "../../../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
 import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSessionStore.js";
-import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
+import { createTemporaryDirectory, removeDirectory, toolRootCommand } from "../Support/AgentTestFixtures.js";
 
 describe("Turn preparation persistence", () => {
   test("round-trips snapshots and deletes them from the conversation boundary", () => {
@@ -19,7 +18,7 @@ describe("Turn preparation persistence", () => {
 
       expect(store.loadTurnPreparation("session-a", "request-b")).toMatchObject({
         runtimeFingerprint: "runtime-a",
-        route: { objective: "B" },
+        rootCommand: { action: "use_tools" },
       });
 
       store.truncateFromRequest("session-a", "request-b");
@@ -34,23 +33,13 @@ describe("Turn preparation persistence", () => {
 });
 
 function snapshot(input: string) {
+  const rootCommand = toolRootCommand();
   return createAgentTurnPreparationSnapshot({
     runtimeFingerprint: "runtime-a",
     userInput: input,
-    route: {
-      mode: "direct_response",
-      objective: input,
-      preferredTools: [],
-      discoveryQueries: [],
-      raw: {
-        mode: InteractionRunMode.DirectResponse,
-        objective: input,
-        preferredTools: [],
-        discoveryQueries: [],
-      },
-    },
     loadedToolNames: [],
-    initialAction: { kind: "FinalAnswer", answerPlan: ["Answer the request."] },
+    toolAccessGrant: rootCommand.toolAccessGrant,
+    rootCommand,
     activeSkills: [],
   });
 }

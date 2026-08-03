@@ -1,5 +1,6 @@
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
 import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
 
 type AgentRequestContext = Required<Pick<AgentEventContext, "requestId">>;
 type AgentVisibleAssistantContext = AgentRequestContext & Partial<Pick<AgentEventContext, "sessionId" | "step">>;
@@ -51,6 +52,7 @@ export type AgentRunDomainEvent =
         component?: "agent_loop" | "pi_session";
         durationMs?: number;
         message?: string;
+        localizedMessage?: AgentLocalizedMessage;
       };
     }
   | {
@@ -77,6 +79,7 @@ export type AgentRunDomainEvent =
       context: AgentRequestContext & Partial<Pick<AgentEventContext, "step" | "sessionId">>;
       data: {
         message: string;
+        localizedMessage?: AgentLocalizedMessage;
         code?: string;
         details?: unknown;
       };
@@ -95,6 +98,7 @@ export type AgentRunDomainEvent =
         /** 结构化错误码；前端据此分类，不要再匹配 message 文案 */
         code?: AgentRequestInvalidCode;
         message: string;
+        localizedMessage?: AgentLocalizedMessage;
         details?: unknown;
       };
     };
@@ -103,5 +107,9 @@ export type AgentRequestInvalidCode =
   | "approval_not_pending"
   | "interaction_input_resolve_failed"
   | "request_parse_failed"
+  | "tool_settings_request_failed"
   | "session_fork_boundary_missing"
-  | "session_fork_target_exists";
+  | "session_history_boundary_missing"
+  | "session_fork_target_exists"
+  | "session_pi_fork_failed"
+  | "session_pi_unavailable";

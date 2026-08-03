@@ -1,18 +1,26 @@
 export interface AgentSessionControlToken {
   readonly sessionId: string;
-  readonly revision: number;
+  readonly revision: symbol;
 }
 
 export class AgentSessionControlEpoch {
-  private readonly revisions = new Map<string, number>();
+  private readonly currentTokens = new Map<string, AgentSessionControlToken>();
 
   issue(sessionId: string): AgentSessionControlToken {
-    const revision = (this.revisions.get(sessionId) ?? 0) + 1;
-    this.revisions.set(sessionId, revision);
-    return { sessionId, revision };
+    const token = { sessionId, revision: Symbol(sessionId) };
+    this.currentTokens.set(sessionId, token);
+    return token;
   }
 
   isCurrent(token: AgentSessionControlToken): boolean {
-    return this.revisions.get(token.sessionId) === token.revision;
+    return this.currentTokens.get(token.sessionId) === token;
+  }
+
+  invalidate(sessionId: string): void {
+    this.currentTokens.delete(sessionId);
+  }
+
+  retire(token: AgentSessionControlToken): void {
+    if (this.isCurrent(token)) this.currentTokens.delete(token.sessionId);
   }
 }

@@ -51,7 +51,7 @@ describe("agent model usage", () => {
   test("aggregates billable calls while selecting one context-safe usage value", () => {
     const ledger = new AgentModelUsageLedger();
     ledger.record({
-      stage: "selectPiAction",
+      stage: "prepareTurn",
       usage: {
         source: "provider_reported",
         inputTokens: 100,
@@ -60,7 +60,7 @@ describe("agent model usage", () => {
       },
     });
     ledger.record({
-      stage: "generatePiFinalAnswer",
+      stage: "evolveTurn",
       usage: {
         source: "mixed",
         inputTokens: 130,
@@ -77,10 +77,7 @@ describe("agent model usage", () => {
       outputTokens: 30,
       totalTokens: 260,
       estimatedFields: ["outputTokens", "totalTokens"],
-      calls: [
-        expect.objectContaining({ stage: "selectPiAction" }),
-        expect.objectContaining({ stage: "generatePiFinalAnswer" }),
-      ],
+      calls: [expect.objectContaining({ stage: "prepareTurn" }), expect.objectContaining({ stage: "evolveTurn" })],
     });
   });
 });

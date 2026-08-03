@@ -13,6 +13,7 @@ import {
 } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { resolveBackendMessage } from "../i18n/backendMessage";
 import { readConfigCommandEventOperation } from "./configCommandOperation";
 import { readConfigFailureCode } from "./configMutationFailure";
 import type { SystemConfigCommandQueue, SystemConfigCommandTransportFailure } from "./useSystemConfigCommandQueue";
@@ -54,10 +55,6 @@ export function useConfigCommands({ commandQueue, sendRef, statusRef }: ConfigCo
     [],
   );
   const refreshConfig = useCallback(() => sendIfOpen(sendRef, statusRef, { type: "config.get" }), [sendRef, statusRef]);
-  const refreshPluginConfigs = useCallback(
-    () => sendIfOpen(sendRef, statusRef, { type: "plugin.config.list" }),
-    [sendRef, statusRef],
-  );
   const refreshPresets = useCallback(
     () => sendIfOpen(sendRef, statusRef, { type: "preset.list" }),
     [sendRef, statusRef],
@@ -154,7 +151,7 @@ export function useConfigCommands({ commandQueue, sendRef, statusRef }: ConfigCo
         const data = env.data as ProviderModelsFailedData;
         clearProviderModelTimer(data.providerId);
         dispatch({ type: "finished", providerId: data.providerId });
-        toast.error(frontendMessage("config.providerModelsFailed"), { description: data.message });
+        toast.error(frontendMessage("config.providerModelsFailed"), { description: resolveBackendMessage(data) });
         return true;
       }
       if (env.kind !== EventKinds.ConfigSnapshot && env.kind !== EventKinds.ConfigFailed) return false;
@@ -175,12 +172,14 @@ export function useConfigCommands({ commandQueue, sendRef, statusRef }: ConfigCo
             commandId,
             kind: "config_update",
             status: "error",
-            message: (data as ConfigFailedData).message,
+            message: resolveBackendMessage(data as ConfigFailedData) ?? (data as ConfigFailedData).message,
             errorCode: readConfigFailureCode((data as ConfigFailedData).details),
             updatedAt: timestamp(),
           },
         });
-        toast.error(frontendMessage("config.mainFailed"), { description: (data as ConfigFailedData).message });
+        toast.error(frontendMessage("config.mainFailed"), {
+          description: resolveBackendMessage(data as ConfigFailedData),
+        });
       } else return false;
       return true;
     },
@@ -192,19 +191,10 @@ export function useConfigCommands({ commandQueue, sendRef, statusRef }: ConfigCo
       fetchProviderModels,
       ingestConfigCommandEvent,
       refreshConfig,
-      refreshPluginConfigs,
       refreshPresets,
       saveConfig,
     }),
-    [
-      fetchProviderModels,
-      ingestConfigCommandEvent,
-      refreshConfig,
-      refreshPluginConfigs,
-      refreshPresets,
-      saveConfig,
-      state,
-    ],
+    [fetchProviderModels, ingestConfigCommandEvent, refreshConfig, refreshPresets, saveConfig, state],
   );
 }
 

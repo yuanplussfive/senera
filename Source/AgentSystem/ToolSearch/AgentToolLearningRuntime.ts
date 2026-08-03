@@ -1,4 +1,4 @@
-import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
+import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
 import type { AgentToolLearningPromptInput } from "../ActionPlanner/AgentLearningPromptJson.js";
 import { AgentToolCatalogProjector } from "../ToolRuntime/AgentToolCatalogProjector.js";
@@ -18,13 +18,19 @@ import {
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
+import { AgentLearningStates } from "./AgentLearningEpisodeTypes.js";
 
 export interface AgentToolLearningEpisodeDraft {
+  learningEpisodeId: string;
   episode: Omit<AgentToolSearchEpisode, "learnedKeywords">;
+  requestId: string;
+  sessionId?: string;
   rawUserTurn: string;
   standaloneRequest: string;
   contextMode: string;
   contextBasis: string;
+  activeSkills: readonly AgentActivatedSkill[];
 }
 
 export class AgentToolLearningRuntime {
@@ -32,7 +38,7 @@ export class AgentToolLearningRuntime {
   private readonly tokenizer = new AgentToolSearchTokenizer();
 
   constructor(
-    private readonly registry: AgentPluginRegistry,
+    private readonly registry: AgentExtensionRegistry,
     model: ResolvedAgentModelProviderConfig,
     private readonly config: ResolvedAgentToolLearningConfig,
     private readonly memory: AgentToolSearchMemory,
@@ -99,9 +105,24 @@ export class AgentToolLearningRuntime {
       return;
     }
 
-    this.memory.record({
-      ...draft.episode,
-      learnedKeywords,
+    this.memory.commitToolLearning(
+      {
+        ...draft.episode,
+        learnedKeywords,
+      },
+      draft.learningEpisodeId,
+      {
+        state: AgentLearningStates.Learned,
+        reason: "tool routing terms learned from a successful search episode",
+        attempts: 1,
+        updatedAtMs: Date.now(),
+      },
+    );
+    this.logger?.info("tool.learning.learned", {
+      requestId: draft.requestId,
+      chosenTools: draft.episode.chosenTools,
+      termCount: learnedKeywords.length,
+      episodeId: draft.learningEpisodeId,
     });
   }
 
@@ -141,18 +162,31 @@ export class AgentToolLearningRuntime {
   }
 
   private reportSkip(draft: AgentToolLearningEpisodeDraft, reason: string): void {
+    this.memory.resolveLearningEpisode(draft.learningEpisodeId, {
+      state: AgentLearningStates.Skipped,
+      reason,
+      updatedAtMs: Date.now(),
+    });
     this.logger?.info("tool.learning.skipped", {
       reason,
       standaloneRequest: draft.standaloneRequest,
       chosenTools: draft.episode.chosenTools,
+      episodeId: draft.learningEpisodeId,
     });
   }
 
   private reportFailure(draft: AgentToolLearningEpisodeDraft, error: unknown): void {
+    this.memory.resolveLearningEpisode(draft.learningEpisodeId, {
+      state: AgentLearningStates.Failed,
+      reason: "tool learning model or validation failed",
+      error: errorMessage(error),
+      updatedAtMs: Date.now(),
+    });
     this.logger?.warn("tool.learning.failed", {
       message: errorMessage(error),
       standaloneRequest: draft.standaloneRequest,
       chosenTools: draft.episode.chosenTools,
+      episodeId: draft.learningEpisodeId,
     });
   }
 

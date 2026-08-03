@@ -10,6 +10,7 @@ import type { AgentToolGuardrailAuditor } from "./AgentToolGuardrailAudit.js";
 import type { AgentBamlToolRiskAuditProfile } from "./AgentBamlToolRiskAuditPromptJson.js";
 import { projectToolRiskAuditPromptInput } from "./AgentBamlToolRiskAuditPromptJson.js";
 import { parseToolRiskAudit, parseToolRiskAuditProfile } from "./AgentBamlToolRiskAuditSchema.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 const ProfileFileName = "AgentBamlToolRiskAuditProfile.json";
 
@@ -74,7 +75,10 @@ export function createAgentBamlToolRiskAuditor(options: AgentBamlToolRiskAuditor
 
 function readDefaultProfile(): AgentBamlToolRiskAuditProfile {
   return parseToolRiskAuditProfile(
-    JSON.parse(fs.readFileSync(path.join(moduleDirPath(import.meta.url), ProfileFileName), "utf8")),
+    parseJsonText(
+      fs.readFileSync(path.join(moduleDirPath(import.meta.url), ProfileFileName), "utf8"),
+      "BAML tool risk audit profile",
+    ),
   );
 }
 

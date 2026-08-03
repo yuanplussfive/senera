@@ -26,7 +26,7 @@
 
 ### Runtime
 
-当前运行协调主要按 `modelProviderId` 创建 Loop，并从全局 Runtime Services 获得 Prompt、Preset、Plugin、Tool 与安全能力。系统尚未提供：
+当前运行协调主要按 `modelProviderId` 创建 Loop，并从全局 Runtime Services 获得 Prompt、Preset、Tool、Skill 与安全能力。系统尚未提供：
 
 ```text
 System Default
@@ -84,7 +84,7 @@ interface AgentDefinition {
 4. Agent 的 Tool、Skill 与 Permission 是白名单、默认值还是硬约束？
 5. Session Override 可以覆盖哪些 Agent 属性？
 6. Preset 是 Agent 模板、任务模板还是纯 Prompt 文档？
-7. Plugin、Tool、Skill、Workflow 与 Agent 的关系是什么？
+7. System Tool、MCP Tool、Skill、Workflow 与 Agent 的关系是什么？
 8. 内置 Agent 与用户 Agent 如何区分和升级？
 9. 删除 Agent 后历史任务如何恢复？
 10. Agent 导入包是否允许携带权限、外部 URL 或敏感配置？
@@ -165,7 +165,7 @@ System Default
 1. 当前主工作区前端重构已经稳定。
 2. Session Override 的产品语义明确。
 3. Preset 的长期定位已经确定。
-4. Plugin、Tool、Skill 与 Permission 边界完成领域建模。
+4. System Tool、MCP Tool、Skill 与 Permission 边界完成领域建模。
 5. 旧 Session 与旧 Preset 的兼容方案完成。
 6. 用户明确批准开始后端 Agent Definition 工作。
 7. 建立独立 Trellis 任务，不复用前端 UI 重构任务。

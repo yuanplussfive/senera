@@ -15,15 +15,9 @@ export type AgentToolSearchMemoryExpansionMode =
 export interface AgentToolSearchConfig {
   Embedding?: {
     Enabled?: boolean;
-    ModelProviderId?: string;
-    Model?: string;
-    Dimensions?: number;
-    BatchSize?: number;
-    InputMaxChars?: number;
     ScoreThreshold?: number;
   };
   Memory?: {
-    DatabasePath?: string;
     MaxEpisodes?: number;
     HalfLifeDays?: number;
   };
@@ -51,15 +45,9 @@ export interface AgentToolSearchConfig {
 export interface ResolvedAgentToolSearchConfig {
   Embedding: {
     Enabled: boolean;
-    ModelProviderId?: string;
-    Model: string;
-    Dimensions: number;
-    BatchSize: number;
-    InputMaxChars: number;
     ScoreThreshold: number;
   };
   Memory: {
-    DatabasePath: string;
     MaxEpisodes: number;
     HalfLifeDays: number;
   };
@@ -160,6 +148,9 @@ export interface ResolvedAgentToolLearningConfig {
 }
 
 export interface AgentMemoryLearningConfig {
+  Enabled?: boolean;
+  MaxRepairAttempts?: number;
+  Client?: AgentActionPlannerClientConfig;
   Promotion?: {
     MinSupport?: number;
     MaxClusterSize?: number;
@@ -168,6 +159,9 @@ export interface AgentMemoryLearningConfig {
 }
 
 export interface ResolvedAgentMemoryLearningConfig {
+  Enabled: boolean;
+  MaxRepairAttempts: number;
+  Client: ResolvedAgentActionPlannerClientConfig;
   Promotion: {
     MinSupport: number;
     MaxClusterSize: number;

@@ -1,4 +1,5 @@
 import { EventKinds, type EventEnvelope, type ExecutionResourceOutputData } from "./eventTypes";
+import { recordCoalescedEventSources } from "./eventDeliveryIdentity";
 
 export const StreamingEventFlushPolicy = {
   targetFrameRateHz: 60,
@@ -55,32 +56,40 @@ function resourceOutputKey(env: EventEnvelope): string {
 }
 
 function mergeModelDelta(previous: EventEnvelope, current: EventEnvelope): EventEnvelope {
-  return {
-    ...current,
-    sequence: previous.sequence,
-    timestamp: previous.timestamp,
-    data: {
-      text: readDeltaText(previous) + readDeltaText(current),
+  return recordCoalescedEventSources(
+    {
+      ...current,
+      sequence: previous.sequence,
+      timestamp: previous.timestamp,
+      data: {
+        text: readDeltaText(previous) + readDeltaText(current),
+      },
     },
-  };
+    previous,
+    current,
+  );
 }
 
 function mergeResourceOutput(previous: EventEnvelope, current: EventEnvelope): EventEnvelope | undefined {
   const previousData = readResourceOutput(previous);
   const currentData = readResourceOutput(current);
   if (previousData.stream !== currentData.stream || currentData.cursor !== previousData.cursor + 1) return undefined;
-  return {
-    ...current,
-    sequence: previous.sequence,
-    timestamp: previous.timestamp,
-    data: {
-      ...currentData,
-      cursorStart: previousData.cursorStart ?? previousData.cursor,
-      text: previousData.text + currentData.text,
-      byteLength: previousData.byteLength + currentData.byteLength,
-      truncated: previousData.truncated || currentData.truncated || undefined,
-    } satisfies ExecutionResourceOutputData,
-  };
+  return recordCoalescedEventSources(
+    {
+      ...current,
+      sequence: previous.sequence,
+      timestamp: previous.timestamp,
+      data: {
+        ...currentData,
+        cursorStart: previousData.cursorStart ?? previousData.cursor,
+        text: previousData.text + currentData.text,
+        byteLength: previousData.byteLength + currentData.byteLength,
+        truncated: previousData.truncated || currentData.truncated || undefined,
+      } satisfies ExecutionResourceOutputData,
+    },
+    previous,
+    current,
+  );
 }
 
 function readDeltaText(env: EventEnvelope): string {

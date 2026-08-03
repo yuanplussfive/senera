@@ -1,9 +1,10 @@
-export class AgentCancellationError extends Error {
+import { AgentBaseError } from "./AgentBaseError.js";
+
+export class AgentCancellationError extends AgentBaseError {
   readonly kind = "AgentCancellationError" as const;
 
   constructor(message = "Run cancelled by user.") {
     super(message);
-    this.name = "AgentCancellationError";
   }
 }
 

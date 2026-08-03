@@ -12,6 +12,7 @@ import {
   type ToolCallsPlannedData,
 } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { resolveBackendMessage } from "../../i18n/backendMessage";
 import { upsertMessageByRequestId } from "./historyRunProjection";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
 import { bumpSessionMessageCount, currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
@@ -179,11 +180,12 @@ export const runToolAndAnswerEventHandlers = {
     const run = readCurrentRun(state, env);
     if (!run) return;
     const data = env.data as ToolCallFailedData;
+    const message = resolveBackendMessage(data) ?? data.message;
     const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
     if (step) {
       step.status = "failed";
       step.endedAt = env.timestamp;
-      step.toolErrorMessage = data.message;
+      step.toolErrorMessage = message;
       touchRun(run);
       return;
     }
@@ -197,7 +199,7 @@ export const runToolAndAnswerEventHandlers = {
       toolName: data.toolName,
       callId: data.callId,
       toolBatch: toolBatchFromEvent(env, data),
-      toolErrorMessage: data.message,
+      toolErrorMessage: message,
     });
   },
 

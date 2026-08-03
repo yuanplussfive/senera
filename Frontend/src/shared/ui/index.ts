@@ -46,6 +46,8 @@ export { MetaLabel, metaLabelClassName } from "./MetaLabel";
 export type { MetaLabelProps, MetaLabelSize } from "./MetaLabel";
 export { MenuSelect } from "./MenuSelect";
 export type { MenuSelectOption, MenuSelectProps } from "./MenuSelect";
+export { MenuMultiSelect } from "./MenuMultiSelect";
+export type { MenuMultiSelectProps } from "./MenuMultiSelect";
 export { Switch, SwitchTrack } from "./Switch";
 export type { SwitchProps, SwitchSize, SwitchTrackProps } from "./Switch";
 export { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs";

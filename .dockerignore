@@ -23,10 +23,4 @@ pid.txt
 .env
 .env.*
 senera.config.json
-Plugins/*/PluginConfig.toml
-Plugins/*/.state
-Plugins/*/node_modules
-Plugins/*/package-lock.json
-System/Plugins/*/node_modules
-System/Plugins/*/package-lock.json
 论题.txt

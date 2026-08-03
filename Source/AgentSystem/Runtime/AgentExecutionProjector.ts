@@ -4,7 +4,7 @@ import type { AgentConversationEntry } from "../Conversation/AgentConversation.j
 import type { AgentExecutionResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { StepTrace } from "./AgentStepTrace.js";
-import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
+import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 
 export type AgentTerminalResult =
   | {
@@ -28,8 +28,8 @@ export interface AgentCompletedRunResult {
   modelProvider?: AgentModelProviderMetadata;
   usage?: AgentModelUsage;
   conversationEntries: AgentConversationEntry[];
+  executedTools: ExecutedToolCallResult[];
   stepTraces: StepTrace[];
-  turnUnderstanding?: TurnUnderstanding;
   loadedToolNames?: string[];
 }
 

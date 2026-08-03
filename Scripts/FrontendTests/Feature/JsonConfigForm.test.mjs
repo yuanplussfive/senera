@@ -119,28 +119,7 @@ test("settings form updates boolean, option, number, array, and record controls"
   );
 });
 
-test("multi-section settings expose lightweight section navigation", () => {
-  render(
-    React.createElement(JsonConfigSettingsView, {
-      sections: [
-        ...configSections,
-        {
-          name: "planning",
-          label: "Planning",
-          fields: [
-            { path: ["Plan"], label: "Plan", type: "string", effectiveValue: "", required: true, essential: true },
-          ],
-        },
-      ],
-      value: initialConfig,
-      onChange: vi.fn(),
-    }),
-  );
-
-  expect(screen.getByRole("navigation", { name: "配置分区" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Runtime" })).toHaveAttribute("href", "#json-config-section-runtime");
-  expect(screen.getByRole("link", { name: "Planning" })).toHaveAttribute("href", "#json-config-section-planning");
-  cleanup();
+test("settings can hide section headings", () => {
   render(
     React.createElement(JsonConfigSettingsView, {
       sections: configSections,

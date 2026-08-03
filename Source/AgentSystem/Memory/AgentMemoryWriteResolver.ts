@@ -22,7 +22,7 @@ export interface AgentMemoryWriteResolverOptions {
   repository: AgentMemorySourceRepository;
   client: AgentMemoryWriteResolutionClient;
   vectorClient: AgentMemoryVectorClient;
-  memoryLearningConfig: ResolvedAgentMemoryLearningConfig;
+  memoryLearningConfig: Pick<ResolvedAgentMemoryLearningConfig, "Promotion">;
   embeddingModel: string;
   maxRepairAttempts: number;
 }

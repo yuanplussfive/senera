@@ -1,6 +1,63 @@
 {
   "form": {
     "version": 1,
+    "coverage": {
+      "omissions": [
+        {
+          "path": ["ConfigVersion"],
+          "reason": "配置版本由迁移系统管理，不允许在运行时表单中编辑。"
+        },
+        {
+          "path": ["Defaults"],
+          "recursive": true,
+          "reason": "Defaults 是部署级继承层；设置界面编辑当前工作区的显式配置。"
+        },
+        {
+          "path": ["XmlProtocol"],
+          "recursive": true,
+          "reason": "XML 兼容协议属于内部迁移契约。"
+        },
+        {
+          "path": ["ToolDocumentation"],
+          "recursive": true,
+          "reason": "工具文档质量规则由项目维护，不属于运行时用户设置。"
+        },
+        {
+          "path": ["ModelProviderEndpoints", "Kind"],
+          "reason": "当前 schema 仅允许 OpenAICompatible，界面无需展示单值选择。"
+        },
+        {
+          "path": ["ModelProviders", "Id"],
+          "reason": "模型配置 ID 由供应商 ID 和模型名生成，并由专用模型编辑器管理。"
+        },
+        {
+          "path": ["ModelProviderIdAliases"],
+          "reason": "模型 ID 兼容别名由模型重命名命令维护，手工编辑可能破坏引用迁移。"
+        },
+        {
+          "path": ["ModelGroups", "Match"],
+          "reason": "旧版单策略字段仅用于兼容读取；界面统一编辑 Strategies。"
+        },
+        {
+          "path": ["ModelGroups", "Values"],
+          "reason": "旧版单策略字段仅用于兼容读取；界面统一编辑 Strategies。"
+        },
+        {
+          "path": ["SandboxRuntime", "Provisioning"],
+          "recursive": true,
+          "reason": "镜像认证是判别联合与秘密引用，需要专用凭据编辑器后再公开。"
+        },
+        {
+          "path": ["ConfigStore", "Kind"],
+          "reason": "启用配置存储时当前 schema 只允许 sqlite。"
+        },
+        {
+          "path": ["Extensions"],
+          "recursive": true,
+          "reason": "系统扩展配置由扩展包内的 JSON Schema 与 UI Schema 驱动，并在扩展设置页编辑。"
+        }
+      ]
+    },
     "sections": [
       {
         "id": "models",
@@ -132,7 +189,7 @@
                 "DeveloperRole": false,
                 "StreamingUsage": true
               },
-              "ContextWindowTokens": -1,
+              "ContextWindowTokens": 128000,
               "MaxModelOutputTokens": -1,
               "Endpoint": "ChatCompletions",
               "Model": "",
@@ -144,6 +201,9 @@
               "RetryBaseDelaySeconds": 0.25,
               "RetryMaxDelaySeconds": 10,
               "RetryAfterMaxDelaySeconds": 60,
+              "MaxResponseBytes": 67108864,
+              "MaxSseEventBytes": 8388608,
+              "MaxSseEvents": 100000,
               "Stream": true,
               "MaxOutputTokens": -1
             },
@@ -228,9 +288,9 @@
               {
                 "path": ["ContextWindowTokens"],
                 "label": "上下文窗口",
-                "description": "-1 表示未知或不声明。",
+                "description": "模型上下文可容纳的总 token 数。",
                 "type": "number",
-                "min": -1,
+                "min": 1,
                 "step": 1,
                 "required": false,
                 "essential": false
@@ -365,6 +425,36 @@
                 "step": 1,
                 "required": false,
                 "essential": false
+              },
+              {
+                "path": ["MaxResponseBytes"],
+                "label": "响应体字节上限",
+                "description": "限制单次模型响应的总字节数，防止异常网关无限返回数据。",
+                "type": "number",
+                "min": 1,
+                "step": 1048576,
+                "required": false,
+                "essential": false
+              },
+              {
+                "path": ["MaxSseEventBytes"],
+                "label": "单个 SSE 事件上限",
+                "description": "限制一个流式事件允许占用的最大字节数。",
+                "type": "number",
+                "min": 1,
+                "step": 1048576,
+                "required": false,
+                "essential": false
+              },
+              {
+                "path": ["MaxSseEvents"],
+                "label": "SSE 事件数量上限",
+                "description": "限制单次流式响应可接收的事件数量。",
+                "type": "number",
+                "min": 1,
+                "step": 1000,
+                "required": false,
+                "essential": false
               }
             ],
             "required": true,
@@ -467,6 +557,16 @@
         "icon": "sliders-horizontal",
         "fields": [
           {
+            "path": ["AgentLoop", "PiTurnLeaseTimeoutSeconds"],
+            "label": "Pi 轮次租约超时",
+            "description": "等待同一会话已有 Pi 轮次释放执行租约的最长时间，单位秒。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
             "path": ["AgentLoop", "RunSettlementTimeoutSeconds"],
             "label": "轮次取消结算超时",
             "description": "取消旧轮次后等待模型、审批、工具和 Pi 会话进入空闲状态的最长时间；超时后不会继续修改会话分支。",
@@ -499,90 +599,65 @@
           {
             "path": ["AgentLoop", "PiSessions", "Compaction", "Enabled"],
             "label": "自动压缩会话",
-            "description": "当 Pi 分支存在足够的可回收历史时生成结构化摘要；固定工具和系统上下文开销不会伪装成可压缩历史。",
+            "description": "使用 Pi Coding Agent 的原生自动压缩维护长会话上下文。",
             "type": "boolean",
             "required": false,
             "essential": true
           },
           {
-            "path": ["AgentLoop", "PiSessions", "Compaction", "TriggerRatio"],
-            "label": "压缩触发比例",
-            "description": "相对于 PiProxy 有效上下文预算的分支历史触发水位；模型上报的完整请求压力会单独诊断。",
-            "type": "number",
-            "min": 0.5,
-            "max": 0.95,
-            "step": 0.05,
+            "path": ["SandboxRuntime", "Enabled"],
+            "label": "启用沙箱执行",
+            "description": "为支持的工具使用隔离执行后端。",
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["SandboxRuntime", "Provider"],
+            "label": "沙箱后端",
+            "type": "string",
+            "options": ["auto", "microsandbox", "gvisor", "docker-engine"],
+            "optionLabels": {
+              "auto": "自动选择",
+              "microsandbox": "Microsandbox",
+              "gvisor": "gVisor",
+              "docker-engine": "Docker Engine"
+            },
             "required": false,
             "essential": false
           },
           {
-            "path": ["AgentLoop", "PiSessions", "Compaction", "TargetRatio"],
-            "label": "压缩目标比例",
-            "description": "压缩后保留的近期 Pi 分支历史目标水位，必须小于触发比例。",
-            "type": "number",
-            "min": 0.2,
-            "max": 0.8,
-            "step": 0.05,
+            "path": ["SandboxRuntime", "BaseDir"],
+            "label": "沙箱数据目录",
+            "type": "string",
+            "placeholder": ".senera/sandbox",
             "required": false,
             "essential": false
           },
           {
-            "path": ["AgentLoop", "PiSessions", "Compaction", "HardLimitRatio"],
-            "label": "压缩硬上限",
-            "description": "可压缩分支历史超过该水位后，压缩失败将阻止继续发送不完整历史；固定上下文开销不计入该硬上限。",
-            "type": "number",
-            "min": 0.6,
-            "max": 1,
-            "step": 0.05,
+            "path": ["SandboxRuntime", "Gvisor", "WorkerSocketPath"],
+            "label": "gVisor Worker Socket",
+            "description": "gVisor worker 的 Unix socket 路径。",
+            "type": "string",
+            "placeholder": ".senera/gvisor-worker.sock",
             "required": false,
             "essential": false
           },
           {
-            "path": ["AgentLoop", "PiSessions", "Compaction", "SummaryMaxTokens"],
-            "label": "摘要输出上限",
-            "description": "专用 BAML 压缩摘要允许输出的最大 token 数。",
-            "type": "number",
-            "min": 512,
-            "max": 32768,
-            "step": 512,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["AgentLoop", "PiSessions", "Compaction", "TimeoutSeconds"],
-            "label": "压缩超时",
-            "description": "单次自动压缩允许的最长时间，单位秒。",
+            "path": ["SandboxRuntime", "Gvisor", "PreparationTimeoutSeconds"],
+            "label": "gVisor 准备超时",
+            "description": "准备隔离工作区的最长时间，单位秒。",
             "type": "number",
             "min": 1,
+            "max": 300,
             "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["AgentLoop", "PiSessions", "Compaction", "UnknownContextWindowTokens"],
-            "label": "未知上下文窗口",
-            "description": "模型未声明上下文窗口时用于预算和压缩判断的保守 token 数。",
-            "type": "number",
-            "min": 16384,
-            "step": 1024,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["AgentLoop", "PiSessions", "Compaction", "UnknownModelOutputTokens"],
-            "label": "未知模型输出上限",
-            "description": "模型未声明最大输出能力且未配置请求输出上限时使用的保守 token 数。",
-            "type": "number",
-            "min": 512,
-            "max": 131072,
-            "step": 512,
             "required": false,
             "essential": false
           },
           {
             "path": ["ToolExecution", "TimeoutSeconds"],
             "label": "工具超时",
-            "description": "单次工具进程最长运行时间，单位秒。",
+            "description": "单次同步 System Tool 或 MCP Tool 调用的端到端宿主 deadline，单位秒；长任务应使用后台资源或 MCP Tasks。",
             "type": "number",
             "min": 1,
             "step": 1,
@@ -763,6 +838,191 @@
             "essential": false
           },
           {
+            "path": ["Server", "AccessControl", "Mode"],
+            "label": "访问控制模式",
+            "type": "string",
+            "options": ["auto", "required", "disabled"],
+            "optionLabels": {
+              "auto": "自动",
+              "required": "必须登录",
+              "disabled": "关闭"
+            },
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["Server", "AccessControl", "AccountFile"],
+            "label": "账户文件",
+            "type": "string",
+            "placeholder": ".senera/accounts.json",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "AllowedOrigins"],
+            "label": "允许的来源",
+            "description": "允许访问服务的完整 Origin URL。",
+            "type": "array",
+            "itemType": "string",
+            "addLabel": "添加来源",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "TrustedProxyAddresses"],
+            "label": "可信代理地址",
+            "type": "array",
+            "itemType": "string",
+            "addLabel": "添加代理",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "AllowInsecureLoopback"],
+            "label": "允许非安全回环访问",
+            "description": "允许本机回环地址在没有安全传输时访问。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "AllowInsecureHttp"],
+            "label": "允许非安全 HTTP",
+            "description": "允许非回环地址通过明文 HTTP 访问；仅应在可信网络中启用。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "Session", "AbsoluteTtlHours"],
+            "label": "会话绝对有效期",
+            "description": "登录会话最长有效小时数。",
+            "type": "number",
+            "min": 1,
+            "max": 72,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "Session", "IdleTtlHours"],
+            "label": "会话空闲有效期",
+            "description": "登录会话无活动后的有效小时数。",
+            "type": "number",
+            "min": 1,
+            "max": 72,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "Session", "MaxSessions"],
+            "label": "最大登录会话数",
+            "type": "number",
+            "min": 1,
+            "max": 100,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "Limits", "MaxConnections"],
+            "label": "最大连接数",
+            "type": "number",
+            "min": 1,
+            "max": 10000,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "Limits", "MaxConnectionsPerClient"],
+            "label": "单客户端连接上限",
+            "type": "number",
+            "min": 1,
+            "max": 1000,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "Limits", "MaxRateLimitClients"],
+            "label": "速率限制客户端缓存数",
+            "description": "服务端为独立客户端保留令牌桶状态的最大数量；达到上限后按最近使用顺序淘汰空闲状态。",
+            "type": "number",
+            "min": 1,
+            "max": 1000000,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "Limits", "UpgradeRequestsPerMinute"],
+            "label": "WebSocket 升级速率",
+            "description": "每分钟允许的 WebSocket upgrade 请求数。",
+            "type": "number",
+            "min": 1,
+            "max": 100000,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "Limits", "HttpRequestsPerMinute"],
+            "label": "HTTP 请求速率",
+            "description": "每分钟允许的 HTTP 请求数。",
+            "type": "number",
+            "min": 1,
+            "max": 100000,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "Limits", "MessagesPerMinute"],
+            "label": "消息速率",
+            "description": "每分钟允许的客户端消息数。",
+            "type": "number",
+            "min": 1,
+            "max": 100000,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "Limits", "LoginAttemptsPerMinute"],
+            "label": "登录尝试速率",
+            "description": "每分钟允许的登录尝试数。",
+            "type": "number",
+            "min": 1,
+            "max": 10000,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "Limits", "HeartbeatIntervalSeconds"],
+            "label": "心跳间隔",
+            "description": "服务端连接心跳间隔，单位秒。",
+            "type": "number",
+            "min": 5,
+            "max": 3600,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Server", "AccessControl", "Limits", "IdleSocketTimeoutSeconds"],
+            "label": "空闲 Socket 超时",
+            "description": "无活动连接的关闭等待时间，单位秒。",
+            "type": "number",
+            "min": 10,
+            "max": 86400,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
             "path": ["Persistence", "Kind"],
             "label": "会话存储",
             "type": "string",
@@ -775,27 +1035,11 @@
             "essential": false
           },
           {
-            "path": ["Persistence", "DatabasePath"],
-            "label": "会话数据库",
-            "type": "string",
-            "placeholder": ".senera/senera.db",
-            "required": false,
-            "essential": false
-          },
-          {
             "path": ["ConfigStore", "Enabled"],
             "label": "配置数据库",
             "type": "boolean",
             "required": false,
             "essential": true
-          },
-          {
-            "path": ["ConfigStore", "DatabasePath"],
-            "label": "配置数据库路径",
-            "type": "string",
-            "placeholder": ".senera/Config.sqlite",
-            "required": false,
-            "essential": false
           },
           {
             "path": ["ConfigStore", "MirrorJson"],
@@ -804,6 +1048,39 @@
             "type": "boolean",
             "required": false,
             "essential": true
+          },
+          {
+            "path": ["ConfigStore", "RevisionRetentionCount"],
+            "label": "配置版本保留数",
+            "description": "保留最近的配置版本；仍被有效命令回执引用的版本会额外保留。",
+            "type": "number",
+            "min": 1,
+            "max": 10000,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ConfigStore", "CommandReceiptRetentionHours"],
+            "label": "命令幂等窗口",
+            "description": "配置命令回执的保留时间，单位小时。",
+            "type": "number",
+            "min": 1,
+            "max": 8760,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ConfigStore", "CommandReceiptMaxCount"],
+            "label": "命令回执上限",
+            "description": "达到上限后按创建时间清理最旧的配置命令回执。",
+            "type": "number",
+            "min": 1,
+            "max": 100000,
+            "step": 1,
+            "required": false,
+            "essential": false
           }
         ]
       },
@@ -891,6 +1168,26 @@
             }
           },
           {
+            "path": ["ActionPlanner", "PlanningClient", "Temperature"],
+            "label": "行动规划温度",
+            "type": "number",
+            "min": 0,
+            "max": 2,
+            "step": 0.1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ActionPlanner", "PlanningClient", "MaxTokens"],
+            "label": "行动规划 MaxTokens",
+            "description": "-1 表示不向模型供应商发送输出 token 限制。",
+            "type": "number",
+            "min": -1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
             "path": ["ActionPlanner", "FinalAnswerClient", "ModelProviderId"],
             "label": "最终回答模型",
             "description": "为空时继承 Planner 模型。",
@@ -959,6 +1256,26 @@
             }
           },
           {
+            "path": ["ToolLearning", "Client", "Temperature"],
+            "label": "工具学习温度",
+            "type": "number",
+            "min": 0,
+            "max": 2,
+            "step": 0.1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ToolLearning", "Client", "MaxTokens"],
+            "label": "工具学习 MaxTokens",
+            "description": "-1 表示不向模型供应商发送输出 token 限制，避免只产生 reasoning 而没有最终结构化结果。",
+            "type": "number",
+            "min": -1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
             "path": ["ToolLearning", "Patterns", "MinSupport"],
             "label": "参数模式最少支持",
             "description": "聚合同类成功样本时需要的最少样本数。",
@@ -974,6 +1291,58 @@
             "description": "PiProxy 编译工具调用时最多读取的相关工具使用经验数量。",
             "type": "number",
             "min": 0,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["MemoryLearning", "Enabled"],
+            "label": "启用记忆学习",
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["MemoryLearning", "MaxRepairAttempts"],
+            "label": "记忆学习修复次数",
+            "type": "number",
+            "min": 0,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["MemoryLearning", "Client", "ModelProviderId"],
+            "label": "记忆学习模型",
+            "description": "提取可持久化事实并生成长期记忆候选。",
+            "type": "string",
+            "placeholder": "选择已启用模型",
+            "required": false,
+            "essential": false,
+            "modelSelection": {
+              "id": "memory-learning",
+              "capability": "Chat",
+              "valueKind": "model-id",
+              "mutation": "config",
+              "required": true
+            }
+          },
+          {
+            "path": ["MemoryLearning", "Client", "Temperature"],
+            "label": "记忆学习温度",
+            "type": "number",
+            "min": 0,
+            "max": 2,
+            "step": 0.1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["MemoryLearning", "Client", "MaxTokens"],
+            "label": "记忆学习 MaxTokens",
+            "description": "-1 表示不向模型供应商发送输出 token 限制。",
+            "type": "number",
+            "min": -1,
             "step": 1,
             "required": false,
             "essential": false
@@ -1016,10 +1385,19 @@
         "icon": "search",
         "fields": [
           {
-            "path": ["ToolSearch", "Memory", "DatabasePath"],
-            "label": "工具学习数据库",
-            "type": "string",
-            "placeholder": ".senera/ToolSearchLearning.sqlite",
+            "path": ["ToolSearch", "Embedding", "Enabled"],
+            "label": "启用工具向量检索",
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["ToolSearch", "Embedding", "ScoreThreshold"],
+            "label": "工具向量分数阈值",
+            "type": "number",
+            "min": -1,
+            "max": 1,
+            "step": 0.01,
             "required": false,
             "essential": false
           },
@@ -1039,6 +1417,45 @@
             "type": "number",
             "min": 0,
             "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ToolSearch", "Ranking", "RrfK"],
+            "label": "RRF 平滑常数",
+            "description": "控制多个召回器名次融合时头部结果的权重。",
+            "type": "number",
+            "min": 0.001,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ToolSearch", "Ranking", "MmrLambda"],
+            "label": "MMR 相关性权重",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ToolSearch", "Ranking", "MmrCandidateScoreRatio"],
+            "label": "MMR 候选分数比例",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ToolSearch", "Ranking", "MinScore"],
+            "label": "工具召回最低分数",
+            "type": "number",
+            "min": 0,
+            "step": 0.001,
             "required": false,
             "essential": false
           },
@@ -1120,6 +1537,17 @@
             "essential": false
           },
           {
+            "path": ["ToolSearch", "Rerank", "FeatureWeights"],
+            "label": "重排序特征权重",
+            "description": "按特征名覆盖内置重排序权重。",
+            "type": "record",
+            "itemType": "number",
+            "keyPlaceholder": "feature",
+            "valuePlaceholder": "1",
+            "required": false,
+            "essential": false
+          },
+          {
             "path": ["VectorModels", "Embedding", "Enabled"],
             "label": "启用嵌入模型",
             "type": "boolean",
@@ -1180,6 +1608,25 @@
             "essential": false
           },
           {
+            "path": ["VectorModels", "Embedding", "TimeoutSeconds"],
+            "label": "嵌入请求超时",
+            "description": "单次嵌入请求的超时秒数。",
+            "type": "number",
+            "min": 0.001,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["VectorModels", "Embedding", "MaxNetworkRetries"],
+            "label": "嵌入网络重试",
+            "type": "number",
+            "min": 0,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
             "path": ["VectorModels", "Rerank", "Enabled"],
             "label": "启用向量重排",
             "type": "boolean",
@@ -1234,6 +1681,25 @@
             "description": "-1 表示不发送 top_n，由供应商决定返回数量。",
             "type": "number",
             "min": -1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["VectorModels", "Rerank", "TimeoutSeconds"],
+            "label": "重排请求超时",
+            "description": "单次重排请求的超时秒数。",
+            "type": "number",
+            "min": 0.001,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["VectorModels", "Rerank", "MaxNetworkRetries"],
+            "label": "重排网络重试",
+            "type": "number",
+            "min": 0,
             "step": 1,
             "required": false,
             "essential": false
@@ -1305,15 +1771,6 @@
             "essential": false
           },
           {
-            "path": ["Artifacts", "MemoryReadStructuredJsonMaxBytes"],
-            "label": "结构化 JSON 读取上限",
-            "type": "number",
-            "min": 1024,
-            "step": 1048576,
-            "required": false,
-            "essential": false
-          },
-          {
             "path": ["Artifacts", "MemoryReadMaxArtifacts"],
             "label": "单次产物读取数量",
             "type": "number",
@@ -1341,20 +1798,11 @@
             "essential": false
           },
           {
-            "path": ["Artifacts", "MemoryReadCacheMaxBytes"],
-            "label": "产物记忆缓存字节上限",
+            "path": ["Artifacts", "MemoryReadStructuredJsonMaxTokens"],
+            "label": "结构化产物 JSON 读取 Token 上限",
             "type": "number",
-            "min": 0,
-            "step": 1048576,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["Artifacts", "MemoryReadCacheMaxEntries"],
-            "label": "产物记忆缓存条目上限",
-            "type": "number",
-            "min": 0,
-            "step": 1,
+            "min": 1,
+            "step": 100,
             "required": false,
             "essential": false
           },
@@ -1364,6 +1812,51 @@
             "type": "number",
             "min": 1024,
             "step": 1048576,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Artifacts", "MaxStoredBytes"],
+            "label": "Artifact 存储总量",
+            "type": "number",
+            "min": 1,
+            "step": 1048576,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Artifacts", "MaxArtifacts"],
+            "label": "Artifact 数量上限",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Artifacts", "RetentionHours"],
+            "label": "Artifact 保留小时数",
+            "type": "number",
+            "min": 0.001,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Artifacts", "IncompleteRetentionHours"],
+            "label": "未完成 Artifact 保留小时数",
+            "type": "number",
+            "min": 0.001,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Artifacts", "MaintenanceIntervalMinutes"],
+            "label": "Artifact 维护间隔（分钟）",
+            "type": "number",
+            "min": 0.001,
+            "step": 1,
             "required": false,
             "essential": false
           },
@@ -1444,6 +1937,58 @@
             "type": "number",
             "min": 1,
             "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Frontend", "DevServer", "Host"],
+            "label": "前端开发服务 Host",
+            "type": "string",
+            "placeholder": "127.0.0.1",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Frontend", "DevServer", "Port"],
+            "label": "前端开发服务端口",
+            "type": "number",
+            "min": 1,
+            "max": 65535,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Frontend", "DevServer", "StrictPort"],
+            "label": "开发服务固定端口",
+            "description": "端口被占用时直接失败，不自动选择其他端口。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Frontend", "PreviewServer", "Host"],
+            "label": "前端预览服务 Host",
+            "type": "string",
+            "placeholder": "127.0.0.1",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Frontend", "PreviewServer", "Port"],
+            "label": "前端预览服务端口",
+            "type": "number",
+            "min": 1,
+            "max": 65535,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Frontend", "PreviewServer", "StrictPort"],
+            "label": "预览服务固定端口",
+            "description": "端口被占用时直接失败，不自动选择其他端口。",
+            "type": "boolean",
             "required": false,
             "essential": false
           },

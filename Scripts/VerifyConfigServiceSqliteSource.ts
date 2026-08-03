@@ -5,11 +5,13 @@ import { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigServ
 import { AgentConfigSqliteRepository } from "../Source/AgentSystem/Config/AgentConfigSqliteRepository.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { CurrentAgentConfigVersion } from "../Source/AgentSystem/Config/AgentConfigVersion.js";
+import { resolveAgentWorkspaceLayout } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import { removeTemporaryWorkspace } from "./Support/TemporaryWorkspace.js";
 
 const tempRoot = path.join(process.cwd(), ".senera", "tmp", "verify-config-service");
 fs.mkdirSync(tempRoot, { recursive: true });
 const workspaceRoot = fs.mkdtempSync(path.join(tempRoot, "run-"));
+const desktopWorkspaceRoot = fs.mkdtempSync(path.join(tempRoot, "desktop-"));
 const configPath = path.join(workspaceRoot, "senera.config.json");
 
 let service: AgentConfigService | undefined;
@@ -19,7 +21,6 @@ try {
   const initialConfig: AgentSystemConfig = {
     ConfigStore: {
       Enabled: true,
-      DatabasePath: ".senera/Config.sqlite",
       MirrorJson: true,
     },
     ModelProviderEndpoints: [
@@ -53,7 +54,7 @@ try {
   assert.equal(first.revision, 1);
   assert.equal(first.value.ConfigVersion, CurrentAgentConfigVersion);
   assert.equal(first.value.ModelProviders[0].Model, "initial-model");
-  assert.ok(first.databasePath?.endsWith(path.join(".senera", "Config.sqlite")));
+  assert.equal(fs.existsSync(resolveAgentWorkspaceLayout(workspaceRoot).databases.config), true);
 
   const updatedConfig: AgentSystemConfig = {
     ...first.value,
@@ -96,39 +97,6 @@ try {
   assert.equal(mirrored.ModelProviders[0].Model, "updated-model");
   assert.equal(mirrored.ModelProviders[1].ProviderId, "secondary");
 
-  const movedConfig: AgentSystemConfig = {
-    ...second.value,
-    ConfigStore: {
-      Enabled: true,
-      DatabasePath: ".senera/ConfigMoved.sqlite",
-      MirrorJson: true,
-    },
-    ModelProviders: second.value.ModelProviders.map((provider, index) =>
-      index === 0
-        ? {
-            ...provider,
-            Model: "moved-model",
-          }
-        : provider,
-    ),
-  };
-  const moved = service.replaceConfig({
-    commandId: "replace-json-config-2",
-    baseRevision: second.revision,
-    config: movedConfig,
-    source: "ui_update",
-  });
-  assert.equal(moved.source, "sqlite");
-  assert.equal(moved.revision, 3);
-  assert.equal(moved.value.ModelProviders[0].Model, "moved-model");
-  assert.equal(moved.value.ModelProviderEndpoints?.at(-1)?.Id, "secondary");
-  assert.ok(moved.databasePath?.endsWith(path.join(".senera", "Config.sqlite")));
-
-  const movedMirror = JSON.parse(fs.readFileSync(configPath, "utf8")) as AgentSystemConfig;
-  assert.equal(movedMirror.ConfigStore?.DatabasePath, ".senera/ConfigMoved.sqlite");
-  assert.equal(movedMirror.ModelProviders[0].Model, "moved-model");
-  assert.equal(movedMirror.ModelProviderEndpoints?.at(-1)?.Id, "secondary");
-
   service.close();
   service = undefined;
 
@@ -139,13 +107,12 @@ try {
       configPath,
     },
   });
-  assert.equal(reloaded.snapshot().revision, 1);
-  assert.equal(reloaded.snapshot().value.ModelProviders[0].Model, "moved-model");
-  assert.ok(reloaded.snapshot().databasePath?.endsWith(path.join(".senera", "ConfigMoved.sqlite")));
+  assert.equal(reloaded.snapshot().revision, 2);
+  assert.equal(reloaded.snapshot().value.ModelProviders[0].Model, "updated-model");
   reloaded.close();
   reloaded = undefined;
 
-  const desktopDatabasePath = path.join(workspaceRoot, ".senera", "DesktopConfig.sqlite");
+  const desktopDatabasePath = resolveAgentWorkspaceLayout(desktopWorkspaceRoot).databases.config;
   const desktopSeedConfig: AgentSystemConfig = {
     ModelProviderEndpoints: [
       {
@@ -165,7 +132,7 @@ try {
   };
 
   service = new AgentConfigService({
-    workspaceRoot,
+    workspaceRoot: desktopWorkspaceRoot,
     source: {
       kind: "sqlite",
       databasePath: desktopDatabasePath,
@@ -198,7 +165,7 @@ try {
   service = undefined;
 
   reloaded = new AgentConfigService({
-    workspaceRoot,
+    workspaceRoot: desktopWorkspaceRoot,
     source: {
       kind: "sqlite",
       databasePath: desktopDatabasePath,
@@ -219,7 +186,7 @@ try {
   reloaded = undefined;
 
   service = new AgentConfigService({
-    workspaceRoot,
+    workspaceRoot: desktopWorkspaceRoot,
     source: {
       kind: "sqlite",
       databasePath: desktopDatabasePath,
@@ -296,7 +263,7 @@ try {
   service = undefined;
 
   reloaded = new AgentConfigService({
-    workspaceRoot,
+    workspaceRoot: desktopWorkspaceRoot,
     source: {
       kind: "sqlite",
       databasePath: desktopDatabasePath,
@@ -344,7 +311,7 @@ try {
   assert.throws(
     () =>
       new AgentConfigService({
-        workspaceRoot,
+        workspaceRoot: desktopWorkspaceRoot,
         source: {
           kind: "sqlite",
           databasePath: desktopDatabasePath,
@@ -362,4 +329,5 @@ try {
   service?.close();
   reloaded?.close();
   await removeTemporaryWorkspace(workspaceRoot);
+  await removeTemporaryWorkspace(desktopWorkspaceRoot);
 }

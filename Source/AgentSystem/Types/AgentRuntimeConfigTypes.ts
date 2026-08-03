@@ -12,13 +12,6 @@ export interface AgentPiSessionsConfig {
 
 export interface AgentPiCompactionConfig {
   Enabled?: boolean;
-  TriggerRatio?: number;
-  HardLimitRatio?: number;
-  TargetRatio?: number;
-  SummaryMaxTokens?: number;
-  TimeoutSeconds?: number;
-  UnknownContextWindowTokens?: number;
-  UnknownModelOutputTokens?: number;
 }
 
 export interface ResolvedAgentPiSessionsConfig {
@@ -29,14 +22,6 @@ export interface ResolvedAgentPiSessionsConfig {
 
 export interface ResolvedAgentPiCompactionConfig {
   Enabled: boolean;
-  TriggerRatio: number;
-  HardLimitRatio: number;
-  TargetRatio: number;
-  SummaryMaxTokens: number;
-  TimeoutSeconds: number;
-  TimeoutMs: number;
-  UnknownContextWindowTokens: number;
-  UnknownModelOutputTokens: number;
 }
 
 export interface ResolvedAgentLoopConfig {
@@ -45,16 +30,6 @@ export interface ResolvedAgentLoopConfig {
   RunSettlementTimeoutSeconds: number;
   RunSettlementTimeoutMs: number;
   PiSessions: ResolvedAgentPiSessionsConfig;
-}
-
-export interface ResolvedAgentPluginRootsConfig {
-  System: string[];
-  User: string[];
-}
-
-export interface ResolvedAgentPluginDiscoveryConfig {
-  ManifestFileName: string;
-  ConfigFileName: string;
 }
 
 export interface AgentToolExecutionConfig {
@@ -165,12 +140,10 @@ export interface AgentArtifactsConfig {
   SummaryMaxChars?: number;
   RawJsonMaxBytes?: number;
   TextFileMaxBytes?: number;
-  MemoryReadStructuredJsonMaxBytes?: number;
   MemoryReadMaxArtifacts?: number;
   MemoryReadMaxRefs?: number;
   MemoryReadMaxConcurrency?: number;
-  MemoryReadCacheMaxBytes?: number;
-  MemoryReadCacheMaxEntries?: number;
+  MemoryReadStructuredJsonMaxTokens?: number;
   OutputCaptureMaxBytes?: number;
   MaxStoredBytes?: number;
   MaxArtifacts?: number;
@@ -185,12 +158,10 @@ export interface ResolvedAgentArtifactsConfig {
   SummaryMaxChars: number;
   RawJsonMaxBytes: number;
   TextFileMaxBytes: number;
-  MemoryReadStructuredJsonMaxBytes: number;
   MemoryReadMaxArtifacts: number;
   MemoryReadMaxRefs: number;
   MemoryReadMaxConcurrency: number;
-  MemoryReadCacheMaxBytes: number;
-  MemoryReadCacheMaxEntries: number;
+  MemoryReadStructuredJsonMaxTokens: number;
   OutputCaptureMaxBytes: number;
   MaxStoredBytes: number;
   MaxArtifacts: number;
@@ -225,20 +196,23 @@ export interface ResolvedAgentUploadsConfig {
 export interface AgentConfigStoreConfig {
   Enabled?: boolean;
   Kind?: "sqlite";
-  DatabasePath?: string;
   MirrorJson?: boolean;
+  RevisionRetentionCount?: number;
+  CommandReceiptRetentionHours?: number;
+  CommandReceiptMaxCount?: number;
 }
 
 export interface ResolvedAgentPersistenceConfig {
   Kind: "sqlite" | "memory";
-  DatabasePath: string;
 }
 
 export interface ResolvedAgentConfigStoreConfig {
   Enabled: boolean;
   Kind: "sqlite";
-  DatabasePath: string;
   MirrorJson: boolean;
+  RevisionRetentionCount: number;
+  CommandReceiptRetentionHours: number;
+  CommandReceiptMaxCount: number;
 }
 
 export type AgentServerAccessMode = "auto" | "required" | "disabled";
@@ -252,6 +226,7 @@ export interface AgentServerSessionConfig {
 export interface AgentServerConnectionLimitsConfig {
   MaxConnections?: number;
   MaxConnectionsPerClient?: number;
+  MaxRateLimitClients?: number;
   UpgradeRequestsPerMinute?: number;
   HttpRequestsPerMinute?: number;
   MessagesPerMinute?: number;

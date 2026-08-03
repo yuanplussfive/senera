@@ -25,6 +25,14 @@
       "snapshot": "snapshots/0003.schema.sql",
       "migrationSha256": "44a585a4cda07e30a62a5e9ca6e55886192bc9cffcf95ef9ced3951a7095ebda",
       "snapshotSha256": "df923fb6d1da31d1b59fcd30e8c864788bfaae2bfc920b7ace868fff3c4a3f93"
+    },
+    {
+      "version": 4,
+      "name": "config-history-retention",
+      "migration": "migrations/0004-config-history-retention.sql",
+      "snapshot": "snapshots/0004.schema.sql",
+      "migrationSha256": "dac5cd2cebaae5f89cfcc861c7b04f18f655cd523af35a77467e0289cfd55438",
+      "snapshotSha256": "0957d5f424cb30ef796bdd8ea239a91a5e904bdca4523530a35796ed66a71a9e"
     }
   ]
 }

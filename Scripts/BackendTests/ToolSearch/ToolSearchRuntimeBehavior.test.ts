@@ -1,5 +1,4 @@
 import { describe, expect, test, vi } from "vitest";
-import type { TurnUnderstanding } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
 import { AgentToolSearchMemory } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemory.js";
 import { InMemoryToolSearchMemoryStore } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryStore.js";
 import { projectLearningProjection } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryProjection.js";
@@ -14,12 +13,25 @@ import {
   readToolNamesFromSearchResult,
 } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchResultProjector.js";
 import type { AgentToolSearchResult } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchIndex.js";
+import {
+  AgentToolDisclosurePlanner,
+  AgentToolDisclosureLevels,
+  type AgentDisclosedToolSearchResult,
+} from "../../../Source/AgentSystem/ToolSearch/AgentToolDisclosurePlanner.js";
 import type { AgentToolSearchEpisode } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryTypes.js";
 import type { ExecutedToolCallResult } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
-import type { AgentPluginRegistry } from "../../../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import type { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { SeneraExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
+import {
+  AgentToolFailureSources,
+  AgentToolSuccessOutcome,
+  createAgentToolFailureOutcome,
+} from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
+import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
+import { createAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
+import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 import {
   createRegistry,
   createTool,
@@ -28,7 +40,7 @@ import {
 } from "./ToolSearchTestFixtures.js";
 
 describe("ToolSearch runtime behavior", () => {
-  test("separates system ownership from bootstrap loading", () => {
+  test("separates system ownership from bootstrap loading", async () => {
     const runtime = new AgentToolSearchRuntime(
       createRegistry([
         createTool({
@@ -69,7 +81,7 @@ describe("ToolSearch runtime behavior", () => {
             description: "Public internet information and current external data.",
           },
         }),
-      ]) as unknown as AgentPluginRegistry,
+      ]) as unknown as AgentExtensionRegistry,
       createToolSearchConfig(),
       createToolLearningConfig(),
       "E:/workspace",
@@ -78,13 +90,13 @@ describe("ToolSearch runtime behavior", () => {
     );
 
     expect(
-      runtime.resolvePlannedLoadedTools({
+      await runtime.resolvePlannedLoadedTools({
         input: "no matching capability",
         currentLoadedTools: [],
       }),
     ).toEqual([ToolSearchToolName]);
     expect(
-      runtime.resolvePlannedLoadedTools({
+      await runtime.resolvePlannedLoadedTools({
         input: "run a shell command",
         currentLoadedTools: ["WeatherTool"],
         currentSetPolicy: "replace",
@@ -92,13 +104,21 @@ describe("ToolSearch runtime behavior", () => {
       }),
     ).toEqual([ToolSearchToolName, "ShellCommandTool"]);
     expect(
-      runtime.resolvePlannedLoadedTools({
+      await runtime.resolvePlannedLoadedTools({
         input: "run a shell command",
         currentLoadedTools: ["WeatherTool"],
         currentSetPolicy: "retain",
         preferredTools: ["ShellCommandTool"],
       }),
     ).toEqual([ToolSearchToolName, "WeatherTool", "ShellCommandTool"]);
+    expect(await runtime.resolveInitialLoadedTools("forecast city", ["ShellCommandTool"])).toEqual([
+      ToolSearchToolName,
+      "WeatherTool",
+    ]);
+    expect(await runtime.resolveInitialLoadedTools("no matching capability", ["WeatherTool"])).toEqual([
+      ToolSearchToolName,
+      "WeatherTool",
+    ]);
 
     runtime.close();
   });
@@ -127,7 +147,7 @@ describe("ToolSearch runtime behavior", () => {
           priority: 10,
           rootKind: "User",
         }),
-      ]) as unknown as AgentPluginRegistry,
+      ]) as unknown as AgentExtensionRegistry,
       createToolSearchConfig(),
       createToolLearningConfig({ Enabled: true }),
       "E:/workspace",
@@ -135,6 +155,11 @@ describe("ToolSearch runtime behavior", () => {
       { memoryStore: new InMemoryToolSearchMemoryStore() },
     );
     const handler = runtime.createHostHandler();
+    const grant = createAgentToolAccessGrant({
+      authorizedToolNames: [ToolSearchToolName, "WorkspaceReadFile"],
+      exposedToolNames: [ToolSearchToolName],
+    });
+    const toolExposure = new AgentToolExposureState(grant);
 
     const invalid = await handler({ query: "" }, hostToolContext({ visibleToolNames: [] }));
     const valid = await handler(
@@ -142,15 +167,22 @@ describe("ToolSearch runtime behavior", () => {
       hostToolContext({
         requestId: "request-1",
         visibleToolNames: ["ToolSearchTool"],
+        toolExposure,
       }),
     );
 
     expect(invalid.response.ok).toBe(false);
     expect(valid.response.ok).toBe(true);
     expect(readToolNamesFromSearchResult(valid.response.result)).toEqual(["WorkspaceReadFile"]);
+    expect(toolExposure.snapshot()).toMatchObject({
+      generation: 1,
+      exposedToolNames: [ToolSearchToolName, "WorkspaceReadFile"],
+      preferredToolNames: ["WorkspaceReadFile"],
+    });
     expect(
       runtime.afterToolResults({
         requestId: "request-1",
+        userInput: "read workspace file",
         loadedTools: ["ToolSearchTool"],
         execution: {
           value: [
@@ -186,7 +218,7 @@ describe("ToolSearch runtime behavior", () => {
           description: "Public internet information.",
         },
       }),
-    ]) as unknown as AgentPluginRegistry;
+    ]) as unknown as AgentExtensionRegistry;
     const runtime = new AgentToolSearchRuntime(
       registry,
       createToolSearchConfig(),
@@ -224,6 +256,152 @@ describe("ToolSearch runtime behavior", () => {
     expect(contract.projectDescription?.({} as never, "Search tools")).toContain("web: Web");
     expect(invalid.response.ok).toBe(false);
     expect(valid.response.ok).toBe(true);
+    runtime.close();
+  });
+
+  test("recalls an English MCP capability from a Chinese request through embeddings", async () => {
+    const config = createToolSearchConfig();
+    config.Embedding.Enabled = true;
+    config.Embedding.ScoreThreshold = 0.7;
+    const embed = vi.fn(async ({ input }: { input: readonly string[] }) => ({
+      model: "multilingual-test",
+      vectors: input.map((text) => (text.includes("这两天") || text.includes("current public web") ? [1, 0] : [0, 1])),
+    }));
+    const runtime = new AgentToolSearchRuntime(
+      createRegistry([
+        createTool({
+          name: ToolSearchToolName,
+          title: "Tool search",
+          summary: "Find tools",
+          tags: ["search"],
+          actions: ["search"],
+          targets: ["tools"],
+          priority: 100,
+          rootKind: "System",
+          loading: "Bootstrap",
+        }),
+        createTool({
+          name: "mcp__web_research__search",
+          title: "Web research",
+          summary: "Search current public web information and return source-backed results.",
+          tags: ["web", "research"],
+          actions: ["search"],
+          targets: ["public-web"],
+          priority: 20,
+        }),
+        createTool({
+          name: "mcp__weather__forecast",
+          title: "Weather forecast",
+          summary: "Return the weather forecast for a city.",
+          tags: ["weather"],
+          actions: ["forecast"],
+          targets: ["city"],
+          priority: 20,
+        }),
+      ]) as unknown as AgentExtensionRegistry,
+      config,
+      createToolLearningConfig(),
+      "E:/workspace",
+      createModelProvider(),
+      {
+        memoryStore: new InMemoryToolSearchMemoryStore(),
+        embedding: {
+          model: "multilingual-test",
+          client: { embed },
+        },
+      },
+    );
+
+    await expect(runtime.resolveInitialLoadedTools("这两天 AI 有什么发展")).resolves.toContain(
+      "mcp__web_research__search",
+    );
+    runtime.refresh();
+    await runtime.resolveInitialLoadedTools("这两天 AI 有什么发展");
+
+    expect(embed.mock.calls.map(([request]) => request.input.length)).toEqual([2, 1, 1]);
+    runtime.close();
+  });
+
+  test("uses the configured vector reranker as the final ordering signal", async () => {
+    const rerank = vi.fn(async ({ documents }: { documents: readonly { id: string; text: string }[] }) => ({
+      model: "rerank-test",
+      results: [...documents].reverse().map((document, index) => ({
+        id: document.id,
+        index: documents.findIndex((candidate) => candidate.id === document.id),
+        score: 1 - index / documents.length,
+      })),
+    }));
+    const runtime = new AgentToolSearchRuntime(
+      createRegistry([
+        createTool({
+          name: "AlphaWorkspaceSearch",
+          title: "Alpha workspace search",
+          summary: "Search workspace records",
+          tags: ["workspace", "search"],
+          actions: ["search"],
+          targets: ["records"],
+          priority: 20,
+        }),
+        createTool({
+          name: "BetaWorkspaceSearch",
+          title: "Beta workspace search",
+          summary: "Search workspace records",
+          tags: ["workspace", "search"],
+          actions: ["search"],
+          targets: ["records"],
+          priority: 20,
+        }),
+      ]) as unknown as AgentExtensionRegistry,
+      createToolSearchConfig(),
+      createToolLearningConfig(),
+      "E:/workspace",
+      createModelProvider(),
+      {
+        memoryStore: new InMemoryToolSearchMemoryStore(),
+        rerank: { client: { rerank } },
+      },
+    );
+
+    const results = await runtime.search({ query: "search workspace records" });
+
+    expect(rerank).toHaveBeenCalledOnce();
+    expect(results.map((result) => result.toolName)).toEqual(["BetaWorkspaceSearch", "AlphaWorkspaceSearch"]);
+    expect(results[0]?.ranks.rerank).toBe(1);
+    runtime.close();
+  });
+
+  test("opens the embedding circuit after a provider failure while preserving lexical retrieval", async () => {
+    const config = createToolSearchConfig();
+    config.Embedding.Enabled = true;
+    const embed = vi.fn().mockRejectedValue(new Error("embedding endpoint unavailable"));
+    const runtime = new AgentToolSearchRuntime(
+      createRegistry([
+        createTool({
+          name: "WorkspaceSearch",
+          title: "Workspace search",
+          summary: "Search workspace records",
+          tags: ["workspace", "search"],
+          actions: ["search"],
+          targets: ["records"],
+          priority: 20,
+        }),
+      ]) as unknown as AgentExtensionRegistry,
+      config,
+      createToolLearningConfig(),
+      "E:/workspace",
+      createModelProvider(),
+      {
+        memoryStore: new InMemoryToolSearchMemoryStore(),
+        embedding: { model: "embedding-test", client: { embed } },
+      },
+    );
+
+    const first = await runtime.search({ query: "search workspace records" });
+    const second = await runtime.search({ query: "search workspace records" });
+
+    expect(first.map((result) => result.toolName)).toEqual(["WorkspaceSearch"]);
+    expect(second.map((result) => result.toolName)).toEqual(["WorkspaceSearch"]);
+    expect(embed).toHaveBeenCalledOnce();
     runtime.close();
   });
 
@@ -272,13 +450,6 @@ describe("ToolSearch runtime behavior", () => {
       createToolLearningConfig({ Enabled: true }),
       learningRuntime,
     );
-    const understanding = {
-      rawUserTurn: "Read package.json",
-      standaloneRequest: "Read package.json",
-      contextMode: "None",
-      contextBasis: "",
-    } as TurnUnderstanding;
-
     usage.rememberSearch("request-success", {
       query: "read package",
       queryTokens: ["read", "package"],
@@ -286,17 +457,17 @@ describe("ToolSearch runtime behavior", () => {
       candidates: ["WorkspaceReadFile"],
       timestamp: 1,
     });
-    usage.recordToolUsage(
-      "request-success",
-      [
+    usage.recordToolUsage({
+      requestId: "request-success",
+      userInput: "Read package.json",
+      results: [
         toolResult({
           name: "WorkspaceReadFile",
           arguments: { path: "package.json" },
           artifact: artifactWithEvidence(),
         }),
       ],
-      understanding,
-    );
+    });
     usage.rememberSearch("request-failure", {
       query: "read package",
       queryTokens: ["read", "package"],
@@ -304,9 +475,20 @@ describe("ToolSearch runtime behavior", () => {
       candidates: ["WorkspaceReadFile"],
       timestamp: 2,
     });
-    usage.recordToolUsage("request-failure", [
-      toolResult({ name: "WorkspaceReadFile", result: { error: { message: "missing" } } }),
-    ]);
+    usage.recordToolUsage({
+      requestId: "request-failure",
+      userInput: "Read package.json",
+      results: [
+        toolResult({
+          name: "WorkspaceReadFile",
+          outcome: createAgentToolFailureOutcome(
+            { code: AgentExecutionErrorCodes.ToolExecutionError, message: "missing" },
+            AgentToolFailureSources.Host,
+            "none",
+          ),
+        }),
+      ],
+    });
 
     expect(learningRuntime.enqueue).toHaveBeenCalledTimes(1);
     expect(learningRuntime.enqueue).toHaveBeenCalledWith(
@@ -319,6 +501,12 @@ describe("ToolSearch runtime behavior", () => {
           finalScore: 1,
         }),
       }),
+    );
+    expect(memory.learningEpisodes("project-a", 10)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ requestId: "request-success", state: "observed" }),
+        expect.objectContaining({ requestId: "request-failure", state: "skipped" }),
+      ]),
     );
     memory.close();
   });
@@ -341,13 +529,17 @@ describe("ToolSearch runtime behavior", () => {
     });
 
     usage.finishRequest("request-abandoned");
-    usage.recordToolUsage("request-abandoned", [
-      toolResult({
-        name: "WorkspaceReadFile",
-        arguments: { path: "package.json" },
-        artifact: artifactWithEvidence(),
-      }),
-    ]);
+    usage.recordToolUsage({
+      requestId: "request-abandoned",
+      userInput: "Read package.json",
+      results: [
+        toolResult({
+          name: "WorkspaceReadFile",
+          arguments: { path: "package.json" },
+          artifact: artifactWithEvidence(),
+        }),
+      ],
+    });
 
     expect(learningRuntime.enqueue).not.toHaveBeenCalled();
     memory.close();
@@ -363,7 +555,7 @@ describe("ToolSearch runtime behavior", () => {
     });
     const projection = projectLearningProjection(episode, tokenizer);
     const result = buildToolSearchResultProjection({ query: "workspace", includeLoaded: false }, [
-      searchResult({
+      disclosedSearchResult({
         toolName: "WorkspaceReadFile",
         learningSignals: [
           {
@@ -388,6 +580,52 @@ describe("ToolSearch runtime behavior", () => {
         },
       }),
     );
+  });
+
+  test("discloses full contracts only for relevant candidates that fit the turn budget", () => {
+    const first = createTool({
+      name: "WorkspaceReadFile",
+      title: "Read file",
+      summary: "Read workspace files",
+      tags: ["workspace", "read"],
+      actions: ["read"],
+      targets: ["file"],
+      priority: 10,
+    });
+    const second = createTool({
+      name: "WorkspaceSearchFiles",
+      title: "Search files",
+      summary: "Search workspace file contents",
+      tags: ["workspace", "search"],
+      actions: ["search"],
+      targets: ["file"],
+      priority: 10,
+    });
+    const planner = new AgentToolDisclosurePlanner(
+      createRegistry([first, second]) as unknown as AgentExtensionRegistry,
+      createToolSearchConfig(),
+      createModelProvider(),
+    );
+    const planned = planner.plan(
+      "workspace files",
+      [searchResult({ toolName: first.name, score: 1 }), searchResult({ toolName: second.name, score: 0.99 })],
+      { model: "test-model", availableTokens: () => 1 },
+    );
+    const projection = buildToolSearchResultProjection({ query: "workspace files" }, planned);
+
+    expect(planned.map((result) => result.disclosure)).toEqual([
+      AgentToolDisclosureLevels.Callable,
+      AgentToolDisclosureLevels.Preview,
+    ]);
+    expect(readToolNamesFromSearchResult(projection)).toEqual([first.name]);
+    expect(projection.tools.item[0]).toMatchObject({
+      disclosure: AgentToolDisclosureLevels.Callable,
+      parameters: "path: string",
+    });
+    expect(projection.tools.item[1]).toMatchObject({
+      disclosure: AgentToolDisclosureLevels.Preview,
+      parameters: "path: string",
+    });
   });
 });
 
@@ -433,10 +671,11 @@ function searchResult(overrides: Partial<AgentToolSearchResult> = {}): AgentTool
   return {
     toolName: "WorkspaceReadFile",
     title: "Read file",
-    pluginName: "WorkspacePlugin",
+    ownerName: "workspace",
     sources: [],
     summary: "Read workspace files",
     whenToUse: "Inspect files",
+    parameterSummary: "path: string",
     score: 1,
     ranks: {},
     matchedTerms: ["workspace"],
@@ -447,13 +686,23 @@ function searchResult(overrides: Partial<AgentToolSearchResult> = {}): AgentTool
   };
 }
 
+function disclosedSearchResult(
+  overrides: Partial<AgentDisclosedToolSearchResult> = {},
+): AgentDisclosedToolSearchResult {
+  return {
+    ...searchResult(overrides),
+    disclosure: overrides.disclosure ?? AgentToolDisclosureLevels.Callable,
+  };
+}
+
 function toolResult(overrides: Partial<ExecutedToolCallResult> = {}): ExecutedToolCallResult {
   return {
     callId: "call-1",
     name: "WorkspaceReadFile",
     arguments: {},
-    process: { exitCode: 0, signal: null, stderr: "" },
+    process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
     result: { ok: true },
+    outcome: AgentToolSuccessOutcome,
     ...overrides,
   };
 }
@@ -486,7 +735,8 @@ function artifactWithEvidence(): ExecutedToolCallResult["artifact"] {
 }
 
 function hostToolContext(
-  overrides: Pick<AgentHostToolContext, "requestId" | "visibleToolNames">,
+  overrides: Pick<AgentHostToolContext, "requestId" | "visibleToolNames"> &
+    Partial<Pick<AgentHostToolContext, "toolExposure">>,
 ): AgentHostToolContext {
   const tool = createTool({
     name: ToolSearchToolName,

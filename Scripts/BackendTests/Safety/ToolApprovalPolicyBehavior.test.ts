@@ -11,6 +11,7 @@ import {
   type AgentToolApprovalPolicyInput,
 } from "../../../Source/AgentSystem/Safety/AgentToolApprovalPolicy.js";
 import type { AgentToolGuardrailAuditor } from "../../../Source/AgentSystem/Safety/AgentToolGuardrailAudit.js";
+import { toolAccessGrant } from "../Support/AgentTestFixtures.js";
 
 describe("tool approval policy composition", () => {
   test("projects a semantic deny into explicit user approval", async () => {
@@ -123,11 +124,12 @@ function toolInput(): AgentToolApprovalPolicyInput {
     toolCallId: "call",
     step: 1,
     toolName: "ShellCommandTool",
+    toolAccessGrant: toolAccessGrant(["ShellCommandTool"], ["ShellCommandTool"]),
     arguments: { command: "example" },
     tool: {
-      pluginName: "AgentShellToolPlugin",
-      pluginTitle: "Shell",
-      rootKind: "System",
+      extensionName: "shell",
+      extensionTitle: "Shell",
+      ownerKind: "system",
       approval: { Mode: "allow" },
       permissions: ["process:shell"],
       capabilityRisks: [],

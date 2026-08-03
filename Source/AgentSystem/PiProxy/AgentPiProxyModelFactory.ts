@@ -2,7 +2,6 @@ import type { AgentSystemConfig, ResolvedAgentModelProviderConfig } from "../Typ
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
 import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentPiAssistantCompilerPort } from "./AgentPiAssistantCompiler.js";
-import type { AgentPiFinalAnswerGeneratorPort } from "./AgentPiFinalAnswerGenerator.js";
 
 export interface AgentPiProxyModelFactory {
   createCompiler(
@@ -11,10 +10,4 @@ export interface AgentPiProxyModelFactory {
     usageSink?: AgentModelUsageSink,
     timingSink?: AgentModelTimingSink,
   ): AgentPiAssistantCompilerPort;
-  createFinalAnswerGenerator(
-    config: AgentSystemConfig,
-    modelProvider: ResolvedAgentModelProviderConfig,
-    usageSink?: AgentModelUsageSink,
-    timingSink?: AgentModelTimingSink,
-  ): AgentPiFinalAnswerGeneratorPort;
 }

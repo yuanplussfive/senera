@@ -9,8 +9,6 @@ import type {
   ProviderModelEndpointInput,
   ProviderModelsFailedData,
   ProviderModelsSnapshotData,
-  PluginConfigItem,
-  PluginConfigMutationState,
   UploadAttachmentData,
   InteractionInputAction,
   InteractionInputContent,
@@ -28,14 +26,6 @@ export interface ChatModelConfig {
   onSelectModelProvider: (id: string) => void;
   /** Restores the active conversation to the current default model. */
   onApplyDefaultModel?: () => void;
-}
-
-export interface ChatPluginConfig {
-  pluginConfigs: PluginConfigItem[];
-  pluginConfigOperations: Record<string, PluginConfigMutationState>;
-  onRefreshPluginConfigs: () => void;
-  onSavePluginConfig: (pluginName: string, toml: string) => string | null;
-  onSetPluginEnabled: (pluginName: string, enabled: boolean, toolName?: string) => string | null;
 }
 
 export interface ChatSystemConfig {

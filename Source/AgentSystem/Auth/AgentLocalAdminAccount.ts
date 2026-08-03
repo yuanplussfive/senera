@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { writeFileAtomicSync } from "../Core/AgentFs.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 
 const PasswordMinimumLength = 15;
 const PasswordMaximumLength = 1024;
@@ -16,6 +17,7 @@ const PasswordScryptParameters = {
 } as const;
 
 const LoginNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$/;
+const AgentLocalAdminAccountDocumentVersion = 1 as const;
 
 const PasswordHashSchema = z
   .object({
@@ -31,7 +33,7 @@ const PasswordHashSchema = z
 
 const AccountDocumentSchema = z
   .object({
-    version: z.literal(1),
+    version: z.literal(AgentLocalAdminAccountDocumentVersion),
     id: z.string().min(1),
     loginName: z.string().min(1),
     displayName: z.string().min(1),
@@ -81,14 +83,14 @@ export class AgentLocalAdminAccountStore {
   require(): AgentLocalAdminAccount {
     const account = this.read();
     if (!account) {
-      throw new Error(agentErrorMessage("auth.accountMissing", { path: this.filePath }));
+      throw new AgentLocalizedError("auth.accountMissing", { path: this.filePath });
     }
     return account;
   }
 
   async initialize(input: AgentLocalAdminAccountInput): Promise<AgentLocalAdminAccount> {
     if (this.exists()) {
-      throw new Error(agentErrorMessage("auth.accountExists", { path: this.filePath }));
+      throw new AgentLocalizedError("auth.accountExists", { path: this.filePath });
     }
 
     const account = await createAccountDocument(input);
@@ -126,12 +128,12 @@ export class AgentLocalAdminAccountStore {
   async resetPassword(input: AgentLocalAdminAccountInput): Promise<AgentLocalAdminAccount> {
     const current = this.readDocument();
     if (!current) {
-      throw new Error(agentErrorMessage("auth.accountMissing", { path: this.filePath }));
+      throw new AgentLocalizedError("auth.accountMissing", { path: this.filePath });
     }
 
     const loginName = normalizeLoginName(input.loginName);
     if (loginName !== current.loginName) {
-      throw new Error(agentErrorMessage("auth.resetLoginNameMismatch"));
+      throw new AgentLocalizedError("auth.resetLoginNameMismatch");
     }
 
     const next: AccountDocument = {
@@ -160,11 +162,11 @@ export class AgentLocalAdminAccountStore {
       return undefined;
     }
 
-    const value = JSON.parse(fs.readFileSync(this.filePath, "utf8")) as unknown;
+    const value = parseJsonText(fs.readFileSync(this.filePath, "utf8"), "Admin account document") as unknown;
     const document = AccountDocumentSchema.parse(value);
     const loginName = normalizeLoginName(document.loginName);
     if (document.loginName !== loginName) {
-      throw new Error(agentErrorMessage("auth.loginNameNotNormalized", { path: this.filePath }));
+      throw new AgentLocalizedError("auth.loginNameNotNormalized", { path: this.filePath });
     }
     return document;
   }
@@ -182,7 +184,7 @@ export class AgentLocalAdminAccountStore {
 export function normalizeLoginName(value: string): string {
   const normalized = value.trim().toLowerCase();
   if (!LoginNamePattern.test(normalized)) {
-    throw new Error(agentErrorMessage("auth.loginNameInvalid"));
+    throw new AgentLocalizedError("auth.loginNameInvalid");
   }
   return normalized;
 }
@@ -198,25 +200,23 @@ function normalizeLoginNameSafely(value: string): string | undefined {
 export function normalizeDisplayName(value: string): string {
   const normalized = value.trim();
   if (normalized.length < 1 || normalized.length > 64) {
-    throw new Error(agentErrorMessage("auth.displayNameInvalid"));
+    throw new AgentLocalizedError("auth.displayNameInvalid");
   }
   return normalized;
 }
 
 export function validateAdminPassword(value: string): void {
   if (value.length < PasswordMinimumLength || value.length > PasswordMaximumLength) {
-    throw new Error(
-      agentErrorMessage("auth.passwordLengthInvalid", {
-        min: PasswordMinimumLength,
-        max: PasswordMaximumLength,
-      }),
-    );
+    throw new AgentLocalizedError("auth.passwordLengthInvalid", {
+      min: PasswordMinimumLength,
+      max: PasswordMaximumLength,
+    });
   }
 }
 
 async function createAccountDocument(input: AgentLocalAdminAccountInput): Promise<AccountDocument> {
   return {
-    version: 1,
+    version: AgentLocalAdminAccountDocumentVersion,
     id: randomBytes(18).toString("base64url"),
     loginName: normalizeLoginName(input.loginName),
     displayName: normalizeDisplayName(input.displayName),

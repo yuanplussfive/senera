@@ -132,6 +132,9 @@ export interface AgentTokenEstimate {
   tokenCount: number;
 }
 
+export type AgentTokenLimitInspection =
+  { readonly withinLimit: true; readonly tokenCount: number } | { readonly withinLimit: false };
+
 export class AgentModelTokenEstimator {
   private readonly api: EncodingApi;
   private readonly context: {
@@ -155,6 +158,11 @@ export class AgentModelTokenEstimator {
       ...this.context,
       tokenCount: this.api.countTokens(text),
     };
+  }
+
+  inspect(text: string, tokenLimit: number): AgentTokenLimitInspection {
+    const tokenCount = this.api.isWithinTokenLimit(text, normalizePositiveInteger(tokenLimit));
+    return tokenCount === false ? { withinLimit: false } : { withinLimit: true, tokenCount };
   }
 }
 
@@ -212,4 +220,9 @@ function resolveEncodingContext(model: string): ResolvedEncodingContext {
     encodingName,
     resolution: Object.prototype.hasOwnProperty.call(KnownModelEncodingMap, model) ? "model_map" : "default_encoding",
   };
+}
+
+function normalizePositiveInteger(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(1, Math.floor(value));
 }

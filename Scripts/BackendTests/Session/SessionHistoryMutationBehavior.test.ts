@@ -2,6 +2,10 @@ import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import { AgentPiSessionLifecycleStates } from "../../../Source/AgentSystem/Pi/AgentPiSessionLifecycleMetadata.js";
 import { SqliteSessionRepository } from "../../../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
+import { AgentMemoryService } from "../../../Source/AgentSystem/Memory/AgentMemoryService.js";
+import { InMemoryAgentMemorySourceRepository } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
+import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
+import type { AgentSessionArtifactLifecycle } from "../../../Source/AgentSystem/Session/AgentSessionArtifactLifecycle.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 import { assistantEntry, createManagerFixture, turnPreparation, userEntry } from "./SessionManagerTestFixtures.js";
 
@@ -115,6 +119,88 @@ describe("Session history mutation behavior", () => {
       removeDirectory(directory);
     }
   });
+
+  test("rejects a missing boundary before invoking Pi, memory, or artifact side effects", async () => {
+    const rewind = vi.fn(async () => true);
+    const reset = vi.fn(async () => true);
+    const memory = new AgentMemoryService({ sourceRepository: new InMemoryAgentMemorySourceRepository() });
+    const deleteMemory = vi.spyOn(memory, "deleteFromSessionRequest");
+    const artifacts = artifactLifecycle();
+    const fixture = createManagerFixture({
+      memoryService: memory,
+      piSessionMutations: { rewind, reset },
+      artifactSessionCleanup: artifacts,
+    });
+    const events: AgentDomainEvent[] = [];
+    await fixture.manager.createSession({ sessionId: "session-missing-boundary" });
+    fixture.store.persistEntries("session-missing-boundary", [userEntry("request-a", "A")]);
+
+    await fixture.manager.truncateFromRequest({
+      sessionId: "session-missing-boundary",
+      requestId: "request-missing",
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    expect(rewind).not.toHaveBeenCalled();
+    expect(reset).not.toHaveBeenCalled();
+    expect(deleteMemory).not.toHaveBeenCalled();
+    expect(artifacts.removeSessionArtifactsFromRequests).not.toHaveBeenCalled();
+    expect(fixture.store.loadConversation("session-missing-boundary")).toHaveLength(1);
+    expect(events).toEqual([
+      expect.objectContaining({
+        kind: AgentEventKinds.RequestInvalid,
+        data: expect.objectContaining({ code: "session_history_boundary_missing" }),
+      }),
+    ]);
+  });
+
+  test("replays owned cleanup when SQLite commit fails after external side effects", async () => {
+    const directory = createTemporaryDirectory("senera-history-cleanup-recovery");
+    const databasePath = path.join(directory, "session.db");
+    let repository = new SqliteSessionRepository(databasePath);
+    const memory = new AgentMemoryService({ sourceRepository: new InMemoryAgentMemorySourceRepository() });
+    const deleteMemory = vi.spyOn(memory, "deleteFromSessionRequest");
+    const artifacts = artifactLifecycle();
+    try {
+      const failing = createManagerFixture({ repository, memoryService: memory, artifactSessionCleanup: artifacts });
+      await failing.manager.createSession({ sessionId: "session-cleanup-recovery" });
+      failing.store.persistEntries("session-cleanup-recovery", [
+        userEntry("request-a", "A"),
+        assistantEntry("request-a", "Answer A"),
+        userEntry("request-b", "B"),
+      ]);
+      vi.spyOn(repository, "commitHistoryMutation").mockImplementationOnce(() => {
+        throw new Error("simulated SQLite commit failure");
+      });
+
+      await expect(
+        failing.manager.truncateFromRequest({
+          sessionId: "session-cleanup-recovery",
+          requestId: "request-b",
+        }),
+      ).rejects.toThrow("simulated SQLite commit failure");
+      expect(repository.listPendingHistoryMutations()).toHaveLength(1);
+      expect(repository.loadEntries("session-cleanup-recovery")).toHaveLength(3);
+      repository.close();
+
+      repository = new SqliteSessionRepository(databasePath);
+      const recovered = createManagerFixture({ repository, memoryService: memory, artifactSessionCleanup: artifacts });
+      await recovered.manager.ready();
+
+      expect(deleteMemory).toHaveBeenCalledTimes(2);
+      expect(artifacts.removeSessionArtifactsFromRequests).toHaveBeenCalledTimes(2);
+      expect(recovered.store.loadConversation("session-cleanup-recovery").map((entry) => entry.requestId)).toEqual([
+        "request-a",
+        "request-a",
+      ]);
+      expect(repository.listPendingHistoryMutations()).toEqual([]);
+    } finally {
+      repository.close();
+      removeDirectory(directory);
+    }
+  });
 });
 
 async function seedRegenerationSession(
@@ -133,4 +219,12 @@ async function seedRegenerationSession(
     ...turnPreparation("B"),
     piBranchBoundaryId,
   });
+}
+
+function artifactLifecycle(): AgentSessionArtifactLifecycle {
+  return {
+    retainForkArtifacts: vi.fn(async () => undefined),
+    removeSessionArtifacts: vi.fn(async () => undefined),
+    removeSessionArtifactsFromRequests: vi.fn(async () => undefined),
+  };
 }

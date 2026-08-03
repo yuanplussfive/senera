@@ -51,25 +51,25 @@ try {
   const sourceRoot = path.join(workspaceRoot, "source");
   const targetRoot = path.join(workspaceRoot, "target");
 
-  writeText(path.join(sourceRoot, "AgentDecisionPlugin", "docs", "ToolCalls.md"), "current docs");
-  writeText(path.join(sourceRoot, "WeatherToolPlugin", "PluginManifest.json"), "{}");
-  writeText(path.join(targetRoot, "AgentDecisionPlugin", "PluginManifest.json"), '{"DecisionActions":[]}');
-  writeText(path.join(targetRoot, "AgentDecisionPlugin", "PluginConfig.toml"), "enabled = true");
-  writeText(path.join(targetRoot, "AgentDecisionPlugin", "docs", "Old.md"), "old docs");
-  writeText(path.join(targetRoot, "RemovedPlugin", "PluginManifest.json"), "{}");
-  writeText(path.join(targetRoot, "WeatherToolPlugin", "stale.txt"), "stale");
+  writeText(path.join(sourceRoot, "execution-workflow", "references", "ToolCalls.md"), "current docs");
+  writeText(path.join(sourceRoot, "example-skill", "SKILL.md"), "# Example");
+  writeText(path.join(targetRoot, "execution-workflow", "SKILL.md"), "# Old");
+  writeText(path.join(targetRoot, "execution-workflow", "local.settings.json"), "{}");
+  writeText(path.join(targetRoot, "execution-workflow", "references", "Old.md"), "old docs");
+  writeText(path.join(targetRoot, "removed-skill", "SKILL.md"), "# Removed");
+  writeText(path.join(targetRoot, "example-skill", "stale.txt"), "stale");
 
   syncRuntimeDirectory(sourceRoot, targetRoot, {
-    preserveFileNames: ["PluginConfig.toml"],
+    preserveFileNames: ["local.settings.json"],
     pruneExtraneous: true,
   });
 
-  assert.equal(exists(path.join(targetRoot, "AgentDecisionPlugin", "PluginManifest.json")), false);
-  assert.equal(readText(path.join(targetRoot, "AgentDecisionPlugin", "PluginConfig.toml")), "enabled = true");
-  assert.equal(readText(path.join(targetRoot, "AgentDecisionPlugin", "docs", "ToolCalls.md")), "current docs");
-  assert.equal(exists(path.join(targetRoot, "AgentDecisionPlugin", "docs", "Old.md")), false);
-  assert.equal(exists(path.join(targetRoot, "RemovedPlugin")), false);
-  assert.equal(exists(path.join(targetRoot, "WeatherToolPlugin", "stale.txt")), false);
+  assert.equal(exists(path.join(targetRoot, "execution-workflow", "SKILL.md")), false);
+  assert.equal(readText(path.join(targetRoot, "execution-workflow", "local.settings.json")), "{}");
+  assert.equal(readText(path.join(targetRoot, "execution-workflow", "references", "ToolCalls.md")), "current docs");
+  assert.equal(exists(path.join(targetRoot, "execution-workflow", "references", "Old.md")), false);
+  assert.equal(exists(path.join(targetRoot, "removed-skill")), false);
+  assert.equal(exists(path.join(targetRoot, "example-skill", "stale.txt")), false);
 
   const packageSourceRoot = path.join(workspaceRoot, "package-source");
   const packageTargetRoot = path.join(workspaceRoot, "package-target");

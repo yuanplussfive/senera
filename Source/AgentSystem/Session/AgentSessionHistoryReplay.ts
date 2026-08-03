@@ -1,46 +1,91 @@
-import { AgentEventKinds, emitAgentEvent, type AgentEventSink } from "../Events/AgentEvent.js";
+import { AgentEventKinds, emitAgentEvent, type AgentEventEnvelope, type AgentEventSink } from "../Events/AgentEvent.js";
 import { AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import { type AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
-import { AgentRunEventHistoryReplayChunkSize } from "../Events/AgentRunEventHistoryPolicy.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { StepTrace } from "../Runtime/AgentStepTrace.js";
-import type { StoredRunSnapshot } from "./AgentSqliteSessionRepository.js";
+import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
+import type {
+  AgentSessionCursorPage,
+  AgentSessionHistorySnapshot,
+  AgentSessionCursorPageRequest,
+  AgentStepTraceCursor,
+  AgentStepTracePageRequest,
+  StoredRunSnapshot,
+  StoredStepTraceRun,
+} from "./AgentSessionRepository.js";
 import type { AgentHistoryStepRun } from "./AgentSessionEventTypes.js";
 import { type AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
-import { type AgentSessionStore } from "./AgentSessionStore.js";
-import { recoverInterruptedRunWaitEvents } from "./AgentSessionHistoryWaitRecovery.js";
+import { AgentSessionHistoryWaitRecovery } from "./AgentSessionHistoryWaitRecovery.js";
 import { AgentXmlParser } from "../Xml/AgentXmlParser.js";
+import {
+  resolveAgentSessionHistoryReplayPaging,
+  type AgentSessionHistoryReplayPaging,
+} from "./AgentSessionHistoryPaging.js";
 
-const SessionHistoryEntryChunkSize = 50;
 const HistoryXmlParser = new AgentXmlParser();
 
 export interface AgentSessionHistoryReplayOptions {
-  store: AgentSessionStore;
-  conversationPolicy: AgentConversationPolicy;
+  store: AgentSessionHistoryReplayStore;
   eventFactory: AgentSessionEventFactory;
+  paging?: Partial<AgentSessionHistoryReplayPaging>;
+}
+
+export interface AgentSessionHistoryReplayStore {
+  captureHistorySnapshot(sessionId: string): AgentSessionHistorySnapshot | undefined;
+  loadConversationPage(
+    sessionId: string,
+    request: AgentSessionCursorPageRequest,
+  ): AgentSessionCursorPage<AgentConversationEntry>;
+  loadConversationEntriesForRequests(
+    sessionId: string,
+    requestIds: readonly string[],
+    throughSequence: number,
+  ): AgentConversationEntry[];
+  loadStepTracePage(
+    sessionId: string,
+    request: AgentStepTracePageRequest,
+  ): AgentSessionCursorPage<StoredStepTraceRun, AgentStepTraceCursor>;
+  loadStepTraceRequestIds(sessionId: string, requestIds: readonly string[], throughRowId: number): string[];
+  loadRunSnapshotsForRequests(
+    sessionId: string,
+    requestIds: readonly string[],
+    throughRevision: number,
+  ): StoredRunSnapshot[];
+  loadRunSnapshotPage(
+    sessionId: string,
+    request: AgentSessionCursorPageRequest,
+  ): AgentSessionCursorPage<StoredRunSnapshot>;
+  loadRunEventPage(
+    sessionId: string,
+    request: AgentSessionCursorPageRequest,
+  ): AgentSessionCursorPage<AgentEventEnvelope>;
 }
 
 export class AgentSessionHistoryReplay {
-  constructor(private readonly options: AgentSessionHistoryReplayOptions) {}
+  private readonly paging: AgentSessionHistoryReplayPaging;
+
+  constructor(private readonly options: AgentSessionHistoryReplayOptions) {
+    this.paging = resolveAgentSessionHistoryReplayPaging(options.paging);
+  }
 
   async replay(request: { sessionId: string; refresh?: boolean; onEvent?: AgentEventSink }): Promise<void> {
-    const entries = await this.loadHistoryEntries(request);
-    if (!entries) {
-      return;
-    }
+    const snapshot = await this.captureHistorySnapshot(request);
+    if (!snapshot) return;
 
-    await this.emitHistoryStarted(request, entries);
-    await this.emitEntryChunks(request, entries);
-    await this.emitStepRuns(request, entries);
-    await this.emitRunEventChunks(request);
+    await this.emitHistoryStarted(request, snapshot);
+    await this.emitEntryPages(request, snapshot);
+    await this.emitStepRunPages(request, snapshot);
+    await this.emitRunEventPages(request, snapshot);
     await this.emitHistoryCompleted(request);
   }
 
-  buildStepRuns(sessionId: string, entries: readonly AgentConversationEntry[]): AgentHistoryStepRun[] {
-    const entryIndex = new AgentSessionHistoryEntryIndex(entries);
+  private buildStepRunsFromSources(
+    entryIndex: AgentSessionHistoryEntryIndex,
+    traceRuns: readonly StoredStepTraceRun[],
+    snapshots: readonly StoredRunSnapshot[],
+  ): AgentHistoryStepRun[] {
     const runsByRequest = new Map<string, AgentHistoryStepRun>();
 
-    for (const run of this.options.store.loadStepTraces(sessionId)) {
+    for (const run of traceRuns) {
       const userEntry = entryIndex.userMessage(run.requestId);
       const assistantEntry = entryIndex.assistantDecision(run.requestId);
       runsByRequest.set(run.requestId, {
@@ -49,97 +94,198 @@ export class AgentSessionHistoryReplay {
         startedAt: userEntry?.timestamp ?? run.traces[0]?.startedAt ?? "",
         endedAt: assistantEntry?.timestamp,
         status: inferTraceRunStatus(run.traces),
-        modelProvider: assistantEntry?.metadata?.run?.modelProvider ?? userEntry?.metadata?.run?.modelProvider,
+        modelProvider: assistantEntry?.modelProvider ?? userEntry?.modelProvider,
         traces: run.traces,
       });
     }
 
-    for (const snapshot of this.options.store.loadRunSnapshots(sessionId)) {
+    for (const snapshot of snapshots) {
       this.mergeSnapshotRun(runsByRequest, snapshot);
     }
 
     return Array.from(runsByRequest.values()).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   }
 
-  private async loadHistoryEntries(request: {
+  private async captureHistorySnapshot(request: {
     sessionId: string;
     onEvent?: AgentEventSink;
-  }): Promise<AgentConversationEntry[] | undefined> {
-    const store = this.options.store;
-    const lookup = store.get(request.sessionId);
-    const entries = store.loadConversation(request.sessionId);
-    const persisted = lookup.kind === "found" || entries.length > 0 || store.hasPersistedSession(request.sessionId);
-
-    if (persisted) {
-      return entries;
-    }
-
+  }): Promise<AgentSessionHistorySnapshot | undefined> {
+    const snapshot = this.options.store.captureHistorySnapshot(request.sessionId);
+    if (snapshot) return snapshot;
     await emitAgentEvent(request.onEvent, this.options.eventFactory.notFound(request.sessionId, "session.history"));
     return undefined;
   }
 
   private async emitHistoryStarted(
     request: { sessionId: string; refresh?: boolean; onEvent?: AgentEventSink },
-    entries: readonly AgentConversationEntry[],
+    snapshot: AgentSessionHistorySnapshot,
   ): Promise<void> {
     await emitAgentEvent(request.onEvent, {
       kind: AgentEventKinds.SessionHistoryStarted,
       context: { sessionId: request.sessionId },
       data: {
         sessionId: request.sessionId,
-        totalEntries: entries.length,
-        messageCount: this.options.conversationPolicy.materialize(entries).length,
+        totalEntries: snapshot.entryCount,
+        messageCount: snapshot.messageCount,
         refresh: request.refresh || undefined,
       },
     });
   }
 
-  private async emitEntryChunks(
+  private async emitEntryPages(
     request: { sessionId: string; onEvent?: AgentEventSink },
-    entries: readonly AgentConversationEntry[],
+    snapshot: AgentSessionHistorySnapshot,
   ): Promise<void> {
-    for (let index = 0; index < entries.length; index += SessionHistoryEntryChunkSize) {
-      const chunk = entries.slice(index, index + SessionHistoryEntryChunkSize);
-      await emitAgentEvent(request.onEvent, {
-        kind: AgentEventKinds.SessionHistoryChunk,
-        context: { sessionId: request.sessionId },
-        data: {
-          sessionId: request.sessionId,
-          entries: chunk.map((entry) => ({
-            entry,
-            visible:
-              entry.kind === AgentConversationEntryKinds.AssistantDecision
-                ? projectAssistantHistoryVisible(entry.xml)
-                : undefined,
-          })),
-        },
+    if (snapshot.entryHighWaterMark === undefined) return;
+
+    let cursor: number | undefined;
+    for (;;) {
+      const page = this.options.store.loadConversationPage(request.sessionId, {
+        after: cursor,
+        through: snapshot.entryHighWaterMark,
+        pageSize: this.paging.entryPageSize,
       });
+      if (page.items.length > 0) {
+        await emitAgentEvent(request.onEvent, {
+          kind: AgentEventKinds.SessionHistoryChunk,
+          context: { sessionId: request.sessionId },
+          data: {
+            sessionId: request.sessionId,
+            entries: page.items.map((entry) => ({
+              entry,
+              visible:
+                entry.kind === AgentConversationEntryKinds.AssistantDecision
+                  ? projectAssistantHistoryVisible(entry.xml)
+                  : undefined,
+            })),
+          },
+        });
+      }
+      if (page.nextCursor === undefined) return;
+      assertCursorAdvanced(cursor, page.nextCursor, "conversation entry");
+      cursor = page.nextCursor;
+    }
+  }
+
+  private async emitStepRunPages(
+    request: { sessionId: string; onEvent?: AgentEventSink },
+    historySnapshot: AgentSessionHistorySnapshot,
+  ): Promise<void> {
+    if (historySnapshot.stepTraceHighWaterMark !== undefined) {
+      let cursor: AgentStepTraceCursor | undefined;
+      for (;;) {
+        const page = this.options.store.loadStepTracePage(request.sessionId, {
+          after: cursor,
+          throughRowId: historySnapshot.stepTraceHighWaterMark,
+          pageSize: this.paging.stepRunPageSize,
+        });
+        const requestIds = page.items.map((run) => run.requestId);
+        const entryIndex = new AgentSessionHistoryEntryIndex(
+          historySnapshot.entryHighWaterMark === undefined
+            ? []
+            : this.options.store.loadConversationEntriesForRequests(
+                request.sessionId,
+                requestIds,
+                historySnapshot.entryHighWaterMark,
+              ),
+        );
+        const pageSnapshots =
+          historySnapshot.runSnapshotHighWaterMark === undefined
+            ? []
+            : this.options.store.loadRunSnapshotsForRequests(
+                request.sessionId,
+                requestIds,
+                historySnapshot.runSnapshotHighWaterMark,
+              );
+        await this.emitStepRuns(request, this.buildStepRunsFromSources(entryIndex, page.items, pageSnapshots));
+        if (!page.nextCursor) break;
+        assertStepTraceCursorAdvanced(cursor, page.nextCursor);
+        cursor = page.nextCursor;
+      }
+    }
+
+    if (historySnapshot.runSnapshotHighWaterMark === undefined) return;
+    let cursor: number | undefined;
+    for (;;) {
+      const page = this.options.store.loadRunSnapshotPage(request.sessionId, {
+        after: cursor,
+        through: historySnapshot.runSnapshotHighWaterMark,
+        pageSize: this.paging.stepRunPageSize,
+      });
+      const tracedRequestIds =
+        historySnapshot.stepTraceHighWaterMark === undefined
+          ? new Set<string>()
+          : new Set(
+              this.options.store.loadStepTraceRequestIds(
+                request.sessionId,
+                page.items.map((snapshot) => snapshot.requestId),
+                historySnapshot.stepTraceHighWaterMark,
+              ),
+            );
+      await this.emitStepRuns(
+        request,
+        this.buildStepRunsFromSources(
+          new AgentSessionHistoryEntryIndex(),
+          [],
+          page.items.filter((snapshot) => !tracedRequestIds.has(snapshot.requestId)),
+        ),
+      );
+      if (page.nextCursor === undefined) break;
+      assertCursorAdvanced(cursor, page.nextCursor, "run snapshot");
+      cursor = page.nextCursor;
     }
   }
 
   private async emitStepRuns(
     request: { sessionId: string; onEvent?: AgentEventSink },
-    entries: readonly AgentConversationEntry[],
+    runs: readonly AgentHistoryStepRun[],
   ): Promise<void> {
-    const runs = this.buildStepRuns(request.sessionId, entries);
-    if (runs.length === 0) {
-      return;
-    }
-
+    if (runs.length === 0) return;
     await emitAgentEvent(request.onEvent, {
       kind: AgentEventKinds.SessionHistorySteps,
       context: { sessionId: request.sessionId },
-      data: { sessionId: request.sessionId, runs },
+      data: { sessionId: request.sessionId, runs: [...runs] },
     });
   }
 
-  private async emitRunEventChunks(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<void> {
-    const runEvents = recoverInterruptedRunWaitEvents(
-      this.options.store.loadRunEvents(request.sessionId),
-      this.options.store.loadRunSnapshots(request.sessionId),
-    );
-    for (let index = 0; index < runEvents.length; index += AgentRunEventHistoryReplayChunkSize) {
-      const chunk = runEvents.slice(index, index + AgentRunEventHistoryReplayChunkSize);
+  private async emitRunEventPages(
+    request: { sessionId: string; onEvent?: AgentEventSink },
+    snapshot: AgentSessionHistorySnapshot,
+  ): Promise<void> {
+    const recovery = new AgentSessionHistoryWaitRecovery();
+    if (snapshot.runEventHighWaterMark !== undefined) {
+      let cursor: number | undefined;
+      for (;;) {
+        const page = this.options.store.loadRunEventPage(request.sessionId, {
+          after: cursor,
+          through: snapshot.runEventHighWaterMark,
+          pageSize: this.paging.runEventPageSize,
+        });
+        const waitRequestIds = recoverableWaitRequestIds(page.items);
+        const pageSnapshots =
+          snapshot.runSnapshotHighWaterMark === undefined || waitRequestIds.length === 0
+            ? []
+            : this.options.store.loadRunSnapshotsForRequests(
+                request.sessionId,
+                waitRequestIds,
+                snapshot.runSnapshotHighWaterMark,
+              );
+        recovery.observe(page.items, pageSnapshots);
+        await this.emitRunEventChunks(request, page.items);
+        if (page.nextCursor === undefined) break;
+        assertCursorAdvanced(cursor, page.nextCursor, "run event");
+        cursor = page.nextCursor;
+      }
+    }
+    await this.emitRunEventChunks(request, recovery.complete());
+  }
+
+  private async emitRunEventChunks(
+    request: { sessionId: string; onEvent?: AgentEventSink },
+    events: readonly AgentEventEnvelope[],
+  ): Promise<void> {
+    for (let index = 0; index < events.length; index += this.paging.runEventPageSize) {
+      const chunk = events.slice(index, index + this.paging.runEventPageSize);
       await emitAgentEvent(request.onEvent, {
         kind: AgentEventKinds.SessionRunHistoryChunk,
         context: { sessionId: request.sessionId },
@@ -198,6 +344,19 @@ function inferTraceRunStatus(traces: readonly StepTrace[]): AgentHistoryStepRun[
   return terminal === "done" ? "completed" : "running";
 }
 
+function recoverableWaitRequestIds(events: readonly AgentEventEnvelope[]): string[] {
+  const requestIds = new Set<string>();
+  for (const event of events) {
+    if (
+      event.requestId &&
+      (event.kind === AgentEventKinds.ApprovalRequested || event.kind === AgentEventKinds.InteractionInputRequested)
+    ) {
+      requestIds.add(event.requestId);
+    }
+  }
+  return [...requestIds];
+}
+
 function projectSnapshotStatus(snapshot: StoredRunSnapshot, hasTrace: boolean): AgentHistoryStepRun["status"] {
   if (snapshot.status !== "completed") return snapshot.status;
   return hasTrace ? "completed" : "failed";
@@ -248,32 +407,68 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 class AgentSessionHistoryEntryIndex {
-  private readonly users = new Map<string, Extract<AgentConversationEntry, { kind: "user.message" }>>();
-  private readonly assistants = new Map<string, Extract<AgentConversationEntry, { kind: "assistant.decision" }>>();
+  private readonly users = new Map<string, IndexedUserMessage>();
+  private readonly assistants = new Map<string, IndexedAssistantDecision>();
 
-  constructor(entries: readonly AgentConversationEntry[]) {
-    for (const entry of entries) {
-      this.index(entry);
-    }
+  constructor(entries: readonly AgentConversationEntry[] = []) {
+    this.add(entries);
   }
 
-  userMessage(requestId: string): Extract<AgentConversationEntry, { kind: "user.message" }> | undefined {
+  add(entries: readonly AgentConversationEntry[]): void {
+    for (const entry of entries) this.index(entry);
+  }
+
+  userMessage(requestId: string): IndexedUserMessage | undefined {
     return this.users.get(requestId);
   }
 
-  assistantDecision(requestId: string): Extract<AgentConversationEntry, { kind: "assistant.decision" }> | undefined {
+  assistantDecision(requestId: string): IndexedAssistantDecision | undefined {
     return this.assistants.get(requestId);
   }
 
   private index(entry: AgentConversationEntry): void {
     if (entry.kind === AgentConversationEntryKinds.UserMessage && !this.users.has(entry.requestId)) {
-      this.users.set(entry.requestId, entry);
+      this.users.set(entry.requestId, {
+        content: entry.content,
+        timestamp: entry.timestamp,
+        modelProvider: entry.metadata?.run?.modelProvider,
+      });
       return;
     }
 
     if (entry.kind === AgentConversationEntryKinds.AssistantDecision) {
-      this.assistants.set(entry.requestId, entry);
+      this.assistants.set(entry.requestId, {
+        timestamp: entry.timestamp,
+        modelProvider: entry.metadata?.run?.modelProvider,
+      });
     }
+  }
+}
+
+interface IndexedUserMessage {
+  readonly content: string;
+  readonly timestamp: string;
+  readonly modelProvider?: AgentModelProviderMetadata;
+}
+
+interface IndexedAssistantDecision {
+  readonly timestamp: string;
+  readonly modelProvider?: AgentModelProviderMetadata;
+}
+
+function assertCursorAdvanced(previous: number | undefined, next: number, kind: string): void {
+  if (!Number.isSafeInteger(next) || next <= (previous ?? -1)) {
+    throw new Error(`Session history ${kind} cursor did not advance.`);
+  }
+}
+
+function assertStepTraceCursorAdvanced(previous: AgentStepTraceCursor | undefined, next: AgentStepTraceCursor): void {
+  const advanced =
+    !previous ||
+    next.turnSequence > previous.turnSequence ||
+    (next.turnSequence === previous.turnSequence && next.requestId > previous.requestId);
+  if (!Number.isSafeInteger(next.turnSequence) || !advanced) {
+    throw new Error("Session history step-trace cursor did not advance.");
   }
 }
 

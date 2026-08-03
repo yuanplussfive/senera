@@ -1,23 +1,29 @@
 import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import type { AgentToolExecutionPlan } from "../ToolRuntime/AgentToolExecutionPlan.js";
+import type {
+  SeneraProcessBackendPreference,
+  SeneraProcessNetworkMode,
+  SeneraProcessWorkspaceMountMode,
+} from "../Execution/SeneraExecutionProfile.js";
 
 const McpExecutionProfileName = "mcp-stdio-server";
 
-export function buildAgentMcpExecutionProfile(
-  tool: RegisteredTool,
-  executionPlan: AgentToolExecutionPlan,
-): SeneraProcessExecutionProfile {
-  const local = executionPlan.backend === "local";
+export function createAgentMcpExecutionProfile(input: {
+  backend: SeneraProcessBackendPreference;
+  network: SeneraProcessNetworkMode;
+  workspaceMount: SeneraProcessWorkspaceMountMode;
+  packageRoot?: string;
+}): SeneraProcessExecutionProfile {
+  const local = input.backend === "local";
   return {
     name: McpExecutionProfileName,
     kind: "mcp-server",
-    backend: executionPlan.backend,
+    backend: input.backend,
+    hostCwdRoot: input.packageRoot,
     sandbox: local
       ? undefined
       : {
-          network: executionPlan.network,
-          workspaceMount: executionPlan.workspaceMount,
+          network: input.network,
+          workspaceMount: input.workspaceMount,
         },
   };
 }

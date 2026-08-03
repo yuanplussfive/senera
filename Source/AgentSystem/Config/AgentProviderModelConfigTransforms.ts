@@ -39,8 +39,11 @@ export function remapModelIdReferences(
       Client: remapPlannerClientModelId(config.ToolLearning.Client, remap),
     };
   }
-  if (config.ToolSearch) {
-    nextConfig.ToolSearch = remapToolSearchModelId(config.ToolSearch, remap);
+  if (config.MemoryLearning) {
+    nextConfig.MemoryLearning = {
+      ...config.MemoryLearning,
+      Client: remapPlannerClientModelId(config.MemoryLearning.Client, remap),
+    };
   }
   if (config.Defaults) {
     nextConfig.Defaults = { ...config.Defaults };
@@ -53,8 +56,11 @@ export function remapModelIdReferences(
         Client: remapPlannerClientModelId(config.Defaults.ToolLearning.Client, remap),
       };
     }
-    if (config.Defaults.ToolSearch) {
-      nextConfig.Defaults.ToolSearch = remapToolSearchModelId(config.Defaults.ToolSearch, remap);
+    if (config.Defaults.MemoryLearning) {
+      nextConfig.Defaults.MemoryLearning = {
+        ...config.Defaults.MemoryLearning,
+        Client: remapPlannerClientModelId(config.Defaults.MemoryLearning.Client, remap),
+      };
     }
   }
   return nextConfig;
@@ -170,21 +176,6 @@ function remapPlannerClientModelId<T extends { ModelProviderId?: string }>(
         ModelProviderId: remap(client.ModelProviderId),
       }
     : undefined;
-}
-
-function remapToolSearchModelId(
-  toolSearch: NonNullable<AgentSystemConfig["ToolSearch"]>,
-  remap: (modelId: string | undefined) => string | undefined,
-): NonNullable<AgentSystemConfig["ToolSearch"]> {
-  return {
-    ...toolSearch,
-    Embedding: toolSearch.Embedding
-      ? {
-          ...toolSearch.Embedding,
-          ModelProviderId: remap(toolSearch.Embedding.ModelProviderId),
-        }
-      : undefined,
-  };
 }
 
 function remapModelGroupIds(

@@ -4,7 +4,6 @@ export const DevServerWatchedEntries = Object.freeze([
   "Apps",
   "Source",
   "System",
-  "Plugins",
   "Packages",
   "Build",
   "Native",
@@ -32,10 +31,19 @@ const IgnoredPathSegments = new Set([
   "temp",
 ]);
 
+const RuntimeRevisionManagedPaths = [path.join("System", "Skills")] as const;
+
 export function isDevServerWatchPathIgnored(workspaceRoot: string, absolutePath: string): boolean {
   const relative = path.relative(workspaceRoot, absolutePath);
   if (!relative || relative.startsWith("..")) {
     return false;
   }
-  return relative.split(path.sep).some((segment) => IgnoredPathSegments.has(segment));
+  return (
+    RuntimeRevisionManagedPaths.some((managedPath) => isSamePathOrDescendant(relative, managedPath)) ||
+    relative.split(path.sep).some((segment) => IgnoredPathSegments.has(segment))
+  );
+}
+
+function isSamePathOrDescendant(candidate: string, parent: string): boolean {
+  return candidate === parent || candidate.startsWith(`${parent}${path.sep}`);
 }

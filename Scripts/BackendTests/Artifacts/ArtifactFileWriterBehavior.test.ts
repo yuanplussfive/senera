@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
+  AgentArtifactDirectoryReservations,
   AgentArtifactFileWriter,
   truncateArtifactTextByBytes,
 } from "../../../Source/AgentSystem/Artifacts/AgentArtifactFileWriter.js";
@@ -53,6 +54,45 @@ describe("artifact file writer", () => {
 
     expect(fs.readFileSync(filePath, "utf8")).toBe("second");
     expect(fs.readdirSync(artifactDir).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+  });
+
+  test("publishes a commit file exactly once", async () => {
+    const workspace = createTemporaryDirectory("senera-artifact-publish");
+    const manifestPath = path.join(workspace, "artifacts", "manifest.json");
+    const writer = new AgentArtifactFileWriter(workspace);
+
+    await writer.publishJson(manifestPath, { state: "committed" });
+
+    await expect(writer.publishJson(manifestPath, { state: "replaced" })).rejects.toMatchObject({ code: "EEXIST" });
+    expect(JSON.parse(fs.readFileSync(manifestPath, "utf8"))).toEqual({ state: "committed" });
+  });
+
+  test("reports whether an artifact directory was created or already reserved", async () => {
+    const workspace = createTemporaryDirectory("senera-artifact-reservation");
+    const artifactDirectory = path.join(workspace, "artifacts", "artifact");
+    const writer = new AgentArtifactFileWriter(workspace);
+
+    expect(await writer.reserveArtifactDirectory(artifactDirectory)).toBe(AgentArtifactDirectoryReservations.Created);
+    expect(await writer.reserveArtifactDirectory(artifactDirectory)).toBe(AgentArtifactDirectoryReservations.Existing);
+    expect(fs.statSync(artifactDirectory).isDirectory()).toBe(true);
+  });
+
+  test("identifies exactly one creator during concurrent artifact directory reservation", async () => {
+    const workspace = createTemporaryDirectory("senera-artifact-concurrent-reservation");
+    const artifactDirectory = path.join(workspace, "artifacts", "artifact");
+    const writer = new AgentArtifactFileWriter(workspace);
+
+    const reservations = await Promise.all(
+      Array.from({ length: 8 }, () => writer.reserveArtifactDirectory(artifactDirectory)),
+    );
+
+    expect(
+      reservations.filter((reservation) => reservation === AgentArtifactDirectoryReservations.Created),
+    ).toHaveLength(1);
+    expect(
+      reservations.filter((reservation) => reservation === AgentArtifactDirectoryReservations.Existing),
+    ).toHaveLength(7);
+    expect(fs.statSync(artifactDirectory).isDirectory()).toBe(true);
   });
 
   test("rejects lexical and junction write escapes from the workspace", async () => {

@@ -2,13 +2,16 @@ import type { ChildProcess, ChildProcessWithoutNullStreams } from "node:child_pr
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { spawn } from "cross-spawn";
+import { isAgentUnknownRecord as isRecord } from "../Core/AgentUnknownValue.js";
 import { toError } from "../Core/AgentErrors.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { withDeadline } from "../Core/AgentTiming.js";
 import {
   terminateSeneraProcessTree,
   terminateSeneraProcessTreeWithEscalation,
   type SeneraProcessTreeTerminator,
 } from "./SeneraProcessTreeTermination.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 const WindowsSupervisorControlFd = 3;
 const WindowsSupervisorStatusFd = 4;
@@ -57,10 +60,9 @@ interface WindowsSupervisorChild extends ChildProcess {
   readonly stdio: [Writable | null, Readable | null, Readable | null, Writable, Readable];
 }
 
-class SeneraWindowsSupervisorUnavailableError extends Error {
+class SeneraWindowsSupervisorUnavailableError extends AgentBaseError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
-    this.name = "SeneraWindowsSupervisorUnavailableError";
   }
 }
 
@@ -335,7 +337,7 @@ function observeChildClose(child: ChildProcess): Promise<SeneraOwnedProcessExit>
 }
 
 function parseWindowsSupervisorStatus(source: string): WindowsSupervisorStatus {
-  const value: unknown = JSON.parse(source);
+  const value: unknown = parseJsonText(source, "Windows supervisor status");
   if (!isRecord(value) || typeof value.ok !== "boolean") {
     throw new TypeError("Windows process supervisor returned an invalid status.");
   }
@@ -438,8 +440,4 @@ function requireWindowsSupervisorChild(child: ChildProcess): WindowsSupervisorCh
     throw new Error("Windows process supervisor requires a readable launch-status pipe.");
   }
   return child as WindowsSupervisorChild;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

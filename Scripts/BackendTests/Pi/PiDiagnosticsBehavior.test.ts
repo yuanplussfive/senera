@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   AgentPiDiagnosticSources,
   createAgentPiDiagnosticEvent,
+  emitAgentPiDiagnostic,
 } from "../../../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 
 describe("Pi diagnostics", () => {
@@ -34,5 +35,20 @@ describe("Pi diagnostics", () => {
     expect(JSON.stringify(event)).not.toContain("api-secret");
     expect(event.summary).toContain("firstTokenMs=42");
     expect(event.summary).toContain("accessToken=[redacted]");
+  });
+
+  test("treats diagnostic sink failures as observational", async () => {
+    await expect(
+      emitAgentPiDiagnostic(
+        () => {
+          throw new Error("sink failed");
+        },
+        {
+          source: AgentPiDiagnosticSources.Proxy,
+          name: "provider_failure",
+          details: { status: 503 },
+        },
+      ),
+    ).resolves.toBeUndefined();
   });
 });

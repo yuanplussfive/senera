@@ -6,6 +6,7 @@ import { resolveAgentModelCompatibility } from "./ModelCompatibility.js";
 import { buildOpenAiInput } from "./OpenAiMessageProjection.js";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
 import { ModelUsageNumberWireSchema, projectModelUsageNumber } from "./ModelUsageWireSchema.js";
+import { createAgentModelCompletionMetadata } from "./AgentModelCompletion.js";
 
 const OpenAiResponsesUsageSchema = z
   .object({
@@ -36,6 +37,13 @@ const TextPartSchema = z
 
 const ResponsesBodySchema = z
   .object({
+    status: z.string().nullish(),
+    incomplete_details: z
+      .object({
+        reason: z.string().nullish(),
+      })
+      .passthrough()
+      .nullish(),
     output_text: z.string().optional(),
     output: z
       .array(
@@ -57,6 +65,13 @@ const ResponsesStreamEventSchema = z
     usage: OpenAiResponsesUsageSchema,
     response: z
       .object({
+        status: z.string().nullish(),
+        incomplete_details: z
+          .object({
+            reason: z.string().nullish(),
+          })
+          .passthrough()
+          .nullish(),
         usage: OpenAiResponsesUsageSchema,
       })
       .passthrough()
@@ -91,6 +106,10 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
           .join("") ??
         "",
       usage: projectResponsesUsage(body.usage),
+      completion: createAgentModelCompletionMetadata({
+        finishReason: body.incomplete_details?.reason ?? undefined,
+        status: body.status ?? undefined,
+      }),
     };
   }
 
@@ -117,6 +136,10 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
               ? (parsed.delta ?? "")
               : "",
           usage: projectResponsesUsage(parsed.response?.usage ?? parsed.usage),
+          completion: createAgentModelCompletionMetadata({
+            finishReason: parsed.response?.incomplete_details?.reason ?? undefined,
+            status: parsed.response?.status ?? undefined,
+          }),
         };
       },
       undefined,

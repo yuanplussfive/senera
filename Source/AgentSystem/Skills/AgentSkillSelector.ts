@@ -1,29 +1,7 @@
-import crypto from "node:crypto";
-import MiniSearch from "minisearch";
-import type { RegisteredSkill } from "../Types/PluginRuntimeTypes.js";
+import type { RegisteredSkill } from "./AgentSkillTypes.js";
 import { AgentToolSearchTokenizer } from "../ToolSearch/AgentToolSearchTokenizer.js";
-import {
-  capabilityFacetEntries,
-  capabilityRiskText,
-  capabilitySearchText,
-} from "../ToolSearch/AgentToolSearchCapabilities.js";
-import { compareLoadedPluginsForPrompting } from "../Plugin/AgentPluginOrdering.js";
-
-interface SkillSearchDocument {
-  id: string;
-  skillName: string;
-  title: string;
-  pluginName: string;
-  tags: string;
-  summary: string;
-  useCases: string;
-  examples: string;
-  avoid: string;
-  capabilityText: string;
-  capabilityFacets: string;
-  capabilityRiskText: string;
-  recommendedTools: string;
-}
+import { AgentCapabilityKinds, AgentCapabilitySearchIndex } from "../ToolSearch/AgentCapabilitySearchIndex.js";
+import { buildSkillCapabilityDocument } from "../ToolSearch/AgentCapabilityDocumentBuilder.js";
 
 export interface AgentSkillSelectionResult {
   skill: RegisteredSkill;
@@ -37,102 +15,153 @@ export interface AgentSkillSelectionMatchedField {
   fields: string[];
 }
 
+export interface AgentSkillSelectionLearningEvidence {
+  skillName: string;
+  skillRevision: string;
+  rankScore: number;
+  terms: readonly string[];
+}
+
 export class AgentSkillSelector {
   private readonly tokenizer = new AgentToolSearchTokenizer();
 
-  select(options: { query: string; skills: readonly RegisteredSkill[] }): AgentSkillSelectionResult[] {
-    const query = options.query.trim();
-    if (!query || options.skills.length === 0) {
-      return [];
+  constructor(private readonly capabilityIndex?: AgentCapabilitySearchIndex) {}
+
+  select(options: {
+    query: string;
+    skills: readonly RegisteredSkill[];
+    learningEvidence?: readonly AgentSkillSelectionLearningEvidence[];
+  }): AgentSkillSelectionResult[] {
+    const skillsByName = new Map(options.skills.map((skill) => [skill.name, skill]));
+    const lexical = this.selectLexical(options.query, options.skills, skillsByName);
+    const ranked = this.mergeLearningEvidence(lexical, skillsByName, options.learningEvidence ?? []).sort(
+      (left, right) => right.score - left.score || this.compareSkillOrder(left.skill, right.skill),
+    );
+
+    return this.evidenceFrontier(ranked);
+  }
+
+  async selectHybrid(options: {
+    query: string;
+    skills: readonly RegisteredSkill[];
+    learningEvidence?: readonly AgentSkillSelectionLearningEvidence[];
+    signal?: AbortSignal;
+  }): Promise<AgentSkillSelectionResult[]> {
+    if (!this.capabilityIndex || options.skills.length === 0 || options.query.trim().length === 0) {
+      return this.select(options);
     }
 
-    const docs = options.skills.map((skill) => this.buildDocument(skill));
-    const docsById = new Map(docs.map((doc) => [doc.id, doc]));
     const skillsByName = new Map(options.skills.map((skill) => [skill.name, skill]));
-    const index = new MiniSearch<SkillSearchDocument>({
-      idField: "id",
-      fields: [
-        "skillName",
-        "title",
-        "pluginName",
-        "tags",
-        "summary",
-        "useCases",
-        "examples",
-        "capabilityText",
-        "capabilityFacets",
-        "capabilityRiskText",
-        "recommendedTools",
-      ],
-      storeFields: ["id", "skillName"],
-      tokenize: (text) => this.tokenizer.tokenize(text),
-      processTerm: (term) => term,
+    const lexical = this.selectLexical(options.query, options.skills, skillsByName);
+    const semantic = await this.capabilityIndex.semantic(
+      options.query,
+      AgentCapabilityKinds.Skill,
+      new Set(skillsByName.keys()),
+      options.signal,
+    );
+    const merged = new Map(lexical.map((selection) => [selection.skill.name, selection]));
+    semantic.forEach((match, rank) => {
+      const skill = skillsByName.get(match.name);
+      if (!skill) return;
+      const current = merged.get(match.name);
+      const semanticScore = reciprocalPosition(rank);
+      merged.set(match.name, {
+        skill,
+        score: (current?.score ?? 0) + semanticScore,
+        matchedTerms: current?.matchedTerms ?? [],
+        matchedFields: mergeMatchedFields([
+          ...(current?.matchedFields ?? []),
+          { term: options.query, fields: ["semanticEmbedding"] },
+        ]),
+      });
     });
-    index.addAll(docs);
+    const learned = this.mergeLearningEvidence([...merged.values()], skillsByName, options.learningEvidence ?? []);
+    const reranked = await this.capabilityIndex.rerank(
+      options.query,
+      AgentCapabilityKinds.Skill,
+      learned.map((selection) => selection.skill.name),
+      options.signal,
+    );
+    const rerankBySkill = new Map(reranked.map((entry) => [entry.name, entry]));
+    return this.evidenceFrontier(
+      learned
+        .map((selection) => {
+          const rerank = rerankBySkill.get(selection.skill.name);
+          return rerank
+            ? {
+                ...selection,
+                score: selection.score + rerank.normalizedRankScore,
+                matchedFields: mergeMatchedFields([
+                  ...selection.matchedFields,
+                  { term: options.query, fields: ["semanticRerank"] },
+                ]),
+              }
+            : selection;
+        })
+        .sort((left, right) => right.score - left.score || this.compareSkillOrder(left.skill, right.skill)),
+    );
+  }
 
-    const ranked = index
-      .search(query)
+  private selectLexical(
+    queryInput: string,
+    skills: readonly RegisteredSkill[],
+    skillsByName: ReadonlyMap<string, RegisteredSkill>,
+  ): AgentSkillSelectionResult[] {
+    const query = queryInput.trim();
+    if (!query || skills.length === 0) return [];
+
+    const index = this.capabilityIndex ?? this.createCapabilityIndex(skills);
+    return index
+      .lexical(query, AgentCapabilityKinds.Skill, new Set(skillsByName.keys()))
       .map((result) => {
-        const doc = docsById.get(String(result.id));
-        const skill = doc ? skillsByName.get(doc.skillName) : undefined;
-        return doc && skill
+        const skill = skillsByName.get(result.name);
+        return skill
           ? {
               skill,
               score: result.score,
               matchedTerms: [...new Set(result.queryTerms)],
-              matchedFields: Object.entries(result.match).map(([term, fields]) => ({
+              matchedFields: Object.entries(result.matchedFields).map(([term, fields]) => ({
                 term,
                 fields: [...new Set(fields)],
               })),
             }
           : undefined;
       })
-      .filter((result): result is AgentSkillSelectionResult => Boolean(result))
-      .sort((left, right) => right.score - left.score || this.compareSkillOrder(left.skill, right.skill));
-
-    return this.evidenceFrontier(ranked);
+      .filter((result): result is AgentSkillSelectionResult => Boolean(result));
   }
 
-  private buildDocument(skill: RegisteredSkill): SkillSearchDocument {
-    const search = skill.search;
-    const capabilities = search?.Capabilities ?? [];
-    const capabilityText = capabilities
-      .map((capability) =>
-        capabilitySearchText(capability, {
-          includeRisk: false,
-        }),
-      )
-      .join(" ");
-    const capabilityFacets = capabilities
-      .flatMap((capability) => capabilityFacetEntries(capability.Facets).flatMap((entry) => entry.values))
-      .join(" ");
-    const capabilityRiskDocumentText = capabilities.map((capability) => capabilityRiskText(capability.Risk)).join(" ");
-    const tags = (search?.Tags ?? []).join(" ");
-    const summary = search?.Summary ?? skill.plugin.manifest.Plugin.Description ?? "";
-    const useCases = (search?.UseCases ?? []).join(" ");
-    const examples = (search?.Examples ?? []).join(" ");
-    const avoid = (search?.Avoid ?? []).join(" ");
-    const recommendedTools = skill.recommendedTools.join(" ");
-    const title = skill.title ?? search?.Summary ?? skill.name;
-    return {
-      id: stableSkillDocumentId(skill),
-      skillName: skill.name,
-      title,
-      pluginName: skill.plugin.manifest.Plugin.Name,
-      tags,
-      summary,
-      useCases,
-      examples,
-      avoid,
-      capabilityText,
-      capabilityFacets,
-      capabilityRiskText: capabilityRiskDocumentText,
-      recommendedTools,
-    };
+  private mergeLearningEvidence(
+    semantic: readonly AgentSkillSelectionResult[],
+    skillsByName: ReadonlyMap<string, RegisteredSkill>,
+    evidence: readonly AgentSkillSelectionLearningEvidence[],
+  ): AgentSkillSelectionResult[] {
+    const merged = new Map(semantic.map((result) => [result.skill.name, result]));
+    for (const learned of evidence) {
+      const skill = skillsByName.get(learned.skillName);
+      if (!skill || learned.skillRevision !== (skill.revision ?? skill.source.id) || learned.rankScore <= 0) continue;
+      const current = merged.get(skill.name);
+      if (!current) continue;
+      const learnedMatches = learned.terms.map((term) => ({ term, fields: ["learnedUsage"] }));
+      merged.set(skill.name, {
+        skill,
+        score: current.score + learned.rankScore,
+        matchedTerms: [...new Set([...current.matchedTerms, ...learned.terms])],
+        matchedFields: mergeMatchedFields([...current.matchedFields, ...learnedMatches]),
+      });
+    }
+    return [...merged.values()];
+  }
+
+  private createCapabilityIndex(skills: readonly RegisteredSkill[]): AgentCapabilitySearchIndex {
+    return new AgentCapabilitySearchIndex(skills.map(buildSkillCapabilityDocument), { tokenizer: this.tokenizer });
   }
 
   private compareSkillOrder(left: RegisteredSkill, right: RegisteredSkill): number {
-    return compareLoadedPluginsForPrompting(left.plugin, right.plugin) || left.name.localeCompare(right.name);
+    return (
+      compareOptionalAscending(left.source.priority, right.source.priority) ||
+      left.source.id.localeCompare(right.source.id) ||
+      left.name.localeCompare(right.name)
+    );
   }
 
   private evidenceFrontier(ranked: readonly AgentSkillSelectionResult[]): AgentSkillSelectionResult[] {
@@ -150,8 +179,25 @@ export class AgentSkillSelector {
   }
 }
 
-function stableSkillDocumentId(skill: RegisteredSkill): string {
-  return crypto.createHash("sha1").update(`${skill.plugin.manifest.Plugin.Name}:${skill.name}`).digest("hex");
+function mergeMatchedFields(values: readonly AgentSkillSelectionMatchedField[]): AgentSkillSelectionMatchedField[] {
+  const fieldsByTerm = new Map<string, Set<string>>();
+  for (const value of values) {
+    const fields = fieldsByTerm.get(value.term) ?? new Set<string>();
+    for (const field of value.fields) fields.add(field);
+    fieldsByTerm.set(value.term, fields);
+  }
+  return [...fieldsByTerm].map(([term, fields]) => ({ term, fields: [...fields] }));
+}
+
+function compareOptionalAscending(left: number | undefined, right: number | undefined): number {
+  if (left !== undefined && right !== undefined) return left - right;
+  if (left !== undefined) return -1;
+  if (right !== undefined) return 1;
+  return 0;
+}
+
+function reciprocalPosition(index: number): number {
+  return 1 / (index + 1);
 }
 
 function isStrictSuperset(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {

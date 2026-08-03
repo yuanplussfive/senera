@@ -1,12 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { parseJsonText } from "../../Core/AgentJsonParsing.js";
 import { moduleDirPath } from "../../Core/AgentPath.js";
 import {
   readAgentSandboxDistributionContract,
   resolveAgentSandboxDistributionTarget,
   type AgentSandboxDistributionTarget,
 } from "../AgentSandboxDistributionContract.js";
+
+export const AgentSandboxRuntimeContractFormatVersion = 1 as const;
 
 const ContractIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/u);
 const DockerApiVersionSchema = z.string().regex(/^\d+\.\d+$/u);
@@ -29,7 +32,7 @@ const AgentDockerEngineTemporaryFilesystemSchema = z
 
 const AgentDockerEngineCommonPolicySchema = z
   .object({
-    formatVersion: z.literal(1),
+    formatVersion: z.literal(AgentSandboxRuntimeContractFormatVersion),
     id: ContractIdSchema,
     engine: z.object({ minimumApiVersion: DockerApiVersionSchema }).strict(),
     protocol: z
@@ -99,7 +102,7 @@ const AgentDockerEngineCommonPolicySchema = z
 
 const AgentDockerEngineProviderOverlaySchema = z
   .object({
-    formatVersion: z.literal(1),
+    formatVersion: z.literal(AgentSandboxRuntimeContractFormatVersion),
     id: ContractIdSchema,
     provider: z.enum(["gvisor", "docker-engine"]),
     runtime: z.discriminatedUnion("strategy", [
@@ -169,9 +172,19 @@ export function readAgentGvisorRuntimeContract(
 export function readAgentDockerEngineRuntimePolicyContract(
   provider: AgentDockerEngineSandboxProvider,
 ): AgentDockerEngineRuntimeContract {
-  const common = AgentDockerEngineCommonPolicySchema.parse(readJson("../DockerEngine/contract.json"));
+  const commonRelativePath = "../DockerEngine/contract.json";
+  const common = AgentDockerEngineCommonPolicySchema.parse(
+    parseJsonText(
+      fs.readFileSync(path.resolve(moduleDirPath(import.meta.url), commonRelativePath), "utf8"),
+      `Gvisor runtime contract: ${commonRelativePath}`,
+    ),
+  );
+  const overlayRelativePath = provider === "gvisor" ? "contract.json" : "../DockerEngine/Default/contract.json";
   const overlay = AgentDockerEngineProviderOverlaySchema.parse(
-    readJson(provider === "gvisor" ? "contract.json" : "../DockerEngine/Default/contract.json"),
+    parseJsonText(
+      fs.readFileSync(path.resolve(moduleDirPath(import.meta.url), overlayRelativePath), "utf8"),
+      `Gvisor runtime contract: ${overlayRelativePath}`,
+    ),
   );
   if (overlay.provider !== provider) {
     throw new Error(
@@ -192,11 +205,6 @@ export function readAgentDockerEngineRuntimePolicyContract(
 
 export function readAgentGvisorRuntimePolicyContract(): AgentGvisorRuntimeContract {
   return readAgentDockerEngineRuntimePolicyContract("gvisor") as AgentGvisorRuntimeContract;
-}
-
-function readJson(relativePath: string): unknown {
-  const contractPath = path.resolve(moduleDirPath(import.meta.url), relativePath);
-  return JSON.parse(fs.readFileSync(contractPath, "utf8"));
 }
 
 function isNormalizedAbsolutePosixPath(value: string): boolean {

@@ -32,10 +32,8 @@ describe("provider model rename behavior", () => {
     expect(renamed.ActionPlanner?.PlanningClient?.ModelProviderId).toBe("stable-model-id");
     expect(renamed.ActionPlanner?.FinalAnswerClient?.ModelProviderId).toBe("renamed/chat");
     expect(renamed.ToolLearning?.Client?.ModelProviderId).toBe("renamed/chat");
-    expect(renamed.ToolSearch?.Embedding?.ModelProviderId).toBe("renamed/chat");
     expect(renamed.Defaults?.ActionPlanner?.Client?.ModelProviderId).toBe("renamed/chat");
     expect(renamed.Defaults?.ToolLearning?.Client?.ModelProviderId).toBe("renamed/chat");
-    expect(renamed.Defaults?.ToolSearch?.Embedding?.ModelProviderId).toBe("renamed/chat");
 
     expect(resolveModelProviderConfig(renamed, "custom/chat").Id).toBe("renamed/chat");
     expect(resolveModelProviderConfig(renamed, "historical/chat").Id).toBe("renamed/chat");
@@ -106,11 +104,9 @@ function renameConfig(): AgentSystemConfig {
       FinalAnswerClient: { ModelProviderId: "custom/chat" },
     },
     ToolLearning: { Client: { ModelProviderId: "custom/chat" } },
-    ToolSearch: { Embedding: { ModelProviderId: "custom/chat" } },
     Defaults: {
       ActionPlanner: { Client: { ModelProviderId: "custom/chat" } },
       ToolLearning: { Client: { ModelProviderId: "custom/chat" } },
-      ToolSearch: { Embedding: { ModelProviderId: "custom/chat" } },
     },
   };
 }

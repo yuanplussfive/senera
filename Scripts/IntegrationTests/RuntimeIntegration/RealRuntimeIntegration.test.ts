@@ -20,7 +20,7 @@ describe("real runtime integration", () => {
     const requestId = "request_real_runtime_active_regeneration_e2e";
     const firstReplacementRequestId = `${requestId}_replacement_1`;
     const replacementRequestId = `${requestId}_replacement_2`;
-    const pausedFinalAnswer = harness.modelServer.pauseNext("generatePiFinalAnswer");
+    const pausedEvolution = harness.modelServer.pauseNext("evolveTurn");
 
     harness.client.send({
       type: "session.message",
@@ -29,7 +29,7 @@ describe("real runtime integration", () => {
       input: RealRuntimeIntegrationValues.DirectRequestInput,
       disposition: "create_if_missing",
     });
-    await pausedFinalAnswer.entered;
+    await pausedEvolution.entered;
 
     harness.client.send({
       type: "session.regenerate",
@@ -75,10 +75,9 @@ describe("real runtime integration", () => {
         afterSequence: replacementAnswer.sequence,
       },
     );
-    pausedFinalAnswer.release();
+    pausedEvolution.release();
 
-    expect(harness.modelServer.count("prepareInteraction")).toBe(1);
-    expect(harness.modelServer.count("generatePiFinalAnswer")).toBe(2);
+    expect(harness.modelServer.count("evolveTurn")).toBe(2);
     expect(
       harness.client
         .snapshot()
@@ -87,7 +86,7 @@ describe("real runtime integration", () => {
     ).toEqual([replacementRequestId]);
   }, 30_000);
 
-  test("reuses the Pi session and bypasses duplicate action selection for authoritative direct responses", async () => {
+  test("reuses the Pi session across direct responses and regeneration", async () => {
     const harness = await createRealRuntimeIntegrationHarness();
     openHarnesses.push(harness);
     const sessionId = "session_real_runtime_direct_e2e";
@@ -163,9 +162,7 @@ describe("real runtime integration", () => {
         afterSequence: regeneratedAnswer.sequence,
       },
     );
-    expect(harness.modelServer.count("prepareInteraction")).toBe(2);
-    expect(harness.modelServer.count("selectPiAction")).toBe(0);
-    expect(harness.modelServer.count("generatePiFinalAnswer")).toBe(3);
+    expect(harness.modelServer.count("evolveTurn")).toBe(3);
   }, 30_000);
 
   test("runs BAML planning, Pi proxy model streaming, a host tool, and persisted session replay", async () => {
@@ -197,9 +194,10 @@ describe("real runtime integration", () => {
       timeoutMs: 20_000,
       afterSequence: finalAnswer.sequence,
     });
-    expect(harness.modelServer.stages).toEqual(expect.arrayContaining(["prepareInteraction", "selectPiAction"]));
-    expect(harness.modelServer.count("selectPiAction")).toBe(1);
-    expect(harness.modelServer.count("generatePiFinalAnswer")).toBe(1);
+    expect(harness.modelServer.stages).toEqual(
+      expect.arrayContaining(["evolveTurn", "fillPiToolArguments", "auditToolRisk"]),
+    );
+    expect(harness.modelServer.count("evolveTurn")).toBe(2);
 
     harness.client.send({ type: "session.history", sessionId, refresh: true });
     const history = await harness.client.waitForEvent(
@@ -211,16 +209,15 @@ describe("real runtime integration", () => {
     expect(JSON.stringify(history.data)).toContain(RealRuntimeIntegrationValues.RequestInput);
     expect(JSON.stringify(history.data)).toContain('"source":"provider_reported"');
     expect(JSON.stringify(history.data)).toContain('"totalTokens":440');
-    expect(JSON.stringify(history.data)).toContain('"stage":"PrepareInteraction"');
     expect(JSON.stringify(history.data)).toContain('"stage":"AuditToolRisk"');
-    expect(JSON.stringify(history.data)).toContain('"stage":"GeneratePiFinalAnswer"');
+    expect(JSON.stringify(history.data)).toContain('"stage":"EvolveTurn"');
   }, 30_000);
   test("cancels a run while the planner is paused mid-stage and accepts follow-up work", async () => {
     const harness = await createRealRuntimeIntegrationHarness();
     openHarnesses.push(harness);
     const sessionId = "session_real_runtime_cancel_e2e";
     const requestId = "request_real_runtime_cancel_e2e";
-    const paused = harness.modelServer.pauseNext("prepareInteraction");
+    const paused = harness.modelServer.pauseNext("evolveTurn");
 
     harness.client.send({
       type: "session.message",
@@ -254,7 +251,7 @@ describe("real runtime integration", () => {
       timeoutMs: 20_000,
       afterSequence: followUpAnswer.sequence,
     });
-    expect(harness.modelServer.count("prepareInteraction")).toBe(2);
+    expect(harness.modelServer.count("evolveTurn")).toBe(2);
   }, 30_000);
 
   test("surfaces a planner provider failure as run.failed and keeps the session usable", async () => {
@@ -262,7 +259,7 @@ describe("real runtime integration", () => {
     openHarnesses.push(harness);
     const sessionId = "session_real_runtime_failure_e2e";
     const requestId = "request_real_runtime_failure_e2e";
-    harness.modelServer.failNext("prepareInteraction");
+    harness.modelServer.failNext("evolveTurn");
 
     harness.client.send({
       type: "session.message",
@@ -293,7 +290,7 @@ describe("real runtime integration", () => {
       timeoutMs: 20_000,
       afterSequence: retryAnswer.sequence,
     });
-    expect(harness.modelServer.count("prepareInteraction")).toBe(2);
+    expect(harness.modelServer.count("evolveTurn")).toBe(2);
   }, 30_000);
 });
 

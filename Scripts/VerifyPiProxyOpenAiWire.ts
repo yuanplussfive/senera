@@ -9,13 +9,14 @@ import { AgentPiProxyHttpApi } from "../Source/AgentSystem/PiProxy/AgentPiProxyH
 import {
   AgentPiProxyProtocol,
   resolveAgentPiProxyBaseUrl,
-} from "../Source/AgentSystem/PiProxy/AgentPiProxyContract.js";
+} from "../Source/AgentSystem/PiShared/AgentPiProxyProtocol.js";
 import {
   AgentPiProxyContextHeader,
   AgentPiProxyModelProviderHeader,
+  composePiProxyRequestHeaders,
   encodePiProxyModelProviderHeaderValue,
-  withPiProxyRuntimeContext,
-} from "../Source/AgentSystem/PiProxy/AgentPiProxyRuntimeContext.js";
+} from "../Source/AgentSystem/PiShared/AgentPiProxyProtocol.js";
+import { AgentPiTurnContextRegistry } from "../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
 import { AgentWebSocketHttpRouter } from "../Source/AgentSystem/WebSocket/AgentWebSocketHttpRouter.js";
 import { AgentUploadHttpApi } from "../Source/AgentSystem/Uploads/AgentUploadHttpApi.js";
 import { AgentUploadStore } from "../Source/AgentSystem/Uploads/AgentUploadStore.js";
@@ -23,10 +24,8 @@ import type {
   AgentPiAssistantCompileRequest,
   AgentPiAssistantCompilerPort,
 } from "../Source/AgentSystem/PiProxy/AgentPiAssistantCompiler.js";
-import type { AgentPiFinalAnswerGeneratorPort } from "../Source/AgentSystem/PiProxy/AgentPiFinalAnswerGenerator.js";
 import type { AgentPiProxyModelFactory } from "../Source/AgentSystem/PiProxy/AgentPiProxyModelFactory.js";
 import { projectSeneraModelProviderToPi } from "../Source/AgentSystem/Pi/AgentPiModelProjector.js";
-import { composePiProxyRequestHeaders } from "../Source/AgentSystem/Pi/AgentPiHarnessSessionPool.js";
 import { resolveModelProviderConfig, resolveUploadsConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import type {
   AgentSystemConfig,
@@ -34,6 +33,8 @@ import type {
 } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { AgentRootCommand } from "../Source/AgentSystem/AgentRootCommand.js";
 import type { AgentPiDiagnosticEvent } from "../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
+import { createAgentToolAccessGrant } from "../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
+import { AgentToolExposureState } from "../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 
 const config: AgentSystemConfig = {
   Server: {
@@ -67,6 +68,7 @@ const provider: ResolvedAgentModelProviderConfig = {
   ApiKey: "test-key",
   ApiVersion: "",
   Model: "test-model",
+  ContextWindowTokens: 128_000,
   Temperature: 0,
   MaxOutputTokens: -1,
   Stream: true,
@@ -205,10 +207,13 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
     toolAccess: "restricted",
     objective: "verify context forwarding",
     instruction: "verify context forwarding",
-    allowedTools: ["SeneraEchoTool"],
+    toolAccessGrant: createAgentToolAccessGrant({
+      authorizedToolNames: ["SeneraEchoTool"],
+      exposedToolNames: ["SeneraEchoTool"],
+      preferredToolNames: ["SeneraEchoTool"],
+    }),
     forbiddenOutputs: [],
     insufficiencyPolicy: "ask",
-    preferredTools: ["SeneraEchoTool"],
     toolSearchQueries: [],
     needs: [],
     includeToolCatalog: true,
@@ -224,11 +229,17 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
     {
       name: "VerifySkill",
       title: "Verify Skill",
+      summary: "Verifies that planning skill context reaches the compiler.",
+      useCases: ["proxy context verification"],
+      avoid: [],
+      recommendedTools: ["SeneraEchoTool"],
+      evidenceRequirements: [],
     },
   ];
   const events: unknown[] = [];
   const diagnostics: AgentPiDiagnosticEvent[] = [];
   const compiler = new SpyCompiler();
+  const turnContexts = new AgentPiTurnContextRegistry();
   const api = new AgentPiProxyHttpApi({
     configSnapshot: () => config,
     modelFactory: modelFactory(() => compiler),
@@ -238,6 +249,7 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
     diagnostics: (event) => {
       diagnostics.push(event);
     },
+    turnContexts,
   });
   const uploadStore = new AgentUploadStore({
     workspaceRoot: process.cwd(),
@@ -250,11 +262,13 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
     piProxyApi: api,
   });
 
-  const response = await withPiProxyRuntimeContext(
+  const response = await turnContexts.withContext(
     {
       requestId: "verify-pi-proxy-context",
       step: 3,
       rootCommand,
+      toolAccessGrant: rootCommand.toolAccessGrant,
+      toolExposure: new AgentToolExposureState(rootCommand.toolAccessGrant),
       activeSkills,
     },
     async (contextId) => {
@@ -325,7 +339,7 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
     events.some(
       (event) =>
         readRecord(event).kind === "tool.calls.planned" &&
-        readRecord(readRecord(event).data).executionMode === "parallel",
+        readRecord(readRecord(event).data).executionMode === "sequential",
     ),
     true,
   );
@@ -343,6 +357,7 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
 
 async function verifyPiProxyModelProviderRouting(): Promise<void> {
   const selectedProviders: Array<Pick<ResolvedAgentModelProviderConfig, "Id" | "BaseUrl" | "Model">> = [];
+  const turnContexts = new AgentPiTurnContextRegistry();
   const api = new AgentPiProxyHttpApi({
     configSnapshot: () => routingConfig,
     modelFactory: modelFactory((_config, selectedProvider) => {
@@ -353,9 +368,23 @@ async function verifyPiProxyModelProviderRouting(): Promise<void> {
       });
       return new SpyCompiler();
     }),
+    turnContexts,
   });
+  const toolAccessGrant = createAgentToolAccessGrant({
+    authorizedToolNames: [],
+    exposedToolNames: [],
+    preferredToolNames: [],
+  });
+  const post = (headers: http.IncomingHttpHeaders = {}) =>
+    turnContexts.withContext(
+      {
+        toolAccessGrant,
+        toolExposure: new AgentToolExposureState(toolAccessGrant),
+      },
+      (contextId) => postPiChatCompletion(api, { ...headers, [AgentPiProxyContextHeader]: contextId }),
+    );
 
-  const selected = await postPiChatCompletion(api, {
+  const selected = await post({
     [AgentPiProxyModelProviderHeader]: "deepseek-flash",
   });
   assert.equal(selected.statusCode, 200);
@@ -367,38 +396,37 @@ async function verifyPiProxyModelProviderRouting(): Promise<void> {
     },
   ]);
 
-  const localized = await postPiChatCompletion(api, {
+  const localized = await post({
     [AgentPiProxyModelProviderHeader]: encodePiProxyModelProviderHeaderValue("测试2/deepseek-v4-flash"),
   });
   assert.equal(localized.statusCode, 200);
   assert.equal(selectedProviders.at(-1)?.Id, "测试2/deepseek-v4-flash");
   assert.equal(selectedProviders.at(-1)?.Model, "deepseek-v4-flash");
 
-  const fallback = await postPiChatCompletion(api);
-  assert.equal(fallback.statusCode, 200);
-  assert.equal(selectedProviders.at(-1)?.Id, "mistral");
-  assert.equal(selectedProviders.at(-1)?.Model, "mistral-large-latest");
+  const missing = await post();
+  assert.equal(missing.statusCode, 400);
+  assert.match(missing.bodyText(), /"code":"invalid_model_provider"/);
 
-  const unknown = await postPiChatCompletion(api, {
+  const unknown = await post({
     [AgentPiProxyModelProviderHeader]: "missing-provider",
   });
   assert.equal(unknown.statusCode, 400);
   assert.match(unknown.bodyText(), /"code":"invalid_model_provider"/);
-  assert.equal(selectedProviders.length, 3);
+  assert.equal(selectedProviders.length, 2);
 
-  const empty = await postPiChatCompletion(api, {
+  const empty = await post({
     [AgentPiProxyModelProviderHeader]: "   ",
   });
   assert.equal(empty.statusCode, 400);
   assert.match(empty.bodyText(), /"code":"invalid_model_provider"/);
-  assert.equal(selectedProviders.length, 3);
+  assert.equal(selectedProviders.length, 2);
 
-  const blank = await postPiChatCompletion(api, {
+  const blank = await post({
     [AgentPiProxyModelProviderHeader]: "",
   });
   assert.equal(blank.statusCode, 400);
   assert.match(blank.bodyText(), /"code":"invalid_model_provider"/);
-  assert.equal(selectedProviders.length, 3);
+  assert.equal(selectedProviders.length, 2);
 }
 
 async function postPiChatCompletion(
@@ -443,14 +471,9 @@ class SpyCompiler implements AgentPiAssistantCompilerPort {
   }
 }
 
-const unusedFinalAnswerGenerator: AgentPiFinalAnswerGeneratorPort = {
-  stream: () => Promise.reject(new Error("This verification path must not generate a final answer.")),
-};
-
 function modelFactory(createCompiler: AgentPiProxyModelFactory["createCompiler"]): AgentPiProxyModelFactory {
   return {
     createCompiler,
-    createFinalAnswerGenerator: () => unusedFinalAnswerGenerator,
   };
 }
 

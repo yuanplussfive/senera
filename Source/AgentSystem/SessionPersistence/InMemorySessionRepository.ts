@@ -1,4 +1,4 @@
-import { AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
+import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import {
   createAgentUserProfile,
@@ -6,57 +6,70 @@ import {
   type AgentUserProfile,
   type AgentUserProfileInput,
 } from "../Session/AgentUserProfile.js";
+import type { AgentSession } from "../Session/AgentSession.js";
+import {
+  AgentSessionCommandStates,
+  assertMatchingAgentSessionCommand,
+  type AgentSessionCommandAdmission,
+  type AgentSessionCommandDescriptor,
+  type AgentSessionCommandRecord,
+} from "../Session/AgentSessionCommand.js";
+import type { AgentSessionForkMutation } from "../Session/AgentSessionForkMutation.js";
+import type { AgentSessionHistoryMutation } from "../Session/AgentSessionHistoryMutation.js";
 import type {
-  AgentSessionRepository,
+  AgentSessionCursorPage,
+  AgentSessionCursorPageRequest,
+  AgentSessionForkHistory,
   AgentSessionForkSnapshot,
+  AgentSessionHistorySnapshot,
+  AgentSessionRepository,
   AgentSessionTurnCommit,
+  AgentStepTraceCursor,
+  AgentStepTracePageRequest,
   StoredRunSnapshot,
   StoredStepTraceRun,
 } from "../Session/AgentSessionRepository.js";
-import type { AgentSession } from "../Session/AgentSession.js";
-import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
-import type { AgentSessionHistoryMutation } from "../Session/AgentSessionHistoryMutation.js";
+import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import { InMemorySessionHistoryStore } from "./InMemorySessionHistoryStore.js";
 
 export class InMemorySessionRepository implements AgentSessionRepository {
   private readonly sessions = new Map<string, AgentSession>();
-  private readonly entries = new Map<string, AgentConversationEntry[]>();
-  private readonly stepTraces = new Map<string, Array<{ requestId: string; turnSequence: number; trace: StepTrace }>>();
-  private readonly runEvents = new Map<string, AgentEventEnvelope[]>();
-  private readonly runSnapshots = new Map<string, Map<string, StoredRunSnapshot>>();
-  private readonly turnPreparations = new Map<string, Map<string, AgentTurnPreparationSnapshot>>();
+  private readonly history = new InMemorySessionHistoryStore();
   private readonly historyMutations = new Map<string, AgentSessionHistoryMutation>();
+  private readonly forkMutations = new Map<string, AgentSessionForkMutation>();
+  private readonly commands = new Map<string, Map<string, AgentSessionCommandRecord>>();
   private userProfile = createDefaultAgentUserProfile();
 
   listSessions(): Array<AgentSession & { entryCount: number; messageCount: number }> {
     return Array.from(this.sessions.values())
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .map((s) => {
-        const list = this.entries.get(s.id) ?? [];
-        return {
-          ...s,
-          conversation: [],
-          entryCount: list.length,
-          messageCount: list.filter(
-            (e) =>
-              e.kind === AgentConversationEntryKinds.UserMessage ||
-              e.kind === AgentConversationEntryKinds.AssistantDecision,
-          ).length,
-        };
-      });
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .map((session) => ({
+        ...session,
+        conversation: [],
+        entryCount: this.history.entryCount(session.id),
+        messageCount: this.history.messageCount(session.id),
+      }));
+  }
+
+  listSessionMetadata(): AgentSession[] {
+    return Array.from(this.sessions.values())
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .map((session) => ({ ...session, conversation: [] }));
+  }
+
+  hasSession(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
   }
 
   loadSession(sessionId: string): AgentSession | undefined {
     const session = this.sessions.get(sessionId);
-    if (!session) return undefined;
-    return { ...session, conversation: [...(this.entries.get(sessionId) ?? [])] };
+    return session ? { ...session, conversation: this.history.loadEntries(sessionId) } : undefined;
   }
 
-  loadAll(): AgentSession[] {
-    return Array.from(this.sessions.values()).map((s) => ({
-      ...s,
-      conversation: [...(this.entries.get(s.id) ?? [])],
-    }));
+  captureHistorySnapshot(sessionId: string): AgentSessionHistorySnapshot | undefined {
+    const session = this.sessions.get(sessionId);
+    return session ? this.history.captureSnapshot(session) : undefined;
   }
 
   listPendingHistoryMutations(): AgentSessionHistoryMutation[] {
@@ -82,62 +95,103 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     if (!mutation || mutation.mutationId !== mutationId) {
       throw new Error(`Pending session history mutation does not match: ${session.id}`);
     }
-
-    this.deleteStepTracesFrom(session.id, mutation.fromRequestId);
-    this.deleteRunEventsFrom(session.id, mutation.fromRequestId);
-    this.deleteRunSnapshotsFrom(session.id, mutation.fromRequestId);
-    this.deleteTurnPreparationsFrom(session.id, mutation.fromRequestId);
-    const removed = this.deleteEntriesFrom(session.id, mutation.fromRequestId);
+    const removed = this.deleteHistoryFromRequest(session.id, mutation.fromRequestId);
     this.upsertSession(session);
     this.historyMutations.delete(session.id);
     return removed;
   }
 
+  listPendingForkMutations(): AgentSessionForkMutation[] {
+    return [...this.forkMutations.values()]
+      .map((mutation) => structuredClone(mutation))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }
+
+  loadPendingForkMutation(targetSessionId: string): AgentSessionForkMutation | undefined {
+    const mutation = this.forkMutations.get(targetSessionId);
+    return mutation ? structuredClone(mutation) : undefined;
+  }
+
+  stageForkMutation(mutation: AgentSessionForkMutation): void {
+    if (!this.sessions.has(mutation.sourceSessionId)) {
+      throw new Error(`Session fork source does not exist: ${mutation.sourceSessionId}`);
+    }
+    if (this.sessions.has(mutation.targetSessionId)) {
+      throw new Error(`Session fork target already exists: ${mutation.targetSessionId}`);
+    }
+    if (this.forkMutations.has(mutation.targetSessionId)) {
+      throw new Error(`Session already has a pending fork mutation: ${mutation.targetSessionId}`);
+    }
+    this.forkMutations.set(mutation.targetSessionId, structuredClone(mutation));
+  }
+
+  commitForkMutation(mutationId: string, snapshot: AgentSessionForkSnapshot): void {
+    const mutation = this.forkMutations.get(snapshot.session.id);
+    if (!mutation || mutation.mutationId !== mutationId) {
+      throw new Error(`Pending session fork mutation does not match: ${snapshot.session.id}`);
+    }
+    this.createFork(snapshot);
+    this.forkMutations.delete(snapshot.session.id);
+  }
+
+  abortForkMutation(targetSessionId: string, mutationId: string): boolean {
+    const mutation = this.forkMutations.get(targetSessionId);
+    if (!mutation || mutation.mutationId !== mutationId) return false;
+    return this.forkMutations.delete(targetSessionId);
+  }
+
+  hasRequest(sessionId: string, requestId: string): boolean {
+    return this.history.hasRequest(sessionId, requestId);
+  }
+
+  loadRequestIdsFrom(sessionId: string, requestId: string): string[] {
+    return this.history.loadRequestIdsFrom(sessionId, requestId);
+  }
+
+  loadForkHistoryThroughRequest(sessionId: string, requestId: string): AgentSessionForkHistory | undefined {
+    return this.history.loadForkHistoryThroughRequest(sessionId, requestId);
+  }
+
   loadEntries(sessionId: string): AgentConversationEntry[] {
-    return [...(this.entries.get(sessionId) ?? [])];
+    return this.history.loadEntries(sessionId);
+  }
+
+  loadFirstUserMessage(sessionId: string): AgentConversationEntry | undefined {
+    return this.history.loadFirstUserMessage(sessionId);
+  }
+
+  loadEntryPage(
+    sessionId: string,
+    request: AgentSessionCursorPageRequest,
+  ): AgentSessionCursorPage<AgentConversationEntry> {
+    return this.history.loadEntryPage(sessionId, request);
+  }
+
+  loadEntriesForRequests(
+    sessionId: string,
+    requestIds: readonly string[],
+    throughSequence: number,
+  ): AgentConversationEntry[] {
+    return this.history.loadEntriesForRequests(sessionId, requestIds, throughSequence);
   }
 
   createFork(snapshot: AgentSessionForkSnapshot): void {
     const sessionId = snapshot.session.id;
-    if (this.sessions.has(sessionId)) {
-      throw new Error(`Session fork target already exists: ${sessionId}`);
-    }
-
-    const session = structuredClone({ ...snapshot.session, conversation: [] });
-    const entries = snapshot.entries.map(({ entry }) => structuredClone(entry));
-    const traces = snapshot.traces.map((item) => structuredClone(item));
-    const events = snapshot.runEvents.map((event) => structuredClone(event));
-    const runSnapshots = new Map(
-      snapshot.runSnapshots.map((runSnapshot) => [runSnapshot.requestId, structuredClone(runSnapshot)]),
-    );
-    const turnPreparations = new Map(
-      snapshot.turnPreparations.map(({ requestId, snapshot: preparation }) => [
-        requestId,
-        structuredClone(preparation),
-      ]),
-    );
-
-    this.sessions.set(sessionId, session);
-    this.entries.set(sessionId, entries);
-    if (traces.length > 0) this.stepTraces.set(sessionId, traces);
-    if (events.length > 0) this.runEvents.set(sessionId, events);
-    if (runSnapshots.size > 0) this.runSnapshots.set(sessionId, runSnapshots);
-    if (turnPreparations.size > 0) this.turnPreparations.set(sessionId, turnPreparations);
+    if (this.sessions.has(sessionId)) throw new Error(`Session fork target already exists: ${sessionId}`);
+    this.sessions.set(sessionId, structuredClone({ ...snapshot.session, conversation: [] }));
+    this.history.installFork(snapshot);
   }
 
   upsertSession(session: AgentSession): void {
     this.sessions.set(session.id, { ...session, conversation: [] });
   }
 
-  appendEntry(sessionId: string, entry: AgentConversationEntry): void {
-    const list = this.entries.get(sessionId) ?? [];
-    if (list.some((e) => e.id === entry.id)) return;
-    list.push(entry);
-    this.entries.set(sessionId, list);
+  appendEntry(sessionId: string, entry: AgentConversationEntry, sequence?: number): void {
+    this.history.appendEntry(sessionId, entry, sequence);
   }
 
   appendEntries(sessionId: string, entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>): void {
-    for (const { entry } of entries) this.appendEntry(sessionId, entry);
+    this.history.appendEntries(sessionId, entries);
   }
 
   persistTurnArtifacts(
@@ -145,180 +199,182 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>,
     traces: ReadonlyArray<{ requestId: string; turnSequence: number; trace: StepTrace }>,
   ): void {
-    for (const { entry } of entries) this.appendEntry(sessionId, entry);
-    if (traces.length > 0) {
-      const list = this.stepTraces.get(sessionId) ?? [];
-      list.push(...traces);
-      this.stepTraces.set(sessionId, list);
-    }
+    this.history.persistTurnArtifacts(sessionId, entries, traces);
   }
 
   persistTurnCommit(commit: AgentSessionTurnCommit): void {
-    if (commit.session) this.upsertSession(commit.session);
-    this.persistTurnArtifacts(commit.sessionId, commit.entries, commit.traces);
-    this.upsertRunSnapshot(commit.snapshot);
-    this.appendRunEvents(commit.sessionId, commit.runEvents);
+    this.history.assertCanAppendEntries(commit.sessionId, commit.entries);
+    const nextSession = commit.session ? structuredClone({ ...commit.session, conversation: [] }) : undefined;
+    let nextCommands: Map<string, AgentSessionCommandRecord> | undefined;
+    if (commit.commandId) {
+      const commands = this.commands.get(commit.sessionId);
+      const existing = commands?.get(commit.commandId);
+      if (!existing || existing.requestId !== commit.requestId) {
+        throw new Error(
+          `Session command receipt disappeared during turn commit: ${commit.sessionId}/${commit.commandId}`,
+        );
+      }
+      nextCommands = new Map(
+        [...commands!.entries()].map(([commandId, command]) => [commandId, structuredClone(command)]),
+      );
+      nextCommands.set(commit.commandId, {
+        ...existing,
+        state: commandStateForSnapshot(commit.snapshot.status),
+        updatedAt: commit.snapshot.updatedAt,
+      });
+    }
+
+    if (nextSession) this.sessions.set(commit.sessionId, nextSession);
+    this.history.persistTurnCommitArtifacts(commit);
+    if (nextCommands) this.commands.set(commit.sessionId, nextCommands);
+  }
+
+  beginRun(command: AgentSessionCommandDescriptor, commit: AgentSessionTurnCommit): AgentSessionCommandAdmission {
+    const existing = this.loadCommand(commit.sessionId, command.commandId);
+    if (existing) {
+      assertMatchingAgentSessionCommand(existing, command);
+      return { kind: "replayed", command: existing };
+    }
+    this.history.assertCanAppendEntries(commit.sessionId, commit.entries);
+    const record: AgentSessionCommandRecord = {
+      ...command,
+      sessionId: commit.sessionId,
+      state: AgentSessionCommandStates.Running,
+      updatedAt: command.createdAt,
+    };
+    const commands = this.commands.get(commit.sessionId) ?? new Map<string, AgentSessionCommandRecord>();
+    commands.set(command.commandId, record);
+    this.commands.set(commit.sessionId, commands);
+    try {
+      this.persistTurnCommit(commit);
+    } catch (error) {
+      commands.delete(command.commandId);
+      if (commands.size === 0) this.commands.delete(commit.sessionId);
+      throw error;
+    }
+    return { kind: "accepted", command: record };
+  }
+
+  loadCommand(sessionId: string, commandId: string): AgentSessionCommandRecord | undefined {
+    const command = this.commands.get(sessionId)?.get(commandId);
+    return command ? structuredClone(command) : undefined;
   }
 
   truncateFromRequest(sessionId: string, requestId: string): number {
-    this.deleteStepTracesFrom(sessionId, requestId);
-    this.deleteRunEventsFrom(sessionId, requestId);
-    this.deleteRunSnapshotsFrom(sessionId, requestId);
-    this.deleteTurnPreparationsFrom(sessionId, requestId);
-    return this.deleteEntriesFrom(sessionId, requestId);
+    return this.deleteHistoryFromRequest(sessionId, requestId);
   }
 
   loadStepTraces(sessionId: string): StoredStepTraceRun[] {
-    const list = this.stepTraces.get(sessionId) ?? [];
-    const byRequest = new Map<string, StoredStepTraceRun>();
-    for (const { requestId, turnSequence, trace } of list) {
-      let run = byRequest.get(requestId);
-      if (!run) {
-        run = { requestId, turnSequence, traces: [] };
-        byRequest.set(requestId, run);
-      }
-      run.traces.push(trace);
-    }
-    return Array.from(byRequest.values())
-      .map((run) => ({
-        ...run,
-        traces: [...run.traces].sort((a, b) => a.step - b.step || a.seq - b.seq),
-      }))
-      .sort((a, b) => a.turnSequence - b.turnSequence);
+    return this.history.loadStepTraces(sessionId);
+  }
+
+  loadStepTracePage(
+    sessionId: string,
+    request: AgentStepTracePageRequest,
+  ): AgentSessionCursorPage<StoredStepTraceRun, AgentStepTraceCursor> {
+    return this.history.loadStepTracePage(sessionId, request);
+  }
+
+  loadStepTraceRequestIds(sessionId: string, requestIds: readonly string[], throughRowId: number): string[] {
+    return this.history.loadStepTraceRequestIds(sessionId, requestIds, throughRowId);
   }
 
   deleteStepTracesFrom(sessionId: string, requestId: string): number {
-    const list = this.stepTraces.get(sessionId);
-    if (!list) return 0;
-    const entries = this.entries.get(sessionId) ?? [];
-    const anchorSequence = entries.findIndex((entry) => entry.requestId === requestId);
-    if (anchorSequence < 0) return 0;
-    const kept = list.filter((item) => item.turnSequence < anchorSequence);
-    const removed = list.length - kept.length;
-    this.stepTraces.set(sessionId, kept);
-    return removed;
+    return this.history.deleteStepTracesFrom(sessionId, requestId);
   }
 
   upsertRunSnapshot(snapshot: StoredRunSnapshot): void {
-    const snapshots = this.runSnapshots.get(snapshot.sessionId) ?? new Map<string, StoredRunSnapshot>();
-    snapshots.set(snapshot.requestId, { ...snapshot });
-    this.runSnapshots.set(snapshot.sessionId, snapshots);
+    this.history.upsertRunSnapshot(snapshot);
   }
 
   loadRunSnapshots(sessionId: string): StoredRunSnapshot[] {
-    const snapshots = this.runSnapshots.get(sessionId);
-    if (!snapshots) return [];
-    return Array.from(snapshots.values())
-      .map((snapshot) => ({ ...snapshot }))
-      .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+    return this.history.loadRunSnapshots(sessionId);
+  }
+
+  loadRunSnapshotsForRequests(
+    sessionId: string,
+    requestIds: readonly string[],
+    throughRevision: number,
+  ): StoredRunSnapshot[] {
+    return this.history.loadRunSnapshotsForRequests(sessionId, requestIds, throughRevision);
+  }
+
+  loadRunSnapshotPage(
+    sessionId: string,
+    request: AgentSessionCursorPageRequest,
+  ): AgentSessionCursorPage<StoredRunSnapshot> {
+    return this.history.loadRunSnapshotPage(sessionId, request);
+  }
+
+  loadRunningRunSnapshots(): StoredRunSnapshot[] {
+    return this.history.loadRunningRunSnapshots();
   }
 
   deleteRunSnapshotsFrom(sessionId: string, requestId: string): number {
-    const snapshots = this.runSnapshots.get(sessionId);
-    if (!snapshots) return 0;
-    const anchorSnapshot = snapshots.get(requestId);
-    const entries = this.entries.get(sessionId) ?? [];
-    const anchorSequence = entries.findIndex((entry) => entry.requestId === requestId);
-    const requestIdsFromAnchor = new Set(
-      anchorSequence >= 0 ? entries.slice(anchorSequence).map((entry) => entry.requestId) : [],
-    );
-
-    let removed = 0;
-    for (const snapshot of Array.from(snapshots.values())) {
-      const shouldDelete =
-        (anchorSnapshot && snapshot.startedAt >= anchorSnapshot.startedAt) ||
-        requestIdsFromAnchor.has(snapshot.requestId);
-      if (shouldDelete) {
-        snapshots.delete(snapshot.requestId);
-        removed += 1;
-      }
-    }
-    if (snapshots.size === 0) {
-      this.runSnapshots.delete(sessionId);
-    } else {
-      this.runSnapshots.set(sessionId, snapshots);
-    }
-    return removed;
+    return this.history.deleteRunSnapshotsFrom(sessionId, requestId);
   }
 
   upsertTurnPreparation(sessionId: string, requestId: string, snapshot: AgentTurnPreparationSnapshot): void {
-    const preparations = this.turnPreparations.get(sessionId) ?? new Map<string, AgentTurnPreparationSnapshot>();
-    preparations.set(requestId, structuredClone(snapshot));
-    this.turnPreparations.set(sessionId, preparations);
+    this.history.upsertTurnPreparation(sessionId, requestId, snapshot);
   }
 
   loadTurnPreparation(sessionId: string, requestId: string): AgentTurnPreparationSnapshot | undefined {
-    const snapshot = this.turnPreparations.get(sessionId)?.get(requestId);
-    return snapshot ? structuredClone(snapshot) : undefined;
+    return this.history.loadTurnPreparation(sessionId, requestId);
   }
 
   deleteTurnPreparationsFrom(sessionId: string, requestId: string): number {
-    const preparations = this.turnPreparations.get(sessionId);
-    if (!preparations) return 0;
-    const entries = this.entries.get(sessionId) ?? [];
-    const anchor = entries.findIndex((entry) => entry.requestId === requestId);
-    if (anchor < 0) return 0;
-    const removedRequestIds = new Set(entries.slice(anchor).map((entry) => entry.requestId));
-    let removed = 0;
-    for (const removedRequestId of removedRequestIds) {
-      removed += Number(preparations.delete(removedRequestId));
-    }
-    if (preparations.size === 0) this.turnPreparations.delete(sessionId);
-    return removed;
+    return this.history.deleteTurnPreparationsFrom(sessionId, requestId);
   }
 
-  renameSession(_sessionId: string, _title: string): void {}
+  renameSession(sessionId: string, title: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    this.sessions.set(sessionId, {
+      ...session,
+      updatedAt: new Date().toISOString(),
+      metadata: { ...session.metadata, title },
+    });
+  }
 
   deleteSession(sessionId: string): boolean {
     const had = this.sessions.delete(sessionId);
-    this.entries.delete(sessionId);
-    this.stepTraces.delete(sessionId);
-    this.runEvents.delete(sessionId);
-    this.runSnapshots.delete(sessionId);
-    this.turnPreparations.delete(sessionId);
+    this.history.deleteSession(sessionId);
     this.historyMutations.delete(sessionId);
+    this.commands.delete(sessionId);
     return had;
   }
 
   appendRunEvent(sessionId: string, event: AgentEventEnvelope): void {
-    this.appendRunEvents(sessionId, [event]);
+    this.history.appendRunEvent(sessionId, event);
   }
 
   appendRunEvents(sessionId: string, events: readonly AgentEventEnvelope[]): void {
-    if (events.length === 0) return;
-    const list = this.runEvents.get(sessionId) ?? [];
-    const eventIds = new Set(list.flatMap((event) => (event.eventId ? [event.eventId] : [])));
-    for (const event of events) {
-      if (event.eventId && eventIds.has(event.eventId)) continue;
-      list.push(event);
-      if (event.eventId) eventIds.add(event.eventId);
-    }
-    this.runEvents.set(sessionId, list);
+    this.history.appendRunEvents(sessionId, events);
   }
 
   loadRunEvents(sessionId: string): AgentEventEnvelope[] {
-    return [...(this.runEvents.get(sessionId) ?? [])];
+    return this.history.loadRunEvents(sessionId);
+  }
+
+  loadRunEventsForRequest(sessionId: string, requestId: string): AgentEventEnvelope[] {
+    return this.history.loadRunEventsForRequest(sessionId, requestId);
+  }
+
+  loadRunEventPage(
+    sessionId: string,
+    request: AgentSessionCursorPageRequest,
+  ): AgentSessionCursorPage<AgentEventEnvelope> {
+    return this.history.loadRunEventPage(sessionId, request);
   }
 
   deleteRunEventsFrom(sessionId: string, requestId: string): number {
-    const entries = this.entries.get(sessionId) ?? [];
-    const idx = entries.findIndex((entry) => entry.requestId === requestId);
-    if (idx < 0) return 0;
-
-    const removedRequestIds = new Set(entries.slice(idx).map((entry) => entry.requestId));
-    const events = this.runEvents.get(sessionId) ?? [];
-    const retained = events.filter((event) => !event.requestId || !removedRequestIds.has(event.requestId));
-    this.runEvents.set(sessionId, retained);
-    return events.length - retained.length;
+    return this.history.deleteRunEventsFrom(sessionId, requestId);
   }
 
   deleteEntriesFrom(sessionId: string, requestId: string): number {
-    const list = this.entries.get(sessionId);
-    if (!list) return 0;
-    const idx = list.findIndex((e) => e.requestId === requestId);
-    if (idx < 0) return 0;
-    const removed = list.length - idx;
-    this.entries.set(sessionId, list.slice(0, idx));
+    const requestIds = this.history.loadRequestIdsFrom(sessionId, requestId);
+    const removed = this.history.deleteEntriesFrom(sessionId, requestId);
+    this.deleteCommandsForRequests(sessionId, requestIds);
     return removed;
   }
 
@@ -332,4 +388,36 @@ export class InMemorySessionRepository implements AgentSessionRepository {
   }
 
   close(): void {}
+
+  private deleteHistoryFromRequest(sessionId: string, requestId: string): number {
+    this.history.deleteStepTracesFrom(sessionId, requestId);
+    this.history.deleteRunEventsFrom(sessionId, requestId);
+    this.history.deleteRunSnapshotsFrom(sessionId, requestId);
+    this.history.deleteTurnPreparationsFrom(sessionId, requestId);
+    return this.deleteEntriesFrom(sessionId, requestId);
+  }
+
+  private deleteCommandsForRequests(sessionId: string, requestIds: readonly string[]): void {
+    if (requestIds.length === 0) return;
+    const selected = new Set(requestIds);
+    const commands = this.commands.get(sessionId);
+    if (!commands) return;
+    for (const command of commands.values()) {
+      if (selected.has(command.requestId)) commands.delete(command.commandId);
+    }
+    if (commands.size === 0) this.commands.delete(sessionId);
+  }
+}
+
+function commandStateForSnapshot(status: StoredRunSnapshot["status"]): AgentSessionCommandRecord["state"] {
+  switch (status) {
+    case "completed":
+      return AgentSessionCommandStates.Completed;
+    case "cancelled":
+      return AgentSessionCommandStates.Cancelled;
+    case "failed":
+      return AgentSessionCommandStates.Failed;
+    case "running":
+      return AgentSessionCommandStates.Running;
+  }
 }

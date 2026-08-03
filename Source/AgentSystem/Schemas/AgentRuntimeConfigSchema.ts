@@ -3,39 +3,8 @@ import { z } from "zod";
 const AgentPiCompactionSchema = z
   .object({
     Enabled: z.boolean().optional(),
-    TriggerRatio: z.number().min(0.5).max(0.95).optional(),
-    HardLimitRatio: z.number().min(0.6).max(1).optional(),
-    TargetRatio: z.number().min(0.2).max(0.8).optional(),
-    SummaryMaxTokens: z.number().int().min(512).max(32_768).optional(),
-    TimeoutSeconds: z.number().positive().optional(),
-    UnknownContextWindowTokens: z.number().int().min(16_384).optional(),
-    UnknownModelOutputTokens: z.number().int().min(512).max(131_072).optional(),
   })
-  .strict()
-  .superRefine((value, context) => {
-    if (
-      value.TriggerRatio !== undefined &&
-      value.TargetRatio !== undefined &&
-      value.TargetRatio >= value.TriggerRatio
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["TargetRatio"],
-        message: "TargetRatio 必须小于 TriggerRatio。",
-      });
-    }
-    if (
-      value.TriggerRatio !== undefined &&
-      value.HardLimitRatio !== undefined &&
-      value.TriggerRatio >= value.HardLimitRatio
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["HardLimitRatio"],
-        message: "HardLimitRatio 必须大于 TriggerRatio。",
-      });
-    }
-  });
+  .strict();
 
 export const AgentLoopSchema = z
   .object({
@@ -145,12 +114,10 @@ export const ArtifactsSchema = z
     SummaryMaxChars: z.number().int().min(256).optional(),
     RawJsonMaxBytes: z.number().int().min(1024).optional(),
     TextFileMaxBytes: z.number().int().min(1024).optional(),
-    MemoryReadStructuredJsonMaxBytes: z.number().int().min(1024).optional(),
     MemoryReadMaxArtifacts: z.number().int().positive().optional(),
     MemoryReadMaxRefs: z.number().int().positive().optional(),
     MemoryReadMaxConcurrency: z.number().int().positive().optional(),
-    MemoryReadCacheMaxBytes: z.number().int().nonnegative().optional(),
-    MemoryReadCacheMaxEntries: z.number().int().nonnegative().optional(),
+    MemoryReadStructuredJsonMaxTokens: z.number().int().positive().optional(),
     OutputCaptureMaxBytes: z.number().int().min(1024).optional(),
     MaxStoredBytes: z.number().int().positive().optional(),
     MaxArtifacts: z.number().int().positive().optional(),
@@ -178,8 +145,10 @@ export const ConfigStoreSchema = z
   .object({
     Enabled: z.boolean().optional(),
     Kind: z.literal("sqlite").optional(),
-    DatabasePath: z.string().min(1).optional(),
     MirrorJson: z.boolean().optional(),
+    RevisionRetentionCount: z.number().int().min(1).max(10_000).optional(),
+    CommandReceiptRetentionHours: z.number().int().min(1).max(8_760).optional(),
+    CommandReceiptMaxCount: z.number().int().min(1).max(100_000).optional(),
   })
   .strict();
 
@@ -209,6 +178,7 @@ export const ServerSchema = z
           .object({
             MaxConnections: z.number().int().min(1).max(10_000).optional(),
             MaxConnectionsPerClient: z.number().int().min(1).max(1_000).optional(),
+            MaxRateLimitClients: z.number().int().min(1).max(1_000_000).optional(),
             UpgradeRequestsPerMinute: z.number().int().min(1).max(100_000).optional(),
             HttpRequestsPerMinute: z.number().int().min(1).max(100_000).optional(),
             MessagesPerMinute: z.number().int().min(1).max(100_000).optional(),
@@ -227,20 +197,5 @@ export const ServerSchema = z
 export const PersistenceSchema = z
   .object({
     Kind: z.union([z.literal("sqlite"), z.literal("memory")]).optional(),
-    DatabasePath: z.string().min(1).optional(),
-  })
-  .strict();
-
-export const PluginRootsSchema = z
-  .object({
-    System: z.array(z.string().min(1)).optional(),
-    User: z.array(z.string().min(1)).optional(),
-  })
-  .strict();
-
-export const PluginDiscoverySchema = z
-  .object({
-    ManifestFileName: z.string().min(1).optional(),
-    ConfigFileName: z.string().min(1).optional(),
   })
   .strict();

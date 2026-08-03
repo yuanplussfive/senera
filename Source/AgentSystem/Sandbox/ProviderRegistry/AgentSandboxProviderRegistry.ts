@@ -3,6 +3,9 @@ import path from "node:path";
 import { z } from "zod";
 import { moduleDirPath } from "../../Core/AgentPath.js";
 import { AgentSandboxRuntimeProviders, type AgentSandboxRuntimeProvider } from "../AgentSandboxRuntimeTypes.js";
+import { parseJsonText } from "../../Core/AgentJsonParsing.js";
+
+export const AgentSandboxProviderRegistryFormatVersion = 1 as const;
 
 const ProviderSchema = z.enum([
   AgentSandboxRuntimeProviders.Microsandbox,
@@ -14,7 +17,7 @@ export const AgentSandboxProviderRequirementSchema = z.enum(["microsandbox-host"
 
 export const AgentSandboxProviderRegistrySchema = z
   .object({
-    formatVersion: z.literal(1),
+    formatVersion: z.literal(AgentSandboxProviderRegistryFormatVersion),
     id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/u),
     candidates: z
       .array(
@@ -42,7 +45,9 @@ export type AgentSandboxProviderRequirement = z.infer<typeof AgentSandboxProvide
 
 export function readAgentSandboxProviderRegistry(): AgentSandboxProviderRegistry {
   const contractPath = path.join(moduleDirPath(import.meta.url), "contract.json");
-  return AgentSandboxProviderRegistrySchema.parse(JSON.parse(fs.readFileSync(contractPath, "utf8")));
+  return AgentSandboxProviderRegistrySchema.parse(
+    parseJsonText(fs.readFileSync(contractPath, "utf8"), "Sandbox provider registry"),
+  );
 }
 
 export function findAgentSandboxProviderCandidate(

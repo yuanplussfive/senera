@@ -20,14 +20,14 @@ afterEach(() => {
 describe("Sandbox execution context behavior", () => {
   test("projects shared workspace, environment, and rootfs inputs once for every backend", async () => {
     const workspaceRoot = temporaryDirectory("sandbox-context");
-    const writableRoot = path.join(workspaceRoot, ".state", "plugin");
+    const writableRoot = path.join(workspaceRoot, ".state", "mcp-package");
     const context = await prepareSeneraSandboxExecutionContext({
       workspaceRoot,
-      cwd: path.join(workspaceRoot, "Plugins", "Example"),
+      cwd: path.join(workspaceRoot, "McpServers", "example"),
       guestWorkspaceRoot: "/workspace",
       environment: { DEFINED: "host", EMPTY: undefined },
       profile: {
-        name: "plugin",
+        name: "mcp-package",
         kind: "mcp-server",
         backend: "sandbox",
         sandbox: {
@@ -38,7 +38,7 @@ describe("Sandbox execution context behavior", () => {
       },
     });
 
-    expect(context.guestCwd).toBe("/workspace/Plugins/Example");
+    expect(context.guestCwd).toBe("/workspace/McpServers/example");
     expect(context.environment).toEqual({ DEFINED: "profile", PROFILE_ONLY: "yes" });
     expect(context.rootfsCopies).toEqual([{ hostPath: workspaceRoot, guestPath: "/opt/senera" }]);
     expect(fs.existsSync(writableRoot)).toBe(true);

@@ -35,8 +35,11 @@ export interface SeneraPersistentProcessChild {
   signalCode?: NodeJS.Signals | null;
 }
 
-export type SeneraPersistentProcessSpawner = (
-  command: string,
-  args: readonly string[],
-  options: SeneraPersistentProcessSpawnOptions,
-) => Promise<SeneraPersistentProcessChild>;
+export interface SeneraPersistentProcessSpawner {
+  (
+    command: string,
+    args: readonly string[],
+    options: SeneraPersistentProcessSpawnOptions,
+  ): Promise<SeneraPersistentProcessChild>;
+  readonly supportedBackends?: readonly ("local" | "sandbox")[];
+}

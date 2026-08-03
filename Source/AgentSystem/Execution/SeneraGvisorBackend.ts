@@ -232,15 +232,18 @@ async function collectGvisorExecution(
       rejectCancellation(error);
     });
   };
-  const timer = setTimeout(() => {
-    cancel(
-      new SeneraExecutionError(SeneraExecutionErrorCodes.Timeout, `命令执行超时，超过 ${request.timeoutMs}ms。`, {
-        backend: provider,
-        timeoutMs: request.timeoutMs,
-      }),
-    );
-  }, request.timeoutMs);
-  timer.unref();
+  const timer =
+    Number.isFinite(request.timeoutMs) && request.timeoutMs > 0
+      ? setTimeout(() => {
+          cancel(
+            new SeneraExecutionError(SeneraExecutionErrorCodes.Timeout, `命令执行超时，超过 ${request.timeoutMs}ms。`, {
+              backend: provider,
+              timeoutMs: request.timeoutMs,
+            }),
+          );
+        }, request.timeoutMs)
+      : undefined;
+  timer?.unref();
   const abort = (): void => cancel(new SeneraExecutionError(SeneraExecutionErrorCodes.Aborted, "aborted"));
   request.signal?.addEventListener("abort", abort, { once: true });
   try {
@@ -270,7 +273,7 @@ async function collectGvisorExecution(
         : {}),
     };
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     request.signal?.removeEventListener("abort", abort);
     await request.outputSpool?.close();
   }

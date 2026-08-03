@@ -1,5 +1,6 @@
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import { normalizeMarkdownSectionText } from "../Xml/AgentMarkdownSections.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
+import { normalizeMarkdownSectionText } from "./AgentMarkdownSections.js";
 import type { AgentPromptToolContext } from "./AgentPromptContextTypes.js";
 import type { AgentPromptDocumentationReader } from "./AgentPromptDocumentationReader.js";
 import type { ResolvedAgentPromptSections } from "./AgentPromptSectionResolver.js";
@@ -9,7 +10,7 @@ export class AgentPromptToolContextProjector {
 
   projectTool(tool: RegisteredTool, sections: ResolvedAgentPromptSections): AgentPromptToolContext {
     const document = this.documentationReader.readMarkdownSections(tool.descriptionFile);
-    const fallbackDescription = tool.plugin.manifest.Plugin.Description ?? "";
+    const fallbackDescription = resolveAgentToolOwner(tool).description ?? "";
 
     return {
       name: tool.name,
@@ -17,7 +18,7 @@ export class AgentPromptToolContextProjector {
       whenToUse: this.readSection(document.sections, sections.trigger, fallbackDescription),
       whenNotToUse: this.readSection(document.sections, sections.avoid),
       argumentsContract: tool.contract?.arguments,
-      documentationXml: this.documentationReader.renderOptionalMarkdownFile(tool.descriptionFile),
+      documentationMarkdown: this.documentationReader.readOptionalMarkdownFile(tool.descriptionFile),
     };
   }
 

@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
-import {
-  parsePiControllerAction,
-  parsePiToolArgumentsDraft,
-} from "../Source/AgentSystem/PiProxy/AgentPiAssistantMessageSchema.js";
+import { parseControllerDecision } from "../Source/AgentSystem/Interaction/AgentControllerDecision.js";
+import { parsePiToolArgumentsDraft } from "../Source/AgentSystem/PiProxy/AgentPiAssistantMessageSchema.js";
 import { createIsolatedVerificationRuntimeConfig } from "./VerificationRuntimeConfig.js";
 
 void main();
@@ -15,82 +13,88 @@ async function main(): Promise<void> {
   const runtime = AgentSystemRuntime.load({
     workspaceRoot,
     configPath: isolatedConfig.configPath,
+    toolSearchMemoryStore: isolatedConfig.createToolSearchMemoryStore(),
   });
 
   try {
-    const visibleTools = ["WorkspaceGrep", "WorkspaceReadFile"];
+    const commandToolName = "ShellCommandTool";
+    const patchToolName = "WorkspaceApplyPatch";
+    const visibleTools = [commandToolName, patchToolName];
     const toolDefinitions = runtime.services.pi.toolDefinitions({
       visibleToolNames: visibleTools,
     });
-    const grep = toolDefinitions.find((tool) => tool.name === "WorkspaceGrep");
-    const readFile = toolDefinitions.find((tool) => tool.name === "WorkspaceReadFile");
+    const command = toolDefinitions.find((tool) => tool.name === commandToolName);
+    const patch = toolDefinitions.find((tool) => tool.name === patchToolName);
 
-    assert.ok(grep, "WorkspaceGrep Pi tool should be projected.");
-    assert.ok(readFile, "WorkspaceReadFile Pi tool should be projected.");
-    assert.deepEqual(schemaFieldNames(grep.parameters), [
-      "pattern",
-      "path",
-      "caseSensitive",
-      "filePattern",
-      "maxResults",
-      "context",
+    assert.ok(command, `${commandToolName} Pi tool should be projected.`);
+    assert.ok(patch, `${patchToolName} Pi tool should be projected.`);
+    assert.deepEqual(schemaFieldNames(command.parameters), [
+      "command",
+      "cwd",
+      "timeoutMs",
+      "justification",
+      "executionTarget",
     ]);
-    assert.deepEqual(schemaFieldNames(readFile.parameters), ["path", "head", "tail"]);
+    assert.deepEqual(schemaFieldNames(patch.parameters), ["operations", "dryRun", "fuzzFactor"]);
 
-    const contract = runtime.registry.getTool("WorkspaceGrep")?.contract?.arguments;
+    const contract = runtime.registry.getTool(commandToolName)?.contract?.arguments;
     assert.deepEqual(
       contract?.properties.map((property) => property.name),
-      schemaFieldNames(grep.parameters),
+      ["command", "cwd", "timeoutMs", "justification"],
     );
 
-    const action = parsePiControllerAction(
+    const action = parseControllerDecision(
       {
-        kind: "CallTools",
-        preface: "我先搜索配置引用，再读取命中的文件。",
-        calls: [
-          {
-            toolName: "WorkspaceGrep",
-            purpose: "定位 ModelProviders 配置引用。",
-            required: true,
-          },
-          {
-            toolName: "WorkspaceReadFile",
-            purpose: "读取搜索命中的配置文件。",
-            required: true,
-            dependsOn: [0],
-          },
-        ],
+        kind: "Execute",
+        fragment: {
+          preface: "我先搜索配置引用，再读取命中的文件。",
+          calls: [
+            {
+              toolName: commandToolName,
+              purpose: "定位 ModelProviders 配置引用。",
+              required: true,
+            },
+            {
+              toolName: patchToolName,
+              purpose: "在确认目标后应用原子补丁。",
+              required: true,
+              dependsOn: [0],
+            },
+          ],
+        },
       },
       {
         allowedTools: visibleTools,
       },
     );
-    assert.equal(action.calls?.[1]?.dependsOn?.[0], 0);
+    assert.equal(action.kind === "Execute" ? action.fragment.calls[1]?.dependsOn?.[0] : undefined, 0);
 
     const argumentsDraft = parsePiToolArgumentsDraft({
       arguments: {
-        pattern: "ModelProviders",
-        path: ".",
+        command: { mode: "shell", dialect: "powershell", script: "rg ModelProviders Source" },
+        cwd: ".",
       },
       missingInputs: [],
       assumptions: [],
     });
-    assert.equal(argumentsDraft.arguments.pattern, "ModelProviders");
+    assert.equal(argumentsDraft.arguments.cwd, ".");
 
     assert.throws(
       () =>
-        parsePiControllerAction(
+        parseControllerDecision(
           {
-            kind: "CallTools",
-            preface: "invalid dependency",
-            calls: [
-              {
-                toolName: "WorkspaceGrep",
-                purpose: "Search.",
-                required: true,
-                dependsOn: [0],
-              },
-            ],
+            kind: "Execute",
+            fragment: {
+              preface: "invalid dependency",
+              calls: [
+                {
+                  toolName: commandToolName,
+                  purpose: "Search.",
+                  required: true,
+                  dependsOn: [0],
+                },
+              ],
+            },
           },
           {
             allowedTools: visibleTools,

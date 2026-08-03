@@ -1,4 +1,5 @@
 import { SeneraExecutionError, type SeneraExecutionErrorCode } from "./SeneraExecutionTypes.js";
+import { isAgentUnknownRecord as isRecord } from "../Core/AgentUnknownValue.js";
 
 export function attachSeneraExecutionDiagnostic(
   primary: SeneraExecutionError,
@@ -32,8 +33,4 @@ export function normalizeSeneraExecutionDiagnostic(
   if (error instanceof SeneraExecutionError) return error;
   const cause = error instanceof Error ? error : new Error(String(error));
   return new SeneraExecutionError(code, cause.message, details, cause);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

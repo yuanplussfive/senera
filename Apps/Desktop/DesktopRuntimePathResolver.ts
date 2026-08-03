@@ -3,7 +3,7 @@ import path from "node:path";
 
 const DesktopProjectLayout = {
   files: ["package.json"],
-  directories: ["Apps/Desktop", "Frontend", "System/Plugins"],
+  directories: ["Apps/Desktop", "Frontend", "McpServers", "System/Skills", "System/Extensions"],
 } as const;
 
 export interface DesktopResourceRootResolutionInput {

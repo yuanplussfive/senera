@@ -74,11 +74,11 @@ async function main(): Promise<void> {
   assert.deepEqual(sdk.execRequests[0]?.env, { SENERA_VERIFY: "1" });
 
   await backend.executeProcess({
-    command: "npm",
-    args: ["run", "tool"],
-    cwd: path.join(workspaceRoot, "System", "Plugins", "AskUserToolPlugin"),
+    command: "node",
+    args: ["mcp/server.mjs"],
+    cwd: path.join(workspaceRoot, "McpServers", "web-research"),
     env: {
-      SENERA_VERIFY: "plugin",
+      SENERA_VERIFY: "mcp-package",
     },
     timeoutMs: 5_000,
     limits: {
@@ -87,46 +87,46 @@ async function main(): Promise<void> {
       maxStderrBytes: 1024,
     },
     profile: {
-      name: "node-plugin",
+      name: "mcp-package",
       kind: "mcp-server",
       sandbox: {
         image: "node:22-bookworm-slim",
         guestWorkspaceRoot: "/workspace",
-        guestWorkdir: "/opt/senera/runtime/System/Plugins/AskUserToolPlugin",
+        guestWorkdir: "/opt/senera/runtime",
         workspaceMount: "readonly",
         network: "disabled",
         rootfsCopies: [
           {
-            hostPath: path.join(workspaceRoot, "System", "Plugins", "AskUserToolPlugin"),
+            hostPath: path.join(workspaceRoot, "McpServers", "web-research"),
             guestPath: "/opt/senera/runtime",
           },
         ],
         rootfsBundles: [
           {
             workspaceRoot,
-            packageRoot: path.join(workspaceRoot, "Plugins", "WeatherToolPlugin"),
+            packageRoot: path.join(workspaceRoot, "Packages", "TerminalSidecar"),
             guestPath: "/opt/senera/bundles",
           },
         ],
         writableMounts: [
           {
-            hostPath: path.join(workspaceRoot, "Plugins", "WeatherToolPlugin", ".state"),
-            guestPath: "/workspace/Plugins/WeatherToolPlugin/.state",
+            hostPath: path.join(workspaceRoot, ".senera", "mcp", "web-research"),
+            guestPath: "/workspace/.senera/mcp/web-research",
             quotaMiB: 256,
           },
         ],
         env: {
           SENERA_TOOL_CONTEXT_WORKSPACE_ROOT: "/workspace",
-          SENERA_TOOL_CONTEXT_PLUGIN_ROOT: "/opt/senera/runtime/System/Plugins/AskUserToolPlugin",
+          SENERA_MCP_PACKAGE_ROOT: "/opt/senera/runtime",
         },
       },
     },
   });
   assert.equal(sdk.createRequests[1]?.image, "node:22-bookworm-slim");
-  assert.equal(sdk.createRequests[1]?.guestWorkdir, "/opt/senera/runtime/System/Plugins/AskUserToolPlugin");
+  assert.equal(sdk.createRequests[1]?.guestWorkdir, "/opt/senera/runtime");
   assert.deepEqual(sdk.createRequests[1]?.rootfsCopies, [
     {
-      hostPath: path.join(workspaceRoot, "System", "Plugins", "AskUserToolPlugin"),
+      hostPath: path.join(workspaceRoot, "McpServers", "web-research"),
       guestPath: "/opt/senera/runtime",
     },
     {
@@ -137,13 +137,13 @@ async function main(): Promise<void> {
   assert.match(sdk.createRequests[1]?.rootfsCopies[1]?.hostPath ?? "", /senera-rootfs-bundle-/);
   assert.deepEqual(sdk.createRequests[1]?.env, {
     SENERA_TOOL_CONTEXT_WORKSPACE_ROOT: "/workspace",
-    SENERA_TOOL_CONTEXT_PLUGIN_ROOT: "/opt/senera/runtime/System/Plugins/AskUserToolPlugin",
+    SENERA_MCP_PACKAGE_ROOT: "/opt/senera/runtime",
   });
-  assert.equal(sdk.execRequests[1]?.cwd, "/opt/senera/runtime/System/Plugins/AskUserToolPlugin");
+  assert.equal(sdk.execRequests[1]?.cwd, "/opt/senera/runtime");
   assert.deepEqual(sdk.execRequests[1]?.env, {
-    SENERA_VERIFY: "plugin",
+    SENERA_VERIFY: "mcp-package",
     SENERA_TOOL_CONTEXT_WORKSPACE_ROOT: "/workspace",
-    SENERA_TOOL_CONTEXT_PLUGIN_ROOT: "/opt/senera/runtime/System/Plugins/AskUserToolPlugin",
+    SENERA_MCP_PACKAGE_ROOT: "/opt/senera/runtime",
   });
 
   const terminal = await backend.spawn("/bin/sh", ["-lc", "printf terminal-ok"], {

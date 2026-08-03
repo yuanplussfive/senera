@@ -4,10 +4,6 @@ import { AgentSandboxRuntimeProviders } from "../Source/AgentSystem/Sandbox/Agen
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const sourceConfig: AgentSystemConfig = {
-  PluginRoots: {
-    System: ["./System/Plugins"],
-    User: ["./Plugins"],
-  },
   ModelProviderEndpoints: [
     {
       Id: "default",
@@ -27,22 +23,12 @@ const sourceConfig: AgentSystemConfig = {
 
 const projected = projectDesktopRuntimeConfig(
   {
-    systemPluginRoot: "C:/Users/test/AppData/Roaming/Senera/runtime/System/Plugins",
-    userPluginRoot: "C:/Users/test/AppData/Roaming/Senera/runtime/Plugins",
     sandboxRuntimeRoot: "C:/Users/test/AppData/Roaming/Senera/runtime/SandboxRuntime",
   },
   sourceConfig,
   { packaged: true },
 );
 
-assert.deepEqual(sourceConfig.PluginRoots, {
-  System: ["./System/Plugins"],
-  User: ["./Plugins"],
-});
-assert.deepEqual(projected.PluginRoots, {
-  System: ["C:/Users/test/AppData/Roaming/Senera/runtime/System/Plugins"],
-  User: ["C:/Users/test/AppData/Roaming/Senera/runtime/Plugins"],
-});
 assert.deepEqual(projected.SandboxRuntime, {
   Provider: AgentSandboxRuntimeProviders.Microsandbox,
   BaseDir: "C:/Users/test/AppData/Roaming/Senera/runtime/SandboxRuntime",
@@ -52,8 +38,6 @@ assert.equal(projected.ModelProviders[0].Model, "model-a");
 
 const explicitOci = projectDesktopRuntimeConfig(
   {
-    systemPluginRoot: "system",
-    userPluginRoot: "user",
     sandboxRuntimeRoot: "sandbox",
   },
   {

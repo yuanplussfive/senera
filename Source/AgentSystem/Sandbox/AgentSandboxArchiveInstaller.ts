@@ -4,6 +4,7 @@ import path from "node:path";
 import { z } from "zod";
 import {
   AgentSandboxArchiveManifestSchema,
+  AgentSandboxDistributionFormatVersion,
   assertAgentSandboxArchiveManifest,
   readAgentSandboxDistributionContract,
   resolveAgentSandboxBundleLocation,
@@ -13,10 +14,11 @@ import {
 import { AgentSandboxPreparationStages, type AgentSandboxPreparationProgress } from "./AgentSandboxRuntimeTypes.js";
 import type { AgentMicrosandboxImageArchiveLoader } from "./AgentMicrosandboxCli.js";
 import { nodeErrorCode, writeFileAtomic } from "../Core/AgentFs.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 const InstallationReceiptSchema = z
   .object({
-    formatVersion: z.literal(5),
+    formatVersion: z.literal(AgentSandboxDistributionFormatVersion),
     distributionId: z.string().min(1),
     archiveVersion: z.string().min(1),
     target: z.string().min(1),
@@ -143,7 +145,7 @@ async function readBundleManifest(filePath: string, maxBytes: number): Promise<A
     if (content.byteLength <= 0 || content.byteLength > maxBytes) {
       throw new Error(`Sandbox Bundle manifest size is invalid: ${content.byteLength} bytes (${filePath}).`);
     }
-    return AgentSandboxArchiveManifestSchema.parse(JSON.parse(content.toString("utf8")));
+    return AgentSandboxArchiveManifestSchema.parse(parseJsonText(content.toString("utf8"), "Sandbox bundle manifest"));
   } finally {
     await file.close();
   }
@@ -228,7 +230,7 @@ function archiveSizeMismatch(
 
 async function readOptionalJson<T>(filePath: string, schema: z.ZodType<T>): Promise<T | undefined> {
   try {
-    return schema.parse(JSON.parse(await readFile(filePath, "utf8")));
+    return schema.parse(parseJsonText(await readFile(filePath, "utf8"), "Sandbox installation receipt"));
   } catch (error) {
     if (nodeErrorCode(error) === "ENOENT") return undefined;
     throw error;
@@ -237,7 +239,7 @@ async function readOptionalJson<T>(filePath: string, schema: z.ZodType<T>): Prom
 
 function createInstallationReceipt(manifest: AgentSandboxArchiveManifest): InstallationReceipt {
   return {
-    formatVersion: 5,
+    formatVersion: AgentSandboxDistributionFormatVersion,
     distributionId: manifest.distributionId,
     archiveVersion: manifest.archiveVersion,
     target: manifest.target,

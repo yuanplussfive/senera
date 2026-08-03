@@ -1,8 +1,9 @@
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 export function parseJsonObject(value: string): Record<string, unknown> {
   try {
-    const parsed = JSON.parse(value) as unknown;
+    const parsed = parseJsonText(value, "Session JSON") as unknown;
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};
@@ -11,7 +12,7 @@ export function parseJsonObject(value: string): Record<string, unknown> {
 
 export function parseStoredRunEvent(value: string): AgentEventEnvelope | undefined {
   try {
-    const parsed = JSON.parse(value) as unknown;
+    const parsed = parseJsonText(value, "Session JSON") as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return undefined;
     }
@@ -45,6 +46,4 @@ export function readNumberField(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-export function readStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-}
+export { readStringArray } from "../Core/AgentCollections.js";

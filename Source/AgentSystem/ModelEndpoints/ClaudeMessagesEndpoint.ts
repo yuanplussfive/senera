@@ -5,6 +5,7 @@ import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { projectOpenAiCompatibleTextMessages } from "./OpenAiCompatibleMessageProjector.js";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
 import { ModelUsageNumberWireSchema, projectModelUsageNumber } from "./ModelUsageWireSchema.js";
+import { createAgentModelCompletionMetadata } from "./AgentModelCompletion.js";
 
 const ClaudeUsageSchema = z
   .object({
@@ -25,6 +26,7 @@ const ClaudeContentBlockSchema = z
 
 const ClaudeMessageBodySchema = z
   .object({
+    stop_reason: z.string().nullish(),
     content: z.array(ClaudeContentBlockSchema).optional(),
     usage: ClaudeUsageSchema,
   })
@@ -36,6 +38,7 @@ const ClaudeStreamEventSchema = z
     delta: z
       .object({
         text: z.string().optional(),
+        stop_reason: z.string().nullish(),
       })
       .passthrough()
       .optional(),
@@ -66,6 +69,9 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
           .map((content) => content.text ?? "")
           .join("") ?? "",
       usage: projectClaudeUsage(body.usage),
+      completion: createAgentModelCompletionMetadata({
+        finishReason: body.stop_reason ?? undefined,
+      }),
     };
   }
 
@@ -79,6 +85,9 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
         return {
           textDelta: parsed.type === "content_block_delta" ? (parsed.delta?.text ?? "") : "",
           usage: projectClaudeUsage(parsed.usage ?? parsed.message?.usage),
+          completion: createAgentModelCompletionMetadata({
+            finishReason: parsed.delta?.stop_reason ?? undefined,
+          }),
         };
       },
       undefined,

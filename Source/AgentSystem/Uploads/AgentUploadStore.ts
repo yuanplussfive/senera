@@ -4,7 +4,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { Transform, type TransformCallback, type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { agentErrorMessage, type AgentErrorMessageKey } from "../I18n/AgentMessageCatalog.js";
+import type { AgentErrorMessageKey } from "../I18n/AgentMessageCatalog.js";
 import type { ResolvedAgentUploadsConfig } from "../Types/AgentConfigTypes.js";
 import {
   AgentUploadFileNames,
@@ -17,6 +17,9 @@ import {
   resolveAgentUploadRoot,
 } from "./AgentUploadLocator.js";
 import { detectAgentUploadMime } from "./AgentUploadMime.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import {
   type AgentUploadAttachment,
   type AgentUploadManifest,
@@ -85,19 +88,27 @@ const AgentUploadFailureDefinitions = {
   },
 } as const satisfies Record<AgentUploadFailureKind, AgentUploadFailureDefinition>;
 
-export class AgentUploadError extends Error {
+export class AgentUploadError extends AgentLocalizedError {
   constructor(
-    message: string,
+    messageKey: AgentUploadFailureDefinition["messageKey"],
     readonly code: string,
     readonly statusCode: number,
   ) {
-    super(message);
-    this.name = "AgentUploadError";
+    super(messageKey);
   }
 
   static from(kind: AgentUploadFailureKind): AgentUploadError {
     const failure = AgentUploadFailureDefinitions[kind];
-    return new AgentUploadError(agentErrorMessage(failure.messageKey), failure.code, failure.statusCode);
+    return new AgentUploadError(failure.messageKey, failure.code, failure.statusCode);
+  }
+}
+
+export class AgentUploadIntegrityError extends AgentBaseError {
+  constructor(
+    readonly uploadUri: string,
+    readonly reason: "not_a_file" | "size_mismatch" | "sha256_mismatch",
+  ) {
+    super(`Upload integrity verification failed for ${uploadUri}: ${reason}.`);
   }
 }
 
@@ -240,15 +251,19 @@ export class AgentUploadStore {
     const uploadRoot = this.resolveRoot(this.config());
     const uploadDir = resolveAgentUploadDir(uploadRoot, uploadId);
     const manifestPath = resolveAgentUploadFile(uploadRoot, uploadId, AgentUploadFileNames.Manifest);
-    const manifest = AgentUploadManifestSchema.parse(JSON.parse(await fsp.readFile(manifestPath, "utf8")));
+    const manifest = AgentUploadManifestSchema.parse(
+      parseJsonText(await fsp.readFile(manifestPath, "utf8"), "Upload manifest"),
+    );
     if (manifest.uploadUri !== normalizedUri || manifest.uploadId !== uploadId) {
       return undefined;
     }
 
+    const filePath = resolveAgentUploadFile(uploadRoot, uploadId, manifest.storage.fileName);
+    await verifyUploadFileIntegrity(filePath, manifest);
     return {
       manifest,
       uploadDir,
-      filePath: resolveAgentUploadFile(uploadRoot, uploadId, manifest.storage.fileName),
+      filePath,
     };
   }
 
@@ -359,6 +374,17 @@ export class AgentUploadStore {
   }
 }
 
+async function verifyUploadFileIntegrity(filePath: string, manifest: AgentUploadManifest): Promise<void> {
+  const stat = await fsp.stat(filePath);
+  if (!stat.isFile()) throw new AgentUploadIntegrityError(manifest.uploadUri, "not_a_file");
+  if (stat.size !== manifest.size) throw new AgentUploadIntegrityError(manifest.uploadUri, "size_mismatch");
+  const hash = crypto.createHash("sha256");
+  for await (const chunk of fs.createReadStream(filePath)) hash.update(chunk);
+  if (hash.digest("hex") !== manifest.sha256) {
+    throw new AgentUploadIntegrityError(manifest.uploadUri, "sha256_mismatch");
+  }
+}
+
 interface ScanUploadRootOptions {
   uploadRoot: string;
   activeUploadIds: ReadonlySet<string>;
@@ -394,7 +420,7 @@ async function scanUploadRoot(options: ScanUploadRootOptions): Promise<AgentUplo
 async function readManifest(uploadDir: string): Promise<AgentUploadManifest | undefined> {
   return fsp
     .readFile(path.join(uploadDir, AgentUploadFileNames.Manifest), "utf8")
-    .then((value) => AgentUploadManifestSchema.parse(JSON.parse(value)))
+    .then((value) => AgentUploadManifestSchema.parse(parseJsonText(value, "Upload manifest")))
     .catch(() => undefined);
 }
 

@@ -1,9 +1,9 @@
 import { AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentConversationEntryMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
-import { parseAgentOpenAiTranscriptMessages } from "../Conversation/AgentOpenAiTranscript.js";
 import { AgentUploadAttachmentListSchema, type AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import type { EntryRow } from "./AgentSessionSqlRows.js";
-import { parsePlannerJournalRecord, parseToolEvidenceMemoryRecord } from "./AgentPlannerRecordCodec.js";
 
 export interface EncodedEntryRow {
   id: string;
@@ -47,14 +47,25 @@ export function rowToEntry(
   row: EntryRow,
   onDecodeIssue?: AgentConversationEntryDecodeIssueSink,
 ): AgentConversationEntry | undefined {
-  const data = JSON.parse(row.data) as {
+  let data: {
     content?: string;
     attachments?: unknown;
-    messages?: unknown;
     xml?: string;
-    record?: unknown;
     metadata?: unknown;
   };
+  try {
+    data = parseJsonText(row.data, "Conversation entry data") as typeof data;
+  } catch (error) {
+    onDecodeIssue?.({
+      entryId: row.id,
+      requestId: row.request_id,
+      kind: row.kind,
+      name: "transcript_parse_failed",
+      issueCount: 1,
+      issues: [errorMessage(error)],
+    });
+    return undefined;
+  }
   const base = {
     id: row.id,
     requestId: row.request_id,
@@ -78,43 +89,6 @@ export function rowToEntry(
         xml: data.xml ?? "",
         metadata,
       };
-    case AgentConversationEntryKinds.OpenAiTranscript:
-      return {
-        ...base,
-        kind: AgentConversationEntryKinds.OpenAiTranscript,
-        messages: parseAgentOpenAiTranscriptMessages(data.messages, (failure) =>
-          onDecodeIssue?.({
-            entryId: row.id,
-            requestId: row.request_id,
-            kind: row.kind,
-            name: "transcript_parse_failed",
-            issueCount: failure.issueCount,
-            issues: failure.issues,
-          }),
-        ),
-        metadata,
-      };
-    case AgentConversationEntryKinds.ContextToolResults:
-      return {
-        ...base,
-        kind: AgentConversationEntryKinds.ContextToolResults,
-        xml: data.xml ?? "",
-        metadata,
-      };
-    case AgentConversationEntryKinds.PlannerJournal:
-      return {
-        ...base,
-        kind: AgentConversationEntryKinds.PlannerJournal,
-        record: parsePlannerJournalRecord(data.record, row.request_id, row.timestamp),
-        metadata,
-      };
-    case AgentConversationEntryKinds.ToolEvidenceMemory:
-      return {
-        ...base,
-        kind: AgentConversationEntryKinds.ToolEvidenceMemory,
-        record: parseToolEvidenceMemoryRecord(data.record, row.request_id, row.timestamp),
-        metadata,
-      };
     default:
       return undefined;
   }
@@ -127,14 +101,8 @@ function encodeEntryData(entry: AgentConversationEntry): Record<string, unknown>
         content: entry.content,
         ...(entry.attachments && entry.attachments.length > 0 ? { attachments: entry.attachments } : {}),
       };
-    case AgentConversationEntryKinds.OpenAiTranscript:
-      return { messages: entry.messages };
     case AgentConversationEntryKinds.AssistantDecision:
-    case AgentConversationEntryKinds.ContextToolResults:
       return { xml: entry.xml };
-    case AgentConversationEntryKinds.PlannerJournal:
-    case AgentConversationEntryKinds.ToolEvidenceMemory:
-      return { record: entry.record };
   }
 }
 

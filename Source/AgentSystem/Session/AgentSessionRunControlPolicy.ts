@@ -1,17 +1,16 @@
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 
 export interface AgentSessionRunControlPolicy {
   readonly settlementTimeoutMs: number;
 }
 
-export class AgentSessionRunSettlementTimeoutError extends Error {
+export class AgentSessionRunSettlementTimeoutError extends AgentLocalizedError {
   constructor(
     readonly sessionId: string,
     readonly requestId: string,
     readonly timeoutMs: number,
   ) {
-    super(agentErrorMessage("session.runSettlementTimeout", { timeoutMs }));
-    this.name = "AgentSessionRunSettlementTimeoutError";
+    super("session.runSettlementTimeout", { timeoutMs });
   }
 }
 

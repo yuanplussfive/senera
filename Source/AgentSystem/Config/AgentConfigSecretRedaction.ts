@@ -1,4 +1,4 @@
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import type { AgentModelProviderEndpointConfig } from "../Types/AgentModelConfigTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentConfigSnapshot } from "./AgentConfigService.js";
@@ -69,7 +69,7 @@ export function restoreAgentProviderEndpointSecrets<Endpoint extends AgentEndpoi
   const restored = { ...endpoint };
   if (hasRedactedApiKey) {
     if (typeof baseline?.ApiKey !== "string" || baseline.ApiKey.length === 0) {
-      throw new Error(agentErrorMessage("config.secretPlaceholderApiKeyUnresolved", { providerId: endpoint.Id }));
+      throw new AgentLocalizedError("config.secretPlaceholderApiKeyUnresolved", { providerId: endpoint.Id });
     }
     Object.assign(restored, { ApiKey: baseline.ApiKey });
   }
@@ -78,12 +78,10 @@ export function restoreAgentProviderEndpointSecrets<Endpoint extends AgentEndpoi
     for (const name of redactedHeaderNames) {
       const baselineValue = baseline?.Headers?.[name];
       if (typeof baselineValue !== "string") {
-        throw new Error(
-          agentErrorMessage("config.secretPlaceholderHeaderUnresolved", {
-            providerId: endpoint.Id,
-            headerName: name,
-          }),
-        );
+        throw new AgentLocalizedError("config.secretPlaceholderHeaderUnresolved", {
+          providerId: endpoint.Id,
+          headerName: name,
+        });
       }
       headers[name] = baselineValue;
     }

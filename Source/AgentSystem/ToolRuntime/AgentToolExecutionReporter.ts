@@ -41,6 +41,14 @@ export interface AgentToolProgress {
   pollIntervalMs?: number;
 }
 
+interface AgentToolEventIdentity {
+  readonly callId: string;
+  readonly context: {
+    readonly requestId: string;
+    readonly step: number;
+  };
+}
+
 export class AgentToolExecutionReporter {
   private readonly decoders = {
     stdout: new StringDecoder("utf8"),
@@ -72,15 +80,16 @@ export class AgentToolExecutionReporter {
   }
 
   progress(progress: AgentToolProgress): void {
-    if (!this.progressEnabled()) return;
+    const identity = this.eventIdentity();
+    if (!identity || this.options.capabilities?.progress === false) return;
     const progressSequence = ++this.progressSequence;
     this.enqueue(() =>
       emitAgentEvent(this.options.onEvent, {
         kind: AgentEventKinds.ToolCallProgress,
-        context: this.eventContext(),
+        context: identity.context,
         data: {
           toolName: this.options.toolName,
-          callId: this.options.callId!,
+          callId: identity.callId,
           progressSequence,
           ...progress,
           batchId: this.options.batchId,
@@ -103,17 +112,18 @@ export class AgentToolExecutionReporter {
   }
 
   private enqueueOutput(stream: "stdout" | "stderr", text: string, byteLength: number, totalBytes: number): void {
-    if (!this.outputEnabled() && !this.options.outputSink) return;
+    const identity = this.eventIdentity();
+    if ((!identity || this.options.capabilities?.outputStreaming === false) && !this.options.outputSink) return;
     const outputSequence = ++this.outputSequence;
     this.enqueueOutputTask(async () => {
       await this.options.outputSink?.waitForDrain(stream);
-      if (!this.outputEnabled()) return;
+      if (!identity || this.options.capabilities?.outputStreaming === false) return;
       await emitAgentEvent(this.options.onEvent, {
         kind: AgentEventKinds.ToolCallOutput,
-        context: this.eventContext(),
+        context: identity.context,
         data: {
           toolName: this.options.toolName,
-          callId: this.options.callId!,
+          callId: identity.callId,
           stream,
           outputSequence,
           text,
@@ -145,24 +155,14 @@ export class AgentToolExecutionReporter {
     this.pending = this.pending.then(task).catch(() => undefined);
   }
 
-  private isEnabled(): boolean {
-    return Boolean(
-      this.options.onEvent && this.options.callId && this.options.requestId && this.options.step !== undefined,
-    );
-  }
-
-  private progressEnabled(): boolean {
-    return this.isEnabled() && this.options.capabilities?.progress !== false;
-  }
-
   private outputEnabled(): boolean {
-    return this.isEnabled() && this.options.capabilities?.outputStreaming !== false;
+    return Boolean(this.eventIdentity()) && this.options.capabilities?.outputStreaming !== false;
   }
 
-  private eventContext(): { requestId: string; step: number } {
-    return {
-      requestId: this.options.requestId!,
-      step: this.options.step!,
-    };
+  private eventIdentity(): AgentToolEventIdentity | undefined {
+    const { callId, requestId, step } = this.options;
+    return this.options.onEvent && callId && requestId && step !== undefined
+      ? { callId, context: { requestId, step } }
+      : undefined;
   }
 }

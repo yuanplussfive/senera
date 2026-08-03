@@ -1,114 +1,64 @@
-import type { PlannerEvidenceRecord } from "../ActionPlanner/AgentActionPlannerLedger.js";
 import {
   compactObject,
   readArray,
   readRecord,
   stringifyPreview,
 } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
-import { previewAgentText } from "../Text/AgentTextProjection.js";
-import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import { selectJsonValues } from "../Artifacts/AgentArtifactJsonSelector.js";
-import type { ToolObservationContinuationManifest, ToolObservationManifest } from "../Types/PluginManifestTypes.js";
-
-const ToolObservationTextLimits = {
-  lineValueChars: 2_000,
-  itemChars: 8_000,
-  jsonStringChars: 2_000,
-  jsonArrayItems: 24,
-  jsonObjectFields: 48,
-} as const;
-
-const ToolObservationTokenLimits = {
-  lineValueTokens: 500,
-  jsonStringTokens: 500,
-  projectionTokens: 4_000,
-  resultTokens: 4_000,
-  maxConfiguredResultTokens: 12_000,
-} as const;
-
-export interface AgentToolObservationRenderOptions {
-  model?: string;
-  observation?: ToolObservationManifest;
-}
-
-export function projectLedgerEvidenceForTimeline(record: PlannerEvidenceRecord): Record<string, unknown> {
-  return compactObject({
-    evidenceUri: record.evidenceUri,
-    kind: record.kind,
-    locator: record.locator,
-    display: record.display,
-    label: record.label,
-    source: record.source,
-    confidence: record.confidence,
-    artifactUri: record.artifactUri,
-    slots: record.modelSlots,
-  });
-}
+import type { ToolObservationContinuationManifest, ToolObservationManifest } from "../Types/AgentToolContractTypes.js";
+import { createAgentPiToolObservation } from "../Pi/AgentPiToolObservation.js";
 
 export function renderToolObservationContent(items: readonly Record<string, unknown>[]): string {
-  return items
-    .map(renderToolObservationItem)
-    .map((item) => previewAgentText(item, ToolObservationTextLimits.itemChars))
-    .join("\n\n");
+  return items.map(renderToolObservationItem).join("\n\n");
 }
 
 export function renderOpenAiToolObservationContent(
   item: Record<string, unknown>,
-  options: AgentToolObservationRenderOptions = {},
+  observationPolicy?: ToolObservationManifest,
 ): string {
-  return JSON.stringify(projectOpenAiToolObservation(item, createProjectionContext(options), options.observation));
+  return JSON.stringify(projectOpenAiToolObservation(item, observationPolicy));
 }
 
 export function projectOpenAiToolObservation(
   item: Record<string, unknown>,
-  context: AgentToolObservationProjectionContext = createProjectionContext(),
   observationPolicy?: ToolObservationManifest,
 ): Record<string, unknown> {
   const artifact = readRecord(item.artifact);
   const structuredSummary = readRecord(artifact?.structuredSummary);
   const evidence = readArray(item.evidence ?? artifact?.evidence);
-  const response = readRecord(item.response);
-  return compactObject({
-    type: "senera.tool_observation.v1",
-    tool_name: item.name,
-    call_id: item.callId,
-    status: readObservationStatus(item, response),
-    arguments: projectOpenAiObservationValueWithContext(item.arguments, context),
-    result: projectOpenAiResult(item.result, context, observationPolicy),
-    continuation: projectOpenAiContinuation(item.result, observationPolicy?.Continuation),
-    headline: projectOpenAiObservationValueWithContext(structuredSummary?.headline, context),
-    summary: projectOpenAiObservationValueWithContext(structuredSummary?.summary ?? artifact?.summary, context),
-    projection:
-      observationPolicy?.IncludeArtifactProjection === false
-        ? undefined
-        : projectOpenAiProjection(artifact?.projection, context),
-    summary_facts: projectOpenAiObservationValueWithContext(structuredSummary?.facts, context),
-    limitations: projectOpenAiObservationValueWithContext(structuredSummary?.limitations, context),
-    retrieval: projectOpenAiObservationValueWithContext(structuredSummary?.retrieval, context),
-    error: projectOpenAiObservationValueWithContext(item.error ?? response?.error, context),
-    artifact_uri: item.artifactUri ?? artifact?.artifactUri,
-    evidence: evidence.map(projectOpenAiEvidence),
-    delta: readArray(artifact?.delta).map(projectOpenAiDelta),
-    workspace: projectOpenAiObservationValueWithContext(artifact?.workspace, context),
-  });
+  return createAgentPiToolObservation(
+    compactObject({
+      tool_name: item.name,
+      call_id: item.callId,
+      batch_id: item.batchId,
+      status: item.status,
+      execution_status: item.execution_status,
+      output_availability: item.output_availability,
+      outcome: projectOpenAiObservationValue(item.outcome),
+      process: projectOpenAiObservationValue(item.process),
+      headline: projectOpenAiObservationValue(structuredSummary?.headline),
+      summary: projectOpenAiObservationValue(structuredSummary?.summary ?? artifact?.summary),
+      error: projectOpenAiObservationValue(item.error),
+      artifact_uri: item.artifactUri ?? artifact?.artifactUri,
+      retrieval: projectOpenAiObservationValue(structuredSummary?.retrieval),
+      continuation: projectOpenAiContinuation(item.result, observationPolicy?.Continuation),
+      result: projectOpenAiResult(item.result),
+      arguments: projectOpenAiObservationValue(item.arguments),
+      projection:
+        observationPolicy?.IncludeArtifactProjection === false
+          ? undefined
+          : projectOpenAiProjection(artifact?.projection),
+      summary_facts: projectOpenAiObservationValue(structuredSummary?.facts),
+      limitations: projectOpenAiObservationValue(structuredSummary?.limitations),
+      evidence: evidence.map(projectOpenAiEvidence),
+      delta: readArray(artifact?.delta).map(projectOpenAiDelta),
+      workspace: projectOpenAiObservationValue(artifact?.workspace),
+    }),
+  );
 }
 
-function projectOpenAiResult(
-  value: unknown,
-  context: AgentToolObservationProjectionContext,
-  policy: ToolObservationManifest | undefined,
-): unknown {
-  if (value === undefined) {
-    return undefined;
-  }
-  const configured = policy?.MaxTokens ?? ToolObservationTokenLimits.resultTokens;
-  const tokenLimit = Math.min(
-    ToolObservationTokenLimits.maxConfiguredResultTokens,
-    Math.max(1, Math.floor(configured)),
-  );
-  return context.tokenProjector
-    ? context.tokenProjector.previewJson(value, tokenLimit)
-    : projectOpenAiObservationValueWithContext(value, context);
+function projectOpenAiResult(value: unknown): unknown {
+  return value === undefined ? undefined : projectOpenAiObservationValue(value);
 }
 
 function projectOpenAiContinuation(
@@ -250,61 +200,24 @@ function projectOpenAiDelta(value: unknown): unknown {
   });
 }
 
-function projectOpenAiProjection(value: unknown, context: AgentToolObservationProjectionContext): unknown {
+function projectOpenAiProjection(value: unknown): unknown {
   if (typeof value !== "string" || value.trim().length === 0) {
     return undefined;
   }
 
-  return previewProjectionText(value, {
-    chars: ToolObservationTextLimits.itemChars,
-    tokens: ToolObservationTokenLimits.projectionTokens,
-    context,
-  });
+  return projectOpenAiObservationValue(value);
 }
 
-function readObservationStatus(item: Record<string, unknown>, response: Record<string, unknown> | undefined): string {
-  if (item.error || response?.error) {
-    return "failure";
-  }
-  if (response?.ok === false) {
-    return "failure";
-  }
-  if (response?.ok === true || item.result || item.artifact) {
-    return "success";
-  }
-  return String(item.status ?? "");
+function projectOpenAiObservationValue(value: unknown): unknown {
+  return projectOpenAiObservationValueWithContext(value);
 }
 
-function projectOpenAiObservationValue(value: unknown, depth = 0): unknown {
-  return projectOpenAiObservationValueWithContext(value, createProjectionContext(), depth);
-}
-
-interface AgentToolObservationProjectionContext {
-  tokenProjector?: AgentTokenProjector;
-}
-
-function createProjectionContext(
-  options: AgentToolObservationRenderOptions = {},
-): AgentToolObservationProjectionContext {
-  return {
-    tokenProjector: options.model ? new AgentTokenProjector(options.model) : undefined,
-  };
-}
-
-function projectOpenAiObservationValueWithContext(
-  value: unknown,
-  context: AgentToolObservationProjectionContext,
-  depth = 0,
-): unknown {
+function projectOpenAiObservationValueWithContext(value: unknown): unknown {
   if (value === undefined || value === null) {
     return undefined;
   }
   if (typeof value === "string") {
-    return previewProjectionText(value, {
-      chars: ToolObservationTextLimits.jsonStringChars,
-      tokens: ToolObservationTokenLimits.jsonStringTokens,
-      context,
-    });
+    return value;
   }
   if (typeof value === "number" || typeof value === "boolean") {
     return value;
@@ -312,33 +225,18 @@ function projectOpenAiObservationValueWithContext(
   if (typeof value === "bigint") {
     return String(value);
   }
-  if (depth >= 4) {
-    return previewProjectionText(stringifyPreview(value), {
-      chars: ToolObservationTextLimits.jsonStringChars,
-      tokens: ToolObservationTokenLimits.jsonStringTokens,
-      context,
-    });
-  }
   if (Array.isArray(value)) {
-    return value
-      .slice(0, ToolObservationTextLimits.jsonArrayItems)
-      .map((entry) => projectOpenAiObservationValueWithContext(entry, context, depth + 1));
+    return value.map((entry) => projectOpenAiObservationValueWithContext(entry));
   }
   const record = readRecord(value);
   if (!record) {
-    return previewProjectionText(stringifyPreview(value), {
-      chars: ToolObservationTextLimits.jsonStringChars,
-      tokens: ToolObservationTokenLimits.jsonStringTokens,
-      context,
-    });
+    return stringifyPreview(value);
   }
   return Object.fromEntries(
-    Object.entries(record)
-      .slice(0, ToolObservationTextLimits.jsonObjectFields)
-      .flatMap(([key, entry]) => {
-        const projected = projectOpenAiObservationValueWithContext(entry, context, depth + 1);
-        return projected === undefined ? [] : [[key, projected]];
-      }),
+    Object.entries(record).flatMap(([key, entry]) => {
+      const projected = projectOpenAiObservationValueWithContext(entry);
+      return projected === undefined ? [] : [[key, projected]];
+    }),
   );
 }
 
@@ -351,19 +249,5 @@ function renderOptionalLine(label: string, value: unknown): string[] {
 }
 
 function previewObservationValue(value: unknown): string {
-  const text = typeof value === "string" ? value : stringifyPreview(value);
-  return previewAgentText(text, ToolObservationTextLimits.lineValueChars);
-}
-
-function previewProjectionText(
-  input: string,
-  options: {
-    chars: number;
-    tokens: number;
-    context: AgentToolObservationProjectionContext;
-  },
-): string {
-  return options.context.tokenProjector
-    ? options.context.tokenProjector.previewText(input, options.tokens).text
-    : previewAgentText(input, options.chars);
+  return typeof value === "string" ? value : stringifyPreview(value);
 }

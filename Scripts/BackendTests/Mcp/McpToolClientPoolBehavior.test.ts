@@ -40,10 +40,11 @@ describe("MCP tool client pool", () => {
     const live = fakeClient(false);
     const open = vi.fn(async () => live.client);
     const pool = new AgentMcpToolClientPool(open);
+    const sharedConnection = connection();
 
     const values = await Promise.all([
-      pool.withClient(connection(), async () => "left"),
-      pool.withClient(connection(), async () => "right"),
+      pool.withClient(sharedConnection, async () => "left"),
+      pool.withClient(sharedConnection, async () => "right"),
     ]);
 
     expect(values).toEqual(["left", "right"]);
@@ -92,6 +93,22 @@ describe("MCP tool client pool", () => {
     );
   });
 
+  test.each([
+    ["request timeout", (base: ReturnType<typeof connection>) => ({ ...base, requestTimeoutMs: 2_000 })],
+    ["frame limit", (base: ReturnType<typeof connection>) => ({ ...base, maxFrameBytes: 2_048 })],
+    ["stderr limit", (base: ReturnType<typeof connection>) => ({ ...base, maxStderrBytes: 4_096 })],
+    [
+      "host cwd root",
+      (base: ReturnType<typeof connection>) => ({
+        ...base,
+        executionProfile: { ...base.executionProfile, hostCwdRoot: "C:/trusted-tools" },
+      }),
+    ],
+  ])("includes %s in the pool identity", (_label, mutate) => {
+    const base = connection();
+    expect(createAgentMcpToolClientPoolKey(base)).not.toBe(createAgentMcpToolClientPoolKey(mutate(base)));
+  });
+
   test("keeps pool identity stable across equivalent object key order", () => {
     const base = connection();
     const reorderedServer = Object.fromEntries(Object.entries(base.server).reverse()) as typeof base.server;
@@ -107,12 +124,37 @@ describe("MCP tool client pool", () => {
       createAgentMcpToolClientPoolKey({ ...base, interactionInput: new AgentInteractionInputRuntime() }),
     );
   });
+
+  test("separates catalog-watching clients from clients without list-change handling", () => {
+    const base = connection();
+    expect(createAgentMcpToolClientPoolKey(base)).not.toBe(
+      createAgentMcpToolClientPoolKey({ ...base, onToolsChanged: async () => undefined }),
+    );
+  });
+
+  test("separates clients with different injected behavior instances", () => {
+    const base = connection();
+    const firstHandler = async () => undefined;
+    const secondHandler = async () => undefined;
+    expect(createAgentMcpToolClientPoolKey(base)).not.toBe(
+      createAgentMcpToolClientPoolKey({
+        ...base,
+        spawnPersistentProcess: async () => {
+          throw new Error("different spawner");
+        },
+      }),
+    );
+    expect(createAgentMcpToolClientPoolKey({ ...base, onToolsChanged: firstHandler })).not.toBe(
+      createAgentMcpToolClientPoolKey({ ...base, onToolsChanged: secondHandler }),
+    );
+  });
 });
 
 function connection(): Omit<AgentMcpToolClientOptions, "signal"> {
   return {
     server: {
       id: "pool-fixture",
+      revision: "test",
       command: "node",
       args: ["server.js"],
       cwd: "C:/workspace",

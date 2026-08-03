@@ -5,6 +5,8 @@ import { AgentSessionStatuses, type AgentSession, type AgentSessionStatus } from
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export function deriveAgentSessionTitle(session: AgentSession): string {
+  const explicitTitle = readStoredTitle(session.metadata?.title);
+  if (explicitTitle) return explicitTitle;
   const firstUser = session.conversation.find((entry) => entry.kind === AgentConversationEntryKinds.UserMessage);
   if (firstUser?.kind === AgentConversationEntryKinds.UserMessage) {
     const text = firstUser.content.replace(/\s+/g, " ").trim();

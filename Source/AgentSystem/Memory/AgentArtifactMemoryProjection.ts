@@ -1,7 +1,7 @@
 import path from "node:path";
 import { assertInsideRoot, toPosixPath } from "../Artifacts/AgentArtifactLocator.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { ReadableArtifactRef } from "./AgentArtifactMemoryTypes.js";
-import { ReadableArtifactRefDefinitions } from "./AgentArtifactMemoryTypes.js";
 
 const EmptyArtifactInternalRoutingFields = new Set<string>();
 
@@ -26,31 +26,11 @@ const ArtifactInternalRoutingFieldsByRef: Partial<Record<ReadableArtifactRef, Re
   workspaceDiff: ArtifactWrapperInternalRoutingFields,
 };
 
-export function decodeArtifactMemoryContent(
-  ref: ReadableArtifactRef,
-  data: Buffer,
-  options: {
-    workspaceRoot: string;
-  },
-): string {
-  const text = data.toString("utf8");
-  if (ReadableArtifactRefDefinitions[ref].format === "text") {
-    return text;
-  }
-
-  const parsed = JSON.parse(text) as unknown;
-  return `${JSON.stringify(projectModelSafeJson(ref, parsed, options.workspaceRoot), null, 2)}\n`;
-}
-
 export interface Utf8RangeSlice {
   text: string;
   startByte: number;
   endByte: number;
   totalBytes: number;
-}
-
-export function sliceUtf8Range(value: string, requestedStartByte: number, maxBytes: number): Utf8RangeSlice {
-  return sliceUtf8Buffer(Buffer.from(value, "utf8"), requestedStartByte, maxBytes);
 }
 
 export function sliceUtf8Buffer(encoded: Buffer, requestedStartByte: number, maxBytes: number): Utf8RangeSlice {
@@ -89,24 +69,38 @@ function isUtf8ContinuationByte(value: number): boolean {
   return (value & 0xc0) === 0x80;
 }
 
-function projectModelSafeJson(ref: ReadableArtifactRef, value: unknown, workspaceRoot: string): unknown {
+export function projectArtifactJsonForModel(ref: ReadableArtifactRef, value: unknown, workspaceRoot: string): unknown {
   if (Array.isArray(value)) {
-    return value.map((entry) => projectModelSafeJson(ref, entry, workspaceRoot));
+    return value.map((entry) => projectArtifactJsonForModel(ref, entry, workspaceRoot));
   }
 
   if (!value || typeof value !== "object") {
     return projectModelSafeScalar(value, workspaceRoot);
   }
 
-  const hiddenFields = ArtifactInternalRoutingFieldsByRef[ref] ?? EmptyArtifactInternalRoutingFields;
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>).flatMap(([key, entry]) => {
-      if (hiddenFields.has(key)) {
+      if (!isArtifactJsonFieldVisibleForModel(ref, key)) {
         return [];
       }
-      return [[key, projectModelSafeJson(ref, entry, workspaceRoot)]];
+      return [[key, projectArtifactJsonForModel(ref, entry, workspaceRoot)]];
     }),
   );
+}
+
+export function isArtifactJsonFieldVisibleForModel(ref: ReadableArtifactRef, field: string): boolean {
+  return !artifactJsonHiddenFields(ref).has(field);
+}
+
+export function artifactJsonProjectionPolicyHash(ref: ReadableArtifactRef): string {
+  return sha256HexOfCanonicalJson({
+    ref,
+    hiddenFields: [...artifactJsonHiddenFields(ref)].sort(),
+  });
+}
+
+function artifactJsonHiddenFields(ref: ReadableArtifactRef): ReadonlySet<string> {
+  return ArtifactInternalRoutingFieldsByRef[ref] ?? EmptyArtifactInternalRoutingFields;
 }
 
 function projectModelSafeScalar(value: unknown, workspaceRoot: string): unknown {

@@ -13,7 +13,7 @@ import {
 import { zodIssuesToAgentStructuredIssues, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 
-export interface RawActionPlanningFailure {
+interface RawActionPlanningFailure {
   error: unknown;
   invalidOutput?: unknown;
 }
@@ -130,35 +130,6 @@ export function summarizePlannerFailure(error: unknown): string {
   return error instanceof Error ? truncateOneLine(error.message, 160) : truncateOneLine(String(error), 160);
 }
 
-export function collectPlannerFailureToolNames(error: unknown): string[] {
-  const names = new Set<string>();
-  const visited = new Set<unknown>();
-
-  const visit = (value: unknown): void => {
-    if (value == null || visited.has(value)) return;
-    if (typeof value === "object") visited.add(value);
-
-    if (value instanceof AgentStructuredOutputValidationError) {
-      collectToolNames(value.invalidOutput, names);
-      return;
-    }
-    if (value instanceof AgentBamlModelCallError) {
-      visit(value.originalError);
-      return;
-    }
-    if (value instanceof AgentBamlStructuredOutputError) {
-      visit(value.originalError);
-      return;
-    }
-    if (value instanceof Error) {
-      visit(value.cause);
-    }
-  };
-
-  visit(error);
-  return [...names];
-}
-
 function summarizePlannerModelCallFailure(error: AgentBamlModelCallError): string {
   const original = error.originalError;
   if (original instanceof BamlTimeoutError) return "action_planner_timeout";
@@ -168,20 +139,6 @@ function summarizePlannerModelCallFailure(error: AgentBamlModelCallError): strin
   if (original instanceof BamlAbortError) return "action_planner_aborted";
   if (original instanceof BamlClientFinishReasonError) return "action_planner_incomplete_output";
   return withPlannerDetails("action_planner_model_request_failed", error.issues);
-}
-
-function collectToolNames(value: unknown, names: Set<string>): void {
-  if (!value || typeof value !== "object") return;
-  if (Array.isArray(value)) {
-    value.forEach((entry) => collectToolNames(entry, names));
-    return;
-  }
-
-  const record = value as Record<string, unknown>;
-  if (typeof record.toolName === "string" && record.toolName.trim()) {
-    names.add(record.toolName.trim());
-  }
-  Object.values(record).forEach((entry) => collectToolNames(entry, names));
 }
 
 function withPlannerDetails(code: string, details: string | readonly string[]): string {

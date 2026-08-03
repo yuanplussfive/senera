@@ -67,6 +67,43 @@ describe("upload governance behavior", () => {
     await expect(fs.stat(resolved!.uploadDir)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  test("rejects same-size upload content whose digest no longer matches the manifest", async () => {
+    const harness = createStore();
+    const attachment = await saveText(harness.store, "notes.txt", "hello uploads");
+    const resolved = await harness.store.resolve(attachment.uploadUri);
+    await fs.writeFile(resolved!.filePath, "jello uploads", "utf8");
+
+    await expect(harness.store.resolve(attachment.uploadUri)).rejects.toMatchObject({
+      uploadUri: attachment.uploadUri,
+      reason: "sha256_mismatch",
+    });
+  });
+
+  test("rejects upload content whose stored size no longer matches the manifest", async () => {
+    const harness = createStore();
+    const attachment = await saveText(harness.store, "notes.txt", "hello uploads");
+    const resolved = await harness.store.resolve(attachment.uploadUri);
+    await fs.appendFile(resolved!.filePath, " changed", "utf8");
+
+    await expect(harness.store.resolve(attachment.uploadUri)).rejects.toMatchObject({
+      uploadUri: attachment.uploadUri,
+      reason: "size_mismatch",
+    });
+  });
+
+  test("rejects an upload path that no longer points to a regular file", async () => {
+    const harness = createStore();
+    const attachment = await saveText(harness.store, "notes.txt", "hello uploads");
+    const resolved = await harness.store.resolve(attachment.uploadUri);
+    await fs.rm(resolved!.filePath);
+    await fs.mkdir(resolved!.filePath);
+
+    await expect(harness.store.resolve(attachment.uploadUri)).rejects.toMatchObject({
+      uploadUri: attachment.uploadUri,
+      reason: "not_a_file",
+    });
+  });
+
   test("rejects a file that crosses the per-file byte limit and removes partial data", async () => {
     const harness = createStore({ MaxFileBytes: 4 });
 

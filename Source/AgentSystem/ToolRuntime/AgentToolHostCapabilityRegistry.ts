@@ -1,21 +1,25 @@
 import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import type { AgentPluginRegistryLike } from "../Types/ToolRuntimeTypes.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import type { AgentExtensionRegistryLike } from "../Types/ToolRuntimeTypes.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { AgentToolExecutionReporter } from "./AgentToolExecutionReporter.js";
 import { resolveAgentToolRuntimeCapabilities } from "./AgentToolRuntimeCapabilities.js";
 import type { AgentToolExecutionPlan } from "./AgentToolExecutionPlan.js";
+import type { AgentToolTokenBudget } from "../Text/AgentTurnTokenBudget.js";
+import type { AgentToolExposureState } from "./AgentToolExposureState.js";
+import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 
 export interface AgentHostToolContext {
   tool: RegisteredTool;
   config: AgentSystemConfig;
   configPath?: string;
   workspaceRoot: string;
-  registry: AgentPluginRegistryLike;
+  registry: AgentExtensionRegistryLike;
   executionEnv: SeneraExecutionEnv;
+  uploadStore?: Pick<AgentUploadStore, "resolve">;
   sessionId?: string;
   requestId?: string;
   step?: number;
@@ -23,9 +27,12 @@ export interface AgentHostToolContext {
   batchId?: string;
   onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
+  toolExposure?: AgentToolExposureState;
   signal?: AbortSignal;
   executionPlan?: AgentToolExecutionPlan;
   reporter?: AgentToolExecutionReporter;
+  resources?: Readonly<Record<string, unknown>>;
+  tokenBudget?: AgentToolTokenBudget;
 }
 
 export interface AgentHostToolReportingScope {
@@ -70,7 +77,7 @@ export class AgentToolHostCapabilityRegistry {
     contractProjection?: AgentHostToolContractProjection,
   ): this {
     if (this.handlers.has(capability)) {
-      throw new Error(agentErrorMessage("tool.hostCapabilityDuplicate", { capability }));
+      throw new AgentLocalizedError("tool.hostCapabilityDuplicate", { capability });
     }
 
     this.handlers.set(capability, handler);

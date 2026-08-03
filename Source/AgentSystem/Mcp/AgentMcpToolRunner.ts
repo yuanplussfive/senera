@@ -4,35 +4,42 @@ import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessT
 import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 import type { AgentToolRunnerContext } from "../ToolRuntime/AgentToolRunner.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
-import { buildAgentMcpExecutionProfile } from "./AgentMcpExecutionProfile.js";
-import { resolveMcpServerManifest } from "./AgentMcpManifestResolver.js";
+import { createAgentMcpExecutionProfile } from "./AgentMcpExecutionProfile.js";
 import { withAgentMcpToolClient } from "./AgentMcpToolClient.js";
 import { AgentMcpToolClientPool } from "./AgentMcpToolClientPool.js";
 import type { AgentMcpToolCallOptions, AgentMcpToolClient, AgentMcpToolProgress } from "./AgentMcpToolClient.js";
+import type { AgentMcpToolsChangedHandler } from "./AgentMcpToolCatalogChange.js";
 import { AgentToolExecutionReporter } from "../ToolRuntime/AgentToolExecutionReporter.js";
 import { resolveAgentToolRuntimeCapabilities } from "../ToolRuntime/AgentToolRuntimeCapabilities.js";
-import { projectAgentMcpPluginRuntimeEnvironment } from "./AgentMcpPluginRuntimeEnvironment.js";
-import { projectAgentMcpResourceArguments } from "./AgentMcpResourceArgumentProjector.js";
-import { createAgentMcpDefaultResourceCapabilities } from "./AgentMcpDefaultResourceCapabilities.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import type { AgentInteractionInputOwner } from "../Interaction/AgentInteractionInputTypes.js";
-import type { AgentMcpRuntimeModuleResolver } from "./AgentMcpRuntimeModuleResolver.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { agentUnknownRecordOrEmpty, isAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
+import { createAgentMcpSamplingHandler, type AgentMcpSamplingHandler } from "./AgentMcpSamplingRuntime.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 
 export interface AgentMcpToolRunnerOptions {
   config: AgentSystemConfig;
-  workspaceRoot: string;
-  runtimeModuleResolver: AgentMcpRuntimeModuleResolver;
   executionEnv: SeneraExecutionEnv;
   interactionInput?: AgentInteractionInputRuntime;
+  modelProviderId?: string;
+  onToolsChanged?: AgentMcpToolsChangedHandler;
+  clientPool?: AgentMcpToolClientPool;
+  sampling?: AgentMcpSamplingHandler;
 }
 
 export class AgentMcpToolRunner {
-  private readonly clients = new AgentMcpToolClientPool();
+  private readonly clients: AgentMcpToolClientPool;
+  private readonly ownsClientPool: boolean;
+  private readonly sampling: AgentMcpSamplingHandler;
 
-  constructor(private readonly options: AgentMcpToolRunnerOptions) {}
+  constructor(private readonly options: AgentMcpToolRunnerOptions) {
+    this.clients = options.clientPool ?? new AgentMcpToolClientPool();
+    this.ownsClientPool = !options.clientPool;
+    this.sampling = options.sampling ?? createAgentMcpSamplingHandler(options.config, options.modelProviderId);
+  }
 
   async run(
     tool: RegisteredTool,
@@ -47,41 +54,21 @@ export class AgentMcpToolRunner {
     }
 
     const handler = tool.handler;
-    const server = tool.plugin.manifest.McpServers?.find((item) => item.Id === handler.server);
-    if (!server) {
-      return mcpToolFailure(`MCP server 没有声明：${handler.server}`, {
-        toolName: tool.name,
-        serverId: handler.server,
-      });
-    }
-
+    const toolExecution = resolveToolExecutionConfig(this.options.config);
     try {
-      const toolExecution = resolveToolExecutionConfig(this.options.config);
-      const resolvedServer = projectAgentMcpPluginRuntimeEnvironment(
-        resolveMcpServerManifest(server, {
-          workspaceRoot: this.options.workspaceRoot,
-          pluginRoot: tool.plugin.rootPath,
-          runtimeModuleResolver: this.options.runtimeModuleResolver,
-        }),
-        tool.plugin.manifest,
-        handler.server,
-      );
-      const executionProfile = buildAgentMcpExecutionProfile(tool, requireExecutionPlan(tool, context));
+      const executionPlan = requireExecutionPlan(tool, context);
+      const executionProfile = createAgentMcpExecutionProfile({
+        backend: executionPlan.backend,
+        network: executionPlan.network,
+        workspaceMount: executionPlan.workspaceMount,
+        packageRoot: handler.server.transport === "http" ? undefined : handler.server.packageRoot,
+      });
       const runtime = resolveAgentToolRuntimeCapabilities(tool);
       if (runtime.interactiveInput && !this.options.interactionInput) {
         throw new Error(`Interactive MCP tool ${tool.name} requires the host interaction-input runtime.`);
       }
-      const normalizedArgs = await projectAgentMcpResourceArguments(
-        args,
-        handler.resources,
-        createAgentMcpDefaultResourceCapabilities({
-          config: this.options.config,
-          workspaceRoot: this.options.workspaceRoot,
-          executionEnv: this.options.executionEnv,
-        }),
-      );
       const connection = {
-        server: resolvedServer,
+        server: handler.server,
         requestTimeoutMs: toolExecution.TimeoutMs,
         spawnPersistentProcess: this.options.executionEnv.spawnPersistentProcess,
         executionProfile,
@@ -89,6 +76,8 @@ export class AgentMcpToolRunner {
         maxFrameBytes: Math.max(toolExecution.MaxStdoutBytes, toolExecution.MaxStderrBytes),
         maxStderrBytes: toolExecution.MaxStderrBytes,
         interactionInput: runtime.interactiveInput ? this.options.interactionInput : undefined,
+        sampling: this.sampling,
+        onToolsChanged: this.options.onToolsChanged,
       };
       const callOptions: AgentMcpToolCallOptions = {
         signal: context.signal,
@@ -123,7 +112,7 @@ export class AgentMcpToolRunner {
                 })
             : undefined,
       };
-      const callTool = (client: AgentMcpToolClient) => client.callTool(handler.tool, normalizedArgs, callOptions);
+      const callTool = (client: AgentMcpToolClient) => client.callTool(handler.tool, args, callOptions);
       const callPooledTool = (): Promise<unknown> =>
         runtime.lifecycle === "remote-job"
           ? this.clients.withRecoverableTask(connection, callTool, callOptions, (error) => {
@@ -140,21 +129,30 @@ export class AgentMcpToolRunner {
           ? await callPooledTool()
           : await withAgentMcpToolClient({ ...connection, signal: context.signal }, callTool);
 
-      if (readRecord(result).isError === true) {
-        throw new Error(extractMcpText(result) || `MCP tool ${handler.tool} failed.`);
+      if (agentUnknownRecordOrEmpty(result).isError === true) {
+        return mcpToolFailure(extractMcpText(result) || `MCP tool ${handler.tool} failed.`, {
+          toolName: tool.name,
+          serverId: handler.server,
+          mcpToolName: handler.tool,
+          mcpIsError: true,
+        });
       }
-      return toolProcessSuccessResult(projectMcpToolResult(result));
+      return toolProcessSuccessResult(projectAgentMcpToolResult(result));
     } catch (error) {
-      return mcpToolFailure(errorMessage(error), {
-        toolName: tool.name,
-        serverId: handler.server,
-        mcpToolName: handler.tool,
-      });
+      return mcpToolFailure(
+        error,
+        {
+          toolName: tool.name,
+          serverId: handler.server,
+          mcpToolName: handler.tool,
+        },
+        { signal: context.signal, timeoutMs: toolExecution.TimeoutMs },
+      );
     }
   }
 
   close(): Promise<void> {
-    return this.clients.close();
+    return this.ownsClientPool ? this.clients.close() : Promise.resolve();
   }
 }
 
@@ -197,49 +195,45 @@ function reportMcpProgress(reporter: AgentToolExecutionReporter, progress: Agent
   });
 }
 
-function projectMcpToolResult(result: unknown): unknown {
-  const record = readRecord(result);
-  const structured = readRecord(record.structuredContent);
-  const text = extractMcpText(record);
-  const protocolFields = Object.fromEntries(Object.entries(record).filter(([key]) => key !== "structuredContent"));
-  if (Object.keys(structured).length > 0) {
-    return {
-      ...protocolFields,
-      ...structured,
-      text: typeof structured.text === "string" ? structured.text : text,
-    };
-  }
-  return {
-    ...protocolFields,
-    text,
-  };
+export function projectAgentMcpToolResult(result: unknown): unknown {
+  const record = agentUnknownRecordOrEmpty(result);
+  return isAgentUnknownRecord(record.structuredContent) ? record.structuredContent : { text: extractMcpText(record) };
 }
 
 function extractMcpText(value: unknown): string {
-  const record = readRecord(value);
-  const structured = readRecord(record.structuredContent);
+  const record = agentUnknownRecordOrEmpty(value);
+  const structured = agentUnknownRecordOrEmpty(record.structuredContent);
   if (typeof structured.content === "string") {
     return structured.content;
   }
 
   const content = Array.isArray(record.content) ? record.content : [];
   return content
-    .map((item) => readRecord(item).text)
+    .map((item) => agentUnknownRecordOrEmpty(item).text)
     .filter((text): text is string => typeof text === "string")
     .join("\n");
 }
 
-function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function mcpToolFailure(message: string, details: Record<string, unknown>): AgentToolProcessRunResult {
+function mcpToolFailure(
+  error: unknown,
+  details: Record<string, unknown>,
+  context: { signal?: AbortSignal; timeoutMs?: number } = {},
+): AgentToolProcessRunResult {
+  const timedOut = error instanceof McpError && error.code === ErrorCode.RequestTimeout;
+  const cancelled = context.signal?.aborted === true;
+  const code = timedOut
+    ? AgentExecutionErrorCodes.ToolProcessTimeout
+    : cancelled
+      ? AgentExecutionErrorCodes.ToolProcessCancelled
+      : AgentExecutionErrorCodes.ToolExecutionError;
   return toolProcessFailureResult({
-    code: AgentExecutionErrorCodes.PluginExecutionError,
-    message,
+    code,
+    message: errorMessage(error),
     details: {
       phase: AgentToolProcessErrorPhases.RuntimeExecution,
       ...details,
+      ...(timedOut && context.timeoutMs !== undefined ? { timeoutMs: context.timeoutMs } : {}),
+      ...(error instanceof McpError ? { mcpErrorCode: error.code } : {}),
     },
   });
 }

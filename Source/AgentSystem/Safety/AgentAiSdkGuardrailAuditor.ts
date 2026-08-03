@@ -13,6 +13,7 @@ import { moduleDirPath } from "../Core/AgentPath.js";
 import { AgentPermissionActions, type AgentPermissionDecision } from "./AgentSafetyTypes.js";
 import type { AgentToolApprovalPolicyInput } from "./AgentToolApprovalPolicy.js";
 import type { AgentToolGuardrailAuditor } from "./AgentToolGuardrailAudit.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 const ProfileFileName = "AgentAiSdkGuardrailAuditProfile.json";
 
@@ -128,7 +129,7 @@ function projectRequestContext(input: AgentToolApprovalPolicyInput): Record<stri
     step: input.step,
     toolName: input.toolName,
     toolPermissions: input.tool?.permissions ?? [],
-    visibleToolNames: input.visibleToolNames,
+    toolAccessGrant: input.toolAccessGrant,
     runtimeContext: input.runtimeContext,
   };
 }
@@ -167,7 +168,8 @@ function toolCallIdForInput(input: AgentToolApprovalPolicyInput): string {
 }
 
 function readDefaultProfile(): AgentAiSdkGuardrailAuditProfile {
-  return JSON.parse(
+  return parseJsonText(
     fs.readFileSync(path.join(moduleDirPath(import.meta.url), ProfileFileName), "utf8"),
+    "AI SDK guardrail audit profile",
   ) as AgentAiSdkGuardrailAuditProfile;
 }

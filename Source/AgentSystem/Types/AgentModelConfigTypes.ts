@@ -100,7 +100,7 @@ export interface ResolvedAgentModelProviderConfig {
   ProviderId: string;
   Icon?: string;
   Capabilities?: AgentModelCapabilitiesConfig;
-  ContextWindowTokens?: number;
+  ContextWindowTokens: number;
   MaxModelOutputTokens?: number;
   Kind: "OpenAICompatible";
   Endpoint: AgentModelEndpointKind;

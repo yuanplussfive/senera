@@ -85,11 +85,12 @@ describe("WebSocket event delivery", () => {
 
   it("keeps permanent persistence failures observable instead of silently dropping them", async () => {
     const failures: unknown[] = [];
+    const recordRunEvents = vi.fn(() => {
+      throw new Error("database is closed");
+    });
     const sender = new AgentWebSocketEventEnvelopeSender({
       logger: { warn: vi.fn(), error: vi.fn() } as unknown as AgentLogger,
-      eventWriter: new AgentCallbackRunEventWriter(() => {
-        throw new Error("database is closed");
-      }),
+      eventWriter: new AgentCallbackRunEventWriter(recordRunEvents),
       persistence: { maxAttempts: 2, retryDelayMs: 1, onFailure: (failure) => failures.push(failure) },
     });
 
@@ -98,6 +99,11 @@ describe("WebSocket event delivery", () => {
 
     expect(failures).toHaveLength(1);
     expect(sender.persistenceHealth()).toMatchObject({ pendingEvents: 1, failedEvents: 1, overflowEvents: 0 });
+
+    await expect(sender.close()).rejects.toThrow("database is closed");
+    await expect(sender.close()).rejects.toThrow("database is closed");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(recordRunEvents).toHaveBeenCalledTimes(2);
   });
 
   it("backpressures at the queue watermark without evicting history events", async () => {
@@ -106,7 +112,7 @@ describe("WebSocket event delivery", () => {
     const sender = new AgentWebSocketEventEnvelopeSender({
       logger: { warn: vi.fn(), error: vi.fn() } as unknown as AgentLogger,
       eventWriter: new AgentCallbackRunEventWriter(recordRunEvents),
-      persistence: { maxPendingEvents: 1, onFailure: (failure) => failures.push(failure) },
+      persistence: { maxPendingEvents: 2, onFailure: (failure) => failures.push(failure) },
     });
 
     void sender.broadcast([], resourceOutputEvent("first"));
@@ -117,6 +123,47 @@ describe("WebSocket event delivery", () => {
     expect(recordRunEvents).toHaveBeenCalledOnce();
     expect(recordRunEvents.mock.calls[0]?.[0]).toHaveLength(2);
     expect(sender.persistenceHealth()).toMatchObject({ pendingEvents: 0 });
+  });
+
+  it("enforces a hard queue capacity and reports overflow without growing the resident queue", async () => {
+    const failures: Array<{ reason: string; attempts: number }> = [];
+    const recordRunEvents = vi.fn();
+    const sender = new AgentWebSocketEventEnvelopeSender({
+      logger: { warn: vi.fn(), error: vi.fn() } as unknown as AgentLogger,
+      eventWriter: new AgentCallbackRunEventWriter(recordRunEvents),
+      persistence: {
+        maxPendingEvents: 2,
+        onFailure: ({ reason, attempts }) => failures.push({ reason, attempts }),
+      },
+    });
+
+    const first = sender.broadcast([], resourceOutputEvent("first"));
+    const second = sender.broadcast([], resourceOutputEvent("second"));
+    await expect(sender.broadcast([], resourceOutputEvent("overflow"))).rejects.toThrow("hard limit of 2");
+    expect(sender.persistenceHealth()).toMatchObject({ pendingEvents: 2, overflowEvents: 1 });
+
+    await Promise.all([first, second]);
+    await sender.flush();
+
+    expect(recordRunEvents).toHaveBeenCalledOnce();
+    expect(recordRunEvents.mock.calls[0]?.[0]).toHaveLength(2);
+    expect(failures).toEqual([{ reason: "queue_overflow", attempts: 0 }]);
+    expect(sender.persistenceHealth()).toMatchObject({ activeQueues: 0, pendingEvents: 0, overflowEvents: 1 });
+  });
+
+  it("rejects invalid persistence watermarks instead of truncating fractional values", () => {
+    const create = (persistence: ConstructorParameters<typeof AgentWebSocketEventEnvelopeSender>[0]["persistence"]) =>
+      new AgentWebSocketEventEnvelopeSender({
+        logger: { warn: vi.fn(), error: vi.fn() } as unknown as AgentLogger,
+        eventWriter: new AgentCallbackRunEventWriter(vi.fn()),
+        persistence,
+      });
+
+    expect(() => create({ maxPendingEvents: 1.5 })).toThrow("positive safe integer");
+    expect(() => create({ maxPendingEvents: 2, backpressureAtEvents: 3 })).toThrow("between 1 and maxPendingEvents");
+    expect(() => create({ maxPendingEvents: 2, backpressureAtEvents: 1, resumeAtEvents: 1 })).toThrow(
+      "less than backpressureAtEvents",
+    );
   });
 });
 

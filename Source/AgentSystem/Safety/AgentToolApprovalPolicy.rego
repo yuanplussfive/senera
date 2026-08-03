@@ -41,14 +41,14 @@ decision := {
 } else := {
   "decision": "requires-approval",
   "reason": data.senera.tool_approval.Reasons.RequiresApproval,
-  "rule": "plugin.security.requires_approval",
+  "rule": "tool.security.requires_approval",
   "riskSignals": risk_signals,
 } if {
   input.tool.security.RequiresApproval == true
 } else := {
   "decision": "requires-approval",
   "reason": data.senera.tool_approval.Reasons.Untrusted,
-  "rule": "plugin.security.untrusted",
+  "rule": "tool.security.untrusted",
   "riskSignals": risk_signals,
 } if {
   input.tool.security.TrustLevel == "Untrusted"

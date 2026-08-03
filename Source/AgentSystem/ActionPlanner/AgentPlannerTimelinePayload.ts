@@ -1,3 +1,5 @@
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
+
 export const AgentPlannerTimelinePayloadKeys = {
   Message: "message",
   UserMessage: "userMessage",
@@ -20,5 +22,5 @@ export function decodePlannerTimelinePayload(value: string | undefined): unknown
     return undefined;
   }
 
-  return JSON.parse(value) as unknown;
+  return parseJsonText(value, "Planner timeline payload");
 }

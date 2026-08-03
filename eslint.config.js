@@ -20,6 +20,8 @@ const NodeFiles = [
   "*.config.{js,mjs,cjs,ts}",
   "Apps/**/*.{js,mjs,cjs,ts}",
   "Build/**/*.{js,mjs,cjs,ts}",
+  "McpRuntime/**/*.{js,mjs,cjs,ts}",
+  "McpServers/**/*.{js,mjs,cjs,ts}",
   "Packages/**/*.{js,mjs,cjs,ts}",
   "Plugins/**/*.{js,mjs,cjs,ts}",
   "Scripts/**/*.{js,mjs,cjs,ts}",
@@ -51,6 +53,7 @@ export default tseslint.config(
       "Source/AgentSystem/BamlClient/baml_client/**",
       "Plugins/**/Schemas/**/*.js",
       "senera-evaluation/**",
+      "senera-code-review/**",
       "senera-project-analysis/**",
       "tmp/**",
     ],
@@ -112,6 +115,12 @@ export default tseslint.config(
     rules: {
       "react-hooks/exhaustive-deps": "error",
       "react-hooks/rules-of-hooks": "error",
+    },
+  },
+  {
+    files: ["Source/AgentSystem/{Pi,ToolRuntime}/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-non-null-assertion": "error",
     },
   },
   {

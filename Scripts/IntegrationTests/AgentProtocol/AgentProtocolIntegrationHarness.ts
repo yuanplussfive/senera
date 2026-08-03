@@ -21,7 +21,9 @@ import type { AgentRunRequest } from "../../../Source/AgentSystem/Loop/AgentLoop
 import { AgentLocalAdminAccountStore } from "../../../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
 import { AgentConfigService } from "../../../Source/AgentSystem/Config/AgentConfigService.js";
 import { resolveAgentLoopConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
+import { resolveAgentWorkspaceLayout } from "../../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import { createAgentRequestCancellationResource } from "../../../Source/AgentSystem/Session/AgentSessionRunResource.js";
+import { AgentPiTurnContextRegistry } from "../../../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
 
 export interface AgentProtocolIntegrationHarness {
   readonly workspaceRoot: string;
@@ -58,7 +60,7 @@ export async function createAgentProtocolIntegrationHarness(
     workspaceRoot,
     source: {
       kind: "sqlite",
-      databasePath: path.join(workspaceRoot, ".senera", "Config.sqlite"),
+      databasePath: resolveAgentWorkspaceLayout(workspaceRoot).databases.config,
       seedConfig: config,
     },
   });
@@ -91,6 +93,7 @@ export async function createAgentProtocolIntegrationHarness(
     approvalRuntime,
     sandboxRuntimeService,
     logger: new AgentLogger(),
+    piTurnContexts: new AgentPiTurnContextRegistry(),
   });
   await server.start();
 
@@ -282,6 +285,7 @@ async function defaultScriptedLoopHandler(request: AgentRunRequest): Promise<Age
     },
     decisionXml: `<FinalAnswer><answer>E2E response: ${escapeXml(request.input)}</answer></FinalAnswer>`,
     conversationEntries: [],
+    executedTools: [],
     stepTraces: [
       {
         step: 1,
@@ -336,10 +340,6 @@ function createIntegrationConfig(
       },
       SandboxRuntime: {
         BaseDir: ".senera/sandbox-runtime",
-      },
-      PluginRoots: {
-        System: [],
-        User: [],
       },
     },
     DefaultModelProviderId: "e2e",

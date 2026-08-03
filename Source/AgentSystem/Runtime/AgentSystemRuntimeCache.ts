@@ -6,11 +6,13 @@ import { AgentSystemRuntime } from "./AgentSystemRuntime.js";
 import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import { createAgentRuntimePreparationFingerprint } from "./AgentRuntimePreparationFingerprint.js";
-import type { AgentMcpRuntimeModuleResolver } from "../Mcp/AgentMcpRuntimeModuleResolver.js";
 import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 import type { SeneraMicrosandboxSdkAdapter } from "../Execution/SeneraMicrosandboxTypes.js";
 import type { SeneraGvisorWorkerClient } from "../Execution/SeneraGvisorTypes.js";
 import type { AgentSandboxRuntimeProvider } from "../Sandbox/AgentSandboxRuntimeTypes.js";
+import type { AgentExtensionValueResolver } from "../Extensions/AgentExtensionValueExpression.js";
+import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
+import type { AgentWorkspaceRuntimeServices } from "./AgentWorkspaceRuntime.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
@@ -20,6 +22,7 @@ export interface AgentSystemRuntimeCacheSnapshot {
 }
 
 export interface AgentSystemRuntimeCacheRuntime {
+  initialize?(): void | Promise<void>;
   close(): void | Promise<void>;
 }
 
@@ -34,12 +37,14 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
-  runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
   executionResources?: AgentExecutionResourceBroker;
   sandboxRuntimeReady?: () => boolean;
   microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
   sandboxProvider?: AgentSandboxRuntimeProvider;
   gvisorWorker?: SeneraGvisorWorkerClient;
+  mcpInputs?: AgentExtensionValueResolver;
+  piTurnContexts?: AgentPiTurnContextStore;
+  workspaceRuntime?: AgentWorkspaceRuntimeServices;
 }
 
 export interface AgentSystemRuntimeLease<TRuntime extends AgentSystemRuntimeCacheRuntime> {
@@ -59,12 +64,14 @@ export interface AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRunt
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
-  runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
   executionResources?: AgentExecutionResourceBroker;
   sandboxRuntimeReady?: () => boolean;
   microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
   sandboxProvider?: AgentSandboxRuntimeProvider;
   gvisorWorker?: SeneraGvisorWorkerClient;
+  mcpInputs?: AgentExtensionValueResolver;
+  piTurnContexts?: AgentPiTurnContextStore;
+  workspaceRuntime?: AgentWorkspaceRuntimeServices;
   maxIdleEntries?: number;
   runtimeFactory?: (input: AgentSystemRuntimeCacheRuntimeFactoryInput) => TRuntime;
 }
@@ -73,6 +80,8 @@ interface RuntimeCacheEntry<TRuntime extends AgentSystemRuntimeCacheRuntime> {
   readonly fingerprint: string;
   readonly preparationFingerprint: string;
   readonly runtime: TRuntime;
+  state: "initializing" | "ready" | "failed";
+  closing: boolean;
   leases: number;
   lastAccess: number;
 }
@@ -92,8 +101,6 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
     const fingerprint = runtimeFingerprint(snapshot, modelProviderId);
     let entry = this.entries.get(fingerprint);
     if (!entry) {
-      // Start closing idle generations before a new heavyweight runtime is constructed.
-      this.evictIdleEntries();
       entry = {
         fingerprint,
         preparationFingerprint: createAgentRuntimePreparationFingerprint({
@@ -102,10 +109,14 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
           sourceRevisions: snapshot.sourceRevisions,
         }),
         runtime: this.createRuntime(snapshot, modelProviderId),
-        leases: 0,
-        lastAccess: 0,
+        state: "ready",
+        closing: false,
+        leases: 1,
+        lastAccess: this.nextAccessSequence(),
       };
       this.entries.set(fingerprint, entry);
+      this.initializeEntry(entry);
+      return this.createLease(entry);
     }
 
     entry.leases += 1;
@@ -115,7 +126,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
 
   async clear(): Promise<void> {
     for (const entry of this.entries.values()) {
-      void this.beginRuntimeClose(entry.runtime).catch(() => undefined);
+      this.closeEntry(entry);
     }
     this.entries.clear();
     const outcomes = await Promise.allSettled([...this.pendingClosures]);
@@ -137,12 +148,14 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
         interactionInput: this.options.interactionInput,
         piSessionRegistry: this.options.piSessionRegistry,
         resourcesPath: this.options.resourcesPath,
-        runtimeModuleResolver: this.options.runtimeModuleResolver,
         executionResources: this.options.executionResources,
         sandboxRuntimeReady: this.options.sandboxRuntimeReady,
         microsandboxSdk: this.options.microsandboxSdk,
         sandboxProvider: this.options.sandboxProvider,
         gvisorWorker: this.options.gvisorWorker,
+        mcpInputs: this.options.mcpInputs,
+        piTurnContexts: this.options.piTurnContexts,
+        workspaceRuntime: this.options.workspaceRuntime,
       });
     }
 
@@ -157,12 +170,14 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       interactionInput: this.options.interactionInput,
       piSessionRegistry: this.options.piSessionRegistry,
       resourcesPath: this.options.resourcesPath,
-      runtimeModuleResolver: this.options.runtimeModuleResolver,
       executionResources: this.options.executionResources,
       sandboxRuntimeReady: this.options.sandboxRuntimeReady,
       microsandboxSdk: this.options.microsandboxSdk,
       sandboxProvider: this.options.sandboxProvider,
       gvisorWorker: this.options.gvisorWorker,
+      mcpInputs: this.options.mcpInputs,
+      piTurnContexts: this.options.piTurnContexts,
+      workspaceRuntime: this.options.workspaceRuntime,
     }) as unknown as TRuntime;
   }
 
@@ -179,6 +194,10 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
 
         released = true;
         entry.leases = Math.max(0, entry.leases - 1);
+        if (entry.state === "failed") {
+          this.closeEntry(entry);
+          return;
+        }
         if (this.entries.get(entry.fingerprint) === entry) {
           this.trimIdleEntries();
         }
@@ -186,23 +205,56 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
     };
   }
 
-  private evictIdleEntries(): void {
-    for (const [fingerprint, entry] of this.entries) {
-      if (entry.leases > 0) {
-        continue;
-      }
+  private initializeEntry(entry: RuntimeCacheEntry<TRuntime>): void {
+    if (!entry.runtime.initialize) {
+      this.publishEntry(entry);
+      return;
+    }
 
-      this.closeEvictedRuntime(entry.runtime);
+    entry.state = "initializing";
+    let initialization: void | Promise<void>;
+    try {
+      initialization = entry.runtime.initialize();
+    } catch (error) {
+      entry.leases = 0;
+      this.rejectEntry(entry, error);
+      throw error;
+    }
+    void Promise.resolve(initialization).then(
+      () => this.publishEntry(entry),
+      (error) => this.rejectEntry(entry, error),
+    );
+  }
+
+  private publishEntry(entry: RuntimeCacheEntry<TRuntime>): void {
+    if (entry.state === "failed" || this.entries.get(entry.fingerprint) !== entry) return;
+    entry.state = "ready";
+    this.evictSupersededIdleEntries(entry);
+  }
+
+  private rejectEntry(entry: RuntimeCacheEntry<TRuntime>, error: unknown): void {
+    if (entry.state === "failed") return;
+    entry.state = "failed";
+    if (this.entries.get(entry.fingerprint) === entry) this.entries.delete(entry.fingerprint);
+    this.options.logger?.warn("runtime_cache.initialize.failed", { error, fingerprint: entry.fingerprint });
+    if (entry.leases === 0) this.closeEntry(entry);
+  }
+
+  private evictSupersededIdleEntries(current: RuntimeCacheEntry<TRuntime>): void {
+    for (const [fingerprint, entry] of this.entries) {
+      if (entry === current || entry.leases > 0 || entry.state !== "ready") continue;
+
+      this.closeEntry(entry);
       this.entries.delete(fingerprint);
     }
   }
 
   private trimIdleEntries(): void {
     const idleEntries = [...this.entries.values()]
-      .filter((entry) => entry.leases === 0)
+      .filter((entry) => entry.leases === 0 && entry.state === "ready")
       .sort((left, right) => right.lastAccess - left.lastAccess);
     for (const entry of idleEntries.slice(this.maxIdleEntries)) {
-      this.closeEvictedRuntime(entry.runtime);
+      this.closeEntry(entry);
       this.entries.delete(entry.fingerprint);
     }
   }
@@ -212,8 +264,10 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
     return this.accessSequence;
   }
 
-  private closeEvictedRuntime(runtime: TRuntime): void {
-    void this.beginRuntimeClose(runtime).catch((error) => {
+  private closeEntry(entry: RuntimeCacheEntry<TRuntime>): void {
+    if (entry.closing) return;
+    entry.closing = true;
+    void this.beginRuntimeClose(entry.runtime).catch((error) => {
       this.options.logger?.warn("runtime_cache.close.failed", { error });
     });
   }

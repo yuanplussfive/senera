@@ -3,7 +3,6 @@ import { throwIfAborted } from "../Core/AgentCancellation.js";
 import {
   resolveMemoryLearningConfig,
   resolveModelProviderConfig,
-  resolveToolLearningConfig,
   resolveVectorModelsConfig,
 } from "../AgentDefaults.js";
 import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
@@ -19,8 +18,6 @@ import { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import {
   AgentMemoryTypes,
-  DefaultAgentMemoryDatabasePath,
-  resolveAgentMemoryDatabasePath,
   SqliteAgentMemorySourceRepository,
   type AgentMemoryConsolidationActionRecord,
   type AgentMemoryDirectWriteInput,
@@ -28,6 +25,7 @@ import {
   type AgentMemoryItemRecord,
   type AgentMemorySourceRepository,
 } from "./AgentMemorySourceRepository.js";
+import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import { memoryItemEmbeddingText } from "./AgentMemoryText.js";
 import { AgentMemoryWriteResolver } from "./AgentMemoryWriteResolver.js";
 import type { AgentMemoryWriteResolutionRequest, AgentMemoryWriteResolverOptions } from "./AgentMemoryWriteResolver.js";
@@ -132,7 +130,7 @@ export const writeMemoryHostTool: AgentHostToolHandler = async (args, context) =
   }
 
   const repository = new SqliteAgentMemorySourceRepository(
-    resolveAgentMemoryDatabasePath(context.workspaceRoot, DefaultAgentMemoryDatabasePath),
+    resolveAgentWorkspaceLayout(context.workspaceRoot).databases.memory,
   );
   try {
     throwIfAborted(context.signal);
@@ -146,7 +144,7 @@ export const writeMemoryHostTool: AgentHostToolHandler = async (args, context) =
     );
   } catch (error) {
     return memoryWriteFailure({
-      code: AgentExecutionErrorCodes.PluginExecutionError,
+      code: AgentExecutionErrorCodes.ToolExecutionError,
       message: errorMessage(error),
       details: {
         phase: AgentToolProcessErrorPhases.RuntimeExecution,
@@ -217,18 +215,17 @@ async function resolveDirectMemoryWrite(
     return proposed;
   }
 
-  const learningConfig = resolveToolLearningConfig(options.config);
   const memoryLearningConfig = resolveMemoryLearningConfig(options.config);
   const vectorConfig = resolveVectorModelsConfig(options.config);
   const resolverOptions = {
     repository: options.repository,
-    client: new AgentActionPlannerModelClient(resolveModelProviderConfig(options.config), learningConfig.Client, {
-      maxRepairAttempts: learningConfig.MaxRepairAttempts,
+    client: new AgentActionPlannerModelClient(resolveModelProviderConfig(options.config), memoryLearningConfig.Client, {
+      maxRepairAttempts: memoryLearningConfig.MaxRepairAttempts,
     }),
     vectorClient: new AgentVectorModelClient(vectorConfig),
     memoryLearningConfig,
     embeddingModel: vectorConfig.Embedding.Model,
-    maxRepairAttempts: learningConfig.MaxRepairAttempts,
+    maxRepairAttempts: memoryLearningConfig.MaxRepairAttempts,
   } satisfies AgentMemoryWriteResolverOptions;
   const resolver = (options.createDecisionResolver ?? createAgentMemoryWriteDecisionResolver)(resolverOptions);
   return resolver.resolve({

@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { isAgentUnknownRecord as isRecord } from "../Core/AgentUnknownValue.js";
 import {
   formatAgentStructuredIssues,
   zodIssuesToAgentStructuredIssues,
@@ -68,8 +69,4 @@ function normalizeValue(value: unknown): unknown {
       .filter(([, child]) => child !== null)
       .map(([key, child]) => [key, normalizeValue(child)]),
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

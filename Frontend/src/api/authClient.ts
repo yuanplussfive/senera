@@ -1,4 +1,5 @@
 import { AuthenticationSessionStates } from "./generatedEventCatalog";
+import { resolveBackendMessage, type BackendMessageData } from "../i18n/backendMessage";
 
 export interface ServerAuthenticationAccount {
   readonly id: string;
@@ -92,11 +93,11 @@ async function readAuthenticationResponse(response: Response): Promise<ServerAut
     | {
         ok?: boolean;
         session?: unknown;
-        error?: { message?: string };
+        error?: BackendMessageData;
       }
     | undefined;
   if (!response.ok || !payload?.ok || !isServerAuthentication(payload.session)) {
-    throw new ServerAuthenticationError(response.status, payload?.error?.message ?? "");
+    throw new ServerAuthenticationError(response.status, resolveBackendMessage(payload?.error) ?? "");
   }
   return payload.session;
 }

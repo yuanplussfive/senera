@@ -11,6 +11,7 @@ import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { projectOpenAiCompatibleTextMessages } from "./OpenAiCompatibleMessageProjector.js";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
 import { ModelUsageNumberWireSchema, projectModelUsageNumber } from "./ModelUsageWireSchema.js";
+import { createAgentModelCompletionMetadata } from "./AgentModelCompletion.js";
 
 const GoogleUsageSchema = z
   .object({
@@ -35,6 +36,7 @@ const GoogleGenerateContentBodySchema = z
       .array(
         z
           .object({
+            finishReason: z.string().nullish(),
             content: z
               .object({
                 parts: z.array(GooglePartSchema).optional(),
@@ -59,7 +61,11 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
       }),
     );
 
-    return { text: readGoogleText(body), usage: projectGoogleUsage(body.usageMetadata) };
+    return {
+      text: readGoogleText(body),
+      usage: projectGoogleUsage(body.usageMetadata),
+      completion: projectGoogleCompletion(body),
+    };
   }
 
   async stream(request: AgentLanguageModelRequest): Promise<AgentLanguageModelStream> {
@@ -72,6 +78,7 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
         return {
           textDelta: readGoogleText(body),
           usage: projectGoogleUsage(body.usageMetadata),
+          completion: projectGoogleCompletion(body),
         };
       },
       { alt: "sse" },
@@ -145,4 +152,12 @@ function readGoogleText(body: z.infer<typeof GoogleGenerateContentBodySchema>): 
       .map((part) => part.text ?? "")
       .join("") ?? ""
   );
+}
+
+function projectGoogleCompletion(
+  body: z.infer<typeof GoogleGenerateContentBodySchema>,
+): ReturnType<typeof createAgentModelCompletionMetadata> {
+  return createAgentModelCompletionMetadata({
+    finishReason: body.candidates?.[0]?.finishReason ?? undefined,
+  });
 }

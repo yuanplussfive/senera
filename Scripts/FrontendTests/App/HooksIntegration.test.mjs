@@ -5,6 +5,7 @@ import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { useConfigMutationController } from "../../../Frontend/src/app/useConfigMutationController.ts";
 import { useSandboxRuntimeStatus } from "../../../Frontend/src/app/useSandboxRuntimeStatus.ts";
 import { useSessionCatalogSync } from "../../../Frontend/src/app/useSessionCatalogSync.ts";
+import { useSettingsRuntime } from "../../../Frontend/src/app/useSettingsRuntime.ts";
 import { useSocketPostIngestEffects } from "../../../Frontend/src/app/useSocketPostIngestEffects.ts";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 import { clearTestToastCalls, readTestToastCalls } from "../mocks/sonner.mjs";
@@ -84,9 +85,10 @@ test("useSessionCatalogSync sends open-connection and manual refresh requests", 
     "session.list",
     "config.get",
     "model.list",
-    "plugin.config.list",
     "preset.list",
     "sandbox.status",
+    "systemTool.list",
+    "mcpServer.list",
     "profile.update",
   ]);
   expect(send.mock.calls.at(-1)?.[0].profile.name).toBe("Alice");
@@ -103,11 +105,55 @@ test("useSessionCatalogSync sends open-connection and manual refresh requests", 
     "session.list",
     "config.get",
     "model.list",
-    "plugin.config.list",
     "preset.list",
     "profile.get",
     "sandbox.status",
+    "systemTool.list",
+    "mcpServer.list",
   ]);
+});
+
+test("useSettingsRuntime sends isolated typed MCP commands without storing Secret values", () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  useStore.setState({
+    systemTools: [{ name: "ShellCommandTool", title: "Shell", description: "", extension: "core", loading: "always" }],
+    systemExtensions: [],
+    mcpServers: [
+      {
+        id: "web-research",
+        packageName: "web-research",
+        source: "bundled",
+        descriptorKind: "mcpb",
+        transport: "stdio",
+        status: "needs_input",
+        inputs: [],
+      },
+    ],
+    toolSettingsSynced: { systemTools: true, mcpServers: true },
+  });
+
+  render(React.createElement(SettingsRuntimeHarness, { send, status: "open", handleRef }));
+
+  expect(handleRef.current.systemConfig.systemTools).toHaveLength(1);
+  expect(handleRef.current.systemConfig.mcpServers).toHaveLength(1);
+  act(() => {
+    expect(handleRef.current.systemConfig.refreshToolSettings()).toBe(true);
+    expect(
+      handleRef.current.systemConfig.updateMcpInputs("web-research", { TAVILY_API_KEY: "transient-secret" }, [
+        "REGION",
+      ]),
+    ).toEqual(expect.any(String));
+    expect(handleRef.current.systemConfig.restartMcpServer("web-research")).toBe(true);
+  });
+
+  expect(send.mock.calls.map(([request]) => request.type)).toEqual([
+    "systemTool.list",
+    "mcpServer.list",
+    "mcpInput.update",
+    "mcpServer.restart",
+  ]);
+  expect(JSON.stringify(useStore.getState())).not.toContain("transient-secret");
 });
 
 test("useSocketPostIngestEffects runs config reload requests and profile sync", () => {
@@ -129,9 +175,9 @@ test("useSocketPostIngestEffects runs config reload requests and profile sync", 
   expect(send.mock.calls.map(([request]) => request.type)).toEqual([
     "config.get",
     "model.list",
-    "plugin.config.list",
     "preset.list",
     "sandbox.status",
+    "systemTool.list",
   ]);
 
   const profile = {
@@ -203,62 +249,6 @@ test("useSocketErrorToasts resolves history failures and tool failures from stor
       options: expect.objectContaining({ description: "exit 1" }),
     }),
   ]);
-});
-
-test("useConfigMutationController tracks plugin config requests through success snapshots", async () => {
-  const send = vi.fn(() => true);
-  const handleRef = { current: null };
-
-  render(
-    React.createElement(ConfigMutationHarness, {
-      send,
-      status: "open",
-      handleRef,
-    }),
-  );
-
-  let requestId = null;
-  await act(async () => {
-    requestId = handleRef.current.savePluginConfig("WeatherToolPlugin", "Enabled = true");
-  });
-
-  expect(requestId).toEqual(expect.any(String));
-  expect(send).toHaveBeenLastCalledWith({
-    type: "plugin.config.update",
-    requestId,
-    pluginName: "WeatherToolPlugin",
-    toml: "Enabled = true",
-  });
-  expect(handleRef.current.pluginConfigOperations[requestId]).toEqual(
-    expect.objectContaining({
-      pluginName: "WeatherToolPlugin",
-      kind: "update",
-      status: "pending",
-    }),
-  );
-
-  await act(async () => {
-    expect(
-      handleRef.current.ingestConfigMutationEvent(
-        event(EventKinds.PluginConfigSnapshot, "config", {
-          plugins: [],
-          operation: {
-            requestId,
-            kind: "update",
-            pluginName: "WeatherToolPlugin",
-          },
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  expect(handleRef.current.pluginConfigOperations[requestId]).toEqual(
-    expect.objectContaining({
-      kind: "update",
-      status: "success",
-    }),
-  );
-  expect(readTestToastCalls()).not.toContainEqual(expect.objectContaining({ variant: "success" }));
 });
 
 test("useConfigMutationController routes preset and main config acknowledgements to their owning domains", async () => {
@@ -540,6 +530,18 @@ function ConfigMutationHarness({ configSnapshot = null, send, status, handleRef 
   return null;
 }
 
+function SettingsRuntimeHarness({ send, status, handleRef }) {
+  const sendRef = useRef(send);
+  const statusRef = useRef(status);
+  sendRef.current = send;
+  statusRef.current = status;
+  const handle = useSettingsRuntime({ sendRef, statusRef });
+  useEffect(() => {
+    handleRef.current = handle;
+  });
+  return null;
+}
+
 function createConfigSnapshot(overrides = {}) {
   return {
     path: "Config.toml",
@@ -582,6 +584,8 @@ function resetStore() {
     historyStepBuffers: {},
     historyEventRunIds: {},
     historyActiveRequestIds: {},
+    processedEventIds: {},
+    processedEventIdOrder: [],
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
@@ -589,12 +593,15 @@ function resetStore() {
     providerModelCatalogs: {},
     providerModelErrors: {},
     selectedModelProviderId: null,
-    pluginConfigs: [],
     presets: [],
     activePresetName: null,
     presetsEnabled: true,
     presetRootDir: "",
     configSnapshot: null,
+    systemTools: [],
+    systemExtensions: [],
+    mcpServers: [],
+    toolSettingsSynced: { systemTools: false, mcpServers: false },
     userProfile: DEFAULT_USER_PROFILE,
   });
 }

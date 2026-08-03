@@ -1,6 +1,12 @@
-import type { ToolExecutionManifest, ToolExecutionTarget } from "../Types/PluginManifestTypes.js";
-import { ToolExecutionTargets } from "../Types/PluginToolManifestTypes.js";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
+import {
+  ToolExecutionTargets,
+  type ToolExecutionManifest,
+  type ToolExecutionTarget,
+} from "../Types/AgentToolContractTypes.js";
+import { readStringArray } from "../Core/AgentCollections.js";
+import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type {
   SeneraProcessBackendPreference,
   SeneraProcessNetworkMode,
@@ -22,7 +28,7 @@ export interface AgentToolInvocation {
   readonly executionPlan: AgentToolExecutionPlan;
 }
 
-export class AgentToolExecutionTargetError extends Error {
+export class AgentToolExecutionTargetError extends AgentBaseError {
   constructor(
     readonly kind: "missing" | "invalid",
     readonly toolName: string,
@@ -30,17 +36,15 @@ export class AgentToolExecutionTargetError extends Error {
     readonly value?: unknown,
   ) {
     super(executionTargetErrorMessage(kind, toolName, availableTargets, value));
-    this.name = "AgentToolExecutionTargetError";
   }
 }
 
-export class AgentToolExecutionPlanError extends Error {
+export class AgentToolExecutionPlanError extends AgentBaseError {
   constructor(
     readonly toolName: string,
     readonly plan: AgentToolExecutionPlan,
   ) {
     super(`Execution plan for tool ${toolName} does not match its declared execution contract.`);
-    this.name = "AgentToolExecutionPlanError";
   }
 }
 
@@ -76,7 +80,7 @@ export function resolveAgentToolInvocation(
 
 /**
  * Rebinds a previously selected plan to an invocation without allowing the
- * caller to change the public selection or pass it into the plugin contract.
+ * caller to change the public selection or pass it into the tool contract.
  */
 export function bindAgentToolInvocationToExecutionPlan(
   tool: RegisteredTool,
@@ -149,11 +153,12 @@ export function projectAgentToolInvocationSchema(
 function resolveExecutionTarget(tool: RegisteredTool, args: Readonly<Record<string, unknown>>): ToolExecutionTarget {
   const declared = tool.execution.Targets;
   const supplied = args[AgentToolExecutionTargetArgument];
-  if (declared.length === 1) {
-    if (supplied !== undefined && supplied !== declared[0]) {
+  const [onlyTarget] = declared;
+  if (onlyTarget !== undefined && declared.length === 1) {
+    if (supplied !== undefined && supplied !== onlyTarget) {
       throw new AgentToolExecutionTargetError("invalid", tool.name, declared, supplied);
     }
-    return declared[0]!;
+    return onlyTarget;
   }
   if (supplied === undefined) {
     throw new AgentToolExecutionTargetError("missing", tool.name, declared);
@@ -175,14 +180,6 @@ function executionTargetErrorMessage(
     return `Tool ${toolName} requires ${AgentToolExecutionTargetArgument}; choose one of: ${available}.`;
   }
   return `Tool ${toolName} does not support execution target ${JSON.stringify(value)}; available targets: ${available}.`;
-}
-
-function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
-}
-
-function readStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 function sameExecutionPlan(left: AgentToolExecutionPlan, right: AgentToolExecutionPlan): boolean {

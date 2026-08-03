@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
+import { EventSpecs } from "../../../Frontend/src/api/generatedEventCatalog.ts";
 import {
   parseAgentSocketEventData,
   readAgentSocketRetryDelayMs,
@@ -28,6 +29,7 @@ test("agent socket event parser accepts string event payloads and rejects malfor
   const env = parseAgentSocketEventData(
     JSON.stringify({
       channel: "agent.event",
+      eventId: "event-parser",
       kind: EventKinds.RunStarted,
       layer: "progress",
       phase: "run",
@@ -38,9 +40,30 @@ test("agent socket event parser accepts string event payloads and rejects malfor
   );
 
   expect(env.kind).toBe(EventKinds.RunStarted);
+  expect(env.eventId).toBe("event-parser");
   expect(env.data).toEqual({ input: "hello" });
   expect(() => parseAgentSocketEventData({})).toThrow();
   expect(() => parseAgentSocketEventData("{")).toThrow();
+  expect(() =>
+    parseAgentSocketEventData(
+      JSON.stringify({
+        ...env,
+        layer: "snapshot",
+      }),
+    ),
+  ).toThrow("expected progress/run; received snapshot/run");
+  expect(() =>
+    parseAgentSocketEventData(
+      JSON.stringify({
+        ...env,
+        kind: "run.unknown",
+      }),
+    ),
+  ).toThrow("Unknown agent event kind");
+  expect(() => parseAgentSocketEventData(JSON.stringify({ ...env, sequence: -1 }))).toThrow();
+  const withoutData = { ...env };
+  delete withoutData.data;
+  expect(() => parseAgentSocketEventData(JSON.stringify(withoutData))).toThrow();
 });
 
 test("agent socket owns connection state, ordered streaming delivery, malformed frames, and retry", () => {
@@ -73,6 +96,7 @@ test("agent socket owns connection state, ordered streaming delivery, malformed 
 
   act(() => {
     firstSocket.receive(event(EventKinds.ModelDelta, 1, { text: "stream " }));
+    firstSocket.receive(event(EventKinds.ModelDelta, 1, { text: "stream " }));
     firstSocket.receive(event(EventKinds.ModelDelta, 2, { text: "chunk" }));
     firstSocket.receive(event(EventKinds.RunCompleted, 3, {}));
   });
@@ -83,6 +107,8 @@ test("agent socket owns connection state, ordered streaming delivery, malformed 
 
   act(() => firstSocket.receiveRaw("{"));
   expect(onMalformedEvent).toHaveBeenCalledTimes(1);
+  act(() => firstSocket.receive({ ...event(EventKinds.RunStarted, 4, {}), phase: "model" }));
+  expect(onMalformedEvent).toHaveBeenCalledTimes(2);
 
   act(() => firstSocket.disconnect());
   expect(handleRef.current.status).toBe("closed");
@@ -123,6 +149,33 @@ test("agent socket delivers one ordered transaction for events received in the s
     [EventKinds.ModelDelta, 1, { text: "stream chunk" }],
     [EventKinds.RunCompleted, 3, {}],
   ]);
+});
+
+test("agent socket reports batch consumer failures without throwing from the scheduled flush", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("WebSocket", TestWebSocket);
+  vi.stubGlobal("requestAnimationFrame", (callback) => window.setTimeout(() => callback(performance.now()), 16));
+  vi.stubGlobal("cancelAnimationFrame", (id) => window.clearTimeout(id));
+  const failure = new Error("projection failed");
+  const onEvents = vi.fn(() => {
+    throw failure;
+  });
+  const onMalformedEvent = vi.fn();
+  const handleRef = { current: null };
+  render(
+    React.createElement(SocketHarness, {
+      handleRef,
+      onEvents,
+      onMalformedEvent,
+      url: "ws://agent.test/runtime",
+    }),
+  );
+
+  const socket = TestWebSocket.instances[0];
+  act(() => socket.open());
+  act(() => socket.receive(event(EventKinds.ModelDelta, 1, { text: "chunk" })));
+  expect(() => act(() => vi.advanceTimersByTime(16))).not.toThrow();
+  expect(onMalformedEvent).toHaveBeenCalledWith(failure);
 });
 
 test("agent socket turns synchronous connection failures into retryable error state", () => {
@@ -259,10 +312,10 @@ class TestWebSocket {
 
 function event(kind, sequence, data) {
   return {
+    eventId: `event-${sequence}`,
     channel: "agent.event",
     kind,
-    layer: "progress",
-    phase: kind === EventKinds.ModelDelta ? "model" : "run",
+    ...EventSpecs[kind],
     sequence,
     timestamp: `2026-07-11T00:00:0${sequence}.000Z`,
     sessionId: "session-a",

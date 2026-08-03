@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import {
   assertInsideRoot,
@@ -7,8 +8,10 @@ import {
 } from "../Artifacts/AgentArtifactLocator.js";
 import {
   type ArtifactManifestRecord,
+  type ArtifactManifestContentRecord,
   type ArtifactMemoryContentItem,
   type ArtifactMemoryReadArguments,
+  type ArtifactJsonViewRequest,
   type ArtifactMemoryRefReadResult,
   type ArtifactMemoryReadResultItem,
   type ReadableArtifactRef,
@@ -16,37 +19,52 @@ import {
   ReadableArtifactRefs,
 } from "./AgentArtifactMemoryTypes.js";
 import {
-  decodeArtifactMemoryContent,
+  artifactJsonProjectionPolicyHash,
+  isArtifactJsonFieldVisibleForModel,
+  projectArtifactJsonForModel,
   sliceUtf8Buffer,
-  sliceUtf8Range,
   type Utf8RangeSlice,
 } from "./AgentArtifactMemoryProjection.js";
-import type { AgentArtifactMemoryContentCache } from "./AgentArtifactMemoryContentCache.js";
 import { AgentConcurrencyGate } from "../Core/AgentConcurrencyGate.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 import { SeneraWorkspaceBoundary } from "../Execution/SeneraWorkspaceBoundary.js";
 import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
+import type { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
+import {
+  indexArtifactJsonStructure,
+  queryArtifactJsonStream,
+  type AgentArtifactJsonIndexIdentity,
+} from "./AgentArtifactJsonQuery.js";
+import { openVerifiedArtifactFile } from "../Artifacts/AgentArtifactIntegrity.js";
+import {
+  AgentArtifactJsonStructureProtocol,
+  createArtifactJsonStructureStream,
+} from "../Artifacts/AgentArtifactJsonStructure.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 
 export interface AgentArtifactMemoryReadOptions {
   readonly workspaceRoot: string;
   readonly artifactRoot: string;
   readonly maxBytes: number;
   readonly startByte: number;
-  readonly structuredJsonMaxBytes: number;
   readonly maxArtifacts: number;
   readonly maxRefs: number;
   readonly maxConcurrency: number;
   readonly ranges?: ReadonlyMap<ReadableArtifactRef, { maxBytes: number; startByte: number }>;
-  readonly contentCache?: AgentArtifactMemoryContentCache;
   readonly signal?: AbortSignal;
+  readonly jsonTokenProjector?: AgentTokenProjector;
+  readonly jsonTokenLimit?: number;
 }
 
 type ArtifactMemoryReadContext = AgentArtifactMemoryReadOptions & {
   readonly concurrency: AgentConcurrencyGate;
   readonly boundary: SeneraWorkspaceBoundary;
+  readonly jsonView: ArtifactJsonViewRequest;
 };
 
-export class ArtifactMemoryReadRequestLimitError extends Error {
+export class ArtifactMemoryReadRequestLimitError extends AgentBaseError {
   readonly kind = "ArtifactMemoryReadRequestLimitError" as const;
 
   constructor(
@@ -55,24 +73,6 @@ export class ArtifactMemoryReadRequestLimitError extends Error {
     readonly limit: number,
   ) {
     super(`${argumentPath} contains ${actual} entries; the configured limit is ${limit}.`);
-    this.name = "ArtifactMemoryReadRequestLimitError";
-  }
-}
-
-class ArtifactStructuredContentTooLargeError extends Error {
-  constructor(
-    readonly sourceByteLength: number,
-    readonly limit: number,
-  ) {
-    super(`Structured JSON source is ${sourceByteLength} bytes; the configured limit is ${limit} bytes.`);
-    this.name = "ArtifactStructuredContentTooLargeError";
-  }
-}
-
-class ArtifactContentChangedDuringReadError extends Error {
-  constructor() {
-    super("The artifact changed while it was being read. Retry after the writer has committed a stable manifest.");
-    this.name = "ArtifactContentChangedDuringReadError";
   }
 }
 
@@ -100,13 +100,17 @@ export async function readArtifactMemories(
   options: AgentArtifactMemoryReadOptions,
 ) {
   assertArtifactMemoryReadRequestWithinLimits(args, options);
-  assertPositiveSafeInteger(options.structuredJsonMaxBytes, "structuredJsonMaxBytes");
+  const refs = args.refs ?? ["projection"];
   const context: ArtifactMemoryReadContext = {
     ...options,
+    jsonView: args.jsonView ?? { kind: "index" },
+    jsonTokenLimit:
+      options.jsonTokenLimit === undefined
+        ? undefined
+        : Math.max(1, Math.floor(options.jsonTokenLimit / Math.max(1, args.artifactUris.length * refs.length))),
     concurrency: new AgentConcurrencyGate(options.maxConcurrency),
     boundary: new SeneraWorkspaceBoundary({ workspaceRoot: options.workspaceRoot, linkPolicy: "deny" }),
   };
-  const refs = args.refs ?? ["projection"];
   const requestedRanges = new Map(options.ranges);
   for (const range of args.refRanges ?? []) {
     requestedRanges.set(range.ref, {
@@ -123,7 +127,7 @@ export async function readArtifactMemories(
       item: artifacts,
     },
     guidance:
-      "Use each memory range once. Continue loaded ranges only when complete=false, using startBytePerRef=nextStartByte. loaded+complete, unavailable, too_large, and failed are terminal for the same URI/ref/arguments in this turn; do not repeat them. For raw JSON reported as too_large, request rawBlob with byte ranges.",
+      "Use each text byte range once and continue only when complete=false. JSON views are typed: use jsonView.kind=index and its cursor to page top-level structure, then jsonView.kind=query with sourcePath/select and its cursor to retrieve complete array items. Cursors are view-specific and cannot be exchanged. If blockedAtIndex is present, narrow jsonView.select before retrying. unavailable and failed refs are terminal for the same request.",
   };
 }
 
@@ -167,13 +171,12 @@ async function readArtifactMemory(
   );
   const memories = refReads.flatMap((read) => (read.memory ? [read.memory] : []));
   const unavailableRefCount = refReads.filter((read) => read.result.status === "unavailable").length;
-  const oversizedRefCount = refReads.filter((read) => read.result.status === "too_large").length;
   const failedRefCount = refReads.filter((read) => read.result.status === "failed").length;
   return {
     artifactUri,
     artifactId,
     status: "found",
-    message: projectArtifactReadMessage(memories.length, unavailableRefCount, oversizedRefCount, failedRefCount),
+    message: projectArtifactReadMessage(memories.length, unavailableRefCount, failedRefCount),
     availableRefs: {
       item: availableRefs,
     },
@@ -182,7 +185,6 @@ async function readArtifactMemory(
       item: refReads.map((read) => read.result),
     },
     unavailableRefCount,
-    oversizedRefCount,
     failedRefCount,
     memories: {
       item: memories,
@@ -207,7 +209,6 @@ function emptyArtifactResult(input: {
       item: [],
     },
     unavailableRefCount: 0,
-    oversizedRefCount: 0,
     failedRefCount: 0,
     memories: {
       item: [],
@@ -227,17 +228,22 @@ async function listAvailableRefs(
 ): Promise<Array<{ ref: ReadableArtifactRef; byteLength: number; mediaType?: string; sha256?: string }>> {
   const entries = await Promise.all(
     ReadableArtifactRefs.map(async (ref) => {
+      const content = manifest.contents?.find((entry) => entry.ref === ref);
+      if (!content) {
+        return undefined;
+      }
       const filePath = await readArtifactFilePath(manifest, ref, options.artifactRoot, options.boundary);
       if (!filePath) {
         return undefined;
       }
 
       try {
-        const stat = await options.concurrency.run(() => fs.stat(filePath), options.signal);
+        await options.concurrency.run(() => fs.stat(filePath), options.signal);
         return {
-          ...manifest.contents?.find((content) => content.ref === ref),
           ref,
-          byteLength: stat.size,
+          byteLength: content.byteLength,
+          mediaType: content.mediaType,
+          sha256: content.sha256,
         };
       } catch {
         throwIfAborted(options.signal);
@@ -245,10 +251,7 @@ async function listAvailableRefs(
       }
     }),
   );
-  return entries.filter(
-    (entry): entry is { ref: ReadableArtifactRef; byteLength: number; mediaType?: string; sha256?: string } =>
-      Boolean(entry),
-  );
+  return entries.flatMap((entry) => (entry ? [entry] : []));
 }
 
 async function readArtifactRef(
@@ -269,58 +272,220 @@ async function readArtifactRef(
 
   try {
     const definition = ReadableArtifactRefDefinitions[ref];
-    const sourceSha256 = manifest.contents?.find((content) => content.ref === ref)?.sha256;
+    const contentRecord = manifest.contents?.find((content) => content.ref === ref);
+    if (!contentRecord) throw new Error("Artifact ref is missing its published content identity.");
+    const sourceSha256 = contentRecord.sha256;
     if (definition.format === "text") {
-      return loadedArtifactRef(
-        ref,
-        projectArtifactMemoryContent(
-          ref,
-          await options.concurrency.run(
-            () => readTextArtifactRange(filePath, options.startByte, options.maxBytes, options.boundary),
-            options.signal,
-          ),
-          sourceSha256,
-        ),
-      );
+      const memory = await options.concurrency.run(async () => {
+        const file = await openVerifiedArtifactFile(options.boundary, filePath, contentRecord, options.signal);
+        try {
+          return projectArtifactMemoryContent(
+            ref,
+            await readTextArtifactRange(file, options.startByte, options.maxBytes),
+            sourceSha256,
+          );
+        } finally {
+          await file.close();
+        }
+      }, options.signal);
+      return loadedArtifactRef(ref, memory);
     }
 
-    const sourceByteLength = await options.concurrency.run(async () => (await fs.stat(filePath)).size, options.signal);
-    if (sourceByteLength > options.structuredJsonMaxBytes) {
-      return oversizedArtifactRef(ref, sourceByteLength, options.structuredJsonMaxBytes);
-    }
-    const loader = () =>
-      options.concurrency.run(
-        () =>
-          loadArtifactContent(filePath, ref, options.workspaceRoot, options.structuredJsonMaxBytes, options.boundary),
-        options.signal,
-      );
-    const loaded = options.contentCache
-      ? await options.contentCache.load(
-          [manifest.artifactId, ref, sourceSha256 ?? filePath, path.resolve(options.workspaceRoot)].join("\u0000"),
-          loader,
-        )
-      : await loader();
-    if (!loaded) {
-      return failedArtifactRef(ref);
-    }
-    return loadedArtifactRef(
-      ref,
-      projectArtifactMemoryContent(
-        ref,
-        sliceUtf8Range(loaded.content, options.startByte, options.maxBytes),
-        sourceSha256,
-      ),
-    );
+    const memory = await options.concurrency.run(async () => {
+      switch (options.jsonView.kind) {
+        case "index": {
+          const sourcePath = options.jsonView.sourcePath ?? [];
+          if (sourcePath.length > 0) {
+            return readDerivedArtifactJsonIndex(filePath, ref, contentRecord, options.jsonView, options);
+          }
+          const structure = contentRecord.structure;
+          if (!structure) throw new Error("Structured Artifact JSON is missing its published structure index.");
+          const structurePath = await readArtifactStructurePath(structure.file, ref, options);
+          return readPublishedArtifactJsonIndex(
+            filePath,
+            structurePath,
+            ref,
+            contentRecord,
+            structure,
+            options.jsonView,
+            options,
+          );
+        }
+        case "query":
+          return readStructuredArtifactQuery(filePath, ref, contentRecord, options.jsonView, options);
+      }
+    }, options.signal);
+    return loadedArtifactRef(ref, memory);
   } catch (error) {
     throwIfAborted(options.signal);
-    if (error instanceof ArtifactStructuredContentTooLargeError) {
-      return oversizedArtifactRef(ref, error.sourceByteLength, error.limit);
-    }
-    if (error instanceof ArtifactContentChangedDuringReadError) {
-      return failedArtifactRef(ref, error.message);
-    }
-    return failedArtifactRef(ref);
+    return failedArtifactRef(ref, errorMessage(error));
   }
+}
+
+async function readPublishedArtifactJsonIndex(
+  filePath: string,
+  structurePath: string,
+  ref: ReadableArtifactRef,
+  sourceIdentity: ArtifactManifestContentRecord,
+  structureIdentity: NonNullable<ArtifactManifestContentRecord["structure"]>,
+  request: Extract<ArtifactJsonViewRequest, { kind: "index" }>,
+  options: ArtifactMemoryReadContext,
+): Promise<ArtifactMemoryContentItem> {
+  const source = await openVerifiedArtifactFile(options.boundary, filePath, sourceIdentity, options.signal);
+  await source.close();
+  const file = await openVerifiedArtifactFile(options.boundary, structurePath, structureIdentity, options.signal);
+  try {
+    const memory = await indexArtifactJsonStructureMemory({
+      openSource: (startByte) => file.createReadStream({ autoClose: false, start: startByte }),
+      ref,
+      request,
+      sourceSha256: sourceIdentity.sha256,
+      indexIdentity: { kind: "published_sidecar", contentSha256: structureIdentity.sha256 },
+      options,
+    });
+    return memory;
+  } finally {
+    await file.close();
+  }
+}
+
+async function readDerivedArtifactJsonIndex(
+  filePath: string,
+  ref: ReadableArtifactRef,
+  sourceIdentity: ArtifactManifestContentRecord,
+  request: Extract<ArtifactJsonViewRequest, { kind: "index" }>,
+  options: ArtifactMemoryReadContext,
+): Promise<ArtifactMemoryContentItem> {
+  const file = await openVerifiedArtifactFile(options.boundary, filePath, sourceIdentity, options.signal);
+  const sourcePath = request.sourcePath ?? [];
+  try {
+    const memory = await indexArtifactJsonStructureMemory({
+      openSource: (startByte) =>
+        createArtifactJsonStructureStream(file.createReadStream({ autoClose: false }), sourcePath, startByte),
+      ref,
+      request,
+      sourceSha256: sourceIdentity.sha256,
+      indexIdentity: {
+        kind: "derived_path",
+        identitySha256: sha256HexOfCanonicalJson({
+          format: AgentArtifactJsonStructureProtocol.type,
+          sourceSha256: sourceIdentity.sha256,
+          sourcePath,
+        }),
+      },
+      options,
+    });
+    return memory;
+  } finally {
+    await file.close();
+  }
+}
+
+async function indexArtifactJsonStructureMemory(input: {
+  openSource: (startByte: number) => import("node:stream").Readable;
+  ref: ReadableArtifactRef;
+  request: Extract<ArtifactJsonViewRequest, { kind: "index" }>;
+  sourceSha256: string;
+  indexIdentity: AgentArtifactJsonIndexIdentity;
+  options: ArtifactMemoryReadContext;
+}): Promise<ArtifactMemoryContentItem> {
+  const budget = requireStructuredJsonBudget(input.options);
+  const projection = await indexArtifactJsonStructure({
+    openSource: input.openSource,
+    ref: input.ref,
+    request: input.request,
+    sourceSha256: input.sourceSha256,
+    indexIdentity: input.indexIdentity,
+    projectionHash: artifactJsonProjectionPolicyHash(input.ref),
+    ...budget,
+    includeTopLevelField: (field) => isArtifactJsonFieldVisibleForModel(input.ref, field),
+    signal: input.options.signal,
+  });
+  const sourcePath = input.request.sourcePath ?? [];
+  return structuredArtifactMemory(input.ref, input.sourceSha256, projection.content, projection.value, {
+    kind: "json_index",
+    ...(sourcePath.length > 0 ? { sourcePath: [...sourcePath] } : {}),
+    rootType: projection.rootType,
+    ...(projection.rootItemCount === undefined ? {} : { rootItemCount: projection.rootItemCount }),
+    fieldCount: projection.totalFieldCount,
+    startFieldIndex: projection.startFieldIndex,
+    returnedFieldCount: projection.returnedFieldCount,
+    remainingFieldCount: projection.remainingFieldCount,
+    complete: projection.complete,
+    ...(projection.nextCursor ? { nextCursor: projection.nextCursor } : {}),
+    ...(projection.blockedAtFieldIndex === undefined ? {} : { blockedAtFieldIndex: projection.blockedAtFieldIndex }),
+  });
+}
+
+async function readStructuredArtifactQuery(
+  filePath: string,
+  ref: ReadableArtifactRef,
+  sourceIdentity: ArtifactManifestContentRecord,
+  query: Extract<ArtifactJsonViewRequest, { kind: "query" }>,
+  options: ArtifactMemoryReadContext,
+): Promise<ArtifactMemoryContentItem> {
+  const budget = requireStructuredJsonBudget(options);
+  const file = await openVerifiedArtifactFile(options.boundary, filePath, sourceIdentity, options.signal);
+  const source = file.createReadStream({ autoClose: false });
+  try {
+    const projection = await queryArtifactJsonStream({
+      source,
+      ref,
+      query,
+      sourceSha256: sourceIdentity.sha256,
+      projectionHash: artifactJsonProjectionPolicyHash(ref),
+      ...budget,
+      projectValue: (value) => projectArtifactJsonForModel(ref, value, options.workspaceRoot),
+      signal: options.signal,
+    });
+    return structuredArtifactMemory(ref, sourceIdentity.sha256, projection.content, projection.value, {
+      kind: "json_query",
+      sourcePath: projection.sourcePath,
+      ...(projection.selectedFields ? { selectedFields: projection.selectedFields } : {}),
+      scanned: projection.scanned,
+      returned: projection.returned,
+      complete: projection.complete,
+      ...(projection.nextCursor ? { nextCursor: projection.nextCursor } : {}),
+      ...(projection.blockedAtIndex === undefined ? {} : { blockedAtIndex: projection.blockedAtIndex }),
+    });
+  } finally {
+    source.destroy();
+    await file.close();
+  }
+}
+
+function requireStructuredJsonBudget(options: ArtifactMemoryReadContext): {
+  tokenProjector: AgentTokenProjector;
+  tokenLimit: number;
+} {
+  if (!options.jsonTokenProjector || options.jsonTokenLimit === undefined) {
+    throw new Error("Structured Artifact JSON reads require an active model token budget.");
+  }
+  return { tokenProjector: options.jsonTokenProjector, tokenLimit: options.jsonTokenLimit };
+}
+
+function structuredArtifactMemory(
+  ref: ReadableArtifactRef,
+  sourceSha256: string | undefined,
+  content: string,
+  structuredContent: unknown,
+  view: NonNullable<ArtifactMemoryContentItem["view"]>,
+): ArtifactMemoryContentItem {
+  const contentBytes = Buffer.byteLength(content, "utf8");
+  return {
+    ref,
+    ...(sourceSha256 ? { sourceSha256 } : {}),
+    view,
+    structuredContent,
+    range: {
+      startByte: 0,
+      endByte: contentBytes,
+      totalBytes: contentBytes,
+      returnedBytes: contentBytes,
+      complete: true,
+    },
+    content,
+  };
 }
 
 function loadedArtifactRef(
@@ -330,26 +495,6 @@ function loadedArtifactRef(
   return {
     result: { ref, status: "loaded", message: "Artifact ref loaded." },
     memory,
-  };
-}
-
-function oversizedArtifactRef(
-  ref: ReadableArtifactRef,
-  sourceByteLength: number,
-  structuredJsonMaxBytes: number,
-): { result: ArtifactMemoryRefReadResult } {
-  const alternativeRef = ref === "raw" ? "rawBlob" : undefined;
-  return {
-    result: {
-      ref,
-      status: "too_large",
-      message: alternativeRef
-        ? "The structured JSON source exceeds the parse budget. Read rawBlob with byte ranges instead."
-        : "The structured JSON source exceeds the configured parse budget.",
-      sourceByteLength,
-      structuredJsonMaxBytes,
-      ...(alternativeRef ? { alternativeRef } : {}),
-    },
   };
 }
 
@@ -366,14 +511,8 @@ function failedArtifactRef(
   };
 }
 
-function projectArtifactReadMessage(
-  memoryCount: number,
-  unavailableRefCount: number,
-  oversizedRefCount: number,
-  failedRefCount: number,
-): string {
+function projectArtifactReadMessage(memoryCount: number, unavailableRefCount: number, failedRefCount: number): string {
   if (failedRefCount > 0) return "Artifact found; one or more requested refs failed to load.";
-  if (oversizedRefCount > 0) return "Artifact found; one or more requested refs exceed the structured JSON budget.";
   if (unavailableRefCount > 0) return "Artifact found; one or more requested refs are unavailable.";
   return memoryCount > 0 ? "Artifact memory loaded." : "Artifact found; no memory content was loaded.";
 }
@@ -400,68 +539,21 @@ function projectArtifactMemoryContent(
 }
 
 async function readTextArtifactRange(
-  filePath: string,
+  file: FileHandle,
   requestedStartByte: number,
   maxBytes: number,
-  boundary: SeneraWorkspaceBoundary,
 ): Promise<Utf8RangeSlice> {
-  const file = (await boundary.openFile(filePath, AgentResourceAccessIntents.Read)).handle;
-  try {
-    const totalBytes = (await file.stat()).size;
-    const boundedStart = Math.min(totalBytes, Math.max(0, Math.floor(requestedStartByte)));
-    const readCapacity = Math.min(totalBytes - boundedStart, Math.max(1, Math.floor(maxBytes)) + 4);
-    const buffer = Buffer.allocUnsafe(readCapacity);
-    const { bytesRead } = await file.read(buffer, 0, readCapacity, boundedStart);
-    const local = sliceUtf8Buffer(buffer.subarray(0, bytesRead), 0, maxBytes);
-    return {
-      text: local.text,
-      startByte: boundedStart + local.startByte,
-      endByte: boundedStart + local.endByte,
-      totalBytes,
-    };
-  } finally {
-    await file.close();
-  }
-}
-
-async function loadArtifactContent(
-  filePath: string,
-  ref: ReadableArtifactRef,
-  workspaceRoot: string,
-  maxSourceBytes: number,
-  boundary: SeneraWorkspaceBoundary,
-): Promise<{ content: string; byteLength: number }> {
-  const file = (await boundary.openFile(filePath, AgentResourceAccessIntents.Read)).handle;
-  let data: Buffer;
-  try {
-    const sourceByteLength = (await file.stat()).size;
-    if (sourceByteLength > maxSourceBytes) {
-      throw new ArtifactStructuredContentTooLargeError(sourceByteLength, maxSourceBytes);
-    }
-    const buffer = Buffer.allocUnsafe(sourceByteLength);
-    let bytesRead = 0;
-    while (bytesRead < buffer.byteLength) {
-      const read = await file.read(buffer, bytesRead, buffer.byteLength - bytesRead, bytesRead);
-      if (read.bytesRead === 0) break;
-      bytesRead += read.bytesRead;
-    }
-    const sentinel = Buffer.allocUnsafe(1);
-    const extra = await file.read(sentinel, 0, 1, bytesRead);
-    if (extra.bytesRead > 0) {
-      const currentByteLength = (await file.stat()).size;
-      if (currentByteLength > maxSourceBytes) {
-        throw new ArtifactStructuredContentTooLargeError(currentByteLength, maxSourceBytes);
-      }
-      throw new ArtifactContentChangedDuringReadError();
-    }
-    data = buffer.subarray(0, bytesRead);
-  } finally {
-    await file.close();
-  }
-  const content = decodeArtifactMemoryContent(ref, data, { workspaceRoot });
+  const totalBytes = (await file.stat()).size;
+  const boundedStart = Math.min(totalBytes, Math.max(0, Math.floor(requestedStartByte)));
+  const readCapacity = Math.min(totalBytes - boundedStart, Math.max(1, Math.floor(maxBytes)) + 4);
+  const buffer = Buffer.allocUnsafe(readCapacity);
+  const { bytesRead } = await file.read(buffer, 0, readCapacity, boundedStart);
+  const local = sliceUtf8Buffer(buffer.subarray(0, bytesRead), 0, maxBytes);
   return {
-    content,
-    byteLength: Buffer.byteLength(content, "utf8"),
+    text: local.text,
+    startByte: boundedStart + local.startByte,
+    endByte: boundedStart + local.endByte,
+    totalBytes,
   };
 }
 
@@ -480,11 +572,28 @@ async function readArtifactFilePath(
   const definition = ReadableArtifactRefDefinitions[ref];
   const filePath = manifest.files[definition.file];
   if (!filePath) return undefined;
+  return resolveArtifactContentPath(filePath, ref, artifactRoot, boundary);
+}
+
+async function readArtifactStructurePath(
+  filePath: string,
+  ref: ReadableArtifactRef,
+  options: Pick<ArtifactMemoryReadContext, "artifactRoot" | "boundary">,
+): Promise<string> {
+  return resolveArtifactContentPath(filePath, `${ref} structure`, options.artifactRoot, options.boundary);
+}
+
+async function resolveArtifactContentPath(
+  filePath: string,
+  label: string,
+  artifactRoot: string,
+  boundary: SeneraWorkspaceBoundary,
+): Promise<string> {
   const lexicalPath = assertInsideRoot(
     artifactRoot,
     path.resolve(filePath),
-    `artifact 文件超出 artifact 根目录：${ref}`,
+    `artifact 文件超出 artifact 根目录：${label}`,
   );
   const resolved = await boundary.resolve(lexicalPath, AgentResourceAccessIntents.Read);
-  return assertInsideRoot(artifactRoot, resolved.absolutePath, `artifact 文件的真实路径超出 artifact 根目录：${ref}`);
+  return assertInsideRoot(artifactRoot, resolved.absolutePath, `artifact 文件的真实路径超出 artifact 根目录：${label}`);
 }

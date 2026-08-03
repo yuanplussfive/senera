@@ -1,7 +1,8 @@
 import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import type { AgentSession, AgentSessionSnapshot } from "./AgentSession.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { projectAgentMessage } from "../I18n/AgentMessageProjection.js";
+import type { AgentSessionOperation } from "./AgentSessionOperation.js";
 
 export class AgentSessionEventFactory {
   constructor(private readonly conversationPolicy = new AgentConversationPolicy()) {}
@@ -53,15 +54,12 @@ export class AgentSessionEventFactory {
         activeRequestId: session.activeRequest?.requestId ?? "",
         rejectedRequestId,
         operation,
-        message: agentErrorMessage("session.stillBusy"),
+        ...projectAgentMessage("session.stillBusy"),
       },
     };
   }
 
-  notFound(
-    sessionId: string,
-    operation: "session.message" | "session.close" | "session.history" | "session.fork",
-  ): AgentDomainEvent {
+  notFound(sessionId: string, operation: AgentSessionOperation): AgentDomainEvent {
     return {
       kind: AgentEventKinds.SessionNotFound,
       context: {
@@ -70,7 +68,7 @@ export class AgentSessionEventFactory {
       data: {
         sessionId,
         operation,
-        message: agentErrorMessage("session.notFound"),
+        ...projectAgentMessage("session.notFound"),
       },
     };
   }

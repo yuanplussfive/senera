@@ -17,6 +17,7 @@
   "requiredModuleGuides": [
     "docs/Architecture/CoreFlow.md",
     "docs/Development/AddTool.md",
+    "docs/Development/ManagedExtensions.md",
     "docs/Development/AddRuntimeEvent.md",
     "docs/Development/AddModelEndpoint.md",
     "docs/Development/BrowserE2ETesting.md",
@@ -33,8 +34,10 @@
     "Source/AgentSystem/Config/README.md",
     "Source/AgentSystem/ModelEndpoints/README.md",
     "Source/AgentSystem/Artifacts/README.md",
+    "Source/AgentSystem/Schemas/README.md",
     "Source/AgentSystem/TerminalDisplay/README.md",
-    "Source/AgentSystem/Plugin/README.md",
+    "Source/AgentSystem/ToolContracts/README.md",
+    "Source/AgentSystem/Types/README.md",
     "Source/AgentSystem/Prompt/README.md",
     "Source/AgentSystem/WebSocket/README.md",
     "Frontend/src/store/session/README.md"

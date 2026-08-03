@@ -3,7 +3,6 @@ import {
   AgentConversationEntryKinds,
   type AgentConversationEntry,
 } from "../../../Source/AgentSystem/Conversation/AgentConversation.js";
-import { AgentConversationPolicy } from "../../../Source/AgentSystem/Conversation/AgentConversationPolicy.js";
 import {
   AgentEventChannels,
   AgentEventKinds,
@@ -17,6 +16,7 @@ import { InMemorySessionRepository } from "../../../Source/AgentSystem/Session/A
 import { AgentSessionEventFactory } from "../../../Source/AgentSystem/Session/AgentSessionEventFactory.js";
 import { AgentSessionHistoryReplay } from "../../../Source/AgentSystem/Session/AgentSessionHistoryReplay.js";
 import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSessionStore.js";
+import type { AgentHistoryStepRun } from "../../../Source/AgentSystem/Session/AgentSessionEventTypes.js";
 
 describe("Session history replay behavior", () => {
   test("emits not-found without starting replay for an unknown session", async () => {
@@ -81,7 +81,105 @@ describe("Session history replay behavior", () => {
     );
   });
 
-  test("merges persisted traces and lifecycle snapshots into stable history runs", () => {
+  test("uses repository pages without calling the legacy full-history readers", async () => {
+    const repository = new PageOnlyHistoryRepository();
+    const fixture = createReplayFixture({
+      repository,
+      entryPageSize: 2,
+      stepRunPageSize: 2,
+      runEventPageSize: 2,
+    });
+    const sessionId = "page-only-session";
+    fixture.store.open(sessionId);
+    fixture.store.persistEntries(
+      sessionId,
+      Array.from({ length: 5 }, (_, index) => userEntry(`request-${index}`, `message-${index}`, index)),
+    );
+    for (let index = 0; index < 5; index += 1) {
+      fixture.store.persistTurnArtifacts(sessionId, `request-${index}`, [], [stepTrace(index)]);
+      fixture.store.persistRunSnapshot(snapshot(sessionId, `request-${index}`, "completed", index));
+    }
+    Array.from({ length: 5 }, (_, index) => runEvent(sessionId, `request-${index}`, index)).forEach((event) =>
+      fixture.store.persistRunEvent(sessionId, event),
+    );
+    const events: AgentDomainEvent[] = [];
+
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    expect(
+      events
+        .filter((event) => event.kind === AgentEventKinds.SessionHistoryChunk)
+        .map((event) => readArrayLength(event.data, "entries")),
+    ).toEqual([2, 2, 1]);
+    expect(
+      events
+        .filter((event) => event.kind === AgentEventKinds.SessionRunHistoryChunk)
+        .map((event) => readArrayLength(event.data, "events")),
+    ).toEqual([2, 2, 1]);
+    expect(
+      events
+        .filter((event) => event.kind === AgentEventKinds.SessionHistorySteps)
+        .map((event) => readArrayLength(event.data, "runs")),
+    ).toEqual([2, 2, 1]);
+  });
+
+  test("replays a fixed high-water snapshot when new history arrives after replay starts", async () => {
+    const fixture = createReplayFixture({ entryPageSize: 1, runEventPageSize: 1 });
+    const sessionId = "fixed-history-snapshot";
+    fixture.store.open(sessionId);
+    fixture.store.persistEntries(sessionId, [userEntry("request-before", "before", 1)]);
+    fixture.store.persistRunEvent(sessionId, runEvent(sessionId, "request-before", 1));
+    fixture.store.persistRunSnapshot(snapshot(sessionId, "request-before", "completed", 1));
+    const events: AgentDomainEvent[] = [];
+
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+        if (event.kind !== AgentEventKinds.SessionHistoryStarted) return;
+        fixture.store.persistEntries(sessionId, [userEntry("request-after", "after", 2)]);
+        fixture.store.persistRunEvent(sessionId, runEvent(sessionId, "request-after", 2));
+        fixture.store.persistRunSnapshot(snapshot(sessionId, "request-after", "completed", 2));
+      },
+    });
+
+    expect(replayedEntryRequestIds(events)).toEqual(["request-before"]);
+    expect(replayedStepRequestIds(events)).toEqual(["request-before"]);
+    expect(replayedRunEventRequestIds(events)).toEqual(["request-before"]);
+  });
+
+  test("keeps run-snapshot values fixed when a run settles after replay starts", async () => {
+    const fixture = createReplayFixture({ stepRunPageSize: 1 });
+    const sessionId = "fixed-run-snapshot-value";
+    const requestId = "request-settling";
+    fixture.store.open(sessionId);
+    fixture.store.persistRunSnapshot(snapshot(sessionId, requestId, "running", 1));
+    const events: AgentDomainEvent[] = [];
+
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+        if (event.kind !== AgentEventKinds.SessionHistoryStarted) return;
+        fixture.store.persistRunSnapshot({
+          ...snapshot(sessionId, requestId, "failed", 1),
+          errorMessage: "Settled after replay started.",
+        });
+      },
+    });
+
+    expect(replayedStepRuns(events)).toEqual([expect.objectContaining({ requestId, status: "running" })]);
+    expect(fixture.store.loadRunSnapshots(sessionId)).toEqual([
+      expect.objectContaining({ requestId, status: "failed" }),
+    ]);
+  });
+
+  test("merges persisted traces and lifecycle snapshots into stable history runs", async () => {
     const fixture = createReplayFixture();
     const sessionId = "run-session";
     fixture.store.open(sessionId);
@@ -113,7 +211,14 @@ describe("Session history replay behavior", () => {
     fixture.store.persistRunSnapshot(snapshot(sessionId, "request-running", "running", 4));
     fixture.store.persistRunSnapshot(snapshot(sessionId, "request-failed", "failed", 5));
 
-    const runs = fixture.replay.buildStepRuns(sessionId, entries);
+    const events: AgentDomainEvent[] = [];
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    const runs = replayedStepRuns(events);
 
     expect(
       runs.map((run) => ({
@@ -188,7 +293,7 @@ describe("Session history replay behavior", () => {
     ]);
   });
 
-  test("keeps a failed snapshot failed even when partial traces were persisted", () => {
+  test("keeps a failed snapshot failed even when partial traces were persisted", async () => {
     const fixture = createReplayFixture();
     const sessionId = "failed-with-trace";
     const requestId = "request-failed-with-trace";
@@ -215,7 +320,15 @@ describe("Session history replay behavior", () => {
       errorMessage: "The next step failed.",
     });
 
-    expect(fixture.replay.buildStepRuns(sessionId, entries)).toEqual([
+    const events: AgentDomainEvent[] = [];
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    expect(replayedStepRuns(events)).toEqual([
       expect.objectContaining({ requestId, status: "failed", traces: expect.any(Array) }),
     ]);
   });
@@ -280,16 +393,102 @@ describe("Session history replay behavior", () => {
       ]),
     );
   });
+
+  test("does not synthesize a wait resolution when the persisted resolution is on a later page", async () => {
+    const fixture = createReplayFixture({ runEventPageSize: 1 });
+    const sessionId = "resolved-wait-pages";
+    const requestId = "request-resolved-wait";
+    fixture.store.open(sessionId);
+    fixture.store.persistRunSnapshot(snapshot(sessionId, requestId, "failed", 1));
+    fixture.store.persistRunEvent(
+      sessionId,
+      waitEvent(sessionId, requestId, 1, AgentEventKinds.ApprovalRequested, {
+        approvalId: "approval-resolved",
+        status: "pending",
+      }),
+    );
+    fixture.store.persistRunEvent(sessionId, {
+      ...waitEvent(sessionId, requestId, 2, AgentEventKinds.ApprovalRequested, {
+        approvalId: "approval-resolved",
+        status: "approved",
+      }),
+      kind: AgentEventKinds.ApprovalResolved,
+    });
+    const events: AgentDomainEvent[] = [];
+
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    expect(replayedRunEvents(events).filter((event) => event.kind === AgentEventKinds.ApprovalResolved)).toEqual([
+      expect.not.objectContaining({ detailId: expect.stringContaining("history_recovered") }),
+    ]);
+  });
 });
 
-function createReplayFixture() {
-  const store = new AgentSessionStore({ repository: new InMemorySessionRepository() });
+function createReplayFixture(
+  options: {
+    repository?: InMemorySessionRepository;
+    entryPageSize?: number;
+    stepRunPageSize?: number;
+    runEventPageSize?: number;
+  } = {},
+) {
+  const store = new AgentSessionStore({ repository: options.repository ?? new InMemorySessionRepository() });
   const replay = new AgentSessionHistoryReplay({
     store,
-    conversationPolicy: new AgentConversationPolicy(),
     eventFactory: new AgentSessionEventFactory(),
+    paging: {
+      entryPageSize: options.entryPageSize,
+      stepRunPageSize: options.stepRunPageSize,
+      runEventPageSize: options.runEventPageSize,
+    },
   });
   return { replay, store };
+}
+
+class PageOnlyHistoryRepository extends InMemorySessionRepository {
+  override loadEntries(): AgentConversationEntry[] {
+    throw new Error("Full conversation loading is forbidden during paged history replay.");
+  }
+
+  override loadRunEvents(): AgentEventEnvelope[] {
+    throw new Error("Full run-event loading is forbidden during paged history replay.");
+  }
+
+  override loadStepTraces(_sessionId: string): never {
+    throw new Error("Full step-trace loading is forbidden during paged history replay.");
+  }
+
+  override loadRunSnapshots(_sessionId: string): never {
+    throw new Error("Full run-snapshot loading is forbidden during paged history replay.");
+  }
+
+  override loadEntriesForRequests(
+    sessionId: string,
+    requestIds: readonly string[],
+    throughSequence: number,
+  ): AgentConversationEntry[] {
+    assertBoundedLookup(requestIds, 2);
+    return super.loadEntriesForRequests(sessionId, requestIds, throughSequence);
+  }
+
+  override loadRunSnapshotsForRequests(sessionId: string, requestIds: readonly string[], throughSequence: number) {
+    assertBoundedLookup(requestIds, 2);
+    return super.loadRunSnapshotsForRequests(sessionId, requestIds, throughSequence);
+  }
+
+  override loadStepTraceRequestIds(sessionId: string, requestIds: readonly string[], throughRowId: number) {
+    assertBoundedLookup(requestIds, 2);
+    return super.loadStepTraceRequestIds(sessionId, requestIds, throughRowId);
+  }
+}
+
+function assertBoundedLookup(requestIds: readonly string[], maximum: number): void {
+  if (requestIds.length > maximum) throw new Error(`Request lookup exceeded page bound: ${requestIds.length}`);
 }
 
 function userEntry(
@@ -346,6 +545,17 @@ function runEvent(sessionId: string, requestId: string, sequence: number): Agent
   };
 }
 
+function stepTrace(offset: number) {
+  return {
+    step: offset + 1,
+    seq: 0,
+    kind: "tool" as const,
+    status: "done" as const,
+    startedAt: timestamp(offset),
+    endedAt: timestamp(offset + 1),
+  };
+}
+
 function waitEvent(
   sessionId: string,
   requestId: string,
@@ -374,6 +584,46 @@ function timestamp(offset: number): string {
 function readArrayLength(value: unknown, key: string): number {
   const candidate = readRecord(value)?.[key];
   return Array.isArray(candidate) ? candidate.length : 0;
+}
+
+function replayedEntryRequestIds(events: readonly AgentDomainEvent[]): string[] {
+  return events
+    .filter((event) => event.kind === AgentEventKinds.SessionHistoryChunk)
+    .flatMap((event) => {
+      const entries = readRecord(event.data)?.entries;
+      return Array.isArray(entries)
+        ? entries.flatMap((item) => {
+            const entry = readRecord(readRecord(item)?.entry);
+            return typeof entry?.requestId === "string" ? [entry.requestId] : [];
+          })
+        : [];
+    });
+}
+
+function replayedRunEvents(events: readonly AgentDomainEvent[]): AgentEventEnvelope[] {
+  return events
+    .filter((event) => event.kind === AgentEventKinds.SessionRunHistoryChunk)
+    .flatMap((event) => {
+      const items = readRecord(event.data)?.events;
+      return Array.isArray(items) ? (items as AgentEventEnvelope[]) : [];
+    });
+}
+
+function replayedStepRequestIds(events: readonly AgentDomainEvent[]): string[] {
+  return replayedStepRuns(events).map((run) => run.requestId);
+}
+
+function replayedStepRuns(events: readonly AgentDomainEvent[]): AgentHistoryStepRun[] {
+  return events
+    .filter((event) => event.kind === AgentEventKinds.SessionHistorySteps)
+    .flatMap((event) => {
+      const runs = readRecord(event.data)?.runs;
+      return Array.isArray(runs) ? (runs as AgentHistoryStepRun[]) : [];
+    });
+}
+
+function replayedRunEventRequestIds(events: readonly AgentDomainEvent[]): string[] {
+  return replayedRunEvents(events).flatMap((event) => (event.requestId ? [event.requestId] : []));
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {

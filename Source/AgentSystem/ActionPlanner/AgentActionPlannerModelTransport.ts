@@ -14,6 +14,8 @@ import {
   type AgentModelUsageValue,
 } from "../ModelEndpoints/AgentModelUsage.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
+import type { AgentModelCompletionMetadata } from "../ModelEndpoints/AgentModelCompletion.js";
 
 export class AgentActionPlannerModelTransport {
   private readonly endpoint: TextGenerationEndpoint;
@@ -32,21 +34,24 @@ export class AgentActionPlannerModelTransport {
   }
 
   async complete(request: AgentBamlModelRequest, signal?: AbortSignal): Promise<string> {
-    throwIfAborted(signal);
-    const stream = await this.stream(request, signal);
-    let text = "";
-    const abort = (): void => stream.abort();
-    signal?.addEventListener("abort", abort, { once: true });
-    try {
-      for await (const chunk of stream) {
-        throwIfAborted(signal);
-        text = chunk.accumulatedText;
+    const attempts = this.provider.MaxNetworkRetries + 1;
+    const emptyResponses: AgentEmptyModelResponseAttempt[] = [];
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const response = await this.collectCompletion(request, signal);
+      if (response.text.trim().length > 0) return response.text;
+      emptyResponses.push({
+        attempt: attempt + 1,
+        finishReason: response.completion?.finishReason ?? null,
+        status: response.completion?.status ?? null,
+        outputTokens: response.usage?.outputTokens ?? null,
+        reasoningTokens: response.usage?.reasoningTokens ?? null,
+      });
+      if (attempt + 1 >= attempts) {
+        throw new AgentEmptyModelResponseError(this.provider.Id, this.provider.Model, emptyResponses);
       }
-    } finally {
-      signal?.removeEventListener("abort", abort);
+      await waitForEmptyResponseRetry(this.retryDelay(attempt), signal);
     }
-    throwIfAborted(signal);
-    return text;
+    throw new AgentEmptyModelResponseError(this.provider.Id, this.provider.Model, emptyResponses);
   }
 
   async stream(
@@ -143,6 +148,9 @@ export class AgentActionPlannerModelTransport {
       get usage() {
         return usage;
       },
+      get completion() {
+        return upstream.completion;
+      },
       abort: () => upstream.abort(),
       [Symbol.asyncIterator]: () => chunks,
     };
@@ -159,6 +167,60 @@ export class AgentActionPlannerModelTransport {
       // Telemetry must never mask the provider failure.
     }
   }
+
+  private async collectCompletion(
+    request: AgentBamlModelRequest,
+    signal?: AbortSignal,
+  ): Promise<{
+    text: string;
+    completion?: AgentModelCompletionMetadata;
+    usage?: AgentModelUsageValue;
+  }> {
+    throwIfAborted(signal);
+    const stream = await this.stream(request, signal);
+    let text = "";
+    const abort = (): void => stream.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      for await (const chunk of stream) {
+        throwIfAborted(signal);
+        text = chunk.accumulatedText;
+      }
+    } finally {
+      signal?.removeEventListener("abort", abort);
+    }
+    throwIfAborted(signal);
+    return { text, completion: stream.completion, usage: stream.usage };
+  }
+
+  private retryDelay(attempt: number): number {
+    return Math.min(this.provider.RetryMaxDelayMs, this.provider.RetryBaseDelayMs * 2 ** attempt);
+  }
+}
+
+class AgentEmptyModelResponseError extends AgentBaseError {
+  constructor(
+    readonly providerId: string,
+    readonly model: string,
+    readonly responses: readonly AgentEmptyModelResponseAttempt[],
+  ) {
+    super(
+      `Model ${providerId}/${model} completed without final text after ${responses.length} attempt(s). ` +
+        `Completion diagnostics: ${JSON.stringify(responses)}.`,
+    );
+  }
+
+  get attempts(): number {
+    return this.responses.length;
+  }
+}
+
+interface AgentEmptyModelResponseAttempt {
+  readonly attempt: number;
+  readonly finishReason: string | null;
+  readonly status: string | null;
+  readonly outputTokens: number | null;
+  readonly reasoningTokens: number | null;
 }
 
 function requestCharacterCount(request: AgentBamlModelRequest): number {
@@ -167,4 +229,23 @@ function requestCharacterCount(request: AgentBamlModelRequest): number {
 
 function elapsedMilliseconds(startedAt: number): number {
   return Math.max(0, Math.round(performance.now() - startedAt));
+}
+
+function waitForEmptyResponseRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal);
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, delayMs);
+    const onAbort = (): void => {
+      cleanup();
+      reject(signal?.reason ?? new Error("Model request was aborted."));
+    };
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }

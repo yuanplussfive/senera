@@ -1,7 +1,8 @@
 import type { AgentLanguageModelStream } from "./AgentLanguageModel.js";
 import type { JsonObject, ModelHttpPathSegment, ModelProviderConfig } from "./ModelEndpointTypes.js";
 import type { AgentModelProviderMetadata } from "./AgentModelMetadata.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import { combineAbortSignals, createModelRequestLifetime, disposeCombinedAbortSignal } from "./ModelHttpAbort.js";
 import { normalizeModelHttpError } from "./ModelHttpErrors.js";
 import { ModelResponseLimitError } from "./ModelHttpErrors.js";
@@ -12,6 +13,7 @@ import { parseModelEventStreamText } from "./ModelSseStreamParser.js";
 import type { ModelSseEventProjection } from "./ModelSseStreamParser.js";
 import { mergeProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
 import { resolveAgentModelResponseBudget } from "./ModelResponseBudget.js";
+import { mergeAgentModelCompletionMetadata, type AgentModelCompletionMetadata } from "./AgentModelCompletion.js";
 
 export { rawPathSegment } from "./ModelHttpUrl.js";
 
@@ -66,6 +68,7 @@ export class ModelHttpClient {
     });
 
     let usage: AgentModelUsageValue | undefined;
+    let completion: AgentModelCompletionMetadata | undefined;
     const chunks = parseModelEventStreamText(response.body, projectEvent, {
       requestSignal: lifetime.signal,
       firstTokenTimeoutMs: this.config.FirstTokenTimeoutMs,
@@ -73,6 +76,9 @@ export class ModelHttpClient {
       normalizeError: (error) => this.normalizeError(error),
       onUsage: (value) => {
         usage = mergeProviderReportedUsage(usage, value);
+      },
+      onCompletion: (value) => {
+        completion = mergeAgentModelCompletionMetadata(completion, value);
       },
       maxResponseBytes: budget.maxResponseBytes,
       maxEventBytes: budget.maxSseEventBytes,
@@ -82,6 +88,9 @@ export class ModelHttpClient {
       metadata: this.metadata,
       get usage() {
         return usage;
+      },
+      get completion() {
+        return completion;
       },
       abort: () => {
         controller.abort();
@@ -113,7 +122,7 @@ export class ModelHttpClient {
         query,
       );
       if (!response.body) {
-        throw new Error(agentErrorMessage("model.readableStreamMissing"));
+        throw new AgentLocalizedError("model.readableStreamMissing");
       }
       return response as Response & { body: ReadableStream<Uint8Array> };
     } catch (error) {
@@ -142,7 +151,7 @@ export class ModelHttpClient {
 }
 
 async function readJsonBody(response: Response, maxBytes: number): Promise<unknown> {
-  if (!response.body) throw new Error(agentErrorMessage("model.readableStreamMissing"));
+  if (!response.body) throw new AgentLocalizedError("model.readableStreamMissing");
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
@@ -158,7 +167,7 @@ async function readJsonBody(response: Response, maxBytes: number): Promise<unkno
   } finally {
     reader.releaseLock();
   }
-  return JSON.parse(new TextDecoder().decode(concatBytes(chunks)));
+  return parseJsonText(new TextDecoder().decode(concatBytes(chunks)), "HTTP response body");
 }
 
 function concatBytes(chunks: readonly Uint8Array[]): Uint8Array {

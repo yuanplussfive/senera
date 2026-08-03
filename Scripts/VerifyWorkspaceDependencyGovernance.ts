@@ -117,7 +117,6 @@ const violations = [
   ...inspectReleaseWorkflowGates(),
   ...inspectRootScripts(),
   ...inspectModuleSystemBoundary(),
-  ...inspectRootRuntimeDependencies(),
   ...inspectRootDependencyHygiene(),
   ...inspectRootToolchainDependencies(),
   ...inspectWorkspaceToolchainDependencyBoundaries(),
@@ -213,10 +212,6 @@ function inspectRootScripts(): string[] {
     "policy.verify": "tsx Build/CompileOpaPolicy.ts --check",
     "generate.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts",
     "generate.database-contracts": "tsx Build/GenerateDatabaseContracts.ts",
-    "generate.tool-contracts": "tsx Build/GenerateToolContractBundles.ts",
-    "generate.plugin-config": "tsx Build/GeneratePluginConfigurationArtifacts.ts",
-    "verify.tool-contracts": "tsx Build/GenerateToolContractBundles.ts --check",
-    "verify.plugin-config": "tsx Build/GeneratePluginConfigurationArtifacts.ts --check",
     "verify.database-contracts": "tsx Build/GenerateDatabaseContracts.ts --check",
     "verify.config-command-contracts": "tsx Build/GenerateConfigCommandContracts.ts --check",
     "terminal.prepare": "tsx Build/PrepareTerminalSidecarGuestRuntime.ts",
@@ -224,7 +219,7 @@ function inspectRootScripts(): string[] {
     "sandbox.archive": "tsx Build/BuildSandboxImageArchive.ts",
     "check.types": "tsc --noEmit",
     build:
-      "npm run verify.config-command-contracts && npm run verify.database-contracts && npm run verify.plugin-config && npm run verify.tool-contracts && npm run verify.frontend-events && npm run verify.protocol-reference && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts && node Dist/Scripts/VerifyPluginRuntimeManifest.js",
+      "npm run verify.config-command-contracts && npm run verify.database-contracts && npm run verify.frontend-events && npm run verify.protocol-reference && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     dev: 'concurrently -k -n server,frontend -c blue,green "npm run dev.server" "npm run dev.frontend"',
     "docker.up": "docker compose pull && docker compose up -d",
     "docker.down": "docker compose down",
@@ -278,17 +273,6 @@ function inspectRootScripts(): string[] {
   ];
 }
 
-function inspectRootRuntimeDependencies(): string[] {
-  return inspectDependencies(
-    rootPackage,
-    "package.json",
-    {
-      "@senera/tool-plugin-sdk": "file:Packages/ToolPluginSdk",
-    },
-    "dependencies",
-  );
-}
-
 function inspectRootDependencyHygiene(): string[] {
   const declared = new Set([
     ...Object.keys(rootPackage.dependencies ?? {}),
@@ -331,9 +315,7 @@ function inspectModuleSystemBoundary(): string[] {
     ...inspectRootPackageExports(),
     ...inspectWorkspacePackageTypes({
       Frontend: "module",
-      "Packages/ToolPluginSdk": "commonjs",
     }),
-    ...inspectWorkspacePackageTypeByPrefix(["Plugins/", "System/Plugins/"], "commonjs"),
   ];
 }
 
@@ -374,18 +356,6 @@ function inspectWorkspacePackageTypes(expectedTypes: Record<string, string>): st
       ? inspectPackageType(readPackageJson(packageJsonPath), `${location}/package.json`, expectedType)
       : [];
   });
-}
-
-function inspectWorkspacePackageTypeByPrefix(prefixes: readonly string[], expectedType: string): string[] {
-  return expectedWorkspaces
-    .filter((workspace) => prefixes.some((prefix) => workspace.location.startsWith(prefix)))
-    .flatMap((workspace) =>
-      inspectPackageType(
-        readPackageJson(path.join(workspaceRoot, workspace.location, "package.json")),
-        `${workspace.location}/package.json`,
-        expectedType,
-      ),
-    );
 }
 
 function inspectPackageType(packageJson: PackageJson, packagePath: string, expectedType: string): string[] {
@@ -443,7 +413,6 @@ function inspectDesktopPackageConfig(): string[] {
       ? []
       : ["package.json build.extraMetadata.main must point to Dist/Apps/Desktop/Main.js."]),
     ...inspectDesktopPackageScript(),
-    ...inspectDesktopFileSet("Packages/ToolPluginSdk", "node_modules/@senera/tool-plugin-sdk"),
     ...inspectDesktopFileSet("Packages/TerminalSidecar", "node_modules/@senera/terminal-sidecar"),
     ...inspectDesktopExtraResource(".senera/sandbox-runtime/terminal-sidecar", "TerminalSidecarRuntime"),
     ...(rootPackage.build?.npmRebuild === false
@@ -454,8 +423,6 @@ function inspectDesktopPackageConfig(): string[] {
       : ["package.json build.afterPack must inject isolated Electron native module builds."]),
     ...inspectDesktopAsarUnpack([
       "senera.config.example.json",
-      "System/Plugins/**",
-      "Plugins/**",
       "**/*.node",
       "**/*.dll",
       "**/*.so",

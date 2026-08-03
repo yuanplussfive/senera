@@ -25,6 +25,14 @@
       "migrationSha256": "e2080ed82dbad69e8d708aead739ff10d5537f7b4f48a21e70d72e8182eca68b",
       "snapshot": "snapshots/0003.schema.sql",
       "snapshotSha256": "4804da26c8dafa557a649238a171dd3538a3ea07eff4df289ea22f74bc0ef90e"
+    },
+    {
+      "version": 4,
+      "name": "memory-item-lifetime",
+      "migration": "migrations/0004-memory-item-lifetime.sql",
+      "migrationSha256": "e50142655d4c7573e39b15373bae7f628a774f639d84c2b574adb5b54d630669",
+      "snapshot": "snapshots/0004.schema.sql",
+      "snapshotSha256": "d62fb85c4e45295736c8ff8b191ccbf66fd63d33b686b05796b4101d2db110ee"
     }
   ]
 }

@@ -1,13 +1,14 @@
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
+import { DEFAULT_COMPACTION_SETTINGS } from "@earendil-works/pi-coding-agent";
 import type { AgentPiModelApi, AgentPiProviderProjection } from "./AgentPiTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import { resolveAgentPiProxyBaseUrl, AgentPiProxyProtocol } from "../PiProxy/AgentPiProxyContract.js";
 import {
+  AgentPiProxyProtocol,
   AgentPiProxyModelProviderHeader,
   encodePiProxyModelProviderHeaderValue,
-} from "../PiProxy/AgentPiProxyRuntimeContext.js";
+  resolveAgentPiProxyBaseUrl,
+} from "../PiShared/AgentPiProxyProtocol.js";
 import { resolveAgentModelCompatibility } from "../ModelEndpoints/ModelCompatibility.js";
-import { resolveAgentLoopConfig } from "../AgentDefaults.js";
 
 const FreeCostModel = {
   input: 0,
@@ -24,7 +25,6 @@ export function projectSeneraModelProviderToPi(
 ): AgentPiProviderProjection {
   const capabilities = provider.Capabilities ?? {};
   const compatibility = resolveAgentModelCompatibility(provider);
-  const compaction = resolveAgentLoopConfig(config).PiSessions.Compaction;
   const proxyBaseUrl = resolveAgentPiProxyBaseUrl(config);
   const model = {
     id: provider.Model,
@@ -35,11 +35,8 @@ export function projectSeneraModelProviderToPi(
     reasoning: capabilities.Reasoning === true,
     input: capabilities.Vision === true ? ["text", "image"] : ["text"],
     cost: { ...FreeCostModel },
-    contextWindow: positiveOrFallback(provider.ContextWindowTokens, compaction.UnknownContextWindowTokens),
-    maxTokens: positiveOrFallback(
-      provider.MaxModelOutputTokens,
-      positiveOrFallback(provider.MaxOutputTokens, compaction.UnknownModelOutputTokens),
-    ),
+    contextWindow: provider.ContextWindowTokens,
+    maxTokens: resolveAgentPiModelMaxTokens(provider),
     compat: {
       supportsDeveloperRole: compatibility.supportsDeveloperRole,
     },
@@ -61,6 +58,13 @@ export function projectSeneraModelProviderToPi(
   };
 }
 
-function positiveOrFallback(value: number | undefined, fallback: number): number {
-  return value === undefined || value <= 0 ? fallback : value;
+export function resolveAgentPiModelMaxTokens(provider: ResolvedAgentModelProviderConfig): number {
+  return (
+    [provider.MaxModelOutputTokens, provider.MaxOutputTokens].find(isPositiveTokenCount) ??
+    DEFAULT_COMPACTION_SETTINGS.reserveTokens
+  );
+}
+
+function isPositiveTokenCount(value: number | undefined): value is number {
+  return value !== undefined && Number.isSafeInteger(value) && value > 0;
 }

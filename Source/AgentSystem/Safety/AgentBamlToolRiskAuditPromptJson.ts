@@ -74,7 +74,7 @@ export function projectToolRiskAuditPromptInput(options: {
       toolCallId: options.input.toolCallId,
       toolName: options.input.toolName,
       arguments: options.input.arguments,
-      visibleToolNames: options.input.visibleToolNames,
+      visibleToolNames: options.input.toolAccessGrant.exposedToolNames,
     },
     tool: options.input.tool,
     runtimeContext: options.input.runtimeContext,

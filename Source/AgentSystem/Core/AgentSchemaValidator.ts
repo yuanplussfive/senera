@@ -1,8 +1,9 @@
 import { pathToFileURL } from "node:url";
 import { type ZodError, type ZodType } from "zod";
 import { toRuntimeModulePath } from "./AgentPath.js";
+import { AgentBaseError } from "./AgentBaseError.js";
 
-export class AgentSchemaValidationError extends Error {
+export class AgentSchemaValidationError extends AgentBaseError {
   constructor(
     message: string,
     readonly issues: ZodError["issues"],

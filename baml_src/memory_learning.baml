@@ -60,8 +60,8 @@ function LearnMemory(promptJson: string) -> MemoryLearningResult {
 
     Requirements:
     - Return only MemoryLearningResult.
-    - Read plannerInput from the latest user JSON object's plannerInput property.
-    - Prior user and assistant messages are JSON memory timeline cards. Read turn.role, turn.kind, and turn.payload as the completed episode timeline.
+    - Read plannerInput from the latest user message's <planner_input> XML document. <directive> maps to directive and <extra_context> contains the remaining plannerInput fields as escaped canonical JSON data.
+    - Prior user and assistant messages are <timeline_turn> XML documents. Read role and kind from the root attributes and the lossless memory payload from <memory_source>.
     - plannerInput.directive.stage is learnMemory.
     - Output candidates, not final long-term memory items.
     - Use plannerInput.episode.standaloneRequest as the resolved user request.
@@ -95,8 +95,8 @@ function RepairMemoryLearning(promptJson: string) -> MemoryLearningResult {
 
     Requirements:
     - Return only MemoryLearningResult.
-    - Read plannerInput from the latest user JSON object's plannerInput property.
-    - Prior user and assistant messages are JSON memory timeline cards. Read turn.role, turn.kind, and turn.payload as the completed episode timeline.
+    - Read plannerInput from the latest user message's <planner_input> XML document. <directive> maps to directive and <extra_context> contains the remaining plannerInput fields as escaped canonical JSON data.
+    - Prior user and assistant messages are <timeline_turn> XML documents. Read role and kind from the root attributes and the lossless memory payload from <memory_source>.
     - plannerInput.directive.stage is repairMemoryLearning.
     - Fix every issue in plannerInput.directive.issues.
     - Preserve supported durable candidates from the invalid output.
@@ -122,7 +122,7 @@ function ConsolidateMemoryCandidates(promptJson: string) -> MemoryConsolidationR
 
     Requirements:
     - Return only MemoryConsolidationResult.
-    - Read plannerInput from the latest user JSON object's plannerInput property.
+    - Read plannerInput from the latest user message's <planner_input> XML document. <directive> maps to directive and <extra_context> contains the remaining plannerInput fields as escaped canonical JSON data.
     - plannerInput.directive.stage is consolidateMemoryCandidates.
     - Candidate type must be one exact value from plannerInput.memoryTypes.
     - candidateUris must contain only exact uri values from plannerInput.candidates.
@@ -156,7 +156,7 @@ function ResolveMemoryWrite(promptJson: string) -> MemoryWriteResolutionResult {
 
     Requirements:
     - Return only MemoryWriteResolutionResult.
-    - Read plannerInput from the latest user JSON object's plannerInput property.
+    - Read plannerInput from the latest user message's <planner_input> XML document. <directive> maps to directive and <extra_context> contains the remaining plannerInput fields as escaped canonical JSON data.
     - plannerInput.directive.stage is resolveMemoryWrite.
     - operation must be one exact value from plannerInput.allowedOperations.
     - type must be one exact value from plannerInput.memoryTypes.
@@ -189,7 +189,7 @@ function RepairMemoryWriteResolution(promptJson: string) -> MemoryWriteResolutio
 
     Requirements:
     - Return only MemoryWriteResolutionResult.
-    - Read plannerInput from the latest user JSON object's plannerInput property.
+    - Read plannerInput from the latest user message's <planner_input> XML document. <directive> maps to directive and <extra_context> contains the remaining plannerInput fields as escaped canonical JSON data.
     - plannerInput.directive.stage is repairMemoryWriteResolution.
     - Fix every issue in plannerInput.directive.issues.
     - operation must be one exact value from plannerInput.allowedOperations.
@@ -216,7 +216,7 @@ function RepairMemoryConsolidation(promptJson: string) -> MemoryConsolidationRes
 
     Requirements:
     - Return only MemoryConsolidationResult.
-    - Read plannerInput from the latest user JSON object's plannerInput property.
+    - Read plannerInput from the latest user message's <planner_input> XML document. <directive> maps to directive and <extra_context> contains the remaining plannerInput fields as escaped canonical JSON data.
     - plannerInput.directive.stage is repairMemoryConsolidation.
     - Fix every issue in plannerInput.directive.issues.
     - Preserve supported actions from the invalid output.

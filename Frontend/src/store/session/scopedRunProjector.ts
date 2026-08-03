@@ -2,13 +2,8 @@ import {
   EventKinds,
   type ExecutionResourceOutputData,
   type ExecutionResourceStateData,
-  type ActionPlannedData,
-  type ActionPlannerStageCompletedData,
-  type ActionPlannerStageFailedData,
-  type ActionPlannerStageStartedData,
   type AssistantMessageCreatedData,
   type EventEnvelope,
-  type InteractionRoutedData,
   type ModelStartedData,
   type PromptSummaryData,
   type RunFailedData,
@@ -21,17 +16,8 @@ import {
   type ToolCallsPlannedData,
 } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import {
-  friendlyDecisionKind,
-  InteractionModeTitle,
-  plannerStageTitle,
-  summarizeActionPlan,
-  summarizeInteractionRoute,
-  summarizePlannerStage,
-  summarizeToolPlan,
-  toolPlanTitle,
-  truncate,
-} from "./sessionPresentation";
+import { resolveBackendMessage } from "../../i18n/backendMessage";
+import { summarizeToolPlan, toolPlanTitle, truncate } from "./sessionPresentation";
 import { currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
 import { touchRun } from "./sessionRunProjection";
 import { timelineScopeFromEvent, toolBatchFromEvent } from "./timelineProjection";
@@ -72,95 +58,6 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         promptChars: data.chars,
         promptLines: data.lines,
         promptTokenCount: data.tokenCount,
-        scope,
-      });
-      return true;
-    }
-
-    case EventKinds.ActionPlannerStageStarted: {
-      const data = env.data as ActionPlannerStageStartedData;
-      upsertStep(run, {
-        id: scopedStepId(env, "planner", data.stage),
-        kind: "decision",
-        title: scopedStepTitle(env, plannerStageTitle(data.stage)),
-        status: "running",
-        startedAt: env.timestamp,
-        decisionKind: data.stage,
-        scope,
-      });
-      return true;
-    }
-
-    case EventKinds.ActionPlannerStageCompleted: {
-      const data = env.data as ActionPlannerStageCompletedData;
-      const id = scopedStepId(env, "planner", data.stage);
-      upsertStep(run, {
-        id,
-        kind: "decision",
-        title: scopedStepTitle(env, plannerStageTitle(data.stage, data.selectedAction)),
-        description: scopedStepDescription(env, summarizePlannerStage(data)),
-        status: "done",
-        startedAt: run.steps.find((step) => step.id === id)?.startedAt ?? env.timestamp,
-        endedAt: env.timestamp,
-        decisionKind: data.selectedAction,
-        detailJson: data,
-        scope,
-      });
-      return true;
-    }
-
-    case EventKinds.ActionPlannerStageFailed: {
-      const data = env.data as ActionPlannerStageFailedData;
-      const id = scopedStepId(env, "planner", data.stage);
-      upsertStep(run, {
-        id,
-        kind: "decision",
-        title: scopedStepTitle(env, plannerStageTitle(data.stage)),
-        description: scopedStepDescription(env, data.message),
-        status: "failed",
-        startedAt: run.steps.find((step) => step.id === id)?.startedAt ?? env.timestamp,
-        endedAt: env.timestamp,
-        errorMessage: data.message,
-        detailJson: data,
-        scope,
-      });
-      return true;
-    }
-
-    case EventKinds.InteractionRouted: {
-      const data = env.data as InteractionRoutedData;
-      upsertStep(run, {
-        id: scopedStepId(env, "interaction-route"),
-        kind: "decision",
-        title: scopedStepTitle(env, frontendMessage("workflow.plan.route", { mode: InteractionModeTitle[data.mode] })),
-        description: scopedStepDescription(env, summarizeInteractionRoute(data)),
-        status: "done",
-        startedAt: env.timestamp,
-        endedAt: env.timestamp,
-        decisionKind: data.mode,
-        detailJson: data,
-        scope,
-      });
-      return true;
-    }
-
-    case EventKinds.ActionPlanned: {
-      const data = env.data as ActionPlannedData;
-      upsertStep(run, {
-        id: scopedStepId(env, "action-plan"),
-        kind: "decision",
-        title: scopedStepTitle(
-          env,
-          data.status === "planned"
-            ? frontendMessage("workflow.plan.action", { action: friendlyDecisionKind(data.action ?? "") })
-            : frontendMessage("workflow.plan.actionFallback"),
-        ),
-        description: scopedStepDescription(env, summarizeActionPlan(data)),
-        status: "done",
-        startedAt: env.timestamp,
-        endedAt: env.timestamp,
-        decisionKind: data.action,
-        detailJson: data,
         scope,
       });
       return true;
@@ -296,12 +193,13 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
 
     case EventKinds.ToolCallFailed: {
       const data = env.data as ToolCallFailedData;
+      const message = resolveBackendMessage(data) ?? data.message;
       const id = scopedStepId(env, "tool", data.callId);
       const step = run.steps.find((entry) => entry.id === id);
       if (step) {
         step.status = "failed";
         step.endedAt = env.timestamp;
-        step.toolErrorMessage = data.message;
+        step.toolErrorMessage = message;
         touchRun(run);
       } else {
         upsertStep(run, {
@@ -317,7 +215,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
           toolName: data.toolName,
           callId: data.callId,
           toolBatch: toolBatchFromEvent(env, data),
-          toolErrorMessage: data.message,
+          toolErrorMessage: message,
           scope,
         });
       }
@@ -362,15 +260,16 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
 
     case EventKinds.RunFailed: {
       const data = env.data as RunFailedData;
+      const message = resolveBackendMessage(data) ?? data.message;
       upsertStep(run, {
         id: scopedStepId(env, "error"),
         kind: "error",
         title: scopedStepTitle(env, frontendMessage("workflow.projection.runFailed")),
-        description: scopedStepDescription(env, data.message),
+        description: scopedStepDescription(env, message),
         status: "failed",
         startedAt: env.timestamp,
         endedAt: env.timestamp,
-        errorMessage: data.message,
+        errorMessage: message,
         scope,
       });
       return true;

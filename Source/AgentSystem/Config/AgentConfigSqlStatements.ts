@@ -24,6 +24,9 @@ export interface AgentConfigSqlStatements {
   readonly selectCommandReceipt: Database.Statement<[string], AgentConfigCommandReceiptRow>;
   readonly insertRevision: Database.Statement;
   readonly insertCommandReceipt: Database.Statement;
+  readonly deleteExpiredCommandReceipts: Database.Statement<[string]>;
+  readonly deleteExcessCommandReceipts: Database.Statement<[number]>;
+  readonly deleteUnretainedRevisions: Database.Statement<[number]>;
   readonly updateRevisionConfig: Database.Statement;
 }
 
@@ -61,6 +64,33 @@ export function prepareAgentConfigSqlStatements(database: Database.Database): Ag
     insertCommandReceipt: database.prepare(`
       INSERT INTO config_command_receipts (command_id, operation_kind, payload_hash, revision, created_at)
       VALUES (@command_id, @operation_kind, @payload_hash, @revision, @created_at)
+    `),
+    deleteExpiredCommandReceipts: database.prepare(`
+      DELETE FROM config_command_receipts
+      WHERE created_at < ?
+    `),
+    deleteExcessCommandReceipts: database.prepare(`
+      DELETE FROM config_command_receipts
+      WHERE command_id IN (
+        SELECT command_id
+        FROM config_command_receipts
+        ORDER BY created_at DESC, command_id DESC
+        LIMIT -1 OFFSET ?
+      )
+    `),
+    deleteUnretainedRevisions: database.prepare(`
+      DELETE FROM config_revisions
+      WHERE revision NOT IN (
+        SELECT revision
+        FROM config_revisions
+        ORDER BY revision DESC
+        LIMIT ?
+      )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM config_command_receipts receipt
+          WHERE receipt.revision = config_revisions.revision
+        )
     `),
     updateRevisionConfig: database.prepare(`
       UPDATE config_revisions

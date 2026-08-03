@@ -1,6 +1,6 @@
 # Senera Nano
 
-这是从 Senera `{{sourceBranch}}` 自动生成的轻量源码开发分支，只保留本机开发模式所需的后端、前端、插件与运行时依赖。
+这是从 Senera `{{sourceBranch}}` 自动生成的轻量源码开发分支，只保留本机开发模式所需的后端、前端、MCP packages、Skills 与运行时依赖。
 
 ## 开始使用
 

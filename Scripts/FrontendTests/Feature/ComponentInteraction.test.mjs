@@ -62,7 +62,7 @@ test("tool approval exposes the selected local execution plan", async () => {
           title: "允许工具调用：SearchTool",
           reason: "本机执行需要确认",
           rule: "execution.target.local",
-          riskSignals: ["plugin.trustLevel:External"],
+          riskSignals: ["security.trustLevel:External"],
           availableDecisions: ["approve_once", "deny", "deny_and_interrupt"],
           createdAt: "2026-07-09T00:00:00.000Z",
           subject: {

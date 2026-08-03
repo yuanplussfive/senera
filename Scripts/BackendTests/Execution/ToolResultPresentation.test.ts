@@ -1,9 +1,18 @@
 import { describe, expect, test } from "vitest";
 import { projectAgentToolResultPresentation } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultPresentation.js";
-import type { ExecutedToolCallResult } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import type {
+  AgentToolProcessError,
+  ExecutedToolCallResult,
+} from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
+import {
+  AgentToolFailureSources,
+  AgentToolSuccessOutcome,
+  createAgentToolFailureOutcome,
+} from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
 
 describe("Tool result presentation", () => {
-  test("uses plugin-owned evidence display while preserving raw result separately", () => {
+  test("uses tool-owned evidence display while preserving raw result separately", () => {
     const result = fixture({
       result: { weather: { city: "Beijing", temperature: 26 } },
       evidence: [
@@ -70,18 +79,23 @@ describe("Tool result presentation", () => {
   });
 
   test("marks structured failures without replacing their raw error data", () => {
+    const error = {
+      code: AgentExecutionErrorCodes.ToolExecutionError,
+      message: "command failed",
+    };
     const result = fixture({
-      result: { error: { code: "ToolFailed", message: "command failed" } },
+      result: { error },
+      error,
       exitCode: 1,
     });
 
     const presentation = projectAgentToolResultPresentation(result);
 
     expect(presentation.status).toBe("failure");
-    expect(result.result).toEqual({ error: { code: "ToolFailed", message: "command failed" } });
+    expect(result.result).toEqual({ error });
   });
 
-  test("uses a semantic result field when a plugin does not declare evidence", () => {
+  test("uses a semantic result field when a tool does not declare evidence", () => {
     const result = fixture({
       result: {
         message: "Created report.md",
@@ -98,6 +112,7 @@ describe("Tool result presentation", () => {
 
 function fixture(input: {
   result: unknown;
+  error?: AgentToolProcessError;
   exitCode?: number | null;
   evidence?: NonNullable<ExecutedToolCallResult["artifact"]>["evidence"];
   delta?: NonNullable<ExecutedToolCallResult["artifact"]>["delta"];
@@ -109,9 +124,13 @@ function fixture(input: {
     process: {
       exitCode: input.exitCode ?? 0,
       signal: null,
+      stdout: "",
       stderr: "",
     },
     result: input.result,
+    outcome: input.error
+      ? createAgentToolFailureOutcome(input.error, AgentToolFailureSources.Host, "none")
+      : AgentToolSuccessOutcome,
     artifact: {
       artifactId: "art_test",
       artifactUri: "senera://artifact/test",

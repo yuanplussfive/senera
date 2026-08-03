@@ -1,14 +1,6 @@
 {
-  "ConfigVersion": 5,
+  "ConfigVersion": 8,
   "Defaults": {
-    "PluginRoots": {
-      "System": ["./System/Plugins"],
-      "User": ["./Plugins"]
-    },
-    "PluginDiscovery": {
-      "ManifestFileName": "PluginManifest.json",
-      "ConfigFileName": "PluginConfig.toml"
-    },
     "AgentLoop": {
       "PiTurnLeaseTimeoutSeconds": 120,
       "RunSettlementTimeoutSeconds": 15,
@@ -16,14 +8,7 @@
         "RootDir": ".senera/pi-sessions",
         "MaxCachedSessions": 8,
         "Compaction": {
-          "Enabled": true,
-          "TriggerRatio": 0.8,
-          "HardLimitRatio": 0.95,
-          "TargetRatio": 0.5,
-          "SummaryMaxTokens": 4096,
-          "TimeoutSeconds": 120,
-          "UnknownContextWindowTokens": 128000,
-          "UnknownModelOutputTokens": 8192
+          "Enabled": true
         }
       }
     },
@@ -72,7 +57,6 @@
     },
     "ToolSearch": {
       "Memory": {
-        "DatabasePath": ".senera/ToolSearchLearning.sqlite",
         "MaxEpisodes": 5000,
         "HalfLifeDays": 30
       },
@@ -118,7 +102,17 @@
         "TopK": -1
       }
     },
+    "ToolLearning": {
+      "Enabled": true,
+      "MaxRepairAttempts": 1,
+      "Patterns": {
+        "MinSupport": 2,
+        "MaxPromptPatterns": 2
+      }
+    },
     "MemoryLearning": {
+      "Enabled": true,
+      "MaxRepairAttempts": 1,
       "Promotion": {
         "MinSupport": 2,
         "MaxClusterSize": 8,
@@ -135,12 +129,9 @@
       "SummaryMaxChars": 2400,
       "RawJsonMaxBytes": 67108864,
       "TextFileMaxBytes": 67108864,
-      "MemoryReadStructuredJsonMaxBytes": 8388608,
       "MemoryReadMaxArtifacts": 16,
       "MemoryReadMaxRefs": 8,
       "MemoryReadMaxConcurrency": 4,
-      "MemoryReadCacheMaxBytes": 134217728,
-      "MemoryReadCacheMaxEntries": 64,
       "MaxStoredBytes": 10737418240,
       "MaxArtifacts": 10000,
       "RetentionHours": 720,
@@ -218,8 +209,15 @@
       }
     },
     "Persistence": {
+      "Kind": "sqlite"
+    },
+    "ConfigStore": {
+      "Enabled": true,
       "Kind": "sqlite",
-      "DatabasePath": ".senera/senera.db"
+      "MirrorJson": true,
+      "RevisionRetentionCount": 256,
+      "CommandReceiptRetentionHours": 168,
+      "CommandReceiptMaxCount": 4096
     }
   },
   "DefaultModelProviderId": "main",

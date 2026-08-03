@@ -1,5 +1,3 @@
-import type { ActionPlanInput } from "../BamlClient/baml_client/index.js";
-
 export type AgentActionKind = "answer" | "ask_user" | "discover_tools" | "use_tools";
 
 export type AgentActionDecision =
@@ -36,15 +34,6 @@ export interface AgentActionCapabilityNeed {
   outputs: string[];
   evidence: string[];
   effects: string[];
-}
-
-export interface AgentActionPlanResult {
-  kind: "planned";
-  decision: AgentActionDecision;
-  input: ActionPlanInput;
-  selectedAction: AgentActionKind;
-  selectionRepaired: boolean;
-  payloadRepaired: boolean;
 }
 
 export function agentActionPreferredTools(decision: AgentActionDecision | undefined): string[] {

@@ -1,4 +1,4 @@
-import type { ToolSearchCapabilityManifest } from "../Types/PluginManifestTypes.js";
+import type { ToolSearchCapabilityManifest } from "../Types/AgentToolContractTypes.js";
 import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
 import type { AgentToolSearchRerankDocument } from "./AgentToolSearchReranker.js";
 
@@ -9,15 +9,22 @@ export interface AgentToolSearchOptions {
   includeLoaded?: boolean;
   loadedToolNames?: readonly string[];
   memoryEvidence?: readonly AgentToolSearchMemoryEvidence[];
+  semanticEvidence?: readonly AgentToolSearchSemanticEvidence[];
+}
+
+export interface AgentToolSearchSemanticEvidence {
+  toolName: string;
+  score: number;
 }
 
 export interface AgentToolSearchResult {
   toolName: string;
   title: string;
-  pluginName: string;
+  ownerName: string;
   sources: AgentToolSearchSource[];
   summary: string;
   whenToUse: string;
+  parameterSummary: string;
   permissions: string[];
   score: number;
   ranks: Record<string, number>;
@@ -58,6 +65,6 @@ export interface ToolSearchDocument extends AgentToolSearchRerankDocument {
   capabilities: ToolSearchCapabilityManifest[];
 }
 
-export type AgentToolSearchRankerName = "bm25" | "exact" | "memory" | "priority" | "source";
+export type AgentToolSearchRankerName = "bm25" | "exact" | "semantic" | "memory" | "priority" | "source";
 export type AgentToolSearchRankMap = Map<string, number>;
 export type AgentToolSearchRankedEntry = { toolName: string; score: number };

@@ -1,5 +1,6 @@
 import type {
   AgentActionPlannerConfig,
+  AgentMemoryLearningConfig,
   AgentToolLearningConfig,
   AgentVectorEmbeddingConfig,
   AgentVectorRerankConfig,
@@ -7,11 +8,8 @@ import type {
   ResolvedAgentConfigStoreConfig,
   ResolvedAgentFrontendConfig,
   ResolvedAgentLoopConfig,
-  ResolvedAgentMemoryLearningConfig,
   ResolvedAgentModelProviderEndpointConfig,
   ResolvedAgentPersistenceConfig,
-  ResolvedAgentPluginDiscoveryConfig,
-  ResolvedAgentPluginRootsConfig,
   ResolvedAgentPresetsConfig,
   ResolvedAgentSandboxRuntimeConfig,
   ResolvedAgentServerConfig,
@@ -55,6 +53,11 @@ export type AgentToolLearningDefaultsConfig = Required<Omit<AgentToolLearningCon
   Patterns: Required<NonNullable<AgentToolLearningConfig["Patterns"]>>;
 };
 
+export type AgentMemoryLearningDefaultsConfig = Required<Omit<AgentMemoryLearningConfig, "Client" | "Promotion">> & {
+  Client: AgentActionPlannerClientDefaultsConfig;
+  Promotion: Required<NonNullable<AgentMemoryLearningConfig["Promotion"]>>;
+};
+
 export type AgentActionPlannerDefaultsConfig = Required<
   Omit<AgentActionPlannerConfig, "Evidence" | "Client" | "PlanningClient" | "FinalAnswerClient">
 > & {
@@ -65,8 +68,6 @@ export type AgentActionPlannerDefaultsConfig = Required<
 };
 
 export interface ResolvedAgentDefaultsConfig {
-  PluginRoots: ResolvedAgentPluginRootsConfig;
-  PluginDiscovery: ResolvedAgentPluginDiscoveryConfig;
   ModelProviderEndpoints: ResolvedAgentModelProviderEndpointConfig[];
   ModelRuntime: ResolvedAgentModelRuntimeDefaultsConfig;
   ToolExecution: ResolvedAgentToolExecutionConfig;
@@ -78,7 +79,7 @@ export interface ResolvedAgentDefaultsConfig {
     Rerank: ResolvedAgentVectorRerankDefaultsConfig;
   };
   ToolLearning: AgentToolLearningDefaultsConfig;
-  MemoryLearning: ResolvedAgentMemoryLearningConfig;
+  MemoryLearning: AgentMemoryLearningDefaultsConfig;
   Presets: ResolvedAgentPresetsConfig;
   ActionPlanner: AgentActionPlannerDefaultsConfig;
   Artifacts: ResolvedAgentArtifactsConfig;

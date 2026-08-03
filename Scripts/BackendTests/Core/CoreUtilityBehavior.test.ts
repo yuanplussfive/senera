@@ -3,9 +3,32 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { errorMessage, toError } from "../../../Source/AgentSystem/Core/AgentErrors.js";
-import { writeFileAtomic, writeFileAtomicSync } from "../../../Source/AgentSystem/Core/AgentFs.js";
+import {
+  readRegularTextFileSnapshotSync,
+  readRegularTextFileSync,
+  writeFileAtomic,
+  writeFileAtomicSync,
+} from "../../../Source/AgentSystem/Core/AgentFs.js";
 import { sha256Hex, sha256HexOfCanonicalJson } from "../../../Source/AgentSystem/Core/AgentHash.js";
+import {
+  fileSystemPathIdentity,
+  isPathWithin,
+  isSamePath,
+  relativePathWithin,
+} from "../../../Source/AgentSystem/Core/AgentPath.js";
+import { agentSql } from "../../../Source/AgentSystem/Database/AgentSql.js";
 import { withDeadline } from "../../../Source/AgentSystem/Core/AgentTiming.js";
+import { defineSeneraProtocol } from "../../../Source/AgentSystem/Core/AgentProtocolIdentity.js";
+import {
+  agentStringOrEmpty,
+  agentUnknownRecordOrEmpty,
+  isAgentUnknownRecord,
+  readAgentNonBlankString,
+  readAgentNonEmptyString,
+  readAgentString,
+  readAgentTrimmedString,
+  readAgentUnknownRecord,
+} from "../../../Source/AgentSystem/Core/AgentUnknownValue.js";
 import { toPosixPath, toPosixRelative, walkFiles } from "../../Support/FileWalk.js";
 import { inspectTextIncludes, inspectWorkflowNamedStep, workflowJobBlock } from "../../Support/WorkflowGovernance.js";
 
@@ -19,6 +42,35 @@ afterEach(() => {
 });
 
 describe("core utilities", () => {
+  test("projects unknown records without treating arrays or null as records", () => {
+    const record = { value: 1 };
+
+    expect(isAgentUnknownRecord(record)).toBe(true);
+    expect(readAgentUnknownRecord(record)).toBe(record);
+    expect(readAgentUnknownRecord([])).toBeUndefined();
+    expect(readAgentUnknownRecord(null)).toBeUndefined();
+    expect(agentUnknownRecordOrEmpty("not-a-record")).toEqual({});
+  });
+
+  test("makes string normalization policy explicit", () => {
+    expect(readAgentString("")).toBe("");
+    expect(readAgentString(1)).toBeUndefined();
+    expect(readAgentNonEmptyString(" ")).toBe(" ");
+    expect(readAgentNonEmptyString("")).toBeUndefined();
+    expect(readAgentNonBlankString(" value ")).toBe(" value ");
+    expect(readAgentNonBlankString(" \t ")).toBeUndefined();
+    expect(readAgentTrimmedString(" value ")).toBe("value");
+    expect(agentStringOrEmpty(undefined)).toBe("");
+  });
+
+  test("keeps SQL templates static and delegates values to bound parameters", () => {
+    expect(agentSql`SELECT * FROM records WHERE status = @status`).toContain("@status");
+
+    expect(() =>
+      Reflect.apply(agentSql, undefined, [Object.assign(["SELECT ", ""], { raw: ["SELECT ", ""] }), "dynamic"]),
+    ).toThrow(/bound parameters/u);
+  });
+
   test("normalizes unknown error values", () => {
     const existing = new Error("failed");
 
@@ -26,6 +78,17 @@ describe("core utilities", () => {
     expect(errorMessage("failed")).toBe("failed");
     expect(toError(existing)).toBe(existing);
     expect(toError("failed")).toMatchObject({ message: "failed" });
+  });
+
+  test("defines one immutable identity for a versioned Senera protocol", () => {
+    const protocol = defineSeneraProtocol("example_contract", 3);
+
+    expect(protocol).toEqual({
+      name: "example_contract",
+      version: 3,
+      type: "senera.example_contract.v3",
+    });
+    expect(Object.isFrozen(protocol)).toBe(true);
   });
 
   test("hashes data and canonical JSON deterministically", () => {
@@ -57,6 +120,35 @@ describe("core utilities", () => {
 
     expect(fs.readFileSync(filePath, "utf8")).toBe("second\n");
     expect(fs.readdirSync(outputDirectory)).toEqual(["state.json"]);
+  });
+
+  test("reads regular text files through a reusable metadata snapshot", () => {
+    const directory = createTemporaryDirectory();
+    const filePath = path.join(directory, "resource.md");
+    fs.writeFileSync(filePath, "resource body", "utf8");
+
+    const first = readRegularTextFileSnapshotSync(filePath, "Resource");
+    const unchanged = readRegularTextFileSnapshotSync(filePath, "Resource", first);
+
+    expect(unchanged).toBe(first);
+    expect(readRegularTextFileSync(filePath, "Resource")).toBe("resource body");
+    expect(() => readRegularTextFileSync(directory, "Resource")).toThrow(/not a regular file/u);
+  });
+
+  test("uses path segments rather than string prefixes for containment", () => {
+    const root = path.resolve("workspace");
+
+    expect(relativePathWithin(root, path.join(root, "..cache", "value"))).toBe(path.join("..cache", "value"));
+    expect(isPathWithin(root, path.join(root, "nested"))).toBe(true);
+    expect(isPathWithin(root, path.resolve(root, "..", "outside"))).toBe(false);
+    expect(isSamePath(root, path.join(root, "."))).toBe(true);
+  });
+
+  test("normalizes filesystem identities according to platform case semantics", () => {
+    const mixedCase = path.resolve("Workspace", "Project");
+
+    expect(fileSystemPathIdentity(mixedCase, "win32")).toBe(mixedCase.toLowerCase());
+    expect(fileSystemPathIdentity(mixedCase, "linux")).toBe(mixedCase);
   });
 });
 

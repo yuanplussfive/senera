@@ -1,6 +1,8 @@
-import crypto from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
+import { sha256Hex } from "../Core/AgentHash.js";
+import { isPathWithin, toPosixPath } from "../Core/AgentPath.js";
+export { toPosixPath } from "../Core/AgentPath.js";
 
 export const DefaultAgentArtifactRootDir = ".senera/artifacts/runs";
 const ArtifactUriProtocol = "senera:";
@@ -34,9 +36,11 @@ export const AgentArtifactLocatorSchema = z.object({
   artifactUri: z.string().min(1),
   workspaceRoot: z.string().min(1),
   rootDir: z.string().min(1),
+  sessionId: z.string().min(1).optional(),
   requestId: z.string().min(1),
   step: z.number().int().min(0),
   callIndex: z.number().int().min(0),
+  callId: z.string().min(1),
   toolName: z.string().min(1),
   argsHash: z.string().min(1),
   resultHash: z.string().min(1),
@@ -51,9 +55,11 @@ export type AgentArtifactFileName = keyof typeof AgentArtifactFileNames;
 export interface AgentArtifactLocatorInput {
   workspaceRoot: string;
   rootDir?: string;
+  sessionId?: string;
   requestId?: string;
   step: number;
   callIndex?: number;
+  callId: string;
   toolName: string;
   argsHash: string;
   resultHash: string;
@@ -80,6 +86,7 @@ export class AgentArtifactPathResolver {
 export function createAgentArtifactLocator(input: AgentArtifactLocatorInput): AgentArtifactLocator {
   const workspaceRoot = path.resolve(input.workspaceRoot);
   const rootDir = normalizeRelativeRootDir(input.rootDir ?? DefaultAgentArtifactRootDir);
+  const sessionId = input.sessionId?.trim() || undefined;
   const requestId = safePathSegment(input.requestId ?? "anonymous", {
     replacementPrefix: "request",
     hashSource: input.requestId ?? workspaceRoot,
@@ -90,12 +97,15 @@ export function createAgentArtifactLocator(input: AgentArtifactLocatorInput): Ag
   });
   const stepSegment = padPositiveInteger(input.step, 3);
   const callSegment = padPositiveInteger(input.callIndex ?? 1, 3);
+  const callId = input.callId.trim();
   const argsHash = safeHashSegment(input.argsHash);
   const resultHash = safeHashSegment(input.resultHash);
   const artifactId = stableArtifactId({
+    sessionId: sessionId ?? null,
     requestId,
     step: input.step,
     callIndex: input.callIndex ?? 1,
+    callId,
     toolName: input.toolName,
     argsHash,
     resultHash,
@@ -124,9 +134,11 @@ export function createAgentArtifactLocator(input: AgentArtifactLocatorInput): Ag
     artifactUri: createAgentArtifactUri(artifactId),
     workspaceRoot,
     rootDir,
+    sessionId,
     requestId,
     step: input.step,
     callIndex: input.callIndex ?? 1,
+    callId,
     toolName: input.toolName,
     argsHash,
     resultHash,
@@ -157,10 +169,6 @@ export function normalizeAgentArtifactUri(value: string): string | undefined {
   return artifactId ? createAgentArtifactUri(artifactId) : undefined;
 }
 
-export function toPosixPath(value: string): string {
-  return value.split(path.sep).join("/");
-}
-
 export function toWorkspaceRelativePath(workspaceRoot: string, absolutePath: string): string {
   const root = path.resolve(workspaceRoot);
   const target = assertInsideRoot(root, path.resolve(absolutePath), `路径超出工作区：${absolutePath}`);
@@ -170,10 +178,7 @@ export function toWorkspaceRelativePath(workspaceRoot: string, absolutePath: str
 export function assertInsideRoot(rootPath: string, targetPath: string, message: string): string {
   const root = path.resolve(rootPath);
   const target = path.resolve(targetPath);
-  const relative = path.relative(root, target);
-  if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) {
-    return target;
-  }
+  if (isPathWithin(root, target)) return target;
 
   throw new Error(message);
 }
@@ -206,9 +211,11 @@ export function safeHashSegment(value: string): string {
 }
 
 function stableArtifactId(input: {
+  sessionId: string | null;
   requestId: string;
   step: number;
   callIndex: number;
+  callId: string;
   toolName: string;
   argsHash: string;
   resultHash: string;
@@ -256,7 +263,7 @@ function isArtifactId(value: string): boolean {
 }
 
 function hashText(value: string): string {
-  return crypto.createHash("sha1").update(value).digest("hex");
+  return sha256Hex(value);
 }
 
 function padPositiveInteger(value: number, width: number): string {

@@ -45,26 +45,23 @@ export function JsonConfigSettingsView({
     >
       <ConfigFieldVisibilityControl fields={allFields} value={fieldVisibility} onChange={setFieldVisibility} />
       {visibleSections.length > 0 ? (
-        <>
-          {visibleSections.length > 1 ? <JsonSectionNavigation sections={visibleSections} /> : null}
-          <div className="space-y-7">
-            {visibleSections.map((section) => (
-              <JsonSettingsSection
-                key={section.name}
-                section={section}
-                showHeading={showSectionHeading}
-                value={value}
-                disabled={Boolean(disabled)}
-                onUpdateField={(field, nextValue) =>
-                  onChange(
-                    writeJsonConfigFieldValue(value, field.path, normalizeJsonConfigFieldValue(field, nextValue)),
-                    field.type === "boolean" || Boolean(field.options?.length) ? "immediate" : "debounced",
-                  )
-                }
-              />
-            ))}
-          </div>
-        </>
+        <div className="space-y-7">
+          {visibleSections.map((section) => (
+            <JsonSettingsSection
+              key={section.name}
+              section={section}
+              showHeading={showSectionHeading}
+              value={value}
+              disabled={Boolean(disabled)}
+              onUpdateField={(field, nextValue) =>
+                onChange(
+                  writeJsonConfigFieldValue(value, field.path, normalizeJsonConfigFieldValue(field, nextValue)),
+                  field.type === "boolean" || Boolean(field.options?.length) ? "immediate" : "debounced",
+                )
+              }
+            />
+          ))}
+        </div>
       ) : (
         <StateView
           status="empty"
@@ -87,28 +84,6 @@ export function JsonConfigSettingsView({
   );
 }
 
-function JsonSectionNavigation({ sections }: { sections: ConfigFormSectionData[] }): JSX.Element {
-  return (
-    <nav
-      aria-label={frontendMessage("settings.config.sectionNavigation")}
-      className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-ink-200/70 pb-2"
-    >
-      <span className="text-[11px] font-medium text-ink-500">
-        {frontendMessage("settings.config.sectionNavigation")}:
-      </span>
-      {sections.map((section) => (
-        <a
-          key={section.name}
-          href={`#${jsonSectionAnchorId(section.name)}`}
-          className="text-[11.5px] text-content-secondary underline decoration-ink-300 underline-offset-2 transition hover:text-content-primary"
-        >
-          {section.label}
-        </a>
-      ))}
-    </nav>
-  );
-}
-
 function JsonSettingsSection({
   section,
   showHeading,
@@ -123,7 +98,7 @@ function JsonSettingsSection({
   onUpdateField: (field: ConfigFormFieldData, value: unknown) => void;
 }): JSX.Element {
   return (
-    <section id={jsonSectionAnchorId(section.name)} className="scroll-mt-3">
+    <section>
       {showHeading ? (
         <div className="mb-2 min-w-0 px-0.5">
           <div className="min-w-0">
@@ -147,8 +122,4 @@ function JsonSettingsSection({
       </div>
     </section>
   );
-}
-
-function jsonSectionAnchorId(name: string): string {
-  return `json-config-section-${name.replace(/[^A-Za-z0-9_-]+/g, "-")}`;
 }

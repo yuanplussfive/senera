@@ -1,90 +1,62 @@
 import { b as baml } from "../BamlClient/baml_client/index.js";
 import type {
-  ActionPlanInput,
-  PiControllerAction as BamlPiControllerAction,
+  ControllerDecision as BamlControllerDecision,
   PiToolArgumentsDraft as BamlPiToolArgumentsDraft,
   ToolRiskAudit as BamlToolRiskAudit,
-  PiCompactionSummary as BamlPiCompactionSummary,
+  GroundedDigest as BamlGroundedDigest,
 } from "../BamlClient/baml_client/types.js";
 import type { AgentActionPlannerStructuredCaller } from "./AgentActionPlannerStructuredCaller.js";
 import type {
-  AgentPiControllerActionInput,
-  AgentPiToolCard,
+  AgentPiControllerDecisionInput,
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
-} from "../PiProxy/AgentPiAssistantMessageTypes.js";
+} from "../PiShared/AgentPiPlanningTypes.js";
 import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
-import type { AgentPiCompactionPromptInput } from "../Pi/AgentPiCompactionPrompt.js";
-import { parseInteractionPreparation, type ParsedInteractionPreparation } from "./AgentActionPlannerSchema.js";
+import {
+  normalizeAgentPiToolObservationDigest,
+  type AgentPiToolObservationDigestPromptInput,
+} from "../Pi/AgentPiToolObservationDigestPrompt.js";
 
 export class AgentActionPlannerCoreModelCalls {
   constructor(private readonly caller: AgentActionPlannerStructuredCaller) {}
 
-  async prepareInteraction(
-    input: ActionPlanInput,
-    options: { candidateTools?: readonly AgentPiToolCard[]; signal?: AbortSignal } = {},
-  ): Promise<ParsedInteractionPreparation> {
-    return this.caller.run({
-      functionName: "PrepareInteraction",
-      args: {
-        functionName: "PrepareInteraction",
-        input,
-        candidateTools: options.candidateTools?.map((tool) => structuredClone(tool)) ?? [],
-      },
-      signal: options.signal,
-      parse: (rawOutput) =>
-        parseInteractionPreparation(
-          baml.parse.PrepareInteraction(rawOutput),
-          input,
-          options.candidateTools?.map((tool) => tool.name) ?? [],
-        ),
-      repair: (failure) => ({
-        functionName: "RepairInteractionPreparation",
-        input,
-        candidateTools: options.candidateTools?.map((tool) => structuredClone(tool)) ?? [],
-        invalidPreparation: failure.invalidOutput,
-        issues: failure.issues,
-      }),
-    });
-  }
-
-  async selectPiAction(
-    input: AgentPiControllerActionInput,
+  async evolveTurn(
+    input: AgentPiControllerDecisionInput,
     options: { signal?: AbortSignal } = {},
-  ): Promise<BamlPiControllerAction> {
+  ): Promise<BamlControllerDecision> {
     return this.caller.run({
-      functionName: "SelectPiAction",
+      functionName: "EvolveTurn",
       args: {
-        functionName: "SelectPiAction",
+        functionName: "EvolveTurn",
         input,
       },
       signal: options.signal,
-      parse: (rawOutput) => baml.parse.SelectPiAction(rawOutput),
+      parse: (rawOutput) => baml.parse.EvolveTurn(rawOutput),
       repair: (failure) => ({
-        functionName: "RepairPiAction",
+        functionName: "RepairControllerDecision",
         input,
-        invalidAction: failure.invalidOutput,
+        invalidDecision: failure.invalidOutput,
         issues: failure.issues,
       }),
     });
   }
 
-  async repairPiAction(
+  async repairControllerDecision(
     options: {
-      input: AgentPiControllerActionInput;
-      invalidAction: string;
+      input: AgentPiControllerDecisionInput;
+      invalidDecision: string;
       issues: string[];
     },
     requestOptions: { signal?: AbortSignal } = {},
-  ): Promise<BamlPiControllerAction> {
+  ): Promise<BamlControllerDecision> {
     return this.caller.repair({
-      functionName: "RepairPiAction",
+      functionName: "RepairControllerDecision",
       args: {
-        functionName: "RepairPiAction",
+        functionName: "RepairControllerDecision",
         ...options,
       },
       signal: requestOptions.signal,
-      parse: (rawOutput) => baml.parse.RepairPiAction(rawOutput),
+      parse: (rawOutput) => baml.parse.RepairControllerDecision(rawOutput),
     });
   }
 
@@ -166,43 +138,47 @@ export class AgentActionPlannerCoreModelCalls {
     });
   }
 
-  async compactPiSession(
-    input: AgentPiCompactionPromptInput,
+  async condenseToolObservations(
+    input: AgentPiToolObservationDigestPromptInput,
     options: { signal?: AbortSignal } = {},
-  ): Promise<BamlPiCompactionSummary> {
+  ): Promise<BamlGroundedDigest> {
+    const sourceIds = new Set(input.sources.map((source) => source.id));
     return this.caller.run({
-      functionName: "CompactPiSession",
+      functionName: "CondenseToolObservations",
       args: {
-        functionName: "CompactPiSession",
+        functionName: "CondenseToolObservations",
         input,
       },
       signal: options.signal,
-      parse: (rawOutput) => baml.parse.CompactPiSession(rawOutput),
+      parse: (rawOutput) =>
+        normalizeAgentPiToolObservationDigest(baml.parse.CondenseToolObservations(rawOutput), sourceIds),
       repair: (failure) => ({
-        functionName: "RepairPiCompaction",
+        functionName: "RepairToolObservationDigest",
         input,
-        invalidSummary: failure.invalidOutput,
+        invalidDigest: failure.invalidOutput,
         issues: failure.issues,
       }),
     });
   }
 
-  async repairPiCompaction(
+  async repairToolObservationDigest(
     options: {
-      input: AgentPiCompactionPromptInput;
-      invalidSummary: string;
+      input: AgentPiToolObservationDigestPromptInput;
+      invalidDigest: string;
       issues: string[];
     },
     requestOptions: { signal?: AbortSignal } = {},
-  ): Promise<BamlPiCompactionSummary> {
+  ): Promise<BamlGroundedDigest> {
+    const sourceIds = new Set(options.input.sources.map((source) => source.id));
     return this.caller.repair({
-      functionName: "RepairPiCompaction",
+      functionName: "RepairToolObservationDigest",
       args: {
-        functionName: "RepairPiCompaction",
+        functionName: "RepairToolObservationDigest",
         ...options,
       },
       signal: requestOptions.signal,
-      parse: (rawOutput) => baml.parse.RepairPiCompaction(rawOutput),
+      parse: (rawOutput) =>
+        normalizeAgentPiToolObservationDigest(baml.parse.RepairToolObservationDigest(rawOutput), sourceIds),
     });
   }
 }

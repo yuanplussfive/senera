@@ -1,10 +1,25 @@
-import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import { type AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import { type AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { type AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import type { AgentSession } from "./AgentSession.js";
+import type { AgentSessionMessageQueueMode } from "./AgentSessionMessageQueueMode.js";
+
+export function cloneAgentSessionState(session: AgentSession): AgentSession {
+  return structuredClone(session);
+}
+
+export function replaceAgentSessionState(target: AgentSession, source: AgentSession): void {
+  if (target.id !== source.id) {
+    throw new Error(`Cannot replace session ${target.id} with state from ${source.id}.`);
+  }
+
+  const targetRecord = target as unknown as Record<string, unknown>;
+  for (const key of Object.keys(targetRecord)) {
+    delete targetRecord[key];
+  }
+  Object.assign(targetRecord, structuredClone(source));
+}
 
 export function projectSessionUserEntry(
   projector: AgentConversationProjector,
@@ -12,31 +27,20 @@ export function projectSessionUserEntry(
   request: {
     input: string;
     attachments?: AgentUploadAttachment[];
+    queue?: {
+      parentRequestId: string;
+      mode: AgentSessionMessageQueueMode;
+    };
   },
   timestamp: string,
 ): Extract<AgentConversationEntry, { kind: typeof AgentConversationEntryKinds.UserMessage }> {
-  return projector.projectUserInput(requestId, request.input, timestamp, undefined, request.attachments);
-}
-
-export function materializeSessionRunMessages(
-  policy: AgentConversationPolicy,
-  session: AgentSession,
-  userEntry: Extract<AgentConversationEntry, { kind: typeof AgentConversationEntryKinds.UserMessage }>,
-): AgentLanguageModelMessage[] {
-  return [
-    ...policy.materialize(session.conversation, {
-      toolResultsScope: {
-        kind: "none",
-      },
-      evidenceMemoryScope: {
-        kind: "all",
-      },
-    }),
-    {
-      role: "user",
-      content: policy.renderCurrentUserMessage(userEntry),
-    },
-  ];
+  return projector.projectUserInput(
+    requestId,
+    request.input,
+    timestamp,
+    request.queue ? { queue: request.queue } : undefined,
+    request.attachments,
+  );
 }
 
 export function stampSessionStepTraces(

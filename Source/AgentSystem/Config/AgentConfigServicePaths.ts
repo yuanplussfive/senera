@@ -1,14 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
-import { resolveConfigStoreConfig } from "../AgentDefaults.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { isFileExistsError, writeFileAtomicSync } from "../Core/AgentFs.js";
+import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import { AgentConfigSecretCodec } from "./AgentConfigSecretProtection.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
-export function resolveConfigStoreDatabasePath(workspaceRoot: string, config: AgentSystemConfig): string {
-  const store = resolveConfigStoreConfig(config);
-  return resolveConfigPath(workspaceRoot, store.DatabasePath);
+export function resolveConfigStoreDatabasePath(workspaceRoot: string): string {
+  return resolveAgentWorkspaceLayout(workspaceRoot).databases.config;
 }
 
 export function resolveConfigPath(workspaceRoot: string, value: string): string {
@@ -48,7 +48,7 @@ export function persistMigratedAgentConfigJson(
 }
 
 function rewriteExistingBackupSecrets(backupPath: string, secretCodec: AgentConfigSecretCodec): void {
-  const payload = JSON.parse(fs.readFileSync(backupPath, "utf8")) as unknown;
+  const payload = parseJsonText(fs.readFileSync(backupPath, "utf8"), "Agent config backup") as unknown;
   const revealed = secretCodec.revealPayload(payload);
   if (revealed.plaintextSecretsFound) {
     writeProtectedJsonFile(secretCodec.protectPayload(revealed.value), backupPath);

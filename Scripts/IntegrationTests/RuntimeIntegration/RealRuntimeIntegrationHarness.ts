@@ -4,12 +4,12 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { XMLParser } from "fast-xml-parser";
 import { AgentApprovalRuntime } from "../../../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
 import { AgentConfigService } from "../../../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentLogger } from "../../../Source/AgentSystem/Diagnostics/AgentLogger.js";
 import { AgentCallbackRunEventWriter } from "../../../Source/AgentSystem/WebSocket/AgentCallbackRunEventWriter.js";
 import { AgentLoop } from "../../../Source/AgentSystem/Loop/AgentLoop.js";
-import { AgentModelEndpointClient } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelEndpointClient.js";
 import { AgentSystemRuntime } from "../../../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import { AgentSandboxRuntimeService } from "../../../Source/AgentSystem/Sandbox/AgentSandboxRuntimeService.js";
 import { AgentSessionManager } from "../../../Source/AgentSystem/Session/AgentSessionManager.js";
@@ -22,6 +22,8 @@ import { AgentProtocolIntegrationClient } from "../AgentProtocol/AgentProtocolIn
 import { createAgentRequestCancellationResource } from "../../../Source/AgentSystem/Session/AgentSessionRunResource.js";
 import { AgentPiSessionMutationService } from "../../../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
 import { AgentLocalAdminAccountStore } from "../../../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
+import { readAgentUnknownRecord } from "../../../Source/AgentSystem/Core/AgentUnknownValue.js";
+import { resolveWorkspaceRoot } from "../../WorkspaceRoot.js";
 
 export const RealRuntimeIntegrationValues = {
   DirectFinalAnswer: "真实运行时已直接完成回答。",
@@ -38,19 +40,24 @@ export const RealRuntimeIntegrationAdmin = {
   password: "a long integration password",
 } as const;
 
-const PlannerStages = {
+const ModelStages = {
   AuditToolRisk: "auditToolRisk",
+  EvolveTurn: "evolveTurn",
   FillPiToolArguments: "fillPiToolArguments",
-  GeneratePiFinalAnswer: "generatePiFinalAnswer",
-  PrepareInteraction: "prepareInteraction",
-  SelectPiAction: "selectPiAction",
 } as const;
 
+const PlannerInputXmlParser = new XMLParser({
+  ignoreAttributes: true,
+  parseTagValue: false,
+  trimValues: true,
+});
+
 const RealRuntimePreparationFingerprint = "real-runtime-e2e-v1";
+const IntegrationResourcesRoot = resolveWorkspaceRoot(import.meta.url);
 
-export type PlannerStage = (typeof PlannerStages)[keyof typeof PlannerStages];
+export type ModelStage = (typeof ModelStages)[keyof typeof ModelStages];
 
-export interface PlannerStagePause {
+export interface ModelStagePause {
   readonly entered: Promise<void>;
   release(): void;
 }
@@ -58,7 +65,7 @@ export interface PlannerStagePause {
 export interface RealRuntimeIntegrationHarness {
   readonly client: AgentProtocolIntegrationClient;
   readonly httpOrigin: string;
-  readonly modelServer: FakePlannerModelServer;
+  readonly modelServer: FakeControllerModelServer;
   readonly workspaceRoot: string;
   readonly websocketUrl: string;
   stop(): Promise<void>;
@@ -74,9 +81,8 @@ export async function createRealRuntimeIntegrationHarness(
   options: RealRuntimeIntegrationHarnessOptions = {},
 ): Promise<RealRuntimeIntegrationHarness> {
   const workspaceRoot = mkdtempSync(path.join(os.tmpdir(), "senera-runtime-e2e-"));
-  const modelServer = await FakePlannerModelServer.start();
+  const modelServer = await FakeControllerModelServer.start();
   try {
-    const pluginRoot = await prepareRuntimePlugins(workspaceRoot);
     const serverPort = await reserveLoopbackPort();
     const httpOrigin = `http://127.0.0.1:${serverPort}`;
     const authenticationMode = options.authenticationMode ?? (options.authentication ? "required" : "disabled");
@@ -88,7 +94,6 @@ export async function createRealRuntimeIntegrationHarness(
     const config = createRuntimeConfig({
       authenticationOrigin: authentication ? httpOrigin : undefined,
       modelBaseUrl: modelServer.baseUrl,
-      pluginRoot,
       serverPort,
     });
     if (authentication) {
@@ -109,25 +114,27 @@ export async function createRealRuntimeIntegrationHarness(
     const approvalRuntime = new AgentApprovalRuntime();
     const runtime = AgentSystemRuntime.fromConfig({
       workspaceRoot,
+      resourcesPath: IntegrationResourcesRoot,
       config,
       approvalRuntime,
       logger: new AgentLogger(),
     });
     const repository = new InMemorySessionRepository();
+    const piSessionMutations = new AgentPiSessionMutationService({
+      acquireRuntime: () => ({ runtime, release: () => undefined }),
+    });
     const sessionManager = new AgentSessionManager({
       runResources: [createAgentRequestCancellationResource("approval", approvalRuntime)],
       store: new AgentSessionStore({ repository }),
       piSessions: runtime.piSessionRegistry,
-      piSessionMutations: new AgentPiSessionMutationService({
-        acquireRuntime: () => ({ runtime, release: () => undefined }),
-      }),
+      piSessionMutations,
+      piSessionManagement: piSessionMutations,
       runControl: {
         settlementTimeoutMs: runtime.agentLoopConfig.RunSettlementTimeoutMs,
       },
-      loopFactory: (modelProviderId) =>
+      loopFactory: (_modelProviderId) =>
         new AgentLoop({
           runtime,
-          model: new AgentModelEndpointClient(config, modelProviderId),
           preparationFingerprint: RealRuntimePreparationFingerprint,
         }),
     });
@@ -145,6 +152,7 @@ export async function createRealRuntimeIntegrationHarness(
       sandboxRuntimeService,
       staticFrontendRoot: options.staticFrontendRoot,
       logger: new AgentLogger(),
+      piTurnContexts: runtime.piTurnContexts,
     });
     await server.start();
     const websocketUrl = `ws://127.0.0.1:${config.Defaults!.Server!.Port}`;
@@ -180,23 +188,21 @@ export async function createRealRuntimeIntegrationHarness(
   }
 }
 
-export class FakePlannerModelServer {
-  readonly stages: PlannerStage[] = [];
-  private readonly stageFailures: PlannerStage[] = [];
+export class FakeControllerModelServer {
+  readonly stages: ModelStage[] = [];
+  private readonly stageFailures: ModelStage[] = [];
   private readonly stagePauses: Array<{
-    stage: PlannerStage;
+    stage: ModelStage;
     entered: ReturnType<typeof createDeferred<void>>;
     released: ReturnType<typeof createDeferred<void>>;
   }> = [];
-  private selectPiActionCount = 0;
-
   private constructor(
     private readonly server: http.Server,
     readonly baseUrl: string,
   ) {}
 
-  static async start(): Promise<FakePlannerModelServer> {
-    const context: { instance?: FakePlannerModelServer } = {};
+  static async start(): Promise<FakeControllerModelServer> {
+    const context: { instance?: FakeControllerModelServer } = {};
     const server = http.createServer((request, response) => {
       void context.instance?.handle(request, response);
     });
@@ -205,19 +211,19 @@ export class FakePlannerModelServer {
     if (!address || typeof address === "string") {
       throw new Error("Unable to resolve fake planner model server address.");
     }
-    context.instance = new FakePlannerModelServer(server, `http://127.0.0.1:${address.port}/v1`);
+    context.instance = new FakeControllerModelServer(server, `http://127.0.0.1:${address.port}/v1`);
     return context.instance;
   }
 
-  count(stage: PlannerStage): number {
+  count(stage: ModelStage): number {
     return this.stages.filter((candidate) => candidate === stage).length;
   }
 
-  failNext(stage: PlannerStage): void {
+  failNext(stage: ModelStage): void {
     this.stageFailures.push(stage);
   }
 
-  pauseNext(stage: PlannerStage): PlannerStagePause {
+  pauseNext(stage: ModelStage): ModelStagePause {
     const pause = {
       stage,
       entered: createDeferred<void>(),
@@ -243,10 +249,10 @@ export class FakePlannerModelServer {
       return;
     }
     const payload = await readJsonBody(request);
-    const stage = detectPlannerStage(payload);
+    const stage = detectModelStage(payload);
     if (!stage) {
       response.writeHead(422, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ error: { message: "Unknown deterministic planner stage." } }));
+      response.end(JSON.stringify({ error: { message: "Unknown deterministic controller stage." } }));
       return;
     }
     this.stages.push(stage);
@@ -257,7 +263,7 @@ export class FakePlannerModelServer {
     }
     await this.waitForStagePause(stage);
     const output = this.outputFor(stage, payload);
-    const content = stage === PlannerStages.GeneratePiFinalAnswer ? String(output) : JSON.stringify(output);
+    const content = JSON.stringify(output);
     response.writeHead(200, {
       "Cache-Control": "no-cache",
       "Content-Type": "text/event-stream; charset=utf-8",
@@ -274,48 +280,15 @@ export class FakePlannerModelServer {
     );
   }
 
-  private outputFor(stage: PlannerStage, payload: unknown): unknown {
-    const directResponse = JSON.stringify(payload).includes(RealRuntimeIntegrationValues.DirectRequestInput);
-    const outputs: Record<Exclude<PlannerStage, "selectPiAction">, () => unknown> = {
-      [PlannerStages.PrepareInteraction]: () => ({
-        turnUnderstanding: {
-          rawUserTurn: directResponse
-            ? RealRuntimeIntegrationValues.DirectRequestInput
-            : RealRuntimeIntegrationValues.RequestInput,
-          standaloneRequest: directResponse
-            ? RealRuntimeIntegrationValues.DirectRequestInput
-            : RealRuntimeIntegrationValues.RequestInput,
-          contextMode: "None",
-          contextBasis: "",
-          missingContext: "",
-        },
-        initialAction: directResponse
-          ? {
-              kind: "FinalAnswer",
-              answerPlan: null,
-              question: null,
-              preface: null,
-              calls: null,
-            }
-          : {
-              kind: "CallTools",
-              preface: "我先检查当前注册的命令工具能力。",
-              calls: [
-                {
-                  toolName: RealRuntimeIntegrationValues.ToolName,
-                  purpose: "确认是否存在 shell 命令执行能力",
-                  required: true,
-                  argumentHints: { query: "shell command", includeLoaded: true },
-                },
-              ],
-            },
-      }),
-      [PlannerStages.FillPiToolArguments]: () => ({
+  private outputFor(stage: ModelStage, payload: unknown): unknown {
+    const outputs: Record<ModelStage, () => unknown> = {
+      [ModelStages.EvolveTurn]: () => evolveTurnOutput(readPlannerInput(payload)),
+      [ModelStages.FillPiToolArguments]: () => ({
         arguments: { query: "shell command", includeLoaded: true },
         missingInputs: [],
         assumptions: [],
       }),
-      [PlannerStages.AuditToolRisk]: () => ({
+      [ModelStages.AuditToolRisk]: () => ({
         decision: "Allow",
         riskLevel: "Low",
         confidence: 1,
@@ -323,50 +296,30 @@ export class FakePlannerModelServer {
         reason: "Deterministic read-only E2E tool call.",
         matchedConcerns: [],
       }),
-      [PlannerStages.GeneratePiFinalAnswer]: () =>
-        directResponse ? RealRuntimeIntegrationValues.DirectFinalAnswer : RealRuntimeIntegrationValues.FinalAnswer,
     };
-    if (stage !== PlannerStages.SelectPiAction) return outputs[stage]();
-
-    this.selectPiActionCount += 1;
-    return {
-      kind: "FinalAnswer",
-      answerPlan: ["总结工具检索结论。"],
-    };
+    return outputs[stage]();
   }
 
-  private consumeStageFailure(stage: PlannerStage): boolean {
+  private consumeStageFailure(stage: ModelStage): boolean {
     const index = this.stageFailures.indexOf(stage);
     if (index < 0) return false;
     this.stageFailures.splice(index, 1);
     return true;
   }
 
-  private async waitForStagePause(stage: PlannerStage): Promise<void> {
+  private async waitForStagePause(stage: ModelStage): Promise<void> {
     const index = this.stagePauses.findIndex((pause) => pause.stage === stage);
     if (index < 0) return;
-    const [pause] = this.stagePauses.splice(index, 1);
-    pause!.entered.resolve();
-    await pause!.released.promise;
+    const pause = this.stagePauses.splice(index, 1).at(0);
+    if (!pause) throw new Error(`Missing deterministic pause for model stage ${stage}.`);
+    pause.entered.resolve();
+    await pause.released.promise;
   }
-}
-
-async function prepareRuntimePlugins(workspaceRoot: string): Promise<string> {
-  const targetRoot = path.join(workspaceRoot, "SystemPlugins");
-  const sourceRoot = path.resolve(process.cwd(), "System", "Plugins");
-  await fs.mkdir(targetRoot, { recursive: true });
-  await Promise.all(
-    ["AgentTemplatePlugin", "AgentToolSearchPlugin", "AskUserToolPlugin"].map((pluginName) =>
-      fs.cp(path.join(sourceRoot, pluginName), path.join(targetRoot, pluginName), { recursive: true }),
-    ),
-  );
-  return targetRoot;
 }
 
 function createRuntimeConfig(input: {
   authenticationOrigin?: string;
   modelBaseUrl: string;
-  pluginRoot: string;
   serverPort: number;
 }): AgentSystemConfig {
   return {
@@ -392,7 +345,6 @@ function createRuntimeConfig(input: {
           : {}),
       },
       Persistence: { Kind: "memory" },
-      PluginRoots: { System: [input.pluginRoot], User: [] },
       AgentLoop: { PiSessions: { RootDir: ".senera/pi-sessions" } },
       ToolLearning: { Enabled: false },
       SandboxRuntime: {
@@ -426,9 +378,94 @@ function createRuntimeConfig(input: {
   };
 }
 
-function detectPlannerStage(payload: unknown): PlannerStage | undefined {
+function detectModelStage(payload: unknown): ModelStage | undefined {
   const serialized = JSON.stringify(payload);
-  return Object.values(PlannerStages).find((stage) => serialized.includes(stage));
+  return Object.values(ModelStages).find((stage) => serialized.includes(stage));
+}
+
+function readPlannerInput(payload: unknown): Record<string, unknown> {
+  const request = readAgentUnknownRecord(payload);
+  const messages = Array.isArray(request?.messages) ? request.messages : [];
+  const finalMessage = readAgentUnknownRecord(messages.at(-1));
+  const content = finalMessage?.content;
+  if (typeof content !== "string") throw new Error("Deterministic controller request has no final text message.");
+  const document = readAgentUnknownRecord(PlannerInputXmlParser.parse(content) as unknown);
+  const root = readAgentUnknownRecord(document?.planner_input);
+  if (!root) throw new Error("Deterministic controller request has no planner_input XML document.");
+
+  const plannerInput = readJsonObjectSection(root.extra_context, "extra_context") ?? {};
+  assignJsonSection(plannerInput, "directive", root.directive);
+  assignJsonSection(plannerInput, "seneraRuntime", root.runtime_context);
+  assignJsonSection(plannerInput, "openAiRequest", root.openai_request);
+  if (root.routing_cards !== undefined) {
+    plannerInput.routingCards = readRoutingCardSections(root.routing_cards);
+  }
+  return plannerInput;
+}
+
+function assignJsonSection(target: Record<string, unknown>, key: string, value: unknown): void {
+  if (value !== undefined && value !== "") {
+    target[key] = readJsonSection(value, key);
+  }
+}
+
+function readRoutingCardSections(value: unknown): unknown[] {
+  const routingCards = readAgentUnknownRecord(value);
+  const rawCards = routingCards?.routing_card;
+  const cards = Array.isArray(rawCards) ? rawCards : rawCards === undefined ? [] : [rawCards];
+  return cards.map((card, index) => readJsonSection(card, `routing_card[${index}]`));
+}
+
+function readJsonObjectSection(value: unknown, sectionName: string): Record<string, unknown> | undefined {
+  if (value === undefined || value === "") return undefined;
+  const parsed = readJsonSection(value, sectionName);
+  const record = readAgentUnknownRecord(parsed);
+  if (!record) throw new Error(`Planner ${sectionName} section is not a JSON object.`);
+  return record;
+}
+
+function readJsonSection(value: unknown, sectionName: string): unknown {
+  if (typeof value !== "string") {
+    throw new Error(`Planner ${sectionName} section is not JSON text.`);
+  }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch (error) {
+    throw new Error(`Planner ${sectionName} section is not valid JSON.`, { cause: error });
+  }
+}
+
+function evolveTurnOutput(plannerInput: Record<string, unknown>): unknown {
+  if (JSON.stringify(plannerInput).includes(RealRuntimeIntegrationValues.DirectRequestInput)) {
+    return {
+      kind: "Direct",
+      response: RealRuntimeIntegrationValues.DirectFinalAnswer,
+    };
+  }
+
+  const openAiRequest = readAgentUnknownRecord(plannerInput.openAiRequest);
+  const toolTranscript = Array.isArray(openAiRequest?.toolTranscript) ? openAiRequest.toolTranscript : [];
+  const hasObservation = toolTranscript.some((entry) => readAgentUnknownRecord(entry)?.observation !== undefined);
+  if (hasObservation) {
+    return {
+      kind: "Direct",
+      response: RealRuntimeIntegrationValues.FinalAnswer,
+    };
+  }
+
+  return {
+    kind: "Execute",
+    fragment: {
+      preface: "我先检查当前注册的命令工具能力。",
+      calls: [
+        {
+          toolName: RealRuntimeIntegrationValues.ToolName,
+          purpose: "确认是否存在 shell 命令执行能力",
+          required: true,
+        },
+      ],
+    },
+  };
 }
 
 async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {

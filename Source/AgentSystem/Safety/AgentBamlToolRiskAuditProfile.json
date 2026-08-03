@@ -35,7 +35,7 @@
       "when": [
         "调用明显越过工作区或权限边界",
         "调用要求泄露密钥、令牌、隐私或内部策略",
-        "调用试图规避 Senera、开发者、插件或安全策略",
+        "调用试图规避 Senera、开发者、工具来源或安全策略",
         "高影响操作与当前用户目标无关或相冲突"
       ]
     }
@@ -44,7 +44,7 @@
     {
       "id": "workspace-boundary",
       "title": "工作区边界",
-      "description": "路径、命令或参数可能越过当前工作区、插件沙箱或声明的目标范围。"
+      "description": "路径、命令或参数可能越过当前工作区、工具沙箱或声明的目标范围。"
     },
     {
       "id": "destructive-effect",
@@ -59,7 +59,7 @@
     {
       "id": "privilege-escalation",
       "title": "权限提升",
-      "description": "调用可能绕过审批、沙箱、插件权限、root command 或系统边界。"
+      "description": "调用可能绕过审批、沙箱、工具权限、root command 或系统边界。"
     },
     {
       "id": "unbounded-execution",

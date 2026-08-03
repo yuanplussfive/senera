@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { sha256Hex } from "../Core/AgentHash.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 
@@ -47,6 +48,8 @@ export const AgentToolApprovalPolicyDataSchema = z
         ResourceUnresolved: z.string().min(1),
         ResourceLinkEscape: z.string().min(1),
         ResourceProtectedMutation: z.string().min(1),
+        ResourceManagedExtensionMutation: z.string().min(1),
+        ResourceManagedExtensionRootMutation: z.string().min(1),
         ResourceFinalLinkMutation: z.string().min(1),
         ResourceAllowed: z.string().min(1),
       })
@@ -64,7 +67,9 @@ export const AgentToolApprovalPolicyDataSchema = z
         DeniedContainments: z.array(z.string().min(1)),
         DeniedLinkTraversals: z.array(z.string().min(1)),
         MutationIntents: z.array(z.string().min(1)),
-        ProtectedRelativePaths: z.array(z.string().min(1)),
+        ProtectedMutationDomains: z.array(z.string().min(1)),
+        ManagedExtensionDomains: z.array(z.string().min(1)),
+        ManagedExtensionPublisherAuthorities: z.array(z.string().min(1)),
       })
       .strict(),
   })
@@ -115,7 +120,9 @@ export function resolveAgentToolApprovalPolicyArtifactDirectory(sourceRoot: stri
 
 export function readAgentToolApprovalPolicyData(directory: string): AgentToolApprovalPolicyData {
   const dataPath = artifactPath(directory, "data");
-  const data = AgentToolApprovalPolicyDataSchema.parse(JSON.parse(fs.readFileSync(dataPath, "utf8")));
+  const data = AgentToolApprovalPolicyDataSchema.parse(
+    parseJsonText(fs.readFileSync(dataPath, "utf8"), "Tool approval policy data"),
+  );
   const expectedEntrypoints = AgentToolApprovalPolicyArtifactContract.entrypoints;
   const actualEntrypoints = [data.Entrypoints.ToolDecision, data.Entrypoints.ResourceAccess];
   if (!sameValues(actualEntrypoints, Object.values(expectedEntrypoints))) {
@@ -127,7 +134,7 @@ export function readAgentToolApprovalPolicyData(directory: string): AgentToolApp
 export function readAgentToolApprovalPolicyArtifact(directory: string): AgentToolApprovalPolicyArtifactBundle {
   const manifestPath = artifactPath(directory, "manifest");
   const manifest = AgentToolApprovalPolicyArtifactManifestSchema.parse(
-    JSON.parse(fs.readFileSync(manifestPath, "utf8")),
+    parseJsonText(fs.readFileSync(manifestPath, "utf8"), "Tool approval policy manifest"),
   );
   assertManifestContract(manifest);
 

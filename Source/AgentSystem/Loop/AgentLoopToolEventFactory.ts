@@ -1,5 +1,6 @@
 import { AgentEventKinds, createEventDetailId, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
+import { projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 
 export class AgentLoopToolEventFactory {
   toolCallsPlanned(
@@ -73,7 +74,15 @@ export class AgentLoopToolEventFactory {
     return {
       kind: AgentEventKinds.ToolCallFailed,
       context: { requestId, step },
-      data: { index, toolName, callId, message, code, batchId: metadata.batchId },
+      data: {
+        index,
+        toolName,
+        callId,
+        ...projectAgentMessage("tool.callFailed"),
+        message,
+        code,
+        batchId: metadata.batchId,
+      },
     };
   }
 

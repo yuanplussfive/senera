@@ -111,6 +111,9 @@ const SessionNotFoundOperations = new Set<SessionNotFoundData["operation"]>([
   "session.close",
   "session.history",
   "session.fork",
+  "session.compact",
+  "session.runtime_status",
+  "session.export",
 ]);
 
 interface SessionNotFoundRecoveryContext {
@@ -130,6 +133,9 @@ const SessionNotFoundRecoveryPolicies = {
     },
   }),
   "session.history": ({ sessionId }) => missingSessionPlan(sessionId),
+  "session.compact": ({ sessionId }) => missingSessionPlan(sessionId),
+  "session.runtime_status": ({ sessionId }) => missingSessionPlan(sessionId),
+  "session.export": ({ sessionId }) => missingSessionPlan(sessionId),
   "session.fork": ({ sessionId }) =>
     missingSessionPlan(sessionId, {
       title: frontendMessage("session.forkSourceMissingTitle"),

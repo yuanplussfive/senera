@@ -1,5 +1,6 @@
 import type { SessionListItem } from "../../api/eventTypes";
 import type { SessionRecord, StoreState } from "./types";
+import { forgetSessionEventReceipts } from "./eventReceiptLedger";
 
 export function ingestSessionList(state: StoreState, items: readonly SessionListItem[]): void {
   const serverIds = new Set(items.map((item) => item.sessionId));
@@ -56,6 +57,7 @@ export function deleteSessionRuntimeState(state: StoreState, sessionId: string):
   delete state.viewedRunIdBySession[sessionId];
   delete state.missingOnServerIds[sessionId];
   delete state.selectedModelProviderIdsBySession[sessionId];
+  forgetSessionEventReceipts(state, sessionId);
   state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
 }
 

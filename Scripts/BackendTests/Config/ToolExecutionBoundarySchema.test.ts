@@ -7,9 +7,8 @@ import {
   bindAgentToolInvocationToExecutionPlan,
   resolveAgentToolInvocation,
 } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExecutionPlan.js";
-import { PluginManifestSchema } from "../../../Source/AgentSystem/Schemas/PluginManifestSchema.js";
-import { ToolSchema } from "../../../Source/AgentSystem/Schemas/PluginToolManifestSchema.js";
-import type { RegisteredTool } from "../../../Source/AgentSystem/Types/PluginRuntimeTypes.js";
+import { ToolSchema } from "../../../Source/AgentSystem/Schemas/AgentToolContractSchema.js";
+import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 
 describe("tool execution manifest schema", () => {
   const targetCases: Array<[Array<"Sandbox" | "Local">]> = [[["Local"]], [["Sandbox"]], [["Sandbox", "Local"]]];
@@ -42,6 +41,7 @@ describe("tool execution manifest schema", () => {
       Runtime: {
         Lifecycle: "Persistent",
         ProtocolVersion: 2,
+        ResultAssessment: "ProcessExit",
         Capabilities: {
           Progress: true,
           OutputStreaming: true,
@@ -61,6 +61,7 @@ describe("tool execution manifest schema", () => {
       Runtime: {
         Lifecycle: "Persistent",
         ProtocolVersion: 1,
+        ResultAssessment: "ProcessExit",
       },
     });
 
@@ -146,6 +147,7 @@ describe("tool execution manifest schema", () => {
         ...mcpTool(),
         Runtime: {
           Lifecycle: lifecycle,
+          ResultAssessment: "ProcessExit",
           Capabilities: lifecycle === "RemoteJob" ? { Cancellation: true } : undefined,
         },
       }).success,
@@ -156,7 +158,11 @@ describe("tool execution manifest schema", () => {
     expect(
       ToolSchema.safeParse({
         ...mcpTool(),
-        Runtime: { Lifecycle: "Persistent", Capabilities: { InteractiveInput: true } },
+        Runtime: {
+          Lifecycle: "Persistent",
+          ResultAssessment: "ProcessExit",
+          Capabilities: { InteractiveInput: true },
+        },
       }).success,
     ).toBe(true);
   });
@@ -166,6 +172,7 @@ describe("tool execution manifest schema", () => {
       ...mcpTool(),
       Runtime: {
         Lifecycle: "RemoteJob",
+        ResultAssessment: "ProcessExit",
         Capabilities: {
           Cancellation: true,
           Progress: true,
@@ -184,7 +191,7 @@ describe("tool execution manifest schema", () => {
   ] as const)("rejects resumable MCP events without its full runtime contract (%s)", (lifecycle, capabilities) => {
     const result = ToolSchema.safeParse({
       ...mcpTool(),
-      Runtime: { Lifecycle: lifecycle, Capabilities: capabilities },
+      Runtime: { Lifecycle: lifecycle, ResultAssessment: "ProcessExit", Capabilities: capabilities },
     });
 
     expect(result.success).toBe(false);
@@ -199,7 +206,10 @@ describe("tool execution manifest schema", () => {
   });
 
   test("requires cancellation for RemoteJob", () => {
-    const result = ToolSchema.safeParse({ ...mcpTool(), Runtime: { Lifecycle: "RemoteJob" } });
+    const result = ToolSchema.safeParse({
+      ...mcpTool(),
+      Runtime: { Lifecycle: "RemoteJob", ResultAssessment: "ProcessExit" },
+    });
 
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -212,7 +222,10 @@ describe("tool execution manifest schema", () => {
   test.each(["Persistent", "RemoteJob"] as const)(
     "requires an explicit v2 protocol for %s host runtimes",
     (lifecycle) => {
-      const result = ToolSchema.safeParse({ ...tool(["Local"]), Runtime: { Lifecycle: lifecycle } });
+      const result = ToolSchema.safeParse({
+        ...tool(["Local"]),
+        Runtime: { Lifecycle: lifecycle, ResultAssessment: "ProcessExit" },
+      });
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -225,12 +238,6 @@ describe("tool execution manifest schema", () => {
     const value: Record<string, unknown> = { ...tool(["Local"]) };
     delete value[field];
     expect(ToolSchema.safeParse(value).success).toBe(false);
-  });
-
-  test("rejects plugin manifests without ManifestVersion 2", () => {
-    expect(
-      PluginManifestSchema.safeParse({ Plugin: { Name: "LegacyPlugin", Version: "1.0.0", Kind: "Tool" } }).success,
-    ).toBe(false);
   });
 });
 
@@ -272,7 +279,7 @@ describe("tool execution plan", () => {
     );
   });
 
-  test("verifies an inherited execution plan and keeps its selector out of plugin arguments", () => {
+  test("verifies an inherited execution plan and keeps its selector out of tool arguments", () => {
     const tool_ = registeredTool(["Sandbox", "Local"]);
     const invocation = bindAgentToolInvocationToExecutionPlan(
       tool_,
@@ -304,7 +311,7 @@ function tool(Targets: Array<"Sandbox" | "Local">) {
   return {
     Name: "BoundaryTool",
     Handler: { Kind: "HostCapability", Capability: "test" },
-    Runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 as const },
+    Runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 as const, ResultAssessment: "ProcessExit" as const },
     Execution: { Targets, Network: "Deny", Workspace: "ReadOnly" },
   };
 }
@@ -313,21 +320,32 @@ function mcpTool(protocolVersion?: 2) {
   return {
     Name: "McpBoundaryTool",
     Handler: { Kind: "McpTool", Server: "test", Tool: "test" },
-    Runtime: { Lifecycle: "OneShot", ...(protocolVersion === undefined ? {} : { ProtocolVersion: protocolVersion }) },
+    Runtime: {
+      Lifecycle: "OneShot",
+      ResultAssessment: "ProcessExit",
+      ...(protocolVersion === undefined ? {} : { ProtocolVersion: protocolVersion }),
+    },
     Execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
   };
 }
 
 function registeredTool(Targets: Array<"Sandbox" | "Local">): RegisteredTool {
   return {
-    plugin: {} as RegisteredTool["plugin"],
+    owner: {
+      kind: "system",
+      name: "boundary",
+      rootPath: process.cwd(),
+      revision: "test",
+      trusted: true,
+      requiresApproval: false,
+    },
     name: "BoundaryTool",
     loading: "Dynamic",
     permissions: [],
     sources: [],
     execution: { Targets, Network: "Deny", Workspace: "ReadOnly" },
     handler: { kind: "HostCapability", capability: "test" },
-    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 },
+    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
     evidenceCapabilities: [],
   };
 }

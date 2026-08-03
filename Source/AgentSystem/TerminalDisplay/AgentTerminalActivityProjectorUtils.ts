@@ -1,4 +1,5 @@
 import type { AgentEventEnvelope } from "../Events/AgentEvent.js";
+import { readAgentTrimmedString as readString } from "../Core/AgentUnknownValue.js";
 import {
   type AgentTerminalActivityTone,
   type AgentTerminalActivityGroup,
@@ -151,9 +152,7 @@ export function formatCallHandle(value: unknown): string | undefined {
   return readString(value);
 }
 
-export function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
-}
+export { readString };
 
 export function readNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;

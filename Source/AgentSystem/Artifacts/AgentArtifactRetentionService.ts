@@ -6,6 +6,10 @@ import { AgentArtifactFileNames, assertInsideRoot } from "./AgentArtifactLocator
 import { SeneraWorkspaceBoundary } from "../Execution/SeneraWorkspaceBoundary.js";
 import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
 import { isMissingFileError } from "../Core/AgentFs.js";
+import { isPathWithin } from "../Core/AgentPath.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
+import { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
+import type { AgentSessionArtifactForkRequest } from "../Session/AgentSessionArtifactLifecycle.js";
 
 const OutputSpoolDirectoryName = ".spool";
 
@@ -34,9 +38,13 @@ export interface AgentArtifactMaintenanceReport {
 
 interface ArtifactCandidate {
   readonly directory: string;
+  readonly manifestPath?: string;
+  readonly manifest?: Record<string, unknown>;
   readonly bytes: number;
   readonly modifiedAt: number;
   readonly sessionId?: string;
+  readonly sessionIds: readonly string[];
+  readonly requestId?: string;
 }
 
 interface IncompleteArtifactCandidate extends ArtifactCandidate {
@@ -56,6 +64,7 @@ export class AgentArtifactRetentionService {
   private readonly config: () => ResolvedAgentArtifactsConfig;
   private readonly onError?: (error: unknown) => void;
   private readonly boundary: SeneraWorkspaceBoundary;
+  private readonly fileWriter: AgentArtifactFileWriter;
   private operation?: Promise<void>;
   private timer?: NodeJS.Timeout;
 
@@ -64,6 +73,7 @@ export class AgentArtifactRetentionService {
     this.config = options.config;
     this.onError = options.onError;
     this.boundary = new SeneraWorkspaceBoundary({ workspaceRoot: this.workspaceRoot, linkPolicy: "deny" });
+    this.fileWriter = new AgentArtifactFileWriter(this.workspaceRoot);
   }
 
   start(): void {
@@ -90,6 +100,38 @@ export class AgentArtifactRetentionService {
     return this.enqueue(() => this.cleanupInternal("session", normalized, false));
   }
 
+  retainForkArtifacts(request: AgentSessionArtifactForkRequest): Promise<number> {
+    const sourceSessionId = requireSessionId(request.sourceSessionId, "sourceSessionId");
+    const targetSessionId = requireSessionId(request.targetSessionId, "targetSessionId");
+    const requestIds = normalizedRequestIds(request.requestIds);
+    return this.enqueue(async () => {
+      const { complete } = await this.scanArtifacts();
+      let retained = 0;
+      for (const candidate of complete) {
+        if (!candidate.requestId || !requestIds.has(candidate.requestId)) continue;
+        if (!candidate.sessionIds.includes(sourceSessionId) || candidate.sessionIds.includes(targetSessionId)) continue;
+        await this.writeArtifactOwners(candidate, [...candidate.sessionIds, targetSessionId]);
+        retained += 1;
+      }
+      return retained;
+    });
+  }
+
+  removeSessionArtifactsFromRequests(sessionId: string, requestIds: readonly string[]): Promise<number> {
+    const owner = requireSessionId(sessionId, "sessionId");
+    const selectedRequests = normalizedRequestIds(requestIds);
+    return this.enqueue(async () => {
+      const inventory = await this.scanArtifacts();
+      let released = 0;
+      for (const candidate of inventory.complete) {
+        if (!candidate.requestId || !selectedRequests.has(candidate.requestId)) continue;
+        if (!(await this.releaseArtifactOwner(inventory.root, candidate, owner))) continue;
+        released += 1;
+      }
+      return released;
+    });
+  }
+
   async close(): Promise<void> {
     if (this.timer) {
       clearInterval(this.timer);
@@ -98,7 +140,7 @@ export class AgentArtifactRetentionService {
     await this.operation?.catch(() => undefined);
   }
 
-  private enqueue(task: () => Promise<AgentArtifactMaintenanceReport>): Promise<AgentArtifactMaintenanceReport> {
+  private enqueue<TValue>(task: () => Promise<TValue>): Promise<TValue> {
     const operation = (this.operation ?? Promise.resolve()).then(task);
     this.operation = operation.then(
       () => undefined,
@@ -113,13 +155,7 @@ export class AgentArtifactRetentionService {
     dryRun = false,
   ): Promise<AgentArtifactMaintenanceReport> {
     const config = this.config();
-    const lexicalRoot = assertInsideRoot(
-      this.workspaceRoot,
-      path.resolve(this.workspaceRoot, config.RootDir),
-      `artifact 根目录超出工作区：${config.RootDir}`,
-    );
-    const artifactRoot = (await this.boundary.resolve(lexicalRoot, AgentResourceAccessIntents.Read)).absolutePath;
-    const candidates = await scanArtifactDirectories(artifactRoot, config.MaintenanceMaxConcurrency, this.boundary);
+    const { root: artifactRoot, ...candidates } = await this.scanArtifacts();
     const now = Date.now();
     const removed = new Set<string>();
     let removedBytes = 0;
@@ -146,7 +182,10 @@ export class AgentArtifactRetentionService {
 
     if (sessionId) {
       for (const candidate of candidates.complete) {
-        if (candidate.sessionId === sessionId) await remove(candidate, false);
+        if (!candidate.sessionIds.includes(sessionId)) continue;
+        const remainingOwners = candidate.sessionIds.filter((owner) => owner !== sessionId);
+        if (remainingOwners.length > 0) await this.writeArtifactOwners(candidate, remainingOwners);
+        else await remove(candidate, false);
       }
       for (const candidate of candidates.incomplete) {
         if (candidate.sessionId === sessionId) await remove(candidate, true);
@@ -205,6 +244,50 @@ export class AgentArtifactRetentionService {
       removedBytes,
       reason,
     };
+  }
+
+  private async scanArtifacts(): Promise<{
+    root: string;
+    complete: ArtifactCandidate[];
+    incomplete: IncompleteArtifactCandidate[];
+    spools: OutputSpoolCandidate[];
+  }> {
+    const config = this.config();
+    const lexicalRoot = assertInsideRoot(
+      this.workspaceRoot,
+      path.resolve(this.workspaceRoot, config.RootDir),
+      `artifact 根目录超出工作区：${config.RootDir}`,
+    );
+    const root = (await this.boundary.resolve(lexicalRoot, AgentResourceAccessIntents.Read)).absolutePath;
+    return { root, ...(await scanArtifactDirectories(root, config.MaintenanceMaxConcurrency, this.boundary)) };
+  }
+
+  private async releaseArtifactOwner(
+    artifactRoot: string,
+    candidate: ArtifactCandidate,
+    sessionId: string,
+  ): Promise<boolean> {
+    if (!candidate.sessionIds.includes(sessionId)) return false;
+    const remainingOwners = candidate.sessionIds.filter((owner) => owner !== sessionId);
+    if (remainingOwners.length > 0) await this.writeArtifactOwners(candidate, remainingOwners);
+    else await removeArtifactDirectory(this.boundary, artifactRoot, candidate.directory);
+    return true;
+  }
+
+  private async writeArtifactOwners(candidate: ArtifactCandidate, sessionIds: readonly string[]): Promise<void> {
+    if (!candidate.manifestPath || !candidate.manifest) {
+      throw new Error(`Artifact manifest ownership is unavailable: ${candidate.directory}`);
+    }
+    const owners = [...new Set(sessionIds.map((sessionId) => sessionId.trim()).filter(Boolean))].sort((left, right) =>
+      left.localeCompare(right),
+    );
+    if (owners.length === 0)
+      throw new Error(`Artifact manifest must retain at least one owner: ${candidate.directory}`);
+    await this.fileWriter.writeJson(candidate.manifestPath, {
+      ...candidate.manifest,
+      sessionId: owners[0],
+      sessionIds: owners,
+    });
   }
 }
 
@@ -276,7 +359,7 @@ async function readOutputSpoolCandidate(
   ]);
   let marker: Record<string, unknown> = {};
   try {
-    marker = JSON.parse(markerSnapshot?.content ?? "") as Record<string, unknown>;
+    marker = parseJsonText(markerSnapshot?.content ?? "", "Retention output spool marker") as Record<string, unknown>;
   } catch {
     // A directory without a readable marker is still stale output and is retained only for the grace period.
   }
@@ -300,18 +383,25 @@ async function readCompleteCandidate(
     readTextFileSnapshot(boundary, manifestPath),
     measureDirectoryBytes(directory, concurrency),
   ]);
-  let manifest: { sessionId?: unknown; createdAt?: unknown } = {};
+  let manifest: Record<string, unknown> = {};
   try {
-    manifest = JSON.parse(manifestSnapshot.content) as typeof manifest;
+    const parsed = parseJsonText(manifestSnapshot.content, "Retention artifact manifest");
+    manifest =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   } catch {
     // An invalid manifest is still retained until the normal age/quota policy removes it.
   }
   const createdAt = typeof manifest.createdAt === "string" ? Date.parse(manifest.createdAt) : Number.NaN;
+  const sessionIds = readArtifactSessionIds(manifest);
   return {
     directory,
+    manifestPath,
+    manifest,
     bytes,
     modifiedAt: Number.isFinite(createdAt) ? createdAt : manifestSnapshot.modifiedAt,
-    sessionId: typeof manifest.sessionId === "string" ? manifest.sessionId : undefined,
+    sessionId: sessionIds[0],
+    sessionIds,
+    requestId: typeof manifest.requestId === "string" ? manifest.requestId : undefined,
   };
 }
 
@@ -325,7 +415,10 @@ async function readIncompleteCandidate(
   let sessionId: string | undefined;
   let state: IncompleteArtifactCandidate["state"] = "failed";
   try {
-    const parsed = JSON.parse(marker.content) as { sessionId?: unknown; state?: unknown };
+    const parsed = parseJsonText(marker.content, "Retention artifact writing marker") as {
+      sessionId?: unknown;
+      state?: unknown;
+    };
     sessionId = typeof parsed.sessionId === "string" ? parsed.sessionId : undefined;
     state = parsed.state === "writing" ? "writing" : "failed";
   } catch {
@@ -336,8 +429,29 @@ async function readIncompleteCandidate(
     bytes: await measureDirectoryBytes(directory, concurrency),
     modifiedAt: marker.modifiedAt,
     sessionId,
+    sessionIds: sessionId ? [sessionId] : [],
     state,
   };
+}
+
+function readArtifactSessionIds(manifest: Record<string, unknown>): string[] {
+  const declared = Array.isArray(manifest.sessionIds)
+    ? manifest.sessionIds.filter((value): value is string => typeof value === "string")
+    : [];
+  const legacy = typeof manifest.sessionId === "string" ? [manifest.sessionId] : [];
+  return [...new Set([...declared, ...legacy].map((value) => value.trim()).filter(Boolean))].sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
+function requireSessionId(value: string, name: string): string {
+  const normalized = value.trim();
+  if (!normalized) throw new Error(`${name} must be a non-empty string.`);
+  return normalized;
+}
+
+function normalizedRequestIds(values: readonly string[]): ReadonlySet<string> {
+  return new Set(values.map((value) => value.trim()).filter(Boolean));
 }
 
 interface TextFileSnapshot {
@@ -393,7 +507,9 @@ async function runWithConcurrency<TValue, TResult>(
     for (;;) {
       const index = nextIndex++;
       if (index >= values.length) return;
-      results[index] = await worker(values[index]!);
+      const value = values.at(index);
+      if (value === undefined) return;
+      results[index] = await worker(value);
     }
   };
   await Promise.all(Array.from({ length: Math.min(limit, values.length) }, () => runWorker()));
@@ -451,8 +567,7 @@ async function removeDirectoryTree(directory: string, canonicalRoot: string): Pr
 }
 
 function isInsideCanonicalRoot(root: string, target: string): boolean {
-  const relative = path.relative(root, target);
-  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+  return isPathWithin(root, target);
 }
 
 type QuotaCandidate =

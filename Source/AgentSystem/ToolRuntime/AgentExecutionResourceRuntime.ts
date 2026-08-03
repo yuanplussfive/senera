@@ -185,7 +185,7 @@ function withValidatedArguments<TSchema extends z.ZodType<Record<string, unknown
       return toolProcessSuccessResult(await execute(parsed.data, context));
     } catch (error) {
       return toolProcessFailureResult({
-        code: AgentExecutionErrorCodes.PluginExecutionError,
+        code: AgentExecutionErrorCodes.ToolExecutionError,
         message: errorMessage(error),
         details: {
           phase: AgentToolProcessErrorPhases.RuntimeExecution,

@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import path from "node:path";
+import { isPathWithin } from "../Core/AgentPath.js";
 
 export interface SeneraTerminalSidecarRuntime {
   readonly sourceRoot: string;
@@ -41,15 +42,10 @@ export function resolveSeneraTerminalSidecarRuntime(): SeneraTerminalSidecarRunt
 function commonAncestor(paths: readonly string[]): string {
   const [first, ...remaining] = paths.map((value) => path.resolve(value));
   let candidate = first;
-  while (remaining.some((value) => !isPathInside(candidate, value))) {
+  while (remaining.some((value) => !isPathWithin(candidate, value))) {
     const parent = path.dirname(candidate);
     if (parent === candidate) throw new Error("Unable to resolve a common terminal runtime package root.");
     candidate = parent;
   }
   return candidate;
-}
-
-function isPathInside(root: string, value: string): boolean {
-  const relative = path.relative(root, value);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }

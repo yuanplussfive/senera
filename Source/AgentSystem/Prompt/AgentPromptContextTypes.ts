@@ -1,6 +1,5 @@
-import type { AgentActionDecision } from "../ActionPlanner/AgentActionPlanner.js";
+import type { AgentActionDecision } from "../ActionPlanner/AgentActionPlannerTypes.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
-import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { AgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
 import type { AgentPromptContractView } from "./AgentPromptContractTypes.js";
 import type { AgentExecutionEnvironmentContext } from "./AgentExecutionEnvironmentContext.js";
@@ -11,34 +10,12 @@ export interface AgentPromptToolContext {
   whenToUse: string;
   whenNotToUse: string;
   argumentsContract?: AgentPromptContractView;
-  documentationXml: string;
-}
-
-export interface AgentPromptSkillCatalogContext {
-  name: string;
-  title: string;
-  summary: string;
-  useCases: string[];
-  avoid: string[];
-  recommendedTools: string[];
-}
-
-export interface AgentPromptSkillContext extends AgentPromptSkillCatalogContext {
-  documentationXml: string;
-  matchedTerms: string[];
-  matchedFields: AgentPromptSkillMatchedFieldContext[];
-  score: number;
-}
-
-export interface AgentPromptSkillMatchedFieldContext {
-  term: string;
-  fields: string[];
+  documentationMarkdown: string;
 }
 
 export interface AgentPromptContext {
   ExecutionEnvironment: AgentExecutionEnvironmentContext;
   ToolCards: AgentPromptToolContext[];
-  ActiveSkills: AgentPromptSkillContext[];
   ToolDiscoveryToolName: string | null;
   RootCommand: AgentRootCommand | null;
   RoleplayPreset: AgentRoleplayPresetContext;
@@ -52,8 +29,6 @@ export interface AgentPromptContextOptions {
   avoidSection?: string;
   rootCommand?: AgentRootCommand;
   roleplayPreset?: AgentRoleplayPresetContext;
-  skillQuery?: string;
-  activeSkills?: readonly AgentActivatedSkill[];
 }
 
 export interface AgentPromptSectionOptions {

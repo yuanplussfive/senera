@@ -16,7 +16,7 @@ import type { ChatMessage, SessionRecord, StoreState } from "./types";
 export type SessionHistoryProjectionContext = {
   state: StoreState;
   env: EventEnvelope;
-  applyEvent: (state: StoreState, env: EventEnvelope) => void;
+  applyEvent: (state: StoreState, env: EventEnvelope) => boolean;
 };
 
 export function projectSessionHistoryEvent(context: SessionHistoryProjectionContext): boolean {
@@ -69,7 +69,9 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     const data = env.data as SessionHistoryStepsData;
     ensureSession(state, sessionId);
     if (!state.historyLoadingIds[sessionId]) return;
-    state.historyStepBuffers[sessionId] = data.runs;
+    const buffer = state.historyStepBuffers[sessionId] ?? [];
+    buffer.push(...data.runs);
+    state.historyStepBuffers[sessionId] = buffer;
   },
 
   [EventKinds.SessionRunHistoryChunk]: ({ state, env, applyEvent }) => {
@@ -87,10 +89,12 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
       }
       const restoredRequestId = event.scope?.parentRequestId ?? event.requestId;
       if (restoredRequestId && !eventRunIds[restoredRequestId]) continue;
-      applyEvent(state, {
+      const activeStream = captureActiveStream(state, sessionId, restoredRequestId);
+      const projected = applyEvent(state, {
         ...event,
         sessionId: event.sessionId ?? sessionId,
       });
+      if (projected && activeStream) restoreActiveStream(state, sessionId, activeStream);
     }
   },
 
@@ -125,6 +129,71 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     syncSessionCountsFromLoadedMessages(session);
   },
 };
+
+type ActiveStreamSnapshot = Pick<
+  SessionRecord["runs"][number],
+  | "requestId"
+  | "status"
+  | "endedAt"
+  | "recoverySource"
+  | "liveActivity"
+  | "activities"
+  | "activeFlags"
+  | "streamingRaw"
+  | "xmlPreview"
+  | "visibleText"
+  | "displayText"
+  | "displayMessageId"
+  | "visibleKind"
+  | "expectedOutputMode"
+  | "decisionMode"
+  | "plannedDecisionMode"
+  | "modelProvider"
+>;
+
+function captureActiveStream(
+  state: StoreState,
+  sessionId: string,
+  restoredRequestId: string | undefined,
+): ActiveStreamSnapshot | undefined {
+  const activeRequestId = state.historyActiveRequestIds[sessionId] ?? undefined;
+  if (!activeRequestId || restoredRequestId !== activeRequestId) return undefined;
+  const run = state.sessions[sessionId]?.runs.find((entry) => entry.requestId === activeRequestId);
+  if (
+    !run ||
+    run.status !== "running" ||
+    !(run.streamingRaw || run.visibleText || run.displayText || run.displayMessageId)
+  ) {
+    return undefined;
+  }
+  return {
+    requestId: run.requestId,
+    status: run.status,
+    endedAt: run.endedAt,
+    recoverySource: run.recoverySource,
+    liveActivity: run.liveActivity,
+    activities: run.activities?.map((activity) => ({ ...activity })),
+    activeFlags: run.activeFlags ? [...run.activeFlags] : undefined,
+    streamingRaw: run.streamingRaw,
+    xmlPreview: run.xmlPreview,
+    visibleText: run.visibleText,
+    displayText: run.displayText,
+    displayMessageId: run.displayMessageId,
+    visibleKind: run.visibleKind,
+    expectedOutputMode: run.expectedOutputMode,
+    decisionMode: run.decisionMode,
+    plannedDecisionMode: run.plannedDecisionMode,
+    modelProvider: run.modelProvider,
+  };
+}
+
+function restoreActiveStream(state: StoreState, sessionId: string, snapshot: ActiveStreamSnapshot): void {
+  const session = state.sessions[sessionId];
+  const run = session?.runs.find((entry) => entry.requestId === snapshot.requestId);
+  if (!session || !run) return;
+  Object.assign(run, snapshot);
+  session.activeRequestId = snapshot.requestId;
+}
 
 function reconcileHistoryStepRuns(session: SessionRecord, snapshots: SessionHistoryStepsData["runs"]): void {
   for (const snapshot of snapshots) {

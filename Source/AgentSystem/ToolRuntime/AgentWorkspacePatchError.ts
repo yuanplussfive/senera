@@ -1,6 +1,7 @@
 import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 export interface WorkspacePatchFailureInput {
   code: (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes];
@@ -9,13 +10,12 @@ export interface WorkspacePatchFailureInput {
   details?: NonNullable<AgentToolProcessRunResult["response"]["error"]>["details"];
 }
 
-export class WorkspaceApplyPatchError extends Error {
+export class WorkspaceApplyPatchError extends AgentBaseError {
   readonly pointer: string;
   readonly suggestion?: string;
 
   constructor(input: { message: string; pointer: string; suggestion?: string }) {
     super(input.message);
-    this.name = "WorkspaceApplyPatchError";
     this.pointer = input.pointer;
     this.suggestion = input.suggestion;
   }

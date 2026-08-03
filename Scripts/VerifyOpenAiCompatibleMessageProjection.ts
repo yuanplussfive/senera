@@ -119,6 +119,7 @@ function createProvider(
     ApiKey: "test-key",
     ApiVersion: "",
     Model: "test-model",
+    ContextWindowTokens: 128_000,
     Temperature: 0,
     MaxOutputTokens: -1,
     Stream: true,

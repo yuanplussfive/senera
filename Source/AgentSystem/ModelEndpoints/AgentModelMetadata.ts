@@ -3,6 +3,7 @@ import type { AgentModelUsage } from "./AgentModelUsage.js";
 import type { AgentPiSessionLifecycleMetadata } from "../Pi/AgentPiSessionLifecycleMetadata.js";
 import type { AgentToolAvailabilitySnapshot } from "../ToolRuntime/AgentToolAvailabilitySnapshot.js";
 import type { AgentSessionLifecycleMetadata } from "../Session/AgentSessionLifecycleMetadata.js";
+import type { AgentSessionMessageQueueMode } from "../Session/AgentSessionMessageQueueMode.js";
 
 export type { AgentModelUsage } from "./AgentModelUsage.js";
 
@@ -21,6 +22,10 @@ export interface AgentRunMetadata {
 
 export interface AgentConversationEntryMetadata {
   run?: AgentRunMetadata;
+  queue?: {
+    parentRequestId: string;
+    mode: AgentSessionMessageQueueMode;
+  };
 }
 
 export interface AgentSessionMetadata {

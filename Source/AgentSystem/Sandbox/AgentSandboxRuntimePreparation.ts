@@ -1,5 +1,6 @@
 import { readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import type { SandboxStatus } from "microsandbox";
 import type { SeneraMicrosandboxModuleLoader } from "../Execution/SeneraMicrosandboxSdkAdapter.js";
 import type { ResolvedAgentSandboxRuntimeConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentSandboxRegistryConfig } from "../Types/AgentRuntimeConfigTypes.js";
@@ -41,7 +42,14 @@ export interface AgentSandboxRuntimePreparationResult {
 export interface MicrosandboxModule {
   Sandbox: {
     builder(name: string): MicrosandboxSandboxBuilder;
+    listWith(filter: { labels: Record<string, string> }): Promise<MicrosandboxSandboxHandle[]>;
+    remove(name: string): Promise<void>;
   };
+}
+
+export interface MicrosandboxSandboxHandle {
+  name: string;
+  status: SandboxStatus;
 }
 
 export interface MicrosandboxSandboxBuilder {
@@ -50,6 +58,8 @@ export interface MicrosandboxSandboxBuilder {
   pullPolicy(policy: string): this;
   cpus(value: number): this;
   memory(value: number): this;
+  ephemeral(enabled: boolean): this;
+  labels(labels: Record<string, string>): this;
   replace(): this;
   quietLogs(): this;
   disableMetricsSample(): this;
@@ -91,7 +101,19 @@ export interface MicrosandboxSandbox {
   kill(): Promise<unknown>;
 }
 
-const SandboxPreparePrefix = "senera-sandbox-prepare";
+const SandboxPreparationPolicy = {
+  namePrefix: "senera-sandbox-prepare",
+  cpus: 1,
+  memoryMiB: 256,
+  maxDurationSeconds: 60,
+  stopTimeoutMs: 1_000,
+  labels: {
+    "senera.owner": "senera",
+    "senera.purpose": "runtime-preparation",
+  },
+} as const;
+
+const ReclaimableSandboxStatuses: ReadonlySet<SandboxStatus> = new Set(["stopped", "crashed"]);
 
 export async function prepareAgentSandboxRuntime(
   options: AgentSandboxRuntimePreparationOptions,
@@ -109,6 +131,7 @@ export async function prepareAgentSandboxRuntime(
   configureMicrosandboxRuntime(paths);
   report({ stage: AgentSandboxPreparationStages.LoadingRuntime });
   const microsandbox = options.microsandbox ?? (await loadMicrosandbox(options.microsandboxModuleLoader));
+  await reclaimPreparedSandboxes(microsandbox);
 
   const provisioning = await resolveSandboxProvisioning(options, microsandbox, paths, report);
   for (const [index, image] of provisioning.images.entries()) {
@@ -154,8 +177,9 @@ async function warmSandboxImage(
   log: (message: string) => void,
   report: (progress: AgentSandboxPreparationProgress) => void,
 ): Promise<void> {
-  const name = `${SandboxPreparePrefix}-${safeImageName(image)}-${process.pid}`;
+  const name = `${SandboxPreparationPolicy.namePrefix}-${safeImageName(image)}-${process.pid}`;
   let sandbox: MicrosandboxSandbox | undefined;
+  let sandboxCreation: Promise<MicrosandboxSandbox> | undefined;
   log(`Preparing sandbox image ${image}...`);
   report({
     stage: AgentSandboxPreparationStages.WarmingImage,
@@ -167,19 +191,21 @@ async function warmSandboxImage(
     const builder = microsandbox.Sandbox.builder(name).image(image).pullPolicy(pullPolicy);
     configureRegistry(builder, registry);
     const creation = await builder
-      .cpus(1)
-      .memory(256)
+      .cpus(SandboxPreparationPolicy.cpus)
+      .memory(SandboxPreparationPolicy.memoryMiB)
+      .ephemeral(false)
+      .labels({ ...SandboxPreparationPolicy.labels })
       .replace()
       .quietLogs()
       .disableMetricsSample()
       .disableNetwork()
-      .maxDuration(60)
+      .maxDuration(SandboxPreparationPolicy.maxDurationSeconds)
       .createWithPullProgress();
-    const [createdSandbox] = await Promise.all([
-      creation.awaitSandbox(),
-      consumeImagePullProgress(creation, image, imageIndex, imageCount, report),
-    ]);
-    sandbox = createdSandbox;
+    sandboxCreation = creation.awaitSandbox().then((createdSandbox) => {
+      sandbox = createdSandbox;
+      return createdSandbox;
+    });
+    await Promise.all([sandboxCreation, consumeImagePullProgress(creation, image, imageIndex, imageCount, report)]);
     report({
       stage: AgentSandboxPreparationStages.WarmingImage,
       item: image,
@@ -187,12 +213,37 @@ async function warmSandboxImage(
       total: imageCount,
     });
   } finally {
-    if (sandbox) {
-      await sandbox.stopWithTimeout(1_000).catch(async () => {
-        await sandbox?.kill().catch(() => undefined);
+    await sandboxCreation?.catch(() => undefined);
+    await removePreparedSandbox(microsandbox, sandbox);
+  }
+}
+
+async function reclaimPreparedSandboxes(microsandbox: MicrosandboxModule): Promise<void> {
+  const sandboxes = await microsandbox.Sandbox.listWith({ labels: { ...SandboxPreparationPolicy.labels } });
+  await Promise.all(
+    sandboxes
+      .filter((sandbox) => ReclaimableSandboxStatuses.has(sandbox.status))
+      .map((sandbox) => microsandbox.Sandbox.remove(sandbox.name)),
+  );
+}
+
+async function removePreparedSandbox(
+  microsandbox: MicrosandboxModule,
+  sandbox: MicrosandboxSandbox | undefined,
+): Promise<void> {
+  if (!sandbox) return;
+  try {
+    await sandbox.stopWithTimeout(SandboxPreparationPolicy.stopTimeoutMs);
+  } catch (stopError) {
+    try {
+      await sandbox.kill();
+    } catch (killError) {
+      throw new AggregateError([stopError, killError], `Failed to stop preparation sandbox ${sandbox.name}.`, {
+        cause: killError,
       });
     }
   }
+  await microsandbox.Sandbox.remove(sandbox.name);
 }
 
 interface ResolvedSandboxProvisioning {

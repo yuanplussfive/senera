@@ -3,7 +3,7 @@ import type {
   ToolArtifactEvidenceManifest,
   ToolArtifactEvidenceSlotManifest,
   ToolArtifactPolicyManifest,
-} from "../Types/PluginManifestTypes.js";
+} from "../Types/AgentToolContractTypes.js";
 import type { ToolArtifactEvidenceRecord } from "../Types/ToolRuntimeTypes.js";
 import { selectJsonValues } from "./AgentArtifactJsonSelector.js";
 import { stableArtifactStringify } from "./AgentArtifactStableJson.js";

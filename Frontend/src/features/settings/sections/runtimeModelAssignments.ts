@@ -2,6 +2,7 @@ import type { ConfigFormFieldData, ConfigFormSectionData } from "../../../api/ev
 import type { JsonConfigObject } from "../../../shared/config/JsonConfigForm";
 import { writeJsonConfigFieldValue } from "../../../shared/config/JsonConfigForm";
 import { providerEnabled, readModelCapabilities, readString } from "../../chat/modelConfigData";
+import { isUnknownRecord as isRecord } from "../../../lib/unknownValue";
 import type { ModelProviderDraft, ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 
 export interface RuntimeModelAssignmentField extends ConfigFormFieldData {
@@ -137,8 +138,4 @@ function missingValue(field: RuntimeModelAssignmentField, value: string): string
 
 function pathKey(path: readonly string[]): string {
   return JSON.stringify(path);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

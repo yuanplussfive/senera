@@ -1,6 +1,7 @@
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { StoredRunSnapshot, StoredRunSnapshotStatus } from "../Session/AgentSqliteSessionRepository.js";
 import type { RunSnapshotRow } from "./AgentSessionSqlRows.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 export interface EncodedRunSnapshotRow {
   session_id: string;
@@ -52,7 +53,7 @@ function parseRunSnapshotStatus(raw: string): StoredRunSnapshotStatus {
 function parseModelProviderMetadata(value: string | null): AgentModelProviderMetadata | undefined {
   if (!value) return undefined;
   try {
-    const parsed = JSON.parse(value) as unknown;
+    const parsed = parseJsonText(value, "Run snapshot") as unknown;
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? (parsed as AgentModelProviderMetadata)
       : undefined;

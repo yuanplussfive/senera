@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 import {
   AgentSqliteContractMetadataTable,
   AgentSqliteMigrationLedgerTable,
@@ -33,13 +34,12 @@ export const AgentSqliteMigrationErrorCodes = {
 export type AgentSqliteMigrationErrorCode =
   (typeof AgentSqliteMigrationErrorCodes)[keyof typeof AgentSqliteMigrationErrorCodes];
 
-export class AgentSqliteMigrationError extends Error {
+export class AgentSqliteMigrationError extends AgentBaseError {
   constructor(
     readonly code: AgentSqliteMigrationErrorCode,
     message: string,
   ) {
     super(message);
-    this.name = "AgentSqliteMigrationError";
   }
 }
 

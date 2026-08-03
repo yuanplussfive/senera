@@ -1,13 +1,20 @@
+import { parseJsonTextOrUndefined } from "../Core/AgentJsonParsing.js";
 import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
+import { compactRecord, readArrayValue, readStringArray, uniqueStrings } from "../Core/AgentCollections.js";
+import { readAgentNonBlankString, readAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type {
   AgentPiAssistantMessageCompileInput,
-  AgentPiToolCard,
+  AgentPiToolRoutingCard,
   AgentPiToolTranscriptItem,
-} from "./AgentPiAssistantMessageTypes.js";
+} from "../PiShared/AgentPiPlanningTypes.js";
 import type { PiOpenAiChatCompletionRequest, PiOpenAiTool } from "./AgentPiOpenAiWireTypes.js";
-import { AgentPiToolParameterContractProjector } from "./AgentPiToolParameterContractProjector.js";
+import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
+import type { AgentPromptContractProperty } from "../Prompt/AgentPromptContractTypes.js";
+import { readAgentPiToolObservationStatus } from "../PiShared/AgentPiToolObservationStatus.js";
+import { readAgentToolOutputAvailability } from "../ToolRuntime/AgentToolResultOutcome.js";
+import { compactionSummaryOpen, compactionSummaryClose } from "../PiShared/AgentPiCompactionTags.js";
 
 export interface AgentPiOpenAiPlanningProjectorOptions {
   modelProvider: Pick<ResolvedAgentModelProviderConfig, "ContextWindowTokens" | "MaxOutputTokens" | "Model">;
@@ -20,6 +27,7 @@ export interface AgentPiOpenAiPlanningProjectionStats {
   truncatedTextFields: number;
   truncatedJsonFields: number;
   planningInputTokenBudget: number;
+  hasCompactionBoundary: boolean;
 }
 
 export interface AgentPiOpenAiPlanningProjectionLimits {
@@ -40,7 +48,6 @@ interface ProjectionStatsAccumulator {
 }
 
 const PiPlanningBudgetPolicy = {
-  unknownContextWindowTokens: 128_000,
   defaultOutputReserveTokens: 8_192,
   inputBudgetRatio: 0.35,
   messagesPerTokenChunk: 1_024,
@@ -56,18 +63,37 @@ const PiPlanningBudgetPolicy = {
   maxToolCatalogTokens: 16_384,
   minToolCardTokens: 256,
   maxToolCardTokens: 2_048,
-  toolDescriptionRatio: 0.25,
+} as const;
+
+const ToolRoutingCardSections = ["summary", "inputs", "outputs", "effects"] as const;
+
+/**
+ * Markers used to detect compaction summary messages in the Pi request stream.
+ * Senera-side markers come from {@link AgentPiCompactionTags}; the Pi-native
+ * `<summary>` markers are external protocol constants from the upstream Pi
+ * coding agent and are declared here as named constants rather than inline
+ * string literals.
+ */
+const PiNativeCompactionTags = {
+  summaryOpen: "<summary>",
+  summaryClose: "</summary>",
+} as const;
+
+const CompactionSummaryMarkers = {
+  seneraBegin: compactionSummaryOpen,
+  seneraEnd: compactionSummaryClose,
+  piSummaryOpen: PiNativeCompactionTags.summaryOpen,
+  piSummaryClose: PiNativeCompactionTags.summaryClose,
 } as const;
 
 export class AgentPiOpenAiPlanningProjector {
   private readonly limits: AgentPiOpenAiPlanningProjectionLimits;
   private readonly tokenProjector: AgentTokenProjector;
-  private readonly parameterContracts: AgentPiToolParameterContractProjector;
+  private readonly toolContracts = new AgentJsonSchemaPromptContractProjector();
 
   constructor(options: AgentPiOpenAiPlanningProjectorOptions) {
     this.limits = resolveAgentPiOpenAiPlanningProjectionLimits(options.modelProvider);
     this.tokenProjector = new AgentTokenProjector(options.modelProvider.Model);
-    this.parameterContracts = new AgentPiToolParameterContractProjector(this.tokenProjector);
   }
 
   project(request: PiOpenAiChatCompletionRequest): AgentPiAssistantMessageCompileInput["openAiRequest"] {
@@ -76,6 +102,7 @@ export class AgentPiOpenAiPlanningProjector {
       truncatedJsonFields: 0,
     };
     const messages = this.projectMessages(request.messages, stats);
+    const compactionBoundaryIndex = findCompactionSummaryMessageIndex(request.messages);
     return {
       model: request.model,
       messages: messages.items,
@@ -92,26 +119,35 @@ export class AgentPiOpenAiPlanningProjector {
         truncatedTextFields: stats.truncatedTextFields,
         truncatedJsonFields: stats.truncatedJsonFields,
         planningInputTokenBudget: this.limits.planningInputTokenBudget,
+        hasCompactionBoundary: compactionBoundaryIndex !== -1,
       },
     };
   }
 
-  projectToolCards(tools: readonly PiOpenAiTool[]): AgentPiToolCard[] {
+  detectCompactionSummaryText(messages: PiOpenAiChatCompletionRequest["messages"]): string | undefined {
+    const index = findCompactionSummaryMessageIndex(messages);
+    if (index === -1) return undefined;
+    const content = readOpenAiContentAsText(messages[index]?.content);
+    return content.trim().length > 0 ? content : undefined;
+  }
+
+  projectToolCards(tools: readonly PiOpenAiTool[]): AgentPiToolRoutingCard[] {
     const cardTokens = clampInteger(
       Math.floor(this.limits.toolCatalogTokens / Math.max(1, tools.length)),
       this.limits.minToolCardTokens,
       this.limits.maxToolCardTokens,
     );
-    const descriptionTokens = Math.max(1, Math.floor(cardTokens * PiPlanningBudgetPolicy.toolDescriptionRatio));
-    const schemaTokens = Math.max(1, cardTokens - descriptionTokens);
+    const summaryTokens = Math.max(1, Math.floor(cardTokens / ToolRoutingCardSections.length));
     return tools.map((tool) => {
       const stats: ProjectionStatsAccumulator = { truncatedTextFields: 0, truncatedJsonFields: 0 };
       return {
         name: tool.function.name,
-        description: tool.function.description
-          ? this.previewTextField(tool.function.description, descriptionTokens, stats)
-          : undefined,
-        parameterContract: this.projectParameterContract(tool.function.parameters, schemaTokens, stats),
+        summary: tool.function.description
+          ? this.previewTextField(tool.function.description, summaryTokens, stats)
+          : "",
+        inputs: this.projectToolInputs(tool.function.parameters),
+        outputs: [],
+        effects: [],
       };
     });
   }
@@ -123,11 +159,49 @@ export class AgentPiOpenAiPlanningProjector {
     items: unknown[];
     omittedOlderMessages: number;
   } {
-    const tail = messages.slice(-this.limits.maxMessages);
+    const complete = messages.map((message) => this.projectMessageWithoutTruncation(message));
+    if (this.tokenProjector.countJson(complete) <= this.limits.planningInputTokenBudget) {
+      return {
+        items: complete,
+        omittedOlderMessages: 0,
+      };
+    }
+
+    const compactionIndex = findCompactionSummaryMessageIndex(messages);
+    const tailStart = Math.max(0, messages.length - this.limits.maxMessages);
+    const preservedIndices = new Set<number>();
+
+    if (compactionIndex !== -1 && compactionIndex < tailStart) {
+      preservedIndices.add(compactionIndex);
+    }
+
+    const tail = messages.filter((_, index) => index >= tailStart || preservedIndices.has(index));
+    const omitted = messages.length - tail.length;
     return {
       items: tail.map((message) => this.projectMessageForPlanning(message, stats)),
-      omittedOlderMessages: messages.length - tail.length,
+      omittedOlderMessages: omitted,
     };
+  }
+
+  private projectMessageWithoutTruncation(
+    message: PiOpenAiChatCompletionRequest["messages"][number],
+  ): Record<string, unknown> {
+    return compactRecord({
+      role: typeof message.role === "string" ? message.role : "user",
+      name: message.name,
+      tool_call_id: message.tool_call_id,
+      content: message.content,
+      tool_calls: message.tool_calls?.map((call) =>
+        compactRecord({
+          id: call.id,
+          type: call.type,
+          function: {
+            name: call.function.name,
+            arguments: call.function.arguments,
+          },
+        }),
+      ),
+    });
   }
 
   private projectMessageForPlanning(
@@ -135,7 +209,7 @@ export class AgentPiOpenAiPlanningProjector {
     stats: ProjectionStatsAccumulator,
   ): Record<string, unknown> {
     const role = typeof message.role === "string" ? message.role : "user";
-    return compactPiProjection({
+    return compactRecord({
       role,
       name: message.name,
       tool_call_id: message.tool_call_id,
@@ -187,7 +261,7 @@ export class AgentPiOpenAiPlanningProjector {
     call: NonNullable<PiOpenAiChatCompletionRequest["messages"][number]["tool_calls"]>[number],
     stats: ProjectionStatsAccumulator,
   ): Record<string, unknown> {
-    return compactPiProjection({
+    return compactRecord({
       id: call.id,
       type: call.type,
       function: {
@@ -197,10 +271,9 @@ export class AgentPiOpenAiPlanningProjector {
     });
   }
 
-  private projectParameterContract(schema: unknown, tokenLimit: number, stats: ProjectionStatsAccumulator) {
-    const projection = this.parameterContracts.project(schema, tokenLimit);
-    if (projection.truncated) stats.truncatedJsonFields += 1;
-    return projection.contract;
+  private projectToolInputs(schema: unknown): string[] {
+    const contract = this.toolContracts.project(normalizeJsonSchema(schema));
+    return contract.properties.flatMap(projectRoutingInputs);
   }
 
   private projectUnknownForPlanning(value: unknown, tokenLimit: number, stats: ProjectionStatsAccumulator): unknown {
@@ -265,14 +338,26 @@ export class AgentPiOpenAiPlanningProjector {
     stats: ProjectionStatsAccumulator,
   ): NonNullable<AgentPiToolTranscriptItem["observation"]> {
     const parsed = readRecordFromJson(content);
+    const detail = readAgentUnknownRecord(parsed?.detail);
+    const error = readAgentUnknownRecord(parsed?.error ?? detail?.error);
+    const summary = readAgentNonBlankString(
+      parsed?.summary ?? detail?.semantic_digest ?? detail?.summary ?? detail?.headline,
+    );
     return {
-      status: readToolObservationStatus(parsed),
-      summary:
-        typeof parsed?.summary === "string"
-          ? this.previewTextField(parsed.summary, this.limits.toolMessageTokens, stats)
-          : undefined,
-      artifactUri: readString(parsed?.artifact_uri ?? parsed?.artifactUri),
-      evidenceUris: readEvidenceUris(parsed),
+      status: readAgentPiToolObservationStatus(parsed?.status),
+      outputAvailability: readAgentToolOutputAvailability(parsed?.output_availability),
+      summary: summary ? this.previewTextField(summary, this.limits.toolMessageTokens, stats) : undefined,
+      artifactUri: readAgentNonBlankString(parsed?.artifact_uri ?? parsed?.artifactUri),
+      evidenceUris: uniqueStrings([...readEvidenceUris(parsed), ...readEvidenceUris(detail)]),
+      error: error
+        ? {
+            code: readAgentNonBlankString(error.code),
+            kind: readAgentNonBlankString(error.kind),
+            source: readAgentNonBlankString(error.source),
+            retryable: typeof error.retryable === "boolean" ? error.retryable : undefined,
+            message: readAgentNonBlankString(error.message),
+          }
+        : undefined,
     };
   }
 
@@ -288,8 +373,7 @@ export class AgentPiOpenAiPlanningProjector {
 export function resolveAgentPiOpenAiPlanningProjectionLimits(
   provider: Pick<ResolvedAgentModelProviderConfig, "ContextWindowTokens" | "MaxOutputTokens">,
 ): AgentPiOpenAiPlanningProjectionLimits {
-  const contextWindowTokens =
-    positiveInteger(provider.ContextWindowTokens) ?? PiPlanningBudgetPolicy.unknownContextWindowTokens;
+  const contextWindowTokens = provider.ContextWindowTokens;
   const outputReserveTokens =
     positiveInteger(provider.MaxOutputTokens) ?? PiPlanningBudgetPolicy.defaultOutputReserveTokens;
   const usableInputTokens = Math.max(
@@ -354,33 +438,24 @@ function readOpenAiContentAsText(content: PiOpenAiChatCompletionRequest["message
     .join("");
 }
 
+function findCompactionSummaryMessageIndex(messages: PiOpenAiChatCompletionRequest["messages"]): number {
+  for (let i = 0; i < messages.length; i += 1) {
+    const message = messages[i];
+    if (!message || message.role !== "user") continue;
+    const text = readOpenAiContentAsText(message.content);
+    if (text.includes(CompactionSummaryMarkers.seneraBegin) || text.includes(CompactionSummaryMarkers.piSummaryOpen)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 function canonicalizeToolArguments(value: unknown): string {
   if (typeof value === "string") {
-    const parsed = readJson(value);
+    const parsed = parseJsonTextOrUndefined(value);
     return parsed === undefined ? value : stringifyAgentCanonicalJson(parsed);
   }
   return stringifyAgentCanonicalJson(value ?? {});
-}
-
-function readJson(value: string): unknown {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return undefined;
-  }
-}
-
-function readToolObservationStatus(
-  value: Record<string, unknown> | undefined,
-): NonNullable<AgentPiToolTranscriptItem["observation"]>["status"] {
-  switch (value?.status) {
-    case "success":
-    case "failure":
-    case "empty":
-      return value.status;
-    default:
-      return "unknown";
-  }
 }
 
 function readEvidenceUris(value: Record<string, unknown> | undefined): string[] {
@@ -388,47 +463,30 @@ function readEvidenceUris(value: Record<string, unknown> | undefined): string[] 
     return [];
   }
   return uniqueStrings([
-    ...readStringArray(value.evidence_uris ?? value.evidenceUris),
-    ...readArray(value.evidence).flatMap(
-      (entry) => readString(readRecord(entry)?.evidence_uri ?? readRecord(entry)?.evidenceUri) ?? [],
+    ...readStringArray(value.evidence_uris ?? value.evidenceUris, { rejectBlank: true }),
+    ...readArrayValue(value.evidence).flatMap(
+      (entry) =>
+        readAgentNonBlankString(
+          readAgentUnknownRecord(entry)?.evidence_uri ?? readAgentUnknownRecord(entry)?.evidenceUri,
+        ) ?? [],
     ),
   ]);
 }
 
 function readRecordFromJson(value: string): Record<string, unknown> | undefined {
-  const parsed = readJson(value);
-  return readRecord(parsed);
+  const parsed = parseJsonTextOrUndefined(value);
+  return readAgentUnknownRecord(parsed);
 }
 
-function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+function normalizeJsonSchema(value: unknown): Record<string, unknown> {
+  return readAgentUnknownRecord(value) ?? { type: "object", properties: {} };
 }
 
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
-}
-
-function readStringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.flatMap((entry) => {
-        const text = readString(entry);
-        return text ? [text] : [];
-      })
-    : [];
-}
-
-function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
-
-function compactPiProjection<T extends Record<string, unknown>>(value: T): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      ([, entry]) => entry !== undefined && entry !== "" && !(Array.isArray(entry) && entry.length === 0),
-    ),
-  );
+function projectRoutingInputs(property: AgentPromptContractProperty): string[] {
+  const label = `${property.path}: ${property.typeText}${property.required ? " (required)" : ""}`;
+  return [
+    label,
+    ...property.children.flatMap(projectRoutingInputs),
+    ...(property.element?.children ?? []).flatMap(projectRoutingInputs),
+  ];
 }

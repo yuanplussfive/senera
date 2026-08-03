@@ -1,14 +1,10 @@
-import MiniSearch from "minisearch";
 import type { ResolvedAgentToolSearchConfig } from "../Types/AgentConfigTypes.js";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
-import {
-  AgentToolSearchDocumentBuilder,
-  ToolSearchDocumentSearchFields,
-  ToolSearchDocumentStoreFields,
-} from "./AgentToolSearchDocumentBuilder.js";
+import { AgentToolSearchDocumentBuilder } from "./AgentToolSearchDocumentBuilder.js";
 import { AgentToolSearchRankPipeline } from "./AgentToolSearchRankPipeline.js";
 import { matchToolCapabilities } from "./AgentToolSearchCapabilities.js";
+import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
 import type {
   AgentToolSearchOptions,
   AgentToolSearchRankedEntry,
@@ -17,6 +13,8 @@ import type {
   AgentToolSearchResult,
   ToolSearchDocument,
 } from "./AgentToolSearchTypes.js";
+import { AgentCapabilityKinds, AgentCapabilitySearchIndex } from "./AgentCapabilitySearchIndex.js";
+import { buildToolCapabilityDocument } from "./AgentCapabilityDocumentBuilder.js";
 
 export type {
   AgentToolSearchCapabilityMatch,
@@ -30,30 +28,37 @@ export interface AgentToolSearchRegistryReader {
 
 export class AgentToolSearchIndex {
   private readonly tokenizer = new AgentToolSearchTokenizer();
-  private readonly miniSearch;
   private readonly docs: ToolSearchDocument[];
   private readonly docsByTool = new Map<string, ToolSearchDocument>();
   private readonly rankPipeline: AgentToolSearchRankPipeline;
+  private readonly capabilityIndex: AgentCapabilitySearchIndex;
 
   constructor(
     registry: AgentToolSearchRegistryReader,
     private readonly config: ResolvedAgentToolSearchConfig,
+    capabilityIndex?: AgentCapabilitySearchIndex,
   ) {
     const documentBuilder = new AgentToolSearchDocumentBuilder();
-    this.docs = registry.listTools().map((tool) => documentBuilder.build(tool));
+    const registeredTools = registry.listTools();
+    const toolsByName = new Map(registeredTools.map((tool) => [tool.name, tool]));
+    this.docs = registeredTools
+      .filter((tool) => resolveAgentToolOwner(tool).kind !== "system")
+      .map((tool) => documentBuilder.build(tool));
     this.docs.forEach((doc) => this.docsByTool.set(doc.toolName, doc));
-    this.miniSearch = new MiniSearch<ToolSearchDocument>({
-      idField: "id",
-      fields: [...ToolSearchDocumentSearchFields],
-      storeFields: [...ToolSearchDocumentStoreFields],
-      tokenize: (text) => this.tokenizer.tokenize(text),
-      processTerm: (term) => term,
-    });
-    this.miniSearch.addAll(this.docs);
+    this.capabilityIndex =
+      capabilityIndex ??
+      new AgentCapabilitySearchIndex(
+        this.docs.map((document) => {
+          const tool = toolsByName.get(document.toolName);
+          if (!tool) throw new Error(`工具搜索索引缺少注册工具：${document.toolName}`);
+          return buildToolCapabilityDocument(tool, document);
+        }),
+        { tokenizer: this.tokenizer },
+      );
     this.rankPipeline = new AgentToolSearchRankPipeline(
       config,
       this.tokenizer,
-      this.miniSearch,
+      this.capabilityIndex,
       this.docs,
       this.docsByTool,
     );
@@ -63,6 +68,41 @@ export class AgentToolSearchIndex {
     const ranked = this.rankPipeline.rank(options);
     const memoryByTool = new Map((options.memoryEvidence ?? []).map((entry) => [entry.toolName, entry]));
     return ranked.entries.map((entry) => this.toResult(entry, ranked.rankers, ranked.queryTokens, memoryByTool));
+  }
+
+  async searchHybrid(options: AgentToolSearchOptions, signal?: AbortSignal): Promise<AgentToolSearchResult[]> {
+    const allowedNames = new Set(this.docs.map((document) => document.toolName));
+    const semanticEvidence = await this.capabilityIndex.semantic(
+      options.query,
+      AgentCapabilityKinds.Tool,
+      allowedNames,
+      signal,
+    );
+    const recalled = this.search({
+      ...options,
+      semanticEvidence: semanticEvidence.map((entry) => ({ toolName: entry.name, score: entry.score })),
+    });
+    const reranked = await this.capabilityIndex.rerank(
+      options.query,
+      AgentCapabilityKinds.Tool,
+      recalled.map((result) => result.toolName),
+      signal,
+    );
+    if (reranked.length === 0) return recalled;
+
+    const rerankByTool = new Map(reranked.map((entry) => [entry.name, entry]));
+    return recalled
+      .map((result) => {
+        const rerank = rerankByTool.get(result.toolName);
+        return rerank
+          ? {
+              ...result,
+              score: Number((result.score + rerank.normalizedRankScore).toFixed(6)),
+              ranks: { ...result.ranks, rerank: rerank.rank },
+            }
+          : result;
+      })
+      .sort((left, right) => right.score - left.score || left.toolName.localeCompare(right.toolName));
   }
 
   getToolNames(): string[] {
@@ -95,10 +135,11 @@ export class AgentToolSearchIndex {
     return {
       toolName: doc.toolName,
       title: doc.title,
-      pluginName: doc.pluginName,
+      ownerName: doc.ownerName,
       sources: doc.sources.map((source) => ({ ...source })),
       summary: doc.summary,
       whenToUse: doc.whenToUse,
+      parameterSummary: doc.params,
       permissions: doc.permissions.split(/\s+/).filter(Boolean),
       score: Number(entry.score.toFixed(6)),
       ranks,

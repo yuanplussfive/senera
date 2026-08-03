@@ -74,6 +74,79 @@ describe("sandbox runtime loading", () => {
     }
   });
 
+  test("creates owned runtime probes and removes them after preparation", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-runtime-"));
+    const lifecycle = new FakeSandboxLifecycle();
+    try {
+      await prepareAgentSandboxRuntime({
+        workspaceRoot,
+        config: sandboxConfig(".senera/runtime"),
+        microsandbox: createMicrosandbox([], [], lifecycle),
+      });
+
+      expect(lifecycle.ephemeralModes).toEqual([false]);
+      expect(lifecycle.labels).toEqual([
+        {
+          "senera.owner": "senera",
+          "senera.purpose": "runtime-preparation",
+        },
+      ]);
+      expect(lifecycle.stopCount).toBe(1);
+      expect(lifecycle.killCount).toBe(0);
+      expect(lifecycle.removedNames).toEqual(["runtime-probe"]);
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("stops an already-created runtime probe when progress projection fails", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-runtime-"));
+    const lifecycle = new FakeSandboxLifecycle({ progressError: new Error("progress unavailable") });
+    try {
+      await expect(
+        prepareAgentSandboxRuntime({
+          workspaceRoot,
+          config: sandboxConfig(".senera/runtime"),
+          microsandbox: createMicrosandbox([], [], lifecycle),
+        }),
+      ).rejects.toThrow("progress unavailable");
+      expect(lifecycle.stopCount).toBe(1);
+      expect(lifecycle.killCount).toBe(0);
+      expect(lifecycle.removedNames).toEqual(["runtime-probe"]);
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("reclaims terminal owned probes without interrupting active preparation", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-runtime-"));
+    const lifecycle = new FakeSandboxLifecycle({
+      existingSandboxes: [
+        { name: "previous-stopped", status: "stopped" },
+        { name: "previous-crashed", status: "crashed" },
+        { name: "concurrent-running", status: "running" },
+        { name: "concurrent-draining", status: "draining" },
+      ],
+    });
+    try {
+      await prepareAgentSandboxRuntime({
+        workspaceRoot,
+        config: sandboxConfig(".senera/runtime"),
+        microsandbox: createMicrosandbox([], [], lifecycle),
+      });
+
+      expect(lifecycle.listFilters).toEqual([
+        {
+          "senera.owner": "senera",
+          "senera.purpose": "runtime-preparation",
+        },
+      ]);
+      expect(lifecycle.removedNames).toEqual(["previous-stopped", "previous-crashed", "runtime-probe"]);
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
   test("imports a release bundle and probes only its declared image with network pulling disabled", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-runtime-"));
     const createdImages: string[] = [];
@@ -181,12 +254,45 @@ function sandboxConfig(
   };
 }
 
-function createMicrosandbox(createdImages: string[] = [], pullPolicies: string[] = []): MicrosandboxModule {
+function createMicrosandbox(
+  createdImages: string[] = [],
+  pullPolicies: string[] = [],
+  lifecycle = new FakeSandboxLifecycle(),
+): MicrosandboxModule {
   return {
     Sandbox: {
-      builder: () => new FakeSandboxBuilder(createdImages, pullPolicies),
+      builder: () => new FakeSandboxBuilder(createdImages, pullPolicies, lifecycle),
+      listWith: async (filter) => {
+        lifecycle.listFilters.push(filter.labels);
+        return lifecycle.existingSandboxes;
+      },
+      remove: async (name) => {
+        lifecycle.removedNames.push(name);
+      },
     },
   };
+}
+
+class FakeSandboxLifecycle {
+  readonly ephemeralModes: boolean[] = [];
+  readonly labels: Record<string, string>[] = [];
+  readonly listFilters: Record<string, string>[] = [];
+  readonly removedNames: string[] = [];
+  readonly existingSandboxes: Array<{ name: string; status: "running" | "stopped" | "crashed" | "draining" }>;
+  stopCount = 0;
+  killCount = 0;
+
+  constructor(
+    readonly options: {
+      progressError?: Error;
+      existingSandboxes?: Array<{
+        name: string;
+        status: "running" | "stopped" | "crashed" | "draining";
+      }>;
+    } = {},
+  ) {
+    this.existingSandboxes = options.existingSandboxes ?? [];
+  }
 }
 
 class FakeSandboxBuilder {
@@ -195,6 +301,7 @@ class FakeSandboxBuilder {
   constructor(
     private readonly createdImages: string[],
     private readonly pullPolicies: string[],
+    private readonly lifecycle: FakeSandboxLifecycle,
   ) {}
 
   image(value: string): this {
@@ -216,6 +323,16 @@ class FakeSandboxBuilder {
   }
 
   memory(): this {
+    return this;
+  }
+
+  ephemeral(enabled: boolean): this {
+    this.lifecycle.ephemeralModes.push(enabled);
+    return this;
+  }
+
+  labels(labels: Record<string, string>): this {
+    this.lifecycle.labels.push(labels);
     return this;
   }
 
@@ -245,9 +362,11 @@ class FakeSandboxBuilder {
 
   async createWithPullProgress() {
     const sandbox = this.sandbox();
+    const progressError = this.lifecycle.options.progressError;
     return {
       awaitSandbox: async () => sandbox,
       async *[Symbol.asyncIterator]() {
+        if (progressError) throw progressError;
         yield { kind: "complete" as const, reference: "alpine" };
       },
     };
@@ -263,8 +382,12 @@ class FakeSandboxBuilder {
         stdout: () => "",
         stderr: () => "",
       }),
-      stopWithTimeout: async () => undefined,
-      kill: async () => undefined,
+      stopWithTimeout: async () => {
+        this.lifecycle.stopCount += 1;
+      },
+      kill: async () => {
+        this.lifecycle.killCount += 1;
+      },
     };
   }
 }

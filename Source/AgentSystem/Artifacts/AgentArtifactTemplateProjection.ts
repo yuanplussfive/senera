@@ -1,5 +1,5 @@
 import { Liquid } from "liquidjs";
-import type { ToolArtifactPolicyManifest } from "../Types/PluginManifestTypes.js";
+import type { ToolArtifactPolicyManifest } from "../Types/AgentToolContractTypes.js";
 import type {
   ExecutedToolCallArtifact,
   ToolArtifactDeltaRecord,

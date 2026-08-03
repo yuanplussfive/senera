@@ -1,10 +1,9 @@
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   explainUnsupportedAgentToolRuntime,
   resolveAgentToolRuntimeCapabilities,
 } from "../../../Source/AgentSystem/ToolRuntime/AgentToolRuntimeCapabilities.js";
-import type { RegisteredTool } from "../../../Source/AgentSystem/Types/PluginRuntimeTypes.js";
+import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 
 describe("tool runtime capabilities", () => {
   it("accepts persistent v2 host capabilities", () => {
@@ -44,12 +43,31 @@ function runtimeTool(
   lifecycle: NonNullable<RegisteredTool["runtime"]>["Lifecycle"],
   protocolVersion?: 2,
 ): RegisteredTool {
-  const manifestPath = path.resolve("System", "Plugins", "TestRuntime", "PluginManifest.json");
   const handler =
     handlerKind === "HostCapability"
       ? ({ kind: handlerKind, capability: "test" } as const)
-      : ({ kind: handlerKind, server: "test", tool: "test", resources: [] } as const);
+      : ({
+          kind: handlerKind,
+          server: {
+            id: "test",
+            revision: "test",
+            command: process.execPath,
+            args: [],
+            cwd: process.cwd(),
+          },
+          tool: "test",
+          readOnly: false,
+          resources: [],
+        } as const);
   return {
+    owner: {
+      kind: handlerKind === "HostCapability" ? "system" : "mcp",
+      name: "test-runtime",
+      rootPath: process.cwd(),
+      revision: "test",
+      trusted: handlerKind === "HostCapability",
+      requiresApproval: false,
+    },
     name: "RuntimeTool",
     loading: "Dynamic",
     permissions: [],
@@ -63,17 +81,8 @@ function runtimeTool(
     runtime: {
       Lifecycle: lifecycle,
       ProtocolVersion: protocolVersion,
+      ResultAssessment: "ProcessExit",
     },
     evidenceCapabilities: [],
-    plugin: {
-      rootKind: "System",
-      rootPath: path.dirname(manifestPath),
-      manifestPath,
-      config: {} as never,
-      manifest: {
-        ManifestVersion: 2,
-        Plugin: { Name: "TestRuntime", Version: "1.0.0", Kind: "Tool" },
-      },
-    },
   };
 }

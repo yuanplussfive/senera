@@ -1,6 +1,7 @@
+import { uniqueStrings } from "../Core/AgentCollections.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import {
-  AgentToolResultSummaryType,
+  AgentToolResultSummaryProtocol,
   type AgentToolResultSummary,
   type AgentToolResultSummaryChange,
   type AgentToolResultSummaryFact,
@@ -12,6 +13,7 @@ import type {
   ToolWorkspaceCaptureResult,
 } from "../Types/ToolRuntimeTypes.js";
 import { stableArtifactStringify } from "./AgentArtifactStableJson.js";
+import type { AgentToolFailure } from "../ToolRuntime/AgentToolResultOutcome.js";
 
 export interface AgentToolResultSummaryCompilerOptions {
   model: string;
@@ -22,6 +24,7 @@ export interface AgentToolResultSummaryCompilerInput {
   toolName: string;
   callId: string;
   status: AgentToolResultSummaryStatus;
+  failure?: AgentToolFailure;
   artifactUri: string;
   deterministicSummary: string;
   result: unknown;
@@ -89,15 +92,16 @@ export class AgentToolResultSummaryCompiler {
         : []),
       ...(input.deterministicSummary.trim()
         ? []
-        : ["No plugin summary template produced a dedicated summary for this result."]),
+        : ["No tool summary projection produced a dedicated summary for this result."]),
     ]);
 
     return {
-      type: AgentToolResultSummaryType,
-      version: 1,
+      type: AgentToolResultSummaryProtocol.type,
+      version: AgentToolResultSummaryProtocol.version,
       toolName: input.toolName,
       callId: input.callId,
       status: input.status,
+      failure: input.failure,
       artifactUri: input.artifactUri,
       headline: headlinePreview.text,
       summary: summaryPreview.text,
@@ -223,6 +227,8 @@ export class AgentToolResultSummaryCompiler {
       return deterministic;
     }
 
+    if (input.failure) return input.failure.message;
+
     const factLines = input.facts.map((fact) => `- ${fact.name}: ${fact.value}`);
     if (factLines.length > 0) {
       return factLines.join("\n");
@@ -300,10 +306,6 @@ function uniqueChanges(changes: readonly AgentToolResultSummaryChange[]): AgentT
     byKey.set(`${change.kind}:${change.key}:${change.status}`, change);
   }
   return [...byKey.values()];
-}
-
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 function describeResultShape(value: unknown): string {

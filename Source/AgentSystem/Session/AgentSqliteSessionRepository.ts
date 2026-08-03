@@ -1,15 +1,7 @@
 import type Database from "better-sqlite3";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
-import {
-  entryToRow,
-  parseJsonObject,
-  parseStoredRunEvent,
-  rowToEntry,
-  rowToRunSnapshot,
-  runSnapshotToRow,
-  type AgentConversationEntryDecodeIssue,
-} from "../SessionPersistence/AgentSessionCodec.js";
+import { parseJsonObject } from "../SessionPersistence/AgentSessionCodec.js";
 import type { AgentSession } from "./AgentSession.js";
 import {
   createAgentUserProfile,
@@ -26,10 +18,19 @@ import {
   type AgentSessionSqlStatements,
 } from "../SessionPersistence/AgentSessionSqlStatements.js";
 import { deriveAgentSessionTitle, rowToAgentSession } from "./AgentSqliteSessionMapper.js";
-import { AgentSqliteSessionTraceStore } from "./AgentSqliteSessionTraceStore.js";
+import {
+  AgentSqliteSessionHistoryStore,
+  type AgentSqliteSessionEntryDecodeIssueSink,
+} from "./AgentSqliteSessionHistoryStore.js";
 import type {
   AgentSessionForkSnapshot,
+  AgentSessionForkHistory,
+  AgentSessionCursorPage,
+  AgentSessionCursorPageRequest,
+  AgentSessionHistorySnapshot,
   AgentSessionRepository,
+  AgentStepTraceCursor,
+  AgentStepTracePageRequest,
   AgentSessionTurnCommit,
   StoredRunSnapshot,
   StoredStepTraceRun,
@@ -40,11 +41,18 @@ import {
   type AgentSessionHistoryMutation,
 } from "./AgentSessionHistoryMutation.js";
 import type { SessionHistoryMutationRow } from "../SessionPersistence/AgentSessionSqlRows.js";
-import {
-  parseAgentTurnPreparationSnapshot,
-  type AgentTurnPreparationSnapshot,
-} from "../Loop/AgentTurnPreparationSnapshot.js";
+import type { SessionForkMutationRow } from "../SessionPersistence/AgentSessionSqlRows.js";
+import type { SessionCommandRow } from "../SessionPersistence/AgentSessionSqlRows.js";
+import { AgentSessionForkPiMutationKinds, type AgentSessionForkMutation } from "./AgentSessionForkMutation.js";
+import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
 import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
+import {
+  AgentSessionCommandStates,
+  assertMatchingAgentSessionCommand,
+  type AgentSessionCommandAdmission,
+  type AgentSessionCommandDescriptor,
+  type AgentSessionCommandRecord,
+} from "./AgentSessionCommand.js";
 
 export { InMemorySessionRepository } from "../SessionPersistence/InMemorySessionRepository.js";
 export type {
@@ -58,14 +66,13 @@ export type {
 
 const USER_PROFILE_SETTING_KEY = "user.profile";
 
-export type AgentSessionEntryDecodeIssueSink = (sessionId: string, issue: AgentConversationEntryDecodeIssue) => void;
+export type AgentSessionEntryDecodeIssueSink = AgentSqliteSessionEntryDecodeIssueSink;
 
 export class SqliteSessionRepository implements AgentSessionRepository {
   private readonly kernel: AgentSqliteDatabaseKernel;
   private readonly db: Database.Database;
   private readonly stmts: AgentSessionSqlStatements;
-  private readonly traces: AgentSqliteSessionTraceStore;
-  private readonly onDecodeIssue?: AgentSessionEntryDecodeIssueSink;
+  private readonly history: AgentSqliteSessionHistoryStore;
 
   constructor(
     databasePath: string,
@@ -79,8 +86,7 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     });
     this.db = this.kernel.connection;
     this.stmts = prepareAgentSessionSqlStatements(this.db);
-    this.traces = new AgentSqliteSessionTraceStore(this.db, this.stmts);
-    this.onDecodeIssue = onDecodeIssue;
+    this.history = new AgentSqliteSessionHistoryStore(this.db, this.stmts, onDecodeIssue);
   }
 
   // ---- 接口实现 ----
@@ -94,6 +100,17 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     }));
   }
 
+  listSessionMetadata(): AgentSession[] {
+    return this.stmts.selectSessionMetadata.all().map((row) => ({
+      ...rowToAgentSession(row),
+      conversation: [],
+    }));
+  }
+
+  hasSession(sessionId: string): boolean {
+    return Boolean(this.stmts.selectSession.get(sessionId));
+  }
+
   loadSession(sessionId: string): AgentSession | undefined {
     const row = this.stmts.selectSession.get(sessionId);
     if (!row) return undefined;
@@ -102,12 +119,8 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     return session;
   }
 
-  loadAll(): AgentSession[] {
-    return this.stmts.selectAllSessions.all().map((row) => {
-      const session = rowToAgentSession(row);
-      session.conversation = this.loadEntries(session.id);
-      return session;
-    });
+  captureHistorySnapshot(sessionId: string): AgentSessionHistorySnapshot | undefined {
+    return this.history.captureSnapshot(sessionId);
   }
 
   listPendingHistoryMutations(): AgentSessionHistoryMutation[] {
@@ -140,11 +153,7 @@ export class SqliteSessionRepository implements AgentSessionRepository {
         throw new Error(`Pending session history mutation does not match: ${session.id}`);
       }
 
-      this.deleteStepTracesFrom(session.id, row.from_request_id);
-      this.deleteRunEventsFrom(session.id, row.from_request_id);
-      this.deleteRunSnapshotsFrom(session.id, row.from_request_id);
-      this.deleteTurnPreparationsFrom(session.id, row.from_request_id);
-      const removed = this.deleteEntriesFrom(session.id, row.from_request_id);
+      const removed = this.history.deleteFromRequest(session.id, row.from_request_id);
       this.upsertSession(session);
       const deleted = this.stmts.deleteHistoryMutation.run(session.id, mutationId);
       if (deleted.changes !== 1) {
@@ -154,62 +163,101 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     })();
   }
 
+  listPendingForkMutations(): AgentSessionForkMutation[] {
+    return this.stmts.selectPendingForkMutations.all().map(rowToForkMutation);
+  }
+
+  loadPendingForkMutation(targetSessionId: string): AgentSessionForkMutation | undefined {
+    const row = this.stmts.selectPendingForkMutation.get(targetSessionId);
+    return row ? rowToForkMutation(row) : undefined;
+  }
+
+  stageForkMutation(mutation: AgentSessionForkMutation): void {
+    this.db.transaction(() => {
+      if (!this.stmts.selectSession.get(mutation.sourceSessionId)) {
+        throw new Error(`Session fork source does not exist: ${mutation.sourceSessionId}`);
+      }
+      if (this.stmts.selectSession.get(mutation.targetSessionId)) {
+        throw new Error(`Session fork target already exists: ${mutation.targetSessionId}`);
+      }
+      this.stmts.stageForkMutation.run({
+        mutation_id: mutation.mutationId,
+        source_session_id: mutation.sourceSessionId,
+        target_session_id: mutation.targetSessionId,
+        through_request_id: mutation.throughRequestId,
+        pi_kind: mutation.pi.kind,
+        pi_entry_id: mutation.pi.kind === AgentSessionForkPiMutationKinds.Fork ? mutation.pi.entryId : null,
+        model_provider_id:
+          mutation.pi.kind === AgentSessionForkPiMutationKinds.Fork ? (mutation.pi.modelProviderId ?? null) : null,
+        created_at: mutation.createdAt,
+      });
+    })();
+  }
+
+  commitForkMutation(mutationId: string, snapshot: AgentSessionForkSnapshot): void {
+    this.db.transaction(() => {
+      const row = this.stmts.selectPendingForkMutation.get(snapshot.session.id);
+      if (!row || row.mutation_id !== mutationId) {
+        throw new Error(`Pending session fork mutation does not match: ${snapshot.session.id}`);
+      }
+      this.persistForkSnapshot(snapshot);
+      const deleted = this.stmts.deleteForkMutation.run(snapshot.session.id, mutationId);
+      if (deleted.changes !== 1) {
+        throw new Error(`Pending session fork mutation disappeared during commit: ${snapshot.session.id}`);
+      }
+    })();
+  }
+
+  abortForkMutation(targetSessionId: string, mutationId: string): boolean {
+    return this.stmts.deleteForkMutation.run(targetSessionId, mutationId).changes === 1;
+  }
+
+  hasRequest(sessionId: string, requestId: string): boolean {
+    return this.history.hasRequest(sessionId, requestId);
+  }
+
+  loadRequestIdsFrom(sessionId: string, requestId: string): string[] {
+    return this.history.loadRequestIdsFrom(sessionId, requestId);
+  }
+
+  loadForkHistoryThroughRequest(sessionId: string, requestId: string): AgentSessionForkHistory | undefined {
+    return this.history.loadForkHistoryThroughRequest(sessionId, requestId);
+  }
+
   loadEntries(sessionId: string): AgentConversationEntry[] {
-    return this.stmts.selectEntries.all(sessionId).flatMap((row) => {
-      const entry = rowToEntry(row, (issue) => this.onDecodeIssue?.(sessionId, issue));
-      return entry ? [entry] : [];
-    });
+    return this.history.loadEntries(sessionId);
+  }
+
+  loadFirstUserMessage(sessionId: string): AgentConversationEntry | undefined {
+    return this.history.loadFirstUserMessage(sessionId);
+  }
+
+  loadEntryPage(
+    sessionId: string,
+    request: AgentSessionCursorPageRequest,
+  ): AgentSessionCursorPage<AgentConversationEntry> {
+    return this.history.loadEntryPage(sessionId, request);
+  }
+
+  loadEntriesForRequests(
+    sessionId: string,
+    requestIds: readonly string[],
+    throughSequence: number,
+  ): AgentConversationEntry[] {
+    return this.history.loadEntriesForRequests(sessionId, requestIds, throughSequence);
   }
 
   createFork(snapshot: AgentSessionForkSnapshot): void {
-    const persist = this.db.transaction((fork: AgentSessionForkSnapshot) => {
-      if (this.stmts.selectSession.get(fork.session.id)) {
-        throw new Error(`Session fork target already exists: ${fork.session.id}`);
-      }
+    this.db.transaction(() => this.persistForkSnapshot(snapshot))();
+  }
 
-      this.upsertSession(fork.session);
-      for (const { entry, sequence } of fork.entries) {
-        this.stmts.appendEntry.run(entryToRow(fork.session.id, entry, sequence));
-      }
-      for (const { requestId, turnSequence, trace } of fork.traces) {
-        this.stmts.appendStepTrace.run({
-          session_id: fork.session.id,
-          request_id: requestId,
-          turn_sequence: turnSequence,
-          step: trace.step,
-          seq: trace.seq,
-          data: JSON.stringify(trace),
-        });
-      }
-      for (const runSnapshot of fork.runSnapshots) {
-        this.stmts.upsertRunSnapshot.run(runSnapshotToRow(runSnapshot));
-      }
-      const createdAt = new Date().toISOString();
-      for (const preparation of fork.turnPreparations) {
-        this.stmts.upsertTurnPreparation.run({
-          session_id: fork.session.id,
-          request_id: preparation.requestId,
-          snapshot_json: JSON.stringify(preparation.snapshot),
-          created_at: createdAt,
-        });
-      }
-      for (const event of fork.runEvents) {
-        if (!event.requestId) continue;
-        this.stmts.appendRunEvent.run({
-          session_id: fork.session.id,
-          request_id: event.requestId,
-          kind: event.kind,
-          timestamp: event.timestamp,
-          event_sequence: event.sequence,
-          step: event.step ?? null,
-          detail_id: event.detailId ?? null,
-          event_id: resolveStoredEventId(event),
-          reliability: "durable",
-          event_json: JSON.stringify(event),
-        });
-      }
-    });
-    persist(snapshot);
+  private persistForkSnapshot(fork: AgentSessionForkSnapshot): void {
+    if (this.stmts.selectSession.get(fork.session.id)) {
+      throw new Error(`Session fork target already exists: ${fork.session.id}`);
+    }
+
+    this.upsertSession(fork.session);
+    this.history.persistForkHistory(fork);
   }
 
   upsertSession(session: AgentSession): void {
@@ -225,11 +273,11 @@ export class SqliteSessionRepository implements AgentSessionRepository {
   }
 
   appendEntry(sessionId: string, entry: AgentConversationEntry, sequence: number): void {
-    this.stmts.appendEntry.run(entryToRow(sessionId, entry, sequence));
+    this.history.appendEntry(sessionId, entry, sequence);
   }
 
   appendEntries(sessionId: string, entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>): void {
-    this.traces.appendEntries(sessionId, entries);
+    this.history.appendEntries(sessionId, entries);
   }
 
   persistTurnArtifacts(
@@ -237,54 +285,64 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>,
     traces: ReadonlyArray<{ requestId: string; turnSequence: number; trace: StepTrace }>,
   ): void {
-    this.traces.persistTurnArtifacts(sessionId, entries, traces);
+    this.history.persistTurnArtifacts(sessionId, entries, traces);
   }
 
   persistTurnCommit(commit: AgentSessionTurnCommit): void {
     const persist = this.db.transaction(() => {
-      if (commit.session) {
-        this.stmts.upsertSession.run({
-          id: commit.session.id,
-          title: deriveAgentSessionTitle(commit.session),
-          status: commit.session.status,
-          created_at: commit.session.createdAt,
-          updated_at: commit.session.updatedAt,
-          active_request_id: commit.session.activeRequest?.requestId ?? null,
-          metadata: JSON.stringify(commit.session.metadata ?? {}),
-        });
-      }
-      for (const { entry, sequence } of commit.entries) {
-        this.stmts.appendEntry.run(entryToRow(commit.sessionId, entry, sequence));
-      }
-      for (const { requestId, turnSequence, trace } of commit.traces) {
-        this.stmts.appendStepTrace.run({
+      this.persistTurnCommitData(commit);
+      if (commit.commandId) {
+        const updated = this.stmts.updateSessionCommandState.run({
           session_id: commit.sessionId,
-          request_id: requestId,
-          turn_sequence: turnSequence,
-          step: trace.step,
-          seq: trace.seq,
-          data: JSON.stringify(trace),
+          command_id: commit.commandId,
+          request_id: commit.requestId,
+          state: commandStateForSnapshot(commit.snapshot.status),
+          updated_at: commit.snapshot.updatedAt,
         });
-      }
-      this.stmts.upsertRunSnapshot.run(runSnapshotToRow(commit.snapshot));
-      for (const event of commit.runEvents) {
-        if (!event.requestId) continue;
-        const eventId = resolveStoredEventId(event);
-        this.stmts.appendRunEvent.run({
-          session_id: commit.sessionId,
-          request_id: event.requestId,
-          kind: event.kind,
-          timestamp: event.timestamp,
-          event_sequence: event.sequence,
-          step: event.step ?? null,
-          detail_id: event.detailId ?? null,
-          event_id: eventId,
-          reliability: "durable",
-          event_json: JSON.stringify({ ...event, eventId }),
-        });
+        if (updated.changes !== 1) {
+          throw new Error(
+            `Session command receipt disappeared during turn commit: ${commit.sessionId}/${commit.commandId}`,
+          );
+        }
       }
     });
-    persist();
+    persist.immediate();
+  }
+
+  beginRun(command: AgentSessionCommandDescriptor, commit: AgentSessionTurnCommit): AgentSessionCommandAdmission {
+    const begin = this.db.transaction((): AgentSessionCommandAdmission => {
+      const existing = this.loadCommand(commit.sessionId, command.commandId);
+      if (existing) {
+        assertMatchingAgentSessionCommand(existing, command);
+        return { kind: "replayed", command: existing };
+      }
+
+      this.stmts.insertSessionCommand.run({
+        session_id: commit.sessionId,
+        command_id: command.commandId,
+        operation_kind: command.operationKind,
+        payload_hash: command.payloadHash,
+        request_id: command.requestId,
+        created_at: command.createdAt,
+        updated_at: command.createdAt,
+      });
+      this.persistTurnCommitData(commit);
+      return {
+        kind: "accepted",
+        command: {
+          ...command,
+          sessionId: commit.sessionId,
+          state: AgentSessionCommandStates.Running,
+          updatedAt: command.createdAt,
+        },
+      };
+    });
+    return begin.immediate();
+  }
+
+  loadCommand(sessionId: string, commandId: string): AgentSessionCommandRecord | undefined {
+    const row = this.stmts.selectSessionCommand.get(sessionId, commandId);
+    return row ? rowToSessionCommand(row) : undefined;
   }
 
   truncateFromRequest(sessionId: string, requestId: string): number {
@@ -292,63 +350,85 @@ export class SqliteSessionRepository implements AgentSessionRepository {
   }
 
   loadStepTraces(sessionId: string): StoredStepTraceRun[] {
-    return this.traces.loadStepTraces(sessionId);
+    return this.history.loadStepTraces(sessionId);
+  }
+
+  loadStepTracePage(
+    sessionId: string,
+    request: AgentStepTracePageRequest,
+  ): AgentSessionCursorPage<StoredStepTraceRun, AgentStepTraceCursor> {
+    return this.history.loadStepTracePage(sessionId, request);
+  }
+
+  loadStepTraceRequestIds(sessionId: string, requestIds: readonly string[], throughRowId: number): string[] {
+    return this.history.loadStepTraceRequestIds(sessionId, requestIds, throughRowId);
   }
 
   deleteStepTracesFrom(sessionId: string, requestId: string): number {
-    const info = this.stmts.deleteStepTracesFrom.run(sessionId, sessionId, requestId);
-    return info.changes;
+    return this.history.deleteStepTracesFrom(sessionId, requestId);
   }
 
   private deleteHistoryFromRequest(sessionId: string, requestId: string): number {
-    this.deleteStepTracesFrom(sessionId, requestId);
-    this.deleteRunEventsFrom(sessionId, requestId);
-    this.deleteRunSnapshotsFrom(sessionId, requestId);
-    this.deleteTurnPreparationsFrom(sessionId, requestId);
-    return this.deleteEntriesFrom(sessionId, requestId);
+    this.stmts.deleteSessionCommandsFrom.run(sessionId, sessionId, sessionId, requestId);
+    return this.history.deleteFromRequest(sessionId, requestId);
+  }
+
+  private persistTurnCommitData(commit: AgentSessionTurnCommit): void {
+    if (commit.session) {
+      this.stmts.upsertSession.run({
+        id: commit.session.id,
+        title: deriveAgentSessionTitle(commit.session),
+        status: commit.session.status,
+        created_at: commit.session.createdAt,
+        updated_at: commit.session.updatedAt,
+        active_request_id: commit.session.activeRequest?.requestId ?? null,
+        metadata: JSON.stringify(commit.session.metadata ?? {}),
+      });
+    }
+    this.history.persistTurnCommitArtifacts(commit);
   }
 
   upsertRunSnapshot(snapshot: StoredRunSnapshot): void {
-    this.stmts.upsertRunSnapshot.run(runSnapshotToRow(snapshot));
+    this.history.upsertRunSnapshot(snapshot);
   }
 
   loadRunSnapshots(sessionId: string): StoredRunSnapshot[] {
-    return this.stmts.selectRunSnapshots.all(sessionId).map(rowToRunSnapshot);
+    return this.history.loadRunSnapshots(sessionId);
+  }
+
+  loadRunSnapshotsForRequests(
+    sessionId: string,
+    requestIds: readonly string[],
+    throughRevision: number,
+  ): StoredRunSnapshot[] {
+    return this.history.loadRunSnapshotsForRequests(sessionId, requestIds, throughRevision);
+  }
+
+  loadRunSnapshotPage(
+    sessionId: string,
+    request: AgentSessionCursorPageRequest,
+  ): AgentSessionCursorPage<StoredRunSnapshot> {
+    return this.history.loadRunSnapshotPage(sessionId, request);
+  }
+
+  loadRunningRunSnapshots(): StoredRunSnapshot[] {
+    return this.history.loadRunningRunSnapshots();
   }
 
   deleteRunSnapshotsFrom(sessionId: string, requestId: string): number {
-    const info = this.stmts.deleteRunSnapshotsFrom.run(
-      sessionId,
-      sessionId,
-      requestId,
-      sessionId,
-      sessionId,
-      requestId,
-    );
-    return info.changes;
+    return this.history.deleteRunSnapshotsFrom(sessionId, requestId);
   }
 
   upsertTurnPreparation(sessionId: string, requestId: string, snapshot: AgentTurnPreparationSnapshot): void {
-    this.stmts.upsertTurnPreparation.run({
-      session_id: sessionId,
-      request_id: requestId,
-      snapshot_json: JSON.stringify(snapshot),
-      created_at: new Date().toISOString(),
-    });
+    this.history.upsertTurnPreparation(sessionId, requestId, snapshot);
   }
 
   loadTurnPreparation(sessionId: string, requestId: string): AgentTurnPreparationSnapshot | undefined {
-    const row = this.stmts.selectTurnPreparation.get(sessionId, requestId);
-    if (!row) return undefined;
-    try {
-      return parseAgentTurnPreparationSnapshot(JSON.parse(row.snapshot_json));
-    } catch {
-      return undefined;
-    }
+    return this.history.loadTurnPreparation(sessionId, requestId);
   }
 
   deleteTurnPreparationsFrom(sessionId: string, requestId: string): number {
-    return this.stmts.deleteTurnPreparationsFrom.run(sessionId, sessionId, sessionId, requestId).changes;
+    return this.history.deleteTurnPreparationsFrom(sessionId, requestId);
   }
 
   renameSession(sessionId: string, title: string): void {
@@ -361,46 +441,34 @@ export class SqliteSessionRepository implements AgentSessionRepository {
   }
 
   deleteEntriesFrom(sessionId: string, requestId: string): number {
-    const info = this.stmts.deleteFrom.run(sessionId, sessionId, requestId);
-    return info.changes;
+    return this.history.deleteEntriesFrom(sessionId, requestId);
   }
 
   appendRunEvent(sessionId: string, event: AgentEventEnvelope): void {
-    this.appendRunEvents(sessionId, [event]);
+    this.history.appendRunEvent(sessionId, event);
   }
 
   appendRunEvents(sessionId: string, events: readonly AgentEventEnvelope[]): void {
-    const append = this.db.transaction((batch: readonly AgentEventEnvelope[]) => {
-      for (const event of batch) {
-        if (!event.requestId) continue;
-        this.stmts.appendRunEvent.run({
-          session_id: sessionId,
-          request_id: event.requestId,
-          kind: event.kind,
-          timestamp: event.timestamp,
-          event_sequence: event.sequence,
-          step: event.step ?? null,
-          detail_id: event.detailId ?? null,
-          event_id: resolveStoredEventId(event),
-          reliability: "durable",
-          event_json: JSON.stringify(event),
-        });
-      }
-    });
-    append(events);
+    this.history.appendRunEvents(sessionId, events);
   }
 
   loadRunEvents(sessionId: string): AgentEventEnvelope[] {
-    return this.stmts.selectRunEvents.all(sessionId).flatMap((row) => {
-      const event = parseStoredRunEvent(row.event_json);
-      return event ? [{ ...event, eventId: event.eventId ?? row.event_id }] : [];
-    });
+    return this.history.loadRunEvents(sessionId);
+  }
+
+  loadRunEventsForRequest(sessionId: string, requestId: string): AgentEventEnvelope[] {
+    return this.history.loadRunEventsForRequest(sessionId, requestId);
+  }
+
+  loadRunEventPage(
+    sessionId: string,
+    request: AgentSessionCursorPageRequest,
+  ): AgentSessionCursorPage<AgentEventEnvelope> {
+    return this.history.loadRunEventPage(sessionId, request);
   }
 
   deleteRunEventsFrom(sessionId: string, requestId: string): number {
-    this.stmts.deleteRunEventOutboxFrom.run(sessionId, sessionId, sessionId, requestId);
-    const info = this.stmts.deleteRunEventsFrom.run(sessionId, sessionId, sessionId, requestId);
-    return info.changes;
+    return this.history.deleteRunEventsFrom(sessionId, requestId);
   }
 
   loadUserProfile(): AgentUserProfile {
@@ -425,9 +493,30 @@ export class SqliteSessionRepository implements AgentSessionRepository {
   }
 }
 
-function resolveStoredEventId(event: AgentEventEnvelope): string {
-  if (event.eventId && event.eventId.trim().length > 0) return event.eventId;
-  return `legacy:${event.sessionId ?? "global"}:${event.requestId ?? "unknown"}:${event.sequence}`;
+function rowToSessionCommand(row: SessionCommandRow): AgentSessionCommandRecord {
+  return {
+    sessionId: row.session_id,
+    commandId: row.command_id,
+    operationKind: row.operation_kind,
+    payloadHash: row.payload_hash,
+    requestId: row.request_id,
+    state: row.state,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function commandStateForSnapshot(status: StoredRunSnapshot["status"]): AgentSessionCommandRecord["state"] {
+  switch (status) {
+    case "completed":
+      return AgentSessionCommandStates.Completed;
+    case "cancelled":
+      return AgentSessionCommandStates.Cancelled;
+    case "failed":
+      return AgentSessionCommandStates.Failed;
+    case "running":
+      return AgentSessionCommandStates.Running;
+  }
 }
 
 function rowToHistoryMutation(row: SessionHistoryMutationRow): AgentSessionHistoryMutation {
@@ -459,5 +548,31 @@ function rowToHistoryMutation(row: SessionHistoryMutationRow): AgentSessionHisto
       };
     default:
       throw new Error(`Unsupported Pi history mutation kind: ${row.pi_kind}`);
+  }
+}
+
+function rowToForkMutation(row: SessionForkMutationRow): AgentSessionForkMutation {
+  const base = {
+    mutationId: row.mutation_id,
+    sourceSessionId: row.source_session_id,
+    targetSessionId: row.target_session_id,
+    throughRequestId: row.through_request_id,
+    createdAt: row.created_at,
+  } as const;
+  switch (row.pi_kind) {
+    case AgentSessionForkPiMutationKinds.None:
+      return { ...base, pi: { kind: AgentSessionForkPiMutationKinds.None } };
+    case AgentSessionForkPiMutationKinds.Fork:
+      if (!row.pi_entry_id) throw new Error(`Fork mutation is missing its Pi entry: ${row.mutation_id}`);
+      return {
+        ...base,
+        pi: {
+          kind: AgentSessionForkPiMutationKinds.Fork,
+          entryId: row.pi_entry_id,
+          modelProviderId: row.model_provider_id ?? undefined,
+        },
+      };
+    default:
+      throw new Error(`Unsupported Pi fork mutation kind: ${row.pi_kind}`);
   }
 }

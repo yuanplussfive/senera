@@ -6,7 +6,7 @@ import {
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 describe("AgentSystemRuntimeCache", () => {
-  test("reuses a matching provider and closes an idle runtime before constructing another provider", () => {
+  test("reuses a matching provider and closes an idle runtime after constructing its replacement", () => {
     const fixture = createCache();
 
     const first = fixture.cache.acquire("deepseek-flash");
@@ -16,8 +16,106 @@ describe("AgentSystemRuntimeCache", () => {
     reused.release();
 
     const next = fixture.cache.acquire("deepseek-pro");
-    expect(fixture.order).toEqual(["create:deepseek-flash", "close:deepseek-flash", "create:deepseek-pro"]);
+    expect(fixture.order).toEqual(["create:deepseek-flash", "create:deepseek-pro", "close:deepseek-flash"]);
     next.release();
+  });
+
+  test("keeps the last valid runtime when replacement construction fails", () => {
+    let revision = 1;
+    const runtime = new FakeRuntime("stable", []);
+    const cache = new AgentSystemRuntimeCache<FakeRuntime>({
+      workspaceRoot: "runtime-cache-test",
+      configPath: "runtime-cache-test.json",
+      snapshot: () => ({ version: revision, revision, config: {} as AgentSystemConfig }),
+      runtimeFactory: () => {
+        if (revision > 1) throw new Error("invalid extension generation");
+        return runtime;
+      },
+    });
+
+    cache.acquire().release();
+    revision += 1;
+
+    expect(() => cache.acquire()).toThrow("invalid extension generation");
+    expect(runtime.closeCount).toBe(0);
+
+    revision -= 1;
+    const recovered = cache.acquire();
+    expect(recovered.runtime).toBe(runtime);
+    recovered.release();
+  });
+
+  test("closes a candidate whose initialization throws before a lease can be returned", () => {
+    const candidate = new ThrowingInitializableRuntime();
+    const cache = new AgentSystemRuntimeCache<ThrowingInitializableRuntime>({
+      workspaceRoot: "runtime-cache-test",
+      configPath: "runtime-cache-test.json",
+      snapshot: () => ({ version: 1, config: {} as AgentSystemConfig }),
+      runtimeFactory: () => candidate,
+    });
+
+    expect(() => cache.acquire()).toThrow("synchronous initialization failure");
+    expect(candidate.closeCount).toBe(1);
+  });
+
+  test("publishes a replacement only after asynchronous initialization succeeds", async () => {
+    let revision = 1;
+    const initialization = createDeferred();
+    const stable = new InitializableFakeRuntime("stable", Promise.resolve());
+    const candidate = new InitializableFakeRuntime("candidate", initialization.promise);
+    const cache = new AgentSystemRuntimeCache<InitializableFakeRuntime>({
+      workspaceRoot: "runtime-cache-test",
+      configPath: "runtime-cache-test.json",
+      snapshot: () => ({ version: revision, revision, config: {} as AgentSystemConfig }),
+      runtimeFactory: () => (revision === 1 ? stable : candidate),
+    });
+
+    const first = cache.acquire();
+    await stable.initialize();
+    first.release();
+
+    revision += 1;
+    const replacement = cache.acquire();
+    await Promise.resolve();
+    expect(stable.closeCount).toBe(0);
+
+    initialization.resolve();
+    await candidate.initialize();
+    await Promise.resolve();
+    expect(stable.closeCount).toBe(1);
+    replacement.release();
+  });
+
+  test("removes a failed asynchronous candidate and preserves the last valid runtime", async () => {
+    let revision = 1;
+    const initialization = createDeferred();
+    const stable = new InitializableFakeRuntime("stable", Promise.resolve());
+    const candidate = new InitializableFakeRuntime("candidate", initialization.promise);
+    const cache = new AgentSystemRuntimeCache<InitializableFakeRuntime>({
+      workspaceRoot: "runtime-cache-test",
+      configPath: "runtime-cache-test.json",
+      snapshot: () => ({ version: revision, revision, config: {} as AgentSystemConfig }),
+      runtimeFactory: () => (revision === 1 ? stable : candidate),
+    });
+
+    const first = cache.acquire();
+    await stable.initialize();
+    first.release();
+
+    revision += 1;
+    const replacement = cache.acquire();
+    initialization.reject(new Error("invalid MCP package"));
+    await expect(candidate.initialize()).rejects.toThrow("invalid MCP package");
+    replacement.release();
+    await Promise.resolve();
+
+    expect(candidate.closeCount).toBe(1);
+    expect(stable.closeCount).toBe(0);
+
+    revision -= 1;
+    const recovered = cache.acquire();
+    expect(recovered.runtime).toBe(stable);
+    recovered.release();
   });
 
   test("does not close active runtimes and trims them only after release", () => {
@@ -50,7 +148,7 @@ describe("AgentSystemRuntimeCache", () => {
   });
 
   test("invalidates runtime and preparation state when a non-JSON source revision changes", () => {
-    let pluginRevision = 0;
+    let extensionRevision = 0;
     const runtimes: FakeRuntime[] = [];
     const cache = new AgentSystemRuntimeCache<FakeRuntime>({
       workspaceRoot: "runtime-cache-test",
@@ -58,7 +156,7 @@ describe("AgentSystemRuntimeCache", () => {
       snapshot: () => ({
         version: 1,
         revision: 1,
-        sourceRevisions: { plugins: pluginRevision },
+        sourceRevisions: { extensions: extensionRevision },
         config: {} as AgentSystemConfig,
       }),
       runtimeFactory: ({ modelProviderId }) => {
@@ -70,7 +168,7 @@ describe("AgentSystemRuntimeCache", () => {
 
     const first = cache.acquire("deepseek-flash");
     first.release();
-    pluginRevision += 1;
+    extensionRevision += 1;
     const replacement = cache.acquire("deepseek-flash");
 
     expect(replacement.runtime).not.toBe(first.runtime);
@@ -162,6 +260,35 @@ class FakeRuntime implements AgentSystemRuntimeCacheRuntime {
   }
 }
 
+class InitializableFakeRuntime implements AgentSystemRuntimeCacheRuntime {
+  closeCount = 0;
+
+  constructor(
+    readonly providerId: string,
+    private readonly initialization: Promise<void>,
+  ) {}
+
+  initialize(): Promise<void> {
+    return this.initialization;
+  }
+
+  close(): void {
+    this.closeCount += 1;
+  }
+}
+
+class ThrowingInitializableRuntime implements AgentSystemRuntimeCacheRuntime {
+  closeCount = 0;
+
+  initialize(): never {
+    throw new Error("synchronous initialization failure");
+  }
+
+  close(): void {
+    this.closeCount += 1;
+  }
+}
+
 function createCache(maxIdleEntries = 1): {
   cache: AgentSystemRuntimeCache<FakeRuntime>;
   runtimes: Map<string, FakeRuntime>;
@@ -200,10 +327,12 @@ function createCache(maxIdleEntries = 1): {
   };
 }
 
-function createDeferred(): { promise: Promise<void>; resolve(): void } {
+function createDeferred(): { promise: Promise<void>; resolve(): void; reject(error: unknown): void } {
   let resolve!: () => void;
-  const promise = new Promise<void>((settled) => {
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<void>((settled, rejected) => {
     resolve = settled;
+    reject = rejected;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }

@@ -11,7 +11,7 @@ export type AgentSessionListRecord = AgentSession & {
 };
 
 export class AgentSessionTitleProjector {
-  constructor(private readonly loadConversation: (sessionId: string) => AgentConversationEntry[]) {}
+  constructor(private readonly loadFirstUserMessage: (sessionId: string) => AgentConversationEntry | undefined) {}
 
   project(session: AgentSessionListRecord): string {
     return this.readTitleFromEntries(session.conversation) ?? this.readPersistedTitle(session) ?? EmptySessionTitle;
@@ -27,7 +27,10 @@ export class AgentSessionTitleProjector {
       return undefined;
     }
 
-    return this.readTitleFromEntries(this.loadConversation(session.id));
+    const firstUserMessage = this.loadFirstUserMessage(session.id);
+    return firstUserMessage?.kind === AgentConversationEntryKinds.UserMessage
+      ? this.compactTitle(firstUserMessage.content)
+      : undefined;
   }
 
   private readTitleFromEntries(entries: readonly AgentConversationEntry[]): string | undefined {

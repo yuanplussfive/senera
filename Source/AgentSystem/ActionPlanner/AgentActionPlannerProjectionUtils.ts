@@ -1,4 +1,10 @@
 import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
+import { compactRecord, readArrayValue, uniqueStrings } from "../Core/AgentCollections.js";
+
+export {
+  readAgentTrimmedString as readString,
+  readAgentUnknownRecord as readRecord,
+} from "../Core/AgentUnknownValue.js";
 
 export function readArrayItems(value: unknown, itemKey: string): unknown[] {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -9,29 +15,7 @@ export function readArrayItems(value: unknown, itemKey: string): unknown[] {
   return Array.isArray(item) ? item : item !== undefined ? [item] : [];
 }
 
-export function compactObject(value: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      ([, entry]) => entry !== undefined && entry !== "" && !(Array.isArray(entry) && entry.length === 0),
-    ),
-  );
-}
-
-export function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
-}
-
-export function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
-
-export function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-export function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
+export { compactRecord as compactObject, uniqueStrings, readArrayValue as readArray };
 
 export function stringifyPreview(value: unknown): string {
   return typeof value === "string" ? value : stableStringify(value);

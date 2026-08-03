@@ -101,6 +101,7 @@ test("non-streaming events remain ordering barriers inside a frame batch", () =>
 
 function event(sessionId, requestId, step, sequence, text) {
   return {
+    eventId: `model-event-${sequence}`,
     channel: "agent.event",
     kind: EventKinds.ModelDelta,
     layer: "progress",
@@ -116,6 +117,7 @@ function event(sessionId, requestId, step, sequence, text) {
 
 function outputEvent(cursor, stream, text, byteLength) {
   return {
+    eventId: `output-event-${cursor}`,
     channel: "agent.event",
     kind: EventKinds.ExecutionResourceOutput,
     layer: "progress",

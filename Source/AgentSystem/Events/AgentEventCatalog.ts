@@ -36,15 +36,13 @@ export const AgentEventKinds = {
   SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
   SessionForked: "session.forked",
+  SessionCompacted: "session.compacted",
+  SessionRuntimeStatus: "session.runtime_status",
+  SessionExported: "session.exported",
   RunStarted: "run.started",
   RunActivityChanged: "run.activity.changed",
   RunCancellationProgress: "run.cancellation.progress",
   PromptSummary: "prompt.summary",
-  ActionPlannerStageStarted: "action.planner.stage.started",
-  ActionPlannerStageCompleted: "action.planner.stage.completed",
-  ActionPlannerStageFailed: "action.planner.stage.failed",
-  InteractionRouted: "interaction.routed",
-  ActionPlanned: "action.planned",
   ModelStarted: "model.started",
   ModelDelta: "model.delta",
   ModelCompleted: "model.completed",
@@ -77,10 +75,11 @@ export const AgentEventKinds = {
   ModelListSnapshot: "model.list.snapshot",
   ProviderModelsSnapshot: "provider.models.snapshot",
   ProviderModelsFailed: "provider.models.failed",
-  PluginConfigSnapshot: "plugin.config.snapshot",
   ProfileSnapshot: "profile.snapshot",
   PresetSnapshot: "preset.snapshot",
   PresetFailed: "preset.failed",
+  SystemToolSnapshot: "system_tool.snapshot",
+  McpServerSnapshot: "mcp_server.snapshot",
 } as const;
 
 export type AgentEventKind = (typeof AgentEventKinds)[keyof typeof AgentEventKinds];
@@ -149,6 +148,18 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Session,
   },
+  [AgentEventKinds.SessionCompacted]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Session,
+  },
+  [AgentEventKinds.SessionRuntimeStatus]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Session,
+  },
+  [AgentEventKinds.SessionExported]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Session,
+  },
   [AgentEventKinds.RunStarted]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Run,
@@ -164,26 +175,6 @@ export const AgentEventSpecTable: {
   [AgentEventKinds.PromptSummary]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Prompt,
-  },
-  [AgentEventKinds.ActionPlannerStageStarted]: {
-    layer: AgentEventLayers.Progress,
-    phase: AgentEventPhases.Decision,
-  },
-  [AgentEventKinds.ActionPlannerStageCompleted]: {
-    layer: AgentEventLayers.Progress,
-    phase: AgentEventPhases.Decision,
-  },
-  [AgentEventKinds.ActionPlannerStageFailed]: {
-    layer: AgentEventLayers.Error,
-    phase: AgentEventPhases.Decision,
-  },
-  [AgentEventKinds.InteractionRouted]: {
-    layer: AgentEventLayers.Progress,
-    phase: AgentEventPhases.Decision,
-  },
-  [AgentEventKinds.ActionPlanned]: {
-    layer: AgentEventLayers.Progress,
-    phase: AgentEventPhases.Decision,
   },
   [AgentEventKinds.ModelStarted]: {
     layer: AgentEventLayers.Progress,
@@ -313,10 +304,6 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Error,
     phase: AgentEventPhases.Config,
   },
-  [AgentEventKinds.PluginConfigSnapshot]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Config,
-  },
   [AgentEventKinds.ProfileSnapshot]: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Config,
@@ -327,6 +314,14 @@ export const AgentEventSpecTable: {
   },
   [AgentEventKinds.PresetFailed]: {
     layer: AgentEventLayers.Error,
+    phase: AgentEventPhases.Config,
+  },
+  [AgentEventKinds.SystemToolSnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Config,
+  },
+  [AgentEventKinds.McpServerSnapshot]: {
+    layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Config,
   },
 };

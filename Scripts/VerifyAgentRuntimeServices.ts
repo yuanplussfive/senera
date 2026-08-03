@@ -12,33 +12,38 @@ const workspaceRoot = process.cwd();
 const isolatedConfig = await createIsolatedVerificationRuntimeConfig(workspaceRoot);
 const configPath = isolatedConfig.configPath;
 try {
-  const runtime = AgentSystemRuntime.load({ workspaceRoot, configPath });
+  const runtime = AgentSystemRuntime.load({
+    workspaceRoot,
+    configPath,
+    toolSearchMemoryStore: isolatedConfig.createToolSearchMemoryStore(),
+  });
 
-  assert.ok(runtime.services.planning);
   assert.ok(runtime.services.retrieval);
   assert.ok(runtime.services.promptContext);
   assert.ok(runtime.services.pi);
   assert.ok(runtime.services.execution);
   assert.equal(runtime.services.pi.model().id, runtime.modelProviderConfig.Model);
 
-  const skills = runtime.services.promptContext.activateSkills({
+  const skills = await runtime.services.promptContext.activateSkills({
     input: "检查项目结构并总结作用",
   });
   assert.ok(Array.isArray(skills));
 
-  const workflowSkills = runtime.services.promptContext.activateSkills({
+  const workflowSkills = await runtime.services.promptContext.activateSkills({
     input: "继续全面优化拓展代码质量，不要硬编码，运行测试验证直到完成",
   });
   assert.equal(
-    workflowSkills.some((skill) => skill.name === "ExecutionWorkflowSkill"),
+    workflowSkills.some((skill) => skill.name === "execution-workflow"),
     true,
   );
-  assert.ok(runtime.services.promptContext.recommendedSkillTools(workflowSkills).includes("WorkspaceApplyPatch"));
-  assert.ok(runtime.services.promptContext.recommendedSkillTools(workflowSkills).includes("ShellCommandTool"));
-  const investigationSkills = runtime.services.promptContext.activateSkills({
+  assert.deepEqual(runtime.services.promptContext.recommendedSkillTools(workflowSkills), []);
+  const investigationSkills = await runtime.services.promptContext.activateSkills({
     input: "现在的 shell 工具怎么实现的，读取 SeneraShellPlatform 的片段并分析",
   });
-  assert.ok(runtime.services.promptContext.recommendedSkillTools(investigationSkills).includes("ShellCommandTool"));
+  assert.equal(
+    investigationSkills.some((skill) => skill.name === "workspace-investigation"),
+    true,
+  );
 
   const toolCatalog = runtime.services.promptContext.toolCatalog();
   assert.ok(toolCatalog.length > 0);
@@ -90,18 +95,12 @@ try {
     assert.ok(toolSearchDefinition.description.includes(`${source.id}: ${source.title}`));
   }
 
-  const shellSearchResults = runtime.toolSearch.search({
-    query: "PowerShell Get-Content read file slice rg search shell",
-    includeLoaded: true,
-    loadedToolNames: [],
-  });
-  assert.ok(shellSearchResults.some((result) => result.toolName === "ShellCommandTool"));
-  const patchSearchResults = runtime.toolSearch.search({
-    query: "apply patch modify code add file move file unified hunk",
-    includeLoaded: true,
-    loadedToolNames: [],
-  });
-  assert.ok(patchSearchResults.some((result) => result.toolName === "WorkspaceApplyPatch"));
+  assert.ok(runtime.services.pi.activeToolNames().includes("ShellCommandTool"));
+  assert.ok(runtime.services.pi.activeToolNames().includes("WorkspaceApplyPatch"));
+  const initialLoadedTools = await runtime.toolSearch.resolveInitialLoadedTools(
+    "shell command terminal execute workspace inspection",
+  );
+  assert.ok(initialLoadedTools.includes("ShellCommandTool"));
 
   const answerRootCommand = runtime.services.promptContext.buildRootCommand({
     decision: { action: "answer" },
@@ -109,7 +108,7 @@ try {
   });
   assert.equal(answerRootCommand.action, "answer");
 
-  const loadedTools = runtime.services.retrieval.resolvePlannedLoadedTools({
+  const loadedTools = await runtime.services.retrieval.resolvePlannedLoadedTools({
     input: "检查项目结构并总结作用",
     preferredTools: [],
     queries: ["项目结构"],
@@ -160,6 +159,7 @@ try {
     workspaceRoot,
     configPath,
     runtimeModules: [runtimeModule],
+    toolSearchMemoryStore: isolatedConfig.createToolSearchMemoryStore(),
   });
   runtimeWithModule.services.retrieval.rememberAutoSearch("verify-runtime-module", "模块装配", loadedTools);
   assert.deepEqual(observedAutoSearch, {

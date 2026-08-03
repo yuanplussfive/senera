@@ -35,5 +35,7 @@ export interface SeneraProcessExecutionProfile {
   name: string;
   kind: "shell" | "mcp-server";
   backend?: SeneraProcessBackendPreference;
+  /** Host-granted root for a trusted packaged executable; never read from an MCP package. */
+  hostCwdRoot?: string;
   sandbox?: SeneraProcessSandboxProfile;
 }

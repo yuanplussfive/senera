@@ -2,6 +2,7 @@ import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import { createApprovalId } from "../Core/AgentIds.js";
 import { AgentEventKinds, emitAgentEvent, type AgentEventSink } from "../Events/AgentEvent.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import {
   AgentApprovalDecisions,
   AgentApprovalDispositions,
@@ -114,11 +115,9 @@ export class AgentApprovalRuntime implements AgentApprovalRuntimePort {
   async resolve(command: AgentApprovalResolveCommand): Promise<AgentApprovalResolution> {
     const resolved = await this.tryResolve(command);
     if (!resolved) {
-      throw new Error(
-        agentErrorMessage("approval.requestNotPending", {
-          approvalId: command.approvalId,
-        }),
-      );
+      throw new AgentLocalizedError("approval.requestNotPending", {
+        approvalId: command.approvalId,
+      });
     }
     return resolved;
   }
@@ -129,7 +128,7 @@ export class AgentApprovalRuntime implements AgentApprovalRuntimePort {
       return undefined;
     }
     if (!pending.approval.availableDecisions.includes(command.decision)) {
-      throw new Error(agentErrorMessage("approval.decisionUnavailable", { decision: command.decision }));
+      throw new AgentLocalizedError("approval.decisionUnavailable", { decision: command.decision });
     }
 
     const projection = ApprovalDecisionProjections[command.decision];

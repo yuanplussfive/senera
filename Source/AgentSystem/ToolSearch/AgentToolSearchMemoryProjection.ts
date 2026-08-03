@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { type AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import type {
   AgentToolLearningProjection,
@@ -9,6 +9,7 @@ import type {
   AgentToolUsePatternAggregate,
   AgentToolUsePatternMatch,
 } from "./AgentToolSearchMemoryTypes.js";
+import { isGroundedSuccessfulToolSearchCall } from "./AgentToolSearchEpisodeScorer.js";
 
 export const AgentToolSearchMemorySuccessEvidence = 1;
 export const AgentToolSearchMemoryBetaPrior = 1;
@@ -191,7 +192,7 @@ function projectPatternAggregates(
   tokenizer: AgentToolSearchTokenizer,
 ): AgentToolUsePatternAggregate[] {
   return episode.calls.flatMap((call) => {
-    if (!isSuccessfulCall(call)) {
+    if (!isGroundedSuccessfulToolSearchCall(call)) {
       return [];
     }
     const triggerTerms = episode.learnedKeywords
@@ -218,17 +219,10 @@ function projectPatternAggregates(
 function isSuccessfulEpisode(episode: AgentToolSearchEpisode): boolean {
   return (
     episode.outcome === "success" &&
-    episode.finalScore > 0 &&
     episode.finalOutcome.toolExecutionSucceeded &&
     (episode.finalOutcome.producedEvidence ||
       episode.finalOutcome.producedArtifact ||
       episode.finalOutcome.changedWorkspace)
-  );
-}
-
-function isSuccessfulCall(call: AgentToolSearchEpisodeCall): boolean {
-  return (
-    call.status === "success" && call.score > 0 && (call.hasEvidence || call.hasArtifact || call.hasWorkspaceChanges)
   );
 }
 
@@ -258,13 +252,8 @@ function mergeLearnedKeywords(
 }
 
 function patternKey(call: AgentToolSearchEpisodeCall): string {
-  return crypto
-    .createHash("sha1")
-    .update(
-      JSON.stringify({
-        arguments: call.argumentKeys,
-        evidence: call.evidenceKinds,
-      }),
-    )
-    .digest("hex");
+  return sha256HexOfCanonicalJson({
+    arguments: call.argumentKeys,
+    evidence: call.evidenceKinds,
+  });
 }

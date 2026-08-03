@@ -1,7 +1,15 @@
 // 协议类型。事件枚举从后端 AgentEventCatalog 生成，其他 DTO 保持前端消费视角。
-import { EventKinds, EventLayers, EventPhases } from "./generatedEventCatalog";
-import type { EventKind, EventLayer, EventPhase } from "./generatedEventCatalog";
+import { EventChannels, EventKinds, EventLayers, EventPhases } from "./generatedEventCatalog";
+import type { EventChannel, EventKind, EventLayer, EventPhase } from "./generatedEventCatalog";
 import type { ProviderModelConfigOperationKind } from "./providerModelCommandTypes";
+import type { FrontendLocalizedText } from "../i18n/frontendLocaleModel";
+import type { BackendLocalizedMessage } from "../i18n/backendMessage";
+import type {
+  AgentToolResultPresentation,
+  AgentToolResultPresentationChange,
+  AgentToolResultPresentationEvidence,
+  AgentToolResultPresentationFact,
+} from "../../../Source/AgentSystem/Types/ToolRuntimeTypes";
 
 export type {
   ConfigCommandRequestInput,
@@ -18,15 +26,6 @@ export type {
 } from "./providerModelCommandTypes";
 
 export type {
-  ActionPlannerStageCompletedData,
-  ActionPlannerStageFailedData,
-  ActionPlannerStageName,
-  ActionPlannerStageStartedData,
-  TurnContextMode,
-  TurnUnderstandingData,
-} from "./plannerEventTypes";
-
-export type {
   InteractionInputAction,
   InteractionInputContent,
   InteractionInputProperty,
@@ -38,11 +37,12 @@ export type {
 
 export type { RequestInvalidData, RunCancellationProgressData } from "./runControlEventTypes";
 
-export { EventKinds, EventLayers, EventPhases };
-export type { EventKind, EventLayer, EventPhase } from "./generatedEventCatalog";
+export { EventChannels, EventKinds, EventLayers, EventPhases };
+export type { EventChannel, EventKind, EventLayer, EventPhase } from "./generatedEventCatalog";
 
 export interface EventEnvelope<TKind extends string = EventKind, TData = unknown> {
-  channel: "agent.event";
+  eventId?: string;
+  channel: EventChannel;
   kind: TKind;
   layer: EventLayer;
   phase: EventPhase;
@@ -62,6 +62,92 @@ export interface EventScope {
   jobId?: string;
   agentName?: string;
   role?: "childAgent" | "merge";
+}
+
+export interface SystemToolSettingsItem {
+  name: string;
+  title: string;
+  description: string;
+  extension: string;
+  loading: string;
+}
+
+export interface SystemExtensionToolSettingsItem {
+  name: string;
+  description: string;
+  loading: string;
+  capability: string;
+}
+
+export interface SystemExtensionConfigurationSettings {
+  configured: boolean;
+  value: Record<string, unknown>;
+  effectiveValue: Record<string, unknown>;
+  defaults: Record<string, unknown>;
+  sections: ConfigFormSectionData<FrontendLocalizedText>[];
+}
+
+export interface SystemExtensionSettingsItem {
+  id: string;
+  version: string;
+  displayName: FrontendLocalizedText;
+  description: FrontendLocalizedText;
+  enabled: boolean;
+  configured: boolean;
+  priority?: number;
+  tools: SystemExtensionToolSettingsItem[];
+  skillCount: number;
+  mcpServerCount: number;
+  configuration?: SystemExtensionConfigurationSettings;
+}
+
+export interface SystemToolSnapshotData {
+  extensions: SystemExtensionSettingsItem[];
+  tools: SystemToolSettingsItem[];
+}
+
+export type McpInputValue = string | number | boolean | string[] | number[] | boolean[];
+
+export interface McpInputStatus {
+  id: string;
+  title: string;
+  description?: string;
+  type: "string" | "number" | "boolean" | "filepath" | "directory";
+  required: boolean;
+  secret: boolean;
+  multiple: boolean;
+  configured: boolean;
+  stored: boolean;
+  source: "vault" | "configuration" | "environment" | "oauth" | "default" | "missing";
+  provenance: "mcpb" | "registry" | "legacy" | "connection";
+  value?: McpInputValue;
+  defaultValue?: McpInputValue;
+  choices?: McpInputValue[];
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  updatedAt?: string;
+}
+
+export interface McpServerSettingsItem {
+  id: string;
+  packageName: string;
+  source: "bundled" | "workspace";
+  descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
+  transport: "stdio" | "http";
+  status: "configured" | "needs_input";
+  inputs: McpInputStatus[];
+}
+
+export interface McpServerSnapshotData {
+  servers: McpServerSettingsItem[];
+  operation?: { requestId: string; kind: "mcp_input_update" };
+}
+
+export interface McpInputMutationState {
+  requestId: string;
+  status: "pending" | "success" | "error";
+  message?: string;
 }
 
 // --- 各 kind 的 data 形状（只列前端会读的字段） ---
@@ -94,8 +180,16 @@ export interface SessionListSnapshotData {
 
 export interface SessionNotFoundData {
   sessionId: string;
-  operation: "session.message" | "session.close" | "session.history" | "session.fork";
+  operation:
+    | "session.message"
+    | "session.close"
+    | "session.history"
+    | "session.fork"
+    | "session.compact"
+    | "session.runtime_status"
+    | "session.export";
   message: string;
+  localizedMessage?: BackendLocalizedMessage;
 }
 
 export interface SessionForkedData {
@@ -106,12 +200,57 @@ export interface SessionForkedData {
   createdAt: string;
 }
 
+export interface SessionCompactedData {
+  sessionId: string;
+  tokensBefore: number;
+  estimatedTokensAfter?: number;
+}
+
+export interface SessionRuntimeStatusData {
+  sessionId: string;
+  available: boolean;
+  runtime?: {
+    sessionId: string;
+    cached: boolean;
+    stats: {
+      userMessages: number;
+      assistantMessages: number;
+      toolCalls: number;
+      toolResults: number;
+      totalMessages: number;
+      tokens: {
+        input: number;
+        output: number;
+        cacheRead: number;
+        cacheWrite: number;
+        total: number;
+      };
+      cost: number;
+      contextUsage?: SessionContextUsage;
+    };
+    contextUsage?: SessionContextUsage;
+  };
+}
+
+export interface SessionContextUsage {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+}
+
+export interface SessionExportedData {
+  sessionId: string;
+  format: "jsonl" | "html";
+  path: string;
+}
+
 export interface SessionBusyData {
   sessionId: string;
   activeRequestId: string;
   rejectedRequestId?: string;
   operation: "session.message" | "session.close";
   message: string;
+  localizedMessage?: BackendLocalizedMessage;
 }
 
 export type ConversationEntryDto =
@@ -232,42 +371,10 @@ export interface ModelCapabilitiesData {
   StreamingUsage?: boolean;
 }
 
-export interface ToolResultPresentation {
-  type: "senera.tool_result_presentation.v1";
-  version: 1;
-  status: "success" | "failure" | "empty";
-  headline: string;
-  summary?: string;
-  facts: ToolResultPresentationFact[];
-  evidence: ToolResultPresentationEvidence[];
-  changes: ToolResultPresentationChange[];
-  artifactUri?: string;
-}
-
-export interface ToolResultPresentationFact {
-  name: string;
-  value: string;
-  kind?: string;
-  evidenceUri?: string;
-  confidence?: number;
-}
-
-export interface ToolResultPresentationEvidence {
-  evidenceUri: string;
-  kind: string;
-  display: string;
-  label: string;
-  source: string;
-  locator: string;
-  confidence: number;
-}
-
-export interface ToolResultPresentationChange {
-  kind: string;
-  status: "added" | "changed" | "unchanged";
-  key: string;
-  summary: string;
-}
+export type ToolResultPresentation = Omit<AgentToolResultPresentation, "failure">;
+export type ToolResultPresentationFact = AgentToolResultPresentationFact;
+export type ToolResultPresentationEvidence = AgentToolResultPresentationEvidence;
+export type ToolResultPresentationChange = AgentToolResultPresentationChange;
 
 export interface ModelListSnapshotData {
   models: ModelProviderListItem[];
@@ -290,6 +397,7 @@ export interface ProviderModelsSnapshotData {
 export interface ProviderModelsFailedData {
   providerId: string;
   message: string;
+  localizedMessage?: BackendLocalizedMessage;
   details?: unknown;
 }
 
@@ -302,88 +410,6 @@ export type {
   SandboxRuntimeState,
   SandboxStatusSnapshotData,
 } from "./sandboxRuntimeEventTypes";
-
-export interface PluginConfigSection {
-  name: string;
-  label: string;
-  description?: string;
-  keyCount: number;
-  toml: string;
-  fields: PluginConfigField[];
-}
-
-export type PluginConfigFieldType = "boolean" | "string" | "number" | "array" | "table";
-
-export type PluginConfigFieldOptionValue = string | number | boolean;
-
-export interface PluginConfigField {
-  label: string;
-  section: string;
-  key: string;
-  path: string[];
-  type: PluginConfigFieldType;
-  itemType?: PluginConfigFieldType;
-  value: unknown;
-  description?: string;
-  placeholder?: string;
-  options?: PluginConfigFieldOptionValue[];
-  optionLabels?: Record<string, string>;
-  min?: number;
-  max?: number;
-  step?: number;
-  secret?: boolean;
-  multiline?: boolean;
-  required: boolean;
-  essential: boolean;
-}
-
-export interface PluginConfigDiagnostic {
-  severity: "error" | "warning";
-  message: string;
-}
-
-export interface PluginConfigToolItem {
-  name: string;
-  summary?: string;
-  enabled: boolean;
-}
-
-export interface PluginConfigItem {
-  name: string;
-  title: string;
-  kind: string;
-  rootKind: "System" | "User";
-  description?: string;
-  rootPath: string;
-  manifestPath: string;
-  configPath: string;
-  configExists: boolean;
-  configSource: "file" | "example" | "default";
-  configTemplatePath?: string;
-  configTemplateExists: boolean;
-  needsUserConfig: boolean;
-  enabled: boolean;
-  available: boolean;
-  toolCount: number;
-  enabledToolCount: number;
-  tools: PluginConfigToolItem[];
-  sections: PluginConfigSection[];
-  toml: string;
-  diagnostics: PluginConfigDiagnostic[];
-}
-
-export type PluginConfigOperationKind = "list" | "update" | "set_enabled";
-
-export interface PluginConfigOperationResult {
-  requestId?: string;
-  kind: PluginConfigOperationKind;
-  pluginName?: string;
-}
-
-export interface PluginConfigSnapshotData {
-  plugins: PluginConfigItem[];
-  operation?: PluginConfigOperationResult;
-}
 
 export type PresetFormat = "json" | "markdown" | "text";
 
@@ -421,6 +447,7 @@ export interface PresetSnapshotData {
 
 export interface PresetFailedData {
   message: string;
+  localizedMessage?: BackendLocalizedMessage;
   details?: unknown;
   operation?: PresetOperationResult;
 }
@@ -428,8 +455,9 @@ export interface PresetFailedData {
 export interface ConfigFailedData {
   configPath: string;
   message: string;
+  localizedMessage?: BackendLocalizedMessage;
   details?: unknown;
-  operation?: PluginConfigOperationResult | ConfigOperationResult;
+  operation?: ConfigOperationResult;
 }
 
 export type ConfigSnapshotSource = "sqlite" | "json";
@@ -470,17 +498,17 @@ export interface ConfigFormSnapshotData {
   sections: ConfigFormSectionData[];
 }
 
-export interface ConfigFormSectionData {
+export interface ConfigFormSectionData<TText = string> {
   name: string;
-  label: string;
-  description?: string;
+  label: TText;
+  description?: TText;
   icon?: string;
   keyCount: number;
-  fields: ConfigFormFieldData[];
+  fields: ConfigFormFieldData<TText>[];
 }
 
-export interface ConfigFormFieldData {
-  label: string;
+export interface ConfigFormFieldData<TText = string> {
+  label: TText;
   section: string;
   key: string;
   path: string[];
@@ -491,8 +519,8 @@ export interface ConfigFormFieldData {
   configured: boolean;
   missing: boolean;
   valueSource: ConfigFormValueSource;
-  description?: string;
-  placeholder?: string;
+  description?: TText;
+  placeholder?: TText;
   options?: ConfigFormFieldOptionValue[];
   optionLabels?: Record<string, string>;
   min?: number;
@@ -506,7 +534,7 @@ export interface ConfigFormFieldData {
   essential: boolean;
   addLabel?: string;
   itemLabelPath?: string[];
-  itemFields?: ConfigFormFieldData[];
+  itemFields?: ConfigFormFieldData<TText>[];
   defaultValue?: unknown;
   defaultItem?: Record<string, unknown>;
   keyPlaceholder?: string;
@@ -520,27 +548,17 @@ export interface ConfigSnapshotData {
   value: Record<string, unknown>;
   source: ConfigSnapshotSource;
   revision?: number;
-  databasePath?: string;
   diagnostics: ConfigDiagnosticData[];
   form: ConfigFormSnapshotData;
   operation?: ConfigOperationResult;
 }
 
-export type PluginConfigMutationStatus = "pending" | "success" | "error";
-
-export interface PluginConfigMutationState {
-  requestId: string;
-  pluginName: string;
-  kind: PluginConfigOperationKind;
-  status: PluginConfigMutationStatus;
-  message?: string;
-  updatedAt: string;
-}
+export type MutationStatus = "pending" | "success" | "error";
 
 export interface ConfigMutationState {
   commandId: string;
   kind: ConfigOperationKind;
-  status: PluginConfigMutationStatus;
+  status: MutationStatus;
   message?: string;
   errorCode?: string;
   updatedAt: string;
@@ -550,7 +568,7 @@ export interface PresetMutationState {
   requestId: string;
   name?: string | null;
   kind: PresetOperationKind;
-  status: PluginConfigMutationStatus;
+  status: MutationStatus;
   message?: string;
   updatedAt: string;
 }
@@ -628,48 +646,6 @@ export interface PromptSummaryData {
   tokenCount: number;
 }
 
-export interface ActionPlannedData {
-  status: "planned" | "fallback";
-  action?: string;
-  expectedOutputMode?: "final_text" | "open";
-  instruction?: string;
-  askUserQuestion?: string;
-  capabilityNeeds?: Array<{
-    actions: string[];
-    targets: string[];
-    inputs: string[];
-    outputs: string[];
-    evidence: string[];
-    effects: string[];
-  }>;
-  preferredTools: string[];
-  toolSearchQueries: string[];
-  loadedTools: string[];
-  currentStep?: number;
-  runState?: {
-    totalToolCalls: number;
-    totalEvidence: number;
-    repeatedCallCount: number;
-    stalled: boolean;
-    timelineTurnCount: number;
-  };
-  selectedAction?: string;
-  selectionRepaired?: boolean;
-  payloadRepaired?: boolean;
-  reason?: string;
-}
-
-export type InteractionRunMode = "direct_response" | "tool_agent_loop";
-
-export interface InteractionRoutedData {
-  mode: InteractionRunMode;
-  objective: string;
-  preferredTools: string[];
-  discoveryQueries: string[];
-  loadedTools: string[];
-  expectedOutputMode?: "final_text" | "open";
-}
-
 export interface ModelDeltaData {
   text: string;
 }
@@ -745,6 +721,7 @@ export interface ToolCallFailedData {
   batchId?: string;
   code?: string;
   message: string;
+  localizedMessage?: BackendLocalizedMessage;
 }
 
 export interface ToolCallResultDetailData {
@@ -788,6 +765,7 @@ export type {
 
 export interface RunFailedData {
   message: string;
+  localizedMessage?: BackendLocalizedMessage;
   code?: string;
   details?: unknown;
 }

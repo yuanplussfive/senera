@@ -224,12 +224,8 @@ assert.ok(
 assertDockerStartupDocumented(readme, "README.md");
 assertDockerStartupDocumented(operations, "docs/Operations.md");
 assert.ok(
-  releaseWorkflow.includes("node Dist/Scripts/VerifyDockerUserPluginWrite.js"),
-  "Release container smoke must verify that the node user can write the persistent plugin root.",
-);
-assert.ok(
-  releaseWorkflow.includes("node Dist/Scripts/VerifyDockerUserPluginWrite.js"),
-  "Release smoke must retain the unprivileged application write verification.",
+  releaseWorkflow.includes("node Dist/Scripts/VerifyDockerSkillWrite.js"),
+  "Release container smoke must verify that the unprivileged application user can write the persistent Skill root.",
 );
 
 console.log("Docker runtime sandbox policy verified.");

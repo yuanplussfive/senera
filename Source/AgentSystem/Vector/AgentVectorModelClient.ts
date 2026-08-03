@@ -4,6 +4,7 @@ import type {
   ResolvedAgentVectorRerankConfig,
 } from "../Types/AgentConfigTypes.js";
 import { fetchModelHttpWithRetries } from "../ModelEndpoints/ModelHttpRetry.js";
+import { readAgentRecordOrThrow } from "../Core/AgentUnknownValue.js";
 
 export interface AgentEmbeddingRequest {
   input: readonly string[];
@@ -131,22 +132,22 @@ function authorizationHeader(apiKey: string): HeadersInit {
 }
 
 function readEmbeddingVectors(value: unknown): number[][] {
-  const record = readRecord(value, "embedding response");
+  const record = readAgentRecordOrThrow(value, "embedding response");
   const data = readArray(record.data, "embedding response.data");
   return data.map((item, index) =>
     readNumberArray(
-      readRecord(item, `embedding response.data[${index}]`).embedding,
+      readAgentRecordOrThrow(item, `embedding response.data[${index}]`).embedding,
       `embedding response.data[${index}].embedding`,
     ),
   );
 }
 
 function readRerankResults(value: unknown, documents: readonly AgentRerankDocument[]): AgentRerankResultItem[] {
-  const record = readRecord(value, "rerank response");
+  const record = readAgentRecordOrThrow(value, "rerank response");
   const rows = readArray(record.results ?? record.data, "rerank response.results");
   return rows
     .map((item, fallbackIndex) => {
-      const row = readRecord(item, `rerank response.results[${fallbackIndex}]`);
+      const row = readAgentRecordOrThrow(item, `rerank response.results[${fallbackIndex}]`);
       const index = readIndex(row, fallbackIndex);
       return {
         id: documents[index]?.id ?? String(index),
@@ -168,13 +169,6 @@ function readScore(record: Record<string, unknown>): number {
     throw new Error("rerank response score must be a finite number.");
   }
   return value;
-}
-
-function readRecord(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be an object.`);
-  }
-  return value as Record<string, unknown>;
 }
 
 function readArray(value: unknown, label: string): unknown[] {

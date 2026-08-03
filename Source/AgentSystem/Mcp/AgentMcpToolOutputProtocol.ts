@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { ToolOutputNotificationMethod } from "@senera/tool-plugin-sdk/protocol";
+import { AgentMcpProtocol } from "./AgentMcpProtocol.js";
 
 export const AgentMcpToolOutputNotificationSchema = z.object({
-  method: z.literal(ToolOutputNotificationMethod),
+  method: z.literal(AgentMcpProtocol.toolOutputNotification),
   params: z.object({
     outputToken: z.string().min(1),
     stream: z.enum(["stdout", "stderr"]),

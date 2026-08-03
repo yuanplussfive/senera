@@ -123,6 +123,58 @@ describe("artifact retention", () => {
     expect(report).toMatchObject({ removedSpools: 0, retainedSpools: 1 });
     await spool.cleanup();
   });
+
+  test("shares fork artifact ownership and releases each session independently", async () => {
+    const fixture = createFixture();
+    const artifact = await createArtifact(
+      fixture.root,
+      "shared",
+      "session-source",
+      "2026-01-01T00:00:00.000Z",
+      "request-a",
+    );
+
+    await expect(
+      fixture.service.retainForkArtifacts({
+        sourceSessionId: "session-source",
+        targetSessionId: "session-target",
+        requestIds: ["request-a"],
+      }),
+    ).resolves.toBe(1);
+    await fixture.service.removeSessionArtifacts("session-source");
+
+    await expect(fs.stat(artifact)).resolves.toBeDefined();
+    expect(await readManifest(artifact)).toMatchObject({
+      sessionId: "session-target",
+      sessionIds: ["session-target"],
+    });
+
+    await fixture.service.removeSessionArtifacts("session-target");
+    await expect(fs.stat(artifact)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("releases only artifacts belonging to truncated requests", async () => {
+    const fixture = createFixture();
+    const retained = await createArtifact(
+      fixture.root,
+      "retained-request",
+      "session-source",
+      "2026-01-01T00:00:00.000Z",
+      "request-a",
+    );
+    const removed = await createArtifact(
+      fixture.root,
+      "removed-request",
+      "session-source",
+      "2026-01-01T00:00:01.000Z",
+      "request-b",
+    );
+
+    await expect(fixture.service.removeSessionArtifactsFromRequests("session-source", ["request-b"])).resolves.toBe(1);
+
+    await expect(fs.stat(retained)).resolves.toBeDefined();
+    await expect(fs.stat(removed)).rejects.toMatchObject({ code: "ENOENT" });
+  });
 });
 
 function createFixture(overrides: Partial<ReturnType<typeof resolveArtifactsConfig>> = {}) {
@@ -144,22 +196,33 @@ function createFixture(overrides: Partial<ReturnType<typeof resolveArtifactsConf
   };
 }
 
-async function createArtifact(root: string, name: string, sessionId: string, createdAt: string): Promise<string> {
+async function createArtifact(
+  root: string,
+  name: string,
+  sessionId: string,
+  createdAt: string,
+  requestId?: string,
+): Promise<string> {
   const directory = path.join(root, name);
   await fs.mkdir(directory, { recursive: true });
   await fs.writeFile(path.join(directory, "payload.txt"), name.repeat(16), "utf8");
   await fs.writeFile(
     path.join(directory, "manifest.json"),
     JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       artifactId: name,
       artifactUri: `senera://artifact/${name}`,
       sessionId,
+      ...(requestId ? { requestId } : {}),
       createdAt,
     }),
     "utf8",
   );
   return directory;
+}
+
+async function readManifest(directory: string): Promise<Record<string, unknown>> {
+  return JSON.parse(await fs.readFile(path.join(directory, "manifest.json"), "utf8")) as Record<string, unknown>;
 }
 
 async function createPartialArtifact(

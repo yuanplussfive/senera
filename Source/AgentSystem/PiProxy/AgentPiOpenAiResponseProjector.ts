@@ -1,5 +1,5 @@
 import { createOpaqueId, createToolCallId } from "../Core/AgentIds.js";
-import type { AgentPiAssistantMessage, AgentPiAssistantToolCall } from "./AgentPiAssistantMessageTypes.js";
+import type { AgentPiAssistantMessage, AgentPiAssistantToolCall } from "../PiShared/AgentPiPlanningTypes.js";
 import type {
   PiOpenAiChatCompletionResponse,
   PiOpenAiChatCompletionChoiceMessage,
@@ -9,17 +9,16 @@ import type {
 } from "./AgentPiOpenAiWireTypes.js";
 import type { AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
 
-export function projectPiModelsResponse(modelId: string): PiOpenAiModelsResponse {
+export function projectPiModelsResponse(modelIds: readonly string[]): PiOpenAiModelsResponse {
+  const created = unixNow();
   return {
     object: "list",
-    data: [
-      {
-        id: modelId,
-        object: "model",
-        created: unixNow(),
-        owned_by: "senera",
-      },
-    ],
+    data: [...new Set(modelIds)].map((id) => ({
+      id,
+      object: "model",
+      created,
+      owned_by: "senera",
+    })),
   };
 }
 

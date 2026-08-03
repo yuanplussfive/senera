@@ -3,7 +3,7 @@ export interface AgentLifecycleResource<TContext> {
   release(context: TContext): Promise<unknown>;
 }
 
-export interface AgentLifecycleResourceFailure {
+interface AgentLifecycleResourceFailure {
   readonly resourceId: string;
   readonly error: unknown;
 }

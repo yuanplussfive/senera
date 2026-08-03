@@ -7,7 +7,7 @@ import type { AgentUploadHttpApi } from "../../../Source/AgentSystem/Uploads/Age
 import type { AgentStaticFrontendHttpApi } from "../../../Source/AgentSystem/WebSocket/AgentStaticFrontendHttpApi.js";
 import { AgentWebSocketHttpRouter } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketHttpRouter.js";
 import type { AgentHealthHttpApi } from "../../../Source/AgentSystem/WebSocket/AgentHealthHttpApi.js";
-import { AgentPiProxyProtocol } from "../../../Source/AgentSystem/PiProxy/AgentPiProxyContract.js";
+import { AgentPiProxyProtocol } from "../../../Source/AgentSystem/PiShared/AgentPiProxyProtocol.js";
 
 describe("WebSocket HTTP router", () => {
   test("routes authentication before generic access control", async () => {

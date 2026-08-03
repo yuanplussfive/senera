@@ -1,5 +1,6 @@
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { createAgentStructuredIssue, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
 import { buildBamlRawOutputDiagnostics, formatBamlRawOutputRepairIssues } from "./AgentBamlRawOutputDiagnostics.js";
@@ -52,7 +53,7 @@ export interface AgentBamlStructuredOutputRepairInput {
   error: unknown;
 }
 
-export class AgentBamlModelCallError extends Error {
+export class AgentBamlModelCallError extends AgentBaseError {
   readonly functionName: string;
   readonly attempts: AgentBamlStructuredOutputAttempt[];
   readonly issues: string[];
@@ -65,7 +66,6 @@ export class AgentBamlModelCallError extends Error {
     error: unknown;
   }) {
     super(`${input.functionName} model call failed: ${input.issues.join("; ")}`, { cause: input.error });
-    this.name = "AgentBamlModelCallError";
     this.functionName = input.functionName;
     this.attempts = input.attempts;
     this.issues = input.issues;
@@ -73,7 +73,7 @@ export class AgentBamlModelCallError extends Error {
   }
 }
 
-export class AgentBamlStructuredOutputError extends Error {
+export class AgentBamlStructuredOutputError extends AgentBaseError {
   readonly functionName: string;
   readonly attempts: AgentBamlStructuredOutputAttempt[];
   readonly issues: string[];
@@ -92,7 +92,6 @@ export class AgentBamlStructuredOutputError extends Error {
     error: unknown;
   }) {
     super(`${input.functionName} structured output failed: ${input.issues.join("; ")}`);
-    this.name = "AgentBamlStructuredOutputError";
     this.functionName = input.functionName;
     this.attempts = input.attempts;
     this.issues = input.issues;

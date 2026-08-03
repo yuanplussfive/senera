@@ -1,13 +1,25 @@
 import fs from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
-import type { Transform } from "node:stream";
+import { Readable, Transform, type Duplex, type TransformCallback } from "node:stream";
 import { SeneraWorkspaceBoundary, SeneraWorkspaceBoundaryError } from "../Execution/SeneraWorkspaceBoundary.js";
-import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
+import { AgentResourceAccessIntents, type AgentResourceAccessIntent } from "../Safety/AgentResourceAccessPolicy.js";
 import { writeFileAtomic } from "../Core/AgentFs.js";
+import {
+  openVerifiedArtifactFile,
+  type AgentArtifactContentIdentity,
+  type AgentArtifactFileReceipt,
+} from "./AgentArtifactIntegrity.js";
+
+export const AgentArtifactDirectoryReservations = {
+  Created: "created",
+  Existing: "existing",
+} as const;
+
+export type AgentArtifactDirectoryReservation =
+  (typeof AgentArtifactDirectoryReservations)[keyof typeof AgentArtifactDirectoryReservations];
 
 export class AgentArtifactFileWriter {
   private readonly boundary: SeneraWorkspaceBoundary;
@@ -16,78 +28,137 @@ export class AgentArtifactFileWriter {
     this.boundary = new SeneraWorkspaceBoundary({ workspaceRoot, linkPolicy: "deny" });
   }
 
-  async writeJson(filePath: string, value: unknown): Promise<void> {
-    await this.writeJsonStream(filePath, value);
+  async writeJson(filePath: string, value: unknown): Promise<AgentArtifactFileReceipt> {
+    return this.writeJsonStream(filePath, value);
   }
 
-  async writeBoundedJson(filePath: string, value: unknown, maxBytes: number): Promise<void> {
-    assertJsonBudget(maxBytes);
-    const target = await this.prepareTarget(filePath);
-    const source = path.join(path.dirname(target.absolutePath), `.${path.basename(filePath)}.${randomUUID()}.source`);
-    try {
-      const totalBytes = await this.writeJsonSource(source, value);
-      if (totalBytes <= maxBytes) {
-        await fs.rename(source, target.absolutePath);
-        return;
-      }
-      const preview = await readUtf8Prefix(source, maxBytes);
-      await fs.rm(source, { force: true });
-      const bounded = fitJsonPreview({ truncated: true, originalBytes: totalBytes, preview }, maxBytes);
-      await this.writeJsonStream(filePath, bounded);
-    } finally {
-      await fs.rm(source, { force: true }).catch(() => undefined);
-    }
-  }
-
-  async writeText(filePath: string, value: string, maxBytes: number): Promise<void> {
-    const target = await this.prepareTarget(filePath);
-    assertJsonBudget(maxBytes);
-    const text = truncateArtifactTextByBytes(value, maxBytes);
-    await writeFileAtomic(target.absolutePath, text);
-  }
-
-  private async writeJsonStream(filePath: string, value: unknown): Promise<void> {
-    const target = await this.prepareTarget(filePath);
+  async publishJson(filePath: string, value: unknown): Promise<AgentArtifactFileReceipt> {
+    const target = await this.prepareTarget(filePath, AgentResourceAccessIntents.Create);
     const temporary = path.join(path.dirname(target.absolutePath), `.${path.basename(filePath)}.${randomUUID()}.tmp`);
     try {
-      await this.writeJsonSource(temporary, value);
-      await fs.rename(temporary, target.absolutePath);
+      const receipt = await this.writeJsonSource(temporary, value);
+      await fs.link(temporary, target.absolutePath);
+      return { filePath: target.absolutePath, ...receipt };
     } finally {
       await fs.rm(temporary, { force: true }).catch(() => undefined);
     }
   }
 
-  private async writeJsonSource(filePath: string, value: unknown): Promise<number> {
+  async reserveArtifactDirectory(directoryPath: string): Promise<AgentArtifactDirectoryReservation> {
+    const target = await this.boundary.resolve(directoryPath, AgentResourceAccessIntents.Create);
+    await fs.mkdir(path.dirname(target.absolutePath), { recursive: true });
+    const current = await this.boundary.resolve(directoryPath, AgentResourceAccessIntents.Create);
+    try {
+      await fs.mkdir(current.absolutePath);
+      return AgentArtifactDirectoryReservations.Created;
+    } catch (error) {
+      const detail = error as NodeJS.ErrnoException;
+      if (detail.code === "EEXIST") {
+        return AgentArtifactDirectoryReservations.Existing;
+      }
+      throw error;
+    }
+  }
+
+  async readVerifiedText(filePath: string, expected: AgentArtifactContentIdentity): Promise<string> {
+    const handle = await openVerifiedArtifactFile(this.boundary, filePath, expected);
+    try {
+      return await handle.readFile({ encoding: "utf8" });
+    } finally {
+      await handle.close().catch(() => undefined);
+    }
+  }
+
+  async writeBoundedJson(filePath: string, value: unknown, maxBytes: number): Promise<AgentArtifactFileReceipt> {
+    assertJsonBudget(maxBytes);
+    const target = await this.prepareTarget(filePath);
+    const source = path.join(path.dirname(target.absolutePath), `.${path.basename(filePath)}.${randomUUID()}.source`);
+    try {
+      const totalBytes = await this.writeJsonSource(source, value);
+      if (totalBytes.byteLength <= maxBytes) {
+        await fs.rename(source, target.absolutePath);
+        return { filePath: target.absolutePath, ...totalBytes };
+      }
+      const preview = await readUtf8Prefix(source, maxBytes);
+      await fs.rm(source, { force: true });
+      const bounded = fitJsonPreview({ truncated: true, originalBytes: totalBytes.byteLength, preview }, maxBytes);
+      return this.writeJsonStream(filePath, bounded);
+    } finally {
+      await fs.rm(source, { force: true }).catch(() => undefined);
+    }
+  }
+
+  async writeText(filePath: string, value: string, maxBytes: number): Promise<AgentArtifactFileReceipt> {
+    const target = await this.prepareTarget(filePath);
+    assertJsonBudget(maxBytes);
+    const text = truncateArtifactTextByBytes(value, maxBytes);
+    await writeFileAtomic(target.absolutePath, text);
+    const content = Buffer.from(text, "utf8");
+    return {
+      filePath: target.absolutePath,
+      byteLength: content.byteLength,
+      sha256: createHash("sha256").update(content).digest("hex"),
+    };
+  }
+
+  private async writeJsonStream(filePath: string, value: unknown): Promise<AgentArtifactFileReceipt> {
+    const target = await this.prepareTarget(filePath);
+    const temporary = path.join(path.dirname(target.absolutePath), `.${path.basename(filePath)}.${randomUUID()}.tmp`);
+    try {
+      const receipt = await this.writeJsonSource(temporary, value);
+      await fs.rename(temporary, target.absolutePath);
+      return { filePath: target.absolutePath, ...receipt };
+    } finally {
+      await fs.rm(temporary, { force: true }).catch(() => undefined);
+    }
+  }
+
+  private async writeJsonSource(filePath: string, value: unknown): Promise<Omit<AgentArtifactFileReceipt, "filePath">> {
     let bytes = 0;
+    const hash = createHash("sha256");
     const source = Readable.from(
       (function* () {
         for (const chunk of encodeJson(value)) {
-          bytes += Buffer.byteLength(chunk, "utf8");
+          const encoded = Buffer.from(chunk, "utf8");
+          bytes += encoded.byteLength;
+          hash.update(encoded);
           yield chunk;
         }
         bytes += 1;
+        hash.update("\n");
         yield "\n";
       })(),
     );
     await pipeline(source, createWriteStream(filePath, { flags: "wx", encoding: "utf8" }));
-    return bytes;
+    return { byteLength: bytes, sha256: hash.digest("hex") };
   }
 
-  private async prepareTarget(filePath: string): Promise<{ absolutePath: string }> {
-    const initial = await this.boundary.resolve(filePath, AgentResourceAccessIntents.Replace);
+  private async prepareTarget(
+    filePath: string,
+    intent: AgentResourceAccessIntent = AgentResourceAccessIntents.Replace,
+  ): Promise<{ absolutePath: string }> {
+    const initial = await this.boundary.resolve(filePath, intent);
     await fs.mkdir(path.dirname(initial.absolutePath), { recursive: true });
-    return this.boundary.resolve(filePath, AgentResourceAccessIntents.Replace);
+    return this.boundary.resolve(filePath, intent);
   }
 
-  async copyFile(sourcePath: string, targetPath: string): Promise<void> {
-    await this.copyFileStream(sourcePath, targetPath);
+  async copyFile(sourcePath: string, targetPath: string): Promise<AgentArtifactFileReceipt> {
+    return this.copyFileStream(sourcePath, targetPath);
   }
 
-  async copyFileWithTransform(sourcePath: string, targetPath: string, transform: Transform): Promise<void> {
-    await this.copyFileStream(sourcePath, targetPath, transform);
+  async copyFileWithTransform(
+    sourcePath: string,
+    targetPath: string,
+    transform: Duplex,
+  ): Promise<AgentArtifactFileReceipt> {
+    return this.copyFileStream(sourcePath, targetPath, transform);
   }
 
-  private async copyFileStream(sourcePath: string, targetPath: string, transform?: Transform): Promise<void> {
+  private async copyFileStream(
+    sourcePath: string,
+    targetPath: string,
+    transform?: Duplex,
+  ): Promise<AgentArtifactFileReceipt> {
     const source = await this.boundary.openFile(sourcePath, AgentResourceAccessIntents.Read);
     const target = await this.boundary.resolve(targetPath, AgentResourceAccessIntents.Replace);
     await fs.mkdir(path.dirname(target.absolutePath), { recursive: true });
@@ -95,18 +166,35 @@ export class AgentArtifactFileWriter {
     const readStream = source.handle.createReadStream({ autoClose: false });
     try {
       const output = createWriteStream(temporary, { flags: "wx" });
-      if (transform) await pipeline(readStream, transform, output);
-      else await pipeline(readStream, output);
+      const digest = new ArtifactDigestTransform();
+      if (transform) await pipeline(readStream, transform, digest, output);
+      else await pipeline(readStream, digest, output);
       const current = await this.boundary.resolve(targetPath, AgentResourceAccessIntents.Replace);
       if (current.absolutePath !== target.absolutePath) {
         throw new SeneraWorkspaceBoundaryError("path_changed", `Artifact target changed while copying: ${targetPath}`);
       }
       await fs.rename(temporary, current.absolutePath);
+      return digest.receipt(current.absolutePath);
     } finally {
       readStream.destroy();
       await source.handle.close().catch(() => undefined);
       await fs.rm(temporary, { force: true }).catch(() => undefined);
     }
+  }
+}
+
+class ArtifactDigestTransform extends Transform {
+  private readonly hash = createHash("sha256");
+  private bytes = 0;
+
+  override _transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback): void {
+    this.bytes += chunk.byteLength;
+    this.hash.update(chunk);
+    callback(undefined, chunk);
+  }
+
+  receipt(filePath: string): AgentArtifactFileReceipt {
+    return { filePath, byteLength: this.bytes, sha256: this.hash.digest("hex") };
   }
 }
 

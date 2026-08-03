@@ -1,72 +1,113 @@
 import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import type { StoredRunSnapshot } from "./AgentSessionRepository.js";
+import { agentUnknownRecordOrEmpty, readAgentNonEmptyString } from "../Core/AgentUnknownValue.js";
 
 export function recoverInterruptedRunWaitEvents(
   events: readonly AgentEventEnvelope[],
   snapshots: readonly StoredRunSnapshot[],
 ): AgentEventEnvelope[] {
-  const terminalRuns = new Map(
-    snapshots
-      .filter((snapshot) => snapshot.status !== "running")
-      .map((snapshot) => [snapshot.requestId, snapshot] as const),
-  );
-  if (terminalRuns.size === 0) return [...events];
-
-  const resolvedApprovals = collectResolvedIds(events, AgentEventKinds.ApprovalResolved, "approvalId");
-  const resolvedInteractions = collectResolvedIds(events, AgentEventKinds.InteractionInputResolved, "interactionId");
-  let sequence = events.reduce((maximum, event) => Math.max(maximum, event.sequence), 0);
-  const recovered = events.flatMap((event) => {
-    const snapshot = event.requestId ? terminalRuns.get(event.requestId) : undefined;
-    if (!snapshot) return [];
-    const data = readRecord(event.data);
-
-    if (event.kind === AgentEventKinds.ApprovalRequested) {
-      const approvalId = readString(data.approvalId);
-      if (!approvalId || resolvedApprovals.has(approvalId)) return [];
-      resolvedApprovals.add(approvalId);
-      sequence += 1;
-      return [
-        recoveredEnvelope(event, sequence, AgentEventKinds.ApprovalResolved, {
-          ...data,
-          status: "cancelled",
-          disposition: "interrupt",
-          message: snapshot.errorMessage,
-          resolvedAt: snapshot.endedAt ?? snapshot.updatedAt,
-        }),
-      ];
-    }
-
-    if (event.kind === AgentEventKinds.InteractionInputRequested) {
-      const interactionId = readString(data.interactionId);
-      if (!interactionId || resolvedInteractions.has(interactionId)) return [];
-      resolvedInteractions.add(interactionId);
-      sequence += 1;
-      return [
-        recoveredEnvelope(event, sequence, AgentEventKinds.InteractionInputResolved, {
-          ...data,
-          status: "resolved",
-          action: "cancel",
-          resolutionMessage: snapshot.errorMessage,
-          resolvedAt: snapshot.endedAt ?? snapshot.updatedAt,
-        }),
-      ];
-    }
-
-    return [];
-  });
-
+  const recovery = new AgentSessionHistoryWaitRecovery();
+  recovery.observe(events, snapshots);
+  const recovered = recovery.complete();
   return recovered.length > 0 ? [...events, ...recovered] : [...events];
 }
 
-function collectResolvedIds(events: readonly AgentEventEnvelope[], kind: string, key: string): Set<string> {
-  return new Set(
-    events.flatMap((event) => {
-      if (event.kind !== kind) return [];
-      const id = readString(readRecord(event.data)[key]);
-      return id ? [id] : [];
-    }),
-  );
+interface PendingWait {
+  readonly event: AgentEventEnvelope;
+  readonly snapshot: StoredRunSnapshot;
+  readonly kind: "approval" | "interaction";
+}
+
+export class AgentSessionHistoryWaitRecovery {
+  private readonly pending = new Map<string, PendingWait>();
+  private maximumSequence = 0;
+  private completed = false;
+
+  observe(events: readonly AgentEventEnvelope[], snapshots: readonly StoredRunSnapshot[]): void {
+    if (this.completed) throw new Error("Session history wait recovery is already complete.");
+    const terminalRuns = new Map(
+      snapshots
+        .filter((snapshot) => snapshot.status !== "running")
+        .map((snapshot) => [snapshot.requestId, snapshot] as const),
+    );
+    for (const event of events) this.observeEvent(event, terminalRuns);
+  }
+
+  complete(): AgentEventEnvelope[] {
+    if (this.completed) return [];
+    this.completed = true;
+    const recovered: AgentEventEnvelope[] = [];
+    for (const wait of this.pending.values()) {
+      this.maximumSequence += 1;
+      const data = agentUnknownRecordOrEmpty(wait.event.data);
+      recovered.push(
+        wait.kind === "approval"
+          ? recoveredEnvelope(wait.event, this.maximumSequence, AgentEventKinds.ApprovalResolved, {
+              ...data,
+              status: "cancelled",
+              disposition: "interrupt",
+              message: wait.snapshot.errorMessage,
+              resolvedAt: wait.snapshot.endedAt ?? wait.snapshot.updatedAt,
+            })
+          : recoveredEnvelope(wait.event, this.maximumSequence, AgentEventKinds.InteractionInputResolved, {
+              ...data,
+              status: "resolved",
+              action: "cancel",
+              resolutionMessage: wait.snapshot.errorMessage,
+              resolvedAt: wait.snapshot.endedAt ?? wait.snapshot.updatedAt,
+            }),
+      );
+    }
+    this.pending.clear();
+    return recovered;
+  }
+
+  private observeEvent(event: AgentEventEnvelope, terminalRuns: ReadonlyMap<string, StoredRunSnapshot>): void {
+    this.maximumSequence = Math.max(this.maximumSequence, event.sequence);
+    const data = agentUnknownRecordOrEmpty(event.data);
+
+    if (event.kind === AgentEventKinds.ApprovalResolved) {
+      this.resolve("approval", readAgentNonEmptyString(data.approvalId));
+      return;
+    }
+    if (event.kind === AgentEventKinds.InteractionInputResolved) {
+      this.resolve("interaction", readAgentNonEmptyString(data.interactionId));
+      return;
+    }
+
+    const snapshot = event.requestId ? terminalRuns.get(event.requestId) : undefined;
+    if (!snapshot) return;
+    if (event.kind === AgentEventKinds.ApprovalRequested) {
+      this.register("approval", readAgentNonEmptyString(data.approvalId), event, snapshot);
+      return;
+    }
+    if (event.kind === AgentEventKinds.InteractionInputRequested) {
+      this.register("interaction", readAgentNonEmptyString(data.interactionId), event, snapshot);
+    }
+  }
+
+  private register(
+    kind: PendingWait["kind"],
+    id: string | undefined,
+    event: AgentEventEnvelope,
+    snapshot: StoredRunSnapshot,
+  ): void {
+    if (!id) return;
+    const key = waitKey(kind, id);
+    if (this.pending.has(key)) return;
+    this.pending.set(key, { kind, event, snapshot });
+  }
+
+  private resolve(kind: PendingWait["kind"], id: string | undefined): void {
+    if (!id) return;
+    const key = waitKey(kind, id);
+    this.pending.delete(key);
+  }
+}
+
+function waitKey(kind: PendingWait["kind"], id: string): string {
+  return `${kind}:${id}`;
 }
 
 function recoveredEnvelope(
@@ -79,20 +120,12 @@ function recoveredEnvelope(
     ...source,
     kind,
     sequence,
-    timestamp: readString(data.resolvedAt) ?? source.timestamp,
+    timestamp: readAgentNonEmptyString(data.resolvedAt) ?? source.timestamp,
     detailId: `${source.detailId ?? readRecoveryId(data)}:history_recovered`,
     data,
   };
 }
 
 function readRecoveryId(data: Record<string, unknown>): string {
-  return readString(data.approvalId) ?? readString(data.interactionId) ?? "wait";
-}
-
-function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  return readAgentNonEmptyString(data.approvalId) ?? readAgentNonEmptyString(data.interactionId) ?? "wait";
 }

@@ -1,150 +1,30 @@
-import { applyPatch } from "diff";
 import path from "node:path";
-import { z } from "zod";
-import {
-  resolveWorkspacePath,
-  validateWorkspaceMutationPath,
-  workspaceRelativePath,
-} from "../Execution/SeneraWorkspacePath.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { AgentWorkspaceResourceDomains, classifyAgentWorkspaceResource } from "../Core/AgentWorkspaceLayout.js";
+import { AgentResourceAccessAuthorities } from "../Execution/SeneraResourceAccess.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentExtensionPatchPreflightError } from "../ManagedExtensions/AgentExtensionPatchCandidate.js";
+import { AgentExtensionPatchPreflight } from "../ManagedExtensions/AgentExtensionPatchPreflight.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
+import { WorkspaceApplyPatchArgumentsSchema } from "./AgentWorkspaceApplyPatchContract.js";
+import { WorkspaceApplyPatchError, type WorkspacePatchFailureInput } from "./AgentWorkspacePatchError.js";
+import { buildWorkspacePatchPlan, collectWorkspacePatchChangedPaths } from "./AgentWorkspacePatchPlanBuilder.js";
+import {
+  applyWorkspacePatchTransaction,
+  validateWorkspacePatchPreconditions,
+} from "./AgentWorkspacePatchTransaction.js";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
 import { openAgentHostToolReportingScope } from "./AgentToolHostCapabilityRegistry.js";
-import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "./AgentToolProcessEnvelope.js";
-import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
-import type { FileInfo } from "@earendil-works/pi-agent-core";
-import { WorkspaceApplyPatchError, type WorkspacePatchFailureInput } from "./AgentWorkspacePatchError.js";
-import {
-  addWorkspaceMissingPrecondition as addMissingPrecondition,
-  applyWorkspacePatchTransaction as applyPatchPlan,
-  captureWorkspaceFilePrecondition as captureExistingFilePrecondition,
-  readWorkspaceTextFileWithPrecondition as readExistingFile,
-  validateWorkspacePatchPreconditions as validatePatchPreconditions,
-  type WorkspacePatchPrecondition,
-  type WorkspacePatchTarget,
-} from "./AgentWorkspacePatchTransaction.js";
-import { errorMessage } from "../Core/AgentErrors.js";
+import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 
-const MaxOperations = 64;
-const MaxFuzzFactor = 3;
-const DeleteFile = Symbol("delete-file");
-
-const WorkspacePathSchema = z.string().trim().min(1);
-const HunkPatchSchema = z.string().trim().min(1);
-const Sha256Schema = z
-  .string()
-  .trim()
-  .regex(/^[a-fA-F0-9]{64}$/)
-  .transform((value) => value.toLowerCase());
-
-const WorkspacePatchOperationSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("add"),
-      path: WorkspacePathSchema,
-      content: z.string(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("update"),
-      path: WorkspacePathSchema,
-      patch: HunkPatchSchema,
-      expectedSha256: Sha256Schema.optional(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("replace"),
-      path: WorkspacePathSchema,
-      content: z.string(),
-      expectedSha256: Sha256Schema.optional(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("delete"),
-      path: WorkspacePathSchema,
-      expectedSha256: Sha256Schema.optional(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("move"),
-      source: WorkspacePathSchema,
-      destination: WorkspacePathSchema,
-      patch: HunkPatchSchema.optional(),
-      expectedSha256: Sha256Schema.optional(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("createDirectory"),
-      path: WorkspacePathSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("deleteDirectory"),
-      path: WorkspacePathSchema,
-      recursive: z.boolean().optional(),
-    })
-    .strict(),
-]);
-
-const WorkspaceApplyPatchArgumentsSchema = z
-  .object({
-    operations: z.array(WorkspacePatchOperationSchema).min(1).max(MaxOperations),
-    dryRun: z.boolean().optional(),
-    fuzzFactor: z.number().int().min(0).max(MaxFuzzFactor).optional(),
-  })
-  .strict();
-
-type WorkspaceApplyPatchArguments = z.infer<typeof WorkspaceApplyPatchArgumentsSchema>;
-type WorkspacePatchOperation = z.infer<typeof WorkspacePatchOperationSchema>;
-
-type ResolvedWorkspaceTarget = WorkspacePatchTarget;
-
-interface PatchPlan {
-  workspaceRoot: string;
-  dryRun: boolean;
-  fuzzFactor: number;
-  operations: WorkspacePatchOperationSummary[];
-  writes: Map<string, PlannedFileWrite>;
-  deletes: Map<string, PlannedFileDelete>;
-  createDirectories: Map<string, PlannedDirectoryCreate>;
-  deleteDirectories: Map<string, PlannedDirectoryDelete>;
-  preconditions: Map<string, WorkspacePatchPrecondition>;
+interface WorkspacePatchAttemptSummary {
+  readonly state: "planned" | "validated" | "validation-failed";
+  readonly activeChanged: false;
+  readonly operationCount: number;
+  readonly changedPaths: readonly string[];
+  readonly extension?: { readonly kind: "Skill" | "MCP"; readonly name: string };
 }
-
-interface PlannedFileWrite {
-  target: ResolvedWorkspaceTarget;
-  content: string;
-}
-
-interface PlannedFileDelete {
-  target: ResolvedWorkspaceTarget;
-}
-
-interface PlannedDirectoryCreate {
-  target: ResolvedWorkspaceTarget;
-}
-
-interface PlannedDirectoryDelete {
-  target: ResolvedWorkspaceTarget;
-  recursive: boolean;
-}
-
-interface WorkspacePatchOperationSummary {
-  kind: WorkspacePatchOperation["kind"];
-  path?: string;
-  source?: string;
-  destination?: string;
-  changedPaths: string[];
-}
-
-type PendingFileState = PlannedFileWrite | typeof DeleteFile;
 
 export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, context) => {
   const parsed = WorkspaceApplyPatchArgumentsSchema.safeParse(args);
@@ -166,32 +46,54 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
   }
 
   const reporting = openAgentHostToolReportingScope(context);
+  let attempt: WorkspacePatchAttemptSummary | undefined;
   try {
-    const plan = await buildPatchPlan(parsed.data, context.workspaceRoot, context.executionEnv);
+    const plan = await buildWorkspacePatchPlan(parsed.data, context.workspaceRoot, context.executionEnv);
+    const changedPaths = collectWorkspacePatchChangedPaths(plan);
+    attempt = {
+      state: "planned",
+      activeChanged: false,
+      operationCount: plan.operations.length,
+      changedPaths,
+    };
+    const totalStages = plan.dryRun ? 2 : 4;
     reporting.reporter.progress({
       message: "Workspace patch planned.",
       completed: 1,
-      total: plan.dryRun ? 1 : 3,
+      total: totalStages,
+      unit: "stage",
+    });
+    const extensionValidations = new AgentExtensionPatchPreflight(context.workspaceRoot, context.registry).validate(
+      plan,
+      changedPaths,
+    );
+    attempt = { ...attempt, state: "validated" };
+    const commitEnv = requiresManagedExtensionPublication(context.workspaceRoot, changedPaths)
+      ? context.executionEnv.withResourceAccessAuthority(AgentResourceAccessAuthorities.ManagedExtensionPublisher)
+      : context.executionEnv;
+    reporting.reporter.progress({
+      message: "Managed extension candidates validated.",
+      completed: 2,
+      total: totalStages,
       unit: "stage",
     });
     if (!plan.dryRun) {
-      await validatePatchPreconditions(plan, context.executionEnv);
+      await validateWorkspacePatchPreconditions(plan, context.executionEnv);
       reporting.reporter.progress({
         message: "Workspace patch preconditions validated.",
-        completed: 2,
-        total: 3,
+        completed: 3,
+        total: totalStages,
         unit: "stage",
       });
-      await applyPatchPlan(plan, context.executionEnv);
+      await applyWorkspacePatchTransaction(plan, commitEnv);
       reporting.reporter.progress({
         message: "Workspace patch applied.",
-        completed: 3,
-        total: 3,
+        completed: 4,
+        total: totalStages,
         unit: "stage",
       });
     }
 
-    const changedPaths = collectChangedPaths(plan);
     return toolProcessSuccessResult({
       text: plan.dryRun
         ? `Workspace patch dry run validated ${plan.operations.length} operation(s) over ${changedPaths.length} path(s).`
@@ -202,589 +104,44 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
       operationCount: plan.operations.length,
       changedPaths,
       operations: plan.operations,
+      extensions: extensionValidations,
     });
   } catch (error) {
+    if (error instanceof AgentExtensionPatchPreflightError) {
+      return workspacePatchFailure({
+        code: AgentExecutionErrorCodes.InvalidToolArguments,
+        message: error.message,
+        diagnostics: [...error.diagnostics],
+        details: {
+          phase: AgentToolProcessErrorPhases.RuntimeExecution,
+          toolName: context.tool.name,
+          requestId: context.requestId,
+          extensionKind: error.extensionKind,
+          extensionName: error.extensionName,
+          attempt: attempt && {
+            ...attempt,
+            state: "validation-failed",
+            extension: { kind: error.extensionKind, name: error.extensionName },
+          },
+        },
+      });
+    }
     return error instanceof WorkspaceApplyPatchError
       ? workspacePatchFailure(error.toFailureInput(context.tool.name))
       : workspacePatchFailure({
-          code: AgentExecutionErrorCodes.PluginExecutionError,
+          code: AgentExecutionErrorCodes.ToolExecutionError,
           message: errorMessage(error),
-          details: {
-            phase: AgentToolProcessErrorPhases.RuntimeExecution,
-            toolName: context.tool.name,
-          },
+          details: { phase: AgentToolProcessErrorPhases.RuntimeExecution, toolName: context.tool.name },
         });
   } finally {
     await reporting.close();
   }
 };
 
-async function buildPatchPlan(
-  args: WorkspaceApplyPatchArguments,
-  workspaceRoot: string,
-  files: SeneraExecutionEnv,
-): Promise<PatchPlan> {
-  const plan: PatchPlan = {
-    workspaceRoot: path.resolve(workspaceRoot),
-    dryRun: args.dryRun === true,
-    fuzzFactor: args.fuzzFactor ?? 0,
-    operations: [],
-    writes: new Map(),
-    deletes: new Map(),
-    createDirectories: new Map(),
-    deleteDirectories: new Map(),
-    preconditions: new Map(),
-  };
-  const pendingFiles = new Map<string, PendingFileState>();
-
-  for (const [index, operation] of args.operations.entries()) {
-    await planOperation({
-      operation,
-      index,
-      workspaceRoot,
-      files,
-      plan,
-      pendingFiles,
-    });
-  }
-
-  rejectDirectoryDeleteConflicts(plan);
-  return plan;
-}
-
-async function planOperation(input: {
-  operation: WorkspacePatchOperation;
-  index: number;
-  workspaceRoot: string;
-  files: SeneraExecutionEnv;
-  plan: PatchPlan;
-  pendingFiles: Map<string, PendingFileState>;
-}): Promise<void> {
-  const pointer = `/operations/${input.index}`;
-  switch (input.operation.kind) {
-    case "add":
-      await planAddOperation({ ...input, operation: input.operation }, pointer);
-      return;
-    case "update":
-      await planUpdateOperation({ ...input, operation: input.operation }, pointer);
-      return;
-    case "replace":
-      await planReplaceOperation({ ...input, operation: input.operation }, pointer);
-      return;
-    case "delete":
-      await planDeleteOperation({ ...input, operation: input.operation }, pointer);
-      return;
-    case "move":
-      await planMoveOperation({ ...input, operation: input.operation }, pointer);
-      return;
-    case "createDirectory":
-      await planCreateDirectoryOperation({ ...input, operation: input.operation }, pointer);
-      return;
-    case "deleteDirectory":
-      await planDeleteDirectoryOperation({ ...input, operation: input.operation }, pointer);
-      return;
-  }
-}
-
-async function planAddOperation(
-  input: {
-    operation: Extract<WorkspacePatchOperation, { kind: "add" }>;
-    workspaceRoot: string;
-    files: SeneraExecutionEnv;
-    plan: PatchPlan;
-    pendingFiles: Map<string, PendingFileState>;
-  },
-  pointer: string,
-): Promise<void> {
-  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensurePathUnused(input.plan, target, `${pointer}/path`);
-  const existing = await fileInfoOrUndefined(input.files, target.relativePath, `${pointer}/path`);
-  if (existing) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.addFileExists", { path: target.relativePath }),
-      pointer: `${pointer}/path`,
-      suggestion: agentErrorMessage("workspacePatch.addFileExistsSuggestion"),
-    });
-  }
-  addMissingPrecondition(input.plan, target, `${pointer}/path`);
-
-  addWrite(
-    input.plan,
-    input.pendingFiles,
-    {
-      target,
-      content: input.operation.content,
-    },
-    `${pointer}/path`,
-  );
-  input.plan.operations.push({
-    kind: "add",
-    path: target.relativePath,
-    changedPaths: [target.relativePath],
-  });
-}
-
-async function planUpdateOperation(
-  input: {
-    operation: Extract<WorkspacePatchOperation, { kind: "update" }>;
-    workspaceRoot: string;
-    files: SeneraExecutionEnv;
-    plan: PatchPlan;
-    pendingFiles: Map<string, PendingFileState>;
-  },
-  pointer: string,
-): Promise<void> {
-  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensurePathUnused(input.plan, target, `${pointer}/path`);
-  const content = await readExistingFile(
-    input.files,
-    target,
-    `${pointer}/path`,
-    input.plan,
-    input.operation.expectedSha256,
-  );
-  const patched = applyHunkPatch({
-    oldPath: target.relativePath,
-    newPath: target.relativePath,
-    source: content,
-    hunkPatch: input.operation.patch,
-    fuzzFactor: input.plan.fuzzFactor,
-    pointer: `${pointer}/patch`,
-  });
-
-  addWrite(
-    input.plan,
-    input.pendingFiles,
-    {
-      target,
-      content: patched,
-    },
-    `${pointer}/path`,
-  );
-  input.plan.operations.push({
-    kind: "update",
-    path: target.relativePath,
-    changedPaths: [target.relativePath],
-  });
-}
-
-async function planReplaceOperation(
-  input: {
-    operation: Extract<WorkspacePatchOperation, { kind: "replace" }>;
-    workspaceRoot: string;
-    files: SeneraExecutionEnv;
-    plan: PatchPlan;
-    pendingFiles: Map<string, PendingFileState>;
-  },
-  pointer: string,
-): Promise<void> {
-  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensurePathUnused(input.plan, target, `${pointer}/path`);
-  await captureExistingFilePrecondition(
-    input.files,
-    target,
-    `${pointer}/path`,
-    input.plan,
-    input.operation.expectedSha256,
-  );
-  addWrite(input.plan, input.pendingFiles, { target, content: input.operation.content }, `${pointer}/path`);
-  input.plan.operations.push({
-    kind: "replace",
-    path: target.relativePath,
-    changedPaths: [target.relativePath],
-  });
-}
-
-async function planDeleteOperation(
-  input: {
-    operation: Extract<WorkspacePatchOperation, { kind: "delete" }>;
-    workspaceRoot: string;
-    files: SeneraExecutionEnv;
-    plan: PatchPlan;
-    pendingFiles: Map<string, PendingFileState>;
-  },
-  pointer: string,
-): Promise<void> {
-  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensurePathUnused(input.plan, target, `${pointer}/path`);
-  const stat = await requiredFileInfo(input.files, target, `${pointer}/path`);
-  if (stat.kind !== "file") {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.deleteFileOnly", { path: target.relativePath }),
-      pointer: `${pointer}/path`,
-      suggestion: agentErrorMessage("workspacePatch.deleteFileOnlySuggestion"),
-    });
-  }
-  await captureExistingFilePrecondition(
-    input.files,
-    target,
-    `${pointer}/path`,
-    input.plan,
-    input.operation.expectedSha256,
-  );
-
-  input.plan.deletes.set(target.relativePath, { target });
-  input.pendingFiles.set(target.relativePath, DeleteFile);
-  input.plan.operations.push({
-    kind: "delete",
-    path: target.relativePath,
-    changedPaths: [target.relativePath],
-  });
-}
-
-async function planMoveOperation(
-  input: {
-    operation: Extract<WorkspacePatchOperation, { kind: "move" }>;
-    workspaceRoot: string;
-    files: SeneraExecutionEnv;
-    plan: PatchPlan;
-    pendingFiles: Map<string, PendingFileState>;
-  },
-  pointer: string,
-): Promise<void> {
-  const source = await resolveTarget(input.workspaceRoot, input.operation.source, `${pointer}/source`);
-  const destination = await resolveTarget(input.workspaceRoot, input.operation.destination, `${pointer}/destination`);
-  if (source.relativePath === destination.relativePath) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.moveSamePath", { path: source.relativePath }),
-      pointer,
-    });
-  }
-  ensurePathUnused(input.plan, source, `${pointer}/source`);
-  ensurePathUnused(input.plan, destination, `${pointer}/destination`);
-  const content = await readExistingFile(
-    input.files,
-    source,
-    `${pointer}/source`,
-    input.plan,
-    input.operation.expectedSha256,
-  );
-  const destinationExisting = await fileInfoOrUndefined(
-    input.files,
-    destination.relativePath,
-    `${pointer}/destination`,
-  );
-  if (destinationExisting) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.moveDestinationExists", { path: destination.relativePath }),
-      pointer: `${pointer}/destination`,
-    });
-  }
-  addMissingPrecondition(input.plan, destination, `${pointer}/destination`);
-
-  const nextContent = input.operation.patch
-    ? applyHunkPatch({
-        oldPath: source.relativePath,
-        newPath: destination.relativePath,
-        source: content,
-        hunkPatch: input.operation.patch,
-        fuzzFactor: input.plan.fuzzFactor,
-        pointer: `${pointer}/patch`,
-      })
-    : content;
-
-  input.plan.deletes.set(source.relativePath, { target: source });
-  input.pendingFiles.set(source.relativePath, DeleteFile);
-  addWrite(
-    input.plan,
-    input.pendingFiles,
-    {
-      target: destination,
-      content: nextContent,
-    },
-    `${pointer}/destination`,
-  );
-  input.plan.operations.push({
-    kind: "move",
-    source: source.relativePath,
-    destination: destination.relativePath,
-    changedPaths: [source.relativePath, destination.relativePath],
-  });
-}
-
-async function planCreateDirectoryOperation(
-  input: {
-    operation: Extract<WorkspacePatchOperation, { kind: "createDirectory" }>;
-    workspaceRoot: string;
-    files: SeneraExecutionEnv;
-    plan: PatchPlan;
-  },
-  pointer: string,
-): Promise<void> {
-  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensureNotWorkspaceRoot(target, `${pointer}/path`, agentErrorMessage("workspacePatch.createDirectoryRoot"));
-  const existing = await fileInfoOrUndefined(input.files, target.relativePath, `${pointer}/path`);
-  if (existing && existing.kind !== "directory") {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.directoryTargetNotDirectory", { path: target.relativePath }),
-      pointer: `${pointer}/path`,
-    });
-  }
-
-  ensurePathUnused(input.plan, target, `${pointer}/path`, {
-    allowExistingDirectoryCreate: existing?.kind === "directory",
-  });
-  input.plan.createDirectories.set(target.relativePath, { target });
-  input.plan.operations.push({
-    kind: "createDirectory",
-    path: target.relativePath,
-    changedPaths: [target.relativePath],
-  });
-}
-
-async function planDeleteDirectoryOperation(
-  input: {
-    operation: Extract<WorkspacePatchOperation, { kind: "deleteDirectory" }>;
-    workspaceRoot: string;
-    files: SeneraExecutionEnv;
-    plan: PatchPlan;
-  },
-  pointer: string,
-): Promise<void> {
-  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensureNotWorkspaceRoot(target, `${pointer}/path`, agentErrorMessage("workspacePatch.deleteDirectoryRoot"));
-  ensurePathUnused(input.plan, target, `${pointer}/path`);
-  const stat = await requiredFileInfo(input.files, target, `${pointer}/path`);
-  if (stat.kind !== "directory") {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.deleteDirectoryOnly", { path: target.relativePath }),
-      pointer: `${pointer}/path`,
-      suggestion: agentErrorMessage("workspacePatch.deleteDirectoryOnlySuggestion"),
-    });
-  }
-
-  input.plan.deleteDirectories.set(target.relativePath, {
-    target,
-    recursive: input.operation.recursive === true,
-  });
-  input.plan.operations.push({
-    kind: "deleteDirectory",
-    path: target.relativePath,
-    changedPaths: [target.relativePath],
-  });
-}
-
-function applyHunkPatch(input: {
-  oldPath: string;
-  newPath: string;
-  source: string;
-  hunkPatch: string;
-  fuzzFactor: number;
-  pointer: string;
-}): string {
-  const hunkPatch = normalizeHunkPatch(input.hunkPatch, input.pointer);
-  const patchText = [`--- a/${input.oldPath}`, `+++ b/${input.newPath}`, hunkPatch].join("\n");
-
-  try {
-    const result = applyPatch(input.source, patchText, {
-      autoConvertLineEndings: true,
-      fuzzFactor: input.fuzzFactor,
-    });
-    if (result === false) {
-      throw new WorkspaceApplyPatchError({
-        message: agentErrorMessage("workspacePatch.patchApplyFailed", { path: input.oldPath }),
-        pointer: input.pointer,
-        suggestion: agentErrorMessage("workspacePatch.patchApplyFailedSuggestion"),
-      });
-    }
-    return result;
-  } catch (error) {
-    if (error instanceof WorkspaceApplyPatchError) {
-      throw error;
-    }
-    throw new WorkspaceApplyPatchError({
-      message: errorMessage(error),
-      pointer: input.pointer,
-      suggestion: agentErrorMessage("workspacePatch.patchStructureSuggestion"),
-    });
-  }
-}
-
-function normalizeHunkPatch(value: string, pointer: string): string {
-  const normalized = value.replace(/\r\n/g, "\n");
-  if (/^(diff --git|--- |\+\+\+ )/m.test(normalized)) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.patchHeaderOnly"),
-      pointer,
-      suggestion: agentErrorMessage("workspacePatch.patchHeaderOnlySuggestion"),
-    });
-  }
-  const hunkStart = /^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s+@@/m.exec(normalized);
-  if (!hunkStart) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.patchMissingHunkHeader"),
-      pointer,
-      suggestion: agentErrorMessage("workspacePatch.patchMissingHunkHeaderSuggestion"),
-    });
-  }
-
-  const prefix = normalized.slice(0, hunkStart.index);
-  if (prefix.trim().length > 0) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.patchNonEmptyBeforeHeader"),
-      pointer,
-      suggestion: agentErrorMessage("workspacePatch.patchNonEmptyBeforeHeaderSuggestion"),
-    });
-  }
-
-  const hunkPatch = normalized.slice(hunkStart.index);
-  return hunkPatch.endsWith("\n") ? hunkPatch : `${hunkPatch}\n`;
-}
-
-async function requiredFileInfo(
-  files: SeneraExecutionEnv,
-  target: ResolvedWorkspaceTarget,
-  pointer: string,
-): Promise<FileInfo> {
-  const stat = await fileInfoOrUndefined(files, target.relativePath, pointer);
-  if (!stat) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.pathMissing", { path: target.relativePath }),
-      pointer,
-    });
-  }
-  return stat;
-}
-
-async function fileInfoOrUndefined(
-  files: SeneraExecutionEnv,
-  filePath: string,
-  pointer: string,
-): Promise<FileInfo | undefined> {
-  const result = await files.fileInfo(filePath);
-  if (result.ok) return result.value;
-  if (result.error.code === "not_found") return undefined;
-  throw fileResultError(result.error, filePath, pointer);
-}
-
-async function resolveTarget(workspaceRoot: string, value: string, pointer: string): Promise<ResolvedWorkspaceTarget> {
-  if (value.includes("\0")) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.pathContainsNul"),
-      pointer,
-    });
-  }
-
-  const resolved = resolveWorkspacePath(workspaceRoot, value);
-  if (!resolved.ok) {
-    throw new WorkspaceApplyPatchError({
-      message: resolved.message,
-      pointer,
-    });
-  }
-
-  const mutationPath = await validateWorkspaceMutationPath(workspaceRoot, resolved.absolutePath);
-  if (!mutationPath.ok) {
-    throw new WorkspaceApplyPatchError({
-      message: mutationPath.message,
-      pointer,
-    });
-  }
-
-  const relativePath = workspaceRelativePath(workspaceRoot, resolved.absolutePath);
-  if (!relativePath || relativePath === ".") {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.pathCannotBeRoot"),
-      pointer,
-    });
-  }
-
-  return {
-    input: value,
-    relativePath,
-  };
-}
-
-function ensureNotWorkspaceRoot(target: ResolvedWorkspaceTarget, pointer: string, message: string): void {
-  if (!target.relativePath || target.relativePath === ".") {
-    throw new WorkspaceApplyPatchError({
-      message,
-      pointer,
-    });
-  }
-}
-
-function ensurePathUnused(
-  plan: PatchPlan,
-  target: ResolvedWorkspaceTarget,
-  pointer: string,
-  options: {
-    allowExistingDirectoryCreate?: boolean;
-  } = {},
-): void {
-  if (options.allowExistingDirectoryCreate && plan.createDirectories.has(target.relativePath)) {
-    return;
-  }
-  const used =
-    plan.writes.has(target.relativePath) ||
-    plan.deletes.has(target.relativePath) ||
-    plan.createDirectories.has(target.relativePath) ||
-    plan.deleteDirectories.has(target.relativePath);
-  if (used) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.duplicateOperation", { path: target.relativePath }),
-      pointer,
-      suggestion: agentErrorMessage("workspacePatch.duplicateOperationSuggestion"),
-    });
-  }
-}
-
-function addWrite(
-  plan: PatchPlan,
-  pendingFiles: Map<string, PendingFileState>,
-  write: PlannedFileWrite,
-  pointer: string,
-): void {
-  const pending = pendingFiles.get(write.target.relativePath);
-  if (pending) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.duplicateWrite", { path: write.target.relativePath }),
-      pointer,
-    });
-  }
-  plan.writes.set(write.target.relativePath, write);
-  pendingFiles.set(write.target.relativePath, write);
-}
-
-function rejectDirectoryDeleteConflicts(plan: PatchPlan): void {
-  for (const deletion of plan.deleteDirectories.values()) {
-    for (const changedPath of collectChangedPaths(plan)) {
-      if (
-        changedPath !== deletion.target.relativePath &&
-        isInsideDirectory(changedPath, deletion.target.relativePath)
-      ) {
-        throw new WorkspaceApplyPatchError({
-          message: agentErrorMessage("workspacePatch.directoryDeleteConflict", {
-            directoryPath: deletion.target.relativePath,
-            changedPath,
-          }),
-          pointer: "/operations",
-          suggestion: agentErrorMessage("workspacePatch.directoryDeleteConflictSuggestion"),
-        });
-      }
-    }
-  }
-}
-
-function collectChangedPaths(plan: PatchPlan): string[] {
-  const paths = new Set<string>();
-  for (const operation of plan.operations) {
-    for (const changedPath of operation.changedPaths) {
-      paths.add(changedPath);
-    }
-  }
-  return [...paths].sort();
-}
-
-function isInsideDirectory(filePath: string, directoryPath: string): boolean {
-  return filePath === directoryPath || filePath.startsWith(`${directoryPath}/`);
-}
-
-function fileResultError(error: Error, filePath: string, pointer: string): WorkspaceApplyPatchError {
-  return new WorkspaceApplyPatchError({
-    message: error.message,
-    pointer,
-    suggestion: agentErrorMessage("workspacePatch.fileOperationSuggestion", { path: filePath }),
+function requiresManagedExtensionPublication(workspaceRoot: string, changedPaths: readonly string[]): boolean {
+  return changedPaths.some((changedPath) => {
+    const domain = classifyAgentWorkspaceResource(workspaceRoot, path.resolve(workspaceRoot, changedPath)).domain;
+    return domain === AgentWorkspaceResourceDomains.ManagedSkill || domain === AgentWorkspaceResourceDomains.ManagedMcp;
   });
 }
 

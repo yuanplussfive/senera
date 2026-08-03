@@ -6,6 +6,7 @@ import { AgentConfigService } from "../../../Source/AgentSystem/Config/AgentConf
 import { AgentConfigSecretCodec } from "../../../Source/AgentSystem/Config/AgentConfigSecretProtection.js";
 import { AgentConfigSqliteRepository } from "../../../Source/AgentSystem/Config/AgentConfigSqliteRepository.js";
 import { CurrentAgentConfigVersion } from "../../../Source/AgentSystem/Config/AgentConfigVersion.js";
+import { resolveAgentWorkspaceLayout } from "../../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
@@ -71,7 +72,7 @@ describe("configuration secret persistence", () => {
   it.skipIf(!sqliteAvailable)("rewrites every legacy SQLite revision and removes plaintext from database pages", () => {
     const workspaceRoot = createTemporaryDirectory("senera-config-secret-sqlite");
     temporaryDirectories.push(workspaceRoot);
-    const databasePath = path.join(workspaceRoot, ".senera", "Config.sqlite");
+    const databasePath = resolveAgentWorkspaceLayout(workspaceRoot).databases.config;
     const codec = testCodec(workspaceRoot);
     const secrets = ["sqlite-legacy-secret-one", "sqlite-legacy-secret-two"];
 

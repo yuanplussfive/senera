@@ -1,5 +1,5 @@
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
-import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 import {
   AgentMcpTaskDetachedError,
   AgentMcpToolClient,
@@ -15,14 +15,15 @@ interface AgentMcpToolClientPoolEntry {
 }
 
 const MaxStaleClientReplacements = 1;
+const ConnectionDependencyIds = new WeakMap<object, number>();
+let nextConnectionDependencyId = 1;
 
-export class AgentMcpToolClientUnavailableError extends Error {
+export class AgentMcpToolClientUnavailableError extends AgentBaseError {
   constructor(
     readonly serverId: string,
     readonly replacements: number,
   ) {
     super(`MCP server ${serverId} closed during connection acquisition after ${replacements} replacement attempt(s).`);
-    this.name = "AgentMcpToolClientUnavailableError";
   }
 }
 
@@ -130,22 +131,27 @@ export class AgentMcpToolClientPool {
   }
 }
 
-export function createAgentMcpToolClientPoolKey(
-  options: Pick<AgentMcpToolClientOptions, "server" | "executionProfile" | "terminationGraceMs" | "interactionInput">,
-): string {
+export function createAgentMcpToolClientPoolKey(options: Omit<AgentMcpToolClientOptions, "signal">): string {
   return sha256HexOfCanonicalJson({
     server: options.server,
-    executionProfile: projectExecutionProfileIdentity(options.executionProfile),
+    executionProfile: options.executionProfile,
+    requestTimeoutMs: options.requestTimeoutMs,
     terminationGraceMs: options.terminationGraceMs,
-    elicitation: Boolean(options.interactionInput),
+    maxFrameBytes: options.maxFrameBytes ?? null,
+    maxStderrBytes: options.maxStderrBytes ?? null,
+    spawnPersistentProcess: connectionDependencyIdentity(options.spawnPersistentProcess),
+    interactionInput: connectionDependencyIdentity(options.interactionInput),
+    sampling: connectionDependencyIdentity(options.sampling),
+    onToolsChanged: connectionDependencyIdentity(options.onToolsChanged),
   });
 }
 
-function projectExecutionProfileIdentity(profile: SeneraProcessExecutionProfile): unknown {
-  return {
-    name: profile.name,
-    kind: profile.kind,
-    backend: profile.backend,
-    sandbox: profile.sandbox,
-  };
+function connectionDependencyIdentity(value: object | undefined): number | null {
+  if (!value) return null;
+  const current = ConnectionDependencyIds.get(value);
+  if (current) return current;
+  const identity = nextConnectionDependencyId;
+  nextConnectionDependencyId += 1;
+  ConnectionDependencyIds.set(value, identity);
+  return identity;
 }

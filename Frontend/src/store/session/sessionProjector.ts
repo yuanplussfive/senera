@@ -8,7 +8,6 @@ import {
   type PresetSnapshotData,
   type ProviderModelsFailedData,
   type ProviderModelsSnapshotData,
-  type PluginConfigSnapshotData,
   type SessionListSnapshotData,
   type SessionForkedData,
   type SessionNotFoundData,
@@ -16,6 +15,8 @@ import {
   type SessionTruncatedData,
   type UserProfileData,
   type RequestInvalidData,
+  type SystemToolSnapshotData,
+  type McpServerSnapshotData,
 } from "../../api/eventTypes";
 import { projectRunEvent } from "./runEventProjector";
 import { applyScopedRunEvent } from "./scopedRunProjector";
@@ -25,6 +26,7 @@ import { nowIso, syncSessionCountsFromLoadedMessages } from "./sessionProjectorC
 import { applyModelListSnapshotSelection, syncActiveSessionModelSelection } from "./sessionModelSelection";
 import { syncRunActiveFlags } from "./sessionRunProjection";
 import type { StoreState } from "./types";
+import { projectAgentEventOnce } from "./eventReceiptLedger";
 
 export { normalizeUserProfile } from "./userProfile";
 export { friendlyDecisionKind, truncate } from "./sessionPresentation";
@@ -36,7 +38,11 @@ export { deleteSessionRuntimeState } from "./sessionListProjection";
 // reducer：把 36 种事件投影到状态
 // =========================
 
-export function applyEvent(state: StoreState, env: EventEnvelope): void {
+export function applyEvent(state: StoreState, env: EventEnvelope): boolean {
+  return projectAgentEventOnce(state, env, (event) => applyEventProjection(state, event));
+}
+
+function applyEventProjection(state: StoreState, env: EventEnvelope): void {
   const sessionId = env.sessionId;
 
   if (sessionId && state.pendingDeletedSessionIds[sessionId] && !isPendingDeleteResolutionEvent(env.kind)) {
@@ -122,16 +128,23 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       return;
     }
 
-    case EventKinds.ProfileSnapshot: {
-      if (state.userProfile.syncState === "pending") return;
-      state.userProfile = normalizeUserProfile(env.data as UserProfileData);
+    case EventKinds.SystemToolSnapshot: {
+      const snapshot = env.data as SystemToolSnapshotData;
+      state.systemTools = snapshot.tools;
+      state.systemExtensions = snapshot.extensions;
+      state.toolSettingsSynced.systemTools = true;
       return;
     }
 
-    case EventKinds.PluginConfigSnapshot: {
-      const data = env.data as PluginConfigSnapshotData;
-      state.pluginConfigs = data.plugins;
-      state.catalogSynced.plugins = true;
+    case EventKinds.McpServerSnapshot: {
+      state.mcpServers = (env.data as McpServerSnapshotData).servers;
+      state.toolSettingsSynced.mcpServers = true;
+      return;
+    }
+
+    case EventKinds.ProfileSnapshot: {
+      if (state.userProfile.syncState === "pending") return;
+      state.userProfile = normalizeUserProfile(env.data as UserProfileData);
       return;
     }
 
@@ -187,16 +200,9 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (!sessionId) return;
       delete state.pendingDeletedSessionIds[sessionId];
       delete state.pendingCreatedSessionIds[sessionId];
-      if (!state.sessions[sessionId]) return;
-      delete state.sessions[sessionId];
-      delete state.selectedModelProviderIdsBySession[sessionId];
-      state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
-      delete state.historyLoadedIds[sessionId];
-      delete state.historyLoadingIds[sessionId];
-      delete state.viewedRunIdBySession[sessionId];
-      delete state.missingOnServerIds[sessionId];
-      delete state.historyEventRunIds[sessionId];
-      delete state.historyActiveRequestIds[sessionId];
+      const existed = Boolean(state.sessions[sessionId]);
+      deleteSessionRuntimeState(state, sessionId);
+      if (!existed) return;
       if (state.activeSessionId === sessionId) {
         state.activeSessionId = state.sessionOrder[0] ?? null;
       }
@@ -259,6 +265,9 @@ const SessionNotFoundProjectionPolicies = {
   "session.history": "mark_missing",
   "session.message": "mark_missing",
   "session.fork": "mark_missing",
+  "session.compact": "mark_missing",
+  "session.runtime_status": "mark_missing",
+  "session.export": "mark_missing",
 } as const satisfies Record<SessionNotFoundData["operation"], "remove" | "mark_missing">;
 
 function projectSessionNotFound(state: StoreState, sessionId: string, data: SessionNotFoundData): void {

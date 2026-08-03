@@ -1,17 +1,44 @@
 import assert from "node:assert/strict";
 import type { AgentToolCallExecutionContext } from "../Source/AgentSystem/ToolRuntime/AgentToolCallExecutionTypes.js";
 import {
-  AgentPiToolExecutionBridge,
-  AgentPiToolExecutionError,
+  AgentPiToolExecutionBridge as AgentPiToolExecutionBridgeBase,
+  type AgentPiToolExecutionBridgeOptions,
 } from "../Source/AgentSystem/Pi/AgentPiToolExecutionBridge.js";
-import type { RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
-import type { ExecutedToolCallArtifact, ExecutedToolCallResult } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import { AgentPiToolResultStatuses } from "../Source/AgentSystem/Pi/AgentPiTypes.js";
+import type { RegisteredTool } from "../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
+import type {
+  AgentToolProcessError,
+  ExecutedToolCallArtifact,
+  ExecutedToolCallResult,
+} from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import { AgentExecutionErrorCodes } from "../Source/AgentSystem/Xml/AgentXmlStatus.js";
+import { createAgentToolAccessGrant } from "../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
+import {
+  AgentToolFailureSources,
+  AgentToolSuccessOutcome,
+  createAgentToolFailureOutcome,
+} from "../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
+import { AgentPiTurnContextRegistry } from "../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
+import { AgentToolExposureState } from "../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
+
+const turnContexts = new AgentPiTurnContextRegistry();
+
+class AgentPiToolExecutionBridge extends AgentPiToolExecutionBridgeBase {
+  constructor(options: Omit<AgentPiToolExecutionBridgeOptions, "turnContexts">) {
+    super({ ...options, turnContexts });
+  }
+}
 
 const tool = createToolFixture("SeneraEchoTool");
+const toolAccessGrant = createAgentToolAccessGrant({
+  authorizedToolNames: [tool.name],
+  exposedToolNames: [tool.name],
+  preferredToolNames: [tool.name],
+});
 
 async function main(): Promise<void> {
   await verifyToolResultProjection();
-  await verifyLargeToolResultProjectionIsBudgeted();
+  await verifyLargeToolResultRemainsCanonical();
   await verifyAskUserProjection();
   await verifyStructuredToolErrorProjection();
 
@@ -27,8 +54,7 @@ async function verifyToolResultProjection(): Promise<void> {
   });
   const calls: Array<{ request: unknown; context: AgentToolCallExecutionContext }> = [];
   const bridge = new AgentPiToolExecutionBridge({
-    model: "test-model",
-    executeToolCall: async (request, context = {}) => {
+    executeToolCall: async (request, context) => {
       calls.push({ request, context });
       return {
         kind: "ToolResults",
@@ -49,19 +75,20 @@ async function verifyToolResultProjection(): Promise<void> {
       text: "hello",
     },
     context: {
+      toolAccessGrant,
       requestId: "verify-pi-tool-bridge",
       step: 2,
-      visibleToolNames: ["SeneraEchoTool"],
     },
   });
 
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0]?.context.loadedToolNames, ["SeneraEchoTool"]);
+  assert.equal(calls[0]?.context.toolAccessGrant, toolAccessGrant);
   assert.deepEqual(calls[0]?.request, {
     name: "SeneraEchoTool",
     arguments: {
       text: "hello",
     },
+    expectedContractDigest: null,
     callId: "call_echo",
   });
   assert.equal(result.details.senera.toolName, "SeneraEchoTool");
@@ -74,13 +101,15 @@ async function verifyToolResultProjection(): Promise<void> {
   assert.match(text, /complete current projection/);
 }
 
-async function verifyLargeToolResultProjectionIsBudgeted(): Promise<void> {
-  const hugeText = "workspace-result\n".repeat(240_000);
+async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
+  const hugeText = "workspace-result\n".repeat(20_000);
   const artifact = artifactFixtureRequired();
-  const evidence = artifact.evidence[0];
-  assert.ok(evidence);
+  const contextId = turnContexts.register({
+    requestId: "verify-pi-large-result",
+    toolAccessGrant,
+    toolExposure: new AgentToolExposureState(toolAccessGrant),
+  });
   const bridge = new AgentPiToolExecutionBridge({
-    model: "test-model",
     executeToolCall: async () => ({
       kind: "ToolResults",
       value: [
@@ -95,41 +124,31 @@ async function verifyLargeToolResultProjectionIsBudgeted(): Promise<void> {
     recordToolArtifacts: async ({ results }) =>
       results.map((result) => ({
         ...result,
-        artifact: {
-          ...artifact,
-          summary: hugeText,
-          evidence: [
-            {
-              ...evidence,
-              modelSlots: [
-                {
-                  name: "text",
-                  value: hugeText,
-                },
-              ],
-            },
-          ],
-        },
+        artifact,
       })),
   });
 
-  const result = await bridge.execute({
-    tool,
-    toolCallId: "call_large",
-    params: {},
-    context: {},
-  });
-  const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+  try {
+    const result = await bridge.execute({
+      tool,
+      toolCallId: "call_large",
+      params: {},
+      context: { toolAccessGrant, piTurnContextId: contextId },
+    });
+    const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+    const observation = JSON.parse(text) as { result?: { text?: string } };
+    const captured = turnContexts.takeExecutedToolResult(contextId, "call_large");
 
-  assert.match(text, /\.\.\./);
-  assert.equal(text.includes(hugeText.slice(0, 200_000)), false);
-  assert.ok(text.length < 24_000, `Pi tool result text should stay within its token projection, got ${text.length}`);
-  assert.ok(JSON.stringify(result).length < 32_000, "Pi persisted tool details must not retain the raw result.");
+    assert.equal(observation.result?.text, hugeText);
+    assert.deepEqual(captured?.result, observation.result);
+    assert.equal(JSON.stringify(result.details).includes("workspace-result"), false);
+  } finally {
+    turnContexts.release(contextId);
+  }
 }
 
 async function verifyAskUserProjection(): Promise<void> {
   const bridge = new AgentPiToolExecutionBridge({
-    model: "test-model",
     executeToolCall: async () => ({
       kind: "AskUser",
       value: {
@@ -146,27 +165,41 @@ async function verifyAskUserProjection(): Promise<void> {
     tool,
     toolCallId: "call_ask",
     params: {},
-    context: {},
+    context: { toolAccessGrant, requestId: "verify-pi-ask" },
   });
 
   assert.equal(result.terminate, true);
-  assert.match(result.content[0]?.type === "text" ? result.content[0].text : "", /需要用户输入/);
+  const observation = JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "null") as unknown;
+  assert.deepEqual(observation, {
+    type: "senera.tool_observation.v1",
+    tool_name: tool.name,
+    call_id: "call_ask",
+    batch_id: "verify-pi-ask:1",
+    status: "waiting",
+    summary: "需要哪个目录？",
+    control: {
+      question: "需要哪个目录？",
+      reason_code: "missing_target",
+    },
+  });
 }
 
 async function verifyStructuredToolErrorProjection(): Promise<void> {
+  const error = {
+    code: AgentExecutionErrorCodes.ToolExecutionError,
+    message: "工具执行失败",
+    diagnostics: [{ message: "工具名称冲突", pointer: "/Tools/0/Name" }],
+  };
   const bridge = new AgentPiToolExecutionBridge({
-    model: "test-model",
     executeToolCall: async () => ({
       kind: "ToolResults",
       value: [
         executedToolResult({
           callId: "call_error",
           result: {
-            error: {
-              code: "ToolFailed",
-              message: "工具执行失败",
-            },
+            error,
           },
+          error,
           exitCode: 1,
         }),
       ],
@@ -174,20 +207,37 @@ async function verifyStructuredToolErrorProjection(): Promise<void> {
     recordToolArtifacts: async ({ results }) => [...results],
   });
 
-  await assert.rejects(
-    bridge.execute({
-      tool,
-      toolCallId: "call_error",
-      params: {},
-      context: {},
-    }),
-    (error: unknown) => error instanceof AgentPiToolExecutionError && error.message === "工具执行失败",
-  );
+  const result = await bridge.execute({
+    tool,
+    toolCallId: "call_error",
+    params: {},
+    context: { toolAccessGrant },
+  });
+  assert.equal(result.details.senera.status, AgentPiToolResultStatuses.Failure);
+  assert.deepEqual(result.details.senera.error, {
+    ...error,
+    kind: "execution",
+    source: "host",
+    retryable: false,
+  });
+  const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+  assert.match(text, /工具执行失败/);
+  assert.match(text, /\/Tools\/0\/Name/);
 }
 
 function createToolFixture(name: string): RegisteredTool {
   return {
+    owner: {
+      kind: "system",
+      name: "verification",
+      title: "Verification",
+      rootPath: process.cwd(),
+      revision: "test",
+      trusted: true,
+      requiresApproval: false,
+    },
     name,
+    loading: "Dynamic",
     descriptionFile: undefined,
     permissions: [],
     handler: {
@@ -195,27 +245,22 @@ function createToolFixture(name: string): RegisteredTool {
       capability: "verify",
     },
     evidenceCapabilities: [],
-    plugin: {
-      rootPath: "System/Plugins/Verify",
-      rootKind: "System",
-      manifestPath: "System/Plugins/Verify/PluginManifest.json",
-      config: {
-        path: "System/Plugins/Verify/PluginConfig.json",
-        values: {},
-      },
-      manifest: {
-        Plugin: {
-          Name: "VerifyPlugin",
-          Title: "Verify Plugin",
-          Version: "1.0.0",
-          Description: "Verification fixture.",
-        },
-      },
+    sources: [],
+    execution: {
+      Targets: ["Local"],
+      Network: "Deny",
+      Workspace: "ReadOnly",
     },
-  } as unknown as RegisteredTool;
+    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
+  };
 }
 
-function executedToolResult(options: { callId?: string; result: unknown; exitCode?: number }): ExecutedToolCallResult {
+function executedToolResult(options: {
+  callId?: string;
+  result: unknown;
+  error?: AgentToolProcessError;
+  exitCode?: number;
+}): ExecutedToolCallResult {
   return {
     callId: options.callId ?? "call_echo",
     name: "SeneraEchoTool",
@@ -225,9 +270,13 @@ function executedToolResult(options: { callId?: string; result: unknown; exitCod
     process: {
       exitCode: options.exitCode ?? 0,
       signal: null,
+      stdout: "",
       stderr: "",
     },
     result: options.result,
+    outcome: options.error
+      ? createAgentToolFailureOutcome(options.error, AgentToolFailureSources.Host, "none")
+      : AgentToolSuccessOutcome,
   };
 }
 

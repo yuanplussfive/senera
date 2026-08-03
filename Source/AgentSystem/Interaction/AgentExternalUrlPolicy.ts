@@ -1,4 +1,5 @@
 import net from "node:net";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 export interface AgentExternalUrlPolicy {
   readonly allowHttps: boolean;
@@ -19,13 +20,12 @@ export const DefaultAgentExternalUrlPolicy = {
   allowCredentials: false,
 } as const satisfies AgentExternalUrlPolicy;
 
-export class AgentExternalUrlPolicyError extends Error {
+export class AgentExternalUrlPolicyError extends AgentBaseError {
   constructor(
     message: string,
     readonly input: string,
   ) {
     super(message);
-    this.name = "AgentExternalUrlPolicyError";
   }
 }
 

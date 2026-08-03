@@ -1,4 +1,7 @@
-import type { ToolArtifactWorkspaceManifest, ToolArtifactWorkspacePathManifest } from "../Types/PluginManifestTypes.js";
+import type {
+  ToolArtifactWorkspaceManifest,
+  ToolArtifactWorkspacePathManifest,
+} from "../Types/AgentToolContractTypes.js";
 import type { ResolvedWorkspacePathRule, WorkspaceCaptureOptions } from "./AgentWorkspaceCaptureTypes.js";
 
 const WorkspaceCaptureDefaults = {

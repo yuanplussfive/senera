@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { z } from "zod/mini";
 import { type EventEnvelope, type WsRequest } from "./eventTypes";
+import { EventChannels, EventSpecs, type EventKind } from "./generatedEventCatalog";
 import {
   coalesceStreamingEvents,
   isBufferedStreamingEvent,
   StreamingEventMaxLatencyMs,
 } from "./streamingEventCoalescer";
+import { AgentEventIdWindow } from "./eventDeliveryIdentity";
 
 export type SocketStatus = "idle" | "connecting" | "open" | "closed" | "error";
 
@@ -48,8 +51,45 @@ export function readAgentSocketRetryDelayMs(attempt: number, random = Math.rando
 }
 
 export function parseAgentSocketEventData(data: unknown): EventEnvelope {
-  return JSON.parse(typeof data === "string" ? data : "") as EventEnvelope;
+  const value: unknown = JSON.parse(typeof data === "string" ? data : "");
+  const envelope = AgentSocketEventEnvelopeSchema.parse(value);
+  if (!("data" in envelope)) throw new Error("Agent event envelope is missing data.");
+  const spec = EventSpecs[envelope.kind as EventKind];
+  if (!spec) throw new Error(`Unknown agent event kind: ${envelope.kind}.`);
+  if (envelope.layer !== spec.layer || envelope.phase !== spec.phase) {
+    throw new Error(
+      `Agent event ${envelope.kind} expected ${spec.layer}/${spec.phase}; received ${envelope.layer}/${envelope.phase}.`,
+    );
+  }
+  return envelope as EventEnvelope;
 }
+
+const AgentSocketNonBlankStringSchema = z.string().check(z.minLength(1));
+const AgentSocketNonNegativeIntegerSchema = z.int().check(z.nonnegative());
+
+const AgentSocketEventEnvelopeSchema = z.looseObject({
+  eventId: z.optional(AgentSocketNonBlankStringSchema),
+  channel: z.literal(EventChannels.AgentEvent),
+  kind: AgentSocketNonBlankStringSchema,
+  layer: AgentSocketNonBlankStringSchema,
+  phase: AgentSocketNonBlankStringSchema,
+  sequence: AgentSocketNonNegativeIntegerSchema,
+  timestamp: z.iso.datetime({ offset: true }),
+  sessionId: z.optional(AgentSocketNonBlankStringSchema),
+  requestId: z.optional(AgentSocketNonBlankStringSchema),
+  step: z.optional(AgentSocketNonNegativeIntegerSchema),
+  scope: z.optional(
+    z.looseObject({
+      parentRequestId: z.optional(AgentSocketNonBlankStringSchema),
+      workflowName: z.optional(AgentSocketNonBlankStringSchema),
+      jobId: z.optional(AgentSocketNonBlankStringSchema),
+      agentName: z.optional(AgentSocketNonBlankStringSchema),
+      role: z.optional(z.enum(["childAgent", "merge"])),
+    }),
+  ),
+  detailId: z.optional(AgentSocketNonBlankStringSchema),
+  data: z.unknown(),
+});
 
 /**
  * 单连接 + 指数退避自动重连。后端协议本身是无状态的（每次请求自带 sessionId），
@@ -81,6 +121,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
 
   // rAF 批量队列
   const pendingRef = useRef<EventEnvelope[]>([]);
+  const eventIdsRef = useRef(new AgentEventIdWindow());
   const rafIdRef = useRef<number | null>(null);
   const latencyTimerRef = useRef<number | null>(null);
 
@@ -114,12 +155,20 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     const events = coalesceStreamingEvents(queue);
     const batchConsumer = onEventsRef.current;
     if (batchConsumer) {
-      batchConsumer(events);
+      try {
+        batchConsumer(events);
+      } catch (error) {
+        reportMalformedEvent(onMalformedEventRef.current, error);
+      }
       return;
     }
     const eventConsumer = onEventRef.current;
     for (const env of events) {
-      eventConsumer?.(env);
+      try {
+        eventConsumer?.(env);
+      } catch (error) {
+        reportMalformedEvent(onMalformedEventRef.current, error);
+      }
     }
   }, [clearFlushSchedule]);
 
@@ -134,6 +183,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
 
   const dispatch = useCallback(
     (env: EventEnvelope): void => {
+      if (!eventIdsRef.current.accept(env)) return;
       if (onEventsRef.current) {
         pendingRef.current.push(env);
         scheduleFlush();
@@ -148,7 +198,11 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       if (pendingRef.current.length > 0) {
         flush();
       }
-      onEventRef.current?.(env);
+      try {
+        onEventRef.current?.(env);
+      } catch (error) {
+        reportMalformedEvent(onMalformedEventRef.current, error);
+      }
     },
     [flush, scheduleFlush],
   );
@@ -223,7 +277,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
         const env = parseAgentSocketEventData(evt.data);
         dispatch(env);
       } catch (error) {
-        onMalformedEventRef.current?.(error);
+        reportMalformedEvent(onMalformedEventRef.current, error);
       }
     };
 
@@ -322,4 +376,12 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   }, [clearRetrySchedule, connect]);
 
   return { status, send, reconnect };
+}
+
+function reportMalformedEvent(handler: ((error: unknown) => void) | undefined, error: unknown): void {
+  try {
+    handler?.(error);
+  } catch {
+    // Error reporting must not escape WebSocket or animation-frame callbacks.
+  }
 }

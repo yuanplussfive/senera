@@ -1,13 +1,14 @@
-import crypto from "node:crypto";
-import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { ToolSearchDocument } from "./AgentToolSearchTypes.js";
 import { capabilityFacetEntries, capabilityRiskText, capabilitySearchText } from "./AgentToolSearchCapabilities.js";
 
 export const ToolSearchDocumentSearchFields = [
   "toolName",
   "title",
-  "pluginName",
-  "pluginTitle",
+  "ownerName",
+  "ownerTitle",
   "sourceText",
   "tags",
   "summary",
@@ -23,7 +24,7 @@ export const ToolSearchDocumentSearchFields = [
 export const ToolSearchDocumentStoreFields = [
   "toolName",
   "title",
-  "pluginName",
+  "ownerName",
   "summary",
   "whenToUse",
   "permissions",
@@ -31,6 +32,7 @@ export const ToolSearchDocumentStoreFields = [
 
 export class AgentToolSearchDocumentBuilder {
   build(tool: RegisteredTool): ToolSearchDocument {
+    const owner = resolveAgentToolOwner(tool);
     const search = tool.search;
     const sources = tool.sources.map((source) => ({
       id: source.Id,
@@ -39,8 +41,8 @@ export class AgentToolSearchDocumentBuilder {
     }));
     const sourceIds = sources.map((source) => source.id);
     const sourceText = sources.map((source) => `${source.id} ${source.title} ${source.description}`).join(" ");
-    const title = tool.plugin.manifest.Plugin.Title ?? tool.name;
-    const summary = search?.Summary ?? tool.plugin.manifest.Plugin.Description ?? "";
+    const title = owner.title ?? tool.name;
+    const summary = search?.Summary ?? owner.description ?? "";
     const whenToUse = (search?.UseCases ?? []).join(" ");
     const examples = (search?.Examples ?? []).join(" ");
     const avoid = (search?.Avoid ?? []).join(" ");
@@ -62,8 +64,8 @@ export class AgentToolSearchDocumentBuilder {
     const coreText = [
       tool.name,
       title,
-      tool.plugin.manifest.Plugin.Name,
-      tool.plugin.manifest.Plugin.Title,
+      owner.name,
+      owner.title,
       sourceText,
       tags,
       summary,
@@ -81,8 +83,8 @@ export class AgentToolSearchDocumentBuilder {
       id: stableToolDocumentId(tool),
       toolName: tool.name,
       title,
-      pluginName: tool.plugin.manifest.Plugin.Name,
-      pluginTitle: tool.plugin.manifest.Plugin.Title ?? "",
+      ownerName: owner.name,
+      ownerTitle: owner.title ?? "",
       sourceText,
       sourceIds,
       sources,
@@ -97,14 +99,14 @@ export class AgentToolSearchDocumentBuilder {
       params,
       permissions,
       capabilities,
-      priority: tool.plugin.manifest.Prompting?.Priority ?? 100,
+      priority: owner.priority ?? 100,
       coreText,
     };
   }
 
   private readSignatureParams(tool: RegisteredTool): string {
     const fields = tool.contract?.arguments?.properties.flatMap(readContractPropertyTokens) ?? [];
-    return fields.map((field) => field.name).join(" ");
+    return fields.map((field) => [field.name, field.typeText, field.comment].filter(Boolean).join(" ")).join(" ");
   }
 }
 
@@ -123,5 +125,5 @@ function readContractPropertyTokens(
 }
 
 function stableToolDocumentId(tool: RegisteredTool): string {
-  return crypto.createHash("sha1").update(`${tool.plugin.manifest.Plugin.Name}:${tool.name}`).digest("hex");
+  return sha256HexOfCanonicalJson([resolveAgentToolOwner(tool).name, tool.name]);
 }

@@ -139,6 +139,35 @@ describe("model provider endpoint defaults", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("expires and evicts provider discovery snapshots under an explicit cache policy", async () => {
+    let now = 0;
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => Response.json({ data: [{ id: "model-a" }] }));
+    const discovery = new AgentProviderModelDiscovery({
+      configSnapshot: deepSeekConfig,
+      fetchImpl,
+      cache: { maxEntries: 1, ttlMs: 100 },
+      now: () => now,
+    });
+    const endpoint = (id: string) => ({
+      Id: id,
+      Enabled: true,
+      BaseUrl: `https://${id}.example.test/v1`,
+    });
+
+    await discovery.listProviderModels({ providerId: "provider-a", endpoint: endpoint("provider-a") });
+    await expect(
+      discovery.listProviderModels({ providerId: "provider-a", endpoint: endpoint("provider-a") }),
+    ).resolves.toMatchObject({ source: "cache" });
+    await discovery.listProviderModels({ providerId: "provider-b", endpoint: endpoint("provider-b") });
+    await discovery.listProviderModels({ providerId: "provider-a", endpoint: endpoint("provider-a") });
+    now = 101;
+    await discovery.listProviderModels({ providerId: "provider-a", endpoint: endpoint("provider-a") });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
   it("discovers models through a header-only endpoint without an API key", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ data: [{ id: "header-auth-model" }] }));
     const discovery = new AgentProviderModelDiscovery({

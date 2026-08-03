@@ -18,6 +18,7 @@ Plugins/**/Schemas/**/*.js
 docs/API/WebSocketProtocol.md
 docs/API/WebSocketProtocol.schema.json
 senera-evaluation/
+senera-code-review/
 tmp/
 
 package-lock.json

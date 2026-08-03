@@ -1,4 +1,4 @@
-import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
+import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import { createAgentAiSdkGuardrailAuditor } from "./AgentAiSdkGuardrailAuditor.js";
 import { AgentCompositeToolApprovalPolicy } from "./AgentToolApprovalPolicy.js";
 import type { AgentToolGuardrailAuditor } from "./AgentToolGuardrailAudit.js";
@@ -10,7 +10,7 @@ import type { PolicyClient } from "@ai-sdk/policy-opa";
 const DefaultToolApprovalPolicyPath = AgentToolApprovalPolicyArtifactContract.entrypoints.toolDecision;
 
 export interface AgentToolApprovalPolicyFactoryOptions {
-  readonly registry: AgentPluginRegistry;
+  readonly registry: AgentExtensionRegistry;
   readonly auditors?: readonly AgentToolGuardrailAuditor[];
   readonly path?: string;
   readonly policyClient?: PolicyClient;

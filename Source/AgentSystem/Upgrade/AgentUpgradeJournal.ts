@@ -7,6 +7,7 @@ import {
   type AgentUpgradeManifest,
 } from "./AgentUpgradeContract.js";
 import { writeFileAtomicSync } from "../Core/AgentFs.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 const UpgradeDirectoryName = "upgrades";
 const RuntimeMarkerFileName = "runtime.json";
@@ -30,7 +31,9 @@ export class AgentUpgradeJournal {
   readRuntimeMarker(): AgentRuntimeVersionMarker | undefined {
     const markerPath = path.join(this.root, RuntimeMarkerFileName);
     if (!fs.existsSync(markerPath)) return undefined;
-    return AgentRuntimeVersionMarkerSchema.parse(JSON.parse(fs.readFileSync(markerPath, "utf8")));
+    return AgentRuntimeVersionMarkerSchema.parse(
+      parseJsonText(fs.readFileSync(markerPath, "utf8"), "Runtime version marker"),
+    );
   }
 
   writeRuntimeMarker(marker: AgentRuntimeVersionMarker): void {
@@ -54,7 +57,9 @@ export class AgentUpgradeJournal {
   }
 
   readManifest(upgradeId: string): AgentUpgradeManifest {
-    return AgentUpgradeManifestSchema.parse(JSON.parse(fs.readFileSync(this.manifestPath(upgradeId), "utf8")));
+    return AgentUpgradeManifestSchema.parse(
+      parseJsonText(fs.readFileSync(this.manifestPath(upgradeId), "utf8"), "Upgrade manifest"),
+    );
   }
 
   writeManifest(manifest: AgentUpgradeManifest): void {

@@ -6,6 +6,8 @@ export type AgentConfigFormFieldLevel = "basic" | "advanced" | "internal";
 
 export type AgentConfigFormValueSource = "explicit" | "inherited" | "default" | "missing";
 
+export const AgentConfigFormVersion = 1 as const;
+
 export type AgentConfigFormModelCapability =
   "Chat" | "Embedding" | "Rerank" | "Vision" | "ImageOutput" | "Reasoning" | "DeveloperRole" | "StreamingUsage";
 
@@ -19,21 +21,21 @@ export interface AgentConfigFormModelSelection {
 }
 
 export interface AgentConfigFormSnapshot {
-  version: 1;
+  version: typeof AgentConfigFormVersion;
   sections: AgentConfigFormSection[];
 }
 
-export interface AgentConfigFormSection {
+export interface AgentConfigFormSection<TText = string> {
   name: string;
-  label: string;
-  description?: string;
+  label: TText;
+  description?: TText;
   icon?: string;
   keyCount: number;
-  fields: AgentConfigFormField[];
+  fields: AgentConfigFormField<TText>[];
 }
 
-export interface AgentConfigFormField {
-  label: string;
+export interface AgentConfigFormField<TText = string> {
+  label: TText;
   section: string;
   key: string;
   path: string[];
@@ -44,8 +46,8 @@ export interface AgentConfigFormField {
   configured: boolean;
   missing: boolean;
   valueSource: AgentConfigFormValueSource;
-  description?: string;
-  placeholder?: string;
+  description?: TText;
+  placeholder?: TText;
   options?: AgentConfigFormFieldOptionValue[];
   optionLabels?: Record<string, string>;
   min?: number;
@@ -59,7 +61,7 @@ export interface AgentConfigFormField {
   essential: boolean;
   addLabel?: string;
   itemLabelPath?: string[];
-  itemFields?: AgentConfigFormField[];
+  itemFields?: AgentConfigFormField<TText>[];
   defaultValue?: unknown;
   defaultItem?: Record<string, unknown>;
   keyPlaceholder?: string;

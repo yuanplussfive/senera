@@ -1,6 +1,17 @@
 import { AgentXmlCodec } from "./AgentXmlCodec.js";
-import type { AgentExecutionResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
+import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { createXmlProtocolSpec, type AgentXmlProtocolSpec } from "./AgentXmlPolicy.js";
+
+/**
+ * Shape of a successful tool-result execution projected for XML rendering.
+ * Defined locally so the low-level Xml layer does not import the higher-level
+ * ToolRuntime layer (AgentExecutionResult), avoiding a layering violation.
+ * Structurally identical to `Extract<AgentExecutionResult, { kind: "ToolResults" }>`.
+ */
+type ToolResultsExecution = {
+  kind: "ToolResults";
+  value: ExecutedToolCallResult[];
+};
 
 export class AgentToolResultXmlRenderer {
   private readonly codec: AgentXmlCodec;
@@ -9,7 +20,7 @@ export class AgentToolResultXmlRenderer {
     this.codec = new AgentXmlCodec(protocol);
   }
 
-  render(result: Extract<AgentExecutionResult, { kind: "ToolResults" }>): string {
+  render(result: ToolResultsExecution): string {
     return this.codec.objectToXml(this.protocol.roots.toolResults, {
       [this.protocol.items.toolResult]: result.value.map((entry) => ({
         [this.protocol.toolResult.runtime]: {

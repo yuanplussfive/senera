@@ -29,6 +29,7 @@ function options(): AgentMcpToolClientOptions {
   return {
     server: {
       id: "fixture",
+      revision: "test",
       command: "node",
       args: ["server.js"],
       cwd: "C:/workspace",

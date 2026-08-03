@@ -1,12 +1,17 @@
 import { createOpaqueId, createSessionId } from "../Core/AgentIds.js";
 import { AgentSessionStatuses, type AgentSession } from "./AgentSession.js";
 import type {
+  AgentSessionCursorPage,
+  AgentSessionCursorPageRequest,
   AgentSessionRepository,
+  AgentSessionHistorySnapshot,
+  AgentStepTraceCursor,
+  AgentStepTracePageRequest,
   AgentSessionTurnCommit,
   StoredRunSnapshot,
   StoredStepTraceRun,
-} from "./AgentSqliteSessionRepository.js";
-import { InMemorySessionRepository } from "./AgentSqliteSessionRepository.js";
+} from "./AgentSessionRepository.js";
+import { InMemorySessionRepository } from "../SessionPersistence/InMemorySessionRepository.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import {
@@ -26,6 +31,18 @@ import {
   withAgentPiSessionLifecycle,
 } from "../Pi/AgentPiSessionLifecycleMetadata.js";
 import type { AgentSessionHistoryMutation } from "./AgentSessionHistoryMutation.js";
+import type { AgentSessionForkMutation } from "./AgentSessionForkMutation.js";
+import type { AgentSessionForkSnapshot } from "./AgentSessionRepository.js";
+import type {
+  AgentSessionCommandAdmission,
+  AgentSessionCommandDescriptor,
+  AgentSessionCommandRecord,
+} from "./AgentSessionCommand.js";
+import {
+  resolveAgentSessionWorkingSetPolicy,
+  type AgentSessionWorkingSetPolicy,
+} from "./AgentSessionWorkingSetPolicy.js";
+import { clearAgentSessionRegenerationLineage } from "./AgentSessionLifecycleMetadata.js";
 
 export type AgentSessionOpenResult =
   | {
@@ -63,30 +80,71 @@ export type AgentSessionForkResult =
   | { kind: "target_exists"; sessionId: string }
   | { kind: "request_missing"; sourceSessionId: string; requestId: string };
 
+export type AgentSessionForkPreparationResult =
+  | {
+      kind: "prepared";
+      snapshot: AgentSessionForkSnapshot;
+      sourceSessionId: string;
+      throughRequestId: string;
+      requestIds: readonly string[];
+    }
+  | Exclude<AgentSessionForkResult, { kind: "forked" }>;
+
 export interface AgentSessionStoreOptions {
   repository?: AgentSessionRepository;
+  workingSet?: Partial<AgentSessionWorkingSetPolicy>;
 }
 
-/**
- * 内存缓存 + 仓储（默认内存仓储；接入 SqliteSessionRepository 可持久化）。
- * 启动时调用 hydrateFromRepository() 从仓储回填缓存。
- */
+/** 内存工作集 + 仓储。持久化会话只在首次访问时进入工作集。 */
 export class AgentSessionStore {
   private readonly sessions = new Map<string, AgentSession>();
   private readonly durableEventSequencer = new AgentEventSequencer();
   // 每个会话目前的 entry 计数（用作 SQLite sequence）
   private readonly sequenceBySession = new Map<string, number>();
+  private readonly retainedSessions = new Map<string, number>();
   private readonly repository: AgentSessionRepository;
+  private readonly workingSetPolicy: AgentSessionWorkingSetPolicy;
 
   constructor(options: AgentSessionStoreOptions = {}) {
     this.repository = options.repository ?? new InMemorySessionRepository();
+    this.workingSetPolicy = resolveAgentSessionWorkingSetPolicy(options.workingSet);
   }
 
-  /** 启动时把仓储里的会话灌进缓存 */
-  hydrate(): void {
-    for (const session of this.repository.loadAll()) {
-      this.sessions.set(session.id, session);
-      this.sequenceBySession.set(session.id, session.conversation.length);
+  retainWorkingSession(sessionId: string): () => void {
+    this.retainedSessions.set(sessionId, (this.retainedSessions.get(sessionId) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const count = this.retainedSessions.get(sessionId);
+      if (count === undefined || count <= 1) this.retainedSessions.delete(sessionId);
+      else this.retainedSessions.set(sessionId, count - 1);
+      this.trimWorkingSet();
+    };
+  }
+
+  trimWorkingSet(): void {
+    this.trimWorkingSetExcept();
+  }
+
+  private trimWorkingSetExcept(protectedSessionId?: string): void {
+    let idleCount = 0;
+    for (const session of this.sessions.values()) {
+      if (session.status === AgentSessionStatuses.Idle) idleCount += 1;
+    }
+    if (idleCount <= this.workingSetPolicy.maxIdleSessions) return;
+
+    for (const [sessionId, session] of this.sessions) {
+      if (idleCount <= this.workingSetPolicy.maxIdleSessions) break;
+      if (
+        sessionId === protectedSessionId ||
+        session.status !== AgentSessionStatuses.Idle ||
+        this.retainedSessions.has(sessionId)
+      ) {
+        continue;
+      }
+      this.evictWorkingSession(sessionId);
+      idleCount -= 1;
     }
   }
 
@@ -106,30 +164,41 @@ export class AgentSessionStore {
     const removed = this.repository.commitHistoryMutation(mutation.mutationId, session);
     const current = this.sessions.get(session.id);
     if (current) {
-      const anchor = current.conversation.findIndex((entry) => entry.requestId === mutation.fromRequestId);
-      current.conversation = anchor >= 0 ? current.conversation.slice(0, anchor) : current.conversation;
+      current.conversation = this.repository.loadEntries(session.id);
       current.metadata = structuredClone(session.metadata);
       current.updatedAt = session.updatedAt;
       current.status = session.status;
       current.activeRequest = session.activeRequest ? structuredClone(session.activeRequest) : undefined;
-      this.sequenceBySession.set(session.id, current.conversation.length);
+      this.rememberNextSequence(session.id, current.conversation.length);
     }
     return removed;
   }
 
+  listPendingForkMutations(): AgentSessionForkMutation[] {
+    return this.repository.listPendingForkMutations();
+  }
+
+  loadPendingForkMutation(targetSessionId: string): AgentSessionForkMutation | undefined {
+    return this.repository.loadPendingForkMutation(targetSessionId);
+  }
+
+  stageForkMutation(mutation: AgentSessionForkMutation): void {
+    this.repository.stageForkMutation(mutation);
+  }
+
+  requestIdsFrom(sessionId: string, requestId: string): string[] {
+    return this.repository.loadRequestIdsFrom(sessionId, requestId);
+  }
+
+  hasRequest(sessionId: string, requestId: string): boolean {
+    return this.repository.hasRequest(sessionId, requestId);
+  }
+
   open(sessionId?: string): AgentSessionOpenResult {
     const resolvedSessionId = sessionId?.trim() || createSessionId();
-    const existing = this.sessions.get(resolvedSessionId);
+    const existing = this.findOrLoadSession(resolvedSessionId);
     if (existing) {
       return { kind: "existing", session: existing };
-    }
-
-    // 也许仓储里有但内存里没有（罕见路径，热重载等）
-    const fromRepo = this.repository.loadSession(resolvedSessionId);
-    if (fromRepo) {
-      this.sessions.set(resolvedSessionId, fromRepo);
-      this.sequenceBySession.set(resolvedSessionId, fromRepo.conversation.length);
-      return { kind: "existing", session: fromRepo };
     }
 
     return {
@@ -138,18 +207,22 @@ export class AgentSessionStore {
     };
   }
 
-  fork(request: { sourceSessionId: string; sessionId: string; throughRequestId: string }): AgentSessionForkResult {
+  prepareFork(request: {
+    sourceSessionId: string;
+    sessionId: string;
+    throughRequestId: string;
+    piBranchBoundaryId?: string;
+  }): AgentSessionForkPreparationResult {
     const sourceLookup = this.get(request.sourceSessionId);
     if (sourceLookup.kind === "missing") {
       return { kind: "source_missing", sourceSessionId: request.sourceSessionId };
     }
-    if (this.sessions.has(request.sessionId) || this.repository.loadSession(request.sessionId)) {
+    if (this.hasPersistedSession(request.sessionId)) {
       return { kind: "target_exists", sessionId: request.sessionId };
     }
 
-    const sourceEntries = this.repository.loadEntries(request.sourceSessionId);
-    const lastIncludedIndex = findLastRequestIndex(sourceEntries, request.throughRequestId);
-    if (lastIncludedIndex < 0) {
+    const history = this.repository.loadForkHistoryThroughRequest(request.sourceSessionId, request.throughRequestId);
+    if (!history || !history.entries.some(({ entry }) => entry.requestId === request.throughRequestId)) {
       return {
         kind: "request_missing",
         sourceSessionId: request.sourceSessionId,
@@ -158,8 +231,8 @@ export class AgentSessionStore {
     }
 
     const timestamp = new Date().toISOString();
-    const entries = sourceEntries.slice(0, lastIncludedIndex + 1).map((entry) => ({
-      ...structuredClone(entry),
+    const entries = history.entries.map(({ entry }) => ({
+      ...entry,
       id: `${request.sessionId}:${entry.id}`,
     }));
     const includedRequestIds = new Set(entries.map((entry) => entry.requestId));
@@ -171,71 +244,87 @@ export class AgentSessionStore {
       status: AgentSessionStatuses.Idle,
       conversation: entries,
       metadata: withAgentPiSessionLifecycle(
-        structuredClone(sourceLookup.session.metadata),
-        AgentPiSessionLifecycleStates.Absent,
+        clearAgentSessionRegenerationLineage(structuredClone(sourceLookup.session.metadata)),
+        request.piBranchBoundaryId ? AgentPiSessionLifecycleStates.Initialized : AgentPiSessionLifecycleStates.Absent,
         sourcePi.modelProviderId,
       ),
     };
 
-    const traces = this.repository
-      .loadStepTraces(request.sourceSessionId)
-      .filter((run) => includedRequestIds.has(run.requestId))
-      .flatMap((run) =>
-        run.traces.map((trace) => ({ requestId: run.requestId, turnSequence: run.turnSequence, trace })),
-      );
-    const runSnapshots = this.repository
-      .loadRunSnapshots(request.sourceSessionId)
-      .filter((snapshot) => includedRequestIds.has(snapshot.requestId))
-      .map((snapshot) => ({ ...structuredClone(snapshot), sessionId: session.id }));
-    const turnPreparations = [...includedRequestIds].flatMap((requestId) => {
-      const preparation = this.repository.loadTurnPreparation(request.sourceSessionId, requestId);
-      if (!preparation) return [];
+    const traces = history.traces.map((item) => structuredClone(item));
+    const runSnapshots = history.runSnapshots.map((snapshot) => ({
+      ...structuredClone(snapshot),
+      sessionId: session.id,
+    }));
+    const turnPreparations = history.turnPreparations.map(({ requestId, snapshot: preparation }) => {
+      if (request.piBranchBoundaryId) return { requestId, snapshot: structuredClone(preparation) };
       const { piBranchBoundaryId: _sourceBoundary, ...portablePreparation } = structuredClone(preparation);
-      return [{ requestId, snapshot: portablePreparation }];
+      return { requestId, snapshot: portablePreparation };
     });
-    const runEvents = this.repository
-      .loadRunEvents(request.sourceSessionId)
-      .filter((event) => event.requestId && includedRequestIds.has(event.requestId))
-      .map((event) => ({
-        ...structuredClone(event),
-        eventId: createOpaqueId("event"),
-        sessionId: session.id,
-      }));
+    const runEvents = history.runEvents.map((event) => ({
+      ...structuredClone(event),
+      eventId: createOpaqueId("event"),
+      sessionId: session.id,
+    }));
 
-    this.repository.createFork({
+    const snapshot: AgentSessionForkSnapshot = {
       session,
       entries: entries.map((entry, sequence) => ({ entry, sequence })),
       traces,
       runSnapshots,
       turnPreparations,
       runEvents,
-    });
-
-    this.sessions.set(session.id, session);
-    this.sequenceBySession.set(session.id, entries.length);
+    };
     return {
-      kind: "forked",
-      session,
+      kind: "prepared",
+      snapshot,
       sourceSessionId: request.sourceSessionId,
       throughRequestId: request.throughRequestId,
+      requestIds: [...includedRequestIds],
     };
   }
 
+  commitForkMutation(
+    mutation: AgentSessionForkMutation,
+    preparation: Extract<AgentSessionForkPreparationResult, { kind: "prepared" }>,
+  ): AgentSessionForkResult {
+    if (
+      mutation.sourceSessionId !== preparation.sourceSessionId ||
+      mutation.targetSessionId !== preparation.snapshot.session.id ||
+      mutation.throughRequestId !== preparation.throughRequestId
+    ) {
+      throw new Error(`Session fork mutation does not match prepared snapshot: ${mutation.targetSessionId}`);
+    }
+    this.repository.commitForkMutation(mutation.mutationId, preparation.snapshot);
+    const session = preparation.snapshot.session;
+    this.cacheWorkingSession(session, preparation.snapshot.entries.length);
+    return {
+      kind: "forked",
+      session,
+      sourceSessionId: preparation.sourceSessionId,
+      throughRequestId: preparation.throughRequestId,
+    };
+  }
+
+  abortForkMutation(mutation: AgentSessionForkMutation): boolean {
+    return this.repository.abortForkMutation(mutation.targetSessionId, mutation.mutationId);
+  }
+
   get(sessionId: string): AgentSessionLookupResult {
-    const session = this.sessions.get(sessionId);
+    const session = this.findOrLoadSession(sessionId);
     return session ? { kind: "found", session } : { kind: "missing", sessionId };
   }
 
   hasPersistedSession(sessionId: string): boolean {
-    return Boolean(this.sessions.get(sessionId) ?? this.repository.loadSession(sessionId));
+    return this.sessions.has(sessionId) || this.repository.hasSession(sessionId);
   }
 
   close(sessionId: string): AgentSessionCloseResult {
     const lookup = this.get(sessionId);
     if (lookup.kind === "missing") return lookup;
-    this.sessions.delete(sessionId);
-    this.sequenceBySession.delete(sessionId);
-    this.repository.deleteSession(sessionId);
+    if (!this.repository.deleteSession(sessionId)) {
+      throw new Error(`Persisted session disappeared before close commit: ${sessionId}`);
+    }
+    this.evictWorkingSession(sessionId);
     return { kind: "closed", session: lookup.session };
   }
 
@@ -253,9 +342,45 @@ export class AgentSessionStore {
     });
   }
 
+  listSessionMetadata(): AgentSession[] {
+    return this.repository.listSessionMetadata().map((persisted) => {
+      const live = this.sessions.get(persisted.id);
+      return live
+        ? {
+            ...persisted,
+            status: live.status,
+            activeRequest: live.activeRequest,
+          }
+        : persisted;
+    });
+  }
+
   /** 读取某会话完整 conversation（懒加载） */
   loadConversation(sessionId: string): AgentConversationEntry[] {
     return this.repository.loadEntries(sessionId);
+  }
+
+  loadFirstUserMessage(sessionId: string): AgentConversationEntry | undefined {
+    return this.repository.loadFirstUserMessage(sessionId);
+  }
+
+  captureHistorySnapshot(sessionId: string): AgentSessionHistorySnapshot | undefined {
+    return this.repository.captureHistorySnapshot(sessionId);
+  }
+
+  loadConversationPage(
+    sessionId: string,
+    request: AgentSessionCursorPageRequest,
+  ): AgentSessionCursorPage<AgentConversationEntry> {
+    return this.repository.loadEntryPage(sessionId, request);
+  }
+
+  loadConversationEntriesForRequests(
+    sessionId: string,
+    requestIds: readonly string[],
+    throughSequence: number,
+  ): AgentConversationEntry[] {
+    return this.repository.loadEntriesForRequests(sessionId, requestIds, throughSequence);
   }
 
   /** 读取某会话执行事件日志（用于右侧执行轨迹历史回放）。 */
@@ -263,9 +388,26 @@ export class AgentSessionStore {
     return this.repository.loadRunEvents(sessionId);
   }
 
+  loadRunEventPage(
+    sessionId: string,
+    request: AgentSessionCursorPageRequest,
+  ): AgentSessionCursorPage<AgentEventEnvelope> {
+    return this.repository.loadRunEventPage(sessionId, request);
+  }
+
+  loadRunEventsForRequest(sessionId: string, requestId: string): AgentEventEnvelope[] {
+    return this.repository.loadRunEventsForRequest(sessionId, requestId);
+  }
+
   rename(sessionId: string, title: string): void {
-    this.repository.renameSession(sessionId, title);
-    // 内存缓存里没有 title 字段（沿用旧 model），不动
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      this.repository.renameSession(sessionId, title);
+      return;
+    }
+    session.metadata = { ...session.metadata, title };
+    session.updatedAt = new Date().toISOString();
+    this.repository.upsertSession(session);
   }
 
   /** 删除某 sessionId 从指定 requestId 起的所有 entries，并同步内存缓存 */
@@ -273,11 +415,8 @@ export class AgentSessionStore {
     const removed = this.repository.truncateFromRequest(sessionId, requestId);
     const session = this.sessions.get(sessionId);
     if (session) {
-      const idx = session.conversation.findIndex((e) => e.requestId === requestId);
-      if (idx >= 0) {
-        session.conversation = session.conversation.slice(0, idx);
-      }
-      this.sequenceBySession.set(sessionId, session.conversation.length);
+      session.conversation = this.repository.loadEntries(sessionId);
+      this.rememberNextSequence(sessionId, session.conversation.length);
     }
     return removed;
   }
@@ -290,10 +429,10 @@ export class AgentSessionStore {
   /** 把若干新 entries 追加到仓储——append-only，事务保证原子 */
   persistEntries(sessionId: string, entries: ReadonlyArray<AgentConversationEntry>): void {
     if (entries.length === 0) return;
-    const baseSeq = this.sequenceBySession.get(sessionId) ?? 0;
+    const baseSeq = this.resolveNextSequence(sessionId);
     const items = entries.map((entry, i) => ({ entry, sequence: baseSeq + i }));
     this.repository.appendEntries(sessionId, items);
-    this.sequenceBySession.set(sessionId, baseSeq + entries.length);
+    this.rememberNextSequence(sessionId, baseSeq + entries.length);
   }
 
   /**
@@ -307,11 +446,11 @@ export class AgentSessionStore {
     traces: ReadonlyArray<StepTrace>,
   ): void {
     if (entries.length === 0 && traces.length === 0) return;
-    const baseSeq = this.sequenceBySession.get(sessionId) ?? 0;
+    const baseSeq = this.resolveNextSequence(sessionId);
     const entryItems = entries.map((entry, i) => ({ entry, sequence: baseSeq + i }));
     const traceItems = traces.map((trace) => ({ requestId, turnSequence: baseSeq, trace }));
     this.repository.persistTurnArtifacts(sessionId, entryItems, traceItems);
-    this.sequenceBySession.set(sessionId, baseSeq + entries.length);
+    this.rememberNextSequence(sessionId, baseSeq + entries.length);
   }
 
   persistTurnCommit(
@@ -323,7 +462,7 @@ export class AgentSessionStore {
     events: readonly AgentDomainEvent[],
     session?: AgentSession,
   ): void {
-    const baseSeq = this.sequenceBySession.get(sessionId) ?? 0;
+    const baseSeq = this.resolveNextSequence(sessionId);
     const entryItems = entries.map((entry, index) => ({ entry, sequence: baseSeq + index }));
     const traceItems = traces.map((trace) => ({ requestId, turnSequence: baseSeq, trace }));
     const runEvents = this.projectDurableEvents(sessionId, requestId, events);
@@ -335,9 +474,10 @@ export class AgentSessionStore {
       traces: traceItems,
       snapshot,
       runEvents,
+      commandId: requestId,
     };
     this.repository.persistTurnCommit(commit);
-    this.sequenceBySession.set(sessionId, baseSeq + entries.length);
+    this.rememberNextSequence(sessionId, baseSeq + entries.length);
   }
 
   persistRunStart(
@@ -346,9 +486,10 @@ export class AgentSessionStore {
     userEntry: AgentConversationEntry,
     snapshot: StoredRunSnapshot,
     event: AgentDomainEvent,
-  ): void {
-    const baseSeq = this.sequenceBySession.get(session.id) ?? 0;
-    this.repository.persistTurnCommit({
+    command: AgentSessionCommandDescriptor,
+  ): AgentSessionCommandAdmission {
+    const baseSeq = this.resolveNextSequence(session.id);
+    const admission = this.repository.beginRun(command, {
       sessionId: session.id,
       requestId,
       session,
@@ -357,12 +498,28 @@ export class AgentSessionStore {
       snapshot,
       runEvents: this.projectDurableEvents(session.id, requestId, [event]),
     });
-    this.sequenceBySession.set(session.id, baseSeq + 1);
+    if (admission.kind === "accepted") this.rememberNextSequence(session.id, baseSeq + 1);
+    return admission;
+  }
+
+  loadCommand(sessionId: string, commandId: string): AgentSessionCommandRecord | undefined {
+    return this.repository.loadCommand(sessionId, commandId);
   }
 
   /** 读取某会话所有 step 轨迹，按轮次分组（回放重建执行图用） */
   loadStepTraces(sessionId: string): StoredStepTraceRun[] {
     return this.repository.loadStepTraces(sessionId);
+  }
+
+  loadStepTracePage(
+    sessionId: string,
+    request: AgentStepTracePageRequest,
+  ): AgentSessionCursorPage<StoredStepTraceRun, AgentStepTraceCursor> {
+    return this.repository.loadStepTracePage(sessionId, request);
+  }
+
+  loadStepTraceRequestIds(sessionId: string, requestIds: readonly string[], throughRowId: number): string[] {
+    return this.repository.loadStepTraceRequestIds(sessionId, requestIds, throughRowId);
   }
 
   persistRunEvent(sessionId: string, event: AgentEventEnvelope): void {
@@ -381,6 +538,25 @@ export class AgentSessionStore {
   /** 读取某会话所有 run snapshots */
   loadRunSnapshots(sessionId: string): StoredRunSnapshot[] {
     return this.repository.loadRunSnapshots(sessionId);
+  }
+
+  loadRunSnapshotsForRequests(
+    sessionId: string,
+    requestIds: readonly string[],
+    throughSequence: number,
+  ): StoredRunSnapshot[] {
+    return this.repository.loadRunSnapshotsForRequests(sessionId, requestIds, throughSequence);
+  }
+
+  loadRunSnapshotPage(
+    sessionId: string,
+    request: AgentSessionCursorPageRequest,
+  ): AgentSessionCursorPage<StoredRunSnapshot> {
+    return this.repository.loadRunSnapshotPage(sessionId, request);
+  }
+
+  loadRunningRunSnapshots(): StoredRunSnapshot[] {
+    return this.repository.loadRunningRunSnapshots();
   }
 
   persistTurnPreparation(sessionId: string, requestId: string, snapshot: AgentTurnPreparationSnapshot): void {
@@ -407,10 +583,57 @@ export class AgentSessionStore {
       conversation: [],
     };
 
-    this.sessions.set(sessionId, session);
-    this.sequenceBySession.set(sessionId, 0);
+    this.cacheWorkingSession(session, 0);
     this.repository.upsertSession(session);
     return session;
+  }
+
+  private findOrLoadSession(sessionId: string): AgentSession | undefined {
+    const current = this.sessions.get(sessionId);
+    if (current) {
+      this.touchWorkingSession(sessionId, current);
+      return current;
+    }
+
+    const snapshot = this.repository.captureHistorySnapshot(sessionId);
+    if (!snapshot) return undefined;
+    const session: AgentSession = {
+      ...snapshot.session,
+      conversation: this.repository.loadEntries(sessionId),
+    };
+    this.cacheWorkingSession(session, snapshot.entryCount);
+    return session;
+  }
+
+  private resolveNextSequence(sessionId: string): number {
+    const current = this.sequenceBySession.get(sessionId);
+    if (current !== undefined) return current;
+    const next = this.repository.captureHistorySnapshot(sessionId)?.entryCount ?? 0;
+    this.rememberNextSequence(sessionId, next);
+    return next;
+  }
+
+  private cacheWorkingSession(session: AgentSession, nextSequence: number): void {
+    this.sessions.delete(session.id);
+    this.sessions.set(session.id, session);
+    this.sequenceBySession.set(session.id, nextSequence);
+    this.trimWorkingSetExcept(session.id);
+  }
+
+  private touchWorkingSession(sessionId: string, session: AgentSession): void {
+    this.sessions.delete(sessionId);
+    this.sessions.set(sessionId, session);
+    this.trimWorkingSetExcept(sessionId);
+  }
+
+  private rememberNextSequence(sessionId: string, nextSequence: number): void {
+    if (this.sessions.has(sessionId)) this.sequenceBySession.set(sessionId, nextSequence);
+    else this.sequenceBySession.delete(sessionId);
+  }
+
+  private evictWorkingSession(sessionId: string): void {
+    this.sessions.delete(sessionId);
+    this.sequenceBySession.delete(sessionId);
   }
 
   private projectDurableEvents(
@@ -434,11 +657,4 @@ export class AgentSessionStore {
       return projected ? [projected] : [];
     });
   }
-}
-
-function findLastRequestIndex(entries: readonly AgentConversationEntry[], requestId: string): number {
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    if (entries[index]?.requestId === requestId) return index;
-  }
-  return -1;
 }

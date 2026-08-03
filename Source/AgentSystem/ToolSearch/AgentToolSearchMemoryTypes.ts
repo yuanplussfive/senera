@@ -32,6 +32,9 @@ export interface AgentToolSearchEpisodeCall {
   hasWorkspaceChanges: boolean;
   errorCode: string;
   error: string;
+  failureKind?: string;
+  failureSource?: string;
+  retryable?: boolean;
   score: number;
 }
 
@@ -103,9 +106,35 @@ export interface AgentToolLearningProjection {
 
 export interface AgentToolSearchMemoryStore {
   add(episode: AgentToolSearchEpisode, projection: AgentToolLearningProjection): void;
+  commitToolLearning(
+    episode: AgentToolSearchEpisode,
+    projection: AgentToolLearningProjection,
+    learningEpisodeId: string,
+    resolution: import("./AgentLearningEpisodeTypes.js").AgentLearningEpisodeResolution,
+  ): void;
   list(projectId: string, limit: number): AgentToolSearchEpisode[];
   terms(projectId: string): AgentToolLearningTermAggregate[];
   patterns(projectId: string): AgentToolUsePatternAggregate[];
+  recordLearningEpisode(episode: import("./AgentLearningEpisodeTypes.js").AgentLearningEpisode): void;
+  resolveLearningEpisode(
+    id: string,
+    resolution: import("./AgentLearningEpisodeTypes.js").AgentLearningEpisodeResolution,
+  ): void;
+  learningEpisodes(projectId: string, limit: number): import("./AgentLearningEpisodeTypes.js").AgentLearningEpisode[];
+  learningEpisode(
+    projectId: string,
+    id: string,
+  ): import("./AgentLearningEpisodeTypes.js").AgentLearningEpisode | undefined;
+  learningSummary(projectId: string): import("./AgentLearningEpisodeTypes.js").AgentLearningSummary;
+  addSkillLearningTerms(
+    terms: readonly import("./AgentLearningEpisodeTypes.js").AgentSkillLearningTermAggregate[],
+  ): void;
+  commitSkillLearning(
+    terms: readonly import("./AgentLearningEpisodeTypes.js").AgentSkillLearningTermAggregate[],
+    learningEpisodeId: string,
+    resolution: import("./AgentLearningEpisodeTypes.js").AgentLearningEpisodeResolution,
+  ): void;
+  skillLearningTerms(projectId: string): import("./AgentLearningEpisodeTypes.js").AgentSkillLearningTermAggregate[];
   prune(maxEpisodes: number): void;
   close(): void;
 }

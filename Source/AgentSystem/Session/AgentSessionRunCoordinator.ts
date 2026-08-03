@@ -3,89 +3,70 @@ import { AgentEventKinds, emitAgentEvent, withEventContext } from "../Events/Age
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import { createOpaqueId, createRequestId } from "../Core/AgentIds.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
-import { type AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { type AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentLoopRunner } from "../Loop/AgentLoopRunner.js";
 import { type AgentMemoryService } from "../Memory/AgentMemoryService.js";
 import type { AgentMemoryCompletedTurnInput } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
-import type { AgentPiSession } from "../Pi/AgentPiSubstrate.js";
-import {
-  AgentPiDiagnosticSources,
-  emitAgentPiDiagnostic,
-  type AgentPiDiagnosticSink,
-} from "../Pi/AgentPiDiagnostics.js";
+import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
-import { AgentSessionStatuses, type AgentSession } from "./AgentSession.js";
+import type { AgentSession } from "./AgentSession.js";
 import {
+  cloneAgentSessionState,
   collectFreshConversationEntries,
-  materializeSessionRunMessages,
   mergeSessionConversationEntries,
   projectSessionUserEntry,
+  replaceAgentSessionState,
   stampSessionStepTraces,
 } from "./AgentSessionRunProjection.js";
-import { AgentSessionRunSnapshotWriter } from "./AgentSessionRunSnapshotWriter.js";
 import { type AgentSessionStore } from "./AgentSessionStore.js";
 import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
 import { AgentPiSessionLifecycleStates, withAgentPiSessionLifecycle } from "../Pi/AgentPiSessionLifecycleMetadata.js";
 import type { AgentSessionMessageQueueMode } from "./AgentSessionMessageQueueMode.js";
-import {
-  AgentSessionRunSettlementTimeoutError,
-  type AgentSessionRunControlPolicy,
-  waitForAgentSessionRunSettlement,
-} from "./AgentSessionRunControlPolicy.js";
+import type { AgentSessionRunControlPolicy } from "./AgentSessionRunControlPolicy.js";
 import type { AgentSessionRunResource } from "./AgentSessionRunResource.js";
-import { releaseAgentLifecycleResources } from "../Core/AgentLifecycleResource.js";
 import {
   resolveAgentToolAvailabilitySnapshot,
   withAgentToolAvailabilitySnapshot,
 } from "../ToolRuntime/AgentToolAvailabilitySnapshot.js";
-import { clearAgentSessionCancellation, withAgentSessionCancellationPending } from "./AgentSessionLifecycleMetadata.js";
+import type { AgentSessionHistoryMutationCoordinator } from "./AgentSessionHistoryMutationCoordinator.js";
+import type { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
+import { createAgentSessionMessageCommand } from "./AgentSessionCommand.js";
+import {
+  AgentSessionActiveRunController,
+  createAgentSessionRunCancelledEvent,
+  createAgentSessionRunFailedEvent,
+  readAgentSessionRunErrorMessage,
+  type AgentSessionAvailability,
+} from "./AgentSessionActiveRunController.js";
 
 export interface AgentSessionRunCoordinatorOptions {
   store: AgentSessionStore;
-  conversationPolicy: AgentConversationPolicy;
   conversationProjector: AgentConversationProjector;
+  conversationPolicy: AgentConversationPolicy;
   memory: AgentMemoryService;
   logger?: AgentLogger;
   runResources?: readonly AgentSessionRunResource[];
   piSessions?: AgentPiActiveSessionRegistry;
   piDiagnostics?: AgentPiDiagnosticSink;
+  historyMutations: Pick<AgentSessionHistoryMutationCoordinator, "truncate">;
   runControl: AgentSessionRunControlPolicy;
   loopFactory: (modelProviderId?: string) => AgentLoopRunner;
 }
 
-export type AgentSessionAvailability =
-  { kind: "available"; current: AgentSession } | { kind: "busy"; current: AgentSession };
+export type { AgentSessionAvailability } from "./AgentSessionActiveRunController.js";
+export { AgentSessionRunCoordinatorShuttingDownError } from "./AgentSessionActiveRunController.js";
 
 export class AgentSessionRunCoordinator {
-  private readonly activeRuns = new Map<string, ActiveSessionRun>();
-  private readonly snapshots: AgentSessionRunSnapshotWriter;
-  private readonly runResources: readonly AgentSessionRunResource[];
+  private readonly activeRuns: AgentSessionActiveRunController;
 
   constructor(private readonly options: AgentSessionRunCoordinatorOptions) {
-    this.snapshots = new AgentSessionRunSnapshotWriter(options.store);
-    this.runResources = [...(options.runResources ?? [])];
+    this.activeRuns = new AgentSessionActiveRunController(options);
   }
 
   assertAvailable(session: AgentSession): AgentSessionAvailability {
-    const activeRun = this.activeRuns.get(session.id);
-    if (session.status === AgentSessionStatuses.Running && !activeRun) {
-      this.releaseSession(session);
-      this.options.store.persistMetadata(session);
-    }
-
-    return activeRun
-      ? {
-          kind: "busy",
-          current: session,
-        }
-      : {
-          kind: "available",
-          current: session,
-        };
+    return this.activeRuns.assertAvailable(session);
   }
 
   async runTurn(
@@ -99,17 +80,25 @@ export class AgentSessionRunCoordinator {
       preparation?: AgentTurnPreparationSnapshot;
     },
   ): Promise<void> {
+    this.activeRuns.assertAcceptingRuns();
     const requestId = request.requestId?.trim() || createRequestId();
     const timestamp = new Date().toISOString();
     const userEntry = projectSessionUserEntry(this.options.conversationProjector, requestId, request, timestamp);
-    const messages = materializeSessionRunMessages(this.options.conversationPolicy, session, userEntry);
-
-    this.markSessionRunning(session, {
+    const command = createAgentSessionMessageCommand({
+      requestId,
+      modelProviderId: request.modelProviderId,
+      text: request.input,
+      attachments: request.attachments,
+      createdAt: timestamp,
+    });
+    const runningSession = cloneAgentSessionState(session);
+    this.activeRuns.markSessionRunning(runningSession, {
       requestId,
       input: request.input,
       startedAt: timestamp,
       attachments: request.attachments,
     });
+    runningSession.conversation = mergeSessionConversationEntries([...runningSession.conversation, userEntry]);
     const runStartedEvent = withEventContext(
       {
         eventId: createOpaqueId("event"),
@@ -119,8 +108,8 @@ export class AgentSessionRunCoordinator {
       },
       { sessionId: session.id },
     );
-    this.options.store.persistRunStart(
-      session,
+    const admission = this.options.store.persistRunStart(
+      runningSession,
       requestId,
       userEntry,
       {
@@ -132,11 +121,18 @@ export class AgentSessionRunCoordinator {
         updatedAt: timestamp,
       },
       runStartedEvent,
+      command,
     );
-    session.conversation = mergeSessionConversationEntries([...session.conversation, userEntry]);
-    const run = this.registerActiveRun(session.id, requestId, request.onEvent);
+    if (admission.kind === "replayed") {
+      await this.replayDurableRunEvents(session.id, requestId, request.onEvent);
+      return;
+    }
+
+    replaceAgentSessionState(session, runningSession);
+    const run = this.activeRuns.register(session.id, requestId, request.onEvent);
     const terminalEvents: AgentDomainEvent[] = [];
     let terminalSessionCommitted = false;
+    let terminalCommitFailed = false;
 
     try {
       await emitAgentEvent(request.onEvent, runStartedEvent);
@@ -146,13 +142,12 @@ export class AgentSessionRunCoordinator {
         sessionId: session.id,
         requestId,
         input: request.input,
-        messages,
         conversationEntries: [...session.conversation],
         loadedToolNames: inheritedToolNames,
         signal: run.controller.signal,
         emitRunStarted: false,
         onEvent: async (event) => {
-          if (!this.isActiveRun(session.id, run)) {
+          if (!this.activeRuns.isCurrent(session.id, run)) {
             return;
           }
 
@@ -164,7 +159,7 @@ export class AgentSessionRunCoordinator {
         preparation: request.preparation,
         onPreparation: (snapshot) => {
           this.options.store.persistTurnPreparation(session.id, requestId, snapshot);
-          if (loop.preparationFingerprint) {
+          if (loop.preparationFingerprint && snapshot.loadedToolNames.length > 0) {
             session.metadata = withAgentToolAvailabilitySnapshot(
               session.metadata,
               loop.preparationFingerprint,
@@ -193,7 +188,7 @@ export class AgentSessionRunCoordinator {
           );
         },
       });
-      if (!this.isActiveRun(session.id, run)) {
+      if (!this.activeRuns.isCurrent(session.id, run)) {
         return;
       }
 
@@ -216,47 +211,54 @@ export class AgentSessionRunCoordinator {
         assistantEntry,
       ]);
       const completedAt = assistantEntry.timestamp;
-      session.conversation = mergeSessionConversationEntries([
-        ...session.conversation,
+      const completedSession = cloneAgentSessionState(session);
+      completedSession.conversation = mergeSessionConversationEntries([
+        ...completedSession.conversation,
         ...result.conversationEntries,
         assistantEntry,
       ]);
       if (result.modelProvider) {
-        session.metadata = {
-          ...session.metadata,
+        completedSession.metadata = {
+          ...completedSession.metadata,
           lastRun: {
             modelProvider: result.modelProvider,
             usage: result.usage,
           },
         };
       }
-      if (loop.preparationFingerprint && result.loadedToolNames) {
-        session.metadata = withAgentToolAvailabilitySnapshot(
-          session.metadata,
+      if (loop.preparationFingerprint && result.loadedToolNames && result.loadedToolNames.length > 0) {
+        completedSession.metadata = withAgentToolAvailabilitySnapshot(
+          completedSession.metadata,
           loop.preparationFingerprint,
           result.loadedToolNames,
         );
       }
-      this.releaseSession(session);
-      session.updatedAt = completedAt;
-      this.options.store.persistTurnCommit(
-        session.id,
-        requestId,
-        freshEntries,
-        stampSessionStepTraces(result.stepTraces, timestamp, assistantEntry.timestamp),
-        {
-          sessionId: session.id,
+      this.activeRuns.releaseSession(completedSession);
+      completedSession.updatedAt = completedAt;
+      try {
+        this.options.store.persistTurnCommit(
+          session.id,
           requestId,
-          input: request.input,
-          status: "completed",
-          startedAt: timestamp,
-          updatedAt: completedAt,
-          endedAt: completedAt,
-          modelProvider: result.modelProvider,
-        },
-        terminalEvents,
-        session,
-      );
+          freshEntries,
+          stampSessionStepTraces(result.stepTraces, timestamp, assistantEntry.timestamp),
+          {
+            sessionId: session.id,
+            requestId,
+            input: request.input,
+            status: "completed",
+            startedAt: timestamp,
+            updatedAt: completedAt,
+            endedAt: completedAt,
+            modelProvider: result.modelProvider,
+          },
+          terminalEvents,
+          completedSession,
+        );
+      } catch (error) {
+        terminalCommitFailed = true;
+        throw error;
+      }
+      replaceAgentSessionState(session, completedSession);
       terminalSessionCommitted = true;
       await this.publishTerminalEvents(request.onEvent, terminalEvents);
       this.recordCompletedTurn({
@@ -267,21 +269,22 @@ export class AgentSessionRunCoordinator {
         userEntry,
         assistantEntry,
         terminal: result.terminal,
-        turnUnderstanding: result.turnUnderstanding,
         conversationEntries: freshEntries,
+        executedTools: result.executedTools,
         modelProvider: result.modelProvider,
       });
     } catch (error) {
-      if (!this.isActiveRun(session.id, run)) {
+      if (!this.activeRuns.isCurrent(session.id, run)) {
         return;
       }
 
       if (error instanceof AgentCancellationError) {
-        if (!run.suppressCancellationEvent) {
-          const endedAt = new Date().toISOString();
-          const cancelledEvent = this.createRunCancelledEvent(session.id, requestId);
-          this.releaseSession(session);
-          session.updatedAt = endedAt;
+        const endedAt = new Date().toISOString();
+        const cancelledEvent = createAgentSessionRunCancelledEvent(session.id, requestId);
+        const cancelledSession = cloneAgentSessionState(session);
+        this.activeRuns.releaseSession(cancelledSession);
+        cancelledSession.updatedAt = endedAt;
+        try {
           this.options.store.persistTurnCommit(
             session.id,
             requestId,
@@ -298,52 +301,60 @@ export class AgentSessionRunCoordinator {
               errorMessage: error.message,
             },
             [cancelledEvent],
-            session,
+            cancelledSession,
           );
-          terminalSessionCommitted = true;
+        } catch (commitError) {
+          terminalCommitFailed = true;
+          throw commitError;
+        }
+        replaceAgentSessionState(session, cancelledSession);
+        terminalSessionCommitted = true;
+        if (!run.suppressCancellationEvent) {
           await this.publishTerminalEvents(request.onEvent, [cancelledEvent]);
         }
         return;
       }
 
       const endedAt = new Date().toISOString();
-      const failedEvent = this.createRunFailedEvent(session.id, requestId, error);
-      this.releaseSession(session);
-      session.updatedAt = endedAt;
-      this.options.store.persistTurnCommit(
-        session.id,
-        requestId,
-        [],
-        [],
-        {
-          sessionId: session.id,
+      const failedEvent = createAgentSessionRunFailedEvent(session.id, requestId, error);
+      const failedSession = cloneAgentSessionState(session);
+      this.activeRuns.releaseSession(failedSession);
+      failedSession.updatedAt = endedAt;
+      try {
+        this.options.store.persistTurnCommit(
+          session.id,
           requestId,
-          input: request.input,
-          status: "failed",
-          startedAt: timestamp,
-          updatedAt: endedAt,
-          endedAt,
-          errorMessage: readErrorMessage(error),
-        },
-        [failedEvent],
-        session,
-      );
+          [],
+          [],
+          {
+            sessionId: session.id,
+            requestId,
+            input: request.input,
+            status: "failed",
+            startedAt: timestamp,
+            updatedAt: endedAt,
+            endedAt,
+            errorMessage: readAgentSessionRunErrorMessage(error),
+          },
+          [failedEvent],
+          failedSession,
+        );
+      } catch (commitError) {
+        terminalCommitFailed = true;
+        throw commitError;
+      }
+      replaceAgentSessionState(session, failedSession);
       terminalSessionCommitted = true;
       await this.publishTerminalEvents(request.onEvent, [failedEvent]);
       return;
     } finally {
-      try {
-        if (this.isActiveRun(session.id, run)) {
-          await this.cleanupRunOwnedResources(session.id, requestId);
-          this.activeRuns.delete(session.id);
-          if (!terminalSessionCommitted) {
-            this.releaseSession(session);
-            this.options.store.persistMetadata(session);
-          }
-        }
-      } finally {
-        run.resolveSettled();
-      }
+      await this.activeRuns.finalize({
+        session,
+        requestId,
+        run,
+        terminalSessionCommitted,
+        terminalCommitFailed,
+      });
     }
   }
 
@@ -354,6 +365,26 @@ export class AgentSessionRunCoordinator {
       this.options.logger?.warn("memory.record_completed_turn.failed", {
         error: serializeError(error),
       });
+    }
+  }
+
+  private async replayDurableRunEvents(
+    sessionId: string,
+    requestId: string,
+    onEvent: AgentEventSink | undefined,
+  ): Promise<void> {
+    for (const event of this.options.store.loadRunEventsForRequest(sessionId, requestId)) {
+      await emitAgentEvent(onEvent, {
+        eventId: event.eventId,
+        kind: event.kind,
+        context: {
+          sessionId: event.sessionId ?? sessionId,
+          requestId: event.requestId ?? requestId,
+          step: event.step,
+          scope: event.scope,
+        },
+        data: event.data,
+      } as AgentDomainEvent);
     }
   }
 
@@ -375,45 +406,8 @@ export class AgentSessionRunCoordinator {
     }
   }
 
-  private async cleanupRunOwnedResources(sessionId: string, requestId: string): Promise<void> {
-    const failures = await releaseAgentLifecycleResources(this.runResources, { sessionId, requestId });
-    failures.forEach((failure) => {
-      this.options.logger?.warn("session.run_owned_resource.cleanup_failed", {
-        sessionId,
-        requestId,
-        resource: failure.resourceId,
-        error: serializeError(failure.error),
-      });
-    });
-  }
-
   async cancelActiveRun(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<boolean> {
-    const run = this.activeRuns.get(request.sessionId);
-    if (!run) {
-      return false;
-    }
-
-    const lookup = this.options.store.get(request.sessionId);
-    await this.stopActiveRun(lookup.kind === "found" ? lookup.session : undefined, run);
-
-    await this.emitRunCancelled(request.sessionId, run.requestId, request.onEvent ?? run.onEvent);
-
-    const removedEntries = this.options.store.truncateFromRequest(request.sessionId, run.requestId);
-    this.options.memory.deleteFromSessionRequest(request.sessionId, run.requestId);
-    if (lookup.kind === "found") {
-      lookup.session.updatedAt = new Date().toISOString();
-      this.options.store.persistMetadata(lookup.session);
-    }
-    await emitAgentEvent(request.onEvent ?? run.onEvent, {
-      kind: AgentEventKinds.SessionTruncated,
-      context: { sessionId: request.sessionId },
-      data: {
-        sessionId: request.sessionId,
-        fromRequestId: run.requestId,
-        removedEntries,
-      },
-    });
-    return true;
+    return this.activeRuns.cancelActiveRun(request);
   }
 
   async enqueueActiveRunMessage(request: {
@@ -424,310 +418,30 @@ export class AgentSessionRunCoordinator {
     queueMode: AgentSessionMessageQueueMode;
     onEvent?: AgentEventSink;
   }): Promise<boolean> {
-    const run = this.activeRuns.get(request.session.id);
-    const handle = this.options.piSessions?.get(request.session.id);
-    if (!run || !handle || handle.requestId !== run.requestId) {
-      return false;
-    }
-
-    const requestId = request.requestId?.trim() || createRequestId();
-    const timestamp = new Date().toISOString();
-    const userEntry = projectSessionUserEntry(this.options.conversationProjector, requestId, request, timestamp);
-
-    const queueMode = request.queueMode;
-    await ActiveRunQueueHandlers[queueMode](handle.session, request.input);
-
-    this.options.store.persistEntries(request.session.id, [userEntry]);
-    request.session.conversation = mergeSessionConversationEntries([...request.session.conversation, userEntry]);
-    request.session.updatedAt = timestamp;
-    this.options.store.persistMetadata(request.session);
-
-    await emitAgentPiDiagnostic(this.options.piDiagnostics, {
-      context: {
-        sessionId: request.session.id,
-        requestId: run.requestId,
-        step: handle.step,
-      },
-      source: AgentPiDiagnosticSources.Substrate,
-      name: `runtime_queue.${ActiveRunQueueEventTypes[queueMode]}.accepted`,
-      details: {
-        queueMode,
-        steeringRequestId: requestId,
-        inputChars: request.input.length,
-        attachmentCount: request.attachments?.length ?? 0,
-      },
-    });
-    return true;
+    return this.activeRuns.enqueueActiveRunMessage(request);
   }
 
   async discardActiveRun(session: AgentSession): Promise<boolean> {
-    const run = this.activeRuns.get(session.id);
-    if (run) {
-      await this.stopActiveRun(session, run);
-      return true;
-    }
-    this.releaseSession(session);
-    return false;
+    return this.activeRuns.discardActiveRun(session);
   }
 
   hasActiveRun(sessionId: string): boolean {
-    return this.activeRuns.has(sessionId);
+    return this.activeRuns.hasActiveRun(sessionId);
+  }
+
+  beginShutdown(): void {
+    this.activeRuns.beginShutdown();
+  }
+
+  shutdown(): Promise<void> {
+    return this.activeRuns.shutdown();
   }
 
   cleanupOrphanedRunningSnapshots(): void {
-    this.snapshots.reconcileOrphanedRunningSnapshots();
+    this.activeRuns.cleanupOrphanedRunningSnapshots();
   }
 
   requestActiveRunCancellation(sessionId: string): boolean {
-    const run = this.activeRuns.get(sessionId);
-    if (!run) return false;
-    const lookup = this.options.store.get(sessionId);
-    void this.beginStopActiveRun(lookup.kind === "found" ? lookup.session : undefined, run).catch(() => undefined);
-    return true;
-  }
-
-  private markSessionRunning(session: AgentSession, activeRequest: NonNullable<AgentSession["activeRequest"]>): void {
-    session.status = AgentSessionStatuses.Running;
-    session.updatedAt = activeRequest.startedAt;
-    session.activeRequest = activeRequest;
-  }
-
-  private registerActiveRun(sessionId: string, requestId: string, onEvent?: AgentEventSink): ActiveSessionRun {
-    if (this.activeRuns.has(sessionId)) {
-      throw new Error(`Session ${sessionId} already has an active run.`);
-    }
-    const settlement = createRunSettlement();
-    const run: ActiveSessionRun = {
-      requestId,
-      controller: new AbortController(),
-      onEvent,
-      settled: settlement.promise,
-      resolveSettled: settlement.resolve,
-    };
-    this.activeRuns.set(sessionId, run);
-    return run;
-  }
-
-  private async stopActiveRun(session: AgentSession | undefined, run: ActiveSessionRun): Promise<void> {
-    const settlement = this.beginStopActiveRun(session, run);
-    try {
-      await waitForAgentSessionRunSettlement({
-        sessionId: session?.id ?? "unknown",
-        requestId: run.requestId,
-        settlement,
-        policy: this.options.runControl,
-      });
-    } catch (error) {
-      if (error instanceof AgentSessionRunSettlementTimeoutError) {
-        if (session?.activeRequest?.requestId === run.requestId && this.isActiveRun(session.id, run)) {
-          session.metadata = withAgentSessionCancellationPending(session.metadata, {
-            requestId: run.requestId,
-            input: session.activeRequest.input,
-            startedAt: session.activeRequest.startedAt,
-            requestedAt: new Date().toISOString(),
-            timeoutMs: error.timeoutMs,
-          });
-          this.options.store.persistMetadata(session);
-        }
-        this.options.logger?.warn("session.run_settlement.timeout", {
-          sessionId: error.sessionId,
-          requestId: error.requestId,
-          timeoutMs: error.timeoutMs,
-        });
-      }
-      throw error;
-    }
-  }
-
-  private beginStopActiveRun(session: AgentSession | undefined, run: ActiveSessionRun): Promise<void> {
-    if (!run.stopPromise) {
-      run.suppressCancellationEvent = true;
-      const cancellation = new AgentCancellationError();
-      const activeRequest =
-        session?.activeRequest?.requestId === run.requestId ? { ...session.activeRequest } : undefined;
-      const piHandle = session ? this.options.piSessions?.get(session.id) : undefined;
-      const cancellationStartedAt = performance.now();
-      const abortPiSession = piHandle?.requestId === run.requestId ? piHandle.session.abort() : Promise.resolve();
-      run.controller.abort(cancellation);
-      const settleRun = run.settled.then(() => {
-        if (!session || !activeRequest) return;
-        this.snapshots.cancelled({
-          sessionId: session.id,
-          requestId: activeRequest.requestId,
-          text: activeRequest.input,
-          startedAt: activeRequest.startedAt,
-          error: cancellation,
-        });
-      });
-      run.stopPromise = this.settleActiveRunWithTelemetry({
-        sessionId: session?.id,
-        run,
-        startedAt: cancellationStartedAt,
-        components: [
-          { name: "agent_loop", settlement: settleRun, startedAt: cancellationStartedAt },
-          { name: "pi_session", settlement: abortPiSession, startedAt: cancellationStartedAt },
-        ],
-      });
-    }
-    return run.stopPromise;
-  }
-
-  private async settleActiveRunWithTelemetry(input: {
-    sessionId?: string;
-    run: ActiveSessionRun;
-    startedAt: number;
-    components: readonly AgentRunCancellationComponent[];
-  }): Promise<void> {
-    await this.emitCancellationProgress(input, { stage: "started" });
-    const settlements = input.components.map((component) => this.observeCancellationComponent(input, component));
-    try {
-      await settleActiveRun(settlements);
-      await this.emitCancellationProgress(input, {
-        stage: "completed",
-        durationMs: elapsedMilliseconds(input.startedAt),
-      });
-    } catch (error) {
-      await this.emitCancellationProgress(input, {
-        stage: "failed",
-        durationMs: elapsedMilliseconds(input.startedAt),
-        message: readErrorMessage(error),
-      });
-      throw error;
-    }
-  }
-
-  private async observeCancellationComponent(
-    input: { sessionId?: string; run: ActiveSessionRun; startedAt: number },
-    component: AgentRunCancellationComponent,
-  ): Promise<void> {
-    try {
-      await component.settlement;
-      await this.emitCancellationProgress(input, {
-        stage: "component_completed",
-        component: component.name,
-        durationMs: elapsedMilliseconds(component.startedAt),
-      });
-    } catch (error) {
-      await this.emitCancellationProgress(input, {
-        stage: "component_failed",
-        component: component.name,
-        durationMs: elapsedMilliseconds(component.startedAt),
-        message: readErrorMessage(error),
-      });
-      throw error;
-    }
-  }
-
-  private async emitCancellationProgress(
-    input: { sessionId?: string; run: ActiveSessionRun },
-    data: {
-      stage: "started" | "component_completed" | "component_failed" | "completed" | "failed";
-      component?: "agent_loop" | "pi_session";
-      durationMs?: number;
-      message?: string;
-    },
-  ): Promise<void> {
-    try {
-      await emitAgentEvent(input.run.onEvent, {
-        kind: AgentEventKinds.RunCancellationProgress,
-        context: { sessionId: input.sessionId, requestId: input.run.requestId },
-        data,
-      });
-    } catch (error) {
-      this.options.logger?.warn("session.run_cancellation.telemetry_failed", {
-        sessionId: input.sessionId,
-        requestId: input.run.requestId,
-        stage: data.stage,
-        component: data.component,
-        error: serializeError(error),
-      });
-    }
-  }
-
-  private async emitRunCancelled(sessionId: string, requestId: string, onEvent?: AgentEventSink): Promise<void> {
-    await emitAgentEvent(onEvent, this.createRunCancelledEvent(sessionId, requestId));
-  }
-
-  private createRunCancelledEvent(sessionId: string, requestId: string): AgentDomainEvent {
-    return {
-      eventId: createOpaqueId("event"),
-      kind: AgentEventKinds.RunCancelled,
-      context: { sessionId, requestId },
-      data: { reason: "user_cancelled" },
-    };
-  }
-
-  private createRunFailedEvent(sessionId: string, requestId: string, error: unknown): AgentDomainEvent {
-    return {
-      eventId: createOpaqueId("event"),
-      kind: AgentEventKinds.RunFailed,
-      context: { sessionId, requestId },
-      data: {
-        message: readErrorMessage(error),
-        details: serializeError(error),
-      },
-    };
-  }
-
-  private releaseSession(session: AgentSession): void {
-    session.status = AgentSessionStatuses.Idle;
-    session.updatedAt = new Date().toISOString();
-    session.activeRequest = undefined;
-    session.metadata = clearAgentSessionCancellation(session.metadata);
-  }
-
-  private isActiveRun(sessionId: string, run: ActiveSessionRun): boolean {
-    return this.activeRuns.get(sessionId) === run;
+    return this.activeRuns.requestActiveRunCancellation(sessionId);
   }
 }
-
-function readErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  return agentErrorMessage("session.runFailed");
-}
-
-interface ActiveSessionRun {
-  requestId: string;
-  controller: AbortController;
-  onEvent?: AgentEventSink;
-  settled: Promise<void>;
-  resolveSettled: () => void;
-  stopPromise?: Promise<void>;
-  suppressCancellationEvent?: boolean;
-}
-
-interface AgentRunCancellationComponent {
-  name: "agent_loop" | "pi_session";
-  settlement: Promise<void>;
-  startedAt: number;
-}
-
-function elapsedMilliseconds(startedAt: number): number {
-  return Math.max(0, Math.round((performance.now() - startedAt) * 100) / 100);
-}
-
-function createRunSettlement(): { promise: Promise<void>; resolve: () => void } {
-  let resolve!: () => void;
-  const promise = new Promise<void>((settled) => {
-    resolve = settled;
-  });
-  return { promise, resolve };
-}
-
-async function settleActiveRun(settlements: readonly Promise<void>[]): Promise<void> {
-  const outcomes = await Promise.allSettled(settlements);
-  const failures = outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []));
-  if (failures.length === 1) throw failures[0];
-  if (failures.length > 1) throw new AggregateError(failures, "Active run settlement failed.");
-}
-
-const ActiveRunQueueEventTypes = {
-  steer: "steer",
-  follow_up: "follow_up",
-} as const;
-
-const ActiveRunQueueHandlers = {
-  steer: (session: AgentPiSession, input: string) => session.steer(input),
-  follow_up: (session: AgentPiSession, input: string) => session.followUp(input),
-} satisfies Record<keyof typeof ActiveRunQueueEventTypes, (session: AgentPiSession, input: string) => Promise<void>>;

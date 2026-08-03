@@ -3,6 +3,7 @@ import { pipeline } from "node:stream/promises";
 import * as tar from "tar-stream";
 import { z } from "zod";
 import { sha256Hex } from "../../Core/AgentHash.js";
+import { parseJsonText } from "../../Core/AgentJsonParsing.js";
 
 const DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const DescriptorSchema = z
@@ -45,7 +46,12 @@ export async function readAgentOciArchiveConfigDigest(input: AgentOciArchiveIden
     throw new Error("OCI archive metadata limit must be a positive safe integer.");
   }
   const metadata = await readOciMetadataEntries(input.archivePath, input.maxMetadataBytes);
-  const index = OciIndexSchema.parse(parseJson(requireMetadataEntry(metadata, IndexFileName), IndexFileName));
+  const index = OciIndexSchema.parse(
+    parseJsonText(
+      requireMetadataEntry(metadata, IndexFileName).toString("utf8"),
+      `OCI archive metadata: ${IndexFileName}`,
+    ),
+  );
   const manifests = index.manifests.filter(
     (descriptor) =>
       descriptor.mediaType === OciManifestMediaType &&
@@ -58,7 +64,9 @@ export async function readAgentOciArchiveConfigDigest(input: AgentOciArchiveIden
   const manifestPath = digestBlobPath(manifestDescriptor.digest);
   const manifestContent = requireMetadataEntry(metadata, manifestPath);
   assertDescriptorContent(manifestDescriptor, manifestContent, manifestPath);
-  const manifest = OciImageManifestSchema.parse(parseJson(manifestContent, manifestPath));
+  const manifest = OciImageManifestSchema.parse(
+    parseJsonText(manifestContent.toString("utf8"), `OCI archive metadata: ${manifestPath}`),
+  );
   const configPath = digestBlobPath(manifest.config.digest);
   assertDescriptorContent(manifest.config, requireMetadataEntry(metadata, configPath), configPath);
   return manifest.config.digest;
@@ -149,12 +157,4 @@ function normalizeArchivePath(value: string): string {
     throw new Error(`OCI archive contains an unsafe entry path: ${value}.`);
   }
   return withoutPrefix;
-}
-
-function parseJson(content: Buffer, name: string): unknown {
-  try {
-    return JSON.parse(content.toString("utf8")) as unknown;
-  } catch (error) {
-    throw new Error(`OCI archive metadata is not valid JSON: ${name}.`, { cause: error });
-  }
 }

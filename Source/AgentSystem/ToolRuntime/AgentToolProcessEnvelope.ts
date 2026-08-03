@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { AgentToolProcessError, AgentToolProcessResponse } from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
+import { agentJsonPathToPointer } from "../Diagnostics/AgentJsonPointer.js";
+import { AgentExecutionErrorCodes } from "../Xml/AgentXmlStatus.js";
 
 export const AgentToolProcessResponseEnvelope = {
   Type: "tool_result",
@@ -27,14 +29,19 @@ export type AgentToolProcessEnvelopeValidation =
       issues: AgentToolProcessEnvelopeIssue[];
     };
 
-const AgentToolProcessErrorSchema = z
+export const AgentToolProcessErrorSchema = z
   .object({
-    code: z.string().min(1),
+    code: z.enum(AgentExecutionErrorCodes),
     message: z.string().min(1),
     diagnostics: z.array(z.unknown()).optional(),
     details: z.record(z.string(), z.unknown()).optional(),
   })
   .passthrough();
+
+export function readAgentToolProcessError(value: unknown): AgentToolProcessError | undefined {
+  const parsed = AgentToolProcessErrorSchema.safeParse(value);
+  return parsed.success ? (parsed.data as AgentToolProcessError) : undefined;
+}
 
 const AgentToolProcessResponseSchema = z.discriminatedUnion("ok", [
   z
@@ -107,7 +114,5 @@ export function validateToolProcessResponseEnvelope(value: unknown): AgentToolPr
 }
 
 function zodPathToPointer(path: PropertyKey[]): string {
-  return path.length > 0
-    ? `/${path.map((part) => String(part).replace(/~/g, "~0").replace(/\//g, "~1")).join("/")}`
-    : "/";
+  return agentJsonPathToPointer(path.map((part) => (typeof part === "number" ? part : String(part)))) || "/";
 }

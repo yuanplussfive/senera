@@ -18,7 +18,6 @@ import {
   type AgentMemoryRecordedTurn,
 } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
-import { createTurnUnderstanding } from "../Support/AgentTestFixtures.js";
 
 describe("Memory learning runtime behavior", () => {
   test("does not create model dependencies when memory learning is disabled", async () => {
@@ -278,9 +277,7 @@ function completedTurn(input: {
       content: input.assistantText,
     },
     conversationEntries: [userEntry, assistantEntry],
-    turnUnderstanding: createTurnUnderstanding(input.userText, {
-      standaloneRequest: input.userText,
-    }),
+    executedTools: [],
   };
 }
 
@@ -372,10 +369,8 @@ function memoryLearningConfig(options: {
         Model: "test-model",
       },
     ],
-    ToolLearning: {
-      Enabled: options.enabled,
-    },
     MemoryLearning: {
+      Enabled: options.enabled,
       Promotion: {
         MinSupport: options.minSupport,
         MinSimilarity: options.minSimilarity,

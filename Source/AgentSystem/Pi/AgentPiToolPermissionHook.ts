@@ -1,14 +1,17 @@
 import type { AgentToolPermissionGate } from "../Safety/AgentToolPermissionGate.js";
 import { AgentToolPermissionDeniedError } from "../Safety/AgentToolPermissionGate.js";
 import { projectAgentToolSafetyMetadata } from "../Safety/AgentToolSafetyMetadata.js";
-import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
+import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import type { AgentPiToolProjectionContext } from "./AgentPiTypes.js";
-import { readPiProxyToolCallBatchId } from "../PiProxy/AgentPiProxyRuntimeContext.js";
+import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
 import { AgentToolExecutionTargetError, resolveAgentToolInvocation } from "../ToolRuntime/AgentToolExecutionPlan.js";
+import { isAgentToolAuthorized } from "../ToolRuntime/AgentToolAccessGrant.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export interface AgentPiToolPermissionHookOptions {
-  registry: AgentPluginRegistry;
+  registry: AgentExtensionRegistry;
   permissionGate?: AgentToolPermissionGate;
+  turnContexts: Pick<AgentPiTurnContextStore, "readToolCallBatchId">;
 }
 
 export interface AgentPiToolCallHookEvent {
@@ -29,6 +32,20 @@ export class AgentPiToolPermissionHook {
     context: AgentPiToolProjectionContext,
     event: AgentPiToolCallHookEvent,
   ): Promise<AgentPiToolCallHookResult | undefined> {
+    const toolAccessGrant = context.toolAccessGrant;
+    if (!toolAccessGrant) return { block: true, reason: agentErrorMessage("toolAccess.missingGrant") };
+    if (!isAgentToolAuthorized(toolAccessGrant, event.toolName)) {
+      return {
+        block: true,
+        reason: agentErrorMessage("tool.notRegisteredOrAllowed", { toolName: event.toolName }),
+      };
+    }
+    if (context.toolExposure && !context.toolExposure.exposes(event.toolName)) {
+      return {
+        block: true,
+        reason: agentErrorMessage("tool.notRegisteredOrAllowed", { toolName: event.toolName }),
+      };
+    }
     if (!this.options.permissionGate) {
       return undefined;
     }
@@ -48,12 +65,12 @@ export class AgentPiToolPermissionHook {
         sessionId: context.sessionId ?? context.requestId ?? event.toolCallId,
         requestId: context.requestId ?? event.toolCallId,
         toolCallId: event.toolCallId,
-        batchId: readPiProxyToolCallBatchId(context.piProxyRuntimeContextId, event.toolCallId),
+        batchId: this.options.turnContexts.readToolCallBatchId(context.piTurnContextId, event.toolCallId),
         step: context.step ?? 1,
         toolName: event.toolName,
         arguments: invocation?.arguments ?? event.input,
         executionPlan: invocation?.executionPlan,
-        visibleToolNames: context.visibleToolNames,
+        toolAccessGrant,
         tool: tool ? projectAgentToolSafetyMetadata(tool) : undefined,
         runtimeContext: {
           requestId: context.requestId,
@@ -66,7 +83,6 @@ export class AgentPiToolPermissionHook {
             matchedTerms: skill.matchedTerms,
             score: skill.score,
           })),
-          turnUnderstanding: context.turnUnderstanding,
         },
         onEvent: context.onEvent,
         signal: context.signal,

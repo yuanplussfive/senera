@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import { SeneraWorkspaceBoundary } from "../../../Source/AgentSystem/Execution/SeneraWorkspaceBoundary.js";
 import { createSeneraExecutionEnvironments } from "../../../Source/AgentSystem/Execution/SeneraExecutionEnvFactory.js";
-import { AgentPluginRegistry } from "../../../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import { AgentSeneraOpaPolicyClient } from "../../../Source/AgentSystem/Safety/AgentSeneraOpaPolicyClient.js";
 import { AgentResourceAccessIntents } from "../../../Source/AgentSystem/Safety/AgentResourceAccessPolicy.js";
 import { AgentResourceAccessPolicy } from "../../../Source/AgentSystem/Safety/AgentResourceAccessPolicy.js";
@@ -69,6 +69,23 @@ describe("Workspace canonical boundary", () => {
     expect(fs.readFileSync(path.join(targetDirectory, "value.txt"), "utf8")).toBe("inside");
   });
 
+  it("classifies internal aliases by canonical target before applying resource policy", async () => {
+    const { workspaceRoot } = createFixture();
+    const skillRoot = path.join(workspaceRoot, ".senera", "skills");
+    fs.mkdirSync(skillRoot, { recursive: true });
+    createDirectoryLink(skillRoot, path.join(workspaceRoot, "skill-alias"));
+    const policy = new AgentResourceAccessPolicy(
+      new AgentSeneraOpaPolicyClient({ registry: new AgentExtensionRegistry() }),
+    );
+    const environments = createSeneraExecutionEnvironments({ workspaceRoot, resourceAccessPolicy: policy });
+
+    await expect(environments.tool.writeFile("skill-alias/bypass/SKILL.md", "blocked")).resolves.toMatchObject({
+      ok: false,
+      error: { code: "permission_denied" },
+    });
+    expect(fs.existsSync(path.join(skillRoot, "bypass", "SKILL.md"))).toBe(false);
+  });
+
   it("supports boundaries that reject internal links for protected system data", async () => {
     const { workspaceRoot } = createFixture();
     const targetDirectory = path.join(workspaceRoot, "target");
@@ -129,7 +146,7 @@ describe("Workspace canonical boundary", () => {
   it("separates trusted system state from OPA-governed tool mutations", async () => {
     const { workspaceRoot } = createFixture();
     const policy = new AgentResourceAccessPolicy(
-      new AgentSeneraOpaPolicyClient({ registry: new AgentPluginRegistry() }),
+      new AgentSeneraOpaPolicyClient({ registry: new AgentExtensionRegistry() }),
     );
     const environments = createSeneraExecutionEnvironments({ workspaceRoot, resourceAccessPolicy: policy });
 
@@ -141,8 +158,15 @@ describe("Workspace canonical boundary", () => {
       ok: false,
       error: { code: "permission_denied" },
     });
+    await expect(
+      environments.tool.writeFile(".senera/skills/direct-write/SKILL.md", "unvalidated"),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "permission_denied" },
+    });
     expect(fs.readFileSync(path.join(workspaceRoot, ".senera", "pi-sessions", "state.json"), "utf8")).toBe("system");
     expect(fs.existsSync(path.join(workspaceRoot, ".senera", "tool-state.json"))).toBe(false);
+    expect(fs.existsSync(path.join(workspaceRoot, ".senera", "skills", "direct-write", "SKILL.md"))).toBe(false);
   });
 });
 
