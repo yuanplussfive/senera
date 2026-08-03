@@ -15,6 +15,44 @@ ExecutedToolCallResult
   -> Pi history (bounded view + artifact URI)
 ```
 
+## Observation protocol
+
+Every Senera Pi Tool observation uses one envelope. Runtime identity and status fields remain at the top level;
+all optional model-visible content lives under `detail`:
+
+```json
+{
+  "type": "senera.tool_observation.v1",
+  "tool_name": "ExampleTool",
+  "call_id": "call-1",
+  "batch_id": "request-1:1",
+  "status": "success",
+  "artifact_uri": "senera://artifact/example",
+  "observation_view": {
+    "type": "senera.tool_observation_source_view.v1",
+    "complete": false,
+    "omission_count": 1
+  },
+  "detail": {
+    "summary": "Completed with a bounded result.",
+    "result": {}
+  }
+}
+```
+
+The execution bridge, including `AskUser`, always creates this envelope through
+`AgentToolObservationContextCompiler`. Producers must not place `summary`, `result`, `process`, evidence, or
+continuation data at the top level.
+
+`observation_view.complete` describes whether the source compiler retained the complete artifact-derived input.
+`context_view.complete` describes whether the batch projector retained the complete bounded source view. A context
+view can therefore be complete while its source view is partial.
+
+A recognized `senera.tool_observation.v1` value without either the source or context view marker is rejected before
+exact token measurement. The runtime does not infer a projection from legacy payload fields. Persisted Pi sessions
+carry the observation contract revision as non-model-visible metadata; a session containing an incompatible old
+observation is rebuilt from canonical conversation history instead of being migrated in the projection pipeline.
+
 ## System Tool contract
 
 Every bundled Host Tool contract declares a package-relative projection file:

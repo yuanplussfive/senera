@@ -9,7 +9,7 @@ import {
   AgentPiCompactionSummaryFormatter,
   DefaultAgentPiCompactionSummaryFormatterOptions,
 } from "../../../Source/AgentSystem/Pi/AgentPiCompactionSummaryFormatter.js";
-import { AgentPiToolObservationProtocol } from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
+import { compilePiToolObservation, piToolResultMessage } from "../Support/PiToolObservationFixtures.js";
 
 describe("Pi compaction projection policy", () => {
   test("bounds indexed calls and argument previews independently", () => {
@@ -81,23 +81,14 @@ function toolCallMessages(count: number, argument: string): AgentMessage[] {
         },
       ],
     } as unknown as AgentMessage,
-    {
-      role: "toolResult",
-      toolCallId: `call-${position}`,
-      toolName: "WorkspaceReadFile",
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            type: AgentPiToolObservationProtocol.type,
-            status: "success",
-            summary: `completed ${position}`,
-          }),
-        },
-      ],
-      isError: false,
-      timestamp: position,
-    } as AgentMessage,
+    piToolResultMessage(
+      compilePiToolObservation({
+        callId: `call-${position}`,
+        toolName: "WorkspaceReadFile",
+        summary: `completed ${position}`,
+        result: {},
+      }),
+    ),
   ]);
 }
 

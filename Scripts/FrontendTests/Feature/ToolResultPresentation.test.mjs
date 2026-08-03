@@ -193,10 +193,16 @@ function toolStep() {
     },
     toolResult: {
       type: "senera.tool_observation.v1",
-      result: {
-        city: "北京",
-        temperature: 26,
-        condition: "晴",
+      observation_view: {
+        type: "senera.tool_observation_source_view.v1",
+        complete: true,
+      },
+      detail: {
+        result: {
+          city: "北京",
+          temperature: 26,
+          condition: "晴",
+        },
       },
     },
   };

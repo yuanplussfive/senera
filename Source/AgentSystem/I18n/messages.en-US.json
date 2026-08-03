@@ -67,6 +67,7 @@
   "pi.requestToolOutsideGrant": "The Pi request contains tools outside the authorization snapshot: {toolNames}",
   "pi.toolArgumentsUnsafe": "Arguments for tool {toolName} cannot yet be generated safely.",
   "pi.toolUnavailable": "The tool is unavailable: {toolName}",
+  "pi.toolObservationContractMissing": "The Senera Pi tool observation must declare {sourceType} or {contextType}.",
   "interaction.inputResolveFailed": "Failed to submit the interaction input.",
   "interaction.serviceUnavailable": "The interaction input service is unavailable.",
   "extension.referenceValidationFailed": "Extension reference validation failed:",

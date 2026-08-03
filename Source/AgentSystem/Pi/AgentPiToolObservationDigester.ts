@@ -10,6 +10,7 @@ import type {
   AgentPiToolObservationDigestSource,
 } from "./AgentPiToolObservationDigestPrompt.js";
 import {
+  assertAgentPiToolObservationBounded,
   isAgentPiObservationContextProjected,
   isAgentPiToolResultMessage,
   projectAgentPiToolObservationDetail,
@@ -113,9 +114,13 @@ export class AgentPiToolObservationDigestSession {
 
     const target = sources[0];
     if (!target) return [...messages];
+    const detail = projectAgentPiToolObservationDetail(target.observation);
     const content = JSON.stringify({
       ...target.observation,
-      semantic_digest: this.renderGroundedDigest(digest, request.targetTokens),
+      detail: {
+        ...detail,
+        semantic_digest: this.renderGroundedDigest(digest, request.targetTokens),
+      },
     });
     return messages.map((message, index) =>
       index === target.messageIndex ? writeAgentPiMessageTextContent(message, content) : message,
@@ -137,7 +142,9 @@ export class AgentPiToolObservationDigestSession {
     messages.forEach((message, messageIndex) => {
       if (!isAgentPiToolResultMessage(message)) return;
       const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
-      if (!observation || isAgentPiObservationContextProjected(observation)) return;
+      if (!observation) return;
+      assertAgentPiToolObservationBounded(observation);
+      if (isAgentPiObservationContextProjected(observation)) return;
       if (selectedIdentities && !selectedIdentities.has(agentPiToolObservationIdentity(observation))) return;
       const id = readAgentString(observation.call_id);
       if (!id) return;

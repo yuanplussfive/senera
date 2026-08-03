@@ -16,7 +16,12 @@ import type {
 } from "./AgentPiCodingAgentSessionPoolContracts.js";
 import { resolveAgentPiSessionCacheCapacity } from "./AgentPiSessionCachePolicy.js";
 import { AgentPiSessionCustomEntryTypes } from "./AgentPiSessionEntries.js";
-import { isAgentPiConversationHistoryEmpty } from "./AgentPiSessionHistoryPolicy.js";
+import {
+  hasIncompatibleAgentPiToolObservationHistory,
+  isAgentPiConversationHistoryEmpty,
+  isAgentPiSessionRuntimeContractCurrent,
+  stampAgentPiSessionRuntimeContract,
+} from "./AgentPiSessionHistoryPolicy.js";
 import {
   AgentPiSessionExportFormats,
   type AgentPiSessionCompactionResult,
@@ -273,12 +278,23 @@ export class AgentPiCodingAgentSessionPool {
         historyMigrationRequired: isAgentPiConversationHistoryEmpty(current.sessionManager),
       };
     }
-    const existing = await this.openExistingSession(input.sessionId);
+    let existing = await this.openExistingSession(input.sessionId);
+    if (existing && hasIncompatibleAgentPiToolObservationHistory(existing)) {
+      const sessionFile = existing.getSessionFile();
+      if (!sessionFile || relativePathWithin(this.sessionsRoot(), sessionFile) === undefined) {
+        throw new Error("Incompatible Pi session escaped its managed storage root.");
+      }
+      await fs.rm(sessionFile, { force: true });
+      existing = undefined;
+    }
     const sessionManager =
       existing ??
       SessionManager.create(this.options.workspaceRoot, this.sessionsRoot(), {
         id: input.sessionId,
       });
+    if (!isAgentPiSessionRuntimeContractCurrent(sessionManager)) {
+      stampAgentPiSessionRuntimeContract(sessionManager);
+    }
     const pooled = await this.factory.create(input, sessionManager, this.lifecycle.nextAccessSequence());
     this.sessions.set(input.sessionId, pooled);
     return {

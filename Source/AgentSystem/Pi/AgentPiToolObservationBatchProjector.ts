@@ -3,18 +3,15 @@ import { readAgentString, readAgentUnknownRecord, type AgentUnknownRecord } from
 import { allocateAgentTokenBudget } from "../Text/AgentTokenAllocation.js";
 import { AgentTokenBudgetOracle, type AgentTokenBudgetInspection } from "../Text/AgentTokenBudgetOracle.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
-import { AgentToolObservationStructuralProjector } from "../ToolRuntime/AgentToolObservationStructuralProjector.js";
-import type { AgentToolObservationStructuralLimits } from "../Types/AgentToolObservationProjectionTypes.js";
 import {
-  AgentPiToolObservationSourceViewProtocol,
   AgentPiToolObservationStatuses,
   agentPiToolObservationIdentity,
+  assertAgentPiToolObservationBounded,
   createAgentPiToolObservation,
   createAgentPiToolObservationContextView,
   isAgentPiObservationContextProjected,
-  isAgentPiObservationSourceBounded,
   isAgentPiToolResultMessage,
-  projectAgentPiToolObservationFallback,
+  projectAgentPiToolObservationDetail,
   readAgentPiMessageTextContent,
   readAgentPiObservationBatchId,
   readAgentPiToolObservation,
@@ -55,21 +52,9 @@ interface ProjectionCandidate {
   readonly completeCost: AgentTokenBudgetInspection;
 }
 
-const LegacyObservationLimits: AgentToolObservationStructuralLimits = {
-  maxDepth: 8,
-  maxArrayItems: 24,
-  maxObjectProperties: 40,
-  maxStringCharacters: 1_024,
-  maxTotalCharacters: 8_192,
-  maxNodes: 256,
-};
-
-const LegacyObservationMaximumOmissions = 24;
-
 export class AgentPiToolObservationBatchProjector {
   private readonly tokenProjector: AgentTokenProjector;
   private readonly tokenOracle: AgentTokenBudgetOracle;
-  private readonly structuralProjector = new AgentToolObservationStructuralProjector();
   private readonly committedViews = new Map<string, string>();
 
   constructor(private readonly options: AgentPiToolObservationBatchProjectionOptions) {
@@ -83,6 +68,8 @@ export class AgentPiToolObservationBatchProjector {
       if (!isAgentPiToolResultMessage(message)) return [];
       const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
       if (!observation) return [];
+      assertAgentPiToolObservationBounded(observation);
+      if (isAgentPiObservationContextProjected(observation)) return [];
       const identity = agentPiToolObservationIdentity(observation);
       return this.committedViews.has(identity) ? [] : [identity];
     });
@@ -93,6 +80,7 @@ export class AgentPiToolObservationBatchProjector {
     return messages.flatMap((message) => {
       if (!isAgentPiToolResultMessage(message)) return [];
       const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
+      if (observation) assertAgentPiToolObservationBounded(observation);
       return observation ? [agentPiToolObservationIdentity(observation)] : [];
     });
   }
@@ -103,20 +91,28 @@ export class AgentPiToolObservationBatchProjector {
     const observations = messages.flatMap((message) => {
       if (!isAgentPiToolResultMessage(message)) return [];
       const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
+      if (observation) assertAgentPiToolObservationBounded(observation);
       return observation && selectedIdentities.has(agentPiToolObservationIdentity(observation)) ? [observation] : [];
     });
-    if (!observations.some((observation) => readAgentString(observation.semantic_digest))) return false;
+    if (
+      !observations.some((observation) =>
+        readAgentString(projectAgentPiToolObservationDetail(observation).semantic_digest),
+      )
+    ) {
+      return false;
+    }
 
     for (const observation of observations) {
+      const detail = projectAgentPiToolObservationDetail(observation);
       this.committedViews.set(
         agentPiToolObservationIdentity(observation),
         JSON.stringify({
           ...incompleteObservationEnvelope(observation, "grounded_digest"),
           detail: compactRecord({
-            semantic_digest: observation.semantic_digest,
-            retrieval: observation.retrieval ?? readAgentUnknownRecord(observation.detail)?.retrieval,
-            continuation: observation.continuation ?? readAgentUnknownRecord(observation.detail)?.continuation,
-            delta: observation.delta ?? readAgentUnknownRecord(observation.detail)?.delta,
+            semantic_digest: detail.semantic_digest,
+            retrieval: detail.retrieval,
+            continuation: detail.continuation,
+            delta: detail.delta,
           }),
         }),
       );
@@ -187,9 +183,11 @@ export class AgentPiToolObservationBatchProjector {
     return messages.flatMap((message, index) => {
       if (!isAgentPiToolResultMessage(message)) return [];
       const sourceObservation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
-      if (!sourceObservation || isAgentPiObservationContextProjected(sourceObservation)) return [];
+      if (!sourceObservation) return [];
+      assertAgentPiToolObservationBounded(sourceObservation);
+      if (isAgentPiObservationContextProjected(sourceObservation)) return [];
 
-      const observation = this.boundLegacyObservation(sourceObservation);
+      const observation = sourceObservation;
       const minimum = incompleteObservation(observation, {});
       const minimumText = JSON.stringify(minimum);
       const complete = completeObservation(observation);
@@ -207,32 +205,6 @@ export class AgentPiToolObservationBatchProjector {
           completeCost: this.tokenOracle.inspectJson(complete, this.maximumCandidateTokens()),
         },
       ];
-    });
-  }
-
-  private boundLegacyObservation(observation: AgentPiToolObservation): AgentPiToolObservation {
-    if (isAgentPiObservationSourceBounded(observation)) return observation;
-    const detail = this.structuralProjector.project(
-      projectAgentPiToolObservationFallback(observation),
-      LegacyObservationLimits,
-      LegacyObservationMaximumOmissions,
-    );
-    if (detail.complete) return observation;
-    return createAgentPiToolObservation({
-      ...requiredObservationEnvelope(observation),
-      observation_view: {
-        type: AgentPiToolObservationSourceViewProtocol.type,
-        complete: false,
-        mode: "legacy_structural_fallback",
-        omission_count: detail.omissionCount,
-        omissions: detail.omissions,
-        artifact_fallback: {
-          strategy: "reference",
-          required_when_truncated: true,
-          available: readAgentString(observation.artifact_uri) !== undefined,
-        },
-      },
-      detail: detail.value,
     });
   }
 
@@ -263,7 +235,7 @@ export class AgentPiToolObservationBatchProjector {
     const detailOverhead = this.tokenProjector.countJson({ ...envelope, detail: {} });
     const detailBudget = Math.max(1, tokenLimit - detailOverhead);
     const detail = this.tokenProjector.projectJson(
-      projectAgentPiToolObservationFallback(candidate.observation),
+      projectAgentPiToolObservationDetail(candidate.observation),
       detailBudget,
     );
     const projectedText = JSON.stringify({ ...envelope, detail: detail.value });
@@ -327,6 +299,7 @@ function incompleteObservationEnvelope(
 function requiredObservationEnvelope(observation: AgentPiToolObservation): AgentUnknownRecord {
   const status = readAgentPiToolObservationStatus(observation.status);
   const error = readAgentUnknownRecord(observation.error);
+  const detail = projectAgentPiToolObservationDetail(observation);
   return createAgentPiToolObservation(
     compactRecord({
       tool_name: readAgentString(observation.tool_name) ?? "",
@@ -346,7 +319,7 @@ function requiredObservationEnvelope(observation: AgentPiToolObservation): Agent
               message: readAgentString(error?.message),
             })
           : undefined,
-      continuation: observation.continuation ?? readAgentUnknownRecord(observation.detail)?.continuation,
+      continuation: detail.continuation,
     }),
   );
 }

@@ -9,6 +9,7 @@ import {
   readAgentPiToolObservation,
 } from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
 import { normalizeAgentPiToolObservationDigest } from "../../../Source/AgentSystem/Pi/AgentPiToolObservationDigestPrompt.js";
+import { compilePiToolObservation, piToolResultMessage } from "../Support/PiToolObservationFixtures.js";
 
 describe("Pi tool observation semantic digester", () => {
   test("adds one grounded digest to a batch and reuses the session cache", async () => {
@@ -77,8 +78,9 @@ describe("Pi tool observation semantic digester", () => {
     });
     const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(enriched[0]));
 
-    expect(observation?.semantic_digest).toContain("[call-a]");
-    expect(String(observation?.semantic_digest)).not.toContain("A long grounded fact ".repeat(100));
+    const detail = observation?.detail as Record<string, unknown> | undefined;
+    expect(detail?.semantic_digest).toContain("[call-a]");
+    expect(String(detail?.semantic_digest)).not.toContain("A long grounded fact ".repeat(100));
   });
 
   test("surfaces a cached model failure once without retrying the batch", async () => {
@@ -133,25 +135,13 @@ describe("Pi tool observation semantic digester", () => {
 });
 
 function toolResultMessage(callId: string, status: string, result: string): AgentMessage {
-  return {
-    role: "toolResult",
-    toolCallId: callId,
-    toolName: `Tool-${callId}`,
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify({
-          type: "senera.tool_observation.v1",
-          tool_name: `Tool-${callId}`,
-          call_id: callId,
-          batch_id: "batch-1",
-          status,
-          artifact_uri: `senera://artifact/${callId}`,
-          result: { text: result },
-        }),
-      },
-    ],
-    isError: status === "failure",
-    timestamp: Date.now(),
-  } as AgentMessage;
+  return piToolResultMessage(
+    compilePiToolObservation({
+      callId,
+      toolName: `Tool-${callId}`,
+      status,
+      result: { text: result },
+      artifact: { artifactUri: `senera://artifact/${callId}`, evidence: [], delta: [] },
+    }),
+  );
 }

@@ -67,6 +67,7 @@
   "pi.requestToolOutsideGrant": "Pi 请求包含授权快照之外的工具：{toolNames}",
   "pi.toolArgumentsUnsafe": "工具 {toolName} 的参数还不能安全生成。",
   "pi.toolUnavailable": "工具不可用：{toolName}",
+  "pi.toolObservationContractMissing": "Senera Pi 工具观测必须声明 {sourceType} 或 {contextType}。",
   "interaction.inputResolveFailed": "提交交互输入失败。",
   "interaction.serviceUnavailable": "交互输入服务不可用。",
   "extension.referenceValidationFailed": "扩展引用校验失败：",

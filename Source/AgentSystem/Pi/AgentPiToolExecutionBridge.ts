@@ -17,7 +17,6 @@ import {
   readAgentToolFailure,
   type AgentToolExecutionOutcome,
 } from "../ToolRuntime/AgentToolResultOutcome.js";
-import { createAgentPiToolObservation } from "./AgentPiToolObservation.js";
 
 export interface AgentPiToolExecutionBridgeOptions {
   model: string;
@@ -70,7 +69,7 @@ export class AgentPiToolExecutionBridge {
     );
 
     if (execution.kind === "AskUser") {
-      return this.projectAskUser(input.tool.name, input.toolCallId, batchId, execution.value);
+      return this.projectAskUser(input, batchId, execution.value);
     }
 
     const [recorded] = await this.options.recordToolArtifacts({
@@ -86,30 +85,40 @@ export class AgentPiToolExecutionBridge {
   }
 
   private projectAskUser(
-    toolName: string,
-    toolCallId: string,
+    input: AgentPiToolExecutionInput,
     batchId: string,
     result: AskUserControlResult,
   ): AgentPiToolResult {
+    const projection = input.tool.observationProjection ?? StandardAgentToolObservationProjection;
+    const observation = this.observationCompiler.compile(
+      {
+        toolName: input.tool.name,
+        callId: input.toolCallId,
+        batchId,
+        status: "waiting",
+        executionStatus: AgentToolExecutionStatuses.Completed,
+        outputAvailability: AgentToolOutputAvailabilities.Complete,
+        summary: result.question,
+        outcome: undefined,
+        process: undefined,
+        error: undefined,
+        result,
+        arguments: undefined,
+        artifact: undefined,
+      },
+      projection,
+      input.context.tokenBudget?.availableTokens(projection.maxTokens),
+    );
     return {
       content: [
         {
           type: "text",
-          text: JSON.stringify(
-            createAgentPiToolObservation({
-              tool_name: toolName,
-              call_id: toolCallId,
-              batch_id: batchId,
-              status: "waiting",
-              summary: result.question,
-              control: result,
-            }),
-          ),
+          text: JSON.stringify(observation),
         },
       ],
       details: {
         senera: {
-          toolName,
+          toolName: input.tool.name,
           status: AgentPiToolResultStatuses.Success,
           executionStatus: AgentToolExecutionStatuses.Completed,
           outputAvailability: AgentToolOutputAvailabilities.Complete,

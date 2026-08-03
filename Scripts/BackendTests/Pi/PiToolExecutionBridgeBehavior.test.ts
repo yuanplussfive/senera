@@ -314,7 +314,19 @@ describe("Pi tool execution bridge behavior", () => {
       call_id: "call-ask",
       batch_id: expect.any(String),
       status: "waiting",
+      observation_view: {
+        type: "senera.tool_observation_source_view.v1",
+        complete: true,
+      },
+      detail: {
+        summary: "哪个文件？",
+        result: {
+          question: "哪个文件？",
+          reason_code: "missing_path",
+        },
+      },
     });
+    expect(parseObservation(result)).not.toHaveProperty("control");
     expect(result.details.senera).toEqual({
       toolName: "ReadFile",
       status: AgentPiToolResultStatuses.Success,

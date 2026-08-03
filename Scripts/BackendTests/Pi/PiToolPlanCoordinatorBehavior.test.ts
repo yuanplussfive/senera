@@ -12,6 +12,7 @@ import {
   AgentPiToolPlanNodeStatuses,
 } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
 import { createModelProvider, toolAccessGrant } from "../Support/AgentTestFixtures.js";
+import { compilePiToolObservation } from "../Support/PiToolObservationFixtures.js";
 import { validateAgentPiCompletion } from "../../../Source/AgentSystem/PiProxy/AgentPiCompletionGate.js";
 
 describe("Pi tool plan coordination", () => {
@@ -328,12 +329,16 @@ function requestWithTranscript(
         {
           role: "tool" as const,
           tool_call_id: call.id,
-          content: JSON.stringify({
-            type: "senera.tool_observation.v1",
-            status: call.status,
-            output_availability: call.status === "success" ? "complete" : "none",
-            summary: `${call.name} ${call.status}`,
-          }),
+          content: JSON.stringify(
+            compilePiToolObservation({
+              callId: call.id,
+              toolName: call.name,
+              status: call.status,
+              outputAvailability: call.status === "success" ? "complete" : "none",
+              summary: `${call.name} ${call.status}`,
+              result: {},
+            }),
+          ),
         },
       ]),
     ],

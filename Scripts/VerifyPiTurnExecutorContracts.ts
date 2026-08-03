@@ -21,6 +21,8 @@ import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Typ
 import type { AgentPiDiagnosticEvent } from "../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 import { createAgentToolAccessGrant } from "../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 import { AgentToolSuccessOutcome } from "../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
+import { AgentToolObservationContextCompiler } from "../Source/AgentSystem/ToolRuntime/AgentToolObservationContextCompiler.js";
+import { StandardAgentToolObservationProjection } from "../Source/AgentSystem/ToolRuntime/AgentToolObservationProjectionPlan.js";
 
 const modelProviderConfig: ResolvedAgentModelProviderConfig = {
   Id: "verification-model",
@@ -541,11 +543,7 @@ class FakePiSession {
           content: [
             {
               type: "text",
-              text: JSON.stringify({
-                type: "senera.tool_observation.v1",
-                status: "success",
-                summary: "workspace inspected",
-              }),
+              text: JSON.stringify(verificationToolObservation()),
             },
           ],
           details: {
@@ -594,6 +592,27 @@ function projectPiToolResult(): unknown {
       },
     },
   };
+}
+
+function verificationToolObservation(): unknown {
+  return new AgentToolObservationContextCompiler({ model: "verification-model" }).compile(
+    {
+      toolName: "SeneraEchoTool",
+      callId: "call_echo",
+      batchId: "verification-batch",
+      status: "success",
+      executionStatus: "completed",
+      outputAvailability: "complete",
+      summary: "workspace inspected",
+      outcome: AgentToolSuccessOutcome,
+      process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+      error: undefined,
+      result: { summary: "workspace inspected" },
+      arguments: { text: "检查当前工作区" },
+      artifact: undefined,
+    },
+    StandardAgentToolObservationProjection,
+  );
 }
 
 function executedToolResult(): ExecutedToolCallResult {

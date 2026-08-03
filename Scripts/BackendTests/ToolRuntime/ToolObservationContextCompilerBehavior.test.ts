@@ -67,6 +67,22 @@ describe("Tool observation context compiler", () => {
     expect(JSON.stringify(observation.error)).not.toContain("diagnostics");
   });
 
+  test("uses an explicit runtime summary without requiring artifact metadata", () => {
+    const observation = compile({
+      summary: "User input is required.",
+      result: { question: "Which directory?" },
+      artifact: undefined,
+    });
+
+    expect(observation).toMatchObject({
+      observation_view: { complete: true },
+      detail: {
+        summary: "User input is required.",
+        result: { question: "Which directory?" },
+      },
+    });
+  });
+
   test("uses RFC 6901 selection and an explicit artifact-only policy without field-name inference", () => {
     const manifest: AgentToolObservationProjectionManifest = {
       ...StandardAgentToolObservationProjection,

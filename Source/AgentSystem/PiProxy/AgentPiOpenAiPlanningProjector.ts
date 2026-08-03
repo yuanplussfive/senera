@@ -9,6 +9,10 @@ import type {
   AgentPiToolRoutingCard,
   AgentPiToolTranscriptItem,
 } from "../PiShared/AgentPiPlanningTypes.js";
+import {
+  assertAgentPiToolObservationBounded,
+  readAgentPiToolObservation,
+} from "../PiShared/AgentPiToolObservationProtocol.js";
 import type { PiOpenAiChatCompletionRequest, PiOpenAiTool } from "./AgentPiOpenAiWireTypes.js";
 import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 import type { AgentPromptContractProperty } from "../Prompt/AgentPromptContractTypes.js";
@@ -97,6 +101,7 @@ export class AgentPiOpenAiPlanningProjector {
   }
 
   project(request: PiOpenAiChatCompletionRequest): AgentPiAssistantMessageCompileInput["openAiRequest"] {
+    assertBoundedToolObservations(request.messages);
     const stats: ProjectionStatsAccumulator = {
       truncatedTextFields: 0,
       truncatedJsonFields: 0,
@@ -339,16 +344,14 @@ export class AgentPiOpenAiPlanningProjector {
   ): NonNullable<AgentPiToolTranscriptItem["observation"]> {
     const parsed = readRecordFromJson(content);
     const detail = readAgentUnknownRecord(parsed?.detail);
-    const error = readAgentUnknownRecord(parsed?.error ?? detail?.error);
-    const summary = readAgentNonBlankString(
-      parsed?.summary ?? detail?.semantic_digest ?? detail?.summary ?? detail?.headline,
-    );
+    const error = readAgentUnknownRecord(parsed?.error ?? detail?.error_detail);
+    const summary = readAgentNonBlankString(detail?.semantic_digest ?? detail?.summary ?? detail?.headline);
     return {
       status: readAgentPiToolObservationStatus(parsed?.status),
       outputAvailability: readAgentToolOutputAvailability(parsed?.output_availability),
       summary: summary ? this.previewTextField(summary, this.limits.toolMessageTokens, stats) : undefined,
-      artifactUri: readAgentNonBlankString(parsed?.artifact_uri ?? parsed?.artifactUri),
-      evidenceUris: uniqueStrings([...readEvidenceUris(parsed), ...readEvidenceUris(detail)]),
+      artifactUri: readAgentNonBlankString(parsed?.artifact_uri),
+      evidenceUris: readEvidenceUris(detail),
       error: error
         ? {
             code: readAgentNonBlankString(error.code),
@@ -436,6 +439,14 @@ function readOpenAiContentAsText(content: PiOpenAiChatCompletionRequest["message
   return content
     .flatMap((part) => (part?.type === "text" && typeof part.text === "string" ? [part.text] : []))
     .join("");
+}
+
+function assertBoundedToolObservations(messages: PiOpenAiChatCompletionRequest["messages"]): void {
+  for (const message of messages) {
+    if (message.role !== "tool") continue;
+    const observation = readAgentPiToolObservation(readOpenAiContentAsText(message.content));
+    if (observation) assertAgentPiToolObservationBounded(observation);
+  }
 }
 
 function findCompactionSummaryMessageIndex(messages: PiOpenAiChatCompletionRequest["messages"]): number {

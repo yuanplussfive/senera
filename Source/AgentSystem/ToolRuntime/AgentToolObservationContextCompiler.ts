@@ -36,6 +36,7 @@ export interface AgentToolObservationContextCompilerInput {
   readonly status: unknown;
   readonly executionStatus: unknown;
   readonly outputAvailability: unknown;
+  readonly summary?: unknown;
   readonly outcome: unknown;
   readonly process: unknown;
   readonly error: unknown;
@@ -269,7 +270,7 @@ export class AgentToolObservationContextCompiler {
       case AgentToolObservationProjectionSources.Headline:
         return structuredSummary?.headline;
       case AgentToolObservationProjectionSources.Summary:
-        return structuredSummary?.summary ?? artifact?.summary;
+        return input.summary ?? structuredSummary?.summary ?? artifact?.summary;
       case AgentToolObservationProjectionSources.Error:
         return input.error;
       case AgentToolObservationProjectionSources.Process:

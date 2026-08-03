@@ -6,6 +6,7 @@ import { uniqueStrings } from "../Core/AgentCollections.js";
 import { readAgentNonBlankString, readAgentUnknownRecord, type AgentUnknownRecord } from "../Core/AgentUnknownValue.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import {
+  assertAgentPiToolObservationBounded,
   readAgentPiMessageTextContent,
   readAgentPiToolObservation,
   isAgentPiToolResultMessage,
@@ -162,7 +163,9 @@ function enrichWithToolResult(
   if (!callId) return;
 
   const text = readAgentPiMessageTextContent(message);
-  const observation = readAgentPiToolObservation(text) ?? {};
+  const parsedObservation = readAgentPiToolObservation(text);
+  if (parsedObservation) assertAgentPiToolObservationBounded(parsedObservation);
+  const observation = parsedObservation ?? {};
   const details = parseAgentPiToolDetails(record.details)?.senera;
   const pending = callsById.get(callId);
   if (pending) {
@@ -180,10 +183,11 @@ function enrichWithToolResult(
 
 function projectToolCallEntry(call: ResolvedToolCall): AgentPiCompactionToolCallEntry {
   const obs = call.observation;
+  const detail = readAgentUnknownRecord(obs.detail);
   const status = resolveEntryStatus(obs);
-  const summaryText = readObservationSummary(obs);
-  const artifactUriValue = readAgentNonBlankString(obs.artifact_uri ?? obs.artifactUri);
-  const evidenceUriList = uniqueStrings(readEvidenceUriList(obs.evidence));
+  const summaryText = readObservationSummary(detail);
+  const artifactUriValue = readAgentNonBlankString(obs.artifact_uri);
+  const evidenceUriList = uniqueStrings(readEvidenceUriList(detail?.evidence));
   const error = projectToolCallError(obs.error);
 
   return {
@@ -213,22 +217,23 @@ function resolveEntryStatus(observation: AgentUnknownRecord): "success" | "failu
   if (rawStatus === "success") return "success";
   if (rawStatus === "failure") return "failure";
 
-  const outputAvailability = readAgentNonBlankString(observation.output_availability ?? observation.outputAvailability);
+  const outputAvailability = readAgentNonBlankString(observation.output_availability);
   if (outputAvailability === "none" || outputAvailability === "empty") return "empty";
 
   const hasError = Boolean(readAgentUnknownRecord(observation.error));
   if (hasError) return "failure";
 
+  const detail = readAgentUnknownRecord(observation.detail);
   const hasContent = Boolean(
-    readObservationSummary(observation) ||
-    readAgentNonBlankString(observation.artifact_uri ?? observation.artifactUri) ||
-    readEvidenceUriList(observation.evidence).length > 0,
+    readObservationSummary(detail) ||
+    readAgentNonBlankString(observation.artifact_uri) ||
+    readEvidenceUriList(detail?.evidence).length > 0,
   );
   return hasContent ? "success" : "empty";
 }
 
-function readObservationSummary(observation: AgentUnknownRecord): string | undefined {
-  return readAgentNonBlankString(observation.summary ?? observation.semantic_digest ?? observation.headline);
+function readObservationSummary(detail: AgentUnknownRecord | undefined): string | undefined {
+  return readAgentNonBlankString(detail?.semantic_digest ?? detail?.summary ?? detail?.headline);
 }
 
 function projectToolCallError(errorValue: unknown): AgentPiCompactionToolCallEntry["error"] | undefined {

@@ -178,19 +178,31 @@ async function verifyAskUserProjection(): Promise<void> {
   });
 
   assert.equal(result.terminate, true);
-  const observation = JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "null") as unknown;
-  assert.deepEqual(observation, {
-    type: "senera.tool_observation.v1",
-    tool_name: tool.name,
-    call_id: "call_ask",
-    batch_id: "verify-pi-ask:1",
-    status: "waiting",
-    summary: "需要哪个目录？",
-    control: {
-      question: "需要哪个目录？",
-      reason_code: "missing_target",
-    },
+  const observation = JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "null") as {
+    type?: string;
+    tool_name?: string;
+    call_id?: string;
+    batch_id?: string;
+    status?: string;
+    observation_view?: { type?: string; complete?: boolean };
+    detail?: { summary?: string; result?: unknown };
+    summary?: unknown;
+    control?: unknown;
+  };
+  assert.equal(observation.type, "senera.tool_observation.v1");
+  assert.equal(observation.tool_name, tool.name);
+  assert.equal(observation.call_id, "call_ask");
+  assert.equal(observation.batch_id, "verify-pi-ask:1");
+  assert.equal(observation.status, "waiting");
+  assert.equal(observation.observation_view?.type, "senera.tool_observation_source_view.v1");
+  assert.equal(observation.observation_view?.complete, true);
+  assert.equal(observation.detail?.summary, "需要哪个目录？");
+  assert.deepEqual(observation.detail?.result, {
+    question: "需要哪个目录？",
+    reason_code: "missing_target",
   });
+  assert.equal(observation.summary, undefined);
+  assert.equal(observation.control, undefined);
 }
 
 async function verifyStructuredToolErrorProjection(): Promise<void> {
