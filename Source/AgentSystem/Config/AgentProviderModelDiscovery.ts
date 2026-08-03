@@ -1,4 +1,3 @@
-import { createHmac, randomBytes } from "node:crypto";
 import type {
   AgentModelProviderEndpointConfig,
   AgentSystemConfig,
@@ -10,7 +9,7 @@ import {
 } from "../Defaults/AgentModelProviderDefaults.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { isAgentUnknownRecord, readAgentTrimmedString } from "../Core/AgentUnknownValue.js";
-import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 
 export interface AgentProviderModelInfo {
   id: string;
@@ -27,6 +26,7 @@ export interface AgentProviderModelSnapshot {
 
 export interface AgentProviderModelDiscoveryOptions {
   configSnapshot: () => AgentSystemConfig;
+  configRevision?: () => number | undefined;
   fetchImpl?: typeof fetch;
   cache?: Partial<AgentProviderModelDiscoveryCachePolicy>;
   now?: () => number;
@@ -46,7 +46,6 @@ interface CachedProviderModels {
 type ProviderModelsRequestIdentity = string;
 
 const DISCOVERY_TIMEOUT_MS = 20_000;
-const ProviderModelsRequestIdentityKey = randomBytes(32);
 export const AgentProviderModelDiscoveryCacheDefaults = {
   MaxEntries: 64,
   TtlMs: 5 * 60_000,
@@ -80,11 +79,13 @@ export class AgentProviderModelDiscovery {
       throw new AgentLocalizedError("model.listBaseUrlEmpty", { providerId: endpoint.Id });
     }
 
-    const requestIdentity = providerModelsRequestIdentity(endpoint);
+    const configRevision = this.options.configRevision?.();
+    const cacheable = shouldCacheProviderModels(input.endpoint, endpoint, configRevision);
+    const requestIdentity = providerModelsRequestIdentity(endpoint, configRevision);
     const now = this.now();
     this.pruneExpiredSnapshots(now);
     const cached = this.cache.get(endpoint.Id);
-    if (!input.force && cached && cached.expiresAt > now && cached.requestIdentity === requestIdentity) {
+    if (cacheable && !input.force && cached && cached.expiresAt > now && cached.requestIdentity === requestIdentity) {
       this.cache.delete(endpoint.Id);
       this.cache.set(endpoint.Id, cached);
       return {
@@ -135,11 +136,13 @@ export class AgentProviderModelDiscovery {
       source: "network",
       models,
     };
-    this.cacheSnapshot(endpoint.Id, {
-      requestIdentity,
-      snapshot: cloneProviderModelSnapshot(snapshot),
-      expiresAt: fetchedAt + this.cachePolicy.ttlMs,
-    });
+    if (cacheable) {
+      this.cacheSnapshot(endpoint.Id, {
+        requestIdentity,
+        snapshot: cloneProviderModelSnapshot(snapshot),
+        expiresAt: fetchedAt + this.cachePolicy.ttlMs,
+      });
+    }
     return cloneProviderModelSnapshot(snapshot);
   }
 
@@ -239,19 +242,28 @@ function parseModelInfo(value: unknown): AgentProviderModelInfo | null {
 
 function providerModelsRequestIdentity(
   endpoint: ResolvedAgentModelProviderEndpointConfig,
+  configRevision: number | undefined,
 ): ProviderModelsRequestIdentity {
-  return createHmac("sha256", ProviderModelsRequestIdentityKey)
-    .update(
-      stringifyAgentCanonicalJson({
-        Kind: endpoint.Kind,
-        BaseUrl: endpoint.BaseUrl,
-        ApiKey: endpoint.ApiKey,
-        ApiVersion: endpoint.ApiVersion,
-        Headers: { ...endpoint.Headers },
-      }),
-      "utf8",
-    )
-    .digest("hex");
+  return sha256HexOfCanonicalJson({
+    ConfigRevision: configRevision ?? null,
+    Kind: endpoint.Kind,
+    BaseUrl: endpoint.BaseUrl,
+    ApiVersion: endpoint.ApiVersion,
+    HeaderNames: Object.keys(endpoint.Headers).sort((left, right) => left.localeCompare(right)),
+  });
+}
+
+function shouldCacheProviderModels(
+  inputEndpoint: AgentModelProviderEndpointConfig | undefined,
+  endpoint: ResolvedAgentModelProviderEndpointConfig,
+  configRevision: number | undefined,
+): boolean {
+  if (inputEndpoint) return !hasEndpointCredentials(endpoint);
+  return !hasEndpointCredentials(endpoint) || configRevision !== undefined;
+}
+
+function hasEndpointCredentials(endpoint: ResolvedAgentModelProviderEndpointConfig): boolean {
+  return endpoint.ApiKey.trim().length > 0 || Object.keys(endpoint.Headers).length > 0;
 }
 
 function withTrailingSlash(value: string): string {

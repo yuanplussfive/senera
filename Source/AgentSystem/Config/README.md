@@ -24,7 +24,7 @@ Config 模块负责配置的读取、数据库镜像、表单投影和模型列�
 - SQLite 清理先删除过期和超额 command receipt，再删除不在最近 `RevisionRetentionCount` 且不再被有效 receipt 引用的 revision；清理与命令提交使用同一事务。JSON source 的进程内 receipt ledger 必须应用相同策略。
 - Provider rename 必须同步迁移规范模型 ID 及其配置引用，并保留 `ModelProviderIdAliases`，避免历史会话引用立即失效。
 - Provider/Model mutation 只负责构造下一份配置；跨端点、模型、默认值、group 和 alias 的一致性规则集中在 invariants 模块。旧 commands 文件只作为稳定 import boundary，禁止重新堆叠命令实现。
-- Provider model discovery cache 使用 endpoint 配置的规范 SHA-256 身份摘要，而不在缓存键中保留 API key 或 headers 原文。缓存由显式 `maxEntries`/`ttlMs` 策略约束，命中时更新 LRU；配置、凭据或过期时间变化都会重新请求。
+- Provider model discovery cache 使用只包含 endpoint 非敏感元数据和配置 revision 的规范身份摘要，不读取 API key 或 headers 值参与哈希。带凭据的临时 endpoint 不进入缓存；持久化配置通过 revision 变化失效。缓存由显式 `maxEntries`/`ttlMs` 策略约束，命中时更新 LRU。
 - `Server.AccessControl.Limits.MaxRateLimitClients` 是登录、HTTP、upgrade 和消息令牌桶可跟踪客户端数的共同上限；它约束内存和淘汰成本，不改变各自每分钟的配额。
 - 用户可编辑时间单位用秒，运行时内部再转换。
 - 新增配置必须补配置投影或配置服务验证。

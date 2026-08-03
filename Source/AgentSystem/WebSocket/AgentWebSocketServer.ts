@@ -49,8 +49,13 @@ export class AgentWebSocketServer {
     this.logger = options.logger ?? new AgentLogger();
     const configSnapshot = (): ReturnType<AgentWebSocketRequestContext["configSnapshot"]> =>
       options.configSnapshot?.() ?? options.config;
+    const configRevision = (): number | undefined => {
+      const snapshot = options.configService?.snapshot();
+      return snapshot?.revision ?? snapshot?.version;
+    };
     const providerModelDiscovery = new AgentProviderModelDiscovery({
       configSnapshot,
+      configRevision,
     });
     const sandboxRuntimeService = options.sandboxRuntimeService ?? new AgentSandboxRuntimeService();
     const piTurnContexts = options.piTurnContexts;
