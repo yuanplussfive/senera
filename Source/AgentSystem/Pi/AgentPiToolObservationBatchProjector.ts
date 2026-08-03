@@ -18,6 +18,8 @@ import {
   type AgentPiToolObservation,
 } from "./AgentPiToolObservation.js";
 
+const MaximumExactProjectionBytesPerToken = 32;
+
 export interface AgentPiToolObservationBatchProjectionOptions {
   readonly model: string;
   readonly contextWindowTokens: number;
@@ -41,6 +43,7 @@ interface ProjectionCandidate {
   readonly minimumText: string;
   readonly minimumTokens: number;
   readonly completeTokens: number;
+  readonly requiresProjection: boolean;
 }
 
 export class AgentPiToolObservationBatchProjector {
@@ -170,11 +173,14 @@ export class AgentPiToolObservationBatchProjector {
       const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
       if (!observation || isAgentPiObservationContextProjected(observation)) return [];
 
-      const minimum = incompleteObservation(
-        observation,
-        this.tokenProjector.projectJson(projectAgentPiToolObservationFallback(observation), 1).projectedValue,
-      );
+      const minimum = incompleteObservation(observation, {});
       const minimumText = JSON.stringify(minimum);
+      const complete = completeObservation(observation);
+      const maximumCompleteTokens = this.maximumCandidateTokens();
+      const requiresProjection =
+        Buffer.byteLength(JSON.stringify(complete), "utf8") >
+        maximumCompleteTokens * MaximumExactProjectionBytesPerToken;
+      const completeTokens = requiresProjection ? maximumCompleteTokens : this.tokenProjector.countJson(complete);
       return [
         {
           index,
@@ -184,10 +190,15 @@ export class AgentPiToolObservationBatchProjector {
           minimum,
           minimumText,
           minimumTokens: this.tokenProjector.countJson(minimum),
-          completeTokens: this.tokenProjector.countJson(completeObservation(observation)),
+          completeTokens,
+          requiresProjection,
         },
       ];
     });
+  }
+
+  private maximumCandidateTokens(): number {
+    return Math.max(1, Math.floor(this.options.contextWindowTokens) - Math.floor(this.options.outputReserveTokens));
   }
 
   private availableBatchTokens(messages: readonly AgentMessage[], candidates: readonly ProjectionCandidate[]): number {
@@ -205,8 +216,9 @@ export class AgentPiToolObservationBatchProjector {
   }
 
   private projectObservation(candidate: ProjectionCandidate, tokenLimit: number): string {
-    const completeProjection = this.tokenProjector.projectJson(completeObservation(candidate.observation), tokenLimit);
-    if (completeProjection.complete) return completeProjection.text;
+    if (!candidate.requiresProjection && candidate.completeTokens <= tokenLimit) {
+      return JSON.stringify(completeObservation(candidate.observation));
+    }
 
     const envelope = incompleteObservationEnvelope(candidate.observation);
     const detailOverhead = this.tokenProjector.countJson({ ...envelope, detail: {} });

@@ -171,6 +171,7 @@ describe("Pi tool observation batch projection", () => {
     });
     expect(readAgentPiMessageTextContent(projected[0])).not.toBe("null");
     expect(observation.detail).not.toBeNull();
+    expect(JSON.stringify(observation.detail)).not.toContain("diagnostic".repeat(50));
   });
 
   test("keeps staging budgets stable while concurrent tools finish", () => {

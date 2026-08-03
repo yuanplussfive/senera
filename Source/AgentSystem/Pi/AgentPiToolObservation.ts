@@ -55,7 +55,6 @@ const AgentPiToolObservationFallbackKeys = [
   "retrieval",
   "continuation",
   "projection",
-  "error",
 ] as const;
 
 export function readAgentPiToolObservation(content: string): AgentPiToolObservation | undefined {

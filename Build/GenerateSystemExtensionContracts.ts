@@ -1,4 +1,5 @@
 import path from "node:path";
+import { format, resolveConfig } from "prettier";
 import { z } from "zod";
 import { synchronizeGeneratedFile } from "./GeneratedTextFile.js";
 import { createAgentSystemTools } from "../Source/AgentSystem/SystemTools/AgentSystemTools.js";
@@ -13,11 +14,11 @@ const check = process.argv.includes("--check");
 const outputRoot = path.join(process.cwd(), "System", "Extensions");
 const definitions = createAgentSystemTools({ ModelProviders: [] });
 
-for (const group of groupByExtension(definitions)) synchronizeExtension(group);
+for (const group of groupByExtension(definitions)) await synchronizeExtension(group);
 
 console.log(`Generated System extension contracts ${check ? "verified" : "synchronized"}.`);
 
-function synchronizeExtension(definitions: readonly AgentSystemToolDefinition[]): void {
+async function synchronizeExtension(definitions: readonly AgentSystemToolDefinition[]): Promise<void> {
   const first = definitions[0];
   if (!first) return;
   const extensionRoot = path.join(outputRoot, first.extension.name);
@@ -28,7 +29,7 @@ function synchronizeExtension(definitions: readonly AgentSystemToolDefinition[])
     capability: systemToolCapability(definition),
     recommendedForSkills: [...(definition.extension.skills ?? [])],
   }));
-  synchronize(path.join(extensionRoot, "extension.json"), {
+  await synchronize(path.join(extensionRoot, "extension.json"), {
     $schema: "https://schemas.senera.ai/extension/v1.json",
     schemaVersion: 1,
     id: first.extension.name,
@@ -40,15 +41,15 @@ function synchronizeExtension(definitions: readonly AgentSystemToolDefinition[])
     contributions,
   });
   if (configuration) {
-    synchronize(
+    await synchronize(
       path.join(extensionRoot, "config.schema.json"),
       z.toJSONSchema(configuration.schema, { target: "draft-7", io: "input" }),
     );
-    synchronize(path.join(extensionRoot, "ui.schema.json"), configuration.ui);
+    await synchronize(path.join(extensionRoot, "ui.schema.json"), configuration.ui);
   }
   for (const definition of definitions) {
     const metadata = definition.metadata;
-    synchronize(path.join(extensionRoot, "tools", `${definition.name}.tool.json`), {
+    await synchronize(path.join(extensionRoot, "tools", `${definition.name}.tool.json`), {
       name: definition.name,
       description: metadata.description,
       inputSchema: z.toJSONSchema(definition.input, { target: "draft-7", io: "input" }),
@@ -89,10 +90,10 @@ function configurationSignature(configuration: NonNullable<AgentSystemToolDefini
   });
 }
 
-function synchronize(filePath: string, value: unknown): void {
+async function synchronize(filePath: string, value: unknown): Promise<void> {
   synchronizeGeneratedFile({
     filePath,
-    content: `${JSON.stringify(value, null, 2)}\n`,
+    content: await format(JSON.stringify(value), { ...(await resolveConfig(filePath)), filepath: filePath }),
     check,
     regenerateCommand: "npm run generate.system-extension-contracts",
   });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import fs from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { z } from "zod";
@@ -335,7 +336,7 @@ function addNumbersTool(workspaceRoot: string): RegisteredTool {
 }
 
 async function createTemporaryWorkspace(): Promise<string> {
-  const root = await fs.mkdtemp(path.join(process.cwd(), ".tmp", "pi-substrate-"));
+  const root = await fs.mkdtemp(path.join(tmpdir(), "senera-pi-substrate-"));
   temporaryRoots.push(root);
   await Promise.all([
     fs.mkdir(path.join(root, ".senera"), { recursive: true }),

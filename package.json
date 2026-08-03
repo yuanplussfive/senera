@@ -19,6 +19,7 @@
   },
   "scripts": {
     "clean": "rimraf Dist",
+    "postinstall": "node Scripts/ApplyPinnedDependencyPatch.mjs",
     "quality.baml": "baml check --from baml_src",
     "quality.baml.generate": "baml generate --from baml_src",
     "quality.security": "npm audit --package-lock-only --audit-level=moderate",
@@ -203,6 +204,7 @@
     "ai-sdk-guardrails": "^6.0.1",
     "ajv": "^8.20.0",
     "better-sqlite3": "^12.10.0",
+    "brace-expansion": "5.0.8",
     "busboy": "^1.6.0",
     "chalk": "^4.1.2",
     "chardet": "^2.1.1",

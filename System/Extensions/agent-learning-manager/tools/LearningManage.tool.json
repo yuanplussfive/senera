@@ -5,20 +5,9 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "action": {
-        "type": "string",
-        "enum": ["status", "list", "inspect", "skill_terms"]
-      },
-      "episodeId": {
-        "description": "Learning episode id required by inspect.",
-        "type": "string",
-        "minLength": 1
-      },
-      "skillName": {
-        "description": "Optional Skill name filter for skill_terms.",
-        "type": "string",
-        "minLength": 1
-      },
+      "action": { "type": "string", "enum": ["status", "list", "inspect", "skill_terms"] },
+      "episodeId": { "description": "Learning episode id required by inspect.", "type": "string", "minLength": 1 },
+      "skillName": { "description": "Optional Skill name filter for skill_terms.", "type": "string", "minLength": 1 },
       "limit": {
         "description": "Number of records required by list and skill_terms.",
         "type": "integer",
@@ -35,40 +24,23 @@
       {
         "type": "object",
         "properties": {
-          "action": {
-            "type": "string",
-            "const": "status"
-          },
-          "projectId": {
-            "type": "string"
-          },
-          "episodeCount": {
-            "type": "number"
-          },
+          "action": { "type": "string", "const": "status" },
+          "projectId": { "type": "string" },
+          "episodeCount": { "type": "number" },
           "episodeGroups": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "domain": {
-                  "type": "string",
-                  "enum": ["tool_routing", "skill_routing"]
-                },
-                "state": {
-                  "type": "string",
-                  "enum": ["observed", "learned", "skipped", "failed"]
-                },
-                "count": {
-                  "type": "number"
-                }
+                "domain": { "type": "string", "enum": ["tool_routing", "skill_routing"] },
+                "state": { "type": "string", "enum": ["observed", "learned", "skipped", "failed"] },
+                "count": { "type": "number" }
               },
               "required": ["domain", "state", "count"],
               "additionalProperties": false
             }
           },
-          "skillTermCount": {
-            "type": "number"
-          }
+          "skillTermCount": { "type": "number" }
         },
         "required": ["action", "projectId", "episodeCount", "episodeGroups", "skillTermCount"],
         "additionalProperties": false
@@ -76,62 +48,30 @@
       {
         "type": "object",
         "properties": {
-          "action": {
-            "type": "string",
-            "const": "list"
-          },
+          "action": { "type": "string", "const": "list" },
           "episodes": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "domain": {
-                  "type": "string",
-                  "enum": ["tool_routing", "skill_routing"]
-                },
-                "state": {
-                  "type": "string",
-                  "enum": ["observed", "learned", "skipped", "failed"]
-                },
-                "reason": {
-                  "type": "string"
-                },
-                "error": {
-                  "type": "string"
-                },
-                "attempts": {
-                  "type": "number"
-                },
-                "projectId": {
-                  "type": "string"
-                },
-                "sessionId": {
-                  "type": "string"
-                },
-                "requestId": {
-                  "type": "string"
-                },
-                "query": {
-                  "type": "string"
-                },
+                "id": { "type": "string" },
+                "domain": { "type": "string", "enum": ["tool_routing", "skill_routing"] },
+                "state": { "type": "string", "enum": ["observed", "learned", "skipped", "failed"] },
+                "reason": { "type": "string" },
+                "error": { "type": "string" },
+                "attempts": { "type": "number" },
+                "projectId": { "type": "string" },
+                "sessionId": { "type": "string" },
+                "requestId": { "type": "string" },
+                "query": { "type": "string" },
                 "subjects": {
                   "type": "array",
                   "items": {
                     "type": "object",
                     "properties": {
-                      "kind": {
-                        "type": "string",
-                        "enum": ["tool", "skill"]
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "revision": {
-                        "type": "string"
-                      }
+                      "kind": { "type": "string", "enum": ["tool", "skill"] },
+                      "name": { "type": "string" },
+                      "revision": { "type": "string" }
                     },
                     "required": ["kind", "name"],
                     "additionalProperties": false
@@ -140,47 +80,20 @@
                 "context": {
                   "type": "object",
                   "properties": {
-                    "rawUserTurn": {
-                      "type": "string"
-                    },
-                    "standaloneRequest": {
-                      "type": "string"
-                    },
-                    "contextMode": {
-                      "type": "string"
-                    },
-                    "contextBasis": {
-                      "type": "string"
-                    },
-                    "candidates": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "chosenTools": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
+                    "rawUserTurn": { "type": "string" },
+                    "standaloneRequest": { "type": "string" },
+                    "contextMode": { "type": "string" },
+                    "contextBasis": { "type": "string" },
+                    "candidates": { "type": "array", "items": { "type": "string" } },
+                    "chosenTools": { "type": "array", "items": { "type": "string" } },
                     "activeSkills": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "revision": {
-                            "type": "string"
-                          },
-                          "matchedTerms": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          }
+                          "name": { "type": "string" },
+                          "revision": { "type": "string" },
+                          "matchedTerms": { "type": "array", "items": { "type": "string" } }
                         },
                         "required": ["name", "revision", "matchedTerms"],
                         "additionalProperties": false
@@ -201,36 +114,19 @@
                 "outcome": {
                   "type": "object",
                   "properties": {
-                    "outcome": {
-                      "type": "string",
-                      "enum": ["success", "failure", "unknown"]
-                    },
-                    "score": {
-                      "type": "number"
-                    },
+                    "outcome": { "type": "string", "enum": ["success", "failure", "unknown"] },
+                    "score": { "type": "number" },
                     "calls": {
                       "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {},
-                        "additionalProperties": {}
-                      }
+                      "items": { "type": "object", "properties": {}, "additionalProperties": {} }
                     },
-                    "final": {
-                      "type": "object",
-                      "properties": {},
-                      "additionalProperties": {}
-                    }
+                    "final": { "type": "object", "properties": {}, "additionalProperties": {} }
                   },
                   "required": ["outcome", "score", "calls", "final"],
                   "additionalProperties": false
                 },
-                "createdAtMs": {
-                  "type": "number"
-                },
-                "updatedAtMs": {
-                  "type": "number"
-                }
+                "createdAtMs": { "type": "number" },
+                "updatedAtMs": { "type": "number" }
               },
               "required": [
                 "id",
@@ -259,63 +155,29 @@
       {
         "type": "object",
         "properties": {
-          "action": {
-            "type": "string",
-            "const": "inspect"
-          },
-          "found": {
-            "type": "boolean"
-          },
+          "action": { "type": "string", "const": "inspect" },
+          "found": { "type": "boolean" },
           "episode": {
             "type": "object",
             "properties": {
-              "id": {
-                "type": "string"
-              },
-              "domain": {
-                "type": "string",
-                "enum": ["tool_routing", "skill_routing"]
-              },
-              "state": {
-                "type": "string",
-                "enum": ["observed", "learned", "skipped", "failed"]
-              },
-              "reason": {
-                "type": "string"
-              },
-              "error": {
-                "type": "string"
-              },
-              "attempts": {
-                "type": "number"
-              },
-              "projectId": {
-                "type": "string"
-              },
-              "sessionId": {
-                "type": "string"
-              },
-              "requestId": {
-                "type": "string"
-              },
-              "query": {
-                "type": "string"
-              },
+              "id": { "type": "string" },
+              "domain": { "type": "string", "enum": ["tool_routing", "skill_routing"] },
+              "state": { "type": "string", "enum": ["observed", "learned", "skipped", "failed"] },
+              "reason": { "type": "string" },
+              "error": { "type": "string" },
+              "attempts": { "type": "number" },
+              "projectId": { "type": "string" },
+              "sessionId": { "type": "string" },
+              "requestId": { "type": "string" },
+              "query": { "type": "string" },
               "subjects": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "properties": {
-                    "kind": {
-                      "type": "string",
-                      "enum": ["tool", "skill"]
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "revision": {
-                      "type": "string"
-                    }
+                    "kind": { "type": "string", "enum": ["tool", "skill"] },
+                    "name": { "type": "string" },
+                    "revision": { "type": "string" }
                   },
                   "required": ["kind", "name"],
                   "additionalProperties": false
@@ -324,47 +186,20 @@
               "context": {
                 "type": "object",
                 "properties": {
-                  "rawUserTurn": {
-                    "type": "string"
-                  },
-                  "standaloneRequest": {
-                    "type": "string"
-                  },
-                  "contextMode": {
-                    "type": "string"
-                  },
-                  "contextBasis": {
-                    "type": "string"
-                  },
-                  "candidates": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "chosenTools": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
+                  "rawUserTurn": { "type": "string" },
+                  "standaloneRequest": { "type": "string" },
+                  "contextMode": { "type": "string" },
+                  "contextBasis": { "type": "string" },
+                  "candidates": { "type": "array", "items": { "type": "string" } },
+                  "chosenTools": { "type": "array", "items": { "type": "string" } },
                   "activeSkills": {
                     "type": "array",
                     "items": {
                       "type": "object",
                       "properties": {
-                        "name": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "type": "string"
-                        },
-                        "matchedTerms": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        }
+                        "name": { "type": "string" },
+                        "revision": { "type": "string" },
+                        "matchedTerms": { "type": "array", "items": { "type": "string" } }
                       },
                       "required": ["name", "revision", "matchedTerms"],
                       "additionalProperties": false
@@ -385,36 +220,19 @@
               "outcome": {
                 "type": "object",
                 "properties": {
-                  "outcome": {
-                    "type": "string",
-                    "enum": ["success", "failure", "unknown"]
-                  },
-                  "score": {
-                    "type": "number"
-                  },
+                  "outcome": { "type": "string", "enum": ["success", "failure", "unknown"] },
+                  "score": { "type": "number" },
                   "calls": {
                     "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {},
-                      "additionalProperties": {}
-                    }
+                    "items": { "type": "object", "properties": {}, "additionalProperties": {} }
                   },
-                  "final": {
-                    "type": "object",
-                    "properties": {},
-                    "additionalProperties": {}
-                  }
+                  "final": { "type": "object", "properties": {}, "additionalProperties": {} }
                 },
                 "required": ["outcome", "score", "calls", "final"],
                 "additionalProperties": false
               },
-              "createdAtMs": {
-                "type": "number"
-              },
-              "updatedAtMs": {
-                "type": "number"
-              }
+              "createdAtMs": { "type": "number" },
+              "updatedAtMs": { "type": "number" }
             },
             "required": [
               "id",
@@ -442,39 +260,20 @@
       {
         "type": "object",
         "properties": {
-          "action": {
-            "type": "string",
-            "const": "skill_terms"
-          },
+          "action": { "type": "string", "const": "skill_terms" },
           "terms": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "projectId": {
-                  "type": "string"
-                },
-                "skillName": {
-                  "type": "string"
-                },
-                "skillRevision": {
-                  "type": "string"
-                },
-                "term": {
-                  "type": "string"
-                },
-                "source": {
-                  "type": "string"
-                },
-                "support": {
-                  "type": "number"
-                },
-                "weight": {
-                  "type": "number"
-                },
-                "lastSeenAt": {
-                  "type": "number"
-                }
+                "projectId": { "type": "string" },
+                "skillName": { "type": "string" },
+                "skillRevision": { "type": "string" },
+                "term": { "type": "string" },
+                "source": { "type": "string" },
+                "support": { "type": "number" },
+                "weight": { "type": "number" },
+                "lastSeenAt": { "type": "number" }
               },
               "required": [
                 "projectId",
@@ -496,16 +295,8 @@
     ]
   },
   "permissions": ["filesystem:read:.senera/data/tool-search"],
-  "execution": {
-    "Targets": ["Local"],
-    "Network": "Deny",
-    "Workspace": "ReadOnly"
-  },
-  "runtime": {
-    "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
-    "ResultAssessment": "ProcessExit"
-  },
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": { "Lifecycle": "Immediate", "ProtocolVersion": 2, "ResultAssessment": "ProcessExit" },
   "resources": [],
   "sources": [],
   "search": {
@@ -524,10 +315,7 @@
           "Effects": ["none"]
         },
         "Aliases": ["为什么没有学到", "查看学习记录", "检查 Skill 触发词"],
-        "Risk": {
-          "SideEffect": "none",
-          "Permission": "read"
-        }
+        "Risk": { "SideEffect": "none", "Permission": "read" }
       }
     ],
     "UseCases": ["诊断学习数据库为空、模型学习失败、Skill 未被再次激活或某条经验被跳过。"],

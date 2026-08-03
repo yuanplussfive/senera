@@ -7,20 +7,9 @@
       {
         "type": "object",
         "properties": {
-          "action": {
-            "type": "string",
-            "const": "create"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Lowercase kebab-case Skill directory name."
-          },
-          "description": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Trigger-focused Skill description."
-          },
+          "action": { "type": "string", "const": "create" },
+          "name": { "type": "string", "minLength": 1, "description": "Lowercase kebab-case Skill directory name." },
+          "description": { "type": "string", "minLength": 1, "description": "Trigger-focused Skill description." },
           "instructions": {
             "type": "string",
             "minLength": 1,
@@ -28,10 +17,7 @@
           },
           "recommendedTools": {
             "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
+            "items": { "type": "string", "minLength": 1 },
             "description": "Exact registered tool names to prioritize whenever this Skill activates. Omit when no specific tool is required."
           }
         },
@@ -41,20 +27,9 @@
       {
         "type": "object",
         "properties": {
-          "action": {
-            "type": "string",
-            "const": "update"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Lowercase kebab-case Skill directory name."
-          },
-          "description": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Trigger-focused Skill description."
-          },
+          "action": { "type": "string", "const": "update" },
+          "name": { "type": "string", "minLength": 1, "description": "Lowercase kebab-case Skill directory name." },
+          "description": { "type": "string", "minLength": 1, "description": "Trigger-focused Skill description." },
           "instructions": {
             "type": "string",
             "minLength": 1,
@@ -62,10 +37,7 @@
           },
           "recommendedTools": {
             "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
+            "items": { "type": "string", "minLength": 1 },
             "description": "Exact registered tool names to prioritize whenever this Skill activates. Omit when no specific tool is required."
           }
         },
@@ -75,15 +47,8 @@
       {
         "type": "object",
         "properties": {
-          "action": {
-            "type": "string",
-            "const": "validate"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Lowercase kebab-case Skill directory name."
-          }
+          "action": { "type": "string", "const": "validate" },
+          "name": { "type": "string", "minLength": 1, "description": "Lowercase kebab-case Skill directory name." }
         },
         "required": ["action", "name"],
         "additionalProperties": false
@@ -91,15 +56,8 @@
       {
         "type": "object",
         "properties": {
-          "action": {
-            "type": "string",
-            "const": "remove"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Lowercase kebab-case Skill directory name."
-          }
+          "action": { "type": "string", "const": "remove" },
+          "name": { "type": "string", "minLength": 1, "description": "Lowercase kebab-case Skill directory name." }
         },
         "required": ["action", "name"],
         "additionalProperties": false
@@ -110,59 +68,27 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "status": {
-        "type": "string",
-        "enum": ["created", "updated", "valid", "removed"]
-      },
-      "action": {
-        "type": "string",
-        "enum": ["create", "update", "validate", "remove"]
-      },
-      "name": {
-        "type": "string"
-      },
-      "path": {
-        "type": "string"
-      },
+      "status": { "type": "string", "enum": ["created", "updated", "valid", "removed"] },
+      "action": { "type": "string", "enum": ["create", "update", "validate", "remove"] },
+      "name": { "type": "string" },
+      "path": { "type": "string" },
       "diagnostics": {
         "type": "object",
         "properties": {
-          "item": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {},
-              "additionalProperties": {}
-            }
-          }
+          "item": { "type": "array", "items": { "type": "object", "properties": {}, "additionalProperties": {} } }
         },
         "required": ["item"],
         "additionalProperties": false
       },
-      "recommendedTools": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "guidance": {
-        "type": "string"
-      }
+      "recommendedTools": { "type": "array", "items": { "type": "string" } },
+      "guidance": { "type": "string" }
     },
     "required": ["status", "action", "name", "diagnostics", "recommendedTools", "guidance"],
     "additionalProperties": false
   },
   "permissions": ["filesystem:write:.senera/skills"],
-  "execution": {
-    "Targets": ["Local"],
-    "Network": "Deny",
-    "Workspace": "ReadWrite"
-  },
-  "runtime": {
-    "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
-    "ResultAssessment": "ProcessExit"
-  },
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
+  "runtime": { "Lifecycle": "Immediate", "ProtocolVersion": 2, "ResultAssessment": "ProcessExit" },
   "resources": [],
   "sources": [],
   "search": {
@@ -181,10 +107,7 @@
           "Effects": ["workspace-change", "runtime-refresh"]
         },
         "Aliases": ["创建 skill", "添加技能", "校验 skill", "更新工作流"],
-        "Risk": {
-          "SideEffect": "workspace-change",
-          "Permission": "write"
-        }
+        "Risk": { "SideEffect": "workspace-change", "Permission": "write" }
       }
     ],
     "UseCases": ["用户要求创建可复用工作流、维护 SKILL.md 或发布 Skill 包。"],

@@ -3,31 +3,16 @@
   "type": "object",
   "properties": {
     "model": {
-      "default": {
-        "modelProviderId": ""
-      },
+      "default": { "modelProviderId": "" },
       "type": "object",
-      "properties": {
-        "modelProviderId": {
-          "default": "",
-          "type": "string",
-          "maxLength": 256
-        }
-      },
+      "properties": { "modelProviderId": { "default": "", "type": "string", "maxLength": 256 } },
       "additionalProperties": false
     },
     "input": {
-      "default": {
-        "maxImageBytes": 52428800
-      },
+      "default": { "maxImageBytes": 52428800 },
       "type": "object",
       "properties": {
-        "maxImageBytes": {
-          "default": 52428800,
-          "type": "integer",
-          "minimum": 1024,
-          "maximum": 104857600
-        }
+        "maxImageBytes": { "default": 52428800, "type": "integer", "minimum": 1024, "maximum": 104857600 }
       },
       "additionalProperties": false
     },
