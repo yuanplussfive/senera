@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.9.10](https://github.com/yuanplussfive/senera/compare/v1.9.9...v1.9.10) (2026-08-03)
+
+
+### 内部重构
+
+* **runtime:** 统一 Pi 会话、扩展与持久化架构 ([#91](https://github.com/yuanplussfive/senera/issues/91)) ([f89d0de](https://github.com/yuanplussfive/senera/commit/f89d0de6b0e06769691ddb83e76b22605c9f56f3))
+
 ## [1.9.9](https://github.com/yuanplussfive/senera/compare/v1.9.8...v1.9.9) (2026-07-27)
 
 
