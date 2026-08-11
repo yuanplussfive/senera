@@ -23,7 +23,7 @@ describe("MCP package runtime discovery", () => {
       const runtime = AgentSystemRuntime.fromConfig({
         workspaceRoot,
         configPath: path.join(workspaceRoot, "senera.config.json"),
-        config: loadExampleConfig(),
+        config: loadHostExecutionExampleConfig(),
         resourcesPath: path.resolve(),
         toolSearchMemoryStore: new InMemoryToolSearchMemoryStore(),
         mcpInputs: {
@@ -79,7 +79,7 @@ describe("MCP package runtime discovery", () => {
     const runtime = AgentSystemRuntime.fromConfig({
       workspaceRoot,
       configPath: path.join(workspaceRoot, "senera.config.json"),
-      config: loadExampleConfig(),
+      config: loadHostExecutionExampleConfig(),
       resourcesPath: path.resolve(),
       toolSearchMemoryStore: new InMemoryToolSearchMemoryStore(),
       mcpInputs: { resolve: () => undefined },
@@ -96,6 +96,16 @@ describe("MCP package runtime discovery", () => {
   });
 });
 
-function loadExampleConfig(): AgentSystemConfig {
-  return JSON.parse(fs.readFileSync(path.resolve("senera.config.example.json"), "utf8")) as AgentSystemConfig;
+function loadHostExecutionExampleConfig(): AgentSystemConfig {
+  const config = JSON.parse(fs.readFileSync(path.resolve("senera.config.example.json"), "utf8")) as AgentSystemConfig;
+  return {
+    ...config,
+    Defaults: {
+      ...config.Defaults,
+      SandboxRuntime: {
+        ...config.Defaults?.SandboxRuntime,
+        Enabled: false,
+      },
+    },
+  };
 }

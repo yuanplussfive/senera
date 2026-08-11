@@ -347,6 +347,7 @@ function createRuntimeConfig(input: {
       AgentLoop: { PiSessions: { RootDir: ".senera/pi-sessions" } },
       ToolLearning: { Enabled: false },
       SandboxRuntime: {
+        Enabled: false,
         BaseDir: ".senera/sandbox-runtime",
       },
       Presets: {

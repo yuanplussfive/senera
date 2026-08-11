@@ -43,6 +43,24 @@ describe("sandbox deployment boundary", () => {
     });
   });
 
+  test("exposes governed host execution on POSIX when sandbox execution is explicitly disabled", () => {
+    const environments = createSeneraExecutionEnvironments({
+      workspaceRoot: process.cwd(),
+      platform: "linux",
+      sandboxEnabled: false,
+      sandboxAvailable: false,
+    });
+
+    expect(environments.tool.capabilities).toMatchObject({
+      effectiveMode: "host",
+      effectiveBackend: "local",
+      shellDialect: "posix-sh",
+      processBackends: ["local"],
+      persistentProcessBackends: ["local"],
+      terminalBackends: ["local"],
+    });
+  });
+
   test("does not expose a process backend while a required POSIX sandbox is unavailable", () => {
     const environments = createSeneraExecutionEnvironments({
       workspaceRoot: process.cwd(),
