@@ -100,7 +100,7 @@ app
       dockerEngineWorker: sandboxWorkerHandle.client,
     });
     mainWindow = createMainWindow();
-    void loadDesktopFrontend(mainWindow, frontendSource);
+    await loadDesktopFrontend(mainWindow, frontendSource, desktopFrontendQuery());
 
     app.on("activate", () => {
       showAllDesktopWindows();
@@ -222,7 +222,7 @@ function hideAllDesktopWindows(): void {
 function showAllDesktopWindows(): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
     mainWindow = createMainWindow();
-    void loadDesktopFrontend(mainWindow, readFrontendSource());
+    startDesktopFrontendLoad(mainWindow);
   }
   showDesktopWindows([mainWindow, settingsWindow]);
 }
@@ -271,14 +271,14 @@ function openSettingsWindow(options?: { section?: string }): void {
   const source = readFrontendSource();
   if (!mainWindow || mainWindow.isDestroyed()) {
     mainWindow = createMainWindow();
-    void loadDesktopFrontend(mainWindow, source);
+    startDesktopFrontendLoad(mainWindow);
   }
   const section = resolveSettingsSection(options?.section);
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     if (settingsWindow.isMinimized()) settingsWindow.restore();
     settingsWindow.focus();
     if (!settingsClosePolicy.dirty) {
-      void loadDesktopFrontend(settingsWindow, source, {
+      startDesktopFrontendLoad(settingsWindow, {
         surface: "settings",
         section,
       });
@@ -327,7 +327,7 @@ function openSettingsWindow(options?: { section?: string }): void {
     forceSettingsWindowClose = false;
   });
 
-  void loadDesktopFrontend(settingsWindow, source, {
+  startDesktopFrontendLoad(settingsWindow, {
     surface: "settings",
     section,
   });
@@ -397,4 +397,20 @@ function readFrontendSource(): DesktopFrontendSource {
     throw new Error("Desktop frontend source has not been initialized.");
   }
   return frontendSource;
+}
+
+function desktopFrontendQuery(query: Record<string, string | undefined> = {}): Record<string, string | undefined> {
+  return {
+    webSocketUrl: serverHandle?.websocketUrl,
+    ...query,
+  };
+}
+
+function startDesktopFrontendLoad(window: BrowserWindow, query: Record<string, string | undefined> = {}): void {
+  void loadDesktopFrontend(window, readFrontendSource(), desktopFrontendQuery(query)).catch((error: unknown) => {
+    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    if (runtimePaths) {
+      appendDesktopLog(runtimePaths.logPath, `frontend load failed ${message}`);
+    }
+  });
 }

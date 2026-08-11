@@ -5,6 +5,7 @@ import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "../../../
 
 afterEach(() => {
   window.__SENERA_RUNTIME_CONFIG__ = {};
+  window.history.replaceState({}, "", "/");
 });
 
 describe("frontend runtime endpoints", () => {
@@ -30,6 +31,14 @@ describe("frontend runtime endpoints", () => {
     const webSocketUrl = resolveRuntimeWebSocketUrl("ws://build.example.invalid");
     expect(webSocketUrl).toBe("ws://127.0.0.1:8787");
     expect(resolveRuntimeHttpBaseUrl(webSocketUrl)).toBe(window.location.origin);
+  });
+
+  test("uses the desktop server endpoint passed through the file-page query", () => {
+    window.history.replaceState({}, "", "/?webSocketUrl=ws%3A%2F%2F127.0.0.1%3A8787");
+
+    const webSocketUrl = resolveRuntimeWebSocketUrl("");
+    expect(webSocketUrl).toBe("ws://127.0.0.1:8787");
+    expect(resolveRuntimeHttpBaseUrl(webSocketUrl)).toBe("http://127.0.0.1:8787");
   });
 
   test("derives the HTTP endpoint from WebSocket configuration for split development runtimes", () => {
