@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { projectDesktopRuntimeConfig } from "../Apps/Desktop/DesktopRuntimeConfig.js";
-import { AgentSandboxRuntimeProviders } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const sourceConfig: AgentSystemConfig = {
@@ -26,27 +25,38 @@ const projected = projectDesktopRuntimeConfig(
     sandboxRuntimeRoot: "C:/Users/test/AppData/Roaming/Senera/runtime/SandboxRuntime",
   },
   sourceConfig,
-  { packaged: true },
 );
 
 assert.deepEqual(projected.SandboxRuntime, {
-  Provider: AgentSandboxRuntimeProviders.Microsandbox,
+  Provider: "auto",
   BaseDir: "C:/Users/test/AppData/Roaming/Senera/runtime/SandboxRuntime",
-  Provisioning: { Kind: "ReleaseBundle" },
 });
 assert.equal(projected.ModelProviders[0].Model, "model-a");
 
-const explicitOci = projectDesktopRuntimeConfig(
+const explicitDocker = projectDesktopRuntimeConfig(
   {
     sandboxRuntimeRoot: "sandbox",
   },
   {
     ...sourceConfig,
-    SandboxRuntime: { Provisioning: { Kind: "Oci", Images: ["registry.example/runtime@sha256:digest"] } },
+    SandboxRuntime: {
+      Provider: "docker-engine",
+      Docker: {
+        EngineEndpoint: "npipe:////./pipe/docker_engine",
+        Image: "registry.example/runtime:verified",
+        PullPolicy: "never",
+      },
+    },
   },
-  { packaged: true },
 );
-assert.equal(explicitOci.SandboxRuntime?.Provider, AgentSandboxRuntimeProviders.Microsandbox);
-assert.deepEqual(explicitOci.SandboxRuntime?.Provisioning, { Kind: "ReleaseBundle" });
+assert.deepEqual(explicitDocker.SandboxRuntime, {
+  Provider: "auto",
+  BaseDir: "sandbox",
+  Docker: {
+    EngineEndpoint: "npipe:////./pipe/docker_engine",
+    Image: "registry.example/runtime:verified",
+    PullPolicy: "never",
+  },
+});
 
 console.log("Desktop runtime config projection verification passed.");

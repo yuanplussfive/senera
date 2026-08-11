@@ -59,7 +59,7 @@ export const TerminalXtermTheme = {
 export type TerminalCapability = ExecutionResourceTerminalData["capabilities"][number];
 
 export function isTerminalState(state: ExecutionResourceState): boolean {
-  return state === "completed" || state === "failed" || state === "cancelled";
+  return state === "stopping" || state === "completed" || state === "failed" || state === "cancelled";
 }
 
 export function supportsTerminalCapability(
@@ -82,6 +82,7 @@ export function terminalStatusLabel(state: ExecutionResourceState): string {
 const StatusIndicatorClassNames = {
   starting: "bg-umber-500 animate-pulse",
   running: "bg-[var(--terminal-accent)]",
+  stopping: "bg-amber-400 animate-pulse",
   completed: "bg-moss-400",
   failed: "bg-brick-500",
   cancelled: "bg-[var(--terminal-subtle)]",

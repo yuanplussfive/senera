@@ -3,6 +3,7 @@ import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { createToolCallId } from "../Core/AgentIds.js";
 import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
+import { SystemAgentLifecycleClock, type AgentLifecycleClock } from "../Events/AgentLifecycleClock.js";
 import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
 import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
@@ -30,9 +31,10 @@ import type {
   AgentToolCallExecutionRequest,
   AgentToolCallExecutionResult,
   AskUserControlResult,
+  SuspendChildRunControlResult,
 } from "./AgentToolCallExecutionTypes.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
-import { resolveAgentToolInvocation } from "./AgentToolExecutionPlan.js";
+import { projectSeneraProcessBackendsToToolTargets, resolveAgentToolInvocation } from "./AgentToolExecutionPlan.js";
 import { isAgentToolAuthorized, type AgentToolAccessGrant } from "./AgentToolAccessGrant.js";
 import type { AgentMcpToolsChangedHandler } from "../Mcp/AgentMcpToolCatalogChange.js";
 import type { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
@@ -57,11 +59,17 @@ export interface AgentToolCallExecutorOptions {
   mcpClientPool?: AgentMcpToolClientPool;
   mcpSampling?: AgentMcpSamplingHandler;
   uploadStore?: AgentUploadStore;
+  clock?: AgentLifecycleClock;
 }
 
 interface AgentToolLifecycleIdentity {
   readonly requestId: string;
   readonly step: number;
+}
+
+interface AgentToolLifecycleTiming {
+  readonly startedAt: string;
+  readonly durationMs: number;
 }
 
 export class AgentToolCallExecutor {
@@ -71,6 +79,8 @@ export class AgentToolCallExecutor {
   private readonly workspaceCapture: AgentWorkspaceChangeCapture;
   private readonly emitLifecycleEvents: boolean;
   private readonly hostCapabilities: AgentToolHostCapabilityRegistry;
+  private readonly executionEnv: SeneraExecutionEnv;
+  private readonly clock: AgentLifecycleClock;
   private closePromise: Promise<void> | undefined;
 
   constructor(private readonly options: AgentToolCallExecutorOptions) {
@@ -80,7 +90,9 @@ export class AgentToolCallExecutor {
       new SeneraLocalExecutionEnv({
         workspaceRoot,
       });
+    this.executionEnv = executionEnv;
     this.emitLifecycleEvents = options.emitLifecycleEvents ?? true;
+    this.clock = options.clock ?? SystemAgentLifecycleClock;
     this.workspaceCapture = new AgentWorkspaceChangeCapture({
       workspaceRoot,
     });
@@ -134,16 +146,22 @@ export class AgentToolCallExecutor {
     const tool = this.resolveTool(request, context.toolAccessGrant);
     const result = await this.runToolCall(tool, request, context);
     const control = readAskUserControl(result.result);
+    const suspension = readSuspendChildRunControl(result.result);
 
     return control
       ? {
           kind: "AskUser",
           value: control,
         }
-      : {
-          kind: "ToolResults",
-          value: [result],
-        };
+      : suspension
+        ? {
+            kind: "SuspendChildRun",
+            value: suspension,
+          }
+        : {
+            kind: "ToolResults",
+            value: [result],
+          };
   }
 
   private resolveTool(request: AgentToolCallExecutionRequest, toolAccessGrant: AgentToolAccessGrant): RegisteredTool {
@@ -170,12 +188,19 @@ export class AgentToolCallExecutor {
     const callId = request.callId ?? createToolCallId();
     const index = request.index ?? 0;
     const requestedArguments = request.arguments ?? {};
-    const invocation = resolveAgentToolInvocation(tool, requestedArguments);
+    const invocation = resolveAgentToolInvocation(
+      tool,
+      requestedArguments,
+      projectSeneraProcessBackendsToToolTargets(this.executionEnv.capabilities.processBackends),
+    );
     const args = invocation.arguments;
     const capture = await this.workspaceCapture.prepare({
       policy: tool.artifactPolicy,
       args,
     });
+    const startedAtEpoch = this.clock.now();
+    const startedAtMonotonic = this.clock.monotonicNow();
+    const startedAt = this.clock.timestamp(startedAtEpoch);
 
     if (!context.batchId) {
       await this.emitLifecycle(context, ({ requestId, step }) =>
@@ -185,74 +210,98 @@ export class AgentToolCallExecutor {
     await this.emitLifecycle(context, ({ requestId, step }) =>
       this.events.toolCallStarted(requestId, step, index, tool.name, callId, {
         batchId: context.batchId,
+        startedAt,
       }),
     );
 
-    throwIfAborted(context.signal);
-    const execution = normalizeAgentToolProcessResult(
-      await this.toolRunner.run(tool, args, {
-        sessionId: context.sessionId,
-        requestId: context.requestId,
-        step: context.step,
-        toolCallId: callId,
-        batchId: context.batchId,
-        configPath: this.options.configPath,
-        onEvent: context.onEvent,
-        visibleToolNames: context.toolExposure?.snapshot().exposedToolNames ?? context.toolAccessGrant.exposedToolNames,
-        toolExposure: context.toolExposure,
-        signal: context.signal,
-        executionPlan: invocation.executionPlan,
-        tokenBudget: context.tokenBudget,
-      }),
-      tool.runtime.ResultAssessment,
-    );
-    throwIfAborted(context.signal);
+    let terminalLifecycleAttempted = false;
+    try {
+      throwIfAborted(context.signal);
+      const execution = normalizeAgentToolProcessResult(
+        await this.toolRunner.run(tool, args, {
+          sessionId: context.sessionId,
+          requestId: context.requestId,
+          step: context.step,
+          toolCallId: callId,
+          batchId: context.batchId,
+          configPath: this.options.configPath,
+          onEvent: context.onEvent,
+          visibleToolNames:
+            context.toolExposure?.snapshot().exposedToolNames ?? context.toolAccessGrant.exposedToolNames,
+          authorizedToolNames: context.toolAccessGrant.authorizedToolNames,
+          toolExposure: context.toolExposure,
+          signal: context.signal,
+          executionPlan: invocation.executionPlan,
+          tokenBudget: context.tokenBudget,
+          approvalMode: context.approvalMode,
+          activeSkills: context.activeSkills,
+          thinkingLevel: context.thinkingLevel,
+        }),
+        tool.runtime.ResultAssessment,
+      );
+      throwIfAborted(context.signal);
 
-    const responseError = execution.response.ok ? undefined : execution.response.error;
-    const result = execution.response.ok ? execution.response.result : { error: responseError };
-    const outcome = createAgentToolExecutionOutcome(
-      execution,
-      ToolFailureSourceByHandler[tool.handler.kind],
-      tool.runtime.ResultAssessment,
-    );
-    const process = {
-      exitCode: execution.exitCode,
-      signal: execution.signal,
-      stdout: execution.stdout,
-      stderr: execution.stderr,
-    };
-    const workspaceCapture = await capture.complete(result);
-    const executedBase: ExecutedToolCallResult = {
-      callId,
-      name: tool.name,
-      arguments: requestedArguments,
-      execution: invocation.executionPlan,
-      process,
-      outputCapture: execution.outputCapture,
-      result,
-      outcome,
-      artifactPolicy: tool.artifactPolicy,
-      workspaceCapture,
-    };
-    const executed: ExecutedToolCallResult = {
-      ...executedBase,
-      presentation: projectAgentToolResultPresentation(executedBase),
-    };
+      const responseError = execution.response.ok ? undefined : execution.response.error;
+      const result = execution.response.ok ? execution.response.result : { error: responseError };
+      const outcome = createAgentToolExecutionOutcome(
+        execution,
+        ToolFailureSourceByHandler[tool.handler.kind],
+        tool.runtime.ResultAssessment,
+      );
+      const process = {
+        exitCode: execution.exitCode,
+        signal: execution.signal,
+        stdout: execution.stdout,
+        stderr: execution.stderr,
+      };
+      const workspaceCapture = await capture.complete(result);
+      const executedBase: ExecutedToolCallResult = {
+        callId,
+        name: tool.name,
+        arguments: requestedArguments,
+        execution: invocation.executionPlan,
+        process,
+        outputCapture: execution.outputCapture,
+        semanticProjectionRequest: execution.semanticProjectionRequest,
+        result,
+        outcome,
+        artifactPolicy: tool.artifactPolicy,
+        workspaceCapture,
+      };
+      const executed: ExecutedToolCallResult = {
+        ...executedBase,
+        presentation: projectAgentToolResultPresentation(executedBase),
+      };
 
-    await this.emitResultLifecycle(context, index, executed);
-    return executed;
+      terminalLifecycleAttempted = true;
+      await this.emitResultLifecycle(context, index, executed, {
+        startedAt,
+        durationMs: this.elapsedDuration(startedAtMonotonic),
+      });
+      return executed;
+    } catch (error) {
+      if (!terminalLifecycleAttempted) {
+        await this.emitFailureLifecycle(context, index, tool.name, callId, error, {
+          startedAt,
+          durationMs: this.elapsedDuration(startedAtMonotonic),
+        });
+      }
+      throw error;
+    }
   }
 
   private async emitResultLifecycle(
     context: AgentToolCallExecutionContext,
     index: number,
     result: ExecutedToolCallResult,
+    timing: AgentToolLifecycleTiming,
   ): Promise<void> {
     const error = readAgentToolFailure(result.outcome);
-    await this.emitLifecycle(context, ({ requestId, step }) =>
+    const lifecycleEmitted = await this.emitLifecycle(context, ({ requestId, step }) =>
       error
         ? this.events.toolCallFailed(requestId, step, index, result.name, result.callId, error.message, error.code, {
             batchId: context.batchId,
+            ...timing,
           })
         : this.events.toolCallCompleted(
             requestId,
@@ -261,24 +310,50 @@ export class AgentToolCallExecutor {
             result.name,
             result.callId,
             result.presentation ?? projectAgentToolResultPresentation(result),
-            { batchId: context.batchId },
+            { batchId: context.batchId, ...timing },
           ),
     );
-    await this.emitLifecycle(context, ({ requestId, step }) =>
-      this.events.toolCallResultDetail(requestId, step, index, result.name, result.callId, result, {
+    if (lifecycleEmitted) context.onLifecycleSettled?.(error ? "failed" : "completed");
+    if (!context.deferResultDetail) {
+      await this.emitLifecycle(context, ({ requestId, step }) =>
+        this.events.toolCallResultDetail(requestId, step, index, result.name, result.callId, result, {
+          batchId: context.batchId,
+        }),
+      );
+    }
+  }
+
+  private async emitFailureLifecycle(
+    context: AgentToolCallExecutionContext,
+    index: number,
+    toolName: string,
+    callId: string,
+    error: unknown,
+    timing: AgentToolLifecycleTiming,
+  ): Promise<void> {
+    const message = error instanceof Error ? error.message : String(error);
+    const lifecycleEmitted = await this.emitLifecycle(context, ({ requestId, step }) =>
+      this.events.toolCallFailed(requestId, step, index, toolName, callId, message, undefined, {
         batchId: context.batchId,
+        ...timing,
       }),
     );
+    if (lifecycleEmitted) context.onLifecycleSettled?.("failed");
+  }
+
+  private elapsedDuration(startedAtMonotonic: number): number {
+    return Math.max(0, Math.round(this.clock.monotonicNow() - startedAtMonotonic));
   }
 
   private async emitLifecycle(
     context: AgentToolCallExecutionContext,
     create: (identity: AgentToolLifecycleIdentity) => Parameters<typeof emitAgentEvent>[1],
-  ): Promise<void> {
+  ): Promise<boolean> {
     const identity = readToolLifecycleIdentity(context);
-    if (!this.emitLifecycleEvents || !identity) return;
+    if (!this.emitLifecycleEvents || !identity) return false;
 
     await emitAgentEvent(context.onEvent, create(identity));
+    return true;
   }
 }
 
@@ -311,6 +386,16 @@ function readAskUserControl(value: unknown): AskUserControlResult | undefined {
         reason_code: reason,
       }
     : { question };
+}
+
+function readSuspendChildRunControl(value: unknown): SuspendChildRunControlResult | undefined {
+  const record = readRecord(readRecord(value)?.control);
+  if (record?.kind !== "SuspendChildRun") return undefined;
+  return {
+    childRunId: readRequiredText(record, "childRunId", "Child-run suspension is missing childRunId."),
+    messageId: readRequiredText(record, "messageId", "Child-run suspension is missing messageId."),
+    message: readRequiredText(record, "message", "Child-run suspension is missing message."),
+  };
 }
 
 function readRequiredText(value: Record<string, unknown>, key: string, message: string): string {

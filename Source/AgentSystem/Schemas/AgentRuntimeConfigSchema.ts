@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AgentToolSemanticAuditModes } from "../Types/AgentRuntimeConfigTypes.js";
 
 const AgentPiCompactionSchema = z
   .object({
@@ -24,8 +25,15 @@ export const AgentLoopSchema = z
 export const ToolExecutionSchema = z
   .object({
     TimeoutSeconds: z.number().positive().optional(),
+    MaxConcurrentCallsPerRun: z.number().int().min(1).max(1_000).optional(),
     MaxStdoutBytes: z.number().int().min(1).optional(),
     MaxStderrBytes: z.number().int().min(1).optional(),
+    SemanticAudit: z
+      .object({
+        Mode: z.enum([AgentToolSemanticAuditModes.Disabled, AgentToolSemanticAuditModes.ApprovalSensitive]).optional(),
+      })
+      .strict()
+      .optional(),
     Environment: z
       .object({
         Inherit: z.enum(["all", "allowlist", "none"]).optional(),
@@ -39,7 +47,10 @@ export const ToolExecutionSchema = z
       .object({
         MaxActive: z.number().int().min(1).max(1_000).optional(),
         MaxBufferedBytes: z.number().int().min(1_024).optional(),
+        OutputBatchMaxBytes: z.number().int().min(1_024).optional(),
+        OutputBatchMaxDelayMs: z.number().int().positive().max(5_000).optional(),
         MaxInputBytes: z.number().int().min(1).optional(),
+        InitialYieldSeconds: z.number().positive().max(60).optional(),
         MaxWaitSeconds: z.number().positive().max(300).optional(),
         IdleTtlSeconds: z.number().positive().optional(),
         TerminalTtlSeconds: z.number().positive().optional(),
@@ -54,48 +65,18 @@ export const ToolExecutionSchema = z
 export const SandboxRuntimeSchema = z
   .object({
     Enabled: z.boolean().optional(),
-    Provider: z.enum(["auto", "microsandbox", "gvisor", "docker-engine"]).optional(),
+    Provider: z.enum(["auto", "gvisor", "docker-engine"]).optional(),
     BaseDir: z.string().min(1).optional(),
-    Gvisor: z
+    Docker: z
       .object({
-        WorkerSocketPath: z.string().trim().min(1).optional(),
+        WorkerEndpoint: z.string().trim().min(1).optional(),
+        EngineEndpoint: z.string().trim().min(1).optional(),
+        DetectionTimeoutSeconds: z.number().positive().max(30).optional(),
         PreparationTimeoutSeconds: z.number().positive().max(300).optional(),
+        Image: z.string().trim().min(1).optional(),
+        PullPolicy: z.enum(["always", "if-missing", "never"]).optional(),
       })
       .strict()
-      .optional(),
-    Provisioning: z
-      .discriminatedUnion("Kind", [
-        z
-          .object({
-            Kind: z.literal("Oci"),
-            Images: z.array(z.string().trim().min(1)).min(1),
-            Registry: z
-              .object({
-                Authentication: z
-                  .discriminatedUnion("Kind", [
-                    z.object({ Kind: z.literal("Anonymous") }).strict(),
-                    z
-                      .object({
-                        Kind: z.literal("Basic"),
-                        UsernameEnvironmentVariable: z.string().trim().min(1),
-                        PasswordEnvironmentVariable: z.string().trim().min(1),
-                      })
-                      .strict(),
-                  ])
-                  .optional(),
-                Insecure: z.boolean().optional(),
-                CertificateFiles: z.array(z.string().trim().min(1)).optional(),
-              })
-              .strict()
-              .optional(),
-          })
-          .strict(),
-        z
-          .object({
-            Kind: z.literal("ReleaseBundle"),
-          })
-          .strict(),
-      ])
       .optional(),
   })
   .strict();

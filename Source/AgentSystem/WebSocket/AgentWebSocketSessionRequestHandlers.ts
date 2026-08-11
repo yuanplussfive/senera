@@ -20,6 +20,7 @@ export class AgentWebSocketSessionRequestHandlers {
       requestId: request.requestId,
       modelProviderId: request.modelProviderId,
       input: request.input,
+      approvalMode: request.approvalMode,
       attachments: request.attachments,
       disposition: request.disposition,
       queueMode: request.queueMode,
@@ -35,7 +36,10 @@ export class AgentWebSocketSessionRequestHandlers {
     request: AgentWebSocketRequestOf<"session.cancel">,
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
-    await this.context.sessionManager.cancelActiveRun({ sessionId: request.sessionId, onEvent: sendEvent });
+    await this.context.sessionManager.requestActiveRunCancellation({
+      sessionId: request.sessionId,
+      onEvent: sendEvent,
+    });
   }
 
   async truncateFrom(
@@ -59,6 +63,7 @@ export class AgentWebSocketSessionRequestHandlers {
       requestId: request.requestId,
       modelProviderId: request.modelProviderId,
       input: request.input,
+      approvalMode: request.approvalMode,
       attachments: request.attachments,
       onEvent: sendEvent,
     });

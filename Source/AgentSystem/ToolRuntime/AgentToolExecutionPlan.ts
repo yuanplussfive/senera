@@ -30,7 +30,7 @@ export interface AgentToolInvocation {
 
 export class AgentToolExecutionTargetError extends AgentBaseError {
   constructor(
-    readonly kind: "missing" | "invalid",
+    readonly kind: "missing" | "invalid" | "unavailable",
     readonly toolName: string,
     readonly availableTargets: readonly ToolExecutionTarget[],
     readonly value?: unknown,
@@ -63,18 +63,43 @@ const WorkspaceMountByManifest = {
   ReadWrite: "writable",
 } as const satisfies Record<ToolExecutionManifest["Workspace"], SeneraProcessWorkspaceMountMode>;
 
-const InvocationSchemaProjectionCache = new WeakMap<object, WeakMap<ToolExecutionManifest, Record<string, unknown>>>();
+const InvocationSchemaProjectionCache = new WeakMap<
+  object,
+  WeakMap<ToolExecutionManifest, Map<string, Record<string, unknown>>>
+>();
+
+export function projectSeneraProcessBackendsToToolTargets(
+  backends: readonly SeneraProcessBackendPreference[],
+): ToolExecutionTarget[] {
+  const available = new Set(backends);
+  return Object.entries(BackendByTarget).flatMap(([target, backend]) =>
+    available.has(backend) ? [target as ToolExecutionTarget] : [],
+  );
+}
+
+export function resolveAvailableAgentToolExecutionTargets(
+  tool: RegisteredTool,
+  runtimeTargets: readonly ToolExecutionTarget[],
+): ToolExecutionTarget[] {
+  if (tool.execution.Targets.length === 1 && tool.execution.Targets[0] === ToolExecutionTargets.Local) {
+    return [ToolExecutionTargets.Local];
+  }
+  const available = new Set(runtimeTargets);
+  return tool.execution.Targets.filter((target) => available.has(target));
+}
 
 export function resolveAgentToolInvocation(
   tool: RegisteredTool,
   suppliedArguments: Readonly<Record<string, unknown>>,
+  runtimeTargets: readonly ToolExecutionTarget[] = tool.execution.Targets,
 ): AgentToolInvocation {
-  const executionTarget = resolveExecutionTarget(tool, suppliedArguments);
+  const availableTargets = resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets);
+  const executionTarget = resolveExecutionTarget(tool, suppliedArguments, availableTargets);
   const arguments_ = { ...suppliedArguments };
   delete arguments_[AgentToolExecutionTargetArgument];
   return {
     arguments: arguments_,
-    executionPlan: createAgentToolExecutionPlan(tool.execution, executionTarget),
+    executionPlan: createAgentToolExecutionPlan(tool.execution, executionTarget, availableTargets),
   };
 }
 
@@ -86,12 +111,14 @@ export function bindAgentToolInvocationToExecutionPlan(
   tool: RegisteredTool,
   suppliedArguments: Readonly<Record<string, unknown>>,
   executionPlan: AgentToolExecutionPlan,
+  runtimeTargets: readonly ToolExecutionTarget[] = tool.execution.Targets,
 ): AgentToolInvocation {
+  const availableTargets = resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets);
   const suppliedTarget = suppliedArguments[AgentToolExecutionTargetArgument];
   if (suppliedTarget !== undefined && suppliedTarget !== executionPlan.target) {
-    throw new AgentToolExecutionTargetError("invalid", tool.name, tool.execution.Targets, suppliedTarget);
+    throw new AgentToolExecutionTargetError("invalid", tool.name, availableTargets, suppliedTarget);
   }
-  const declaredPlan = createAgentToolExecutionPlan(tool.execution, executionPlan.target);
+  const declaredPlan = createAgentToolExecutionPlan(tool.execution, executionPlan.target, availableTargets);
   if (!sameExecutionPlan(declaredPlan, executionPlan)) {
     throw new AgentToolExecutionPlanError(tool.name, executionPlan);
   }
@@ -103,6 +130,7 @@ export function bindAgentToolInvocationToExecutionPlan(
 export function createAgentToolExecutionPlan(
   execution: ToolExecutionManifest,
   target: ToolExecutionTarget,
+  availableTargets: readonly ToolExecutionTarget[] = execution.Targets,
 ): AgentToolExecutionPlan {
   if (!execution.Targets.includes(target)) {
     throw new Error(`Execution target ${target} is not declared by this tool.`);
@@ -112,15 +140,20 @@ export function createAgentToolExecutionPlan(
     backend: BackendByTarget[target],
     network: NetworkByManifest[execution.Network],
     workspaceMount: WorkspaceMountByManifest[execution.Workspace],
-    availableTargets: [...execution.Targets],
+    availableTargets: [...availableTargets],
   };
 }
 
 export function projectAgentToolInvocationSchema(
   tool: RegisteredTool,
   schema: Readonly<Record<string, unknown>>,
+  runtimeTargets: readonly ToolExecutionTarget[] = tool.execution.Targets,
 ): Record<string, unknown> {
-  if (tool.execution.Targets.length === 1) return schema as Record<string, unknown>;
+  const availableTargets = resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets);
+  if (availableTargets.length === 0) {
+    throw new AgentToolExecutionTargetError("unavailable", tool.name, availableTargets);
+  }
+  if (availableTargets.length === 1) return schema as Record<string, unknown>;
   const properties = readRecord(schema.properties);
   if (!properties) {
     throw new Error(`Tool ${tool.name} must expose an object input schema to select an execution target.`);
@@ -128,7 +161,8 @@ export function projectAgentToolInvocationSchema(
   if (AgentToolExecutionTargetArgument in properties) {
     throw new Error(`Tool ${tool.name} reserves the ${AgentToolExecutionTargetArgument} argument.`);
   }
-  const cached = InvocationSchemaProjectionCache.get(schema)?.get(tool.execution);
+  const cacheKey = availableTargets.join("\u0000");
+  const cached = InvocationSchemaProjectionCache.get(schema)?.get(tool.execution)?.get(cacheKey);
   if (cached) return cached;
   const required = readStringArray(schema.required);
   const projection = Object.freeze({
@@ -137,21 +171,29 @@ export function projectAgentToolInvocationSchema(
       ...properties,
       [AgentToolExecutionTargetArgument]: {
         type: "string",
-        enum: [...tool.execution.Targets],
+        enum: [...availableTargets],
         description: "选择此工具的执行目标。Sandbox 在隔离的 Linux 环境中运行；Local 在宿主本机环境中运行。",
       },
     }),
     required: Object.freeze([...new Set([...required, AgentToolExecutionTargetArgument])]),
   }) as Record<string, unknown>;
-  const projections =
-    InvocationSchemaProjectionCache.get(schema) ?? new WeakMap<ToolExecutionManifest, Record<string, unknown>>();
-  projections.set(tool.execution, projection);
+  const projections = InvocationSchemaProjectionCache.get(schema) ?? new WeakMap();
+  const manifestProjections = projections.get(tool.execution) ?? new Map<string, Record<string, unknown>>();
+  manifestProjections.set(cacheKey, projection);
+  projections.set(tool.execution, manifestProjections);
   InvocationSchemaProjectionCache.set(schema, projections);
   return projection;
 }
 
-function resolveExecutionTarget(tool: RegisteredTool, args: Readonly<Record<string, unknown>>): ToolExecutionTarget {
-  const declared = tool.execution.Targets;
+function resolveExecutionTarget(
+  tool: RegisteredTool,
+  args: Readonly<Record<string, unknown>>,
+  availableTargets: readonly ToolExecutionTarget[],
+): ToolExecutionTarget {
+  const declared = availableTargets;
+  if (declared.length === 0) {
+    throw new AgentToolExecutionTargetError("unavailable", tool.name, declared);
+  }
   const supplied = args[AgentToolExecutionTargetArgument];
   const [onlyTarget] = declared;
   if (onlyTarget !== undefined && declared.length === 1) {
@@ -176,6 +218,9 @@ function executionTargetErrorMessage(
   value: unknown,
 ): string {
   const available = availableTargets.join(", ");
+  if (kind === "unavailable") {
+    return `Tool ${toolName} has no execution target available in the active runtime.`;
+  }
   if (kind === "missing") {
     return `Tool ${toolName} requires ${AgentToolExecutionTargetArgument}; choose one of: ${available}.`;
   }

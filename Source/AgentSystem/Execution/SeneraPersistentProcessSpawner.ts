@@ -3,6 +3,8 @@ import { assertSeneraExecutionNotAborted } from "./SeneraPersistentExecutionAuth
 import type { SeneraPersistentProcessChild, SeneraPersistentProcessSpawner } from "./SeneraPersistentProcessTypes.js";
 import { SeneraProcessEnvironmentPolicy } from "./SeneraProcessEnvironment.js";
 import type { SeneraProcessEnvironmentPolicyOptions } from "./SeneraProcessEnvironment.js";
+import { isSeneraShellDialectCompatible, type SeneraShellCommandSpec } from "./SeneraShellCommand.js";
+import { resolveSeneraShellInvocation, resolveSeneraShellPlatform } from "./SeneraShellPlatform.js";
 import type { SeneraProcessTreeTerminator } from "./SeneraProcessTreeTermination.js";
 import { spawnSeneraOwnedProcess, type SeneraOwnedProcess } from "./SeneraOwnedProcessSpawner.js";
 
@@ -18,10 +20,11 @@ export function createSeneraLocalPersistentProcessSpawner(
       : new SeneraProcessEnvironmentPolicy(environmentPolicy);
   return persistentSpawner(["local"], async (command, args, options) => {
     assertSeneraExecutionNotAborted(options.signal);
+    const invocation = resolvePersistentProcessInvocation(command, args, options.shellCommand);
 
     const ownedProcess = await spawnSeneraOwnedProcess(
-      command,
-      args,
+      invocation.command,
+      invocation.args,
       {
         cwd: options.cwd,
         env: policy.project(process.env, options.env),
@@ -121,6 +124,8 @@ class SeneraLocalPersistentProcessChild implements SeneraPersistentProcessChild 
 
 export interface SeneraAuthorizedPersistentProcessSpawnerOptions {
   readonly local?: SeneraPersistentProcessSpawner;
+  readonly sandbox?: SeneraPersistentProcessSpawner;
+  readonly sandboxEnabled?: boolean;
   readonly environmentPolicy?: SeneraProcessEnvironmentPolicy | SeneraProcessEnvironmentPolicyOptions;
   readonly terminateProcessTree?: SeneraProcessTreeTerminator;
 }
@@ -130,19 +135,49 @@ export function createSeneraAuthorizedPersistentProcessSpawner(
 ): SeneraPersistentProcessSpawner {
   const local =
     options.local ?? createSeneraLocalPersistentProcessSpawner(options.environmentPolicy, options.terminateProcessTree);
-  return persistentSpawner(["local"], async (command, args, spawnOptions) => {
+  const supportedBackends = ["local", ...(options.sandbox ? (["sandbox"] as const) : [])] as const;
+  return persistentSpawner(supportedBackends, async (command, args, spawnOptions) => {
     if (spawnOptions.signal?.aborted) {
       throw new SeneraExecutionError(SeneraExecutionErrorCodes.Aborted, "aborted");
     }
     if (spawnOptions.profile?.backend === "sandbox") {
-      throw new SeneraExecutionError(
-        SeneraExecutionErrorCodes.SandboxUnavailable,
-        "长连接 MCP 进程尚未实现沙箱后端。",
-        { backend: "microsandbox-persistent", profile: spawnOptions.profile.name },
-      );
+      if (options.sandboxEnabled === false || !options.sandbox) {
+        throw new SeneraExecutionError(
+          SeneraExecutionErrorCodes.SandboxUnavailable,
+          "Persistent sandbox execution is unavailable in the active runtime.",
+          {
+            reason: options.sandboxEnabled === false ? "sandbox_disabled" : "persistent_process_sandbox_unavailable",
+            backend: "sandbox-persistent",
+            profile: spawnOptions.profile.name,
+          },
+        );
+      }
+      return options.sandbox(command, args, spawnOptions);
     }
     return local(command, args, spawnOptions);
   });
+}
+
+function resolvePersistentProcessInvocation(
+  command: string,
+  args: readonly string[],
+  shellCommand: SeneraShellCommandSpec | undefined,
+): { command: string; args: readonly string[] } {
+  if (!shellCommand) return { command, args };
+  const shell = resolveSeneraShellPlatform();
+  if (!isSeneraShellDialectCompatible(shellCommand.dialect, shell.family)) {
+    throw new SeneraExecutionError(
+      SeneraExecutionErrorCodes.SpawnFailed,
+      `Shell dialect ${shellCommand.dialect} is not supported by the local persistent process backend.`,
+      {
+        reason: "shell_dialect_unsupported",
+        requestedDialect: shellCommand.dialect,
+        availableDialect: shell.family,
+        backend: "local-persistent",
+      },
+    );
+  }
+  return resolveSeneraShellInvocation(shellCommand.script);
 }
 
 function persistentSpawner(

@@ -1,5 +1,5 @@
 import React from "react";
-import { act, cleanup, screen } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -10,98 +10,95 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 }));
 
 const { ChatPanel } = await import("../../../Frontend/src/features/chat/ChatPanel.tsx");
-const { AssistantMessageBody } = await import("../../../Frontend/src/features/chat/AssistantMessageBody.tsx");
-const { StreamingRow } = await import("../../../Frontend/src/features/chat/StreamingRow.tsx");
 const { ChatComposer } = await import("../../../Frontend/src/features/chat/ChatComposer.tsx");
-const { UploadPreviewProvider } = await import("../../../Frontend/src/features/chat/UploadPreviewRegistry.tsx");
 const { ScrollToBottomButton } = await import("../../../Frontend/src/features/chat/ScrollToBottomButton.tsx");
 const { MessageActions } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { MessageList, readMessageListItemKey } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
-const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
-const { readMessageActionIntents } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
-const { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } =
-  await import("../../../Frontend/src/store/sessionStore.ts");
+const {
+  ConversationEventRail,
+  projectConversationEventMarkers,
+  projectConversationEvents,
+  readConversationEventIndex,
+} = await import("../../../Frontend/src/features/chat/ConversationEventRail.tsx");
+const { frontendMessage, FrontendLocales } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
+const { setFrontendLocale } = await import("../../../Frontend/src/i18n/frontendLocaleStore.ts");
+const { clearPersistedStore, useStore } = await import("../../../Frontend/src/store/sessionStore.ts");
+const {
+  createApproval,
+  createChatPanelProps,
+  createComposerProps,
+  createMessage,
+  createMessageActions,
+  createMessageListProps,
+  createRun,
+  createUserProfile,
+  resetChatStore,
+  withUploadPreviewProvider,
+} = await import("./chatCoreComponentFixtures.mjs");
 
 afterEach(() => {
   cleanup();
+  setFrontendLocale(FrontendLocales.ZhCn);
   vi.clearAllMocks();
   vi.restoreAllMocks();
   clearPersistedStore();
 });
 
-test("message actions expose fork only for stable mutable request boundaries", () => {
-  expect(readMessageActionIntents({ hasRequestId: false, hasWorkflow: false })).toEqual(["copy"]);
-  expect(readMessageActionIntents({ hasRequestId: true, hasWorkflow: false })).toEqual([
-    "copy",
-    "fork",
-    "regenerate",
-    "delete",
-  ]);
-  expect(readMessageActionIntents({ hasRequestId: true, hasWorkflow: true, allowMutation: false })).toEqual([
-    "copy",
-    "viewWorkflow",
-  ]);
+test("chat composer updates its memoized hint when the frontend locale changes", async () => {
+  setFrontendLocale(FrontendLocales.ZhCn);
+  renderWithFrontendProviders(withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps())));
+
+  expect(screen.getByPlaceholderText("跟 senera 说点什么")).toBeInTheDocument();
+
+  act(() => setFrontendLocale(FrontendLocales.EnUs));
+
+  await waitFor(() => expect(screen.getByPlaceholderText("Tell senera what to do")).toBeInTheDocument());
 });
 
-test("tool preface keeps its progress text without rendering a redundant badge", () => {
+test("chat composer exposes the selected execution approval mode", async () => {
+  const user = userEvent.setup();
+  const onSelectMode = vi.fn();
   renderWithFrontendProviders(
-    React.createElement(AssistantMessageBody, {
-      message: {
-        kind: "AssistantToolPreface",
-        content: "我先读取项目配置。",
-      },
-    }),
+    withUploadPreviewProvider(
+      React.createElement(ChatComposer, createComposerProps({ approvalConfig: { mode: "agent", onSelectMode } })),
+    ),
   );
 
-  expect(screen.getByText("我先读取项目配置。")).toBeInTheDocument();
-  expect(screen.queryByText("工具调用前回复")).not.toBeInTheDocument();
+  await user.click(await screen.findByRole("button", { name: "替我审批" }));
+  await user.click(await screen.findByText("完全访问"));
+
+  expect(onSelectMode).toHaveBeenCalledWith("full_access");
 });
 
-test("streaming assistant content uses the same readable body and caret for prefaces and answers", () => {
-  renderWithFrontendProviders(
-    React.createElement(AssistantMessageBody, {
-      message: {
-        kind: "AssistantFinal",
-        content: "正在生成的回答",
-      },
-      streaming: true,
-    }),
+test("chat composer shows the current context usage in the compact progress indicator", () => {
+  const { rerender } = renderWithFrontendProviders(
+    withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps())),
   );
 
-  expect(document.querySelector("[data-assistant-streaming-body]")).toBeInTheDocument();
-  expect(screen.getByText("正在生成的回答")).toBeInTheDocument();
-  expect(document.querySelector("[data-assistant-streaming-body] .caret-blink")).toBeInTheDocument();
-});
+  const indicator = screen.getByRole("progressbar", { name: "上下文已使用" });
+  expect(indicator).not.toHaveTextContent(/--|%/);
+  expect(indicator).toHaveAttribute("aria-valuetext", "等待上下文用量同步");
 
-test("live tool preface is a separate message above the execution feed", () => {
-  renderWithFrontendProviders(
-    React.createElement(StreamingRow, {
-      run: createRun({
-        visibleKind: "tool_preface",
-        displayText: "搜索当前已加载的工具目录……",
-        steps: [
-          {
-            id: "model-step",
-            kind: "model",
-            title: "调用模型",
-            status: "running",
-            startedAt: "2026-01-01T00:00:00.000Z",
+  rerender(
+    withUploadPreviewProvider(
+      React.createElement(
+        ChatComposer,
+        createComposerProps({
+          runtimeUsage: {
+            contextUsage: {
+              tokens: 10_073,
+              contextWindow: 100_000,
+              percent: 10.073245614035088,
+            },
           },
-        ],
-      }),
-    }),
+        }),
+      ),
+    ),
   );
 
-  const preface = document.querySelector("[data-assistant-tool-preface-stream]");
-  expect(preface).toBeInTheDocument();
-  expect(preface).toContainElement(screen.getByText("搜索当前已加载的工具目录……"));
-  expect(
-    document.querySelector("[data-assistant-tool-preface-stream] [data-assistant-streaming-body]"),
-  ).toBeInTheDocument();
-  expect(
-    document.querySelector("[data-assistant-tool-preface-stream] + .conversation-frame--wide"),
-  ).toBeInTheDocument();
-  expect(screen.getAllByText("搜索当前已加载的工具目录……")).toHaveLength(1);
+  const populatedIndicator = screen.getByRole("progressbar", { name: "上下文已使用" });
+  expect(populatedIndicator).not.toHaveTextContent("10.07%");
+  expect(populatedIndicator).toHaveAttribute("aria-valuetext", "10.07%");
 });
 
 test("chat composer sends trimmed text and switches queue mode while a run is active", async () => {
@@ -201,6 +198,22 @@ test("chat composer preserves a failed draft and leaves Escape to active interac
   expect(onCancel).not.toHaveBeenCalled();
 });
 
+test("settling composer queues follow-up messages without exposing run interruption", async () => {
+  const onSend = vi.fn(() => true);
+  const user = userEvent.setup();
+  renderWithFrontendProviders(
+    withUploadPreviewProvider(
+      React.createElement(ChatComposer, createComposerProps({ running: true, settling: true, onSend })),
+    ),
+  );
+
+  await user.type(screen.getByRole("textbox", { name: "输入消息" }), "继续检查");
+  await user.click(screen.getByRole("button", { name: "queue-follow-up" }));
+
+  expect(onSend).toHaveBeenCalledWith("继续检查", undefined, "follow_up");
+  expect(screen.queryByRole("button", { name: "cancel" })).not.toBeInTheDocument();
+});
+
 test("chat model selector keeps the current conversation choice and exposes the current default", async () => {
   const onApplyDefaultModel = vi.fn();
   const user = userEvent.setup();
@@ -241,11 +254,12 @@ test("chat model selector keeps the current conversation choice and exposes the 
   await user.click(screen.getByRole("button", { name: "选择模型" }));
   expect(screen.getByText("当前对话模型")).toBeInTheDocument();
   expect(screen.getByText("默认模型：claude-sonnet")).toBeInTheDocument();
+  expect(screen.getByRole("group")).toHaveClass("overflow-y-auto", "scrollbar-thin");
   await user.click(screen.getByRole("menuitem", { name: "恢复为默认" }));
   expect(onApplyDefaultModel).toHaveBeenCalledTimes(1);
 });
 
-test("chat panel routes grouped message actions through the empty state", async () => {
+test("chat panel fills the composer from an empty-state suggestion without sending", async () => {
   const onSend = vi.fn();
   const user = userEvent.setup();
   resetChatStore({
@@ -281,7 +295,8 @@ test("chat panel routes grouped message actions through the empty state", async 
   await user.click(screen.getByRole("button", { name: "整理日志" }));
 
   expect(screen.getByText("空会话")).toBeInTheDocument();
-  expect(onSend).toHaveBeenCalledWith("整理日志");
+  expect(onSend).not.toHaveBeenCalled();
+  expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveValue("整理日志");
 });
 
 test("chat panel shows the conversation skeleton before history loading is marked", () => {
@@ -428,6 +443,135 @@ test("message list renders messages and streaming run as stable keyed items", ()
   expect(readMessageListItemKey({ __streaming: true, run: runningRun })).toBe("__streaming__");
   expect(document.querySelector("[data-message-list-end-spacer]")).toHaveClass("h-3");
   expect(document.querySelector("[data-message-list-end-spacer]")).not.toHaveClass("h-24");
+  expect(screen.getByRole("navigation", { name: "回复事件位置" })).toBeInTheDocument();
+});
+
+test("conversation event rail keeps reply landmarks and excludes internal tool activity", () => {
+  const events = projectConversationEvents([
+    { key: "user-1", requestId: "request-1", eventKind: "user_request", content: "检查构建" },
+    {
+      key: "preface-1",
+      requestId: "request-1",
+      eventKind: "assistant_tool_preface",
+      content: "我先读取项目配置。",
+    },
+    {
+      key: "preface-2",
+      requestId: "request-1",
+      eventKind: "assistant_tool_preface",
+      content: "我再检查测试配置。",
+    },
+    { key: "tool-1", requestId: "request-1", eventKind: null, content: "WorkspaceRead completed" },
+    { key: "answer-1", requestId: "request-1", eventKind: "assistant_final", content: "构建通过。" },
+  ]);
+
+  expect(events).toMatchObject([
+    { itemIndex: 0, kind: "user_request", content: "检查构建" },
+    { itemIndex: 1, kind: "assistant_tool_preface", content: "我先读取项目配置。" },
+    { itemIndex: 4, kind: "assistant_final", content: "构建通过。" },
+  ]);
+  expect(readConversationEventIndex(events, 2)).toBe(1);
+  expect(readConversationEventIndex(events, 3)).toBe(1);
+  expect(readConversationEventIndex(events, 4)).toBe(2);
+  expect(readConversationEventIndex(events, 99)).toBe(2);
+});
+
+test("conversation event rail positions landmarks from measured message heights", () => {
+  const events = projectConversationEvents([
+    { key: "user-1", requestId: "request-1", eventKind: "user_request", content: "First" },
+    { key: "tool-1", requestId: "request-1", eventKind: null, content: "Internal tool" },
+    { key: "answer-1", requestId: "request-1", eventKind: "assistant_final", content: "First answer" },
+  ]);
+  const markers = projectConversationEventMarkers(
+    events,
+    ["user-1", "tool-1", "answer-1"],
+    new Map([
+      ["user-1", 100],
+      ["tool-1", 300],
+      ["answer-1", 100],
+    ]),
+    132,
+  );
+
+  expect(markers.map((marker) => marker.position)).toEqual([0, 0.8]);
+});
+
+test("conversation event rail previews and navigates to an exact reply event", async () => {
+  const user = userEvent.setup();
+  const onNavigate = vi.fn();
+  const onActiveEventChange = vi.fn();
+  const events = projectConversationEvents([
+    { key: "user-1", requestId: "request-1", eventKind: "user_request", content: "检查构建" },
+    {
+      key: "preface-1",
+      requestId: "request-1",
+      eventKind: "assistant_tool_preface",
+      content: "我先读取配置。",
+    },
+    { key: "answer-1", requestId: "request-1", eventKind: "assistant_final", content: "构建通过。" },
+  ]);
+
+  renderWithFrontendProviders(
+    React.createElement(ConversationEventRail, {
+      events,
+      itemKeys: ["user-1", "preface-1", "answer-1"],
+      measuredHeights: new Map(),
+      defaultItemHeight: 132,
+      activeEventIndex: 0,
+      scroller: null,
+      reducedMotion: false,
+      onActiveEventChange,
+      onNavigate,
+      onManualScrollStart: vi.fn(),
+      onManualScrollEnd: vi.fn(),
+    }),
+  );
+
+  expect(screen.getByRole("button", { name: "跳到第 1 个事件：用户请求" })).toHaveAttribute(
+    "data-kind",
+    "user_request",
+  );
+  const finalReply = screen.getByRole("button", { name: "跳到第 3 个事件：最终回复" });
+  expect(finalReply).toHaveAttribute("data-kind", "assistant_final");
+  await user.hover(finalReply);
+  expect(screen.getByRole("tooltip")).toHaveTextContent("第 3/3 个回复事件");
+  expect(screen.getByRole("tooltip")).toHaveTextContent("最终回复");
+  expect(screen.getByRole("tooltip")).toHaveTextContent("构建通过。");
+
+  await user.click(finalReply);
+  expect(onActiveEventChange).toHaveBeenCalledWith(2);
+  expect(onNavigate).toHaveBeenCalledWith(events[2]);
+});
+
+test("message list reveals an available final answer while the run is still settling", async () => {
+  const answer = createMessage({
+    id: "message-available-answer",
+    requestId: "request-available-answer",
+    content: "Answer is already available.",
+  });
+  const settlingRun = createRun({
+    requestId: "request-available-answer",
+    outputState: "available",
+    visibleKind: "final_answer",
+    displayMessageId: answer.id,
+    liveActivity: "compacting_context",
+  });
+
+  renderWithFrontendProviders(
+    React.createElement(
+      MessageList,
+      createMessageListProps({ messages: [answer], runs: [settlingRun], currentRun: settlingRun }),
+    ),
+  );
+
+  await waitFor(() => expect(screen.getByText("Answer is already available.")).toBeVisible());
+  expect(
+    screen.getByText(
+      frontendMessage("workflow.activity.running", {
+        activity: frontendMessage("workflow.activity.compactingContext"),
+      }),
+    ),
+  ).toBeVisible();
 });
 
 test("message list accepts repeated scroller refs without a render loop", () => {
@@ -566,7 +710,7 @@ test("completed workflow disclosure expands inline below assistant metadata", as
   expect(onViewWorkflow).toHaveBeenCalledTimes(1);
 });
 
-test("streaming approvals refresh when their content changes at the same length", () => {
+test("streaming approvals refresh when their content changes at the same length", async () => {
   const initialRun = createRun({
     approvals: [createApproval({ subject: { kind: "tool_call", toolName: "Read config", arguments: {} } })],
     revision: 1,
@@ -581,7 +725,7 @@ test("streaming approvals refresh when their content changes at the same length"
     ),
   );
 
-  expect(screen.getByText("Read config")).toBeInTheDocument();
+  expect(await screen.findByText("Read config")).toBeInTheDocument();
 
   const updatedRun = {
     ...initialRun,
@@ -597,188 +741,6 @@ test("streaming approvals refresh when their content changes at the same length"
     ),
   );
 
-  expect(screen.getByText("Write config")).toBeInTheDocument();
+  expect(await screen.findByText("Write config")).toBeInTheDocument();
   expect(screen.queryByText("Read config")).not.toBeInTheDocument();
 });
-
-function createComposerProps(overrides = {}) {
-  return {
-    disabled: false,
-    running: false,
-    modelConfig: {
-      modelProviders: [],
-      selectedModelProviderId: null,
-      onSelectModelProvider: vi.fn(),
-    },
-    systemConfig: {
-      configSnapshot: null,
-      configOperation: null,
-      providerModelCatalogs: {},
-      providerModelErrors: {},
-      providerModelLoadingIds: {},
-      onRefreshConfig: vi.fn(),
-      onSaveConfig: vi.fn(() => null),
-      onFetchProviderModels: vi.fn(),
-    },
-    presetConfig: {
-      presets: [],
-      activePresetName: null,
-      presetsEnabled: false,
-      presetRootDir: "",
-      presetOperations: {},
-      onRefreshPresets: vi.fn(),
-      onSavePreset: vi.fn(() => null),
-      onDeletePreset: vi.fn(() => null),
-      onSetActivePreset: vi.fn(() => null),
-    },
-    runtime: {
-      socketStatus: "open",
-      uploadUrl: "/upload",
-    },
-    onSend: vi.fn(),
-    onCancel: vi.fn(),
-    ...overrides,
-  };
-}
-
-function createChatPanelProps(overrides = {}) {
-  return {
-    userProfile: DEFAULT_USER_PROFILE,
-    modelConfig: {
-      modelProviders: [],
-      selectedModelProviderId: null,
-      onSelectModelProvider: vi.fn(),
-    },
-    systemConfig: {
-      configSnapshot: null,
-      configOperation: null,
-      providerModelCatalogs: {},
-      providerModelErrors: {},
-      providerModelLoadingIds: {},
-      onRefreshConfig: vi.fn(),
-      onSaveConfig: vi.fn(() => null),
-      onFetchProviderModels: vi.fn(),
-    },
-    presetConfig: {
-      presets: [],
-      activePresetName: null,
-      presetsEnabled: false,
-      presetRootDir: "",
-      presetOperations: {},
-      onRefreshPresets: vi.fn(),
-      onSavePreset: vi.fn(() => null),
-      onDeletePreset: vi.fn(() => null),
-      onSetActivePreset: vi.fn(() => null),
-    },
-    runtime: {
-      socketStatus: "open",
-      uploadUrl: "/upload",
-    },
-    messageActions: createMessageActions(),
-    navigationActions: {},
-    ...overrides,
-  };
-}
-
-function withUploadPreviewProvider(child) {
-  return React.createElement(UploadPreviewProvider, null, child);
-}
-
-function createMessageActions(overrides = {}) {
-  return {
-    onSend: vi.fn(),
-    onCancel: vi.fn(),
-    onForkFromMessage: vi.fn(),
-    onRegenerate: vi.fn(),
-    onEditUserMessage: vi.fn(),
-    onDeleteFromMessage: vi.fn(),
-    onViewWorkflow: vi.fn(),
-    onResolveApproval: vi.fn(),
-    ...overrides,
-  };
-}
-
-function createMessageListProps(overrides = {}) {
-  return {
-    sessionId: "session-1",
-    uploadUrl: "http://agent.test/api/uploads",
-    messages: [],
-    runs: [],
-    userProfile: {
-      name: "Tester",
-      avatarDataUrl: null,
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    },
-    onForkFromMessage: vi.fn(),
-    onRegenerate: vi.fn(),
-    onEditUserMessage: vi.fn(),
-    onDeleteFromMessage: vi.fn(),
-    onViewWorkflow: vi.fn(),
-    onResolveApproval: vi.fn(),
-    ...overrides,
-  };
-}
-
-function resetChatStore(overrides = {}) {
-  clearPersistedStore();
-  useStore.setState({
-    sessions: {},
-    sessionOrder: [],
-    activeSessionId: null,
-    historyLoadingIds: {},
-    historyFailedIds: {},
-    ...overrides,
-  });
-}
-
-function createMessage(overrides = {}) {
-  return {
-    id: "message-1",
-    requestId: "request-1",
-    role: "assistant",
-    content: "message",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    ...overrides,
-  };
-}
-
-function createUserProfile(name) {
-  return {
-    name,
-    avatarDataUrl: "data:image/png;base64,avatar",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  };
-}
-
-function createApproval(overrides = {}) {
-  return {
-    approvalId: "approval-1",
-    status: "pending",
-    approvalKind: "tool_call",
-    availableDecisions: ["approve_once", "deny", "deny_and_interrupt"],
-    title: "Review tool call",
-    reason: "The tool needs approval.",
-    subject: {
-      kind: "tool_call",
-      toolName: "Read config",
-      arguments: {},
-    },
-    createdAt: "2026-01-01T00:00:00.000Z",
-    ...overrides,
-  };
-}
-
-function createRun(overrides = {}) {
-  return {
-    requestId: "request-1",
-    status: "running",
-    input: "run input",
-    startedAt: "2026-01-01T00:00:00.000Z",
-    steps: [],
-    displayText: "",
-    displayTarget: "",
-    displayedChars: 0,
-    expectedOutputMode: "open",
-    ...overrides,
-  };
-}

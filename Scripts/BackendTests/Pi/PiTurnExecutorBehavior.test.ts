@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import type { AgentEvent as AgentSessionEvent, AgentMessage, AgentState } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, AgentState } from "@earendil-works/pi-agent-core";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { AgentConversationProjector } from "../../../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentPiActiveSessionRegistry } from "../../../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
@@ -18,7 +19,6 @@ import type { AgentPiDiagnosticEvent } from "../../../Source/AgentSystem/Pi/Agen
 import { AgentRunActivities, AgentRunActivityStates } from "../../../Source/AgentSystem/Events/AgentRunEventTypes.js";
 import { emptyAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 import { toolRootCommand } from "../Support/AgentTestFixtures.js";
-import { AgentPiTurnContextRegistry } from "../../../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
 
 describe("Pi turn executor behavior", () => {
   test("migrates product conversation history and clears the active session after a completed turn", async () => {
@@ -64,6 +64,8 @@ describe("Pi turn executor behavior", () => {
       { activity: AgentRunActivities.SynchronizingContext, state: AgentRunActivityStates.Started },
       { activity: AgentRunActivities.SynchronizingContext, state: AgentRunActivityStates.Completed },
       { activity: AgentRunActivities.RunningAgentTurn, state: AgentRunActivityStates.Started },
+      { activity: AgentRunActivities.GeneratingResponse, state: AgentRunActivityStates.Started },
+      { activity: AgentRunActivities.GeneratingResponse, state: AgentRunActivityStates.Completed },
       { activity: AgentRunActivities.RunningAgentTurn, state: AgentRunActivityStates.Completed },
       { activity: AgentRunActivities.FinalizingResponse, state: AgentRunActivityStates.Started },
       { activity: AgentRunActivities.FinalizingResponse, state: AgentRunActivityStates.Completed },
@@ -81,6 +83,50 @@ describe("Pi turn executor behavior", () => {
     expect(result.responseText).toBe("The workspace inspection is complete.");
     expect(fixture.session.historyTexts()).toEqual([]);
     expect(fixture.session.prompts).toEqual(["Inspect the workspace"]);
+  });
+
+  test("publishes the stable answer before post-turn compaction settles", async () => {
+    const fixture = new PiTurnRuntimeFixture({ deferCompaction: true });
+    const events: AgentDomainEvent[] = [];
+    const availableAnswers: string[] = [];
+    const command: AgentPiTurnRequest = {
+      ...createPiTurnCommand(),
+      onFinalResponseAvailable: (content) => {
+        availableAnswers.push(content);
+      },
+    };
+    let settled = false;
+    const pending = new AgentPiTurnExecutor({ runtime: fixture.runtime })
+      .run(command, (event) => {
+        events.push(event);
+      })
+      .finally(() => {
+        settled = true;
+      });
+
+    await fixture.session.compactionStarted;
+
+    expect(availableAnswers).toEqual(["The workspace inspection is complete."]);
+    expect(settled).toBe(false);
+    expect(
+      events
+        .filter((event) => event.kind === AgentEventKinds.RunActivityChanged)
+        .map((event) => ({ activity: event.data.activity, state: event.data.state })),
+    ).toContainEqual({
+      activity: AgentRunActivities.CompactingContext,
+      state: AgentRunActivityStates.Started,
+    });
+
+    fixture.session.completeCompaction();
+    await expect(pending).resolves.toMatchObject({ responseText: "The workspace inspection is complete." });
+    expect(
+      events
+        .filter((event) => event.kind === AgentEventKinds.RunActivityChanged)
+        .map((event) => ({ activity: event.data.activity, state: event.data.state })),
+    ).toContainEqual({
+      activity: AgentRunActivities.CompactingContext,
+      state: AgentRunActivityStates.Completed,
+    });
   });
 
   test("aborts an in-flight prompt and releases session resources", async () => {
@@ -176,6 +222,7 @@ const modelProviderConfig: ResolvedAgentModelProviderConfig = {
   ApiKey: "test-key",
   ApiVersion: "",
   Model: "test-model",
+  ToolPlanningMode: "baml",
   ContextWindowTokens: 128_000,
   Temperature: 0,
   MaxOutputTokens: -1,
@@ -214,6 +261,7 @@ class PiTurnRuntimeFixture {
     private readonly behavior: {
       historyMigrationRequired?: boolean;
       deferPrompt?: boolean;
+      deferCompaction?: boolean;
       deferSessionCreate?: boolean;
       promptFailure?: Error;
       modelTimeoutMs?: number;
@@ -255,7 +303,6 @@ class PiTurnRuntimeFixture {
       piDiagnostics: (event) => {
         this.diagnostics.push(event);
       },
-      piTurnContexts: new AgentPiTurnContextRegistry(),
     };
   }
 
@@ -286,6 +333,14 @@ class ScriptedPiSession implements AgentPiSession {
   private readonly promptGate = new Promise<void>((resolve) => {
     this.resolvePrompt = resolve;
   });
+  private resolveCompactionStarted!: () => void;
+  readonly compactionStarted = new Promise<void>((resolve) => {
+    this.resolveCompactionStarted = resolve;
+  });
+  private resolveCompaction!: () => void;
+  private readonly compactionGate = new Promise<void>((resolve) => {
+    this.resolveCompaction = resolve;
+  });
   disposed = false;
   abortCount = 0;
   unsubscribeCount = 0;
@@ -297,6 +352,7 @@ class ScriptedPiSession implements AgentPiSession {
   constructor(
     private readonly behavior: {
       deferPrompt?: boolean;
+      deferCompaction?: boolean;
       promptFailure?: Error;
     },
   ) {}
@@ -315,11 +371,14 @@ class ScriptedPiSession implements AgentPiSession {
     if (this.behavior.promptFailure) {
       throw this.behavior.promptFailure;
     }
-    this.emitTurnEvents();
+    await this.emitTurnEvents();
   }
 
   async steer(): Promise<void> {}
   async followUp(): Promise<void> {}
+  async requestFinalAnswer(): Promise<boolean> {
+    return true;
+  }
   async nextTurn(): Promise<void> {}
   async markTurnBoundary(requestId: string): Promise<string> {
     return `boundary:${requestId}`;
@@ -355,6 +414,10 @@ class ScriptedPiSession implements AgentPiSession {
     this.resolvePrompt();
   }
 
+  completeCompaction(): void {
+    this.resolveCompaction();
+  }
+
   historyTexts(): string[] {
     return this.history.flatMap((message) => {
       if (message.role !== "user" && message.role !== "assistant") {
@@ -368,8 +431,26 @@ class ScriptedPiSession implements AgentPiSession {
     });
   }
 
-  private emitTurnEvents(): void {
-    this.emit({
+  private async emitTurnEvents(): Promise<void> {
+    const assistantMessage = {
+      role: "assistant" as const,
+      api: "senera-planning" as const,
+      provider: "test-provider",
+      model: "test-model",
+      content: [{ type: "text" as const, text: "The workspace inspection is complete." }],
+      usage: {
+        input: 10,
+        output: 6,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 16,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop" as const,
+      timestamp: Date.now(),
+    };
+    await this.emit({ type: "message_start", message: assistantMessage });
+    await this.emit({
       type: "message_update",
       message: {
         role: "assistant",
@@ -377,7 +458,7 @@ class ScriptedPiSession implements AgentPiSession {
       },
       assistantMessageEvent: {},
     } as unknown as AgentSessionEvent);
-    this.emit({
+    await this.emit({
       type: "message_update",
       message: {
         role: "assistant",
@@ -385,7 +466,24 @@ class ScriptedPiSession implements AgentPiSession {
       },
       assistantMessageEvent: {},
     } as unknown as AgentSessionEvent);
-    this.emit({
+    await this.emit({ type: "message_end", message: assistantMessage });
+    if (this.behavior.deferCompaction) {
+      await this.emit({ type: "compaction_start", reason: "threshold" });
+      this.resolveCompactionStarted();
+      await this.compactionGate;
+      await this.emit({
+        type: "compaction_end",
+        reason: "threshold",
+        result: {
+          summary: "Compacted conversation",
+          firstKeptEntryId: "entry-recent",
+          tokensBefore: 10_000,
+        },
+        aborted: false,
+        willRetry: false,
+      });
+    }
+    await this.emit({
       type: "turn_end",
       message: {
         role: "assistant",
@@ -395,9 +493,9 @@ class ScriptedPiSession implements AgentPiSession {
     } as unknown as AgentSessionEvent);
   }
 
-  private emit(event: AgentSessionEvent): void {
+  private async emit(event: AgentSessionEvent): Promise<void> {
     for (const listener of this.listeners) {
-      void listener(event);
+      await listener(event);
     }
   }
 }
@@ -405,6 +503,7 @@ class ScriptedPiSession implements AgentPiSession {
 function createPiTurnCommand(): AgentPiTurnRequest {
   const projector = new AgentConversationProjector();
   return {
+    approvalMode: "agent",
     sessionId: "pi-test-session",
     requestId: "pi-test-request",
     step: 1,
@@ -426,7 +525,7 @@ function piModel() {
   return {
     id: "test-model",
     name: "test-model",
-    api: "openai-completions" as const,
+    api: "senera-planning" as const,
     provider: "test-provider",
     baseUrl: "https://model.example/v1",
     reasoning: false,

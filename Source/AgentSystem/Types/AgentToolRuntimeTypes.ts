@@ -6,6 +6,7 @@ import type {
   AgentToolDiscoverySource,
   ToolApprovalManifest,
   ToolArtifactPolicyManifest,
+  AgentToolChildGrantMode,
   ToolEvidenceCapabilityManifest,
   ToolExecutionManifest,
   ToolLoadingMode,
@@ -47,6 +48,7 @@ export interface RegisteredTool {
   observationProjection?: AgentToolObservationProjectionManifest;
   sources: readonly AgentToolDiscoverySource[];
   search?: ToolSearchManifest;
+  childGrant: AgentToolChildGrantMode;
   evidenceCapabilities: ToolEvidenceCapabilityManifest[];
   approval?: ToolApprovalManifest;
   artifactPolicy?: ToolArtifactPolicyManifest;

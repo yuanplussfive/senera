@@ -1,4 +1,4 @@
-import type { MotionLevel } from "../../shared/motion";
+import type { MotionLevel } from "../../shared/motion/types";
 import { advanceStreamingDisplayText, alignStreamingDisplayTarget } from "./streamingDisplay";
 import type { RunRecord } from "./types";
 
@@ -8,6 +8,7 @@ export function createRunRecord(input: { requestId: string; startedAt: string; i
     revision: 0,
     startedAt: input.startedAt,
     status: "running",
+    outputState: "pending",
     input: input.input,
     activities: [],
     steps: [],

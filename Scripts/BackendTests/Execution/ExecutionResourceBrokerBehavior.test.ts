@@ -9,19 +9,26 @@ import { AgentExecutionResourceTransportCloseError } from "../../../Source/Agent
 import type { AgentExecutionResourceLimits } from "../../../Source/AgentSystem/ExecutionResources/AgentExecutionResourceTypes.js";
 import type { SeneraPersistentProcessChild } from "../../../Source/AgentSystem/Execution/SeneraPersistentProcessTypes.js";
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
-import { resolveAgentExecutionResourceWaitTimeoutMs } from "../../../Source/AgentSystem/ExecutionResources/AgentExecutionResourceConfig.js";
+import { resolveSeneraShellPlatform } from "../../../Source/AgentSystem/Execution/SeneraShellPlatform.js";
+import {
+  resolveAgentExecutionResourceInitialYieldMs,
+  resolveAgentExecutionResourceWaitTimeoutMs,
+} from "../../../Source/AgentSystem/ExecutionResources/AgentExecutionResourceConfig.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { SeneraOutputSpool, SeneraOutputStream } from "../../../Source/AgentSystem/Execution/SeneraOutputSpool.js";
 
 describe("execution resource broker", () => {
   it("derives wait defaults and upper bounds from the unified resource configuration", () => {
     const config = {
       ToolExecution: {
         Resources: {
+          InitialYieldSeconds: 1.5,
           MaxWaitSeconds: 120,
         },
       },
     } as AgentSystemConfig;
 
+    expect(resolveAgentExecutionResourceInitialYieldMs(config)).toBe(1_500);
     expect(resolveAgentExecutionResourceWaitTimeoutMs(config, undefined)).toBe(120_000);
     expect(resolveAgentExecutionResourceWaitTimeoutMs(config, 5_000)).toBe(5_000);
     expect(resolveAgentExecutionResourceWaitTimeoutMs(config, 180_000)).toBe(120_000);
@@ -85,6 +92,81 @@ describe("execution resource broker", () => {
         events: [expect.objectContaining({ kind: "output", stream: "stderr", text: "ready" })],
       }),
     );
+    await broker.close();
+  });
+
+  it("coalesces adjacent output chunks within the configured publication window", async () => {
+    vi.useFakeTimers();
+    const child = new FakePersistentChild();
+    const eventSink = vi.fn();
+    const broker = createBroker(async () => child, { outputBatchMaxBytes: 64, outputBatchMaxDelayMs: 25 }, eventSink);
+    const owner = sessionOwner("session-output-batch");
+
+    try {
+      const started = await broker.startProcess(startRequest(owner));
+      eventSink.mockClear();
+      child.stdout.emit("data", Buffer.from("hello "));
+      child.stdout.emit("data", Buffer.from("world"));
+
+      expect(eventSink).not.toHaveBeenCalledWith(expect.objectContaining({ kind: "execution.resource.output" }));
+      await vi.advanceTimersByTimeAsync(25);
+      await Promise.resolve();
+
+      expect(broker.inspect(started.resourceId, owner, started.cursor).events).toEqual([
+        expect.objectContaining({ kind: "output", stream: "stdout", text: "hello world", byteLength: 11 }),
+      ]);
+      await vi.waitFor(() =>
+        expect(eventSink).toHaveBeenCalledWith(
+          expect.objectContaining({
+            kind: "execution.resource.output",
+            data: expect.objectContaining({ text: "hello world", byteLength: 11 }),
+          }),
+        ),
+      );
+    } finally {
+      child.emitClose(0, null);
+      await broker.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("preserves stdout and stderr arrival order across output batches", async () => {
+    const child = new FakePersistentChild();
+    const broker = createBroker(async () => child);
+    const owner = sessionOwner("session-output-order");
+    const started = await broker.startProcess(startRequest(owner));
+
+    child.stdout.emit("data", Buffer.from("out-1"));
+    child.stderr.emit("data", Buffer.from("err-1"));
+    child.stdout.emit("data", Buffer.from("out-2"));
+    const snapshot = broker.inspect(started.resourceId, owner, started.cursor);
+
+    expect(
+      snapshot.events.map((event) => (event.kind === "output" ? `${event.stream}:${event.text}` : event.kind)),
+    ).toEqual(["stdout:out-1", "stderr:err-1", "stdout:out-2"]);
+    await broker.close();
+  });
+
+  it("publishes pending output before entering stopping", async () => {
+    const child = new FakePersistentChild();
+    child.closeOnKill = false;
+    const broker = createBroker(async () => child);
+    const owner = sessionOwner("session-stopping");
+    const started = await broker.startProcess(startRequest(owner));
+
+    child.stdout.emit("data", Buffer.from("before-stop"));
+    const stopping = await broker.signal(started.resourceId, owner, "terminate");
+    const timeline = broker.inspect(started.resourceId, owner, started.cursor);
+
+    expect(stopping.state).toBe("stopping");
+    await expect(broker.write(started.resourceId, owner, Buffer.from("late-input"))).rejects.toEqual(
+      expect.objectContaining({ code: AgentExecutionResourceErrorCodes.NotWritable }),
+    );
+    expect(timeline.events.slice(-2)).toEqual([
+      expect.objectContaining({ kind: "output", text: "before-stop" }),
+      expect.objectContaining({ kind: "state", state: "stopping", reason: "signal:terminate" }),
+    ]);
+    child.emitClose(null, "SIGTERM");
     await broker.close();
   });
 
@@ -365,7 +447,7 @@ describe("execution resource broker", () => {
         requestId: "request-events",
         step: 1,
         toolCallId: "call-events",
-        toolName: "ShellStartTool",
+        toolName: "ShellCommandTool",
         onEvent: vi.fn(async () => {
           throw new Error("socket closed");
         }),
@@ -381,6 +463,43 @@ describe("execution resource broker", () => {
     await broker.close();
   });
 
+  it("seals and transfers complete output capture exactly once", async () => {
+    const child = new FakePersistentChild();
+    const spool = new MemoryOutputSpool();
+    const broker = createBroker(async () => child);
+    const owner = sessionOwner("session-output-capture");
+    const started = await broker.startProcess({ ...startRequest(owner), outputSpool: spool });
+
+    child.stdout.emit("data", Buffer.from("complete output"));
+    child.emitClose(0, null);
+    const completed = await waitUntilTerminal(broker, started.resourceId, owner, started.cursor);
+
+    expect(completed.state).toBe("completed");
+    expect(spool.output.stdout).toBe("complete output");
+    expect(spool.closed).toBe(true);
+    expect(broker.takeOutputCapture(started.resourceId, owner)).toBe(spool.descriptor);
+    expect(broker.takeOutputCapture(started.resourceId, owner)).toBeUndefined();
+
+    await broker.close();
+    expect(spool.cleaned).toBe(false);
+  });
+
+  it("cleans a sealed output capture when its resource is released unclaimed", async () => {
+    const child = new FakePersistentChild();
+    const spool = new MemoryOutputSpool();
+    const broker = createBroker(async () => child);
+    const owner = sessionOwner("session-output-capture-cleanup");
+    const started = await broker.startProcess({ ...startRequest(owner), outputSpool: spool });
+
+    child.emitClose(0, null);
+    await broker.wait(started.resourceId, owner, started.cursor, 1_000);
+    await broker.releaseAll(owner);
+
+    expect(spool.closed).toBe(true);
+    expect(spool.cleaned).toBe(true);
+    await broker.close();
+  });
+
   it("runs a real cross-platform process through start, wait, write, and terminal replay", async () => {
     const executionEnv = new SeneraLocalExecutionEnv({ workspaceRoot: process.cwd() });
     const broker = new AgentExecutionResourceBroker({
@@ -388,7 +507,10 @@ describe("execution resource broker", () => {
       limits: {
         maxActive: 1,
         maxBufferedBytes: 4_096,
+        outputBatchMaxBytes: 64 * 1024,
+        outputBatchMaxDelayMs: 50,
         maxInputBytes: 1_024,
+        initialYieldMs: 50,
         maxWaitMs: 5_000,
         idleTtlMs: 60_000,
         terminalTtlMs: 60_000,
@@ -412,7 +534,7 @@ describe("execution resource broker", () => {
           requestId: owner.requestId,
           step: 1,
           toolCallId: "call-real",
-          toolName: "ShellStartTool",
+          toolName: "ShellCommandTool",
         },
       });
       const ready = await broker.wait(started.resourceId, owner, started.cursor, 5_000);
@@ -423,6 +545,43 @@ describe("execution resource broker", () => {
       expect(outputText(completed)).toContain("echo:continue");
       expect(completed.state).toBe("completed");
       expect(completed.exitCode).toBe(0);
+    } finally {
+      await broker.close();
+    }
+  }, 10_000);
+
+  it("executes a declared shell script as a pipe-backed persistent process", async () => {
+    const executionEnv = new SeneraLocalExecutionEnv({ workspaceRoot: process.cwd() });
+    const broker = new AgentExecutionResourceBroker({
+      workspaceRoot: process.cwd(),
+      limits: resourceLimits(),
+    });
+    const owner = sessionOwner("session-real-shell-process");
+    const dialect = resolveSeneraShellPlatform().family;
+    const script =
+      dialect === "powershell" ? "Write-Output 'shell-resource-ready'" : "printf '%s\\n' 'shell-resource-ready'";
+
+    try {
+      const started = await broker.startProcess({
+        command: "unused-shell-placeholder",
+        args: [],
+        shellCommand: { mode: "shell", dialect, script },
+        cwd: process.cwd(),
+        executionEnv,
+        owner,
+        correlation: {
+          sessionId: owner.sessionId,
+          requestId: owner.requestId,
+          step: 1,
+          toolCallId: "call-real-shell",
+          toolName: "ShellCommandTool",
+        },
+      });
+      const completed = await waitUntilTerminal(broker, started.resourceId, owner, started.cursor);
+
+      expect(completed).toEqual(expect.objectContaining({ kind: "process", state: "completed", exitCode: 0 }));
+      expect(completed.terminal).toBeUndefined();
+      expect(outputText(completed)).toContain("shell-resource-ready");
     } finally {
       await broker.close();
     }
@@ -467,6 +626,36 @@ class FakePersistentChild extends EventEmitter implements SeneraPersistentProces
   }
 }
 
+class MemoryOutputSpool implements SeneraOutputSpool {
+  readonly descriptor = {
+    directory: "memory-output-spool",
+    files: { stdout: "memory-stdout", stderr: "memory-stderr" },
+    truncated: { stdout: false, stderr: false },
+  };
+  readonly output = { stdout: "", stderr: "" };
+  closed = false;
+  cleaned = false;
+
+  write(stream: SeneraOutputStream, data: Uint8Array): boolean {
+    this.output[stream] += Buffer.from(data).toString();
+    return true;
+  }
+
+  waitForDrain(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  close(): Promise<void> {
+    this.closed = true;
+    return Promise.resolve();
+  }
+
+  cleanup(): Promise<void> {
+    this.cleaned = true;
+    return Promise.resolve();
+  }
+}
+
 function createBroker(
   spawnPersistentProcess: (...args: never[]) => Promise<SeneraPersistentProcessChild>,
   overrides: Partial<AgentExecutionResourceLimits> = {},
@@ -479,7 +668,10 @@ function createBroker(
     limits: {
       maxActive: 4,
       maxBufferedBytes: 1_024,
+      outputBatchMaxBytes: 64 * 1024,
+      outputBatchMaxDelayMs: 50,
       maxInputBytes: 1_024,
+      initialYieldMs: 50,
       maxWaitMs: 10_000,
       idleTtlMs: 60_000,
       terminalTtlMs: 60_000,
@@ -494,7 +686,10 @@ function resourceLimits(): AgentExecutionResourceLimits {
   return {
     maxActive: 4,
     maxBufferedBytes: 1_024,
+    outputBatchMaxBytes: 64 * 1024,
+    outputBatchMaxDelayMs: 50,
     maxInputBytes: 1_024,
+    initialYieldMs: 50,
     maxWaitMs: 10_000,
     idleTtlMs: 60_000,
     terminalTtlMs: 60_000,
@@ -522,7 +717,7 @@ function startRequest(owner: ReturnType<typeof sessionOwner>) {
       requestId: owner.requestId,
       step: 1,
       toolCallId: "call-start",
-      toolName: "ShellStartTool",
+      toolName: "ShellCommandTool",
     },
   };
 }

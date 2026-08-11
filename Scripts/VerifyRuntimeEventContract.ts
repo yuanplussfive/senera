@@ -1,16 +1,24 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { FrontendEventCatalogPath, renderFrontendEventCatalogSource } from "../Build/FrontendEventCatalogSource.js";
+import {
+  formatFrontendGeneratedSource,
+  FrontendEventCatalogPath,
+  renderFrontendEventCatalogSource,
+} from "../Build/FrontendEventCatalogSource.js";
 import { toPosixPath, toPosixRelative, walkFiles } from "./Support/FileWalk.js";
 
 const workspaceRoot = process.cwd();
 const IgnoredDirectories = new Set([".git", ".sandbox", "Dist", "Release", "build", "dist", "node_modules"]);
 
 const generatedEventCatalogPath = path.join(workspaceRoot, ...FrontendEventCatalogPath.split("/"));
+const expectedEventCatalog = await formatFrontendGeneratedSource(
+  renderFrontendEventCatalogSource(),
+  generatedEventCatalogPath,
+);
 assert.equal(
   normalizeLineEndings(fs.readFileSync(generatedEventCatalogPath, "utf8")),
-  normalizeLineEndings(renderFrontendEventCatalogSource()),
+  normalizeLineEndings(expectedEventCatalog),
   `${FrontendEventCatalogPath} is stale. Run npm run generate.frontend-events.`,
 );
 

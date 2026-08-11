@@ -123,6 +123,7 @@ async function createPersistedConversation(sessionId, input) {
     sessionId,
     requestId: `${sessionId}:request`,
     input,
+    approvalMode: "agent",
   });
   await client.waitForEvent("run.completed", (event) => event.sessionId === sessionId, {
     afterSequence: beforeMessage,

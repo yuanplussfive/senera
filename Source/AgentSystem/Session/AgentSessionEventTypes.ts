@@ -2,7 +2,7 @@ import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventContext, AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
-import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
 import type { AgentPiSessionRuntimeStatus } from "../Pi/AgentPiSessionManagement.js";
 import type { AgentSessionOperation } from "./AgentSessionOperation.js";
 import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";

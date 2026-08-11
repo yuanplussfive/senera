@@ -28,6 +28,16 @@ export class AgentSessionRunSnapshotWriter {
     });
   }
 
+  requestedCancellation(input: {
+    sessionId: string;
+    requestId: string;
+    text: string;
+    startedAt: string;
+    error: AgentCancellationError;
+  }): void {
+    this.cancelled(input);
+  }
+
   activeRequestCancelled(session: AgentSession): void {
     const activeRequest = session.activeRequest;
     if (!activeRequest) {

@@ -14,7 +14,13 @@ import "../../styles/react-flow.css";
 import { type RunRecord } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
 import { StepNode } from "./StepNode";
-import { layoutSteps, type StepNodeData, type WorkflowLayoutDirection } from "./layout";
+import {
+  layoutSteps,
+  readWorkflowLayoutKey,
+  refreshWorkflowGraphState,
+  type StepNodeData,
+  type WorkflowLayoutDirection,
+} from "./layout";
 import { NodeDetailDrawer } from "./NodeDetailDrawer";
 
 const NODE_TYPES = { step: StepNode };
@@ -103,7 +109,8 @@ function CanvasArea({
   const steps = run.steps;
   const selectedStep = useMemo(() => steps.find((step) => step.id === selectedStepId) ?? null, [steps, selectedStepId]);
 
-  const { nodes, edges, translateExtent } = useMemo(() => {
+  const layoutKey = useMemo(() => readWorkflowLayoutKey(steps), [steps]);
+  const positionedGraph = useMemo(() => {
     const { nodes, edges } = layoutSteps(steps, layoutDirection);
     if (nodes.length === 0) {
       return {
@@ -136,12 +143,20 @@ function CanvasArea({
     };
   }, [layoutDirection, steps]);
 
+  const { nodes, edges } = useMemo(
+    () => refreshWorkflowGraphState(positionedGraph.nodes, positionedGraph.edges, steps),
+    [positionedGraph, steps],
+  );
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
   const positionCanvas = useCallback(
     (mode: WorkflowViewportMode, duration = FIT_VIEW_DURATION_MS): void => {
-      if (!flowReady || nodes.length === 0) return;
+      const currentNodes = nodesRef.current;
+      if (!flowReady || currentNodes.length === 0) return;
       window.requestAnimationFrame(() => {
         try {
-          const targetNode = readWorkflowViewportTarget(nodes, mode);
+          const targetNode = readWorkflowViewportTarget(nodesRef.current, mode);
           if (!targetNode) return;
           if (mode === "start" && canvasRef.current?.clientWidth && canvasRef.current.clientHeight) {
             void rf.setViewport(
@@ -164,7 +179,7 @@ function CanvasArea({
         }
       });
     },
-    [flowReady, layoutDirection, nodes, rf],
+    [flowReady, layoutDirection, rf],
   );
 
   useEffect(() => {
@@ -180,7 +195,17 @@ function CanvasArea({
       viewportSessionRef.current = { key: viewportKey, followLive };
     }, 80);
     return () => window.clearTimeout(timer);
-  }, [flowReady, focusVersion, layoutDirection, nodes.length, positionCanvas, run.requestId, run.status, steps.length]);
+  }, [
+    flowReady,
+    focusVersion,
+    layoutDirection,
+    layoutKey,
+    nodes.length,
+    positionCanvas,
+    run.requestId,
+    run.status,
+    steps.length,
+  ]);
 
   useEffect(() => {
     if (!selectedStepId) return;
@@ -212,10 +237,11 @@ function CanvasArea({
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
+        onlyRenderVisibleElements
         onNodeClick={handleNodeClick}
         minZoom={0.5}
         maxZoom={1.6}
-        translateExtent={focusVersion > 0 ? undefined : translateExtent}
+        translateExtent={focusVersion > 0 ? undefined : positionedGraph.translateExtent}
         proOptions={{ hideAttribution: true }}
         nodesDraggable={false}
         nodesConnectable={false}

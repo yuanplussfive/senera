@@ -3,6 +3,7 @@ import type {
   ConfigFormModelCapability,
   ConfigFormSectionData,
   ConfigSnapshotData,
+  SystemExtensionSettingsItem,
 } from "../../api/eventTypes";
 import {
   resolveFrontendLocalizedText,
@@ -16,6 +17,7 @@ import {
   readModelProviders,
   readProviderEndpoints,
 } from "../chat/modelConfigData";
+import { namespaceRuntimeModelAssignmentSections } from "./sections/runtimeModelAssignments";
 
 interface ModelOption {
   readonly value: string;
@@ -36,6 +38,27 @@ export function projectSystemExtensionConfigurationSections(options: {
   }));
 }
 
+export function projectSystemExtensionRuntimeModelAssignmentSections(options: {
+  extensions: readonly SystemExtensionSettingsItem[];
+  locale: FrontendLocale;
+  configSnapshot: ConfigSnapshotData | null;
+}): ConfigFormSectionData[] {
+  return options.extensions.flatMap((extension) => {
+    if (!extension.enabled || !extension.configuration) return [];
+    const displayName = resolveFrontendLocalizedText(extension.displayName, options.locale);
+    const localized = projectSystemExtensionConfigurationSections({
+      sections: extension.configuration.sections,
+      locale: options.locale,
+      configSnapshot: options.configSnapshot,
+    });
+    return namespaceRuntimeModelAssignmentSections(localized, {
+      namespace: `extension:${extension.id}`,
+      pathPrefix: ["Extensions", extension.id, "Configuration"],
+      labelPrefix: displayName,
+    });
+  });
+}
+
 function projectField(
   field: ConfigFormFieldData<FrontendLocalizedText>,
   locale: FrontendLocale,
@@ -45,6 +68,14 @@ function projectField(
     field.modelSelection?.valueKind === "model-id" ? readModelOptions(field.modelSelection.capability) : undefined;
   const configuredModelId = typeof field.effectiveValue === "string" ? field.effectiveValue.trim() : "";
   const projectedOptions = options ? [...options] : undefined;
+  const localizedOptionLabels = field.optionLabels
+    ? Object.fromEntries(
+        Object.entries(field.optionLabels).map(([value, label]) => [
+          value,
+          resolveFrontendLocalizedText(label, locale),
+        ]),
+      )
+    : undefined;
   if (configuredModelId && projectedOptions && !projectedOptions.some((option) => option.value === configuredModelId)) {
     projectedOptions.push({ value: configuredModelId, label: configuredModelId });
   }
@@ -53,6 +84,7 @@ function projectField(
     label: resolveFrontendLocalizedText(field.label, locale),
     description: field.description ? resolveFrontendLocalizedText(field.description, locale) : undefined,
     placeholder: field.placeholder ? resolveFrontendLocalizedText(field.placeholder, locale) : undefined,
+    optionLabels: localizedOptionLabels,
     ...(projectedOptions
       ? {
           options: projectedOptions.map((option) => option.value),

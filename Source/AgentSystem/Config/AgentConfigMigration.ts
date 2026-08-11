@@ -72,6 +72,10 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
         migrateVersionEightToNine(working, removedPaths);
         version = 9;
         break;
+      case 9:
+        migrateVersionNineToTen(working, migratedPaths, removedPaths);
+        version = 10;
+        break;
       default:
         throw new AgentConfigMigrationError(`No migration is registered for configuration version ${version}.`);
     }
@@ -95,6 +99,59 @@ const RetiredToolSearchEmbeddingProperties = [
   "BatchSize",
   "InputMaxChars",
 ] as const;
+
+function migrateVersionNineToTen(
+  config: Record<string, unknown>,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  migrateDockerSandboxConfiguration(config, "", migratedPaths, removedPaths);
+  const defaults = config.Defaults;
+  if (isRecord(defaults)) migrateDockerSandboxConfiguration(defaults, "Defaults.", migratedPaths, removedPaths);
+}
+
+function migrateDockerSandboxConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  const sandboxRuntime = container.SandboxRuntime;
+  if (!isRecord(sandboxRuntime)) return;
+
+  const legacyGvisor = sandboxRuntime.Gvisor;
+  if (isRecord(legacyGvisor) && !isRecord(sandboxRuntime.Docker)) {
+    const docker: Record<string, unknown> = {};
+    if (typeof legacyGvisor.WorkerSocketPath === "string" && legacyGvisor.WorkerSocketPath.trim()) {
+      docker.WorkerEndpoint = legacyGvisor.WorkerSocketPath;
+    }
+    if (typeof legacyGvisor.PreparationTimeoutSeconds === "number") {
+      docker.PreparationTimeoutSeconds = legacyGvisor.PreparationTimeoutSeconds;
+    }
+    if (Object.keys(docker).length > 0) {
+      sandboxRuntime.Docker = docker;
+      migratedPaths.push(`${prefix}SandboxRuntime.Docker`);
+    }
+  }
+  if (removeProperty(sandboxRuntime, "Gvisor")) removedPaths.push(`${prefix}SandboxRuntime.Gvisor`);
+
+  const provisioning = sandboxRuntime.Provisioning;
+  if (isRecord(provisioning) && provisioning.Kind === "Oci" && Array.isArray(provisioning.Images)) {
+    const images = provisioning.Images.filter((value): value is string => typeof value === "string" && Boolean(value));
+    if (images.length > 1) {
+      throw new AgentConfigMigrationError(`${prefix}SandboxRuntime.Provisioning.Images must contain one image.`);
+    }
+    if (images[0]) {
+      const docker = isRecord(sandboxRuntime.Docker) ? sandboxRuntime.Docker : {};
+      if (!Object.hasOwn(docker, "Image")) docker.Image = images[0];
+      sandboxRuntime.Docker = docker;
+      migratedPaths.push(`${prefix}SandboxRuntime.Docker.Image`);
+    }
+  }
+  if (removeProperty(sandboxRuntime, "Provisioning")) {
+    removedPaths.push(`${prefix}SandboxRuntime.Provisioning`);
+  }
+}
 
 function migrateVersionEightToNine(config: Record<string, unknown>, removedPaths: string[]): void {
   removeRetiredToolSearchEmbeddingProperties(config, "", removedPaths);

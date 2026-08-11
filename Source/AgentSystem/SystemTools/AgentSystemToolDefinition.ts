@@ -4,6 +4,7 @@ import type {
   AgentToolDiscoverySource,
   ToolArtifactPolicyManifest,
   ToolEvidenceCapabilityManifest,
+  ToolApprovalManifest,
   ToolExecutionManifest,
   ToolResourceArgumentManifest,
   ToolRuntimeManifest,
@@ -36,6 +37,7 @@ export interface AgentSystemToolMetadata {
   readonly sources?: readonly AgentToolDiscoverySource[];
   readonly search?: ToolSearchManifest;
   readonly evidenceCapabilities?: readonly ToolEvidenceCapabilityManifest[];
+  readonly approval?: ToolApprovalManifest;
   readonly artifacts?: ToolArtifactPolicyManifest;
   readonly observation: AgentToolObservationProjectionManifest;
 }

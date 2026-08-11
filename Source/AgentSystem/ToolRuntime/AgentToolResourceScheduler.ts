@@ -110,7 +110,6 @@ export function resourceRequestsConflict(
   left: AgentToolResourceLeaseRequest,
   right: AgentToolResourceLeaseRequest,
 ): boolean {
-  if (left.mode === "exclusive" || right.mode === "exclusive") return true;
   return left.claims.some((leftClaim) =>
     right.claims.some((rightClaim) => resourceClaimsConflict(leftClaim, rightClaim)),
   );

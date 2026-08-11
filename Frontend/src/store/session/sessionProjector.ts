@@ -21,7 +21,12 @@ import {
 import { projectRunEvent } from "./runEventProjector";
 import { applyScopedRunEvent } from "./scopedRunProjector";
 import { projectSessionHistoryEvent } from "./sessionHistoryProjector";
-import { deleteSessionRuntimeState, ingestSessionList, readFirstAvailableSessionId } from "./sessionListProjection";
+import {
+  deleteSessionRuntimeState,
+  ingestSessionList,
+  readFirstAvailableSessionId,
+  restorePendingSessionDeletion,
+} from "./sessionListProjection";
 import { nowIso, syncSessionCountsFromLoadedMessages } from "./sessionProjectorCore";
 import { applyModelListSnapshotSelection, syncActiveSessionModelSelection } from "./sessionModelSelection";
 import { syncRunActiveFlags } from "./sessionRunProjection";
@@ -33,6 +38,8 @@ export { friendlyDecisionKind, truncate } from "./sessionPresentation";
 export { advanceRunDisplayText, createRunRecord } from "./sessionRunProjection";
 export { bumpSessionMessageCount } from "./sessionProjectorCore";
 export { deleteSessionRuntimeState } from "./sessionListProjection";
+export { deleteSessionRuntimeStates } from "./sessionListProjection";
+export { markSessionDeletionRequested, restorePendingSessionDeletion } from "./sessionListProjection";
 
 // =========================
 // reducer：把 36 种事件投影到状态
@@ -45,7 +52,12 @@ export function applyEvent(state: StoreState, env: EventEnvelope): boolean {
 function applyEventProjection(state: StoreState, env: EventEnvelope): void {
   const sessionId = env.sessionId;
 
-  if (sessionId && state.pendingDeletedSessionIds[sessionId] && !isPendingDeleteResolutionEvent(env.kind)) {
+  if (sessionId && state.pendingDeletedSessionIds[sessionId] && isSessionCloseFailure(env)) {
+    restorePendingSessionDeletion(state, [sessionId]);
+    return;
+  }
+
+  if (sessionId && state.pendingDeletedSessionIds[sessionId] && !isPendingDeleteResolutionEvent(env)) {
     return;
   }
 
@@ -352,8 +364,12 @@ function appendMissingByKey<T>(current: T[], retained: readonly T[], selectKey: 
   return [...current, ...retained.filter((item) => !currentKeys.has(selectKey(item)))];
 }
 
-function isPendingDeleteResolutionEvent(kind: string): boolean {
-  return kind === EventKinds.SessionClosed || kind === EventKinds.SessionNotFound;
+function isPendingDeleteResolutionEvent(env: EventEnvelope): boolean {
+  return env.kind === EventKinds.SessionClosed || env.kind === EventKinds.SessionNotFound;
+}
+
+function isSessionCloseFailure(env: EventEnvelope): boolean {
+  return env.kind === EventKinds.RequestInvalid && (env.data as RequestInvalidData).code === "session_close_failed";
 }
 
 /**

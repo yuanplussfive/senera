@@ -1,5 +1,9 @@
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
-import type { ToolRuntimeCapabilitiesManifest, ToolRuntimeManifest } from "../Types/AgentToolContractTypes.js";
+import {
+  ToolSchedulingModes,
+  type ToolRuntimeCapabilitiesManifest,
+  type ToolRuntimeManifest,
+} from "../Types/AgentToolContractTypes.js";
 import {
   inspectAgentToolRuntimeCapabilityContract,
   inspectAgentToolRuntimeContract,
@@ -13,6 +17,7 @@ export interface AgentToolRuntimeCapabilities {
   interactiveInput: boolean;
   cancellation: boolean;
   resumableEvents: boolean;
+  scheduling: "parallel" | "resource-claims" | "self-managed";
 }
 
 const LifecycleProjection = {
@@ -33,6 +38,12 @@ export function resolveAgentToolRuntimeCapabilities(tool: RegisteredTool): Agent
     interactiveInput: enabled(capabilities, "InteractiveInput"),
     cancellation: enabled(capabilities, "Cancellation"),
     resumableEvents: enabled(capabilities, "ResumableEvents"),
+    scheduling:
+      runtime.Scheduling === ToolSchedulingModes.ResourceClaims
+        ? "resource-claims"
+        : runtime.Scheduling === ToolSchedulingModes.SelfManaged
+          ? "self-managed"
+          : "parallel",
   };
 }
 

@@ -47,10 +47,16 @@ describe("tool resource claim projection", () => {
     expect(resourceRequestsConflict(directoryReader, childWriter)).toBe(true);
   });
 
-  test("fails closed when a declared resource argument is absent", async () => {
-    const lease = await workspaceClaimProjector().project(resourceTool([workspaceResource("read")]), {});
+  test("reports a missing declared resource instead of silently taking a global lease", async () => {
+    await expect(workspaceClaimProjector().project(resourceTool([workspaceResource("read")]), {})).rejects.toThrow(
+      "Tool resource argument is missing: /path",
+    );
+  });
 
-    expect(lease).toEqual({ mode: "exclusive" });
+  test("rejects ResourceClaims host tools without a resource declaration", async () => {
+    await expect(workspaceClaimProjector().project(resourceTool([]), {})).rejects.toThrow(
+      "uses ResourceClaims scheduling without declaring resources",
+    );
   });
 
   test("isolates undeclared MCP resources by server and honors read-only annotations", async () => {
@@ -108,6 +114,7 @@ function resourceTool(resources: readonly ToolResourceArgumentManifest[]): Regis
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: { Lifecycle: "OneShot", ResultAssessment: "ProcessExit" },
     sources: [],
+    childGrant: "inherit",
     evidenceCapabilities: [],
   };
 }

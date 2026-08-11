@@ -36,6 +36,8 @@
 - SQLite row、codec、schema、statement 仍由 `SessionPersistence` 管理，Session 只暴露仓储接口和实现入口。
 - `AgentSessionManager` 是组合根和稳定 API facade，不重新实现 message、history 或 active-run 状态机。协作者只接收所需端口，禁止反向依赖 Manager。
 - 活动 run 的可变 registry 只允许存在于 `AgentSessionActiveRunController`；`AgentSessionRunCoordinator` 不维护并行 Map、shutdown flag 或取消 settlement。
+- 用户取消在服务端登记后立即返回；Agent loop 的逻辑结算继续保护历史提交边界，Pi `abort()` 和 run-owned resource 回收属于后台清理，清理失败不能把已接受的取消反转为失败。超过 settlement 窗口会发出 `settlement_delayed` 诊断，前端保持 `cancelling`，直到权威 `run.cancelled` 与历史截断事件到达。
+- 最终回答可见与 run 结算是两个状态。Pi 完成最终 assistant message 时先发布 `terminal=false` 的 `assistant.message.created`，前端立即展示固定 message ID；自动压缩、事件 drain 和持久化期间 run 仍为 active。终态提交使用同一 message ID 发布 `terminal=true` 并最终发送 `run.completed`，客户端必须 upsert，不能复制消息或提前释放会话运行锁。
 - SQLite transaction 由 `AgentSqliteSessionRepository` 发起；历史表 SQL 只允许进入 `AgentSqliteSessionHistoryStore` 或它组合的 trace store。HistoryStore 不提交 mutation journal，也不管理数据库连接生命周期。
 - message、history replay、rename、truncate、regenerate、fork 和 close 必须经过 admission。fork 同时持有 source/target admission，锁顺序不能由调用方向决定。
 - truncate 在任何 Pi、Memory 或 Artifact 副作用之前验证 request boundary。缺失 boundary 返回稳定 `session_history_boundary_missing`，不能退化为 reset 整个 Pi 会话。

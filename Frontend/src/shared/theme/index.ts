@@ -1,9 +1,5 @@
-export {
-  AppAppearanceProvider,
-  AppearancePreferenceControl,
-  useAppearance,
-  useSetAppearancePreference,
-} from "./useAppearance";
+export { AppAppearanceProvider, useAppearance, useSetAppearancePreference } from "./useAppearance";
+export { AppearancePreferenceControl } from "./AppearancePreferenceControl";
 export {
   accentColorLabels,
   colorSchemeLabels,

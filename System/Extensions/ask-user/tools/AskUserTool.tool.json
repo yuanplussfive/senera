@@ -1,6 +1,5 @@
 {
   "name": "AskUserTool",
-  "observationProjection": "observations/default.projection.json",
   "description": "向用户提出一个简短澄清问题，等待用户补充关键信息。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -8,27 +7,26 @@
     "properties": {
       "question": {
         "type": "string",
-        "description": "必须。要展示给用户的澄清问题；应具体、简短。"
+        "minLength": 1,
+        "description": "A specific, concise clarification question for the user."
       },
       "reason_code": {
         "type": "string",
-        "description": "可选。机器可读原因码，例如 missing_location、missing_scope。"
+        "minLength": 1,
+        "description": "Optional machine-readable clarification reason."
       }
     },
     "required": ["question"],
-    "additionalProperties": false,
-    "definitions": {}
+    "additionalProperties": false
   },
+  "observationProjection": "observations/default.projection.json",
   "permissions": [],
-  "execution": {
-    "Targets": ["Local"],
-    "Network": "Deny",
-    "Workspace": "ReadOnly"
-  },
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
     "ProtocolVersion": 2,
-    "ResultAssessment": "ProcessExit"
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged"
   },
   "resources": [],
   "sources": [
@@ -55,10 +53,7 @@
           "Effects": ["blocks-run", "user-visible"]
         },
         "Aliases": ["问用户", "澄清问题", "ask for clarification", "confirm with user"],
-        "Risk": {
-          "SideEffect": "user-visible",
-          "Permission": "none"
-        }
+        "Risk": { "SideEffect": "user-visible", "Permission": "none" }
       }
     ],
     "UseCases": ["缺少必要参数、目标不明确或继续执行有歧义时使用。"],
@@ -76,41 +71,22 @@
       {
         "Kind": "clarification_request",
         "Records": "$.control",
-        "Slots": {
-          "kind": "$.kind",
-          "question": "$.question",
-          "reasonCode": "$.reason_code"
-        },
-        "Identity": {
-          "Parts": [
-            "question",
-            {
-              "Slot": "reasonCode",
-              "Required": false
-            }
-          ]
-        },
+        "Slots": { "kind": "$.kind", "question": "$.question", "reasonCode": "$.reason_code" },
+        "Identity": { "Parts": ["question", { "Slot": "reasonCode", "Required": false }] },
         "Presentation": {
           "Locator": "{% if reasonCode != blank %}{{ reasonCode }}{% else %}clarification{% endif %}",
           "Display": "clarification requested: {{ question }}",
           "Label": "{{ question }}",
           "Source": "{% if reasonCode != blank %}{{ reasonCode }}{% else %}missing_information{% endif %}"
         },
-        "Confidence": 0.9,
-        "Metadata": {
-          "reasonCode": "$.reason_code"
-        },
-        "ModelProjection": {
-          "Slots": ["question", "reasonCode"]
-        },
-        "PlannerMemory": {
-          "Facts": ["question", "reasonCode"],
-          "ArtifactRefs": ["evidence", "projection"]
-        },
+        "ModelProjection": { "Slots": ["question", "reasonCode"] },
+        "PlannerMemory": { "Facts": ["question", "reasonCode"], "ArtifactRefs": ["evidence", "projection"] },
         "Projection": {
           "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} ask user: {{ e.slots.question }}\n{% endfor %}",
           "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} clarification request\n  question: {{ e.slots.question }}\n  reason: {{ e.slots.reasonCode }}\n{% endfor %}"
-        }
+        },
+        "Confidence": 0.9,
+        "Metadata": { "reasonCode": "$.reason_code" }
       }
     ],
     "Summary": {

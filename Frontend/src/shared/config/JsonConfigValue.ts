@@ -8,16 +8,19 @@ export function writeJsonConfigFieldValue(
   value: unknown,
 ): JsonConfigObject {
   const clone = cloneJsonValue(document) as JsonConfigObject;
-  setValueAtPath(clone, pathParts, value);
+  if (value === undefined) deleteValueAtPath(clone, pathParts);
+  else setValueAtPath(clone, pathParts, value);
   return clone;
 }
 
 export function readDraftOrEffectiveValue(value: JsonConfigObject, field: ConfigFormFieldData): unknown {
   const draftValue = readValueAtPath(value, field.path);
-  return draftValue === undefined ? field.effectiveValue : draftValue;
+  if (draftValue !== undefined) return draftValue;
+  return field.configured ? undefined : field.effectiveValue;
 }
 
 export function normalizeJsonConfigFieldValue(field: ConfigFormFieldData, value: unknown): unknown {
+  if (value === undefined) return undefined;
   if (field.type === "boolean") return Boolean(value);
   if (field.type === "number") return typeof value === "number" && Number.isFinite(value) ? value : 0;
   if (field.type === "array") {
@@ -132,6 +135,26 @@ function setValueAtPath(document: JsonConfigObject, pathParts: readonly string[]
     current = current[part] as JsonConfigObject;
   }
   current[lastKey] = value;
+}
+
+function deleteValueAtPath(document: JsonConfigObject, pathParts: readonly string[]): void {
+  const lastKey = pathParts[pathParts.length - 1];
+  if (!lastKey) return;
+
+  const parents: Array<{ parent: JsonConfigObject; key: string }> = [];
+  let current = document;
+  for (const part of pathParts.slice(0, -1)) {
+    const next = current[part];
+    if (!isJsonConfigObject(next)) return;
+    parents.push({ parent: current, key: part });
+    current = next;
+  }
+  delete current[lastKey];
+  for (const { parent, key } of parents.reverse()) {
+    const child = parent[key];
+    if (!isJsonConfigObject(child) || Object.keys(child).length > 0) break;
+    delete parent[key];
+  }
 }
 
 function isIncompleteNumberDraft(value: string): boolean {

@@ -41,6 +41,14 @@
           "type": "string",
           "minLength": 1
         },
+        "approvalMode": {
+          "type": "string",
+          "enum": [
+            "always_ask",
+            "agent",
+            "full_access"
+          ]
+        },
         "attachments": {
           "type": "array",
           "items": {
@@ -100,7 +108,8 @@
       "required": [
         "type",
         "sessionId",
-        "input"
+        "input",
+        "approvalMode"
       ],
       "additionalProperties": false
     },
@@ -190,6 +199,14 @@
           "type": "string",
           "minLength": 1
         },
+        "approvalMode": {
+          "type": "string",
+          "enum": [
+            "always_ask",
+            "agent",
+            "full_access"
+          ]
+        },
         "attachments": {
           "type": "array",
           "items": {
@@ -237,7 +254,8 @@
         "sessionId",
         "fromRequestId",
         "requestId",
-        "input"
+        "input",
+        "approvalMode"
       ],
       "additionalProperties": false
     },
@@ -749,7 +767,7 @@
           "properties": {
             "ConfigVersion": {
               "type": "number",
-              "const": 9
+              "const": 10
             },
             "Defaults": {
               "type": "object",
@@ -761,6 +779,11 @@
                       "type": "number",
                       "exclusiveMinimum": 0
                     },
+                    "MaxConcurrentCallsPerRun": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    },
                     "MaxStdoutBytes": {
                       "type": "integer",
                       "minimum": 1,
@@ -770,6 +793,19 @@
                       "type": "integer",
                       "minimum": 1,
                       "maximum": 9007199254740991
+                    },
+                    "SemanticAudit": {
+                      "type": "object",
+                      "properties": {
+                        "Mode": {
+                          "type": "string",
+                          "enum": [
+                            "disabled",
+                            "approval_sensitive"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
                     },
                     "Environment": {
                       "type": "object",
@@ -821,10 +857,25 @@
                           "minimum": 1024,
                           "maximum": 9007199254740991
                         },
+                        "OutputBatchMaxBytes": {
+                          "type": "integer",
+                          "minimum": 1024,
+                          "maximum": 9007199254740991
+                        },
+                        "OutputBatchMaxDelayMs": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 5000
+                        },
                         "MaxInputBytes": {
                           "type": "integer",
                           "minimum": 1,
                           "maximum": 9007199254740991
+                        },
+                        "InitialYieldSeconds": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 60
                         },
                         "MaxWaitSeconds": {
                           "type": "number",
@@ -864,7 +915,6 @@
                       "type": "string",
                       "enum": [
                         "auto",
-                        "microsandbox",
                         "gvisor",
                         "docker-engine"
                       ]
@@ -873,115 +923,41 @@
                       "type": "string",
                       "minLength": 1
                     },
-                    "Gvisor": {
+                    "Docker": {
                       "type": "object",
                       "properties": {
-                        "WorkerSocketPath": {
+                        "WorkerEndpoint": {
                           "type": "string",
                           "minLength": 1
+                        },
+                        "EngineEndpoint": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "DetectionTimeoutSeconds": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 30
                         },
                         "PreparationTimeoutSeconds": {
                           "type": "number",
                           "exclusiveMinimum": 0,
                           "maximum": 300
+                        },
+                        "Image": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "PullPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "always",
+                            "if-missing",
+                            "never"
+                          ]
                         }
                       },
                       "additionalProperties": false
-                    },
-                    "Provisioning": {
-                      "oneOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "Kind": {
-                              "type": "string",
-                              "const": "Oci"
-                            },
-                            "Images": {
-                              "minItems": 1,
-                              "type": "array",
-                              "items": {
-                                "type": "string",
-                                "minLength": 1
-                              }
-                            },
-                            "Registry": {
-                              "type": "object",
-                              "properties": {
-                                "Authentication": {
-                                  "oneOf": [
-                                    {
-                                      "type": "object",
-                                      "properties": {
-                                        "Kind": {
-                                          "type": "string",
-                                          "const": "Anonymous"
-                                        }
-                                      },
-                                      "required": [
-                                        "Kind"
-                                      ],
-                                      "additionalProperties": false
-                                    },
-                                    {
-                                      "type": "object",
-                                      "properties": {
-                                        "Kind": {
-                                          "type": "string",
-                                          "const": "Basic"
-                                        },
-                                        "UsernameEnvironmentVariable": {
-                                          "type": "string",
-                                          "minLength": 1
-                                        },
-                                        "PasswordEnvironmentVariable": {
-                                          "type": "string",
-                                          "minLength": 1
-                                        }
-                                      },
-                                      "required": [
-                                        "Kind",
-                                        "UsernameEnvironmentVariable",
-                                        "PasswordEnvironmentVariable"
-                                      ],
-                                      "additionalProperties": false
-                                    }
-                                  ]
-                                },
-                                "Insecure": {
-                                  "type": "boolean"
-                                },
-                                "CertificateFiles": {
-                                  "type": "array",
-                                  "items": {
-                                    "type": "string",
-                                    "minLength": 1
-                                  }
-                                }
-                              },
-                              "additionalProperties": false
-                            }
-                          },
-                          "required": [
-                            "Kind",
-                            "Images"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "Kind": {
-                              "type": "string",
-                              "const": "ReleaseBundle"
-                            }
-                          },
-                          "required": [
-                            "Kind"
-                          ],
-                          "additionalProperties": false
-                        }
-                      ]
                     }
                   },
                   "additionalProperties": false
@@ -1928,6 +1904,11 @@
                   "type": "number",
                   "exclusiveMinimum": 0
                 },
+                "MaxConcurrentCallsPerRun": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
                 "MaxStdoutBytes": {
                   "type": "integer",
                   "minimum": 1,
@@ -1937,6 +1918,19 @@
                   "type": "integer",
                   "minimum": 1,
                   "maximum": 9007199254740991
+                },
+                "SemanticAudit": {
+                  "type": "object",
+                  "properties": {
+                    "Mode": {
+                      "type": "string",
+                      "enum": [
+                        "disabled",
+                        "approval_sensitive"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
                 },
                 "Environment": {
                   "type": "object",
@@ -1988,10 +1982,25 @@
                       "minimum": 1024,
                       "maximum": 9007199254740991
                     },
+                    "OutputBatchMaxBytes": {
+                      "type": "integer",
+                      "minimum": 1024,
+                      "maximum": 9007199254740991
+                    },
+                    "OutputBatchMaxDelayMs": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 5000
+                    },
                     "MaxInputBytes": {
                       "type": "integer",
                       "minimum": 1,
                       "maximum": 9007199254740991
+                    },
+                    "InitialYieldSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 60
                     },
                     "MaxWaitSeconds": {
                       "type": "number",
@@ -2031,7 +2040,6 @@
                   "type": "string",
                   "enum": [
                     "auto",
-                    "microsandbox",
                     "gvisor",
                     "docker-engine"
                   ]
@@ -2040,115 +2048,41 @@
                   "type": "string",
                   "minLength": 1
                 },
-                "Gvisor": {
+                "Docker": {
                   "type": "object",
                   "properties": {
-                    "WorkerSocketPath": {
+                    "WorkerEndpoint": {
                       "type": "string",
                       "minLength": 1
+                    },
+                    "EngineEndpoint": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "DetectionTimeoutSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 30
                     },
                     "PreparationTimeoutSeconds": {
                       "type": "number",
                       "exclusiveMinimum": 0,
                       "maximum": 300
+                    },
+                    "Image": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "PullPolicy": {
+                      "type": "string",
+                      "enum": [
+                        "always",
+                        "if-missing",
+                        "never"
+                      ]
                     }
                   },
                   "additionalProperties": false
-                },
-                "Provisioning": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "Kind": {
-                          "type": "string",
-                          "const": "Oci"
-                        },
-                        "Images": {
-                          "minItems": 1,
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        },
-                        "Registry": {
-                          "type": "object",
-                          "properties": {
-                            "Authentication": {
-                              "oneOf": [
-                                {
-                                  "type": "object",
-                                  "properties": {
-                                    "Kind": {
-                                      "type": "string",
-                                      "const": "Anonymous"
-                                    }
-                                  },
-                                  "required": [
-                                    "Kind"
-                                  ],
-                                  "additionalProperties": false
-                                },
-                                {
-                                  "type": "object",
-                                  "properties": {
-                                    "Kind": {
-                                      "type": "string",
-                                      "const": "Basic"
-                                    },
-                                    "UsernameEnvironmentVariable": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    },
-                                    "PasswordEnvironmentVariable": {
-                                      "type": "string",
-                                      "minLength": 1
-                                    }
-                                  },
-                                  "required": [
-                                    "Kind",
-                                    "UsernameEnvironmentVariable",
-                                    "PasswordEnvironmentVariable"
-                                  ],
-                                  "additionalProperties": false
-                                }
-                              ]
-                            },
-                            "Insecure": {
-                              "type": "boolean"
-                            },
-                            "CertificateFiles": {
-                              "type": "array",
-                              "items": {
-                                "type": "string",
-                                "minLength": 1
-                              }
-                            }
-                          },
-                          "additionalProperties": false
-                        }
-                      },
-                      "required": [
-                        "Kind",
-                        "Images"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "Kind": {
-                          "type": "string",
-                          "const": "ReleaseBundle"
-                        }
-                      },
-                      "required": [
-                        "Kind"
-                      ],
-                      "additionalProperties": false
-                    }
-                  ]
                 }
               },
               "additionalProperties": false
@@ -2328,9 +2262,19 @@
                       },
                       "StreamingUsage": {
                         "type": "boolean"
+                      },
+                      "ToolCalling": {
+                        "type": "boolean"
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "ToolPlanningMode": {
+                    "type": "string",
+                    "enum": [
+                      "native",
+                      "baml"
+                    ]
                   },
                   "ContextWindowTokens": {
                     "type": "integer",
@@ -3679,9 +3623,19 @@
                 },
                 "StreamingUsage": {
                   "type": "boolean"
+                },
+                "ToolCalling": {
+                  "type": "boolean"
                 }
               },
               "additionalProperties": false
+            },
+            "ToolPlanningMode": {
+              "type": "string",
+              "enum": [
+                "native",
+                "baml"
+              ]
             },
             "ContextWindowTokens": {
               "type": "integer",
@@ -3915,9 +3869,19 @@
                   },
                   "StreamingUsage": {
                     "type": "boolean"
+                  },
+                  "ToolCalling": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false
+              },
+              "ToolPlanningMode": {
+                "type": "string",
+                "enum": [
+                  "native",
+                  "baml"
+                ]
               },
               "ContextWindowTokens": {
                 "type": "integer",
@@ -4287,6 +4251,47 @@
       "required": [
         "type",
         "approvalId",
+        "decision"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "approval.resolve_batch"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "batchId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "approve_once",
+            "approve_session",
+            "deny",
+            "deny_and_interrupt"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "requestId",
+        "batchId",
         "decision"
       ],
       "additionalProperties": false

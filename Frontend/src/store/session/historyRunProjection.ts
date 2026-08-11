@@ -39,12 +39,13 @@ export function projectEntryToMessage(
     if (!isTerminalAssistantEntry(entry, completedRequestIds)) return null;
     if (!visible || !visible.text) return null;
     const isAsk = visible.kind === "ask_user";
+    const isToolPreface = visible.kind === "tool_preface";
     return {
-      id: `${entry.requestId}-${isAsk ? "ask" : "answer"}`,
+      id: `${entry.requestId}-${isAsk ? "ask" : isToolPreface ? `tool-preface-${entry.id}` : "answer"}`,
       role: "assistant",
       content: visible.text,
       createdAt: entry.timestamp,
-      kind: isAsk ? "AssistantAsk" : "AssistantFinal",
+      kind: isAsk ? "AssistantAsk" : isToolPreface ? "AssistantToolPreface" : "AssistantFinal",
       requestId: entry.requestId,
       metadata: entry.metadata,
     };
@@ -57,16 +58,16 @@ function isTerminalAssistantEntry(entry: ConversationEntryDto, completedRequestI
   return Boolean(entry.metadata?.run) || completedRequestIds?.has(entry.requestId) === true;
 }
 
-export function upsertMessageByRequestId(session: SessionRecord, message: ChatMessage): void {
+export function upsertMessageByRequestId(session: SessionRecord, message: ChatMessage): boolean {
   const idIndex = session.messages.findIndex((item) => item.id === message.id);
   if (idIndex >= 0) {
     session.messages[idIndex] = message;
-    return;
+    return false;
   }
 
   if (!message.requestId || message.kind === "AssistantToolPreface") {
     session.messages.push(message);
-    return;
+    return true;
   }
 
   const index = session.messages.findIndex(
@@ -76,10 +77,11 @@ export function upsertMessageByRequestId(session: SessionRecord, message: ChatMe
 
   if (index >= 0) {
     session.messages[index] = message;
-    return;
+    return false;
   }
 
   session.messages.push(message);
+  return true;
 }
 
 export function mergeHistoryMessages(session: SessionRecord, messages: readonly ChatMessage[]): void {
@@ -111,6 +113,7 @@ export function rebuildRunFromHistory(run: SessionHistoryStepsData["runs"][numbe
     startedAt: run.startedAt,
     endedAt: run.endedAt,
     status: run.status,
+    outputState: run.status === "completed" ? "committed" : "pending",
     input: run.input,
     steps: run.traces.map((trace) => stepTraceToTimelineStep(run.requestId, trace, run.startedAt)),
     streamingRaw: "",

@@ -3,7 +3,7 @@ import { createAssistantMessageId } from "../Core/AgentIds.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentExecutionResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "../ModelEndpoints/AgentModelMetadata.js";
-import type { StepTrace } from "./AgentStepTrace.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 
 export type AgentTerminalResult =

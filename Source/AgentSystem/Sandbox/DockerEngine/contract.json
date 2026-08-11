@@ -1,5 +1,5 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "senera-docker-engine-sandbox-policy",
   "engine": {
     "minimumApiVersion": "1.43"
@@ -15,6 +15,10 @@
     "shell": {
       "command": "/bin/sh",
       "arguments": ["-lc"]
+    },
+    "terminal": {
+      "command": "/usr/local/bin/node",
+      "arguments": ["/opt/senera-terminal-sidecar/bin/senera-terminal-sidecar.js"]
     },
     "temporaryFilesystems": [
       {

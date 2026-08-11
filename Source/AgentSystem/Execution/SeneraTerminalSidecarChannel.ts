@@ -1,6 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import type { SeneraMicrosandboxTerminalHandle } from "./SeneraMicrosandboxTypes.js";
-import type { SeneraGvisorProcessHandle } from "./SeneraGvisorTypes.js";
+import type { SeneraSandboxProcessHandle } from "./SeneraSandboxWorkerTypes.js";
 import type { SeneraTerminalDisposable, SeneraTerminalExitEvent, SeneraTerminalSignal } from "./SeneraTerminalTypes.js";
 
 export interface SeneraTerminalSidecarChannel {
@@ -72,105 +71,14 @@ export class SeneraNodeTerminalSidecarChannel implements SeneraTerminalSidecarCh
   }
 }
 
-export class SeneraMicrosandboxTerminalSidecarChannel implements SeneraTerminalSidecarChannel {
-  private readonly dataListeners = new Set<(data: Buffer) => void>();
-  private readonly errorListeners = new Set<(error: Error) => void>();
-  private readonly exitListeners = new Set<(event: SeneraTerminalExitEvent) => void>();
-  private _pid: number | undefined;
-  private error: Error | undefined;
-  private exitEvent: SeneraTerminalExitEvent | undefined;
-  private disposal: Promise<void> | undefined;
-
-  constructor(
-    private readonly handle: SeneraMicrosandboxTerminalHandle,
-    private readonly dispose: () => Promise<void>,
-  ) {
-    void this.consume();
-  }
-
-  get pid(): number | undefined {
-    return this._pid;
-  }
-
-  write(data: Uint8Array): Promise<void> {
-    return this.handle.write(data);
-  }
-
-  async terminate(signal: SeneraTerminalSignal): Promise<void> {
-    if (this.exitEvent) return;
-    const signalNumber = { interrupt: 2, terminate: 15, kill: 9 } as const satisfies Record<
-      SeneraTerminalSignal,
-      number
-    >;
-    if (signal === "kill") await this.handle.kill();
-    else await this.handle.signal(signalNumber[signal]);
-  }
-
-  onData(listener: (data: Buffer) => void): SeneraTerminalDisposable {
-    this.dataListeners.add(listener);
-    return disposable(() => this.dataListeners.delete(listener));
-  }
-
-  onError(listener: (error: Error) => void): SeneraTerminalDisposable {
-    this.errorListeners.add(listener);
-    if (this.error) queueMicrotask(() => listener(this.error as Error));
-    return disposable(() => this.errorListeners.delete(listener));
-  }
-
-  onExit(listener: (event: SeneraTerminalExitEvent) => void): SeneraTerminalDisposable {
-    this.exitListeners.add(listener);
-    if (this.exitEvent) queueMicrotask(() => listener(this.exitEvent as SeneraTerminalExitEvent));
-    return disposable(() => this.exitListeners.delete(listener));
-  }
-
-  private async consume(): Promise<void> {
-    let exitCode = 1;
-    try {
-      for await (const event of this.handle.events) {
-        if (event.kind === "started") this._pid = event.pid;
-        else if (event.kind === "output" && event.stream === "stdout") {
-          dispatchToListeners(this.dataListeners, event.data);
-        } else if (event.kind === "output") {
-          this.emitError(new Error(event.data.toString("utf8")));
-        } else exitCode = event.code;
-      }
-    } catch (error) {
-      this.emitError(error instanceof Error ? error : new Error(String(error)));
-    } finally {
-      try {
-        await this.disposeOnce();
-      } catch {
-        // dispose 失败会在 terminate() 等显式调用点重新抛出；这里不阻塞退出事件。
-      }
-      this.emitExit({ exitCode });
-    }
-  }
-
-  private emitError(error: Error): void {
-    this.error = error;
-    dispatchToListeners(this.errorListeners, error);
-  }
-
-  private emitExit(event: SeneraTerminalExitEvent): void {
-    if (this.exitEvent) return;
-    this.exitEvent = event;
-    dispatchToListeners(this.exitListeners, event);
-  }
-
-  private disposeOnce(): Promise<void> {
-    this.disposal ??= this.dispose();
-    return this.disposal;
-  }
-}
-
-export class SeneraGvisorTerminalSidecarChannel implements SeneraTerminalSidecarChannel {
+export class SeneraSandboxTerminalSidecarChannel implements SeneraTerminalSidecarChannel {
   private readonly dataListeners = new Set<(data: Buffer) => void>();
   private readonly errorListeners = new Set<(error: Error) => void>();
   private readonly exitListeners = new Set<(event: SeneraTerminalExitEvent) => void>();
   private error: Error | undefined;
   private exitEvent: SeneraTerminalExitEvent | undefined;
 
-  constructor(private readonly handle: SeneraGvisorProcessHandle) {
+  constructor(private readonly handle: SeneraSandboxProcessHandle) {
     void this.consume();
   }
 

@@ -15,15 +15,12 @@ import { AgentToolExecutionReporter } from "./AgentToolExecutionReporter.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import { projectAgentToolResourceArguments } from "./AgentToolResourceArgumentProjector.js";
 import { createAgentDefaultToolResourceCapabilities } from "./AgentToolResourceCapabilities.js";
-import { resolveArtifactsConfig } from "../AgentDefaults.js";
-import { createSeneraOutputSpool, updateSeneraOutputSpoolState } from "../Execution/SeneraOutputSpool.js";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { assertInsideRoot } from "../Artifacts/AgentArtifactLocator.js";
+import { updateSeneraOutputSpoolState } from "../Execution/SeneraOutputSpool.js";
 import { validateToolContractValue, validateToolSignatureArguments } from "./AgentToolSignatureArgumentValidator.js";
 import {
   AgentToolExecutionTargetError,
   bindAgentToolInvocationToExecutionPlan,
+  projectSeneraProcessBackendsToToolTargets,
   resolveAgentToolInvocation,
   type AgentToolExecutionPlan,
 } from "./AgentToolExecutionPlan.js";
@@ -40,6 +37,10 @@ import type { AgentMcpToolsChangedHandler } from "../Mcp/AgentMcpToolCatalogChan
 import type { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
 import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import { createAgentToolOutputSpool } from "./AgentToolOutputSpool.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -58,10 +59,14 @@ export interface AgentToolRunnerContext {
   configPath?: string;
   onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
+  authorizedToolNames?: readonly string[];
   toolExposure?: AgentToolExposureState;
   signal?: AbortSignal;
   executionPlan?: AgentToolExecutionPlan;
   tokenBudget?: AgentToolTokenBudget;
+  approvalMode?: AgentExecutionApprovalMode;
+  activeSkills?: readonly AgentActivatedSkill[];
+  thinkingLevel?: ModelThinkingLevel;
 }
 
 export class AgentToolRunner implements AgentToolRunnerLike {
@@ -74,7 +79,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     private readonly registry: AgentExtensionRegistryLike,
     private readonly executionEnv: SeneraExecutionEnv,
     interactionInput?: AgentInteractionInputRuntime,
-    modelProviderId?: string,
+    private readonly modelProviderId?: string,
     onMcpToolsChanged?: AgentMcpToolsChangedHandler,
     mcpClientPool?: AgentMcpToolClientPool,
     mcpSampling?: AgentMcpSamplingHandler,
@@ -127,11 +132,12 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     args: Record<string, unknown>,
     context: AgentToolRunnerContext,
   ): Promise<AgentToolProcessRunResult> {
+    const runtimeTargets = projectSeneraProcessBackendsToToolTargets(this.executionEnv.capabilities.processBackends);
     let invocation;
     try {
       invocation = context.executionPlan
-        ? bindAgentToolInvocationToExecutionPlan(tool, args, context.executionPlan)
-        : resolveAgentToolInvocation(tool, args);
+        ? bindAgentToolInvocationToExecutionPlan(tool, args, context.executionPlan, runtimeTargets)
+        : resolveAgentToolInvocation(tool, args, runtimeTargets);
     } catch (error) {
       if (error instanceof AgentToolExecutionTargetError) {
         return this.failure(
@@ -174,13 +180,14 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       );
     }
     const runtime = resolveAgentToolRuntimeCapabilities(tool);
-    const outputSpool = runtime.outputStreaming
-      ? await createToolOutputSpool(this.config, this.workspaceRoot, {
-          sessionId: context.sessionId,
-          requestId: context.requestId,
-          toolCallId: context.toolCallId,
-        })
-      : undefined;
+    const outputSpool =
+      runtime.outputStreaming && !runtime.resumableEvents
+        ? await createAgentToolOutputSpool(this.config, this.workspaceRoot, {
+            sessionId: context.sessionId,
+            requestId: context.requestId,
+            toolCallId: context.toolCallId,
+          })
+        : undefined;
     const reporter = new AgentToolExecutionReporter({
       toolName: tool.name,
       callId: context.toolCallId,
@@ -345,11 +352,16 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       batchId: context.batchId,
       onEvent: context.onEvent,
       visibleToolNames: context.visibleToolNames,
+      authorizedToolNames: context.authorizedToolNames,
       toolExposure: context.toolExposure,
       signal: context.signal,
       executionPlan: context.executionPlan,
       reporter,
       tokenBudget: context.tokenBudget,
+      approvalMode: context.approvalMode,
+      modelProviderId: this.modelProviderId,
+      activeSkills: context.activeSkills,
+      thinkingLevel: context.thinkingLevel,
     });
   }
 
@@ -368,21 +380,4 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       },
     });
   }
-}
-
-async function createToolOutputSpool(
-  config: AgentSystemConfig,
-  workspaceRoot: string,
-  metadata: { sessionId?: string; requestId?: string; toolCallId?: string },
-) {
-  const artifacts = resolveArtifactsConfig(config);
-  const spoolRoot = assertInsideRoot(
-    workspaceRoot,
-    path.resolve(workspaceRoot, artifacts.RootDir, ".spool"),
-    `artifact spool 根目录超出工作区：${artifacts.RootDir}`,
-  );
-  return createSeneraOutputSpool(spoolRoot, randomUUID(), {
-    maxBytes: artifacts.OutputCaptureMaxBytes,
-    metadata,
-  });
 }

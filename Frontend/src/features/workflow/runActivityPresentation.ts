@@ -1,22 +1,38 @@
 import type { RunActivity } from "../../api/eventTypes";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 
-const RunActivityLabelKeys = {
-  preparing_context: "workflow.activity.preparingContext",
-  initializing_runtime: "workflow.activity.initializingRuntime",
-  synchronizing_context: "workflow.activity.synchronizingContext",
-  evaluating_context: "workflow.activity.evaluatingContext",
-  running_agent_turn: "workflow.activity.runningAgentTurn",
-  generating_response: "workflow.activity.generatingResponse",
-  finalizing_response: "workflow.activity.finalizingResponse",
-} as const satisfies Record<RunActivity, FrontendMessageKey>;
+export const RunActivityPresentationPriorities = {
+  Ambient: "ambient",
+  Foreground: "foreground",
+} as const;
+
+export type RunActivityPresentationPriority =
+  (typeof RunActivityPresentationPriorities)[keyof typeof RunActivityPresentationPriorities];
+
+const RunActivityPresentation = {
+  preparing_context: { labelKey: "workflow.activity.preparingContext", priority: "foreground" },
+  initializing_runtime: { labelKey: "workflow.activity.initializingRuntime", priority: "foreground" },
+  synchronizing_context: { labelKey: "workflow.activity.synchronizingContext", priority: "foreground" },
+  evaluating_context: { labelKey: "workflow.activity.evaluatingContext", priority: "foreground" },
+  compacting_context: { labelKey: "workflow.activity.compactingContext", priority: "foreground" },
+  running_agent_turn: { labelKey: "workflow.activity.runningAgentTurn", priority: "ambient" },
+  generating_response: { labelKey: "workflow.activity.generatingResponse", priority: "foreground" },
+  finalizing_response: { labelKey: "workflow.activity.finalizingResponse", priority: "foreground" },
+} as const satisfies Record<
+  RunActivity,
+  { readonly labelKey: FrontendMessageKey; readonly priority: RunActivityPresentationPriority }
+>;
 
 export function runActivityLabel(activity: RunActivity): string {
-  return frontendMessage(RunActivityLabelKeys[activity]);
+  return frontendMessage(RunActivityPresentation[activity].labelKey);
 }
 
 export function activeRunActivityLabel(activity: RunActivity): string {
   return frontendMessage("workflow.activity.running", {
     activity: runActivityLabel(activity),
   });
+}
+
+export function runActivityPresentationPriority(activity: RunActivity): RunActivityPresentationPriority {
+  return RunActivityPresentation[activity].priority;
 }

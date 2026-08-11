@@ -33,7 +33,13 @@ export function HistoryRecoveryState({
                 {frontendMessage("session.historyFailedDescription")}
               </p>
             </div>
-            {onRetry ? <RetryButton onRetry={onRetry} disabled={retryDisabled} /> : null}
+            {retryDisabled ? (
+              <span role="status" className="shrink-0 text-[12px] font-medium text-ink-500">
+                {frontendMessage("session.historyWaitingForConnection")}
+              </span>
+            ) : onRetry ? (
+              <RetryButton onRetry={onRetry} label={frontendMessage("session.historyRetry")} />
+            ) : null}
           </div>
         </div>
       </div>

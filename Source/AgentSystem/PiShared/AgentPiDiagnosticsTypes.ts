@@ -1,15 +1,14 @@
 /**
  * Diagnostic type definitions and source identifiers for the Pi agent.
  *
- * Extracted from Pi/AgentPiDiagnostics.ts to break the Pi ↔ PiProxy
- * circular dependency. The diagnostic emission functions (emitAgentPiDiagnostic,
+ * Shared with server diagnostics without coupling Pi to a transport. The diagnostic emission functions (emitAgentPiDiagnostic,
  * createAgentPiDiagnosticEvent, etc.) remain in Pi/AgentPiDiagnostics.ts and
  * import these types from here.
  */
 
 export const AgentPiDiagnosticSources = {
   Session: "session",
-  Proxy: "proxy",
+  Provider: "provider",
   Substrate: "substrate",
 } as const;
 

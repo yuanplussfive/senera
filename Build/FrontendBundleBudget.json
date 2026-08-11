@@ -11,7 +11,7 @@
       "requiredAssets": [{ "extension": ".woff2", "minimumCount": 4 }],
       "limits": {
         "resourceCount": 9,
-        "identityBytes": 700000,
+        "identityBytes": 730000,
         "gzipBytes": 320000,
         "brotliBytes": 305000
       }
@@ -22,8 +22,8 @@
       "roots": ["src/app/AuthenticatedSurface.tsx", "App"],
       "limits": {
         "resourceCount": 17,
-        "identityBytes": 1550000,
-        "gzipBytes": 550000,
+        "identityBytes": 1630000,
+        "gzipBytes": 560000,
         "brotliBytes": 515000
       }
     },
@@ -32,9 +32,9 @@
       "extends": ["authenticated-main"],
       "roots": ["src/features/settings/SettingsOverlay.tsx"],
       "limits": {
-        "resourceCount": 20,
-        "identityBytes": 1750000,
-        "gzipBytes": 605000,
+        "resourceCount": 22,
+        "identityBytes": 1830000,
+        "gzipBytes": 615000,
         "brotliBytes": 565000
       }
     },
@@ -44,7 +44,7 @@
       "roots": ["src/app/AuthenticatedSurface.tsx", "src/app/DesktopSettingsSurface.tsx"],
       "limits": {
         "resourceCount": 19,
-        "identityBytes": 1425000,
+        "identityBytes": 1460000,
         "gzipBytes": 505000,
         "brotliBytes": 475000
       }

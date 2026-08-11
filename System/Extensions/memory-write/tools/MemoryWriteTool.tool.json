@@ -1,6 +1,5 @@
 {
   "name": "MemoryWriteTool",
-  "observationProjection": "observations/default.projection.json",
   "description": "把用户明确要求记住的内容直接写入长期记忆。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -9,83 +8,49 @@
       "operation": {
         "type": "string",
         "enum": ["create", "reinforce", "update", "supersede"],
-        "description": "默认 create；reinforce/update/supersede 需要 targetMemoryUri。"
+        "description": "Defaults to create; reinforce, update, and supersede require targetMemoryUri."
       },
       "type": {
         "type": "string",
         "enum": ["profile", "preference", "knowledge", "scene"],
-        "description": "长期记忆类型。"
+        "description": "Long-term memory category."
       },
-      "subject": {
-        "type": "string",
-        "description": "记忆主体，例如 assistant_work_style、用户饮料偏好。"
-      },
-      "claim": {
-        "type": "string",
-        "description": "需要长期记住的具体陈述。"
-      },
-      "howToApply": {
-        "type": "string",
-        "description": "以后如何使用这条记忆。"
-      },
+      "subject": { "type": "string", "minLength": 1, "description": "Stable subject of this memory." },
+      "claim": { "type": "string", "minLength": 1, "description": "Concrete statement to retain." },
+      "howToApply": { "type": "string", "minLength": 1, "description": "How future turns should apply this memory." },
       "tags": {
-        "type": "object",
-        "properties": {
-          "item": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": ["item"],
-        "additionalProperties": false,
-        "description": "简短分类标签。"
+        "minItems": 1,
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "description": "Short classification tags."
       },
       "triggers": {
-        "type": "object",
-        "properties": {
-          "item": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": ["item"],
-        "additionalProperties": false,
-        "description": "未来哪些自然表达应召回这条记忆。"
+        "minItems": 1,
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "description": "Natural expressions that should recall this memory."
       },
-      "confidence": {
-        "type": "number",
-        "description": "模型对这条显式记忆的置信度，0 到 1。"
-      },
+      "confidence": { "type": "number", "minimum": 0, "maximum": 1, "description": "Confidence from 0 to 1." },
       "targetMemoryUri": {
         "type": "string",
-        "description": "update/supersede 目标记忆 URI。"
+        "minLength": 1,
+        "description": "Target memory URI for non-create operations."
       },
-      "reason": {
-        "type": "string",
-        "description": "可选写入原因。"
-      }
+      "reason": { "type": "string", "minLength": 1, "description": "Optional reason for the write." }
     },
     "required": ["type", "subject", "claim", "howToApply", "tags", "triggers", "confidence"],
-    "additionalProperties": false,
-    "definitions": {}
+    "additionalProperties": false
   },
+  "observationProjection": "observations/default.projection.json",
   "permissions": ["memory:write"],
-  "execution": {
-    "Targets": ["Local"],
-    "Network": "Deny",
-    "Workspace": "ReadWrite"
-  },
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
   "runtime": {
     "Lifecycle": "Immediate",
     "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
-    "Capabilities": {
-      "Cancellation": true
-    }
+    "Scheduling": "Parallel",
+    "MaxConcurrency": 1,
+    "Capabilities": { "Cancellation": true }
   },
   "resources": [],
   "sources": [
@@ -97,6 +62,7 @@
   ],
   "search": {
     "Summary": "把用户明确要求记住的内容直接写入长期记忆。",
+    "Tags": ["长期记忆", "记忆写入", "用户偏好", "用户画像", "知识"],
     "Capabilities": [
       {
         "Id": "memory.write",
@@ -111,16 +77,12 @@
           "Effects": ["persistent-write"]
         },
         "Aliases": ["记住这个", "记录偏好", "以后都这样", "写入长期记忆"],
-        "Risk": {
-          "SideEffect": "persistent-write",
-          "Permission": "memory-write"
-        }
+        "Risk": { "SideEffect": "persistent-write", "Permission": "memory-write" }
       }
     ],
     "UseCases": ["用户明确要求记住偏好、画像、知识、设定或要求更新已有长期记忆。"],
     "Examples": ["记住我喜欢无糖咖啡", "以后写代码不要硬编码", "把这个设定长期保存", "更新这条记忆"],
-    "Avoid": ["没有用户明确要求记住时不要调用。", "临时工具结果和普通任务结论不要直接写长期记忆。"],
-    "Tags": ["长期记忆", "记忆写入", "用户偏好", "用户画像", "知识"]
+    "Avoid": ["没有用户明确要求记住时不要调用。", "临时工具结果和普通任务结论不要直接写长期记忆。"]
   },
   "evidenceCapabilities": [],
   "artifacts": {
@@ -143,20 +105,12 @@
           "targetMemoryUri": "$.targetMemoryUri",
           "updatedAt": "$.updatedAt"
         },
-        "Identity": {
-          "Parts": ["memoryUri", "operation"]
-        },
+        "Identity": { "Parts": ["memoryUri", "operation"] },
         "Presentation": {
           "Locator": "{{ memoryUri }}",
           "Display": "{{ operation }} memory: {{ subject }}",
           "Label": "{{ subject }}",
           "Source": "{{ claim }}"
-        },
-        "Confidence": 0.9,
-        "Metadata": {
-          "operation": "$.operation",
-          "type": "$.type",
-          "targetMemoryUri": "$.targetMemoryUri"
         },
         "ModelProjection": {
           "Slots": [
@@ -181,7 +135,9 @@
         "Projection": {
           "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.operation }} long-term memory {{ e.slots.subject }}: {{ e.slots.claim }}\n{% endfor %}",
           "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} memory write\n  uri: {{ e.slots.memoryUri }}\n  operation: {{ e.slots.operation }}\n  type: {{ e.slots.type }}\n  subject: {{ e.slots.subject }}\n  claim: {{ e.slots.claim }}\n  apply: {{ e.slots.howToApply }}\n  confidence: {{ e.slots.confidence }}\n  sourceRefs: {{ e.slots.sourceRefs }}\n{% endfor %}"
-        }
+        },
+        "Confidence": 0.9,
+        "Metadata": { "operation": "$.operation", "type": "$.type", "targetMemoryUri": "$.targetMemoryUri" }
       }
     ],
     "Summary": {

@@ -372,6 +372,7 @@ function createTool(options: {
       Network: "Deny",
       Workspace: "ReadOnly",
     },
+    childGrant: "inherit",
     evidenceCapabilities: [],
     search: {
       Summary: options.summary,

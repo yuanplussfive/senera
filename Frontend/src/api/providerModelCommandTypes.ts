@@ -1,4 +1,4 @@
-import type { ModelCapabilitiesData } from "./eventTypes";
+import type { ModelCapabilitiesData, ModelToolPlanningMode } from "./eventTypes";
 
 export interface ProviderModelEndpointInput {
   Id: string;
@@ -22,6 +22,7 @@ export interface ProviderModelConfigInput {
   ProviderId: string;
   Icon?: string;
   Capabilities?: ModelCapabilitiesData;
+  ToolPlanningMode?: ModelToolPlanningMode;
   ContextWindowTokens?: number;
   MaxModelOutputTokens?: number;
   Endpoint: ProviderModelEndpointKind;

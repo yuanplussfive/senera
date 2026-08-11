@@ -1,6 +1,13 @@
 // 协议类型。事件枚举从后端 AgentEventCatalog 生成，其他 DTO 保持前端消费视角。
 import { EventChannels, EventKinds, EventLayers, EventPhases } from "./generatedEventCatalog";
-import type { EventChannel, EventKind, EventLayer, EventPhase } from "./generatedEventCatalog";
+import type {
+  EventChannel,
+  EventKind,
+  EventLayer,
+  EventPhase,
+  RunActivity,
+  RunActivityState,
+} from "./generatedEventCatalog";
 import type { ProviderModelConfigOperationKind } from "./providerModelCommandTypes";
 import type { FrontendLocalizedText } from "../i18n/frontendLocaleModel";
 import type { BackendLocalizedMessage } from "../i18n/backendMessage";
@@ -37,8 +44,37 @@ export type {
 
 export type { RequestInvalidData, RunCancellationProgressData } from "./runControlEventTypes";
 
+export type {
+  ChildRunCancellingData,
+  ChildRunDeadlineExtendedData,
+  ChildRunEventIdentityData,
+  ChildRunLifecycleData,
+  ChildRunMessageCreatedData,
+  ChildRunMessageDirection,
+  ChildRunMessageKind,
+  ChildRunSnapshotData,
+  ChildRunStatus,
+  ChildRunWrappingUpData,
+} from "./childRunEventTypes";
+
+export type {
+  McpInputMutationState,
+  McpInputStatus,
+  McpInputValue,
+  McpServerSettingsItem,
+  McpServerSnapshotData,
+} from "./mcpSettingsEventTypes";
+
 export { EventChannels, EventKinds, EventLayers, EventPhases };
-export type { EventChannel, EventKind, EventLayer, EventPhase } from "./generatedEventCatalog";
+export type {
+  EventChannel,
+  EventKind,
+  EventLayer,
+  EventPhase,
+  RunActivity,
+  RunActivityCategory,
+  RunActivityState,
+} from "./generatedEventCatalog";
 
 export interface EventEnvelope<TKind extends string = EventKind, TData = unknown> {
   eventId?: string;
@@ -57,9 +93,11 @@ export interface EventEnvelope<TKind extends string = EventKind, TData = unknown
 }
 
 export interface EventScope {
+  parentSessionId?: string;
   parentRequestId?: string;
   workflowName?: string;
   jobId?: string;
+  childRunId?: string;
   agentName?: string;
   role?: "childAgent" | "merge";
 }
@@ -104,50 +142,6 @@ export interface SystemExtensionSettingsItem {
 export interface SystemToolSnapshotData {
   extensions: SystemExtensionSettingsItem[];
   tools: SystemToolSettingsItem[];
-}
-
-export type McpInputValue = string | number | boolean | string[] | number[] | boolean[];
-
-export interface McpInputStatus {
-  id: string;
-  title: string;
-  description?: string;
-  type: "string" | "number" | "boolean" | "filepath" | "directory";
-  required: boolean;
-  secret: boolean;
-  multiple: boolean;
-  configured: boolean;
-  stored: boolean;
-  source: "vault" | "configuration" | "environment" | "oauth" | "default" | "missing";
-  provenance: "mcpb" | "registry" | "legacy" | "connection";
-  value?: McpInputValue;
-  defaultValue?: McpInputValue;
-  choices?: McpInputValue[];
-  placeholder?: string;
-  min?: number;
-  max?: number;
-  updatedAt?: string;
-}
-
-export interface McpServerSettingsItem {
-  id: string;
-  packageName: string;
-  source: "bundled" | "workspace";
-  descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
-  transport: "stdio" | "http";
-  status: "configured" | "needs_input";
-  inputs: McpInputStatus[];
-}
-
-export interface McpServerSnapshotData {
-  servers: McpServerSettingsItem[];
-  operation?: { requestId: string; kind: "mcp_input_update" };
-}
-
-export interface McpInputMutationState {
-  requestId: string;
-  status: "pending" | "success" | "error";
-  message?: string;
 }
 
 // --- 各 kind 的 data 形状（只列前端会读的字段） ---
@@ -359,6 +353,8 @@ export interface ModelProviderListItem {
   isDefault: boolean;
 }
 
+export type ModelToolPlanningMode = "native" | "baml";
+
 export interface ModelCapabilitiesData {
   Chat?: boolean;
   Embedding?: boolean;
@@ -482,14 +478,27 @@ export type ConfigFormFieldOptionValue = string | number | boolean;
 export type ConfigFormValueSource = "explicit" | "inherited" | "default" | "missing";
 
 export type ConfigFormModelCapability =
-  "Chat" | "Embedding" | "Rerank" | "Vision" | "ImageOutput" | "Reasoning" | "DeveloperRole" | "StreamingUsage";
+  | "Chat"
+  | "Embedding"
+  | "Rerank"
+  | "Vision"
+  | "ImageOutput"
+  | "Reasoning"
+  | "ToolCalling"
+  | "DeveloperRole"
+  | "StreamingUsage";
 
 export interface ConfigFormModelSelectionData {
   id: string;
   capability: ConfigFormModelCapability;
   valueKind: "model-id" | "provider-model";
   mutation: "config" | "default-model";
+  cardinality?: "one" | "many";
   providerPath?: string[];
+  inheritance?: {
+    source: "parent-model" | "default-model";
+    path: string[];
+  };
   required: boolean;
 }
 
@@ -522,7 +531,10 @@ export interface ConfigFormFieldData<TText = string> {
   description?: TText;
   placeholder?: TText;
   options?: ConfigFormFieldOptionValue[];
-  optionLabels?: Record<string, string>;
+  optionLabels?: Record<string, TText>;
+  optionSource?: {
+    catalog: "skills";
+  };
   min?: number;
   max?: number;
   minLength?: number;
@@ -621,23 +633,16 @@ export interface SessionTruncatedData {
 
 export interface RunStartedData {
   input: string;
+  approvalMode?: import("./executionApprovalMode").ExecutionApprovalMode;
 }
-
-export type RunActivity =
-  | "preparing_context"
-  | "initializing_runtime"
-  | "synchronizing_context"
-  | "evaluating_context"
-  | "running_agent_turn"
-  | "generating_response"
-  | "finalizing_response";
-
-export type RunActivityState = "started" | "completed" | "failed";
 
 export interface RunActivityChangedData {
   activityId: string;
+  parentActivityId?: string;
   activity: RunActivity;
   state: RunActivityState;
+  startedAt: string;
+  durationMs?: number;
 }
 
 export interface PromptSummaryData {
@@ -664,6 +669,7 @@ export interface ModelCompletedData {
 export interface ToolCallsPlannedData {
   toolCount: number;
   tools: string[];
+  calls?: Array<{ callId: string; toolName: string }>;
   status?: "planned" | "discovery_escalated" | "blocked";
   executionMode?: "parallel" | "sequential";
   batchId?: string;
@@ -676,6 +682,8 @@ export interface ToolCallStartedData {
   toolName: string;
   callId: string;
   batchId?: string;
+  /** Explicit backend lifecycle start; diagnostic views reject spans without it. */
+  startedAt?: string;
 }
 
 export interface ToolCallOutputData {
@@ -711,6 +719,10 @@ export interface ToolCallCompletedData {
   toolName: string;
   callId: string;
   batchId?: string;
+  /** Explicit backend lifecycle start; diagnostic views reject spans without it. */
+  startedAt?: string;
+  /** Explicit backend lifecycle duration. Clients must not infer it. */
+  durationMs?: number;
   presentation?: ToolResultPresentation;
 }
 
@@ -722,6 +734,10 @@ export interface ToolCallFailedData {
   code?: string;
   message: string;
   localizedMessage?: BackendLocalizedMessage;
+  /** Explicit backend lifecycle start; diagnostic views reject spans without it. */
+  startedAt?: string;
+  /** Explicit backend lifecycle duration. Clients must not infer it. */
+  durationMs?: number;
 }
 
 export interface ToolCallResultDetailData {
@@ -773,3 +789,5 @@ export interface RunFailedData {
 // --- 客户端 → 服务端 请求 ---
 
 export type { WsRequest } from "./wsRequestTypes";
+export { ExecutionApprovalModes, isExecutionApprovalMode } from "./executionApprovalMode";
+export type { ExecutionApprovalMode } from "./executionApprovalMode";

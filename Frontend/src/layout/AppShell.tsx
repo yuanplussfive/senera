@@ -1,5 +1,6 @@
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
-import { ListTree, PanelRightClose, SquareTerminal } from "lucide-react";
+import { useFrontendLocale } from "../i18n/useFrontendLocale";
+import { ListTree, PanelRightClose, RadioTower, SquareTerminal } from "lucide-react";
 import { motion, type Transition } from "framer-motion";
 import { cn } from "../lib/util";
 import {
@@ -38,6 +39,7 @@ interface AppShellProps {
   workflowPanel: ReactNode;
   workflowDrawer: ReactNode;
   terminalPanel: ReactNode;
+  eventPanel: ReactNode;
   workflowDockTool: WorkflowDockTool;
   onWorkflowDockToolChange: (tool: WorkflowDockTool) => void;
   sessionDrawerOpen: boolean;
@@ -61,22 +63,25 @@ interface ResponsiveDrawerProps {
 
 type AppShellSurface = "drawer" | "persistent";
 type WorkflowPanelLayout = "drawer" | "overlay" | "inline";
-export type WorkflowDockTool = "execution" | "terminal";
+export type WorkflowDockTool = "execution" | "terminal" | "events";
 
 const WORKFLOW_DOCK_ITEMS = [
   {
     id: "execution",
-    label: frontendMessage("workflow.dock.execution"),
-    tooltip: frontendMessage("workflow.dock.execution"),
+    messageKey: "workflow.dock.execution",
     Icon: ListTree,
   },
   {
     id: "terminal",
-    label: frontendMessage("workflow.dock.terminal"),
-    tooltip: frontendMessage("workflow.dock.terminal"),
+    messageKey: "workflow.dock.terminal",
     Icon: SquareTerminal,
   },
-] as const satisfies readonly { id: WorkflowDockTool; label: string; tooltip: string; Icon: typeof ListTree }[];
+  {
+    id: "events",
+    messageKey: "workflow.dock.events",
+    Icon: RadioTower,
+  },
+] as const;
 
 type WorkflowDockPanelProps = {
   hidePanelTitle?: boolean;
@@ -141,6 +146,7 @@ export function AppShell({
   workflowPanel,
   workflowDrawer,
   terminalPanel,
+  eventPanel,
   workflowDockTool,
   onWorkflowDockToolChange,
   sessionDrawerOpen,
@@ -149,6 +155,7 @@ export function AppShell({
   onWorkflowDrawerOpenChange,
   responsiveMode,
 }: AppShellProps): JSX.Element {
+  const locale = useFrontendLocale();
   const sidebarCollapsed = useStore((state) => state.sidebarCollapsed);
   const rightPanelCollapsed = useStore((state) => state.rightPanelCollapsed);
   const workflowDockWidth = useStore((state) => state.workflowDockWidth);
@@ -296,7 +303,7 @@ export function AppShell({
             data-workflow-dock-tabs
             data-workflow-dock-tabs-list
           >
-            {WORKFLOW_DOCK_ITEMS.map(({ id, label }) => (
+            {WORKFLOW_DOCK_ITEMS.map(({ id, messageKey }) => (
               <TabsTrigger
                 key={id}
                 value={id}
@@ -311,7 +318,7 @@ export function AppShell({
                     data-workflow-dock-active-indicator={presentation}
                   />
                 ) : null}
-                <span className="relative z-10 min-w-0 truncate">{label}</span>
+                <span className="relative z-10 min-w-0 truncate">{frontendMessage(messageKey, {}, locale)}</span>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -334,6 +341,9 @@ export function AppShell({
         </TabsContent>
         <TabsContent value="terminal" className="min-h-0 flex-1 overflow-hidden">
           {renderTerminalContent(presentation)}
+        </TabsContent>
+        <TabsContent value="events" className="min-h-0 flex-1 overflow-hidden">
+          {eventPanel}
         </TabsContent>
       </Tabs>
     );
@@ -446,22 +456,25 @@ export function AppShell({
                 aria-label={frontendMessage("workflow.dock.label")}
                 data-workflow-dock-capsule
               >
-                {WORKFLOW_DOCK_ITEMS.map(({ id, tooltip, Icon }) => (
-                  <IconButton
-                    key={id}
-                    label={tooltip}
-                    tooltip={tooltip}
-                    tooltipSide="bottom"
-                    tone="muted"
-                    aria-expanded={false}
-                    onClick={() => handleWorkflowDockTool(id)}
-                    className="h-8 w-8 rounded-full"
-                    data-workflow-dock-toggle={id === "execution" ? "" : undefined}
-                    data-workflow-dock-tool={id}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </IconButton>
-                ))}
+                {WORKFLOW_DOCK_ITEMS.map(({ id, messageKey, Icon }) => {
+                  const label = frontendMessage(messageKey, {}, locale);
+                  return (
+                    <IconButton
+                      key={id}
+                      label={label}
+                      tooltip={label}
+                      tooltipSide="bottom"
+                      tone="muted"
+                      aria-expanded={false}
+                      onClick={() => handleWorkflowDockTool(id)}
+                      className="h-8 w-8 rounded-full"
+                      data-workflow-dock-toggle={id === "execution" ? "" : undefined}
+                      data-workflow-dock-tool={id}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </IconButton>
+                  );
+                })}
               </motion.nav>
             ) : null}
           </motion.div>
@@ -489,7 +502,7 @@ export function AppShell({
           onOpenChange={onWorkflowDrawerOpenChange}
           side="right"
           title={frontendMessage(
-            workflowDockTool === "execution" ? "workflow.dock.execution" : "workflow.dock.terminal",
+            WORKFLOW_DOCK_ITEMS.find((item) => item.id === workflowDockTool)?.messageKey ?? "workflow.dock.execution",
           )}
           widthClassName={WORKFLOW_DRAWER_WIDTH}
         >

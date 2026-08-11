@@ -18,7 +18,6 @@
 
 ## 相关契约
 
-模型配置如何贯穿到 Pi 代理、运行时租约怎么管理，见对应模块的契约文档：
+模型配置如何选择 Pi native/BAML provider、运行时租约怎么管理，见对应模块的契约文档：
 
-- [PiProxy 会话模型路由契约](../PiProxy/README.md)
 - [Pi 运行时租约与流事件契约](../Pi/README.md)

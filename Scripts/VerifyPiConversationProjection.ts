@@ -14,9 +14,9 @@ const projection = new AgentPiConversationProjector().project({
   model: {
     id: "test-model",
     name: "test-model",
-    api: "openai-completions",
-    provider: "senera-pi-proxy",
-    baseUrl: "http://127.0.0.1",
+    api: "senera-planning",
+    provider: "senera",
+    baseUrl: "senera://planning",
     reasoning: false,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

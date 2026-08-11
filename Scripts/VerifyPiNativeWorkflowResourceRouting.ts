@@ -4,7 +4,7 @@ import { AgentTurnPreparationService } from "../Source/AgentSystem/Loop/AgentTur
 import type { AgentActivatedSkill } from "../Source/AgentSystem/Skills/AgentSkillActivation.js";
 import { createAgentToolAccessGrant } from "../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 
-const WorkspaceInspectionToolName = "ShellCommandTool";
+const WorkspaceReadToolName = "WorkspaceRead";
 const workflowSkill = workflowSkillFixture();
 const resolutionCalls: Array<{ preferredTools?: readonly string[]; discover?: boolean }> = [];
 let rememberedLoadedTools: readonly string[] | undefined;
@@ -40,12 +40,12 @@ assert.deepEqual(
   ["execution-workflow"],
 );
 assert.equal(resolutionCalls.length, 1);
-assert.deepEqual(resolutionCalls[0]?.preferredTools, [WorkspaceInspectionToolName]);
+assert.deepEqual(resolutionCalls[0]?.preferredTools, [WorkspaceReadToolName]);
 assert.equal(resolutionCalls[0]?.discover, true);
-assert.deepEqual(prepared.loadedToolNames, ["SystemTool", WorkspaceInspectionToolName]);
+assert.deepEqual(prepared.loadedToolNames, ["SystemTool", WorkspaceReadToolName]);
 assert.deepEqual(rememberedLoadedTools, prepared.loadedToolNames);
 assert.equal(prepared.rootCommand.action, "use_tools");
-assert.deepEqual(prepared.toolAccessGrant.preferredToolNames, [WorkspaceInspectionToolName]);
+assert.deepEqual(prepared.toolAccessGrant.preferredToolNames, [WorkspaceReadToolName]);
 
 console.log("Pi-native deterministic workflow resource routing verified.");
 
@@ -57,7 +57,7 @@ function workflowSkillFixture(): AgentActivatedSkill {
     summary: "Pi-native workflow resource activation.",
     useCases: ["todo", "workflow", "until done"],
     avoid: [],
-    recommendedTools: [WorkspaceInspectionToolName],
+    recommendedTools: [WorkspaceReadToolName],
     evidenceRequirements: [],
     descriptionFile: "System/Skills/execution-workflow/SKILL.md",
     matchedTerms: ["workflow"],
@@ -87,8 +87,8 @@ function rootCommandFixture(loadedToolNames: readonly string[], preferredTools: 
     includeToolCatalog: false,
     visibleOutput: {
       audience: "runtime",
-      start: "pi_tool_turn",
-      format: "openai_tool_calls_or_final_text",
+      start: "answer_body",
+      format: "final_text",
       rules: [],
       repair: { instruction: "按 Pi 工具调用协议重试。", rules: [] },
     },

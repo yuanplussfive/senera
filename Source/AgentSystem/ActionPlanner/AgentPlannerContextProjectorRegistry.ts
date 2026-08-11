@@ -26,12 +26,12 @@ const RoutingCardSchema = z
   })
   .passthrough();
 
-const OpenAiRequestSchema = z
+const PlanningContextSchema = z
   .object({
     model: z.string().trim().min(1),
     messages: z.array(z.unknown()),
     toolTranscript: z.array(z.unknown()),
-    stream: z.boolean(),
+    toolExecution: z.enum(["parallel", "sequential"]),
   })
   .passthrough();
 
@@ -77,10 +77,10 @@ const DefaultContextProjectors: readonly AgentPlannerContextProjector[] = Object
     ],
   }),
   defineAgentPlannerContextProjector({
-    key: "openAiRequest",
+    key: "planningContext",
     order: 300,
-    schema: OpenAiRequestSchema,
-    project: (value) => [promptXmlNode("openai_request", promptXmlJson(value))],
+    schema: PlanningContextSchema,
+    project: (value) => [promptXmlNode("planning_context", promptXmlJson(value))],
   }),
 ]);
 

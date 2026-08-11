@@ -17,11 +17,11 @@ export const WebSocketProtocolSchemaPath = "docs/API/WebSocketProtocol.schema.js
 
 const requestDescriptions = {
   "session.create": "创建会话；可选指定会话和模型提供方。",
-  "session.message": "向会话提交用户输入，可附带上传附件或队列模式。",
+  "session.message": "向会话提交用户输入，并声明该运行的执行批准模式；可附带上传附件或队列模式。",
   "session.close": "关闭并从服务端删除会话。",
   "session.cancel": "取消会话当前正在执行的请求。",
   "session.truncate_from": "从指定请求起截断会话历史。",
-  "session.regenerate": "从指定请求起截断旧分支，并在同一命令中提交替代输入。",
+  "session.regenerate": "从指定请求起截断旧分支，并按声明的执行批准模式提交替代输入。",
   "session.fork": "复制指定请求及之前的完整可重放状态，创建独立会话分支。",
   "session.compact": "使用 Pi 会话压缩器压缩指定会话的当前上下文分支。",
   "session.runtime_status": "获取指定 Pi 会话的上下文占用、消息、工具调用和 token 统计。",
@@ -55,6 +55,7 @@ const requestDescriptions = {
   "profile.get": "获取用户画像。",
   "profile.update": "更新用户名称和头像等画像字段。",
   "approval.resolve": "提交审批决定：单次允许、会话允许、拒绝继续或拒绝并中断。",
+  "approval.resolve_batch": "按会话、请求和工具批次原子提交一组审批决定。",
   "interaction.input.resolve": "提交 MCP 表单交互结果：接受并返回字段、明确拒绝或取消。",
   "sandbox.status": "获取当前沙箱运行时状态和降级信息。",
   "execution.resource.list": "列出指定会话拥有的后台执行资源。",
@@ -66,7 +67,17 @@ const requestDescriptions = {
 } as const satisfies Record<AgentWebSocketRequest["type"], string>;
 
 const eventPayloadSources: Record<
-  "session" | "prompt" | "model" | "decision" | "tool" | "run" | "approval" | "sandbox" | "config" | "request",
+  | "session"
+  | "prompt"
+  | "model"
+  | "decision"
+  | "tool"
+  | "run"
+  | "approval"
+  | "sandbox"
+  | "config"
+  | "request"
+  | "orchestration",
   { label: string; path: string }
 > = {
   session: {
@@ -108,6 +119,10 @@ const eventPayloadSources: Record<
   request: {
     label: "运行事件类型",
     path: "../../Source/AgentSystem/Events/AgentRunEventTypes.ts",
+  },
+  orchestration: {
+    label: "编排事件类型",
+    path: "../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts",
   },
 };
 
@@ -179,6 +194,7 @@ export function renderWebSocketProtocolReference(): string {
     '  "type": "session.message",',
     '  "sessionId": "session_01",',
     '  "requestId": "request_01",',
+    '  "approvalMode": "agent",',
     '  "input": "Summarize the current workspace."',
     "}",
     "```",
@@ -193,6 +209,18 @@ export function renderWebSocketProtocolReference(): string {
     "{",
     '  "type": "approval.resolve",',
     '  "approvalId": "approval_01",',
+    '  "decision": "approve_once"',
+    "}",
+    "```",
+    "",
+    "并发工具调用使用 `approval.resolve_batch`。服务端按 `sessionId + requestId + batchId` 选择当前完整 pending 批次，在任何状态变更前验证每个成员都支持该决定，然后为每项发布 `approval.resolved`。客户端不得循环发送多个单项请求来模拟批量审批。",
+    "",
+    "```json",
+    "{",
+    '  "type": "approval.resolve_batch",',
+    '  "sessionId": "session_01",',
+    '  "requestId": "request_01",',
+    '  "batchId": "tool_batch_01",',
     '  "decision": "approve_once"',
     "}",
     "```",
@@ -225,7 +253,7 @@ export function renderWebSocketProtocolReference(): string {
     "| `channel` | 固定为 `agent.event`。 |",
     "| `kind` | 下方目录中的稳定事件标识。 |",
     "| `layer` | 投递语义：`progress`、`snapshot`、`terminal` 或 `error`。 |",
-    "| `phase` | 事件 owner：request、session、prompt、model、decision、tool、run、approval、sandbox 或 config。 |",
+    "| `phase` | 事件 owner：request、session、prompt、model、decision、tool、run、approval、sandbox、config 或 orchestration。 |",
     "| `sequence` | 服务端单调递增序号，用于排列当前连接收到的事件；不是可持久化的回放游标。 |",
     "| `timestamp` | 服务端 ISO-8601 时间戳。 |",
     "| `sessionId` / `requestId` / `step` | 可选关联上下文，是否存在由具体事件契约决定。 |",

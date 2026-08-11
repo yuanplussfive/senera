@@ -89,7 +89,13 @@
   "observationProjection": "observations/SkillManage.projection.json",
   "permissions": ["filesystem:write:.senera/skills"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
-  "runtime": { "Lifecycle": "Immediate", "ProtocolVersion": 2, "ResultAssessment": "ProcessExit" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "MaxConcurrency": 1
+  },
   "resources": [],
   "sources": [],
   "search": {

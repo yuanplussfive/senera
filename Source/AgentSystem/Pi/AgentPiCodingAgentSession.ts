@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentMessage, AgentState } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, AgentState } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
 import type { AgentSession as CodingAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
@@ -6,19 +6,7 @@ import { toError } from "../Core/AgentErrors.js";
 import { AgentPiSessionCustomEntryTypes } from "./AgentPiSessionEntries.js";
 import { isAgentPiConversationHistoryEmpty } from "./AgentPiSessionHistoryPolicy.js";
 import type { AgentPiSession, AgentPiSessionEventListener } from "./AgentPiRuntimeTypes.js";
-
-const CoreAgentEventTypes = new Set<AgentEvent["type"]>([
-  "agent_start",
-  "agent_end",
-  "turn_start",
-  "turn_end",
-  "message_start",
-  "message_update",
-  "message_end",
-  "tool_execution_start",
-  "tool_execution_update",
-  "tool_execution_end",
-]);
+import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 
 export class AgentPiCodingAgentSession implements AgentPiSession {
   private released = false;
@@ -29,6 +17,7 @@ export class AgentPiCodingAgentSession implements AgentPiSession {
   constructor(
     private readonly session: CodingAgentSession,
     private readonly sessionManager: SessionManager,
+    private readonly frame: AgentPiMutableSessionFrame,
     private readonly release: () => void,
   ) {}
 
@@ -77,6 +66,14 @@ export class AgentPiCodingAgentSession implements AgentPiSession {
     return this.session.followUp(text);
   }
 
+  async requestFinalAnswer(instruction: string): Promise<boolean> {
+    const turnState = this.frame.snapshot().turnState;
+    if (!turnState) return false;
+    if (!turnState.requestWrapUp("child_deadline")) return true;
+    await this.session.steer(instruction);
+    return true;
+  }
+
   markTurnBoundary(requestId: string): Promise<string> {
     return Promise.resolve(
       this.sessionManager.appendCustomEntry(AgentPiSessionCustomEntryTypes.TurnBoundary, { requestId }),
@@ -85,18 +82,22 @@ export class AgentPiCodingAgentSession implements AgentPiSession {
 
   subscribe(listener: AgentPiSessionEventListener): () => void {
     return this.session.subscribe((event) => {
-      if (CoreAgentEventTypes.has(event.type as AgentEvent["type"])) {
-        this.eventDelivery = this.eventDelivery
-          .then(() => listener(event as AgentEvent))
-          .catch((error: unknown) => {
-            this.eventDeliveryError ??= toError(error);
-          });
-      }
+      this.eventDelivery = this.eventDelivery
+        .then(() => listener(event))
+        .catch((error: unknown) => {
+          this.eventDeliveryError ??= toError(error);
+        });
     });
   }
 
   abort(): Promise<void> {
-    return (this.abortPromise ??= this.session.abort());
+    if (this.abortPromise) return this.abortPromise;
+    const operation = this.session.abort();
+    const tracked = operation.finally(() => {
+      if (this.abortPromise === tracked) this.abortPromise = undefined;
+    });
+    this.abortPromise = tracked;
+    return tracked;
   }
 
   dispose(): void {

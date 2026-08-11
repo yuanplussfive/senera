@@ -1,7 +1,7 @@
 import { AgentEventKinds, emitAgentEvent, type AgentEventEnvelope, type AgentEventSink } from "../Events/AgentEvent.js";
 import { AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type {
   AgentSessionCursorPage,

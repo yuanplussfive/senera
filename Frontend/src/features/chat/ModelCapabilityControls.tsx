@@ -7,12 +7,69 @@ import {
   Eye,
   ImageIcon,
   MessageCircle,
+  Network,
   ShieldCheck,
+  Wrench,
 } from "lucide-react";
 import { cn } from "../../lib/util";
 import { SwitchTrack } from "../../shared/ui";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import type { ModelCapabilitiesDraft } from "./modelConfigTypes";
+import type { ModelCapabilitiesDraft, ModelToolPlanningMode } from "./modelConfigTypes";
+
+export function ToolPlanningModeControl({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: ModelToolPlanningMode;
+  disabled: boolean;
+  onChange: (value: ModelToolPlanningMode) => void;
+}): JSX.Element {
+  const label = frontendMessage("config.model.toolPlanningTitle");
+  const options = [
+    {
+      value: "native",
+      label: frontendMessage("config.model.toolPlanning.native"),
+      icon: <Network className="h-3.5 w-3.5" />,
+    },
+    {
+      value: "baml",
+      label: frontendMessage("config.model.toolPlanning.baml"),
+      icon: <BrainCircuit className="h-3.5 w-3.5" />,
+    },
+  ] as const;
+
+  return (
+    <div
+      className="grid grid-cols-2 gap-1 rounded-lg border border-ink-200 bg-paper-100 p-1"
+      role="radiogroup"
+      aria-label={label}
+    >
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            disabled={disabled}
+            className={cn(
+              "inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-md px-3 text-[12.5px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:pointer-events-none disabled:opacity-50",
+              selected
+                ? "border border-ink-200 bg-paper-50 text-ink-900 shadow-sm"
+                : "border border-transparent text-ink-600 hover:bg-ink-900/[0.035] hover:text-ink-900",
+            )}
+            onClick={() => onChange(option.value)}
+          >
+            {option.icon}
+            <span className="truncate">{option.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function CapabilityIconStrip({ capabilities }: { capabilities: Required<ModelCapabilitiesDraft> }): JSX.Element {
   const enabledItems = ModelCapabilityIconItems.filter((item) => capabilities[item.key]);
@@ -112,8 +169,14 @@ export const ModelCapabilityIconItems = [
     className: "text-ink-500",
   },
   {
+    key: "ToolCalling",
+    label: frontendMessage("config.model.capability.toolCalling"),
+    icon: <Wrench className="h-3 w-3" />,
+    className: "text-ink-500",
+  },
+  {
     key: "DeveloperRole",
-    label: "Developer Role",
+    label: frontendMessage("config.model.capability.developerRole"),
     icon: <ShieldCheck className="h-3 w-3" />,
     className: "text-ink-500",
   },

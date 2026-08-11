@@ -4,7 +4,7 @@ export const TestSessionId = "session_test";
 export const TestRequestId = "request_test";
 export const TestTimestamp = "2026-07-09T00:00:00.000Z";
 
-export function createTestState() {
+export function createTestState(overrides = {}) {
   return {
     sessions: {},
     sessionOrder: [],
@@ -25,6 +25,7 @@ export function createTestState() {
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
+    childSessionParentIds: {},
     modelProviders: [],
     providerModelCatalogs: {},
     providerModelErrors: {},
@@ -58,6 +59,7 @@ export function createTestState() {
     setUserProfile: () => undefined,
     markUserProfileSynced: () => undefined,
     replaceWithDevMockData: () => undefined,
+    ...overrides,
   };
 }
 

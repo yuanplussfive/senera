@@ -1,4 +1,4 @@
-import type { MotionLevel } from "../../shared/motion";
+import type { MotionLevel } from "../../shared/motion/types";
 
 export interface StreamingDisplayPolicy {
   cadenceMs: number;

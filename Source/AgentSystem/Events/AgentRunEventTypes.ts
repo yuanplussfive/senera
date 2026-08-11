@@ -1,6 +1,7 @@
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
 import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
+import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 
 type AgentRequestContext = Required<Pick<AgentEventContext, "requestId">>;
 type AgentVisibleAssistantContext = AgentRequestContext & Partial<Pick<AgentEventContext, "sessionId" | "step">>;
@@ -12,12 +13,33 @@ export const AgentRunActivities = {
   InitializingRuntime: "initializing_runtime",
   SynchronizingContext: "synchronizing_context",
   EvaluatingContext: "evaluating_context",
+  CompactingContext: "compacting_context",
   RunningAgentTurn: "running_agent_turn",
   GeneratingResponse: "generating_response",
   FinalizingResponse: "finalizing_response",
 } as const;
 
 export type AgentRunActivity = (typeof AgentRunActivities)[keyof typeof AgentRunActivities];
+
+export const AgentRunActivityCategories = {
+  Context: "context",
+  Runtime: "runtime",
+  Model: "model",
+  Output: "output",
+} as const;
+
+export type AgentRunActivityCategory = (typeof AgentRunActivityCategories)[keyof typeof AgentRunActivityCategories];
+
+export const AgentRunActivitySpecTable = {
+  [AgentRunActivities.PreparingContext]: { category: AgentRunActivityCategories.Context },
+  [AgentRunActivities.InitializingRuntime]: { category: AgentRunActivityCategories.Runtime },
+  [AgentRunActivities.SynchronizingContext]: { category: AgentRunActivityCategories.Context },
+  [AgentRunActivities.EvaluatingContext]: { category: AgentRunActivityCategories.Context },
+  [AgentRunActivities.CompactingContext]: { category: AgentRunActivityCategories.Context },
+  [AgentRunActivities.RunningAgentTurn]: { category: AgentRunActivityCategories.Model },
+  [AgentRunActivities.GeneratingResponse]: { category: AgentRunActivityCategories.Output },
+  [AgentRunActivities.FinalizingResponse]: { category: AgentRunActivityCategories.Output },
+} as const satisfies Record<AgentRunActivity, { readonly category: AgentRunActivityCategory }>;
 
 export const AgentRunActivityStates = {
   Started: "started",
@@ -33,6 +55,7 @@ export type AgentRunDomainEvent =
       context: AgentRequestContext;
       data: {
         input: string;
+        approvalMode?: AgentExecutionApprovalMode;
       };
     }
   | {
@@ -40,15 +63,18 @@ export type AgentRunDomainEvent =
       context: AgentVisibleAssistantContext;
       data: {
         activityId: string;
+        parentActivityId?: string;
         activity: AgentRunActivity;
         state: AgentRunActivityState;
+        startedAt: string;
+        durationMs?: number;
       };
     }
   | {
       kind: typeof AgentEventKinds.RunCancellationProgress;
       context: AgentRequestContext & Partial<Pick<AgentEventContext, "sessionId">>;
       data: {
-        stage: "started" | "component_completed" | "component_failed" | "completed" | "failed";
+        stage: "started" | "component_completed" | "component_failed" | "settlement_delayed" | "completed" | "failed";
         component?: "agent_loop" | "pi_session";
         durationMs?: number;
         message?: string;
@@ -107,9 +133,11 @@ export type AgentRequestInvalidCode =
   | "approval_not_pending"
   | "interaction_input_resolve_failed"
   | "request_parse_failed"
+  | "request_execution_failed"
   | "tool_settings_request_failed"
   | "session_fork_boundary_missing"
   | "session_history_boundary_missing"
   | "session_fork_target_exists"
   | "session_pi_fork_failed"
-  | "session_pi_unavailable";
+  | "session_pi_unavailable"
+  | "session_close_failed";

@@ -1,4 +1,5 @@
 import type { AgentToolResult, AgentToolUpdateCallback, AgentTool } from "@earendil-works/pi-agent-core";
+import type { Model } from "@earendil-works/pi-ai";
 import type { TSchema } from "typebox";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
@@ -8,6 +9,10 @@ import type { AgentToolTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
 import type { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
 import type { AgentPiToolDetails } from "./AgentPiToolResultDetails.js";
+import type { AgentPiTurnState } from "./AgentPiTurnState.js";
+import type { AgentNativeToolApi, AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 
 export {
   AgentPiToolResultStatuses,
@@ -28,11 +33,13 @@ export interface AgentPiToolProjectionContext {
   visibleToolNames?: readonly string[];
   toolAccessGrant?: AgentToolAccessGrant;
   toolExposure?: AgentToolExposureState;
-  piTurnContextId?: string;
+  turnState?: AgentPiTurnState;
   signal?: AbortSignal;
   activeSkills?: readonly AgentActivatedSkill[];
   rootCommand?: AgentRootCommand;
+  approvalMode?: AgentExecutionApprovalMode;
   tokenBudget?: AgentToolTokenBudget;
+  thinkingLevel?: ModelThinkingLevel;
 }
 
 export interface AgentPiToolExecutionInput {
@@ -43,39 +50,12 @@ export interface AgentPiToolExecutionInput {
   context: AgentPiToolProjectionContext;
 }
 
-export type AgentPiModelApi = "openai-completions" | "openai-responses" | "anthropic-messages" | "google-generative-ai";
+export type AgentPiModelApi = "senera-planning" | AgentNativeToolApi;
 
-export interface AgentPiModelProjection {
-  id: string;
-  name: string;
-  api: AgentPiModelApi;
-  provider: string;
-  baseUrl: string;
-  reasoning: boolean;
-  input: ("text" | "image")[];
-  cost: {
-    input: number;
-    output: number;
-    cacheRead: number;
-    cacheWrite: number;
-  };
-  contextWindow: number;
-  maxTokens: number;
-  headers?: Record<string, string>;
-  compat?: {
-    supportsDeveloperRole?: boolean;
-  };
-}
+export type AgentPiModelProjection = Model<AgentPiModelApi>;
 
 export interface AgentPiProviderProjection {
   providerId: string;
-  apiKey: string;
-  headers: Record<string, string>;
-  upstream: {
-    providerId: string;
-    endpoint: string;
-    baseUrl: string;
-    model: string;
-  };
   model: AgentPiModelProjection;
+  toolPlanningMode: AgentModelToolPlanningMode;
 }

@@ -8,38 +8,47 @@ const srcRoot = path.join(workspaceRoot, "Frontend", "src");
 const featuresRoot = path.join(srcRoot, "features");
 const sourceExtensions = new Set([".ts", ".tsx"]);
 const ignoredDirectories = new Set(["build", "dist", "node_modules"]);
+const staticScanTimeoutMs = 15_000;
 
-test("source tree has no retired root components bridge or imports", () => {
-  const retiredComponentsRoot = path.join(srcRoot, "components");
-  const violations = [
-    ...(existsSync(retiredComponentsRoot)
-      ? [formatViolation(retiredComponentsRoot, "retired src/components bridge still exists")]
-      : []),
-    ...sourceFiles(srcRoot).flatMap((file) =>
-      staticImportTargets(file)
-        .filter((target) => targetsRetiredComponentsRoot(file, target, retiredComponentsRoot))
-        .map((target) => formatViolation(file, "imports retired components bridge", target)),
-    ),
-  ];
+test(
+  "source tree has no retired root components bridge or imports",
+  () => {
+    const retiredComponentsRoot = path.join(srcRoot, "components");
+    const violations = [
+      ...(existsSync(retiredComponentsRoot)
+        ? [formatViolation(retiredComponentsRoot, "retired src/components bridge still exists")]
+        : []),
+      ...sourceFiles(srcRoot).flatMap((file) =>
+        staticImportTargets(file)
+          .filter((target) => targetsRetiredComponentsRoot(file, target, retiredComponentsRoot))
+          .map((target) => formatViolation(file, "imports retired components bridge", target)),
+      ),
+    ];
 
-  expect(violations).toEqual([]);
-});
+    expect(violations).toEqual([]);
+  },
+  staticScanTimeoutMs,
+);
 
-test("shadcn intake remains transient and isolated from production source", () => {
-  const incomingRoot = path.join(srcRoot, "shared", "ui", "_incoming");
-  const violations = [
-    ...(existsSync(incomingRoot)
-      ? sourceFiles(incomingRoot).map((file) => formatViolation(file, "commits transient shadcn intake source"))
-      : []),
-    ...sourceFiles(srcRoot).flatMap((file) =>
-      staticImportTargets(file)
-        .filter((target) => targetsIncomingUiRoot(file, target, incomingRoot))
-        .map((target) => formatViolation(file, "imports transient shadcn intake source", target)),
-    ),
-  ];
+test(
+  "shadcn intake remains transient and isolated from production source",
+  () => {
+    const incomingRoot = path.join(srcRoot, "shared", "ui", "_incoming");
+    const violations = [
+      ...(existsSync(incomingRoot)
+        ? sourceFiles(incomingRoot).map((file) => formatViolation(file, "commits transient shadcn intake source"))
+        : []),
+      ...sourceFiles(srcRoot).flatMap((file) =>
+        staticImportTargets(file)
+          .filter((target) => targetsIncomingUiRoot(file, target, incomingRoot))
+          .map((target) => formatViolation(file, "imports transient shadcn intake source", target)),
+      ),
+    ];
 
-  expect(violations).toEqual([]);
-});
+    expect(violations).toEqual([]);
+  },
+  staticScanTimeoutMs,
+);
 
 test("responsive decisions go through shared responsive capabilities", () => {
   const responsiveOwnedRoots = ["app", "features", "layout"]

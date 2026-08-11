@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
-import { toast } from "sonner";
 import type { SocketStatus } from "../api/useAgentSocket";
 import type { WsRequest } from "../api/eventTypes";
 import { useStore, type SessionRecord } from "../store/sessionStore";
-import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 const RECOVERY_POLL_DELAYS_MS = [1500, 2000, 3000, 5000] as const;
 
@@ -22,18 +20,38 @@ export interface SessionHistoryRecoveryHandle {
 
 export function shouldRequestActiveSessionHistory({
   activeSessionId,
+  catalogSynced,
   historyLoadedIds,
   historyLoadingIds,
   missingOnServerIds,
+  pendingCreatedSessionIds,
+  pendingDeletedSessionIds,
+  sessionExists,
+  sessionInOrder,
   status,
 }: {
   activeSessionId?: string | null;
+  catalogSynced: boolean;
   historyLoadedIds: Record<string, boolean>;
   historyLoadingIds: Record<string, boolean>;
   missingOnServerIds: Record<string, boolean>;
+  pendingCreatedSessionIds: Record<string, boolean>;
+  pendingDeletedSessionIds: Record<string, boolean>;
+  sessionExists: boolean;
+  sessionInOrder: boolean;
   status: SocketStatus;
 }): boolean {
-  if (status !== "open" || !activeSessionId) return false;
+  if (
+    status !== "open" ||
+    !catalogSynced ||
+    !activeSessionId ||
+    !sessionExists ||
+    !sessionInOrder ||
+    pendingCreatedSessionIds[activeSessionId] ||
+    pendingDeletedSessionIds[activeSessionId]
+  ) {
+    return false;
+  }
   return (
     !missingOnServerIds[activeSessionId] && !historyLoadedIds[activeSessionId] && !historyLoadingIds[activeSessionId]
   );
@@ -72,6 +90,17 @@ export function useSessionHistoryRecovery({
   const markHistoryLoadFailed = useStore((state) => state.markHistoryLoadFailed);
   const recoveryPollingAttemptRef = useRef(0);
   const historyTimeoutTimersRef = useRef(new Map<string, number>());
+  const sessionsCatalogSynced = useStore((state) => state.catalogSynced.sessions);
+  const activeSessionExists = useStore((state) => Boolean(activeSessionId && state.sessions[activeSessionId]));
+  const activeSessionInOrder = useStore((state) =>
+    Boolean(activeSessionId && state.sessionOrder.includes(activeSessionId)),
+  );
+  const activeSessionPendingCreation = useStore((state) =>
+    Boolean(activeSessionId && state.pendingCreatedSessionIds[activeSessionId]),
+  );
+  const activeSessionPendingDeletion = useStore((state) =>
+    Boolean(activeSessionId && state.pendingDeletedSessionIds[activeSessionId]),
+  );
   useEffect(
     () => () => {
       for (const timer of historyTimeoutTimersRef.current.values()) window.clearTimeout(timer);
@@ -92,7 +121,6 @@ export function useSessionHistoryRecovery({
       const ok = send({ type: "session.history", sessionId, refresh: options.refresh || undefined });
       if (!ok) {
         markHistoryLoadFailed(sessionId);
-        toast.error(frontendMessage("session.historyDisconnected"));
         return ok;
       }
       const existing = historyTimeoutTimersRef.current.get(sessionId);
@@ -103,7 +131,6 @@ export function useSessionHistoryRecovery({
           historyTimeoutTimersRef.current.delete(sessionId);
           if (useStore.getState().historyLoadingIds[sessionId]) {
             markHistoryLoadFailed(sessionId);
-            toast.error(frontendMessage("session.historyTimeout"));
           }
         }, HISTORY_LOAD_TIMEOUT_MS),
       );
@@ -120,19 +147,33 @@ export function useSessionHistoryRecovery({
     if (
       !shouldRequestActiveSessionHistory({
         activeSessionId: sessionId,
+        catalogSynced: sessionsCatalogSynced,
         historyLoadedIds: state.historyLoadedIds,
         historyLoadingIds: state.historyLoadingIds,
         missingOnServerIds: state.missingOnServerIds,
+        pendingCreatedSessionIds: state.pendingCreatedSessionIds,
+        pendingDeletedSessionIds: state.pendingDeletedSessionIds,
+        sessionExists: activeSessionExists,
+        sessionInOrder: activeSessionInOrder,
         status,
       })
     ) {
       return;
     }
     requestSessionHistory(sessionId);
-  }, [activeSessionId, requestSessionHistory, status]);
+  }, [
+    activeSessionExists,
+    activeSessionId,
+    activeSessionInOrder,
+    activeSessionPendingCreation,
+    activeSessionPendingDeletion,
+    requestSessionHistory,
+    sessionsCatalogSynced,
+    status,
+  ]);
 
   useEffect(() => {
-    if (status !== "open" || !recoveryPollingKey) {
+    if (status !== "open" || !sessionsCatalogSynced || !recoveryPollingKey) {
       recoveryPollingAttemptRef.current = 0;
       return;
     }
@@ -170,7 +211,7 @@ export function useSessionHistoryRecovery({
     }, delay);
 
     return () => window.clearTimeout(timer);
-  }, [recoveryPollingKey, requestSessionHistory, status]);
+  }, [recoveryPollingKey, requestSessionHistory, sessionsCatalogSynced, status]);
 
   return { requestSessionHistory };
 }

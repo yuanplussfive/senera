@@ -1,7 +1,7 @@
 # Glossary
 
 `ActionPlanner`
-: Structured model-call layer used by PiProxy for the next controller decision, tool argument materialization, repair, and related learning/safety calls.
+: Structured model-call layer used by the Pi planning compiler for controller decisions, tool argument materialization, repair, compaction, and related learning or safety calls.
 
 `Artifact`
 : Traceable record of a tool call, including redacted inputs, raw output, summaries, evidence, and workspace changes.

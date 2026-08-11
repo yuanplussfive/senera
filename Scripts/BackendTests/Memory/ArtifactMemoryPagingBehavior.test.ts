@@ -93,23 +93,27 @@ describe("artifact memory paging", () => {
     expect(final.range).toMatchObject({ startByte: 6, endByte: 9, complete: true });
   });
 
-  test("normalizes model-provided numeric paging arguments", () => {
+  test("accepts canonical JSON paging arguments and rejects projection wrappers", () => {
     expect(
       ArtifactMemoryReadArgumentsSchema.parse({
-        artifactUris: { item: [ArtifactUri] },
-        maxBytesPerRef: "4096",
-        startBytePerRef: "8192",
+        artifactUris: [ArtifactUri],
+        maxBytesPerRef: 4096,
+        startBytePerRef: 8192,
       }),
     ).toEqual({ artifactUris: [ArtifactUri], maxBytesPerRef: 4096, startBytePerRef: 8192 });
     expect(
       ArtifactMemoryReadArgumentsSchema.parse({
-        artifactUris: { item: [ArtifactUri] },
-        refs: { item: ["projection"] },
-        refRanges: {
-          item: [{ ref: "projection", maxBytes: "128", startByte: "32" }],
-        },
+        artifactUris: [ArtifactUri],
+        refs: ["projection"],
+        refRanges: [{ ref: "projection", maxBytes: 128, startByte: 32 }],
       }).refRanges,
     ).toEqual([{ ref: "projection", maxBytes: 128, startByte: 32 }]);
+    expect(
+      ArtifactMemoryReadArgumentsSchema.safeParse({
+        artifactUris: { item: [ArtifactUri] },
+        maxBytesPerRef: "4096",
+      }).success,
+    ).toBe(false);
   });
 
   test("reports unavailable refs as terminal instead of claiming an empty successful load", async () => {

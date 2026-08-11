@@ -1,7 +1,13 @@
 {
   "sourceRoots": ["Apps", "Build", "Frontend/src", "Scripts", "Source"],
   "fileExtensions": [".ts", ".tsx", ".js", ".mjs"],
-  "ignoredGlobs": ["Dist/**", "node_modules/**", "Frontend/src/generated/**", "Source/AgentSystem/BamlClient/**"],
+  "ignoredGlobs": [
+    "Dist/**",
+    "node_modules/**",
+    "Frontend/src/generated/**",
+    "Frontend/src/api/generated*.ts",
+    "Source/AgentSystem/BamlClient/**"
+  ],
   "lineBudget": {
     "maxLines": 800,
     "legacyAllowance": 25

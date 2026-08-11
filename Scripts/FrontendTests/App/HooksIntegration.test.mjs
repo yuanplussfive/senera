@@ -38,7 +38,7 @@ test("useSandboxRuntimeStatus ingests only sandbox status snapshots", async () =
     expect(
       handleRef.current.ingestSandboxEvent(
         event(EventKinds.SandboxStatusSnapshot, "sandbox", {
-          provider: "microsandbox",
+          provider: "docker-engine",
           platform: "win32",
           state: "ready",
           supported: true,
@@ -193,6 +193,61 @@ test("useSocketPostIngestEffects runs config reload requests and profile sync", 
   expect(markUserProfileSynced).toHaveBeenCalledWith(profile);
 });
 
+test("refreshes runtime usage as a run becomes observable and after it settles", () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+
+  render(
+    React.createElement(PostIngestHarness, {
+      send,
+      markUserProfileSynced: vi.fn(),
+      handleRef,
+    }),
+  );
+
+  act(() => {
+    expect(
+      handleRef.current.runSocketPostIngestEffects(
+        event(EventKinds.RunStarted, "run", { input: "检查上下文" }, { sessionId: "session-1" }),
+      ),
+    ).toBe(true);
+  });
+  expect(send).toHaveBeenCalledWith({ type: "session.runtime_status", sessionId: "session-1" });
+
+  send.mockClear();
+  act(() => {
+    expect(
+      handleRef.current.runSocketPostIngestEffects(
+        event(EventKinds.ModelStarted, "model", { model: "test-model" }, { sessionId: "session-1" }),
+      ),
+    ).toBe(true);
+  });
+  expect(send).toHaveBeenCalledWith({ type: "session.runtime_status", sessionId: "session-1" });
+
+  send.mockClear();
+  act(() => {
+    expect(
+      handleRef.current.runSocketPostIngestEffects(
+        event(EventKinds.SessionRuntimeStatus, "session", {
+          sessionId: "session-1",
+          available: true,
+          runtime: { stats: { totalMessages: 2, toolCalls: 0, tokens: { total: 100 } } },
+        }),
+      ),
+    ).toBe(true);
+  });
+  expect(readTestToastCalls()).toEqual([]);
+
+  act(() => {
+    expect(
+      handleRef.current.runSocketPostIngestEffects(
+        event(EventKinds.RunCompleted, "run", {}, { sessionId: "session-1" }),
+      ),
+    ).toBe(true);
+  });
+  expect(send).toHaveBeenCalledWith({ type: "session.runtime_status", sessionId: "session-1" });
+});
+
 test("useSocketErrorToasts resolves history failures and tool failures from store state", () => {
   useStore.setState({
     sessions: {
@@ -223,9 +278,9 @@ test("useSocketErrorToasts resolves history failures and tool failures from stor
       requestId: "missing_request",
     },
   );
-  expect(resolveSocketErrorToast(failure, useStore.getState()).title).toBe("历史同步失败");
+  expect(resolveSocketErrorToast(failure, useStore.getState())).toBeNull();
   act(() => {
-    expect(handleRef.current.notifySocketError(failure)).toBe(true);
+    expect(handleRef.current.notifySocketError(failure)).toBe(false);
   });
   act(() => {
     expect(
@@ -239,10 +294,6 @@ test("useSocketErrorToasts resolves history failures and tool failures from stor
   });
 
   expect(readTestToastCalls()).toEqual([
-    expect.objectContaining({
-      variant: "error",
-      title: "历史同步失败",
-    }),
     expect.objectContaining({
       variant: "error",
       title: "工具调用失败：ShellCommandTool",
@@ -589,6 +640,7 @@ function resetStore() {
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
+    childSessionParentIds: {},
     modelProviders: [],
     providerModelCatalogs: {},
     providerModelErrors: {},

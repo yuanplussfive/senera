@@ -34,7 +34,8 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
-      - uses: ./.github/actions/build-sandbox-bundle
+      - name: Build and verify the Docker sandbox runtime
+        run: npm run sandbox.prepare
 
       - name: Resolve Nano workspace
         id: paths
@@ -56,7 +57,6 @@ jobs:
           --output "${{ steps.paths.outputs.root }}"
           --source-sha "$SOURCE_SHA"
           --repository-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          --sandbox-bundle-root "$GITHUB_WORKSPACE/Release/SandboxImage"
 
       - name: Create reproducible Nano lockfile
         working-directory: ${{ steps.paths.outputs.root }}

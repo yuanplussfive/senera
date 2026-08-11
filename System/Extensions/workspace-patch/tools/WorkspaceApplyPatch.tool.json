@@ -165,6 +165,8 @@
     "Lifecycle": "Immediate",
     "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "MaxConcurrency": 1,
     "Capabilities": {
       "Progress": true,
       "Cancellation": true
@@ -194,7 +196,7 @@
           "Evidence": ["workspace-patch-result", "workspace-diff"],
           "Effects": ["write-workspace"]
         },
-        "Aliases": ["apply patch", "应用补丁", "修改代码", "新增文件", "删除文件", "移动文件"],
+        "Aliases": ["edit", "write", "apply patch", "应用补丁", "修改代码", "新增文件", "删除文件", "移动文件"],
         "Risk": {
           "SideEffect": "write-workspace",
           "Permission": "write",
@@ -214,7 +216,7 @@
     "Examples": ["新增一个 TypeScript 文件", "用 @@ hunk 修改已有函数", "移动文件并同时修正导出名", "dryRun 预览补丁"],
     "Avoid": [
       "只读查询不要使用。",
-      "不知道已有文件内容时先用 ShellCommandTool 读取或搜索，再生成补丁。",
+      "不知道已有文件内容时先用 WorkspaceRead、WorkspaceGrep 或 WorkspaceFind 获取证据，再生成补丁。",
       "不要把 oldText/newText 替换格式传给本工具。"
     ]
   },

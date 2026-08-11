@@ -3,7 +3,7 @@ import type {
   ControllerDecision as BamlControllerDecision,
   PiToolArgumentsDraft as BamlPiToolArgumentsDraft,
   ToolRiskAudit as BamlToolRiskAudit,
-  GroundedDigest as BamlGroundedDigest,
+  PiConversationSummary as BamlPiConversationSummary,
 } from "../BamlClient/baml_client/types.js";
 import type { AgentActionPlannerStructuredCaller } from "./AgentActionPlannerStructuredCaller.js";
 import type {
@@ -12,10 +12,7 @@ import type {
   AgentPiToolArgumentsRepairInput,
 } from "../PiShared/AgentPiPlanningTypes.js";
 import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
-import {
-  normalizeAgentPiToolObservationDigest,
-  type AgentPiToolObservationDigestPromptInput,
-} from "../Pi/AgentPiToolObservationDigestPrompt.js";
+import type { AgentPiCompactionPromptInput } from "../PiShared/AgentPiCompactionPrompt.js";
 
 export class AgentActionPlannerCoreModelCalls {
   constructor(private readonly caller: AgentActionPlannerStructuredCaller) {}
@@ -138,47 +135,37 @@ export class AgentActionPlannerCoreModelCalls {
     });
   }
 
-  async condenseToolObservations(
-    input: AgentPiToolObservationDigestPromptInput,
+  async summarizePiConversation(
+    input: AgentPiCompactionPromptInput,
     options: { signal?: AbortSignal } = {},
-  ): Promise<BamlGroundedDigest> {
-    const sourceIds = new Set(input.sources.map((source) => source.id));
+  ): Promise<BamlPiConversationSummary> {
     return this.caller.run({
-      functionName: "CondenseToolObservations",
-      args: {
-        functionName: "CondenseToolObservations",
-        input,
-      },
+      functionName: "SummarizePiConversation",
+      args: { functionName: "SummarizePiConversation", input },
       signal: options.signal,
-      parse: (rawOutput) =>
-        normalizeAgentPiToolObservationDigest(baml.parse.CondenseToolObservations(rawOutput), sourceIds),
+      parse: (rawOutput) => baml.parse.SummarizePiConversation(rawOutput),
       repair: (failure) => ({
-        functionName: "RepairToolObservationDigest",
+        functionName: "RepairPiConversationSummary",
         input,
-        invalidDigest: failure.invalidOutput,
+        invalidSummary: failure.invalidOutput,
         issues: failure.issues,
       }),
     });
   }
 
-  async repairToolObservationDigest(
+  async repairPiConversationSummary(
     options: {
-      input: AgentPiToolObservationDigestPromptInput;
-      invalidDigest: string;
+      input: AgentPiCompactionPromptInput;
+      invalidSummary: string;
       issues: string[];
     },
     requestOptions: { signal?: AbortSignal } = {},
-  ): Promise<BamlGroundedDigest> {
-    const sourceIds = new Set(options.input.sources.map((source) => source.id));
+  ): Promise<BamlPiConversationSummary> {
     return this.caller.repair({
-      functionName: "RepairToolObservationDigest",
-      args: {
-        functionName: "RepairToolObservationDigest",
-        ...options,
-      },
+      functionName: "RepairPiConversationSummary",
+      args: { functionName: "RepairPiConversationSummary", ...options },
       signal: requestOptions.signal,
-      parse: (rawOutput) =>
-        normalizeAgentPiToolObservationDigest(baml.parse.RepairToolObservationDigest(rawOutput), sourceIds),
+      parse: (rawOutput) => baml.parse.RepairPiConversationSummary(rawOutput),
     });
   }
 }

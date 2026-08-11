@@ -10,6 +10,7 @@ describe("Session regeneration WebSocket behavior", () => {
   test("accepts only declared first-message dispositions", () => {
     const request = {
       type: "session.message",
+      approvalMode: "agent",
       sessionId: "session-new",
       requestId: "request-new",
       input: "Start atomically",
@@ -29,6 +30,7 @@ describe("Session regeneration WebSocket behavior", () => {
     await handler.message(
       {
         type: "session.message",
+        approvalMode: "agent",
         sessionId: "session-new",
         requestId: "request-new",
         input: "Start atomically",
@@ -51,6 +53,7 @@ describe("Session regeneration WebSocket behavior", () => {
     expect(
       AgentWebSocketRequestSchema.safeParse({
         type: "session.regenerate",
+        approvalMode: "agent",
         sessionId: "session-a",
         fromRequestId: "request-old",
         requestId: "request-new",
@@ -62,6 +65,7 @@ describe("Session regeneration WebSocket behavior", () => {
     expect(
       AgentWebSocketRequestSchema.safeParse({
         type: "session.regenerate",
+        approvalMode: "agent",
         sessionId: "session-a",
         fromRequestId: "request-old",
         input: "Missing replacement request id",
@@ -88,6 +92,7 @@ describe("Session regeneration WebSocket behavior", () => {
     await handler.regenerate(
       {
         type: "session.regenerate",
+        approvalMode: "agent",
         sessionId: "session-a",
         fromRequestId: "request-old",
         requestId: "request-new",
@@ -99,6 +104,7 @@ describe("Session regeneration WebSocket behavior", () => {
     );
 
     expect(regenerateFromRequest).toHaveBeenCalledWith({
+      approvalMode: "agent",
       sessionId: "session-a",
       fromRequestId: "request-old",
       requestId: "request-new",
@@ -113,6 +119,7 @@ describe("Session regeneration WebSocket behavior", () => {
     const failure = projectAgentWebSocketRequestFailure(
       {
         type: "session.regenerate",
+        approvalMode: "agent",
         sessionId: "session-a",
         fromRequestId: "request-old",
         requestId: "request-new",
@@ -128,6 +135,28 @@ describe("Session regeneration WebSocket behavior", () => {
         context: expect.objectContaining({
           sessionId: "session-a",
           requestId: "request-new",
+        }),
+      }),
+    );
+  });
+
+  test("projects session close failures as a session-scoped structured request error", () => {
+    const failure = projectAgentWebSocketRequestFailure(
+      { type: "session.close", sessionId: "session-a" },
+      new Error("active run is still settling"),
+      {} as AgentWebSocketRequestContext,
+    );
+
+    expect(failure).toEqual(
+      expect.objectContaining({
+        kind: "request.invalid",
+        context: { sessionId: "session-a" },
+        data: expect.objectContaining({
+          code: "session_close_failed",
+          details: expect.objectContaining({
+            requestType: "session.close",
+            sessionId: "session-a",
+          }),
         }),
       }),
     );
@@ -157,6 +186,7 @@ describe("Session regeneration WebSocket behavior", () => {
       Buffer.from(
         JSON.stringify({
           type: "session.regenerate",
+          approvalMode: "agent",
           sessionId: "session-a",
           fromRequestId: "request-old",
           requestId: "request-new",

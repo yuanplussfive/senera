@@ -36,6 +36,7 @@
 | `type` | 用途 |
 | --- | --- |
 | `approval.resolve` | 提交审批决定：单次允许、会话允许、拒绝继续或拒绝并中断。 |
+| `approval.resolve_batch` | 按会话、请求和工具批次原子提交一组审批决定。 |
 | `config.get` | 获取当前有效系统配置及表单投影。 |
 | `config.update` | 保存完整系统配置，可选择同步 JSON 镜像。 |
 | `execution.resource.inspect` | 按游标检查指定后台执行资源。 |
@@ -76,8 +77,8 @@
 | `session.fork` | 复制指定请求及之前的完整可重放状态，创建独立会话分支。 |
 | `session.history` | 拉取指定会话的可重放历史；`refresh` 用于主动重新同步。 |
 | `session.list` | 获取服务端当前可用会话的摘要列表。 |
-| `session.message` | 向会话提交用户输入，可附带上传附件或队列模式。 |
-| `session.regenerate` | 从指定请求起截断旧分支，并在同一命令中提交替代输入。 |
+| `session.message` | 向会话提交用户输入，并声明该运行的执行批准模式；可附带上传附件或队列模式。 |
+| `session.regenerate` | 从指定请求起截断旧分支，并按声明的执行批准模式提交替代输入。 |
 | `session.rename` | 更新会话显示标题。 |
 | `session.runtime_status` | 获取指定 Pi 会话的上下文占用、消息、工具调用和 token 统计。 |
 | `session.truncate_from` | 从指定请求起截断会话历史。 |
@@ -90,6 +91,7 @@
   "type": "session.message",
   "sessionId": "session_01",
   "requestId": "request_01",
+  "approvalMode": "agent",
   "input": "Summarize the current workspace."
 }
 ```
@@ -104,6 +106,18 @@
 {
   "type": "approval.resolve",
   "approvalId": "approval_01",
+  "decision": "approve_once"
+}
+```
+
+并发工具调用使用 `approval.resolve_batch`。服务端按 `sessionId + requestId + batchId` 选择当前完整 pending 批次，在任何状态变更前验证每个成员都支持该决定，然后为每项发布 `approval.resolved`。客户端不得循环发送多个单项请求来模拟批量审批。
+
+```json
+{
+  "type": "approval.resolve_batch",
+  "sessionId": "session_01",
+  "requestId": "request_01",
+  "batchId": "tool_batch_01",
   "decision": "approve_once"
 }
 ```
@@ -136,7 +150,7 @@
 | `channel` | 固定为 `agent.event`。 |
 | `kind` | 下方目录中的稳定事件标识。 |
 | `layer` | 投递语义：`progress`、`snapshot`、`terminal` 或 `error`。 |
-| `phase` | 事件 owner：request、session、prompt、model、decision、tool、run、approval、sandbox 或 config。 |
+| `phase` | 事件 owner：request、session、prompt、model、decision、tool、run、approval、sandbox、config 或 orchestration。 |
 | `sequence` | 服务端单调递增序号，用于排列当前连接收到的事件；不是可持久化的回放游标。 |
 | `timestamp` | 服务端 ISO-8601 时间戳。 |
 | `sessionId` / `requestId` / `step` | 可选关联上下文，是否存在由具体事件契约决定。 |
@@ -194,6 +208,34 @@
 | `run.completed` | `terminal` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `run.failed` | `error` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `run.cancelled` | `terminal` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
+| `child_run.queued` | `progress` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.started` | `progress` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.awaiting_supervisor` | `progress` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.resumed` | `progress` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.message.created` | `progress` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.snapshot.updated` | `snapshot` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.deadline.extended` | `progress` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.wrapping_up` | `progress` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.cancelling` | `progress` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.completed` | `terminal` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.partial_completed` | `terminal` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.interrupted` | `terminal` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.timed_out` | `terminal` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.failed` | `error` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `child_run.cancelled` | `terminal` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `workflow.started` | `progress` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `workflow.snapshot.updated` | `snapshot` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `workflow.paused` | `snapshot` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `workflow.cancelling` | `progress` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `workflow.completed` | `terminal` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `workflow.partial_completed` | `terminal` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `workflow.failed` | `error` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `workflow.cancelled` | `terminal` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `scheduled_task.changed` | `snapshot` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `scheduled_task.run.started` | `progress` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `scheduled_task.run.completed` | `terminal` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `scheduled_task.run.failed` | `error` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
+| `scheduler.status.snapshot` | `snapshot` | `orchestration` | [编排事件类型](../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes.ts) |
 | `request.invalid` | `error` | `request` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `config.reloaded` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `config.failed` | `error` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |

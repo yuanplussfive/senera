@@ -19,6 +19,17 @@ export interface RuntimeModelAssignmentSelection {
   unavailableLabel?: string;
 }
 
+export interface RuntimeModelPoolAssignmentSelection {
+  inheritanceEnabled: boolean;
+  modelIds: string[];
+}
+
+export interface RuntimeModelAssignmentNamespaceOptions {
+  namespace: string;
+  pathPrefix: readonly string[];
+  labelPrefix?: string;
+}
+
 export function readRuntimeModelAssignmentFields(
   sections: readonly ConfigFormSectionData[],
 ): RuntimeModelAssignmentField[] {
@@ -37,9 +48,29 @@ export function projectSectionConfigFields(
     if (field.modelSelection.providerPath) {
       hiddenPaths.add(pathKey(field.modelSelection.providerPath));
     }
+    if (field.modelSelection.inheritance) {
+      hiddenPaths.add(pathKey(field.modelSelection.inheritance.path));
+    }
   }
   const fields = section.fields.filter((field) => !hiddenPaths.has(pathKey(field.path)));
   return { ...section, fields, keyCount: fields.length };
+}
+
+export function namespaceRuntimeModelAssignmentSections(
+  sections: readonly ConfigFormSectionData[],
+  options: RuntimeModelAssignmentNamespaceOptions,
+): ConfigFormSectionData[] {
+  return sections.map((section) => {
+    const name = `${options.namespace}:${section.name}`;
+    const fields = section.fields.map((field) => namespaceField(field, name, options.pathPrefix));
+    return {
+      ...section,
+      name,
+      label: options.labelPrefix ? `${options.labelPrefix} · ${section.label}` : section.label,
+      fields,
+      keyCount: fields.length,
+    };
+  });
 }
 
 export function readRuntimeModelAssignmentCandidates({
@@ -80,6 +111,7 @@ export function readRuntimeModelAssignmentSelection({
   defaultModelId: string;
   draft: JsonConfigObject;
 }): RuntimeModelAssignmentSelection {
+  assertSingleModelAssignment(field);
   if (field.modelSelection.valueKind === "model-id") {
     const modelId = readString(readFieldValue(field, draft)) ?? defaultModelId;
     if (!modelId || candidates.some((candidate) => candidate.model.Id === modelId)) {
@@ -105,11 +137,35 @@ export function readRuntimeModelAssignmentSelection({
   return { value: missingValue(field, label), unavailableLabel: label };
 }
 
+export function readRuntimeModelPoolAssignmentSelection({
+  field,
+  allFields,
+  draft,
+}: {
+  field: RuntimeModelAssignmentField;
+  allFields: readonly ConfigFormFieldData[];
+  draft: JsonConfigObject;
+}): RuntimeModelPoolAssignmentSelection {
+  assertModelPoolAssignment(field);
+  const inheritance = field.modelSelection.inheritance;
+  const inheritanceField = inheritance
+    ? allFields.find((candidate) => pathKey(candidate.path) === pathKey(inheritance.path))
+    : undefined;
+  const inheritanceValue = inheritance
+    ? (readPathValue(draft, inheritance.path) ?? inheritanceField?.effectiveValue)
+    : false;
+  return {
+    inheritanceEnabled: inheritanceValue === true,
+    modelIds: readModelIds(readFieldValue(field, draft)),
+  };
+}
+
 export function writeRuntimeModelAssignment(
   draft: JsonConfigObject,
   field: RuntimeModelAssignmentField,
   candidate: RuntimeModelAssignmentCandidate,
 ): JsonConfigObject {
+  assertSingleModelAssignment(field);
   if (field.modelSelection.valueKind === "model-id") {
     return writeJsonConfigFieldValue(draft, field.path, candidate.model.Id);
   }
@@ -117,6 +173,23 @@ export function writeRuntimeModelAssignment(
   return field.modelSelection.providerPath
     ? writeJsonConfigFieldValue(withModel, field.modelSelection.providerPath, candidate.provider.Id)
     : withModel;
+}
+
+export function writeRuntimeModelPoolAssignment(
+  draft: JsonConfigObject,
+  field: RuntimeModelAssignmentField,
+  selection: RuntimeModelPoolAssignmentSelection,
+): JsonConfigObject {
+  assertModelPoolAssignment(field);
+  let next = writeJsonConfigFieldValue(draft, field.path, [...selection.modelIds]);
+  if (field.modelSelection.inheritance) {
+    next = writeJsonConfigFieldValue(next, field.modelSelection.inheritance.path, selection.inheritanceEnabled);
+  }
+  return next;
+}
+
+export function isRuntimeModelPoolAssignment(field: RuntimeModelAssignmentField): boolean {
+  return field.modelSelection.cardinality === "many";
 }
 
 function readFieldValue(field: ConfigFormFieldData, draft: JsonConfigObject): unknown {
@@ -134,6 +207,63 @@ function readPathValue(source: unknown, path: readonly string[]): unknown {
 
 function missingValue(field: RuntimeModelAssignmentField, value: string): string {
   return `missing:${field.modelSelection.id}:${value}`;
+}
+
+function namespaceField(
+  field: ConfigFormFieldData,
+  section: string,
+  pathPrefix: readonly string[],
+): ConfigFormFieldData {
+  const modelSelection = field.modelSelection
+    ? {
+        ...field.modelSelection,
+        ...(field.modelSelection.providerPath
+          ? { providerPath: [...pathPrefix, ...field.modelSelection.providerPath] }
+          : {}),
+        ...(field.modelSelection.inheritance
+          ? {
+              inheritance: {
+                ...field.modelSelection.inheritance,
+                path: [...pathPrefix, ...field.modelSelection.inheritance.path],
+              },
+            }
+          : {}),
+      }
+    : undefined;
+  return {
+    ...field,
+    section,
+    path: [...pathPrefix, ...field.path],
+    ...(modelSelection ? { modelSelection } : {}),
+    ...(field.itemFields
+      ? { itemFields: field.itemFields.map((item) => namespaceField(item, section, pathPrefix)) }
+      : {}),
+  };
+}
+
+function readModelIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item !== "string") return [];
+    const modelId = item.trim();
+    return modelId ? [modelId] : [];
+  });
+}
+
+function assertSingleModelAssignment(field: RuntimeModelAssignmentField): void {
+  if (isRuntimeModelPoolAssignment(field)) {
+    throw new TypeError(`Model assignment ${field.modelSelection.id} requires the model-pool API.`);
+  }
+}
+
+function assertModelPoolAssignment(field: RuntimeModelAssignmentField): void {
+  if (
+    !isRuntimeModelPoolAssignment(field) ||
+    field.modelSelection.valueKind !== "model-id" ||
+    field.modelSelection.mutation !== "config"
+  ) {
+    throw new TypeError(`Model assignment ${field.modelSelection.id} is not an editable model pool.`);
+  }
 }
 
 function pathKey(path: readonly string[]): string {

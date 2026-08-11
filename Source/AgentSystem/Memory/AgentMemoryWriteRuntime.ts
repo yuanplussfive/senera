@@ -6,11 +6,6 @@ import {
   resolveVectorModelsConfig,
 } from "../AgentDefaults.js";
 import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
-import {
-  normalizeToolArrayArgument,
-  normalizeToolNumberArgument,
-  normalizeToolStringArgument,
-} from "../ToolRuntime/AgentToolArgumentNormalization.js";
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessTypes.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
@@ -34,20 +29,23 @@ import { errorMessage } from "../Core/AgentErrors.js";
 
 const MemoryWriteOperations = ["create", "reinforce", "update", "supersede"] as const;
 
-const StringArraySchema = z.preprocess(normalizeToolArrayArgument, z.array(z.string().trim().min(1)).min(1));
+const StringArraySchema = z.array(z.string().trim().min(1)).min(1);
 
-const MemoryWriteArgumentsSchema = z
+export const MemoryWriteArgumentsSchema = z
   .object({
-    operation: z.enum(MemoryWriteOperations).optional(),
-    type: z.enum(AgentMemoryTypes),
-    subject: z.preprocess(normalizeToolStringArgument, z.string().trim().min(1)),
-    claim: z.preprocess(normalizeToolStringArgument, z.string().trim().min(1)),
-    howToApply: z.preprocess(normalizeToolStringArgument, z.string().trim().min(1)),
-    tags: StringArraySchema,
-    triggers: StringArraySchema,
-    confidence: z.preprocess(normalizeToolNumberArgument, z.number().min(0).max(1)),
-    targetMemoryUri: z.preprocess(normalizeOptionalString, z.string().trim().min(1)).optional(),
-    reason: z.preprocess(normalizeOptionalString, z.string().trim().min(1)).optional(),
+    operation: z
+      .enum(MemoryWriteOperations)
+      .describe("Defaults to create; reinforce, update, and supersede require targetMemoryUri.")
+      .optional(),
+    type: z.enum(AgentMemoryTypes).describe("Long-term memory category."),
+    subject: z.string().trim().min(1).describe("Stable subject of this memory."),
+    claim: z.string().trim().min(1).describe("Concrete statement to retain."),
+    howToApply: z.string().trim().min(1).describe("How future turns should apply this memory."),
+    tags: StringArraySchema.describe("Short classification tags."),
+    triggers: StringArraySchema.describe("Natural expressions that should recall this memory."),
+    confidence: z.number().min(0).max(1).describe("Confidence from 0 to 1."),
+    targetMemoryUri: z.string().trim().min(1).describe("Target memory URI for non-create operations.").optional(),
+    reason: z.string().trim().min(1).describe("Optional reason for the write.").optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -312,14 +310,6 @@ function projectMemoryWriteResult(
     updatedAt: item.updatedAt,
     localDate: item.localDate,
   };
-}
-
-function normalizeOptionalString(value: unknown): unknown {
-  if (typeof value !== "string") {
-    return value;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function readErrorMessage(error: unknown): string {

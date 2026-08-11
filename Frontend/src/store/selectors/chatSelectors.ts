@@ -44,7 +44,7 @@ export function useActiveRun(sessionId: string | null): RunRecord | null {
     if (!session?.runs || session.runs.length === 0) return null;
 
     const lastRun = session.runs[session.runs.length - 1];
-    return lastRun?.status === "running" ? lastRun : null;
+    return lastRun?.status === "running" || lastRun?.status === "cancelling" ? lastRun : null;
   });
 }
 

@@ -47,6 +47,14 @@ export const ToolLoadingModes = {
 
 export type ToolLoadingMode = (typeof ToolLoadingModes)[keyof typeof ToolLoadingModes];
 
+export const AgentToolChildGrantModes = {
+  Inherit: "inherit",
+  Internal: "internal",
+  Delegation: "delegation",
+} as const;
+
+export type AgentToolChildGrantMode = (typeof AgentToolChildGrantModes)[keyof typeof AgentToolChildGrantModes];
+
 export const AgentHostToolProtocolVersion = 2 as const;
 
 export const ToolResultAssessmentPolicies = {
@@ -57,10 +65,20 @@ export const ToolResultAssessmentPolicies = {
 export type ToolResultAssessmentPolicy =
   (typeof ToolResultAssessmentPolicies)[keyof typeof ToolResultAssessmentPolicies];
 
+export const ToolSchedulingModes = {
+  Parallel: "Parallel",
+  ResourceClaims: "ResourceClaims",
+  SelfManaged: "SelfManaged",
+} as const;
+
+export type ToolSchedulingMode = (typeof ToolSchedulingModes)[keyof typeof ToolSchedulingModes];
+
 export interface ToolRuntimeManifest {
   Lifecycle: "Immediate" | "OneShot" | "Persistent" | "RemoteJob";
   ProtocolVersion?: typeof AgentHostToolProtocolVersion;
   ResultAssessment: ToolResultAssessmentPolicy;
+  Scheduling?: ToolSchedulingMode;
+  MaxConcurrency?: number;
   Capabilities?: ToolRuntimeCapabilitiesManifest;
 }
 

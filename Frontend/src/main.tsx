@@ -1,8 +1,7 @@
-import { lazy, StrictMode, Suspense, useCallback } from "react";
+import { lazy, StrictMode, Suspense, useCallback, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { resolveAppSurface, resolveSettingsSection } from "./app/appSurface";
 import { readDesktopBridge } from "./app/desktopBridge";
-import { DesktopWindowChrome } from "./app/DesktopWindowChrome";
 import { ServerAuthenticationBoundary, ServerAuthenticationLoading } from "./app/ServerAuthenticationGate";
 import { useServerAuthentication } from "./app/useServerAuthentication";
 import type { AgentSocketReconnectPolicy } from "./api/useAgentSocket";
@@ -17,7 +16,9 @@ import "./styles/fonts.css";
 import "./index.css";
 import "./styles/transitions.css";
 
-const LazyAuthenticatedSurface = lazy(loadAuthenticatedSurfaceComponent);
+const LazyDesktopWindowChrome = lazy(() =>
+  import("./app/DesktopWindowChrome").then(({ DesktopWindowChrome }) => ({ default: DesktopWindowChrome })),
+);
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
 const root = document.getElementById("root");
@@ -27,13 +28,25 @@ if (!root) throw new Error("#root not found in index.html");
 
 createRoot(root).render(
   <StrictMode>
-    <ErrorBoundary presentation="app">
-      <Root />
-    </ErrorBoundary>
+    <Root />
   </StrictMode>,
 );
 
 function Root(): JSX.Element {
+  const [moduleRetryAttempt, setModuleRetryAttempt] = useState(0);
+  const retryApplicationModules = useCallback(() => {
+    setModuleRetryAttempt((attempt) => attempt + 1);
+  }, []);
+
+  return (
+    <ErrorBoundary presentation="app" onReset={retryApplicationModules}>
+      <ApplicationRoot key={moduleRetryAttempt} />
+    </ErrorBoundary>
+  );
+}
+
+function ApplicationRoot(): JSX.Element {
+  const [LazyAuthenticatedSurface] = useState(() => lazy(loadAuthenticatedSurfaceComponent));
   useFrontendLocale();
   const isDesktop = Boolean(readDesktopBridge()?.isDesktop);
   const surface = resolveAppSurface(window.location, isDesktop);
@@ -49,31 +62,39 @@ function Root(): JSX.Element {
     return result === "anonymous" || result === "rejected" ? "stop" : "retry";
   }, [revalidateAuthentication]);
 
+  const authenticatedContent = (
+    <ServerAuthenticationBoundary
+      state={authentication.state}
+      onLogin={authentication.login}
+      onRetry={authentication.refresh}
+    >
+      {(resolvedAuthentication) => (
+        <Suspense fallback={<ServerAuthenticationLoading />}>
+          <LazyAuthenticatedSurface
+            authentication={resolvedAuthentication}
+            surface={surface}
+            settingsSection={settingsSection}
+            socketReconnectPolicy={socketReconnectPolicy}
+            onLogout={
+              resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
+                ? authentication.logout
+                : undefined
+            }
+          />
+        </Suspense>
+      )}
+    </ServerAuthenticationBoundary>
+  );
+
   return (
     <FrontendI18nProvider>
-      <DesktopWindowChrome surface={surface}>
-        <ServerAuthenticationBoundary
-          state={authentication.state}
-          onLogin={authentication.login}
-          onRetry={authentication.refresh}
-        >
-          {(resolvedAuthentication) => (
-            <Suspense fallback={<ServerAuthenticationLoading />}>
-              <LazyAuthenticatedSurface
-                authentication={resolvedAuthentication}
-                surface={surface}
-                settingsSection={settingsSection}
-                socketReconnectPolicy={socketReconnectPolicy}
-                onLogout={
-                  resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
-                    ? authentication.logout
-                    : undefined
-                }
-              />
-            </Suspense>
-          )}
-        </ServerAuthenticationBoundary>
-      </DesktopWindowChrome>
+      {isDesktop ? (
+        <Suspense fallback={authenticatedContent}>
+          <LazyDesktopWindowChrome surface={surface}>{authenticatedContent}</LazyDesktopWindowChrome>
+        </Suspense>
+      ) : (
+        authenticatedContent
+      )}
     </FrontendI18nProvider>
   );
 }

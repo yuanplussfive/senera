@@ -9,7 +9,7 @@
 ```bash
 npm ci
 cp senera.config.example.json senera.config.json   # Windows 用 copy
-npm run sandbox.archive
+npm run sandbox.prepare
 npm run dev
 ```
 

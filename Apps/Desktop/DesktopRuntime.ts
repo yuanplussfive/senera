@@ -1,12 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import electron from "electron";
-import { syncRuntimeDirectory } from "../RuntimeAssetSync.js";
 import { resolveDesktopResourceRoot, resolveDesktopWorkspaceRoot } from "./DesktopRuntimePathResolver.js";
-import {
-  resolveAgentSandboxDevelopmentBundleRoot,
-  resolveAgentSandboxPackagedBundleRoot,
-} from "../../Source/AgentSystem/Sandbox/AgentSandboxBundlePaths.js";
 import {
   migrateLegacyAgentDatabaseFileFamily,
   resolveAgentWorkspaceLayout,
@@ -22,8 +17,7 @@ export interface DesktopRuntimePaths {
   configDatabasePath: string;
   configSeedPath: string;
   sandboxRuntimeRoot: string;
-  sandboxBundleRoot: string;
-  microsandboxRuntimeBridgePath: string;
+  sandboxWorkerEntrypoint: string;
   frontendIndexHtml: string;
   windowIconPath: string;
   logPath: string;
@@ -31,7 +25,6 @@ export interface DesktopRuntimePaths {
 
 const ConfigTemplateFileName = "senera.config.example.json";
 const DesktopIconFileName = "senera-icon.png";
-const MicrosandboxRuntimeBridgePath = ["Dist", "Apps", "Desktop", "DesktopMicrosandboxRuntimeBridge.js"];
 
 export function prepareDesktopRuntime(): DesktopRuntimePaths {
   const appRoot = resolveAppRoot();
@@ -51,22 +44,10 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
   migrateLegacyAgentDatabaseFileFamily(path.join(desktopDataRoot, "Config.sqlite"), configDatabasePath);
   const configSeedPath = path.join(resourceRoot, ConfigTemplateFileName);
   const sandboxRuntimeRoot = path.join(desktopDataRoot, "SandboxRuntime");
-  const sandboxBundleRoot = app.isPackaged
-    ? resolveAgentSandboxPackagedBundleRoot(process.resourcesPath)
-    : resolveAgentSandboxDevelopmentBundleRoot(resourceRoot);
-  const microsandboxRuntimeBridgePath = path.join(
-    app.isPackaged ? unpackedAppRoot(appRoot) : appRoot,
-    ...MicrosandboxRuntimeBridgePath,
-  );
-  const bundledTerminalRuntimeRoot = app.isPackaged
-    ? path.join(process.resourcesPath, "TerminalSidecarRuntime")
-    : path.join(resourceRoot, ".senera", "sandbox-runtime", "terminal-sidecar");
+  const sandboxWorkerEntrypoint = path.join(appRoot, "Dist", "Apps", "SandboxWorker.js");
 
   fs.mkdirSync(workspaceRoot, { recursive: true });
   fs.mkdirSync(desktopDataRoot, { recursive: true });
-  syncRuntimeDirectory(bundledTerminalRuntimeRoot, path.join(sandboxRuntimeRoot, "terminal-sidecar"), {
-    pruneExtraneous: true,
-  });
 
   return {
     appRoot,
@@ -76,8 +57,7 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
     configDatabasePath,
     configSeedPath,
     sandboxRuntimeRoot,
-    sandboxBundleRoot,
-    microsandboxRuntimeBridgePath,
+    sandboxWorkerEntrypoint,
     frontendIndexHtml: path.join(resourceRoot, "Frontend", "dist", "index.html"),
     windowIconPath: path.join(resourceRoot, "Apps", "Desktop", "Assets", DesktopIconFileName),
     logPath: path.join(userDataRoot, "desktop.log"),
@@ -91,8 +71,4 @@ export function appendDesktopLog(logPath: string, message: string): void {
 
 function resolveAppRoot(): string {
   return app.getAppPath();
-}
-
-function unpackedAppRoot(appRoot: string): string {
-  return appRoot.endsWith(".asar") ? appRoot.replace(/\.asar$/i, ".asar.unpacked") : appRoot;
 }

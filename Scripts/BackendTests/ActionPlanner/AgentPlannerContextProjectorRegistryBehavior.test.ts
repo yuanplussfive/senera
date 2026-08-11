@@ -17,15 +17,15 @@ describe("AgentPlannerContextProjectorRegistry", () => {
     const registry = createAgentPlannerContextProjectorRegistry();
     const nodes = registry.project({
       unknown: { keep: true },
-      openAiRequest: openAiRequest(),
+      planningContext: planningContext(),
       routingCards: [routingCard("second"), routingCard("first")],
       seneraRuntime: { model: "planner" },
     });
     const xml = serializePromptXml(promptXmlNode("planner_input", promptXmlChildren(nodes)));
 
     expect(xml.indexOf("runtime_context")).toBeLessThan(xml.indexOf("routing_cards"));
-    expect(xml.indexOf("routing_cards")).toBeLessThan(xml.indexOf("openai_request"));
-    expect(xml.indexOf("openai_request")).toBeLessThan(xml.indexOf("extra_context"));
+    expect(xml.indexOf("routing_cards")).toBeLessThan(xml.indexOf("planning_context"));
+    expect(xml.indexOf("planning_context")).toBeLessThan(xml.indexOf("extra_context"));
   });
 
   test("projects context arrays as ordered typed children", () => {
@@ -64,7 +64,7 @@ describe("AgentPlannerContextProjectorRegistry", () => {
         "planner_input",
         promptXmlChildren(
           registry.project({
-            openAiRequest: openAiRequest(),
+            planningContext: planningContext(),
             customItems: ["a", "b"],
           }),
         ),
@@ -72,7 +72,7 @@ describe("AgentPlannerContextProjectorRegistry", () => {
     );
 
     expect(xml).toContain("<custom_items>");
-    expect(xml.indexOf("custom_items")).toBeLessThan(xml.indexOf("openai_request"));
+    expect(xml.indexOf("custom_items")).toBeLessThan(xml.indexOf("planning_context"));
     expect(xml).not.toContain("customItems");
   });
 
@@ -105,11 +105,11 @@ function routingCard(name: string) {
   };
 }
 
-function openAiRequest() {
+function planningContext() {
   return {
     model: "test",
     messages: [],
     toolTranscript: [],
-    stream: false,
+    toolExecution: "parallel",
   };
 }

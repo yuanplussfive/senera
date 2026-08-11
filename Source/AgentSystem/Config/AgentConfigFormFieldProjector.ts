@@ -44,6 +44,7 @@ export function projectConfigFormField<TText>(options: {
     placeholder: options.field.placeholder,
     options: options.field.options,
     optionLabels: options.field.optionLabels,
+    optionSource: options.field.optionSource,
     min: options.field.min,
     max: options.field.max,
     minLength: options.field.minLength,

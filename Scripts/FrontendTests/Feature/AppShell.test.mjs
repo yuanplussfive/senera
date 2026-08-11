@@ -17,6 +17,8 @@ import {
 import { useStore } from "../../../Frontend/src/store/sessionStore.ts";
 const { ThinkingTimeline } = await import("../../../Frontend/src/features/workflow/ThinkingTimeline.tsx");
 import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
+import { FrontendLocales } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
+import { setFrontendLocale } from "../../../Frontend/src/i18n/frontendLocaleStore.ts";
 
 beforeEach(() => {
   installMemoryLocalStorage();
@@ -25,7 +27,38 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setFrontendLocale(FrontendLocales.ZhCn);
   vi.clearAllMocks();
+});
+
+test("workflow dock labels update with the frontend locale", async () => {
+  setFrontendLocale(FrontendLocales.ZhCn);
+  renderWithFrontendProviders(
+    React.createElement(AppShell, {
+      sessionPanel: React.createElement("div"),
+      sessionDrawer: React.createElement("div"),
+      chatPanel: React.createElement("div"),
+      workflowPanel: React.createElement("div"),
+      workflowDrawer: React.createElement("div", null, "Workflow drawer"),
+      terminalPanel: React.createElement("div", null, "Terminal panel"),
+      eventPanel: React.createElement("div", null, "Event panel"),
+      workflowDockTool: "execution",
+      onWorkflowDockToolChange: vi.fn(),
+      sessionDrawerOpen: false,
+      onSessionDrawerOpenChange: vi.fn(),
+      workflowDrawerOpen: true,
+      onWorkflowDrawerOpenChange: vi.fn(),
+      responsiveMode: responsiveMode("mobile"),
+    }),
+  );
+
+  expect(await screen.findByRole("tab", { name: "执行" })).toBeInTheDocument();
+
+  act(() => setFrontendLocale(FrontendLocales.EnUs));
+
+  expect(await screen.findByRole("tab", { name: "Execution" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Terminal" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Events" })).toBeInTheDocument();
 });
 
 test("app shell derives integrated workspace surfaces across responsive modes", () => {
@@ -211,7 +244,7 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   expect(dock).toHaveAttribute("data-workflow-dock-layout", "overlay");
   expect(dock).toHaveClass("z-30");
   expect(document.querySelector("[data-workflow-panel-surface]")).not.toBeInTheDocument();
-  expect(document.querySelectorAll("[data-workflow-dock-tool]")).toHaveLength(2);
+  expect(document.querySelectorAll("[data-workflow-dock-tool]")).toHaveLength(3);
   expect(document.querySelector("[data-workflow-dock-capsule]")).toBeInTheDocument();
   expect(dock).toHaveStyle({ right: "12px" });
   expect(document.querySelector("[data-workflow-dock-gutter]")).toBeInTheDocument();

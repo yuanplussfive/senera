@@ -11,6 +11,9 @@ import type { AgentToolExecutionPlan } from "./AgentToolExecutionPlan.js";
 import type { AgentToolTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 import type { AgentToolExposureState } from "./AgentToolExposureState.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 
 export interface AgentHostToolContext {
   tool: RegisteredTool;
@@ -27,12 +30,17 @@ export interface AgentHostToolContext {
   batchId?: string;
   onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
+  authorizedToolNames?: readonly string[];
   toolExposure?: AgentToolExposureState;
   signal?: AbortSignal;
   executionPlan?: AgentToolExecutionPlan;
   reporter?: AgentToolExecutionReporter;
   resources?: Readonly<Record<string, unknown>>;
   tokenBudget?: AgentToolTokenBudget;
+  approvalMode?: AgentExecutionApprovalMode;
+  modelProviderId?: string;
+  activeSkills?: readonly AgentActivatedSkill[];
+  thinkingLevel?: ModelThinkingLevel;
 }
 
 export interface AgentHostToolReportingScope {

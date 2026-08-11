@@ -1,14 +1,7 @@
-export type SandboxEffectiveMode = "sandbox" | "unavailable" | "disabled";
+export type SandboxEffectiveMode = "host" | "sandbox" | "unavailable";
 export type SandboxRuntimeState = "disabled" | "unknown" | "preparing" | "ready" | "unavailable";
 export type SandboxPreparationStage =
-  | "checking_host_runtime"
-  | "connecting_worker"
-  | "loading_runtime"
-  | "resolving_archive"
-  | "verifying_archive"
-  | "importing_image"
-  | "warming_image"
-  | "probing_sandbox";
+  "detecting_engine" | "connecting_worker" | "pulling_image" | "verifying_image" | "probing_toolchain";
 
 export interface SandboxPreparationProgressData {
   stage: SandboxPreparationStage;
@@ -34,11 +27,22 @@ export interface SandboxDependencySnapshotData {
 }
 
 export interface SandboxStatusSnapshotData {
-  provider: string;
+  provider?: "gvisor" | "docker-engine";
   platform: string;
   state: SandboxRuntimeState;
   supported: boolean;
   effectiveMode: SandboxEffectiveMode;
+  effectiveTarget?: "Local" | "Sandbox";
+  shellDialect?: "posix-sh" | "powershell";
+  availableExecutionTargets: Array<"Local" | "Sandbox">;
+  localExecution: {
+    mode: "windows-governed-local" | "posix-governed-local";
+    isolation: "host";
+    authorization: "opa";
+    processOwnership: "windows-job" | "posix-process-group";
+    filesystem: "host-visible";
+    network: "host-visible";
+  };
   progress?: SandboxPreparationProgressData;
   dependencies: SandboxDependencySnapshotData;
   diagnostics: SandboxDiagnosticData[];

@@ -18,8 +18,14 @@ export function resolveAgentDefaults(
       TimeoutMs: secondsToMilliseconds(
         defaults?.ToolExecution?.TimeoutSeconds ?? AgentDefaults.ToolExecution.TimeoutSeconds,
       ),
+      MaxConcurrentCallsPerRun:
+        defaults?.ToolExecution?.MaxConcurrentCallsPerRun ?? AgentDefaults.ToolExecution.MaxConcurrentCallsPerRun,
       MaxStdoutBytes: defaults?.ToolExecution?.MaxStdoutBytes ?? AgentDefaults.ToolExecution.MaxStdoutBytes,
       MaxStderrBytes: defaults?.ToolExecution?.MaxStderrBytes ?? AgentDefaults.ToolExecution.MaxStderrBytes,
+      SemanticAudit: {
+        ...AgentDefaults.ToolExecution.SemanticAudit,
+        ...defaults?.ToolExecution?.SemanticAudit,
+      },
       Environment: {
         ...AgentDefaults.ToolExecution.Environment,
         ...defaults?.ToolExecution?.Environment,
@@ -39,13 +45,10 @@ export function resolveAgentDefaults(
     SandboxRuntime: {
       ...AgentDefaults.SandboxRuntime,
       ...defaults?.SandboxRuntime,
-      Gvisor: {
-        ...AgentDefaults.SandboxRuntime.Gvisor,
-        ...defaults?.SandboxRuntime?.Gvisor,
+      Docker: {
+        ...AgentDefaults.SandboxRuntime.Docker,
+        ...defaults?.SandboxRuntime?.Docker,
       },
-      Provisioning: structuredClone(
-        defaults?.SandboxRuntime?.Provisioning ?? AgentDefaults.SandboxRuntime.Provisioning,
-      ),
     },
     AgentLoop: {
       ...AgentDefaults.AgentLoop,
@@ -220,6 +223,7 @@ function resolveExecutionResourceDefaults(
   };
   return {
     ...resources,
+    InitialYieldMs: secondsToMilliseconds(resources.InitialYieldSeconds),
     MaxWaitMs: secondsToMilliseconds(resources.MaxWaitSeconds),
     IdleTtlMs: secondsToMilliseconds(resources.IdleTtlSeconds),
     TerminalTtlMs: secondsToMilliseconds(resources.TerminalTtlSeconds),

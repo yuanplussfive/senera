@@ -3,18 +3,13 @@
   "id": "senera-sandbox-provider-registry",
   "candidates": [
     {
-      "provider": "microsandbox",
-      "platforms": ["darwin", "linux", "win32"],
-      "requirements": ["microsandbox-host"]
-    },
-    {
       "provider": "gvisor",
-      "platforms": ["linux"],
+      "platforms": ["darwin", "linux"],
       "requirements": ["docker-engine", "registered-runsc"]
     },
     {
       "provider": "docker-engine",
-      "platforms": ["linux"],
+      "platforms": ["darwin", "linux"],
       "requirements": ["docker-engine"]
     }
   ]

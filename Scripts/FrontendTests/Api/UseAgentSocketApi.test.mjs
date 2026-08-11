@@ -8,6 +8,7 @@ import {
   readAgentSocketRetryDelayMs,
   useAgentSocket,
 } from "../../../Frontend/src/api/useAgentSocket.ts";
+import { subscribeAgentTransportObservations } from "../../../Frontend/src/api/agentTransportObserver.ts";
 
 afterEach(() => {
   cleanup();
@@ -117,6 +118,49 @@ test("agent socket owns connection state, ordered streaming delivery, malformed 
   act(() => vi.advanceTimersByTime(readAgentSocketRetryDelayMs(0)));
   expect(TestWebSocket.instances).toHaveLength(2);
   expect(handleRef.current.status).toBe("connecting");
+});
+
+test("agent socket publishes lifecycle, safe command metadata, wire metadata, and projected events", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("WebSocket", TestWebSocket);
+  vi.stubGlobal("requestAnimationFrame", (callback) => window.setTimeout(() => callback(performance.now()), 16));
+  vi.stubGlobal("cancelAnimationFrame", (id) => window.clearTimeout(id));
+  const observations = [];
+  const unsubscribe = subscribeAgentTransportObservations((batch) => observations.push(...batch));
+  const handleRef = { current: null };
+  render(
+    React.createElement(SocketHarness, {
+      handleRef,
+      onEvent: vi.fn(),
+      url: "ws://agent.test/runtime",
+    }),
+  );
+
+  const socket = TestWebSocket.instances[0];
+  act(() => socket.open());
+  act(() =>
+    handleRef.current.send({
+      type: "session.message",
+      sessionId: "session-a",
+      input: "private",
+      approvalMode: "agent",
+    }),
+  );
+  act(() => socket.receive(event(EventKinds.RunCompleted, 1, {})));
+  unsubscribe();
+
+  expect(observations.map((observation) => observation.stage)).toEqual([
+    "lifecycle",
+    "lifecycle",
+    "command",
+    "wire",
+    "projected",
+  ]);
+  expect(observations.find((observation) => observation.stage === "command")).toMatchObject({
+    requestType: "session.message",
+    correlation: { sessionId: "session-a" },
+  });
+  expect(JSON.stringify(observations)).not.toContain("private");
 });
 
 test("agent socket delivers one ordered transaction for events received in the same frame", () => {

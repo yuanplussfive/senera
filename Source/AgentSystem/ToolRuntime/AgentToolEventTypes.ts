@@ -13,6 +13,7 @@ export type AgentToolDomainEvent =
       data: {
         toolCount: number;
         tools: string[];
+        calls?: Array<{ callId: string; toolName: string }>;
         status?: "planned" | "discovery_escalated" | "blocked";
         executionMode?: "parallel" | "sequential";
         batchId?: string;
@@ -28,6 +29,8 @@ export type AgentToolDomainEvent =
         toolName: string;
         callId: string;
         batchId?: string;
+        /** Explicit lifecycle start; absent only when the producer never observed a start. */
+        startedAt?: string;
       };
     }
   | {
@@ -72,6 +75,10 @@ export type AgentToolDomainEvent =
         toolName: string;
         callId: string;
         batchId?: string;
+        /** Explicit lifecycle start; diagnostic projections reject records without it. */
+        startedAt?: string;
+        /** Measured by the backend tool lifecycle, never inferred by the client. */
+        durationMs?: number;
         presentation?: AgentToolResultPresentation;
       };
     }
@@ -86,6 +93,10 @@ export type AgentToolDomainEvent =
         code?: string;
         message: string;
         localizedMessage?: AgentLocalizedMessage;
+        /** Explicit lifecycle start; diagnostic projections reject records without it. */
+        startedAt?: string;
+        /** Measured by the backend tool lifecycle, never inferred by the client. */
+        durationMs?: number;
       };
     }
   | {

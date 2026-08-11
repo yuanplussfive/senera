@@ -8,7 +8,6 @@ import { AgentPresetManager } from "../Presets/AgentPresetManager.js";
 import { AgentUploadHttpApi } from "../Uploads/AgentUploadHttpApi.js";
 import { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import { AgentProviderModelDiscovery } from "../Config/AgentProviderModelDiscovery.js";
-import { AgentPiProxyHttpApi } from "../PiProxy/AgentPiProxyHttpApi.js";
 import { AgentSandboxRuntimeService } from "../Sandbox/AgentSandboxRuntimeService.js";
 import { AgentWebSocketEventEnvelopeSender } from "./AgentWebSocketEventSender.js";
 import { AgentWebSocketHttpRouter } from "./AgentWebSocketHttpRouter.js";
@@ -24,8 +23,8 @@ import {
 import { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
 import { AgentWebSocketCloseCodes, AgentWebSocketCloseReasons } from "./AgentWebSocketCloseContract.js";
 import { errorMessage } from "../Core/AgentErrors.js";
-import { createAgentPiProxyModelAdapter } from "../Runtime/AgentPiProxyModelAdapter.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentWorkspaceResourceHttpApi } from "../WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
 
 export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 
@@ -37,6 +36,7 @@ export class AgentWebSocketServer {
   private readonly eventSender: AgentWebSocketEventEnvelopeSender;
   private readonly httpRouter: AgentWebSocketHttpRouter;
   private readonly uploadApi: AgentUploadHttpApi;
+  private readonly workspaceResourceApi: AgentWorkspaceResourceHttpApi;
   private readonly messageRouter: AgentWebSocketMessageRouter;
   private readonly accessGuard: AgentServerAccessGuard;
   private httpServer?: http.Server;
@@ -58,8 +58,6 @@ export class AgentWebSocketServer {
       configRevision,
     });
     const sandboxRuntimeService = options.sandboxRuntimeService ?? new AgentSandboxRuntimeService();
-    const piTurnContexts = options.piTurnContexts;
-
     this.serverConfig = resolveServerConfig(options.config);
     this.accessGuard = new AgentServerAccessGuard({
       server: this.serverConfig,
@@ -85,16 +83,14 @@ export class AgentWebSocketServer {
         });
       },
     });
+    this.workspaceResourceApi = new AgentWorkspaceResourceHttpApi({
+      workspaceRoot: options.workspaceRoot ?? process.cwd(),
+      maxTextBytes: this.serverConfig.RequestMaxBytes,
+      isOriginAllowed: (origin) => this.accessGuard.allowsOrigin(origin),
+    });
     this.httpRouter = new AgentWebSocketHttpRouter({
       uploadApi: this.uploadApi,
-      piProxyApi: new AgentPiProxyHttpApi({
-        configSnapshot,
-        modelFactory: createAgentPiProxyModelAdapter(),
-        onEvent: (event) => this.broadcast(event),
-        diagnostics: options.piDiagnostics,
-        maxRequestBytes: this.serverConfig.RequestMaxBytes,
-        turnContexts: piTurnContexts,
-      }),
+      workspaceResourceApi: this.workspaceResourceApi,
       staticFrontendApi: options.staticFrontendRoot
         ? new AgentStaticFrontendHttpApi({ rootDir: options.staticFrontendRoot })
         : undefined,

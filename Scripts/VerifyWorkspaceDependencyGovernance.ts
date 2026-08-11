@@ -222,9 +222,7 @@ function inspectRootScripts(): string[] {
     "verify.protocol-reference": "tsx Build/GenerateWebSocketProtocolReference.ts --check",
     "verify.i18n":
       "tsx Scripts/VerifyAgentErrorI18n.ts && tsx Scripts/VerifyFrontendErrorI18n.ts && tsx Scripts/VerifyAgentRuntimeI18n.ts && tsx Scripts/VerifyFrontendRuntimeI18n.ts",
-    "terminal.prepare": "tsx Build/PrepareTerminalSidecarGuestRuntime.ts",
     "sandbox.prepare": "tsx Build/PrepareSandboxRuntime.ts",
-    "sandbox.archive": "tsx Build/BuildSandboxImageArchive.ts",
     "check.types": "tsc --noEmit",
     build:
       "npm run verify.config-command-contracts && npm run verify.database-contracts && npm run verify.system-extension-contracts && npm run verify.frontend-events && npm run verify.protocol-reference && npm run verify.i18n && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
@@ -422,7 +420,6 @@ function inspectDesktopPackageConfig(): string[] {
       : ["package.json build.extraMetadata.main must point to Dist/Apps/Desktop/Main.js."]),
     ...inspectDesktopPackageScript(),
     ...inspectDesktopFileSet("Packages/TerminalSidecar", "node_modules/@senera/terminal-sidecar"),
-    ...inspectDesktopExtraResource(".senera/sandbox-runtime/terminal-sidecar", "TerminalSidecarRuntime"),
     ...(rootPackage.build?.npmRebuild === false
       ? []
       : ["package.json build.npmRebuild must be false so Sidecar Node binaries are not rebuilt for Electron."]),
@@ -436,6 +433,7 @@ function inspectDesktopPackageConfig(): string[] {
       "**/*.so",
       "**/*.dylib",
       "**/ffi-rs/**",
+      "**/@vscode/ripgrep*/bin/**",
     ]),
   ];
 }
@@ -444,7 +442,6 @@ function inspectDesktopPackageScript(): string[] {
   const scriptPath = path.join(workspaceRoot, "Apps", "Desktop", "PackageDesktop.ts");
   const source = fs.readFileSync(scriptPath, "utf8");
   return inspectTextIncludes(source, "Apps/Desktop/PackageDesktop.ts", [
-    'command("npm", ["run", "terminal.prepare"])',
     'command("npm", ["run", "desktop.prepare-native"])',
     'command("electron-builder")',
   ]);
@@ -455,13 +452,6 @@ function inspectDesktopFileSet(from: string, to: string): string[] {
   return fileSets.some((fileSet) => fileSet.from === from && fileSet.to === to)
     ? []
     : [`package.json build.files must package ${from} to ${to}.`];
-}
-
-function inspectDesktopExtraResource(from: string, to: string): string[] {
-  const resources = rootPackage.build?.extraResources ?? [];
-  return resources.some((resource) => resource.from === from && resource.to === to)
-    ? []
-    : [`package.json build.extraResources must package ${from} to ${to}.`];
 }
 
 function inspectDesktopAsarUnpack(expectedEntries: readonly string[]): string[] {

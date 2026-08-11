@@ -4,9 +4,11 @@ import type { TimelineStep } from "./types";
 export function timelineScopeFromEvent(env: EventEnvelope): TimelineStep["scope"] | undefined {
   if (!env.scope) return undefined;
   return {
+    parentSessionId: env.scope.parentSessionId,
     parentRequestId: env.scope.parentRequestId,
     workflowName: env.scope.workflowName,
     jobId: env.scope.jobId,
+    childRunId: env.scope.childRunId,
     agentName: env.scope.agentName,
     role: env.scope.role,
   };
@@ -34,10 +36,12 @@ export function toolBatchFromEvent(
 
 function fallbackToolBatchId(env: EventEnvelope, callId: string | undefined): string {
   return [
+    env.scope?.parentSessionId,
     env.scope?.parentRequestId,
     env.scope?.workflowName,
     env.scope?.role,
     env.scope?.jobId,
+    env.scope?.childRunId,
     env.requestId,
     env.step ?? 0,
     callId ? `call:${callId}` : `event:${env.sequence}`,

@@ -8,8 +8,8 @@
     "en-US": "Shell Commands"
   },
   "description": {
-    "zh-CN": "在受控执行环境中运行一次性 Shell 命令。",
-    "en-US": "Runs one-shot shell commands in a controlled execution environment."
+    "zh-CN": "在受控执行环境中运行 Shell 命令，并自动管理短任务与可恢复长任务。",
+    "en-US": "Runs shell commands in a controlled execution environment with automatic resumable execution for long tasks."
   },
   "priority": 90,
   "contributions": [

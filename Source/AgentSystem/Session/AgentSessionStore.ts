@@ -13,7 +13,7 @@ import type {
 } from "./AgentSessionRepository.js";
 import { InMemorySessionRepository } from "../SessionPersistence/InMemorySessionRepository.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
 import {
   AgentEventSequencer,
   toEventEnvelope,
@@ -43,6 +43,7 @@ import {
   type AgentSessionWorkingSetPolicy,
 } from "./AgentSessionWorkingSetPolicy.js";
 import { clearAgentSessionRegenerationLineage } from "./AgentSessionLifecycleMetadata.js";
+import type { AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
 
 export type AgentSessionOpenResult =
   | {
@@ -194,7 +195,7 @@ export class AgentSessionStore {
     return this.repository.hasRequest(sessionId, requestId);
   }
 
-  open(sessionId?: string): AgentSessionOpenResult {
+  open(sessionId?: string, ownership?: AgentSessionOwnership): AgentSessionOpenResult {
     const resolvedSessionId = sessionId?.trim() || createSessionId();
     const existing = this.findOrLoadSession(resolvedSessionId);
     if (existing) {
@@ -203,7 +204,7 @@ export class AgentSessionStore {
 
     return {
       kind: "created",
-      session: this.createAndStore(resolvedSessionId),
+      session: this.createAndStore(resolvedSessionId, ownership),
     };
   }
 
@@ -212,6 +213,7 @@ export class AgentSessionStore {
     sessionId: string;
     throughRequestId: string;
     piBranchBoundaryId?: string;
+    ownership?: AgentSessionOwnership;
   }): AgentSessionForkPreparationResult {
     const sourceLookup = this.get(request.sourceSessionId);
     if (sourceLookup.kind === "missing") {
@@ -237,6 +239,8 @@ export class AgentSessionStore {
     }));
     const includedRequestIds = new Set(entries.map((entry) => entry.requestId));
     const sourcePi = resolveAgentPiSessionLifecycle(sourceLookup.session.metadata);
+    const sourceMetadata = clearAgentSessionRegenerationLineage(structuredClone(sourceLookup.session.metadata));
+    const inheritedOwnership = sourceMetadata?.ownership?.type === "child_run" ? "user_conversation" : undefined;
     const session: AgentSession = {
       id: request.sessionId,
       createdAt: timestamp,
@@ -244,7 +248,14 @@ export class AgentSessionStore {
       status: AgentSessionStatuses.Idle,
       conversation: entries,
       metadata: withAgentPiSessionLifecycle(
-        clearAgentSessionRegenerationLineage(structuredClone(sourceLookup.session.metadata)),
+        {
+          ...sourceMetadata,
+          ...(request.ownership
+            ? { ownership: request.ownership }
+            : inheritedOwnership
+              ? { ownership: { type: inheritedOwnership } }
+              : {}),
+        },
         request.piBranchBoundaryId ? AgentPiSessionLifecycleStates.Initialized : AgentPiSessionLifecycleStates.Absent,
         sourcePi.modelProviderId,
       ),
@@ -573,7 +584,7 @@ export class AgentSessionStore {
     this.persistTurnPreparation(sessionId, requestId, withAgentTurnPreparationBoundary(snapshot, piBranchBoundaryId));
   }
 
-  private createAndStore(sessionId: string): AgentSession {
+  private createAndStore(sessionId: string, ownership?: AgentSessionOwnership): AgentSession {
     const timestamp = new Date().toISOString();
     const session: AgentSession = {
       id: sessionId,
@@ -581,6 +592,7 @@ export class AgentSessionStore {
       updatedAt: timestamp,
       status: AgentSessionStatuses.Idle,
       conversation: [],
+      ...(ownership ? { metadata: { ownership } } : {}),
     };
 
     this.cacheWorkingSession(session, 0);

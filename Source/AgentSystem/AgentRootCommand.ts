@@ -14,7 +14,11 @@ import type {
   RootCommandVisibleOutputRuleManifest,
 } from "./Types/AgentToolContractTypes.js";
 import { AgentLocalizedError } from "./I18n/AgentLocalizedError.js";
-import { createAgentToolAccessGrant, type AgentToolAccessGrant } from "./ToolRuntime/AgentToolAccessGrant.js";
+import {
+  createAgentToolAccessGrant,
+  normalizeAgentToolNames,
+  type AgentToolAccessGrant,
+} from "./ToolRuntime/AgentToolAccessGrant.js";
 
 export type AgentRootCommandToolAccess = RootCommandManifest["ToolAccess"];
 export type AgentRootOutputMode = RootCommandManifest["OutputMode"];
@@ -59,6 +63,7 @@ export function buildAgentRootCommand(options: {
   loadedTools: readonly Pick<RegisteredTool, "name" | "handler">[];
   registeredTools: readonly Pick<RegisteredTool, "name" | "handler">[];
   policy: RootCommandManifest;
+  allowedToolNames?: readonly string[];
 }): AgentRootCommand {
   if (options.policy.Action !== options.decision.action) {
     throw new AgentLocalizedError("rootCommand.policyActionMismatch", {
@@ -67,20 +72,30 @@ export function buildAgentRootCommand(options: {
     });
   }
 
-  const preferredTools = agentActionPreferredTools(options.decision);
+  const preferredCandidates = agentActionPreferredTools(options.decision);
   const toolSearchQueries = agentActionToolSearchQueries(options.decision);
   const instruction = agentActionInstruction(options.decision).trim();
-  const authorizedToolNames = resolveAuthorizedToolNames(
+  const policyAuthorizedToolNames = resolveAuthorizedToolNames(
     options.policy.AllowedTools,
     options.loadedTools,
     options.registeredTools,
   );
+  const authorizationCeiling = options.allowedToolNames
+    ? new Set(normalizeAgentToolNames(options.allowedToolNames))
+    : undefined;
+  const authorizedToolNames = authorizationCeiling
+    ? policyAuthorizedToolNames.filter((toolName) => authorizationCeiling.has(toolName))
+    : policyAuthorizedToolNames;
   const authorized = new Set(authorizedToolNames);
-  const exposedToolNames = options.loadedTools.map((tool) => tool.name).filter((toolName) => authorized.has(toolName));
+  const exposedToolNames = normalizeAgentToolNames(
+    options.loadedTools.map((tool) => tool.name).filter((toolName) => authorized.has(toolName)),
+  );
+  const exposed = new Set(exposedToolNames);
+  const preferredToolNames = normalizeAgentToolNames(preferredCandidates).filter((toolName) => exposed.has(toolName));
   const toolAccessGrant = createAgentToolAccessGrant({
     authorizedToolNames,
     exposedToolNames,
-    preferredToolNames: preferredTools,
+    preferredToolNames,
   });
 
   return {

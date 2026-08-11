@@ -52,6 +52,49 @@ test("tool preface and final answer remain separate assistant messages", () => {
   expect(run.steps.some((step) => step.kind === "answer" && step.decisionKind === "final_answer")).toBe(true);
 });
 
+test("a provisional final answer is upgraded in place when the run settles", () => {
+  const state = createTestState();
+
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "总结结果" }));
+  applyEvent(
+    state,
+    createEvent(EventKinds.AssistantMessageCreated, {
+      messageId: "msg_stable_answer",
+      kind: "final_answer",
+      content: "处理结果已经生成。",
+      terminal: false,
+    }),
+  );
+
+  let session = state.sessions[TestSessionId];
+  let run = session.runs.find((item) => item.requestId === TestRequestId);
+  expect(session.messages.filter((message) => message.id === "msg_stable_answer")).toHaveLength(1);
+  expect(run.expectedOutputMode).toBe("unknown");
+  expect(run.outputState).toBe("available");
+  expect(run.displayMessageId).toBe("msg_stable_answer");
+
+  applyEvent(
+    state,
+    createEvent(EventKinds.AssistantMessageCreated, {
+      messageId: "msg_stable_answer",
+      kind: "final_answer",
+      content: "处理结果已经生成。",
+      terminal: true,
+    }),
+  );
+
+  session = state.sessions[TestSessionId];
+  run = session.runs.find((item) => item.requestId === TestRequestId);
+  expect(session.messages.filter((message) => message.id === "msg_stable_answer")).toHaveLength(1);
+  expect(session.messageCount).toBe(session.messages.length);
+  expect(run.expectedOutputMode).toBe("final_text");
+  expect(run.outputState).toBe("committed");
+  expect(run.displayMessageId).toBe("msg_stable_answer");
+  expect(run.steps.filter((step) => step.id === `${TestRequestId}-assistant-message-msg_stable_answer`)).toHaveLength(
+    1,
+  );
+});
+
 test("tool preface stream ends when the tool starts, so final text cannot inherit it", () => {
   const state = createTestState();
 
@@ -73,6 +116,7 @@ test("tool preface stream ends when the tool starts, so final text cannot inheri
     createEvent(EventKinds.ToolCallsPlanned, {
       toolCount: 1,
       tools: ["AgentToolSearch"],
+      calls: [{ callId: "call_search", toolName: "AgentToolSearch" }],
       status: "planned",
       executionMode: "sequential",
       batchId: "batch_search",
@@ -83,6 +127,7 @@ test("tool preface stream ends when the tool starts, so final text cannot inheri
   let run = state.sessions[TestSessionId].runs.find((item) => item.requestId === TestRequestId);
   expect(run.visibleKind).toBe("tool_preface");
   expect(run.streamingRaw).toBe("我先搜索当前已加载的工具。");
+  expect(run.steps.find((step) => step.id === "tool-call_search")).toMatchObject({ status: "pending" });
 
   applyEvent(
     state,
@@ -268,7 +313,7 @@ test("background resource events continue updating their originating tool after 
     state,
     createEvent(
       EventKinds.ToolCallStarted,
-      { index: 0, toolName: "ShellStartTool", callId: "call_server" },
+      { index: 0, toolName: "ShellCommandTool", callId: "call_server" },
       { step: 1, sequence: 2, phase: "tool" },
     ),
   );
@@ -276,7 +321,7 @@ test("background resource events continue updating their originating tool after 
     state,
     createEvent(
       EventKinds.ToolCallCompleted,
-      { index: 0, toolName: "ShellStartTool", callId: "call_server" },
+      { index: 0, toolName: "ShellCommandTool", callId: "call_server" },
       { step: 1, sequence: 3, phase: "tool" },
     ),
   );
@@ -288,7 +333,7 @@ test("background resource events continue updating their originating tool after 
       {
         resourceId: "res_0123456789abcdef0123456789abcdef",
         toolCallId: "call_server",
-        toolName: "ShellStartTool",
+        toolName: "ShellCommandTool",
         cursor: 2,
         stream: "stdout",
         text: "ready on 4173\n",
@@ -305,7 +350,7 @@ test("background resource events continue updating their originating tool after 
       {
         resourceId: "res_0123456789abcdef0123456789abcdef",
         toolCallId: "call_server",
-        toolName: "ShellStartTool",
+        toolName: "ShellCommandTool",
         cursor: 3,
         state: "completed",
         exitCode: 0,

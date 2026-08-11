@@ -20,7 +20,7 @@ System/Extensions/<id>/
 
 配置由包拥有。`configuration.schema` 是值的权威契约，`configuration.ui` 只描述展示顺序和控件元数据；省略 UI schema 时由 JSON Schema 自动生成完整表单。UI 引用未知字段、遗漏字段、类型不一致、无效默认值、越界路径或符号链接都会使目录构建失败。
 
-面向用户的显式 UI schema 必须让 section 和 field 的 `label` 直接声明 `zh-CN`、`en-US` 双语对象；`description`、`placeholder` 存在时遵循同一结构。系统扩展配置协议不接受旧字符串或 `localized*` 平行字段。模型字段使用 `modelSelection` 声明能力要求，前端从当前模型目录生成候选，不能把供应商或模型列表硬编码进插件包。
+面向用户的显式 UI schema 必须让 section 和 field 的 `label` 直接声明 `zh-CN`、`en-US` 双语对象；`description`、`placeholder` 存在时遵循同一结构。系统扩展配置协议不接受旧字符串或 `localized*` 平行字段。模型字段使用 `modelSelection` 声明能力要求，前端从当前模型目录生成候选，不能把供应商或模型列表硬编码进插件包。多模型池使用 `cardinality="many"`；`providerPath` 必须指向字符串字段，`inheritance.path` 必须指向布尔字段，这些引用会在扩展加载时与配置 JSON Schema 一并校验。
 
 用户选择存入主配置：
 
@@ -42,6 +42,8 @@ System/Extensions/<id>/
 代码定义的 Zod Tool 通过 `npm run generate.system-extension-contracts` 生成并提交包合同、配置 schema 和 UI schema；`npm run verify.system-extension-contracts` 防止运行时定义与静态包漂移。
 
 `agent-image-tools` 当前拥有三组配置：视觉模型选择、单图读取预算和视觉系统提示词。留空模型选择时优先使用当前会话模型，不具备 Vision 能力时回退到首个可用视觉模型；显式选择的模型不存在或不支持 Vision 时直接返回结构化错误，不静默猜测其他模型。
+
+`workspace-tools` 是 Pi 文件工具与 Senera 宿主协议之间的薄适配包。`read/grep/find/ls` 的参数、结果格式、排序、继续读取提示和截断语义来自 Pi 公共 API；Senera 只提供工作区路径授权、只读本地执行、取消、Artifact、Observation v3 和前端事件。`grep/find` 固定使用随应用发布的 `@vscode/ripgrep`，运行时不得下载二进制文件。
 
 ## 代码边界
 

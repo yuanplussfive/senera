@@ -1,7 +1,10 @@
 import { AnimatePresence, motion } from "framer-motion";
+import { useMemo, useState } from "react";
 import { useStore, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
 import { useChatState } from "../../store/selectors/chatSelectors";
 import { ErrorBoundary } from "../../shared/ui";
+import { useEventJournalStore } from "../observability/eventJournalStore";
+import { projectRuntimeUsage } from "../observability/runtimeDiagnosticProjection";
 import { ChatComposer } from "./ChatComposer";
 import { ChatHeader } from "./ChatHeader";
 import { EmptyChatState } from "./EmptyChatState";
@@ -19,18 +22,29 @@ export function ChatPanel({
   messageActions,
   navigationActions,
 }: ChatPanelProps): JSX.Element {
+  const [composerValue, setComposerValue] = useState("");
   const activeId = useStore((s) => s.activeSessionId);
+  const eventRecords = useEventJournalStore((state) => state.records);
+  const approvalMode = useStore((s) => s.executionApprovalMode);
+  const setApprovalMode = useStore((s) => s.setExecutionApprovalMode);
   const { session, historyLoaded, historyLoading, historyFailed } = useChatState(activeId);
   const { level, reduceMotion, disableMotion } = useMotionLevel();
   const effectiveMotionLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
+  const runtimeUsage = useMemo(
+    () => projectRuntimeUsage(eventRecords, { activeSessionId: activeId }),
+    [activeId, eventRecords],
+  );
 
   const messages = session?.messages ?? [];
   const currentRun = session?.runs[session.runs.length - 1];
   const isRunning = currentRun?.status === "running";
-  const composerDisabled = runtime.socketStatus !== "open" || historyLoading;
+  const isSettling = isRunning && (currentRun.outputState === "available" || currentRun.outputState === "committed");
+  const isCancelling = currentRun?.status === "cancelling";
+  const isActive = isRunning || isCancelling;
+  const composerDisabled = runtime.socketStatus !== "open" || historyLoading || isCancelling;
   const shouldShowHistoryRecovery =
     messages.length === 0 &&
-    !isRunning &&
+    !isActive &&
     !!session &&
     session.messageCount > 0 &&
     (!historyLoaded || historyLoading || historyFailed);
@@ -64,12 +78,10 @@ export function ChatPanel({
                 retryDisabled={runtime.socketStatus !== "open"}
               />
             </ChatContentMotion>
-          ) : messages.length === 0 && !isRunning ? (
+          ) : messages.length === 0 && !isActive ? (
             <ChatContentMotion key={`empty:${activeId ?? "none"}`} motionLevel={effectiveMotionLevel}>
               <div className="flex flex-1 items-center justify-center px-8 py-16 sm:px-12">
-                <EmptyChatState
-                  onSelectSuggestion={runtime.socketStatus === "open" ? messageActions.onSend : undefined}
-                />
+                <EmptyChatState onSelectSuggestion={runtime.socketStatus === "open" ? setComposerValue : undefined} />
               </div>
             </ChatContentMotion>
           ) : (
@@ -80,7 +92,7 @@ export function ChatPanel({
                   uploadUrl={runtime.uploadUrl}
                   messages={messages}
                   runs={session?.runs ?? []}
-                  currentRun={isRunning ? currentRun : undefined}
+                  currentRun={isActive ? currentRun : undefined}
                   userProfile={userProfile}
                   onForkFromMessage={messageActions.onForkFromMessage}
                   onRegenerate={messageActions.onRegenerate}
@@ -88,6 +100,7 @@ export function ChatPanel({
                   onDeleteFromMessage={messageActions.onDeleteFromMessage}
                   onViewWorkflow={messageActions.onViewWorkflow}
                   onResolveApproval={messageActions.onResolveApproval}
+                  onResolveApprovalBatch={messageActions.onResolveApprovalBatch}
                   onResolveInteractionInput={messageActions.onResolveInteractionInput}
                   approvalDisabled={runtime.socketStatus !== "open"}
                 />
@@ -98,7 +111,13 @@ export function ChatPanel({
         <ChatComposer
           disabled={composerDisabled}
           running={!!isRunning}
+          settling={!!isSettling}
+          cancelling={!!isCancelling}
+          value={composerValue}
+          onValueChange={setComposerValue}
           modelConfig={modelConfig}
+          runtimeUsage={runtimeUsage}
+          approvalConfig={{ mode: approvalMode, onSelectMode: setApprovalMode }}
           presetConfig={presetConfig}
           runtime={{
             socketStatus: runtime.socketStatus,

@@ -166,6 +166,7 @@ function generateMockRuns(messages: ChatMessage[], now: number): RunRecord[] {
         startedAt,
         endedAt,
         status: "completed",
+        outputState: "committed",
         input: message.content,
         steps: [
           {

@@ -20,6 +20,7 @@ import type { Result } from "@earendil-works/pi-agent-core";
 import type {
   SeneraExecutionErrorCode,
   SeneraExecutionEnv,
+  SeneraArgvExecutionRequest,
   SeneraShellExecutionRequest,
   SeneraShellExecutionResult,
 } from "./SeneraExecutionTypes.js";
@@ -46,6 +47,10 @@ import { createSeneraLocalTerminalSpawner } from "./SeneraTerminalSpawner.js";
 import type { SeneraTerminalChild, SeneraTerminalSpawner, SeneraTerminalSpawnOptions } from "./SeneraTerminalTypes.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { isPathWithin } from "../Core/AgentPath.js";
+import {
+  createSeneraExecutionRuntimeCapabilities,
+  type SeneraExecutionRuntimeCapabilities,
+} from "./SeneraExecutionRuntimeCapabilities.js";
 
 // exec() is an internal convenience path, but it must stay bounded like every other
 // output channel. Mirrors AgentDefaults.ToolExecution.MaxStdoutBytes (64 MiB), which
@@ -59,6 +64,7 @@ export interface SeneraLocalExecutionEnvOptions {
   terminalSpawner?: SeneraTerminalSpawner;
   resourceAccessPolicy?: SeneraResourceAccessAuthorizer;
   resourceAccessAuthority?: AgentResourceAccessAuthority;
+  runtimeCapabilities?: () => SeneraExecutionRuntimeCapabilities;
 }
 
 interface SeneraLocalExecutionEnvSharedState {
@@ -68,7 +74,7 @@ interface SeneraLocalExecutionEnvSharedState {
 export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   readonly workspaceRoot: string;
   readonly cwd: string;
-  readonly capabilities;
+  private readonly runtimeCapabilities: () => SeneraExecutionRuntimeCapabilities;
   private readonly ownedTempRoots: Map<string, SeneraWorkspaceBoundary>;
   private readonly workspaceBoundary: SeneraWorkspaceBoundary;
   private readonly processBackend: SeneraProcessExecutionBackend;
@@ -88,12 +94,14 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
       authority: this.resourceAccessAuthority,
     });
     this.resourceAccessPolicy = options.resourceAccessPolicy;
+    this.runtimeCapabilities = options.runtimeCapabilities ?? (() => createSeneraExecutionRuntimeCapabilities());
     this.processBackend = options.processBackend ?? new SeneraNodeProcessBackend();
     this.persistentProcessSpawner = options.persistentProcessSpawner ?? createSeneraLocalPersistentProcessSpawner();
-    this.capabilities = {
-      persistentProcessBackends: this.persistentProcessSpawner.supportedBackends ?? ["local"],
-    };
     this.terminalSpawner = options.terminalSpawner ?? createSeneraLocalTerminalSpawner();
+  }
+
+  get capabilities(): SeneraExecutionRuntimeCapabilities {
+    return this.runtimeCapabilities();
   }
 
   withResourceAccessAuthority(authority: AgentResourceAccessAuthority): SeneraExecutionEnv {
@@ -106,6 +114,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
         terminalSpawner: this.terminalSpawner,
         resourceAccessPolicy: this.resourceAccessPolicy,
         resourceAccessAuthority: authority,
+        runtimeCapabilities: this.runtimeCapabilities,
       },
       { ownedTempRoots: this.ownedTempRoots },
     );
@@ -148,6 +157,24 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     return this.processBackend.executeProcess({
       command: invocation.command,
       args: invocation.args,
+      cwd,
+      env: request.env,
+      stdin: request.stdin,
+      timeoutMs: request.timeoutMs ?? request.limits.timeoutMs,
+      limits: request.limits,
+      signal: request.signal,
+      onOutput: request.onOutput,
+      outputOverflow: request.outputOverflow,
+      outputSpool: request.outputSpool,
+      profile: request.profile,
+    });
+  }
+
+  async executeProcess(request: SeneraArgvExecutionRequest): Promise<SeneraShellExecutionResult> {
+    const cwd = await this.resolveWorkspaceCwd(request.cwd);
+    return this.processBackend.executeProcess({
+      command: request.command,
+      args: request.args,
       cwd,
       env: request.env,
       stdin: request.stdin,
@@ -340,6 +367,32 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
       return ok(undefined);
     } catch (error) {
       return err(toFileError(error, resolved));
+    }
+  }
+
+  async renameFile(
+    sourcePath: string,
+    destinationPath: string,
+    abortSignal?: AbortSignal,
+  ): Promise<Result<void, FileError>> {
+    const sourceResult = await this.resolveFilePath(sourcePath, AgentResourceAccessIntents.Remove);
+    if (!sourceResult.ok) return sourceResult;
+    const destinationResult = await this.resolveFilePath(destinationPath, AgentResourceAccessIntents.Replace);
+    if (!destinationResult.ok) return destinationResult;
+    const source = sourceResult.value;
+    const destination = destinationResult.value;
+    if (abortSignal?.aborted) return err(new FileError("aborted", "aborted", destination));
+
+    try {
+      await mkdir(path.dirname(destination), { recursive: true });
+      if (abortSignal?.aborted) return err(new FileError("aborted", "aborted", destination));
+      await this.assertStableWorkspaceTarget(sourcePath, AgentResourceAccessIntents.Remove, source);
+      await this.assertStableWorkspaceTarget(destinationPath, AgentResourceAccessIntents.Replace, destination);
+      await rename(source, destination);
+      await this.assertStableWorkspaceTarget(destinationPath, AgentResourceAccessIntents.Replace, destination);
+      return ok(undefined);
+    } catch (error) {
+      return err(toFileError(error, source));
     }
   }
 

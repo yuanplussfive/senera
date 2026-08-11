@@ -7,14 +7,6 @@ describe("sandbox provider selection", () => {
       selectAgentSandboxProvider({
         preference: "auto",
         platform: "linux",
-        microsandboxHostAvailable: () => true,
-      }),
-    ).toBe("microsandbox");
-    expect(
-      selectAgentSandboxProvider({
-        preference: "auto",
-        platform: "linux",
-        microsandboxHostAvailable: () => false,
         capabilities: { dockerEngine: true, registeredDockerRuntimes: ["runc", "runsc"] },
       }),
     ).toBe("gvisor");
@@ -22,15 +14,14 @@ describe("sandbox provider selection", () => {
       selectAgentSandboxProvider({
         preference: "auto",
         platform: "linux",
-        microsandboxHostAvailable: () => false,
         capabilities: { dockerEngine: true, registeredDockerRuntimes: ["runc"] },
       }),
     ).toBe("docker-engine");
   });
 
-  test("keeps desktop platforms on microsandbox and rejects an explicit gVisor selection", () => {
-    expect(selectAgentSandboxProvider({ preference: "auto", platform: "win32" })).toBe("microsandbox");
-    expect(() => selectAgentSandboxProvider({ preference: "gvisor", platform: "darwin" })).toThrow("requires linux");
+  test("does not invent a Docker provider before host capabilities have been probed", () => {
+    expect(selectAgentSandboxProvider({ preference: "auto", platform: "win32" })).toBeUndefined();
+    expect(selectAgentSandboxProvider({ preference: "auto", platform: "darwin" })).toBeUndefined();
   });
 
   test("rejects an explicitly selected provider when probed capabilities prove it unavailable", () => {
@@ -39,7 +30,6 @@ describe("sandbox provider selection", () => {
         preference: "gvisor",
         platform: "linux",
         capabilities: { dockerEngine: true, registeredDockerRuntimes: ["runc"] },
-        microsandboxHostAvailable: () => false,
       }),
     ).toThrow("registered-runsc");
     expect(() =>
@@ -47,7 +37,6 @@ describe("sandbox provider selection", () => {
         preference: "docker-engine",
         platform: "linux",
         capabilities: { dockerEngine: false, registeredDockerRuntimes: [] },
-        microsandboxHostAvailable: () => false,
       }),
     ).toThrow("docker-engine");
   });

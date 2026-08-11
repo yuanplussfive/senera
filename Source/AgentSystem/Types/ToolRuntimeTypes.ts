@@ -3,6 +3,7 @@ import type {
   AgentToolProcessResponseVersion,
 } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 import type { RegisteredTool } from "./AgentToolRuntimeTypes.js";
+import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
 import type { ToolArtifactPolicyManifest } from "./AgentToolContractTypes.js";
 import type { AgentToolResultSummary } from "./AgentToolResultSummaryTypes.js";
 import type { SeneraOutputSpoolDescriptor } from "../Execution/SeneraOutputSpool.js";
@@ -13,6 +14,10 @@ import type {
   AgentToolFailure,
 } from "../ToolRuntime/AgentToolResultOutcome.js";
 import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
+import type {
+  AgentToolSemanticProjection,
+  AgentToolSemanticProjectionRequest,
+} from "../ToolRuntime/AgentToolSemanticProjection.js";
 
 export interface ExecutedToolCallResult {
   callId: string;
@@ -26,6 +31,8 @@ export interface ExecutedToolCallResult {
     stderr: string;
   };
   outputCapture?: SeneraOutputSpoolDescriptor;
+  semanticProjectionRequest?: AgentToolSemanticProjectionRequest;
+  semanticProjection?: AgentToolSemanticProjection;
   result: unknown;
   outcome: AgentToolExecutionOutcome;
   artifact?: ExecutedToolCallArtifact;
@@ -197,6 +204,9 @@ export interface ToolExecutionContext {
 
 export interface AgentExtensionRegistryLike {
   getTool(name: string): RegisteredTool | undefined;
+  listTools?(): readonly RegisteredTool[];
+  getSkill?(name: string): RegisteredSkill | undefined;
+  listSkills?(): readonly RegisteredSkill[];
 }
 
 export interface AgentToolProcessError {

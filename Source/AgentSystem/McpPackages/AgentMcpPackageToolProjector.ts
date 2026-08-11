@@ -1,6 +1,11 @@
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
-import { ToolLoadingModes, ToolResultAssessmentPolicies } from "../Types/AgentToolContractTypes.js";
+import {
+  AgentToolChildGrantModes,
+  ToolLoadingModes,
+  ToolResultAssessmentPolicies,
+  ToolSchedulingModes,
+} from "../Types/AgentToolContractTypes.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type { AgentMcpToolDeclaration } from "../Mcp/AgentMcpToolCatalogChange.js";
 import { agentMcpPackageToolName } from "./AgentMcpPackageIdentity.js";
@@ -55,11 +60,13 @@ export function projectAgentMcpPackageTools(
     runtime: {
       Lifecycle: "Persistent" as const,
       ResultAssessment: ToolResultAssessmentPolicies.ProcessExit,
+      Scheduling: ToolSchedulingModes.ResourceClaims,
       Capabilities: { Cancellation: true },
     },
     observationProjection: StandardAgentToolObservationProjection,
     sources: [],
     search: { Summary: declaration.description ?? declaration.name },
+    childGrant: AgentToolChildGrantModes.Inherit,
     evidenceCapabilities: [],
     approval: declaration.annotations?.destructiveHint
       ? { Mode: "ask" as const, Reason: "MCP tool declares a destructive side effect." }

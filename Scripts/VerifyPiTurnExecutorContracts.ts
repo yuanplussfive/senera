@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { AgentEvent as AgentSessionEvent } from "@earendil-works/pi-agent-core";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import { AgentEventKinds } from "../Source/AgentSystem/Events/AgentEvent.js";
 import type { AgentDomainEvent } from "../Source/AgentSystem/Events/AgentEvent.js";
@@ -10,10 +10,6 @@ import type {
   AgentPiSessionResult,
   AgentPiSessionEventListener,
 } from "../Source/AgentSystem/Pi/AgentPiSubstrate.js";
-import {
-  AgentPiTurnContextRegistry,
-  type AgentPiTurnContextStore,
-} from "../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
 import type { ExecutedToolCallResult } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import type { AgentPiTurnRequest, AgentPiTurnResult } from "../Source/AgentSystem/Pi/AgentPiTurnTypes.js";
 import type { AgentRootCommand } from "../Source/AgentSystem/AgentRootCommand.js";
@@ -23,6 +19,8 @@ import { createAgentToolAccessGrant } from "../Source/AgentSystem/ToolRuntime/Ag
 import { AgentToolSuccessOutcome } from "../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
 import { AgentToolObservationContextCompiler } from "../Source/AgentSystem/ToolRuntime/AgentToolObservationContextCompiler.js";
 import { StandardAgentToolObservationProjection } from "../Source/AgentSystem/ToolRuntime/AgentToolObservationProjectionPlan.js";
+import type { AgentPiTurnState } from "../Source/AgentSystem/Pi/AgentPiTurnState.js";
+import { AgentLoopEventFactory } from "../Source/AgentSystem/Loop/AgentLoopEventFactory.js";
 
 const modelProviderConfig: ResolvedAgentModelProviderConfig = {
   Id: "verification-model",
@@ -33,6 +31,7 @@ const modelProviderConfig: ResolvedAgentModelProviderConfig = {
   ApiKey: "test-key",
   ApiVersion: "",
   Model: "verification-model",
+  ToolPlanningMode: "baml",
   ContextWindowTokens: 128_000,
   Temperature: 0,
   MaxOutputTokens: -1,
@@ -72,8 +71,7 @@ async function main(): Promise<void> {
     pi.lastSessionOptions?.activeSkills?.map((skill) => skill.name),
     ["VerifyWorkspaceSkill"],
   );
-  assert.equal(typeof pi.lastSessionOptions?.piTurnContextId, "string");
-  assert.equal(readTurnContext(runtime.piTurnContexts, pi.lastSessionOptions?.piTurnContextId), undefined);
+  assert.equal(pi.lastSessionOptions?.turnState?.context.rootCommand, command.rootCommand);
 
   const assignedHistory = pi.session.assignedHistoryTexts();
   assert.equal(assignedHistory.length, 2);
@@ -144,10 +142,7 @@ async function main(): Promise<void> {
 
 function createRuntime(pi: FakePiRuntime, diagnostics: AgentPiDiagnosticEvent[] = []): AgentPiTurnRuntimePort {
   const piSessions = new AgentPiActiveSessionRegistry();
-  const piTurnContexts = new AgentPiTurnContextRegistry();
   pi.sessionRegistry = piSessions;
-  pi.turnContexts = piTurnContexts;
-  pi.session.turnContexts = piTurnContexts;
   return {
     services: {
       pi,
@@ -164,7 +159,6 @@ function createRuntime(pi: FakePiRuntime, diagnostics: AgentPiDiagnosticEvent[] 
     piDiagnostics: (event) => {
       diagnostics.push(event);
     },
-    piTurnContexts,
   };
 }
 
@@ -177,15 +171,14 @@ async function verifyAbortCleansContext(command: AgentPiTurnRequest): Promise<vo
   const runPromise = abortingExecutor.run(command, undefined, controller.signal);
 
   await abortingPi.session.promptStarted;
-  const contextId = abortingPi.lastSessionOptions?.piTurnContextId;
-  assert.equal(typeof contextId, "string");
-  assert.equal(readTurnContext(abortingRuntime.piTurnContexts, contextId)?.rootCommand, command.rootCommand);
+  const turnState = abortingPi.lastSessionOptions?.turnState;
+  assert.equal(turnState?.context.rootCommand, command.rootCommand);
   controller.abort("verification abort");
   abortingPi.session.finishPrompt();
   await assert.rejects(runPromise, /verification abort/);
   assert.equal(abortingPi.session.abortCount, 1);
   assert.equal(abortingPi.session.disposed, true);
-  assert.equal(readTurnContext(abortingRuntime.piTurnContexts, contextId), undefined);
+  assert.equal(abortingPi.session.disposed, true);
 }
 
 async function verifyAbortDuringSessionCreate(command: AgentPiTurnRequest): Promise<void> {
@@ -197,13 +190,10 @@ async function verifyAbortDuringSessionCreate(command: AgentPiTurnRequest): Prom
   const runPromise = abortingExecutor.run(command, undefined, controller.signal);
 
   await abortingPi.createStarted;
-  const contextId = abortingPi.lastSessionOptions?.piTurnContextId;
-  assert.equal(typeof contextId, "string");
-  assert.equal(readTurnContext(abortingRuntime.piTurnContexts, contextId)?.rootCommand, command.rootCommand);
+  const turnState = abortingPi.lastSessionOptions?.turnState;
+  assert.equal(turnState?.context.rootCommand, command.rootCommand);
   controller.abort("verification create abort");
   await assert.rejects(runPromise, /verification create abort/);
-  assert.equal(readTurnContext(abortingRuntime.piTurnContexts, contextId), undefined);
-
   await abortingPi.finishCreate();
   assert.equal(abortingPi.session.disposed, true);
 }
@@ -260,13 +250,14 @@ function createRunPiTurnCommand(): AgentPiTurnRequest {
     includeToolCatalog: false,
     visibleOutput: {
       audience: "runtime",
-      start: "pi_tool_turn",
-      format: "openai_tool_calls_or_final_text",
+      start: "answer_body",
+      format: "final_text",
       rules: [],
       repair: { instruction: "按 Pi 工具调用协议重试。", rules: [] },
     },
   };
   return {
+    approvalMode: "agent",
     sessionId: "verify-pi-session",
     requestId: "verify-pi-turn-executor",
     step: 1,
@@ -312,19 +303,9 @@ function createRunPiTurnCommand(): AgentPiTurnRequest {
   };
 }
 
-function readTurnContext(registry: Pick<AgentPiTurnContextStore, "acquire">, contextId: string | undefined) {
-  const lease = registry.acquire(contextId);
-  try {
-    return lease?.context;
-  } finally {
-    lease?.release();
-  }
-}
-
 class FakePiRuntime {
   readonly session = new FakePiSession();
   sessionRegistry?: AgentPiActiveSessionRegistry;
-  turnContexts?: AgentPiTurnContextRegistry;
   lastSessionOptions?: AgentPiSessionOptions;
   historyMigrationRequired = true;
   deferCreate = false;
@@ -345,9 +326,9 @@ class FakePiRuntime {
     return {
       id: "verification-model",
       name: "verification-model",
-      api: "openai-completions" as const,
-      provider: "senera-pi-proxy",
-      baseUrl: "http://127.0.0.1:8787/v1",
+      api: "senera-planning" as const,
+      provider: "senera",
+      baseUrl: "senera://planning",
       reasoning: false,
       input: ["text" as const],
       cost: {
@@ -363,7 +344,7 @@ class FakePiRuntime {
 
   async leaseTurn(options: AgentPiSessionOptions): Promise<AgentPiSessionResult> {
     this.lastSessionOptions = options;
-    this.session.piTurnContextId = options.piTurnContextId;
+    this.session.turnState = options.turnState;
     this.createStartedResolve();
     if (this.deferCreate) {
       await this.createFinished;
@@ -403,8 +384,7 @@ class FakePiSession {
   abortCount = 0;
   unsubscribeCount = 0;
   promptFailure?: Error;
-  piTurnContextId?: string;
-  turnContexts?: AgentPiTurnContextRegistry;
+  turnState?: AgentPiTurnState;
   onPromptStarted?: () => void;
   private promptStartedResolve!: () => void;
   private promptFinishResolve!: () => void;
@@ -474,6 +454,9 @@ class FakePiSession {
   }
 
   private async emitScriptedEvents(): Promise<void> {
+    this.turnState?.registerToolBatch("verification-batch", [
+      { toolCallId: "call_echo", toolName: "SeneraEchoTool", input: { text: "检查当前工作区" } },
+    ]);
     await this.emit({
       type: "message_update",
       message: {
@@ -508,7 +491,27 @@ class FakePiSession {
         text: "检查当前工作区",
       },
     });
-    this.turnContexts?.registerExecutedToolResult(this.piTurnContextId, "call_echo", executedToolResult());
+    const turnState = this.turnState;
+    if (!turnState) throw new Error("Verification tool execution requires a turn state.");
+    const lifecycle = new AgentLoopEventFactory();
+    await turnState.context.onEvent?.(
+      lifecycle.toolCallStarted(turnState.context.requestId, turnState.context.step, 0, "SeneraEchoTool", "call_echo", {
+        batchId: "verification-batch",
+      }),
+    );
+    this.turnState?.registerExecutedToolResult("call_echo", executedToolResult());
+    await turnState.context.onEvent?.(
+      lifecycle.toolCallCompleted(
+        turnState.context.requestId,
+        turnState.context.step,
+        0,
+        "SeneraEchoTool",
+        "call_echo",
+        undefined,
+        { batchId: "verification-batch" },
+      ),
+    );
+    turnState.recordExecutorLifecycleStatus("call_echo", "completed");
     await this.emit({
       type: "tool_execution_end",
       toolCallId: "call_echo",

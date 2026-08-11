@@ -9,7 +9,7 @@
 - [学习系统边界与诊断](./Learning.md)
 - [前端设置工作台约束](./FrontendSettingsWorkbench.md)
 - [前端 Ladle 组件约束](./FrontendLadleConstraints.md)
+- [前端动效策略](./FrontendMotionPolicy.md)
 - [前端性能预算](./FrontendPerformanceBudgets.md)
-- [前端 Agent 工作区全面重构方案](./FrontendAgentWorkspaceRefactor.md)
 
 如果改动会影响主循环、规划器、工具执行、记忆或前端事件投影，先读 [核心链路导览](../Architecture/CoreFlow.md)。

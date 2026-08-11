@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { motion } from "framer-motion";
+import { useId, useState } from "react";
 import { ChevronDown, GitBranch } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { MotionDisclosure, motionTimings, useMotionLevel } from "../../shared/motion";
 import type { RunRecord } from "../../store/sessionStore";
 import { summarizeRun } from "../workflow/runSummary";
 import { readRunStatusLabel } from "../workflow/stepPresentation";
@@ -19,6 +21,8 @@ export function ThinkingSummaryBar({
   onViewWorkflow?: () => void;
 }): JSX.Element | null {
   const [expanded, setExpanded] = useState(false);
+  const detailId = useId();
+  const { disableMotion, reduceMotion } = useMotionLevel();
 
   if (!run || (run.status === "running" && presentation !== "live-final-answer") || run.steps.length === 0) return null;
 
@@ -30,6 +34,7 @@ export function ThinkingSummaryBar({
       <button
         type="button"
         className="group inline-flex max-w-full items-center gap-1.5 rounded-md py-1 text-left text-[11.5px] text-ink-500 transition-colors hover:text-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+        aria-controls={detailId}
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
@@ -42,9 +47,17 @@ export function ThinkingSummaryBar({
             </span>
           ) : null}
         </span>
-        <ChevronDown className={cn("h-3 w-3 shrink-0 text-ink-400 transition-transform", expanded && "rotate-180")} />
+        <motion.span
+          animate={{ rotate: expanded ? 180 : 0 }}
+          transition={disableMotion || reduceMotion ? { duration: 0 } : motionTimings.base}
+          className="inline-flex shrink-0"
+        >
+          <ChevronDown className="h-3 w-3 text-ink-400" />
+        </motion.span>
       </button>
-      {expanded ? <SummaryDetail run={run} onViewWorkflow={onViewWorkflow} /> : null}
+      <MotionDisclosure id={detailId} open={expanded}>
+        <SummaryDetail run={run} onViewWorkflow={onViewWorkflow} />
+      </MotionDisclosure>
     </div>
   );
 }

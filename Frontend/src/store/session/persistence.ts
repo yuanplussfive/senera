@@ -1,8 +1,13 @@
 import { createJSONStorage, type PersistOptions } from "zustand/middleware";
 import type { StoreState } from "./types";
 import { normalizeUserProfile } from "./userProfile";
-import type { MotionLevel } from "../../shared/motion";
+import type { MotionLevel } from "../../shared/motion/types";
 import { clampWorkflowDockWidth, DEFAULT_WORKFLOW_DOCK_WIDTH } from "../../shared/responsive/workflowDock";
+import {
+  ExecutionApprovalModes,
+  isExecutionApprovalMode,
+  type ExecutionApprovalMode,
+} from "../../api/executionApprovalMode";
 
 export const PERSIST_KEY = "senera-frontend@v1";
 
@@ -12,6 +17,7 @@ type PersistedSessionState = Partial<
     | "defaultSidebarCollapsed"
     | "defaultRightPanelCollapsed"
     | "motionLevel"
+    | "executionApprovalMode"
     | "selectedModelProviderId"
     | "selectedModelProviderIdsBySession"
     | "userProfile"
@@ -21,7 +27,7 @@ type PersistedSessionState = Partial<
 
 export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionState> = {
   name: PERSIST_KEY,
-  version: 6,
+  version: 7,
   storage: createJSONStorage(() => localStorage),
   // 后端是 SSOT；前端只缓存 UI 偏好 + 会话元数据（标题/时间）。
   // messages 不持久化 —— 后端 session.history 会权威回放。
@@ -29,6 +35,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
     defaultSidebarCollapsed: state.defaultSidebarCollapsed,
     defaultRightPanelCollapsed: state.defaultRightPanelCollapsed,
     motionLevel: state.motionLevel,
+    executionApprovalMode: state.executionApprovalMode,
     selectedModelProviderId: state.selectedModelProviderId,
     selectedModelProviderIdsBySession: state.selectedModelProviderIdsBySession,
     userProfile: state.userProfile,
@@ -43,6 +50,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       defaultSidebarCollapsed: readPersistedBoolean(p.defaultSidebarCollapsed, false),
       defaultRightPanelCollapsed: readPersistedBoolean(p.defaultRightPanelCollapsed, true),
       motionLevel,
+      executionApprovalMode: readPersistedExecutionApprovalMode(p.executionApprovalMode),
       selectedModelProviderId: p.selectedModelProviderId,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(p.selectedModelProviderIdsBySession),
       userProfile: p.userProfile,
@@ -61,6 +69,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       defaultSidebarCollapsed,
       defaultRightPanelCollapsed,
       motionLevel: readPersistedMotionLevel(p.motionLevel),
+      executionApprovalMode: readPersistedExecutionApprovalMode(p.executionApprovalMode),
       selectedModelProviderId: p.selectedModelProviderId ?? null,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(p.selectedModelProviderIdsBySession),
       userProfile: normalizeUserProfile(p.userProfile),
@@ -85,6 +94,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       missingOnServerIds: {},
       pendingCreatedSessionIds: {},
       pendingDeletedSessionIds: {},
+      childSessionParentIds: {},
     };
   },
 };
@@ -101,6 +111,10 @@ function readPersistedModelSelectionBySession(value: unknown): Record<string, st
 
 function readPersistedMotionLevel(value: unknown): MotionLevel {
   return value === "reduced" || value === "none" || value === "full" ? value : "full";
+}
+
+function readPersistedExecutionApprovalMode(value: unknown): ExecutionApprovalMode {
+  return isExecutionApprovalMode(value) ? value : ExecutionApprovalModes.Agent;
 }
 
 function readPersistedBoolean(value: unknown, fallback: boolean): boolean {
@@ -123,6 +137,7 @@ export function readPersistedSessionPreferences(rawValue: string | null): Persis
       defaultRightPanelCollapsed:
         typeof state.defaultRightPanelCollapsed === "boolean" ? state.defaultRightPanelCollapsed : undefined,
       motionLevel: readPersistedMotionLevel(state.motionLevel),
+      executionApprovalMode: readPersistedExecutionApprovalMode(state.executionApprovalMode),
       selectedModelProviderId:
         typeof state.selectedModelProviderId === "string" ? state.selectedModelProviderId : undefined,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(state.selectedModelProviderIdsBySession),

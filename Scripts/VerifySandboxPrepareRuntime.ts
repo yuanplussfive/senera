@@ -1,170 +1,90 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { prepareSandboxRuntime, readOptions, type PrepareOptions } from "../Build/PrepareSandboxRuntime.js";
+import { PassThrough, type Readable } from "node:stream";
+import Docker from "dockerode";
+import { prepareSandboxRuntime } from "../Build/PrepareSandboxRuntime.js";
 import {
+  AgentSandboxRuntimeImageLabels,
   readAgentSandboxDistributionContract,
   resolveAgentSandboxDistributionTarget,
 } from "../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
 
-class FakeMicrosandboxModule {
-  readonly createdImages: string[] = [];
-  readonly Sandbox = {
-    builder: (name: string) => new FakeSandboxBuilder(name, this.createdImages, this.runtimeAvailable),
-    listWith: async () => [],
-    remove: async () => undefined,
-  };
+const distribution = readAgentSandboxDistributionContract();
+const target = resolveAgentSandboxDistributionTarget(distribution);
+const labels = {
+  [AgentSandboxRuntimeImageLabels.distributionId]: distribution.id,
+  [AgentSandboxRuntimeImageLabels.distributionVersion]: distribution.version,
+  [AgentSandboxRuntimeImageLabels.target]: process.arch,
+  [AgentSandboxRuntimeImageLabels.sourceImage]: target.sourceImage,
+};
+const builtTags: string[] = [];
+const appliedTags: string[] = [];
+const probeCommands: string[] = [];
+const progress: string[] = [];
 
-  constructor(private readonly runtimeAvailable: boolean) {}
-}
-
-class FakeSandboxBuilder {
-  private selectedImage = "";
-
-  constructor(
-    readonly name: string,
-    private readonly createdImages: string[],
-    private readonly runtimeAvailable: boolean,
-  ) {}
-
-  image(image: string): this {
-    this.selectedImage = image;
-    return this;
-  }
-
-  pullPolicy(_policy: string): this {
-    return this;
-  }
-
-  registry(): this {
-    return this;
-  }
-
-  cpus(_value: number): this {
-    return this;
-  }
-
-  memory(_value: number): this {
-    return this;
-  }
-
-  ephemeral(enabled: boolean): this {
-    assert.equal(enabled, false);
-    return this;
-  }
-
-  labels(labels: Record<string, string>): this {
-    assert.deepEqual(labels, {
-      "senera.owner": "senera",
-      "senera.purpose": "runtime-preparation",
-    });
-    return this;
-  }
-
-  replace(): this {
-    return this;
-  }
-
-  quietLogs(): this {
-    return this;
-  }
-
-  disableMetricsSample(): this {
-    return this;
-  }
-
-  disableNetwork(): this {
-    return this;
-  }
-
-  maxDuration(_seconds: number): this {
-    return this;
-  }
-
-  async create(): Promise<FakeSandbox> {
-    if (!this.runtimeAvailable) throw new Error("official microsandbox runtime unavailable");
-    assert.match(this.name, /^senera-sandbox-prepare-/);
-    assert.ok(this.selectedImage);
-    this.createdImages.push(this.selectedImage);
-    return new FakeSandbox(this.name);
-  }
-
-  async createWithPullProgress() {
-    const sandbox = await this.create();
+const docker = {
+  info: async () => ({ OSType: "linux", Runtimes: { runc: {} } }),
+  version: async () => ({ ApiVersion: "1.50" }),
+  buildImage: async (context: Readable, options: { t?: string }) => {
+    context.resume();
+    if (options.t) builtTags.push(options.t);
+    const stream = new PassThrough();
+    stream.end();
+    return stream;
+  },
+  getImage: (reference: string) => ({
+    tag: async ({ repo, tag }: { repo: string; tag: string }) => {
+      appliedTags.push(`${reference}->${repo}:${tag}`);
+    },
+    inspect: async () => ({ Config: { Labels: labels } }),
+  }),
+  createContainer: async (options: Docker.ContainerCreateOptions) => {
+    probeCommands.push([...(options.Entrypoint ?? []), ...(options.Cmd ?? [])].join(" "));
     return {
-      awaitSandbox: async () => sandbox,
-      async *[Symbol.asyncIterator]() {
-        yield { kind: "complete" as const, reference: "test-image" };
-      },
+      start: async () => undefined,
+      wait: async () => ({ StatusCode: 0 }),
+      remove: async () => undefined,
     };
-  }
-}
+  },
+  modem: {
+    followProgress: (
+      _stream: NodeJS.ReadableStream,
+      completed: (error: Error | null, output: readonly unknown[]) => void,
+      report?: (event: unknown) => void,
+    ) => {
+      report?.({ stream: "sandbox image built" });
+      completed(null, []);
+    },
+  },
+} as unknown as Docker;
 
-class FakeSandbox {
-  constructor(readonly name: string) {}
-  async stopWithTimeout(_timeoutMs: number): Promise<void> {}
-  async kill(): Promise<void> {}
-}
-
-assert.deepEqual(readOptions([]), {
-  baseDir: undefined,
+const prepared = await prepareSandboxRuntime({
+  workspaceRoot: process.cwd(),
+  docker,
+  log: (message) => progress.push(message),
 });
 
-const tempRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-prepare-"));
-try {
-  const preparedTerminalRuntimeRoots: string[] = [];
-  const prepareTerminalRuntime = async (options: { sandboxRuntimeBaseDir: string }) => {
-    preparedTerminalRuntimeRoots.push(options.sandboxRuntimeBaseDir);
-    return { runtimeRoot: options.sandboxRuntimeBaseDir, prepared: true, fingerprint: "verify" };
-  };
-  const available = new FakeMicrosandboxModule(true);
-  const availableOptions = prepareOptionsFixture(tempRoot, "available");
-  const sandboxContract = readAgentSandboxDistributionContract();
-  const sandboxTarget = resolveAgentSandboxDistributionTarget(sandboxContract);
-  const archiveInstaller = async () => ({
-    archivePath: path.join(tempRoot, "SandboxImage", sandboxTarget.archive.assetName),
-    imported: true,
-    manifest: {
-      formatVersion: 5 as const,
-      distributionId: "senera-node-runtime",
-      archiveVersion: sandboxContract.archiveVersion,
-      microsandboxVersion: sandboxContract.microsandboxVersion,
-      target: process.arch,
-      sourceImage: sandboxTarget.sourceImage,
-      runtimeImage: sandboxTarget.runtimeImage,
-      configDigest: sandboxTarget.configDigest,
-      asset: {
-        format: sandboxTarget.archive.format,
-        mediaType: sandboxTarget.archive.mediaType,
-        compression: sandboxTarget.archive.compression,
-        compressedMediaType: sandboxTarget.archive.compressedMediaType,
-        fileName: sandboxTarget.archive.assetName,
-        sizeBytes: 1,
-        uncompressedSizeBytes: 1,
-        sha256: "0".repeat(64),
-      },
-    },
-  });
-  await prepareSandboxRuntime(availableOptions, available, prepareTerminalRuntime, archiveInstaller);
-  assert.deepEqual(available.createdImages, [sandboxTarget.runtimeImage]);
-
-  const missing = new FakeMicrosandboxModule(false);
-  const missingOptions = prepareOptionsFixture(tempRoot, "missing");
-  await assert.rejects(() => prepareSandboxRuntime(missingOptions, missing, prepareTerminalRuntime, archiveInstaller), {
-    message: /official microsandbox runtime unavailable/u,
-  });
-  assert.deepEqual(missing.createdImages, []);
-  assert.deepEqual(preparedTerminalRuntimeRoots, [availableOptions.baseDir]);
-} finally {
-  await rm(tempRoot, { recursive: true, force: true });
-}
+assert.equal(prepared.provider, "docker-engine");
+assert.deepEqual(prepared.images, [target.runtimeImage, target.registryImage]);
+assert.deepEqual(
+  prepared.probes,
+  target.probes.map((probe) => probe.id),
+);
+assert.deepEqual(builtTags, [target.runtimeImage]);
+assert.deepEqual(appliedTags, [`${target.runtimeImage}->${splitTag(target.registryImage).join(":")}`]);
+assert.deepEqual(
+  probeCommands,
+  target.probes.map((probe) => [probe.command, ...probe.arguments].join(" ")),
+);
+assert.ok(progress.some((message) => message.includes("sandbox image built")));
+await assert.rejects(
+  () => prepareSandboxRuntime({ workspaceRoot: process.cwd(), architecture: "unsupported", docker }),
+  /does not publish a runtime image/u,
+);
 
 console.log("Sandbox prepare runtime verification passed.");
 
-function prepareOptionsFixture(root: string, name: string): PrepareOptions {
-  const baseDir = path.join(root, name, "runtime");
-  return {
-    baseDir,
-  };
+function splitTag(reference: string): [string, string] {
+  const separator = reference.lastIndexOf(":");
+  assert.ok(separator > reference.lastIndexOf("/"));
+  return [reference.slice(0, separator), reference.slice(separator + 1)];
 }

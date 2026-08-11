@@ -34,7 +34,7 @@ export const runToolAndAnswerEventHandlers = {
     const policy = AssistantMessageProjectionPolicies[data.kind];
     const messageId = data.messageId?.trim() || `${env.requestId ?? "assistant"}-message-${env.sequence}`;
 
-    upsertMessageByRequestId(session, {
+    const inserted = upsertMessageByRequestId(session, {
       id: messageId,
       role: "assistant",
       content,
@@ -43,7 +43,7 @@ export const runToolAndAnswerEventHandlers = {
       requestId: env.requestId,
       metadata: run?.modelProvider ? { run: { modelProvider: run.modelProvider } } : undefined,
     });
-    bumpSessionMessageCount(session);
+    if (inserted) bumpSessionMessageCount(session);
 
     if (run) {
       projectAssistantMessageRunState(run, messageId, data, content, policy);
@@ -85,6 +85,22 @@ export const runToolAndAnswerEventHandlers = {
       endedAt: env.timestamp,
       toolBatch,
     });
+    for (const [index, call] of (data.calls ?? []).entries()) {
+      upsertStep(run, {
+        id: `tool-${call.callId}`,
+        kind: "tool",
+        title: frontendMessage("workflow.projection.toolCall", { toolName: call.toolName }),
+        status: "pending",
+        startedAt: env.timestamp,
+        toolName: call.toolName,
+        callId: call.callId,
+        toolBatch: {
+          ...toolBatch,
+          index,
+          size: data.toolCount,
+        },
+      });
+    }
   },
 
   [EventKinds.ToolCallStarted]: (state, env) => {
@@ -221,6 +237,7 @@ export const runToolAndAnswerEventHandlers = {
 } satisfies RunEventHandlerMap;
 
 function resetCompletedAssistantStreamBeforeTool(run: NonNullable<ReturnType<typeof currentRun>>): void {
+  run.outputState = "pending";
   run.streamingRaw = "";
   run.visibleText = "";
   run.displayText = "";
@@ -278,6 +295,7 @@ function projectAssistantMessageRunState(
   run.visibleKind = policy.visibleKind;
   run.decisionMode = policy.decisionMode;
   run.plannedDecisionMode = undefined;
+  run.outputState = data.kind === "tool_preface" ? "pending" : data.terminal ? "committed" : "available";
   if (data.terminal) {
     run.expectedOutputMode = "final_text";
   }

@@ -16,6 +16,7 @@ const WorkspaceLayout = {
     credentials: ["credentials", "credentials.sqlite"],
     sessions: ["sessions", "sessions.sqlite"],
     memory: ["memory", "memory.sqlite"],
+    orchestration: ["orchestration", "orchestration.sqlite"],
     toolSearch: ["tool-search", "tool-search.sqlite"],
   },
   configSecretKey: ["config", "config-secrets.key"],
@@ -69,6 +70,7 @@ export interface AgentWorkspaceLayout {
     readonly credentials: string;
     readonly sessions: string;
     readonly memory: string;
+    readonly orchestration: string;
     readonly toolSearch: string;
   };
   readonly configSecretKey: string;

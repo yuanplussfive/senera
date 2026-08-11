@@ -34,10 +34,23 @@ export interface ResolvedAgentLoopConfig {
 
 export interface AgentToolExecutionConfig {
   TimeoutSeconds?: number;
+  MaxConcurrentCallsPerRun?: number;
   MaxStdoutBytes?: number;
   MaxStderrBytes?: number;
+  SemanticAudit?: AgentToolSemanticAuditConfig;
   Environment?: AgentProcessEnvironmentConfig;
   Resources?: AgentExecutionResourcesConfig;
+}
+
+export const AgentToolSemanticAuditModes = {
+  Disabled: "disabled",
+  ApprovalSensitive: "approval_sensitive",
+} as const;
+
+export type AgentToolSemanticAuditMode = (typeof AgentToolSemanticAuditModes)[keyof typeof AgentToolSemanticAuditModes];
+
+export interface AgentToolSemanticAuditConfig {
+  Mode?: AgentToolSemanticAuditMode;
 }
 
 export interface AgentProcessEnvironmentConfig {
@@ -50,7 +63,10 @@ export interface AgentProcessEnvironmentConfig {
 export interface AgentExecutionResourcesConfig {
   MaxActive?: number;
   MaxBufferedBytes?: number;
+  OutputBatchMaxBytes?: number;
+  OutputBatchMaxDelayMs?: number;
   MaxInputBytes?: number;
+  InitialYieldSeconds?: number;
   MaxWaitSeconds?: number;
   IdleTtlSeconds?: number;
   TerminalTtlSeconds?: number;
@@ -60,14 +76,17 @@ export interface AgentExecutionResourcesConfig {
 
 export interface ResolvedAgentToolExecutionConfig {
   TimeoutMs: number;
+  MaxConcurrentCallsPerRun: number;
   MaxStdoutBytes: number;
   MaxStderrBytes: number;
+  SemanticAudit: Required<AgentToolSemanticAuditConfig>;
   Environment: Required<AgentProcessEnvironmentConfig>;
   Resources: ResolvedAgentExecutionResourcesConfig;
 }
 
 export interface ResolvedAgentExecutionResourcesConfig extends Required<AgentExecutionResourcesConfig> {
   MaxWaitMs: number;
+  InitialYieldMs: number;
   IdleTtlMs: number;
   TerminalTtlMs: number;
   SweepIntervalMs: number;
@@ -78,50 +97,37 @@ export interface AgentSandboxRuntimeConfig {
   Enabled?: boolean;
   Provider?: AgentSandboxProviderPreference;
   BaseDir?: string;
-  Provisioning?: AgentSandboxProvisioningConfig;
-  Gvisor?: AgentGvisorRuntimeConfig;
+  Docker?: AgentDockerRuntimeConfig;
 }
 
 export interface ResolvedAgentSandboxRuntimeConfig {
   Enabled: boolean;
   Provider: AgentSandboxProviderPreference;
   BaseDir: string;
-  Provisioning: ResolvedAgentSandboxProvisioningConfig;
-  Gvisor: Required<AgentGvisorRuntimeConfig>;
+  Docker: ResolvedAgentDockerRuntimeConfig;
 }
 
-export type AgentSandboxProviderPreference = "auto" | "microsandbox" | "gvisor" | "docker-engine";
+export type AgentSandboxProviderPreference = "auto" | "gvisor" | "docker-engine";
 
-export interface AgentGvisorRuntimeConfig {
-  WorkerSocketPath?: string;
+export type AgentDockerImagePullPolicy = "always" | "if-missing" | "never";
+
+export interface AgentDockerRuntimeConfig {
+  WorkerEndpoint?: string;
+  EngineEndpoint?: string;
+  DetectionTimeoutSeconds?: number;
   PreparationTimeoutSeconds?: number;
+  Image?: string;
+  PullPolicy?: AgentDockerImagePullPolicy;
 }
 
-export type AgentSandboxProvisioningConfig =
-  | {
-      Kind: "Oci";
-      Images: string[];
-      Registry?: AgentSandboxRegistryConfig;
-    }
-  | {
-      Kind: "ReleaseBundle";
-    };
-
-export type ResolvedAgentSandboxProvisioningConfig = AgentSandboxProvisioningConfig;
-
-export interface AgentSandboxRegistryConfig {
-  Authentication?: AgentSandboxRegistryAuthenticationConfig;
-  Insecure?: boolean;
-  CertificateFiles?: string[];
+export interface ResolvedAgentDockerRuntimeConfig {
+  WorkerEndpoint?: string;
+  EngineEndpoint?: string;
+  DetectionTimeoutSeconds: number;
+  PreparationTimeoutSeconds: number;
+  Image: string;
+  PullPolicy: AgentDockerImagePullPolicy;
 }
-
-export type AgentSandboxRegistryAuthenticationConfig =
-  | { Kind: "Anonymous" }
-  | {
-      Kind: "Basic";
-      UsernameEnvironmentVariable: string;
-      PasswordEnvironmentVariable: string;
-    };
 
 export interface AgentPresetsConfig {
   Enabled?: boolean;

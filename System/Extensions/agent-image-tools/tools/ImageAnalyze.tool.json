@@ -35,7 +35,12 @@
   "observationProjection": "observations/ImageAnalyze.projection.json",
   "permissions": ["uploads:read", "model:vision"],
   "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
-  "runtime": { "Lifecycle": "Immediate", "ProtocolVersion": 2, "ResultAssessment": "ProcessExit" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel"
+  },
   "resources": [],
   "sources": [],
   "evidenceCapabilities": []

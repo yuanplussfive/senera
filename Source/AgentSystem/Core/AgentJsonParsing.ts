@@ -16,7 +16,7 @@ export type JsonParseContextLabel = string;
  * generic prefix.
  *
  * This is the canonical replacement for the 7+ local `readJsonBody` /
- * `parseJson` / `readJson` copies previously spread across Auth, PiProxy,
+ * `parseJson` / `readJson` copies previously spread across Auth, model adapters,
  * ModelEndpoints, Sandbox, and ToolSearch.
  */
 export function parseJsonText(text: string, contextLabel?: JsonParseContextLabel): unknown {
@@ -54,7 +54,7 @@ export interface ReadStreamJsonBodyOptions {
   /**
    * Called when the byte limit is exceeded. The thrown error from this
    * callback propagates to the caller, allowing domain-specific error types
-   * (e.g. `PiProxyRequestTooLargeError`).
+   * (e.g. a domain-specific request-size error).
    */
   readonly onTooLarge?: () => Error;
 }
@@ -68,8 +68,7 @@ export interface ReadStreamJsonBodyOptions {
  *   `Error` if not provided).
  * - JSON parse failures throw a contextual `Error` via {@link parseJsonText}.
  *
- * Replaces the near-identical copies in `AgentAuthenticationHttpApi` and
- * `AgentPiProxyHttpApi`.
+ * Replaces near-identical stream-body readers previously maintained by HTTP adapters.
  */
 export async function readStreamJsonBody(
   stream: AsyncIterable<Buffer | Uint8Array | string>,

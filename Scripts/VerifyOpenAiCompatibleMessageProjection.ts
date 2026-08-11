@@ -3,11 +3,7 @@ import { buildOpenAiInput } from "../Source/AgentSystem/ModelEndpoints/OpenAiMes
 import { OpenAiChatCompletionsEndpoint } from "../Source/AgentSystem/ModelEndpoints/OpenAiChatCompletionsEndpoint.js";
 import { OpenAiResponsesEndpoint } from "../Source/AgentSystem/ModelEndpoints/OpenAiResponsesEndpoint.js";
 import type { AgentLanguageModelRequest } from "../Source/AgentSystem/ModelEndpoints/AgentLanguageModel.js";
-import { projectSeneraModelProviderToPi } from "../Source/AgentSystem/Pi/AgentPiModelProjector.js";
-import type {
-  AgentSystemConfig,
-  ResolvedAgentModelProviderConfig,
-} from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { EndpointRuntime } from "../Source/AgentSystem/ModelEndpoints/ModelEndpointTypes.js";
 
 const request: AgentLanguageModelRequest = {
@@ -46,12 +42,6 @@ assert.deepEqual(
 assert.equal(nativeDeveloper[0]?.content, "runtime system");
 assert.equal(nativeDeveloper[1]?.content, "developer rule");
 
-const piProvider = projectSeneraModelProviderToPi(createProvider({ DeveloperRole: false }), createConfig());
-assert.equal(piProvider.model.compat?.supportsDeveloperRole, false);
-
-const piDeveloperProvider = projectSeneraModelProviderToPi(createProvider({ DeveloperRole: true }), createConfig());
-assert.equal(piDeveloperProvider.model.compat?.supportsDeveloperRole, true);
-
 async function verifyOpenAiEndpointPayloadProjection(): Promise<void> {
   const chatHttp = new RecordingHttpClient({ choices: [{ message: { content: "ok" } }] });
   const chatEndpoint = new OpenAiChatCompletionsEndpoint(
@@ -82,31 +72,6 @@ async function verifyOpenAiEndpointPayloadProjection(): Promise<void> {
   assert.deepEqual(readMessageRoles(responsesDeveloperHttp.lastJsonPayload?.input), ["system", "developer", "user"]);
 }
 
-function createConfig(): AgentSystemConfig {
-  return {
-    Server: {
-      Host: "127.0.0.1",
-      Port: 8787,
-    },
-    DefaultModelProviderId: "main",
-    ModelProviderEndpoints: [
-      {
-        Id: "main",
-        BaseUrl: "https://example.invalid/v1",
-        ApiKey: "test-key",
-      },
-    ],
-    ModelProviders: [
-      {
-        Id: "main",
-        ProviderId: "main",
-        Endpoint: "ChatCompletions",
-        Model: "test-model",
-      },
-    ],
-  };
-}
-
 function createProvider(
   capabilities: NonNullable<ResolvedAgentModelProviderConfig["Capabilities"]>,
 ): ResolvedAgentModelProviderConfig {
@@ -119,6 +84,7 @@ function createProvider(
     ApiKey: "test-key",
     ApiVersion: "",
     Model: "test-model",
+    ToolPlanningMode: "baml",
     ContextWindowTokens: 128_000,
     Temperature: 0,
     MaxOutputTokens: -1,

@@ -3,20 +3,16 @@ import { persist } from "zustand/middleware";
 import { clampWorkflowDockWidth, DEFAULT_WORKFLOW_DOCK_WIDTH } from "../shared/responsive/workflowDock";
 import { immer } from "zustand/middleware/immer";
 import { DEFAULT_SESSION_TITLE } from "./session/defaults";
-import {
-  PERSIST_KEY,
-  clearPersistedStore,
-  readPersistedSessionPreferences,
-  sessionPersistOptions,
-} from "./session/persistence";
+import { clearPersistedStore, sessionPersistOptions } from "./session/persistence";
+import { installSessionPreferenceSynchronization } from "./session/sessionPreferenceSync";
 import {
   advanceRunDisplayText,
   applyEvent,
   bumpSessionMessageCount,
   createRunRecord,
-  deleteSessionRuntimeState,
   truncateSessionFromRequest,
   truncate,
+  markSessionDeletionRequested,
 } from "./session/sessionProjector";
 import {
   applyDefaultModelToActiveSession,
@@ -24,7 +20,9 @@ import {
   syncActiveSessionModelSelection,
 } from "./session/sessionModelSelection";
 import { DEFAULT_USER_PROFILE, normalizeUserProfile, type UserProfile } from "./session/userProfile";
-import type { MotionLevel } from "../shared/motion";
+import type { MotionLevel } from "../shared/motion/types";
+import type { ApprovalBatchReference } from "../api/approvalEventTypes";
+import { ExecutionApprovalModes, type ExecutionApprovalMode } from "../api/executionApprovalMode";
 import {
   type ConversationEntryDto,
   type ConversationEntryMetadata,
@@ -46,6 +44,7 @@ import {
   type ProviderModelsFailedData,
   type ProviderModelsSnapshotData,
   type SessionHistoryStepsData,
+  type RunCancellationProgressData,
   type UploadAttachmentData,
   type UserProfileData,
   type SystemToolSettingsItem,
@@ -75,14 +74,17 @@ export interface ChatMessage {
   metadata?: ConversationEntryMetadata;
 }
 
-export type TimelineStepKind = "understand" | "prompt" | "model" | "decision" | "tool" | "retry" | "answer" | "error";
+export type TimelineStepKind =
+  "understand" | "prompt" | "model" | "decision" | "delegation" | "tool" | "retry" | "answer" | "error";
 
-export type TimelineStepStatus = "pending" | "running" | "done" | "failed";
+export type TimelineStepStatus = "pending" | "running" | "cancelling" | "done" | "failed";
 
 export interface TimelineStepScope {
+  parentSessionId?: string;
   parentRequestId?: string;
   workflowName?: string;
   jobId?: string;
+  childRunId?: string;
   agentName?: string;
   role?: "childAgent" | "merge";
 }
@@ -144,15 +146,60 @@ export interface TimelineStep {
   promptTokenCount?: number;
   decisionKind?: string;
   xmlRoot?: string;
+  childRun?: TimelineChildRunState;
+}
+
+export interface TimelineChildRunMessage {
+  id: string;
+  direction: "child_to_parent" | "parent_to_child";
+  kind: "decision" | "follow_up" | "progress" | "response" | "steering";
+  content: string;
+  createdAt: string;
+}
+
+export interface TimelineChildRunState {
+  id: string;
+  status:
+    | "queued"
+    | "running"
+    | "wrapping_up"
+    | "cancelling"
+    | "awaiting_supervisor"
+    | "completed"
+    | "partial_completed"
+    | "interrupted"
+    | "timed_out"
+    | "failed"
+    | "cancelled";
+  checkpointAvailable?: boolean;
+  lastActivityAt?: string;
+  lastModelOutputAt?: string;
+  modelOutputCharacters?: number;
+  assistantTurns?: number;
+  toolCalls?: {
+    planned: number;
+    started: number;
+    completed: number;
+    failed: number;
+  };
+  activeTools?: string[];
+  artifactCount?: number;
+  softDeadlineAt?: string;
+  hardDeadlineAt?: string;
+  grantedExtensionMs?: number;
+  cancellation?: RunCancellationProgressData & { updatedAt: string };
+  messages: TimelineChildRunMessage[];
 }
 
 export interface RunActivityRecord {
   id: string;
+  parentId?: string;
   activity: import("../api/eventTypes").RunActivity;
   status: TimelineStepStatus;
   step?: number;
   startedAt: string;
   endedAt?: string;
+  durationMs?: number;
 }
 
 export interface RunRecord {
@@ -161,7 +208,9 @@ export interface RunRecord {
   revision: number;
   startedAt: string;
   endedAt?: string;
-  status: "running" | "completed" | "failed" | "cancelled";
+  status: "running" | "cancelling" | "completed" | "failed" | "cancelled";
+  /** Assistant output lifecycle is independent from Pi/session settlement. */
+  outputState: "pending" | "streaming" | "available" | "committed";
   /** 左侧对话使用的瞬时运行阶段；不进入工作流步骤或历史图。 */
   liveActivity?: import("../api/eventTypes").RunActivity;
   /** 左侧对话使用的实时活动流；与右侧工作流步骤完全独立。 */
@@ -293,6 +342,8 @@ export interface StoreState {
   pendingCreatedSessionIds: Record<string, boolean>;
   /** 本地已请求删除、尚未被 session.list 快照确认消失的 sessionId */
   pendingDeletedSessionIds: Record<string, boolean>;
+  /** 子代理事件声明的 childSessionId -> owning parent sessionId 关系。子会话不进入顶层聊天列表。 */
+  childSessionParentIds: Record<string, string>;
   modelProviders: ModelProviderListItem[];
   providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
   providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
@@ -302,6 +353,7 @@ export interface StoreState {
   defaultModelProviderId: string | null;
   /** Local per-conversation selections. The backend still receives the chosen id per request. */
   selectedModelProviderIdsBySession: Record<string, string>;
+  executionApprovalMode: ExecutionApprovalMode;
   presets: PresetItem[];
   activePresetName: string | null;
   presetsEnabled: boolean;
@@ -314,6 +366,8 @@ export interface StoreState {
   userProfile: UserProfile;
   /** 各目录快照是否已到达过一次；用于区分"尚未同步"与"确实为空"，避免空态闪现 */
   catalogSynced: { sessions: boolean; presets: boolean };
+  /** 连接切换时清除目录同步屏障，直到新的权威快照到达。 */
+  resetCatalogSyncState: () => void;
 
   selectSession: (id: string) => void;
   toggleSidebar: () => void;
@@ -328,6 +382,7 @@ export interface StoreState {
   registerCreatingSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
   renameSession: (sessionId: string, title: string) => void;
   markApprovalResolutionPending: (approvalId: string, decision?: ApprovalDecision) => void;
+  markApprovalBatchResolutionPending: (batch: ApprovalBatchReference, decision?: ApprovalDecision) => void;
   markInteractionInputResolutionPending: (interactionId: string, action?: InteractionInputAction) => void;
   appendUserMessage: (
     sessionId: string,
@@ -346,6 +401,7 @@ export interface StoreState {
   markHistoryLoadFailed: (sessionId: string) => void;
   selectModelProvider: (id: string) => void;
   applyDefaultModelToActiveSession: () => void;
+  setExecutionApprovalMode: (mode: ExecutionApprovalMode) => void;
   setUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   markUserProfileSynced: (profile?: UserProfileData) => void;
   replaceWithDevMockData: (sessions: SessionRecord[], activeSessionId?: string) => void;
@@ -386,12 +442,14 @@ export const useStore = create<StoreState>()(
       missingOnServerIds: {},
       pendingCreatedSessionIds: {},
       pendingDeletedSessionIds: {},
+      childSessionParentIds: {},
       modelProviders: [],
       providerModelCatalogs: {},
       providerModelErrors: {},
       selectedModelProviderId: null,
       defaultModelProviderId: null,
       selectedModelProviderIdsBySession: {},
+      executionApprovalMode: ExecutionApprovalModes.Agent,
       presets: [],
       activePresetName: null,
       presetsEnabled: true,
@@ -403,6 +461,12 @@ export const useStore = create<StoreState>()(
       toolSettingsSynced: { systemTools: false, mcpServers: false },
       userProfile: DEFAULT_USER_PROFILE,
       catalogSynced: { sessions: false, presets: false },
+
+      resetCatalogSyncState: () =>
+        set((state) => {
+          state.catalogSynced.sessions = false;
+          state.catalogSynced.presets = false;
+        }),
 
       selectSession: (id) =>
         set((state) => {
@@ -513,6 +577,21 @@ export const useStore = create<StoreState>()(
           }
         }),
 
+      markApprovalBatchResolutionPending: (batch, decision) =>
+        set((state) => {
+          const session = state.sessions[batch.sessionId];
+          const run = session?.runs.find((entry) => entry.requestId === batch.requestId);
+          if (!run) return;
+          let changed = false;
+          for (const approval of run.approvals ?? []) {
+            if (approval.batchId !== batch.batchId || approval.status !== "pending") continue;
+            approval.resolutionPending = decision !== undefined;
+            approval.pendingDecision = decision;
+            changed = true;
+          }
+          if (changed) run.revision += 1;
+        }),
+
       markInteractionInputResolutionPending: (interactionId, action) =>
         set((state) => {
           for (const session of Object.values(state.sessions)) {
@@ -529,27 +608,14 @@ export const useStore = create<StoreState>()(
 
       removeSession: (sessionId) =>
         set((state) => {
-          state.pendingDeletedSessionIds[sessionId] = true;
-          delete state.pendingCreatedSessionIds[sessionId];
-          deleteSessionRuntimeState(state, sessionId);
-          if (state.activeSessionId === sessionId) {
-            state.activeSessionId = state.sessionOrder[0] ?? null;
-          }
+          markSessionDeletionRequested(state, [sessionId]);
           syncActiveSessionModelSelection(state);
         }),
 
       clearAllSessions: (sessionIds) =>
         set((state) => {
-          const ids = sessionIds?.length ? sessionIds : state.sessionOrder;
-          for (const id of ids) {
-            state.pendingDeletedSessionIds[id] = true;
-            delete state.pendingCreatedSessionIds[id];
-            delete state.selectedModelProviderIdsBySession[id];
-            deleteSessionRuntimeState(state, id);
-          }
-          if (state.activeSessionId && !state.sessions[state.activeSessionId]) {
-            state.activeSessionId = state.sessionOrder[0] ?? null;
-          }
+          const ids = [...new Set(sessionIds?.length ? sessionIds : state.sessionOrder)];
+          markSessionDeletionRequested(state, ids);
           syncActiveSessionModelSelection(state);
         }),
 
@@ -581,6 +647,11 @@ export const useStore = create<StoreState>()(
       applyDefaultModelToActiveSession: () =>
         set((state) => {
           applyDefaultModelToActiveSession(state);
+        }),
+
+      setExecutionApprovalMode: (mode) =>
+        set((state) => {
+          state.executionApprovalMode = mode;
         }),
 
       setUserProfile: (profile) =>
@@ -622,6 +693,7 @@ export const useStore = create<StoreState>()(
           state.missingOnServerIds = {};
           state.pendingCreatedSessionIds = {};
           state.pendingDeletedSessionIds = {};
+          state.childSessionParentIds = {};
           state.selectedModelProviderIdsBySession = {};
           for (const session of mockSessions) {
             state.sessions[session.sessionId] = session;
@@ -690,55 +762,9 @@ export const useStore = create<StoreState>()(
   ),
 );
 
-if (typeof window !== "undefined") {
-  window.addEventListener("storage", (event) => {
-    if (event.key !== PERSIST_KEY) return;
-    const preferences = readPersistedSessionPreferences(event.newValue);
-    if (!preferences) return;
-    const state = useStore.getState();
-    const nextDefaultSidebarCollapsed = preferences.defaultSidebarCollapsed ?? state.defaultSidebarCollapsed;
-    const nextDefaultRightPanelCollapsed = preferences.defaultRightPanelCollapsed ?? state.defaultRightPanelCollapsed;
-    const nextMotionLevel = preferences.motionLevel ?? state.motionLevel;
-    const nextWorkflowDockWidth = preferences.workflowDockWidth ?? state.workflowDockWidth;
-    const nextSelectedModelProviderId = preferences.selectedModelProviderId ?? state.selectedModelProviderId;
-    const nextSelectedModelProviderIdsBySession =
-      preferences.selectedModelProviderIdsBySession ?? state.selectedModelProviderIdsBySession;
-    const defaultSidebarChanged = nextDefaultSidebarCollapsed !== state.defaultSidebarCollapsed;
-    const defaultRightPanelChanged = nextDefaultRightPanelCollapsed !== state.defaultRightPanelCollapsed;
-    const motionLevelChanged = nextMotionLevel !== state.motionLevel;
-    const workflowDockWidthChanged = nextWorkflowDockWidth !== state.workflowDockWidth;
-    const selectedModelProviderChanged = nextSelectedModelProviderId !== state.selectedModelProviderId;
-    const selectedModelsBySessionChanged = !areStringRecordsEqual(
-      nextSelectedModelProviderIdsBySession,
-      state.selectedModelProviderIdsBySession,
-    );
-    if (
-      !defaultSidebarChanged &&
-      !defaultRightPanelChanged &&
-      !motionLevelChanged &&
-      !workflowDockWidthChanged &&
-      !selectedModelProviderChanged &&
-      !selectedModelsBySessionChanged
-    ) {
-      return;
-    }
-    useStore.setState({
-      defaultSidebarCollapsed: nextDefaultSidebarCollapsed,
-      defaultRightPanelCollapsed: nextDefaultRightPanelCollapsed,
-      ...(defaultSidebarChanged ? { sidebarCollapsed: nextDefaultSidebarCollapsed } : {}),
-      ...(defaultRightPanelChanged ? { rightPanelCollapsed: nextDefaultRightPanelCollapsed } : {}),
-      motionLevel: nextMotionLevel,
-      workflowDockWidth: nextWorkflowDockWidth,
-      selectedModelProviderId: nextSelectedModelProviderId,
-      selectedModelProviderIdsBySession: nextSelectedModelProviderIdsBySession,
-    });
-  });
-}
-
-function areStringRecordsEqual(left: Record<string, string>, right: Record<string, string>): boolean {
-  const leftEntries = Object.entries(left);
-  if (leftEntries.length !== Object.keys(right).length) return false;
-  return leftEntries.every(([key, value]) => right[key] === value);
-}
+installSessionPreferenceSynchronization({
+  read: useStore.getState,
+  update: (state) => useStore.setState(state),
+});
 
 export { clearPersistedStore };

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { AgentBaseError } from "../../../Source/AgentSystem/Core/AgentBaseError.js";
+import { AgentSessionRunCoordinatorShuttingDownError } from "../../../Source/AgentSystem/Session/AgentSessionActiveRunController.js";
+import { AgentSessionCommandConflictError } from "../../../Source/AgentSystem/Session/AgentSessionCommand.js";
+import { AgentMcpDescriptorError } from "../../../Source/AgentSystem/McpPackages/AgentMcpDescriptorAdapter.js";
 
 class TestSimpleError extends AgentBaseError {
   constructor(message: string) {
@@ -96,6 +99,36 @@ describe("AgentBaseError", () => {
     it("produces 'ClassName: message' format", () => {
       const error = new TestSimpleError("boom");
       expect(error.toString()).toBe("TestSimpleError: boom");
+    });
+  });
+
+  describe("production error compliance", () => {
+    it("AgentSessionRunCoordinatorShuttingDownError inherits AgentBaseError with auto-name", () => {
+      const error = new AgentSessionRunCoordinatorShuttingDownError();
+      expect(error).toBeInstanceOf(AgentBaseError);
+      expect(error).toBeInstanceOf(Error);
+      expect(error.name).toBe("AgentSessionRunCoordinatorShuttingDownError");
+      expect(error.message).toBe("Session run coordinator is shutting down.");
+    });
+
+    it("AgentSessionCommandConflictError inherits AgentBaseError with auto-name and readonly fields", () => {
+      const expected = { operationKind: "message", payloadHash: "abc", requestId: "req-1" };
+      const received = { operationKind: "message", payloadHash: "def", requestId: "req-2" };
+      const error = new AgentSessionCommandConflictError("sess-1", "cmd-1", expected, received);
+      expect(error).toBeInstanceOf(AgentBaseError);
+      expect(error.name).toBe("AgentSessionCommandConflictError");
+      expect(error.sessionId).toBe("sess-1");
+      expect(error.commandId).toBe("cmd-1");
+      expect(error.expected).toBe(expected);
+      expect(error.received).toBe(received);
+    });
+
+    it("AgentMcpDescriptorError inherits AgentBaseError with auto-name and path field", () => {
+      const error = new AgentMcpDescriptorError("invalid descriptor", ["servers", 0, "name"]);
+      expect(error).toBeInstanceOf(AgentBaseError);
+      expect(error.name).toBe("AgentMcpDescriptorError");
+      expect(error.message).toBe("invalid descriptor");
+      expect(error.path).toEqual(["servers", 0, "name"]);
     });
   });
 });

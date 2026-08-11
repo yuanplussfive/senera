@@ -1,10 +1,11 @@
 import { describe, expect, test } from "vitest";
-import type { AgentEvent } from "@earendil-works/pi-agent-core";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { AgentEventKinds } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentRunActivities, AgentRunActivityStates } from "../../../Source/AgentSystem/Events/AgentRunEventTypes.js";
 import type { AgentPiTurnRequest } from "../../../Source/AgentSystem/Pi/AgentPiTurnTypes.js";
 import { AgentPiActiveSessionRegistry } from "../../../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import { AgentPiRunCollector } from "../../../Source/AgentSystem/Pi/AgentPiRunCollector.js";
+import type { AgentPiRunEvent } from "../../../Source/AgentSystem/Pi/AgentPiSessionEvents.js";
 import {
   AgentPiSessionMutationService,
   type AgentPiSessionMutationRuntime,
@@ -22,7 +23,11 @@ import {
 import type { AgentPiModelProjection } from "../../../Source/AgentSystem/Pi/AgentPiTypes.js";
 import { emptyAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 import { toolRootCommand } from "../Support/AgentTestFixtures.js";
-import { AgentPiTurnContextRegistry } from "../../../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
+import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnState.js";
+import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
+import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
+import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
+import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 
 describe("Pi streaming stability", () => {
   test("projects ordered model deltas without emitting internal diagnostics as domain events", async () => {
@@ -33,7 +38,7 @@ describe("Pi streaming stability", () => {
       onEvent: async (event) => {
         emitted.push(event);
       },
-      turnContexts: new AgentPiTurnContextRegistry(),
+      turnState: createTurnState("streaming-request", 1),
     });
 
     await collector.collect(messageUpdate("first"));
@@ -56,7 +61,7 @@ describe("Pi streaming stability", () => {
       onEvent: async (event) => {
         emitted.push(event as { kind: string; data: Record<string, unknown> });
       },
-      turnContexts: new AgentPiTurnContextRegistry(),
+      turnState: createTurnState("lifecycle-request", 2),
     });
 
     await collector.collect(assistantMessageEvent("message_start", ""));
@@ -246,7 +251,7 @@ describe("Pi streaming stability", () => {
   });
 });
 
-function messageUpdate(text: string): AgentEvent {
+function messageUpdate(text: string): AgentPiRunEvent {
   return {
     type: "message_update",
     message: {
@@ -259,26 +264,26 @@ function messageUpdate(text: string): AgentEvent {
       ],
     },
     assistantMessageEvent: {},
-  } as unknown as AgentEvent;
+  } as unknown as AgentPiRunEvent;
 }
 
-function assistantMessageEvent(type: "message_start" | "message_end", text: string): AgentEvent {
+function assistantMessageEvent(type: "message_start" | "message_end", text: string): AgentPiRunEvent {
   return {
     type,
     message: {
       role: "assistant",
       content: [{ type: "text", text }],
     },
-  } as AgentEvent;
+  } as AgentPiRunEvent;
 }
 
 function createModel(): AgentPiModelProjection {
   return {
     id: "test-model",
     name: "test-model",
-    api: "openai-completions",
-    provider: "senera-pi-proxy",
-    baseUrl: "http://127.0.0.1:8787/v1",
+    api: "senera-planning",
+    provider: "senera",
+    baseUrl: "senera://planning",
     reasoning: false,
     input: ["text"],
     cost: {
@@ -293,14 +298,14 @@ function createModel(): AgentPiModelProjection {
 }
 
 class BackpressurePiSession {
-  private listener: ((event: AgentEvent) => void | Promise<void>) | undefined;
+  private listener: ((event: AgentSessionEvent) => void | Promise<void>) | undefined;
   private resolvePromptStarted!: () => void;
   readonly promptStarted = new Promise<void>((resolve) => {
     this.resolvePromptStarted = resolve;
   });
   promptCompleted = false;
 
-  subscribe(listener: (event: AgentEvent) => void | Promise<void>): () => void {
+  subscribe(listener: (event: AgentSessionEvent) => void | Promise<void>): () => void {
     this.listener = listener;
     return () => {
       this.listener = undefined;
@@ -364,12 +369,31 @@ function createTurnRuntime(session: BackpressurePiSession): AgentPiTurnRuntimePo
     tokenEstimator: {
       estimate: (text: string) => ({ tokenCount: text.length }),
     },
-    piTurnContexts: new AgentPiTurnContextRegistry(),
   };
+}
+
+function createTurnState(requestId: string, step: number): AgentPiTurnState {
+  const toolAccessGrant = emptyAgentToolAccessGrant();
+  return new AgentPiTurnState({
+    approvalMode: "agent",
+    requestId,
+    step,
+    toolAccessGrant,
+    toolExposure: new AgentToolExposureState(toolAccessGrant),
+    activeSkills: [],
+    usageLedger: new AgentModelUsageLedger(),
+    toolPlan: new AgentPiToolPlanCoordinator(),
+    tokenBudget: new AgentTurnTokenBudget({
+      model: "test-model",
+      contextWindowTokens: 128_000,
+      outputReserveTokens: 8_192,
+    }),
+  });
 }
 
 function createRunPiTurnCommand(): AgentPiTurnRequest {
   return {
+    approvalMode: "agent",
     sessionId: "backpressure-session",
     requestId: "backpressure-request",
     step: 1,

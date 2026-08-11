@@ -2,6 +2,7 @@ import type { ApprovalDecision } from "./approvalEventTypes";
 import type { PresetFormat, ProviderModelEndpointInput, UploadAttachmentData, UserProfileData } from "./eventTypes";
 import type { ProviderModelConfigRequest } from "./providerModelCommandTypes";
 import type { InteractionInputAction, InteractionInputContent } from "./interactionInputEventTypes";
+import type { ExecutionApprovalMode } from "./executionApprovalMode";
 
 export type WsRequest =
   | { type: "session.create"; sessionId?: string }
@@ -11,6 +12,7 @@ export type WsRequest =
       requestId?: string;
       modelProviderId?: string;
       input: string;
+      approvalMode: ExecutionApprovalMode;
       attachments?: UploadAttachmentData[];
       disposition?: "create_if_missing" | "require_existing";
       queueMode?: "steer" | "follow_up";
@@ -25,6 +27,7 @@ export type WsRequest =
       requestId: string;
       modelProviderId?: string;
       input: string;
+      approvalMode: ExecutionApprovalMode;
       attachments?: UploadAttachmentData[];
     }
   | { type: "session.fork"; sourceSessionId: string; sessionId: string; throughRequestId: string }
@@ -71,6 +74,14 @@ export type WsRequest =
   | { type: "profile.get" }
   | { type: "profile.update"; profile: Pick<UserProfileData, "name" | "avatarDataUrl"> }
   | { type: "approval.resolve"; approvalId: string; decision: ApprovalDecision; message?: string }
+  | {
+      type: "approval.resolve_batch";
+      sessionId: string;
+      requestId: string;
+      batchId: string;
+      decision: ApprovalDecision;
+      message?: string;
+    }
   | {
       type: "interaction.input.resolve";
       interactionId: string;

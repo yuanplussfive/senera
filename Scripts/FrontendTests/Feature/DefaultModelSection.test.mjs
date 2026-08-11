@@ -53,6 +53,50 @@ describe("DefaultModelSection", () => {
       "immediate",
     );
   });
+
+  it("edits an extension-owned child model pool from the central model roles view", async () => {
+    const updateDraft = vi.fn();
+    const user = userEvent.setup();
+    renderWithFrontendProviders(
+      React.createElement(DefaultModelSection, {
+        draftState: createDraftState(updateDraft),
+        systemConfig: createSystemConfig(vi.fn(), { includeChildModelPool: true }),
+      }),
+    );
+
+    expect(screen.getByText("子代理编排 · 子代理模型池")).toBeVisible();
+    expect(screen.getByText("父运行当前模型")).toBeVisible();
+    expect(screen.getByText("chat-b")).toBeVisible();
+
+    await user.click(screen.getByRole("switch", { name: "继承发起委派的模型" }));
+    expect(updateDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Extensions: {
+          "agent-delegation": {
+            Configuration: {
+              modelPool: { inheritParent: false, modelProviderIds: ["chat-b"] },
+            },
+          },
+        },
+      }),
+      "immediate",
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加候选模型" }));
+    await user.click(screen.getByRole("menuitem", { name: /Chat Alpha/ }));
+    expect(updateDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        Extensions: {
+          "agent-delegation": {
+            Configuration: {
+              modelPool: { inheritParent: true, modelProviderIds: ["chat-b", "chat-a"] },
+            },
+          },
+        },
+      }),
+      "immediate",
+    );
+  });
 });
 
 function createDraftState(updateDraft) {
@@ -85,7 +129,7 @@ function createDraftState(updateDraft) {
   };
 }
 
-function createSystemConfig(setDefaultProviderModel) {
+function createSystemConfig(setDefaultProviderModel, { includeChildModelPool = false } = {}) {
   const draft = createDraftState(vi.fn()).draft;
   return {
     configSnapshot: {
@@ -146,7 +190,70 @@ function createSystemConfig(setDefaultProviderModel) {
     providerModelErrors: {},
     providerModelLoadingIds: {},
     providerModelOperations: {},
+    systemExtensions: includeChildModelPool ? [createChildModelPoolExtension()] : [],
     setDefaultProviderModel,
+  };
+}
+
+function createChildModelPoolExtension() {
+  return {
+    id: "agent-delegation",
+    version: "1.0.0",
+    displayName: { "zh-CN": "子代理编排", "en-US": "Subagent orchestration" },
+    description: { "zh-CN": "子代理", "en-US": "Subagents" },
+    enabled: true,
+    configured: false,
+    tools: [],
+    skillCount: 0,
+    mcpServerCount: 0,
+    configuration: {
+      configured: false,
+      value: {},
+      defaults: { modelPool: { inheritParent: true, modelProviderIds: [] } },
+      effectiveValue: { modelPool: { inheritParent: true, modelProviderIds: ["chat-b"] } },
+      sections: [
+        {
+          name: "model-pool",
+          label: { "zh-CN": "子代理模型池", "en-US": "Child model pool" },
+          keyCount: 2,
+          fields: [
+            {
+              ...createField(
+                ["modelPool", "inheritParent"],
+                {
+                  "zh-CN": "继承父运行模型",
+                  "en-US": "Inherit parent model",
+                },
+                undefined,
+                true,
+              ),
+              section: "model-pool",
+              type: "boolean",
+            },
+            {
+              ...createField(
+                ["modelPool", "modelProviderIds"],
+                { "zh-CN": "候选子代理模型", "en-US": "Child model candidates" },
+                {
+                  id: "agent-delegation-model-pool",
+                  capability: "Chat",
+                  valueKind: "model-id",
+                  mutation: "config",
+                  cardinality: "many",
+                  inheritance: { source: "parent-model", path: ["modelPool", "inheritParent"] },
+                  required: false,
+                },
+                ["chat-b"],
+              ),
+              section: "model-pool",
+              type: "array",
+              itemType: "string",
+              placeholder: { "zh-CN": "添加候选模型", "en-US": "Add a candidate model" },
+            },
+          ],
+        },
+      ],
+    },
   };
 }
 

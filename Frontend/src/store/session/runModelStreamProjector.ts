@@ -16,6 +16,7 @@ export const runModelStreamEventHandlers = {
     run.visibleText = "";
     run.displayText = "";
     run.displayMessageId = undefined;
+    if (run.outputState !== "available" && run.outputState !== "committed") run.outputState = "pending";
     run.visibleKind = "unknown";
     run.decisionMode = run.plannedDecisionMode ?? "none";
     run.plannedDecisionMode = undefined;
@@ -35,6 +36,7 @@ export const runModelStreamEventHandlers = {
     if (!run) return;
     const data = env.data as ModelDeltaData;
     run.streamingRaw += data.text;
+    if (run.outputState === "pending") run.outputState = "streaming";
     projectStreamingVisibility(run);
     alignRunDisplayTarget(run);
     touchRun(run);

@@ -7,13 +7,9 @@ import { parseJsonText } from "../../Core/AgentJsonParsing.js";
 
 export const AgentSandboxProviderRegistryFormatVersion = 1 as const;
 
-const ProviderSchema = z.enum([
-  AgentSandboxRuntimeProviders.Microsandbox,
-  AgentSandboxRuntimeProviders.Gvisor,
-  AgentSandboxRuntimeProviders.DockerEngine,
-]);
+const ProviderSchema = z.enum([AgentSandboxRuntimeProviders.Gvisor, AgentSandboxRuntimeProviders.DockerEngine]);
 
-export const AgentSandboxProviderRequirementSchema = z.enum(["microsandbox-host", "docker-engine", "registered-runsc"]);
+export const AgentSandboxProviderRequirementSchema = z.enum(["docker-engine", "registered-runsc"]);
 
 export const AgentSandboxProviderRegistrySchema = z
   .object({

@@ -5,26 +5,26 @@ import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, test } from "vitest";
-import { AgentGvisorWorkerSocketClient } from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerClient.js";
+import { AgentSandboxWorkerClient } from "../../../Source/AgentSystem/Sandbox/Worker/AgentSandboxWorkerClient.js";
 import {
-  AgentGvisorWorkerFrameDecoder,
-  encodeAgentGvisorWorkerFrame,
-} from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerFraming.js";
-import { AgentGvisorWorkerServer } from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerServer.js";
+  AgentSandboxWorkerFrameDecoder,
+  encodeAgentSandboxWorkerFrame,
+} from "../../../Source/AgentSystem/Sandbox/Worker/AgentSandboxWorkerFraming.js";
+import { AgentSandboxWorkerServer } from "../../../Source/AgentSystem/Sandbox/Worker/AgentSandboxWorkerServer.js";
 import type {
-  AgentGvisorDockerProcess,
-  AgentGvisorDockerRuntime,
-} from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorDockerRuntime.js";
+  AgentDockerProcess,
+  AgentDockerRuntime,
+} from "../../../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntime.js";
 import {
-  AgentGvisorExecutionRequestSchema,
-  type AgentGvisorExecutionRequest,
-} from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerProtocol.js";
+  AgentSandboxExecutionRequestSchema,
+  type AgentSandboxExecutionRequest,
+} from "../../../Source/AgentSystem/Sandbox/Worker/AgentSandboxWorkerProtocol.js";
 
-describe("gVisor worker server", () => {
+describe("Docker sandbox Worker server", () => {
   test("treats a zero timeout as no deadline for worker requests and execution startup", async () => {
     const fixture = await createWorkerFixture();
     try {
-      const client = new AgentGvisorWorkerSocketClient({ socketPath: fixture.socketPath });
+      const client = new AgentSandboxWorkerClient({ endpoint: fixture.socketPath });
       await expect(client.probe({ timeoutMs: 0 })).resolves.toMatchObject({ isolation: "gvisor" });
       await expect(client.prepare({ timeoutMs: 0 })).resolves.toBeUndefined();
 
@@ -41,9 +41,9 @@ describe("gVisor worker server", () => {
   test("applies the execution deadline while waiting for the worker ready frame", async () => {
     const fixture = await createSilentWorkerFixture();
     try {
-      const client = new AgentGvisorWorkerSocketClient({ socketPath: fixture.socketPath });
+      const client = new AgentSandboxWorkerClient({ endpoint: fixture.socketPath });
       await expect(client.start(createExecutionRequest(25))).rejects.toThrow(
-        "gVisor worker did not become ready within 25ms.",
+        "Sandbox worker did not become ready within 25ms.",
       );
       await expect(fixture.connectionClosed).resolves.toBeUndefined();
     } finally {
@@ -54,7 +54,7 @@ describe("gVisor worker server", () => {
   test("keeps the execution socket open for streamed input after the start frame", async () => {
     const fixture = await createWorkerFixture();
     try {
-      const client = new AgentGvisorWorkerSocketClient({ socketPath: fixture.socketPath });
+      const client = new AgentSandboxWorkerClient({ endpoint: fixture.socketPath });
       await expect(client.probe({ timeoutMs: 1_000 })).resolves.toMatchObject({
         isolation: "gvisor",
         imageReady: true,
@@ -68,8 +68,8 @@ describe("gVisor worker server", () => {
       ).resolves.toBeUndefined();
       expect(preparationProgress).toEqual([
         {
-          stage: "verifying_archive",
-          item: "sandbox.oci.tar.gz",
+          stage: "verifying_image",
+          item: "senera.local/runtime:verified",
           downloadedBytes: 1024,
           totalBytes: 4096,
         },
@@ -94,7 +94,7 @@ describe("gVisor worker server", () => {
     try {
       const socket = net.createConnection(fixture.socketPath);
       await once(socket, "connect");
-      const decoder = new AgentGvisorWorkerFrameDecoder();
+      const decoder = new AgentSandboxWorkerFrameDecoder();
       const response = new Promise<unknown>((resolve, reject) => {
         socket.on("data", (chunk) => {
           try {
@@ -106,7 +106,7 @@ describe("gVisor worker server", () => {
         });
         socket.once("error", reject);
       });
-      socket.write(encodeAgentGvisorWorkerFrame({ type: "input", data: "aWdub3JlZA==" }));
+      socket.write(encodeAgentSandboxWorkerFrame({ type: "input", data: "aWdub3JlZA==" }));
 
       await expect(response).resolves.toMatchObject({ type: "error", code: "invalid_worker_protocol" });
       expect(fixture.runtime.started).toBe(0);
@@ -119,7 +119,7 @@ describe("gVisor worker server", () => {
   test("reports the provider locked by the worker runtime", async () => {
     const fixture = await createWorkerFixture("docker-engine");
     try {
-      const client = new AgentGvisorWorkerSocketClient({ socketPath: fixture.socketPath });
+      const client = new AgentSandboxWorkerClient({ endpoint: fixture.socketPath });
       await expect(client.probe({ timeoutMs: 1_000 })).resolves.toMatchObject({
         isolation: "docker-engine",
         imageReady: true,
@@ -131,7 +131,7 @@ describe("gVisor worker server", () => {
 
   test("does not let execution requests select a runtime image", () => {
     expect(
-      AgentGvisorExecutionRequestSchema.safeParse({
+      AgentSandboxExecutionRequestSchema.safeParse({
         ...createExecutionRequest(),
         image: "untrusted.example/runtime:latest",
       }).success,
@@ -150,7 +150,7 @@ async function createWorkerFixture(provider: "gvisor" | "docker-engine" = "gviso
       ? `\\\\.\\pipe\\senera-gvisor-worker-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
       : path.join(temporaryRoot, "worker.sock");
   const runtime = new RecordingRuntime(provider);
-  const server = new AgentGvisorWorkerServer({ socketPath, runtime });
+  const server = new AgentSandboxWorkerServer({ socketPath, runtime });
   await server.start();
   return {
     socketPath,
@@ -162,7 +162,7 @@ async function createWorkerFixture(provider: "gvisor" | "docker-engine" = "gviso
   };
 }
 
-function createExecutionRequest(timeoutMs = 10_000): AgentGvisorExecutionRequest {
+function createExecutionRequest(timeoutMs = 10_000): AgentSandboxExecutionRequest {
   return {
     requestId: "request-1",
     command: "/bin/sh",
@@ -218,7 +218,7 @@ async function readEvents(events: AsyncIterable<unknown>): Promise<unknown[]> {
   return result;
 }
 
-class RecordingRuntime implements AgentGvisorDockerRuntime {
+class RecordingRuntime implements AgentDockerRuntime {
   input = "";
   preparations = 0;
   started = 0;
@@ -241,17 +241,17 @@ class RecordingRuntime implements AgentGvisorDockerRuntime {
     };
   }
 
-  async prepare(input?: Parameters<AgentGvisorDockerRuntime["prepare"]>[0]): Promise<void> {
+  async prepare(input?: Parameters<AgentDockerRuntime["prepare"]>[0]): Promise<void> {
     this.preparations += 1;
     input?.onProgress?.({
-      stage: "verifying_archive",
-      item: "sandbox.oci.tar.gz",
+      stage: "verifying_image",
+      item: "senera.local/runtime:verified",
       downloadedBytes: 1024,
       totalBytes: 4096,
     });
   }
 
-  async start(_request: AgentGvisorExecutionRequest): Promise<AgentGvisorDockerProcess> {
+  async start(_request: AgentSandboxExecutionRequest): Promise<AgentDockerProcess> {
     this.started += 1;
     const stdin = new PassThrough();
     const stdout = new PassThrough();

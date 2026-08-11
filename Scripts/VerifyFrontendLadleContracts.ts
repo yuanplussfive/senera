@@ -34,9 +34,11 @@ function verifyLadleConfig(): void {
   assert.equal(readStringProperty(exportedObject, "viteConfig"), "./vite.config.ts");
 
   const addons = readObjectProperty(exportedObject, "addons");
+  const theme = addons && readObjectProperty(addons, "theme");
   const width = addons && readObjectProperty(addons, "width");
   const options = width && readObjectProperty(width, "options");
   assert.ok(options, "Ladle must define the project viewport review presets.");
+  assert.equal(theme && readStringProperty(theme, "defaultState"), "light");
   assert.deepEqual(readNumberRecord(options), {
     手机: 390,
     紧凑桌面: 900,
@@ -58,6 +60,7 @@ function verifyGlobalProvider(): void {
     imports.includes("../src/shared/theme/themeModel"),
     "Ladle Provider must create tokens through the real theme model.",
   );
+  assert.match(source, /globalState\.theme/, "Ladle Provider must project the selected Ladle theme into real tokens.");
 }
 
 function verifyPublicComponentStories(): void {

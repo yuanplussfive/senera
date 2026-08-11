@@ -13,11 +13,19 @@ export interface AgentToolApprovalPolicyInput extends AgentToolPermissionRequest
 }
 
 export interface AgentToolApprovalPolicy {
-  decideToolCall(input: AgentToolApprovalPolicyInput): Promise<AgentPermissionDecision>;
+  decideToolCall(
+    input: AgentToolApprovalPolicyInput,
+    options?: AgentToolApprovalEvaluationOptions,
+  ): Promise<AgentPermissionDecision>;
+}
+
+export interface AgentToolApprovalEvaluationOptions {
+  readonly includeSemanticAuditors?: boolean;
 }
 
 export interface AgentToolApprovalPolicyOptions {
-  auditors?: readonly AgentToolGuardrailAuditor[];
+  deterministicAuditors?: readonly AgentToolGuardrailAuditor[];
+  semanticAuditors?: readonly AgentToolGuardrailAuditor[];
   opa?: {
     client: PolicyClient;
     path: string;
@@ -29,23 +37,32 @@ export class AgentCompositeToolApprovalPolicy implements AgentToolApprovalPolicy
 
   constructor(private readonly options: AgentToolApprovalPolicyOptions = {}) {}
 
-  async decideToolCall(input: AgentToolApprovalPolicyInput): Promise<AgentPermissionDecision> {
+  async decideToolCall(
+    input: AgentToolApprovalPolicyInput,
+    evaluation: AgentToolApprovalEvaluationOptions = {},
+  ): Promise<AgentPermissionDecision> {
     const declaredDecision = await this.declaredPolicy.decideToolCall(input);
     const opaDecision = this.options.opa ? await this.decideWithOpa(input, this.options.opa) : undefined;
-    const deterministicDecision = strongestPermissionDecision([opaDecision, declaredDecision]);
-    if (deterministicDecision.action === AgentPermissionActions.Deny) {
+    const deterministicGuardrailDecision = await this.decideWithAuditors(input, this.options.deterministicAuditors);
+    const deterministicDecision = strongestPermissionDecision([
+      deterministicGuardrailDecision,
+      opaDecision,
+      declaredDecision,
+    ]);
+    if (deterministicDecision.action !== AgentPermissionActions.Allow || evaluation.includeSemanticAuditors === false) {
       return deterministicDecision;
     }
 
-    const guardrailDecision = await this.decideWithGuardrails(input);
+    const semanticDecision = await this.decideWithAuditors(input, this.options.semanticAuditors);
 
-    return strongestPermissionDecision([guardrailDecision, deterministicDecision]);
+    return strongestPermissionDecision([semanticDecision, deterministicDecision]);
   }
 
-  private async decideWithGuardrails(
+  private async decideWithAuditors(
     input: AgentToolApprovalPolicyInput,
+    auditors: readonly AgentToolGuardrailAuditor[] | undefined,
   ): Promise<AgentPermissionDecision | undefined> {
-    for (const auditor of this.options.auditors ?? []) {
+    for (const auditor of auditors ?? []) {
       const decision = await auditor.auditToolCall(input);
       if (decision) {
         return decision;

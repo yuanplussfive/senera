@@ -6,6 +6,7 @@ import type { AgentSessionDomainEvent } from "../Session/AgentSessionEventTypes.
 import type { AgentToolDomainEvent } from "../ToolRuntime/AgentToolEventTypes.js";
 import type { AgentInteractionInputDomainEvent } from "../Interaction/AgentInteractionInputEventTypes.js";
 import type { AgentMcpSettingsDomainEvent } from "../McpPackages/AgentMcpSettingsEventTypes.js";
+import type { AgentOrchestrationDomainEvent } from "../Orchestration/AgentOrchestrationEventTypes.js";
 
 type AgentDomainEventPayload =
   | AgentSessionDomainEvent
@@ -15,7 +16,8 @@ type AgentDomainEventPayload =
   | AgentInteractionInputDomainEvent
   | AgentSandboxDomainEvent
   | AgentConfigDomainEvent
-  | AgentMcpSettingsDomainEvent;
+  | AgentMcpSettingsDomainEvent
+  | AgentOrchestrationDomainEvent;
 
 export type AgentDomainEvent = AgentDomainEventPayload & {
   readonly eventId?: string;

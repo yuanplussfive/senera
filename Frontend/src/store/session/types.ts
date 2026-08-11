@@ -12,6 +12,8 @@ export type {
   RunRecord,
   SessionRecord,
   StoreState,
+  TimelineChildRunMessage,
+  TimelineChildRunState,
   TimelineStep,
   TimelineStepKind,
   TimelineStepStatus,

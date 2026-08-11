@@ -64,7 +64,11 @@ describe("tool resource argument projection", () => {
     const policy = new AgentResourceAccessPolicy(
       new AgentSeneraOpaPolicyClient({ registry: new AgentExtensionRegistry() }),
     );
-    const executionEnv = createSeneraExecutionEnvironments({ workspaceRoot, resourceAccessPolicy: policy }).tool;
+    const executionEnv = createSeneraExecutionEnvironments({
+      workspaceRoot,
+      resourceAccessPolicy: policy,
+      sandboxAvailable: false,
+    }).tool;
 
     await expect(
       projectAgentToolResourceArguments(

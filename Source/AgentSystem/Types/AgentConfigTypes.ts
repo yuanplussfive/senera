@@ -37,6 +37,8 @@ export type {
   AgentServerConnectionLimitsConfig,
   AgentServerSessionConfig,
   AgentToolExecutionConfig,
+  AgentToolSemanticAuditConfig,
+  AgentToolSemanticAuditMode,
   AgentUploadsConfig,
   ResolvedAgentArtifactsConfig,
   ResolvedAgentConfigStoreConfig,
@@ -51,6 +53,7 @@ export type {
   ResolvedAgentToolExecutionConfig,
   ResolvedAgentUploadsConfig,
 } from "./AgentRuntimeConfigTypes.js";
+export { AgentToolSemanticAuditModes } from "./AgentRuntimeConfigTypes.js";
 export type {
   AgentMemoryLearningConfig,
   AgentToolLearningConfig,

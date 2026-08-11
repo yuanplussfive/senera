@@ -1,6 +1,7 @@
 import type {
   ConfigFormFieldData,
   ConfigFormSectionData,
+  ModelToolPlanningMode,
   ProviderModelEndpointInput,
   ProviderModelInfo,
 } from "../../api/eventTypes";
@@ -22,6 +23,7 @@ export interface ModelProviderDraft {
   ProviderId: string;
   Icon?: string;
   Capabilities?: ModelCapabilitiesDraft;
+  ToolPlanningMode?: ModelToolPlanningMode;
   ContextWindowTokens?: number;
   MaxModelOutputTokens?: number;
   Endpoint: string;
@@ -50,6 +52,7 @@ export interface ModelCapabilitiesDraft {
   Reasoning?: boolean;
   DeveloperRole?: boolean;
   StreamingUsage?: boolean;
+  ToolCalling?: boolean;
 }
 
 export interface ModelGroupDraft {
@@ -73,4 +76,10 @@ export interface ProviderModelGroup {
 
 export type ModelConfigLayoutMode = "panel" | "embedded";
 
-export type { ConfigFormFieldData, ConfigFormSectionData, ProviderModelEndpointInput, ProviderModelInfo };
+export type {
+  ConfigFormFieldData,
+  ConfigFormSectionData,
+  ModelToolPlanningMode,
+  ProviderModelEndpointInput,
+  ProviderModelInfo,
+};

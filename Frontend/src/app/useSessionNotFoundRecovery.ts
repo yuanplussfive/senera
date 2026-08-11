@@ -2,14 +2,14 @@ import { useCallback, type MutableRefObject } from "react";
 import { toast } from "sonner";
 import { EventKinds, type EventEnvelope, type SessionNotFoundData, type WsRequest } from "../api/eventTypes";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
-import type { StoreState } from "../store/sessionStore";
+import { useStore, type StoreState } from "../store/sessionStore";
 import type { LastSentMessage } from "./useChatCommands";
 
 export type SessionNotFoundRecoveryPlan =
   | {
       kind: "mark_missing";
       sessionId: string;
-      toast: SessionNotFoundRecoveryToast;
+      toast?: SessionNotFoundRecoveryToast;
     }
   | {
       kind: "close_missing";
@@ -63,15 +63,37 @@ export function useSessionNotFoundRecovery({
       const plan = resolveSessionNotFoundRecovery(env, lastSendRef.current);
       if (!plan) return false;
 
-      serverKnownSessionIdsRef.current.delete(plan.sessionId);
+      if (readSessionNotFoundOperation(env.data) === "session.history") {
+        const state = useStore.getState();
+        if (
+          !state.catalogSynced.sessions ||
+          !state.sessions[plan.sessionId] ||
+          state.pendingCreatedSessionIds[plan.sessionId]
+        ) {
+          // History may race the first catalog snapshot or a locally-created session.
+          // The catalog/history effects will retry once the session identity is authoritative.
+          return true;
+        }
+      }
 
+      if (useStore.getState().pendingDeletedSessionIds[plan.sessionId]) {
+        if (plan.kind === "close_missing") {
+          serverKnownSessionIdsRef.current.delete(plan.sessionId);
+          ingest(env);
+          sendRef.current?.(plan.listRequest);
+        }
+        return true;
+      }
+
+      serverKnownSessionIdsRef.current.delete(plan.sessionId);
       switch (plan.kind) {
         case "mark_missing":
           ingest(env);
-          showSessionNotFoundRecoveryToast(plan.toast);
+          if (plan.toast) showSessionNotFoundRecoveryToast(plan.toast);
           return true;
         case "close_missing":
           if (!sendRef.current) return false;
+          ingest(env);
           sendRef.current(plan.listRequest);
           showSessionNotFoundRecoveryToast(plan.toast);
           return true;
@@ -132,7 +154,11 @@ const SessionNotFoundRecoveryPolicies = {
       description: frontendMessage("session.localRemovedDescription"),
     },
   }),
-  "session.history": ({ sessionId }) => missingSessionPlan(sessionId),
+  // A history request can race catalog reconciliation after a refresh or a
+  // delete. The authoritative catalog will remove the stale local record;
+  // showing a warning here only makes the user think the selected session is
+  // broken, even when another session is already active.
+  "session.history": ({ sessionId }) => ({ kind: "mark_missing", sessionId }),
   "session.compact": ({ sessionId }) => missingSessionPlan(sessionId),
   "session.runtime_status": ({ sessionId }) => missingSessionPlan(sessionId),
   "session.export": ({ sessionId }) => missingSessionPlan(sessionId),
@@ -176,6 +202,7 @@ function recreateMissingMessagePlan(sessionId: string, lastSentMessage: LastSent
       sessionId,
       requestId: lastSentMessage.requestId,
       input: lastSentMessage.input,
+      approvalMode: lastSentMessage.approvalMode,
       attachments: lastSentMessage.attachments,
       modelProviderId: lastSentMessage.modelProviderId,
       disposition: "create_if_missing",

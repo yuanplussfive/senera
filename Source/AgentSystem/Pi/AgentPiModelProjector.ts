@@ -1,14 +1,9 @@
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import { DEFAULT_COMPACTION_SETTINGS } from "@earendil-works/pi-coding-agent";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
+import { resolveAgentNativeToolRoute } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import { resolveAgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelToolPlanning.js";
 import type { AgentPiModelApi, AgentPiProviderProjection } from "./AgentPiTypes.js";
-import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import {
-  AgentPiProxyProtocol,
-  AgentPiProxyModelProviderHeader,
-  encodePiProxyModelProviderHeaderValue,
-  resolveAgentPiProxyBaseUrl,
-} from "../PiShared/AgentPiProxyProtocol.js";
-import { resolveAgentModelCompatibility } from "../ModelEndpoints/ModelCompatibility.js";
 
 const FreeCostModel = {
   input: 0,
@@ -17,48 +12,86 @@ const FreeCostModel = {
   cacheWrite: 0,
 } as const;
 
-const SeneraPiProxyApi: AgentPiModelApi = AgentPiProxyProtocol.modelApi;
+const SeneraPiPlanningApi: AgentPiModelApi = "senera-planning";
+const SeneraPiPlanningProviderId = "senera";
 
-export function projectSeneraModelProviderToPi(
-  provider: ResolvedAgentModelProviderConfig,
-  config: AgentSystemConfig,
-): AgentPiProviderProjection {
+export function projectSeneraModelProviderToPi(provider: ResolvedAgentModelProviderConfig): AgentPiProviderProjection {
   const capabilities = provider.Capabilities ?? {};
-  const compatibility = resolveAgentModelCompatibility(provider);
-  const proxyBaseUrl = resolveAgentPiProxyBaseUrl(config);
+  const toolPlanningMode = resolveAgentModelToolPlanningMode(provider);
+  if (toolPlanningMode === "native" && capabilities.ToolCalling === false) {
+    throw new AgentLocalizedError("config.nativeToolCallingCapabilityRequired", { modelId: provider.Id });
+  }
+  if (toolPlanningMode === "native" && provider.Stream === false) {
+    throw new AgentLocalizedError("config.nativeToolCallingStreamingRequired", { modelId: provider.Id });
+  }
+  if (toolPlanningMode === "native") {
+    return projectNativeModelProvider(provider, capabilities, toolPlanningMode);
+  }
+
   const model = {
     id: provider.Model,
     name: provider.Id,
-    api: SeneraPiProxyApi,
-    provider: AgentPiProxyProtocol.providerId,
-    baseUrl: proxyBaseUrl,
+    api: SeneraPiPlanningApi,
+    provider: SeneraPiPlanningProviderId,
+    baseUrl: "senera://planning",
     reasoning: capabilities.Reasoning === true,
     input: capabilities.Vision === true ? ["text", "image"] : ["text"],
     cost: { ...FreeCostModel },
     contextWindow: provider.ContextWindowTokens,
     maxTokens: resolveAgentPiModelMaxTokens(provider),
-    compat: {
-      supportsDeveloperRole: compatibility.supportsDeveloperRole,
-    },
   } satisfies AgentPiProviderProjection["model"];
 
   return {
     providerId: model.provider,
-    apiKey: AgentPiProxyProtocol.apiKey,
-    headers: {
-      [AgentPiProxyModelProviderHeader]: encodePiProxyModelProviderHeaderValue(provider.Id),
-    },
-    upstream: {
-      providerId: provider.Id,
-      endpoint: provider.Endpoint,
-      baseUrl: provider.BaseUrl,
-      model: provider.Model,
-    },
     model,
+    toolPlanningMode,
   };
 }
 
-export function resolveAgentPiModelMaxTokens(provider: ResolvedAgentModelProviderConfig): number {
+function projectNativeModelProvider(
+  provider: ResolvedAgentModelProviderConfig,
+  capabilities: NonNullable<ResolvedAgentModelProviderConfig["Capabilities"]>,
+  toolPlanningMode: "native",
+): AgentPiProviderProjection {
+  const route = resolveAgentNativeToolRoute(provider.Endpoint, provider.BaseUrl);
+  const api = route.api;
+  const model = {
+    id: provider.Model,
+    name: provider.Id,
+    api,
+    provider: provider.ProviderId,
+    baseUrl: route.baseUrl,
+    reasoning: capabilities.Reasoning === true,
+    input: capabilities.Vision === true ? ["text", "image"] : ["text"],
+    cost: { ...FreeCostModel },
+    contextWindow: provider.ContextWindowTokens,
+    maxTokens: resolveAgentPiModelMaxTokens(provider),
+    headers: { ...provider.Headers },
+    compat: projectNativeCompatibility(api, capabilities),
+  } satisfies AgentPiProviderProjection["model"];
+
+  return { providerId: model.provider, model, toolPlanningMode };
+}
+
+function projectNativeCompatibility(
+  api: string,
+  capabilities: NonNullable<ResolvedAgentModelProviderConfig["Capabilities"]>,
+): Record<string, boolean> | undefined {
+  if (api === "openai-completions") {
+    return {
+      supportsDeveloperRole: capabilities.DeveloperRole === true,
+      supportsUsageInStreaming: capabilities.StreamingUsage !== false,
+    };
+  }
+  if (api === "openai-responses") {
+    return { supportsDeveloperRole: capabilities.DeveloperRole === true };
+  }
+  return undefined;
+}
+
+export function resolveAgentPiModelMaxTokens(
+  provider: Pick<ResolvedAgentModelProviderConfig, "MaxModelOutputTokens" | "MaxOutputTokens">,
+): number {
   return (
     [provider.MaxModelOutputTokens, provider.MaxOutputTokens].find(isPositiveTokenCount) ??
     DEFAULT_COMPACTION_SETTINGS.reserveTokens

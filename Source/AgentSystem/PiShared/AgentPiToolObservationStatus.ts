@@ -1,9 +1,8 @@
 /**
  * Tool observation status enum, type, and reader function.
  *
- * Extracted from Pi/AgentPiToolObservation.ts to break the Pi ↔ PiProxy
- * circular dependency. These symbols have no Pi/ business-logic dependencies
- * and are needed by both Pi/ and PiProxy/ consumers.
+ * Kept in PiShared because observation producers and Pi consumers both need
+ * the status vocabulary without depending on each other's implementations.
  */
 
 export const AgentPiToolObservationStatuses = {

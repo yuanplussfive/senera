@@ -19,6 +19,11 @@ import type {
   AgentExecutionResourceTransport,
 } from "./AgentExecutionResourceTransport.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import {
+  updateSeneraOutputSpoolState,
+  type SeneraOutputSpool,
+  type SeneraOutputSpoolDescriptor,
+} from "../Execution/SeneraOutputSpool.js";
 
 export interface AgentProcessExecutionResourceOptions {
   id: string;
@@ -28,6 +33,8 @@ export interface AgentProcessExecutionResourceOptions {
   command: string;
   cwd: string;
   limits: AgentExecutionResourceLimits;
+  maxDurationMs?: number;
+  outputSpool?: SeneraOutputSpool;
   now?: () => number;
 }
 
@@ -59,6 +66,15 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
   private cancellationRequested = false;
   private resourceClosed = false;
   private projection: Promise<void> = Promise.resolve();
+  private pendingOutput?: PendingOutput;
+  private pendingOutputTimer?: ReturnType<typeof setTimeout>;
+  private readonly maxDurationTimer?: ReturnType<typeof setTimeout>;
+  private readonly decoderPendingBytes: Record<"stdout" | "stderr", number> = { stdout: 0, stderr: 0 };
+  private readonly outputSpool: SeneraOutputSpool | undefined;
+  private outputCaptureSealed = false;
+  private outputCaptureClaimed = false;
+  private outputCaptureFailed = false;
+  private finalization: Promise<void> | undefined;
 
   constructor(
     options: AgentProcessExecutionResourceOptions,
@@ -70,10 +86,17 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
     this.command = options.command;
     this.cwd = options.cwd;
     this.limits = options.limits;
+    this.outputSpool = options.outputSpool;
     this.now = options.now ?? Date.now;
     this.createdAt = this.now();
     this.updatedAt = this.createdAt;
     this._lastAccessedAt = this.createdAt;
+    if (options.maxDurationMs !== undefined) {
+      this.maxDurationTimer = setTimeout(() => {
+        this.fail(new Error(`Execution resource exceeded its ${options.maxDurationMs}ms maximum duration.`));
+      }, options.maxDurationMs);
+      this.maxDurationTimer.unref();
+    }
     this.bindTransport();
     this.transition(AgentExecutionResourceStates.Running);
   }
@@ -96,6 +119,7 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
 
   inspect(cursor = 0): AgentExecutionResourceSnapshot {
     this.touch();
+    this.flushOutputBatch();
     const oldestCursor = this.events[0]?.cursor ?? this.nextCursor + 1;
     return {
       resourceId: this.id,
@@ -119,6 +143,7 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
 
   async wait(cursor: number, timeoutMs: number, signal?: AbortSignal): Promise<AgentExecutionResourceSnapshot> {
     this.touch();
+    this.flushOutputBatch();
     if (this.nextCursor !== cursor || this.terminal || timeoutMs === 0) return this.inspect(cursor);
 
     await new Promise<void>((resolve, reject) => {
@@ -145,7 +170,7 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
 
   async write(input: Uint8Array): Promise<AgentExecutionResourceSnapshot> {
     this.touch();
-    if (this.terminal) {
+    if (this._state !== AgentExecutionResourceStates.Running) {
       throw new AgentExecutionResourceError(
         AgentExecutionResourceErrorCodes.NotWritable,
         `Execution resource ${this.id} is no longer writable.`,
@@ -167,7 +192,7 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
   async resize(columns: number, rows: number): Promise<AgentExecutionResourceSnapshot> {
     this.touch();
     if (
-      this.terminal ||
+      this._state !== AgentExecutionResourceStates.Running ||
       this.transport.kind !== "terminal" ||
       !this.transport.terminalMetadata?.capabilities.includes("resize")
     ) {
@@ -185,14 +210,22 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
     this.touch();
     if (this.resourceClosed) return this.inspect(this.nextCursor);
     this.cancellationRequested = true;
+    this.clearMaximumDuration();
+    this.flushOutputBatch();
+    this.transition(AgentExecutionResourceStates.Stopping, `signal:${signal}`);
     await this.transport.signal(signal);
     return this.inspect(this.nextCursor);
   }
 
   async close(): Promise<void> {
-    if (this.resourceClosed) return;
-    this.cancellationRequested = true;
-    await this.transport.close(this.limits.terminationGraceMs);
+    if (!this.resourceClosed) {
+      this.cancellationRequested = true;
+      this.clearMaximumDuration();
+      this.flushOutputBatch();
+      this.transition(AgentExecutionResourceStates.Stopping, "close_requested");
+      await this.transport.close(this.limits.terminationGraceMs);
+      await this.finalization;
+    }
     if (!this.resourceClosed) {
       throw new AgentExecutionResourceError(
         AgentExecutionResourceErrorCodes.CleanupFailed,
@@ -200,40 +233,109 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
         { resourceId: this.id, state: this._state, pid: this.transport.pid },
       );
     }
+    await this.cleanupUnclaimedOutputCapture();
+  }
+
+  takeOutputCapture(): SeneraOutputSpoolDescriptor | undefined {
+    if (!this.outputSpool || !this.outputCaptureSealed || this.outputCaptureClaimed) return undefined;
+    this.outputCaptureClaimed = true;
+    return this.outputSpool.descriptor;
   }
 
   private bindTransport(): void {
     this.transport.onOutput((stream, chunk) => this.appendOutput(stream, chunk));
     this.transport.onError((error) => this.fail(error));
     this.transport.onClose((exitCode, signal) => {
-      this.resourceClosed = true;
-      this.wakeWaiters();
-      this.flushDecoders();
-      this.exitCode = exitCode;
-      this.exitSignal = signal;
-      this.transition(
-        this.cancellationRequested ? AgentExecutionResourceStates.Cancelled : AgentExecutionResourceStates.Completed,
-        signal ? `signal:${signal}` : `exit:${exitCode ?? "unknown"}`,
-      );
+      this.finalization ??= this.finalizeProcess(exitCode, signal);
     });
   }
 
   private appendOutput(stream: "stdout" | "stderr", chunk: Buffer): void {
     if (this.terminal) return;
+    try {
+      this.outputSpool?.write(stream, chunk);
+    } catch (error) {
+      this.outputCaptureFailed = true;
+      this.fail(error);
+      return;
+    }
     if (stream === "stdout") this.stdoutBytes += chunk.byteLength;
     else this.stderrBytes += chunk.byteLength;
+    this.decoderPendingBytes[stream] += chunk.byteLength;
     const text = this.decoders[stream].write(chunk);
     if (!text) return;
     const totalBytes = stream === "stdout" ? this.stdoutBytes : this.stderrBytes;
-    const bounded = boundOutputText(text, this.limits.maxBufferedBytes);
+    const byteLength = this.decoderPendingBytes[stream];
+    this.decoderPendingBytes[stream] = 0;
+    this.enqueueOutput(stream, text, byteLength, totalBytes);
+  }
+
+  private flushDecoders(): void {
+    for (const stream of ["stdout", "stderr"] as const) {
+      const text = this.decoders[stream].end();
+      if (!text) continue;
+      const totalBytes = stream === "stdout" ? this.stdoutBytes : this.stderrBytes;
+      const byteLength = this.decoderPendingBytes[stream];
+      this.decoderPendingBytes[stream] = 0;
+      this.enqueueOutput(stream, text, byteLength, totalBytes);
+    }
+    this.flushOutputBatch();
+  }
+
+  private fail(error: unknown): void {
+    if (this.terminal) return;
+    this.clearMaximumDuration();
+    this.error = errorMessage(error);
+    this.flushOutputBatch();
+    this.transition(AgentExecutionResourceStates.Failed, this.error);
+    void this.transport.signal(AgentExecutionResourceSignals.Terminate).catch(() => undefined);
+  }
+
+  private enqueueOutput(stream: "stdout" | "stderr", text: string, byteLength: number, totalBytes: number): void {
+    const pending = this.pendingOutput;
+    const batchByteLimit = Math.min(this.limits.maxBufferedBytes, this.limits.outputBatchMaxBytes);
+    if (pending && pending.stream === stream && pending.byteLength + byteLength <= batchByteLimit) {
+      pending.text += text;
+      pending.byteLength += byteLength;
+      pending.totalBytes = totalBytes;
+    } else {
+      this.flushOutputBatch();
+      this.pendingOutput = { stream, text, byteLength, totalBytes };
+    }
+
+    if ((this.pendingOutput?.byteLength ?? 0) >= batchByteLimit) {
+      this.flushOutputBatch();
+      return;
+    }
+    if (!this.pendingOutputTimer) {
+      this.pendingOutputTimer = setTimeout(() => {
+        this.pendingOutputTimer = undefined;
+        this.flushOutputBatch();
+      }, this.limits.outputBatchMaxDelayMs);
+      this.pendingOutputTimer.unref();
+    }
+  }
+
+  private flushOutputBatch(): void {
+    if (this.pendingOutputTimer) {
+      clearTimeout(this.pendingOutputTimer);
+      this.pendingOutputTimer = undefined;
+    }
+    const pending = this.pendingOutput;
+    if (!pending) return;
+    this.pendingOutput = undefined;
+    const bounded = boundOutputText(
+      pending.text,
+      Math.min(this.limits.maxBufferedBytes, this.limits.outputBatchMaxBytes),
+    );
     const event = {
       cursor: ++this.nextCursor,
       timestamp: new Date(this.now()).toISOString(),
       kind: "output",
-      stream,
+      stream: pending.stream,
       text: bounded.text,
-      byteLength: chunk.byteLength,
-      totalBytes,
+      byteLength: pending.byteLength,
+      totalBytes: pending.totalBytes,
       truncated: bounded.truncated || undefined,
     } as const;
     this.appendEvent(event, bounded.byteLength);
@@ -245,55 +347,13 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
         toolCallId: this.correlation.toolCallId,
         toolName: this.correlation.toolName,
         cursor: event.cursor,
-        stream,
+        stream: pending.stream,
         text: bounded.text,
         byteLength: event.byteLength,
-        totalBytes,
+        totalBytes: pending.totalBytes,
         truncated: bounded.truncated || undefined,
       },
     });
-  }
-
-  private flushDecoders(): void {
-    for (const stream of ["stdout", "stderr"] as const) {
-      const text = this.decoders[stream].end();
-      if (!text) continue;
-      const totalBytes = stream === "stdout" ? this.stdoutBytes : this.stderrBytes;
-      const bounded = boundOutputText(text, this.limits.maxBufferedBytes);
-      const event = {
-        cursor: ++this.nextCursor,
-        timestamp: new Date(this.now()).toISOString(),
-        kind: "output",
-        stream,
-        text: bounded.text,
-        byteLength: 0,
-        totalBytes,
-        truncated: bounded.truncated || undefined,
-      } as const;
-      this.appendEvent(event, bounded.byteLength);
-      this.project({
-        kind: AgentEventKinds.ExecutionResourceOutput,
-        context: this.eventContext(),
-        data: {
-          resourceId: this.id,
-          toolCallId: this.correlation.toolCallId,
-          toolName: this.correlation.toolName,
-          cursor: event.cursor,
-          stream,
-          text: bounded.text,
-          byteLength: 0,
-          totalBytes,
-          truncated: bounded.truncated || undefined,
-        },
-      });
-    }
-  }
-
-  private fail(error: unknown): void {
-    if (this.terminal) return;
-    this.error = errorMessage(error);
-    this.transition(AgentExecutionResourceStates.Failed, this.error);
-    void this.transport.signal(AgentExecutionResourceSignals.Terminate).catch(() => undefined);
   }
 
   private transition(state: AgentExecutionResourceState, reason?: string): void {
@@ -353,6 +413,44 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
     this._lastAccessedAt = this.now();
   }
 
+  private clearMaximumDuration(): void {
+    if (this.maxDurationTimer) clearTimeout(this.maxDurationTimer);
+  }
+
+  private async finalizeProcess(exitCode: number | null, signal: AgentExecutionResourceExitSignal): Promise<void> {
+    this.clearMaximumDuration();
+    this.flushDecoders();
+    this.exitCode = exitCode;
+    this.exitSignal = signal;
+    if (this.outputSpool) {
+      try {
+        await this.outputSpool.close();
+        this.outputCaptureSealed = true;
+      } catch (error) {
+        this.outputCaptureFailed = true;
+        this.error = errorMessage(error);
+      }
+    }
+    this.resourceClosed = true;
+    if (this.outputCaptureFailed) {
+      if (this.outputSpool) {
+        await updateSeneraOutputSpoolState(this.outputSpool.descriptor, "failed").catch(() => undefined);
+      }
+      this.transition(AgentExecutionResourceStates.Failed, this.error ?? "Execution output capture failed.");
+    } else {
+      this.transition(
+        this.cancellationRequested ? AgentExecutionResourceStates.Cancelled : AgentExecutionResourceStates.Completed,
+        signal ? `signal:${signal}` : `exit:${exitCode ?? "unknown"}`,
+      );
+    }
+    this.wakeWaiters();
+  }
+
+  private async cleanupUnclaimedOutputCapture(): Promise<void> {
+    if (!this.outputSpool || this.outputCaptureClaimed || this.outputCaptureFailed) return;
+    await this.outputSpool.cleanup();
+  }
+
   private wakeWaiters(): void {
     for (const wake of [...this.waiters]) wake();
   }
@@ -371,3 +469,10 @@ const TerminalStates = new Set<AgentExecutionResourceState>([
   AgentExecutionResourceStates.Failed,
   AgentExecutionResourceStates.Cancelled,
 ]);
+
+interface PendingOutput {
+  stream: "stdout" | "stderr";
+  text: string;
+  byteLength: number;
+  totalBytes: number;
+}

@@ -80,7 +80,7 @@ export function SessionPanelBody({
                 {sessions.map((session, index) => {
                   const isActive = session.sessionId === activeSessionId;
                   const lastRun = session.runs[session.runs.length - 1];
-                  const isRunning = lastRun?.status === "running";
+                  const isRunning = lastRun?.status === "running" || lastRun?.status === "cancelling";
                   const hasFailed = lastRun?.status === "failed";
                   const isHistoryLoading = !!historyLoadingIds[session.sessionId];
 

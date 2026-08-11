@@ -9,6 +9,8 @@ import {
   resolveAgentToolRuntimeCapabilities,
   type AgentToolRuntimeCapabilities,
 } from "./AgentToolRuntimeCapabilities.js";
+import type { ToolExecutionTarget } from "../Types/AgentToolContractTypes.js";
+import { resolveAvailableAgentToolExecutionTargets } from "./AgentToolExecutionPlan.js";
 
 export interface AgentToolCatalogItem {
   name: string;
@@ -45,10 +47,17 @@ export interface AgentToolCatalogCapabilityItem {
 }
 
 export class AgentToolCatalogProjector {
-  constructor(private readonly registry: AgentExtensionRegistry) {}
+  constructor(
+    private readonly registry: AgentExtensionRegistry,
+    private readonly availableExecutionTargets: () => readonly ToolExecutionTarget[] = () => ["Local", "Sandbox"],
+  ) {}
 
   list(): AgentToolCatalogItem[] {
-    return this.registry.listTools().map((tool) => this.project(tool));
+    const runtimeTargets = this.availableExecutionTargets();
+    return this.registry
+      .listTools()
+      .filter((tool) => resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets).length > 0)
+      .map((tool) => this.project(tool));
   }
 
   listVisible(visible?: readonly string[]): AgentToolCatalogItem[] {

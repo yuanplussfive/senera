@@ -127,6 +127,7 @@ function modelProvider(overrides: Partial<ResolvedAgentModelProviderConfig> = {}
     ApiKey: "test-key",
     ApiVersion: "",
     Model: "test-model",
+    ToolPlanningMode: "baml",
     ContextWindowTokens: 128_000,
     Temperature: 0,
     MaxOutputTokens: -1,

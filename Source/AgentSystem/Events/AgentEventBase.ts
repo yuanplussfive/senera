@@ -18,9 +18,11 @@ export interface AgentEventEnvelope<TKind extends string = AgentEventKind, TData
 }
 
 export interface AgentEventScope {
+  parentSessionId?: string;
   parentRequestId?: string;
   workflowName?: string;
   jobId?: string;
+  childRunId?: string;
   agentName?: string;
   role?: "childAgent" | "merge";
 }

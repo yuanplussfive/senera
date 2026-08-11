@@ -44,11 +44,14 @@ export function compilePiToolObservation(
   return parsed;
 }
 
-export function piToolResultMessage(observation: AgentPiToolObservation): AgentMessage {
+export function piToolResultMessage(
+  observation: AgentPiToolObservation,
+  identity: { toolCallId: string; toolName: string } = { toolCallId: "call-1", toolName: "TestTool" },
+): AgentMessage {
   return {
     role: "toolResult",
-    toolCallId: String(observation.call_id),
-    toolName: String(observation.tool_name),
+    toolCallId: identity.toolCallId,
+    toolName: identity.toolName,
     content: [{ type: "text", text: JSON.stringify(observation) }],
     isError: observation.status === "failure",
     timestamp: Date.now(),

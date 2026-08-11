@@ -1,15 +1,92 @@
 import { describe, expect, test, vi } from "vitest";
+import { createSeneraExecutionEnvironments } from "../../../Source/AgentSystem/Execution/SeneraExecutionEnvFactory.js";
 import { SeneraRoutingProcessBackend } from "../../../Source/AgentSystem/Execution/SeneraRoutingProcessBackend.js";
 import { createSeneraAuthorizedTerminalSpawner } from "../../../Source/AgentSystem/Execution/SeneraTerminalSpawner.js";
 
 describe("sandbox deployment boundary", () => {
+  test("does not require a Worker when sandbox execution is explicitly disabled", () => {
+    expect(() =>
+      createSeneraExecutionEnvironments({
+        workspaceRoot: process.cwd(),
+        sandboxAvailable: false,
+      }),
+    ).not.toThrow();
+  });
+
+  test("requires a Worker only after POSIX sandbox availability was established", () => {
+    expect(() => createSeneraExecutionEnvironments({ workspaceRoot: process.cwd() })).not.toThrow();
+    expect(() =>
+      createSeneraExecutionEnvironments({
+        workspaceRoot: process.cwd(),
+        platform: "linux",
+        sandboxEnabled: true,
+        sandboxAvailable: true,
+      }),
+    ).toThrow("requires a Worker client");
+  });
+
+  test("exposes only governed host execution on Windows", () => {
+    const environments = createSeneraExecutionEnvironments({
+      workspaceRoot: process.cwd(),
+      platform: "win32",
+      sandboxEnabled: true,
+      sandboxAvailable: true,
+    });
+
+    expect(environments.tool.capabilities).toMatchObject({
+      effectiveMode: "host",
+      effectiveBackend: "local",
+      shellDialect: "powershell",
+      processBackends: ["local"],
+      persistentProcessBackends: ["local"],
+      terminalBackends: ["local"],
+    });
+  });
+
+  test("does not expose a process backend while a required POSIX sandbox is unavailable", () => {
+    const environments = createSeneraExecutionEnvironments({
+      workspaceRoot: process.cwd(),
+      platform: "linux",
+      sandboxEnabled: true,
+      sandboxAvailable: false,
+    });
+
+    expect(environments.tool.capabilities).toMatchObject({
+      effectiveMode: "unavailable",
+      processBackends: [],
+      persistentProcessBackends: [],
+      terminalBackends: [],
+    });
+    expect(environments.tool.capabilities).not.toHaveProperty("effectiveBackend");
+  });
+
+  test("exposes only the sandbox backend after a POSIX Worker is ready", () => {
+    const environments = createSeneraExecutionEnvironments({
+      workspaceRoot: process.cwd(),
+      platform: "linux",
+      sandboxEnabled: true,
+      sandboxAvailable: true,
+      sandboxProvider: "docker-engine",
+      dockerEngineWorker: {} as never,
+    });
+
+    expect(environments.tool.capabilities).toMatchObject({
+      effectiveMode: "sandbox",
+      effectiveBackend: "sandbox",
+      shellDialect: "posix-sh",
+      processBackends: ["sandbox"],
+      persistentProcessBackends: ["sandbox"],
+      terminalBackends: ["sandbox"],
+    });
+  });
+
   test("rejects a disabled sandbox process target without invoking either backend", async () => {
     const local = {
       kind: "local",
       executeProcess: vi.fn(),
     };
     const sandbox = {
-      kind: "microsandbox",
+      kind: "docker-engine",
       executeProcess: vi.fn(),
     };
     const backend = new SeneraRoutingProcessBackend({

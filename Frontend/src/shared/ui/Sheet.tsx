@@ -2,7 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import {
   forwardRef,
-  useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -11,7 +11,7 @@ import {
 } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { MotionDialogOverlay, MotionSheetContent, useMotionLevel } from "../motion";
+import { dialogPresenceExitMs, MotionDialogOverlay, MotionSheetContent, useMotionLevel } from "../motion";
 
 export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
@@ -22,15 +22,13 @@ export const SheetDescription = DialogPrimitive.Description;
 
 export const sheetOverlayClassName =
   "dialog-presence fixed inset-0 z-50 bg-[var(--theme-sheet-backdrop)] [will-change:opacity]";
-const sheetPresenceExitMs = 240;
-const sheetDeferredContentDelayMs = 96;
 
 type SheetPresenceStyle = CSSProperties & {
   "--dialog-presence-exit-dur"?: string;
 };
 
 const sheetPresenceStyle = {
-  "--dialog-presence-exit-dur": `${sheetPresenceExitMs}ms`,
+  "--dialog-presence-exit-dur": `${dialogPresenceExitMs}ms`,
 } satisfies SheetPresenceStyle;
 
 function mergeSheetPresenceStyle(style?: CSSProperties): SheetPresenceStyle {
@@ -67,16 +65,16 @@ export interface SheetContentProps extends React.ComponentPropsWithoutRef<typeof
 interface SheetChildrenMountState {
   dataState?: string;
   deferContentMount: boolean;
-  deferredContentReady: boolean;
+  contentReady: boolean;
 }
 
 export function shouldMountSheetChildren({
   dataState,
   deferContentMount,
-  deferredContentReady,
+  contentReady,
 }: SheetChildrenMountState): boolean {
-  if (dataState === "closed") return false;
-  return !deferContentMount || deferredContentReady;
+  if (dataState === "closed") return contentReady;
+  return !deferContentMount || contentReady;
 }
 
 type SheetContentSnapshot = {
@@ -118,7 +116,10 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
   ) => {
     const { reduceMotion, disableMotion } = useMotionLevel();
     const shouldDeferContentMount = deferContentMount && !reduceMotion && !disableMotion;
-    const [deferredContentReady, setDeferredContentReady] = useState(!shouldDeferContentMount);
+    const [contentReady, setContentReady] = useState(dataState !== "closed");
+    const dataStateRef = useRef(dataState);
+    const previousDataStateRef = useRef(dataState);
+    dataStateRef.current = dataState;
     const liveContent: SheetContentSnapshot = {
       children,
       className,
@@ -136,24 +137,15 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
     const keepHeavyChildrenMounted = shouldMountSheetChildren({
       dataState,
       deferContentMount: shouldDeferContentMount,
-      deferredContentReady,
+      contentReady,
     });
 
-    useEffect(() => {
-      if (!shouldDeferContentMount) {
-        setDeferredContentReady(true);
-        return;
+    useLayoutEffect(() => {
+      const previousDataState = previousDataStateRef.current;
+      previousDataStateRef.current = dataState;
+      if (dataState !== "closed") {
+        setContentReady(!shouldDeferContentMount || previousDataState !== "closed");
       }
-      if (dataState === "closed") {
-        setDeferredContentReady(false);
-        return;
-      }
-
-      setDeferredContentReady(false);
-      const timeoutId = window.setTimeout(() => {
-        setDeferredContentReady(true);
-      }, sheetDeferredContentDelayMs);
-      return () => window.clearTimeout(timeoutId);
     }, [dataState, shouldDeferContentMount]);
 
     return (
@@ -168,6 +160,10 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
           content.className,
         )}
         data-state={dataState}
+        onPresenceAnimationComplete={(completedState) => {
+          if (dataStateRef.current !== completedState) return;
+          setContentReady(completedState === "open");
+        }}
         style={mergeSheetPresenceStyle(style)}
         {...props}
       >

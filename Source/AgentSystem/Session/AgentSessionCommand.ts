@@ -1,4 +1,6 @@
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
+import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 
 export const AgentSessionCommandStates = {
   Running: "running",
@@ -27,7 +29,7 @@ export type AgentSessionCommandAdmission =
   | { readonly kind: "accepted"; readonly command: AgentSessionCommandRecord }
   | { readonly kind: "replayed"; readonly command: AgentSessionCommandRecord };
 
-export class AgentSessionCommandConflictError extends Error {
+export class AgentSessionCommandConflictError extends AgentBaseError {
   constructor(
     readonly sessionId: string,
     readonly commandId: string,
@@ -35,7 +37,6 @@ export class AgentSessionCommandConflictError extends Error {
     readonly received: Pick<AgentSessionCommandDescriptor, "operationKind" | "payloadHash" | "requestId">,
   ) {
     super(`Session command identity conflict: ${sessionId}/${commandId}`);
-    this.name = "AgentSessionCommandConflictError";
   }
 }
 
@@ -43,6 +44,7 @@ export function createAgentSessionMessageCommand(input: {
   readonly requestId: string;
   readonly modelProviderId?: string;
   readonly text: string;
+  readonly approvalMode: AgentExecutionApprovalMode;
   readonly attachments?: readonly unknown[];
   readonly createdAt: string;
 }): AgentSessionCommandDescriptor {
@@ -53,8 +55,9 @@ export function createAgentSessionMessageCommand(input: {
     requestId: input.requestId,
     createdAt: input.createdAt,
     payloadHash: sha256HexOfCanonicalJson({
-      version: 1,
+      version: 2,
       operationKind,
+      approvalMode: input.approvalMode,
       modelProviderId: input.modelProviderId?.trim() || null,
       input: input.text,
       attachments: input.attachments ?? [],

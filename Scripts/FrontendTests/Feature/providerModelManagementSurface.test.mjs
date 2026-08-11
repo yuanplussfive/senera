@@ -3,6 +3,7 @@ import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { ProviderModelManagementSurface } from "../../../Frontend/src/features/settings/sections/ProviderModelManagementSurface.tsx";
+import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 import { TooltipProvider } from "../../../Frontend/src/shared/ui/index.ts";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
@@ -47,8 +48,53 @@ test("model editor stays open after a failed save so the draft can be retried", 
 
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /重试|Retry/ })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "关闭窗口" }));
+  await user.click(screen.getByRole("button", { name: "关闭" }));
   expect(screen.getByRole("dialog")).toBeInTheDocument();
+});
+
+test("model tool planning defaults to native and keeps native prerequisites consistent", async () => {
+  const user = userEvent.setup();
+  const model = {
+    Id: "openai/gpt-4.1",
+    ProviderId: "openai",
+    Model: "gpt-4.1",
+    Endpoint: "chat",
+    Capabilities: { Chat: true },
+  };
+  const props = createProps({ model, onUpsertProviderModel: vi.fn() });
+  renderWithFrontendProviders(React.createElement(ProviderModelManagementSurface, props));
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("chat.model.configure") }));
+  const dialog = screen.getByRole("dialog");
+  const nativeMode = within(dialog).getByRole("radio", {
+    name: frontendMessage("config.model.toolPlanning.native"),
+  });
+  const bamlMode = within(dialog).getByRole("radio", {
+    name: frontendMessage("config.model.toolPlanning.baml"),
+  });
+  const toolCalling = within(dialog).getByRole("button", {
+    name: frontendMessage("config.model.capability.toolCalling"),
+  });
+  const streaming = within(dialog).getByRole("switch", {
+    name: frontendMessage("config.model.streaming"),
+  });
+
+  expect(nativeMode).toHaveAttribute("aria-checked", "true");
+  expect(toolCalling).toHaveAttribute("aria-pressed", "true");
+  expect(streaming).toHaveAttribute("aria-checked", "true");
+
+  await user.click(toolCalling);
+  expect(bamlMode).toHaveAttribute("aria-checked", "true");
+  expect(toolCalling).toHaveAttribute("aria-pressed", "false");
+
+  await user.click(nativeMode);
+  expect(nativeMode).toHaveAttribute("aria-checked", "true");
+  expect(toolCalling).toHaveAttribute("aria-pressed", "true");
+  expect(streaming).toHaveAttribute("aria-checked", "true");
+
+  await user.click(streaming);
+  expect(bamlMode).toHaveAttribute("aria-checked", "true");
+  expect(streaming).toHaveAttribute("aria-checked", "false");
 });
 
 test("model discovery supports enabled public endpoints without an API key", async () => {
@@ -144,6 +190,45 @@ test("embedded model management scrolls only the model rows", () => {
   expect(viewport).not.toBeNull();
   expect(viewport).toContainElement(modelRow);
   expect(viewport).not.toContainElement(fetchButton);
+});
+
+test("embedded model search exposes its disclosure state and clears a hidden query", async () => {
+  const user = userEvent.setup();
+  const model = {
+    Id: "openai/gpt-4.1",
+    ProviderId: "openai",
+    Model: "gpt-4.1",
+    Endpoint: "chat",
+    Capabilities: { Chat: true },
+  };
+  const props = createProps({ model, onUpsertProviderModel: vi.fn() });
+  props.embedded = true;
+
+  renderWithFrontendProviders(React.createElement(ProviderModelManagementSurface, props));
+
+  const openSearch = screen.getByRole("button", { name: frontendMessage("config.model.searchPlaceholder") });
+  expect(openSearch).toHaveAttribute("aria-expanded", "false");
+
+  await user.click(openSearch);
+
+  const closeSearch = screen.getByRole("button", { name: frontendMessage("config.model.closeSearch") });
+  const searchInput = screen.getByRole("textbox", { name: frontendMessage("config.model.searchPlaceholder") });
+  const disclosureId = closeSearch.getAttribute("aria-controls");
+  expect(closeSearch).toHaveAttribute("aria-expanded", "true");
+  expect(disclosureId).not.toBeNull();
+  expect(document.getElementById(disclosureId)).toContainElement(searchInput);
+
+  await user.type(searchInput, "mini");
+  expect(searchInput).toHaveValue("mini");
+  await user.click(closeSearch);
+
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("textbox", { name: frontendMessage("config.model.searchPlaceholder") }),
+    ).not.toBeInTheDocument(),
+  );
+  await user.click(screen.getByRole("button", { name: frontendMessage("config.model.searchPlaceholder") }));
+  expect(screen.getByRole("textbox", { name: frontendMessage("config.model.searchPlaceholder") })).toHaveValue("");
 });
 
 function createProps({ model, onUpsertProviderModel, operations = {} }) {

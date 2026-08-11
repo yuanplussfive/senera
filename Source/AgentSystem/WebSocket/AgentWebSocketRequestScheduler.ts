@@ -54,7 +54,9 @@ const RequestSchedulingCatalog = {
   "session.regenerate": concurrent,
   "session.fork": serial((request) => sessionKey(request.sourceSessionId)),
   "session.compact": serial((request) => sessionKey(request.sessionId)),
-  "session.runtime_status": serial((request) => sessionKey(request.sessionId)),
+  // Runtime status is a read-only snapshot and must remain observable during
+  // an active turn instead of waiting behind that turn's serial lease.
+  "session.runtime_status": concurrent,
   "session.export": serial((request) => sessionKey(request.sessionId)),
   "session.list": concurrent,
   "session.history": serial((request) => sessionKey(request.sessionId)),
@@ -85,6 +87,9 @@ const RequestSchedulingCatalog = {
   "profile.get": concurrent,
   "profile.update": serial(() => "profile"),
   "approval.resolve": concurrent,
+  "approval.resolve_batch": serial(
+    (request) => `approval-batch:${request.sessionId}:${request.requestId}:${request.batchId}`,
+  ),
   "interaction.input.resolve": concurrent,
   "sandbox.status": concurrent,
   "execution.resource.list": concurrent,

@@ -25,6 +25,23 @@ import {
 } from "./SessionManagerTestFixtures.js";
 
 describe("Session manager behavior", () => {
+  test("does not expose child-owned sessions through the user session catalog", async () => {
+    const fixture = createManagerFixture({
+      managedSessionIds: new Set(["legacy-child"]),
+    });
+    fixture.store.open("metadata-child", {
+      type: "child_run",
+      childRunId: "child-1",
+      parentSessionId: "parent-1",
+      parentRequestId: "request-1",
+      agentName: "reviewer",
+    });
+    fixture.store.open("legacy-child");
+    fixture.store.open("user-session");
+
+    expect(fixture.manager.listSessions().map((session) => session.sessionId)).toEqual(["user-session"]);
+  });
+
   test("creates sessions without opening Pi and emits snapshots for existing sessions", async () => {
     const rewind = vi.fn(async () => false);
     const reset = vi.fn(async () => false);
@@ -61,6 +78,7 @@ describe("Session manager behavior", () => {
     const events: AgentDomainEvent[] = [];
 
     await fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-first-message",
       requestId: "request-first-message",
       modelProviderId: "provider-first-message",
@@ -187,6 +205,7 @@ describe("Session manager behavior", () => {
     });
     await fixture.manager.createSession({ sessionId: "session-close-active" });
     const run = fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-close-active",
       requestId: "request-close-active",
       input: "Keep running",
@@ -221,6 +240,7 @@ describe("Session manager behavior", () => {
     await fixture.manager.createSession({ sessionId: "session-lazy-pi" });
 
     await fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-lazy-pi",
       requestId: "request-first-turn",
       modelProviderId: "provider-lazy",
@@ -260,6 +280,7 @@ describe("Session manager behavior", () => {
         onEvent: collect(events),
       });
       await fixture.manager.submitMessage({
+        approvalMode: "agent",
         sessionId: "session-title",
         requestId: "request-after-rename",
         input: "Continue the investigation",
@@ -341,12 +362,14 @@ describe("Session manager behavior", () => {
     const followUp = vi.fn(async () => undefined);
 
     await fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "missing-session",
       input: "hello",
       onEvent: collect(events),
     });
     await fixture.manager.createSession({ sessionId: "session-busy" });
     const run = fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-busy",
       requestId: "request-running",
       input: "long run",
@@ -363,18 +386,21 @@ describe("Session manager behavior", () => {
       } as unknown as AgentPiSession,
     });
     await fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-busy",
       requestId: "request-busy",
       input: "second turn",
       onEvent: collect(events),
     });
     await fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-busy",
       requestId: "request-steer",
       input: "change direction",
       queueMode: AgentSessionMessageQueueModes.Steer,
     });
     await fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-busy",
       requestId: "request-follow-up",
       input: "continue afterwards",
@@ -392,7 +418,153 @@ describe("Session manager behavior", () => {
     expect(events.map((event) => event.kind)).toEqual([AgentEventKinds.SessionNotFound, AgentEventKinds.SessionBusy]);
     expect(steer).toHaveBeenCalledOnce();
     expect(followUp).toHaveBeenCalledOnce();
-    expect(fixture.store.loadConversation("session-busy")).toEqual([]);
+    await vi.waitFor(() => expect(fixture.store.loadConversation("session-busy")).toEqual([]));
+  });
+
+  test("accepts cancellation immediately while a non-cooperative run finishes in the background", async () => {
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    const events: AgentDomainEvent[] = [];
+    const fixture = createManagerFixture({
+      runControl: { settlementTimeoutMs: 10 },
+      loopFactory: () => ({
+        run: async (request) => {
+          started.resolve();
+          await waitForAbort(request.signal);
+          await release.promise;
+          throw request.signal?.reason instanceof Error ? request.signal.reason : new AgentCancellationError();
+        },
+      }),
+    });
+    await fixture.manager.createSession({ sessionId: "session-delayed-cancel" });
+    const run = fixture.manager.submitMessage({
+      approvalMode: "agent",
+      sessionId: "session-delayed-cancel",
+      requestId: "request-delayed-cancel",
+      input: "long run",
+      onEvent: collect(events),
+    });
+    await started.promise;
+
+    await expect(
+      fixture.manager.cancelActiveRun({ sessionId: "session-delayed-cancel", onEvent: collect(events) }),
+    ).resolves.toBe(true);
+    expect(fixture.store.loadRunSnapshots("session-delayed-cancel")).toEqual([
+      expect.objectContaining({
+        requestId: "request-delayed-cancel",
+        status: "cancelled",
+        endedAt: expect.any(String),
+      }),
+    ]);
+    await vi.waitFor(() =>
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: AgentEventKinds.RunCancellationProgress,
+            data: expect.objectContaining({ stage: "settlement_delayed" }),
+          }),
+        ]),
+      ),
+    );
+
+    release.resolve();
+    await run;
+    await vi.waitFor(() => expect(fixture.store.loadConversation("session-delayed-cancel")).toEqual([]));
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: AgentEventKinds.RunCancelled }),
+        expect.objectContaining({ kind: AgentEventKinds.SessionTruncated }),
+      ]),
+    );
+  });
+
+  test("settles cancellation after its deadline and truncates after the run eventually settles", async () => {
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    const events: AgentDomainEvent[] = [];
+    const fixture = createManagerFixture({
+      runControl: { settlementTimeoutMs: 10 },
+      loopFactory: () => ({
+        run: async (request) => {
+          started.resolve();
+          await waitForAbort(request.signal);
+          await release.promise;
+          throw request.signal?.reason instanceof Error ? request.signal.reason : new AgentCancellationError();
+        },
+      }),
+    });
+    await fixture.manager.createSession({ sessionId: "session-background-cancel" });
+    const run = fixture.manager.submitMessage({
+      approvalMode: "agent",
+      sessionId: "session-background-cancel",
+      requestId: "request-background-cancel",
+      input: "Keep running until cancellation.",
+      onEvent: collect(events),
+    });
+    await started.promise;
+
+    await expect(
+      fixture.manager.settleActiveRunCancellation({
+        sessionId: "session-background-cancel",
+        onEvent: collect(events),
+      }),
+    ).resolves.toBe(true);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: AgentEventKinds.RunCancellationProgress,
+          data: expect.objectContaining({ stage: "settlement_delayed" }),
+        }),
+      ]),
+    );
+
+    release.resolve();
+    await run;
+    await vi.waitFor(() => expect(fixture.store.loadConversation("session-background-cancel")).toEqual([]));
+  });
+
+  test("accepts cancellation without waiting for the active run to settle", async () => {
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    const events: AgentDomainEvent[] = [];
+    const fixture = createManagerFixture({
+      runControl: { settlementTimeoutMs: 10 },
+      loopFactory: () => ({
+        run: async (request) => {
+          started.resolve();
+          await waitForAbort(request.signal);
+          await release.promise;
+          throw request.signal?.reason instanceof Error ? request.signal.reason : new AgentCancellationError();
+        },
+      }),
+    });
+    await fixture.manager.createSession({ sessionId: "session-request-cancel" });
+    const run = fixture.manager.submitMessage({
+      approvalMode: "agent",
+      sessionId: "session-request-cancel",
+      requestId: "request-request-cancel",
+      input: "Keep running until cancellation.",
+      onEvent: collect(events),
+    });
+    await started.promise;
+
+    await expect(
+      fixture.manager.requestActiveRunCancellation({
+        sessionId: "session-request-cancel",
+        onEvent: collect(events),
+      }),
+    ).resolves.toBe(true);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: AgentEventKinds.RunCancellationProgress,
+          data: expect.objectContaining({ stage: "started" }),
+        }),
+      ]),
+    );
+
+    release.resolve();
+    await run;
   });
 
   test("session list snapshots expose the authoritative active request", async () => {
@@ -402,6 +574,7 @@ describe("Session manager behavior", () => {
 
     await fixture.manager.createSession({ sessionId: "session-active-list" });
     const run = fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-active-list",
       requestId: "request-active-list",
       input: "wait for approval",

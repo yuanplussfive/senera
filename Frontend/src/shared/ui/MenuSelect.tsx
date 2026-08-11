@@ -51,7 +51,11 @@ export function MenuSelect({
   const renderedValue = value && renderValue ? renderValue(value, selected) : undefined;
   const display = renderedValue ?? selected?.label;
   const accessibleValue = selected?.label ?? (typeof placeholder === "string" ? placeholder : undefined);
-  const accessibleLabel = ariaLabel && accessibleValue ? `${ariaLabel}: ${accessibleValue}` : ariaLabel;
+  const accessibleLabel = ariaLabel
+    ? accessibleValue && accessibleValue !== ariaLabel
+      ? `${ariaLabel}: ${accessibleValue}`
+      : ariaLabel
+    : accessibleValue;
 
   return (
     <DropdownMenu>

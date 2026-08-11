@@ -6,8 +6,11 @@ export interface AgentTokenTextPreview {
   tokenCount: number;
   tokenLimit: number;
   truncated: boolean;
-  omittedTokens: number;
-  measurement: "exact" | "estimated";
+}
+
+export interface AgentJsonMemberProjection {
+  readonly value: Record<string, unknown>;
+  readonly complete: boolean;
 }
 
 export class AgentTokenProjector {
@@ -25,17 +28,44 @@ export class AgentTokenProjector {
       tokenCount: preview.tokenCount,
       tokenLimit: preview.tokenLimit,
       truncated: preview.truncated,
-      omittedTokens: Math.max(0, preview.tokenCount - preview.tokenLimit),
-      measurement: "exact",
     };
-  }
-
-  previewJson(value: unknown, tokenLimit: number): unknown {
-    return this.projectJson(value, tokenLimit).value;
   }
 
   projectJson(value: unknown, tokenLimit: number): AgentBudgetedJsonProjection {
     return this.jsonProjector.project(value, tokenLimit);
+  }
+
+  projectJsonMember(
+    envelope: Readonly<Record<string, unknown>>,
+    member: string,
+    value: unknown,
+    tokenLimit: number,
+  ): AgentJsonMemberProjection {
+    const limit = normalizeTokenLimit(tokenLimit);
+    const emptyValue = { ...envelope, [member]: {} };
+    if (!this.fitsJson(emptyValue, limit)) {
+      throw new Error(`JSON envelope exceeds the requested token budget: ${limit}.`);
+    }
+
+    let lower = 1;
+    let upper = limit;
+    let bestValue = emptyValue;
+    let bestComplete = false;
+
+    while (lower <= upper) {
+      const candidateLimit = Math.floor((lower + upper) / 2);
+      const projection = this.projectJson(value, candidateLimit);
+      const candidate = { ...envelope, [member]: projection.projectedValue };
+      if (this.fitsJson(candidate, limit)) {
+        bestValue = candidate;
+        bestComplete = projection.complete;
+        lower = candidateLimit + 1;
+      } else {
+        upper = candidateLimit - 1;
+      }
+    }
+
+    return { value: bestValue, complete: bestComplete };
   }
 
   fitsJson(value: unknown, tokenLimit: number): boolean {

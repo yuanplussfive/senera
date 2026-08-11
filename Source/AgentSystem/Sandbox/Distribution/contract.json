@@ -1,44 +1,29 @@
 {
-  "formatVersion": 5,
+  "formatVersion": 6,
   "id": "senera-node-runtime",
-  "archiveVersion": "1.0.3",
-  "microsandboxVersion": "0.6.4",
-  "hostRequirements": {
-    "microsandbox": {
-      "linux": {
-        "devices": [
-          {
-            "path": "/dev/kvm",
-            "access": ["read", "write"]
-          }
-        ]
-      }
-    }
-  },
+  "version": "1.1.0",
   "targets": {
     "x64": {
       "sourceImage": "docker.io/library/node@sha256:8607a9064d4a571140998ae9e52a3b3fcf9cff361d04642d5971e6cd76d39e27",
-      "runtimeImage": "senera.local/senera-node-runtime:1.0.3-x64",
-      "configDigest": "sha256:29a39ccfd8591e4c25c3eea52538c98a2f45e1cd3909eea4e0ab7fb9065382bc",
-      "probe": {
-        "command": "node",
-        "arguments": ["--version"]
-      },
-      "archive": {
-        "format": "oci",
-        "mediaType": "application/vnd.oci.image.layout.v1.tar",
-        "compression": "gzip",
-        "compressedMediaType": "application/gzip",
-        "assetName": "SeneraSandboxImage-1.0.3-x64.oci.tar.gz"
-      }
+      "runtimeImage": "senera.local/senera-node-runtime:1.1.0-x64",
+      "registryImage": "ghcr.io/yuanplussfive/senera:sandbox-runtime-1.1.0",
+      "probes": [
+        { "id": "bash", "command": "bash", "arguments": ["--version"] },
+        { "id": "git", "command": "git", "arguments": ["--version"] },
+        { "id": "node", "command": "node", "arguments": ["--version"] },
+        { "id": "npm", "command": "npm", "arguments": ["--version"] },
+        { "id": "python", "command": "python", "arguments": ["--version"] },
+        { "id": "pip", "command": "pip", "arguments": ["--version"] },
+        { "id": "rg", "command": "rg", "arguments": ["--version"] },
+        { "id": "jq", "command": "jq", "arguments": ["--version"] },
+        { "id": "curl", "command": "curl", "arguments": ["--version"] },
+        { "id": "ssh", "command": "ssh", "arguments": ["-V"] },
+        {
+          "id": "terminal-sidecar",
+          "command": "/usr/local/bin/node",
+          "arguments": ["/opt/senera-terminal-sidecar/bin/senera-terminal-sidecar.js", "--probe"]
+        }
+      ]
     }
-  },
-  "bundle": {
-    "manifestFileName": "SeneraSandboxImageManifest.json"
-  },
-  "limits": {
-    "manifestMaxBytes": 65536,
-    "bundleMaxBytes": 536870912,
-    "archiveMaxBytes": 2147483648
   }
 }

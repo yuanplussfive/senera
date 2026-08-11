@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { AgentHostCapabilityNames } from "../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import { AgentPiContextPolicy, AgentPiContextPolicyCustomType } from "../Source/AgentSystem/Pi/AgentPiContextPolicy.js";
-import { AgentPiToolObservationProtocol } from "../Source/AgentSystem/Pi/AgentPiToolObservation.js";
+import {
+  AgentPiToolObservationSourceViewProtocol,
+  createAgentPiToolObservation,
+} from "../Source/AgentSystem/Pi/AgentPiToolObservation.js";
 import type { RegisteredTool } from "../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 
 const policy = new AgentPiContextPolicy("test-model");
@@ -66,6 +69,28 @@ function userMessage(text: string): AgentMessage {
 }
 
 function toolResultMessage(): AgentMessage {
+  const observation = createAgentPiToolObservation({
+    status: "success",
+    execution_status: "completed",
+    output_availability: "complete",
+    observation_view: {
+      type: AgentPiToolObservationSourceViewProtocol.type,
+      complete: true,
+      omission_count: 0,
+      omissions: [],
+      artifact_uri: "senera://artifact/current",
+    },
+    detail: {
+      evidence: [
+        {
+          evidence_uri: "senera://evidence/current",
+          kind: "weather",
+          artifact_refs: ["projection"],
+          facts: [{ name: "city", value: "上海" }],
+        },
+      ],
+    },
+  });
   return {
     role: "toolResult",
     toolCallId: "call_current",
@@ -73,18 +98,7 @@ function toolResultMessage(): AgentMessage {
     content: [
       {
         type: "text",
-        text: JSON.stringify({
-          type: AgentPiToolObservationProtocol.type,
-          artifact_uri: "senera://artifact/current",
-          evidence: [
-            {
-              evidence_uri: "senera://evidence/current",
-              kind: "weather",
-              artifact_refs: ["projection"],
-              facts: [{ name: "city", value: "上海" }],
-            },
-          ],
-        }),
+        text: JSON.stringify(observation),
       },
     ],
     isError: false,
@@ -111,6 +125,7 @@ function retrievalTool(): RegisteredTool {
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     permissions: [],
     sources: [],
+    childGrant: "inherit",
     evidenceCapabilities: [],
   };
 }

@@ -1,8 +1,8 @@
 {
-  "$schema": "https://schemas.senera.ai/tool-observation-projection/v1.json",
-  "schemaVersion": 1,
-  "maxTokens": 2048,
-  "maxOmissions": 16,
+  "$schema": "https://schemas.senera.ai/tool-observation-projection/v2.json",
+  "schemaVersion": 2,
+  "maxTokens": 64000,
+  "maxOmissions": 64,
   "artifactFallback": {
     "strategy": "reference",
     "requiredWhenTruncated": true
@@ -17,10 +17,9 @@
         "maxDepth": 1,
         "maxArrayItems": 0,
         "maxObjectProperties": 0,
-        "maxStringCharacters": 4096,
-        "maxTotalCharacters": 4096,
         "maxNodes": 2
-      }
+      },
+      "requiredForCompletion": true
     },
     {
       "source": "summaryFacts",
@@ -31,10 +30,9 @@
         "maxDepth": 4,
         "maxArrayItems": 24,
         "maxObjectProperties": 12,
-        "maxStringCharacters": 1024,
-        "maxTotalCharacters": 6144,
         "maxNodes": 192
-      }
+      },
+      "requiredForCompletion": false
     },
     {
       "source": "retrieval",
@@ -45,24 +43,22 @@
         "maxDepth": 4,
         "maxArrayItems": 24,
         "maxObjectProperties": 12,
-        "maxStringCharacters": 1024,
-        "maxTotalCharacters": 3072,
         "maxNodes": 96
-      }
+      },
+      "requiredForCompletion": true
     },
     {
       "source": "result",
       "mode": "auto",
       "priority": "normal",
-      "maxTokens": 1024,
+      "maxTokens": 64000,
       "limits": {
-        "maxDepth": 8,
-        "maxArrayItems": 32,
-        "maxObjectProperties": 48,
-        "maxStringCharacters": 2048,
-        "maxTotalCharacters": 12288,
-        "maxNodes": 384
-      }
+        "maxDepth": 12,
+        "maxArrayItems": 256,
+        "maxObjectProperties": 256,
+        "maxNodes": 2048
+      },
+      "requiredForCompletion": true
     }
   ]
 }

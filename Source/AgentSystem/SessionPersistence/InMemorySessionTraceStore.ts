@@ -1,4 +1,4 @@
-import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
 import {
   assertAgentSessionRepositoryPageSize,
   normalizeAgentSessionRequestIds,

@@ -6,6 +6,11 @@ import {
   encodeTerminalSidecarServerMessage,
 } from "../protocol.js";
 
+if (process.argv.length === 3 && process.argv[2] === "--probe") {
+  process.stdout.write(`${JSON.stringify({ protocolVersion: SeneraTerminalSidecarProtocolVersion })}\n`);
+  process.exit(0);
+}
+
 const decoder = new TerminalSidecarClientFrameDecoder();
 let terminal;
 let outputSequence = 0;

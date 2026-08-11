@@ -1,5 +1,4 @@
 export const AgentSandboxRuntimeProviders = {
-  Microsandbox: "microsandbox",
   Gvisor: "gvisor",
   DockerEngine: "docker-engine",
 } as const;
@@ -7,19 +6,28 @@ export const AgentSandboxRuntimeProviders = {
 export type AgentSandboxRuntimeProvider =
   (typeof AgentSandboxRuntimeProviders)[keyof typeof AgentSandboxRuntimeProviders];
 
-export type AgentSandboxEffectiveMode = "sandbox" | "unavailable" | "disabled";
+export type AgentSandboxEffectiveMode =
+  import("../Execution/SeneraExecutionRuntimeCapabilities.js").SeneraExecutionEffectiveMode;
 export type AgentSandboxRuntimeState = "disabled" | "unknown" | "preparing" | "ready" | "unavailable";
 export type AgentSandboxDiagnosticSeverity = "warning" | "error";
 
+export type AgentSandboxRuntimeAvailability =
+  | {
+      readonly kind: "available";
+      readonly provider: AgentSandboxRuntimeProvider;
+    }
+  | {
+      readonly kind: "disabled";
+      readonly reason: "configuration-disabled" | "docker-engine-unavailable" | "platform-host-policy";
+      readonly detail?: string;
+    };
+
 export const AgentSandboxPreparationStages = {
-  CheckingHostRuntime: "checking_host_runtime",
+  DetectingEngine: "detecting_engine",
   ConnectingWorker: "connecting_worker",
-  LoadingRuntime: "loading_runtime",
-  ResolvingArchive: "resolving_archive",
-  VerifyingArchive: "verifying_archive",
-  ImportingImage: "importing_image",
-  WarmingImage: "warming_image",
-  ProbingSandbox: "probing_sandbox",
+  PullingImage: "pulling_image",
+  VerifyingImage: "verifying_image",
+  ProbingToolchain: "probing_toolchain",
 } as const;
 
 export type AgentSandboxPreparationStage =
@@ -58,11 +66,15 @@ export interface AgentSandboxRuntimePathSnapshot {
 }
 
 export interface AgentSandboxRuntimeSnapshot {
-  provider: AgentSandboxRuntimeProvider;
+  provider?: AgentSandboxRuntimeProvider;
   platform: NodeJS.Platform;
   state: AgentSandboxRuntimeState;
   supported: boolean;
   effectiveMode: AgentSandboxEffectiveMode;
+  effectiveTarget?: "Local" | "Sandbox";
+  shellDialect?: import("../Execution/SeneraShellCommand.js").SeneraShellDialect;
+  availableExecutionTargets: readonly ("Local" | "Sandbox")[];
+  localExecution: import("../Execution/SeneraExecutionRuntimeCapabilities.js").SeneraLocalExecutionCapability;
   paths?: AgentSandboxRuntimePathSnapshot;
   progress?: AgentSandboxPreparationProgress;
   dependencies: AgentSandboxDependencySnapshot;

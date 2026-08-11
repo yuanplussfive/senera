@@ -31,7 +31,7 @@ export interface ExecutionResourceStateData {
   toolCallId?: string;
   toolName?: string;
   cursor: number;
-  state: "starting" | "running" | "completed" | "failed" | "cancelled";
+  state: "starting" | "running" | "stopping" | "completed" | "failed" | "cancelled";
   pid?: number;
   exitCode?: number | null;
   signal?: string | null;
@@ -43,7 +43,7 @@ export type ExecutionResourceState = ExecutionResourceStateData["state"];
 export type ExecutionResourceTerminalCapability =
   "persistent" | "interactive-input" | "resize" | "signals" | "separate-stderr" | "process-tree-control";
 
-export type ExecutionResourceTerminalCapabilityProvider = "host-pty" | "guest-node-pty" | "microsandbox-sdk";
+export type ExecutionResourceTerminalCapabilityProvider = "host-pty" | "guest-node-pty" | "docker-engine";
 export type ExecutionResourceTerminalPersistenceScope = "execution-resource" | "process";
 
 export interface ExecutionResourceTerminalData {

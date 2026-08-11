@@ -36,12 +36,18 @@ export class AgentLoopToolEventFactory {
     index: number,
     toolName: string,
     callId: string,
-    metadata: { batchId?: string } = {},
+    metadata: { batchId?: string; startedAt?: string } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallStarted,
       context: { requestId, step },
-      data: { index, toolName, callId, batchId: metadata.batchId },
+      data: {
+        index,
+        toolName,
+        callId,
+        batchId: metadata.batchId,
+        ...(metadata.startedAt === undefined ? {} : { startedAt: metadata.startedAt }),
+      },
     };
   }
 
@@ -52,12 +58,20 @@ export class AgentLoopToolEventFactory {
     toolName: string,
     callId: string,
     presentation?: AgentToolResultPresentation,
-    metadata: { batchId?: string } = {},
+    metadata: { batchId?: string; startedAt?: string; durationMs?: number } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallCompleted,
       context: { requestId, step },
-      data: { index, toolName, callId, presentation, batchId: metadata.batchId },
+      data: {
+        index,
+        toolName,
+        callId,
+        presentation,
+        batchId: metadata.batchId,
+        ...(metadata.startedAt === undefined ? {} : { startedAt: metadata.startedAt }),
+        ...(metadata.durationMs === undefined ? {} : { durationMs: metadata.durationMs }),
+      },
     };
   }
 
@@ -69,7 +83,7 @@ export class AgentLoopToolEventFactory {
     callId: string,
     message: string,
     code?: string,
-    metadata: { batchId?: string } = {},
+    metadata: { batchId?: string; startedAt?: string; durationMs?: number } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallFailed,
@@ -82,6 +96,8 @@ export class AgentLoopToolEventFactory {
         message,
         code,
         batchId: metadata.batchId,
+        ...(metadata.startedAt === undefined ? {} : { startedAt: metadata.startedAt }),
+        ...(metadata.durationMs === undefined ? {} : { durationMs: metadata.durationMs }),
       },
     };
   }

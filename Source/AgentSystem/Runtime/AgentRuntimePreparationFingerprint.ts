@@ -1,7 +1,8 @@
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 
-const AgentRuntimePreparationFingerprintVersion = 1;
+// Version 3 invalidates snapshots created before request-scoped Tool authorization ceilings were authoritative.
+const AgentRuntimePreparationFingerprintVersion = 3;
 
 export function createAgentRuntimePreparationFingerprint(input: {
   config: AgentSystemConfig;

@@ -4,8 +4,8 @@ import {
   type AgentRuntimeModule,
 } from "../Source/AgentSystem/Runtime/AgentRuntimeModule.js";
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
+import { projectAgentDelegatedRolePromptContext } from "../Source/AgentSystem/Loop/AgentTurnPromptRenderer.js";
 import type { LoadedToolsState } from "../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
-import { SeneraMicrosandboxDefaults } from "../Source/AgentSystem/Execution/SeneraMicrosandboxDefaults.js";
 import { createIsolatedVerificationRuntimeConfig } from "./VerificationRuntimeConfig.js";
 
 const workspaceRoot = process.cwd();
@@ -36,7 +36,17 @@ try {
     workflowSkills.some((skill) => skill.name === "execution-workflow"),
     true,
   );
-  assert.deepEqual(runtime.services.promptContext.recommendedSkillTools(workflowSkills), []);
+  assert.equal(
+    workflowSkills.some((skill) => skill.name === "agent-orchestration"),
+    true,
+  );
+  assert.deepEqual(runtime.services.promptContext.recommendedSkillTools(workflowSkills), [
+    "AgentSpawn",
+    "AgentWait",
+    "AgentInput",
+    "AgentStop",
+    "AgentResume",
+  ]);
   const investigationSkills = await runtime.services.promptContext.activateSkills({
     input: "现在的 shell 工具怎么实现的，读取 SeneraShellPlatform 的片段并分析",
   });
@@ -56,30 +66,41 @@ try {
   });
   assert.ok(baseContext.ToolCards.some((tool) => tool.name === visibleToolName));
   assert.equal(baseContext.ExecutionEnvironment.workspace.root, workspaceRoot);
+  assert.equal(baseContext.ExecutionEnvironment.workspace.logicalRoot, ".");
   assert.equal(baseContext.ExecutionEnvironment.workspace.preferredPathForm, "workspace-relative");
   assert.ok(baseContext.ExecutionEnvironment.shell.invocation.length > 0);
-  assert.deepEqual(baseContext.ExecutionEnvironment.executionTargets.sandbox, {
-    os: "Linux",
-    boundary: "sandbox",
-    shellDialect: "posix-sh",
-    shellCommand: "/bin/sh",
-    image: SeneraMicrosandboxDefaults.image,
-  });
-  const baseTemplate = runtime.registry.getTemplate("BaseSystemPrompt");
-  assert.ok(baseTemplate);
-  const renderedBasePrompt = runtime.promptRenderer.renderFileSync(baseTemplate.path, {
-    ...baseContext,
-  });
-  assert.ok(renderedBasePrompt.includes("<execution_environment>"));
-  assert.ok(renderedBasePrompt.includes("<preferred_path_form>workspace-relative</preferred_path_form>"));
-  assert.ok(renderedBasePrompt.includes("<shell_dialect>posix-sh</shell_dialect>"));
-
-  const shellStartDefinition = runtime.services.pi.toolDefinitions().find((tool) => tool.name === "ShellStartTool");
-  assert.ok(shellStartDefinition);
-  const shellStartSchema = JSON.stringify(shellStartDefinition.parameters);
-  for (const requiredField of ['"mode"', '"dialect"', '"script"', '"posix-sh"', '"powershell"']) {
-    assert.ok(shellStartSchema.includes(requiredField), `ShellStartTool schema is missing ${requiredField}`);
+  assert.equal(baseContext.ExecutionEnvironment.executionTargets.sandbox, null);
+  const localShellDialect = baseContext.ExecutionEnvironment.executionTargets.local.shellDialect;
+  assert.equal(baseContext.ExecutionEnvironment.executionTargets.local.workspaceRoot, workspaceRoot);
+  assert.equal(baseContext.ExecutionEnvironment.executionTargets.local.workspaceMount, "host");
+  for (const templateName of ["PiNativeSystemPrompt", "PiBamlSystemPrompt"]) {
+    const template = runtime.registry.getTemplate(templateName);
+    assert.ok(template);
+    const renderedPrompt = runtime.promptRenderer.renderFileSync(template.path, {
+      ...baseContext,
+      DelegatedRole: projectAgentDelegatedRolePromptContext(),
+    });
+    assert.ok(renderedPrompt.includes("<execution_environment>"));
+    assert.ok(renderedPrompt.includes("<logical_root>.</logical_root>"));
+    assert.ok(renderedPrompt.includes(`<workspace_root>${workspaceRoot}</workspace_root>`));
+    assert.ok(renderedPrompt.includes("<preferred_path_form>workspace-relative</preferred_path_form>"));
+    assert.ok(renderedPrompt.includes(`<shell_dialect>${localShellDialect}</shell_dialect>`));
+    assert.ok(!renderedPrompt.includes("<sandbox>"));
+    assert.ok(!renderedPrompt.includes("Sandbox shell tools"));
+    assert.ok(!renderedPrompt.includes("senera_root_command"));
+    assert.ok(!renderedPrompt.includes("pi_tool_turn"));
   }
+
+  const shellDefinition = runtime.services.pi.toolDefinitions().find((tool) => tool.name === "ShellCommandTool");
+  assert.ok(shellDefinition);
+  const shellSchema = JSON.stringify(shellDefinition.parameters);
+  for (const requiredField of ['"mode"', '"dialect"', '"script"', '"posix-sh"', '"powershell"']) {
+    assert.ok(shellSchema.includes(requiredField), `ShellCommandTool schema is missing ${requiredField}`);
+  }
+  assert.equal(
+    runtime.services.pi.toolDefinitions().some((tool) => tool.name === "ShellStartTool"),
+    false,
+  );
 
   const discoverySources = runtime.registry.listDiscoverySources();
   const toolSearchDefinition = runtime.services.pi.toolDefinitions().find((tool) => tool.name === "ToolSearchTool");

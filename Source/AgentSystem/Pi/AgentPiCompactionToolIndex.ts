@@ -3,15 +3,14 @@ import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { z } from "zod";
 import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
 import { uniqueStrings } from "../Core/AgentCollections.js";
-import { readAgentNonBlankString, readAgentUnknownRecord, type AgentUnknownRecord } from "../Core/AgentUnknownValue.js";
+import { readAgentNonBlankString } from "../Core/AgentUnknownValue.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import {
-  assertAgentPiToolObservationBounded,
   readAgentPiMessageTextContent,
+  readAgentPiToolObservationArtifactUri,
   readAgentPiToolObservation,
-  isAgentPiToolResultMessage,
+  type AgentPiToolObservation,
 } from "./AgentPiToolObservation.js";
-import { parseAgentPiToolDetails } from "./AgentPiToolResultDetails.js";
 import {
   DefaultAgentPiCompactionProjectionPolicy,
   normalizeAgentPiCompactionLimit,
@@ -103,15 +102,37 @@ export function readAgentPiCompactionToolCallIndex(
   return { index: undefined, invalidEntryId: entry.id };
 }
 
+export function mergeAgentPiCompactionToolCallIndexes(
+  indexes: readonly (AgentPiCompactionToolCallIndex | undefined)[],
+  maxIndexedCalls = DefaultAgentPiCompactionToolIndexLimits.maxIndexedCalls,
+): AgentPiCompactionToolCallIndex {
+  const limit = normalizeAgentPiCompactionLimit(maxIndexedCalls, "maxIndexedCalls");
+  const present = indexes.filter((index): index is AgentPiCompactionToolCallIndex => index !== undefined);
+  const byCallId = new Map<string, AgentPiCompactionToolCallEntry>();
+  for (const index of present) {
+    for (const call of index.calls) byCallId.set(call.callId, call);
+  }
+  const calls = [...byCallId.values()].slice(-limit);
+  const aggregate = aggregateToolCallIndex(
+    calls,
+    present.reduce((total, index) => total + index.totalCalls, 0),
+  );
+  return {
+    ...aggregate,
+    evidenceUris: uniqueStrings(present.flatMap((index) => index.evidenceUris)),
+    artifactUris: uniqueStrings(present.flatMap((index) => index.artifactUris)),
+  };
+}
+
 interface PendingToolCall {
   callId: string;
   toolName: string;
   argumentsPreview: string;
-  observation?: AgentUnknownRecord;
+  observation?: AgentPiToolObservation;
 }
 
 interface ResolvedToolCall extends PendingToolCall {
-  observation: AgentUnknownRecord;
+  observation: AgentPiToolObservation;
 }
 
 function extractToolCallEntries(
@@ -121,11 +142,8 @@ function extractToolCallEntries(
   const callsById = new Map<string, PendingToolCall>();
 
   for (const message of messages) {
-    const record = readAgentUnknownRecord(message);
-    if (!record) continue;
-
-    collectAssistantToolCalls(record, callsById, limits);
-    enrichWithToolResult(message, record, callsById);
+    if (message.role === "assistant") collectAssistantToolCalls(message, callsById, limits);
+    if (message.role === "toolResult") enrichWithToolResult(message, callsById);
   }
 
   return [...callsById.values()]
@@ -134,47 +152,36 @@ function extractToolCallEntries(
 }
 
 function collectAssistantToolCalls(
-  record: AgentUnknownRecord,
+  message: Extract<AgentMessage, { role: "assistant" }>,
   callsById: Map<string, PendingToolCall>,
   limits: AgentPiCompactionToolIndexLimits,
 ): void {
-  const content = Array.isArray(record.content) ? record.content : [];
-  for (const block of content) {
-    const blockRecord = readAgentUnknownRecord(block);
-    if (blockRecord?.type !== "toolCall") continue;
-    const callId = readAgentNonBlankString(blockRecord.id);
-    const toolName = readAgentNonBlankString(blockRecord.name);
-    if (!callId || !toolName) continue;
-    callsById.set(callId, {
-      callId,
-      toolName,
-      argumentsPreview: projectArgumentsPreview(blockRecord.arguments, limits.argumentsPreviewTokenBudget),
+  for (const block of message.content) {
+    if (block.type !== "toolCall") continue;
+    callsById.set(block.id, {
+      callId: block.id,
+      toolName: block.name,
+      argumentsPreview: projectArgumentsPreview(block.arguments, limits.argumentsPreviewTokenBudget),
     });
   }
 }
 
 function enrichWithToolResult(
-  message: AgentMessage,
-  record: AgentUnknownRecord,
+  message: Extract<AgentMessage, { role: "toolResult" }>,
   callsById: Map<string, PendingToolCall>,
 ): void {
-  if (!isAgentPiToolResultMessage(message)) return;
-  const callId = readAgentNonBlankString(record.toolCallId);
-  if (!callId) return;
-
-  const text = readAgentPiMessageTextContent(message);
-  const parsedObservation = readAgentPiToolObservation(text);
-  if (parsedObservation) assertAgentPiToolObservationBounded(parsedObservation);
-  const observation = parsedObservation ?? {};
-  const details = parseAgentPiToolDetails(record.details)?.senera;
+  const callId = message.toolCallId;
+  const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
   const pending = callsById.get(callId);
   if (pending) {
-    pending.observation = observation;
-    if (details?.toolName && !pending.toolName) pending.toolName = details.toolName;
+    if (pending.toolName !== message.toolName) {
+      throw new Error(`Pi tool call ${callId} changed tool identity before compaction.`);
+    }
+    if (observation) pending.observation = observation;
   } else {
     callsById.set(callId, {
       callId,
-      toolName: details?.toolName ?? readAgentNonBlankString(record.toolName) ?? "",
+      toolName: message.toolName,
       argumentsPreview: "",
       observation,
     });
@@ -183,11 +190,13 @@ function enrichWithToolResult(
 
 function projectToolCallEntry(call: ResolvedToolCall): AgentPiCompactionToolCallEntry {
   const obs = call.observation;
-  const detail = readAgentUnknownRecord(obs.detail);
+  const detail = obs.detail;
   const status = resolveEntryStatus(obs);
   const summaryText = readObservationSummary(detail);
-  const artifactUriValue = readAgentNonBlankString(obs.artifact_uri);
-  const evidenceUriList = uniqueStrings(readEvidenceUriList(detail?.evidence));
+  const artifactUriValue = readAgentPiToolObservationArtifactUri(obs);
+  const evidenceUriList = uniqueStrings(
+    detail.evidence.flatMap((entry) => (entry.evidence_uri ? [entry.evidence_uri] : [])),
+  );
   const error = projectToolCallError(obs.error);
 
   return {
@@ -212,32 +221,37 @@ function normalizeToolIndexLimits(limits: AgentPiCompactionToolIndexLimits): Age
   };
 }
 
-function resolveEntryStatus(observation: AgentUnknownRecord): "success" | "failure" | "empty" {
-  const rawStatus = readAgentNonBlankString(observation.status);
+function resolveEntryStatus(observation: AgentPiToolObservation): "success" | "failure" | "empty" {
+  const rawStatus = observation.status;
   if (rawStatus === "success") return "success";
   if (rawStatus === "failure") return "failure";
 
-  const outputAvailability = readAgentNonBlankString(observation.output_availability);
-  if (outputAvailability === "none" || outputAvailability === "empty") return "empty";
+  const outputAvailability = observation.output_availability;
+  if (outputAvailability === "none") return "empty";
 
-  const hasError = Boolean(readAgentUnknownRecord(observation.error));
+  const hasError = observation.error !== undefined;
   if (hasError) return "failure";
 
-  const detail = readAgentUnknownRecord(observation.detail);
+  const detail = observation.detail;
   const hasContent = Boolean(
     readObservationSummary(detail) ||
-    readAgentNonBlankString(observation.artifact_uri) ||
-    readEvidenceUriList(detail?.evidence).length > 0,
+    readAgentNonBlankString(readAgentPiToolObservationArtifactUri(observation)) ||
+    detail.evidence.some((entry) => entry.evidence_uri !== undefined),
   );
   return hasContent ? "success" : "empty";
 }
 
-function readObservationSummary(detail: AgentUnknownRecord | undefined): string | undefined {
-  return readAgentNonBlankString(detail?.semantic_digest ?? detail?.summary ?? detail?.headline);
+function readObservationSummary(detail: AgentPiToolObservation["detail"]): string | undefined {
+  return (
+    readAgentNonBlankString(detail.semantic_digest) ??
+    readAgentNonBlankString(detail.summary) ??
+    readAgentNonBlankString(detail.headline)
+  );
 }
 
-function projectToolCallError(errorValue: unknown): AgentPiCompactionToolCallEntry["error"] | undefined {
-  const error = readAgentUnknownRecord(errorValue);
+function projectToolCallError(
+  error: AgentPiToolObservation["error"],
+): AgentPiCompactionToolCallEntry["error"] | undefined {
   if (!error) return undefined;
   const code = readAgentNonBlankString(error.code);
   const kind = readAgentNonBlankString(error.kind);
@@ -250,15 +264,6 @@ function projectToolCallError(errorValue: unknown): AgentPiCompactionToolCallEnt
     ...(message ? { message } : {}),
   };
   return Object.keys(projected).length > 0 ? projected : undefined;
-}
-
-function readEvidenceUriList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) => {
-    const record = readAgentUnknownRecord(entry);
-    const uri = readAgentNonBlankString(record?.evidence_uri ?? record?.evidenceUri);
-    return uri ? [uri] : [];
-  });
 }
 
 function projectArgumentsPreview(argumentsValue: unknown, tokenBudget: number): string {

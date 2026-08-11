@@ -1,14 +1,13 @@
 import { createRequestId } from "../Core/AgentIds.js";
 import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecutionArtifactRecorder.js";
-import type { AskUserControlResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
+import type { AskUserControlResult, SuspendChildRunControlResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { AgentToolObservationContextCompiler } from "../ToolRuntime/AgentToolObservationContextCompiler.js";
 import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import { redactArtifactSecrets, redactArtifactToolOutcome } from "../Artifacts/AgentArtifactRedaction.js";
-import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
 import { AgentPiToolResultStatuses, type AgentPiToolExecutionInput, type AgentPiToolResult } from "./AgentPiTypes.js";
-import type { AgentToolResourceScheduler } from "../ToolRuntime/AgentToolResourceScheduler.js";
+import type { AgentToolExecutionScheduler } from "../ToolRuntime/AgentToolExecutionScheduler.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import {
   AgentToolAssessmentStatuses,
@@ -17,13 +16,15 @@ import {
   readAgentToolFailure,
   type AgentToolExecutionOutcome,
 } from "../ToolRuntime/AgentToolResultOutcome.js";
+import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolObservationProjectionTypes.js";
+import type { AgentToolTokenReservation } from "../Text/AgentTurnTokenBudget.js";
+import { resolveAgentToolRuntimeCapabilities } from "../ToolRuntime/AgentToolRuntimeCapabilities.js";
 
 export interface AgentPiToolExecutionBridgeOptions {
   model: string;
   executeToolCall: AgentToolCallExecutor["execute"];
   recordToolArtifacts: AgentToolExecutionArtifactRecorder["record"];
-  resourceScheduler?: Pick<AgentToolResourceScheduler, "run">;
-  turnContexts: Pick<AgentPiTurnContextStore, "readToolCallBatchId" | "registerExecutedToolResult">;
+  executionScheduler?: Pick<AgentToolExecutionScheduler, "run">;
 }
 
 export class AgentPiToolExecutionBridge {
@@ -35,8 +36,11 @@ export class AgentPiToolExecutionBridge {
 
   async execute(input: AgentPiToolExecutionInput): Promise<AgentPiToolResult> {
     const operation = () => this.executeWithLease(input);
-    return this.options.resourceScheduler
-      ? this.options.resourceScheduler.run(input.tool, input.params, operation, input.signal)
+    const turnState = input.context.turnState;
+    if (!turnState) throw new Error("Pi tool execution requires an active turn state.");
+    return this.options.executionScheduler &&
+      resolveAgentToolRuntimeCapabilities(input.tool).scheduling !== "self-managed"
+      ? this.options.executionScheduler.run(turnState, input.tool, input.params, operation, input.signal)
       : operation();
   }
 
@@ -45,51 +49,70 @@ export class AgentPiToolExecutionBridge {
     if (!toolAccessGrant) throw new AgentLocalizedError("toolAccess.missingGrant");
     const requestId = input.context.requestId ?? createRequestId();
     const step = input.context.step ?? 1;
-    const batchId =
-      this.options.turnContexts.readToolCallBatchId(input.context.piTurnContextId, input.toolCallId) ??
-      `${requestId}:${step}`;
-    const execution = await this.options.executeToolCall(
-      {
-        name: input.tool.name,
-        arguments: input.params,
-        expectedContractDigest: input.tool.contract?.digest ?? null,
-        callId: input.toolCallId,
-      },
-      {
-        sessionId: input.context.sessionId,
+    const turnState = input.context.turnState;
+    if (!turnState) throw new Error("Pi tool execution requires an active turn state.");
+    const batchId = turnState.toolBatchId(input.toolCallId);
+    if (!batchId) throw new Error(`Pi tool call ${input.toolCallId} is not registered in a tool batch.`);
+    const projection = input.tool.observationProjection ?? StandardAgentToolObservationProjection;
+    const reservation = turnState.claimToolObservationBudget(input.toolCallId, projection.maxTokens);
+    try {
+      const execution = await this.options.executeToolCall(
+        {
+          name: input.tool.name,
+          arguments: input.params,
+          expectedContractDigest: input.tool.contract?.digest ?? null,
+          callId: input.toolCallId,
+          index: turnState.toolBatchIndex(input.toolCallId),
+        },
+        {
+          sessionId: input.context.sessionId,
+          requestId,
+          step,
+          onEvent: input.context.onEvent,
+          toolAccessGrant,
+          toolExposure: input.context.toolExposure,
+          batchId,
+          signal: input.signal,
+          tokenBudget: reservation,
+          approvalMode: input.context.approvalMode,
+          activeSkills: input.context.activeSkills,
+          thinkingLevel: input.context.thinkingLevel,
+          onLifecycleSettled: (status) => turnState.recordExecutorLifecycleStatus(input.toolCallId, status),
+          deferResultDetail: true,
+        },
+      );
+
+      if (execution.kind === "AskUser") {
+        return this.projectAskUser(input, batchId, execution.value, projection, reservation);
+      }
+      if (execution.kind === "SuspendChildRun") {
+        return this.projectChildRunSuspension(input, batchId, execution.value, projection, reservation);
+      }
+
+      const [recorded] = await this.options.recordToolArtifacts({
+        ...(input.context.sessionId ? { sessionId: input.context.sessionId } : {}),
         requestId,
         step,
-        onEvent: input.context.onEvent,
-        toolAccessGrant,
-        toolExposure: input.context.toolExposure,
-        batchId,
-        signal: input.signal,
-        tokenBudget: input.context.tokenBudget,
-      },
-    );
-
-    if (execution.kind === "AskUser") {
-      return this.projectAskUser(input, batchId, execution.value);
+        results: execution.value,
+      });
+      const result = recorded ?? execution.value[0];
+      if (!result) throw new Error("Tool execution completed without a result.");
+      assertExecutedToolIdentity(input, result);
+      turnState.registerExecutedToolResult(input.toolCallId, result);
+      return this.projectToolResult(input, result, batchId, projection, reservation);
+    } catch (error) {
+      reservation.release();
+      throw error;
     }
-
-    const [recorded] = await this.options.recordToolArtifacts({
-      ...(input.context.sessionId ? { sessionId: input.context.sessionId } : {}),
-      requestId,
-      step,
-      results: execution.value,
-    });
-    const result = recorded ?? execution.value[0];
-    if (!result) throw new Error("Tool execution completed without a result.");
-    this.options.turnContexts.registerExecutedToolResult(input.context.piTurnContextId, input.toolCallId, result);
-    return this.projectToolResult(input, result, batchId);
   }
 
   private projectAskUser(
     input: AgentPiToolExecutionInput,
     batchId: string,
     result: AskUserControlResult,
+    projection: AgentToolObservationProjectionManifest,
+    reservation: AgentToolTokenReservation,
   ): AgentPiToolResult {
-    const projection = input.tool.observationProjection ?? StandardAgentToolObservationProjection;
     const observation = this.observationCompiler.compile(
       {
         toolName: input.tool.name,
@@ -107,15 +130,59 @@ export class AgentPiToolExecutionBridge {
         artifact: undefined,
       },
       projection,
-      input.context.tokenBudget?.availableTokens(projection.maxTokens),
+      reservation.limit,
     );
+    const content = JSON.stringify(observation);
+    reservation.commit(content);
     return {
       content: [
         {
           type: "text",
-          text: JSON.stringify(observation),
+          text: content,
         },
       ],
+      details: {
+        senera: {
+          toolName: input.tool.name,
+          status: AgentPiToolResultStatuses.Success,
+          executionStatus: AgentToolExecutionStatuses.Completed,
+          outputAvailability: AgentToolOutputAvailabilities.Complete,
+        },
+      },
+      terminate: true,
+    };
+  }
+
+  private projectChildRunSuspension(
+    input: AgentPiToolExecutionInput,
+    batchId: string,
+    result: SuspendChildRunControlResult,
+    projection: AgentToolObservationProjectionManifest,
+    reservation: AgentToolTokenReservation,
+  ): AgentPiToolResult {
+    const observation = this.observationCompiler.compile(
+      {
+        toolName: input.tool.name,
+        callId: input.toolCallId,
+        batchId,
+        status: "waiting",
+        executionStatus: AgentToolExecutionStatuses.Completed,
+        outputAvailability: AgentToolOutputAvailabilities.Complete,
+        summary: "The child run is waiting for a supervisor response.",
+        outcome: undefined,
+        process: undefined,
+        error: undefined,
+        result,
+        arguments: undefined,
+        artifact: undefined,
+      },
+      projection,
+      reservation.limit,
+    );
+    const content = JSON.stringify(observation);
+    reservation.commit(content);
+    return {
+      content: [{ type: "text", text: content }],
       details: {
         senera: {
           toolName: input.tool.name,
@@ -132,16 +199,18 @@ export class AgentPiToolExecutionBridge {
     input: AgentPiToolExecutionInput,
     result: ExecutedToolCallResult,
     batchId: string,
+    projection: AgentToolObservationProjectionManifest,
+    reservation: AgentToolTokenReservation,
   ): AgentPiToolResult {
     const tool = input.tool;
     const outcome = redactArtifactToolOutcome(result.outcome, result.artifactPolicy);
-    const projection = tool.observationProjection ?? StandardAgentToolObservationProjection;
     const observation = this.observationCompiler.compile(
       projectToolObservation(result, outcome, batchId),
       projection,
-      input.context.tokenBudget?.availableTokens(projection.maxTokens),
+      reservation.limit,
     );
     const content = JSON.stringify(observation);
+    reservation.commit(content);
 
     return {
       content: [
@@ -152,6 +221,12 @@ export class AgentPiToolExecutionBridge {
       ],
       details: projectToolDetails(tool.name, result, outcome),
     };
+  }
+}
+
+function assertExecutedToolIdentity(input: AgentPiToolExecutionInput, result: ExecutedToolCallResult): void {
+  if (result.callId !== input.toolCallId || result.name !== input.tool.name) {
+    throw new Error(`Executed tool result identity does not match Pi call ${input.toolCallId}.`);
   }
 }
 
@@ -174,6 +249,7 @@ function projectToolObservation(
     result: redactArtifactSecrets(result.result, result.artifactPolicy),
     error,
     artifact: result.artifact,
+    semanticProjection: result.semanticProjection,
   };
 }
 

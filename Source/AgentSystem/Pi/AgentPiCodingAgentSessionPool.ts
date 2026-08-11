@@ -77,7 +77,7 @@ export class AgentPiCodingAgentSessionPool {
       return {
         storage: opened.storage,
         historyMigrationRequired: opened.historyMigrationRequired,
-        session: new AgentPiCodingAgentSession(pooled.session, pooled.sessionManager, () =>
+        session: new AgentPiCodingAgentSession(pooled.session, pooled.sessionManager, pooled.frame, () =>
           this.lifecycle.release(input.sessionId, leasedSession, leasedRelease, finishOperation),
         ),
       };
@@ -114,11 +114,23 @@ export class AgentPiCodingAgentSessionPool {
   async fork(sourceSessionId: string, targetSessionId: string, entryId: string): Promise<boolean> {
     const finishOperation = this.lifecycle.beginOperation();
     let release: (() => void) | undefined;
+    let borrowedSource: AgentPiPooledCodingSession | undefined;
     let targetFile: string | undefined;
     try {
-      release = await this.acquireSessionPair(sourceSessionId, targetSessionId);
+      if (sourceSessionId === targetSessionId) return false;
+      const forkLease = await this.acquireForkLeases(sourceSessionId, targetSessionId);
+      release = forkLease.release;
+      borrowedSource = forkLease.borrowedSource;
       this.lifecycle.assertOpen();
       if (this.sessions.has(targetSessionId) || (await this.findSession(targetSessionId))) return false;
+      if (borrowedSource && !this.isActiveBorrowedSource(sourceSessionId, borrowedSource)) {
+        release();
+        release = undefined;
+        borrowedSource = undefined;
+        release = await this.acquireSessionPair(sourceSessionId, targetSessionId);
+        this.lifecycle.assertOpen();
+        if (this.sessions.has(targetSessionId) || (await this.findSession(targetSessionId))) return false;
+      }
       const sourceManager =
         this.sessions.get(sourceSessionId)?.sessionManager ?? (await this.openExistingSession(sourceSessionId));
       if (!sourceManager) return false;
@@ -180,21 +192,18 @@ export class AgentPiCodingAgentSessionPool {
     });
   }
 
-  status(sessionId: string): Promise<AgentPiSessionRuntimeStatus | undefined> {
-    return this.withExistingSession(sessionId, (pooled) => {
-      const {
-        sessionFile: _sessionFile,
-        sessionId: _piSessionId,
-        contextUsage: _statsContextUsage,
-        ...stats
-      } = pooled.session.getSessionStats();
-      return {
-        sessionId,
-        cached: this.sessions.get(sessionId) === pooled,
-        stats,
-        contextUsage: pooled.session.getContextUsage(),
-      };
-    });
+  async status(sessionId: string): Promise<AgentPiSessionRuntimeStatus | undefined> {
+    const cached = this.sessions.get(sessionId);
+    if (cached) {
+      const finishOperation = this.lifecycle.beginOperation();
+      try {
+        return this.readRuntimeStatus(sessionId, cached);
+      } finally {
+        finishOperation();
+      }
+    }
+
+    return this.withExistingSession(sessionId, (pooled) => this.readRuntimeStatus(sessionId, pooled));
   }
 
   export(sessionId: string, format: AgentPiSessionExportFormat): Promise<AgentPiSessionExportResult | undefined> {
@@ -219,6 +228,21 @@ export class AgentPiCodingAgentSessionPool {
 
   close(): Promise<void> {
     return this.lifecycle.close();
+  }
+
+  private readRuntimeStatus(sessionId: string, pooled: AgentPiPooledCodingSession): AgentPiSessionRuntimeStatus {
+    const {
+      sessionFile: _sessionFile,
+      sessionId: _piSessionId,
+      contextUsage: _statsContextUsage,
+      ...stats
+    } = pooled.session.getSessionStats();
+    return {
+      sessionId,
+      cached: this.sessions.get(sessionId) === pooled,
+      stats,
+      contextUsage: pooled.session.getContextUsage(),
+    };
   }
 
   private async withExistingSession<TValue>(
@@ -263,6 +287,36 @@ export class AgentPiCodingAgentSessionPool {
       for (const release of releases.reverse()) release();
       throw error;
     }
+  }
+
+  /**
+   * A parent turn may fork its own active session. In that case the source
+   * lease is already held by the caller, so acquiring it again would wait for
+   * the parent to finish while the parent waits for the fork to finish.
+   *
+   * The target is still serialized through the keyed queue. Once it is held,
+   * the active source lease protects the synchronous session-file snapshot
+   * taken by SessionManager.forkFrom(). If the source became idle while the
+   * target was queued, fall back to the normal ordered pair acquisition.
+   */
+  private async acquireForkLeases(
+    sourceSessionId: string,
+    targetSessionId: string,
+  ): Promise<{ release: () => void; borrowedSource?: AgentPiPooledCodingSession }> {
+    const source = this.sessions.get(sourceSessionId);
+    if (source && source.activeLeases > 0) {
+      const releaseTarget = await this.leases.acquire(targetSessionId);
+      const activeSource = this.sessions.get(sourceSessionId);
+      if (activeSource === source && activeSource.activeLeases > 0) {
+        return { release: releaseTarget, borrowedSource: source };
+      }
+      releaseTarget();
+    }
+    return { release: await this.acquireSessionPair(sourceSessionId, targetSessionId) };
+  }
+
+  private isActiveBorrowedSource(sourceSessionId: string, source: AgentPiPooledCodingSession): boolean {
+    return this.sessions.get(sourceSessionId) === source && source.activeLeases > 0;
   }
 
   private async openOrCreate(input: AgentPiCodingAgentLeaseInput): Promise<{

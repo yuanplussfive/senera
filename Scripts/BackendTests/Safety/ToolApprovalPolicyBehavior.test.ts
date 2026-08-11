@@ -45,7 +45,7 @@ describe("tool approval policy composition", () => {
       riskSignals: ["semantic:risk"],
     }));
     const policy = new AgentCompositeToolApprovalPolicy({
-      auditors: [{ auditToolCall }],
+      semanticAuditors: [{ auditToolCall }],
       opa: {
         client: policyClient({
           decision: "deny",
@@ -68,7 +68,7 @@ describe("tool approval policy composition", () => {
 
   test("keeps semantic risk approvable when deterministic policy allows execution", async () => {
     const policy = new AgentCompositeToolApprovalPolicy({
-      auditors: [
+      semanticAuditors: [
         bamlAuditor({
           decision: ToolRiskAuditDecision.Deny,
           riskLevel: ToolRiskLevel.Critical,
@@ -96,6 +96,40 @@ describe("tool approval policy composition", () => {
       reason: "The command includes a user-provided credential.",
       riskSignals: expect.arrayContaining(["boundary:verified", "baml.concern:secret-exposure"]),
     });
+  });
+
+  test("does not spend a semantic audit on a deterministic approval request", async () => {
+    const auditToolCall = vi.fn<AgentToolGuardrailAuditor["auditToolCall"]>(async () => undefined);
+    const policy = new AgentCompositeToolApprovalPolicy({
+      semanticAuditors: [{ auditToolCall }],
+    });
+    const input = toolInput();
+
+    await expect(
+      policy.decideToolCall({
+        ...input,
+        tool: input.tool ? { ...input.tool, approval: { Mode: "ask" } } : undefined,
+      }),
+    ).resolves.toMatchObject({ action: "ask" });
+    expect(auditToolCall).not.toHaveBeenCalled();
+  });
+
+  test("allows the permission mode to omit advisory semantic auditors", async () => {
+    const auditToolCall = vi.fn<AgentToolGuardrailAuditor["auditToolCall"]>(async () => ({
+      action: "ask",
+      rule: "semantic.ask",
+      reason: "Confirm the semantic risk.",
+      riskSignals: [],
+    }));
+    const policy = new AgentCompositeToolApprovalPolicy({
+      semanticAuditors: [{ auditToolCall }],
+    });
+
+    await expect(policy.decideToolCall(toolInput(), { includeSemanticAuditors: false })).resolves.toMatchObject({
+      action: "allow",
+      rule: "tool.declaration.allow",
+    });
+    expect(auditToolCall).not.toHaveBeenCalled();
   });
 });
 

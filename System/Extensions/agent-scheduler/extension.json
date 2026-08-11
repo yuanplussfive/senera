@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "agent-scheduler",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "任务调度", "en-US": "Task Scheduler" },
+  "description": {
+    "zh-CN": "创建和管理由 SQLite 持久化、Senera 会话运行时执行的定时代理任务。",
+    "en-US": "Creates and manages SQLite-persisted scheduled agent tasks executed by the Senera session runtime."
+  },
+  "priority": 3,
+  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" },
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/AgentScheduleManage.tool.json",
+      "capability": "orchestration.schedule.manage",
+      "recommendedForSkills": []
+    }
+  ]
+}

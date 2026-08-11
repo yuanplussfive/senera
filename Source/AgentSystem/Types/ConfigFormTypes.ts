@@ -6,6 +6,17 @@ export type AgentConfigFormFieldLevel = "basic" | "advanced" | "internal";
 
 export type AgentConfigFormValueSource = "explicit" | "inherited" | "default" | "missing";
 
+export const AgentConfigFormOptionCatalogs = {
+  Skills: "skills",
+} as const;
+
+export type AgentConfigFormOptionCatalog =
+  (typeof AgentConfigFormOptionCatalogs)[keyof typeof AgentConfigFormOptionCatalogs];
+
+export interface AgentConfigFormOptionSource {
+  catalog: AgentConfigFormOptionCatalog;
+}
+
 export const AgentConfigFormVersion = 1 as const;
 
 export type AgentConfigFormModelCapability =
@@ -16,7 +27,12 @@ export interface AgentConfigFormModelSelection {
   capability: AgentConfigFormModelCapability;
   valueKind: "model-id" | "provider-model";
   mutation: "config" | "default-model";
+  cardinality?: "one" | "many";
   providerPath?: string[];
+  inheritance?: {
+    source: "parent-model" | "default-model";
+    path: string[];
+  };
   required: boolean;
 }
 
@@ -49,7 +65,8 @@ export interface AgentConfigFormField<TText = string> {
   description?: TText;
   placeholder?: TText;
   options?: AgentConfigFormFieldOptionValue[];
-  optionLabels?: Record<string, string>;
+  optionLabels?: Record<string, TText>;
+  optionSource?: AgentConfigFormOptionSource;
   min?: number;
   max?: number;
   minLength?: number;

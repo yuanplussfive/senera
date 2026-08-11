@@ -1,6 +1,6 @@
 import type { SessionListItem } from "../../api/eventTypes";
 import type { SessionRecord, StoreState } from "./types";
-import { forgetSessionEventReceipts } from "./eventReceiptLedger";
+import { forgetSessionEventReceiptsForSessions } from "./eventReceiptLedger";
 
 export function ingestSessionList(state: StoreState, items: readonly SessionListItem[]): void {
   const serverIds = new Set(items.map((item) => item.sessionId));
@@ -11,11 +11,14 @@ export function ingestSessionList(state: StoreState, items: readonly SessionList
     deleteSessionRuntimeState(state, pendingId);
   }
 
-  const visibleItems = items.filter((item) => !state.pendingDeletedSessionIds[item.sessionId]);
-  const visibleServerIds = new Set<string>();
+  const visibleItems = items.filter(
+    (item) => !state.pendingDeletedSessionIds[item.sessionId] && !state.childSessionParentIds[item.sessionId],
+  );
+  // Keep hidden child records in runtime state so the relation remains stable
+  // across later list snapshots; only sessionOrder controls top-level visibility.
+  const visibleServerIds = new Set(serverIds);
 
   for (const item of visibleItems) {
-    visibleServerIds.add(item.sessionId);
     delete state.pendingCreatedSessionIds[item.sessionId];
     projectSessionListItem(state, item);
     delete state.missingOnServerIds[item.sessionId];
@@ -25,7 +28,7 @@ export function ingestSessionList(state: StoreState, items: readonly SessionList
     (id) => state.pendingCreatedSessionIds[id] && state.sessions[id] && !visibleServerIds.has(id),
   );
   state.sessionOrder = mergeSessionOrder(
-    pendingCreatedOrdered,
+    pendingCreatedOrdered.filter((id) => !state.childSessionParentIds[id]),
     visibleItems.map((item) => item.sessionId),
   );
 
@@ -40,25 +43,82 @@ export function readFirstAvailableSessionId(state: StoreState, excludedSessionId
         id !== excludedSessionId &&
         Boolean(state.sessions[id]) &&
         !state.missingOnServerIds[id] &&
-        !state.pendingDeletedSessionIds[id],
+        !state.pendingDeletedSessionIds[id] &&
+        !state.childSessionParentIds[id],
     ) ?? null
   );
 }
 
+/**
+ * Hide a deletion request from the list while retaining its runtime record.
+ * The backend close is asynchronous and may fail while an active run is
+ * settling, so local state cannot be discarded at send time.
+ */
+export function markSessionDeletionRequested(state: StoreState, sessionIds: readonly string[]): void {
+  const ids = new Set(sessionIds.filter(Boolean));
+  if (ids.size === 0) return;
+
+  for (const sessionId of ids) {
+    state.pendingDeletedSessionIds[sessionId] = true;
+    delete state.pendingCreatedSessionIds[sessionId];
+  }
+
+  state.sessionOrder = state.sessionOrder.filter((sessionId) => !ids.has(sessionId));
+  if (state.activeSessionId && ids.has(state.activeSessionId)) {
+    state.activeSessionId = readFirstAvailableSessionId(state);
+  }
+}
+
+/** Restore a deletion request after the backend reports that close failed. */
+export function restorePendingSessionDeletion(state: StoreState, sessionIds: readonly string[]): void {
+  const restoredIds = new Set<string>();
+  for (const sessionId of new Set(sessionIds.filter(Boolean))) {
+    if (!state.pendingDeletedSessionIds[sessionId] || !state.sessions[sessionId]) continue;
+    delete state.pendingDeletedSessionIds[sessionId];
+    delete state.missingOnServerIds[sessionId];
+    state.historyLoadingIds[sessionId] = false;
+    delete state.historyReplayBuffers[sessionId];
+    delete state.historyStepBuffers[sessionId];
+    delete state.historyEventRunIds[sessionId];
+    delete state.historyActiveRequestIds[sessionId];
+    delete state.historyFailedIds[sessionId];
+    if (!state.childSessionParentIds[sessionId]) restoredIds.add(sessionId);
+  }
+
+  for (const sessionId of restoredIds) {
+    if (!state.sessionOrder.includes(sessionId)) state.sessionOrder.push(sessionId);
+  }
+  if (!state.activeSessionId) state.activeSessionId = readFirstAvailableSessionId(state);
+}
+
 export function deleteSessionRuntimeState(state: StoreState, sessionId: string): void {
-  delete state.sessions[sessionId];
-  delete state.historyLoadedIds[sessionId];
-  delete state.historyLoadingIds[sessionId];
-  delete state.historyFailedIds[sessionId];
-  delete state.historyReplayBuffers[sessionId];
-  delete state.historyStepBuffers[sessionId];
-  delete state.historyEventRunIds[sessionId];
-  delete state.historyActiveRequestIds[sessionId];
-  delete state.viewedRunIdBySession[sessionId];
-  delete state.missingOnServerIds[sessionId];
-  delete state.selectedModelProviderIdsBySession[sessionId];
-  forgetSessionEventReceipts(state, sessionId);
-  state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
+  deleteSessionRuntimeStates(state, [sessionId]);
+}
+
+export function deleteSessionRuntimeStates(state: StoreState, sessionIds: readonly string[]): void {
+  const ids = new Set(sessionIds);
+  if (ids.size === 0) return;
+
+  for (const sessionId of ids) {
+    delete state.sessions[sessionId];
+    delete state.historyLoadedIds[sessionId];
+    delete state.historyLoadingIds[sessionId];
+    delete state.historyFailedIds[sessionId];
+    delete state.historyReplayBuffers[sessionId];
+    delete state.historyStepBuffers[sessionId];
+    delete state.historyEventRunIds[sessionId];
+    delete state.historyActiveRequestIds[sessionId];
+    delete state.viewedRunIdBySession[sessionId];
+    delete state.missingOnServerIds[sessionId];
+    delete state.selectedModelProviderIdsBySession[sessionId];
+    delete state.childSessionParentIds[sessionId];
+  }
+
+  for (const [childSessionId, parentSessionId] of Object.entries(state.childSessionParentIds)) {
+    if (ids.has(childSessionId) || ids.has(parentSessionId)) delete state.childSessionParentIds[childSessionId];
+  }
+  forgetSessionEventReceiptsForSessions(state, [...ids]);
+  state.sessionOrder = state.sessionOrder.filter((id) => !ids.has(id));
 }
 
 function projectSessionListItem(state: StoreState, item: SessionListItem): void {

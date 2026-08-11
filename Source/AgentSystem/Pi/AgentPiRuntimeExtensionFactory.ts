@@ -1,18 +1,13 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { ExtensionFactory, SessionManager } from "@earendil-works/pi-coding-agent";
-import { errorMessage } from "../Core/AgentErrors.js";
 import {
-  AgentPiProxyContextHeader,
-  AgentPiProxyModelProviderHeader,
-  composePiProxyRequestHeaders,
-  encodePiProxyModelProviderHeaderValue,
-} from "../PiShared/AgentPiProxyProtocol.js";
-import type { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
-import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
+  prepareBranchEntries,
+  type AgentSession,
+  type ExtensionFactory,
+  type SessionManager,
+} from "@earendil-works/pi-coding-agent";
 import { applyAgentPiContextPolicy } from "./AgentPiContextPolicy.js";
 import {
   AgentPiArtifactIndexCustomType,
-  createAgentPiArtifactIndex,
   readAgentPiArtifactIndex,
   type AgentPiArtifactIndex,
 } from "./AgentPiArtifactIndex.js";
@@ -27,41 +22,34 @@ import {
   type AgentPiCompactionSummaryBridgeOptions,
 } from "./AgentPiCompactionSummaryBridge.js";
 import { DefaultAgentPiCompactionSummaryFormatterOptions } from "./AgentPiCompactionSummaryFormatter.js";
-import {
-  agentPiDiagnosticContext,
-  type AgentPiCodingAgentSessionFrame,
-  type AgentPiMutableSessionFrame,
-} from "./AgentPiCodingAgentSessionFrame.js";
-import { AgentPiDiagnosticSources, emitAgentPiDiagnostic, type AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
+import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
+import type { AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 import { renderPiSystemPromptFrame } from "./AgentPiPromptFrameProjector.js";
-import {
-  AgentPiToolObservationBatchProjector,
-  type AgentPiToolObservationBatchInspection,
-} from "./AgentPiToolObservationBatchProjector.js";
-import type { AgentPiToolObservationDigester } from "./AgentPiToolObservationDigester.js";
 import { projectAgentPiToolResultStatus } from "./AgentPiToolResultPolicy.js";
 import type { AgentPiProviderProjection } from "./AgentPiTypes.js";
+import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
+import { AgentPiTerminalToolObservationProjector } from "./AgentPiTerminalToolObservation.js";
+import { AgentPiCompactionController, type AgentPiCompactionIndexes } from "./AgentPiCompactionController.js";
+import { AgentPiMidRunCompactionCoordinator } from "./AgentPiMidRunCompactionCoordinator.js";
+import type { AgentPiResolvedCompactionSettings } from "./AgentPiCompactionSettings.js";
 
 export interface AgentPiRuntimeExtensionFactoryOptions {
   readonly provider: AgentPiProviderProjection;
-  readonly modelProvider: ResolvedAgentModelProviderConfig;
-  readonly toolObservationDigester?: AgentPiToolObservationDigester;
+  readonly planningCompilerFactory: AgentPiPlanningCompilerFactory;
   readonly diagnostics?: AgentPiDiagnosticSink;
+}
+
+export interface AgentPiRuntimeExtensionRegistration {
+  readonly name: string;
+  readonly hidden: true;
+  readonly factory: ExtensionFactory;
+  install(session: AgentSession, settings: AgentPiResolvedCompactionSettings): void;
 }
 
 export class AgentPiRuntimeExtensionFactory {
   constructor(private readonly options: AgentPiRuntimeExtensionFactoryOptions) {}
 
-  create(
-    frame: AgentPiMutableSessionFrame,
-    sessionManager: SessionManager,
-  ): { name: string; hidden: true; factory: ExtensionFactory } {
-    const observationProjector = new AgentPiToolObservationBatchProjector({
-      model: this.options.provider.model.id,
-      contextWindowTokens: this.options.provider.model.contextWindow,
-      outputReserveTokens: this.options.provider.model.maxTokens,
-    });
-    const digestSession = this.options.toolObservationDigester?.createSession();
+  create(frame: AgentPiMutableSessionFrame, sessionManager: SessionManager): AgentPiRuntimeExtensionRegistration {
     let pendingCompactionIndex: AgentPiArtifactIndex | undefined;
     let pendingCompactionToolIndex: AgentPiCompactionToolCallIndex | undefined;
     const reportedInvalidArtifactIndexes = new Set<string>();
@@ -72,23 +60,62 @@ export class AgentPiRuntimeExtensionFactory {
         model: this.options.provider.model.id,
       },
     } satisfies AgentPiCompactionSummaryBridgeOptions);
+    const terminalToolObservations = new AgentPiTerminalToolObservationProjector(this.options.provider.model.id);
+    const compactionController = new AgentPiCompactionController({
+      planningCompilerFactory: this.options.planningCompilerFactory,
+      diagnostics: this.options.diagnostics,
+    });
+    const projectProviderMessages = async (
+      messages: readonly AgentMessage[],
+      compactionIndexes?: AgentPiCompactionIndexes,
+    ): Promise<AgentMessage[]> => {
+      const snapshot = frame.snapshot();
+      const indexes = compactionIndexes ?? (await readPersistedCompactionIndexes());
+      const bridgeResult = compactionSummaryBridge.transform({
+        messages,
+        toolCallIndex: indexes.toolCallIndex,
+      });
+      return snapshot.tokenBudget
+        ? applyAgentPiContextPolicy(
+            bridgeResult.messages,
+            snapshot.contextPolicy,
+            indexes.artifactIndex.artifacts,
+            snapshot.tokenBudget,
+          )
+        : bridgeResult.messages;
+    };
+    const readPersistedCompactionIndexes = async (): Promise<AgentPiCompactionIndexes> => {
+      const contextEntries = sessionManager.buildContextEntries();
+      const artifactIndex = readAgentPiArtifactIndex(contextEntries);
+      if (artifactIndex.invalidEntryId && !reportedInvalidArtifactIndexes.has(artifactIndex.invalidEntryId)) {
+        reportedInvalidArtifactIndexes.add(artifactIndex.invalidEntryId);
+        await compactionController.emitDiagnostic(frame, "artifact-index.invalid", {
+          entryId: artifactIndex.invalidEntryId,
+        });
+      }
+      const toolIndexResult = readAgentPiCompactionToolCallIndex(contextEntries);
+      if (toolIndexResult.invalidEntryId && !reportedInvalidToolIndexes.has(toolIndexResult.invalidEntryId)) {
+        reportedInvalidToolIndexes.add(toolIndexResult.invalidEntryId);
+        await compactionController.emitDiagnostic(frame, "compaction-tool-index.invalid", {
+          entryId: toolIndexResult.invalidEntryId,
+        });
+      }
+      return {
+        artifactIndex: { artifacts: artifactIndex.artifacts },
+        toolCallIndex: toolIndexResult.index ?? createAgentPiCompactionToolCallIndex([]),
+      };
+    };
+    const midRunCompaction = new AgentPiMidRunCompactionCoordinator({
+      frame,
+      sessionManager,
+      compactionController,
+      projectProviderMessages,
+    });
+    let installed = false;
     return {
       name: "senera-runtime",
       hidden: true,
       factory: (pi) => {
-        pi.on("before_provider_headers", (event) => {
-          const snapshot = frame.snapshot();
-          event.headers.authorization = `Bearer ${this.options.provider.apiKey}`;
-          const providerHeaders = composePiProxyRequestHeaders(
-            {
-              ...this.options.provider.headers,
-              [AgentPiProxyModelProviderHeader]: encodePiProxyModelProviderHeaderValue(this.options.modelProvider.Id),
-            },
-            snapshot.piTurnContextId,
-          );
-          for (const [name, value] of Object.entries(providerHeaders)) event.headers[name] = value;
-          if (!snapshot.piTurnContextId) event.headers[AgentPiProxyContextHeader] = null;
-        });
         pi.on("before_agent_start", (event) => {
           const snapshot = frame.snapshot();
           return {
@@ -112,10 +139,45 @@ export class AgentPiRuntimeExtensionFactory {
           }),
         );
         pi.on("tool_result", (event) => projectAgentPiToolResultStatus(event.details));
-        pi.on("session_before_compact", (event) => {
-          const previous = readAgentPiArtifactIndex(event.branchEntries).artifacts;
-          pendingCompactionIndex = createAgentPiArtifactIndex(previous, event.preparation.messagesToSummarize);
-          pendingCompactionToolIndex = createAgentPiCompactionToolCallIndex(event.preparation.messagesToSummarize);
+        pi.on("tool_execution_end", (event) => {
+          terminalToolObservations.settle(frame.snapshot().turnState, event);
+        });
+        pi.on("message_end", (event) => {
+          const replacement = terminalToolObservations.replaceMessage(event.message);
+          return replacement ? { message: replacement } : undefined;
+        });
+        pi.on("session_before_compact", async (event) => {
+          const summarizedMessages = [
+            ...event.preparation.messagesToSummarize,
+            ...event.preparation.turnPrefixMessages,
+          ];
+          const indexes = compactionController.createIndexes(event.branchEntries, summarizedMessages);
+          pendingCompactionIndex = indexes.artifactIndex;
+          pendingCompactionToolIndex = indexes.toolCallIndex;
+          const summary = await compactionController.compileSummary(
+            frame,
+            {
+              mode: "compact",
+              messages: summarizedMessages,
+              previousSummary: event.preparation.previousSummary,
+              customInstructions: event.customInstructions,
+              fileOperations: event.preparation.fileOps,
+              artifactIndex: pendingCompactionIndex,
+              toolCallIndex: pendingCompactionToolIndex,
+            },
+            event.signal,
+          );
+          return {
+            compaction: {
+              summary,
+              firstKeptEntryId: event.preparation.firstKeptEntryId,
+              tokensBefore: event.preparation.tokensBefore,
+              details: {
+                artifactIndex: pendingCompactionIndex,
+                toolCallIndex: pendingCompactionToolIndex,
+              },
+            },
+          };
         });
         pi.on("session_compact", () => {
           const index = pendingCompactionIndex;
@@ -128,93 +190,45 @@ export class AgentPiRuntimeExtensionFactory {
           }
         });
         pi.on("context", async (event) => {
-          const snapshot = frame.snapshot();
-          const contextEntries = sessionManager.buildContextEntries();
-          const artifactIndex = readAgentPiArtifactIndex(contextEntries);
-          if (artifactIndex.invalidEntryId && !reportedInvalidArtifactIndexes.has(artifactIndex.invalidEntryId)) {
-            reportedInvalidArtifactIndexes.add(artifactIndex.invalidEntryId);
-            await emitAgentPiDiagnostic(snapshot.diagnostics ?? this.options.diagnostics, {
-              context: agentPiDiagnosticContext(snapshot),
-              source: AgentPiDiagnosticSources.Session,
-              name: "artifact-index.invalid",
-              details: { entryId: artifactIndex.invalidEntryId },
-            });
-          }
-          const toolIndexResult = readAgentPiCompactionToolCallIndex(contextEntries);
-          if (toolIndexResult.invalidEntryId && !reportedInvalidToolIndexes.has(toolIndexResult.invalidEntryId)) {
-            reportedInvalidToolIndexes.add(toolIndexResult.invalidEntryId);
-            await emitAgentPiDiagnostic(snapshot.diagnostics ?? this.options.diagnostics, {
-              context: agentPiDiagnosticContext(snapshot),
-              source: AgentPiDiagnosticSources.Session,
-              name: "compaction-tool-index.invalid",
-              details: { entryId: toolIndexResult.invalidEntryId },
-            });
-          }
-          const bridgeResult = compactionSummaryBridge.transform({
-            messages: event.messages,
-            toolCallIndex: toolIndexResult.index,
-          });
-          let prepared = snapshot.tokenBudget ? observationProjector.prepare(bridgeResult.messages) : undefined;
-          if (digestSession && snapshot.tokenBudget && prepared?.inspection.requiresProjection) {
-            const changed = await this.enrichToolObservations({
-              digestSession,
-              observationProjector,
-              messages: bridgeResult.messages,
-              inspection: prepared.inspection,
-              frame: snapshot,
-              tokenBudget: snapshot.tokenBudget,
-            });
-            if (changed) prepared = observationProjector.prepare(bridgeResult.messages);
-          }
-          const toolMessages = prepared?.messages ?? bridgeResult.messages;
+          return { messages: await projectProviderMessages(event.messages) };
+        });
+        pi.on("session_before_tree", async (event) => {
+          const prepared = prepareBranchEntries(
+            event.preparation.entriesToSummarize,
+            this.options.provider.model.contextWindow - this.options.provider.model.maxTokens,
+          );
+          const indexes = compactionController.createIndexes(event.preparation.entriesToSummarize, prepared.messages);
+          const summary = await compactionController.compileSummary(
+            frame,
+            {
+              mode: "tree",
+              messages: prepared.messages,
+              customInstructions: event.preparation.customInstructions,
+              fileOperations: prepared.fileOps,
+              artifactIndex: indexes.artifactIndex,
+              toolCallIndex: indexes.toolCallIndex,
+            },
+            event.signal,
+          );
           return {
-            messages: snapshot.tokenBudget
-              ? applyAgentPiContextPolicy(
-                  toolMessages,
-                  snapshot.contextPolicy,
-                  artifactIndex.artifacts,
-                  snapshot.tokenBudget,
-                )
-              : toolMessages,
+            summary: {
+              summary,
+              details: indexes,
+            },
           };
         });
       },
+      install: (session, settings) => {
+        if (installed) return;
+        installed = true;
+        const previous = session.agent.prepareNextTurnWithContext;
+        session.agent.prepareNextTurnWithContext = async (turn, signal) => {
+          const refreshed = await previous?.(turn, signal);
+          const context = refreshed?.context ?? turn.context;
+          const compacted = await midRunCompaction.prepareNextTurn({ ...turn, context }, session, settings, signal);
+          return compacted ? { ...refreshed, context: compacted } : refreshed;
+        };
+      },
     };
-  }
-
-  private async enrichToolObservations(input: {
-    digestSession: ReturnType<AgentPiToolObservationDigester["createSession"]>;
-    observationProjector: AgentPiToolObservationBatchProjector;
-    messages: readonly AgentMessage[];
-    inspection: AgentPiToolObservationBatchInspection;
-    frame: AgentPiCodingAgentSessionFrame;
-    tokenBudget: AgentTurnTokenBudget;
-  }): Promise<boolean> {
-    const sourceIdentities = input.observationProjector.pendingObservationIdentities(input.messages);
-    const objective = input.frame.rootCommand?.objective;
-    try {
-      const enriched = await input.digestSession.enrich(input.messages, {
-        objective,
-        targetTokens: Math.min(
-          input.tokenBudget.outputReserveTokens,
-          Math.max(1, input.inspection.availableTokens - input.inspection.minimumTokens),
-        ),
-        signal: input.frame.signal,
-        sourceIdentities,
-      });
-      if (input.observationProjector.commitCondensedBatch(enriched, sourceIdentities)) {
-        input.digestSession.release(input.messages, { objective, sourceIdentities });
-        return true;
-      }
-      return false;
-    } catch (error) {
-      await emitAgentPiDiagnostic(input.frame.diagnostics ?? this.options.diagnostics, {
-        context: agentPiDiagnosticContext(input.frame),
-        source: AgentPiDiagnosticSources.Substrate,
-        name: "tool-observation.digest.failed",
-        details: { message: errorMessage(error) },
-      });
-      return false;
-    }
   }
 }

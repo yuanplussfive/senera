@@ -1,0 +1,118 @@
+{
+  "id": "agent-orchestration",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "child-runs-and-scheduled-tasks",
+      "migration": "migrations/0001-child-runs-and-scheduled-tasks.sql",
+      "migrationSha256": "8d1554af0a4bbe61aa72aa8a3e6d4dd3a164ea9a0fbe5669ef7f37ec72b24fa5",
+      "snapshot": "snapshots/0001.schema.sql",
+      "snapshotSha256": "6359d5b70da27f52fab644a8073c09a0228770ca1c40b1d32c5842db3ae198e6"
+    },
+    {
+      "version": 2,
+      "name": "child-run-selection-metadata",
+      "migration": "migrations/0002-child-run-selection-metadata.sql",
+      "migrationSha256": "ffafa968be4ab2084906a62bf9e008515610a937cfe5b45e9b79599ba097da05",
+      "snapshot": "snapshots/0002.schema.sql",
+      "snapshotSha256": "b7db03c9ad7263b689e66c8891f83cc47c1f625dd0717d7f3910c480434d1477"
+    },
+    {
+      "version": 3,
+      "name": "child-run-model-selection-sources",
+      "migration": "migrations/0003-child-run-model-selection-sources.sql",
+      "migrationSha256": "67692e3fa3aeb47631f7c25a5d2228b2f7cc86cb52de10bac8f03164cf16dd8f",
+      "snapshot": "snapshots/0003.schema.sql",
+      "snapshotSha256": "5e63683038a2950286edf82b2b7bdc8f07e2f586744005ea62ac3e983a6797bb"
+    },
+    {
+      "version": 4,
+      "name": "child-run-execution-contract-v2",
+      "migration": "migrations/0004-child-run-execution-contract-v2.sql",
+      "migrationSha256": "95e746da11fe74f6cf95fb6b1071eaedb9ce08af6e155003d1e8e0398684f1bd",
+      "snapshot": "snapshots/0004.schema.sql",
+      "snapshotSha256": "5e63683038a2950286edf82b2b7bdc8f07e2f586744005ea62ac3e983a6797bb"
+    },
+    {
+      "version": 5,
+      "name": "child-run-structured-results",
+      "migration": "migrations/0005-child-run-structured-results.sql",
+      "migrationSha256": "a339c267fab0de2bfd7f26294f657aa08fd5e5d52f69c823b13311a7c4df5767",
+      "snapshot": "snapshots/0005.schema.sql",
+      "snapshotSha256": "e8f3665cccecdaa3506d49b34b6b341b18359d72d6807382598ecb8efe10dee8"
+    },
+    {
+      "version": 6,
+      "name": "child-run-workspace-access-and-message-sequence",
+      "migration": "migrations/0006-child-run-workspace-access.sql",
+      "snapshot": "snapshots/0006.schema.sql",
+      "migrationSha256": "1711915735e68a37802c63b82cc8f9cbe37f40baef9ff3901560f46fd078ab8f",
+      "snapshotSha256": "62022d0a70ae2df5194a6a23a38e25ee292196139ab47d0243fdc00ea8772dd7"
+    },
+    {
+      "version": 7,
+      "name": "child-run-text-results",
+      "migration": "migrations/0007-child-run-text-results.sql",
+      "snapshot": "snapshots/0007.schema.sql",
+      "migrationSha256": "32c724d80c460832f794f5de300f0d9704a22d2da1793b55e5044b0343673c34",
+      "snapshotSha256": "51b740a54334e1fa1e84af4d4ec75f066ff3d4aadbbd995db904826fe737a6e1"
+    },
+    {
+      "version": 8,
+      "name": "child-run-activity-deadlines",
+      "migration": "migrations/0008-child-run-activity-deadlines.sql",
+      "snapshot": "snapshots/0008.schema.sql",
+      "migrationSha256": "3296c7471fdb72ae477ef657785541a29118755c25fd8950b9a5e2537bed9e16",
+      "snapshotSha256": "674b443661986c6fe95f9f37fa0f0a893424b2f9f54b8b7a167e112affb4ff4a"
+    },
+    {
+      "version": 9,
+      "name": "child-run-v2-identity-and-partial-results",
+      "migration": "migrations/0009-child-run-v2-identity-and-partial-results.sql",
+      "snapshot": "snapshots/0009.schema.sql",
+      "migrationSha256": "c227a13b249fb39e78b174d441ac39d6dfac5f66363093d32539525e707e5d8e",
+      "snapshotSha256": "09e1b968ec5f0550394ebdd244f3d7bce08a03b3f7a2ae8d158bb1ff602b3ffe"
+    },
+    {
+      "version": 10,
+      "name": "child-run-activity-window",
+      "migration": "migrations/0010-child-run-activity-window.sql",
+      "snapshot": "snapshots/0010.schema.sql",
+      "migrationSha256": "ef2f52d7a78e9c97f72a03eccd14de9085d606b535f3a430751601e9cf16a8e2",
+      "snapshotSha256": "09e1b968ec5f0550394ebdd244f3d7bce08a03b3f7a2ae8d158bb1ff602b3ffe"
+    },
+    {
+      "version": 11,
+      "name": "subagent-workflows",
+      "migration": "migrations/0011-subagent-workflows.sql",
+      "snapshot": "snapshots/0011.schema.sql",
+      "migrationSha256": "b3e9376ca592ddffca5209e96676845e797e6e90fb34ea5939aad937d7a76589",
+      "snapshotSha256": "287ad5e308cdce92887992afbd585ed6bff7e0422c7e5c860ad19b9a354fb6a2"
+    },
+    {
+      "version": 12,
+      "name": "child-run-follow-up-messages",
+      "migration": "migrations/0012-child-run-follow-up-messages.sql",
+      "snapshot": "snapshots/0012.schema.sql",
+      "migrationSha256": "37cd65617982afdadadeb7c4c59ef6958d23ffffb3fd7bd1892fffa0fa2c1f12",
+      "snapshotSha256": "17c46a7ee4000b874dce6bf44e5dfb4995b051627cc46a3e492bf4afd480ba3f"
+    },
+    {
+      "version": 13,
+      "name": "concrete-child-tool-grants",
+      "migration": "migrations/0013-concrete-child-tool-grants.sql",
+      "snapshot": "snapshots/0013.schema.sql",
+      "migrationSha256": "904d44dc5bc17fcf5deb7c111de3495774b777123d5d07613b6f2ee3214b1432",
+      "snapshotSha256": "17c46a7ee4000b874dce6bf44e5dfb4995b051627cc46a3e492bf4afd480ba3f"
+    },
+    {
+      "version": 14,
+      "name": "remove-child-run-turn-budget",
+      "migration": "migrations/0014-remove-child-run-turn-budget.sql",
+      "snapshot": "snapshots/0013.schema.sql",
+      "migrationSha256": "56e9778e579d78d503ed3e9ea2e5ccc8cd1ad59c711103aa192aeaa473ef3883",
+      "snapshotSha256": "17c46a7ee4000b874dce6bf44e5dfb4995b051627cc46a3e492bf4afd480ba3f"
+    }
+  ]
+}

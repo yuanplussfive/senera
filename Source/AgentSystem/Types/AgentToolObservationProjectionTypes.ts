@@ -1,4 +1,4 @@
-export const AgentToolObservationProjectionSchemaVersion = 1 as const;
+export const AgentToolObservationProjectionSchemaVersion = 2 as const;
 
 export const AgentToolObservationProjectionSources = {
   Headline: "headline",
@@ -16,6 +16,7 @@ export const AgentToolObservationProjectionSources = {
   SummaryFacts: "summaryFacts",
   Limitations: "limitations",
   Outcome: "outcome",
+  SemanticDigest: "semanticDigest",
 } as const;
 
 export type AgentToolObservationProjectionSource =
@@ -46,8 +47,6 @@ export interface AgentToolObservationStructuralLimits {
   readonly maxDepth: number;
   readonly maxArrayItems: number;
   readonly maxObjectProperties: number;
-  readonly maxStringCharacters: number;
-  readonly maxTotalCharacters: number;
   readonly maxNodes: number;
 }
 
@@ -55,6 +54,7 @@ export interface AgentToolObservationProjectionSourceRule {
   readonly source: AgentToolObservationProjectionSource;
   readonly mode: AgentToolObservationProjectionMode;
   readonly priority: AgentToolObservationPriorityTier;
+  readonly requiredForCompletion: boolean;
   readonly pointer?: string;
   readonly maxTokens: number;
   readonly limits: AgentToolObservationStructuralLimits;

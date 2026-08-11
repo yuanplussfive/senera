@@ -1,12 +1,13 @@
 import { useCallback, type MutableRefObject } from "react";
 import { toast } from "sonner";
 import type { UploadAttachmentData, WsRequest } from "../api/eventTypes";
-import type { ApprovalDecision } from "../api/approvalEventTypes";
+import type { ApprovalBatchReference, ApprovalDecision } from "../api/approvalEventTypes";
 import type { InteractionInputAction, InteractionInputContent } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { useStore, type ChatMessage } from "../store/sessionStore";
 import { generateId } from "../lib/util";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import type { ExecutionApprovalMode } from "../api/executionApprovalMode";
 
 export interface RegenerateFromRequest {
   sessionId: string;
@@ -39,6 +40,7 @@ export interface ChatCommandsHandle {
   forkFromMessage: (message: ChatMessage) => void;
   regenerateMessage: (message: ChatMessage) => void;
   resolveApproval: (approvalId: string, decision: ApprovalDecision) => void;
+  resolveApprovalBatch: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
   resolveInteractionInput: (
     interactionId: string,
     action: InteractionInputAction,
@@ -55,6 +57,7 @@ export interface LastSentMessage {
   input: string;
   attachments?: UploadAttachmentData[];
   modelProviderId?: string;
+  approvalMode: ExecutionApprovalMode;
   queueMode?: MessageQueueMode;
 }
 
@@ -134,6 +137,7 @@ export function useChatCommands({
   const regenerateFromRequest = useCallback(
     (request: RegenerateFromRequest): boolean => {
       const requestId = generateId();
+      const approvalMode = useStore.getState().executionApprovalMode;
       const ok = send({
         type: "session.regenerate",
         sessionId: request.sessionId,
@@ -141,6 +145,7 @@ export function useChatCommands({
         requestId,
         modelProviderId: request.modelProviderId,
         input: request.nextInput,
+        approvalMode,
         attachments: request.attachments,
       });
       if (!ok) {
@@ -155,6 +160,7 @@ export function useChatCommands({
         input: request.nextInput,
         attachments: request.attachments,
         modelProviderId: request.modelProviderId,
+        approvalMode,
       };
       appendUserMessage(request.sessionId, requestId, request.nextInput, request.attachments);
       return true;
@@ -164,8 +170,19 @@ export function useChatCommands({
 
   const cancelActiveSession = useCallback((): void => {
     if (!activeSessionId) return;
-    if (status !== "open") return;
-    send({ type: "session.cancel", sessionId: activeSessionId });
+    if (status !== "open") {
+      toast.error(frontendMessage("chat.cancelDisconnected"));
+      return;
+    }
+    const state = useStore.getState();
+    const session = state.sessions[activeSessionId];
+    const activeRun = session?.runs[session.runs.length - 1];
+    if (activeRun?.status !== "running") return;
+    const accepted = send({ type: "session.cancel", sessionId: activeSessionId });
+    if (!accepted) {
+      toast.error(frontendMessage("chat.cancelDisconnected"));
+      return;
+    }
     toast.message(frontendMessage("chat.cancelRequested"));
   }, [activeSessionId, send, status]);
 
@@ -264,6 +281,7 @@ export function useChatCommands({
     (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode): boolean => {
       const state = useStore.getState();
       const modelProviderId = state.selectedModelProviderId ?? undefined;
+      const approvalMode = state.executionApprovalMode;
       const target = resolveSendTargetSession({
         activeSessionId,
         createSessionId: generateId,
@@ -289,6 +307,7 @@ export function useChatCommands({
         requestId,
         modelProviderId,
         input,
+        approvalMode,
         attachments,
         disposition: createIfMissing ? "create_if_missing" : undefined,
         queueMode,
@@ -304,7 +323,15 @@ export function useChatCommands({
       appendUserMessage(targetSessionId, requestId, input, attachments, {
         createRun: queueMode === undefined,
       });
-      lastSendRef.current = { sessionId: targetSessionId, requestId, input, attachments, modelProviderId, queueMode };
+      lastSendRef.current = {
+        sessionId: targetSessionId,
+        requestId,
+        input,
+        attachments,
+        modelProviderId,
+        approvalMode,
+        queueMode,
+      };
       return true;
     },
     [activeSessionId, appendUserMessage, lastSendRef, registerSession, send, serverKnownSessionIdsRef],
@@ -312,14 +339,40 @@ export function useChatCommands({
 
   const resolveApproval = useCallback(
     (approvalId: string, decision: ApprovalDecision): void => {
-      if (!activeSessionId || status !== "open") return;
-      send({
+      if (status !== "open") {
+        toast.error(frontendMessage("approval.resolveOffline"));
+        return;
+      }
+      const state = useStore.getState();
+      state.markApprovalResolutionPending(approvalId, decision);
+      const ok = send({
         type: "approval.resolve",
         approvalId,
         decision,
       });
+      if (!ok) {
+        state.markApprovalResolutionPending(approvalId);
+        toast.error(frontendMessage("approval.resolveDisconnected"));
+      }
     },
-    [activeSessionId, send, status],
+    [send, status],
+  );
+
+  const resolveApprovalBatch = useCallback(
+    (batch: ApprovalBatchReference, decision: ApprovalDecision): void => {
+      if (status !== "open") {
+        toast.error(frontendMessage("approval.resolveOffline"));
+        return;
+      }
+      const state = useStore.getState();
+      state.markApprovalBatchResolutionPending(batch, decision);
+      const ok = send({ type: "approval.resolve_batch", ...batch, decision });
+      if (!ok) {
+        state.markApprovalBatchResolutionPending(batch);
+        toast.error(frontendMessage("approval.resolveDisconnected"));
+      }
+    },
+    [send, status],
   );
 
   const resolveInteractionInput = useCallback(
@@ -345,6 +398,7 @@ export function useChatCommands({
     forkFromMessage,
     regenerateMessage,
     resolveApproval,
+    resolveApprovalBatch,
     resolveInteractionInput,
     sendMessage,
   };

@@ -47,7 +47,7 @@ const migratedRuntimeDirectories = [
   "Config",
   "Mcp",
   "ModelEndpoints",
-  "PiProxy",
+  "Pi",
   "Extensions",
   "ToolRuntime",
   "Uploads",
@@ -61,8 +61,7 @@ const migratedRuntimeFiles = [
   path.join(workspaceRoot, "Source", "AgentSystem", "AgentRootCommand.ts"),
 ]
   .map((file) => toPosixRelative(workspaceRoot, file))
-  .filter((file) => !file.includes("/I18n/"))
-  .filter((file) => !file.includes("/PiProxy/AgentPiProxyPrompts.ts"));
+  .filter((file) => !file.includes("/I18n/"));
 
 for (const relativeFile of migratedRuntimeFiles) {
   const text = fs.readFileSync(path.join(workspaceRoot, relativeFile), "utf8");

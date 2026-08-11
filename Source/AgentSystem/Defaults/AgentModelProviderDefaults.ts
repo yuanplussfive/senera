@@ -27,6 +27,7 @@ export function resolveModelProviderRuntimeDefaults(
     ...defaults,
     ...provider,
     Capabilities: resolveModelCapabilities(defaults, provider.Capabilities),
+    ToolPlanningMode: provider.ToolPlanningMode ?? defaults.ToolPlanningMode,
   };
 }
 

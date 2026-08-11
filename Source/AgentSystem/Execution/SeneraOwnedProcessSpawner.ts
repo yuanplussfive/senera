@@ -1,7 +1,7 @@
 import type { ChildProcess, ChildProcessWithoutNullStreams } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { spawn } from "cross-spawn";
+import { execa } from "execa";
 import { isAgentUnknownRecord as isRecord } from "../Core/AgentUnknownValue.js";
 import { toError } from "../Core/AgentErrors.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
@@ -142,12 +142,12 @@ async function spawnWindowsJobProcess(
   let child: WindowsSupervisorChild;
   try {
     child = requireWindowsSupervisorChild(
-      spawn(process.execPath, [WindowsSupervisorModulePath], {
+      spawnWithExeca(process.execPath, [WindowsSupervisorModulePath], {
         cwd: options.cwd,
         env: supervisorEnvironment(),
-        shell: false,
         stdio: [stdio, stdio, stdio, "pipe", "pipe"],
         windowsHide: true,
+        detached: false,
       }),
     );
   } catch (error) {
@@ -230,11 +230,10 @@ function spawnDirectProcess(
   terminateProcessTree: SeneraProcessTreeTerminator,
   terminationBackend: SeneraOwnedProcessHandle["terminationBackend"],
 ): SeneraInheritedOwnedProcess {
-  const child = spawn(command, [...args], {
+  const child = spawnWithExeca(command, args, {
     cwd: options.cwd,
     env: options.env,
     stdio,
-    shell: false,
     windowsHide: options.windowsHide,
     detached: process.platform !== "win32",
   });
@@ -252,6 +251,32 @@ function spawnDirectProcess(
       await terminateProcessTree(child.pid, signal);
     },
   };
+}
+
+interface SeneraExecaLaunchOptions {
+  readonly cwd: string;
+  readonly env: NodeJS.ProcessEnv;
+  readonly stdio:
+    "inherit" | "pipe" | readonly ["inherit" | "pipe", "inherit" | "pipe", "inherit" | "pipe", "pipe", "pipe"];
+  readonly windowsHide: boolean;
+  readonly detached: boolean;
+}
+
+function spawnWithExeca(command: string, args: readonly string[], options: SeneraExecaLaunchOptions): ChildProcess {
+  const subprocess = execa(command, [...args], {
+    cwd: options.cwd,
+    env: options.env,
+    stdio: options.stdio,
+    shell: false,
+    windowsHide: options.windowsHide,
+    detached: options.detached,
+    extendEnv: false,
+    buffer: false,
+    reject: false,
+    cleanup: false,
+    killDescendants: false,
+  });
+  return subprocess.nodeChildProcess;
 }
 
 export async function terminateSeneraOwnedProcessWithEscalation(

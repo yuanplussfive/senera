@@ -1,6 +1,5 @@
 import { startSeneraServer } from "./ServerRuntime.js";
-import { resolveAgentSandboxDevelopmentBundleRoot } from "../Source/AgentSystem/Sandbox/AgentSandboxBundlePaths.js";
-import { startSeneraGvisorWorkerProcess } from "./GvisorWorkerProcess.js";
+import { startSeneraSandboxWorkerProcess } from "./SandboxWorkerProcess.js";
 import { ensureSeneraDevelopmentConfig } from "./RuntimeConfigBootstrap.js";
 import { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
 import {
@@ -14,22 +13,21 @@ installAgentProcessFailureGuard({ logger: processLogger });
 async function main(): Promise<void> {
   const workspaceRoot = process.cwd();
   const configPath = ensureSeneraDevelopmentConfig(workspaceRoot);
-  const worker = await startSeneraGvisorWorkerProcess({
+  const sandbox = await startSeneraSandboxWorkerProcess({
     workspaceRoot,
     configPath,
-    entrypoint: "Apps/GvisorWorker.ts",
+    entrypoint: "Apps/SandboxWorker.ts",
     nodeArguments: ["--import", "tsx"],
     resourcesPath: workspaceRoot,
   });
   const handle = await startSeneraServer({
     configPath,
-    sandboxBundleRoot: resolveAgentSandboxDevelopmentBundleRoot(workspaceRoot),
-    sandboxProvider: worker?.provider,
-    dockerEngineWorker: worker?.client,
+    sandboxRuntimeAvailability: sandbox.availability,
+    dockerEngineWorker: sandbox.client,
   });
   installAgentProcessShutdownGuard({
     logger: processLogger,
-    stop: () => Promise.all([handle.stop(), worker?.close()]),
+    stop: () => Promise.all([handle.stop(), sandbox.close()]),
   });
 }
 

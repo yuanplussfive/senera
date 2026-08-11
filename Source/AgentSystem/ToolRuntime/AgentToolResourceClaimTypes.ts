@@ -17,14 +17,10 @@ export interface AgentToolResourceClaim {
   readonly access: AgentToolResourceAccessMode;
 }
 
-export type AgentToolResourceLeaseRequest =
-  | {
-      readonly mode: "exclusive";
-    }
-  | {
-      readonly mode: "claims";
-      readonly claims: readonly AgentToolResourceClaim[];
-    };
+export interface AgentToolResourceLeaseRequest {
+  readonly mode: "claims";
+  readonly claims: readonly AgentToolResourceClaim[];
+}
 
 export function createExactAgentToolResourceClaimDomain(id: string): AgentToolResourceClaimDomain {
   return Object.freeze({

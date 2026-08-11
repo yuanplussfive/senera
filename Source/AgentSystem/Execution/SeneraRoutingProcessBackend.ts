@@ -9,7 +9,7 @@ import { isSeneraShellDialectCompatible } from "./SeneraShellCommand.js";
 
 export interface SeneraRoutingProcessBackendOptions {
   readonly local: SeneraProcessExecutionBackend;
-  readonly sandbox: SeneraProcessExecutionBackend;
+  readonly sandbox?: SeneraProcessExecutionBackend;
   /** Whether this runtime is allowed to create an isolated sandbox guest. */
   readonly sandboxEnabled?: boolean;
 }
@@ -18,7 +18,7 @@ export class SeneraRoutingProcessBackend implements SeneraProcessExecutionBacken
   readonly kind: string;
 
   constructor(private readonly options: SeneraRoutingProcessBackendOptions) {
-    this.kind = `route(local=${options.local.kind},sandbox=${options.sandbox.kind})`;
+    this.kind = `route(local=${options.local.kind},sandbox=${options.sandbox?.kind ?? "disabled"})`;
   }
 
   async executeShellProcess(request: SeneraProcessShellExecutionRequest) {
@@ -61,9 +61,18 @@ export class SeneraRoutingProcessBackend implements SeneraProcessExecutionBacken
         },
       );
     }
-    return profile.backend === "local"
-      ? execute(this.options.local, "local")
-      : execute(this.options.sandbox, "sandbox");
+    if (profile.backend === "local") return execute(this.options.local, "local");
+    if (!this.options.sandbox) {
+      throw new SeneraExecutionError(
+        SeneraExecutionErrorCodes.SandboxUnavailable,
+        "Sandbox execution backend is unavailable in the active runtime deployment.",
+        {
+          reason: "sandbox_backend_unavailable",
+          profile: profile.name,
+        },
+      );
+    }
+    return execute(this.options.sandbox, "sandbox");
   }
 }
 

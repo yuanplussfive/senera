@@ -129,6 +129,7 @@ export class AgentWebSocketMessageRouter {
       "profile.get": () => this.profile.get(sendEvent),
       "profile.update": (entry) => this.profile.update(entry, sendEvent),
       "approval.resolve": (entry) => this.approval.resolve(entry, sendEvent),
+      "approval.resolve_batch": (entry) => this.approval.resolveBatch(entry, sendEvent),
       "interaction.input.resolve": (entry) => this.interactionInput.resolve(entry),
       "sandbox.status": () => this.sandbox.status(sendEvent),
       "execution.resource.list": (entry) => this.executionResources.list(entry, sendEvent),

@@ -31,7 +31,7 @@ export function renderJsonConfigFieldInput(
       />
     );
   }
-  if (field.type !== "record" && ((field.options?.length ?? 0) > 0 || field.modelSelection)) {
+  if (field.type !== "array" && field.type !== "record" && ((field.options?.length ?? 0) > 0 || field.modelSelection)) {
     return <OptionControl field={field} value={value} disabled={disabled} onChange={onChange} />;
   }
   if (field.type === "number") {
@@ -137,7 +137,7 @@ function OptionControl({
           onChange(next);
           return;
         }
-        if (field.modelSelection && event.currentTarget.value === "") onChange("");
+        if (!field.required && event.currentTarget.value === "") onChange(undefined);
       }}
       className={jsonConfigInputClassName}
     >

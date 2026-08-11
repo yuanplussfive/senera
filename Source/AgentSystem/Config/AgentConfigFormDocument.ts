@@ -8,7 +8,7 @@ import {
   AgentExtensionLocalizedTextSchema,
   type AgentExtensionLocalizedText,
 } from "../Extensions/AgentExtensionLocalization.js";
-import { AgentConfigFormVersion } from "../Types/ConfigFormTypes.js";
+import { AgentConfigFormOptionCatalogs, AgentConfigFormVersion } from "../Types/ConfigFormTypes.js";
 import { listAgentConfigLeafPaths, readAgentConfigFieldContract } from "./AgentConfigFieldContractCatalog.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
@@ -19,6 +19,19 @@ const ConfigFormFieldTypeSchema = z.enum(["boolean", "string", "number", "array"
 const ConfigFormFieldOptionValueSchema = z.union([z.string(), z.number(), z.boolean()]);
 
 const ConfigFormFieldLevelSchema = z.enum(["basic", "advanced", "internal"]);
+
+const ConfigFormOptionSourceSchema = z
+  .object({
+    catalog: z.enum(AgentConfigFormOptionCatalogs),
+  })
+  .strict();
+
+const ConfigFormModelInheritanceSchema = z
+  .object({
+    source: z.enum(["parent-model", "default-model"]),
+    path: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
 
 const ConfigFormModelSelectionSchema = z
   .object({
@@ -35,7 +48,9 @@ const ConfigFormModelSelectionSchema = z
     ]),
     valueKind: z.enum(["model-id", "provider-model"]),
     mutation: z.enum(["config", "default-model"]),
+    cardinality: z.enum(["one", "many"]).optional(),
     providerPath: z.array(z.string().min(1)).min(1).optional(),
+    inheritance: ConfigFormModelInheritanceSchema.optional(),
     required: z.boolean(),
   })
   .strict()
@@ -61,6 +76,27 @@ const ConfigFormModelSelectionSchema = z
         path: ["mutation"],
       });
     }
+    if (selection.cardinality === "many" && selection.valueKind !== "model-id") {
+      context.addIssue({
+        code: "custom",
+        message: "Multi-model selections require model-id values.",
+        path: ["valueKind"],
+      });
+    }
+    if (selection.cardinality === "many" && selection.mutation !== "config") {
+      context.addIssue({
+        code: "custom",
+        message: "Multi-model selections require config mutations.",
+        path: ["mutation"],
+      });
+    }
+    if (selection.inheritance && selection.cardinality !== "many") {
+      context.addIssue({
+        code: "custom",
+        message: "Model inheritance is only supported by multi-model selections.",
+        path: ["inheritance"],
+      });
+    }
   });
 
 export type ConfigFormFieldDefinition<TText = string> = {
@@ -73,7 +109,8 @@ export type ConfigFormFieldDefinition<TText = string> = {
   essential: boolean;
   itemType?: z.infer<typeof ConfigFormFieldTypeSchema>;
   options?: Array<z.infer<typeof ConfigFormFieldOptionValueSchema>>;
-  optionLabels?: Record<string, string>;
+  optionLabels?: Record<string, TText>;
+  optionSource?: z.infer<typeof ConfigFormOptionSourceSchema>;
   min?: number;
   max?: number;
   minLength?: number;
@@ -114,7 +151,8 @@ function createConfigFormFieldSchema<TText>(textSchema: z.ZodType<TText>): z.Zod
         essential: z.boolean(),
         itemType: ConfigFormFieldTypeSchema.optional(),
         options: z.array(ConfigFormFieldOptionValueSchema).optional(),
-        optionLabels: z.record(z.string(), z.string()).optional(),
+        optionLabels: z.record(z.string(), textSchema).optional(),
+        optionSource: ConfigFormOptionSourceSchema.optional(),
         min: z.number().optional(),
         max: z.number().optional(),
         minLength: z.number().int().min(0).optional(),
@@ -289,8 +327,21 @@ function assertFieldRequiredDeclaration(field: ConfigFormFieldDefinition, basePa
   if (contract.options && !sameOptions(field.options, contract.options)) {
     throw new Error(`Agent config form options do not match AgentSystemConfigSchema: ${path.join(".")}.`);
   }
+  assertModelSelectionFieldType(field, path);
   for (const itemField of field.itemFields ?? []) {
     assertFieldRequiredDeclaration(itemField, path);
+  }
+}
+
+function assertModelSelectionFieldType(field: ConfigFormFieldDefinition, path: readonly string[]): void {
+  if (!field.modelSelection) return;
+  const cardinality = field.modelSelection.cardinality ?? "one";
+  const valid =
+    cardinality === "many" ? field.type === "array" && field.itemType === "string" : field.type === "string";
+  if (!valid) {
+    throw new Error(
+      `Agent config form model selection ${path.join(".")} has an incompatible ${cardinality} field type.`,
+    );
   }
 }
 

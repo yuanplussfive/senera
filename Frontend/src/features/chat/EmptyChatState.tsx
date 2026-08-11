@@ -1,5 +1,6 @@
 import { resolveRuntimeEmptySuggestions } from "../../config/runtimeConfig";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { parseEmptySuggestions } from "./emptySuggestions";
 
 export function EmptyChatState({
@@ -7,7 +8,8 @@ export function EmptyChatState({
 }: {
   onSelectSuggestion?: (suggestion: string) => void;
 }): JSX.Element {
-  const suggestions = parseEmptySuggestions(resolveRuntimeEmptySuggestions(__SENERA_EMPTY_SUGGESTIONS__));
+  const locale = useFrontendLocale();
+  const suggestions = parseEmptySuggestions(resolveRuntimeEmptySuggestions(__SENERA_EMPTY_SUGGESTIONS__), locale);
   return (
     <div className="flex w-full max-w-[520px] flex-col items-start text-left" data-ui-chrome>
       <h2 className="text-[18px] font-semibold leading-7 text-ink-900">{frontendMessage("chat.empty.title")}</h2>

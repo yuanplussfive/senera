@@ -2,12 +2,13 @@ import {
   friendlyDecisionKind,
   type RunActivityRecord,
   type RunRecord,
+  type TimelineChildRunState,
   type TimelineStep,
   type TimelineStepStatus,
 } from "../../store/sessionStore";
 import { truncate } from "../../store/session/sessionPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { activeRunActivityLabel, runActivityLabel } from "./runActivityPresentation";
+import { activeRunActivityLabel, runActivityLabel, runActivityPresentationPriority } from "./runActivityPresentation";
 
 export type FeedItemKind = "activity" | "tool" | "trace";
 
@@ -43,6 +44,11 @@ const TimelineStatusPresentation = {
     dotClass: "bg-umber-500",
     textClass: "text-umber-600",
   },
+  cancelling: {
+    labelKey: "workflow.run.status.cancelling",
+    dotClass: "bg-accent-content",
+    textClass: "text-accent-content",
+  },
   pending: {
     labelKey: "workflow.feed.pending",
     dotClass: "bg-ink-300",
@@ -75,8 +81,12 @@ const TimelineStatusPresentation = {
 export function deriveFeedModel(run: RunRecord): FeedModel {
   const latestStep = run.steps[run.steps.length - 1];
   const latestDecision = [...run.steps].reverse().find((step) => step.kind === "decision");
-  const runningStep = [...run.steps].reverse().find((step) => step.status === "running");
-  const activeStep = resolveActiveStep(run, latestStep, runningStep, latestDecision);
+  const activeStep = resolveActiveStep(
+    run,
+    latestStep,
+    [...run.steps].reverse().find((step) => isActiveTimelineStatus(step.status)),
+    latestDecision,
+  );
   const rootSteps = run.steps.filter((step) => !step.scope?.parentRequestId);
   const scopedGroups = collectScopedGroups(run.steps);
   const rootToolGroups = collectRootToolGroups(rootSteps);
@@ -107,7 +117,7 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
     groups,
     bodyText: run.visibleKind === "tool_calls" ? "" : run.displayText,
     placeholder: derivePendingLabel(run, activeStep, latestDecision),
-    footer: deriveFooter(activeStep),
+    footer: foregroundActivityLabel(run) ? undefined : deriveFooter(activeStep),
   };
 }
 
@@ -117,11 +127,15 @@ function collectActivityGroup(activities: readonly RunActivityRecord[]): FeedGro
     latestStep === undefined ? activities : activities.filter((activity) => activity.step === latestStep);
   if (currentActivities.length === 0) return undefined;
 
+  const done = currentActivities.filter((activity) => activity.status === "done").length;
+
   return {
     id: `activity-${latestStep ?? "current"}`,
     label: frontendMessage("workflow.feed.seneraActivity"),
     variant: "activity",
+    meta: `${done}/${currentActivities.length}`,
     items: currentActivities.map(mapActivityItem),
+    collapsible: true,
   };
 }
 
@@ -219,7 +233,15 @@ function collectScopedGroups(steps: TimelineStep[]): FeedGroup[] {
 }
 
 function scopedGroupKey(step: TimelineStep): string {
-  return ["delegation", step.scope?.workflowName, step.scope?.role, step.scope?.jobId, step.scope?.agentName]
+  return [
+    "delegation",
+    step.scope?.parentSessionId,
+    step.scope?.workflowName,
+    step.scope?.role,
+    step.scope?.jobId,
+    step.scope?.childRunId,
+    step.scope?.agentName,
+  ]
     .filter((value) => value !== undefined && value !== "")
     .join(":");
 }
@@ -248,7 +270,7 @@ function resolveActiveStep(
   runningStep?: TimelineStep,
   latestDecision?: TimelineStep,
 ): TimelineStep | undefined {
-  if (runningStep?.kind === "tool") return runningStep;
+  if (runningStep?.kind === "tool" || runningStep?.status === "cancelling") return runningStep;
   if (run.visibleKind === "tool_calls" || run.visibleKind === "tool_preface") return latestDecision;
   if (runningStep?.kind === "model") return runningStep;
   if (run.visibleKind === "final_answer" || run.visibleKind === "ask_user") {
@@ -262,6 +284,37 @@ function mapHeadlineItem(
   activeStep: TimelineStep | undefined,
   latestDecision: TimelineStep | undefined,
 ): FeedItem {
+  const outputAvailable = run.outputState === "available" || run.outputState === "committed";
+  const foregroundActivity = foregroundActivityLabel(run);
+  if (foregroundActivity) {
+    return {
+      id: "live-activity",
+      kind: "activity",
+      status: "running",
+      title: foregroundActivity,
+    };
+  }
+
+  if (outputAvailable && run.visibleKind === "final_answer") {
+    return {
+      id: latestDecision?.id ?? "final-answer",
+      kind: "trace",
+      status: "done",
+      title: frontendMessage("workflow.feed.finalAnswer"),
+      subtitle: summarizeDecisionSubtitle(latestDecision),
+    };
+  }
+
+  if (outputAvailable && run.visibleKind === "ask_user") {
+    return {
+      id: latestDecision?.id ?? "ask-user",
+      kind: "trace",
+      status: "done",
+      title: frontendMessage("workflow.feed.askUser"),
+      subtitle: summarizeDecisionSubtitle(latestDecision),
+    };
+  }
+
   if (activeStep?.kind === "tool" && activeStep.toolName) {
     return {
       id: activeStep.id,
@@ -270,6 +323,16 @@ function mapHeadlineItem(
       title: frontendMessage("workflow.feed.callTool", { toolName: activeStep.toolName }),
       subtitle: summarizeToolSubtitle(activeStep),
       meta: activeStep.callId ? `call ${activeStep.callId.slice(0, 12)}` : undefined,
+    };
+  }
+
+  if (activeStep?.status === "cancelling") {
+    return {
+      id: activeStep.id,
+      kind: "trace",
+      status: "cancelling",
+      title: activeStep.title,
+      subtitle: summarizeStepSubtitle(activeStep),
     };
   }
 
@@ -283,6 +346,16 @@ function mapHeadlineItem(
           ? frontendMessage("workflow.feed.action", { kind: friendlyDecisionKind(latestDecision.decisionKind) })
           : frontendMessage("workflow.feed.actionDecision"),
       subtitle: summarizeDecisionSubtitle(latestDecision),
+    };
+  }
+
+  const liveActivity = liveActivityLabel(run);
+  if (outputAvailable && liveActivity) {
+    return {
+      id: "live-activity",
+      kind: "trace",
+      status: "running",
+      title: liveActivity,
     };
   }
 
@@ -302,7 +375,7 @@ function mapHeadlineItem(
     return {
       id: latestDecision?.id ?? "final-answer",
       kind: "trace",
-      status: "running",
+      status: outputAvailable ? "done" : "running",
       title: frontendMessage("workflow.feed.finalAnswer"),
       subtitle: summarizeDecisionSubtitle(latestDecision),
     };
@@ -312,13 +385,12 @@ function mapHeadlineItem(
     return {
       id: latestDecision?.id ?? "ask-user",
       kind: "trace",
-      status: "running",
+      status: outputAvailable ? "done" : "running",
       title: frontendMessage("workflow.feed.askUser"),
       subtitle: summarizeDecisionSubtitle(latestDecision),
     };
   }
 
-  const liveActivity = liveActivityLabel(run);
   if (liveActivity) {
     return {
       id: "live-activity",
@@ -396,8 +468,49 @@ function mapTraceItem(step: TimelineStep): FeedItem {
     status: step.status,
     title: step.title,
     subtitle: summarizeStepSubtitle(step),
-    meta: statusLabel(step.status),
+    meta: childRunItemMeta(step) ?? statusLabel(step.status),
   };
+}
+
+function childRunItemMeta(step: TimelineStep): string | undefined {
+  const childRun = step.childRun;
+  if (!childRun) return undefined;
+  const status =
+    childRun.status === "wrapping_up"
+      ? frontendMessage("workflow.childRun.status.wrappingUp")
+      : childRun.status === "cancelling"
+        ? frontendMessage("workflow.run.status.cancelling")
+        : statusLabel(step.status);
+  const messageCount = childRun.messages?.length;
+  const messages = messageCount
+    ? frontendMessage("workflow.childRun.messageCount", { count: messageCount })
+    : undefined;
+  const extension =
+    childRun.grantedExtensionMs && childRun.grantedExtensionMs > 0
+      ? `+${Math.ceil(childRun.grantedExtensionMs / 60_000)}m`
+      : undefined;
+  const tools =
+    childRun.toolCalls && childRun.toolCalls.started > 0
+      ? `${frontendMessage("workflow.summary.tools")} ${childRun.toolCalls.completed}/${childRun.toolCalls.started}`
+      : undefined;
+  const activeTools =
+    childRun.activeTools && childRun.activeTools.length > 0 ? childRun.activeTools.join(", ") : undefined;
+  const cancellation = childRunCancellationMeta(childRun.cancellation);
+  return [cancellation, activeTools, tools, messages, extension, status].filter(Boolean).join(" · ") || undefined;
+}
+
+function childRunCancellationMeta(cancellation: TimelineChildRunState["cancellation"]): string | undefined {
+  if (!cancellation) return undefined;
+  switch (cancellation.stage) {
+    case "completed":
+      return frontendMessage("run.cancellation.completed");
+    case "failed":
+      return frontendMessage("run.cancellation.failed");
+    case "settlement_delayed":
+      return frontendMessage("run.cancellation.delayed");
+    default:
+      return frontendMessage("run.cancellation.started");
+  }
 }
 
 function isToolPrefaceStep(step: TimelineStep): boolean {
@@ -454,6 +567,10 @@ function summarizeDecisionSubtitle(step?: TimelineStep): string | undefined {
 }
 
 function derivePendingLabel(run: RunRecord, activeStep?: TimelineStep, latestDecision?: TimelineStep): string {
+  const outputAvailable = run.outputState === "available" || run.outputState === "committed";
+  const foregroundActivity = foregroundActivityLabel(run);
+  if (foregroundActivity) return foregroundActivity;
+  const liveActivity = liveActivityLabel(run);
   if (activeStep?.kind === "tool" && activeStep.toolName) {
     return activeStep.status === "running"
       ? frontendMessage("workflow.feed.executingTool", { toolName: activeStep.toolName })
@@ -467,6 +584,8 @@ function derivePendingLabel(run: RunRecord, activeStep?: TimelineStep, latestDec
       : frontendMessage("workflow.feed.preparingTools");
   }
 
+  if (outputAvailable && liveActivity) return liveActivity;
+
   if (run.visibleKind === "ask_user") {
     return frontendMessage("workflow.feed.preparingQuestion");
   }
@@ -475,9 +594,8 @@ function derivePendingLabel(run: RunRecord, activeStep?: TimelineStep, latestDec
     return frontendMessage("workflow.feed.generatingAnswer");
   }
 
-  const liveActivity = liveActivityLabel(run);
   if (liveActivity) {
-    return liveActivity;
+    return frontendMessage("workflow.feed.waitingOutput");
   }
 
   if (activeStep?.kind === "model") {
@@ -502,9 +620,16 @@ function liveActivityLabel(run: RunRecord): string | undefined {
   return activeRunActivityLabel(run.liveActivity);
 }
 
+function foregroundActivityLabel(run: RunRecord): string | undefined {
+  if (!run.liveActivity || runActivityPresentationPriority(run.liveActivity) !== "foreground") return undefined;
+  return activeRunActivityLabel(run.liveActivity);
+}
+
 function summarizeStepSubtitle(step: TimelineStep): string | undefined {
   if (step.toolErrorMessage) return step.toolErrorMessage;
   if (step.errorMessage) return step.errorMessage;
+  const latestChildMessage = step.childRun?.messages?.at(-1);
+  if (latestChildMessage?.content) return truncate(latestChildMessage.content, 160);
   if (step.retryCode && step.description) return `${step.retryCode} · ${step.description}`;
   if (
     typeof step.promptChars === "number" ||
@@ -556,4 +681,8 @@ export function statusDotClass(status: TimelineStepStatus | "neutral", _pulse = 
 
 export function statusTextClass(status: TimelineStepStatus | "neutral"): string {
   return TimelineStatusPresentation[status].textClass;
+}
+
+function isActiveTimelineStatus(status: TimelineStepStatus): boolean {
+  return status === "running" || status === "cancelling";
 }

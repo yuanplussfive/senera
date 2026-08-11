@@ -32,5 +32,7 @@ describe("createRecoverableModuleLoader", () => {
     await expect(loadModule()).rejects.toThrow("chunk unavailable");
     await expect(loadModule()).resolves.toEqual({ component: "recovered" });
     expect(importModule).toHaveBeenCalledTimes(2);
+    expect(importModule).toHaveBeenNthCalledWith(1, 0);
+    expect(importModule).toHaveBeenNthCalledWith(2, 1);
   });
 });

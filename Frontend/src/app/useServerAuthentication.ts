@@ -8,8 +8,11 @@ import {
 } from "../api/authClient";
 import { AuthenticationSessionStates } from "../api/generatedEventCatalog";
 
+const INITIAL_AUTHENTICATION_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000, 8_000] as const;
+
 export type ServerAuthenticationState =
   | { readonly status: "loading" }
+  | { readonly status: "revalidating" }
   | { readonly status: "anonymous" }
   | { readonly status: "authenticated"; readonly authentication: ServerAuthorizedAuthentication }
   | { readonly status: "failed"; readonly error: Error };
@@ -35,30 +38,73 @@ export function useServerAuthentication(
   const [state, setState] = useState<ServerAuthenticationState>({ status: "loading" });
   const operationRef = useRef(0);
   const initialRequestStartedRef = useRef(false);
+  const initialRetryTimerRef = useRef<number | null>(null);
   const lifecycleRef = useRef(lifecycle);
   lifecycleRef.current = lifecycle;
 
-  const refresh = useCallback(async (): Promise<void> => {
-    const operation = ++operationRef.current;
-    try {
-      const request = readServerAuthentication(httpBaseUrl);
-      if (!initialRequestStartedRef.current) {
-        initialRequestStartedRef.current = true;
-        lifecycleRef.current.onInitialRequestStarted?.();
-      }
-      const authentication = await request;
-      await prepareAuthorizedAuthentication(authentication, lifecycleRef.current.prepareAuthorizedSurface);
-      if (operation === operationRef.current) setState(projectAuthenticationState(authentication));
-    } catch (error) {
-      if (operation === operationRef.current) {
+  const clearInitialRetryTimer = useCallback((): void => {
+    if (initialRetryTimerRef.current === null) return;
+    window.clearTimeout(initialRetryTimerRef.current);
+    initialRetryTimerRef.current = null;
+  }, []);
+
+  const readAuthentication = useCallback(
+    async (
+      operation: number,
+      retryTransientFailure: boolean,
+      retryAttempt = 0,
+      request?: Promise<Awaited<ReturnType<typeof readServerAuthentication>>>,
+    ): Promise<void> => {
+      try {
+        const authentication = await (request ?? readServerAuthentication(httpBaseUrl));
+        if (operation !== operationRef.current) return;
+        clearInitialRetryTimer();
+        await prepareAuthorizedAuthentication(authentication, lifecycleRef.current.prepareAuthorizedSurface);
+        if (operation === operationRef.current) setState(projectAuthenticationState(authentication));
+      } catch (error) {
+        if (operation !== operationRef.current) return;
+
+        const nextDelay = retryTransientFailure ? INITIAL_AUTHENTICATION_RETRY_DELAYS_MS[retryAttempt] : undefined;
+        if (nextDelay !== undefined && isTransientAuthenticationFailure(error)) {
+          initialRetryTimerRef.current = window.setTimeout(() => {
+            initialRetryTimerRef.current = null;
+            void readAuthentication(operation, true, retryAttempt + 1);
+          }, nextDelay);
+          return;
+        }
+
+        clearInitialRetryTimer();
         setState({ status: "failed", error: error instanceof Error ? error : new Error(String(error)) });
       }
+    },
+    [clearInitialRetryTimer, httpBaseUrl],
+  );
+
+  const refresh = useCallback(async (): Promise<void> => {
+    const operation = ++operationRef.current;
+    clearInitialRetryTimer();
+    setState((current) => (current.status === "loading" ? current : { status: "revalidating" }));
+    await readAuthentication(operation, false);
+  }, [clearInitialRetryTimer, readAuthentication]);
+
+  const initialRefresh = useCallback(async (): Promise<void> => {
+    const operation = ++operationRef.current;
+    clearInitialRetryTimer();
+    const request = readServerAuthentication(httpBaseUrl);
+    if (!initialRequestStartedRef.current) {
+      initialRequestStartedRef.current = true;
+      lifecycleRef.current.onInitialRequestStarted?.();
     }
-  }, [httpBaseUrl]);
+    await readAuthentication(operation, true, 0, request);
+  }, [clearInitialRetryTimer, httpBaseUrl, readAuthentication]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void initialRefresh();
+    return () => {
+      operationRef.current += 1;
+      clearInitialRetryTimer();
+    };
+  }, [clearInitialRetryTimer, initialRefresh]);
 
   const login = useCallback(
     async (credentials: { loginName: string; password: string }): Promise<void> => {
@@ -107,6 +153,11 @@ export function useServerAuthentication(
     }),
     [login, logout, refresh, revalidate, state],
   );
+}
+
+function isTransientAuthenticationFailure(error: unknown): boolean {
+  if (!(error instanceof ServerAuthenticationError)) return true;
+  return error.status === 408 || error.status === 429 || error.status >= 500;
 }
 
 function projectAuthenticationState(

@@ -11,6 +11,7 @@ import {
   Cpu,
   FileCode2,
   GitBranch,
+  LoaderCircle,
   X,
 } from "lucide-react";
 import type { TimelineStep, TimelineStepKind } from "../../store/sessionStore";
@@ -26,6 +27,7 @@ const KindIcon: Record<TimelineStepKind, React.ComponentType<{ className?: strin
   prompt: FileCode2,
   model: Cpu,
   decision: Braces,
+  delegation: GitBranch,
   tool: Globe,
   retry: RotateCcw,
   answer: Check,
@@ -50,19 +52,26 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
       ? "border-brick-500"
       : step.status === "running"
         ? "border-umber-500"
-        : "border-line-subtle";
+        : step.status === "cancelling"
+          ? "border-accent-content"
+          : "border-line-subtle";
   const iconClass =
     step.status === "failed" || step.kind === "error"
       ? "text-brick-600"
       : step.status === "running"
         ? "text-umber-600"
-        : "text-content-secondary";
+        : step.status === "cancelling"
+          ? "text-accent-content"
+          : "text-content-secondary";
+  const isParallelBatch =
+    step.kind === "tool" && step.toolBatch?.executionMode === "parallel" && (step.toolBatch.size ?? 0) > 1;
 
   return (
     <div
       className={cn(
         "group relative w-[240px] cursor-pointer select-none rounded-lg border bg-surface-raised px-3 py-2.5 shadow-panel transition-[border-color,background-color,box-shadow] duration-150",
         "hover:border-line-strong hover:bg-surface-subtle hover:shadow-[var(--shadow-soft)]",
+        isParallelBatch && "border-accent-border bg-accent-surface/35",
         statusClass,
         selected ? "outline outline-2 outline-offset-2 outline-accent-focus" : "",
       )}
@@ -74,7 +83,7 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
         className="!h-1.5 !w-1.5 !border-surface-raised !bg-content-muted"
       />
 
-      <div className="flex items-start gap-2.5">
+      <div className={cn("flex items-start gap-2.5", isParallelBatch && "border-l-2 border-accent-content/60 pl-2")}>
         <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center">
           <StatusIcon
             status={step.status}
@@ -133,7 +142,9 @@ function ScopeNode({
       ? "border-brick-500"
       : group.status === "running"
         ? "border-umber-500"
-        : "border-line-subtle";
+        : group.status === "cancelling"
+          ? "border-accent-content"
+          : "border-line-subtle";
 
   return (
     <div
@@ -157,7 +168,16 @@ function ScopeNode({
             <div className="mt-1 truncate text-[11.5px] text-content-secondary">{group.description}</div>
           ) : null}
           {group.status !== "done" ? (
-            <div className={cn("mt-1 text-[10.5px]", group.status === "failed" ? "text-brick-600" : "text-umber-600")}>
+            <div
+              className={cn(
+                "mt-1 text-[10.5px]",
+                group.status === "failed"
+                  ? "text-brick-600"
+                  : group.status === "cancelling"
+                    ? "text-accent-content"
+                    : "text-umber-600",
+              )}
+            >
               {readStepStatusLabel(group.status)}
             </div>
           ) : null}
@@ -199,6 +219,8 @@ function StatusIcon({
       >
         {status === "running" ? (
           <Spinner size="xs" className={className} />
+        ) : status === "cancelling" ? (
+          <LoaderCircle className={cn("h-3 w-3 animate-spin", className)} />
         ) : status === "failed" || kind === "error" ? (
           <X className={cn("h-3 w-3", className)} />
         ) : (
@@ -214,24 +236,34 @@ function StatusFooter({ step, motionLevel }: { step: TimelineStep; motionLevel: 
     ? formatDuration(step.startedAt, step.endedAt)
     : step.status === "running"
       ? frontendMessage("workflow.node.runningLive")
-      : null;
+      : step.status === "cancelling"
+        ? frontendMessage("workflow.run.status.cancelling")
+        : null;
   if (!label) return null;
   const transition = motionLevel === "none" ? { duration: 0 } : motionTimings.fast;
   return (
     <AnimatePresence mode="wait" initial={false}>
       <motion.div
-        key={step.status === "running" ? "running" : (step.endedAt ?? "ended")}
+        key={isActiveTimelineStatus(step.status) ? step.status : (step.endedAt ?? "ended")}
         initial={{ opacity: motionLevel === "none" ? 1 : 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: motionLevel === "none" ? 1 : 0 }}
         transition={transition}
         className={cn(
           "mt-1.5 text-right text-[10px] tabular-nums",
-          step.status === "running" ? "text-umber-600" : "text-content-muted",
+          step.status === "running"
+            ? "text-umber-600"
+            : step.status === "cancelling"
+              ? "text-accent-content"
+              : "text-content-muted",
         )}
       >
         {label}
       </motion.div>
     </AnimatePresence>
   );
+}
+
+function isActiveTimelineStatus(status: TimelineStep["status"]): boolean {
+  return status === "running" || status === "cancelling";
 }

@@ -10,6 +10,7 @@ import type { SeneraTerminalChild, SeneraTerminalSpawnOptions } from "./SeneraTe
 import type { SeneraShellDialect } from "./SeneraShellCommand.js";
 import type { SeneraOutputSpool, SeneraOutputSpoolDescriptor } from "./SeneraOutputSpool.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
+import type { SeneraExecutionRuntimeCapabilities } from "./SeneraExecutionRuntimeCapabilities.js";
 
 export const SeneraExecutionErrorCodes = {
   Aborted: "aborted",
@@ -31,6 +32,7 @@ export class SeneraExecutionError extends AgentBaseError {
     message: string,
     readonly details: Record<string, unknown> = {},
     cause?: Error,
+    readonly diagnostic?: Readonly<Record<string, unknown>>,
   ) {
     super(message, cause ? { cause } : undefined);
   }
@@ -63,6 +65,21 @@ export interface SeneraShellExecutionRequest {
   profile?: SeneraProcessExecutionProfile;
 }
 
+export interface SeneraArgvExecutionRequest {
+  command: string;
+  args: readonly string[];
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  timeoutMs?: number;
+  limits: SeneraExecutionLimits;
+  signal?: AbortSignal;
+  stdin?: string;
+  onOutput?: (chunk: SeneraProcessOutputChunk) => void;
+  outputOverflow?: "terminate" | "truncate";
+  outputSpool?: SeneraOutputSpool;
+  profile?: SeneraProcessExecutionProfile;
+}
+
 export interface SeneraShellExecutionResult {
   stdout: string;
   stderr: string;
@@ -77,12 +94,11 @@ export interface SeneraShellExecutionResult {
 
 export interface SeneraExecutionEnv extends ExecutionEnv {
   readonly workspaceRoot: string;
-  readonly capabilities: {
-    readonly persistentProcessBackends: readonly ("local" | "sandbox")[];
-  };
+  readonly capabilities: SeneraExecutionRuntimeCapabilities;
   resolveResourcePath(value: string, intent: AgentResourceAccessIntent): Promise<Result<string, FileError>>;
   withResourceAccessAuthority(authority: AgentResourceAccessAuthority): SeneraExecutionEnv;
   executeShell(request: SeneraShellExecutionRequest): Promise<SeneraShellExecutionResult>;
+  executeProcess(request: SeneraArgvExecutionRequest): Promise<SeneraShellExecutionResult>;
   spawnPersistentProcess(
     command: string,
     args: readonly string[],

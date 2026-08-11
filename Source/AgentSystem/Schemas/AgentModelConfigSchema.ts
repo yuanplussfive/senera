@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { disabledOrPositiveInteger, disabledOrPositiveNumber } from "./AgentConfigSchemaPrimitives.js";
-import { AgentModelEndpointKinds } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import { AgentModelEndpointKinds, AgentModelToolPlanningModes } from "../ModelEndpoints/AgentModelEndpointContract.js";
 
 export const ModelEndpointSchema = z.enum(AgentModelEndpointKinds);
 
@@ -14,6 +14,7 @@ export const ModelCapabilitiesSchema = z
     Reasoning: z.boolean().optional(),
     DeveloperRole: z.boolean().optional(),
     StreamingUsage: z.boolean().optional(),
+    ToolCalling: z.boolean().optional(),
   })
   .strict();
 
@@ -23,6 +24,7 @@ export const ModelProviderSchema = z
     ProviderId: z.string().min(1),
     Icon: z.string().min(1).optional(),
     Capabilities: ModelCapabilitiesSchema.optional(),
+    ToolPlanningMode: z.enum(AgentModelToolPlanningModes).optional(),
     ContextWindowTokens: z.number().int().positive().optional(),
     MaxModelOutputTokens: disabledOrPositiveInteger("MaxModelOutputTokens").optional(),
     Endpoint: ModelEndpointSchema,

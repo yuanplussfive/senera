@@ -35,6 +35,8 @@ type ToolSettingsRequest =
   | AgentWebSocketRequestOf<"mcpCredential.set">
   | AgentWebSocketRequestOf<"mcpCredential.delete">;
 
+type RunRequest = AgentWebSocketRequestOf<"session.message"> | AgentWebSocketRequestOf<"session.regenerate">;
+
 const ConfigMutationRequestTypes = {
   "config.update": true,
   "provider.endpoint.upsert": true,
@@ -62,6 +64,11 @@ const ToolSettingsRequestTypes = {
   "mcpInput.update": true,
   "mcpCredential.set": true,
   "mcpCredential.delete": true,
+} as const satisfies Partial<Record<AgentWebSocketRequest["type"], true>>;
+
+const RunRequestTypes = {
+  "session.message": true,
+  "session.regenerate": true,
 } as const satisfies Partial<Record<AgentWebSocketRequest["type"], true>>;
 
 /**
@@ -140,7 +147,59 @@ export function projectAgentWebSocketRequestFailure(
     };
   }
 
-  return projectRunFailure(request, error);
+  if (request.type === "session.close") {
+    return {
+      kind: AgentEventKinds.RequestInvalid,
+      context: { sessionId: request.sessionId },
+      data: {
+        code: "session_close_failed",
+        ...projectAgentErrorMessage(error, "session.runFailed"),
+        details: {
+          requestType: request.type,
+          sessionId: request.sessionId,
+          error: serializeError(error),
+        },
+      },
+    };
+  }
+
+  if (isRunRequest(request)) {
+    return projectRunFailure(request, error);
+  }
+
+  return projectRequestExecutionFailure(request, error);
+}
+
+function projectRequestExecutionFailure(request: AgentWebSocketRequest, error: unknown): AgentDomainEvent {
+  const requestId = readRequestId(request);
+  return {
+    kind: AgentEventKinds.RequestInvalid,
+    context: {
+      ...(requestId ? { requestId } : {}),
+      ...("sessionId" in request ? { sessionId: request.sessionId } : {}),
+    },
+    data: {
+      code: "request_execution_failed",
+      ...projectAgentErrorMessage(error, "websocket.requestFailed"),
+      details: {
+        requestType: request.type,
+        ...readRequestFailureIdentity(request),
+        error: serializeError(error),
+      },
+    },
+  };
+}
+
+function readRequestFailureIdentity(request: AgentWebSocketRequest): Record<string, string> {
+  const identity: Record<string, string> = {};
+  const record = request as unknown as Record<string, unknown>;
+  for (const key of ["sessionId", "requestId", "approvalId", "interactionId", "resourceId"] as const) {
+    const value = record[key];
+    if (typeof value === "string" && value) {
+      identity[key] = value;
+    }
+  }
+  return identity;
 }
 
 function projectToolSettingsFailure(request: ToolSettingsRequest, error: unknown): AgentDomainEvent {
@@ -228,4 +287,8 @@ function isPresetRequest(request: AgentWebSocketRequest): request is PresetReque
 
 function isToolSettingsRequest(request: AgentWebSocketRequest): request is ToolSettingsRequest {
   return request.type in ToolSettingsRequestTypes;
+}
+
+function isRunRequest(request: AgentWebSocketRequest): request is RunRequest {
+  return request.type in RunRequestTypes;
 }

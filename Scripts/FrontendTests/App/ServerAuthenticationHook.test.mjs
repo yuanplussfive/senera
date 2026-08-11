@@ -34,6 +34,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 test("restores an existing session and sends its CSRF token when signing out", async () => {
@@ -56,23 +57,59 @@ test("restores an existing session and sends its CSRF token when signing out", a
   expect(handleRef.current.state).toEqual({ status: "anonymous" });
 });
 
-test("moves from a failed status through retry into an anonymous sign-in state", async () => {
+test("moves from a failed status through revalidation into an anonymous sign-in state", async () => {
+  const retryRequest = deferredPromise();
   authenticationApi.read
-    .mockRejectedValueOnce(new Error("network unavailable"))
-    .mockResolvedValueOnce({ state: "anonymous" });
+    .mockRejectedValueOnce(new ServerAuthenticationError(403, "access denied"))
+    .mockImplementationOnce(() => retryRequest.promise);
   const handleRef = { current: null };
 
   render(React.createElement(AuthenticationHarness, { handleRef }));
 
   await waitFor(() => {
-    expect(handleRef.current.state).toMatchObject({ status: "failed", error: new Error("network unavailable") });
+    expect(handleRef.current.state).toMatchObject({ status: "failed", error: { status: 403 } });
   });
 
-  await act(async () => {
-    await handleRef.current.refresh();
+  let refresh;
+  act(() => {
+    refresh = handleRef.current.refresh();
   });
+  expect(handleRef.current.state).toEqual({ status: "revalidating" });
+
+  retryRequest.resolve({ state: "anonymous" });
+  await act(async () => refresh);
 
   expect(handleRef.current.state).toEqual({ status: "anonymous" });
+});
+
+test("keeps the startup surface loading while a transient server failure recovers", async () => {
+  vi.useFakeTimers();
+  authenticationApi.read.mockRejectedValueOnce(new Error("server is still starting")).mockResolvedValueOnce({
+    state: "anonymous",
+  });
+  const handleRef = { current: null };
+
+  render(React.createElement(AuthenticationHarness, { handleRef }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(250);
+  });
+
+  expect(authenticationApi.read).toHaveBeenCalledTimes(2);
+  expect(handleRef.current.state).toEqual({ status: "anonymous" });
+});
+
+test("does not retry an explicit authentication rejection during startup", async () => {
+  vi.useFakeTimers();
+  authenticationApi.read.mockRejectedValue(new ServerAuthenticationError(403, "Origin denied"));
+  const handleRef = { current: null };
+
+  render(React.createElement(AuthenticationHarness, { handleRef }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10_000);
+  });
+
+  expect(authenticationApi.read).toHaveBeenCalledTimes(1);
+  expect(handleRef.current.state).toMatchObject({ status: "failed", error: { status: 403 } });
 });
 
 test("uses the authentication API result as the authoritative post-login session", async () => {

@@ -1,0 +1,114 @@
+{
+  "name": "GitInspect",
+  "description": "只读检查 Git 状态、差异、历史、提交和分支；不访问远端。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "const": "status" },
+          "repository": { "type": "string", "minLength": 1 }
+        },
+        "required": ["operation", "repository"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "const": "diff" },
+          "repository": { "type": "string", "minLength": 1 },
+          "scope": { "default": "working", "type": "string", "enum": ["working", "staged"] },
+          "paths": { "default": [], "maxItems": 256, "type": "array", "items": { "type": "string", "minLength": 1 } }
+        },
+        "required": ["operation", "repository"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "const": "log" },
+          "repository": { "type": "string", "minLength": 1 },
+          "revision": { "default": "HEAD", "type": "string", "minLength": 1 },
+          "limit": { "default": 20, "type": "integer", "minimum": 1, "maximum": 200 }
+        },
+        "required": ["operation", "repository"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "const": "show" },
+          "repository": { "type": "string", "minLength": 1 },
+          "revision": { "default": "HEAD", "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 }
+        },
+        "required": ["operation", "repository"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "const": "branches" },
+          "repository": { "type": "string", "minLength": 1 }
+        },
+        "required": ["operation", "repository"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "operation": { "type": "string" },
+      "repository": { "type": "string" },
+      "exitCode": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+      "stdout": { "type": "string" },
+      "stderr": { "type": "string" },
+      "stdoutBytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+      "stderrBytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+      "stdoutTruncated": { "type": "boolean" },
+      "stderrTruncated": { "type": "boolean" }
+    },
+    "required": ["operation", "repository", "exitCode", "stdout", "stderr"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/GitInspect.projection.json",
+  "permissions": ["process:git", "filesystem:workspace:read"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "OneShot",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "ResourceClaims",
+    "Capabilities": { "OutputStreaming": true, "Cancellation": true }
+  },
+  "resources": [
+    { "Capability": "senera.workspace.path", "Pointer": "/repository", "Parameters": { "Intent": "inspect" } }
+  ],
+  "sources": [],
+  "search": {
+    "Summary": "Inspect status, diffs, history, revisions, and branches without network access.",
+    "Tags": ["git", "repository", "version-control"],
+    "Capabilities": [
+      {
+        "Id": "repository.git.inspect",
+        "Title": "Git repository inspection",
+        "Description": "Inspect status, diffs, history, revisions, and branches without network access.",
+        "Facets": {
+          "Actions": ["status", "diff", "log", "show", "list-branches"],
+          "Targets": ["git-repository", "working-tree", "index", "refs"],
+          "Inputs": ["operation", "repository"],
+          "Outputs": ["git-output", "exit-code"],
+          "Effects": ["none"]
+        },
+        "Aliases": ["git", "git status", "git diff", "git log", "版本控制", "检查提交"],
+        "Risk": { "SideEffect": "none", "Permission": "workspace-read" }
+      }
+    ],
+    "UseCases": ["Inspect status, diffs, history, revisions, and branches without network access."],
+    "Avoid": ["不支持 fetch、pull、push、remote 或任意 Git flags。"]
+  },
+  "evidenceCapabilities": []
+}

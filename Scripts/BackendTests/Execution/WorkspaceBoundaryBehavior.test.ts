@@ -77,7 +77,11 @@ describe("Workspace canonical boundary", () => {
     const policy = new AgentResourceAccessPolicy(
       new AgentSeneraOpaPolicyClient({ registry: new AgentExtensionRegistry() }),
     );
-    const environments = createSeneraExecutionEnvironments({ workspaceRoot, resourceAccessPolicy: policy });
+    const environments = createSeneraExecutionEnvironments({
+      workspaceRoot,
+      resourceAccessPolicy: policy,
+      sandboxAvailable: false,
+    });
 
     await expect(environments.tool.writeFile("skill-alias/bypass/SKILL.md", "blocked")).resolves.toMatchObject({
       ok: false,
@@ -148,7 +152,11 @@ describe("Workspace canonical boundary", () => {
     const policy = new AgentResourceAccessPolicy(
       new AgentSeneraOpaPolicyClient({ registry: new AgentExtensionRegistry() }),
     );
-    const environments = createSeneraExecutionEnvironments({ workspaceRoot, resourceAccessPolicy: policy });
+    const environments = createSeneraExecutionEnvironments({
+      workspaceRoot,
+      resourceAccessPolicy: policy,
+      sandboxAvailable: false,
+    });
 
     await expect(environments.system.writeFile(".senera/pi-sessions/state.json", "system")).resolves.toEqual({
       ok: true,

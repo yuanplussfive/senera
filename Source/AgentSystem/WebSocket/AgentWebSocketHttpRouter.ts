@@ -1,18 +1,17 @@
 import type http from "node:http";
 import type { AgentStaticFrontendHttpApi } from "./AgentStaticFrontendHttpApi.js";
 import { type AgentUploadHttpApi } from "../Uploads/AgentUploadHttpApi.js";
-import type { AgentPiProxyHttpApi } from "../PiProxy/AgentPiProxyHttpApi.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { type AgentAuthenticationHttpApi } from "../Auth/AgentAuthenticationHttpApi.js";
 import type { AgentAccessFailure, AgentServerAccessGuard } from "../Auth/AgentServerAccessGuard.js";
 import type { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
-import { authorizeAgentPiProxyRequest } from "../PiProxy/AgentPiProxyAuthorization.js";
+import type { AgentWorkspaceResourceHttpApi } from "../WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
     private readonly options: {
       uploadApi: AgentUploadHttpApi;
-      piProxyApi?: AgentPiProxyHttpApi;
+      workspaceResourceApi?: AgentWorkspaceResourceHttpApi;
       staticFrontendApi?: AgentStaticFrontendHttpApi;
       authenticationApi?: AgentAuthenticationHttpApi;
       healthApi?: AgentHealthHttpApi;
@@ -31,20 +30,19 @@ export class AgentWebSocketHttpRouter {
       return;
     }
 
+    if (this.options.workspaceResourceApi?.canHandle(request)) {
+      if (request.method !== "OPTIONS" && !this.authorize(request, response)) {
+        return;
+      }
+      await this.options.workspaceResourceApi.handle(request, response);
+      return;
+    }
+
     if (this.options.uploadApi.canHandle(request)) {
       if (request.method !== "OPTIONS" && !this.authorize(request, response)) {
         return;
       }
       await this.options.uploadApi.handle(request, response);
-      return;
-    }
-
-    if (this.options.piProxyApi?.canHandle(request)) {
-      if (!authorizeAgentPiProxyRequest(request)) {
-        this.writePiProxyAccessFailure(response);
-        return;
-      }
-      await this.options.piProxyApi.handle(request, response);
       return;
     }
 
@@ -95,22 +93,6 @@ export class AgentWebSocketHttpRouter {
         error: {
           code: failure.code,
           message: agentErrorMessage("auth.requestDenied"),
-        },
-      }),
-    );
-  }
-
-  private writePiProxyAccessFailure(response: http.ServerResponse): void {
-    response.writeHead(401, {
-      "Cache-Control": "no-store",
-      "Content-Type": "application/json; charset=utf-8",
-    });
-    response.end(
-      JSON.stringify({
-        error: {
-          code: "pi_proxy_authentication_required",
-          message: "Senera Pi proxy authentication failed.",
-          type: "senera_pi_proxy_error",
         },
       }),
     );

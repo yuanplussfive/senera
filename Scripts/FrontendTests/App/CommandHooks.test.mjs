@@ -43,6 +43,7 @@ test("useChatCommands creates a missing session and sends its first message as o
     requestId: expect.any(String),
     modelProviderId: "model-primary",
     input: "Inspect the workspace",
+    approvalMode: "agent",
     disposition: "create_if_missing",
   });
   expect(serverKnownSessionIdsRef.current).toContain(messageRequest.sessionId);
@@ -50,6 +51,7 @@ test("useChatCommands creates a missing session and sends its first message as o
     sessionId: messageRequest.sessionId,
     requestId: messageRequest.requestId,
     input: "Inspect the workspace",
+    approvalMode: "agent",
   });
   expect(useStore.getState().sessions[messageRequest.sessionId]).toMatchObject({
     title: "Inspect the workspace",
@@ -100,6 +102,28 @@ test("useChatCommands preserves local state and retry context when message deliv
     expect.objectContaining({
       variant: "error",
       title: frontendMessage("chat.sendDisconnected"),
+    }),
+  );
+});
+
+test("useChatCommands waits for authoritative cancellation progress and permits retry before acknowledgement", () => {
+  const sessionId = "session-cancel-control";
+  registerTestSession(sessionId);
+  useStore.getState().appendUserMessage(sessionId, "request-cancel-control", "Run until stopped.");
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: sessionId, handleRef, send });
+
+  act(() => handleRef.current.cancelActiveSession());
+  act(() => handleRef.current.cancelActiveSession());
+
+  expect(send).toHaveBeenCalledTimes(2);
+  expect(send).toHaveBeenNthCalledWith(1, { type: "session.cancel", sessionId });
+  expect(useStore.getState().sessions[sessionId].runs.at(-1)?.status).toBe("running");
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({
+      variant: "message",
+      title: frontendMessage("chat.cancelRequested"),
     }),
   );
 });
@@ -334,9 +358,11 @@ test("useSessionCommands keeps failed bulk deletions and reports the partial res
   act(() => handleRef.current.closeSessions(["session-a", "session-a", "session-b", ""]));
 
   expect(send.mock.calls.map(([request]) => request.sessionId)).toEqual(["session-a", "session-b"]);
-  expect(useStore.getState().sessions["session-a"]).toBeUndefined();
+  expect(useStore.getState().sessions["session-a"]).toBeDefined();
+  expect(useStore.getState().pendingDeletedSessionIds["session-a"]).toBe(true);
+  expect(useStore.getState().sessionOrder).toEqual(["session-b"]);
   expect(useStore.getState().sessions["session-b"]).toBeDefined();
-  expect(serverKnownSessionIdsRef.current).toEqual(new Set(["session-b"]));
+  expect(serverKnownSessionIdsRef.current).toEqual(new Set(["session-a", "session-b"]));
   expect(readTestToastCalls()).toContainEqual(
     expect.objectContaining({
       variant: "error",

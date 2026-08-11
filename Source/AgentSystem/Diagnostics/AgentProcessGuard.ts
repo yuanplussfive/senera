@@ -1,5 +1,7 @@
 import type { AgentLogger } from "./AgentLogger.js";
 import { serializeError } from "./AgentErrorSerializer.js";
+import { createOpaqueId } from "../Core/AgentIds.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 /**
  * 进程级故障与关闭守卫。
@@ -35,12 +37,12 @@ export function installAgentProcessFailureGuard(options: AgentProcessFailureGuar
 
   const onUnhandledRejection = (reason: unknown): void => {
     options.logger.error("未处理的 Promise 拒绝（缺失的 catch，应修复调用点）", {
-      error: serializeError(reason),
+      ...failureDetails(reason),
     });
   };
 
   const onUncaughtException = (error: unknown): void => {
-    options.logger.error("未捕获的异常，进程即将退出", { error: serializeError(error) });
+    options.logger.error("未捕获的异常，进程即将退出", failureDetails(error));
     if (exiting) {
       target.exit(1);
       return;
@@ -59,7 +61,7 @@ export function installAgentProcessFailureGuard(options: AgentProcessFailureGuar
       },
       (shutdownError) => {
         clearTimeout(force);
-        options.logger.error("未捕获异常后的清理失败", { error: serializeError(shutdownError) });
+        options.logger.error("未捕获异常后的清理失败", failureDetails(shutdownError));
         target.exit(1);
       },
     );
@@ -71,6 +73,26 @@ export function installAgentProcessFailureGuard(options: AgentProcessFailureGuar
     target.removeListener("unhandledRejection", onUnhandledRejection);
     target.removeListener("uncaughtException", onUncaughtException);
   };
+}
+
+function failureDetails(error: unknown): Record<string, unknown> {
+  const details: Record<string, unknown> = {
+    errorId: createOpaqueId("err"),
+    name: error instanceof Error ? error.name : typeof error,
+    message: errorMessage(error),
+    error: serializeError(error),
+  };
+  const code = readErrorProperty(error, "code");
+  if (code !== undefined) details.code = code;
+  const stage = readErrorProperty(error, "stage");
+  if (stage !== undefined) details.stage = stage;
+  return details;
+}
+
+function readErrorProperty(error: unknown, key: string): string | number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const value = (error as Record<string, unknown>)[key];
+  return typeof value === "string" || typeof value === "number" ? value : undefined;
 }
 
 export interface AgentProcessShutdownGuardOptions {
@@ -113,7 +135,7 @@ export function installAgentProcessShutdownGuard(options: AgentProcessShutdownGu
       },
       (error) => {
         clearTimeout(force);
-        options.logger.error("优雅关闭失败", { error: serializeError(error) });
+        options.logger.error("优雅关闭失败", failureDetails(error));
         target.exit(1);
       },
     );

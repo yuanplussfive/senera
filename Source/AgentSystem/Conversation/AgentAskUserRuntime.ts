@@ -3,10 +3,10 @@ import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/Ag
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 
-const AskUserArgumentsSchema = z
+export const AskUserArgumentsSchema = z
   .object({
-    question: z.string().trim().min(1),
-    reason_code: z.string().trim().min(1).optional(),
+    question: z.string().trim().min(1).describe("A specific, concise clarification question for the user."),
+    reason_code: z.string().trim().min(1).describe("Optional machine-readable clarification reason.").optional(),
   })
   .strict();
 

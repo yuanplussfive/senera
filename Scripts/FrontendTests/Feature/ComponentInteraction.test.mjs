@@ -1,17 +1,22 @@
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { ApprovalRequestStrip } from "../../../Frontend/src/features/chat/ApprovalRequestStrip.tsx";
 import { EmptyChatState } from "../../../Frontend/src/features/chat/EmptyChatState.tsx";
 import { InteractionInputStrip } from "../../../Frontend/src/features/chat/InteractionInputStrip.tsx";
 import { LogoMark } from "../../../Frontend/src/shared/ui/Logo.tsx";
+import { FrontendLocales } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
+import { setFrontendLocale } from "../../../Frontend/src/i18n/frontendLocaleStore.ts";
 
 const { openExternalUrl } = vi.hoisted(() => ({ openExternalUrl: vi.fn() }));
 vi.mock("../../../Frontend/src/app/desktopBridge.ts", () => ({ openExternalUrl }));
 
 afterEach(() => {
   cleanup();
+  setFrontendLocale(FrontendLocales.ZhCn);
+  globalThis.__SENERA_EMPTY_SUGGESTIONS__ = "整理日志|检查项目";
+  globalThis.window.__SENERA_RUNTIME_CONFIG__ = {};
   vi.restoreAllMocks();
   openExternalUrl.mockReset();
 });
@@ -48,6 +53,46 @@ test("approval strip resolves the selected pending tool approval", async () => {
   await user.click(screen.getByRole("button", { name: "通过" }));
 
   expect(onResolve).toHaveBeenCalledWith("approval_shell", "approve_once");
+});
+
+test("approval strip resolves concurrent tool approvals with one batch command", async () => {
+  const onResolve = vi.fn();
+  const onResolveBatch = vi.fn();
+  const approval = (approvalId, toolName) => ({
+    approvalId,
+    batchId: "batch_parallel",
+    status: "pending",
+    title: "需要确认",
+    reason: `${toolName} 需要执行本地操作`,
+    availableDecisions: ["approve_once", "deny", "deny_and_interrupt"],
+    approvalKind: "tool_call",
+    createdAt: "2026-07-09T00:00:00.000Z",
+    subject: { kind: "tool_call", toolName, arguments: {} },
+  });
+  render(
+    React.createElement(ApprovalRequestStrip, {
+      sessionId: "session_parallel",
+      requestId: "request_parallel",
+      approvals: [approval("approval_shell", "ShellCommandTool"), approval("approval_search", "SearchTool")],
+      onResolve,
+      onResolveBatch,
+    }),
+  );
+
+  expect(screen.getByText("2 个工具等待审批")).toBeInTheDocument();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "全部仅本次允许" }));
+
+  expect(onResolveBatch).toHaveBeenCalledTimes(1);
+  expect(onResolveBatch).toHaveBeenCalledWith(
+    {
+      sessionId: "session_parallel",
+      requestId: "request_parallel",
+      batchId: "batch_parallel",
+    },
+    "approve_once",
+  );
+  expect(onResolve).not.toHaveBeenCalled();
 });
 
 test("tool approval exposes the selected local execution plan", async () => {
@@ -106,6 +151,19 @@ test("empty chat suggestions behave as real user actions", async () => {
   await user.click(screen.getByRole("button", { name: "整理日志" }));
 
   expect(onSelectSuggestion).toHaveBeenCalledWith("整理日志");
+});
+
+test("catalog-backed empty suggestions update when the frontend locale changes", () => {
+  globalThis.__SENERA_EMPTY_SUGGESTIONS__ = ["整理今天的工作优先级", "分析一段错误日志", "把需求拆成可执行步骤"].join(
+    "|",
+  );
+  setFrontendLocale(FrontendLocales.ZhCn);
+
+  render(React.createElement(EmptyChatState, { onSelectSuggestion: vi.fn() }));
+  expect(screen.getByRole("button", { name: "整理今天的工作优先级" })).toBeInTheDocument();
+
+  act(() => setFrontendLocale(FrontendLocales.EnUs));
+  expect(screen.getByRole("button", { name: "Prioritize today's work" })).toBeInTheDocument();
 });
 
 test("logo mark uses a document-relative asset path for packaged desktop windows", () => {

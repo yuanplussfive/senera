@@ -1,10 +1,14 @@
-import type { AgentModelEndpointKind } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import type {
+  AgentModelEndpointKind,
+  AgentModelToolPlanningMode,
+} from "../ModelEndpoints/AgentModelEndpointContract.js";
 
 export interface AgentModelProviderConfig {
   Id: string;
   ProviderId: string;
   Icon?: string;
   Capabilities?: AgentModelCapabilitiesConfig;
+  ToolPlanningMode?: AgentModelToolPlanningMode;
   ContextWindowTokens?: number;
   MaxModelOutputTokens?: number;
   Endpoint: AgentModelEndpointKind;
@@ -33,6 +37,7 @@ export interface AgentModelCapabilitiesConfig {
   Reasoning?: boolean;
   DeveloperRole?: boolean;
   StreamingUsage?: boolean;
+  ToolCalling?: boolean;
 }
 
 export type AgentModelGroupMatchKind = "exact" | "prefix" | "suffix" | "includes";
@@ -78,6 +83,7 @@ export interface AgentModelRuntimeDefaultsConfig {
   Endpoint: AgentModelEndpointKind;
   Model: string;
   Capabilities: Required<AgentModelCapabilitiesConfig>;
+  ToolPlanningMode: AgentModelToolPlanningMode;
   ContextWindowTokens: number;
   MaxModelOutputTokens: number;
   Temperature: number;
@@ -100,6 +106,7 @@ export interface ResolvedAgentModelProviderConfig {
   ProviderId: string;
   Icon?: string;
   Capabilities?: AgentModelCapabilitiesConfig;
+  ToolPlanningMode: AgentModelToolPlanningMode;
   ContextWindowTokens: number;
   MaxModelOutputTokens?: number;
   Kind: "OpenAICompatible";

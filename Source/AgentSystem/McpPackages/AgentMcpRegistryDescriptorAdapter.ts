@@ -13,7 +13,7 @@ import {
   requireMcpString,
 } from "./AgentMcpDescriptorAdapter.js";
 import type { AgentMcpInputDefinition } from "./AgentMcpInputDefinition.js";
-import { AgentMcpExecutionTargets, type AgentMcpExecution } from "./AgentMcpPackageSchema.js";
+import { createAgentMcpDefaultLocalExecution, type AgentMcpExecution } from "./AgentMcpPackageSchema.js";
 import type { AgentMcpPackageServer } from "./AgentMcpPackageTypes.js";
 
 export const AgentMcpRegistryDescriptorAdapter: AgentMcpDescriptorAdapter = {
@@ -86,7 +86,7 @@ function projectPackageRoute(
   ]);
   const specifier = registryPackageSpecifier(identifier, version, runtime.command);
   return {
-    execution: defaultExecution(context),
+    execution: createAgentMcpDefaultLocalExecution(),
     server: {
       name: context.directoryName,
       inputs: inputs.map((input) => input.definition),
@@ -277,11 +277,6 @@ function optionalRecordArray(value: unknown, label: string): Record<string, unkn
   if (value === undefined) return [];
   if (!Array.isArray(value)) throw new AgentMcpDescriptorError(`${label} must be an array.`);
   return value.map((entry, index) => requireMcpRecord(entry, `${label}[${index}]`, [label, index]));
-}
-
-function defaultExecution(context: AgentMcpDescriptorContext): AgentMcpExecution {
-  const target = context.source === "bundled" ? AgentMcpExecutionTargets.Local : AgentMcpExecutionTargets.Sandbox;
-  return { targets: [target], preferred: target };
 }
 
 function boundExpression(definition: AgentMcpInputDefinition): AgentExtensionValueExpression {

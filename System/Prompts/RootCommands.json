@@ -70,14 +70,14 @@
       ],
       "ForbiddenOutputs": ["final_answer", "unregistered_tools"],
       "VisibleOutput": {
-        "Audience": "runtime",
-        "Start": "pi_tool_turn",
-        "Format": "pi_tool_calls_or_final_text",
+        "Audience": "user",
+        "Start": "question_body",
+        "Format": "plain_text",
         "Rules": [
           {
-            "Name": "tool_call_format",
-            "Value": "pi_custom_tools",
-            "Instruction": "需要提问时使用 AskUserTool；不要把提问伪装成最终回答。"
+            "Name": "interaction_channel",
+            "Value": "runtime_managed",
+            "Instruction": "缺少必要输入时，只提出完成任务所需的准确问题。"
           },
           {
             "Name": "final_answer",
@@ -91,12 +91,12 @@
           }
         ],
         "Repair": {
-          "Instruction": "按 Pi 工具调用协议发起必要提问；如果无法使用提问工具，说明缺少用户输入。",
+          "Instruction": "只输出取得必要用户输入所需的问题。",
           "Rules": [
             {
-              "Name": "tool_call_format",
-              "Value": "pi_custom_tools",
-              "Instruction": "只使用允许的提问工具。"
+              "Name": "interaction_channel",
+              "Value": "runtime_managed",
+              "Instruction": "不要把内部交互机制写进用户可见问题。"
             },
             {
               "Name": "final_answer",
@@ -122,14 +122,14 @@
       ],
       "ForbiddenOutputs": ["final_answer", "business_tool_calls", "unregistered_tools"],
       "VisibleOutput": {
-        "Audience": "runtime",
-        "Start": "pi_tool_turn",
-        "Format": "pi_tool_calls_or_final_text",
+        "Audience": "user",
+        "Start": "answer_body",
+        "Format": "final_text",
         "Rules": [
           {
-            "Name": "tool_call_format",
-            "Value": "pi_custom_tools",
-            "Instruction": "需要发现能力时使用工具发现能力；不要猜测未注册工具名。"
+            "Name": "tool_discovery",
+            "Value": "runtime_managed",
+            "Instruction": "只使用授权的工具发现能力；不要猜测未注册工具名。"
           },
           {
             "Name": "final_answer",
@@ -143,12 +143,12 @@
           }
         ],
         "Repair": {
-          "Instruction": "按 Pi 工具调用协议搜索工具能力；如果无法搜索，说明缺少的能力。",
+          "Instruction": "如果无法搜索工具，直接说明缺少的能力。",
           "Rules": [
             {
-              "Name": "tool_call_format",
-              "Value": "pi_custom_tools",
-              "Instruction": "只使用允许的发现工具。"
+              "Name": "tool_discovery",
+              "Value": "runtime_managed",
+              "Instruction": "只使用授权的发现能力。"
             },
             {
               "Name": "tool_name_source",
@@ -171,16 +171,16 @@
           "Source": "Registered"
         }
       ],
-      "ForbiddenOutputs": ["final_answer", "unregistered_tools"],
+      "ForbiddenOutputs": ["unregistered_tools"],
       "VisibleOutput": {
-        "Audience": "runtime",
-        "Start": "pi_tool_turn",
-        "Format": "pi_tool_calls_or_final_text",
+        "Audience": "user",
+        "Start": "answer_body",
+        "Format": "final_text",
         "Rules": [
           {
-            "Name": "tool_call_format",
-            "Value": "pi_custom_tools",
-            "Instruction": "需要工具时使用 Pi 提供的自定义工具；不要伪造工具结果。"
+            "Name": "tool_execution",
+            "Value": "runtime_managed",
+            "Instruction": "只使用运行时授权的工具；不要伪造工具结果。"
           },
           {
             "Name": "final_answer_after_tools",
@@ -194,12 +194,12 @@
           }
         ],
         "Repair": {
-          "Instruction": "按 Pi 工具调用协议继续；如果不能调用可用工具，直接说明缺少的能力或信息。",
+          "Instruction": "如果不能调用可用工具，直接说明缺少的能力或信息。",
           "Rules": [
             {
-              "Name": "tool_call_format",
-              "Value": "pi_custom_tools",
-              "Instruction": "不要伪造工具结果。"
+              "Name": "tool_execution",
+              "Value": "runtime_managed",
+              "Instruction": "不要伪造工具结果或内部执行状态。"
             },
             {
               "Name": "final_answer",

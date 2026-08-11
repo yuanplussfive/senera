@@ -8,6 +8,8 @@ import { resolveAgentPromptSections } from "../Prompt/AgentPromptSectionResolver
 import type { AgentPiToolExecutionBridge } from "./AgentPiToolExecutionBridge.js";
 import type { AgentPiToolDefinition, AgentPiToolProjectionContext } from "./AgentPiTypes.js";
 import { projectAgentToolInvocationSchema } from "../ToolRuntime/AgentToolExecutionPlan.js";
+import { resolveAvailableAgentToolExecutionTargets } from "../ToolRuntime/AgentToolExecutionPlan.js";
+import type { ToolExecutionTarget } from "../Types/AgentToolContractTypes.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { orderToolNamesByPreference } from "../ToolRuntime/AgentToolAccessGrant.js";
 
@@ -21,6 +23,7 @@ export interface AgentPiToolRegistryProjectorOptions {
   registry: AgentExtensionRegistry;
   execution: AgentPiToolExecutionBridge;
   runtimeContracts?: AgentPiToolRuntimeContractProjector;
+  availableExecutionTargets?: () => readonly ToolExecutionTarget[];
 }
 
 export interface AgentPiToolSet {
@@ -59,8 +62,9 @@ export class AgentPiToolRegistryProjector {
     visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"],
     preferredToolNames: readonly string[] = [],
   ): AgentPiToolSet {
-    const tools = this.visibleTools(visibleToolNames, preferredToolNames);
-    const projections = tools.map((tool) => ({ tool, descriptor: this.projectDescriptor(tool) }));
+    const runtimeTargets = this.options.availableExecutionTargets?.() ?? ["Sandbox", "Local"];
+    const tools = this.visibleTools(visibleToolNames, preferredToolNames, runtimeTargets);
+    const projections = tools.map((tool) => ({ tool, descriptor: this.projectDescriptor(tool, runtimeTargets) }));
     const descriptors = projections.map(({ descriptor }) => descriptor);
     const activeToolNames = descriptors.map((descriptor) => descriptor.name);
     const fingerprint = sha256HexOfCanonicalJson(descriptors);
@@ -75,8 +79,11 @@ export class AgentPiToolRegistryProjector {
   private visibleTools(
     visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"],
     preferredToolNames: readonly string[] = [],
+    runtimeTargets: readonly ToolExecutionTarget[] = ["Sandbox", "Local"],
   ): RegisteredTool[] {
-    const registered = this.options.registry.listTools();
+    const registered = this.options.registry
+      .listTools()
+      .filter((tool) => resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets).length > 0);
     if (!visibleToolNames) {
       return registered;
     }
@@ -107,7 +114,10 @@ export class AgentPiToolRegistryProjector {
     };
   }
 
-  private projectDescriptor(tool: RegisteredTool): Omit<AgentPiToolDefinition, "execute"> {
+  private projectDescriptor(
+    tool: RegisteredTool,
+    runtimeTargets: readonly ToolExecutionTarget[],
+  ): Omit<AgentPiToolDefinition, "execute"> {
     const owner = resolveAgentToolOwner(tool);
     const staticSchema = tool.contract?.arguments?.jsonSchema ?? EmptyObjectParameterSchema;
     const runtimeSchema =
@@ -116,7 +126,7 @@ export class AgentPiToolRegistryProjector {
       name: tool.name,
       label: owner.title ?? tool.name,
       description: this.projectDescription(tool),
-      parameters: projectAgentToolInvocationSchema(tool, runtimeSchema),
+      parameters: projectAgentToolInvocationSchema(tool, runtimeSchema, runtimeTargets),
       executionMode: "parallel" as const,
     });
   }

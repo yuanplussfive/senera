@@ -29,6 +29,11 @@ export interface AgentActivatedSkill {
   score: number;
 }
 
+export interface AgentPinnedSkillReference {
+  readonly name: string;
+  readonly revision: string;
+}
+
 export interface AgentActivatedSkillMatchedField {
   term: string;
   fields: string[];
@@ -48,6 +53,7 @@ export interface AgentSkillRoutingEvidenceProvider {
 
 export const AgentSkillActivationScores = {
   ExplicitInvocation: Number.MAX_SAFE_INTEGER,
+  PinnedConfiguration: Number.MAX_SAFE_INTEGER - 1,
 } as const;
 
 export class AgentSkillActivationService {
@@ -65,14 +71,39 @@ export class AgentSkillActivationService {
     input?: string;
     decision?: AgentActionDecision;
     rootCommand?: AgentRootCommand | null;
+    pinnedSkills?: readonly AgentPinnedSkillReference[];
     signal?: AbortSignal;
   }): Promise<AgentActivatedSkill[]> {
     const query = this.buildActivationQuery(options);
     const catalogByName = new Map(this.projector.list().map((skill) => [skill.name, skill]));
     const skills = this.registry.listSkills();
+    const skillsByName = new Map(skills.map((skill) => [skill.name, skill]));
+    const pinnedReferences = uniquePinnedSkillReferences(options.pinnedSkills ?? []);
+    const pinnedNames = pinnedReferences.map((reference) => reference.name);
+    const missingPinnedNames = pinnedNames.filter((name) => !skillsByName.has(name));
+    if (missingPinnedNames.length > 0) {
+      throw new Error(`Pinned Skills are not registered: ${missingPinnedNames.join(", ")}.`);
+    }
+    const changedPinnedSkills = pinnedReferences.flatMap((reference) => {
+      const skill = skillsByName.get(reference.name)!;
+      const activeRevision = skill.revision ?? skill.source.id;
+      return activeRevision === reference.revision
+        ? []
+        : [`${reference.name} (selected ${reference.revision}, active ${activeRevision})`];
+    });
+    if (changedPinnedSkills.length > 0) {
+      throw new Error(`Pinned Skill revisions changed before activation: ${changedPinnedSkills.join(", ")}.`);
+    }
+    const pinnedNameSet = new Set(pinnedNames);
+    const pinned = pinnedNames.map((name): AgentSkillSelectionResult => ({
+      skill: skillsByName.get(name)!,
+      score: AgentSkillActivationScores.PinnedConfiguration,
+      matchedTerms: [name],
+      matchedFields: [{ term: name, fields: ["pinnedConfiguration"] }],
+    }));
     const explicitNames = new Set(parseAgentExplicitSkillNames(options.input));
     const explicit = skills
-      .filter((skill) => explicitNames.has(skill.name))
+      .filter((skill) => explicitNames.has(skill.name) && !pinnedNameSet.has(skill.name))
       .map((skill): AgentSkillSelectionResult => ({
         skill,
         score: AgentSkillActivationScores.ExplicitInvocation,
@@ -87,7 +118,11 @@ export class AgentSkillActivationService {
           learningEvidence: this.routingEvidence?.skillRoutingEvidence({ query, skills }),
         });
 
-    return [...explicit, ...selected.filter((item) => !explicitNames.has(item.skill.name))].map((item) => {
+    return [
+      ...pinned,
+      ...explicit,
+      ...selected.filter((item) => !pinnedNameSet.has(item.skill.name) && !explicitNames.has(item.skill.name)),
+    ].map((item) => {
       const catalog = catalogByName.get(item.skill.name) ?? this.projector.project(item.skill);
       return {
         name: item.skill.name,
@@ -165,4 +200,18 @@ export class AgentSkillActivationService {
       ...need.effects,
     ]);
   }
+}
+
+function uniquePinnedSkillReferences(references: readonly AgentPinnedSkillReference[]): AgentPinnedSkillReference[] {
+  const unique = new Map<string, AgentPinnedSkillReference>();
+  for (const reference of references) {
+    const previous = unique.get(reference.name);
+    if (previous && previous.revision !== reference.revision) {
+      throw new Error(
+        `Pinned Skill ${reference.name} has conflicting revisions: ${previous.revision}, ${reference.revision}.`,
+      );
+    }
+    unique.set(reference.name, reference);
+  }
+  return [...unique.values()];
 }

@@ -102,7 +102,7 @@ describe("upgrade lifecycle", () => {
     const persisted = JSON.parse(fs.readFileSync(configPath, "utf8")) as Record<string, unknown>;
     expect(persisted.ConfigVersion).toBe(CurrentAgentConfigVersion);
     expect(persisted.SandboxRuntime).toEqual({
-      Provisioning: { Kind: "Oci", Images: ["registry.example/runtime@sha256:digest"] },
+      Docker: { Image: "registry.example/runtime@sha256:digest" },
     });
     const manifest = session.journal.readManifest("config-upgrade");
     expect(manifest.participants[0]).toMatchObject({ id: "agent-config-json", phase: "migrated" });

@@ -3,14 +3,14 @@ import { PassThrough } from "node:stream";
 import Docker from "dockerode";
 import { describe, expect, test, vi } from "vitest";
 import {
-  AgentGvisorDockerEngineRuntime,
+  AgentDockerEngineRuntime,
   resolveAgentDockerEngineSandboxProvider,
-} from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorDockerRuntime.js";
+} from "../../../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntime.js";
 import {
   readAgentDockerEngineRuntimeContract,
   type AgentDockerEngineSandboxProvider,
   type ResolvedAgentDockerEngineRuntimeContract,
-} from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorRuntimeContract.js";
+} from "../../../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 import { AgentSandboxRuntimeImageLabels } from "../../../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
 
 describe("Docker Engine sandbox runtime", () => {
@@ -37,6 +37,11 @@ describe("Docker Engine sandbox runtime", () => {
         Init: true,
         CapDrop: ["ALL"],
       },
+      Env: expect.arrayContaining([
+        "GIT_CONFIG_COUNT=1",
+        "GIT_CONFIG_KEY_0=safe.directory",
+        `GIT_CONFIG_VALUE_0=${fixture.resolved.contract.guest.workspaceRoot}`,
+      ]),
     });
     expect(fixture.remove).toHaveBeenCalledWith({ force: true });
   });
@@ -63,12 +68,21 @@ describe("Docker Engine sandbox runtime", () => {
         SecurityOpt: ["no-new-privileges:true"],
         CapDrop: ["ALL"],
       },
+      Env: expect.arrayContaining([
+        "GIT_CONFIG_COUNT=1",
+        "GIT_CONFIG_KEY_0=safe.directory",
+        `GIT_CONFIG_VALUE_0=${fixture.resolved.contract.guest.workspaceRoot}`,
+      ]),
     });
   });
 
   test("selects gVisor when runsc is registered and daemon-default otherwise", async () => {
-    const dockerWithRunsc = { info: vi.fn(async () => ({ Runtimes: { runc: {}, runsc: {} } })) } as unknown as Docker;
-    const dockerWithoutRunsc = { info: vi.fn(async () => ({ Runtimes: { runc: {} } })) } as unknown as Docker;
+    const dockerWithRunsc = {
+      info: vi.fn(async () => ({ OSType: "linux", Runtimes: { runc: {}, runsc: {} } })),
+    } as unknown as Docker;
+    const dockerWithoutRunsc = {
+      info: vi.fn(async () => ({ OSType: "linux", Runtimes: { runc: {} } })),
+    } as unknown as Docker;
 
     await expect(
       resolveAgentDockerEngineSandboxProvider({ docker: dockerWithRunsc, preference: "auto" }),
@@ -92,20 +106,21 @@ describe("Docker Engine sandbox runtime", () => {
     const pull = vi.fn();
     const docker = {
       version: vi.fn(async () => ({ ApiVersion: resolved.contract.engine.minimumApiVersion })),
-      info: vi.fn(async () => ({ Runtimes: { runc: {} } })),
+      info: vi.fn(async () => ({ OSType: "linux", Runtimes: { runc: {} } })),
       getImage: vi.fn(() => ({ inspect: vi.fn(async () => Promise.reject(missing)) })),
       pull,
       createContainer: vi.fn(),
     } as unknown as Docker;
-    const runtime = new AgentGvisorDockerEngineRuntime({
+    const runtime = new AgentDockerEngineRuntime({
       docker,
       workspace: { kind: "volume", volumeName: "senera-data" },
       copySourceRoots: [path.resolve("workspace")],
       runtimeContract: resolved,
       imageReference,
+      pullPolicy: "never",
     });
     await expect(runtime.probe()).resolves.toMatchObject({ image: imageReference, imageReady: false });
-    await expect(runtime.prepare()).rejects.toThrow("deployment must pull the declared image");
+    await expect(runtime.prepare()).rejects.toThrow("unavailable under pull policy never");
     expect(pull).not.toHaveBeenCalled();
   });
 
@@ -114,7 +129,7 @@ describe("Docker Engine sandbox runtime", () => {
     const imageReference = "ghcr.io/example/senera-sandbox-runtime:verified";
     const docker = {
       version: vi.fn(async () => ({ ApiVersion: resolved.contract.engine.minimumApiVersion })),
-      info: vi.fn(async () => ({ Runtimes: { runc: {} } })),
+      info: vi.fn(async () => ({ OSType: "linux", Runtimes: { runc: {} } })),
       getImage: vi.fn(() => ({
         inspect: vi.fn(async () => ({
           Config: {
@@ -126,12 +141,13 @@ describe("Docker Engine sandbox runtime", () => {
         })),
       })),
     } as unknown as Docker;
-    const runtime = new AgentGvisorDockerEngineRuntime({
+    const runtime = new AgentDockerEngineRuntime({
       docker,
       workspace: { kind: "volume", volumeName: "senera-data" },
       copySourceRoots: [path.resolve("workspace")],
       runtimeContract: resolved,
       imageReference,
+      pullPolicy: "never",
     });
 
     await expect(runtime.probe()).rejects.toThrow("runtime image identity is invalid");
@@ -139,7 +155,7 @@ describe("Docker Engine sandbox runtime", () => {
 });
 
 function createRuntimeFixture(provider: AgentDockerEngineSandboxProvider): {
-  runtime: AgentGvisorDockerEngineRuntime;
+  runtime: AgentDockerEngineRuntime;
   resolved: ResolvedAgentDockerEngineRuntimeContract;
   imageReference: string;
   remove: ReturnType<typeof vi.fn>;
@@ -150,7 +166,7 @@ function createRuntimeFixture(provider: AgentDockerEngineSandboxProvider): {
   let created: Docker.ContainerCreateOptions | undefined;
   const docker = {
     version: vi.fn(async () => ({ ApiVersion: resolved.contract.engine.minimumApiVersion })),
-    info: vi.fn(async () => ({ Runtimes: { runsc: {}, runc: {} } })),
+    info: vi.fn(async () => ({ OSType: "linux", Runtimes: { runsc: {}, runc: {} } })),
     getImage: vi.fn(() => ({
       inspect: vi.fn(async () => ({ Id: "image", Config: { Labels: runtimeImageLabels(resolved) } })),
     })),
@@ -173,12 +189,13 @@ function createRuntimeFixture(provider: AgentDockerEngineSandboxProvider): {
   } as unknown as Docker;
   const workspaceRoot = path.resolve("workspace");
   const imageReference = "ghcr.io/example/senera-sandbox-runtime:verified";
-  const runtime = new AgentGvisorDockerEngineRuntime({
+  const runtime = new AgentDockerEngineRuntime({
     docker,
     workspace: { kind: "bind", sourcePath: workspaceRoot },
     copySourceRoots: [workspaceRoot],
     runtimeContract: resolved,
     imageReference,
+    pullPolicy: "never",
     containerNameFactory: () => "contract-sandbox",
   });
   return {
@@ -193,7 +210,7 @@ function createRuntimeFixture(provider: AgentDockerEngineSandboxProvider): {
 }
 
 async function executeProbeCommand(
-  runtime: AgentGvisorDockerEngineRuntime,
+  runtime: AgentDockerEngineRuntime,
   resolved: ResolvedAgentDockerEngineRuntimeContract,
 ): Promise<void> {
   await runtime.prepare();
@@ -202,7 +219,11 @@ async function executeProbeCommand(
     command: "/usr/local/bin/node",
     arguments: ["--version"],
     cwd: resolved.contract.guest.workspaceRoot,
-    environment: {},
+    environment: {
+      GIT_CONFIG_COUNT: "99",
+      GIT_CONFIG_KEY_0: "safe.directory",
+      GIT_CONFIG_VALUE_0: "*",
+    },
     interactive: false,
     workspaceMount: "readonly",
     network: "disabled",

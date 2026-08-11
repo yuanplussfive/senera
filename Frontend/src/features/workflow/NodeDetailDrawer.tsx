@@ -1,13 +1,15 @@
 import { memo, useCallback, useEffect, useState } from "react";
 import { X, Copy, Check } from "lucide-react";
-import type { TimelineStep } from "../../store/sessionStore";
+import type { TimelineChildRunMessage, TimelineStep } from "../../store/sessionStore";
 import { friendlyDecisionKind } from "../../store/sessionStore";
 import { cn, formatTime, formatDuration } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { MotionIconSwap } from "../../shared/motion";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
 import { MetaLabel, Sheet, SheetContent, Skeleton, Tooltip, useClipboardCopy } from "../../shared/ui";
 import { readStepKindLabel, readStepStatusLabel } from "./stepPresentation";
 import { DataView } from "./DataView";
+import { ChildRunOverview } from "./ChildRunOverview";
 
 export interface NodeDetailDrawerProps {
   step: TimelineStep | null;
@@ -44,7 +46,7 @@ export function NodeDetailDrawer({ step, onClose }: NodeDetailDrawerProps): JSX.
           <>
             <Header step={step} onClose={onClose} />
             <div className="scrollbar-thin flex-1 overflow-y-auto px-5 pb-8 pt-3">
-              {contentReady ? <Body step={step} /> : <DetailSkeleton />}
+              {contentReady ? <WorkflowStepDetail step={step} /> : <DetailSkeleton />}
             </div>
           </>
         ) : null}
@@ -88,10 +90,14 @@ function Header({ step, onClose }: { step: TimelineStep; onClose: () => void }):
   );
 }
 
-const Body = memo(function Body({ step }: { step: TimelineStep }): JSX.Element {
+export const WorkflowStepDetail = memo(function WorkflowStepDetail({ step }: { step: TimelineStep }): JSX.Element {
   return (
     <div className="flex flex-col gap-5">
       <MetaStrip step={step} />
+
+      {step.childRun ? <ChildRunOverview childRun={step.childRun} /> : null}
+
+      {step.childRun ? <ChildRunMessages messages={step.childRun.messages ?? []} /> : null}
 
       {step.description ? (
         <Section label={frontendMessage("workflow.node.section.description")}>
@@ -174,6 +180,65 @@ const Body = memo(function Body({ step }: { step: TimelineStep }): JSX.Element {
     </div>
   );
 });
+
+const ChildRunMessageKindLabels: Record<TimelineChildRunMessage["kind"], Parameters<typeof frontendMessage>[0]> = {
+  decision: "workflow.childRun.message.decision",
+  follow_up: "workflow.childRun.message.followUp",
+  progress: "workflow.childRun.message.progress",
+  response: "workflow.childRun.message.response",
+  steering: "workflow.childRun.message.steering",
+};
+
+function ChildRunMessages({ messages }: { messages: readonly TimelineChildRunMessage[] }): JSX.Element {
+  const copyValue = messages
+    .map((message) => {
+      const direction =
+        message.direction === "child_to_parent"
+          ? frontendMessage("workflow.childRun.message.child")
+          : frontendMessage("workflow.childRun.message.parent");
+      return `${direction} · ${frontendMessage(ChildRunMessageKindLabels[message.kind])}\n${message.content}`;
+    })
+    .join("\n\n");
+
+  return (
+    <Section label={frontendMessage("workflow.node.section.childMessages")} copyValue={copyValue || undefined}>
+      {messages.length > 0 ? (
+        <div className="divide-y divide-line-subtle border-y border-line-subtle" data-child-run-messages>
+          {messages.map((message) => (
+            <article
+              key={message.id}
+              className={cn(
+                "border-l-2 px-3 py-3",
+                message.direction === "child_to_parent" ? "border-accent-content" : "border-umber-400",
+              )}
+            >
+              <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px]">
+                <span className="font-medium text-content-primary">
+                  {message.direction === "child_to_parent"
+                    ? frontendMessage("workflow.childRun.message.child")
+                    : frontendMessage("workflow.childRun.message.parent")}
+                </span>
+                <span className="text-content-muted">{frontendMessage(ChildRunMessageKindLabels[message.kind])}</span>
+              </div>
+              <MarkdownRenderer
+                className="px-0 py-0"
+                contentClassName="text-[13px] leading-relaxed"
+                compact
+                lightweightCode
+              >
+                {message.content}
+              </MarkdownRenderer>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="border-y border-line-subtle py-3 text-[12.5px] leading-5 text-content-secondary">
+          {frontendMessage("workflow.childRun.message.empty")}
+        </div>
+      )}
+    </Section>
+  );
+}
 
 function ToolOutputBlock({ stream, text }: { stream: "stdout" | "stderr"; text: string }): JSX.Element {
   return (
@@ -384,7 +449,9 @@ function CopyButton({ value }: { value: unknown }): JSX.Element {
         className="grid h-5 w-5 place-items-center rounded text-ink-400 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
         aria-label="copy"
       >
-        {copied ? <Check className="h-3 w-3 text-moss-500" /> : <Copy className="h-3 w-3" />}
+        <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
+          {copied ? <Check className="h-3 w-3 text-moss-500" /> : <Copy className="h-3 w-3" />}
+        </MotionIconSwap>
       </button>
     </Tooltip>
   );

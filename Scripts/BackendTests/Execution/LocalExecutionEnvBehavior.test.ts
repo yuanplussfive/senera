@@ -121,6 +121,45 @@ describe("Local execution environment behavior", () => {
     expect(fs.existsSync(path.join(workspaceRoot, "cancelled.txt"))).toBe(false);
   });
 
+  test("renames files atomically within the authorized workspace", async () => {
+    const workspaceRoot = createWorkspace();
+    const env = new SeneraLocalExecutionEnv({ workspaceRoot });
+    fs.mkdirSync(path.join(workspaceRoot, "source"), { recursive: true });
+    fs.writeFileSync(path.join(workspaceRoot, "source", "draft.txt"), "replacement");
+    fs.writeFileSync(path.join(workspaceRoot, "published.txt"), "previous");
+
+    await expect(env.renameFile("source/draft.txt", "published.txt")).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(fs.existsSync(path.join(workspaceRoot, "source", "draft.txt"))).toBe(false);
+    expect(fs.readFileSync(path.join(workspaceRoot, "published.txt"), "utf8")).toBe("replacement");
+  });
+
+  test("rejects cancelled and out-of-workspace renames without moving the source", async () => {
+    const workspaceRoot = createWorkspace();
+    const env = new SeneraLocalExecutionEnv({ workspaceRoot });
+    const source = path.join(workspaceRoot, "source.txt");
+    fs.writeFileSync(source, "preserved");
+    const controller = new AbortController();
+    controller.abort("cancelled");
+
+    await expect(env.renameFile("source.txt", "cancelled.txt", controller.signal)).resolves.toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ code: "aborted" }),
+      }),
+    );
+    await expect(env.renameFile("source.txt", path.resolve(workspaceRoot, "..", "outside.txt"))).resolves.toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ code: "permission_denied" }),
+      }),
+    );
+    expect(fs.readFileSync(source, "utf8")).toBe("preserved");
+    expect(fs.existsSync(path.join(workspaceRoot, "cancelled.txt"))).toBe(false);
+  });
+
   test("delegates shell execution and maps backend errors into Pi execution results", async () => {
     const workspaceRoot = createWorkspace();
     fs.mkdirSync(path.join(workspaceRoot, "nested"), { recursive: true });

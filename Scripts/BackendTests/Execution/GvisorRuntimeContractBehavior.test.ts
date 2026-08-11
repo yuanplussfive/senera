@@ -4,13 +4,13 @@ import {
   readAgentDockerEngineRuntimeContract,
   readAgentGvisorRuntimeContract,
   readAgentGvisorRuntimePolicyContract,
-} from "../../../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorRuntimeContract.js";
+} from "../../../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 
 describe("gVisor runtime contract", () => {
   test("binds the OCI policy to the immutable sandbox distribution image", () => {
     const resolved = readAgentGvisorRuntimeContract("x64");
     expect(resolved.contract).toMatchObject({
-      formatVersion: 1,
+      formatVersion: 2,
       provider: "gvisor",
       runtime: { platform: "linux" },
       container: {
@@ -21,6 +21,10 @@ describe("gVisor runtime contract", () => {
     });
     expect(resolved.image.sourceImage).toMatch(/@sha256:[a-f0-9]{64}$/u);
     expect(resolved.contract.guest.shell.command).toMatch(/^\//u);
+    expect(resolved.contract.guest.terminal).toEqual({
+      command: "/usr/local/bin/node",
+      arguments: ["/opt/senera-terminal-sidecar/bin/senera-terminal-sidecar.js"],
+    });
   });
 
   test("rejects undeclared policy keys and relative guest paths", () => {

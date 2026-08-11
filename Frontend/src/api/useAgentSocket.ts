@@ -1,13 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod/mini";
 import { type EventEnvelope, type WsRequest } from "./eventTypes";
-import { EventChannels, EventSpecs, type EventKind } from "./generatedEventCatalog";
+import { EventChannels, EventTransportSpecs, type EventKind } from "./generatedEventCatalog";
 import {
   coalesceStreamingEvents,
   isBufferedStreamingEvent,
   StreamingEventMaxLatencyMs,
 } from "./streamingEventCoalescer";
 import { AgentEventIdWindow } from "./eventDeliveryIdentity";
+import {
+  createAgentTransportConnectionId,
+  describeTransportError,
+  observeOutboundAgentRequest,
+  publishAgentTransportObservation,
+  publishAgentTransportObservations,
+  readTransportFrameByteLength,
+} from "./agentTransportObserver";
 
 export type SocketStatus = "idle" | "connecting" | "open" | "closed" | "error";
 
@@ -54,7 +62,7 @@ export function parseAgentSocketEventData(data: unknown): EventEnvelope {
   const value: unknown = JSON.parse(typeof data === "string" ? data : "");
   const envelope = AgentSocketEventEnvelopeSchema.parse(value);
   if (!("data" in envelope)) throw new Error("Agent event envelope is missing data.");
-  const spec = EventSpecs[envelope.kind as EventKind];
+  const spec = EventTransportSpecs[envelope.kind as EventKind];
   if (!spec) throw new Error(`Unknown agent event kind: ${envelope.kind}.`);
   if (envelope.layer !== spec.layer || envelope.phase !== spec.phase) {
     throw new Error(
@@ -113,6 +121,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   const onEventsRef = useRef(onEvents);
   const onMalformedEventRef = useRef(onMalformedEvent);
   const reconnectPolicyRef = useRef(reconnectPolicy);
+  const connectionIdRef = useRef(createAgentTransportConnectionId());
   enabledRef.current = enabled;
   onEventRef.current = onEvent;
   onEventsRef.current = onEvents;
@@ -153,6 +162,15 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     if (queue.length === 0) return;
     pendingRef.current = [];
     const events = coalesceStreamingEvents(queue);
+    publishAgentTransportObservations(
+      events.map((envelope) => ({
+        connectionId: connectionIdRef.current,
+        observedAt: new Date().toISOString(),
+        direction: "inbound" as const,
+        stage: "projected" as const,
+        envelope,
+      })),
+    );
     const batchConsumer = onEventsRef.current;
     if (batchConsumer) {
       try {
@@ -199,6 +217,13 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
         flush();
       }
       try {
+        publishAgentTransportObservation({
+          connectionId: connectionIdRef.current,
+          observedAt: new Date().toISOString(),
+          direction: "inbound",
+          stage: "projected",
+          envelope: env,
+        });
         onEventRef.current?.(env);
       } catch (error) {
         reportMalformedEvent(onMalformedEventRef.current, error);
@@ -245,11 +270,25 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     const connectSeq = ++connectSeqRef.current;
     closedByUserRef.current = false;
     setStatus("connecting");
+    publishAgentTransportObservation({
+      connectionId: connectionIdRef.current,
+      observedAt: new Date().toISOString(),
+      direction: "system",
+      stage: "lifecycle",
+      state: "connecting",
+    });
     let ws: WebSocket;
     try {
       ws = new WebSocket(url);
-    } catch {
+    } catch (error) {
       setStatus("error");
+      publishAgentTransportObservation({
+        connectionId: connectionIdRef.current,
+        observedAt: new Date().toISOString(),
+        direction: "system",
+        stage: "malformed",
+        message: describeTransportError(error),
+      });
       requestReconnect(
         { code: 1006, reason: "connection_constructor_failed", wasClean: false, opened: false },
         connectSeq,
@@ -266,6 +305,13 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       }
       opened = true;
       setStatus("open");
+      publishAgentTransportObservation({
+        connectionId: connectionIdRef.current,
+        observedAt: new Date().toISOString(),
+        direction: "system",
+        stage: "lifecycle",
+        state: "open",
+      });
       stableTimerRef.current = window.setTimeout(() => {
         stableTimerRef.current = null;
         retryRef.current = 0;
@@ -273,10 +319,24 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     };
 
     ws.onmessage = (evt) => {
+      publishAgentTransportObservation({
+        connectionId: connectionIdRef.current,
+        observedAt: new Date().toISOString(),
+        direction: "inbound",
+        stage: "wire",
+        byteLength: readTransportFrameByteLength(evt.data),
+      });
       try {
         const env = parseAgentSocketEventData(evt.data);
         dispatch(env);
       } catch (error) {
+        publishAgentTransportObservation({
+          connectionId: connectionIdRef.current,
+          observedAt: new Date().toISOString(),
+          direction: "system",
+          stage: "malformed",
+          message: describeTransportError(error),
+        });
         reportMalformedEvent(onMalformedEventRef.current, error);
       }
     };
@@ -286,6 +346,13 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
         return;
       }
       setStatus("error");
+      publishAgentTransportObservation({
+        connectionId: connectionIdRef.current,
+        observedAt: new Date().toISOString(),
+        direction: "system",
+        stage: "lifecycle",
+        state: "error",
+      });
     };
 
     ws.onclose = (event) => {
@@ -297,6 +364,16 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
         stableTimerRef.current = null;
       }
       setStatus("closed");
+      publishAgentTransportObservation({
+        connectionId: connectionIdRef.current,
+        observedAt: new Date().toISOString(),
+        direction: "system",
+        stage: "lifecycle",
+        state: "closed",
+        code: event.code,
+        reason: event.reason.slice(0, 120),
+        wasClean: event.wasClean,
+      });
       wsRef.current = null;
       if (!closedByUserRef.current) {
         requestReconnect(
@@ -317,6 +394,15 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     const attempt = retryRef.current;
     retryRef.current = attempt + 1;
     const delay = readAgentSocketRetryDelayMs(attempt);
+    publishAgentTransportObservation({
+      connectionId: connectionIdRef.current,
+      observedAt: new Date().toISOString(),
+      direction: "system",
+      stage: "lifecycle",
+      state: "retry_scheduled",
+      attempt: attempt + 1,
+      delayMs: delay,
+    });
     retryTimerRef.current = window.setTimeout(() => {
       retryTimerRef.current = null;
       connect();
@@ -360,7 +446,9 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   const send = useCallback((req: WsRequest): boolean => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-    ws.send(JSON.stringify(req));
+    const serialized = JSON.stringify(req);
+    ws.send(serialized);
+    publishAgentTransportObservation(observeOutboundAgentRequest(connectionIdRef.current, req, serialized));
     return true;
   }, []);
 

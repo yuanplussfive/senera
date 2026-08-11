@@ -10,6 +10,7 @@ import {
   type AgentApprovalDecision,
   type AgentApprovalRequest,
   type AgentApprovalResolution,
+  type AgentApprovalResolveBatchCommand,
   type AgentApprovalResolveCommand,
   type AgentApprovalRuntime as AgentApprovalRuntimePort,
   type AgentApprovalWaitOptions,
@@ -143,6 +144,47 @@ export class AgentApprovalRuntime implements AgentApprovalRuntimePort {
     });
   }
 
+  async resolveBatch(command: AgentApprovalResolveBatchCommand): Promise<readonly AgentApprovalResolution[]> {
+    const resolved = await this.tryResolveBatch(command);
+    if (!resolved) {
+      throw new AgentLocalizedError("approval.batchNotPending", { batchId: command.batchId });
+    }
+    return resolved;
+  }
+
+  async tryResolveBatch(
+    command: AgentApprovalResolveBatchCommand,
+  ): Promise<readonly AgentApprovalResolution[] | undefined> {
+    const matches = this.findPendingBatch(command);
+    if (matches.length === 0) return undefined;
+
+    for (const pending of matches) {
+      if (!pending.approval.availableDecisions.includes(command.decision)) {
+        throw new AgentLocalizedError("approval.decisionUnavailable", { decision: command.decision });
+      }
+    }
+
+    const projection = ApprovalDecisionProjections[command.decision];
+    const resolvedAt = new Date().toISOString();
+    const resolutions = matches.map((pending): AgentApprovalResolution => ({
+      approvalId: pending.approval.approvalId,
+      decision: command.decision,
+      status: projection.status,
+      disposition: projection.disposition,
+      scope: projection.scope,
+      message: command.message,
+      resolvedAt,
+    }));
+
+    // Remove every member before publishing any event. Deadline and duplicate
+    // commands can therefore observe either the whole pending batch or none of it.
+    for (const pending of matches) this.removePending(pending);
+    for (const [index, pending] of matches.entries()) {
+      await this.publishSettled(pending, resolutions[index]!);
+    }
+    return resolutions;
+  }
+
   async cancelByRequestId(requestId: string, error: unknown = new AgentCancellationError()): Promise<number> {
     const matches = [...this.pending.values()].filter((pending) => pending.approval.requestId === requestId);
     const message = errorMessage(error);
@@ -236,12 +278,25 @@ export class AgentApprovalRuntime implements AgentApprovalRuntimePort {
     }
 
     this.removePending(pending);
+    await this.publishSettled(pending, resolution);
+    return resolution;
+  }
+
+  private async publishSettled(pending: PendingApproval, resolution: AgentApprovalResolution): Promise<void> {
     try {
       await this.emitResolved(pending, resolution);
     } finally {
       pending.resolve(resolution);
     }
-    return resolution;
+  }
+
+  private findPendingBatch(reference: AgentApprovalResolveBatchCommand): PendingApproval[] {
+    return [...this.pending.values()].filter(
+      ({ approval }) =>
+        approval.sessionId === reference.sessionId &&
+        approval.requestId === reference.requestId &&
+        approval.batchId === reference.batchId,
+    );
   }
 
   private removePending(pending: PendingApproval): void {

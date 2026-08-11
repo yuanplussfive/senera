@@ -148,7 +148,7 @@ const DialogContentFrame = forwardRef<
                       "hover:bg-surface-hover hover:text-content-primary",
                       "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
                     )}
-                    aria-label={frontendMessage("desktop.window.close")}
+                    aria-label={frontendMessage("ui.close")}
                   >
                     <X className="h-[18px] w-[18px]" />
                   </button>
@@ -208,7 +208,12 @@ export const DialogContent = forwardRef<
   ) => (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Content ref={ref} asChild {...props}>
+      <DialogPrimitive.Content
+        ref={ref}
+        asChild
+        {...(!description ? { "aria-describedby": undefined } : {})}
+        {...props}
+      >
         <DialogContentFrame
           className={cn(
             "dialog-presence",

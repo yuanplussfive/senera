@@ -24,7 +24,16 @@ describe("Pi tool contract cache behavior", () => {
     registerSystemTools(registry);
     const tools = registry.listTools();
 
-    expect(tools).toHaveLength(19);
+    expect(tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining([
+        "AgentSpawn",
+        "AgentWait",
+        "AgentInput",
+        "AgentStop",
+        "AgentResume",
+        "AgentScheduleManage",
+      ]),
+    );
     for (const tool of tools) {
       expect(tool.contract?.digest).toMatch(/^[a-f0-9]{64}$/);
       expect(Object.isFrozen(tool.contract)).toBe(true);
@@ -139,15 +148,37 @@ describe("Pi tool contract cache behavior", () => {
 
     expect(projector.createToolSet().fingerprint).not.toBe(first);
   });
+
+  test("removes the execution selector when a dual-target tool is Local-only at runtime", () => {
+    const registry = new AgentExtensionRegistry();
+    let availableExecutionTargets: Array<"Local" | "Sandbox"> = ["Local"];
+    const projector = toolProjector(registry, () => availableExecutionTargets);
+    registerSystemTools(registry);
+
+    const localOnly = projector.project().find((tool) => tool.name === "ShellCommandTool");
+    expect(localOnly?.parameters.properties).not.toHaveProperty("executionTarget");
+    const localFingerprint = projector.createToolSet().fingerprint;
+
+    availableExecutionTargets = ["Local", "Sandbox"];
+    const sandboxEnabled = projector.project().find((tool) => tool.name === "ShellCommandTool");
+    expect(sandboxEnabled?.parameters.properties).toMatchObject({
+      executionTarget: { enum: ["Sandbox", "Local"] },
+    });
+    expect(projector.createToolSet().fingerprint).not.toBe(localFingerprint);
+  });
 });
 
-function toolProjector(registry: AgentExtensionRegistry): AgentPiToolRegistryProjector {
+function toolProjector(
+  registry: AgentExtensionRegistry,
+  availableExecutionTargets?: () => readonly ("Local" | "Sandbox")[],
+): AgentPiToolRegistryProjector {
   return new AgentPiToolRegistryProjector({
     config: { ModelProviders: [] },
     registry,
     execution: {
       execute: async () => ({ content: [], details: { senera: { toolName: "test", result: {} } } }),
     } as unknown as AgentPiToolExecutionBridge,
+    availableExecutionTargets,
   });
 }
 

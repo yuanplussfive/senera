@@ -75,7 +75,7 @@ const modelProvider = {
 const model: AgentPiModelProjection = {
   id: "model-a",
   name: "Model A",
-  api: "openai-completions",
+  api: "senera-planning",
   provider: "provider-a",
   baseUrl: "https://model.example/v1",
   reasoning: false,

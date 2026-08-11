@@ -4,6 +4,7 @@ import { EventKinds, type EventEnvelope } from "../api/eventTypes";
 import { useStore } from "../store/sessionStore";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { resolveBackendMessage } from "../i18n/backendMessage";
+import { notifyError } from "../shared/ui/notifyError";
 
 export type SocketErrorToastVariant = "error" | "warning";
 
@@ -26,11 +27,11 @@ export function resolveSocketErrorToast(env: EventEnvelope, state: SocketErrorTo
   if (env.kind === EventKinds.RunFailed) {
     const session = env.sessionId ? state.sessions[env.sessionId] : null;
     const hasMatchingRun = session?.runs.some((run) => run.requestId === env.requestId) ?? false;
-    const isHistoryLoadFailure = Boolean(env.sessionId && state.historyLoadingIds[env.sessionId] && !hasMatchingRun);
+    if (!hasMatchingRun) return null;
 
     return {
       variant: "error",
-      title: isHistoryLoadFailure ? frontendMessage("socket.historySyncFailed") : frontendMessage("socket.runFailed"),
+      title: frontendMessage("socket.runFailed"),
       description: resolveBackendMessage(env.data) ?? "",
     };
   }
@@ -54,10 +55,24 @@ export function resolveSocketErrorToast(env: EventEnvelope, state: SocketErrorTo
 
   if (env.kind === EventKinds.RequestInvalid) {
     const message = resolveBackendMessage(env.data) ?? "";
+    if (readDataString(env.data, "code") === "session_close_failed") {
+      return {
+        variant: "error",
+        title: frontendMessage("session.deleteFailed"),
+        description: message,
+      };
+    }
     if (readDataString(env.data, "code") === "approval_not_pending") {
       return {
         variant: "warning",
         title: frontendMessage("socket.approvalExpired"),
+        description: message,
+      };
+    }
+    if (readDataString(env.data, "code") === "request_execution_failed") {
+      return {
+        variant: "error",
+        title: frontendMessage("socket.requestFailed"),
         description: message,
       };
     }
@@ -79,7 +94,13 @@ export function showSocketErrorToast(env: EventEnvelope, state: SocketErrorToast
   if (toastConfig.variant === "warning") {
     toast.warning(toastConfig.title, { description: toastConfig.description });
   } else {
-    toast.error(toastConfig.title, { description: toastConfig.description });
+    notifyError({
+      title: toastConfig.title,
+      description: toastConfig.description,
+      diagnosticText: toastConfig.description
+        ? [toastConfig.title, toastConfig.description].filter(Boolean).join("\n")
+        : undefined,
+    });
   }
   return true;
 }

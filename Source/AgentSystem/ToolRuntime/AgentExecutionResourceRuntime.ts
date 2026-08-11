@@ -10,13 +10,15 @@ import { toolProcessFailureResult, toolProcessSuccessResult } from "./AgentToolP
 import { createAgentShellExecutionProfile } from "./AgentShellCommandRuntime.js";
 import { resolveAgentExecutionResourceWaitTimeoutMs } from "../ExecutionResources/AgentExecutionResourceConfig.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
+import type { AgentExecutionResourceSnapshot } from "../ExecutionResources/AgentExecutionResourceTypes.js";
 
 const ResourceIdSchema = z
   .string()
   .trim()
   .regex(/^res_[a-f0-9]{32}$/i);
 
-const ShellStartArgumentsSchema = z
+const TerminalStartArgumentsSchema = z
   .object({
     command: SeneraShellCommandSpecSchema,
     cwd: z.string().trim().min(1).optional(),
@@ -81,7 +83,7 @@ const ResourceResizeArgumentsSchema = z
   .strict();
 
 export interface AgentExecutionResourceHostHandlers {
-  startShell: AgentHostToolHandler;
+  startTerminal: AgentHostToolHandler;
   inspect: AgentHostToolHandler;
   wait: AgentHostToolHandler;
   write: AgentHostToolHandler;
@@ -95,46 +97,25 @@ export function createAgentExecutionResourceHostHandlers(
   broker: AgentExecutionResourceBroker,
 ): AgentExecutionResourceHostHandlers {
   return {
-    startShell: withValidatedArguments(ShellStartArgumentsSchema, async (args, context) => {
-      const cwdResult = await context.executionEnv.canonicalPath(args.cwd ?? ".");
-      if (!cwdResult.ok) throw cwdResult.error;
-      const profile = createAgentShellExecutionProfile(context.tool, requireExecutionPlan(context));
-      const snapshot = await broker.startTerminal({
-        command: args.command.script,
-        args: [],
-        shellCommand: args.command,
-        displayCommand: args.command.script,
-        cwd: cwdResult.value,
-        executionEnv: context.executionEnv,
-        profile,
-        owner: resourceOwner(context),
-        correlation: {
-          sessionId: context.sessionId,
-          requestId: context.requestId,
-          step: context.step,
-          toolCallId: context.toolCallId,
-          toolName: context.tool.name,
-          onEvent: context.onEvent,
-        },
-        signal: context.signal,
-        dimensions: {
-          columns: args.columns,
-          rows: args.rows,
-        },
-      });
-      return snapshot;
-    }),
-    inspect: withValidatedArguments(ResourceInspectArgumentsSchema, (args, context) =>
-      broker.inspect(args.resourceId, resourceOwner(context), args.cursor),
+    startTerminal: withValidatedArguments(TerminalStartArgumentsSchema, (args, context) =>
+      startTerminalResource(broker, args, context),
     ),
-    wait: withValidatedArguments(ResourceWaitArgumentsSchema, (args, context) =>
-      broker.wait(
-        args.resourceId,
-        resourceOwner(context),
-        args.cursor ?? 0,
-        resolveAgentExecutionResourceWaitTimeoutMs(context.config, args.timeoutMs),
-        context.signal,
-      ),
+    inspect: withValidatedArguments(
+      ResourceInspectArgumentsSchema,
+      (args, context) => broker.inspect(args.resourceId, resourceOwner(context), args.cursor),
+      (snapshot, context) => resourceSnapshotResult(broker, snapshot, context),
+    ),
+    wait: withValidatedArguments(
+      ResourceWaitArgumentsSchema,
+      (args, context) =>
+        broker.wait(
+          args.resourceId,
+          resourceOwner(context),
+          args.cursor ?? 0,
+          resolveAgentExecutionResourceWaitTimeoutMs(context.config, args.timeoutMs),
+          context.signal,
+        ),
+      (snapshot, context) => resourceSnapshotResult(broker, snapshot, context),
     ),
     write: withValidatedArguments(ResourceWriteArgumentsSchema, (args, context) => {
       const input = args.appendNewline ? `${args.input}${process.platform === "win32" ? "\r\n" : "\n"}` : args.input;
@@ -165,9 +146,50 @@ function requireExecutionPlan(context: AgentHostToolContext) {
   return context.executionPlan;
 }
 
-function withValidatedArguments<TSchema extends z.ZodType<Record<string, unknown>>>(
+async function startTerminalResource(
+  broker: AgentExecutionResourceBroker,
+  args: {
+    command: z.output<typeof SeneraShellCommandSpecSchema>;
+    cwd?: string;
+    justification?: string;
+    columns?: number;
+    rows?: number;
+  },
+  context: AgentHostToolContext,
+) {
+  const cwdResult = await context.executionEnv.canonicalPath(args.cwd ?? ".");
+  if (!cwdResult.ok) throw cwdResult.error;
+  const profile = createAgentShellExecutionProfile(context.tool, requireExecutionPlan(context));
+  const request = {
+    command: args.command.script,
+    args: [],
+    shellCommand: args.command,
+    displayCommand: args.command.script,
+    cwd: cwdResult.value,
+    executionEnv: context.executionEnv,
+    profile,
+    owner: resourceOwner(context),
+    correlation: {
+      sessionId: context.sessionId,
+      requestId: context.requestId,
+      step: context.step,
+      toolCallId: context.toolCallId,
+      toolName: context.tool.name,
+      onEvent: context.onEvent,
+    },
+    signal: context.signal,
+  } as const;
+  return broker.startTerminal({
+    ...request,
+    dimensions: { columns: args.columns, rows: args.rows },
+  });
+}
+
+function withValidatedArguments<TSchema extends z.ZodType<Record<string, unknown>>, TResult>(
   schema: TSchema,
-  execute: (args: z.output<TSchema>, context: AgentHostToolContext) => unknown | Promise<unknown>,
+  execute: (args: z.output<TSchema>, context: AgentHostToolContext) => TResult | Promise<TResult>,
+  projectResult: (result: TResult, context: AgentHostToolContext) => AgentToolProcessRunResult = (result) =>
+    toolProcessSuccessResult(result),
 ): AgentHostToolHandler {
   return async (args, context) => {
     const parsed = schema.safeParse(args);
@@ -182,7 +204,7 @@ function withValidatedArguments<TSchema extends z.ZodType<Record<string, unknown
       });
     }
     try {
-      return toolProcessSuccessResult(await execute(parsed.data, context));
+      return projectResult(await execute(parsed.data, context), context);
     } catch (error) {
       return toolProcessFailureResult({
         code: AgentExecutionErrorCodes.ToolExecutionError,
@@ -194,6 +216,16 @@ function withValidatedArguments<TSchema extends z.ZodType<Record<string, unknown
       });
     }
   };
+}
+
+function resourceSnapshotResult(
+  broker: AgentExecutionResourceBroker,
+  snapshot: AgentExecutionResourceSnapshot,
+  context: AgentHostToolContext,
+): AgentToolProcessRunResult {
+  const result = toolProcessSuccessResult(snapshot);
+  const outputCapture = broker.takeOutputCapture(snapshot.resourceId, resourceOwner(context));
+  return outputCapture ? { ...result, outputCapture } : result;
 }
 
 function resourceOwner(context: AgentHostToolContext) {

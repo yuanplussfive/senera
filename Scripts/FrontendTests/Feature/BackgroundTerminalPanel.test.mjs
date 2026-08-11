@@ -344,7 +344,7 @@ function terminalResource(
     truncated: false,
     events: [],
     terminal: {
-      backend: "microsandbox-tty",
+      backend: "docker-engine-sidecar",
       shellDialect: "powershell",
       requestedBoundary: "sandbox",
       effectiveBoundary: "sandbox",

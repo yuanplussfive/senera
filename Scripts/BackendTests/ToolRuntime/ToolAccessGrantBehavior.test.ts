@@ -68,6 +68,38 @@ describe("authoritative tool access grant behavior", () => {
     });
   });
 
+  test("projects soft preferences through the request authorization ceiling", () => {
+    const registry = new AgentExtensionRegistry();
+    new AgentPromptAssetCatalog().registerRoot(registry, path.resolve("System", "Prompts"));
+    const policy = registry.getRootCommandPolicy("use_tools");
+    if (!policy) throw new Error("Missing use_tools RootCommand policy.");
+    const registeredTools = ["WorkspaceRead", "DocumentExtract", "SkillManage"].map((name) => ({
+      name,
+      handler: { kind: "HostCapability" as const, capability: `test.${name}` },
+    }));
+
+    const command = buildAgentRootCommand({
+      decision: {
+        action: "use_tools",
+        useTools: {
+          preferredTools: ["DocumentExtract", "WorkspaceRead", "SkillManage"],
+          instruction: "Review the workspace.",
+          needs: [],
+        },
+      },
+      loadedTools: registeredTools,
+      registeredTools,
+      policy,
+      allowedToolNames: ["WorkspaceRead"],
+    });
+
+    expect(command.toolAccessGrant).toEqual({
+      authorizedToolNames: ["WorkspaceRead"],
+      exposedToolNames: ["WorkspaceRead"],
+      preferredToolNames: ["WorkspaceRead"],
+    });
+  });
+
   test("evolves exposure within the authorization boundary and versions only observable changes", () => {
     const state = new AgentToolExposureState(
       createAgentToolAccessGrant({

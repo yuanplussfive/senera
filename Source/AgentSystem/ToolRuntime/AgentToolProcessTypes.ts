@@ -1,5 +1,6 @@
 import type { AgentToolProcessResponse } from "../Types/ToolRuntimeTypes.js";
 import type { SeneraOutputSpoolDescriptor } from "../Execution/SeneraOutputSpool.js";
+import type { AgentToolSemanticProjectionRequest } from "./AgentToolSemanticProjection.js";
 export interface AgentToolProcessRunResult {
   response: AgentToolProcessResponse;
   stdout: string;
@@ -7,4 +8,5 @@ export interface AgentToolProcessRunResult {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   outputCapture?: SeneraOutputSpoolDescriptor;
+  semanticProjectionRequest?: AgentToolSemanticProjectionRequest;
 }

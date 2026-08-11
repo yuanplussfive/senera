@@ -4,7 +4,7 @@
 
 ## 开始使用
 
-需要 Node.js 22 和 npm 10 或更高版本。
+需要 Node.js 22、npm 10 或更高版本，以及已启动 Linux containers 模式的 Docker Desktop / Docker Engine。
 
 ```bash
 git clone --depth 1 --branch {{outputBranch}} --single-branch {{repositoryUrl}}.git senera
@@ -21,5 +21,5 @@ npm run dev
 
 当前快照来源：[{{sourceCommitShort}}]({{repositoryUrl}}/commit/{{sourceCommit}})。精确来源也记录在 `SENERA_NANO.json`。
 
-Nano 开发入口固定使用 microsandbox，不启动 Docker Engine 或 gVisor Worker。Nano 不包含 Docker、Electron 桌面打包、测试、覆盖率、发布流水线和相关工具依赖。
-经过完整性校验的版本化 OS Sandbox Bundle 已包含在分支中；首次准备沙箱不会再访问 GitHub Releases 或容器镜像仓库。
+Nano 与主发行版使用同一套 Docker Worker 和版本化 OCI 沙箱镜像。Docker Engine 已注册 `runsc` 时自动使用 gVisor，否则使用收紧权限的 daemon-default Linux 容器；首次启动会按配置的拉取策略获取并验证镜像及工具链。
+Nano 不包含 Electron 桌面打包、测试、覆盖率和发布流水线。

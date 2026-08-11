@@ -10,6 +10,8 @@ import {
   DefaultAgentPiCompactionSummaryFormatterOptions,
 } from "../../../Source/AgentSystem/Pi/AgentPiCompactionSummaryFormatter.js";
 import { compilePiToolObservation, piToolResultMessage } from "../Support/PiToolObservationFixtures.js";
+import { buildAgentPiCompactionPromptJson } from "../../../Source/AgentSystem/PiShared/AgentPiCompactionPrompt.js";
+import { AgentPiCompactionSummaryBridgeCustomType } from "../../../Source/AgentSystem/Pi/AgentPiCompactionSummaryBridge.js";
 
 describe("Pi compaction projection policy", () => {
   test("bounds indexed calls and argument previews independently", () => {
@@ -66,6 +68,62 @@ describe("Pi compaction projection policy", () => {
         }),
     ).toThrow("maxDisplayedCalls must be a positive integer");
   });
+
+  test("projects supported Pi compaction message roles without inspecting arbitrary custom payloads", () => {
+    const prompt = JSON.parse(
+      buildAgentPiCompactionPromptJson(
+        {
+          mode: "compact",
+          messages: [
+            {
+              role: "compactionSummary",
+              summary: "Earlier durable state.",
+              tokensBefore: 2_000,
+              timestamp: 1,
+            },
+            {
+              role: "branchSummary",
+              summary: "Returned branch state.",
+              fromId: "entry-1",
+              timestamp: 2,
+            },
+            {
+              role: "custom",
+              customType: AgentPiCompactionSummaryBridgeCustomType,
+              content: "Senera summary state.",
+              display: false,
+              timestamp: 3,
+            },
+            {
+              role: "custom",
+              customType: "third-party.payload",
+              content: "must not be inferred",
+              display: false,
+              timestamp: 4,
+            },
+          ],
+          artifactIndex: { artifacts: [] },
+          toolCallIndex: {
+            type: AgentPiCompactionToolIndexProtocol.type,
+            calls: [],
+            totalCalls: 0,
+            successCount: 0,
+            failureCount: 0,
+            emptyCount: 0,
+            evidenceUris: [],
+            artifactUris: [],
+          },
+        },
+        { stage: "summarizePiConversation" },
+      ),
+    ) as { compactionInput: { messages: Array<Record<string, unknown>> } };
+
+    expect(prompt.compactionInput.messages).toEqual([
+      { role: "compactionSummary", summary: "Earlier durable state.", tokensBefore: 2_000 },
+      { role: "branchSummary", summary: "Returned branch state.", fromId: "entry-1" },
+      { role: "seneraCompactionSummary", content: "Senera summary state." },
+    ]);
+  });
 });
 
 function toolCallMessages(count: number, argument: string): AgentMessage[] {
@@ -88,6 +146,7 @@ function toolCallMessages(count: number, argument: string): AgentMessage[] {
         summary: `completed ${position}`,
         result: {},
       }),
+      { toolCallId: `call-${position}`, toolName: "WorkspaceReadFile" },
     ),
   ]);
 }

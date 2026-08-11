@@ -49,6 +49,7 @@ describe("Session manager regeneration behavior", () => {
     const events: AgentDomainEvent[] = [];
 
     await fixture.manager.regenerateFromRequest({
+      approvalMode: "agent",
       sessionId: "session-regenerate",
       fromRequestId: "request-b",
       requestId: "request-replacement",
@@ -113,6 +114,7 @@ describe("Session manager regeneration behavior", () => {
     });
     await fixture.manager.createSession({ sessionId: "session-active-regenerate" });
     const activeRun = fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-active-regenerate",
       requestId: "request-active",
       input: "B",
@@ -131,6 +133,7 @@ describe("Session manager regeneration behavior", () => {
     });
 
     const regeneration = fixture.manager.regenerateFromRequest({
+      approvalMode: "agent",
       sessionId: "session-active-regenerate",
       fromRequestId: "request-active",
       requestId: "request-replacement",
@@ -188,6 +191,7 @@ describe("Session manager regeneration behavior", () => {
     });
     await fixture.manager.createSession({ sessionId: "session-settlement-timeout" });
     const activeRun = fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-settlement-timeout",
       requestId: "request-active",
       input: "B",
@@ -204,6 +208,7 @@ describe("Session manager regeneration behavior", () => {
 
     await expect(
       fixture.manager.regenerateFromRequest({
+        approvalMode: "agent",
         sessionId: "session-settlement-timeout",
         fromRequestId: "request-active",
         requestId: "request-replacement",
@@ -216,7 +221,11 @@ describe("Session manager regeneration behavior", () => {
       "request-active",
     ]);
     expect(fixture.store.loadRunSnapshots("session-settlement-timeout")).toEqual([
-      expect.objectContaining({ requestId: "request-active", status: "running" }),
+      expect.objectContaining({
+        requestId: "request-active",
+        status: "cancelled",
+        errorMessage: "Run cancelled by user.",
+      }),
     ]);
     expect(fixture.store.get("session-settlement-timeout")).toEqual(
       expect.objectContaining({
@@ -281,6 +290,7 @@ describe("Session manager regeneration behavior", () => {
     });
     await fixture.manager.createSession({ sessionId: "session-concurrent-regenerate" });
     const activeRun = fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-concurrent-regenerate",
       requestId: "request-active",
       input: "B",
@@ -289,6 +299,7 @@ describe("Session manager regeneration behavior", () => {
     const firstEvents: AgentDomainEvent[] = [];
     const secondEvents: AgentDomainEvent[] = [];
     const first = fixture.manager.regenerateFromRequest({
+      approvalMode: "agent",
       sessionId: "session-concurrent-regenerate",
       fromRequestId: "request-active",
       requestId: "request-replacement-1",
@@ -297,6 +308,7 @@ describe("Session manager regeneration behavior", () => {
     });
     await cancellationObserved.promise;
     const second = fixture.manager.regenerateFromRequest({
+      approvalMode: "agent",
       sessionId: "session-concurrent-regenerate",
       fromRequestId: "request-active",
       requestId: "request-replacement-2",
@@ -347,11 +359,13 @@ describe("Session manager regeneration behavior", () => {
     });
     await fixture.manager.createSession({ sessionId: "session-regeneration-lineage" });
     await fixture.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-regeneration-lineage",
       requestId: "request-source",
       input: "B",
     });
     const first = fixture.manager.regenerateFromRequest({
+      approvalMode: "agent",
       sessionId: "session-regeneration-lineage",
       fromRequestId: "request-source",
       requestId: "request-lineage-1",
@@ -360,6 +374,7 @@ describe("Session manager regeneration behavior", () => {
     await firstReplacementStarted.promise;
 
     const second = fixture.manager.regenerateFromRequest({
+      approvalMode: "agent",
       sessionId: "session-regeneration-lineage",
       fromRequestId: "request-source",
       requestId: "request-lineage-2",
@@ -395,11 +410,13 @@ describe("Session manager regeneration behavior", () => {
     });
     await first.manager.createSession({ sessionId: "session-persisted-lineage" });
     await first.manager.submitMessage({
+      approvalMode: "agent",
       sessionId: "session-persisted-lineage",
       requestId: "request-source",
       input: "B",
     });
     await first.manager.regenerateFromRequest({
+      approvalMode: "agent",
       sessionId: "session-persisted-lineage",
       fromRequestId: "request-source",
       requestId: "request-lineage-1",
@@ -417,6 +434,7 @@ describe("Session manager regeneration behavior", () => {
       }),
     });
     await reconstructed.manager.regenerateFromRequest({
+      approvalMode: "agent",
       sessionId: "session-persisted-lineage",
       fromRequestId: "request-source",
       requestId: "request-lineage-2",

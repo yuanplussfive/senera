@@ -1,6 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
-import { readAgentNonBlankString, readAgentUnknownRecord, type AgentUnknownRecord } from "../Core/AgentUnknownValue.js";
 import {
   AgentPiCompactionSummaryFormatter,
   type AgentPiCompactionSummaryFormattedText,
@@ -9,7 +8,8 @@ import {
 import type { AgentPiCompactionToolCallIndex } from "./AgentPiCompactionToolIndex.js";
 
 export const AgentPiCompactionSummaryBridgeProtocol = defineSeneraProtocol("compaction_summary_bridge", 1);
-export const AgentPiCompactionSummaryBridgeCustomType = "senera.compaction_summary_text";
+export { AgentPiCompactionSummaryBridgeCustomType } from "../PiShared/AgentPiCompactionPrompt.js";
+import { AgentPiCompactionSummaryBridgeCustomType } from "../PiShared/AgentPiCompactionPrompt.js";
 
 export interface AgentPiCompactionSummaryBridgeOptions {
   readonly formatterOptions: AgentPiCompactionSummaryFormatterOptions;
@@ -45,7 +45,7 @@ export class AgentPiCompactionSummaryBridge {
       };
     }
 
-    const summaryText = readAgentNonBlankString(summaryMessage.summary) ?? "";
+    const summaryText = summaryMessage.summary.trim();
     const formatted = this.formatter.format({
       summaryText,
       toolCallIndex: input.toolCallIndex,
@@ -84,26 +84,13 @@ interface CompactionSummaryLikeMessage {
 function findCompactionSummaryMessage(messages: readonly AgentMessage[]): CompactionSummaryLikeMessage | undefined {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const candidate = messages[i];
-    if (isCompactionSummaryMessage(candidate)) {
-      return extractCompactionSummary(candidate);
-    }
+    if (candidate?.role === "compactionSummary") return candidate;
   }
   return undefined;
 }
 
 function isCompactionSummaryMessage(message: AgentMessage): boolean {
-  const record = readAgentUnknownRecord(message);
-  return record?.role === "compactionSummary";
-}
-
-function extractCompactionSummary(message: AgentMessage): CompactionSummaryLikeMessage | undefined {
-  const record = readAgentUnknownRecord(message) as AgentUnknownRecord | undefined;
-  if (!record) return undefined;
-  const summary = readAgentNonBlankString(record.summary);
-  if (!summary) return undefined;
-  const tokensBefore = typeof record.tokensBefore === "number" ? record.tokensBefore : 0;
-  const timestamp = typeof record.timestamp === "number" ? record.timestamp : Date.now();
-  return { role: "compactionSummary", summary, tokensBefore, timestamp };
+  return message.role === "compactionSummary";
 }
 
 function createCompactionSummaryTextMessage(

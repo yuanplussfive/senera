@@ -2,12 +2,11 @@ import type http from "node:http";
 import { describe, expect, test, vi } from "vitest";
 import type { AgentAuthenticationHttpApi } from "../../../Source/AgentSystem/Auth/AgentAuthenticationHttpApi.js";
 import type { AgentServerAccessGuard } from "../../../Source/AgentSystem/Auth/AgentServerAccessGuard.js";
-import type { AgentPiProxyHttpApi } from "../../../Source/AgentSystem/PiProxy/AgentPiProxyHttpApi.js";
 import type { AgentUploadHttpApi } from "../../../Source/AgentSystem/Uploads/AgentUploadHttpApi.js";
 import type { AgentStaticFrontendHttpApi } from "../../../Source/AgentSystem/WebSocket/AgentStaticFrontendHttpApi.js";
 import { AgentWebSocketHttpRouter } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketHttpRouter.js";
 import type { AgentHealthHttpApi } from "../../../Source/AgentSystem/WebSocket/AgentHealthHttpApi.js";
-import { AgentPiProxyProtocol } from "../../../Source/AgentSystem/PiShared/AgentPiProxyProtocol.js";
+import type { AgentWorkspaceResourceHttpApi } from "../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
 
 describe("WebSocket HTTP router", () => {
   test("routes authentication before generic access control", async () => {
@@ -72,46 +71,22 @@ describe("WebSocket HTTP router", () => {
     expect(fixture.upload.handle).toHaveBeenCalledTimes(1);
   });
 
-  test("authorizes local Pi proxy requests with the runtime credential instead of browser access", async () => {
-    const fixture = createRouterFixture({ pi: true });
-
-    await fixture.router.handle(
-      request("GET", "/v1/models", {
-        authorization: `Bearer ${AgentPiProxyProtocol.apiKey}`,
-      }),
-      fixture.response.value,
+  test("authorizes workspace resource reads and requires CSRF for saves", async () => {
+    const readFixture = createRouterFixture({ workspaceResource: true });
+    await readFixture.router.handle(
+      request("GET", "/api/workspace-resources?path=README.md"),
+      readFixture.response.value,
     );
+    expect(readFixture.authorizeHttp).toHaveBeenCalledWith(expect.anything(), { requireCsrf: false });
+    expect(readFixture.workspaceResource.handle).toHaveBeenCalledTimes(1);
 
-    expect(fixture.authorizeHttp).not.toHaveBeenCalled();
-    expect(fixture.pi.handle).toHaveBeenCalledTimes(1);
-  });
-
-  test("rejects Pi proxy requests without the runtime credential", async () => {
-    const fixture = createRouterFixture({ pi: true });
-
-    await fixture.router.handle(request("POST", "/v1/chat/completions"), fixture.response.value);
-
-    expect(fixture.pi.handle).not.toHaveBeenCalled();
-    expect(fixture.authorizeHttp).not.toHaveBeenCalled();
-    expect(fixture.response.writeHead).toHaveBeenCalledWith(
-      401,
-      expect.objectContaining({ "Cache-Control": "no-store" }),
+    const writeFixture = createRouterFixture({ workspaceResource: true });
+    await writeFixture.router.handle(
+      request("PUT", "/api/workspace-resources?path=README.md"),
+      writeFixture.response.value,
     );
-  });
-
-  test("rejects valid Pi proxy credentials from a remote connection", async () => {
-    const fixture = createRouterFixture({ pi: true });
-
-    await fixture.router.handle(
-      request("POST", "/v1/chat/completions", {
-        authorization: `Bearer ${AgentPiProxyProtocol.apiKey}`,
-        remoteAddress: "203.0.113.8",
-      }),
-      fixture.response.value,
-    );
-
-    expect(fixture.pi.handle).not.toHaveBeenCalled();
-    expect(fixture.response.writeHead).toHaveBeenCalledWith(401, expect.anything());
+    expect(writeFixture.authorizeHttp).toHaveBeenCalledWith(expect.anything(), { requireCsrf: true });
+    expect(writeFixture.workspaceResource.handle).toHaveBeenCalledTimes(1);
   });
 
   test("serves static frontend routes without invoking API authorization", async () => {
@@ -144,31 +119,31 @@ function createRouterFixture(
     authentication?: boolean;
     health?: boolean;
     upload?: boolean;
-    pi?: boolean;
     staticFrontend?: boolean;
+    workspaceResource?: boolean;
     accessResult?: unknown;
   } = {},
 ) {
   const authentication = createApi(options.authentication ?? false);
   const health = createApi(options.health ?? false);
   const upload = createApi(options.upload ?? false);
-  const pi = createApi(options.pi ?? false);
   const staticFrontend = createApi(options.staticFrontend ?? false);
+  const workspaceResource = createApi(options.workspaceResource ?? false);
   const authorizeHttp = vi.fn(() => options.accessResult ?? { ok: true });
   const response = createResponse();
   return {
     authentication,
     health,
     upload,
-    pi,
     staticFrontend,
+    workspaceResource,
     authorizeHttp,
     response,
     router: new AgentWebSocketHttpRouter({
       authenticationApi: authentication as unknown as AgentAuthenticationHttpApi,
       healthApi: health as unknown as AgentHealthHttpApi,
       uploadApi: upload as unknown as AgentUploadHttpApi,
-      piProxyApi: pi as unknown as AgentPiProxyHttpApi,
+      workspaceResourceApi: workspaceResource as unknown as AgentWorkspaceResourceHttpApi,
       staticFrontendApi: staticFrontend as unknown as AgentStaticFrontendHttpApi,
       accessGuard: { authorizeHttp } as unknown as AgentServerAccessGuard,
     }),

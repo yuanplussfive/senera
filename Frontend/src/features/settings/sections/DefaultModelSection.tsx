@@ -1,23 +1,40 @@
 import { useMemo, useState, type ComponentType } from "react";
-import { BrainCircuit, Check, ListFilter, Search, Target } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  BrainCircuit,
+  Check,
+  GitFork,
+  ListFilter,
+  Plus,
+  Search,
+  Target,
+  Trash2,
+} from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
-import { MenuSelect, Spinner, StateView } from "../../../shared/ui";
+import { IconButton, MenuSelect, Spinner, StateView, Switch } from "../../../shared/ui";
 import { findTopField } from "../../chat/modelConfigData";
 import { ModelProviderIcon, inferModelProviderIcon } from "../../chat/ModelProviderIcon";
 import { ConfigFieldRequirementLabel } from "../../../shared/config/ConfigFieldVisibility";
 import { cn } from "../../../lib/util";
+import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
 
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
+import { projectSystemExtensionRuntimeModelAssignmentSections } from "../systemExtensionConfigurationPresentation";
 import type { ConfigSettingsDraftState } from "./configSettingsDraftState";
 import { readModelServiceState } from "./modelServiceState";
 import {
+  isRuntimeModelPoolAssignment,
   readRuntimeModelAssignmentCandidates,
   readRuntimeModelAssignmentFields,
   readRuntimeModelAssignmentSelection,
+  readRuntimeModelPoolAssignmentSelection,
   writeRuntimeModelAssignment,
+  writeRuntimeModelPoolAssignment,
   type RuntimeModelAssignmentCandidate,
   type RuntimeModelAssignmentField,
+  type RuntimeModelPoolAssignmentSelection,
 } from "./runtimeModelAssignments";
 
 export function DefaultModelSection({
@@ -27,6 +44,7 @@ export function DefaultModelSection({
   draftState: ConfigSettingsDraftState;
   systemConfig?: SettingsSystemConfigHandle;
 }): JSX.Element {
+  const locale = useFrontendLocale();
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
   const snapshot = systemConfig?.configSnapshot ?? null;
   const modelSection = snapshot?.form.sections.find((section) => section.name === "models") ?? null;
@@ -44,15 +62,25 @@ export function DefaultModelSection({
     () => findTopField(modelSection ?? undefined, "ModelProviders")?.defaultItem ?? {},
     [modelSection],
   );
-  const assignmentGroups = useMemo(() => {
+  const assignmentSections = useMemo(() => {
     if (!snapshot) return [];
-    const fields = readRuntimeModelAssignmentFields(snapshot.form.sections);
-    return snapshot.form.sections.flatMap((section) => {
+    return [
+      ...snapshot.form.sections,
+      ...projectSystemExtensionRuntimeModelAssignmentSections({
+        extensions: systemConfig?.systemExtensions ?? [],
+        locale,
+        configSnapshot: snapshot,
+      }),
+    ];
+  }, [locale, snapshot, systemConfig?.systemExtensions]);
+  const assignmentGroups = useMemo(() => {
+    const fields = readRuntimeModelAssignmentFields(assignmentSections);
+    return assignmentSections.flatMap((section) => {
       const assignments = fields.filter((field) => field.section === section.name);
       return assignments.length > 0 ? [{ id: section.name, label: section.label, fields: assignments }] : [];
     });
-  }, [snapshot]);
-  const allFields = useMemo(() => snapshot?.form.sections.flatMap((section) => section.fields) ?? [], [snapshot]);
+  }, [assignmentSections]);
+  const allFields = useMemo(() => assignmentSections.flatMap((section) => section.fields), [assignmentSections]);
   const defaultModelId = state?.defaultModel?.model.Id ?? "";
 
   if (!systemConfig) {
@@ -90,7 +118,7 @@ export function DefaultModelSection({
           {assignmentGroups.map((group) => (
             <section key={group.id} className="border-b border-ink-200/70 last:border-b-0">
               <div className="flex h-9 items-center gap-2 bg-[var(--theme-config-list-bg)] px-3 text-[11.5px] font-semibold text-ink-600">
-                <AssignmentGroupIcon groupId={group.id} />
+                <AssignmentGroupIcon fields={group.fields} />
                 {group.label}
               </div>
               <div className="divide-y divide-ink-200/70">
@@ -144,6 +172,11 @@ function ModelAssignmentRow({
     providers: state.providers,
     modelTemplate,
   });
+  if (isRuntimeModelPoolAssignment(field)) {
+    return (
+      <ModelPoolAssignmentRow allFields={allFields} candidates={candidates} draftState={draftState} field={field} />
+    );
+  }
   const selection = readRuntimeModelAssignmentSelection({
     field,
     allFields,
@@ -178,18 +211,7 @@ function ModelAssignmentRow({
 
   return (
     <div className="grid min-h-[76px] min-w-0 gap-3 bg-paper-50 px-3 py-3 md:grid-cols-[minmax(190px,0.8fr)_minmax(260px,1.2fr)] md:items-center">
-      <div className="flex min-w-0 items-start gap-2.5">
-        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border border-ink-200/70 bg-paper-100 text-ink-500">
-          <AssignmentCapabilityIcon capability={field.modelSelection.capability} />
-        </span>
-        <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className="text-[12.5px] font-medium text-ink-850">{field.label}</span>
-            <ConfigFieldRequirementLabel required={field.modelSelection.required} />
-          </div>
-          {field.description ? <p className="mt-0.5 text-[11px] leading-4 text-ink-500">{field.description}</p> : null}
-        </div>
-      </div>
+      <AssignmentLabel field={field} />
 
       <div className="min-w-0">
         <MenuSelect
@@ -241,6 +263,176 @@ function ModelAssignmentRow({
   );
 }
 
+function ModelPoolAssignmentRow({
+  allFields,
+  candidates,
+  draftState,
+  field,
+}: {
+  allFields: readonly ConfigFormFieldData[];
+  candidates: readonly RuntimeModelAssignmentCandidate[];
+  draftState: ConfigSettingsDraftState;
+  field: RuntimeModelAssignmentField;
+}): JSX.Element {
+  const selection = readRuntimeModelPoolAssignmentSelection({ field, allFields, draft: draftState.draft });
+  const candidatesById = new Map(candidates.map((candidate) => [candidate.model.Id, candidate]));
+  const selectedIds = new Set(selection.modelIds);
+  const availableCandidates = candidates.filter((candidate) => !selectedIds.has(candidate.model.Id));
+  const hasInheritance = Boolean(field.modelSelection.inheritance);
+  const sourceCount = selection.modelIds.length + Number(hasInheritance && selection.inheritanceEnabled);
+
+  const update = (next: RuntimeModelPoolAssignmentSelection): void => {
+    draftState.updateDraft(writeRuntimeModelPoolAssignment(draftState.draft, field, next), "immediate");
+  };
+  const addModel = (modelId: string): void => {
+    if (!candidatesById.has(modelId) || selectedIds.has(modelId)) return;
+    update({ ...selection, modelIds: [...selection.modelIds, modelId] });
+  };
+  const removeModel = (index: number): void => {
+    if (sourceCount <= 1) return;
+    update({ ...selection, modelIds: selection.modelIds.filter((_, candidateIndex) => candidateIndex !== index) });
+  };
+  const moveModel = (index: number, offset: -1 | 1): void => {
+    const target = index + offset;
+    if (target < 0 || target >= selection.modelIds.length) return;
+    const modelIds = [...selection.modelIds];
+    [modelIds[index], modelIds[target]] = [modelIds[target]!, modelIds[index]!];
+    update({ ...selection, modelIds });
+  };
+
+  return (
+    <div className="grid min-h-[76px] min-w-0 gap-3 bg-paper-50 px-3 py-3 md:grid-cols-[minmax(190px,0.8fr)_minmax(260px,1.2fr)] md:items-start">
+      <AssignmentLabel field={field} />
+
+      <div className="min-w-0">
+        <div className="divide-y divide-ink-200/70 border-y border-ink-200/70">
+          {hasInheritance ? (
+            <div className="flex min-h-10 min-w-0 items-center gap-2 px-1.5 py-1">
+              <AssignmentPriority value={selection.inheritanceEnabled ? 1 : undefined} />
+              <GitFork className="h-3.5 w-3.5 shrink-0 text-ink-500" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[12px] font-medium text-ink-800">{inheritanceSourceLabel(field)}</div>
+                <div className="truncate text-[10.5px] text-ink-450">
+                  {frontendMessage("settings.model.poolRuntimeResolved")}
+                </div>
+              </div>
+              <Switch
+                checked={selection.inheritanceEnabled}
+                disabled={selection.inheritanceEnabled && selection.modelIds.length === 0}
+                ariaLabel={frontendMessage("settings.model.poolToggleInheritance")}
+                onCheckedChange={(inheritanceEnabled) => update({ ...selection, inheritanceEnabled })}
+              />
+            </div>
+          ) : null}
+
+          {selection.modelIds.map((modelId, index) => {
+            const candidate = candidatesById.get(modelId);
+            const priority = index + 1 + Number(hasInheritance && selection.inheritanceEnabled);
+            const unavailable = !candidate;
+            const cannotRemove = sourceCount <= 1;
+            return (
+              <div key={`${modelId}:${index}`} className="flex min-h-10 min-w-0 items-center gap-2 px-1.5 py-1">
+                <AssignmentPriority value={priority} />
+                <span className="min-w-0 flex-1">
+                  <AssignmentOption candidate={candidate} label={modelId} unavailable={unavailable} />
+                </span>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <IconButton
+                    label={frontendMessage("settings.model.poolMoveUp", { model: modelId })}
+                    tooltip={frontendMessage("settings.model.poolMoveUpShort")}
+                    size="sm"
+                    tone="muted"
+                    disabled={index === 0}
+                    onClick={() => moveModel(index, -1)}
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </IconButton>
+                  <IconButton
+                    label={frontendMessage("settings.model.poolMoveDown", { model: modelId })}
+                    tooltip={frontendMessage("settings.model.poolMoveDownShort")}
+                    size="sm"
+                    tone="muted"
+                    disabled={index === selection.modelIds.length - 1}
+                    onClick={() => moveModel(index, 1)}
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </IconButton>
+                  <IconButton
+                    label={frontendMessage("settings.model.poolRemove", { model: modelId })}
+                    tooltip={frontendMessage("settings.model.poolRemoveShort")}
+                    size="sm"
+                    tone="danger"
+                    disabled={cannotRemove}
+                    onClick={() => removeModel(index)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </IconButton>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-2">
+          <MenuSelect
+            value=""
+            placeholder={field.placeholder ?? frontendMessage("settings.model.poolAdd")}
+            ariaLabel={frontendMessage("settings.model.poolAdd")}
+            options={availableCandidates.map(({ model, provider }) => ({
+              value: model.Id,
+              label: `${model.Model} · ${provider.Id}`,
+            }))}
+            disabled={availableCandidates.length === 0}
+            emptyState={frontendMessage("settings.model.poolNoAdditionalCandidates")}
+            leading={<Plus className="h-3.5 w-3.5" />}
+            renderOption={(option) => (
+              <AssignmentOption candidate={candidatesById.get(option.value)} label={option.label} />
+            )}
+            onChange={addModel}
+          />
+        </div>
+
+        {selection.modelIds.some((modelId) => !candidatesById.has(modelId)) ? (
+          <p className="mt-1.5 text-[11px] leading-4 text-umber-600">
+            {frontendMessage("settings.model.poolUnavailable")}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function AssignmentLabel({ field }: { field: RuntimeModelAssignmentField }): JSX.Element {
+  return (
+    <div className="flex min-w-0 items-start gap-2.5">
+      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border border-ink-200/70 bg-paper-100 text-ink-500">
+        <AssignmentCapabilityIcon capability={field.modelSelection.capability} />
+      </span>
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="text-[12.5px] font-medium text-ink-850">{field.label}</span>
+          <ConfigFieldRequirementLabel required={field.modelSelection.required} />
+        </div>
+        {field.description ? <p className="mt-0.5 text-[11px] leading-4 text-ink-500">{field.description}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function AssignmentPriority({ value }: { value?: number }): JSX.Element {
+  return (
+    <span className="w-4 shrink-0 text-center font-mono text-[10px] tabular-nums text-ink-400">{value ?? "-"}</span>
+  );
+}
+
+function inheritanceSourceLabel(field: RuntimeModelAssignmentField): string {
+  return frontendMessage(
+    field.modelSelection.inheritance?.source === "default-model"
+      ? "settings.model.poolDefaultModelSource"
+      : "settings.model.poolParentModelSource",
+  );
+}
+
 function AssignmentOption({
   candidate,
   label,
@@ -259,9 +451,17 @@ function AssignmentOption({
   );
 }
 
-function AssignmentGroupIcon({ groupId }: { groupId: string }): JSX.Element {
-  const Icon: ComponentType<{ className?: string }> =
-    groupId === "planning" ? BrainCircuit : groupId === "retrieval" ? Search : Target;
+function AssignmentGroupIcon({ fields }: { fields: readonly RuntimeModelAssignmentField[] }): JSX.Element {
+  const capability = fields[0]?.modelSelection.capability;
+  const Icon: ComponentType<{ className?: string }> = fields.some(isRuntimeModelPoolAssignment)
+    ? GitFork
+    : capability === "Embedding"
+      ? Search
+      : capability === "Rerank"
+        ? ListFilter
+        : capability === "Chat"
+          ? BrainCircuit
+          : Target;
   return <Icon className="h-3.5 w-3.5 text-ink-500" />;
 }
 

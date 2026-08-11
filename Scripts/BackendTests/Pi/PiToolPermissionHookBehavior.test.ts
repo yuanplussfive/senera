@@ -3,9 +3,7 @@ import type { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensi
 import type { AgentToolPermissionGate } from "../../../Source/AgentSystem/Safety/AgentToolPermissionGate.js";
 import { AgentPiToolPermissionHook } from "../../../Source/AgentSystem/Pi/AgentPiToolPermissionHook.js";
 import { toolAccessGrant } from "../Support/AgentTestFixtures.js";
-import { AgentPiTurnContextRegistry } from "../../../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
-
-const turnContexts = new AgentPiTurnContextRegistry();
+import { createSeneraExecutionRuntimeCapabilities } from "../../../Source/AgentSystem/Execution/SeneraExecutionRuntimeCapabilities.js";
 
 describe("Pi tool permission hook behavior", () => {
   test("blocks a registered request that is outside the authoritative access grant", async () => {
@@ -13,11 +11,12 @@ describe("Pi tool permission hook behavior", () => {
     const hook = new AgentPiToolPermissionHook({
       registry: { getTool: () => ({ name: "ToolB" }) } as unknown as AgentExtensionRegistry,
       permissionGate: { authorize } as unknown as AgentToolPermissionGate,
-      turnContexts,
+      executionCapabilities: () => createSeneraExecutionRuntimeCapabilities(),
     });
 
     const result = await hook.authorize(
       {
+        approvalMode: "agent",
         requestId: "request-denied",
         toolAccessGrant: toolAccessGrant(["ToolA"], ["ToolA"]),
       },
@@ -44,11 +43,12 @@ describe("Pi tool permission hook behavior", () => {
     const hook = new AgentPiToolPermissionHook({
       registry: { getTool: () => undefined } as unknown as AgentExtensionRegistry,
       permissionGate: { authorize } as unknown as AgentToolPermissionGate,
-      turnContexts,
+      executionCapabilities: () => createSeneraExecutionRuntimeCapabilities(),
     });
 
     await hook.authorize(
       {
+        approvalMode: "agent",
         sessionId: "session-a",
         requestId: "request-a",
         step: 1,

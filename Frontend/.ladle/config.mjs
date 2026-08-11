@@ -4,7 +4,7 @@ export default {
   addons: {
     theme: {
       enabled: true,
-      defaultState: "senera-light",
+      defaultState: "light",
     },
     width: {
       enabled: true,
