@@ -101,11 +101,15 @@ function verifyContractSchema(value: unknown): void {
 
 function verifyPublicationWorkflow(value: NanoContract): void {
   const workflow = fs.readFileSync(WorkflowPath, "utf8");
+  assert.equal(
+    workflow.includes("npm run sandbox.prepare"),
+    false,
+    "Nano publication must rely on the runtime image contract instead of building a local sandbox image.",
+  );
   for (const fragment of [
     'workflows: ["Verify"]',
     "github.event.workflow_run.conclusion == 'success'",
     "github.event.workflow_run.head_sha",
-    "npm run sandbox.prepare",
     "npm install --package-lock-only",
     "npm ci",
     "npm run check.types",
@@ -144,7 +148,8 @@ function verifyGeneratedFiles(outputRoot: string): void {
   }
   const devServer = fs.readFileSync(path.join(outputRoot, "Apps", "DevServer.ts"), "utf8");
   assert.ok(devServer.includes("startSeneraSandboxWorkerProcess"));
-  assert.ok(devServer.includes("dockerEngineWorker: worker?.client"));
+  assert.ok(devServer.includes("sandboxRuntimeAvailability: sandbox.availability"));
+  assert.ok(devServer.includes("dockerEngineWorker: sandbox.client"));
 }
 
 function verifyRelativeImportClosure(outputRoot: string): void {

@@ -34,9 +34,6 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
-      - name: Build and verify the Docker sandbox runtime
-        run: npm run sandbox.prepare
-
       - name: Resolve Nano workspace
         id: paths
         shell: bash
