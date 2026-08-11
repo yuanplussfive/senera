@@ -27,7 +27,7 @@ export interface SeneraNodeProcessBackendOptions {
 }
 
 export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
-  readonly kind = "node-local";
+  readonly kind = process.platform === "win32" ? "windows-governed-local" : "posix-governed-local";
   readonly shellDialect = resolveSeneraShellPlatform().family;
   private readonly terminateProcessTree: SeneraProcessTreeTerminator | undefined;
   private readonly terminationGraceMs: number;

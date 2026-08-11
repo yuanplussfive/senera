@@ -188,7 +188,10 @@ function resourceLimits(): AgentExecutionResourceLimits {
   return {
     maxActive: 4,
     maxBufferedBytes: 8_192,
+    outputBatchMaxBytes: 64 * 1024,
+    outputBatchMaxDelayMs: 50,
     maxInputBytes: 1_024,
+    initialYieldMs: 50,
     maxWaitMs: 5_000,
     idleTtlMs: 60_000,
     terminalTtlMs: 60_000,

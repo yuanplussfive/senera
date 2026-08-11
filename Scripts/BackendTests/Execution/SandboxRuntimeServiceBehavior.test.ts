@@ -3,11 +3,38 @@ import { AgentSandboxRuntimeService } from "../../../Source/AgentSystem/Sandbox/
 import { agentErrorMessage } from "../../../Source/AgentSystem/I18n/AgentMessageCatalog.js";
 
 describe("sandbox runtime service behavior", () => {
-  test("projects localized status snapshots for package, ready, preparing, and unavailable states", () => {
+  test("uses governed host execution on Windows regardless of Docker availability", () => {
+    const snapshot = new AgentSandboxRuntimeService({ platform: "win32" }).snapshot();
+
+    expect(snapshot).toMatchObject({
+      state: "disabled",
+      supported: false,
+      effectiveMode: "host",
+      effectiveTarget: "Local",
+      shellDialect: "powershell",
+      availableExecutionTargets: ["Local"],
+      localExecution: {
+        mode: "windows-governed-local",
+        isolation: "host",
+        authorization: "opa",
+        processOwnership: "windows-job",
+      },
+      message: agentErrorMessage("sandbox.hostPolicy.statusMessage"),
+      diagnostics: [
+        expect.objectContaining({
+          code: "host_execution_platform_policy",
+          message: agentErrorMessage("sandbox.hostPolicy.message"),
+        }),
+      ],
+    });
+    expect(snapshot).not.toHaveProperty("provider");
+  });
+
+  test("projects localized status snapshots for ready, preparing, and unavailable states", () => {
     const service = new AgentSandboxRuntimeService({
-      platform: "win32",
+      platform: "linux",
+      availability: { kind: "available", provider: "docker-engine" },
       clock: () => new Date("2026-01-01T00:00:00.000Z"),
-      packageAvailable: () => true,
     });
 
     expect(service.snapshot()).toMatchObject({
@@ -63,43 +90,42 @@ describe("sandbox runtime service behavior", () => {
     });
   });
 
-  test("reports localized missing package diagnostics without runtime paths", () => {
+  test("reports Docker Engine support before runtime preparation", () => {
     const service = new AgentSandboxRuntimeService({
-      platform: "win32",
-      packageAvailable: () => false,
+      platform: "linux",
+      availability: { kind: "available", provider: "docker-engine" },
     });
 
     expect(service.snapshot()).toMatchObject({
-      state: "unavailable",
-      supported: false,
-      message: agentErrorMessage("sandbox.missing.snapshotMessage"),
+      state: "unknown",
+      supported: true,
+      message: agentErrorMessage("sandbox.configured.snapshotMessage"),
       paths: undefined,
       diagnostics: [
         expect.objectContaining({
-          message: agentErrorMessage("sandbox.missing.message"),
-          recommendation: agentErrorMessage("sandbox.missing.recommendation"),
+          code: "docker-engine_backend_configured",
         }),
       ],
     });
   });
 
-  test("reports an explicitly disabled runtime without probing package availability", () => {
+  test("reports an explicitly disabled runtime", () => {
     const service = new AgentSandboxRuntimeService({
-      platform: "win32",
+      platform: "linux",
       configSnapshot: () => ({
         ModelProviders: [],
         SandboxRuntime: { Enabled: false },
       }),
-      packageAvailable: () => false,
     });
 
     expect(service.snapshot()).toMatchObject({
       state: "disabled",
-      effectiveMode: "disabled",
+      effectiveMode: "host",
+      effectiveTarget: "Local",
       dependencies: { errors: [], warnings: [] },
       diagnostics: [
         expect.objectContaining({
-          code: "microsandbox_disabled_by_runtime_configuration",
+          code: "docker_disabled_by_runtime_configuration",
           message: agentErrorMessage("sandbox.disabled.message"),
         }),
       ],
@@ -109,20 +135,20 @@ describe("sandbox runtime service behavior", () => {
   test("publishes typed preparation progress without flooding repeated checkpoints", () => {
     let now = new Date("2026-01-01T00:00:00.000Z");
     const service = new AgentSandboxRuntimeService({
-      platform: "win32",
+      platform: "linux",
+      availability: { kind: "available", provider: "docker-engine" },
       clock: () => now,
-      packageAvailable: () => true,
       progressUpdateIntervalMs: 100,
     });
     const snapshots: ReturnType<typeof service.snapshot>[] = [];
     const unsubscribe = service.subscribe((snapshot) => snapshots.push(snapshot));
 
     service.markPreparing();
-    service.reportProgress({ stage: "loading_runtime" });
-    service.reportProgress({ stage: "loading_runtime" });
+    service.reportProgress({ stage: "detecting_engine" });
+    service.reportProgress({ stage: "detecting_engine" });
     now = new Date("2026-01-01T00:00:00.100Z");
     service.reportProgress({
-      stage: "warming_image",
+      stage: "pulling_image",
       item: "node:22-bookworm-slim",
       completed: 0,
       total: 1,
@@ -135,11 +161,32 @@ describe("sandbox runtime service behavior", () => {
     expect(snapshots.at(-1)).toMatchObject({
       state: "preparing",
       progress: {
-        stage: "warming_image",
+        stage: "pulling_image",
         item: "node:22-bookworm-slim",
         downloadedBytes: 512,
         totalBytes: 1024,
       },
     });
+  });
+
+  test("does not expose Local as a fallback when a requested POSIX sandbox is unavailable", () => {
+    const snapshot = new AgentSandboxRuntimeService({
+      platform: "linux",
+      availability: { kind: "disabled", reason: "docker-engine-unavailable" },
+    }).snapshot();
+
+    expect(snapshot).toMatchObject({
+      state: "unavailable",
+      supported: false,
+      effectiveMode: "unavailable",
+      availableExecutionTargets: [],
+      dependencies: {
+        warnings: [
+          "tools selected for the sandbox boundary cannot run until the configured sandbox runtime is available",
+        ],
+      },
+    });
+    expect(snapshot).not.toHaveProperty("effectiveTarget");
+    expect(snapshot).not.toHaveProperty("shellDialect");
   });
 });

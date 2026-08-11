@@ -14,6 +14,12 @@ import { buildArtifactProjection, buildArtifactSummary } from "./AgentArtifactTe
 import { AgentArtifactPublicationSession, publishToolArtifactFiles } from "./AgentToolArtifactFilePublisher.js";
 import { AgentToolResultSummaryCompiler } from "./AgentToolResultSummaryCompiler.js";
 import { writeToolWorkspaceArtifacts } from "./AgentToolWorkspaceArtifactRecorder.js";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import {
+  AgentDefaultToolSemanticProjector,
+  type AgentToolSemanticProjection,
+  type AgentToolSemanticProjector,
+} from "../ToolRuntime/AgentToolSemanticProjection.js";
 
 export { AgentArtifactPublicationConflictError } from "./AgentArtifactPublicationRecovery.js";
 
@@ -21,6 +27,8 @@ export interface AgentToolExecutionArtifactRecorderOptions {
   readonly workspaceRoot: string;
   readonly config: ResolvedAgentArtifactsConfig;
   readonly model: string;
+  readonly logger?: AgentLogger;
+  readonly semanticProjector?: AgentToolSemanticProjector;
 }
 
 export interface RecordToolArtifactsInput {
@@ -35,11 +43,13 @@ export class AgentToolExecutionArtifactRecorder {
   private readonly fileWriter: AgentArtifactFileWriter;
   private readonly recovery: AgentArtifactPublicationRecovery;
   private readonly publicationLeases = new AgentKeyedLeaseQueue<string>();
+  private readonly semanticProjector: AgentToolSemanticProjector;
 
   constructor(private readonly options: AgentToolExecutionArtifactRecorderOptions) {
     this.fileWriter = new AgentArtifactFileWriter(options.workspaceRoot);
     this.summaryCompiler = new AgentToolResultSummaryCompiler({ model: options.model });
     this.recovery = new AgentArtifactPublicationRecovery(this.fileWriter, this.summaryCompiler);
+    this.semanticProjector = options.semanticProjector ?? new AgentDefaultToolSemanticProjector();
   }
 
   async record(input: RecordToolArtifactsInput): Promise<ExecutedToolCallResult[]> {
@@ -55,13 +65,41 @@ export class AgentToolExecutionArtifactRecorder {
         previousEvidence,
       });
       artifact.evidence.forEach((entry) => previousEvidence.add(entry.key));
-      const recordedResult = { ...result, artifact };
+      const semanticProjection = await this.projectSemanticObservation(result);
+      const recordedResult = {
+        ...result,
+        artifact,
+        ...(semanticProjection ? { semanticProjection } : {}),
+      };
       recorded.push({
         ...recordedResult,
         presentation: projectAgentToolResultPresentation(recordedResult),
       });
     }
     return recorded;
+  }
+
+  private async projectSemanticObservation(
+    result: ExecutedToolCallResult,
+  ): Promise<AgentToolSemanticProjection | undefined> {
+    const request = result.semanticProjectionRequest;
+    if (!request) return undefined;
+    const projection = await this.semanticProjector.project({
+      request,
+      toolName: result.name,
+      toolCallId: result.callId,
+      stdout: result.process.stdout,
+      stderr: result.process.stderr,
+      exitCode: result.process.exitCode,
+    });
+    if (projection.kind === "projected") return projection.value;
+    this.options.logger?.warn("tool.semantic_projection.failed", {
+      toolName: result.name,
+      toolCallId: result.callId,
+      projectionKind: request.kind,
+      error: projection.message,
+    });
+    return undefined;
   }
 
   private async recordOne(input: {

@@ -43,11 +43,6 @@
           "reason": "旧版单策略字段仅用于兼容读取；界面统一编辑 Strategies。"
         },
         {
-          "path": ["SandboxRuntime", "Provisioning"],
-          "recursive": true,
-          "reason": "镜像认证是判别联合与秘密引用，需要专用凭据编辑器后再公开。"
-        },
-        {
           "path": ["ConfigStore", "Kind"],
           "reason": "启用配置存储时当前 schema 只允许 sqlite。"
         },
@@ -187,8 +182,10 @@
                 "ImageOutput": false,
                 "Reasoning": false,
                 "DeveloperRole": false,
-                "StreamingUsage": true
+                "StreamingUsage": true,
+                "ToolCalling": true
               },
+              "ToolPlanningMode": "native",
               "ContextWindowTokens": 128000,
               "MaxModelOutputTokens": -1,
               "Endpoint": "ChatCompletions",
@@ -282,6 +279,27 @@
                 "label": "流式 Usage",
                 "description": "供应商支持 stream_options.include_usage 时启用；不兼容的网关可关闭并使用本地 token 估算。",
                 "type": "boolean",
+                "required": false,
+                "essential": true
+              },
+              {
+                "path": ["Capabilities", "ToolCalling"],
+                "label": "原生工具调用",
+                "description": "模型能够直接返回 Pi 工具调用时启用；关闭后应使用 BAML 结构化规划。",
+                "type": "boolean",
+                "required": false,
+                "essential": true
+              },
+              {
+                "path": ["ToolPlanningMode"],
+                "label": "工具规划模式",
+                "description": "native 直接使用供应商工具调用；baml 使用结构化规划。",
+                "type": "string",
+                "options": ["native", "baml"],
+                "optionLabels": {
+                  "native": "Pi 原生工具",
+                  "baml": "BAML 规划"
+                },
                 "required": false,
                 "essential": true
               },
@@ -607,7 +625,7 @@
           {
             "path": ["SandboxRuntime", "Enabled"],
             "label": "启用沙箱执行",
-            "description": "为支持的工具使用隔离执行后端。",
+            "description": "Linux/macOS 自动探测 Linux Docker Engine；可用时增加隔离执行目标。Windows 按平台策略始终使用受治理的宿主机执行。",
             "type": "boolean",
             "required": false,
             "essential": true
@@ -616,12 +634,11 @@
             "path": ["SandboxRuntime", "Provider"],
             "label": "沙箱后端",
             "type": "string",
-            "options": ["auto", "microsandbox", "gvisor", "docker-engine"],
+            "options": ["auto", "gvisor", "docker-engine"],
             "optionLabels": {
-              "auto": "自动选择",
-              "microsandbox": "Microsandbox",
-              "gvisor": "gVisor",
-              "docker-engine": "Docker Engine"
+              "auto": "自动探测 Docker（推荐）",
+              "gvisor": "Docker + gVisor",
+              "docker-engine": "Docker Engine 默认运行时"
             },
             "required": false,
             "essential": false
@@ -635,22 +652,64 @@
             "essential": false
           },
           {
-            "path": ["SandboxRuntime", "Gvisor", "WorkerSocketPath"],
-            "label": "gVisor Worker Socket",
-            "description": "gVisor worker 的 Unix socket 路径。",
+            "path": ["SandboxRuntime", "Docker", "WorkerEndpoint"],
+            "label": "沙箱 Worker 端点",
+            "description": "可选。Windows 使用命名管道，Linux/macOS 使用 Unix Socket；留空时按当前进程和工作区生成。",
             "type": "string",
-            "placeholder": ".senera/gvisor-worker.sock",
+            "placeholder": "自动生成",
             "required": false,
             "essential": false
           },
           {
-            "path": ["SandboxRuntime", "Gvisor", "PreparationTimeoutSeconds"],
-            "label": "gVisor 准备超时",
-            "description": "准备隔离工作区的最长时间，单位秒。",
+            "path": ["SandboxRuntime", "Docker", "EngineEndpoint"],
+            "label": "Docker Engine 端点",
+            "description": "可选。留空时使用 DOCKER_HOST 或当前平台的 Docker Desktop 默认端点。",
+            "type": "string",
+            "placeholder": "自动检测",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["SandboxRuntime", "Docker", "DetectionTimeoutSeconds"],
+            "label": "Docker 探测超时",
+            "description": "启动时探测 Linux Docker Engine 的最长时间；自动模式下探测失败会立即进入 Local-only 模式。",
+            "type": "number",
+            "min": 1,
+            "max": 30,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["SandboxRuntime", "Docker", "PreparationTimeoutSeconds"],
+            "label": "沙箱准备超时",
+            "description": "连接 Engine、拉取镜像并验证工具链的最长时间，单位秒。",
             "type": "number",
             "min": 1,
             "max": 300,
             "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["SandboxRuntime", "Docker", "Image"],
+            "label": "运行时镜像",
+            "description": "Docker Engine 执行工具时使用的 Linux OCI 镜像。",
+            "type": "string",
+            "placeholder": "使用内置版本",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["SandboxRuntime", "Docker", "PullPolicy"],
+            "label": "镜像拉取策略",
+            "type": "string",
+            "options": ["if-missing", "always", "never"],
+            "optionLabels": {
+              "if-missing": "缺失时拉取",
+              "always": "始终拉取",
+              "never": "仅使用本地镜像"
+            },
             "required": false,
             "essential": false
           },
@@ -661,6 +720,30 @@
             "type": "number",
             "min": 1,
             "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ToolExecution", "MaxConcurrentCallsPerRun"],
+            "label": "单次运行工具并发上限",
+            "description": "同一次代理运行最多同时执行的普通工具调用数；超出部分排队，插件声明的资源冲突和更低并发上限仍然生效。",
+            "type": "number",
+            "min": 1,
+            "max": 1000,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ToolExecution", "SemanticAudit", "Mode"],
+            "label": "语义风险审核",
+            "description": "仅为 BAML 规划按需复核工具参数。只有始终请求批准模式下，审核结论可能改变用户审批时才调用；Native 工具调用、确定性拒绝、已有审批要求、代理审批和完全访问模式不会产生额外模型请求。",
+            "type": "string",
+            "options": ["approval_sensitive", "disabled"],
+            "optionLabels": {
+              "approval_sensitive": "仅在影响审批时",
+              "disabled": "关闭"
+            },
             "required": false,
             "essential": false
           },
@@ -744,11 +827,43 @@
             "essential": false
           },
           {
+            "path": ["ToolExecution", "Resources", "OutputBatchMaxBytes"],
+            "label": "输出事件批次字节预算",
+            "description": "后台资源在一次实时事件中合并的最大输出字节数。",
+            "type": "number",
+            "min": 1024,
+            "step": 1024,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ToolExecution", "Resources", "OutputBatchMaxDelayMs"],
+            "label": "输出事件批次延迟",
+            "description": "后台资源等待更多输出后发布合并事件的最大毫秒数。",
+            "type": "number",
+            "min": 1,
+            "max": 5000,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
             "path": ["ToolExecution", "Resources", "MaxInputBytes"],
             "label": "资源单次输入上限",
             "type": "number",
             "min": 1,
             "step": 1024,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ToolExecution", "Resources", "InitialYieldSeconds"],
+            "label": "Shell 初始等待",
+            "description": "Shell 命令在自动转为可续读执行资源前等待完成的秒数。",
+            "type": "number",
+            "min": 0.1,
+            "max": 60,
+            "step": 0.1,
             "required": false,
             "essential": false
           },
@@ -1288,7 +1403,7 @@
           {
             "path": ["ToolLearning", "Patterns", "MaxPromptPatterns"],
             "label": "注入模式上限",
-            "description": "PiProxy 编译工具调用时最多读取的相关工具使用经验数量。",
+            "description": "Pi 原生规划编译器最多读取的相关工具使用经验数量。",
             "type": "number",
             "min": 0,
             "step": 1,

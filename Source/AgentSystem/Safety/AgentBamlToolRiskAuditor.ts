@@ -25,6 +25,7 @@ const PermissionActionByAuditDecision = {
 export interface AgentBamlToolRiskAuditorOptions {
   readonly client: Pick<AgentActionPlannerModelClient, "auditToolRisk">;
   readonly profile?: AgentBamlToolRiskAuditProfile;
+  readonly onFailure?: (error: unknown) => void;
 }
 
 export class AgentBamlToolRiskAuditor implements AgentToolGuardrailAuditor {
@@ -64,6 +65,7 @@ export class AgentBamlToolRiskAuditor implements AgentToolGuardrailAuditor {
       if (error instanceof AgentCancellationError || input.signal?.aborted) {
         throw error;
       }
+      this.options.onFailure?.(error);
       return undefined;
     }
   }

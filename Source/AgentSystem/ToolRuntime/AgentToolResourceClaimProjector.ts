@@ -20,26 +20,33 @@ export class AgentToolResourceClaimProjector implements AgentToolResourceClaimPr
 
   async project(tool: RegisteredTool, args: Readonly<Record<string, unknown>>): Promise<AgentToolResourceLeaseRequest> {
     const resources = tool.handler.resources ?? [];
-    if (resources.length === 0) return fallbackResourceRequest(tool);
+    if (resources.length === 0) return projectMcpServerResourceRequest(tool);
 
-    try {
-      const claims = await Promise.all(
-        resources.map(async (resource) => {
-          const value = readAgentJsonPointer(args, resource.Pointer);
-          return value.found ? this.capabilities.claim(resource, value.value, args) : undefined;
-        }),
-      );
-      const normalized = normalizeClaims(claims.flatMap((claim) => claim ?? []));
-      return normalized.length > 0 ? { mode: "claims", claims: normalized } : { mode: "exclusive" };
-    } catch {
-      // Execution remains authoritative for argument diagnostics; scheduling fails closed.
-      return { mode: "exclusive" };
+    const claims = await Promise.all(
+      resources.map(async (resource) => {
+        const value = readAgentJsonPointer(args, resource.Pointer);
+        if (!value.found) {
+          throw new TypeError(`Tool resource argument is missing: ${resource.Pointer}`);
+        }
+        const projected = await this.capabilities.claim(resource, value.value, args);
+        if (!projected) {
+          throw new TypeError(`Tool resource capability does not support scheduling claims: ${resource.Capability}`);
+        }
+        return projected;
+      }),
+    );
+    const normalized = normalizeClaims(claims.flat());
+    if (normalized.length === 0) {
+      throw new TypeError(`Tool ${tool.name} did not project any scheduling claims.`);
     }
+    return { mode: "claims", claims: normalized };
   }
 }
 
-function fallbackResourceRequest(tool: RegisteredTool): AgentToolResourceLeaseRequest {
-  if (tool.handler.kind !== "McpTool") return { mode: "exclusive" };
+function projectMcpServerResourceRequest(tool: RegisteredTool): AgentToolResourceLeaseRequest {
+  if (tool.handler.kind !== "McpTool") {
+    throw new TypeError(`Tool ${tool.name} uses ResourceClaims scheduling without declaring resources.`);
+  }
   return {
     mode: "claims",
     claims: [

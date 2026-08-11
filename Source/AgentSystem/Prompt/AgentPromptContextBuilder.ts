@@ -13,6 +13,14 @@ import type {
 import { AgentPromptDocumentationReader } from "./AgentPromptDocumentationReader.js";
 import { resolveAgentPromptSections } from "./AgentPromptSectionResolver.js";
 import { AgentPromptToolContextProjector } from "./AgentPromptToolContextProjector.js";
+import {
+  createSeneraExecutionRuntimeCapabilities,
+  type SeneraExecutionRuntimeCapabilities,
+} from "../Execution/SeneraExecutionRuntimeCapabilities.js";
+import {
+  projectSeneraProcessBackendsToToolTargets,
+  resolveAvailableAgentToolExecutionTargets,
+} from "../ToolRuntime/AgentToolExecutionPlan.js";
 
 export type {
   AgentPromptContext,
@@ -28,13 +36,15 @@ export class AgentPromptContextBuilder {
   constructor(
     private readonly registry: AgentExtensionRegistry,
     private readonly workspaceRoot: string = process.cwd(),
+    private readonly executionCapabilities: () => SeneraExecutionRuntimeCapabilities = () =>
+      createSeneraExecutionRuntimeCapabilities(),
   ) {
     const documentationReader = new AgentPromptDocumentationReader();
     this.toolContextProjector = new AgentPromptToolContextProjector(documentationReader);
   }
 
   buildBaseContext(options: AgentPromptContextOptions = {}): AgentPromptContext {
-    const tools = this.registry.listTools();
+    const tools = this.availableTools();
     const fallbackSections = resolveAgentPromptSections({
       summary: options.summarySection,
       trigger: options.triggerSection,
@@ -50,7 +60,7 @@ export class AgentPromptContextBuilder {
       .map((tool) => this.toolContextProjector.projectTool(tool, toolSections));
 
     return {
-      ExecutionEnvironment: buildAgentExecutionEnvironmentContext(this.workspaceRoot),
+      ExecutionEnvironment: buildAgentExecutionEnvironmentContext(this.workspaceRoot, this.executionCapabilities()),
       ToolCards: toolCards,
       ToolDiscoveryToolName: this.resolveVisibleToolDiscoveryToolName(loadedTools, promptToolNameSet),
       RootCommand: rootCommand,
@@ -59,7 +69,8 @@ export class AgentPromptContextBuilder {
   }
 
   buildRootCommand(options: AgentPromptRootCommandOptions) {
-    const loadedTools = this.resolveLoadedTools(options.loadedToolNames);
+    const registeredTools = this.availableTools();
+    const loadedTools = this.resolveLoadedTools(options.loadedToolNames, registeredTools);
     const policy = this.registry.getRootCommandPolicy(options.decision.action);
     if (!policy) {
       throw new Error(`RootCommand policy 没有声明 action：${options.decision.action}`);
@@ -68,15 +79,25 @@ export class AgentPromptContextBuilder {
     return buildAgentRootCommand({
       decision: options.decision,
       loadedTools,
-      registeredTools: this.registry.listTools(),
+      registeredTools,
       policy,
+      allowedToolNames: options.allowedToolNames,
     });
   }
 
-  private resolveLoadedTools(loadedToolNames: readonly string[]): RegisteredTool[] {
-    const tools = this.registry.listTools();
+  private resolveLoadedTools(
+    loadedToolNames: readonly string[],
+    tools: readonly RegisteredTool[] = this.availableTools(),
+  ): RegisteredTool[] {
     const loadedToolNameSet = new Set(loadedToolNames);
     return tools.filter((tool) => loadedToolNameSet.has(tool.name));
+  }
+
+  private availableTools(): RegisteredTool[] {
+    const runtimeTargets = projectSeneraProcessBackendsToToolTargets(this.executionCapabilities().processBackends);
+    return this.registry
+      .listTools()
+      .filter((tool) => resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets).length > 0);
   }
 
   private resolvePromptLoadedTools(

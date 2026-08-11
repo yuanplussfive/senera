@@ -1,7 +1,4 @@
-import assert from "node:assert/strict";
-import { once } from "node:events";
 import fs from "node:fs/promises";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -10,18 +7,31 @@ import { resolveArtifactsConfig } from "../../../Source/AgentSystem/AgentDefault
 import { AgentToolExecutionArtifactRecorder } from "../../../Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.js";
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
+import type {
+  AgentPiPlanningCompileRequest,
+  AgentPiPlanningCompilerFactory,
+} from "../../../Source/AgentSystem/Pi/AgentPiPlanningCompiler.js";
 import { AgentPiSubstrate } from "../../../Source/AgentSystem/Pi/AgentPiSubstrate.js";
+import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnState.js";
 import { AgentSkillScanner } from "../../../Source/AgentSystem/Skills/AgentSkillScanner.js";
 import {
-  AgentPiProxyModelProviderHeader,
-  AgentPiProxyProtocol,
-} from "../../../Source/AgentSystem/PiShared/AgentPiProxyProtocol.js";
-import { AgentPiTurnContextRegistry } from "../../../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
+  AgentModelUsageLedger,
+  AgentModelUsageSources,
+} from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
+import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
+import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 import { AgentToolCallExecutor } from "../../../Source/AgentSystem/ToolRuntime/AgentToolCallExecutor.js";
-import { createAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
+import {
+  createAgentToolAccessGrant,
+  type AgentToolAccessGrant,
+} from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
+import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 import { AgentToolHostCapabilityRegistry } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { toolProcessSuccessResult } from "../../../Source/AgentSystem/ToolRuntime/AgentToolProcessEnvelope.js";
-import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type {
+  AgentSystemConfig,
+  ResolvedAgentModelProviderConfig,
+} from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import { createXmlProtocolSpec } from "../../../Source/AgentSystem/Xml/AgentXmlPolicy.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
@@ -29,52 +39,35 @@ import { createModelProvider } from "../Support/AgentTestFixtures.js";
 const AddToolName = "AddNumbersTool";
 const AddCapability = "test.add_numbers";
 const AddArgumentsSchema = z.object({ left: z.number(), right: z.number() });
-
-const OpenAiRequestSchema = z.object({
-  model: z.string(),
-  messages: z.array(z.object({ role: z.string() }).passthrough()),
-  tools: z
-    .array(
-      z
-        .object({
-          function: z.object({ name: z.string() }).passthrough(),
-        })
-        .passthrough(),
-    )
-    .optional(),
-  stream: z.boolean().optional(),
-});
-
-type OpenAiRequest = z.infer<typeof OpenAiRequestSchema>;
-
-interface CapturedRequest {
-  readonly headers: IncomingMessage["headers"];
-  readonly payload: OpenAiRequest;
-}
-
 const temporaryRoots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(temporaryRoots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    temporaryRoots
+      .splice(0)
+      .map((root) => fs.rm(root, { force: true, maxRetries: 8, recursive: true, retryDelay: 100 })),
+  );
 });
 
 describe("Pi Coding Agent production substrate", () => {
-  test("runs an authorized HostCapability tool loop and records its artifact through a local proxy", async () => {
-    const requests: CapturedRequest[] = [];
-    const server = createDeterministicProxy(requests);
+  test("runs an authorized host tool loop through the BAML provider and records its artifact", async () => {
     const workspaceRoot = await createTemporaryWorkspace();
-    const baseUrl = await listen(server);
-    const port = new URL(baseUrl).port;
-    const config: AgentSystemConfig = {
-      ModelProviders: [],
-      Server: { Host: "127.0.0.1", Port: Number(port) },
-    };
+    const config = testConfig(workspaceRoot);
     const modelProvider = createModelProvider({
       Id: "local-substrate-test",
       Model: "deterministic-tool-loop",
       ContextWindowTokens: 16_384,
       MaxModelOutputTokens: 1_024,
     });
+    const compiler = new RecordingCompilerFactory((request) =>
+      request.context.messages.some((message) => message.role === "toolResult")
+        ? { kind: "final_text", content: "The result is 42.", toolCalls: [] }
+        : {
+            kind: "tool_calls",
+            content: "Adding the values.",
+            toolCalls: [{ id: "call_add_numbers", name: AddToolName, arguments: { left: 17, right: 25 } }],
+          },
+    );
     const registry = new AgentExtensionRegistry();
     const tool = addNumbersTool(workspaceRoot);
     registry.registerToolExtension(tool.owner, [tool]);
@@ -105,6 +98,7 @@ describe("Pi Coding Agent production substrate", () => {
       workspaceRoot,
       config,
       modelProvider,
+      planningCompilerFactory: compiler,
       registry,
       toolCallExecutor,
       artifactRecorder: {
@@ -116,13 +110,13 @@ describe("Pi Coding Agent production substrate", () => {
       },
       executionEnv,
       resourcesPath: workspaceRoot,
-      turnContexts: new AgentPiTurnContextRegistry(),
     });
     const grant = createAgentToolAccessGrant({
       authorizedToolNames: [AddToolName],
       exposedToolNames: [AddToolName],
       preferredToolNames: [AddToolName],
     });
+    const turn = createTurnState("substrate-local-session", "substrate-local-request", 1, grant, modelProvider);
 
     try {
       const lease = await substrate.leaseTurn({
@@ -132,6 +126,9 @@ describe("Pi Coding Agent production substrate", () => {
         input: "Add 17 and 25.",
         systemPrompt: `Use ${AddToolName} for arithmetic and answer with its result.`,
         toolAccessGrant: grant,
+        toolExposure: turn.context.toolExposure,
+        tokenBudget: turn.context.tokenBudget,
+        turnState: turn,
       });
       const completedToolResults: unknown[] = [];
       const listenerStarted = deferred();
@@ -154,7 +151,7 @@ describe("Pi Coding Agent production substrate", () => {
         listenerRelease.resolve();
         await prompt;
         expect(listenerCompleted).toBe(true);
-        expect(lease.session.getLastAssistantText()).toMatch(/42/u);
+        expect(lease.session.getLastAssistantText()).toBe("The result is 42.");
       } finally {
         unsubscribe();
         lease.session.dispose();
@@ -162,43 +159,148 @@ describe("Pi Coding Agent production substrate", () => {
 
       expect(executionCount).toBe(1);
       expect(completedToolResults).toHaveLength(1);
-      expect(completedToolResults[0]).toEqual(
-        expect.objectContaining({ content: expect.arrayContaining([expect.objectContaining({ type: "text" })]) }),
-      );
-      expect(requests).toHaveLength(2);
-      assertRequest(requests[0], false, modelProvider.Id);
-      assertRequest(requests[1], true, modelProvider.Id);
       expect(artifactUris).toHaveLength(1);
-      expect(requests[1]?.payload.messages).toEqual(
-        expect.arrayContaining([expect.objectContaining({ role: "tool" })]),
-      );
-      expect(JSON.stringify(requests[1]?.payload.messages)).toContain(artifactUris[0]);
+      expect(compiler.requests).toHaveLength(2);
+      expect(compiler.requests[0]?.model.api).toBe("senera-planning");
+      const toolResult = compiler.requests[1]?.context.messages.find((message) => message.role === "toolResult");
+      expect(toolResult).toBeDefined();
+      expect(JSON.stringify(toolResult)).toContain("senera.tool_observation.v3");
+      expect(JSON.stringify(toolResult)).toContain(artifactUris[0]);
     } finally {
       await substrate.close();
       await toolCallExecutor.close();
-      await close(server);
     }
   });
 
-  test("reloads a published Skill for the next turn of the same persistent session", async () => {
-    const requests: CapturedRequest[] = [];
-    const server = createFinalTextProxy(requests);
+  test("compacts during one repeated tool loop and continues with the rebuilt context", async () => {
     const workspaceRoot = await createTemporaryWorkspace();
-    const baseUrl = await listen(server);
-    const config: AgentSystemConfig = {
-      ModelProviders: [],
-      Server: { Host: "127.0.0.1", Port: Number(new URL(baseUrl).port) },
-    };
+    const config = testConfig(workspaceRoot);
+    const modelProvider = createModelProvider({
+      Id: "mid-run-compaction-test",
+      Model: "deterministic-mid-run-compaction",
+      ContextWindowTokens: 4_096,
+      MaxModelOutputTokens: 1_536,
+    });
+    const compiler = new RecordingCompilerFactory(
+      (_request, index) =>
+        index < 4
+          ? {
+              kind: "tool_calls",
+              content: `Collecting evidence ${index + 1}.`,
+              toolCalls: [
+                {
+                  id: `call_compaction_${index + 1}`,
+                  name: AddToolName,
+                  arguments: { left: index, right: index + 1 },
+                },
+              ],
+            }
+          : { kind: "final_text", content: "The compacted tool loop completed.", toolCalls: [] },
+      (_request, index) => [500, 1_000, 1_500, 1_800, 700][index] ?? 700,
+    );
+    const registry = new AgentExtensionRegistry();
+    const tool = addNumbersTool(workspaceRoot);
+    registry.registerToolExtension(tool.owner, [tool]);
+    const hostCapabilities = new AgentToolHostCapabilityRegistry().register(AddCapability, async (argumentsValue) => {
+      const arguments_ = AddArgumentsSchema.parse(argumentsValue);
+      return toolProcessSuccessResult({
+        sum: arguments_.left + arguments_.right,
+        evidence: "mid-run context evidence ".repeat(400),
+      });
+    });
+    const executionEnv = new SeneraLocalExecutionEnv({ workspaceRoot });
+    const toolCallExecutor = new AgentToolCallExecutor({
+      registry,
+      config,
+      protocol: createXmlProtocolSpec(config),
+      workspaceRoot,
+      hostCapabilities,
+      executionEnv,
+      emitLifecycleEvents: false,
+    });
+    const substrate = new AgentPiSubstrate({
+      workspaceRoot,
+      config,
+      modelProvider,
+      planningCompilerFactory: compiler,
+      registry,
+      toolCallExecutor,
+      artifactRecorder: new AgentToolExecutionArtifactRecorder({
+        workspaceRoot,
+        config: resolveArtifactsConfig(config),
+        model: modelProvider.Model,
+      }),
+      executionEnv,
+      resourcesPath: workspaceRoot,
+    });
+    const grant = createAgentToolAccessGrant({
+      authorizedToolNames: [AddToolName],
+      exposedToolNames: [AddToolName],
+      preferredToolNames: [AddToolName],
+    });
+    const turn = createTurnState("mid-run-session", "mid-run-request", 1, grant, modelProvider);
+
+    try {
+      const lease = await substrate.leaseTurn({
+        sessionId: "mid-run-session",
+        requestId: "mid-run-request",
+        step: 1,
+        input: "Collect enough evidence to require context compaction.",
+        systemPrompt: `Use ${AddToolName} repeatedly and then answer.`,
+        toolAccessGrant: grant,
+        toolExposure: turn.context.toolExposure,
+        tokenBudget: turn.context.tokenBudget,
+        turnState: turn,
+      });
+      try {
+        await lease.session.setHistory([]);
+        await lease.session.prompt("Run the repeated tool task.", { source: "extension" });
+        expect(lease.session.getLastAssistantText()).toBe("The compacted tool loop completed.");
+      } finally {
+        lease.session.dispose();
+      }
+
+      expect(compiler.requests).toHaveLength(5);
+      expect(compiler.summarizations).toBeGreaterThan(0);
+      expect(
+        compiler.requests.some((request) =>
+          request.context.messages.some(
+            (message) =>
+              message.role === "user" &&
+              (typeof message.content === "string"
+                ? message.content
+                : message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
+              ).includes("<compaction_summary>"),
+          ),
+        ),
+      ).toBe(true);
+      const budget = turn.context.tokenBudget.snapshot();
+      expect(budget.occupiedTokens).toBeLessThan(budget.inputCapacityTokens);
+      expect(budget.availableTokens).toBeGreaterThan(0);
+    } finally {
+      await substrate.close();
+      await toolCallExecutor.close();
+    }
+  });
+
+  test("reloads a published Skill and project context for the next turn of one persistent session", async () => {
+    const workspaceRoot = await createTemporaryWorkspace();
+    const config = testConfig(workspaceRoot);
     const modelProvider = createModelProvider({
       Id: "skill-reload-test",
       Model: "deterministic-skill-reload",
       ContextWindowTokens: 16_384,
       MaxModelOutputTokens: 1_024,
     });
+    const compiler = new RecordingCompilerFactory(() => ({
+      kind: "final_text",
+      content: "Skill applied.",
+      toolCalls: [],
+    }));
     const registry = new AgentExtensionRegistry();
     const projectContextFile = path.join(workspaceRoot, ".senera", "context", "PROJECT.md");
     await writeProjectContext(projectContextFile, "FIRST_PROJECT_CONTEXT");
-    const skillRoot = path.join(workspaceRoot, ".senera", "skills", "hot-skill");
+    const skillRoot = path.join(workspaceRoot, "System", "Extensions", "test-extension", "skills", "hot-skill");
     await writeSkill(skillRoot, "FIRST_SKILL_BODY");
     await writeSkill(
       path.join(workspaceRoot, ".senera", "skills", "unselected-skill"),
@@ -222,6 +324,7 @@ describe("Pi Coding Agent production substrate", () => {
       workspaceRoot,
       config,
       modelProvider,
+      planningCompilerFactory: compiler,
       registry,
       toolCallExecutor,
       artifactRecorder: new AgentToolExecutionArtifactRecorder({
@@ -231,7 +334,6 @@ describe("Pi Coding Agent production substrate", () => {
       }),
       executionEnv,
       resourcesPath: workspaceRoot,
-      turnContexts: new AgentPiTurnContextRegistry(),
     });
     const grant = createAgentToolAccessGrant({
       authorizedToolNames: [],
@@ -240,6 +342,10 @@ describe("Pi Coding Agent production substrate", () => {
     });
 
     try {
+      const firstActivatedSkill = activatedSkill(firstSkill);
+      const firstTurn = createTurnState("skill-reload-session", "skill-reload-first", 1, grant, modelProvider, [
+        firstActivatedSkill,
+      ]);
       const firstLease = await substrate.leaseTurn({
         sessionId: "skill-reload-session",
         requestId: "skill-reload-first",
@@ -247,7 +353,10 @@ describe("Pi Coding Agent production substrate", () => {
         input: "Use the active Skill.",
         systemPrompt: "Follow the activated Skill.",
         toolAccessGrant: grant,
-        activeSkills: [activatedSkill(firstSkill)],
+        toolExposure: firstTurn.context.toolExposure,
+        tokenBudget: firstTurn.context.tokenBudget,
+        turnState: firstTurn,
+        activeSkills: [firstActivatedSkill],
       });
       try {
         expect(firstLease.historyMigrationRequired).toBe(true);
@@ -260,6 +369,10 @@ describe("Pi Coding Agent production substrate", () => {
       await writeProjectContext(projectContextFile, "SECOND_PROJECT_CONTEXT");
       const secondSkill = scanner.readSkillDirectory(skillRoot, "hot-skill");
       registry.replaceSkills("standalone:hot-skill", [secondSkill]);
+      const secondActivatedSkill = activatedSkill(secondSkill);
+      const secondTurn = createTurnState("skill-reload-session", "skill-reload-second", 2, grant, modelProvider, [
+        secondActivatedSkill,
+      ]);
       const secondLease = await substrate.leaseTurn({
         sessionId: "skill-reload-session",
         requestId: "skill-reload-second",
@@ -267,7 +380,10 @@ describe("Pi Coding Agent production substrate", () => {
         input: "Use the updated active Skill.",
         systemPrompt: "Follow the activated Skill.",
         toolAccessGrant: grant,
-        activeSkills: [activatedSkill(secondSkill)],
+        toolExposure: secondTurn.context.toolExposure,
+        tokenBudget: secondTurn.context.tokenBudget,
+        turnState: secondTurn,
+        activeSkills: [secondActivatedSkill],
       });
       try {
         expect(secondLease.historyMigrationRequired).toBe(false);
@@ -276,24 +392,90 @@ describe("Pi Coding Agent production substrate", () => {
         secondLease.session.dispose();
       }
 
-      expect(requests).toHaveLength(2);
-      const firstPayload = JSON.stringify(requests[0]?.payload);
-      const secondPayload = JSON.stringify(requests[1]?.payload);
-      expect(textOccurrences(firstPayload, "FIRST_SKILL_BODY")).toBe(1);
-      expect(textOccurrences(firstPayload, "FIRST_PROJECT_CONTEXT")).toBe(1);
-      expect(firstPayload).not.toContain("UNSELECTED_SKILL_BODY");
-      expect(secondPayload).not.toContain("FIRST_SKILL_BODY");
-      expect(secondPayload).not.toContain("FIRST_PROJECT_CONTEXT");
-      expect(textOccurrences(secondPayload, "SECOND_SKILL_BODY")).toBe(1);
-      expect(textOccurrences(secondPayload, "SECOND_PROJECT_CONTEXT")).toBe(1);
-      expect(secondPayload).not.toContain("UNSELECTED_SKILL_BODY");
+      expect(compiler.requests).toHaveLength(2);
+      const firstPrompt = compiler.requests[0]?.context.systemPrompt ?? "";
+      const secondPrompt = compiler.requests[1]?.context.systemPrompt ?? "";
+      expect(textOccurrences(firstPrompt, "FIRST_SKILL_BODY")).toBe(1);
+      expect(textOccurrences(firstPrompt, "FIRST_PROJECT_CONTEXT")).toBe(1);
+      expect(firstPrompt).not.toContain("UNSELECTED_SKILL_BODY");
+      expect(secondPrompt).not.toContain("FIRST_SKILL_BODY");
+      expect(secondPrompt).not.toContain("FIRST_PROJECT_CONTEXT");
+      expect(textOccurrences(secondPrompt, "SECOND_SKILL_BODY")).toBe(1);
+      expect(textOccurrences(secondPrompt, "SECOND_PROJECT_CONTEXT")).toBe(1);
+      expect(secondPrompt).not.toContain("UNSELECTED_SKILL_BODY");
     } finally {
       await substrate.close();
       await toolCallExecutor.close();
-      await close(server);
     }
   });
 });
+
+class RecordingCompilerFactory implements AgentPiPlanningCompilerFactory {
+  readonly requests: AgentPiPlanningCompileRequest[] = [];
+  summarizations = 0;
+
+  constructor(
+    private readonly respond: (
+      request: AgentPiPlanningCompileRequest,
+      index: number,
+    ) => Awaited<ReturnType<ReturnType<AgentPiPlanningCompilerFactory["create"]>["compile"]>>,
+    private readonly inputTokens?: (request: AgentPiPlanningCompileRequest, index: number) => number,
+  ) {}
+
+  create(
+    options?: Parameters<AgentPiPlanningCompilerFactory["create"]>[0],
+  ): ReturnType<AgentPiPlanningCompilerFactory["create"]> {
+    return {
+      compile: async (request) => {
+        this.requests.push(request);
+        const index = this.requests.length - 1;
+        const inputTokens = this.inputTokens?.(request, index);
+        if (inputTokens !== undefined) {
+          options?.usageSink?.({
+            stage: "test.pi.mid_run",
+            usage: {
+              source: AgentModelUsageSources.ProviderReported,
+              inputTokens,
+              outputTokens: 10,
+              totalTokens: inputTokens + 10,
+            },
+          });
+        }
+        return this.respond(request, index);
+      },
+      summarize: async () => {
+        this.summarizations += 1;
+        return "Native provider test summary.";
+      },
+    };
+  }
+}
+
+function createTurnState(
+  sessionId: string,
+  requestId: string,
+  step: number,
+  toolAccessGrant: AgentToolAccessGrant,
+  modelProvider: ResolvedAgentModelProviderConfig,
+  activeSkills: AgentPiTurnState["context"]["activeSkills"] = [],
+): AgentPiTurnState {
+  return new AgentPiTurnState({
+    approvalMode: "agent",
+    sessionId,
+    requestId,
+    step,
+    toolAccessGrant,
+    toolExposure: new AgentToolExposureState(toolAccessGrant),
+    activeSkills,
+    usageLedger: new AgentModelUsageLedger(),
+    toolPlan: new AgentPiToolPlanCoordinator(),
+    tokenBudget: new AgentTurnTokenBudget({
+      model: modelProvider.Model,
+      contextWindowTokens: modelProvider.ContextWindowTokens,
+      outputReserveTokens: modelProvider.MaxModelOutputTokens ?? 1_024,
+    }),
+  });
+}
 
 function addNumbersTool(workspaceRoot: string): RegisteredTool {
   return {
@@ -331,6 +513,7 @@ function addNumbersTool(workspaceRoot: string): RegisteredTool {
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
     sources: [],
+    childGrant: "inherit",
     evidenceCapabilities: [],
   };
 }
@@ -345,115 +528,12 @@ async function createTemporaryWorkspace(): Promise<string> {
   return root;
 }
 
-function createDeterministicProxy(requests: CapturedRequest[]): Server {
-  return createServer((request, response) => {
-    void handleProxyRequest(request, response, requests).catch((error: unknown) => {
-      response.writeHead(500, { "content-type": "application/json" });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-    });
-  });
-}
-
-function createFinalTextProxy(requests: CapturedRequest[]): Server {
-  return createServer((request, response) => {
-    void (async () => {
-      assert.equal(request.method, "POST");
-      assert.equal(request.url, AgentPiProxyProtocol.routes.chatCompletions);
-      const payload = OpenAiRequestSchema.parse(JSON.parse(await readRequestBody(request)));
-      requests.push({ headers: request.headers, payload });
-      writeOpenAiStream(response, finalTextChunks());
-    })().catch((error: unknown) => {
-      response.writeHead(500, { "content-type": "application/json" });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-    });
-  });
-}
-
-async function handleProxyRequest(
-  request: IncomingMessage,
-  response: ServerResponse,
-  requests: CapturedRequest[],
-): Promise<void> {
-  assert.equal(request.method, "POST");
-  assert.equal(request.url, AgentPiProxyProtocol.routes.chatCompletions);
-  const payload = OpenAiRequestSchema.parse(JSON.parse(await readRequestBody(request)));
-  requests.push({ headers: request.headers, payload });
-  const hasToolResult = payload.messages.some((message) => message.role === "tool");
-  writeOpenAiStream(response, hasToolResult ? finalTextChunks() : toolCallChunks());
-}
-
-async function readRequestBody(request: IncomingMessage): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  return Buffer.concat(chunks).toString("utf8");
-}
-
-function writeOpenAiStream(response: ServerResponse, chunks: readonly object[]): void {
-  response.writeHead(200, {
-    "cache-control": "no-cache",
-    connection: "keep-alive",
-    "content-type": "text/event-stream; charset=utf-8",
-  });
-  for (const chunk of chunks) response.write(`data: ${JSON.stringify(chunk)}\n\n`);
-  response.end("data: [DONE]\n\n");
-}
-
-function toolCallChunks(): object[] {
-  return [
-    completionChunk({
-      role: "assistant",
-      tool_calls: [
-        {
-          index: 0,
-          id: "call_add_numbers",
-          type: "function",
-          function: { name: AddToolName, arguments: '{"left":17,"right":25}' },
-        },
-      ],
-    }),
-    completionChunk({}, "tool_calls"),
-  ];
-}
-
-function finalTextChunks(): object[] {
-  return [completionChunk({ role: "assistant", content: "The result is 42." }), completionChunk({}, "stop")];
-}
-
-function completionChunk(delta: object, finishReason: string | null = null): object {
+function testConfig(workspaceRoot: string): AgentSystemConfig {
   return {
-    id: "chatcmpl-substrate-test",
-    object: "chat.completion.chunk",
-    created: 0,
-    model: "deterministic-tool-loop",
-    choices: [{ index: 0, delta, finish_reason: finishReason }],
+    ModelProviders: [],
+    Server: { Host: "127.0.0.1", Port: 8787 },
+    AgentLoop: { PiSessions: { RootDir: path.join(workspaceRoot, ".senera", "pi-sessions") } },
   };
-}
-
-function assertRequest(request: CapturedRequest | undefined, expectsToolResult: boolean, providerId: string): void {
-  assert(request, "Expected a captured Coding Agent request.");
-  assert.equal(request.headers.authorization, `Bearer ${AgentPiProxyProtocol.apiKey}`);
-  assert.equal(request.headers[AgentPiProxyModelProviderHeader], providerId);
-  assert.equal(request.payload.stream, true);
-  assert(request.payload.tools?.some((tool) => tool.function.name === AddToolName));
-  assert.equal(
-    request.payload.messages.some((message) => message.role === "tool"),
-    expectsToolResult,
-  );
-}
-
-async function listen(server: Server): Promise<string> {
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  const address = server.address();
-  assert(address && typeof address === "object");
-  return `http://127.0.0.1:${address.port}`;
-}
-
-async function close(server: Server): Promise<void> {
-  if (!server.listening) return;
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => (error ? reject(error) : resolve()));
-  });
 }
 
 async function writeSkill(skillRoot: string, marker: string, name = "hot-skill"): Promise<void> {

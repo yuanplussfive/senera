@@ -1,9 +1,8 @@
 import { AgentModelTokenEstimator } from "./AgentTextBudget.js";
+import { maySerializeWithinTokenBudget } from "./AgentBudgetedJsonProjection.js";
 
 export type AgentTokenBudgetInspection =
-  | { readonly kind: "exact"; readonly tokens: number }
-  | { readonly kind: "overBudget"; readonly tokenLimit: number }
-  | { readonly kind: "unknown"; readonly reason: "not_serializable" };
+  { readonly kind: "exact"; readonly tokens: number } | { readonly kind: "overBudget"; readonly tokenLimit: number };
 
 export class AgentTokenBudgetOracle {
   private readonly estimator: AgentModelTokenEstimator;
@@ -13,28 +12,32 @@ export class AgentTokenBudgetOracle {
   }
 
   inspectJson(value: unknown, tokenLimit: number): AgentTokenBudgetInspection {
+    const normalizedLimit = normalizePositiveInteger(tokenLimit);
+    if (!maySerializeWithinTokenBudget(value, normalizedLimit)) {
+      return { kind: "overBudget", tokenLimit: normalizedLimit };
+    }
     const serialized = serializeJson(value);
-    if (serialized === undefined) return { kind: "unknown", reason: "not_serializable" };
-    const inspection = this.estimator.inspect(serialized, normalizePositiveInteger(tokenLimit));
+    const inspection = this.estimator.inspect(serialized, normalizedLimit);
     return inspection.withinLimit
       ? { kind: "exact", tokens: inspection.tokenCount }
-      : { kind: "overBudget", tokenLimit: normalizePositiveInteger(tokenLimit) };
+      : { kind: "overBudget", tokenLimit: normalizedLimit };
   }
 
-  countJson(value: unknown): AgentTokenBudgetInspection {
-    const serialized = serializeJson(value);
-    return serialized === undefined
-      ? { kind: "unknown", reason: "not_serializable" }
-      : { kind: "exact", tokens: this.estimator.estimate(serialized).tokenCount };
+  inspectText(value: string, tokenLimit: number): AgentTokenBudgetInspection {
+    const normalizedLimit = normalizePositiveInteger(tokenLimit);
+    const inspection = this.estimator.inspect(value, normalizedLimit);
+    return inspection.withinLimit
+      ? { kind: "exact", tokens: inspection.tokenCount }
+      : { kind: "overBudget", tokenLimit: normalizedLimit };
   }
 }
 
-function serializeJson(value: unknown): string | undefined {
-  try {
-    return JSON.stringify(value, (_key, entry: unknown) => (typeof entry === "bigint" ? String(entry) : entry));
-  } catch {
-    return undefined;
-  }
+function serializeJson(value: unknown): string {
+  const serialized = JSON.stringify(value, (_key, entry: unknown) =>
+    typeof entry === "bigint" ? String(entry) : entry,
+  );
+  if (serialized === undefined) throw new Error("Token budget inspection requires a JSON-serializable value.");
+  return serialized;
 }
 
 function normalizePositiveInteger(value: number): number {

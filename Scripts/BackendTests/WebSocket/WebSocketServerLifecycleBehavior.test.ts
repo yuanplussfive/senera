@@ -5,7 +5,6 @@ import { AgentWebSocketServer } from "../../../Source/AgentSystem/WebSocket/Agen
 import { AgentCallbackRunEventWriter } from "../../../Source/AgentSystem/WebSocket/AgentCallbackRunEventWriter.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
-import { AgentPiTurnContextRegistry } from "../../../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -28,7 +27,6 @@ describe("WebSocket server lifecycle", () => {
       sessionManager: {} as never,
       userProfileManager: {} as never,
       eventWriter: new AgentCallbackRunEventWriter(vi.fn()),
-      piTurnContexts: new AgentPiTurnContextRegistry(),
     });
 
     await server.start();
@@ -62,7 +60,6 @@ describe("WebSocket server lifecycle", () => {
       sessionManager: {} as never,
       userProfileManager: {} as never,
       eventWriter: new AgentCallbackRunEventWriter(vi.fn()),
-      piTurnContexts: new AgentPiTurnContextRegistry(),
     });
     const mutableServer = server as unknown as {
       httpRouter: { handle(): Promise<void> };

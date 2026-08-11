@@ -20,16 +20,13 @@ import { AgentConversationProjector } from "../Conversation/AgentConversationPro
 import { AgentSchemaValidator } from "../Core/AgentSchemaValidator.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { createSeneraExecutionEnvironments } from "../Execution/SeneraExecutionEnvFactory.js";
-import type { SeneraGvisorWorkerClient } from "../Execution/SeneraGvisorTypes.js";
-import type { SeneraMicrosandboxSdkAdapter } from "../Execution/SeneraMicrosandboxTypes.js";
+import type { SeneraSandboxWorkerClient } from "../Execution/SeneraSandboxWorkerTypes.js";
 import { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import { resolveAgentExecutionResourceLimits } from "../ExecutionResources/AgentExecutionResourceConfig.js";
 import { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
-import { AgentPiToolObservationDigester } from "../Pi/AgentPiToolObservationDigester.js";
 import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 import { AgentPiSubstrate } from "../Pi/AgentPiSubstrate.js";
-import { resolveAgentPiModelMaxTokens } from "../Pi/AgentPiModelProjector.js";
 import { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import { AgentPresetManager } from "../Presets/AgentPresetManager.js";
 import { AgentPromptContextBuilder } from "../Prompt/AgentPromptContextBuilder.js";
@@ -39,16 +36,9 @@ import { AgentResourceAccessPolicy } from "../Safety/AgentResourceAccessPolicy.j
 import { createAgentBamlToolRiskAuditor } from "../Safety/AgentBamlToolRiskAuditor.js";
 import { AgentSeneraOpaPolicyClient } from "../Safety/AgentSeneraOpaPolicyClient.js";
 import { AgentToolPermissionGate } from "../Safety/AgentToolPermissionGate.js";
+import { AgentSessionApprovalLeaseStore } from "../Safety/AgentSessionApprovalLeaseStore.js";
 import { createAgentToolApprovalPolicy } from "../Safety/AgentToolApprovalPolicyFactory.js";
-import { selectAgentSandboxProvider } from "../Sandbox/AgentSandboxProviderSelection.js";
-import {
-  readAgentSandboxDistributionContract,
-  resolveAgentSandboxDistributionTarget,
-} from "../Sandbox/AgentSandboxDistributionContract.js";
-import { resolveAgentSandboxRuntimePaths } from "../Sandbox/AgentSandboxRuntimePreparation.js";
-import { AgentSandboxRuntimeProviders, type AgentSandboxRuntimeProvider } from "../Sandbox/AgentSandboxRuntimeTypes.js";
-import { AgentGvisorWorkerSocketClient } from "../Sandbox/Gvisor/AgentGvisorWorkerClient.js";
-import { resolveAgentGvisorWorkerSocketPath } from "../Sandbox/Gvisor/AgentGvisorRuntimePreparation.js";
+import type { AgentSandboxRuntimeProvider } from "../Sandbox/AgentSandboxRuntimeTypes.js";
 import { AgentSkillActivationService } from "../Skills/AgentSkillActivation.js";
 import {
   createDefaultHostCapabilityRegistry,
@@ -62,7 +52,7 @@ import { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import { AgentToolCatalogProjector } from "../ToolRuntime/AgentToolCatalogProjector.js";
 import { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntime.js";
 import type { AgentToolSearchMemoryStore } from "../ToolSearch/AgentToolSearchMemoryTypes.js";
-import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import { AgentToolSemanticAuditModes, type AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { createXmlProtocolPolicy } from "../Xml/AgentXmlPolicy.js";
 import { AgentRuntimeModuleComposer, type AgentRuntimeModule } from "./AgentRuntimeModule.js";
 import { createDefaultAgentRuntimeServices } from "./AgentRuntimeServices.js";
@@ -70,11 +60,13 @@ import type { AgentMcpToolsChangedHandler } from "../Mcp/AgentMcpToolCatalogChan
 import { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
 import { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
 import type { AgentExtensionValueResolver } from "../Extensions/AgentExtensionValueExpression.js";
-import { AgentPiTurnContextRegistry, type AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
 import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
 import { createAgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
 import type { AgentWorkspaceRuntimeServices } from "./AgentWorkspaceRuntime.js";
 import { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import { createAgentPiPlanningModelAdapter } from "./AgentPiPlanningModelAdapter.js";
+import type { AgentOrchestrationHostRuntime } from "../Orchestration/AgentOrchestrationHostTools.js";
+import { projectSeneraProcessBackendsToToolTargets } from "../ToolRuntime/AgentToolExecutionPlan.js";
 
 export interface AgentSystemRuntimeCompositionOptions {
   workspaceRoot: string;
@@ -85,20 +77,21 @@ export interface AgentSystemRuntimeCompositionOptions {
   logger?: AgentLogger;
   piDiagnostics?: AgentPiDiagnosticSink;
   approvalRuntime?: AgentApprovalRuntime;
+  sessionApprovals?: AgentSessionApprovalLeaseStore;
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
   executionResources?: AgentExecutionResourceBroker;
   sandboxRuntimeReady?: () => boolean;
-  microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
+  sandboxAvailable?: boolean;
   sandboxProvider?: AgentSandboxRuntimeProvider;
-  gvisorWorker?: SeneraGvisorWorkerClient;
+  dockerEngineWorker?: SeneraSandboxWorkerClient;
   toolSearchMemoryStore?: AgentToolSearchMemoryStore;
   onMcpToolsChanged?: AgentMcpToolsChangedHandler;
   mcpInputs?: AgentExtensionValueResolver;
-  piTurnContexts?: AgentPiTurnContextStore;
   workspaceRuntime?: AgentWorkspaceRuntimeServices;
   mcpSampling?: AgentMcpSamplingHandler;
+  orchestration?: AgentOrchestrationHostRuntime;
 }
 
 export function composeAgentSystemRuntime(options: AgentSystemRuntimeCompositionOptions) {
@@ -124,20 +117,15 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
   const approvalRuntime = options.approvalRuntime ?? new AgentApprovalRuntime();
   const interactionInput = options.interactionInput ?? new AgentInteractionInputRuntime();
   const piSessionRegistry = options.piSessionRegistry ?? new AgentPiActiveSessionRegistry();
-  const piTurnContexts = options.piTurnContexts ?? new AgentPiTurnContextRegistry();
   const authorizationPolicyClient = new AgentSeneraOpaPolicyClient({ registry });
   const sandboxRuntimeConfig = resolveSandboxRuntimeConfig(options.config);
-  const sandboxRuntimePaths = tryResolveSandboxRuntimePaths(options.workspaceRoot, sandboxRuntimeConfig);
-  const sandboxProvider =
-    options.sandboxProvider ?? selectAgentSandboxProvider({ preference: sandboxRuntimeConfig.Provider });
-  const gvisorWorker =
-    options.gvisorWorker ??
-    (sandboxProvider === AgentSandboxRuntimeProviders.Gvisor ||
-    sandboxProvider === AgentSandboxRuntimeProviders.DockerEngine
-      ? new AgentGvisorWorkerSocketClient({
-          socketPath: resolveAgentGvisorWorkerSocketPath(options.workspaceRoot, sandboxRuntimeConfig),
-        })
-      : undefined);
+  const sandboxEnabled = sandboxRuntimeConfig.Enabled && process.platform !== "win32";
+  const sandboxAvailable = sandboxEnabled && options.sandboxAvailable === true;
+  const sandboxProvider = options.sandboxProvider;
+  const dockerEngineWorker = options.dockerEngineWorker;
+  if (sandboxAvailable && (!sandboxProvider || !dockerEngineWorker)) {
+    throw new Error("An available sandbox runtime requires an explicit Docker provider and Worker client.");
+  }
   const executionResourceLimits = resolveAgentExecutionResourceLimits(options.config);
   const mcpClientPool = options.workspaceRuntime?.mcpClientPool ?? new AgentMcpToolClientPool();
   const uploadStore =
@@ -147,13 +135,11 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
   const executionEnvironments = createSeneraExecutionEnvironments({
     workspaceRoot: options.workspaceRoot,
     resourcesPath: options.resourcesPath,
-    sandboxRuntimePaths,
-    sandboxEnabled: sandboxRuntimeConfig.Enabled,
+    sandboxAvailable,
+    sandboxEnabled,
     sandboxRuntimeReady: options.sandboxRuntimeReady,
-    microsandboxSdk: options.microsandboxSdk,
     sandboxProvider,
-    gvisorWorker,
-    microsandboxSettings: resolveRuntimeMicrosandboxSettings(sandboxRuntimeConfig),
+    dockerEngineWorker,
     environmentPolicy: resolveToolExecutionConfig(options.config).Environment,
     terminationGraceMs: executionResourceLimits.terminationGraceMs,
     resourceAccessPolicy: new AgentResourceAccessPolicy(authorizationPolicyClient),
@@ -168,7 +154,6 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
     approvalRuntime,
     interactionInput,
     piSessionRegistry,
-    piTurnContexts,
     authorizationPolicyClient,
     executionEnv: executionEnvironments.system,
     toolExecutionEnv: executionEnvironments.tool,
@@ -204,6 +189,8 @@ export function createAgentRuntimeAgentServices(
   options: AgentSystemRuntimeCompositionOptions,
   infrastructure: AgentRuntimeInfrastructure,
 ) {
+  const availableExecutionTargets = () =>
+    projectSeneraProcessBackendsToToolTargets(infrastructure.toolExecutionEnv.capabilities.processBackends);
   const vectorClient = new AgentVectorModelClient(infrastructure.vectorModelsConfig);
   const embedding = infrastructure.vectorModelsConfig.Embedding.Enabled
     ? {
@@ -223,39 +210,56 @@ export function createAgentRuntimeAgentServices(
       memoryStore: options.toolSearchMemoryStore,
       embedding,
       rerank,
+      availableExecutionTargets,
     },
   );
   const skillActivation = new AgentSkillActivationService(infrastructure.registry, toolSearch);
-  const promptContextBuilder = new AgentPromptContextBuilder(infrastructure.registry, options.workspaceRoot);
-  const toolCatalog = new AgentToolCatalogProjector(infrastructure.registry);
+  const promptContextBuilder = new AgentPromptContextBuilder(
+    infrastructure.registry,
+    options.workspaceRoot,
+    () => infrastructure.toolExecutionEnv.capabilities,
+  );
+  const toolCatalog = new AgentToolCatalogProjector(infrastructure.registry, availableExecutionTargets);
   const artifactRecorder = new AgentToolExecutionArtifactRecorder({
     workspaceRoot: options.workspaceRoot,
     config: infrastructure.artifactsConfig,
     model: infrastructure.modelProviderConfig.Model,
+    logger: options.logger,
   });
   const presetManager = new AgentPresetManager({
     workspaceRoot: options.workspaceRoot,
     config: infrastructure.presetsConfig,
   });
+  const toolExecutionConfig = resolveToolExecutionConfig(options.config);
+  const semanticAuditors =
+    infrastructure.modelProviderConfig.ToolPlanningMode === "baml" &&
+    toolExecutionConfig.SemanticAudit.Mode === AgentToolSemanticAuditModes.ApprovalSensitive
+      ? [
+          createAgentBamlToolRiskAuditor({
+            client: new AgentActionPlannerModelClient(
+              infrastructure.modelProviderConfig,
+              infrastructure.actionPlannerConfig.Client,
+              { maxRepairAttempts: infrastructure.actionPlannerConfig.MaxRepairAttempts },
+            ),
+            onFailure: (error) => options.logger?.warn("tool.semantic_audit.failed", { error }),
+          }),
+        ]
+      : [];
   const toolPermissionGate = new AgentToolPermissionGate({
     policy: createAgentToolApprovalPolicy({
       registry: infrastructure.registry,
       policyClient: infrastructure.authorizationPolicyClient,
-      auditors: [
-        createAgentBamlToolRiskAuditor({
-          client: new AgentActionPlannerModelClient(
-            infrastructure.modelProviderConfig,
-            infrastructure.actionPlannerConfig.Client,
-            { maxRepairAttempts: infrastructure.actionPlannerConfig.MaxRepairAttempts },
-          ),
-        }),
-      ],
+      semanticAuditors,
     }),
     approvalRuntime: infrastructure.approvalRuntime,
+    sessionApprovals: options.sessionApprovals ?? new AgentSessionApprovalLeaseStore(),
+    semanticAuditMode: toolExecutionConfig.SemanticAudit.Mode,
+    toolPlanningMode: infrastructure.modelProviderConfig.ToolPlanningMode,
   });
   const hostCapabilities = createDefaultHostCapabilityRegistry({
     toolSearch,
     executionResources: infrastructure.executionResources,
+    orchestration: options.orchestration,
   });
   registerAgentSystemToolHandlers(hostCapabilities, infrastructure.systemTools);
   const toolCallExecutor = new AgentToolCallExecutor({
@@ -268,7 +272,6 @@ export function createAgentRuntimeAgentServices(
     executionResources: infrastructure.executionResources,
     hostCapabilities,
     configPath: options.configPath,
-    emitLifecycleEvents: false,
     interactionInput: infrastructure.interactionInput,
     modelProviderId: options.modelProviderId,
     onMcpToolsChanged: options.onMcpToolsChanged,
@@ -276,33 +279,18 @@ export function createAgentRuntimeAgentServices(
     mcpSampling: infrastructure.mcpSampling,
     uploadStore: infrastructure.uploadStore,
   });
-  const observationModelClient = new AgentActionPlannerModelClient(
-    infrastructure.modelProviderConfig,
-    {
-      ...infrastructure.actionPlannerConfig.Client,
-      Temperature: 0,
-      MaxTokens: resolveAgentPiModelMaxTokens(infrastructure.modelProviderConfig),
-    },
-    { maxRepairAttempts: infrastructure.actionPlannerConfig.MaxRepairAttempts },
-  );
   const piSubstrate = new AgentPiSubstrate({
     workspaceRoot: options.workspaceRoot,
     config: options.config,
     modelProvider: infrastructure.modelProviderConfig,
+    planningCompilerFactory: createAgentPiPlanningModelAdapter(options.config, infrastructure.modelProviderConfig),
     registry: infrastructure.registry,
     toolCallExecutor,
     artifactRecorder,
     executionEnv: infrastructure.executionEnv,
     resourcesPath: options.resourcesPath,
     toolPermissionGate,
-    toolObservationDigester: new AgentPiToolObservationDigester({
-      client: observationModelClient,
-      model: infrastructure.modelProviderConfig.Model,
-      contextWindowTokens: infrastructure.modelProviderConfig.ContextWindowTokens,
-      outputReserveTokens: resolveAgentPiModelMaxTokens(infrastructure.modelProviderConfig),
-    }),
     diagnostics: options.piDiagnostics,
-    turnContexts: infrastructure.piTurnContexts,
     uploadStore: infrastructure.uploadStore,
   });
   const services = new AgentRuntimeModuleComposer().compose(
@@ -332,25 +320,5 @@ export function createAgentRuntimeAgentServices(
     toolCallExecutor,
     piSubstrate,
     services,
-  };
-}
-
-function tryResolveSandboxRuntimePaths(workspaceRoot: string, config: ReturnType<typeof resolveSandboxRuntimeConfig>) {
-  try {
-    return resolveAgentSandboxRuntimePaths(workspaceRoot, config);
-  } catch {
-    return undefined;
-  }
-}
-
-function resolveRuntimeMicrosandboxSettings(config: ReturnType<typeof resolveSandboxRuntimeConfig>) {
-  if (config.Provisioning.Kind === "Oci") {
-    const image = config.Provisioning.Images[0];
-    if (!image) throw new Error("OCI sandbox provisioning requires at least one image.");
-    return { image, pullPolicy: "if-missing" as const };
-  }
-  return {
-    image: resolveAgentSandboxDistributionTarget(readAgentSandboxDistributionContract()).runtimeImage,
-    pullPolicy: "never" as const,
   };
 }

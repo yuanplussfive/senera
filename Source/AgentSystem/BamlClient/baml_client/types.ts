@@ -132,17 +132,6 @@ export interface ExecuteDecision {
   
 }
 
-export interface GroundedDigest {
-  entries: GroundedDigestEntry[]
-  
-}
-
-export interface GroundedDigestEntry {
-  text: string
-  sources: string[]
-  
-}
-
 export interface MemoryCandidate {
   type: string
   subject: string
@@ -200,6 +189,11 @@ export interface MemoryWriteDecision {
 
 export interface MemoryWriteResolutionResult {
   decision: MemoryWriteDecision
+  
+}
+
+export interface PiConversationSummary {
+  summary: string
   
 }
 

@@ -8,8 +8,9 @@ import { isSeneraProtocolType } from "../Source/AgentSystem/Core/AgentProtocolId
 const workspaceRoot = process.cwd();
 const agentSystemRoot = path.join(workspaceRoot, "Source", "AgentSystem");
 const piRoot = path.join(agentSystemRoot, "Pi");
-const piProxyRoot = path.join(agentSystemRoot, "PiProxy");
+const piSharedRoot = path.join(agentSystemRoot, "PiShared");
 const actionPlannerRoot = path.join(agentSystemRoot, "ActionPlanner");
+const runtimeRoot = path.join(agentSystemRoot, "Runtime");
 const agentSystemRuntimePath = path.join(agentSystemRoot, "Runtime", "AgentSystemRuntime.ts");
 
 const removedCompatibilityBarrels = [
@@ -31,27 +32,39 @@ const removedCompatibilityBarrels = [
 const moduleBoundaryPolicies = [
   {
     sourceRoot: piRoot,
-    forbiddenRoot: piProxyRoot,
-    label: "Pi must not import PiProxy",
-    guidance: "move shared protocol contracts to PiShared and wire adapters in Runtime.",
+    forbiddenRoot: actionPlannerRoot,
+    label: "Pi must not import ActionPlanner",
+    guidance: "depend on PiShared contracts and wire the ActionPlanner adapter in Runtime.",
   },
   {
     sourceRoot: actionPlannerRoot,
-    forbiddenRoot: piProxyRoot,
-    label: "ActionPlanner must not import PiProxy",
-    guidance: "depend on an ActionPlanner-owned port or a neutral shared contract.",
-  },
-  {
-    sourceRoot: piProxyRoot,
     forbiddenRoot: piRoot,
-    label: "PiProxy must not import Pi",
-    guidance: "move shared protocol contracts to PiShared and wire implementations in Runtime.",
+    label: "ActionPlanner must not import Pi",
+    guidance: "depend on PiShared contracts and let Runtime own composition.",
   },
   {
-    sourceRoot: piProxyRoot,
+    sourceRoot: piSharedRoot,
+    forbiddenRoot: piRoot,
+    label: "PiShared must not import Pi implementations",
+    guidance: "keep shared modules limited to neutral data and protocol contracts.",
+  },
+  {
+    sourceRoot: piSharedRoot,
     forbiddenRoot: actionPlannerRoot,
-    label: "PiProxy must not import ActionPlanner",
-    guidance: "depend on a PiProxy port or a neutral contract and wire the implementation in Runtime.",
+    label: "PiShared must not import ActionPlanner implementations",
+    guidance: "keep shared modules limited to neutral data and protocol contracts.",
+  },
+  {
+    sourceRoot: piRoot,
+    forbiddenRoot: runtimeRoot,
+    label: "Pi must not import Runtime composition",
+    guidance: "declare a Pi-owned port and implement it in Runtime.",
+  },
+  {
+    sourceRoot: actionPlannerRoot,
+    forbiddenRoot: runtimeRoot,
+    label: "ActionPlanner must not import Runtime composition",
+    guidance: "declare an ActionPlanner-owned port and implement it in Runtime.",
   },
 ] as const;
 

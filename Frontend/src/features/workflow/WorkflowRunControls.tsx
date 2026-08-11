@@ -99,7 +99,7 @@ export function RunSelector({
 
 function RunStatusIcon({ status, className }: { status: RunRecord["status"]; className?: string }): JSX.Element {
   const baseClassName = "grid h-[18px] w-[18px] shrink-0 place-items-center rounded-md";
-  if (status === "running") {
+  if (status === "running" || status === "cancelling") {
     return (
       <span className={cn(baseClassName, "bg-umber-50 text-umber-600", className)} data-workflow-run-status={status}>
         <Spinner size="xs" />

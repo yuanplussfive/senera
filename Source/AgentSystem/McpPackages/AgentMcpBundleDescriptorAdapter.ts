@@ -15,8 +15,8 @@ import {
 } from "./AgentMcpDescriptorAdapter.js";
 import type { AgentMcpInputDefinition } from "./AgentMcpInputDefinition.js";
 import {
-  AgentMcpExecutionTargets,
   AgentMcpExecutionTargetSchema,
+  createAgentMcpDefaultLocalExecution,
   type AgentMcpExecution,
 } from "./AgentMcpPackageSchema.js";
 
@@ -52,7 +52,7 @@ export const AgentMcpBundleDescriptorAdapter: AgentMcpDescriptorAdapter = {
     return {
       name: context.directoryName,
       descriptorKind: "mcpb",
-      execution: projectExecution(manifest._meta, context),
+      execution: projectExecution(manifest._meta),
       servers: [
         {
           name: serverId,
@@ -203,7 +203,7 @@ function projectStringRecord(
   );
 }
 
-function projectExecution(meta: unknown, context: AgentMcpDescriptorContext): AgentMcpExecution {
+function projectExecution(meta: unknown): AgentMcpExecution {
   if (isRecord(meta) && meta[SeneraExecutionMetadataKey] !== undefined) {
     const execution = requireMcpRecord(meta[SeneraExecutionMetadataKey], SeneraExecutionMetadataKey, ["_meta"]);
     const targets = Array.isArray(execution.targets)
@@ -215,8 +215,7 @@ function projectExecution(meta: unknown, context: AgentMcpDescriptorContext): Ag
     }
     return { targets, preferred };
   }
-  const target = context.source === "bundled" ? AgentMcpExecutionTargets.Local : AgentMcpExecutionTargets.Sandbox;
-  return { targets: [target], preferred: target };
+  return createAgentMcpDefaultLocalExecution();
 }
 
 function runtimeExpression(key: "packageRoot" | "workspaceRoot"): AgentExtensionValueExpression {

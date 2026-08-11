@@ -2,13 +2,12 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { z } from "zod";
 import {
-  readAgentPiMessageTextContent,
   readAgentPiToolObservation,
+  readAgentPiToolObservationArtifactUri,
+  readAgentPiMessageTextContent,
   isAgentPiToolResultMessage,
 } from "./AgentPiToolObservation.js";
-import { parseAgentPiToolDetails } from "./AgentPiToolResultDetails.js";
-import { readStringArray, uniqueStrings } from "../Core/AgentCollections.js";
-import { readAgentNonBlankString, readAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
+import { uniqueStrings } from "../Core/AgentCollections.js";
 
 export const AgentPiArtifactIndexCustomType = "senera.artifact_index";
 
@@ -86,27 +85,25 @@ export function mergeAgentPiArtifactReferences(
 function projectToolResultArtifactReferences(message: AgentMessage): AgentPiArtifactReference[] {
   if (!isAgentPiToolResultMessage(message)) return [];
 
-  const record = readAgentUnknownRecord(message);
-  const details = parseAgentPiToolDetails(record?.details)?.senera;
   const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
-  const toolName = details?.toolName ?? readAgentNonBlankString(record?.toolName);
-  const callId = details?.callId ?? readAgentNonBlankString(record?.toolCallId);
-  const artifactUri = details?.artifactUri ?? readAgentNonBlankString(observation?.artifact_uri);
-  const references = artifactUri ? [createArtifactReference({ artifactUri, toolName, callId })] : [];
+  if (!observation) return [];
+  const artifactUri = readAgentPiToolObservationArtifactUri(observation);
+  const references = artifactUri
+    ? [createArtifactReference({ artifactUri, toolName: message.toolName, callId: message.toolCallId })]
+    : [];
 
   return [
     ...references,
-    ...readEvidenceEntries(observation?.evidence).flatMap((evidence) => {
-      const evidenceUri = readAgentNonBlankString(evidence.evidence_uri);
-      const evidenceArtifactUri = readAgentNonBlankString(evidence.artifact_uri) ?? artifactUri;
+    ...observation.detail.evidence.flatMap((evidence) => {
+      const evidenceArtifactUri = evidence.artifact_uri ?? artifactUri;
       return evidenceArtifactUri
         ? [
             createArtifactReference({
               artifactUri: evidenceArtifactUri,
-              toolName,
-              callId,
-              evidenceUri,
-              refs: readStringArray(evidence.artifact_refs, { deduplicate: true, rejectBlank: true }),
+              toolName: message.toolName,
+              callId: message.toolCallId,
+              evidenceUri: evidence.evidence_uri,
+              refs: uniqueStrings(evidence.artifact_refs ?? []),
             }),
           ]
         : [];
@@ -128,13 +125,4 @@ function createArtifactReference(input: {
     evidenceUris: input.evidenceUri ? [input.evidenceUri] : [],
     refs: uniqueStrings(input.refs ?? []),
   };
-}
-
-function readEvidenceEntries(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value)
-    ? value.flatMap((entry) => {
-        const record = readAgentUnknownRecord(entry);
-        return record ? [record] : [];
-      })
-    : [];
 }

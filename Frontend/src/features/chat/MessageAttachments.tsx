@@ -284,8 +284,8 @@ function ImagePreviewDialog({
               <Download className="h-4 w-4" />
             </IconButton>
             <IconButton
-              label={frontendMessage("desktop.window.close")}
-              tooltip={frontendMessage("desktop.window.close")}
+              label={frontendMessage("ui.close")}
+              tooltip={frontendMessage("ui.close")}
               tooltipSide="bottom"
               size="md"
               className={controlClassName}

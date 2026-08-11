@@ -12,19 +12,19 @@
 
 写 senera 的起点是一个很具体的烦恼：常见的 Agent 应用，要么是聊天壳，模型说得好听、动手全凭运气；要么把工具调用押在供应商的原生 tools 实现上，换一家模型服务，行为就跟着变。参数里多一个没转义的引号，整条链路断在半路，用户只能对着加载圈干等，事后连模型到底做过什么都查不到。
 
-所以 senera 把两件事放进同一个产品里认真做：让模型正常说话，也让它的每一次行动都过校验、可审批、留证据。模型只需要稳定输出文本，统一的 PiProxy 决策层和 Pi 多步工具循环会把文本约束成结构化动作——上游是 OpenAI、Claude、Gemini 还是任何 OpenAI-compatible 服务，走的都是同一条链路，不依赖供应商是否实现原生 tools。
+所以 senera 把两件事放进同一个产品里认真做：让模型正常说话，也让它的每一次行动都过校验、可审批、留证据。Pi Coding Agent 是唯一的会话与多步工具循环内核；每个模型可以明确选择原生 Tool Calling 或 BAML 结构化规划，两条路径共享同一套校验、授权、执行、观测和会话语义，不会在运行中静默切换。
 
 ---
 
 ## 它是怎么做的
 
-senera 把状态按职责拆开：产品 Conversation 保存用户消息和最终回答；Pi Session JSONL 保存 assistant、tool call、tool result、分支和压缩记录；Artifact 保存原始输出、投影、证据、工作区变更和完整性 receipt；Memory 保存指向这些来源的学习索引。所有上游模型都经过 PiProxy + BAML 投影成可校验动作，供应商差异被挡在投影层外面。
+senera 把状态按职责拆开：产品 Conversation 保存用户消息和最终回答；Pi Session JSONL 保存 assistant、tool call、tool result、分支和压缩记录；Artifact 保存原始输出、投影、证据、工作区变更和完整性 receipt；Memory 保存指向这些来源的学习索引。Pi provider 可以把支持 Tool Calling 的端点直接适配为原生工具流，也可以通过 BAML 把普通模型输出编译成可校验动作；供应商差异被挡在模型适配层外面。
 
 工具调用不靠模型"猜对格式"。每个注册工具都有输入、输出和执行合同，模型生成的动作先过结构校验，参数再由 AJV 或 Zod 对真实 schema 校验。结构错了，会带着具体字段路径进入修复流程，而不是把坏 JSON 直接交给工具执行。执行过程对用户也不是黑箱：前端把预回复、工具计划、审批、开始执行、结果摘要、失败原因和最终回复分开展示，看到的是"边说边做"的过程，而不是等很久之后只拿到一个最终答案。
 
 工具多了会把上下文塞爆，这件事没有银弹，senera 的取舍是动态检索：结合本地索引、BM25/RRF/MMR 和 SQLite 记忆反馈，只把当前任务真正可能用到的工具放进上下文。工具结果则生成 artifact/evidence 包，长期上下文优先使用摘要和证据投影，需要时再取回原始内容——旧日志、旧搜索结果不会一直躺在上下文里，追查时也能回到模型当时真正依据的东西。
 
-工具边界由注册合同确定：执行目标、网络能力、工作区权限、资源语义和 artifact 策略。System Tool 可以使用受信任的宿主能力，MCP package 可以放进 microsandbox microVM 边界。Sandbox 不可用或被部署禁用时，运行时会明确拒绝该执行目标，绝不会悄悄改在本机执行。
+工具边界由注册合同确定：执行目标、网络能力、工作区权限、资源语义和 artifact 策略。System Tool 可以使用受信任的宿主能力，MCP package 可以放进 Docker Linux 沙箱边界。Sandbox 不可用或被部署禁用时，运行时会明确拒绝该执行目标，绝不会悄悄改在本机执行。
 
 ---
 
@@ -40,21 +40,21 @@ senera 把每一轮任务拆成清晰的动作：
 
 `CallTools` 不要求模型一次性写出所有复杂参数。运行时会先让模型选择需要的工具和依赖关系，再并发生成各个工具的参数。工具调用 ID 由宿主生成，例如 `call_xxx`，依赖关系在宿主侧投影和校验，避免把稳定性押在模型自己编 ID 上。
 
-### PiProxy + Pi 工具循环
+### Pi Provider + 双工具规划链路
 
-PiProxy 负责把不同供应商的文本生成能力统一约束成结构化动作，Pi 负责会话、流式文本、工具调用和多步循环。供应商原生 tools 不参与运行时分支，所有模型遵循同一条链路：
+Pi 负责会话树、流式消息、工具调用、多步循环和 compaction。每个模型显式选择一种工具规划模式，运行中不会静默切换：
 
-1. Pi 从当前 Session 分支读取规范消息上下文。
-2. PrepareInteraction 在一次结构化调用中完成追问理解，并生成首个 FinalAnswer、AskUser 或 CallTools 动作。
-3. PiProxy 一次性消费这个已验证首动作，不重复调用动作选择模型。
-4. 如果需要工具，按真实 JSON Schema 校验参数并执行工具。
-5. 把模型可见 observation 写成 Pi tool result；完整结果发布为 Artifact，只有后续动作才调用 SelectPiAction，直至最终回答。
+1. `native` 由对应 Endpoint 的 Pi adapter 把真实 JSON Schema 直接交给供应商 Tool Calling API；模型返回的 tool calls 进入 Pi 原生工具循环，不经过 BAML 动作提示词或二次规划。
+2. `baml` 由 PlanningContextCompiler 验证 Observation v3 并生成规划 DTO，再由 PlanningCompiler 生成 `Direct`、`AskUser` 或 `Execute`；结构无效时才进入定向 repair。
+3. 两条链路在类型化工具调用边界汇合，共享参数校验、授权、审批、资源租约和受控并发调度。
+4. 工具桥把完整结果发布为 Artifact，只把一次声明式、可恢复的 Observation v3 投影写回 Pi。
+5. Pi 继续下一步或生成最终回答；历史压缩、分支和工具消息生命周期始终由 Pi session 管理。
 
-这让工具能力与供应商 API 解耦。底层不是把所有提示词写死成一大段，而是把工具协议、上下文策略、证据投影和工具描述分层生成。
+这让支持原生 Tool Calling 的模型走最短链路，同时让普通模型通过 BAML 获得同等的工具执行语义。工具协议、上下文策略、证据投影和工具描述都由声明式合同生成。
 
 ### 分层保存上下文
 
-Pi Session JSONL 保存标准消息结构和工具生命周期，Conversation SQLite 保存用户原话与最终回复。即使某些上游接口不接受 `role: "tool"`，协议差异也只在 PiProxy 请求边界投影，不会污染产品对话数据。
+Pi Session JSONL 保存标准消息结构和工具生命周期，Conversation SQLite 保存用户原话与最终回复。供应商协议差异只存在于 Senera 的模型 transport 边界，不会污染 Pi session 或产品对话数据。
 
 大结果不会在多个存储层复制：Pi tool result 持有模型所需 observation 和 `details.senera` 引用；Artifact 持有完整内容与校验 receipt；Memory 持有 URI 索引。Pi 原生 compaction 会删除旧消息，但在当前分支留下隐藏 Artifact 索引；每次请求只在真实剩余 token 预算内注入最近且尚未可见的 URI，旧引用可通过 Memory 定位后再读取。
 
@@ -103,7 +103,7 @@ npm ci
 npm run dev
 ```
 
-`nano` 只保留开发服务器、前端、核心源码、MCP packages、Skills 和对应依赖，不包含 Docker、Electron、安装包、测试、覆盖率和发布工具。它在 `main` 完整验证通过后自动重建，不接收直接提交或 Pull Request。分支内置经过 SHA-256 校验的版本化 Sandbox Bundle，首次准备沙箱不再访问 GitHub Releases 或容器镜像仓库。
+`nano` 只保留开发服务器、前端、核心源码、MCP packages、Skills 和对应依赖，不包含 Compose 部署、Electron、安装包、测试、覆盖率和发布工具。它在 `main` 完整验证通过后自动重建，不接收直接提交或 Pull Request。Nano 与主发行版使用同一 Docker Worker；本机需要已启动 Linux containers 模式的 Docker Desktop / Docker Engine，首次运行按配置拉取并校验版本化沙箱镜像。
 
 ### Docker
 
@@ -131,14 +131,14 @@ docker compose up -d --pull always
 
 容器会在每次启动时同步 Compose 声明的管理员资料：未变化时不重写，用户名、显示名或密码变化时更新账户；磁盘只保存 `scrypt` 密码哈希。服务通过 `8787:8787` 发布，随后可打开 `http://localhost:8787` 或已加入 Origin 白名单的 IP 地址。运行数据默认保存在 Docker volume 里。部署、日志、非 root 容器权限和沙箱说明见 [部署与运维](docs/Operations.md)，版本变化见 [更新记录](CHANGELOG.md)。
 
-Docker 不把 Microsandbox OCI Bundle 塞进应用镜像，也不调用 Docker `/images/load`。`docker compose pull` 使用标准 Registry 协议分别获取应用镜像和版本化沙箱运行时，支持分层缓存、断点续传和平台校验；Worker 只使用 Compose 已准备好的镜像，缺失时明确失败，不会下载、导入或猜测镜像身份。正式发布的应用与沙箱镜像都附带 SBOM，发布验证和生产部署使用 `name@sha256:...` 引用。gVisor 与受限 Docker Engine provider 共用只读根文件系统、非 root 用户、能力全移除、`no-new-privileges`、资源限制和统一网络策略。默认允许正常联网，只有工具显式声明 `Network: Deny` 时才断网。完整前提见 [部署与运维](docs/Operations.md#docker-启动)。
+`docker compose pull` 使用标准 Registry 协议分别获取应用镜像和版本化沙箱运行时，支持分层缓存、断点续传和平台校验；Worker 只使用 Compose 已准备好的镜像，缺失时明确失败，不会导入或猜测镜像身份。正式发布的应用与沙箱镜像都附带 SBOM，发布验证和生产部署使用 `name@sha256:...` 引用。gVisor 与受限 Docker Engine provider 共用只读根文件系统、非 root 用户、能力全移除、`no-new-privileges`、资源限制和统一网络策略。默认允许正常联网，只有工具显式声明 `Network: Deny` 时才断网。完整前提见 [部署与运维](docs/Operations.md#docker-启动)。
 
 ### 本地开发
 
 ```bash
 npm ci
 copy senera.config.example.json senera.config.json
-npm run sandbox.archive
+npm run sandbox.prepare
 npm run dev
 ```
 
@@ -148,7 +148,7 @@ macOS / Linux 创建配置文件：
 cp senera.config.example.json senera.config.json
 ```
 
-然后编辑 `senera.config.json`，填好模型服务的 `BaseUrl`、`ApiKey` 和 `Model`。首次读取后，`ApiKey` 和敏感请求头会以 AES-256-GCM 密文写回 JSON/SQLite；未设置 `SENERA_CONFIG_SECRET_KEY` 时，本地密钥保存在工作区 `.senera/data/config/config-secrets.key`。不要提交或丢失这个文件，生产环境建议改用独立注入的环境密钥。运行期间通过设置界面提交的配置由配置服务直接生效，并同步写回 JSON 镜像，不会触发开发服务器重启；直接编辑磁盘配置后需要显式重启开发服务。`sandbox.archive` 是开发环境显式的 Bundle 准备步骤，会在 `Release/SandboxImage` 生成与正式包相同的压缩资产；服务启动本身只读取本地文件，不会自动下载或回退。启动后打开 `http://127.0.0.1:5173`。
+然后编辑 `senera.config.json`，填好模型服务的 `BaseUrl`、`ApiKey` 和 `Model`。首次读取后，`ApiKey` 和敏感请求头会以 AES-256-GCM 密文写回 JSON/SQLite；未设置 `SENERA_CONFIG_SECRET_KEY` 时，本地密钥保存在工作区 `.senera/data/config/config-secrets.key`。不要提交或丢失这个文件，生产环境建议改用独立注入的环境密钥。运行期间通过设置界面提交的配置由配置服务直接生效，并同步写回 JSON 镜像，不会触发开发服务器重启；直接编辑磁盘配置后需要显式重启开发服务。`sandbox.prepare` 使用 `Dockerfile.sandbox` 构建并逐项探测本地版本化镜像；Shell 工具链和 Linux PTY Sidecar 都由该镜像提供，不需要宿主侧运行时副本。后续启动按 `SandboxRuntime.Docker.PullPolicy` 复用或更新镜像。启动后打开 `http://127.0.0.1:5173`。
 
 仓库使用 npm workspaces，只需要在根目录执行一次 `npm ci`。依赖版本由根目录 `package-lock.json` 锁定；只有主动增删依赖时才使用 `npm install <package>`，并同时提交 `package.json` 和 `package-lock.json`。
 
@@ -171,7 +171,7 @@ cp senera.config.example.json senera.config.json
 - Google GenerateContent
 - OpenAI-compatible Chat Completions 服务
 
-供应商原生 tools 不是运行时前提。senera 使用统一的结构化投影、校验、修复、执行和回填链路，使不支持原生工具调用的模型也能进入相同的 Pi 工具循环。
+模型可以选择 `native` 或 `baml`。`native` 要求模型能力和 Endpoint adapter 都支持 Tool Calling；`baml` 为不支持原生调用或需要结构化规划的模型生成可校验动作。两种模式共享执行和回填合同，但不会共享规划提示词。
 
 ---
 
@@ -188,7 +188,7 @@ cp senera.config.example.json senera.config.json
 - `ToolSearchTool`：动态工具发现。
 - `ArtifactReadTool`：读取可追溯 artifact 资源，JSON 使用预计算结构 sidecar、独立 index/query cursor 和可续传 typed query；`MemoryRecallTool`、`MemoryWriteTool`：长期记忆。
 - `AskUserTool`：缺少必要信息时向用户提问。
-- `ShellCommandTool`、`ShellStartTool` 和 Execution Resource 工具：受控命令与后台终端。
+- `ShellCommandTool` 和 Execution Resource 工具：受控命令会按初始等待窗口自动转为可恢复后台资源；交互式任务使用终端资源。
 - `ShellCommandTool`：受控读取、搜索、测试、构建和诊断；`WorkspaceApplyPatch`：原子修改工作区。
 - `WorkspaceApplyPatch`：原子应用结构化文件 patch，并对 `.senera/skills` 候选执行提交前预检。
 - `System/Skills`：代码执行、工作区调查、前端检查、文档/图片理解、联网研究、天气和 Skill 创建工作流。
@@ -217,17 +217,6 @@ senera 会把工具调用结果整理成 artifact pack，包括输入、原始�
 
 ---
 
-## 目前的局限
-
-有些事还没做好，写在这里，省得部署完才发现：
-
-- 认证是单管理员账户模型，没有多用户和权限分级。适合个人和小团队自部署，不适合直接当多租户服务开给别人用。
-- 桌面端目前只打包 Windows 安装包；macOS 和 Linux 请用 Web 或 Docker 方式运行。
-- 界面文案是中英双语，但后端错误消息目前只有中文目录，英文界面偶尔会看到中文报错。
-- 自动化测试覆盖 Chromium 和 Electron，暂时没有 Firefox / WebKit 的跨浏览器回归。
-
----
-
 ## 项目结构
 
 ```text
@@ -252,6 +241,7 @@ senera/
 更多开发细节可以看：
 
 - [核心链路导览](docs/Architecture/CoreFlow.md)
+- [事件观测架构](docs/Architecture/EventObservability.md)
 - [WebSocket 协议参考](docs/API/WebSocketProtocol.md)
 - [开发手册](docs/Development/README.md)
 - [Skills 与外部工具](docs/Development/ManagedExtensions.md)

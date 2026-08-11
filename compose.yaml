@@ -1,7 +1,7 @@
 # Production deployments should set both variables to registry references with
 # digests. Versioned tags remain as local-development defaults.
-x-senera-image: &senera-image ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:1.9.7}
-x-senera-sandbox-image: &senera-sandbox-image ${SENERA_SANDBOX_IMAGE:-ghcr.io/yuanplussfive/senera:sandbox-runtime-1.0.3}
+x-senera-image: &senera-image ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:1.9.11}
+x-senera-sandbox-image: &senera-sandbox-image ${SENERA_SANDBOX_IMAGE:-ghcr.io/yuanplussfive/senera:sandbox-runtime-1.1.0}
 
 x-senera-runtime: &senera-runtime
   image: *senera-image
@@ -18,7 +18,7 @@ x-senera-runtime: &senera-runtime
     # Set this once in the host environment or the gitignored .env file.
     # When empty, Senera persists a local key in /data/.senera instead.
     SENERA_CONFIG_SECRET_KEY: "${SENERA_CONFIG_SECRET_KEY:-}"
-    SENERA_GVISOR_WORKER_SOCKET: /run/senera-sandbox/worker.sock
+    SENERA_SANDBOX_WORKER_ENDPOINT: /run/senera-sandbox/worker.sock
     SENERA_RUNTIME_IMAGE_REFERENCE: *senera-image
     # Change these three values before the first start. They remain
     # authoritative when the container is restarted.
@@ -56,20 +56,21 @@ services:
   sandbox-worker:
     image: *senera-image
     pull_policy: always
-    entrypoint: ["node", "Dist/Apps/GvisorWorker.js"]
+    entrypoint: ["node", "Dist/Apps/SandboxWorker.js"]
     command: []
     user: "0:0"
     environment:
-      SENERA_GVISOR_WORKER_SOCKET: /run/senera-sandbox/worker.sock
+      SENERA_SANDBOX_WORKER_ENDPOINT: /run/senera-sandbox/worker.sock
       # Docker controls access through this dedicated named volume. The main
       # service runs as node, while the Worker remains root for Docker Engine.
-      SENERA_GVISOR_WORKER_SOCKET_MODE: "0666"
-      SENERA_DOCKER_ENGINE_SOCKET: /run/docker-engine.sock
+      SENERA_SANDBOX_WORKER_ENDPOINT_MODE: "0666"
+      SENERA_DOCKER_ENGINE_ENDPOINT: /run/docker-engine.sock
       SENERA_DOCKER_SANDBOX_PROVIDER: auto
       SENERA_DOCKER_SANDBOX_IMAGE: *senera-sandbox-image
-      SENERA_GVISOR_WORKSPACE_KIND: volume
-      SENERA_GVISOR_WORKSPACE_SOURCE: senera-data
-      SENERA_GVISOR_COPY_SOURCE_ROOTS: '["/app","/data","/tmp"]'
+      SENERA_DOCKER_SANDBOX_PULL_POLICY: never
+      SENERA_SANDBOX_WORKSPACE_KIND: volume
+      SENERA_SANDBOX_WORKSPACE_SOURCE: senera-data
+      SENERA_SANDBOX_COPY_SOURCE_ROOTS: '["/app","/data","/tmp"]'
     volumes:
       - /var/run/docker.sock:/run/docker-engine.sock
       - senera-data:/data:ro
@@ -90,7 +91,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "const fs=require('node:fs');process.exit(fs.statSync(process.env.SENERA_GVISOR_WORKER_SOCKET).isSocket()?0:1)",
+          "const fs=require('node:fs');process.exit(fs.statSync(process.env.SENERA_SANDBOX_WORKER_ENDPOINT).isSocket()?0:1)",
         ]
       interval: 5s
       timeout: 3s

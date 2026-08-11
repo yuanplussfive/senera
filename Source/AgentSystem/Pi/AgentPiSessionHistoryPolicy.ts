@@ -2,7 +2,6 @@ import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import { readAgentString, readAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
 import { AgentPiToolObservationContractRevision } from "../PiShared/AgentPiToolObservationProtocol.js";
 import {
-  isAgentPiObservationContextProjected,
   isAgentPiObservationSourceBounded,
   isAgentPiToolResultMessage,
   readAgentPiMessageTextContent,
@@ -42,10 +41,6 @@ export function hasIncompatibleAgentPiToolObservationHistory(sessionManager: Age
   return sessionManager.buildSessionContext().messages.some((message) => {
     if (!isAgentPiToolResultMessage(message)) return false;
     const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
-    return (
-      observation !== undefined &&
-      !isAgentPiObservationSourceBounded(observation) &&
-      !isAgentPiObservationContextProjected(observation)
-    );
+    return observation === undefined || !isAgentPiObservationSourceBounded(observation);
   });
 }

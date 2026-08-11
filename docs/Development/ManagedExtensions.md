@@ -86,7 +86,9 @@ Manifest owns extension metadata and maps contract to a pre-registered capabilit
 
 `Extensions.<id>.Enabled: false` 会停止整个包的 host Tool、Skill 和 MCP contribution。`Configuration` 继承主配置的 revision、回滚、热更新和运行时 cache invalidation；它只能保存普通 JSON，Secret 必须使用 MCP input/binding 和加密 Vault。
 
-Code-defined Zod tools use the same runtime packages. `npm run generate.system-extension-contracts` generates their committed contracts and manifests; `npm run verify.system-extension-contracts` prevents Zod/static contract drift. Implementations remain pre-registered host handlers.
+Code-defined Zod tools use the same runtime packages. `npm run generate.system-extension-contracts` generates their committed contracts and manifests; `npm run verify.system-extension-contracts` prevents Zod/static contract drift. Implementations remain pre-registered host handlers. For bundled handlers registered outside the generated System Tool catalog, `AgentBundledHostToolInputContracts` binds the authoritative runtime Zod schema to an exact capability. Generation discovers the matching contribution from manifests and updates only its `inputSchema`; package paths and tool names are not duplicated in the registry, and missing or duplicate capabilities fail the build.
+
+Input contracts always use standard JSON. Array fields are arrays (`"refs": ["raw"]`), not XML projection wrappers (`"refs": { "item": ["raw"] }`). XML wrappers exist only inside the BAML prompt projection and are never normalized at the Host Tool boundary. Native and BAML planning therefore receive the same generated JSON Schema and the runtime validates exactly that shape.
 
 `skill` and `mcpServer` contributions may reference a standard Skill directory or a standard MCP descriptor inside a composite System extension. This does not create another MCP dialect.
 

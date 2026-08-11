@@ -31,6 +31,37 @@ export class AgentWebSocketApprovalRequestHandlers {
       });
     }
   }
+
+  async resolveBatch(
+    request: AgentWebSocketRequestOf<"approval.resolve_batch">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    const approvalRuntime = this.context.approvalRuntime;
+    if (!approvalRuntime) throw new AgentLocalizedError("websocket.approvalServiceDisabled");
+
+    const resolutions = await approvalRuntime.tryResolveBatch({
+      sessionId: request.sessionId,
+      requestId: request.requestId,
+      batchId: request.batchId,
+      decision: request.decision,
+      message: request.message,
+    });
+    if (!resolutions) {
+      await sendEvent({
+        kind: AgentEventKinds.RequestInvalid,
+        context: { sessionId: request.sessionId, requestId: request.requestId },
+        data: {
+          code: "approval_not_pending",
+          ...projectAgentMessage("approval.batchNotPending", { batchId: request.batchId }),
+          details: {
+            sessionId: request.sessionId,
+            requestId: request.requestId,
+            batchId: request.batchId,
+          },
+        },
+      });
+    }
+  }
 }
 
 export class AgentWebSocketInteractionInputRequestHandlers {

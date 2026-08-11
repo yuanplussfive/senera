@@ -5,6 +5,7 @@ const easeOut = [0.22, 1, 0.36, 1] as const;
 const easeInOut = [0.4, 0, 0.2, 1] as const;
 export type DialogMotionPreset = "modal" | "focus";
 export type DialogPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
+export type DisclosureVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export type DrawerPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export type OverlayVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export const dialogPresenceExitMs = 180;
@@ -21,6 +22,8 @@ export const motionTimings = {
   dialog: { duration: 0.16, ease: easeOut } satisfies Transition,
   modalOpen: { duration: 0.16, ease: easeOut } satisfies Transition,
   modalClose: { duration: 0.1, ease: easeOut } satisfies Transition,
+  drawerOpen: { duration: 0.16, ease: easeOut } satisfies Transition,
+  drawerClose: { duration: 0.12, ease: easeOut } satisfies Transition,
   slow: { duration: 0.18, ease: easeOut } satisfies Transition,
   selection: { duration: 0.24, ease: easeInOut } satisfies Transition,
   panelOpen: { duration: 0.28, ease: easeOut } satisfies Transition,
@@ -71,6 +74,26 @@ export function readListTransition(level: MotionLevel, delay = 0): Transition {
 
 export function readTapScale(level: MotionLevel): number | undefined {
   return level === "full" ? 0.985 : undefined;
+}
+
+export function readDisclosureVariants(level: MotionLevel): DisclosureVariants {
+  if (level === "reduced") {
+    return {
+      hidden: { opacity: 0 },
+      show: { opacity: 1 },
+      exit: { opacity: 0 },
+    };
+  }
+  return {
+    hidden: { height: 0, opacity: level === "none" ? 1 : 0 },
+    show: { height: "auto", opacity: 1 },
+    exit: { height: 0, opacity: level === "none" ? 1 : 0 },
+  };
+}
+
+export function readDisclosureTransition(level: MotionLevel, state: "show" | "exit" = "show"): Transition {
+  if (level === "none") return { duration: 0 };
+  return state === "exit" ? motionTimings.fast : motionTimings.base;
 }
 
 export function readMessageItemVariants(level: MotionLevel): Variants {
@@ -175,6 +198,11 @@ export function readDialogPanelTransition(
   if (level === "reduced") return motionTimings.base;
   if (preset === "modal") return state === "exit" ? motionTimings.modalClose : motionTimings.modalOpen;
   return preset === "focus" ? motionTimings.dialog : motionTimings.dialog;
+}
+
+export function readDrawerTransition(level: MotionLevel, state: "show" | "exit" = "show"): Transition {
+  if (level === "none") return { duration: 0 };
+  return state === "exit" ? motionTimings.drawerClose : motionTimings.drawerOpen;
 }
 
 export function readDrawerVariants(level: MotionLevel, side: "left" | "right" = "right"): DrawerPanelVariants {

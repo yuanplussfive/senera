@@ -57,8 +57,8 @@
     },
     {
       "kind": "hostTool",
-      "contract": "tools/ShellStartTool.tool.json",
-      "capability": "shell.start",
+      "contract": "tools/TerminalStartTool.tool.json",
+      "capability": "terminal.start",
       "recommendedForSkills": []
     }
   ]

@@ -95,7 +95,7 @@ export interface SeneraAuthorizedTerminalSpawnerOptions {
   readonly sandbox?: SeneraTerminalBackend;
   readonly backends?: Iterable<SeneraTerminalBackend>;
   readonly environmentPolicy?: SeneraProcessEnvironmentPolicy | SeneraProcessEnvironmentPolicyOptions;
-  /** Whether this runtime is allowed to create a microsandbox guest. */
+  /** Whether this runtime is allowed to create a Docker Engine sandbox guest. */
   readonly sandboxEnabled?: boolean;
 }
 

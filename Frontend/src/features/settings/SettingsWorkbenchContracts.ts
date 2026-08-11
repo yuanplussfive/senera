@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { MotionLevel } from "../../shared/motion";
+import type { MotionLevel } from "../../shared/motion/types";
 import type { LayoutPreferenceId } from "../session/types";
 import type { SettingsSystemConfigHandle } from "./SettingsContracts";
 import type { SettingsSectionId } from "./types";

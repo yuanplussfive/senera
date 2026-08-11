@@ -35,21 +35,16 @@ import { AgentApprovalRuntime } from "../Source/AgentSystem/Approvals/AgentAppro
 import { AgentPiActiveSessionRegistry } from "../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import { AgentPiSessionMutationService } from "../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
 import { createAgentPiDiagnosticLoggerForDetail } from "../Source/AgentSystem/Diagnostics/AgentPiDiagnostics.js";
-import { AgentPiTurnContextRegistry } from "../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
 import { AgentSystemRuntimeCache } from "../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
+import { AgentSessionApprovalLeaseStore } from "../Source/AgentSystem/Safety/AgentSessionApprovalLeaseStore.js";
 import { AgentSandboxRuntimeService } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeService.js";
 import { AgentExecutionResourceBroker } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceBroker.js";
 import { resolveAgentExecutionResourceLimits } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceConfig.js";
 import { AgentInteractionInputRuntime } from "../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
 import { createAgentRequestCancellationResource } from "../Source/AgentSystem/Session/AgentSessionRunResource.js";
 import { AgentArtifactRetentionService } from "../Source/AgentSystem/Artifacts/AgentArtifactRetentionService.js";
-import {
-  SeneraMicrosandboxDynamicSdkAdapter,
-  type SeneraMicrosandboxModuleLoader,
-} from "../Source/AgentSystem/Execution/SeneraMicrosandboxSdkAdapter.js";
-import type { AgentMicrosandboxPackageEntryResolver } from "../Source/AgentSystem/Sandbox/AgentMicrosandboxCli.js";
-import type { AgentSandboxRuntimeProvider } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
-import type { SeneraGvisorWorkerClient } from "../Source/AgentSystem/Execution/SeneraGvisorTypes.js";
+import type { AgentSandboxRuntimeAvailability } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
+import type { SeneraSandboxWorkerClient } from "../Source/AgentSystem/Execution/SeneraSandboxWorkerTypes.js";
 import { readAgentProductMetadata } from "../Source/AgentSystem/Core/AgentProductMetadata.js";
 import { AgentUpgradeSession } from "../Source/AgentSystem/Upgrade/AgentUpgradeSession.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
@@ -60,6 +55,22 @@ import {
 import { AgentMcpInputService } from "../Source/AgentSystem/Credentials/AgentMcpInputService.js";
 import { AgentMcpManagementService } from "../Source/AgentSystem/McpPackages/AgentMcpManagementService.js";
 import { AgentWorkspaceRuntime } from "../Source/AgentSystem/Runtime/AgentWorkspaceRuntime.js";
+import { AgentRunDispatchGateway } from "../Source/AgentSystem/Orchestration/AgentRunDispatchPort.js";
+import { AgentSessionRunDispatcher } from "../Source/AgentSystem/Session/AgentSessionRunDispatcher.js";
+import { AgentOrchestrationDatabase } from "../Source/AgentSystem/Orchestration/AgentOrchestrationDatabase.js";
+import { AgentSqliteChildRunRepository } from "../Source/AgentSystem/Orchestration/AgentSqliteChildRunRepository.js";
+import { AgentSqliteWorkflowRepository } from "../Source/AgentSystem/Orchestration/AgentSqliteWorkflowRepository.js";
+import { AgentSqliteScheduledTaskStore } from "../Source/AgentSystem/Orchestration/AgentSqliteScheduledTaskStore.js";
+import { AgentSqliteSchedulerLock } from "../Source/AgentSystem/Orchestration/AgentSqliteSchedulerLock.js";
+import { AgentOrchestrationEventRelay } from "../Source/AgentSystem/Orchestration/AgentOrchestrationEventRelay.js";
+import { AgentDelegationService } from "../Source/AgentSystem/Orchestration/AgentDelegationService.js";
+import { AgentWorkflowService } from "../Source/AgentSystem/Orchestration/AgentWorkflowService.js";
+import { AgentSubagentRoleCatalog } from "../Source/AgentSystem/Orchestration/AgentSubagentRoleCatalog.js";
+import { AgentScheduleRuntime } from "../Source/AgentSystem/Orchestration/AgentScheduleRuntime.js";
+import {
+  resolveAgentDelegationConfiguration,
+  resolveAgentSchedulerConfiguration,
+} from "../Source/AgentSystem/Orchestration/AgentOrchestrationConfig.js";
 
 export interface SeneraServerOptions {
   workspaceRoot?: string;
@@ -68,16 +79,13 @@ export interface SeneraServerOptions {
   resourcesPath?: string;
   configSource?: AgentConfigSourceOptions;
   runtimeConfigProjection?: (config: AgentSystemConfig) => AgentSystemConfig;
-  sandboxBundleRoot?: string;
   /**
    * Set only by a deployment bootstrap that has already prepared and verified
-   * the configured microsandbox runtime before opening the web server.
+   * the configured Docker Engine runtime before opening the web server.
    */
   sandboxRuntimePrepared?: boolean;
-  sandboxProvider?: AgentSandboxRuntimeProvider;
-  dockerEngineWorker?: SeneraGvisorWorkerClient;
-  microsandboxModuleLoader?: SeneraMicrosandboxModuleLoader;
-  microsandboxPackageEntryResolver?: AgentMicrosandboxPackageEntryResolver;
+  sandboxRuntimeAvailability?: AgentSandboxRuntimeAvailability;
+  dockerEngineWorker?: SeneraSandboxWorkerClient;
   upgradeStateRoot?: string;
   upgradeDataRoots?: readonly string[];
   runtimeImageReference?: string;
@@ -172,7 +180,6 @@ async function startSeneraServerRuntime(
   const interactionInput = new AgentInteractionInputRuntime();
   deferResourceCleanup(() => interactionInput.close());
   const piSessionRegistry = new AgentPiActiveSessionRegistry();
-  const piTurnContexts = new AgentPiTurnContextRegistry();
   const projectRuntimeConfig = (config: AgentSystemConfig): AgentSystemConfig =>
     options.runtimeConfigProjection?.(config) ?? config;
   const initialSnapshot = configService.snapshot();
@@ -205,13 +212,9 @@ async function startSeneraServerRuntime(
   const sandboxRuntimeService = new AgentSandboxRuntimeService({
     workspaceRoot,
     configSnapshot,
-    sandboxBundleRoot: options.sandboxBundleRoot,
-    provider: options.sandboxProvider,
+    availability: options.sandboxRuntimeAvailability,
     dockerEngineWorker: options.dockerEngineWorker,
   });
-  const microsandboxSdk = options.microsandboxModuleLoader
-    ? new SeneraMicrosandboxDynamicSdkAdapter(options.microsandboxModuleLoader)
-    : undefined;
   const executionResources = new AgentExecutionResourceBroker({
     workspaceRoot,
     limits: () => resolveAgentExecutionResourceLimits(configSnapshot()),
@@ -229,6 +232,56 @@ async function startSeneraServerRuntime(
     uploads: () => resolveUploadsConfig(configSnapshot()),
   });
   deferResourceCleanup(() => workspaceRuntime.close());
+  const runDispatch = new AgentRunDispatchGateway();
+  const orchestrationEvents = new AgentOrchestrationEventRelay();
+  const orchestrationDatabase = new AgentOrchestrationDatabase(workspaceLayout.databases.orchestration, upgradeSession);
+  deferResourceCleanup(() => orchestrationDatabase.close());
+  const childRuns = new AgentSqliteChildRunRepository(orchestrationDatabase);
+  const workflowRepository = new AgentSqliteWorkflowRepository(orchestrationDatabase);
+  const subagentRoles = new AgentSubagentRoleCatalog({
+    builtinRoot: path.join(resourceRoot, "System", "Extensions", "agent-delegation", "agents"),
+  });
+  const scheduledTasks = new AgentSqliteScheduledTaskStore(orchestrationDatabase);
+  const schedulerConfiguration = resolveAgentSchedulerConfiguration(initialConfig);
+  const delegation = new AgentDelegationService({
+    workspaceRoot,
+    configuration: () => {
+      const snapshot = configService.snapshot();
+      return {
+        config: projectRuntimeConfig(snapshot.value),
+        revision: snapshot.revision,
+      };
+    },
+    repository: childRuns,
+    dispatcher: runDispatch,
+    events: orchestrationEvents,
+    roleCatalog: subagentRoles,
+  });
+  deferResourceCleanup(() => delegation.shutdown());
+  const workflows = new AgentWorkflowService({
+    repository: workflowRepository,
+    delegation,
+    events: orchestrationEvents,
+    maxNodes: () => resolveAgentDelegationConfiguration(configSnapshot()).workflows.maxNodes,
+  });
+  deferResourceCleanup(() => workflows.shutdown());
+  const schedulerLock = new AgentSqliteSchedulerLock(orchestrationDatabase, {
+    name: "agent-scheduler",
+    path: workspaceLayout.databases.orchestration,
+    leaseDurationMs: schedulerConfiguration.lease.durationMs,
+  });
+  const schedules = new AgentScheduleRuntime({
+    workspaceRoot,
+    config: configSnapshot,
+    store: scheduledTasks,
+    lock: schedulerLock,
+    dispatcher: runDispatch,
+    events: orchestrationEvents,
+    lockHeartbeatMs: schedulerConfiguration.lease.heartbeatMs,
+  });
+  deferResourceCleanup(() => schedules.stop());
+  const orchestration = { delegation, workflows, schedules };
+  const sessionApprovals = new AgentSessionApprovalLeaseStore();
   const runtimeCache = new AgentSystemRuntimeCache({
     workspaceRoot,
     configPath,
@@ -236,17 +289,18 @@ async function startSeneraServerRuntime(
     logger,
     piDiagnostics,
     approvalRuntime,
+    sessionApprovals,
     interactionInput,
     piSessionRegistry,
-    piTurnContexts,
     resourcesPath: options.resourcesPath,
     executionResources,
     sandboxRuntimeReady: () => sandboxRuntimeService.snapshot().state === "ready",
-    microsandboxSdk,
+    sandboxAvailable: sandboxRuntimeService.sandboxBackendAvailable(),
     sandboxProvider: sandboxRuntimeService.runtimeProvider(),
-    gvisorWorker: sandboxRuntimeService.gvisorWorkerClient(),
+    dockerEngineWorker: sandboxRuntimeService.dockerEngineWorkerClient(),
     mcpInputs,
     workspaceRuntime,
+    orchestration,
   });
   deferResourceCleanup(() => runtimeCache.clear());
 
@@ -308,6 +362,7 @@ async function startSeneraServerRuntime(
   const sessionManager = new AgentSessionManager({
     loopFactory,
     store: sessionStore,
+    managedSessionIds: new Set(childRuns.listAll().map((run) => run.childSessionId)),
     memoryService,
     logger,
     runResources: [
@@ -315,6 +370,10 @@ async function startSeneraServerRuntime(
       createAgentRequestCancellationResource("interaction_input", interactionInput),
     ],
     sessionResources: [
+      {
+        id: "approval_session_leases",
+        release: async ({ sessionId }) => sessionApprovals.revoke(sessionId),
+      },
       {
         id: "execution_resources",
         release: ({ sessionId }) => executionResources.releaseAll({ workspaceRoot, sessionId }),
@@ -331,6 +390,8 @@ async function startSeneraServerRuntime(
     },
     artifactSessionCleanup: artifactRetention,
   });
+  const unbindRunDispatch = runDispatch.bind(new AgentSessionRunDispatcher(sessionManager));
+  deferResourceCleanup(unbindRunDispatch);
   const eventWriter =
     persistence.Kind === "sqlite"
       ? new AgentSqliteRunEventWriter({ databasePath: workspaceLayout.databases.sessions })
@@ -354,7 +415,6 @@ async function startSeneraServerRuntime(
     piDiagnostics,
     eventWriter,
     mcpManagement,
-    piTurnContexts,
     uploadStore: workspaceRuntime.uploadStore,
   });
   cancelEventWriterCleanup();
@@ -362,6 +422,7 @@ async function startSeneraServerRuntime(
   approvalRuntime.setEventSink((event) => server.broadcast(event));
   interactionInput.setEventSink((event) => server.broadcast(event));
   executionResources.setEventSink((event) => server.broadcast(event));
+  orchestrationEvents.setSink((event) => server.broadcast(event));
   const unsubscribeSandboxStatus = sandboxRuntimeService.subscribe((snapshot) => {
     void server
       .broadcast({
@@ -378,6 +439,7 @@ async function startSeneraServerRuntime(
 
   upgradeSession.markStarting();
   await server.start();
+  await schedules.start();
   memoryLearning.start();
   artifactRetention.start();
   startSandboxRuntimePreparation({
@@ -385,8 +447,6 @@ async function startSeneraServerRuntime(
     sandboxRuntimeService,
     logger,
     prepared: options.sandboxRuntimePrepared ?? false,
-    microsandboxModuleLoader: options.microsandboxModuleLoader,
-    microsandboxPackageEntryResolver: options.microsandboxPackageEntryResolver,
   });
   if (configSource.kind === "json" && resolveServerConfig(initialConfig).HotReload) {
     const jsonConfigPath = configSource.configPath;
@@ -435,25 +495,42 @@ async function startSeneraServerRuntime(
       if (watchedConfigPath) fs.unwatchFile(watchedConfigPath);
       unsubscribeSandboxStatus();
       sessionManager.beginShutdown();
+      const failures: unknown[] = [];
+      collectRejected(await Promise.allSettled([schedules.stop(), workflows.shutdown()]), failures);
+      collectRejected(await Promise.allSettled([delegation.shutdown()]), failures);
       const boundaryOutcomes = await Promise.allSettled([server.stop(), sessionManager.shutdown()]);
+      collectRejected(boundaryOutcomes, failures);
+      orchestrationEvents.setSink(undefined);
+      unbindRunDispatch();
       try {
-        await Promise.all([
-          runtimeCache.clear().then(() => workspaceRuntime.close()),
-          executionResources.close(),
-          interactionInput.close(),
-          artifactRetention.close(),
-        ]);
+        collectRejected(
+          await Promise.allSettled([
+            closeRuntimeInfrastructure(runtimeCache, workspaceRuntime),
+            executionResources.close(),
+            interactionInput.close(),
+            artifactRetention.close(),
+            sandboxRuntimeService.close(),
+          ]),
+          failures,
+        );
       } finally {
-        configService.close();
-        memoryService.close();
-        repository.close();
+        for (const close of [
+          () => configService.close(),
+          () => mcpInputs.close(),
+          () => memoryService.close(),
+          () => repository.close(),
+          () => orchestrationDatabase.close(),
+        ]) {
+          try {
+            close();
+          } catch (error) {
+            failures.push(error);
+          }
+        }
       }
-      const boundaryFailures = boundaryOutcomes.flatMap((outcome) =>
-        outcome.status === "rejected" ? [outcome.reason] : [],
-      );
-      if (boundaryFailures.length === 1) throw boundaryFailures[0];
-      if (boundaryFailures.length > 1) {
-        throw new AggregateError(boundaryFailures, "Server request boundary shutdown failed.");
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) {
+        throw new AggregateError(failures, "Senera server shutdown failed.");
       }
     })());
 
@@ -467,6 +544,28 @@ async function startSeneraServerRuntime(
     healthUrl: `http://${resolveHealthCheckHost(serverConfig.Host)}:${serverConfig.Port}/health/ready`,
     stop,
   };
+}
+
+function collectRejected(outcomes: readonly PromiseSettledResult<unknown>[], failures: unknown[]): void {
+  for (const outcome of outcomes) {
+    if (outcome.status === "rejected") failures.push(outcome.reason);
+  }
+}
+
+async function closeRuntimeInfrastructure(
+  runtimeCache: AgentSystemRuntimeCache,
+  workspaceRuntime: AgentWorkspaceRuntime,
+): Promise<void> {
+  const failures: unknown[] = [];
+  for (const close of [() => runtimeCache.clear(), () => workspaceRuntime.close()]) {
+    try {
+      await close();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "Runtime infrastructure shutdown failed.");
 }
 
 export async function probeSeneraReadiness(healthUrl: string): Promise<void> {
@@ -493,14 +592,21 @@ function startSandboxRuntimePreparation(input: {
   sandboxRuntimeService: AgentSandboxRuntimeService;
   logger: AgentLogger;
   prepared: boolean;
-  microsandboxModuleLoader?: SeneraMicrosandboxModuleLoader;
-  microsandboxPackageEntryResolver?: AgentMicrosandboxPackageEntryResolver;
 }): void {
   const sandboxRuntimeConfig = resolveSandboxRuntimeConfig(input.config);
-  if (!sandboxRuntimeConfig.Enabled) {
+  if (!sandboxRuntimeConfig.Enabled || process.platform === "win32") {
     input.sandboxRuntimeService.markDisabled();
     input.logger.info("sandbox.runtime.disabled", {
       provider: input.sandboxRuntimeService.runtimeProvider(),
+    });
+    return;
+  }
+  if (!input.sandboxRuntimeService.sandboxBackendAvailable()) {
+    const error = new Error("The configured sandbox execution boundary is unavailable.");
+    input.sandboxRuntimeService.markUnavailable(error);
+    input.logger.warn("sandbox.runtime.unavailable", {
+      provider: input.sandboxRuntimeService.runtimeProvider(),
+      message: error.message,
     });
     return;
   }
@@ -513,25 +619,18 @@ function startSandboxRuntimePreparation(input: {
     return;
   }
 
-  void input.sandboxRuntimeService
-    .prepare({
-      config: sandboxRuntimeConfig,
-      microsandboxModuleLoader: input.microsandboxModuleLoader,
-      microsandboxPackageEntryResolver: input.microsandboxPackageEntryResolver,
-      log: (message) => input.logger.info("sandbox.runtime.prepare", { message }),
-    })
-    .then(
-      () => {
-        input.logger.success("sandbox.runtime.ready", {
-          provider: input.sandboxRuntimeService.runtimeProvider(),
-        });
-      },
-      (error: unknown) => {
-        input.logger.warn("sandbox.runtime.unavailable", {
-          message: errorMessage(error),
-        });
-      },
-    );
+  void input.sandboxRuntimeService.prepare({ config: sandboxRuntimeConfig }).then(
+    () => {
+      input.logger.success("sandbox.runtime.ready", {
+        provider: input.sandboxRuntimeService.runtimeProvider(),
+      });
+    },
+    (error: unknown) => {
+      input.logger.warn("sandbox.runtime.unavailable", {
+        message: errorMessage(error),
+      });
+    },
+  );
 }
 
 function createRepository(

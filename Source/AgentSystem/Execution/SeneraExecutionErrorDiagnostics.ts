@@ -22,6 +22,7 @@ export function attachSeneraExecutionDiagnostic(
       },
     },
     new AggregateError([primary, diagnostic], `Execution ${key} diagnostic.`),
+    primary.diagnostic,
   );
 }
 

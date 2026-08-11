@@ -23,10 +23,14 @@ afterEach(() => {
 
 test.each([
   ["open active session without history", historyRequestState(), true],
+  ["catalog has not arrived", historyRequestState({ catalogSynced: false }), false],
+  ["active session is not in the authoritative catalog", historyRequestState({ sessionExists: false }), false],
   ["closed socket", historyRequestState({ status: "closed" }), false],
   ["already loaded", historyRequestState({ historyLoadedIds: { active: true } }), false],
   ["already loading", historyRequestState({ historyLoadingIds: { active: true } }), false],
   ["missing on server", historyRequestState({ missingOnServerIds: { active: true } }), false],
+  ["session creation is still pending", historyRequestState({ pendingCreatedSessionIds: { active: true } }), false],
+  ["session deletion is still pending", historyRequestState({ pendingDeletedSessionIds: { active: true } }), false],
   ["no active session", historyRequestState({ activeSessionId: null }), false],
 ])("shouldRequestActiveSessionHistory returns %s = %s", (_label, input, expected) => {
   expect(shouldRequestActiveSessionHistory(input)).toBe(expected);
@@ -55,6 +59,7 @@ test("automatically loads the active session exactly once after the socket opens
     sessions: { active: session("active") },
     sessionOrder: ["active"],
     activeSessionId: "active",
+    catalogSynced: { sessions: true, presets: false },
   });
 
   render(React.createElement(HistoryRecoveryHarness, { activeSessionId: "active", handleRef, send, status: "open" }));
@@ -83,7 +88,7 @@ test("marks history recovery as failed when the socket cannot accept the request
   expect(send).toHaveBeenCalledWith({ type: "session.history", sessionId: "disconnected", refresh: true });
   expect(useStore.getState().historyLoadingIds.disconnected).toBe(false);
   expect(useStore.getState().historyFailedIds.disconnected).toBe(true);
-  expect(readTestToastCalls()).toEqual([expect.objectContaining({ variant: "error" })]);
+  expect(readTestToastCalls()).toEqual([]);
 });
 
 test("retries unfinished history runs with increasing bounded polling delays", async () => {
@@ -93,6 +98,7 @@ test("retries unfinished history runs with increasing bounded polling delays", a
   useStore.setState({
     sessions: { [sessionId]: session(sessionId, [recoveryRun("history-run", 4)]) },
     sessionOrder: [sessionId],
+    catalogSynced: { sessions: true, presets: false },
   });
 
   render(
@@ -130,9 +136,14 @@ function HistoryRecoveryHarness({ activeSessionId, handleRef, send, status }) {
 function historyRequestState(overrides = {}) {
   return {
     activeSessionId: "active",
+    catalogSynced: true,
     historyLoadedIds: {},
     historyLoadingIds: {},
     missingOnServerIds: {},
+    pendingCreatedSessionIds: {},
+    pendingDeletedSessionIds: {},
+    sessionExists: true,
+    sessionInOrder: true,
     status: "open",
     ...overrides,
   };

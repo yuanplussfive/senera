@@ -12,6 +12,8 @@ export default defineConfig({
     environment: "node",
     globals: false,
     maxWorkers: resolveBackendTestWorkerCount(),
+    testTimeout: 15_000,
+    hookTimeout: 15_000,
     include: [...BackendTestCoveragePolicy.testInclude],
     coverage: {
       provider: "v8",

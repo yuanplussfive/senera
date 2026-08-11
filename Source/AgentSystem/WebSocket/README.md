@@ -9,7 +9,7 @@ WebSocket 模块负责后端和前端/终端的实时通信入口。它只处理
 3. `AgentWebSocketMessageRouter.ts`：单条 WS 消息解析、结构校验、dispatch 和统一失败事件投影。
 4. `AgentWebSocketRequestHandlers.ts`：稳定聚合导出，不承载请求实现。Session、ExecutionResource、Config、Settings、Interaction 和 Sandbox handler 分别位于同名领域文件。
 5. `AgentWebSocketEventSender.ts`：事件 envelope 编号、发送和运行事件持久化。
-6. `AgentWebSocketHttpRouter.ts`：同端口 HTTP 请求入口，统一执行认证后再分发上传和 Pi Proxy API。
+6. `AgentWebSocketHttpRouter.ts`：同端口 HTTP 请求入口，统一执行认证后再分发上传和模型兼容 API。
 7. `../Auth/AgentServerAccessGuard.ts`：HTTP/WS 入口认证、Origin、连接配额、限流和心跳策略。
 8. `AgentWebSocketRequestFailures.ts`：把请求处理异常投影成前端可消费的事件。
 

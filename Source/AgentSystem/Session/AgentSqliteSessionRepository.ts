@@ -10,7 +10,7 @@ import {
   type AgentUserProfile,
   type AgentUserProfileInput,
 } from "../Session/AgentUserProfile.js";
-import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
 import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
 import { AgentSessionDatabaseContract } from "../SessionPersistence/AgentSessionSqlSchema.js";
 import {

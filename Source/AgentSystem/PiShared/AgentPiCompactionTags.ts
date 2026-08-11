@@ -4,8 +4,8 @@
  * These tags are used in three places:
  * 1. {@link AgentPiCompactionSummaryFormatter} — produces the XML tags when
  *    formatting the compaction summary.
- * 2. {@link AgentPiOpenAiPlanningProjector} (PiProxy) — detects the tags when
- *    scanning messages for a compaction boundary.
+ * 2. Pi planning context compilation — detects the tags when projecting a
+ *    compaction boundary.
  * 3. {@link AgentPlannerSystemMessageFormatter} — registers descriptors so
  *    the tags can be used in the system message section registry.
  *

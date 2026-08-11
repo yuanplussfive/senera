@@ -20,9 +20,9 @@ export interface ProductReleaseInfo {
   desktopArtifactPath: string;
   containerVersionTag: string;
   containerMinorTag: string;
-  sandboxArchiveArtifactName: string;
-  sandboxArchiveManifestArtifactName: string;
   sandboxRuntimeSourceImage: string;
+  sandboxRuntimeImage: string;
+  sandboxRuntimeRegistryImage: string;
   sandboxRuntimeDistributionId: string;
   sandboxRuntimeVersionTag: string;
   sandboxRuntimeTarget: string;
@@ -72,11 +72,11 @@ export function createProductReleaseInfo(input: {
     desktopArtifactPath: `Release/SeneraSetup-${version}.exe`,
     containerVersionTag: version,
     containerMinorTag: `${parsedVersion.major}.${parsedVersion.minor}`,
-    sandboxArchiveArtifactName: sandboxTarget.archive.assetName,
-    sandboxArchiveManifestArtifactName: sandboxDistribution.bundle.manifestFileName,
     sandboxRuntimeSourceImage: sandboxTarget.sourceImage,
+    sandboxRuntimeImage: sandboxTarget.runtimeImage,
+    sandboxRuntimeRegistryImage: sandboxTarget.registryImage,
     sandboxRuntimeDistributionId: sandboxDistribution.id,
-    sandboxRuntimeVersionTag: sandboxDistribution.archiveVersion,
+    sandboxRuntimeVersionTag: sandboxDistribution.version,
     sandboxRuntimeTarget: process.arch,
     sourceSha: input.sourceSha ?? "",
   };
@@ -102,9 +102,9 @@ export function writeGitHubOutputs(info: ProductReleaseInfo, env: NodeJS.Process
     desktop_artifact_path: info.desktopArtifactPath,
     container_version_tag: info.containerVersionTag,
     container_minor_tag: info.containerMinorTag,
-    sandbox_archive_artifact_name: info.sandboxArchiveArtifactName,
-    sandbox_archive_manifest_artifact_name: info.sandboxArchiveManifestArtifactName,
     sandbox_runtime_source_image: info.sandboxRuntimeSourceImage,
+    sandbox_runtime_image: info.sandboxRuntimeImage,
+    sandbox_runtime_registry_image: info.sandboxRuntimeRegistryImage,
     sandbox_runtime_distribution_id: info.sandboxRuntimeDistributionId,
     sandbox_runtime_version_tag: info.sandboxRuntimeVersionTag,
     sandbox_runtime_target: info.sandboxRuntimeTarget,

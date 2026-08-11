@@ -30,6 +30,8 @@ export interface AgentSessionManagerOptions {
   piSessionManagement?: AgentPiSessionManagementPort;
   runControl: AgentSessionRunControlPolicy;
   artifactSessionCleanup?: AgentSessionArtifactLifecycle;
+  /** Child sessions created before ownership metadata was introduced. */
+  managedSessionIds?: ReadonlySet<string>;
 }
 
 export type { AgentMemoryLearningSink } from "../Memory/AgentMemoryService.js";

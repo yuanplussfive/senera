@@ -40,6 +40,9 @@ import {
   readAgentSessionRunErrorMessage,
   type AgentSessionAvailability,
 } from "./AgentSessionActiveRunController.js";
+import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
+import type { AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
 
 export interface AgentSessionRunCoordinatorOptions {
   store: AgentSessionStore;
@@ -75,9 +78,16 @@ export class AgentSessionRunCoordinator {
       requestId?: string;
       modelProviderId?: string;
       input: string;
+      approvalMode: AgentExecutionApprovalMode;
       attachments?: AgentUploadAttachment[];
       onEvent?: AgentEventSink;
       preparation?: AgentTurnPreparationSnapshot;
+      systemPromptLayer?: import("../Orchestration/AgentRunDispatchPort.js").AgentSystemPromptLayer;
+      allowedToolNames?: readonly string[];
+      pinnedSkills?: readonly AgentPinnedSkillReference[];
+      thinkingLevel?: import("@earendil-works/pi-ai").ModelThinkingLevel;
+      inheritProjectContext?: boolean;
+      sessionOwnership?: AgentSessionOwnership;
     },
   ): Promise<void> {
     this.activeRuns.assertAcceptingRuns();
@@ -88,6 +98,7 @@ export class AgentSessionRunCoordinator {
       requestId,
       modelProviderId: request.modelProviderId,
       text: request.input,
+      approvalMode: request.approvalMode,
       attachments: request.attachments,
       createdAt: timestamp,
     });
@@ -104,7 +115,7 @@ export class AgentSessionRunCoordinator {
         eventId: createOpaqueId("event"),
         kind: AgentEventKinds.RunStarted,
         context: { requestId },
-        data: { input: request.input },
+        data: { input: request.input, approvalMode: request.approvalMode },
       },
       { sessionId: session.id },
     );
@@ -142,8 +153,14 @@ export class AgentSessionRunCoordinator {
         sessionId: session.id,
         requestId,
         input: request.input,
+        approvalMode: request.approvalMode,
         conversationEntries: [...session.conversation],
         loadedToolNames: inheritedToolNames,
+        systemPromptLayer: request.systemPromptLayer,
+        allowedToolNames: request.allowedToolNames,
+        pinnedSkills: request.pinnedSkills,
+        thinkingLevel: request.thinkingLevel,
+        inheritProjectContext: request.inheritProjectContext,
         signal: run.controller.signal,
         emitRunStarted: false,
         onEvent: async (event) => {
@@ -211,6 +228,7 @@ export class AgentSessionRunCoordinator {
         assistantEntry,
       ]);
       const completedAt = assistantEntry.timestamp;
+      run.terminalStatus = "completed";
       const completedSession = cloneAgentSessionState(session);
       completedSession.conversation = mergeSessionConversationEntries([
         ...completedSession.conversation,
@@ -279,6 +297,7 @@ export class AgentSessionRunCoordinator {
       }
 
       if (error instanceof AgentCancellationError) {
+        run.terminalStatus = "cancelled";
         const endedAt = new Date().toISOString();
         const cancelledEvent = createAgentSessionRunCancelledEvent(session.id, requestId);
         const cancelledSession = cloneAgentSessionState(session);
@@ -316,6 +335,7 @@ export class AgentSessionRunCoordinator {
       }
 
       const endedAt = new Date().toISOString();
+      run.terminalStatus = "failed";
       const failedEvent = createAgentSessionRunFailedEvent(session.id, requestId, error);
       const failedSession = cloneAgentSessionState(session);
       this.activeRuns.releaseSession(failedSession);
@@ -410,6 +430,10 @@ export class AgentSessionRunCoordinator {
     return this.activeRuns.cancelActiveRun(request);
   }
 
+  acceptActiveRunCancellation(request: { sessionId: string; onEvent?: AgentEventSink }): boolean {
+    return this.activeRuns.acceptActiveRunCancellation(request);
+  }
+
   async enqueueActiveRunMessage(request: {
     session: AgentSession;
     requestId?: string;
@@ -419,6 +443,22 @@ export class AgentSessionRunCoordinator {
     onEvent?: AgentEventSink;
   }): Promise<boolean> {
     return this.activeRuns.enqueueActiveRunMessage(request);
+  }
+
+  requestActiveRunFinalAnswer(request: { sessionId: string; instruction: string }): Promise<boolean> {
+    return this.activeRuns.requestActiveRunFinalAnswer(request);
+  }
+
+  steerActiveRun(request: { sessionId: string; input: string; onEvent?: AgentEventSink }): Promise<boolean> {
+    return this.activeRuns.steerActiveRun(request);
+  }
+
+  followUpActiveRun(request: { sessionId: string; input: string; onEvent?: AgentEventSink }): Promise<boolean> {
+    return this.activeRuns.followUpActiveRun(request);
+  }
+
+  interruptActiveRun(request: { sessionId: string; instruction: string }): Promise<boolean> {
+    return this.activeRuns.interruptActiveRun(request);
   }
 
   async discardActiveRun(session: AgentSession): Promise<boolean> {

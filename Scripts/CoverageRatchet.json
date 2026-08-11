@@ -6,26 +6,26 @@
   "suites": {
     "frontend": {
       "total": {
-        "lines": 64,
-        "functions": 61,
-        "branches": 54,
-        "statements": 61
+        "lines": 65,
+        "functions": 63,
+        "branches": 56,
+        "statements": 62
       },
       "groups": {}
     },
     "backend": {
       "total": {
-        "lines": 73,
-        "functions": 72,
-        "branches": 58,
-        "statements": 71
+        "lines": 75,
+        "functions": 73,
+        "branches": 60,
+        "statements": 73
       },
       "groups": {
         "Source/AgentSystem/{ActionPlanner,Auth,Execution,Memory,ModelEndpoints,Pi,Session,Text,ToolSearch,Uploads,Xml}/**/*.ts": {
-          "lines": 78,
-          "functions": 78,
-          "branches": 62,
-          "statements": 76
+          "lines": 79,
+          "functions": 79,
+          "branches": 65,
+          "statements": 77
         }
       }
     }

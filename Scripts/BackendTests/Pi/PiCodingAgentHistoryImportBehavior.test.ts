@@ -2,6 +2,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession as CodingAgentSession } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test, vi } from "vitest";
 import { AgentPiCodingAgentSession } from "../../../Source/AgentSystem/Pi/AgentPiCodingAgentSession.js";
+import type { AgentPiMutableSessionFrame } from "../../../Source/AgentSystem/Pi/AgentPiCodingAgentSessionFrame.js";
 import {
   hasIncompatibleAgentPiToolObservationHistory,
   isAgentPiConversationHistoryEmpty,
@@ -20,7 +21,7 @@ describe("Pi Coding Agent history import", () => {
     expect(isAgentPiConversationHistoryEmpty(sessionManager)).toBe(true);
 
     const state = { messages: [] as AgentMessage[] };
-    const session = new AgentPiCodingAgentSession(codingSession(state), sessionManager, vi.fn());
+    const session = new AgentPiCodingAgentSession(codingSession(state), sessionManager, sessionFrame(), vi.fn());
     session.setHistory([historicalUserMessage()]);
 
     expect(state.messages).toEqual([historicalUserMessage()]);
@@ -31,7 +32,12 @@ describe("Pi Coding Agent history import", () => {
   test("rejects an import once conversational history exists", () => {
     const sessionManager = SessionManager.inMemory();
     sessionManager.appendCustomMessageEntry("test.context", "Existing context", false);
-    const session = new AgentPiCodingAgentSession(codingSession({ messages: [] }), sessionManager, vi.fn());
+    const session = new AgentPiCodingAgentSession(
+      codingSession({ messages: [] }),
+      sessionManager,
+      sessionFrame(),
+      vi.fn(),
+    );
 
     expect(isAgentPiConversationHistoryEmpty(sessionManager)).toBe(false);
     expect(() => session.setHistory([historicalUserMessage()])).toThrow(
@@ -80,6 +86,10 @@ describe("Pi Coding Agent history import", () => {
 
 function codingSession(state: { messages: AgentMessage[] }): CodingAgentSession {
   return { agent: { state } } as unknown as CodingAgentSession;
+}
+
+function sessionFrame(): AgentPiMutableSessionFrame {
+  return { snapshot: () => ({ turnState: undefined }) } as unknown as AgentPiMutableSessionFrame;
 }
 
 function historicalUserMessage(): AgentMessage {

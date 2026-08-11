@@ -1,26 +1,31 @@
-import type { AgentEvent, AgentMessage, AgentState } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, AgentState } from "@earendil-works/pi-agent-core";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { AgentPiModelProjection, AgentPiToolDefinition, AgentPiToolProjectionContext } from "./AgentPiTypes.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentPiDiagnosticSink } from "../PiShared/AgentPiDiagnosticsTypes.js";
 import type { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
+import type { AgentPiTurnState } from "./AgentPiTurnState.js";
 import type {
   AgentPiSessionCompactionResult,
   AgentPiSessionExportFormat,
   AgentPiSessionExportResult,
   AgentPiSessionRuntimeStatus,
 } from "./AgentPiSessionManagement.js";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 
-export type AgentPiSessionEventListener = (event: AgentEvent) => void | Promise<void>;
+export type AgentPiSessionEventListener = (event: AgentSessionEvent) => void | Promise<void>;
 
 export interface AgentPiSessionOptions extends Omit<AgentPiToolProjectionContext, "tokenBudget"> {
   input?: string;
   systemPrompt?: string;
-  piTurnContextId?: string;
+  turnState?: AgentPiTurnState;
   activeSkills?: readonly AgentActivatedSkill[];
   rootCommand?: AgentRootCommand;
   diagnostics?: AgentPiDiagnosticSink;
   tokenBudget?: AgentTurnTokenBudget;
+  thinkingLevel?: ModelThinkingLevel;
+  inheritProjectContext?: boolean;
 }
 
 export interface AgentPiSession {
@@ -30,6 +35,7 @@ export interface AgentPiSession {
   prompt(text: string, options?: { expandPromptTemplates?: boolean; source?: string }): Promise<void>;
   steer(text: string): Promise<void>;
   followUp(text: string): Promise<void>;
+  requestFinalAnswer(instruction: string): Promise<boolean>;
   markTurnBoundary(requestId: string): Promise<string>;
   subscribe(listener: AgentPiSessionEventListener): () => void;
   abort(): Promise<void>;

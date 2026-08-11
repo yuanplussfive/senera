@@ -16,6 +16,13 @@ export const AgentExtensionLocalizedTextSchema = z
 
 export type AgentExtensionLocalizedText = z.infer<typeof AgentExtensionLocalizedTextSchema>;
 
+export function createAgentExtensionLocalizedText(value: string): AgentExtensionLocalizedText {
+  return {
+    [AgentExtensionLocales.ZhCn]: value,
+    [AgentExtensionLocales.EnUs]: value,
+  };
+}
+
 export function resolveAgentExtensionLocalizedText(
   text: AgentExtensionLocalizedText,
   locale: AgentExtensionLocale = AgentExtensionLocales.ZhCn,

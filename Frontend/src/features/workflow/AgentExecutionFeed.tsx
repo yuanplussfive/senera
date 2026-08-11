@@ -1,13 +1,15 @@
 import { useId, useMemo, useState, type AriaRole, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronDown, ChevronRight, Circle, X } from "lucide-react";
+import { Check, ChevronDown, Circle, LoaderCircle, X } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { type RunRecord } from "../../store/sessionStore";
-import { deriveFeedModel, statusTextClass, type FeedGroup, type FeedItem } from "./feedModel";
+import { deriveFeedModel, statusLabel, statusTextClass, type FeedGroup, type FeedItem } from "./feedModel";
 import { FeedGroupIconCatalog, FeedItemIconCatalog } from "./feedPresentation";
 import { motionTimings, readFeedItemVariants, useMotionLevel, type MotionLevel } from "../../shared/motion";
 import { Spinner } from "../../shared/ui";
+
+type FeedStatus = FeedItem["status"];
 
 export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; showBody?: boolean }): JSX.Element {
   const model = useMemo(() => deriveFeedModel(run), [run]);
@@ -17,7 +19,7 @@ export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; s
   const hasTimeline = model.groups.some((group) => group.items.length > 0);
 
   return (
-    <div className="flex min-w-0 flex-col gap-2.5" data-execution-feed>
+    <div className="flex min-w-0 flex-col gap-3" data-execution-feed>
       <div className="relative min-w-0" data-execution-timeline>
         {hasTimeline ? (
           <span
@@ -28,7 +30,7 @@ export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; s
         ) : null}
         <FeedHeadline item={model.headline} stepCount={run.steps.length} />
         {hasTimeline ? (
-          <div className="mt-2.5 flex min-w-0 flex-col gap-1.5" role="list" aria-label={model.headline.title}>
+          <div className="mt-3 flex min-w-0 flex-col gap-2" role="list" aria-label={model.headline.title}>
             {model.groups.map((group) => (
               <FeedTimelineGroup
                 key={group.id}
@@ -111,10 +113,10 @@ function FeedGroupRows({ group }: { group: FeedGroup }): JSX.Element {
         <div className="flex min-h-5 min-w-0 items-center gap-2">
           <span className="min-w-0 flex-1 text-[12.75px] font-medium text-content-primary">{group.label}</span>
           {group.meta ? (
-            <span className="shrink-0 font-mono text-[10.5px] text-content-muted">{group.meta}</span>
+            <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-content-muted">{group.meta}</span>
           ) : null}
         </div>
-        <div className="mt-0.5 flex min-w-0 flex-col" role="list">
+        <div className="mt-1 flex min-w-0 flex-col gap-0.5" role="list">
           {group.items.map((item) => (
             <FeedRow key={item.id} item={item} compact />
           ))}
@@ -127,19 +129,20 @@ function FeedGroupRows({ group }: { group: FeedGroup }): JSX.Element {
 function FeedHeadline({ item, stepCount }: { item: FeedItem; stepCount: number }): JSX.Element {
   return (
     <div className="flex min-w-0 items-start gap-2.5">
-      <TimelineMarker status={item.status} emphasis>
+      <TimelineMarker status={item.status} emphasis filled>
         <FeedStatusIcon status={item.status} />
       </TimelineMarker>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[13.5px] font-medium text-content-primary">{item.title}</span>
+      <div className="min-w-0 flex-1 pt-0.5">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-[13px] font-medium leading-5 text-content-primary">{item.title}</span>
+          <StatusPill status={item.status} />
           <span className="text-[10.5px] tabular-nums text-content-muted">
             {frontendMessage("workflow.feed.stepCount", { count: stepCount })}
           </span>
           {item.meta ? <span className="text-[10.5px] tabular-nums text-content-muted">{item.meta}</span> : null}
         </div>
         {item.subtitle ? (
-          <div className="mt-0.5 text-[12px] leading-relaxed text-content-secondary">{item.subtitle}</div>
+          <div className="mt-1 break-words text-[12px] leading-relaxed text-content-secondary">{item.subtitle}</div>
         ) : null}
       </div>
     </div>
@@ -160,37 +163,46 @@ function FeedGroupBlock({
   const variant = group.variant ?? "trace";
   const Icon = FeedGroupIconCatalog[variant];
   const contentId = useId();
+  const status = summarizeGroupStatus(group);
 
   return (
     <div className="relative flex min-w-0 items-start gap-2.5" role="listitem" data-feed-group-variant={variant}>
-      <TimelineMarker status={summarizeGroupStatus(group)}>
+      <TimelineMarker status={status}>
         <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       </TimelineMarker>
-      <div className="min-w-0 flex-1 pb-1">
+      <div className="min-w-0 flex-1">
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
           aria-controls={contentId}
           data-feed-group={group.id}
-          className="group -mx-1 flex min-h-7 w-[calc(100%+0.5rem)] min-w-0 items-center gap-2 rounded-md px-1 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
-        >
-          <span className="min-w-0 flex-1 text-[12.75px] font-medium text-content-primary">{group.label}</span>
-          {group.meta ? (
-            <span className="shrink-0 font-mono text-[10.5px] text-content-muted">{group.meta}</span>
-          ) : null}
-          {expanded ? (
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-content-muted" aria-hidden="true" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-content-muted" aria-hidden="true" />
+          className={cn(
+            "group -mx-1 flex min-h-8 w-[calc(100%+0.5rem)] min-w-0 items-center gap-2 rounded-md px-1 text-left transition-colors",
+            status === "failed" ? "hover:bg-brick-50" : "hover:bg-surface-hover",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
           )}
+        >
+          <span className="min-w-0 flex-1 truncate text-[12.75px] font-medium text-content-primary">{group.label}</span>
+          {group.meta ? (
+            <span className="shrink-0 rounded-full bg-surface-subtle px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-content-muted ring-1 ring-inset ring-line-subtle">
+              {group.meta}
+            </span>
+          ) : null}
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-200",
+              expanded && "rotate-180",
+            )}
+            aria-hidden="true"
+          />
         </button>
         <AnimatePresence initial={false}>
           {expanded ? (
             <FeedMotionBlock key="details" motionLevel={motionLevel}>
               <div
                 id={contentId}
-                className="mt-1.5 flex min-w-0 flex-col rounded-md border border-line-subtle bg-surface-subtle/70 px-2 py-1"
+                className="mt-1 flex min-w-0 flex-col rounded-md border border-line-subtle bg-surface-subtle/70 px-2 py-1"
                 role="list"
                 data-feed-detail-surface
               >
@@ -257,10 +269,12 @@ function FeedItemContent({ item, className }: { item: FeedItem; className?: stri
 function TimelineMarker({
   status,
   emphasis = false,
+  filled = false,
   children,
 }: {
-  status: FeedItem["status"];
+  status: FeedStatus;
   emphasis?: boolean;
+  filled?: boolean;
   children: ReactNode;
 }): JSX.Element {
   return (
@@ -268,7 +282,7 @@ function TimelineMarker({
       aria-hidden="true"
       className={cn(
         "relative z-10 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-surface-canvas text-content-muted ring-[3px] ring-surface-canvas",
-        statusTextClass(status),
+        filled ? markerFilledTone(status) : statusTextClass(status),
         emphasis && "mt-0.5",
       )}
       data-feed-marker-status={status}
@@ -278,19 +292,66 @@ function TimelineMarker({
   );
 }
 
-function FeedRowStatus({ status }: { status: FeedItem["status"] }): JSX.Element {
+function markerFilledTone(status: FeedStatus): string {
+  switch (status) {
+    case "running":
+      return "bg-umber-100 text-umber-600";
+    case "cancelling":
+      return "bg-accent-surface text-accent-content";
+    case "done":
+      return "bg-moss-100 text-moss-600";
+    case "failed":
+      return "bg-brick-100 text-brick-600";
+    default:
+      return "bg-ink-100 text-ink-500";
+  }
+}
+
+function StatusPill({ status }: { status: FeedStatus }): JSX.Element | null {
+  const label = statusLabel(status);
+  if (!label) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[10px] font-medium leading-4 ring-1 ring-inset",
+        statusPillTone(status),
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function statusPillTone(status: FeedStatus): string {
+  switch (status) {
+    case "running":
+      return "bg-umber-50 text-umber-600 ring-umber-200/70";
+    case "cancelling":
+      return "bg-accent-surface text-accent-content ring-accent-border";
+    case "done":
+      return "bg-moss-50 text-moss-600 ring-moss-100";
+    case "failed":
+      return "bg-brick-50 text-brick-600 ring-brick-200/70";
+    default:
+      return "bg-ink-50 text-ink-500 ring-ink-200/70";
+  }
+}
+
+function FeedRowStatus({ status }: { status: FeedStatus }): JSX.Element {
   const iconClassName = cn("mt-1 h-3 w-3 shrink-0", statusTextClass(status));
   if (status === "running") {
     return <Spinner size="xs" className={iconClassName} />;
   }
+  if (status === "cancelling") return <LoaderCircle className={cn(iconClassName, "animate-spin")} aria-hidden="true" />;
   if (status === "failed") return <X className={iconClassName} aria-hidden="true" />;
   if (status === "done") return <Check className={iconClassName} aria-hidden="true" />;
   return <Circle className={cn(iconClassName, "h-2.5 w-2.5")} aria-hidden="true" />;
 }
 
-function summarizeGroupStatus(group: FeedGroup): FeedItem["status"] {
+function summarizeGroupStatus(group: FeedGroup): FeedStatus {
   if (group.items.some((item) => item.status === "failed")) return "failed";
   if (group.items.some((item) => item.status === "running")) return "running";
+  if (group.items.some((item) => item.status === "cancelling")) return "cancelling";
   if (group.items.some((item) => item.status === "pending")) return "pending";
   if (group.items.every((item) => item.status === "done")) return "done";
   return "neutral";
@@ -303,8 +364,11 @@ function toggleSetEntry(values: ReadonlySet<string>, value: string): ReadonlySet
   return next;
 }
 
-function FeedStatusIcon({ status, className }: { status: FeedItem["status"]; className?: string }): JSX.Element {
+function FeedStatusIcon({ status, className }: { status: FeedStatus; className?: string }): JSX.Element {
   if (status === "running") return <Spinner size="md" className={cn(statusTextClass(status), className)} />;
+  if (status === "cancelling") {
+    return <LoaderCircle className={cn("h-4 w-4 shrink-0 animate-spin", statusTextClass(status), className)} />;
+  }
   if (status === "failed") return <X className={cn("h-4 w-4 shrink-0", statusTextClass(status), className)} />;
   if (status === "pending" || status === "neutral") {
     return <Circle className={cn("h-3 w-3 shrink-0", statusTextClass(status), className)} />;

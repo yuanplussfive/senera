@@ -18,14 +18,12 @@ import type {
 } from "../PiShared/AgentPiPlanningTypes.js";
 import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 import { buildBamlToolRiskAuditPromptJson } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
+import { projectActionPlannerBamlRequestBody } from "./AgentActionPlannerPromptProjector.js";
+import { projectPlainBamlRequestBody } from "./AgentActionPlannerPromptProjector.js";
 import {
-  type AgentPiToolObservationDigestPromptInput,
-  buildAgentPiToolObservationDigestPromptJson,
-} from "../Pi/AgentPiToolObservationDigestPrompt.js";
-import {
-  projectActionPlannerBamlRequestBody,
-  projectPlainBamlRequestBody,
-} from "./AgentActionPlannerPromptProjector.js";
+  buildAgentPiCompactionPromptJson,
+  type AgentPiCompactionPromptInput,
+} from "../PiShared/AgentPiCompactionPrompt.js";
 
 export type AgentActionPlannerBamlFunctionArgs =
   | {
@@ -97,13 +95,13 @@ export type AgentActionPlannerBamlFunctionArgs =
       issues: string[];
     }
   | {
-      functionName: "CondenseToolObservations";
-      input: AgentPiToolObservationDigestPromptInput;
+      functionName: "SummarizePiConversation";
+      input: AgentPiCompactionPromptInput;
     }
   | {
-      functionName: "RepairToolObservationDigest";
-      input: AgentPiToolObservationDigestPromptInput;
-      invalidDigest: string;
+      functionName: "RepairPiConversationSummary";
+      input: AgentPiCompactionPromptInput;
+      invalidSummary: string;
       issues: string[];
     };
 
@@ -234,18 +232,16 @@ export class AgentActionPlannerBamlPromptFactory {
           }),
           options,
         );
-      case "CondenseToolObservations":
-        return baml.request.CondenseToolObservations(
-          buildAgentPiToolObservationDigestPromptJson(args.input, {
-            stage: "condenseToolObservations",
-          }),
+      case "SummarizePiConversation":
+        return baml.request.SummarizePiConversation(
+          buildAgentPiCompactionPromptJson(args.input, { stage: "summarizePiConversation" }),
           options,
         );
-      case "RepairToolObservationDigest":
-        return baml.request.RepairToolObservationDigest(
-          buildAgentPiToolObservationDigestPromptJson(args.input, {
-            stage: "repairToolObservationDigest",
-            invalidDigest: args.invalidDigest,
+      case "RepairPiConversationSummary":
+        return baml.request.RepairPiConversationSummary(
+          buildAgentPiCompactionPromptJson(args.input, {
+            stage: "repairPiConversationSummary",
+            invalidSummary: args.invalidSummary,
             issues: args.issues,
           }),
           options,
@@ -258,7 +254,7 @@ function projectPromptForBamlFunction(
   functionName: AgentActionPlannerBamlFunctionArgs["functionName"],
   body: Record<string, unknown>,
 ) {
-  return functionName === "CondenseToolObservations" || functionName === "RepairToolObservationDigest"
+  return functionName === "SummarizePiConversation" || functionName === "RepairPiConversationSummary"
     ? projectPlainBamlRequestBody(body)
     : projectActionPlannerBamlRequestBody(body);
 }

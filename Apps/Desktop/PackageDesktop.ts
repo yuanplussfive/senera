@@ -12,7 +12,6 @@ interface CommandInvocation {
 const steps = [
   command("npm", ["run", "build"]),
   command("npm", ["--workspace", "senera-frontend", "run", "build"]),
-  command("npm", ["run", "terminal.prepare"]),
   command("npm", ["run", "desktop.prepare-native"]),
   command("electron-builder"),
 ];

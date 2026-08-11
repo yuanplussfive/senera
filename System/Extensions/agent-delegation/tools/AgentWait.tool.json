@@ -1,0 +1,135 @@
+{
+  "name": "AgentWait",
+  "description": "等待任一子代理完成、失败、取消或请求父代理输入。超时只结束本次等待，子代理继续运行。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "targets": {
+        "minItems": 1,
+        "type": "array",
+        "items": { "type": "string", "minLength": 1, "description": "Child-run ID returned by AgentSpawn." },
+        "description": "Child runs to wait for; the wait ends when any target settles."
+      },
+      "timeoutMs": {
+        "description": "Optional wait timeout. Timing out never stops a child run.",
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      }
+    },
+    "required": ["targets"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "runs": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "runId": { "type": "string" },
+            "state": {
+              "enum": ["not_found", "queued", "running", "needs_input", "stopping", "completed", "failed", "cancelled"],
+              "type": "string"
+            },
+            "agent": { "type": "string" },
+            "result": {
+              "type": "object",
+              "properties": { "content": { "type": "string" } },
+              "required": ["content"],
+              "additionalProperties": false
+            },
+            "error": { "type": "string" },
+            "request": {
+              "type": "object",
+              "properties": { "id": { "type": "string" }, "message": { "type": "string" } },
+              "required": ["id", "message"],
+              "additionalProperties": false
+            },
+            "progress": {
+              "type": "object",
+              "properties": {
+                "phase": {
+                  "enum": [
+                    "queued",
+                    "starting",
+                    "model_output",
+                    "tool_execution",
+                    "awaiting_supervisor",
+                    "wrapping_up",
+                    "cancelling",
+                    "completed",
+                    "failed",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                "lastActivityAt": { "type": "string", "format": "date-time" },
+                "activeTools": { "type": "array", "items": { "type": "string" } },
+                "toolCalls": {
+                  "type": "object",
+                  "properties": {
+                    "planned": { "type": "integer", "minimum": 0 },
+                    "started": { "type": "integer", "minimum": 0 },
+                    "completed": { "type": "integer", "minimum": 0 },
+                    "failed": { "type": "integer", "minimum": 0 }
+                  },
+                  "required": ["planned", "started", "completed", "failed"],
+                  "additionalProperties": false
+                },
+                "checkpointAvailable": { "type": "boolean" },
+                "artifactCount": { "type": "integer", "minimum": 0 }
+              },
+              "required": ["phase", "activeTools", "toolCalls", "checkpointAvailable", "artifactCount"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["runId", "state"],
+          "additionalProperties": false
+        }
+      },
+      "waitTimedOut": { "type": "boolean" }
+    },
+    "required": ["runs", "waitTimedOut"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/AgentLifecycle.projection.json",
+  "permissions": ["orchestration:inspect"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Persistent",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": { "Progress": true, "Cancellation": true, "ResumableEvents": true }
+  },
+  "resources": [],
+  "sources": [
+    { "Id": "orchestration", "Title": "Orchestration", "Description": "Child-agent runs managed by Senera." }
+  ],
+  "search": {
+    "Summary": "等待任一子代理完成、失败、取消或请求父代理输入。",
+    "Capabilities": [
+      {
+        "Id": "orchestration.agent-wait",
+        "Title": "Wait for any child run",
+        "Description": "Wait for the first settled target without terminating work on timeout.",
+        "Facets": {
+          "Actions": ["wait", "inspect"],
+          "Targets": ["child-run"],
+          "Inputs": ["child-run-ids", "timeout"],
+          "Outputs": ["child-run-state", "text-result"],
+          "Effects": ["read-state"]
+        },
+        "Aliases": ["等待子代理", "wait agent"],
+        "Risk": { "SideEffect": "none", "Permission": "orchestration" }
+      }
+    ],
+    "UseCases": ["父代理的下一步确实依赖一个或多个子任务结果时。"],
+    "Avoid": ["等待期间不要重复执行已委派的工作。"],
+    "Tags": ["子代理", "等待", "事件驱动"]
+  },
+  "evidenceCapabilities": []
+}

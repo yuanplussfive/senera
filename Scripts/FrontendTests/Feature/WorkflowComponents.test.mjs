@@ -13,9 +13,10 @@ const {
   readWorkflowViewportTarget,
 } = await import("../../../Frontend/src/features/workflow/ThinkingTimelineCanvas.tsx");
 const { StepNode } = await import("../../../Frontend/src/features/workflow/StepNode.tsx");
-const { layoutSteps } = await import("../../../Frontend/src/features/workflow/layout.ts");
+const { layoutSteps, readWorkflowLayoutKey } = await import("../../../Frontend/src/features/workflow/layout.ts");
 const { AgentExecutionFeed } = await import("../../../Frontend/src/features/workflow/AgentExecutionFeed.tsx");
 const { ChatHeader } = await import("../../../Frontend/src/features/chat/ChatHeader.tsx");
+const { ThinkingSummaryBar } = await import("../../../Frontend/src/features/chat/ThinkingSummaryBar.tsx");
 const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
 const { AppMotionProvider } = await import("../../../Frontend/src/shared/motion/MotionProvider.tsx");
 const { Position, ReactFlowProvider } = await import("@xyflow/react");
@@ -46,6 +47,37 @@ test("thinking timeline renders its empty state and opens a focused workflow vie
   expect(document.querySelector("[data-window-drag-region]")).not.toContainElement(focusButton);
   await user.click(focusButton);
   expect(screen.getByRole("dialog", { name: frontendMessage("workflow.panel.title") })).toBeInTheDocument();
+});
+
+test("completed run summary keeps disclosure semantics when motion is disabled", async () => {
+  const user = userEvent.setup();
+  const onViewWorkflow = vi.fn();
+  const run = createRun({ steps: [createStep({ title: "Inspect projected context" })] });
+  renderWithFrontendProviders(
+    React.createElement(
+      AppMotionProvider,
+      { level: "none" },
+      React.createElement(ThinkingSummaryBar, { run, onViewWorkflow }),
+    ),
+  );
+
+  const trigger = document.querySelector("[data-ui-chrome] button[aria-expanded]");
+  expect(trigger).toBeInstanceOf(HTMLButtonElement);
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+  await user.click(trigger);
+
+  const disclosureId = trigger.getAttribute("aria-controls");
+  expect(trigger).toHaveAttribute("aria-expanded", "true");
+  expect(disclosureId).not.toBeNull();
+  await waitFor(() =>
+    expect(document.getElementById(disclosureId)).toContainElement(
+      screen.getByRole("button", { name: frontendMessage("workflow.summary.viewFull") }),
+    ),
+  );
+
+  await user.click(trigger);
+  await waitFor(() => expect(document.getElementById(disclosureId)).not.toBeInTheDocument());
 });
 
 test("expanding the workflow keeps the dock vertical and opens a horizontal canvas", async () => {
@@ -101,6 +133,78 @@ test("chat header exposes one neutral workflow tool entry for panel toggling", a
   expect(onToggle).toHaveBeenCalledTimes(1);
 });
 
+test("chat header always exposes the effective execution mode beside terminal access", () => {
+  const onOpenTerminalPanel = vi.fn();
+  const baseStatus = {
+    provider: "docker-engine",
+    platform: "win32",
+    supported: true,
+    effectiveMode: "sandbox",
+    dependencies: { errors: [], warnings: [] },
+    diagnostics: [],
+    message: "Sandbox runtime is ready",
+    updatedAt: "2026-07-09T00:00:00.000Z",
+  };
+  const { rerender } = renderWithFrontendProviders(
+    React.createElement(ChatHeader, {
+      title: "Sandbox status",
+      sandboxStatus: { ...baseStatus, state: "ready" },
+      onOpenTerminalPanel,
+    }),
+  );
+
+  expect(
+    screen.getByRole("status", {
+      name: frontendMessage("execution.mode.sandbox", {
+        provider: frontendMessage("sandbox.provider.dockerEngine"),
+      }),
+    }),
+  ).toHaveAttribute("data-execution-mode", "sandbox");
+  expect(screen.getByRole("button", { name: frontendMessage("terminal.panel.open") })).toBeInTheDocument();
+
+  rerender(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(ChatHeader, {
+        title: "Sandbox status",
+        sandboxStatus: {
+          ...baseStatus,
+          provider: undefined,
+          state: "disabled",
+          effectiveMode: "host",
+          shellDialect: "powershell",
+        },
+        onOpenTerminalPanel,
+      }),
+    ),
+  );
+
+  expect(
+    screen.getByRole("status", {
+      name: frontendMessage("execution.mode.host", { shell: frontendMessage("execution.shell.powershell") }),
+    }),
+  ).toHaveAttribute("data-execution-mode", "host");
+
+  rerender(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(ChatHeader, {
+        title: "Sandbox status",
+        sandboxStatus: { ...baseStatus, state: "unavailable", effectiveMode: "unavailable" },
+        onOpenTerminalPanel,
+      }),
+    ),
+  );
+
+  expect(screen.getByRole("status", { name: frontendMessage("execution.mode.unavailable") })).toHaveAttribute(
+    "data-execution-mode",
+    "unavailable",
+  );
+  expect(screen.getByRole("button", { name: frontendMessage("terminal.panel.open") })).toBeInTheDocument();
+});
+
 test("persistent workflow panel owns its tool header and only collapse control", async () => {
   const onClosePanel = vi.fn();
   const user = userEvent.setup();
@@ -140,6 +244,59 @@ test("dock execution view hides its composed title and keeps the raised run summ
   expect(document.querySelector("[data-window-drag-region]")).not.toBeInTheDocument();
   expect(document.querySelector("[data-workflow-run-summary]")).toHaveClass("rounded-[14px]", "bg-surface-raised");
   expect(document.querySelector("[data-workflow-run-status='completed']")).toHaveClass("bg-moss-50");
+});
+
+test("dock execution view renders a vertical workflow graph with expandable complete node details", async () => {
+  const user = userEvent.setup();
+  const run = createRun({
+    requestId: "run-child-board",
+    status: "running",
+    endedAt: undefined,
+    steps: [
+      createStep({
+        id: "child-reviewer",
+        kind: "delegation",
+        title: "Running",
+        status: "running",
+        scope: { childRunId: "child-reviewer", agentName: "reviewer", role: "childAgent" },
+        childRun: {
+          id: "child-reviewer",
+          status: "running",
+          activeTools: ["WorkspaceGrep"],
+          checkpointAvailable: true,
+          lastActivityAt: "2026-07-11T00:00:01.000Z",
+          toolCalls: { planned: 3, started: 2, completed: 1, failed: 0 },
+          messages: [],
+        },
+      }),
+      createStep({
+        id: "tool-read",
+        kind: "tool",
+        title: "WorkspaceRead",
+        toolName: "WorkspaceRead",
+        toolArgs: { path: "Source/runtime.ts" },
+        toolResult: { content: "export const runtime = true;" },
+      }),
+    ],
+  });
+  resetFrontendStore({
+    activeSessionId: "session-a",
+    sessionOrder: ["session-a"],
+    sessions: { "session-a": createSession([run]) },
+  });
+
+  renderWithFrontendProviders(React.createElement(ThinkingTimeline, { presentation: "dock", hidePanelTitle: true }));
+
+  await waitFor(() => expect(document.querySelector("[data-workflow-dock-graph]")).toBeInTheDocument());
+  expect(screen.getByText(/reviewer/)).toBeInTheDocument();
+  expect(screen.getByText(/WorkspaceGrep/)).toBeInTheDocument();
+  expect(screen.queryByText(frontendMessage("workflow.childRun.board.title"))).not.toBeInTheDocument();
+  expect(screen.queryByText(frontendMessage("workflow.childRun.board.empty"))).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /展开WorkspaceRead/ }));
+  expect(screen.getByText(frontendMessage("workflow.node.section.toolArgs"))).toBeVisible();
+  expect(screen.getByText(frontendMessage("workflow.node.section.rawToolResult"))).toBeVisible();
+  expect(screen.getByText(/export const runtime = true/)).toBeVisible();
+  expect(document.querySelector(".react-flow")).not.toBeInTheDocument();
 });
 
 test("thinking timeline pins a historical run and can return to the latest run", async () => {
@@ -229,6 +386,61 @@ test("workflow graph switches its rank direction and connection anchors as one l
     targetPosition: Position.Left,
     data: { layout: { direction: "horizontal" } },
   });
+});
+
+test("parallel tool batches fan out as complete graph branches instead of a compressed lane", () => {
+  const { nodes, edges } = layoutSteps(createToolBatchRun(["WorkspaceFind", "WorkspaceRead"]).steps, "vertical");
+  const batchNodes = nodes.filter(
+    (node) =>
+      node.data.kind === "step" &&
+      node.data.step.toolBatch?.id === "batch-actions" &&
+      node.data.step.toolBatch.index !== undefined,
+  );
+  expect(batchNodes.length).toBeGreaterThan(1);
+  expect(new Set(batchNodes.map((node) => node.position.y)).size).toBe(1);
+  expect(new Set(batchNodes.map((node) => node.position.x)).size).toBe(batchNodes.length);
+  expect(
+    batchNodes.every((node) => edges.some((edge) => edge.source === "batch-plan" && edge.target === node.id)),
+  ).toBe(true);
+  expect(
+    batchNodes.every((node) => edges.some((edge) => edge.source === node.id && edge.target === "compose-answer")),
+  ).toBe(true);
+  expect(edges.some((edge) => edge.source === batchNodes[0].id && edge.target === batchNodes[1].id)).toBe(false);
+});
+
+test("dock workflow graph compresses a parallel batch only until the user expands it", async () => {
+  const user = userEvent.setup();
+  const run = createToolBatchRun(["WorkspaceFind", "WorkspaceRead"]);
+  resetFrontendStore({
+    activeSessionId: "session-a",
+    sessionOrder: ["session-a"],
+    sessions: { "session-a": createSession([run]) },
+  });
+
+  renderWithFrontendProviders(React.createElement(ThinkingTimeline, { presentation: "dock", hidePanelTitle: true }));
+
+  const batch = await screen.findByRole("button", { name: /展开并发工具批次/ });
+  expect(document.querySelectorAll("[data-workflow-dock-batch]")).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: /展开Call WorkspaceFind/ })).not.toBeInTheDocument();
+  await user.click(batch);
+  expect(screen.getByRole("button", { name: /展开Call WorkspaceFind/ })).toBeVisible();
+  expect(screen.getByRole("button", { name: /展开Call WorkspaceRead/ })).toBeVisible();
+});
+
+test("workflow layout key ignores live status but tracks dimension changes", () => {
+  const base = {
+    id: "tool-1",
+    kind: "tool",
+    title: "Read",
+    status: "running",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    callId: "call-1",
+  };
+
+  expect(readWorkflowLayoutKey([base])).toBe(readWorkflowLayoutKey([{ ...base, status: "done" }]));
+  expect(readWorkflowLayoutKey([base])).not.toBe(
+    readWorkflowLayoutKey([{ ...base, description: "A description that changes the estimated node height." }]),
+  );
 });
 
 test("workflow viewport starts terminal runs at the beginning and follows live runs at the latest step", () => {
@@ -385,10 +597,11 @@ test("execution feed keeps workflow steps while the answer body is projected bel
   expect(screen.queryByText("最终回答正文")).not.toBeInTheDocument();
 });
 
-test("execution feed renders Senera live activities without adding workflow nodes", () => {
+test("execution feed renders Senera live activities without adding workflow nodes", async () => {
+  const user = userEvent.setup();
   const run = createToolBatchRun([]);
   const workflowStepCount = run.steps.length;
-  run.liveActivity = "running_agent_turn";
+  run.liveActivity = "compacting_context";
   run.activities = [
     {
       id: "activity-context",
@@ -401,6 +614,14 @@ test("execution feed renders Senera live activities without adding workflow node
     {
       id: "activity-model",
       activity: "running_agent_turn",
+      status: "done",
+      step: 1,
+      startedAt: run.startedAt,
+      endedAt: run.startedAt,
+    },
+    {
+      id: "activity-compaction",
+      activity: "compacting_context",
       status: "running",
       step: 1,
       startedAt: run.startedAt,
@@ -409,11 +630,17 @@ test("execution feed renders Senera live activities without adding workflow node
 
   renderWithFrontendProviders(React.createElement(AgentExecutionFeed, { run }));
 
-  expect(screen.getByText(frontendMessage("workflow.feed.seneraActivity"))).toBeVisible();
-  expect(screen.getByText(frontendMessage("workflow.activity.preparingContext"))).toBeVisible();
-  expect(screen.getByText(frontendMessage("workflow.activity.runningAgentTurn"))).toBeVisible();
+  // 活动组默认折叠为单行摘要:组头可见,活动明细收进折叠面板。
+  const activityToggle = screen.getByText(frontendMessage("workflow.feed.seneraActivity"));
+  expect(activityToggle).toBeVisible();
   expect(document.querySelector("[data-feed-group-variant='activity']")).toBeInTheDocument();
   expect(document.querySelector("[data-feed-detail-surface]")).not.toBeInTheDocument();
+
+  // 展开后可见活动明细(等待展开动画完成)。
+  await user.click(activityToggle);
+  await waitFor(() => expect(screen.getByText(frontendMessage("workflow.activity.preparingContext"))).toBeVisible());
+  expect(screen.getByText(frontendMessage("workflow.activity.runningAgentTurn"))).toBeVisible();
+  expect(screen.getByText(frontendMessage("workflow.activity.compactingContext"))).toBeVisible();
   expect(run.steps).toHaveLength(workflowStepCount);
 });
 
@@ -540,6 +767,7 @@ function createToolBatchRun(toolNames) {
           title: `Call ${toolName}`,
           status: "done",
           toolName,
+          callId: `call-${index}`,
           toolBatch: { ...toolBatch, index },
         }),
       ),

@@ -29,6 +29,7 @@ export const runLifecycleEventHandlers = {
       session.runs.push(run);
     } else {
       run.status = "running";
+      run.outputState = "pending";
       run.liveActivity = undefined;
       run.activities = [];
       run.displayMessageId = undefined;
@@ -53,6 +54,7 @@ export const runLifecycleEventHandlers = {
     if (!run) return;
     const data = env.data as RunCancellationProgressData;
     const terminal = data.stage === "completed" || data.stage === "failed";
+    if (run.status === "running" && data.stage !== "failed") run.status = "cancelling";
     const component = data.component ? frontendMessage(cancellationComponentMessages[data.component]) : undefined;
     const duration = data.durationMs === undefined ? undefined : `${data.durationMs}ms`;
     const message = resolveBackendMessage(data);
@@ -64,7 +66,9 @@ export const runLifecycleEventHandlers = {
           ? "run.cancellation.completed"
           : data.stage === "failed"
             ? "run.cancellation.failed"
-            : "run.cancellation.started",
+            : data.stage === "settlement_delayed"
+              ? "run.cancellation.delayed"
+              : "run.cancellation.started",
       ),
       description: [component, duration, message].filter(Boolean).join(" · ") || undefined,
       status: data.stage === "failed" || data.stage === "component_failed" ? "failed" : terminal ? "done" : "running",
@@ -78,6 +82,7 @@ export const runLifecycleEventHandlers = {
     const run = readCurrentRun(state, env);
     if (!run) return;
     run.status = "completed";
+    run.outputState = "committed";
     settleRunActivities(run, "done", env.timestamp);
     run.endedAt = env.timestamp;
     touchRun(run);
@@ -91,7 +96,8 @@ export const runLifecycleEventHandlers = {
   [EventKinds.RunFailed]: (state, env) => {
     const sessionId = env.sessionId;
     if (!sessionId) return;
-    const session = ensureSession(state, sessionId);
+    const session = state.sessions[sessionId];
+    if (!session) return;
     const data = env.data as RunFailedData;
     const message = resolveBackendMessage(data) ?? data.message;
     const run = currentRun(session, env.requestId);
@@ -112,21 +118,20 @@ export const runLifecycleEventHandlers = {
       delete state.historyActiveRequestIds[sessionId];
       return;
     }
-    if (run) {
-      run.status = "failed";
-      settleRunActivities(run, "failed", env.timestamp);
-      run.endedAt = env.timestamp;
-      upsertStep(run, {
-        id: `${run.requestId}-error`,
-        kind: "error",
-        title: frontendMessage("workflow.projection.runFailed"),
-        description: message,
-        status: "failed",
-        startedAt: env.timestamp,
-        endedAt: env.timestamp,
-        errorMessage: message,
-      });
-    }
+    if (!run) return;
+    run.status = "failed";
+    settleRunActivities(run, "failed", env.timestamp);
+    run.endedAt = env.timestamp;
+    upsertStep(run, {
+      id: `${run.requestId}-error`,
+      kind: "error",
+      title: frontendMessage("workflow.projection.runFailed"),
+      description: message,
+      status: "failed",
+      startedAt: env.timestamp,
+      endedAt: env.timestamp,
+      errorMessage: message,
+    });
     session.messages.push({
       id: `${env.requestId ?? "run"}-error`,
       role: "system",

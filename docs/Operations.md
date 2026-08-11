@@ -133,7 +133,7 @@ SENERA_ALLOW_INSECURE_HTTP: "false"
 
 远程服务默认拒绝明文 HTTP 登录；只有同时启用 `SENERA_ALLOW_INSECURE_HTTP` 并精确列入 Origin 时才允许。若 TLS 在反向代理终止，配置中的 `Server.AccessControl.TrustedProxyAddresses` 只能填写实际代理的内部地址，不能信任任意 `X-Forwarded-Proto` 请求头。不要把启用明文登录的端口直接暴露给公网。
 
-`Server.AccessControl` 提供会话、连接、握手和消息配额；密码、Cookie、管理员账户文件和 CSRF 值不属于该配置，也不应提交到仓库。WebSocket 和上传/Pi Proxy API 使用同一认证边界，外部协议见 [WebSocket 协议参考](API/WebSocketProtocol.md)。
+`Server.AccessControl` 提供会话、连接、握手和消息配额；密码、Cookie、管理员账户文件和 CSRF 值不属于该配置，也不应提交到仓库。WebSocket、上传和模型兼容 API 使用同一认证边界，外部协议见 [WebSocket 协议参考](API/WebSocketProtocol.md)。
 
 ## 首次配置
 
@@ -330,14 +330,22 @@ docker buildx imagetools inspect "$SENERA_IMAGE" --format '{{ json .SBOM }}'
 docker buildx imagetools inspect "$SENERA_SANDBOX_IMAGE" --format '{{ json .SBOM }}'
 ```
 
-桌面安装包固定使用 microsandbox；平台运行时由 npm 的可选平台包交付。Linux 源码开发和 Docker 的 `auto` 模式在启动时读取版本化 provider 注册表与宿主能力：KVM 可用时选择 microsandbox；否则在 Docker Engine 已注册 `runsc` 时选择 gVisor；最后选择受限 Docker Engine 容器。三个 provider 默认都允许正常网络访问，工具执行契约显式声明 `Network: Deny` 时才断网。这个选择在启动时锁定；一次工具执行不会在 provider 间切换，也绝不会退回到主机本机执行。
+桌面、Nano、源码开发和 Compose 部署都使用同一 Docker Worker 协议与 OCI 运行时合同。`auto` 模式先验证连接的是 Linux Docker Engine，再读取已注册 runtime：存在 `runsc` 时锁定 gVisor，否则锁定收紧权限的 daemon-default 容器。显式选择 gVisor 而 Engine 未注册 `runsc` 会直接报配置错误；一次服务生命周期不会切换 provider，也不会退回本机执行。
 
-桌面安装包和 Nano 继续内置经过验证的 Microsandbox OCI Bundle，启动时不访问 GitHub Releases。Docker 使用独立 Registry 镜像，不复用 Microsandbox 归档，也不增加应用镜像体积。源码开发需要显式执行 `npm run sandbox.archive` 生成 `Release/SandboxImage`；`npm run dev`、`npm run desktop` 和 `npm run sandbox.prepare` 只消费这个目录。Docker 的下载进度由 Compose/Docker Engine 原生展示，应用侧只报告 Worker 协商和隔离探测状态。
+源码开发可先运行 `npm run sandbox.prepare`。该命令从固定 digest 的 Node 基础镜像构建本地 runtime，写入分发身份 labels，同时添加 registry 标签，然后以只读根文件系统、非 root 用户、无网络和全能力移除策略逐项探测 `bash`、`git`、`node`、`npm`、`python`、`pip`、`rg`、`jq`、`curl`、`ssh` 与 Linux Terminal Sidecar。正常启动按 `SandboxRuntime.Docker.PullPolicy` 使用 `always`、`if-missing` 或 `never`；镜像 labels、Engine API、Linux OS 或工具探针不符合合同都会在准备阶段失败。PTY Sidecar 及其 Linux 原生依赖直接属于版本化 runtime 镜像，桌面、Nano 和 Compose 不再生成、复制或下载宿主侧 Sidecar 目录。
 
-源码高级测试可以在系统配置中显式选择 `Oci` 并声明镜像与 registry 配置。Basic 凭据只引用环境变量名，真实值不会写入配置。`Oci` 与 `ReleaseBundle` 是互斥形状，运行时只执行选中的来源；正式桌面投影固定为随包交付的 `ReleaseBundle`。桌面侧成功导入记录按 `distributionId/archiveVersion/architecture/sha256` 存放在 `MSB_HOME`，与 Senera 产品版本解耦；Docker 投影由 Compose 声明独立 runtime 镜像，不进入这套 Bundle 安装逻辑。
+Windows 和 macOS 桌面端要求 Docker Desktop 处于 Linux containers 模式；Linux 使用本机 Docker Engine。桌面主进程通过隐藏的 Node 子进程启动 Worker，Windows 使用 named pipe，Unix 使用工作区运行时目录下的私有 Socket。应用进程持有受限 Worker 客户端，不直接调用 Docker API。
+
+工作区通过 Docker bind 或 named volume 直接挂载，不复制源码树，因此 `.git`、`.senera` 和普通项目文件都保持可见，启动成本不随仓库体积线性增长。执行合同决定整个工作区挂载是只读还是可写；额外可写挂载和 rootfs copy 都必须落在 Worker 启动时建立的来源白名单内。
+
+Worker 协议不接受镜像字段，模型或工具调用无法选择任意镜像。镜像、runtime、网络模式、只读根、capability、资源上限和挂载策略全部由部署及版本化合同控制。单次容器失败只影响该调用；Engine 协商或镜像准备失败则通过正式沙箱状态事件暴露，不存在字符串猜测式重试或全局隐式降级。
+
+桌面和 Nano 不携带离线沙箱归档。发布流水线只构建一次候选 runtime 镜像，使用 Compose + 可选 gVisor 做真实 smoke，再把已验证 digest 提升为稳定标签。应用镜像和 runtime 镜像均附带 SBOM；生产部署应固定 digest。
+
+修改 Worker、挂载或 runtime 合同后执行 `npm run verify.sandbox.real`。该命令构建并探测本地 runtime，再验证真实 Shell 和 PTY 链路；它需要已启动的 Linux Docker Engine。
 
 PTY 后台终端也通过同一执行边界路由。资源快照会返回 `requestedBoundary`、`effectiveBoundary`、
-`backend`、`capabilities`、`sandboxId` 和审批信息。microsandbox 与 Docker Engine Worker 都支持交互输入和信号；
+`backend`、`capabilities`、`sandboxId` 和审批信息。Docker Engine Worker 支持交互输入和信号；
 只有实际后端声明 `resize` 时前端才启用终端尺寸调整。
 
 本地命令、后台进程和 PTY 的环境继承可以统一收敛：
@@ -346,6 +354,10 @@ PTY 后台终端也通过同一执行边界路由。资源快照会返回 `reque
 {
   "Defaults": {
     "ToolExecution": {
+      "MaxConcurrentCallsPerRun": 10,
+      "SemanticAudit": {
+        "Mode": "approval_sensitive"
+      },
       "Environment": {
         "Inherit": "none",
         "IncludeOnly": ["PATH", "HOME"],
@@ -356,6 +368,10 @@ PTY 后台终端也通过同一执行边界路由。资源快照会返回 `reque
   }
 }
 ```
+
+`MaxConcurrentCallsPerRun` limits ordinary tool executions within one agent run. Calls above the limit queue instead of failing. System Tool contracts may impose a lower tool-wide `Runtime.MaxConcurrency`, declare resource conflicts, or opt into `SelfManaged` scheduling; the effective concurrency therefore never exceeds the strictest applicable policy.
+
+`SemanticAudit.Mode` controls the optional BAML parameter review, not the deterministic safety boundary. `approval_sensitive` only reviews a deterministically allowed BAML-planned call under `always_ask`, where the result can still request user approval. Native Tool Calling, `agent`, `full_access`, and `disabled` never create that advisory BAML request. `full_access` skips user approval for `ask` decisions but still preserves deterministic rejection. Access grants, OPA, schema validation, execution targets, workspace policy, and sandbox enforcement remain active in every mode.
 
 `Set` 最后应用并覆盖同名值。所有 Sandbox provider 都不继承宿主环境，只接收执行画像和调用显式投影的变量。
 

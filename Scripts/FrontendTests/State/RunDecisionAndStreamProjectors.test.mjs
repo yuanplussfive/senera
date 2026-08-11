@@ -207,6 +207,54 @@ test("run activity updates the left-side live status without creating workflow s
   expect(readTestRun(state).liveActivity).toBeUndefined();
 });
 
+test("run activity restores the parent phase after nested context compaction completes", () => {
+  const state = createTestState();
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "检查项目" }, { sequence: 1 }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.RunActivityChanged,
+      {
+        activityId: "activity-turn",
+        activity: "running_agent_turn",
+        state: "started",
+      },
+      { step: 1, sequence: 2, phase: "run" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.RunActivityChanged,
+      {
+        activityId: "activity-compaction",
+        parentActivityId: "activity-turn",
+        activity: "compacting_context",
+        state: "started",
+      },
+      { step: 1, sequence: 3, phase: "run" },
+    ),
+  );
+
+  expect(readTestRun(state).liveActivity).toBe("compacting_context");
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.RunActivityChanged,
+      {
+        activityId: "activity-compaction",
+        parentActivityId: "activity-turn",
+        activity: "compacting_context",
+        state: "completed",
+      },
+      { step: 1, sequence: 4, phase: "run" },
+    ),
+  );
+
+  expect(readTestRun(state).liveActivity).toBe("running_agent_turn");
+});
+
 test("authoritative assistant events classify a tool preface and the following answer", () => {
   const state = createTestState();
 

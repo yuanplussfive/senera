@@ -8,6 +8,8 @@ import { projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import { AgentMemoryService } from "../Memory/AgentMemoryService.js";
 import type { AgentPiSessionExportFormat } from "../Pi/AgentPiSessionManagement.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
+import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
 import { AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
 import { AgentSessionHistoryReplay } from "./AgentSessionHistoryReplay.js";
 import { AgentSessionRunCoordinator } from "./AgentSessionRunCoordinator.js";
@@ -27,6 +29,7 @@ import { AgentSessionPiManagementController } from "./AgentSessionPiManagementCo
 import type { AgentSessionManagerOptions } from "./AgentSessionManagerOptions.js";
 import { AgentSessionMessageCoordinator } from "./AgentSessionMessageCoordinator.js";
 import { AgentSessionHistoryController } from "./AgentSessionHistoryController.js";
+import type { AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
 
 export type { AgentMemoryLearningSink, AgentSessionManagerOptions } from "./AgentSessionManagerOptions.js";
 
@@ -202,11 +205,18 @@ export class AgentSessionManager {
     requestId?: string;
     modelProviderId?: string;
     input: string;
+    approvalMode: AgentExecutionApprovalMode;
     attachments?: AgentUploadAttachment[];
     disposition?: AgentSessionMessageDisposition;
     queueMode?: AgentSessionMessageQueueMode;
     onEvent?: AgentEventSink;
     preparation?: AgentTurnPreparationSnapshot;
+    systemPromptLayer?: import("../Orchestration/AgentRunDispatchPort.js").AgentSystemPromptLayer;
+    allowedToolNames?: readonly string[];
+    pinnedSkills?: readonly AgentPinnedSkillReference[];
+    thinkingLevel?: import("@earendil-works/pi-ai").ModelThinkingLevel;
+    inheritProjectContext?: boolean;
+    sessionOwnership?: AgentSessionOwnership;
   }): Promise<void> {
     await this.messageCoordinator.submit(request);
   }
@@ -221,16 +231,22 @@ export class AgentSessionManager {
     messageCount: number;
     activeRequestId?: string;
   }> {
-    return this.store.listSessions().map((session) => ({
-      sessionId: session.id,
-      title: this.titleProjector.project(session),
-      status: session.status,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-      entryCount: session.entryCount,
-      messageCount: session.messageCount,
-      activeRequestId: session.activeRequest?.requestId,
-    }));
+    return this.store
+      .listSessions()
+      .filter(
+        (session) =>
+          !this.options.managedSessionIds?.has(session.id) && session.metadata?.ownership?.type !== "child_run",
+      )
+      .map((session) => ({
+        sessionId: session.id,
+        title: this.titleProjector.project(session),
+        status: session.status,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+        entryCount: session.entryCount,
+        messageCount: session.messageCount,
+        activeRequestId: session.activeRequest?.requestId,
+      }));
   }
 
   async replayHistory(request: { sessionId: string; refresh?: boolean; onEvent?: AgentEventSink }): Promise<void> {
@@ -274,8 +290,46 @@ export class AgentSessionManager {
   async cancelActiveRun(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<boolean> {
     await this.ready();
     this.historyController.invalidate(request.sessionId);
-    this.runCoordinator.requestActiveRunCancellation(request.sessionId);
-    return this.sessionAdmissions.run(request.sessionId, () => this.runCoordinator.cancelActiveRun(request));
+    return this.sessionAdmissions.run(request.sessionId, async () =>
+      this.runCoordinator.acceptActiveRunCancellation(request),
+    );
+  }
+
+  async settleActiveRunCancellation(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<boolean> {
+    await this.ready();
+    this.historyController.invalidate(request.sessionId);
+    return this.runCoordinator.cancelActiveRun(request);
+  }
+
+  async requestActiveRunCancellation(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<boolean> {
+    await this.ready();
+    this.historyController.invalidate(request.sessionId);
+    // Cancellation admission is a control-plane operation. It must not wait
+    // behind the session's active data-plane turn or its eventual settlement.
+    return this.runCoordinator.acceptActiveRunCancellation(request);
+  }
+
+  async requestActiveRunFinalAnswer(request: { sessionId: string; instruction: string }): Promise<boolean> {
+    await this.ready();
+    return this.runCoordinator.requestActiveRunFinalAnswer(request);
+  }
+
+  async steerActiveRun(request: { sessionId: string; input: string; onEvent?: AgentEventSink }): Promise<boolean> {
+    await this.ready();
+    // Steering is a control-plane operation. It must be able to reach the
+    // active Pi turn while a data-plane admission is still doing recovery or
+    // history work; waiting here can leave the tool batch without a result.
+    return this.runCoordinator.steerActiveRun(request);
+  }
+
+  async followUpActiveRun(request: { sessionId: string; input: string; onEvent?: AgentEventSink }): Promise<boolean> {
+    await this.ready();
+    return this.runCoordinator.followUpActiveRun(request);
+  }
+
+  async interruptActiveRun(request: { sessionId: string; instruction: string }): Promise<boolean> {
+    await this.ready();
+    return this.runCoordinator.interruptActiveRun(request);
   }
 
   async truncateFromRequest(request: {
@@ -293,6 +347,7 @@ export class AgentSessionManager {
     requestId: string;
     modelProviderId?: string;
     input: string;
+    approvalMode: AgentExecutionApprovalMode;
     attachments?: AgentUploadAttachment[];
     onEvent?: AgentEventSink;
   }): Promise<void> {
@@ -303,6 +358,7 @@ export class AgentSessionManager {
     sourceSessionId: string;
     sessionId: string;
     throughRequestId: string;
+    ownership?: AgentSessionOwnership;
     onEvent?: AgentEventSink;
   }): Promise<void> {
     await this.ready();

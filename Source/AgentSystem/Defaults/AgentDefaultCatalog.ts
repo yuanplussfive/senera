@@ -13,6 +13,11 @@ import { AgentPiSessionCacheDefaults } from "../Pi/AgentPiSessionCachePolicy.js"
 import { AgentToolSearchMemoryExpansionModes } from "../Types/AgentToolAndMemoryConfigTypes.js";
 import { AgentModelResponseBudgetDefaults } from "../ModelEndpoints/ModelResponseBudget.js";
 import { SeneraDefaultProcessEnvironmentIncludeOnly } from "../Execution/SeneraProcessEnvironment.js";
+import { AgentToolSemanticAuditModes } from "../Types/AgentRuntimeConfigTypes.js";
+import {
+  readAgentSandboxDistributionContract,
+  resolveAgentSandboxDistributionTarget,
+} from "../Sandbox/AgentSandboxDistributionContract.js";
 
 const Mebibyte = 1024 * 1024;
 const DefaultLargePayloadBytes = 64 * Mebibyte;
@@ -20,6 +25,9 @@ const DefaultModelProviderEndpoints = parseJsonText(
   fs.readFileSync(path.join(moduleDirPath(import.meta.url), "AgentDefaultModelProviderEndpoints.json"), "utf8"),
   "Default model provider catalog",
 ) as ResolvedAgentModelProviderEndpointConfig[];
+const DefaultSandboxRuntimeImage = resolveAgentSandboxDistributionTarget(
+  readAgentSandboxDistributionContract(),
+).registryImage;
 
 export const AgentDefaults = {
   ModelProviderEndpoints: DefaultModelProviderEndpoints,
@@ -36,7 +44,9 @@ export const AgentDefaults = {
       Reasoning: false,
       DeveloperRole: false,
       StreamingUsage: true,
+      ToolCalling: true,
     },
+    ToolPlanningMode: "native",
     ContextWindowTokens: 128_000,
     MaxModelOutputTokens: -1,
     Temperature: 0,
@@ -55,8 +65,12 @@ export const AgentDefaults = {
   },
   ToolExecution: {
     TimeoutSeconds: 120,
+    MaxConcurrentCallsPerRun: 10,
     MaxStdoutBytes: DefaultLargePayloadBytes,
     MaxStderrBytes: DefaultLargePayloadBytes,
+    SemanticAudit: {
+      Mode: AgentToolSemanticAuditModes.ApprovalSensitive,
+    },
     Environment: {
       Inherit: "allowlist",
       IncludeOnly: [...SeneraDefaultProcessEnvironmentIncludeOnly],
@@ -66,7 +80,10 @@ export const AgentDefaults = {
     Resources: {
       MaxActive: 8,
       MaxBufferedBytes: DefaultLargePayloadBytes,
+      OutputBatchMaxBytes: 64 * 1024,
+      OutputBatchMaxDelayMs: 50,
       MaxInputBytes: Mebibyte,
+      InitialYieldSeconds: 1,
       MaxWaitSeconds: 30,
       IdleTtlSeconds: 1800,
       TerminalTtlSeconds: 300,
@@ -78,12 +95,11 @@ export const AgentDefaults = {
     Enabled: true,
     Provider: "auto",
     BaseDir: ".senera/sandbox-runtime",
-    Gvisor: {
-      WorkerSocketPath: "gvisor/worker.sock",
-      PreparationTimeoutSeconds: 30,
-    },
-    Provisioning: {
-      Kind: "ReleaseBundle",
+    Docker: {
+      DetectionTimeoutSeconds: 3,
+      PreparationTimeoutSeconds: 120,
+      Image: DefaultSandboxRuntimeImage,
+      PullPolicy: "if-missing",
     },
   },
   AgentLoop: {
@@ -207,7 +223,9 @@ export const AgentDefaults = {
     MemoryReadMaxArtifacts: 16,
     MemoryReadMaxRefs: 8,
     MemoryReadMaxConcurrency: 4,
-    MemoryReadStructuredJsonMaxTokens: 4_000,
+    // The active turn budget still caps each read. This ceiling lets artifact
+    // projections use the same 64K-128K feedback range as system extensions.
+    MemoryReadStructuredJsonMaxTokens: 128_000,
     OutputCaptureMaxBytes: DefaultLargePayloadBytes,
     MaxStoredBytes: 10 * 1024 * 1024 * 1024,
     MaxArtifacts: 10_000,

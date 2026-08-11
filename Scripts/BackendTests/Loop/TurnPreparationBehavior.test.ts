@@ -68,14 +68,67 @@ describe("Turn preparation behavior", () => {
         action: "use_tools",
         useTools: {
           preferredTools: ["WorkspaceListFiles"],
-          instruction: "Inspect the workspace",
+          instruction: "",
           needs: [],
         },
       },
       loadedToolNames: ["ToolSearchTool", "WorkspaceListFiles"],
+      allowedToolNames: undefined,
     });
     expect(rememberAutoSearch).toHaveBeenCalledWith("request-a", "Inspect the workspace", prepared.loadedToolNames);
     expect(prepared.toolAccessGrant.exposedToolNames).toEqual(prepared.loadedToolNames);
+  });
+
+  test("carries a delegated run Tool ceiling into the authoritative root grant", async () => {
+    const resolvePlannedLoadedTools = vi.fn(async () => ["WorkspaceRead", "DocumentExtract", "SkillManage"]);
+    const buildRootCommand = vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames));
+    const service = new AgentTurnPreparationService({
+      services: {
+        retrieval: { resolvePlannedLoadedTools, rememberAutoSearch: vi.fn() },
+        promptContext: {
+          activateSkills: async () => [],
+          recommendedSkillTools: () => ["DocumentExtract", "WorkspaceRead", "SkillManage"],
+          buildRootCommand,
+        },
+      },
+    });
+
+    const prepared = await service.prepare({
+      requestId: "request-child",
+      userInput: "Review the workspace",
+      loadedToolNames: ["DocumentExtract"],
+      allowedToolNames: ["WorkspaceRead"],
+    });
+
+    expect(prepared.loadedToolNames).toEqual(["WorkspaceRead"]);
+    expect(buildRootCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        loadedToolNames: ["WorkspaceRead"],
+        allowedToolNames: ["WorkspaceRead"],
+      }),
+    );
+  });
+
+  test("reuses a preparation only under the same Tool authorization ceiling", () => {
+    const restricted = preparation(["WorkspaceListFiles"]);
+    const base = {
+      runtimeFingerprint: "runtime-a",
+      userInput: "Inspect the workspace",
+    };
+
+    expect(
+      isAgentTurnPreparationReusable(restricted, {
+        ...base,
+        allowedToolNames: ["WorkspaceListFiles"],
+      }),
+    ).toBe(true);
+    expect(isAgentTurnPreparationReusable(restricted, base)).toBe(false);
+    expect(
+      isAgentTurnPreparationReusable(restricted, {
+        ...base,
+        allowedToolNames: ["WorkspaceListFiles", "DocumentExtract"],
+      }),
+    ).toBe(false);
   });
 
   test("rejects obsolete or internally inconsistent snapshots structurally", () => {
@@ -87,6 +140,9 @@ describe("Turn preparation behavior", () => {
     });
     expect(parseAgentTurnPreparationSnapshot({ ...snapshot, route: { mode: "tool_agent_loop" } })).toBeUndefined();
     expect(parseAgentTurnPreparationSnapshot({ ...snapshot, loadedToolNames: [] })).toBeUndefined();
+    expect(
+      parseAgentTurnPreparationSnapshot({ ...snapshot, toolAuthorizationCeiling: ["DocumentExtract"] }),
+    ).toBeUndefined();
   });
 
   test("reconstructs the immutable access grant when adding a Pi branch boundary", () => {
@@ -100,11 +156,12 @@ describe("Turn preparation behavior", () => {
   });
 });
 
-function preparation() {
+function preparation(allowedToolNames?: readonly string[]) {
   const command = rootCommand(["WorkspaceListFiles"]);
   return createAgentTurnPreparationSnapshot({
     runtimeFingerprint: "runtime-a",
     userInput: "Inspect the workspace",
+    allowedToolNames,
     loadedToolNames: ["WorkspaceListFiles"],
     toolAccessGrant: command.toolAccessGrant,
     rootCommand: command,
@@ -128,10 +185,10 @@ function rootCommand(loadedToolNames: readonly string[]): AgentRootCommand {
     includeToolCatalog: false,
     visibleOutput: {
       audience: "runtime",
-      start: "pi_tool_turn",
-      format: "openai_tool_calls_or_final_text",
+      start: "answer_body",
+      format: "final_text",
       rules: [],
-      repair: { instruction: "Retry using the tool protocol.", rules: [] },
+      repair: { instruction: "Return only the user-facing answer.", rules: [] },
     },
   };
 }

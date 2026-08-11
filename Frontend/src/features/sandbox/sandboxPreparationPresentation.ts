@@ -8,15 +8,25 @@ export function sandboxStatusDetail(status?: SandboxStatusSnapshotData | null): 
 }
 
 export function sandboxStatusAvailabilitySuffix(status?: SandboxStatusSnapshotData | null): string {
-  if (status?.effectiveMode === "disabled") return frontendMessage("sandbox.status.disabledSuffix");
+  if (status?.effectiveMode === "host") return frontendMessage("sandbox.status.disabledSuffix");
   if (status?.effectiveMode !== "sandbox") return frontendMessage("sandbox.status.unavailableSuffix");
   return frontendMessage("sandbox.status.sandboxSuffix", { provider: sandboxProviderLabel(status.provider) });
 }
 
+export function executionModeLabel(status?: SandboxStatusSnapshotData | null): string {
+  if (!status) return frontendMessage("execution.mode.unsynced");
+  if (status.state === "preparing") return frontendMessage("execution.mode.preparing");
+  if (status.effectiveMode === "sandbox") {
+    return frontendMessage("execution.mode.sandbox", { provider: sandboxProviderLabel(status.provider) });
+  }
+  if (status.effectiveMode === "host") {
+    return frontendMessage("execution.mode.host", { shell: shellDialectLabel(status.shellDialect) });
+  }
+  return frontendMessage("execution.mode.unavailable");
+}
+
 export function sandboxProviderLabel(provider: string | undefined): string {
   switch (provider) {
-    case "microsandbox":
-      return frontendMessage("sandbox.provider.microsandbox");
     case "gvisor":
       return frontendMessage("sandbox.provider.gvisor");
     case "docker-engine":
@@ -24,6 +34,12 @@ export function sandboxProviderLabel(provider: string | undefined): string {
     default:
       return frontendMessage("sandbox.provider.unknown");
   }
+}
+
+function shellDialectLabel(dialect: SandboxStatusSnapshotData["shellDialect"]): string {
+  return dialect === "powershell"
+    ? frontendMessage("execution.shell.powershell")
+    : frontendMessage("execution.shell.posix");
 }
 
 export function sandboxPreparationRatio(progress?: SandboxPreparationProgressData): number | undefined {
@@ -40,25 +56,22 @@ export function sandboxPreparationRatio(progress?: SandboxPreparationProgressDat
 function describeSandboxPreparation(progress: SandboxPreparationProgressData): string {
   const progressCount = formatProgressCount(progress);
   switch (progress.stage) {
-    case "checking_host_runtime":
-      return frontendMessage("sandbox.progress.checkingHostRuntime");
+    case "detecting_engine":
+      return frontendMessage("sandbox.progress.detectingEngine", { item: progress.item ?? "" });
     case "connecting_worker":
       return frontendMessage("sandbox.progress.connectingWorker");
-    case "loading_runtime":
-      return frontendMessage("sandbox.progress.loadingRuntime", { item: progress.item ?? "" });
-    case "resolving_archive":
-      return frontendMessage("sandbox.progress.resolvingArchive");
-    case "verifying_archive":
-      return frontendMessage("sandbox.progress.verifyingArchive");
-    case "importing_image":
-      return frontendMessage("sandbox.progress.importingImage");
-    case "warming_image":
-      return frontendMessage("sandbox.progress.warmingImage", {
+    case "pulling_image":
+      return frontendMessage("sandbox.progress.pullingImage", {
         item: progress.item ?? "",
         progress: formatImageProgress(progress) ?? progressCount,
       });
-    case "probing_sandbox":
-      return frontendMessage("sandbox.progress.probingSandbox", { item: progress.item ?? "" });
+    case "verifying_image":
+      return frontendMessage("sandbox.progress.verifyingImage", { item: progress.item ?? "" });
+    case "probing_toolchain":
+      return frontendMessage("sandbox.progress.probingToolchain", {
+        item: progress.item ?? "",
+        progress: progressCount,
+      });
   }
 }
 

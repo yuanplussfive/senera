@@ -15,7 +15,7 @@ import type {
   AgentSystemConfig,
   ResolvedAgentModelProviderConfig,
 } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
-import { AgentPiTurnContextRegistry } from "../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
+import type { AgentPiPlanningCompilerFactory } from "../Source/AgentSystem/Pi/AgentPiPlanningCompiler.js";
 
 const sessionsRoot = createTemporarySessionsRoot("coding-agent-reuse");
 const config: AgentSystemConfig = {
@@ -55,6 +55,7 @@ const modelProvider: ResolvedAgentModelProviderConfig = {
   ApiKey: "verification-key",
   ApiVersion: "",
   Model: "verification-model",
+  ToolPlanningMode: "baml",
   ContextWindowTokens: 128_000,
   Temperature: 0,
   MaxOutputTokens: -1,
@@ -79,6 +80,7 @@ const substrate = new AgentPiSubstrate({
   workspaceRoot: process.cwd(),
   config,
   modelProvider,
+  planningCompilerFactory: verificationCompilerFactory(),
   registry,
   toolCallExecutor: new AgentToolCallExecutor({
     registry,
@@ -97,7 +99,6 @@ const substrate = new AgentPiSubstrate({
   diagnostics: (event) => {
     diagnostics.push(event);
   },
-  turnContexts: new AgentPiTurnContextRegistry(),
 });
 
 const sessionId = `verify-pi-coding-agent-reuse-${randomUUID()}`;
@@ -152,4 +153,13 @@ function diagnosticDetails(events: readonly AgentPiDiagnosticEvent[], name: stri
 
 function readRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function verificationCompilerFactory(): AgentPiPlanningCompilerFactory {
+  return {
+    create: () => ({
+      compile: async () => ({ kind: "final_text", content: "verification", toolCalls: [] }),
+      summarize: async () => "verification summary",
+    }),
+  };
 }

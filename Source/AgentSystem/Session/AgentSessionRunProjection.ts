@@ -1,4 +1,4 @@
-import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
 import { type AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import { type AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";

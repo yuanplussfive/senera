@@ -1,61 +1,51 @@
 {
   "name": "ArtifactReadTool",
-  "observationProjection": "observations/default.projection.json",
   "description": "按 artifactUri 读取已经落地的 artifact 资源；JSON 默认分页返回已发布结构索引，并通过 typed query 执行完整元素投影。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
       "artifactUris": {
-        "type": "object",
-        "properties": {
-          "item": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": ["item"],
-        "additionalProperties": false,
-        "description": "One or more canonical artifact memory URIs, for example \"senera://artifact/art_1234567890abcdef12345678\"."
+        "minItems": 1,
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "description": "One or more canonical artifact memory URIs, for example senera://artifact/art_1234567890abcdef12345678."
       },
       "refs": {
-        "type": "object",
-        "properties": {
-          "item": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "summary",
-                "projection",
-                "evidence",
-                "delta",
-                "raw",
-                "rawBlob",
-                "rawPreview",
-                "workspaceDiff",
-                "workspacePatch",
-                "stdout",
-                "stderr"
-              ]
-            }
-          }
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "summary",
+            "projection",
+            "evidence",
+            "delta",
+            "raw",
+            "rawBlob",
+            "rawPreview",
+            "workspaceDiff",
+            "workspacePatch",
+            "stdout",
+            "stderr"
+          ]
         },
-        "required": ["item"],
-        "additionalProperties": false,
-        "description": "Memory refs to load. Omit to read projection only."
+        "description": "Memory refs to load. Omit to read the projection ref only."
       },
       "maxBytesPerRef": {
-        "type": "number",
-        "description": "Optional per-ref response budget. Runtime caps this at the artifact text-file budget."
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991,
+        "description": "Per-ref byte budget, capped by the configured artifact text-file limit."
       },
       "startBytePerRef": {
-        "type": "number",
-        "description": "UTF-8 byte offset applied to each requested ref. Use a prior range.nextStartByte to continue."
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991,
+        "description": "UTF-8 byte offset applied to each requested ref."
       },
       "refRanges": {
+        "minItems": 1,
         "type": "array",
         "items": {
           "type": "object",
@@ -76,31 +66,26 @@
                 "stderr"
               ]
             },
-            "maxBytes": {
-              "type": "number"
-            },
-            "startByte": {
-              "type": "number"
-            }
+            "maxBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+            "startByte": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
           },
           "required": ["ref", "maxBytes"],
           "additionalProperties": false
         },
-        "description": "Optional per-ref ranges. This avoids applying one offset/budget to unrelated refs."
+        "description": "Per-ref byte ranges for independent continuation reads."
       },
       "jsonView": {
-        "anyOf": [
+        "oneOf": [
           {
             "type": "object",
             "properties": {
-              "kind": {
-                "type": "string",
-                "const": "index"
+              "kind": { "type": "string", "const": "index" },
+              "sourcePath": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Object keys leading to the value to index. Use an empty array for the root value."
               },
-              "cursor": {
-                "type": "string",
-                "description": "Opaque index nextCursor. It cannot be used by a query view."
-              }
+              "cursor": { "type": "string", "minLength": 1, "description": "Opaque index continuation cursor." }
             },
             "required": ["kind"],
             "additionalProperties": false
@@ -108,93 +93,67 @@
           {
             "type": "object",
             "properties": {
-              "kind": {
-                "type": "string",
-                "const": "query"
-              },
+              "kind": { "type": "string", "const": "query" },
               "sourcePath": {
-                "type": "object",
-                "properties": {
-                  "item": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": ["item"],
-                "additionalProperties": false,
-                "description": "Object keys leading to the array that should be streamed. Use an empty array for a root array."
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Object keys leading to the array to stream. Use an empty array for a root array."
               },
               "select": {
-                "type": "object",
-                "properties": {
-                  "item": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": ["item"],
-                "additionalProperties": false,
-                "description": "Optional fields to retain from each matching object."
+                "minItems": 1,
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Fields to retain from each matching object."
               },
               "where": {
-                "type": "object",
-                "properties": {
-                  "item": {
-                    "type": "array",
-                    "items": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
                       "type": "object",
                       "properties": {
-                        "field": {
-                          "type": "string"
-                        },
-                        "operator": {
-                          "type": "string",
-                          "enum": ["eq", "ne", "gt", "gte", "lt", "lte", "contains", "exists", "not_exists"]
-                        },
+                        "field": { "type": "string" },
+                        "operator": { "type": "string", "enum": ["eq", "ne", "gt", "gte", "lt", "lte", "contains"] },
                         "value": {}
+                      },
+                      "required": ["field", "operator", "value"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "field": { "type": "string" },
+                        "operator": { "type": "string", "enum": ["exists", "not_exists"] }
                       },
                       "required": ["field", "operator"],
                       "additionalProperties": false
                     }
-                  }
+                  ]
                 },
-                "required": ["item"],
-                "additionalProperties": false,
-                "description": "Optional deterministic predicates. Comparison operators require value; exists operators do not."
+                "description": "Deterministic predicates applied to streamed array items."
               },
-              "cursor": {
-                "type": "string",
-                "description": "Opaque query nextCursor. It cannot be used by an index view."
-              }
+              "cursor": { "type": "string", "minLength": 1, "description": "Opaque query continuation cursor." }
             },
             "required": ["kind"],
             "additionalProperties": false
           }
         ],
-        "description": "Typed JSON view. Omit it or choose index to page structure metadata; choose query to stream complete array items."
+        "description": "Typed JSON view: index discovers structure; query streams complete array items."
       }
     },
     "required": ["artifactUris"],
-    "additionalProperties": false,
-    "definitions": {}
+    "additionalProperties": false
   },
+  "observationProjection": "observations/default.projection.json",
   "permissions": ["filesystem:read:artifacts"],
-  "execution": {
-    "Targets": ["Local"],
-    "Network": "Deny",
-    "Workspace": "ReadOnly"
-  },
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
     "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
-    "Capabilities": {
-      "Cancellation": true
-    }
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
   },
   "resources": [],
   "sources": [
@@ -206,6 +165,7 @@
   ],
   "search": {
     "Summary": "按 artifactUri 读取 artifact 资源；JSON 使用已发布结构索引、受控查询、字段投影和游标分页。",
+    "Tags": ["证据读取", "产物读取", "结构化投影", "历史资料"],
     "Capabilities": [
       {
         "Id": "artifact.read",
@@ -229,10 +189,7 @@
           "Effects": ["read-only"]
         },
         "Aliases": ["读取产物", "展开证据", "read artifact", "hydrate artifact evidence"],
-        "Risk": {
-          "SideEffect": "read-only",
-          "Permission": "artifact-read"
-        }
+        "Risk": { "SideEffect": "read-only", "Permission": "artifact-read" }
       }
     ],
     "UseCases": ["历史工具结果、网页搜索结果、artifact projection、evidence 结构索引和大型 JSON 字段投影。"],
@@ -246,8 +203,7 @@
       "artifactUri 缺失时先使用当前上下文或检索工具定位证据引用。",
       "只需要轻量 facts 就能回答时不要读取完整 artifact。",
       "JSON 首次读取使用 jsonView.kind=index；根据索引中的数组字段改用 jsonView.kind=query、sourcePath 和 select。两类 nextCursor 只能回传给相同 kind，不要使用 rawBlob 猜测结构边界。"
-    ],
-    "Tags": ["证据读取", "产物读取", "结构化投影", "历史资料"]
+    ]
   },
   "evidenceCapabilities": [],
   "artifacts": {
@@ -267,22 +223,12 @@
           "failedRefCount": "$.failedRefCount",
           "refStatuses": "$.refResults.item[*].status"
         },
-        "Identity": {
-          "Parts": ["artifactUri", "status"]
-        },
+        "Identity": { "Parts": ["artifactUri", "status"] },
         "Presentation": {
           "Locator": "{{ artifactUri }}",
           "Display": "artifact memory {{ status }}: {{ artifactUri }}",
           "Label": "{{ artifactUri }}",
           "Source": "{{ message }}"
-        },
-        "Confidence": 0.9,
-        "Metadata": {
-          "status": "$.status",
-          "availableRefCount": "$.availableRefCount",
-          "memoryCount": "$.memoryCount",
-          "unavailableRefCount": "$.unavailableRefCount",
-          "failedRefCount": "$.failedRefCount"
         },
         "ModelProjection": {
           "Slots": [
@@ -316,6 +262,14 @@
         "Projection": {
           "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.status }} {{ e.slots.artifactUri }} (loaded={{ e.slots.memoryCount }} unavailable={{ e.slots.unavailableRefCount }} failed={{ e.slots.failedRefCount }})\n{% endfor %}",
           "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} artifact memory\n  uri: {{ e.slots.artifactUri }}\n  status: {{ e.slots.status }}\n  availableRefs: {{ e.slots.availableRefCount }}\n  loadedRefs: {{ e.slots.memoryCount }}\n  unavailableRefs: {{ e.slots.unavailableRefCount }}\n  failedRefs: {{ e.slots.failedRefCount }}\n  message: {{ e.slots.message }}\n{% endfor %}"
+        },
+        "Confidence": 0.9,
+        "Metadata": {
+          "status": "$.status",
+          "availableRefCount": "$.availableRefCount",
+          "memoryCount": "$.memoryCount",
+          "unavailableRefCount": "$.unavailableRefCount",
+          "failedRefCount": "$.failedRefCount"
         }
       }
     ],

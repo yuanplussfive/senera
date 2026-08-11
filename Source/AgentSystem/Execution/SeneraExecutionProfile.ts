@@ -21,7 +21,6 @@ export interface SeneraProcessRootfsBundle {
 
 export interface SeneraProcessSandboxProfile {
   image?: string;
-  guestWorkspaceRoot?: string;
   guestWorkdir?: string;
   network?: SeneraProcessNetworkMode;
   workspaceMount?: SeneraProcessWorkspaceMountMode;
@@ -33,7 +32,7 @@ export interface SeneraProcessSandboxProfile {
 
 export interface SeneraProcessExecutionProfile {
   name: string;
-  kind: "shell" | "mcp-server";
+  kind: "shell" | "process" | "mcp-server";
   backend?: SeneraProcessBackendPreference;
   /** Host-granted root for a trusted packaged executable; never read from an MCP package. */
   hostCwdRoot?: string;

@@ -23,7 +23,6 @@ import { AgentConfigService } from "../../../Source/AgentSystem/Config/AgentConf
 import { resolveAgentLoopConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
 import { resolveAgentWorkspaceLayout } from "../../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import { createAgentRequestCancellationResource } from "../../../Source/AgentSystem/Session/AgentSessionRunResource.js";
-import { AgentPiTurnContextRegistry } from "../../../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
 
 export interface AgentProtocolIntegrationHarness {
   readonly workspaceRoot: string;
@@ -93,7 +92,6 @@ export async function createAgentProtocolIntegrationHarness(
     approvalRuntime,
     sandboxRuntimeService,
     logger: new AgentLogger(),
-    piTurnContexts: new AgentPiTurnContextRegistry(),
   });
   await server.start();
 

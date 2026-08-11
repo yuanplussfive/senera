@@ -9,7 +9,7 @@ describe("Pi diagnostics", () => {
   test("preserves timing and usage metrics while redacting authentication tokens", () => {
     const event = createAgentPiDiagnosticEvent({
       context: { requestId: "request-a", step: 1 },
-      source: AgentPiDiagnosticSources.Proxy,
+      source: AgentPiDiagnosticSources.Provider,
       name: "model_timing",
       details: {
         firstTokenMs: 42,
@@ -44,7 +44,7 @@ describe("Pi diagnostics", () => {
           throw new Error("sink failed");
         },
         {
-          source: AgentPiDiagnosticSources.Proxy,
+          source: AgentPiDiagnosticSources.Provider,
           name: "provider_failure",
           details: { status: 503 },
         },

@@ -55,20 +55,24 @@ export function useSessionCatalogSync({
   onServerSessionsReset,
 }: UseSessionCatalogSyncOptions): SessionCatalogSyncHandle {
   const hydrationToastShownRef = useRef(false);
+  const resetCatalogSyncState = useStore((state) => state.resetCatalogSyncState);
 
   const refreshSessionCatalog = useCallback((): void => {
     if (status !== "open") return;
+    resetCatalogSyncState();
     for (const request of buildManualRefreshRequests()) {
       send(request);
     }
-  }, [send, status]);
+  }, [resetCatalogSyncState, send, status]);
 
   useEffect(() => {
     if (status !== "open") {
+      resetCatalogSyncState();
       onServerSessionsReset();
       return;
     }
 
+    resetCatalogSyncState();
     onServerSessionsReset();
     const state = useStore.getState();
     for (const request of buildConnectionOpenSyncRequests(state.userProfile)) {
@@ -86,7 +90,7 @@ export function useSessionCatalogSync({
         },
       );
     }
-  }, [onServerSessionsReset, send, status]);
+  }, [onServerSessionsReset, resetCatalogSyncState, send, status]);
 
   return { refreshSessionCatalog };
 }

@@ -33,9 +33,18 @@ export function projectAgentEventOnce(
 }
 
 export function forgetSessionEventReceipts(state: AgentEventReceiptState, sessionId: string): void {
+  forgetSessionEventReceiptsForSessions(state, [sessionId]);
+}
+
+export function forgetSessionEventReceiptsForSessions(
+  state: AgentEventReceiptState,
+  sessionIds: readonly string[],
+): void {
+  if (sessionIds.length === 0) return;
+  const sessions = new Set(sessionIds);
   const removed = new Set(
     Object.entries(state.processedEventIds)
-      .filter(([, ownerSessionId]) => ownerSessionId === sessionId)
+      .filter(([, ownerSessionId]) => ownerSessionId !== null && sessions.has(ownerSessionId))
       .map(([eventId]) => eventId),
   );
   if (removed.size === 0) return;

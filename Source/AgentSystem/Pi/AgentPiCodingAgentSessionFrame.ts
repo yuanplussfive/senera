@@ -9,6 +9,7 @@ import type { AgentPiContextPolicyFrame } from "./AgentPiContextPolicy.js";
 import type { AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 import type { AgentPiSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
 import type { AgentPiToolProjectionContext } from "./AgentPiTypes.js";
+import type { AgentPiTurnState } from "./AgentPiTurnState.js";
 
 export interface AgentPiCodingAgentSessionFrame {
   sessionId?: string;
@@ -17,7 +18,7 @@ export interface AgentPiCodingAgentSessionFrame {
   onEvent?: AgentEventSink;
   diagnostics?: AgentPiDiagnosticSink;
   systemPrompt?: string;
-  piTurnContextId?: string;
+  turnState?: AgentPiTurnState;
   activeSkills?: readonly AgentActivatedSkill[];
   skillCatalogFingerprint: string;
   rootCommand?: AgentRootCommand;
@@ -62,13 +63,15 @@ export function projectAgentPiToolContext(frame: AgentPiCodingAgentSessionFrame)
     requestId: frame.requestId,
     step: frame.step,
     onEvent: frame.onEvent,
-    piTurnContextId: frame.piTurnContextId,
+    turnState: frame.turnState,
     activeSkills: frame.activeSkills,
     rootCommand: frame.rootCommand,
+    approvalMode: frame.turnState?.context.approvalMode,
     toolAccessGrant: frame.toolAccessGrant,
     toolExposure: frame.toolExposure,
     visibleToolNames: frame.toolExposure.snapshot().exposedToolNames,
     tokenBudget: frame.tokenBudget,
+    thinkingLevel: frame.turnState?.context.thinkingLevel,
     signal: frame.signal,
   };
 }

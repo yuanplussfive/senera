@@ -1,4 +1,4 @@
-import { CopyPlus, Plus, Trash2 } from "lucide-react";
+import { Check, CopyPlus, Plus, Trash2 } from "lucide-react";
 import type { ConfigFormFieldData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
@@ -9,6 +9,7 @@ import {
   defaultArrayItem,
   isJsonConfigObject,
   normalizeJsonConfigFieldValue,
+  optionLabel,
   readArrayItemTitle,
   readRelativeItemPath,
   readValueAtPath,
@@ -40,6 +41,48 @@ export function JsonConfigArrayFieldControl({
   const duplicateItem = (index: number): void => {
     onChange([...value.slice(0, index + 1), cloneJsonValue(value[index]), ...value.slice(index + 1)]);
   };
+
+  const options = field.options ?? [];
+  if (options.length > 0) {
+    const selected = new Set(value.map((item) => String(item)));
+    return (
+      <div className="grid w-full grid-cols-1 gap-1.5 sm:grid-cols-2" role="group" aria-label={field.label}>
+        {options.map((option) => {
+          const key = String(option);
+          const active = selected.has(key);
+          return (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={active}
+              disabled={disabled}
+              className={cn(
+                "inline-flex min-h-9 min-w-0 items-center gap-2 border px-2.5 py-1.5 text-left text-[12px] leading-4 transition",
+                active
+                  ? "border-ink-800 bg-ink-900 text-paper-50"
+                  : "border-ink-200 bg-paper-100 text-ink-600 hover:bg-ink-900/[0.04]",
+                disabled && "pointer-events-none opacity-50",
+              )}
+              onClick={() => onChange(active ? value.filter((item) => String(item) !== key) : [...value, option])}
+            >
+              <span className="grid h-4 w-4 shrink-0 place-items-center border border-current/40">
+                {active ? <Check className="h-3 w-3" /> : null}
+              </span>
+              <span className="min-w-0 break-words">{optionLabel(field, option)}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (field.optionSource) {
+    return (
+      <div className="border border-dashed border-ink-200 bg-paper-100 px-3 py-2 text-[11.5px] text-ink-500">
+        {frontendMessage("config.form.noOptions")}
+      </div>
+    );
+  }
 
   if (itemType === "table") {
     return (

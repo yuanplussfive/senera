@@ -92,7 +92,21 @@ describe("server authentication gate", () => {
     expect(screen.queryByText("credential detail")).not.toBeInTheDocument();
   });
 
-  test("does not invent a connection message when no server detail is available", () => {
+  test("shows revalidation as an in-progress connection state", () => {
+    render(
+      React.createElement(ServerAuthenticationGate, {
+        state: { status: "revalidating" },
+        onLogin: vi.fn(),
+        onRetry: vi.fn(),
+      }),
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(frontendMessage("auth.reconnecting"));
+    expect(screen.getByRole("status")).toHaveTextContent(frontendMessage("auth.reconnectingDescription"));
+    expect(screen.queryByRole("button", { name: frontendMessage("auth.retry") })).not.toBeInTheDocument();
+  });
+
+  test("shows a localized connection message when no server detail is available", () => {
     render(
       React.createElement(ServerAuthenticationGate, {
         state: { status: "failed", error: new Error("Failed to fetch") },
@@ -101,7 +115,8 @@ describe("server authentication gate", () => {
       }),
     );
 
-    expect(screen.queryByText(frontendMessage("auth.connectionFailed"))).not.toBeInTheDocument();
+    expect(screen.getByText(frontendMessage("auth.connectionFailed"))).toBeVisible();
+    expect(screen.getByText("Senera")).toBeVisible();
   });
 
   test("shows the server-provided failure detail and offers retry", async () => {

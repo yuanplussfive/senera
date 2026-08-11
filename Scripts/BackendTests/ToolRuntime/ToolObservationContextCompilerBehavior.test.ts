@@ -9,11 +9,8 @@ describe("Tool observation context compiler", () => {
     const observation = compile({ result: { answer: "42" } });
 
     expect(observation).toMatchObject({
-      tool_name: "TestTool",
-      call_id: "call-1",
       status: "success",
-      artifact_uri: "senera://artifact/test",
-      observation_view: { complete: true, omission_count: 0 },
+      observation_view: { complete: true, omission_count: 0, artifact_uri: "senera://artifact/test" },
       detail: {
         summary: "Test summary",
         retrieval: { artifactUri: "senera://artifact/test", refs: ["raw"] },
@@ -23,16 +20,15 @@ describe("Tool observation context compiler", () => {
   });
 
   test("bounds pathological scalar output before exact token projection", () => {
-    const source = "x".repeat(250_000);
+    const source = String.fromCodePoint(0x8bca, 0x65ad, 0x8f93, 0x51fa).repeat(300_000);
     const observation = compile({ result: { text: source } });
     const serialized = JSON.stringify(observation);
 
     expect(serialized).not.toContain(source);
     expect(observation).toMatchObject({
-      artifact_uri: "senera://artifact/test",
       observation_view: {
         complete: false,
-        artifact_fallback: { strategy: "reference", available: true },
+        artifact_uri: "senera://artifact/test",
       },
     });
     expect(new AgentTokenProjector("gpt-4o").countJson(observation)).toBeLessThanOrEqual(
@@ -108,6 +104,43 @@ describe("Tool observation context compiler", () => {
     expect(JSON.stringify(observation.detail)).not.toContain("ignored");
     expect(JSON.stringify(observation.detail)).not.toContain("secret");
     expect(observation).toMatchObject({ observation_view: { complete: false } });
+  });
+
+  test("does not mark the observation incomplete when an advisory source is token-truncated", () => {
+    const summaryFacts = StandardAgentToolObservationProjection.sources.find((source) => source.source === "retrieval");
+    if (!summaryFacts) throw new Error("Standard observation projection must declare retrieval.");
+    const manifest: AgentToolObservationProjectionManifest = {
+      ...StandardAgentToolObservationProjection,
+      sources: [
+        {
+          ...summaryFacts,
+          source: "summaryFacts",
+          mode: "orderedArray",
+          requiredForCompletion: false,
+          maxTokens: 16,
+        },
+        ...StandardAgentToolObservationProjection.sources,
+      ],
+    };
+    const observation = compile(
+      {
+        artifact: {
+          artifactUri: "senera://artifact/test",
+          structuredSummary: {
+            summary: "Test summary",
+            retrieval: { artifactUri: "senera://artifact/test", refs: ["raw"] },
+            facts: Array.from({ length: 40 }, (_, index) => ({ name: `fact-${index}`, value: "x".repeat(80) })),
+            limitations: [],
+          },
+          evidence: [],
+          delta: [],
+        },
+      },
+      manifest,
+    );
+
+    expect(observation.observation_view).toMatchObject({ complete: true });
+    expect(observation.observation_view).toMatchObject({ omission_count: expect.any(Number) });
   });
 });
 

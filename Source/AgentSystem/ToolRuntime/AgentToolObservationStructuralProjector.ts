@@ -2,7 +2,6 @@ import type { AgentToolObservationStructuralLimits } from "../Types/AgentToolObs
 
 export const AgentToolObservationOmissionReasons = {
   ArrayLimit: "array_limit",
-  CharacterLimit: "character_limit",
   Cycle: "cycle",
   DepthLimit: "depth_limit",
   NodeLimit: "node_limit",
@@ -34,7 +33,6 @@ interface ProjectionState {
   readonly maxOmissions: number;
   readonly ancestors: WeakSet<object>;
   nodes: number;
-  characters: number;
   omissionCount: number;
   omissions: AgentToolObservationProjectionOmission[];
 }
@@ -50,7 +48,6 @@ export class AgentToolObservationStructuralProjector {
       maxOmissions: normalizeNonNegativeInteger(maxOmissions),
       ancestors: new WeakSet<object>(),
       nodes: 0,
-      characters: 0,
       omissionCount: 0,
       omissions: [],
     };
@@ -77,8 +74,8 @@ export class AgentToolObservationStructuralProjector {
 
     if (value === null || typeof value === "boolean") return value;
     if (typeof value === "number") return Number.isFinite(value) ? value : null;
-    if (typeof value === "bigint") return this.projectString(String(value), path, state);
-    if (typeof value === "string") return this.projectString(value, path, state);
+    if (typeof value === "bigint") return String(value);
+    if (typeof value === "string") return value;
     if (value === undefined || typeof value === "function" || typeof value === "symbol") {
       this.omit(state, path, AgentToolObservationOmissionReasons.UnsupportedValue);
       return arrayEntry ? null : undefined;
@@ -133,49 +130,35 @@ export class AgentToolObservationStructuralProjector {
     depth: number,
     state: ProjectionState,
   ): Record<string, unknown> {
-    const entries = Object.entries(value).filter(([, entry]) => isJsonPropertyValue(entry));
-    const limit = Math.min(entries.length, state.limits.maxObjectProperties);
     const projected: Record<string, unknown> = {};
-    for (let index = 0; index < limit; index += 1) {
-      const entry = entries[index];
-      if (!entry) continue;
-      const [key, child] = entry;
-      if (!this.reserveCharacters(key.length, state)) {
-        this.omit(state, [...path, key], AgentToolObservationOmissionReasons.CharacterLimit, entries.length - index);
+    let propertyCount = 0;
+    let stoppedByNodes = false;
+    let firstOmittedKey: string | undefined;
+
+    for (const key in value) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+      const child = value[key];
+      if (!isJsonPropertyValue(child)) continue;
+      if (propertyCount >= state.limits.maxObjectProperties) {
+        firstOmittedKey = key;
         break;
       }
+      propertyCount += 1;
       if (state.nodes >= state.limits.maxNodes) {
-        this.omit(state, [...path, key], AgentToolObservationOmissionReasons.NodeLimit, entries.length - index);
+        this.omit(state, [...path, key], AgentToolObservationOmissionReasons.NodeLimit);
+        stoppedByNodes = true;
         break;
       }
       const result = this.visit(child, [...path, key], depth + 1, state, false);
       if (result !== undefined) projected[key] = result;
     }
-    if (limit < entries.length && Object.keys(projected).length === limit) {
-      this.omit(
-        state,
-        [...path, entries[limit]?.[0] ?? limit],
-        AgentToolObservationOmissionReasons.ObjectLimit,
-        entries.length - limit,
-      );
+    if (firstOmittedKey !== undefined && !stoppedByNodes) {
+      // The count is intentionally not materialized: a hostile object may have
+      // millions of properties, and the first omitted key is sufficient to
+      // preserve the continuation contract without allocating all entries.
+      this.omit(state, [...path, firstOmittedKey], AgentToolObservationOmissionReasons.ObjectLimit);
     }
     return projected;
-  }
-
-  private projectString(value: string, path: readonly (string | number)[], state: ProjectionState): string {
-    const remainingCharacters = Math.max(0, state.limits.maxTotalCharacters - state.characters);
-    const retainedLength = Math.min(value.length, state.limits.maxStringCharacters, remainingCharacters);
-    state.characters += retainedLength;
-    if (retainedLength < value.length) {
-      this.omit(state, path, AgentToolObservationOmissionReasons.CharacterLimit, value.length - retainedLength);
-    }
-    return value.slice(0, retainedLength);
-  }
-
-  private reserveCharacters(count: number, state: ProjectionState): boolean {
-    if (state.characters + count > state.limits.maxTotalCharacters) return false;
-    state.characters += count;
-    return true;
   }
 
   private omit(

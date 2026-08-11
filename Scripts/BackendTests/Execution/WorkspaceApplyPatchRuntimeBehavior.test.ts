@@ -357,7 +357,7 @@ describe("Workspace apply patch runtime behavior", () => {
           {
             kind: "add",
             path: `${mcpRelativeRoot}/broken-toolkit/.mcp.json`,
-            content: `${JSON.stringify({ mcpServers: { broken: { type: "stdio", command: "node" } } }, null, 2)}\n`,
+            content: `${JSON.stringify({ mcpServers: { broken: { type: "stdio", command: "" } } }, null, 2)}\n`,
           },
         ],
       },
@@ -372,7 +372,7 @@ describe("Workspace apply patch runtime behavior", () => {
     });
     expect(result.response.error?.diagnostics?.[0]).toMatchObject({
       filePath: path.join(mcpRoot, "broken-toolkit", ".mcp.json"),
-      pointer: "/execution",
+      pointer: "/mcpServers/broken/command",
     });
     await expect(fs.stat(path.join(mcpRoot, "broken-toolkit"))).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -444,7 +444,11 @@ function createWorkspace(): string {
 function governedExecutionEnv(workspaceRoot: string): SeneraExecutionEnv {
   const registry = new AgentExtensionRegistry();
   const policy = new AgentResourceAccessPolicy(new AgentSeneraOpaPolicyClient({ registry }));
-  return createSeneraExecutionEnvironments({ workspaceRoot, resourceAccessPolicy: policy }).tool;
+  return createSeneraExecutionEnvironments({
+    workspaceRoot,
+    resourceAccessPolicy: policy,
+    sandboxAvailable: false,
+  }).tool;
 }
 
 function context(

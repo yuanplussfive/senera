@@ -1,6 +1,7 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { AgentHostCapabilityNames } from "../AgentDefaultHostCapabilities.js";
 import { readAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
+import { AgentTokenBudgetOracle } from "../Text/AgentTokenBudgetOracle.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type { AgentPiArtifactReference } from "./AgentPiArtifactIndex.js";
@@ -78,9 +79,11 @@ const RuntimeInstruction = [
 
 export class AgentPiContextPolicy {
   private readonly tokenProjector: AgentTokenProjector;
+  private readonly tokenOracle: AgentTokenBudgetOracle;
 
   constructor(private readonly model: string) {
     this.tokenProjector = new AgentTokenProjector(model);
+    this.tokenOracle = new AgentTokenBudgetOracle(model);
   }
 
   createFrame(input: AgentPiContextPolicyFrameInput): AgentPiContextPolicyFrame {
@@ -108,7 +111,7 @@ export class AgentPiContextPolicy {
       .reverse();
     if (candidates.length === 0) return baseMessages;
 
-    const tokenLimit = availableContextTokens(baseMessages, budget, this.tokenProjector);
+    const tokenLimit = availableContextTokens(baseMessages, budget, this.tokenOracle);
     const message = selectContextPolicyMessage({
       frame,
       candidates,
@@ -208,10 +211,17 @@ function createContextPolicyMessage(
 function availableContextTokens(
   messages: readonly AgentMessage[],
   budget: AgentPiContextPolicyBudget,
-  tokenProjector: AgentTokenProjector,
+  tokenOracle: AgentTokenBudgetOracle,
 ): number {
-  const messageTokens = messages.reduce((total, message) => total + tokenProjector.countJson(message), 0);
-  return Math.max(0, Math.floor(budget.contextWindowTokens) - Math.floor(budget.outputReserveTokens) - messageTokens);
+  const available = Math.max(0, Math.floor(budget.contextWindowTokens) - Math.floor(budget.outputReserveTokens));
+  let occupied = 0;
+  for (const message of messages) {
+    const remaining = Math.max(1, available - occupied);
+    const inspection = tokenOracle.inspectJson(message, remaining);
+    occupied += inspection.kind === "exact" ? inspection.tokens : remaining;
+    if (occupied >= available) return 0;
+  }
+  return Math.max(0, available - occupied);
 }
 
 function projectArchivedArtifact(reference: AgentPiArtifactReference): AgentPiContextArtifactItem {

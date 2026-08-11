@@ -10,7 +10,8 @@ export class AgentWebSocketExecutionResourceRequestHandlers {
     request: AgentWebSocketRequestOf<"execution.resource.list">,
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
-    await this.sendSnapshot("list", request.sessionId, this.broker.list(this.owner(request.sessionId)), sendEvent);
+    const resources = this.context.executionResources?.list(this.owner(request.sessionId)) ?? [];
+    await this.sendSnapshot("list", request.sessionId, resources, sendEvent);
   }
 
   async inspect(

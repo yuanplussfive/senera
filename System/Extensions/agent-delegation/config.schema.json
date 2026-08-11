@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "modelPool": {
+      "default": { "inheritParent": true, "modelProviderIds": [] },
+      "type": "object",
+      "properties": {
+        "inheritParent": { "default": true, "type": "boolean" },
+        "modelProviderIds": { "default": [], "type": "array", "items": { "type": "string", "minLength": 1 } }
+      },
+      "additionalProperties": false
+    },
+    "coordination": {
+      "default": { "defaultWaitTimeoutMs": 30000, "maximumWaitTimeoutMs": 3600000 },
+      "type": "object",
+      "properties": {
+        "defaultWaitTimeoutMs": { "default": 30000, "type": "integer", "minimum": 0, "maximum": 3600000 },
+        "maximumWaitTimeoutMs": { "default": 3600000, "type": "integer", "minimum": 1000, "maximum": 86400000 }
+      },
+      "additionalProperties": false
+    },
+    "defaults": {
+      "default": { "skills": [], "thinkingLevel": "inherit" },
+      "type": "object",
+      "properties": {
+        "skills": { "default": [], "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "thinkingLevel": {
+          "default": "inherit",
+          "type": "string",
+          "enum": ["inherit", "off", "minimal", "low", "medium", "high", "xhigh", "max"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "concurrency": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "maxRuns": {
+          "anyOf": [{ "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }, { "type": "null" }]
+        },
+        "maxWorkspaceWriters": {
+          "anyOf": [{ "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "workflows": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "maxNodes": {
+          "anyOf": [{ "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "default": {
+        "deadline": {
+          "softTimeoutMs": 1500000,
+          "wrapUpTimeoutMs": 180000,
+          "snapshotIntervalMs": 5000,
+          "activityExtension": { "recentActivityWindowMs": 30000, "stepMs": 60000, "maximumMs": 120000 }
+        }
+      },
+      "type": "object",
+      "properties": {
+        "deadline": {
+          "default": {
+            "softTimeoutMs": 1500000,
+            "wrapUpTimeoutMs": 180000,
+            "snapshotIntervalMs": 5000,
+            "activityExtension": { "recentActivityWindowMs": 30000, "stepMs": 60000, "maximumMs": 120000 }
+          },
+          "type": "object",
+          "properties": {
+            "softTimeoutMs": { "default": 1500000, "type": "integer", "minimum": 60000, "maximum": 86400000 },
+            "wrapUpTimeoutMs": { "default": 180000, "type": "integer", "minimum": 10000, "maximum": 1800000 },
+            "snapshotIntervalMs": { "default": 5000, "type": "integer", "minimum": 500, "maximum": 60000 },
+            "activityExtension": {
+              "default": { "recentActivityWindowMs": 30000, "stepMs": 60000, "maximumMs": 120000 },
+              "type": "object",
+              "properties": {
+                "recentActivityWindowMs": { "default": 30000, "type": "integer", "minimum": 1000, "maximum": 300000 },
+                "stepMs": { "default": 60000, "type": "integer", "minimum": 1000, "maximum": 300000 },
+                "maximumMs": { "default": 120000, "type": "integer", "minimum": 0, "maximum": 1800000 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "maxDepth": { "anyOf": [{ "type": "integer", "minimum": 0, "maximum": 9007199254740991 }, { "type": "null" }] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

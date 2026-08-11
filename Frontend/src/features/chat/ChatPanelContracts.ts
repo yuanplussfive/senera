@@ -14,9 +14,10 @@ import type {
   InteractionInputContent,
 } from "../../api/eventTypes";
 import type { SocketStatus } from "../../api/useAgentSocket";
-import type { ApprovalDecision } from "../../api/approvalEventTypes";
+import type { ApprovalBatchReference, ApprovalDecision } from "../../api/approvalEventTypes";
 import type { MessageQueueMode } from "../../app/useChatCommands";
 import type { ChatMessage, UserProfile } from "../../store/sessionStore";
+import type { ExecutionApprovalMode } from "../../api/executionApprovalMode";
 
 export interface ChatModelConfig {
   modelProviders: ModelProviderListItem[];
@@ -26,6 +27,11 @@ export interface ChatModelConfig {
   onSelectModelProvider: (id: string) => void;
   /** Restores the active conversation to the current default model. */
   onApplyDefaultModel?: () => void;
+}
+
+export interface ChatApprovalConfig {
+  mode: ExecutionApprovalMode;
+  onSelectMode: (mode: ExecutionApprovalMode) => void;
 }
 
 export interface ChatSystemConfig {
@@ -66,6 +72,7 @@ export interface ChatMessageActions {
   onDeleteFromMessage: (message: ChatMessage) => void;
   onViewWorkflow: (message: ChatMessage) => void;
   onResolveApproval: (approvalId: string, decision: ApprovalDecision) => void;
+  onResolveApprovalBatch: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
   onResolveInteractionInput: (
     interactionId: string,
     action: InteractionInputAction,

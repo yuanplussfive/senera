@@ -131,8 +131,6 @@ jobs:
       desktop_artifact_path: ${{ steps.release.outputs.desktop_artifact_path }}
       container_version_tag: ${{ steps.release.outputs.container_version_tag }}
       container_minor_tag: ${{ steps.release.outputs.container_minor_tag }}
-      sandbox_archive_artifact_name: ${{ steps.release.outputs.sandbox_archive_artifact_name }}
-      sandbox_archive_manifest_artifact_name: ${{ steps.release.outputs.sandbox_archive_manifest_artifact_name }}
       sandbox_runtime_source_image: ${{ steps.release.outputs.sandbox_runtime_source_image }}
       sandbox_runtime_distribution_id: ${{ steps.release.outputs.sandbox_runtime_distribution_id }}
       sandbox_runtime_version_tag: ${{ steps.release.outputs.sandbox_runtime_version_tag }}
@@ -161,32 +159,11 @@ jobs:
           SENERA_VERIFY_WORKFLOW: verify.yml
         run: npx tsx Scripts/VerifyProductReleaseSource.ts
 
-  sandbox-archive:
-    name: Build Microsandbox OCI Archive
-    needs:
-      - metadata
-    if: needs.metadata.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.metadata.outputs.tag }}
-      - uses: ./.github/actions/setup-node
-      - uses: ./.github/actions/build-sandbox-bundle
-      - uses: actions/upload-artifact@v4
-        with:
-          name: senera-sandbox-image-${{ needs.metadata.outputs.version }}
-          path: |
-            Release/SandboxImage/${{ needs.metadata.outputs.sandbox_archive_artifact_name }}
-            Release/SandboxImage/${{ needs.metadata.outputs.sandbox_archive_manifest_artifact_name }}
-          if-no-files-found: error
   desktop:
     name: Build Windows Installer
     needs:
       - metadata
-      - sandbox-archive
-    if: needs.metadata.result == 'success' && needs.sandbox-archive.result == 'success'
+    if: needs.metadata.result == 'success'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -195,10 +172,6 @@ jobs:
       - uses: ./.github/actions/setup-node
         with:
           install-electron: "true"
-      - uses: actions/download-artifact@v4
-        with:
-          name: senera-sandbox-image-${{ needs.metadata.outputs.version }}
-          path: Release/SandboxImage
       - run: npm run desktop.pack
       - uses: actions/upload-artifact@v4
         with:
@@ -359,14 +332,12 @@ jobs:
     name: Publish Verified Release
     needs:
       - metadata
-      - sandbox-archive
       - desktop
       - container-build
       - sandbox-runtime-build
       - container-smoke
     if: >-
       needs.metadata.result == 'success' &&
-      needs.sandbox-archive.result == 'success' &&
       needs.desktop.result == 'success' &&
       needs.container-build.result == 'success' &&
       needs.sandbox-runtime-build.result == 'success' &&

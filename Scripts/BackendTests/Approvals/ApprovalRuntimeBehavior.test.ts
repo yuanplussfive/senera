@@ -91,6 +91,70 @@ describe("approval runtime", () => {
     await expect(parallel).resolves.toMatchObject({ status: "approved" });
   });
 
+  test("validates and resolves every pending approval in one batch atomically", async () => {
+    const events: AgentDomainEvent[] = [];
+    const runtime = new AgentApprovalRuntime();
+    runtime.setEventSink(async (event) => {
+      events.push(event);
+    });
+    const first = runtime.requestApproval(approvalRequest({ toolCallId: "call-1", batchId: "batch-tools" }));
+    const second = runtime.requestApproval(approvalRequest({ toolCallId: "call-2", batchId: "batch-tools" }));
+    const unrelated = runtime.requestApproval(approvalRequest({ toolCallId: "call-3", batchId: "batch-other" }));
+    await vi.waitFor(() => expect(runtime.listPending()).toHaveLength(3));
+
+    const resolutions = await runtime.resolveBatch({
+      sessionId: "session",
+      requestId: "request",
+      batchId: "batch-tools",
+      decision: AgentApprovalDecisions.ApproveOnce,
+    });
+
+    expect(resolutions).toHaveLength(2);
+    await expect(first).resolves.toMatchObject({ status: "approved", disposition: "proceed" });
+    await expect(second).resolves.toMatchObject({ status: "approved", disposition: "proceed" });
+    expect(runtime.listPending().map((approval) => approval.toolCallId)).toEqual(["call-3"]);
+    expect(events.filter((event) => event.kind === "approval.resolved")).toHaveLength(2);
+
+    await runtime.resolveBatch({
+      sessionId: "session",
+      requestId: "request",
+      batchId: "batch-other",
+      decision: AgentApprovalDecisions.Deny,
+    });
+    await unrelated;
+  });
+
+  test("leaves the whole batch pending when one member does not support the decision", async () => {
+    const runtime = new AgentApprovalRuntime();
+    const first = runtime.requestApproval(approvalRequest({ toolCallId: "call-1", batchId: "batch-tools" }));
+    const second = runtime.requestApproval(
+      approvalRequest({
+        toolCallId: "call-2",
+        batchId: "batch-tools",
+        availableDecisions: [AgentApprovalDecisions.Deny],
+      }),
+    );
+    await vi.waitFor(() => expect(runtime.listPending()).toHaveLength(2));
+
+    await expect(
+      runtime.resolveBatch({
+        sessionId: "session",
+        requestId: "request",
+        batchId: "batch-tools",
+        decision: AgentApprovalDecisions.ApproveOnce,
+      }),
+    ).rejects.toThrow(/不适用于当前请求/);
+    expect(runtime.listPending()).toHaveLength(2);
+
+    await runtime.resolveBatch({
+      sessionId: "session",
+      requestId: "request",
+      batchId: "batch-tools",
+      decision: AgentApprovalDecisions.Deny,
+    });
+    await Promise.all([first, second]);
+  });
+
   test("rejects unavailable decisions without consuming the pending approval", async () => {
     const events: AgentDomainEvent[] = [];
     const runtime = new AgentApprovalRuntime();
@@ -192,6 +256,15 @@ describe("approval runtime", () => {
         type: "approval.resolve",
         approvalId: "approval",
         decision: "deny_and_interrupt",
+      }).success,
+    ).toBe(true);
+    expect(
+      AgentWebSocketRequestSchema.safeParse({
+        type: "approval.resolve_batch",
+        sessionId: "session",
+        requestId: "request",
+        batchId: "batch",
+        decision: "approve_once",
       }).success,
     ).toBe(true);
     expect(

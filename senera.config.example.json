@@ -1,5 +1,5 @@
 {
-  "ConfigVersion": 8,
+  "ConfigVersion": 10,
   "Defaults": {
     "AgentLoop": {
       "PiTurnLeaseTimeoutSeconds": 120,
@@ -14,8 +14,12 @@
     },
     "ToolExecution": {
       "TimeoutSeconds": 120,
+      "MaxConcurrentCallsPerRun": 10,
       "MaxStdoutBytes": 67108864,
       "MaxStderrBytes": 67108864,
+      "SemanticAudit": {
+        "Mode": "approval_sensitive"
+      },
       "Environment": {
         "Inherit": "allowlist",
         "IncludeOnly": [
@@ -43,7 +47,10 @@
       "Resources": {
         "MaxActive": 8,
         "MaxBufferedBytes": 67108864,
+        "OutputBatchMaxBytes": 65536,
+        "OutputBatchMaxDelayMs": 50,
         "MaxInputBytes": 1048576,
+        "InitialYieldSeconds": 1,
         "MaxWaitSeconds": 30,
         "IdleTtlSeconds": 1800,
         "TerminalTtlSeconds": 300,
@@ -234,9 +241,11 @@
       "ProviderId": "main",
       "Icon": "mistral",
       "Capabilities": {
+        "ToolCalling": true,
         "DeveloperRole": false,
         "StreamingUsage": true
       },
+      "ToolPlanningMode": "native",
       "Endpoint": "ChatCompletions",
       "Model": "mistral-large-latest",
       "MaxOutputTokens": -1,

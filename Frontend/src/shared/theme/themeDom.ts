@@ -1,4 +1,4 @@
-import type { MotionLevel } from "../motion";
+import type { MotionLevel } from "../motion/types";
 import type { AppearanceSnapshot } from "./themeModel";
 
 type ViewTransitionHandle = {

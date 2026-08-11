@@ -111,7 +111,6 @@ export function useSessionCommands({
         const ok = send({ type: "session.close", sessionId });
         if (ok) {
           sentIds.push(sessionId);
-          serverKnownSessionIdsRef.current.delete(sessionId);
         }
       });
 
@@ -126,7 +125,7 @@ export function useSessionCommands({
         );
       }
     },
-    [clearAllSessions, send, serverKnownSessionIdsRef],
+    [clearAllSessions, send],
   );
 
   const renameSession = useCallback(

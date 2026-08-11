@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import { parseControllerDecision } from "../Source/AgentSystem/Interaction/AgentControllerDecision.js";
-import { parsePiToolArgumentsDraft } from "../Source/AgentSystem/PiProxy/AgentPiAssistantMessageSchema.js";
+import { parsePiToolArgumentsDraft } from "../Source/AgentSystem/Pi/AgentPiAssistantMessageSchema.js";
 import { createIsolatedVerificationRuntimeConfig } from "./VerificationRuntimeConfig.js";
 
 void main();
@@ -28,13 +28,7 @@ async function main(): Promise<void> {
 
     assert.ok(command, `${commandToolName} Pi tool should be projected.`);
     assert.ok(patch, `${patchToolName} Pi tool should be projected.`);
-    assert.deepEqual(schemaFieldNames(command.parameters), [
-      "command",
-      "cwd",
-      "timeoutMs",
-      "justification",
-      "executionTarget",
-    ]);
+    assert.deepEqual(schemaFieldNames(command.parameters), ["command", "cwd", "timeoutMs", "justification"]);
     assert.deepEqual(schemaFieldNames(patch.parameters), ["operations", "dryRun", "fuzzFactor"]);
 
     const contract = runtime.registry.getTool(commandToolName)?.contract?.arguments;

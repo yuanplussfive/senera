@@ -24,6 +24,7 @@ describe("Session history mutation behavior", () => {
 
     await expect(
       fixture.manager.regenerateFromRequest({
+        approvalMode: "agent",
         sessionId: "session-regenerate-failure",
         fromRequestId: "request-b",
         requestId: "request-replacement",
@@ -53,6 +54,7 @@ describe("Session history mutation behavior", () => {
     await seedRegenerationSession(fixture, "session-regenerate-reset", "missing-boundary");
 
     await fixture.manager.regenerateFromRequest({
+      approvalMode: "agent",
       sessionId: "session-regenerate-reset",
       fromRequestId: "request-b",
       requestId: "request-replacement",
@@ -90,6 +92,7 @@ describe("Session history mutation behavior", () => {
       await seedRegenerationSession(failing, "session-journal-recovery", "boundary-b");
       await expect(
         failing.manager.regenerateFromRequest({
+          approvalMode: "agent",
           sessionId: "session-journal-recovery",
           fromRequestId: "request-b",
           requestId: "request-replacement",

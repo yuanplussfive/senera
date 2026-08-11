@@ -35,6 +35,15 @@ test("nested config writes are immutable and create missing parent records", () 
   expect(created.untouched).not.toBe(original.untouched);
 });
 
+test("clearing an optional field deletes its empty parent object", () => {
+  const original = { defaults: { modelProviderId: "child-model" }, untouched: true };
+
+  const updated = writeJsonConfigFieldValue(original, ["defaults", "modelProviderId"], undefined);
+
+  expect(updated).toEqual({ untouched: true });
+  expect(original).toEqual({ defaults: { modelProviderId: "child-model" }, untouched: true });
+});
+
 test("JSON equality ignores object key order while preserving array order", () => {
   expect(
     sameJsonValue(

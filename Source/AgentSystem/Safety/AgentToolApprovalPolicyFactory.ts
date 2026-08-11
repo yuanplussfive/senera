@@ -11,7 +11,7 @@ const DefaultToolApprovalPolicyPath = AgentToolApprovalPolicyArtifactContract.en
 
 export interface AgentToolApprovalPolicyFactoryOptions {
   readonly registry: AgentExtensionRegistry;
-  readonly auditors?: readonly AgentToolGuardrailAuditor[];
+  readonly semanticAuditors?: readonly AgentToolGuardrailAuditor[];
   readonly path?: string;
   readonly policyClient?: PolicyClient;
 }
@@ -20,7 +20,8 @@ export function createAgentToolApprovalPolicy(
   options: AgentToolApprovalPolicyFactoryOptions,
 ): AgentCompositeToolApprovalPolicy {
   return new AgentCompositeToolApprovalPolicy({
-    auditors: [createAgentAiSdkGuardrailAuditor(), ...(options.auditors ?? [])],
+    deterministicAuditors: [createAgentAiSdkGuardrailAuditor()],
+    semanticAuditors: options.semanticAuditors,
     opa: {
       client:
         options.policyClient ??

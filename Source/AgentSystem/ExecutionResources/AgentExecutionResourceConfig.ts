@@ -7,13 +7,20 @@ export function resolveAgentExecutionResourceLimits(config: AgentSystemConfig): 
   return {
     maxActive: resources.MaxActive,
     maxBufferedBytes: resources.MaxBufferedBytes,
+    outputBatchMaxBytes: resources.OutputBatchMaxBytes,
+    outputBatchMaxDelayMs: resources.OutputBatchMaxDelayMs,
     maxInputBytes: resources.MaxInputBytes,
+    initialYieldMs: resources.InitialYieldMs,
     maxWaitMs: resources.MaxWaitMs,
     idleTtlMs: resources.IdleTtlMs,
     terminalTtlMs: resources.TerminalTtlMs,
     sweepIntervalMs: resources.SweepIntervalMs,
     terminationGraceMs: resources.TerminationGraceMs,
   };
+}
+
+export function resolveAgentExecutionResourceInitialYieldMs(config: AgentSystemConfig): number {
+  return resolveAgentExecutionResourceLimits(config).initialYieldMs;
 }
 
 export function resolveAgentExecutionResourceWaitTimeoutMs(

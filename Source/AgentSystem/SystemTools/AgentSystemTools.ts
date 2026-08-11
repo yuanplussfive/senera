@@ -4,6 +4,8 @@ import { SkillManageSystemTool } from "./SkillManageSystemTool.js";
 import { LearningManageSystemTool } from "./LearningManageSystemTool.js";
 import { createDocumentExtractSystemTool } from "./DocumentExtractSystemTool.js";
 import { createImageAnalyzeSystemTool } from "./ImageAnalyzeSystemTool.js";
+import { PiWorkspaceSystemTools } from "./PiWorkspaceSystemTools.js";
+import { AgentGitSystemTools } from "./AgentGitSystemTools.js";
 
 export function createAgentSystemTools(
   config: AgentSystemConfig,
@@ -14,5 +16,7 @@ export function createAgentSystemTools(
     LearningManageSystemTool,
     createDocumentExtractSystemTool(config.Extensions?.["agent-document-tools"]?.Configuration),
     createImageAnalyzeSystemTool(config.Extensions?.["agent-image-tools"]?.Configuration, modelProviderId),
+    ...PiWorkspaceSystemTools,
+    ...AgentGitSystemTools,
   ];
 }

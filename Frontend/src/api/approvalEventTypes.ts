@@ -4,6 +4,12 @@ export type ApprovalDecision = "approve_once" | "approve_session" | "deny" | "de
 export type ApprovalDisposition = "proceed" | "continue" | "interrupt";
 export type ApprovalStatus = "pending" | "approved" | "denied" | "cancelled" | "expired";
 
+export interface ApprovalBatchReference {
+  sessionId: string;
+  requestId: string;
+  batchId: string;
+}
+
 export interface ToolCallApprovalSubjectData {
   kind: "tool_call";
   toolName: string;

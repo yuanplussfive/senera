@@ -1,0 +1,62 @@
+{
+  "name": "AgentResume",
+  "description": "在持久化子会话上下文中恢复一个已停止或已完成的子代理，并后台执行新的明确任务。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "target": { "type": "string", "minLength": 1, "description": "Child-run ID returned by AgentSpawn." },
+      "task": {
+        "type": "string",
+        "minLength": 1,
+        "description": "New instruction executed in the persisted child session context."
+      }
+    },
+    "required": ["target", "task"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": { "accepted": { "type": "boolean" }, "run": { "type": "object" } },
+    "required": ["accepted", "run"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/AgentLifecycle.projection.json",
+  "permissions": ["orchestration:delegate"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "RemoteJob",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": { "Progress": true, "Cancellation": true, "ResumableEvents": true }
+  },
+  "resources": [],
+  "sources": [
+    { "Id": "orchestration", "Title": "Orchestration", "Description": "Child-agent runs managed by Senera." }
+  ],
+  "search": {
+    "Summary": "复用持久化子会话历史恢复子代理。",
+    "Capabilities": [
+      {
+        "Id": "orchestration.agent-resume",
+        "Title": "Resume child-agent context",
+        "Description": "Run a new instruction in an existing persisted child session.",
+        "Facets": {
+          "Actions": ["resume", "continue"],
+          "Targets": ["child-run", "child-session"],
+          "Inputs": ["child-run-id", "task"],
+          "Outputs": ["child-run-status"],
+          "Effects": ["model-call", "may-run-tools"]
+        },
+        "Aliases": ["恢复子代理", "resume agent"],
+        "Risk": { "SideEffect": "model-call", "Permission": "orchestration" }
+      }
+    ],
+    "UseCases": ["利用已有子代理上下文继续同一职责的新任务。"],
+    "Avoid": ["活动中的子代理应使用 AgentInput。"],
+    "Tags": ["子代理", "恢复", "持久化上下文"]
+  },
+  "evidenceCapabilities": [],
+  "approval": { "Mode": "ask", "Reason": "恢复会产生新的模型调用并可能执行工具。" }
+}

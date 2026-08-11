@@ -40,6 +40,8 @@ export function useVirtuosoAutoStickToBottom({
   atBottomStateChange: (atBottom: boolean) => void;
   totalListHeightChanged: (height: number) => void;
   scrollToBottom: (behavior?: VirtuosoScrollBehavior) => void;
+  beginManualScroll: () => void;
+  endManualScroll: () => void;
 } {
   const ref = useRef<VirtuosoHandle>(null);
   const itemCountRef = useRef(itemCount);
@@ -76,6 +78,11 @@ export function useVirtuosoAutoStickToBottom({
     userScrollTowardBottomIntentRef.current = true;
   }, []);
 
+  const beginManualScroll = useCallback((): void => {
+    scrollbarDragRef.current = true;
+    markScrollAwayIntent();
+  }, [markScrollAwayIntent]);
+
   const resumeStickToBottom = useCallback((): void => {
     stickToBottomRef.current = true;
     userScrollAwayIntentRef.current = false;
@@ -86,6 +93,24 @@ export function useVirtuosoAutoStickToBottom({
     if (!target) return;
     lastScrollTopRef.current = readScrollMetrics(target).scrollTop;
   }, []);
+
+  const endManualScroll = useCallback((): void => {
+    scrollbarDragRef.current = false;
+    lastPointerYRef.current = null;
+    const target = scrollerTargetRef.current;
+    if (!target) return;
+    const metrics = readScrollMetrics(target);
+    if (
+      shouldResumeAutoStickToBottom({
+        atBottom: metrics.distanceToBottom <= bottomThreshold,
+        hasScrollAwayIntent: userScrollAwayIntentRef.current,
+        hasScrollTowardBottomIntent: userScrollTowardBottomIntentRef.current,
+        isScrollbarDragging: false,
+      })
+    ) {
+      resumeStickToBottom();
+    }
+  }, [bottomThreshold, resumeStickToBottom]);
 
   const scheduleScroll = useCallback(
     (request: ScheduledScroll): void => {
@@ -200,9 +225,8 @@ export function useVirtuosoAutoStickToBottom({
     };
     const handlePointerDown: EventListener = (event): void => {
       if (event instanceof PointerEvent && isPointerInVerticalScrollbar(event, target)) {
-        scrollbarDragRef.current = true;
+        beginManualScroll();
         lastPointerYRef.current = event.clientY;
-        markScrollAwayIntent();
       }
     };
     const handlePointerMove = (event: PointerEvent): void => {
@@ -214,19 +238,7 @@ export function useVirtuosoAutoStickToBottom({
       if (event.clientY > lastY + USER_SCROLL_UP_EPSILON_PX) markScrollTowardBottomIntent();
     };
     const handlePointerRelease = (): void => {
-      scrollbarDragRef.current = false;
-      lastPointerYRef.current = null;
-      const metrics = readScrollMetrics(target);
-      if (
-        shouldResumeAutoStickToBottom({
-          atBottom: metrics.distanceToBottom <= bottomThreshold,
-          hasScrollAwayIntent: userScrollAwayIntentRef.current,
-          hasScrollTowardBottomIntent: userScrollTowardBottomIntentRef.current,
-          isScrollbarDragging: false,
-        })
-      ) {
-        resumeStickToBottom();
-      }
+      endManualScroll();
     };
     const handleTouchStart: EventListener = (event): void => {
       if (!(event instanceof TouchEvent)) return;
@@ -269,7 +281,9 @@ export function useVirtuosoAutoStickToBottom({
     };
   }, [
     bottomThreshold,
+    beginManualScroll,
     handleScrollerScroll,
+    endManualScroll,
     markScrollAwayIntent,
     markScrollTowardBottomIntent,
     resumeStickToBottom,
@@ -313,6 +327,8 @@ export function useVirtuosoAutoStickToBottom({
       if (stickToBottomRef.current) alignToBottom();
     },
     scrollToBottom: scrollToBottomAndResume,
+    beginManualScroll,
+    endManualScroll,
   };
 }
 

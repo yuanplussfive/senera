@@ -152,7 +152,6 @@ export async function createRealRuntimeIntegrationHarness(
       sandboxRuntimeService,
       staticFrontendRoot: options.staticFrontendRoot,
       logger: new AgentLogger(),
-      piTurnContexts: runtime.piTurnContexts,
     });
     await server.start();
     const websocketUrl = `ws://127.0.0.1:${config.Defaults!.Server!.Port}`;
@@ -348,6 +347,7 @@ function createRuntimeConfig(input: {
       AgentLoop: { PiSessions: { RootDir: ".senera/pi-sessions" } },
       ToolLearning: { Enabled: false },
       SandboxRuntime: {
+        Enabled: false,
         BaseDir: ".senera/sandbox-runtime",
       },
       Presets: {
@@ -371,6 +371,7 @@ function createRuntimeConfig(input: {
         ProviderId: "runtime-e2e",
         Endpoint: "ChatCompletions",
         Model: RealRuntimeIntegrationValues.ModelId,
+        ToolPlanningMode: "baml",
         Stream: true,
         MaxNetworkRetries: 0,
       },
@@ -396,7 +397,7 @@ function readPlannerInput(payload: unknown): Record<string, unknown> {
   const plannerInput = readJsonObjectSection(root.extra_context, "extra_context") ?? {};
   assignJsonSection(plannerInput, "directive", root.directive);
   assignJsonSection(plannerInput, "seneraRuntime", root.runtime_context);
-  assignJsonSection(plannerInput, "openAiRequest", root.openai_request);
+  assignJsonSection(plannerInput, "planningContext", root.planning_context);
   if (root.routing_cards !== undefined) {
     plannerInput.routingCards = readRoutingCardSections(root.routing_cards);
   }
@@ -443,8 +444,8 @@ function evolveTurnOutput(plannerInput: Record<string, unknown>): unknown {
     };
   }
 
-  const openAiRequest = readAgentUnknownRecord(plannerInput.openAiRequest);
-  const toolTranscript = Array.isArray(openAiRequest?.toolTranscript) ? openAiRequest.toolTranscript : [];
+  const planningContext = readAgentUnknownRecord(plannerInput.planningContext);
+  const toolTranscript = Array.isArray(planningContext?.toolTranscript) ? planningContext.toolTranscript : [];
   const hasObservation = toolTranscript.some((entry) => readAgentUnknownRecord(entry)?.observation !== undefined);
   if (hasObservation) {
     return {

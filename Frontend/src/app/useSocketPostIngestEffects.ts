@@ -5,7 +5,6 @@ import {
   type EventEnvelope,
   type SessionCompactedData,
   type SessionExportedData,
-  type SessionRuntimeStatusData,
   type UserProfileData,
   type WsRequest,
 } from "../api/eventTypes";
@@ -29,10 +28,18 @@ export type SocketPostIngestEffectPlan =
       profile: UserProfileData;
     }
   | {
+      kind: "runtime_status_refresh";
+      sessionId: string;
+    }
+  | {
+      kind: "runtime_status_observed";
+    }
+  | {
       kind: "session_notice";
       variant: "message" | "success";
       title: string;
       description?: string;
+      refreshSessionId?: string;
     };
 
 export interface UseSocketPostIngestEffectsOptions {
@@ -75,6 +82,7 @@ export function resolveSocketPostIngestEffect(env: EventEnvelope): SocketPostIng
         before: data.tokensBefore,
         after: data.estimatedTokensAfter ?? frontendMessage("session.piTokenEstimatePending"),
       }),
+      refreshSessionId: data.sessionId,
     };
   }
 
@@ -89,28 +97,21 @@ export function resolveSocketPostIngestEffect(env: EventEnvelope): SocketPostIng
   }
 
   if (env.kind === EventKinds.SessionRuntimeStatus) {
-    const data = env.data as SessionRuntimeStatusData;
-    const runtime = data.runtime;
-    return runtime
-      ? {
-          kind: "session_notice",
-          variant: "message",
-          title: frontendMessage("session.piStatusTitle"),
-          description: frontendMessage("session.piStatusSummary", {
-            messages: runtime.stats.totalMessages,
-            tools: runtime.stats.toolCalls,
-            tokens: runtime.stats.tokens.total,
-            context:
-              runtime.contextUsage?.percent === null || runtime.contextUsage?.percent === undefined
-                ? frontendMessage("session.piTokenEstimatePending")
-                : `${runtime.contextUsage.percent}%`,
-          }),
-        }
-      : {
-          kind: "session_notice",
-          variant: "message",
-          title: frontendMessage("session.piStatusUnavailable"),
-        };
+    return { kind: "runtime_status_observed" };
+  }
+
+  if (
+    env.sessionId &&
+    (env.kind === EventKinds.RunStarted ||
+      env.kind === EventKinds.ModelStarted ||
+      env.kind === EventKinds.ToolCallCompleted ||
+      env.kind === EventKinds.ToolCallFailed ||
+      env.kind === EventKinds.RunCompleted ||
+      env.kind === EventKinds.RunFailed ||
+      env.kind === EventKinds.RunCancelled ||
+      env.kind === EventKinds.ModelCompleted)
+  ) {
+    return { kind: "runtime_status_refresh", sessionId: env.sessionId };
   }
 
   return null;
@@ -132,9 +133,19 @@ export function useSocketPostIngestEffects({
         return true;
       }
 
+      if (plan.kind === "runtime_status_refresh") {
+        sendRef.current?.({ type: "session.runtime_status", sessionId: plan.sessionId });
+        return true;
+      }
+
+      if (plan.kind === "runtime_status_observed") return true;
+
       if (plan.kind === "session_notice") {
         const notify = plan.variant === "success" ? toast.success : toast.message;
         notify(plan.title, { description: plan.description });
+        if (plan.refreshSessionId) {
+          sendRef.current?.({ type: "session.runtime_status", sessionId: plan.refreshSessionId });
+        }
         return true;
       }
 

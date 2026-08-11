@@ -83,7 +83,13 @@ const failures = policy.groups.flatMap((group) => [
 ]);
 
 if (failures.length > 0) {
-  throw new Error(`Frontend route bundle budget failed.\n${failures.map((failure) => `- ${failure}`).join("\n")}`);
+  const measurements = policy.groups
+    .map((group) => `- ${formatGroup(group.id, measurementsByGroup.get(group.id)!)}`)
+    .join("\n");
+  throw new Error(
+    `Frontend route bundle budget failed.\nMeasurements:\n${measurements}\nFailures:\n` +
+      failures.map((failure) => `- ${failure}`).join("\n"),
+  );
 }
 
 process.stdout.write(

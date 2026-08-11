@@ -11,8 +11,18 @@ describe("tool runtime capabilities", () => {
 
     expect(explainUnsupportedAgentToolRuntime(tool)).toEqual([]);
     expect(resolveAgentToolRuntimeCapabilities(tool)).toEqual(
-      expect.objectContaining({ lifecycle: "persistent", protocolVersion: 2 }),
+      expect.objectContaining({ lifecycle: "persistent", protocolVersion: 2, scheduling: "parallel" }),
     );
+  });
+
+  it("projects only explicit scheduling overrides", () => {
+    const resourceTool = runtimeTool("HostCapability", "Immediate", 2);
+    resourceTool.runtime.Scheduling = "ResourceClaims";
+    const selfManagedTool = runtimeTool("HostCapability", "Immediate", 2);
+    selfManagedTool.runtime.Scheduling = "SelfManaged";
+
+    expect(resolveAgentToolRuntimeCapabilities(resourceTool).scheduling).toBe("resource-claims");
+    expect(resolveAgentToolRuntimeCapabilities(selfManagedTool).scheduling).toBe("self-managed");
   });
 
   it("rejects host capabilities that omit the private v2 protocol declaration", () => {
@@ -83,6 +93,7 @@ function runtimeTool(
       ProtocolVersion: protocolVersion,
       ResultAssessment: "ProcessExit",
     },
+    childGrant: "inherit",
     evidenceCapabilities: [],
   };
 }

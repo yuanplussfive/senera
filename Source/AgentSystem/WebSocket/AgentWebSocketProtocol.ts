@@ -12,6 +12,7 @@ import { AgentApprovalDecisions } from "../Approvals/AgentApprovalTypes.js";
 import { AgentInteractionInputActions } from "../Interaction/AgentInteractionInputTypes.js";
 import { AgentPiSessionExportFormats } from "../Pi/AgentPiSessionManagement.js";
 import { AgentExtensionInputValueSchema } from "../Extensions/AgentExtensionInput.js";
+import { AgentExecutionApprovalModeValues } from "../Safety/AgentExecutionApprovalMode.js";
 
 const AgentInteractionInputValueSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.array(z.string())]);
 
@@ -74,6 +75,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       requestId: z.string().min(1).optional(),
       modelProviderId: z.string().min(1).optional(),
       input: z.string().min(1),
+      approvalMode: z.enum(AgentExecutionApprovalModeValues),
       attachments: AgentUploadAttachmentListSchema.optional(),
       disposition: z.enum(AgentSessionMessageDispositionValues).optional(),
       queueMode: z.enum(AgentSessionMessageQueueModeValues).optional(),
@@ -106,6 +108,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       requestId: z.string().min(1),
       modelProviderId: z.string().min(1).optional(),
       input: z.string().min(1),
+      approvalMode: z.enum(AgentExecutionApprovalModeValues),
       attachments: AgentUploadAttachmentListSchema.optional(),
     })
     .strict(),
@@ -339,6 +342,16 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("approval.resolve"),
       approvalId: z.string().min(1),
+      decision: z.enum(AgentApprovalDecisions),
+      message: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("approval.resolve_batch"),
+      sessionId: z.string().min(1),
+      requestId: z.string().min(1),
+      batchId: z.string().min(1),
       decision: z.enum(AgentApprovalDecisions),
       message: z.string().optional(),
     })

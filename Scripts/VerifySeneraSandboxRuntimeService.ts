@@ -3,74 +3,74 @@ import { AgentSandboxRuntimeService } from "../Source/AgentSystem/Sandbox/AgentS
 import { AgentSandboxRuntimeProviders } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
-async function main(): Promise<void> {
-  const service = new AgentSandboxRuntimeService({
-    platform: "win32",
-    provider: AgentSandboxRuntimeProviders.Microsandbox,
-    clock: () => new Date("2026-01-02T03:04:05.000Z"),
-    packageAvailable: () => true,
-  });
+const clock = () => new Date("2026-01-02T03:04:05.000Z");
+const windows = new AgentSandboxRuntimeService({
+  platform: "win32",
+  availability: { kind: "available", provider: AgentSandboxRuntimeProviders.DockerEngine },
+  clock,
+}).snapshot();
+assert.equal(windows.platform, "win32");
+assert.equal(windows.provider, undefined);
+assert.equal(windows.supported, false);
+assert.equal(windows.state, "disabled");
+assert.equal(windows.effectiveMode, "host");
+assert.equal(windows.effectiveTarget, "Local");
+assert.equal(windows.shellDialect, "powershell");
+assert.deepEqual(windows.availableExecutionTargets, ["Local"]);
+assert.equal(windows.diagnostics[0]?.code, "host_execution_platform_policy");
 
-  const snapshot = service.snapshot();
-  assert.equal(snapshot.platform, "win32");
-  assert.equal(snapshot.provider, "microsandbox");
-  assert.equal(snapshot.supported, true);
-  assert.equal(snapshot.state, "unknown");
-  assert.equal(snapshot.effectiveMode, "unavailable");
-  assert.equal(snapshot.updatedAt, "2026-01-02T03:04:05.000Z");
-  assert.equal(snapshot.diagnostics[0]?.code, "microsandbox_backend_configured");
-  assert.match(snapshot.message, /OS 沙箱后端已配置/);
+const service = new AgentSandboxRuntimeService({
+  platform: "linux",
+  availability: { kind: "available", provider: AgentSandboxRuntimeProviders.DockerEngine },
+  clock,
+});
 
-  service.markPreparing();
-  const preparingSnapshot = service.snapshot();
-  assert.equal(preparingSnapshot.state, "preparing");
-  assert.equal(preparingSnapshot.effectiveMode, "unavailable");
-  assert.equal(preparingSnapshot.diagnostics[0]?.code, "microsandbox_runtime_preparing");
+const snapshot = service.snapshot();
+assert.equal(snapshot.platform, "linux");
+assert.equal(snapshot.provider, "docker-engine");
+assert.equal(snapshot.supported, true);
+assert.equal(snapshot.state, "unknown");
+assert.equal(snapshot.effectiveMode, "unavailable");
+assert.equal(snapshot.updatedAt, clock().toISOString());
+assert.equal(snapshot.diagnostics[0]?.code, "docker-engine_backend_configured");
 
-  service.markReady();
-  const readySnapshot = service.snapshot();
-  assert.equal(readySnapshot.state, "ready");
-  assert.equal(readySnapshot.effectiveMode, "sandbox");
-  assert.equal(readySnapshot.diagnostics[0]?.code, "microsandbox_runtime_ready");
+service.markPreparing();
+assert.deepEqual(
+  { state: service.snapshot().state, code: service.snapshot().diagnostics[0]?.code },
+  { state: "preparing", code: "docker-engine_runtime_preparing" },
+);
 
-  service.markUnavailable(new Error("WHP unavailable"));
-  const runtimeUnavailableSnapshot = service.snapshot();
-  assert.equal(runtimeUnavailableSnapshot.state, "unavailable");
-  assert.equal(runtimeUnavailableSnapshot.effectiveMode, "unavailable");
-  assert.deepEqual(runtimeUnavailableSnapshot.dependencies.errors, ["WHP unavailable"]);
-  assert.equal(runtimeUnavailableSnapshot.diagnostics[0]?.code, "microsandbox_runtime_unavailable");
+service.markReady();
+assert.deepEqual(
+  {
+    state: service.snapshot().state,
+    mode: service.snapshot().effectiveMode,
+    code: service.snapshot().diagnostics[0]?.code,
+  },
+  { state: "ready", mode: "sandbox", code: "docker-engine_runtime_ready" },
+);
 
-  const unavailableSnapshot = new AgentSandboxRuntimeService({
-    platform: "linux",
-    provider: AgentSandboxRuntimeProviders.Microsandbox,
-    configSnapshot: () =>
-      ({
-        ModelProviders: [],
-        SandboxRuntime: { Provider: "microsandbox" },
-      }) satisfies AgentSystemConfig,
-    clock: () => new Date("2026-01-02T03:04:05.000Z"),
-    packageAvailable: () => false,
-  }).snapshot();
-  assert.equal(unavailableSnapshot.provider, "microsandbox");
-  assert.equal(unavailableSnapshot.supported, false);
-  assert.equal(unavailableSnapshot.state, "unavailable");
-  assert.equal(unavailableSnapshot.effectiveMode, "unavailable");
-  assert.equal(unavailableSnapshot.diagnostics[0]?.code, "microsandbox_package_missing");
+service.markUnavailable(new Error("Docker Desktop unavailable"));
+const unavailable = service.snapshot();
+assert.equal(unavailable.state, "unavailable");
+assert.deepEqual(unavailable.dependencies.errors, ["Docker Desktop unavailable"]);
+assert.equal(unavailable.diagnostics[0]?.code, "docker-engine_runtime_unavailable");
 
-  const disabledSnapshot = new AgentSandboxRuntimeService({
-    platform: "win32",
-    provider: AgentSandboxRuntimeProviders.Microsandbox,
-    configSnapshot: () =>
-      ({
-        ModelProviders: [],
-        SandboxRuntime: { Enabled: false },
-      }) satisfies AgentSystemConfig,
-  }).snapshot();
-  assert.equal(disabledSnapshot.state, "disabled");
-  assert.equal(disabledSnapshot.effectiveMode, "disabled");
-  assert.equal(disabledSnapshot.diagnostics[0]?.code, "microsandbox_disabled_by_runtime_configuration");
+const disabled = new AgentSandboxRuntimeService({
+  platform: "linux",
+  availability: { kind: "disabled", reason: "configuration-disabled" },
+  configSnapshot: () =>
+    ({
+      ModelProviderEndpoints: [],
+      ModelProviders: [],
+      SandboxRuntime: { Enabled: false },
+    }) satisfies AgentSystemConfig,
+}).snapshot();
+assert.equal(disabled.provider, undefined);
+assert.equal(disabled.state, "disabled");
+assert.equal(disabled.effectiveMode, "host");
+assert.equal(disabled.effectiveTarget, "Local");
+assert.deepEqual(disabled.availableExecutionTargets, ["Local"]);
+assert.equal(disabled.diagnostics[0]?.code, "docker_disabled_by_runtime_configuration");
 
-  console.log("Senera sandbox runtime service verification passed.");
-}
-
-await main();
+console.log("Senera sandbox runtime service verification passed.");

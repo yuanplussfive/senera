@@ -65,7 +65,9 @@ npm run generate.system-extension-contracts
 npm run verify.system-extension-contracts
 ```
 
-Every runtime contract declares `Lifecycle`, `ProtocolVersion`, and `ResultAssessment`. `ProcessExit` interprets nonzero process exits as failure; `Unassessed` preserves exit data for the model. The policy is fixed by the contract and is never model-controlled.
+Every System Tool runtime contract declares `Lifecycle`, `ProtocolVersion`, `ResultAssessment`, and `Scheduling`. Use `Parallel` for independent calls, `ResourceClaims` with explicit RFC 6901 resource declarations for data conflicts, and `SelfManaged` only when the host implementation owns scheduling. `Runtime.MaxConcurrency` may place a stricter tool-wide limit on `Parallel` or `ResourceClaims`; omit it to inherit the run limit. `ProcessExit` interprets nonzero process exits as failure; `Unassessed` preserves exit data for the model. These policies are fixed by the contract and are never model-controlled.
+
+An empty `resources` array does not request a global lock. Resource declarations and scheduling mode must agree, and invalid claim projection fails explicitly. The default run capacity comes from `ToolExecution.MaxConcurrentCallsPerRun` and is 10 unless deployment configuration overrides it.
 
 ## Skill
 

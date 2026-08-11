@@ -1,11 +1,16 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { BrainCircuit, Settings2, SlidersHorizontal, Trash2 } from "lucide-react";
+import { BrainCircuit, Network, Settings2, SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "../../lib/util";
 import { Button, Dialog, DialogContent, InlineError, MenuSelect, ScrollArea } from "../../shared/ui";
 import { ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
-import { readBooleanWithTemplate, readModelCapabilities, readNumberWithTemplate } from "./modelConfigData";
+import {
+  readBooleanWithTemplate,
+  readModelCapabilities,
+  readModelToolPlanningMode,
+  readNumberWithTemplate,
+} from "./modelConfigData";
 import type { ModelCapabilitiesDraft, ModelProviderDraft } from "./modelConfigTypes";
-import { CapabilityToggle, ModelCapabilityIconItems } from "./ModelCapabilityControls";
+import { CapabilityToggle, ModelCapabilityIconItems, ToolPlanningModeControl } from "./ModelCapabilityControls";
 import { MenuRow, NumberRow, SectionLabel, SettingsTable, TextRow, ToggleRow } from "./ModelConfigPrimitives";
 
 export function ModelOptionsDialog({
@@ -54,6 +59,7 @@ export function ModelOptionsDialog({
   }
 
   const capabilities = readModelCapabilities(model, modelTemplate);
+  const toolPlanningMode = readModelToolPlanningMode(model, modelTemplate);
   const iconOptions = ModelProviderIconNames.map((icon) => ({ value: icon, label: icon }));
   const isDefault = model.Id === defaultModelId;
   const isSaved = modelIndex !== null;
@@ -92,7 +98,7 @@ export function ModelOptionsDialog({
     "MaxModelOutputTokens",
   );
   const streamEnabled =
-    typeof model.Stream === "boolean" ? model.Stream : readBooleanWithTemplate(modelTemplate, "Stream");
+    typeof model.Stream === "boolean" ? model.Stream : (readBooleanWithTemplate(modelTemplate, "Stream") ?? true);
 
   const updateCapability = (key: keyof ModelCapabilitiesDraft, enabled: boolean): void => {
     onChange({
@@ -100,6 +106,24 @@ export function ModelOptionsDialog({
         ...capabilities,
         [key]: enabled,
       },
+      ...(key === "ToolCalling" && !enabled && toolPlanningMode === "native"
+        ? { ToolPlanningMode: "baml" as const }
+        : {}),
+    });
+  };
+
+  const updateToolPlanningMode = (ToolPlanningMode: "native" | "baml"): void => {
+    onChange({
+      ToolPlanningMode,
+      ...(ToolPlanningMode === "native"
+        ? {
+            Stream: true,
+            Capabilities: {
+              ...capabilities,
+              ToolCalling: true,
+            },
+          }
+        : {}),
     });
   };
 
@@ -114,6 +138,14 @@ export function ModelOptionsDialog({
       >
         <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
           <div className="space-y-5 px-5 py-4" onBlurCapture={onCommitDraft}>
+            <section>
+              <SectionLabel
+                icon={<Network className="h-4 w-4" />}
+                title={frontendMessage("config.model.toolPlanningTitle")}
+              />
+              <ToolPlanningModeControl value={toolPlanningMode} disabled={disabled} onChange={updateToolPlanningMode} />
+            </section>
+
             <section>
               <SectionLabel
                 icon={<SlidersHorizontal className="h-4 w-4" />}
@@ -242,7 +274,12 @@ export function ModelOptionsDialog({
                   label={frontendMessage("config.model.streaming")}
                   enabled={streamEnabled}
                   disabled={disabled}
-                  onChange={(Stream) => onChange({ Stream })}
+                  onChange={(Stream) =>
+                    onChange({
+                      Stream,
+                      ...(!Stream && toolPlanningMode === "native" ? { ToolPlanningMode: "baml" as const } : {}),
+                    })
+                  }
                 />
                 <NumberRow
                   label={frontendMessage("config.model.requestTimeout")}

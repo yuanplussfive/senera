@@ -5,6 +5,7 @@ import { sha256Hex } from "../Core/AgentHash.js";
 import {
   cloneAgentToolAccessGrant,
   hasSameAgentToolNameSequence,
+  normalizeAgentToolNames,
   parseAgentToolAccessGrant,
   type AgentToolAccessGrant,
 } from "../ToolRuntime/AgentToolAccessGrant.js";
@@ -93,6 +94,7 @@ const TurnPreparationSnapshotSchema = z
   .object({
     runtimeFingerprint: z.string(),
     inputDigest: z.string(),
+    toolAuthorizationCeiling: z.array(z.string()).nullable(),
     piBranchBoundaryId: z.string().optional(),
     loadedToolNames: z.array(z.string()),
     toolAccessGrant: ToolAccessGrantSnapshotSchema,
@@ -104,6 +106,7 @@ const TurnPreparationSnapshotSchema = z
 export interface AgentTurnPreparationSnapshot {
   runtimeFingerprint: string;
   inputDigest: string;
+  toolAuthorizationCeiling: string[] | null;
   piBranchBoundaryId?: string;
   loadedToolNames: string[];
   toolAccessGrant: AgentToolAccessGrant;
@@ -114,15 +117,21 @@ export interface AgentTurnPreparationSnapshot {
 export function createAgentTurnPreparationSnapshot(input: {
   runtimeFingerprint: string;
   userInput: string;
+  allowedToolNames?: readonly string[];
   loadedToolNames: readonly string[];
   toolAccessGrant: AgentToolAccessGrant;
   rootCommand: AgentRootCommand;
   activeSkills: readonly AgentActivatedSkill[];
 }): AgentTurnPreparationSnapshot {
   const toolAccessGrant = cloneAgentToolAccessGrant(input.toolAccessGrant);
+  const toolAuthorizationCeiling = normalizeToolAuthorizationCeiling(input.allowedToolNames);
+  if (!isGrantWithinToolAuthorizationCeiling(toolAccessGrant, toolAuthorizationCeiling)) {
+    throw new Error("Turn preparation grant exceeds its Tool authorization ceiling.");
+  }
   return {
     runtimeFingerprint: input.runtimeFingerprint,
     inputDigest: sha256Hex(input.userInput),
+    toolAuthorizationCeiling,
     loadedToolNames: [...input.loadedToolNames],
     toolAccessGrant,
     rootCommand: cloneRootCommand(input.rootCommand, toolAccessGrant),
@@ -132,13 +141,17 @@ export function createAgentTurnPreparationSnapshot(input: {
 
 export function isAgentTurnPreparationReusable(
   snapshot: AgentTurnPreparationSnapshot | undefined,
-  input: { runtimeFingerprint?: string; userInput: string },
+  input: { runtimeFingerprint?: string; userInput: string; allowedToolNames?: readonly string[] },
 ): snapshot is AgentTurnPreparationSnapshot {
   return Boolean(
     snapshot &&
     input.runtimeFingerprint &&
     snapshot.runtimeFingerprint === input.runtimeFingerprint &&
-    snapshot.inputDigest === sha256Hex(input.userInput),
+    snapshot.inputDigest === sha256Hex(input.userInput) &&
+    hasSameToolAuthorizationCeiling(
+      snapshot.toolAuthorizationCeiling,
+      normalizeToolAuthorizationCeiling(input.allowedToolNames),
+    ),
   );
 }
 
@@ -159,9 +172,14 @@ export function parseAgentTurnPreparationSnapshot(value: unknown): AgentTurnPrep
   const parsed = TurnPreparationSnapshotSchema.safeParse(value);
   if (!parsed.success) return undefined;
   const toolAccessGrant = parseAgentToolAccessGrant(parsed.data.toolAccessGrant);
+  const toolAuthorizationCeiling =
+    parsed.data.toolAuthorizationCeiling === null
+      ? null
+      : normalizeToolAuthorizationCeiling(parsed.data.toolAuthorizationCeiling);
   if (
     !toolAccessGrant ||
-    !hasSameAgentToolNameSequence(parsed.data.loadedToolNames, toolAccessGrant.exposedToolNames)
+    !hasSameAgentToolNameSequence(parsed.data.loadedToolNames, toolAccessGrant.exposedToolNames) ||
+    !isGrantWithinToolAuthorizationCeiling(toolAccessGrant, toolAuthorizationCeiling)
   ) {
     return undefined;
   }
@@ -170,6 +188,7 @@ export function parseAgentTurnPreparationSnapshot(value: unknown): AgentTurnPrep
 
   return {
     ...parsed.data,
+    toolAuthorizationCeiling,
     toolAccessGrant,
     rootCommand: cloneRootCommand({ ...parsed.data.rootCommand, toolAccessGrant }, toolAccessGrant),
   };
@@ -188,4 +207,23 @@ function sameToolAccessGrant(left: AgentToolAccessGrant, right: AgentToolAccessG
     hasSameAgentToolNameSequence(left.exposedToolNames, right.exposedToolNames) &&
     hasSameAgentToolNameSequence(left.preferredToolNames, right.preferredToolNames)
   );
+}
+
+function normalizeToolAuthorizationCeiling(toolNames: readonly string[] | undefined): string[] | null {
+  return toolNames === undefined ? null : normalizeAgentToolNames(toolNames);
+}
+
+function hasSameToolAuthorizationCeiling(left: readonly string[] | null, right: readonly string[] | null): boolean {
+  return left === null || right === null
+    ? left === right
+    : hasSameAgentToolNameSequence(left, normalizeAgentToolNames(right));
+}
+
+function isGrantWithinToolAuthorizationCeiling(
+  grant: AgentToolAccessGrant,
+  ceiling: readonly string[] | null,
+): boolean {
+  if (ceiling === null) return true;
+  const allowed = new Set(ceiling);
+  return grant.authorizedToolNames.every((toolName) => allowed.has(toolName));
 }

@@ -86,4 +86,42 @@ describe("run event history policy", () => {
       },
     });
   });
+
+  test("persists scoped child-run lifecycle and snapshot events for refresh recovery", () => {
+    const projected = projectAgentRunEventForHistory({
+      eventId: "event-child-snapshot",
+      channel: AgentEventChannels.AgentEvent,
+      kind: AgentEventKinds.ChildRunSnapshotUpdated,
+      layer: AgentEventLayers.Snapshot,
+      phase: AgentEventPhases.Orchestration,
+      sequence: 3,
+      timestamp: "2026-07-17T00:00:02.000Z",
+      sessionId: "parent-session",
+      requestId: "parent-request",
+      scope: {
+        parentSessionId: "parent-session",
+        parentRequestId: "parent-request",
+        childRunId: "child-run-1",
+        agentName: "reviewer",
+        role: "childAgent",
+      },
+      data: {
+        childRunId: "child-run-1",
+        childSessionId: "child-session-1",
+        agentName: "reviewer",
+        status: "running",
+        checkpointAvailable: true,
+        snapshot: { lastActivityAt: "2026-07-17T00:00:02.000Z", activeTools: ["WorkspaceRead"] },
+      },
+    });
+
+    expect(projected).toMatchObject({
+      eventId: "event-child-snapshot",
+      phase: AgentEventPhases.Orchestration,
+      sessionId: "parent-session",
+      requestId: "parent-request",
+      scope: { childRunId: "child-run-1", role: "childAgent" },
+      data: { checkpointAvailable: true },
+    });
+  });
 });

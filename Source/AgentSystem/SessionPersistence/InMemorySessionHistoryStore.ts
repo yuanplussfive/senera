@@ -1,7 +1,7 @@
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
-import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
 import type { AgentSession } from "../Session/AgentSession.js";
 import type {
   AgentSessionCursorPage,

@@ -1,5 +1,5 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "senera-docker-engine-oci-runtime",
   "provider": "docker-engine",
   "runtime": {

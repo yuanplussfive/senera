@@ -109,6 +109,7 @@ function registeredTool(
       Capabilities: { Cancellation: true },
     },
     sources: [],
+    childGrant: "inherit",
     evidenceCapabilities: [],
   };
 }

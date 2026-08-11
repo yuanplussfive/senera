@@ -10,6 +10,7 @@ import { isJsonConfigObject, sameJsonValue } from "../../../shared/config/JsonCo
 import { Button, IconButton, InlineError, ScrollArea, StateView, Switch } from "../../../shared/ui";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import { projectSystemExtensionConfigurationSections } from "../systemExtensionConfigurationPresentation";
+import { projectSectionConfigFields } from "./runtimeModelAssignments";
 
 const EmptyExtensions: readonly SystemExtensionSettingsItem[] = [];
 
@@ -41,15 +42,16 @@ export function SystemToolsSection({
     () => (selected ? JSON.stringify([selected.id, selected.enabled, selected.configuration?.value ?? {}]) : ""),
     [selected],
   );
-  const configurationSections = useMemo(
-    () =>
-      projectSystemExtensionConfigurationSections({
-        sections: selected?.configuration?.sections ?? [],
-        locale,
-        configSnapshot: systemConfig?.configSnapshot ?? null,
-      }),
-    [locale, selected?.configuration?.sections, systemConfig?.configSnapshot],
-  );
+  const configurationSections = useMemo(() => {
+    const sections = projectSystemExtensionConfigurationSections({
+      sections: selected?.configuration?.sections ?? [],
+      locale,
+      configSnapshot: systemConfig?.configSnapshot ?? null,
+    });
+    return sections
+      .map((section) => projectSectionConfigFields(section, sections))
+      .filter((section) => section.fields.length > 0);
+  }, [locale, selected?.configuration?.sections, systemConfig?.configSnapshot]);
 
   useEffect(() => {
     onDirtyChange?.(dirty);

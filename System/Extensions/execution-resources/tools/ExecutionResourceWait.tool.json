@@ -30,6 +30,7 @@
     "Lifecycle": "OneShot",
     "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
     "Capabilities": {
       "Cancellation": true
     }

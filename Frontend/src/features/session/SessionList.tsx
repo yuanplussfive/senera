@@ -61,6 +61,7 @@ export function SessionList({
   const order = useStore((s) => s.sessionOrder);
   const active = useStore((s) => s.activeSessionId);
   const historyLoadingIds = useStore((s) => s.historyLoadingIds);
+  const missingOnServerIds = useStore((s) => s.missingOnServerIds);
   const sessionCatalogSynced = useStore((s) => s.catalogSynced.sessions);
   const select = useStore((s) => s.selectSession);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
@@ -75,8 +76,11 @@ export function SessionList({
   const [searchQuery, setSearchQuery] = useState("");
 
   const sessionList = useMemo(
-    () => order.map((id) => sessions[id]).filter((session): session is SessionRecord => !!session),
-    [order, sessions],
+    () =>
+      order
+        .map((id) => sessions[id])
+        .filter((session): session is SessionRecord => !!session && !missingOnServerIds[session.sessionId]),
+    [missingOnServerIds, order, sessions],
   );
 
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();

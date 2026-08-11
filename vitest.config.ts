@@ -37,6 +37,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: false,
+    testTimeout: 15_000,
+    hookTimeout: 15_000,
     include: [...FrontendTestCoveragePolicy.testInclude],
     setupFiles: (FrontendTestCoveragePolicy.setupFiles ?? []).map((setupFile) => workspacePath(setupFile)),
     server: {

@@ -73,6 +73,7 @@ function registeredTool(workspaceRoot: string): RegisteredTool {
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
     sources: [],
+    childGrant: "inherit",
     evidenceCapabilities: [],
   };
 }

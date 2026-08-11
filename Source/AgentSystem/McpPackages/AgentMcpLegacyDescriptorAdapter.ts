@@ -9,6 +9,7 @@ import type { AgentMcpDescriptorAdapter } from "./AgentMcpDescriptorAdapter.js";
 import type { AgentMcpInputDefinition } from "./AgentMcpInputDefinition.js";
 import {
   AgentMcpConfigurationDocumentSchema,
+  createAgentMcpDefaultLocalExecution,
   type AgentMcpLegacyServerConfiguration,
 } from "./AgentMcpPackageSchema.js";
 
@@ -21,7 +22,7 @@ export const AgentMcpLegacyDescriptorAdapter: AgentMcpDescriptorAdapter = {
     return {
       name: context.directoryName,
       descriptorKind: "legacy",
-      execution: configuration.execution,
+      execution: configuration.execution ?? createAgentMcpDefaultLocalExecution(),
       servers: Object.entries(configuration.mcpServers).map(([name, server]) => {
         const inputDefinitions = legacyInputDefinitions(server);
         return {

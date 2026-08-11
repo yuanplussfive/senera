@@ -9,6 +9,7 @@ import type { AgentSystemToolDefinition } from "../Source/AgentSystem/SystemTool
 import {
   AgentHostToolProtocolVersion,
   ToolResultAssessmentPolicies,
+  ToolSchedulingModes,
 } from "../Source/AgentSystem/Types/AgentToolContractTypes.js";
 import { AgentJsonFileLoader } from "../Source/AgentSystem/Config/AgentJsonFileLoader.js";
 import {
@@ -17,12 +18,16 @@ import {
   AgentToolObservationProjectionSchema,
 } from "../Source/AgentSystem/SystemTools/AgentSystemExtensionManifest.js";
 import { resolveSystemExtensionPackageFile } from "../Source/AgentSystem/SystemTools/AgentSystemExtensionPackagePath.js";
+import { AgentBundledHostToolInputContracts } from "../Source/AgentSystem/SystemTools/AgentBundledHostToolInputContracts.js";
+import { AgentOrchestrationConfigurationContracts } from "../Source/AgentSystem/Orchestration/AgentOrchestrationConfig.js";
 
 const check = process.argv.includes("--check");
 const outputRoot = path.join(process.cwd(), "System", "Extensions");
 const definitions = createAgentSystemTools({ ModelProviders: [] });
 
 for (const group of groupByExtension(definitions)) await synchronizeExtension(group);
+await synchronizeBundledHostToolInputContracts();
+await synchronizeBundledExtensionConfigurationContracts();
 verifyBundledObservationProjections();
 
 console.log(`Generated System extension contracts ${check ? "verified" : "synchronized"}.`);
@@ -67,22 +72,31 @@ async function synchronizeExtension(definitions: readonly AgentSystemToolDefinit
       observationProjection: observationPath,
       permissions: [...(metadata.permissions ?? [])],
       execution: metadata.execution ?? { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
-      runtime: metadata.runtime ?? {
-        Lifecycle: "Immediate",
-        ProtocolVersion: AgentHostToolProtocolVersion,
-        ResultAssessment: ToolResultAssessmentPolicies.ProcessExit,
-      },
+      runtime: projectRuntime(metadata.runtime),
       resources: [...(metadata.resources ?? [])],
       sources: [...(metadata.sources ?? [])],
       search: metadata.search,
       evidenceCapabilities: [...(metadata.evidenceCapabilities ?? [])],
+      approval: metadata.approval,
       artifacts: metadata.artifacts,
     });
     await synchronize(path.join(extensionRoot, observationPath), {
-      $schema: "https://schemas.senera.ai/tool-observation-projection/v1.json",
+      $schema: "https://schemas.senera.ai/tool-observation-projection/v2.json",
       ...metadata.observation,
     });
   }
+}
+
+function projectRuntime(runtime: AgentSystemToolDefinition["metadata"]["runtime"]) {
+  const resolved = runtime ?? {
+    Lifecycle: "Immediate" as const,
+    ProtocolVersion: AgentHostToolProtocolVersion,
+    ResultAssessment: ToolResultAssessmentPolicies.ProcessExit,
+  };
+  return {
+    ...resolved,
+    Scheduling: resolved.Scheduling ?? ToolSchedulingModes.Parallel,
+  };
 }
 
 function readExtensionConfiguration(definitions: readonly AgentSystemToolDefinition[]) {
@@ -158,5 +172,56 @@ function verifyBundledObservationProjections(): void {
           .join(", ")}.`,
       );
     }
+  }
+}
+
+async function synchronizeBundledHostToolInputContracts(): Promise<void> {
+  const loader = new AgentJsonFileLoader();
+  const contributions = new Map<string, { readonly packageRoot: string; readonly contractPath: string }>();
+
+  for (const entry of fs.readdirSync(outputRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name.startsWith(".")) continue;
+    const packageRoot = path.join(outputRoot, entry.name);
+    const manifest = loader.load(path.join(packageRoot, "extension.json"), AgentSystemExtensionManifestSchema);
+    for (const contribution of manifest.contributions) {
+      if (contribution.kind !== "hostTool") continue;
+      if (contributions.has(contribution.capability)) {
+        throw new Error(`Bundled Host Tool capability ${contribution.capability} is declared more than once.`);
+      }
+      contributions.set(contribution.capability, {
+        packageRoot,
+        contractPath: resolveSystemExtensionPackageFile(packageRoot, contribution.contract, "host Tool contract"),
+      });
+    }
+  }
+
+  for (const definition of AgentBundledHostToolInputContracts) {
+    const contribution = contributions.get(definition.capability);
+    if (!contribution) {
+      throw new Error(`Runtime Host Tool capability ${definition.capability} has no bundled extension contribution.`);
+    }
+    const contractSource = JSON.parse(fs.readFileSync(contribution.contractPath, "utf8")) as unknown;
+    AgentSystemToolContractSchema.parse(contractSource);
+    await synchronize(contribution.contractPath, {
+      ...(contractSource as Record<string, unknown>),
+      inputSchema: z.toJSONSchema(definition.input, { target: "draft-7", io: "input" }),
+    });
+  }
+}
+
+async function synchronizeBundledExtensionConfigurationContracts(): Promise<void> {
+  const loader = new AgentJsonFileLoader();
+  for (const definition of AgentOrchestrationConfigurationContracts) {
+    const packageRoot = path.join(outputRoot, definition.extensionId);
+    const manifest = loader.load(path.join(packageRoot, "extension.json"), AgentSystemExtensionManifestSchema);
+    if (!manifest.configuration) {
+      throw new Error(`Bundled extension ${definition.extensionId} has no configuration declaration.`);
+    }
+    const schemaPath = resolveSystemExtensionPackageFile(
+      packageRoot,
+      manifest.configuration.schema,
+      "extension configuration schema",
+    );
+    await synchronize(schemaPath, z.toJSONSchema(definition.schema, { target: "draft-7", io: "input" }));
   }
 }

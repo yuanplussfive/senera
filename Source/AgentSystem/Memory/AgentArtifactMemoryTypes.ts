@@ -1,10 +1,6 @@
 import { z } from "zod";
 import { AgentToolExecutionOutcomeSchema } from "../ToolRuntime/AgentToolResultOutcome.js";
 import { type AgentArtifactFileNames } from "../Artifacts/AgentArtifactLocator.js";
-import {
-  normalizeToolArrayArgument,
-  normalizeToolNumberArgument,
-} from "../ToolRuntime/AgentToolArgumentNormalization.js";
 
 export const ReadableArtifactRefs = [
   "summary",
@@ -107,57 +103,85 @@ export const ArtifactJsonViewRequestSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("index"),
-      sourcePath: z.preprocess(normalizeToolArrayArgument, z.array(z.string())).optional(),
-      cursor: z.string().min(1).optional(),
+      sourcePath: z
+        .array(z.string())
+        .describe("Object keys leading to the value to index. Use an empty array for the root value.")
+        .optional(),
+      cursor: z.string().min(1).describe("Opaque index continuation cursor.").optional(),
     })
     .strict(),
   z
     .object({
       kind: z.literal("query"),
-      sourcePath: z.preprocess(normalizeToolArrayArgument, z.array(z.string())).optional(),
-      select: z.preprocess(normalizeToolArrayArgument, z.array(z.string()).min(1)).optional(),
-      where: z.preprocess(normalizeToolArrayArgument, z.array(ArtifactJsonPredicateSchema).min(1)).optional(),
-      cursor: z.string().min(1).optional(),
+      sourcePath: z
+        .array(z.string())
+        .describe("Object keys leading to the array to stream. Use an empty array for a root array.")
+        .optional(),
+      select: z.array(z.string()).min(1).describe("Fields to retain from each matching object.").optional(),
+      where: z
+        .array(ArtifactJsonPredicateSchema)
+        .min(1)
+        .describe("Deterministic predicates applied to streamed array items.")
+        .optional(),
+      cursor: z.string().min(1).describe("Opaque query continuation cursor.").optional(),
     })
     .strict(),
 ]);
 
 export const ArtifactMemoryReadArgumentsSchema = z
   .object({
-    artifactUris: z.preprocess(normalizeToolArrayArgument, z.array(z.string().trim().min(1)).min(1)),
-    refs: z.preprocess(normalizeToolArrayArgument, z.array(z.enum(ReadableArtifactRefs)).min(1)).optional(),
-    maxBytesPerRef: z.preprocess(normalizeToolNumberArgument, z.number().int().positive()).optional(),
-    startBytePerRef: z.preprocess(normalizeToolNumberArgument, z.number().int().nonnegative()).optional(),
-    refRanges: z
-      .preprocess(
-        normalizeToolArrayArgument,
-        z
-          .array(
-            z
-              .object({
-                ref: z.enum(ReadableArtifactRefs),
-                maxBytes: z.preprocess(normalizeToolNumberArgument, z.number().int().positive()),
-                startByte: z.preprocess(normalizeToolNumberArgument, z.number().int().nonnegative()).optional(),
-              })
-              .strict(),
-          )
-          .min(1)
-          .superRefine((ranges, ctx) => {
-            const seen = new Set<string>();
-            ranges.forEach((range, index) => {
-              if (seen.has(range.ref)) {
-                ctx.addIssue({
-                  code: z.ZodIssueCode.custom,
-                  path: [index, "ref"],
-                  message: `refRanges 中不能重复指定 ${range.ref}。`,
-                });
-              }
-              seen.add(range.ref);
-            });
-          }),
-      )
+    artifactUris: z
+      .array(z.string().trim().min(1))
+      .min(1)
+      .describe(
+        "One or more canonical artifact memory URIs, for example senera://artifact/art_1234567890abcdef12345678.",
+      ),
+    refs: z
+      .array(z.enum(ReadableArtifactRefs))
+      .min(1)
+      .describe("Memory refs to load. Omit to read the projection ref only.")
       .optional(),
-    jsonView: ArtifactJsonViewRequestSchema.optional(),
+    maxBytesPerRef: z
+      .number()
+      .int()
+      .positive()
+      .describe("Per-ref byte budget, capped by the configured artifact text-file limit.")
+      .optional(),
+    startBytePerRef: z
+      .number()
+      .int()
+      .nonnegative()
+      .describe("UTF-8 byte offset applied to each requested ref.")
+      .optional(),
+    refRanges: z
+      .array(
+        z
+          .object({
+            ref: z.enum(ReadableArtifactRefs),
+            maxBytes: z.number().int().positive(),
+            startByte: z.number().int().nonnegative().optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .superRefine((ranges, ctx) => {
+        const seen = new Set<string>();
+        ranges.forEach((range, index) => {
+          if (seen.has(range.ref)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [index, "ref"],
+              message: `refRanges 中不能重复指定 ${range.ref}。`,
+            });
+          }
+          seen.add(range.ref);
+        });
+      })
+      .describe("Per-ref byte ranges for independent continuation reads.")
+      .optional(),
+    jsonView: ArtifactJsonViewRequestSchema.describe(
+      "Typed JSON view: index discovers structure; query streams complete array items.",
+    ).optional(),
   })
   .strict();
 

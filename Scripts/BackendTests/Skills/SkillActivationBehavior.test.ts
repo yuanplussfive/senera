@@ -13,6 +13,38 @@ import { buildSkillCapabilityDocument } from "../../../Source/AgentSystem/ToolSe
 import { AgentToolSearchTokenizer } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchTokenizer.js";
 
 describe("Skill activation", () => {
+  test("activates pinned Skills before semantic routing and rejects missing pins", async () => {
+    const registry = new AgentExtensionRegistry();
+    registry.registerSkill({ ...skill("workspace-investigation", "Inspect a workspace."), revision: "revision-a" });
+    const service = new AgentSkillActivationService(registry);
+
+    const activated = await service.activate({
+      input: "Use $workspace-investigation to inspect the workspace.",
+      pinnedSkills: [
+        { name: "workspace-investigation", revision: "revision-a" },
+        { name: "workspace-investigation", revision: "revision-a" },
+      ],
+    });
+
+    expect(activated).toEqual([
+      expect.objectContaining({
+        name: "workspace-investigation",
+        revision: "revision-a",
+        score: AgentSkillActivationScores.PinnedConfiguration,
+        matchedFields: [{ term: "workspace-investigation", fields: ["pinnedConfiguration"] }],
+      }),
+    ]);
+    await expect(
+      service.activate({ input: "Inspect it.", pinnedSkills: [{ name: "missing-skill", revision: "revision-a" }] }),
+    ).rejects.toThrow(/Pinned Skills are not registered: missing-skill/u);
+    await expect(
+      service.activate({
+        input: "Inspect it.",
+        pinnedSkills: [{ name: "workspace-investigation", revision: "revision-before-reload" }],
+      }),
+    ).rejects.toThrow(/Pinned Skill revisions changed before activation/u);
+  });
+
   test("prioritizes explicit $skill-name invocations and merges semantic matches without duplicates", async () => {
     const registry = new AgentExtensionRegistry();
     registry.registerSkill(skill("weather-forecast", "Query current weather and forecasts."));

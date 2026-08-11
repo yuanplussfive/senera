@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   projectSectionConfigFields,
+  namespaceRuntimeModelAssignmentSections,
   readRuntimeModelAssignmentCandidates,
   readRuntimeModelAssignmentFields,
   readRuntimeModelAssignmentSelection,
+  readRuntimeModelPoolAssignmentSelection,
   writeRuntimeModelAssignment,
+  writeRuntimeModelPoolAssignment,
 } from "../../../Frontend/src/features/settings/sections/runtimeModelAssignments.ts";
 
 describe("runtime model assignments", () => {
@@ -80,6 +83,68 @@ describe("runtime model assignments", () => {
       }),
     ).toEqual({ value: "missing:planner:default-chat", unavailableLabel: "default-chat" });
   });
+
+  it("namespaces extension model pools and writes inheritance with ordered candidates", () => {
+    const localSections = [
+      createSection("model-pool", [
+        createField(["modelPool", "inheritParent"], "inheritParent", undefined, "boolean", true),
+        createField(
+          ["modelPool", "modelProviderIds"],
+          "modelProviderIds",
+          {
+            id: "child-model-pool",
+            capability: "Chat",
+            valueKind: "model-id",
+            mutation: "config",
+            cardinality: "many",
+            inheritance: { source: "parent-model", path: ["modelPool", "inheritParent"] },
+            required: false,
+          },
+          "array",
+          ["chat-b", "chat-a"],
+        ),
+      ]),
+    ];
+    const sections = namespaceRuntimeModelAssignmentSections(localSections, {
+      namespace: "extension:agent-delegation",
+      pathPrefix: ["Extensions", "agent-delegation", "Configuration"],
+      labelPrefix: "Subagents",
+    });
+    const allFields = sections.flatMap((section) => section.fields);
+    const field = readRuntimeModelAssignmentFields(sections)[0];
+
+    expect(field.path).toEqual(["Extensions", "agent-delegation", "Configuration", "modelPool", "modelProviderIds"]);
+    expect(field.modelSelection.inheritance.path).toEqual([
+      "Extensions",
+      "agent-delegation",
+      "Configuration",
+      "modelPool",
+      "inheritParent",
+    ]);
+    expect(projectSectionConfigFields(sections[0], sections).fields).toEqual([]);
+    expect(readRuntimeModelPoolAssignmentSelection({ field, allFields, draft: {} })).toEqual({
+      inheritanceEnabled: true,
+      modelIds: ["chat-b", "chat-a"],
+    });
+
+    expect(
+      writeRuntimeModelPoolAssignment({}, field, {
+        inheritanceEnabled: false,
+        modelIds: ["chat-a", "chat-b"],
+      }),
+    ).toEqual({
+      Extensions: {
+        "agent-delegation": {
+          Configuration: {
+            modelPool: {
+              inheritParent: false,
+              modelProviderIds: ["chat-a", "chat-b"],
+            },
+          },
+        },
+      },
+    });
+  });
 });
 
 function createSections() {
@@ -113,18 +178,19 @@ function createSection(name, fields) {
   return { name, label: name, keyCount: fields.length, fields };
 }
 
-function createField(path, key, modelSelection) {
+function createField(path, key, modelSelection, type, effectiveValue) {
   return {
     label: key,
     section: path[0] === "ActionPlanner" ? "planning" : "retrieval",
     key,
     path,
-    type: key === "Enabled" ? "boolean" : key === "Dimensions" ? "number" : "string",
+    type: type ?? (key === "Enabled" ? "boolean" : key === "Dimensions" ? "number" : "string"),
+    ...(type === "array" ? { itemType: "string" } : {}),
     value: undefined,
-    effectiveValue: undefined,
+    effectiveValue,
     configured: false,
-    missing: true,
-    valueSource: "missing",
+    missing: effectiveValue === undefined,
+    valueSource: effectiveValue === undefined ? "missing" : "default",
     required: false,
     essential: false,
     ...(modelSelection ? { modelSelection } : {}),

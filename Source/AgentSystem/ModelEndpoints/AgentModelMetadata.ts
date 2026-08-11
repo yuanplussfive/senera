@@ -28,7 +28,25 @@ export interface AgentConversationEntryMetadata {
   };
 }
 
+/** Describes which runtime owns a session. This is persisted with the session. */
+export type AgentSessionOwnership =
+  | {
+      readonly type: "user_conversation";
+    }
+  | {
+      readonly type: "child_run";
+      readonly childRunId: string;
+      readonly parentSessionId: string;
+      readonly parentRequestId: string;
+      readonly agentName: string;
+    }
+  | {
+      readonly type: "scheduled_run";
+      readonly taskId: string;
+    };
+
 export interface AgentSessionMetadata {
+  ownership?: AgentSessionOwnership;
   lastRun?: AgentRunMetadata;
   piSession?: AgentPiSessionLifecycleMetadata;
   toolAvailability?: AgentToolAvailabilitySnapshot;

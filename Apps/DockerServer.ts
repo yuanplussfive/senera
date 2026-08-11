@@ -9,12 +9,12 @@ import {
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { moduleDirPath } from "../Source/AgentSystem/Core/AgentPath.js";
 import { resolveAgentLocalAdminAccountPath } from "../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
-import { AgentGvisorWorkerSocketClient } from "../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorWorkerClient.js";
-import { prepareAgentGvisorRuntime } from "../Source/AgentSystem/Sandbox/Gvisor/AgentGvisorRuntimePreparation.js";
+import { AgentSandboxWorkerClient } from "../Source/AgentSystem/Sandbox/Worker/AgentSandboxWorkerClient.js";
+import { prepareAgentDockerEngineRuntime } from "../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntimePreparation.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { synchronizeDockerAdminAccount } from "./DockerAdminAccountSync.js";
 import type { AgentSandboxRuntimeProvider } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
-import type { SeneraGvisorWorkerClient } from "../Source/AgentSystem/Execution/SeneraGvisorTypes.js";
+import type { SeneraSandboxWorkerClient } from "../Source/AgentSystem/Execution/SeneraSandboxWorkerTypes.js";
 import { ensureRuntimeConfigFile } from "./RuntimeConfigBootstrap.js";
 import {
   installAgentProcessFailureGuard,
@@ -50,7 +50,7 @@ async function main(): Promise<void> {
   ensureRuntimeConfigFile({ configPath: ConfigPath, templatePath: ExampleConfigPath });
 
   const config = loadConfigFile(ConfigPath);
-  const worker = new AgentGvisorWorkerSocketClient({ socketPath: resolveDockerSandboxWorkerSocketPath() });
+  const worker = new AgentSandboxWorkerClient({ endpoint: resolveDockerSandboxWorkerEndpoint() });
   const sandboxProvider = await resolveDockerSandboxProvider(config, worker);
   const runtimeProjection = createDockerRuntimeProjection(sandboxProvider);
   const projectedConfig = runtimeProjection(config);
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
     resourcesPath: AppRoot,
     runtimeConfigProjection: runtimeProjection,
     sandboxRuntimePrepared: true,
-    sandboxProvider,
+    sandboxRuntimeAvailability: { kind: "available", provider: sandboxProvider },
     dockerEngineWorker: worker,
   });
   installAgentProcessShutdownGuard({
@@ -108,9 +108,9 @@ function createDockerRuntimeProjection(
       ...DockerSandboxRuntime,
       Enabled: true,
       Provider: sandboxProvider,
-      Gvisor: {
-        ...config.SandboxRuntime?.Gvisor,
-        WorkerSocketPath: resolveDockerSandboxWorkerSocketPath(),
+      Docker: {
+        ...config.SandboxRuntime?.Docker,
+        WorkerEndpoint: resolveDockerSandboxWorkerEndpoint(),
       },
     },
     Server: {
@@ -128,12 +128,12 @@ function createDockerRuntimeProjection(
 
 async function prepareDockerSandboxRuntime(
   config: AgentSystemConfig,
-  worker: SeneraGvisorWorkerClient,
+  worker: SeneraSandboxWorkerClient,
   provider: Extract<AgentSandboxRuntimeProvider, "gvisor" | "docker-engine">,
 ): Promise<void> {
   try {
     const sandboxConfig = resolveSandboxRuntimeConfig(config);
-    await prepareAgentGvisorRuntime({
+    await prepareAgentDockerEngineRuntime({
       workspaceRoot: WorkspaceRoot,
       config: sandboxConfig,
       worker,
@@ -148,9 +148,9 @@ async function prepareDockerSandboxRuntime(
 
 async function resolveDockerSandboxProvider(
   config: AgentSystemConfig,
-  worker: SeneraGvisorWorkerClient,
+  worker: SeneraSandboxWorkerClient,
 ): Promise<Extract<AgentSandboxRuntimeProvider, "gvisor" | "docker-engine">> {
-  const timeoutMs = resolveSandboxRuntimeConfig(config).Gvisor.PreparationTimeoutSeconds * 1000;
+  const timeoutMs = resolveSandboxRuntimeConfig(config).Docker.PreparationTimeoutSeconds * 1000;
   try {
     const probe = await worker.probe({ timeoutMs });
     return probe.isolation;
@@ -162,13 +162,13 @@ async function resolveDockerSandboxProvider(
   }
 }
 
-function resolveDockerSandboxWorkerSocketPath(): string {
-  const configured = process.env.SENERA_GVISOR_WORKER_SOCKET?.trim();
+function resolveDockerSandboxWorkerEndpoint(): string {
+  const configured = process.env.SENERA_SANDBOX_WORKER_ENDPOINT?.trim();
   if (!configured) {
-    throw new Error(`Docker sandbox Worker socket is not configured. ${DockerComposeDeploymentHint}`);
+    throw new Error(`Docker sandbox Worker endpoint is not configured. ${DockerComposeDeploymentHint}`);
   }
   if (!path.isAbsolute(configured)) {
-    throw new Error(`Docker sandbox Worker socket must be an absolute Unix path. ${DockerComposeDeploymentHint}`);
+    throw new Error(`Docker sandbox Worker endpoint must be an absolute Unix path. ${DockerComposeDeploymentHint}`);
   }
   return path.normalize(configured);
 }

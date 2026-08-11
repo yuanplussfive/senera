@@ -4,7 +4,7 @@ import type {
   ResolvedAgentToolSearchConfig,
 } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
-import type { ToolLoadingMode } from "../../../Source/AgentSystem/Types/AgentToolContractTypes.js";
+import type { ToolExecutionTarget, ToolLoadingMode } from "../../../Source/AgentSystem/Types/AgentToolContractTypes.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
 
 export function createRegistry(tools: RegisteredTool[]): AgentToolSearchRegistryReader & {
@@ -45,6 +45,7 @@ export function createTool(options: {
   priority: number;
   rootKind?: "System" | "User";
   loading?: ToolLoadingMode;
+  executionTargets?: ToolExecutionTarget[];
   source?: {
     id: string;
     title: string;
@@ -86,10 +87,11 @@ export function createTool(options: {
       Capabilities: { Cancellation: true },
     },
     execution: {
-      Targets: ["Local"],
+      Targets: options.executionTargets ?? ["Local"],
       Network: "Deny",
       Workspace: "ReadOnly",
     },
+    childGrant: "inherit",
     evidenceCapabilities: [],
     search: {
       Summary: options.summary,

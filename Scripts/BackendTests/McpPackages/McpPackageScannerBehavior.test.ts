@@ -31,6 +31,7 @@ describe("standard MCP package discovery", () => {
       { name: "web-research", descriptorKind: "mcpb", servers: ["web-research"] },
     ]);
     expect(packages[0]?.configurationPath).toBe(path.resolve("McpServers", "weather", "manifest.json"));
+    expect(packages.every((package_) => package_.execution?.preferred === "local")).toBe(true);
     expect(packages[0]?.servers[0]?.inputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "QWEATHER_API_KEY", secret: true, provenance: "mcpb" }),
@@ -42,7 +43,6 @@ describe("standard MCP package discovery", () => {
   test("discovers a standard stdio server configuration", () => {
     const root = fixtureRoot();
     writeMcpPackage(root, "csv-toolkit", {
-      execution: localExecution(),
       mcpServers: {
         "csv-toolkit": {
           type: "stdio",
@@ -74,6 +74,7 @@ describe("standard MCP package discovery", () => {
       },
     ]);
     expect(packages[0]?.revision).toMatch(/^[a-f0-9]{64}$/u);
+    expect(packages[0]?.execution).toEqual(localExecution());
     expect(agentMcpPackageToolName("csv-toolkit", "select-columns")).toBe("mcp__csv_toolkit__select_columns");
   });
 

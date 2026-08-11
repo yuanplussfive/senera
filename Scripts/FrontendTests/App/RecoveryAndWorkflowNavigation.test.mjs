@@ -9,7 +9,7 @@ import { useWorkflowNavigation } from "../../../Frontend/src/app/useWorkflowNavi
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 import { useStore } from "../../../Frontend/src/store/sessionStore.ts";
 import { clearTestToastCalls, readTestToastCalls } from "../mocks/sonner.mjs";
-import { resetFrontendStore } from "../frontendStoreTestHarness.mjs";
+import { registerTestSession, resetFrontendStore } from "../frontendStoreTestHarness.mjs";
 
 beforeEach(() => {
   resetFrontendStore();
@@ -30,6 +30,7 @@ test("atomically recreates a missing session while replaying the last message ex
       sessionId: "session-missing",
       requestId: "request-original",
       input: "Continue the task",
+      approvalMode: "full_access",
       attachments: [
         { uploadUri: "senera://upload/source", name: "source.ts", mime: "text/plain", size: 10, status: "uploaded" },
       ],
@@ -61,6 +62,7 @@ test("atomically recreates a missing session while replaying the last message ex
     sessionId: "session-missing",
     requestId: "request-original",
     input: "Continue the task",
+    approvalMode: "full_access",
     attachments: lastSentMessage.current.attachments,
     modelProviderId: "primary",
     disposition: "create_if_missing",
@@ -72,6 +74,11 @@ test("atomically recreates a missing session while replaying the last message ex
 });
 
 test("keeps history failure in the projector and refreshes the catalog for a missing close", () => {
+  registerTestSession("history");
+  useStore.setState({
+    catalogSynced: { sessions: true, presets: false },
+    pendingCreatedSessionIds: {},
+  });
   const send = vi.fn(() => true);
   const ingest = vi.fn();
   const knownSessions = { current: new Set(["history", "closing"]) };
@@ -95,7 +102,35 @@ test("keeps history failure in the projector and refreshes the catalog for a mis
   expect(send).toHaveBeenCalledWith({ type: "session.list" });
   expect(knownSessions.current.has("history")).toBe(false);
   expect(knownSessions.current.has("closing")).toBe(false);
-  expect(readTestToastCalls().map((call) => call.variant)).toEqual(["warning", "message"]);
+  expect(readTestToastCalls().map((call) => call.variant)).toEqual(["message"]);
+});
+
+test("does not treat a history not-found race as a user-visible recovery during deletion", () => {
+  registerTestSession("deleting");
+  useStore.getState().clearAllSessions(["deleting"]);
+  const send = vi.fn(() => true);
+  const ingest = vi.fn();
+  const knownSessions = { current: new Set(["deleting"]) };
+  const handleRef = { current: null };
+
+  render(
+    React.createElement(SessionNotFoundRecoveryHarness, {
+      handleRef,
+      ingest,
+      lastSendRef: { current: null },
+      sendRef: { current: send },
+      serverKnownSessionIdsRef: knownSessions,
+    }),
+  );
+
+  act(() => {
+    expect(handleRef.current.handleSessionNotFound(sessionNotFoundEvent("session.history", "deleting"))).toBe(true);
+  });
+
+  expect(ingest).not.toHaveBeenCalled();
+  expect(send).not.toHaveBeenCalled();
+  expect(knownSessions.current).toEqual(new Set(["deleting"]));
+  expect(readTestToastCalls()).toEqual([]);
 });
 
 test("marks a missing fork source without replaying the last message as an empty session", () => {
@@ -113,6 +148,7 @@ test("marks a missing fork source without replaying the last message as an empty
           sessionId: "fork-source",
           requestId: "request-last",
           input: "This must not be replayed",
+          approvalMode: "agent",
         },
       },
       sendRef: { current: send },

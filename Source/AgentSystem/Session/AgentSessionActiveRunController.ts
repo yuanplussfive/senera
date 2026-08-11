@@ -1,4 +1,5 @@
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { releaseAgentLifecycleResources } from "../Core/AgentLifecycleResource.js";
 import { createOpaqueId, createRequestId } from "../Core/AgentIds.js";
 import type { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
@@ -7,7 +8,7 @@ import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent, type AgentEventSink } from "../Events/AgentEvent.js";
 import { agentErrorMessage, type AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
-import { projectAgentErrorMessage } from "../I18n/AgentMessageProjection.js";
+import { projectAgentErrorMessage, projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 import {
   AgentPiDiagnosticSources,
@@ -54,7 +55,11 @@ export interface AgentSessionActiveRun {
   readonly settled: Promise<void>;
   readonly resolveSettled: () => void;
   stopPromise?: Promise<void>;
+  cancellationPromise?: Promise<void>;
+  cancellationHistoryPromise?: Promise<void>;
+  cancellationEventSink?: AgentEventSink;
   suppressCancellationEvent?: boolean;
+  terminalStatus?: "completed" | "failed" | "cancelled";
 }
 
 export type AgentSessionAvailability =
@@ -62,6 +67,7 @@ export type AgentSessionAvailability =
 
 export class AgentSessionActiveRunController {
   private readonly activeRuns = new Map<string, AgentSessionActiveRun>();
+  private readonly cancellingRuns = new Map<string, AgentSessionActiveRun>();
   private readonly snapshots: AgentSessionRunSnapshotWriter;
   private readonly runResources: readonly AgentSessionRunResource[];
   private acceptingRuns = true;
@@ -77,7 +83,7 @@ export class AgentSessionActiveRunController {
   }
 
   assertAvailable(session: AgentSession): AgentSessionAvailability {
-    const activeRun = this.activeRuns.get(session.id);
+    const activeRun = this.activeRuns.get(session.id) ?? this.cancellingRuns.get(session.id);
     if (session.status === AgentSessionStatuses.Running && !activeRun) {
       this.releaseSession(session);
       this.options.store.persistMetadata(session);
@@ -133,36 +139,17 @@ export class AgentSessionActiveRunController {
   }
 
   async cancelActiveRun(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<boolean> {
-    const run = this.activeRuns.get(request.sessionId);
+    const run = this.activeRuns.get(request.sessionId) ?? this.cancellingRuns.get(request.sessionId);
     if (!run) return false;
+    this.startUserCancellation(request, run);
+    await run.cancellationPromise;
+    return true;
+  }
 
-    const lookup = this.options.store.get(request.sessionId);
-    await this.stopActiveRun(lookup.kind === "found" ? lookup.session : undefined, run);
-    await emitAgentEvent(
-      request.onEvent ?? run.onEvent,
-      createAgentSessionRunCancelledEvent(request.sessionId, run.requestId),
-    );
-
-    if (lookup.kind === "missing") {
-      throw new Error(`Active session disappeared during cancellation: ${request.sessionId}`);
-    }
-    const mutation = await this.options.historyMutations.truncate({
-      session: lookup.session,
-      fromRequestId: run.requestId,
-      preparation: this.options.store.loadTurnPreparation(request.sessionId, run.requestId),
-    });
-    if (mutation.kind === "boundary_missing") {
-      throw new Error(`Active request disappeared during cancellation: ${request.sessionId}/${run.requestId}`);
-    }
-    await emitAgentEvent(request.onEvent ?? run.onEvent, {
-      kind: AgentEventKinds.SessionTruncated,
-      context: { sessionId: request.sessionId },
-      data: {
-        sessionId: request.sessionId,
-        fromRequestId: run.requestId,
-        removedEntries: mutation.removedEntries,
-      },
-    });
+  acceptActiveRunCancellation(request: { sessionId: string; onEvent?: AgentEventSink }): boolean {
+    const run = this.activeRuns.get(request.sessionId) ?? this.cancellingRuns.get(request.sessionId);
+    if (!run) return false;
+    this.startUserCancellation(request, run);
     return true;
   }
 
@@ -208,6 +195,42 @@ export class AgentSessionActiveRunController {
     return true;
   }
 
+  async requestActiveRunFinalAnswer(request: { sessionId: string; instruction: string }): Promise<boolean> {
+    const run = this.activeRuns.get(request.sessionId);
+    const handle = this.options.piSessions?.get(request.sessionId);
+    if (!run || !handle || handle.requestId !== run.requestId) return false;
+    return handle.session.requestFinalAnswer(request.instruction);
+  }
+
+  async steerActiveRun(request: { sessionId: string; input: string; onEvent?: AgentEventSink }): Promise<boolean> {
+    const lookup = this.options.store.get(request.sessionId);
+    if (lookup.kind === "missing") return false;
+    return this.enqueueActiveRunMessage({
+      session: lookup.session,
+      input: request.input,
+      queueMode: AgentSessionMessageQueueModes.Steer,
+      onEvent: request.onEvent,
+    });
+  }
+
+  async followUpActiveRun(request: { sessionId: string; input: string; onEvent?: AgentEventSink }): Promise<boolean> {
+    const lookup = this.options.store.get(request.sessionId);
+    if (lookup.kind === "missing") return false;
+    return this.enqueueActiveRunMessage({
+      session: lookup.session,
+      input: request.input,
+      queueMode: AgentSessionMessageQueueModes.FollowUp,
+      onEvent: request.onEvent,
+    });
+  }
+
+  async interruptActiveRun(request: { sessionId: string; instruction: string }): Promise<boolean> {
+    const run = this.activeRuns.get(request.sessionId);
+    const handle = this.options.piSessions?.get(request.sessionId);
+    if (!run || !handle || handle.requestId !== run.requestId) return false;
+    return handle.session.requestFinalAnswer(request.instruction);
+  }
+
   async discardActiveRun(session: AgentSession): Promise<boolean> {
     const run = this.activeRuns.get(session.id);
     if (run) {
@@ -226,7 +249,9 @@ export class AgentSessionActiveRunController {
     const run = this.activeRuns.get(sessionId);
     if (!run) return false;
     const lookup = this.options.store.get(sessionId);
-    void this.beginStopActiveRun(lookup.kind === "found" ? lookup.session : undefined, run).catch(() => undefined);
+    void this.beginStopActiveRun(lookup.kind === "found" ? lookup.session : undefined, run, true).catch(
+      () => undefined,
+    );
     return true;
   }
 
@@ -262,7 +287,7 @@ export class AgentSessionActiveRunController {
   }
 
   private async stopActiveRun(session: AgentSession | undefined, run: AgentSessionActiveRun): Promise<void> {
-    const settlement = this.beginStopActiveRun(session, run);
+    const settlement = this.beginStopActiveRun(session, run, true);
     try {
       await waitForAgentSessionRunSettlement({
         sessionId: session?.id ?? "unknown",
@@ -292,9 +317,135 @@ export class AgentSessionActiveRunController {
     }
   }
 
-  private beginStopActiveRun(session: AgentSession | undefined, run: AgentSessionActiveRun): Promise<void> {
+  private startUserCancellation(
+    request: { sessionId: string; onEvent?: AgentEventSink },
+    run: AgentSessionActiveRun,
+  ): void {
+    if (run.cancellationPromise) return;
+    const lookup = this.options.store.get(request.sessionId);
+    const session = lookup.kind === "found" ? lookup.session : undefined;
+    this.cancellingRuns.set(request.sessionId, run);
+    run.suppressCancellationEvent = false;
+    run.cancellationEventSink = request.onEvent ?? run.onEvent;
+    const settlement = this.beginStopActiveRun(session, run, false);
+    run.cancellationPromise = this.completeUserCancellation(request, run, settlement).finally(() => {
+      if (this.cancellingRuns.get(request.sessionId) === run) this.cancellingRuns.delete(request.sessionId);
+    });
+    void run.cancellationPromise.catch((error) => {
+      this.options.logger?.warn("session.run_cancellation.failed", {
+        sessionId: request.sessionId,
+        requestId: run.requestId,
+        error: serializeError(error),
+      });
+    });
+  }
+
+  private async completeUserCancellation(
+    request: { sessionId: string; onEvent?: AgentEventSink },
+    run: AgentSessionActiveRun,
+    settlement: Promise<void>,
+  ): Promise<void> {
+    try {
+      await waitForAgentSessionRunSettlement({
+        sessionId: request.sessionId,
+        requestId: run.requestId,
+        settlement,
+        policy: this.options.runControl,
+      });
+    } catch (error) {
+      if (!(error instanceof AgentSessionRunSettlementTimeoutError)) throw error;
+      this.markCancellationPending(request.sessionId, run, error);
+      await this.emitCancellationProgress(
+        { sessionId: request.sessionId, run },
+        {
+          stage: "settlement_delayed",
+          durationMs: error.timeoutMs,
+          ...projectAgentMessage("session.runCancellationDelayed", { timeoutMs: error.timeoutMs }),
+        },
+      );
+      // The run may be non-cooperative (for example a provider stream or a
+      // host process that does not observe abort immediately). The control
+      // request must still settle after reporting the delayed cancellation;
+      // history cleanup remains tied to the real run settlement below.
+      run.cancellationHistoryPromise ??= settlement
+        .then(() => this.finishUserCancellation(request, run))
+        .catch((settlementError) => {
+          this.options.logger?.warn("session.run_cancellation.background_settlement_failed", {
+            sessionId: request.sessionId,
+            requestId: run.requestId,
+            error: serializeError(settlementError),
+          });
+        });
+      return;
+    }
+
+    await this.finishUserCancellation(request, run);
+  }
+
+  private async finishUserCancellation(
+    request: { sessionId: string; onEvent?: AgentEventSink },
+    run: AgentSessionActiveRun,
+  ): Promise<void> {
+    const lookup = this.options.store.get(request.sessionId);
+    if (lookup.kind === "missing") {
+      throw new Error(`Active session disappeared during cancellation: ${request.sessionId}`);
+    }
+    if (run.terminalStatus !== "cancelled") {
+      await emitAgentEvent(
+        request.onEvent ?? run.onEvent,
+        createAgentSessionRunCancelledEvent(request.sessionId, run.requestId),
+      );
+    }
+    const mutation = await this.options.historyMutations.truncate({
+      session: lookup.session,
+      fromRequestId: run.requestId,
+      preparation: this.options.store.loadTurnPreparation(request.sessionId, run.requestId),
+    });
+    if (mutation.kind === "boundary_missing") {
+      throw new Error(`Active request disappeared during cancellation: ${request.sessionId}/${run.requestId}`);
+    }
+    await emitAgentEvent(request.onEvent ?? run.onEvent, {
+      kind: AgentEventKinds.SessionTruncated,
+      context: { sessionId: request.sessionId },
+      data: {
+        sessionId: request.sessionId,
+        fromRequestId: run.requestId,
+        removedEntries: mutation.removedEntries,
+      },
+    });
+  }
+
+  private markCancellationPending(
+    sessionId: string,
+    run: AgentSessionActiveRun,
+    error: AgentSessionRunSettlementTimeoutError,
+  ): void {
+    const lookup = this.options.store.get(sessionId);
+    const session = lookup.kind === "found" ? lookup.session : undefined;
+    if (session?.activeRequest?.requestId === run.requestId) {
+      session.metadata = withAgentSessionCancellationPending(session.metadata, {
+        requestId: run.requestId,
+        input: session.activeRequest.input,
+        startedAt: session.activeRequest.startedAt,
+        requestedAt: new Date().toISOString(),
+        timeoutMs: error.timeoutMs,
+      });
+      this.options.store.persistMetadata(session);
+    }
+    this.options.logger?.warn("session.run_settlement.timeout", {
+      sessionId: error.sessionId,
+      requestId: error.requestId,
+      timeoutMs: error.timeoutMs,
+    });
+  }
+
+  private beginStopActiveRun(
+    session: AgentSession | undefined,
+    run: AgentSessionActiveRun,
+    suppressCancellationEvent: boolean,
+  ): Promise<void> {
     if (!run.stopPromise) {
-      run.suppressCancellationEvent = true;
+      run.suppressCancellationEvent = suppressCancellationEvent;
       const cancellation = new AgentCancellationError();
       const activeRequest =
         session?.activeRequest?.requestId === run.requestId ? { ...session.activeRequest } : undefined;
@@ -302,6 +453,15 @@ export class AgentSessionActiveRunController {
       const cancellationStartedAt = performance.now();
       const abortPiSession = piHandle?.requestId === run.requestId ? piHandle.session.abort() : Promise.resolve();
       run.controller.abort(cancellation);
+      if (session && activeRequest) {
+        this.snapshots.requestedCancellation({
+          sessionId: session.id,
+          requestId: activeRequest.requestId,
+          text: activeRequest.input,
+          startedAt: activeRequest.startedAt,
+          error: cancellation,
+        });
+      }
       const settleRun = run.settled.then(() => {
         if (!session || !activeRequest) return;
         this.snapshots.cancelled({
@@ -317,8 +477,18 @@ export class AgentSessionActiveRunController {
         run,
         startedAt: cancellationStartedAt,
         components: [
-          { name: "agent_loop", settlement: settleRun, startedAt: cancellationStartedAt },
-          { name: "pi_session", settlement: abortPiSession, startedAt: cancellationStartedAt },
+          {
+            name: "agent_loop",
+            settlement: settleRun,
+            startedAt: cancellationStartedAt,
+            failureMode: "propagate",
+          },
+          {
+            name: "pi_session",
+            settlement: abortPiSession,
+            startedAt: cancellationStartedAt,
+            failureMode: "report",
+          },
         ],
       });
     }
@@ -367,14 +537,14 @@ export class AgentSessionActiveRunController {
         durationMs: elapsedMilliseconds(component.startedAt),
         ...projectAgentErrorMessage(error, "session.runFailed"),
       });
-      throw error;
+      if (component.failureMode === "propagate") throw error;
     }
   }
 
   private async emitCancellationProgress(
     input: { sessionId?: string; run: AgentSessionActiveRun },
     data: {
-      stage: "started" | "component_completed" | "component_failed" | "completed" | "failed";
+      stage: "started" | "component_completed" | "component_failed" | "settlement_delayed" | "completed" | "failed";
       component?: "agent_loop" | "pi_session";
       durationMs?: number;
       message?: string;
@@ -382,7 +552,7 @@ export class AgentSessionActiveRunController {
     },
   ): Promise<void> {
     try {
-      await emitAgentEvent(input.run.onEvent, {
+      await emitAgentEvent(input.run.cancellationEventSink ?? input.run.onEvent, {
         kind: AgentEventKinds.RunCancellationProgress,
         context: { sessionId: input.sessionId, requestId: input.run.requestId },
         data,
@@ -411,10 +581,9 @@ export class AgentSessionActiveRunController {
   }
 }
 
-export class AgentSessionRunCoordinatorShuttingDownError extends Error {
+export class AgentSessionRunCoordinatorShuttingDownError extends AgentBaseError {
   constructor() {
     super("Session run coordinator is shutting down.");
-    this.name = "AgentSessionRunCoordinatorShuttingDownError";
   }
 }
 
@@ -453,6 +622,7 @@ interface AgentRunCancellationComponent {
   readonly name: "agent_loop" | "pi_session";
   readonly settlement: Promise<void>;
   readonly startedAt: number;
+  readonly failureMode: "propagate" | "report";
 }
 
 function elapsedMilliseconds(startedAt: number): number {

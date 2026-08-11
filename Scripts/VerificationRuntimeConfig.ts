@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { InMemoryToolSearchMemoryStore } from "../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryStore.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { verificationConfigPath } from "./VerificationConfig.js";
 
 export interface IsolatedVerificationRuntimeConfig {
@@ -19,7 +20,17 @@ export async function createIsolatedVerificationRuntimeConfig(
 ): Promise<IsolatedVerificationRuntimeConfig> {
   const tempRoot = await mkdtemp(path.join(tmpdir(), "senera-runtime-verification-"));
   const sourceConfigPath = verificationConfigPath(sourceRoot);
-  const config = JSON.parse(await readFile(sourceConfigPath, "utf8")) as unknown;
+  const sourceConfig = JSON.parse(await readFile(sourceConfigPath, "utf8")) as AgentSystemConfig;
+  const config: AgentSystemConfig = {
+    ...sourceConfig,
+    Defaults: {
+      ...sourceConfig.Defaults,
+      SandboxRuntime: {
+        ...sourceConfig.Defaults?.SandboxRuntime,
+        Enabled: false,
+      },
+    },
+  };
   const configPath = path.join(tempRoot, path.basename(sourceConfigPath));
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
   return {

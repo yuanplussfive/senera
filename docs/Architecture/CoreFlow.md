@@ -13,11 +13,13 @@
   -> AgentTurnPreparationService
      (Skills + RootCommand + toolAccessGrant)
   -> AgentTurnPromptRenderer
+     -> native prompt projection
+     -> BAML planning prompt projection
   -> AgentPiTurnExecutor
   -> persistent Pi Coding Agent session
-  -> local PiProxy HTTP + turn-context reader lease
-  -> AgentPiAssistantCompiler / ActionPlanner / BAML
-     (EvolveTurn, RepairControllerDecision, FillPiToolArguments ...)
+  -> AgentPiModelRuntimeOwner
+     -> native: AgentPiNativeToolProvider -> declared Pi API adapter
+     -> baml: AgentPiBamlToolProvider -> AgentPiPlanningCompiler -> ActionPlanner / BAML
   -> Pi Coding Agent 工具循环
   -> ToolRuntime / HostCapability / MCP
   -> Artifact + 领域事件
@@ -32,21 +34,25 @@
 
 `AgentSystemRuntime` 是装配层，负责创建服务、加载配置、注册 System Tools、扫描 MCP packages 与 Skills。它可以知道有哪些服务，但不应该继续承载具体业务策略。
 
-`AgentLoop` 是单回合编排层，负责初始化 runtime、准备能力、渲染提示词、启动一个 Pi turn 和生成终态事件。它没有平行的请求理解/路由状态机；Pi 内部的多步决策由 PiProxy compiler 和 ActionPlanner 驱动。
+`AgentLoop` 是单回合编排层，负责初始化 runtime、准备能力、渲染提示词、启动一个 Pi turn 和生成终态事件。它没有平行的请求理解/路由状态机；Pi 内部的多步决策由模型显式选择的 native 或 BAML provider 驱动。
 
-`AgentTurnPreparationService` 是确定性的回合准备层，负责激活 Skills、合并当前输入的检索结果与 Skill 推荐，并生成 RootCommand 和不可变 `toolAccessGrant`。准备快照与 runtime fingerprint、用户输入和合同版本绑定；这里不调用 BAML，也不生成首动作。
+`AgentTurnPreparationService` 是确定性的回合准备层，负责激活 Skills、合并当前输入的检索结果与 Skill 推荐，并生成语义 RootCommand 和不可变 `toolAccessGrant`。用户任务只保存在规范化用户消息中，不再复制到 RootCommand instruction。准备快照与 runtime fingerprint、用户输入和合同版本绑定；这里不调用 BAML，也不生成首动作。
 
-`AgentTurnPromptRenderer` 是 system prompt 投影层，负责把模板、工具摘要、Skill、预设和 RootCommand 渲染成 Pi 可消费的提示词。它不执行工具，也不修改授权状态。
+`AgentTurnPromptRenderer` 是 system prompt 投影层。它按 `ToolPlanningMode` 选择 `PiNativeSystemPrompt` 或 `PiBamlSystemPrompt`：Native 只描述稳定行为和执行环境，工具 Schema 由供应商 API 的 `tools` 通道承载；BAML prompt 只提供语义行为和执行环境，RootCommand、grant、routing cards 与计划状态由结构化 planning DTO 承载。两者都不会渲染 RootCommand XML、文本工具目录或输出哨兵。
 
-`ActionPlanner` 是 PiProxy 使用的结构化模型调用层。`EvolveTurn` 根据当前 transcript、运行上下文和曝光中的 routing cards 返回 `Direct`、`AskUser` 或小型 `Execute` fragment；工具选定后，`FillPiToolArguments` 才读取权威 JSON Schema 物化参数。BAML 负责结构化输出，本地 parse、Zod/AJV 校验和定向 repair 负责最终合同。
+`AgentPiPlanningContextCompiler` 是 Pi 上下文到规划 DTO 的唯一入口。它验证 Observation v3、按完整用户回合选择历史、同步生成 tool transcript，并让消息与 transcript 共同服从模型输入预算。它不扫描任意 payload，也不会拆散 assistant tool call 与对应 tool result。
 
-`PiProxy` 是统一模型决策层。Pi 发出的 OpenAI-compatible 请求始终由 PiProxy 接收，再通过配置的模型端点调用 OpenAI、Claude、Google 或兼容服务，并由 BAML 编译成结构化 assistant message。运行时不根据供应商原生 tools 能力分流。
+`AgentPiPlanningCompiler` 是 Pi 使用的结构化规划边界。`EvolveTurn` 根据当前 transcript、运行上下文和曝光中的 routing cards 返回 `Direct`、`AskUser` 或小型 `Execute` fragment；工具选定后，`FillPiToolArguments` 才读取权威 JSON Schema 物化参数。BAML 负责结构化输出，本地 parse、Zod/AJV 校验和定向 repair 负责最终合同。
 
-`Pi` 是工具循环和会话层。它消费 PiProxy 返回的结构化 assistant message，负责工具生命周期、权限预检、执行结果回填、流式事件和多步循环。供应商协议适配不进入 Pi 的工具执行逻辑。
+`AgentPiModelRuntimeOwner` 按解析后的 `ToolPlanningMode` 注册唯一 provider。`AgentPiNativeToolProvider` 依据 Endpoint 合同选择 Pi API adapter；`AgentPiBamlToolProvider` 才调用 planning compiler。两者都从会话 frame 读取当前 turn state，并把结果作为标准 Pi assistant stream 返回；模式之间没有运行中回退。
+
+`Pi` 是工具循环和会话层。它消费所选 provider 返回的结构化 assistant message，负责会话树、工具生命周期、权限预检、执行结果回填、流式事件、多步循环和 compaction。供应商协议适配不进入 Pi 的工具执行逻辑。
 
 Pi 会话创建与恢复是不同 disposition：新会话创建 JSONL，恢复会话打开已有 session tree。空闲 `AgentSession` 受 `AgentLoop.PiSessions.MaxCachedSessions` 约束；同一会话后续回合优先复用 persistent session。lease 的资源投影、session 打开和总耗时通过独立 `core.turn.lease.timing` trace 记录，不挤占 `core.turn.lease.completed` 的业务详情预算。
 
-Pi 自动压缩由 Coding Agent 原生 compaction 生命周期负责。Pi Proxy 返回外层 wire context 的 usage，内部 BAML usage 只记录到 Senera ledger，避免用内部模型调用错误触发会话压缩。Senera 的 `context` hook 只在工具 observation 超出动态预算时做可恢复投影，不替代 session compaction。
+Pi 自动压缩由 Coding Agent 原生 compaction 生命周期负责。Native 路径使用供应商上报 usage，BAML 路径汇总 planning compiler usage；两者都记录到 Senera ledger。工具结果在写入 Pi 前已经编译为一次严格、有界的 Observation v3；后续上下文只验证协议并选择完整回合，不再二次递归裁剪 observation。完整 `AgentSessionEvent` 通过 `AgentPiCodingAgentSession` 的有序队列进入当前 turn collector；真实的 `compaction_start` / `compaction_end` 因此和消息、工具事件按同一顺序投影为 `compacting_context`，并在 `prompt()` 收口前 drain。
+
+终态回答可见性与会话维护终态是两个明确阶段。无工具调用的 assistant `message_end` 先发布固定 message ID 的非终态可见回答；自动压缩期间 run 仍保持 active。压缩和事件 drain 完成后，Session 才将同一 message ID、Conversation、trace 与 `RunCompleted` 原子提交。前端通过 upsert 更新同一条消息，不复制答案，也不会用压缩结果覆盖已生成文本。
 
 状态按所有权分为四层：Conversation SQLite 保存用户消息和最终回答；Pi Session JSONL 保存 assistant/tool 的完整执行序列与分支；Artifact 服务保存 raw、projection、evidence、workspace diff、manifest 和完整性 receipt；Memory SQLite 保存指向产品对话与 Artifact/evidence 的学习 source。四层之间通过 request ID、call ID 和 Artifact URI 关联，不复制完整工具结果。
 
@@ -68,11 +74,13 @@ MCP 客户端使用标准 `notifications/tools/list_changed` 能力协商。SDK 
 
 `Memory` 是长期状态层，负责原始来源、候选记忆、晋升记忆、主动写入和回忆。记忆应该通过 source refs 和 repository 追溯，不应该重新临时解析聊天记录。
 
-`AgentWebSocketServer` 是事件传输层，负责把后端领域事件序列化给前端。前端通过 projector 更新 UI 状态，不反向复制后端决策逻辑。
+`AgentWebSocketServer` 是事件传输层，负责把后端领域事件序列化给前端。前端通过 projector 更新 UI 状态，不反向复制后端决策逻辑。浏览器诊断使用独立的声明式安全投影和有界 Journal，详见[事件观测架构](./EventObservability.md)。
+
+`Orchestration` 是子代理与持久化计划任务边界。生态包只解析 launch contract 或驱动 timer，实际任务统一通过 `AgentRunDispatchPort -> AgentSessionManager -> AgentLoop -> Pi` 回到主链路；父运行审批、工具 capability 交集、沙箱、Artifact、正式事件和 SQLite 状态都由 Senera 持有。具体不变量见[Orchestration 模块](../../Source/AgentSystem/Orchestration/README.md)。
 
 ## 审批生命周期
 
-OPA 只负责给出 `allow`、`deny` 或 `requires-approval` 策略决定；需要人工确认时，`AgentApprovalRuntime` 成为唯一状态权威。审批使用 `sessionId + requestId + step + toolCallId + batchId + approvalId` 关联会话、运行、步骤、调用和并发批次。同一工具调用的同类审批会去重，并行工具调用仍保持独立，不共享一个模糊的全局“允许”状态。
+OPA 只负责给出 `allow`、`deny` 或 `requires-approval` 策略决定；需要人工确认时，`AgentApprovalRuntime` 成为唯一状态权威。审批使用 `sessionId + requestId + step + toolCallId + batchId + approvalId` 关联会话、运行、步骤、调用和并发批次。同一工具调用的同类审批会去重，每个并行调用仍保留独立终态；客户端可通过 `sessionId + requestId + batchId` 一次提交整批决定。运行时在改变任何成员前验证整批 pending 状态与共同可用决定，再逐项发出既有 `approval.resolved`，因此不会产生半批成功。
 
 前端提交的是声明式决定，而不是伪造服务端终态：
 
@@ -82,6 +90,8 @@ OPA 只负责给出 `allow`、`deny` 或 `requires-approval` 策略决定；需�
 - `deny_and_interrupt`：拒绝并取消当前运行，disposition 为 `interrupt`。
 
 服务端把决定解析为 `approved`、`denied`、`cancelled` 或 `expired` 终态，并始终发出 `approval.resolved`。取消、会话关闭、运行结束和过期不能静默删除待审批记录。审批事件进入运行历史，因此重连后由 projector 重建；按钮提交中的状态保存在集中 store，不依赖会因虚拟列表重挂载而丢失的组件局部状态。
+
+每次运行显式携带审批模式：`always_ask` 使用 `workspace-write + on-request + user`，只在策略要求时询问；`agent` 使用相同的工作区边界，但由 Guardrail 自动处理可审批项；`full_access` 使用 `danger-full-access + never`，跳过可选审批。任何模式都不能覆盖策略的显式 `deny`。`approve_session` 也不按参数文本做模糊匹配，而是对工具、规则、风险、执行后端、网络、工作区挂载、权限和副作用生成规范 capability digest。lease 保存在服务级 store 中，切换模型 runtime 后仍然有效，并作为 Session 生命周期资源在会话关闭时撤销。
 
 活动运行同样由服务端判定。`session.list.snapshot` 为每个实时运行的会话携带 `activeRequestId`；历史回放可以恢复旧的 `run.started`，但回放收尾只保留与该权威 ID 一致的 running run，其余没有终止事件的历史运行按中断收口。前端的 `waiting_for_approval` 只是一种由未解决审批投影出来的展示状态，不是新的后端运行状态机。
 

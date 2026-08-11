@@ -18,6 +18,7 @@ const RunEventHistoryPhases = new Set<AgentEventPhase>([
   AgentEventPhases.Decision,
   AgentEventPhases.Tool,
   AgentEventPhases.Approval,
+  AgentEventPhases.Orchestration,
   AgentEventPhases.Run,
 ]);
 

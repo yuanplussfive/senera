@@ -19,7 +19,8 @@
   "runtime": {
     "Lifecycle": "Immediate",
     "ProtocolVersion": 2,
-    "ResultAssessment": "ProcessExit"
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged"
   },
   "resources": [],
   "sources": [

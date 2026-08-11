@@ -40,4 +40,5 @@ export interface AgentPromptSectionOptions {
 export interface AgentPromptRootCommandOptions {
   decision: AgentActionDecision;
   loadedToolNames: readonly string[];
+  allowedToolNames?: readonly string[];
 }

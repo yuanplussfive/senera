@@ -7,7 +7,10 @@ import {
   projectAgentPiArtifactReferences,
   readAgentPiArtifactIndex,
 } from "../../../Source/AgentSystem/Pi/AgentPiArtifactIndex.js";
-import { AgentPiToolObservationProtocol } from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
+import {
+  AgentPiToolObservationSourceViewProtocol,
+  createAgentPiToolObservation,
+} from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
 
 describe("Pi artifact index", () => {
   test("projects artifact identity from structured tool details", () => {
@@ -73,6 +76,26 @@ describe("Pi artifact index", () => {
 });
 
 function toolResultMessage(): AgentMessage {
+  const observation = createAgentPiToolObservation({
+    status: "success",
+    execution_status: "completed",
+    output_availability: "complete",
+    observation_view: {
+      type: AgentPiToolObservationSourceViewProtocol.type,
+      complete: true,
+      omission_count: 0,
+      omissions: [],
+      artifact_uri: "senera://artifact/current",
+    },
+    detail: {
+      evidence: [
+        {
+          evidence_uri: "senera://evidence/current",
+          artifact_refs: ["projection", "raw", "projection"],
+        },
+      ],
+    },
+  });
   return {
     role: "toolResult",
     toolCallId: "call-current",
@@ -80,16 +103,7 @@ function toolResultMessage(): AgentMessage {
     content: [
       {
         type: "text",
-        text: JSON.stringify({
-          type: AgentPiToolObservationProtocol.type,
-          artifact_uri: "senera://artifact/current",
-          evidence: [
-            {
-              evidence_uri: "senera://evidence/current",
-              artifact_refs: ["projection", "raw", "projection"],
-            },
-          ],
-        }),
+        text: JSON.stringify(observation),
       },
     ],
     details: {

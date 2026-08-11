@@ -75,6 +75,7 @@ function createTool(input: { permissions?: string[]; execution: ToolExecutionMan
     execution: input.execution,
     handler: { kind: "HostCapability", capability: "verify" },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
+    childGrant: "inherit",
     evidenceCapabilities: [],
   };
 }

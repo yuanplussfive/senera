@@ -8,32 +8,20 @@ import {
 } from "../../../Source/AgentSystem/Pi/AgentPiContextPolicy.js";
 import { AgentHostCapabilityNames } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { ToolResultMessage } from "@earendil-works/pi-ai";
-import type {
-  AgentSystemConfig,
-  ResolvedAgentModelProviderConfig,
-} from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { Model, ToolResultMessage } from "@earendil-works/pi-ai";
+import { stream as streamAnthropic } from "@earendil-works/pi-ai/api/anthropic-messages";
+import type { ResolvedAgentModelProviderConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
-import { AgentModelEndpointKinds } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelEndpointContract.js";
 import {
-  AgentPiProxyModelProviderHeader,
-  AgentPiProxyProtocol,
-  encodePiProxyModelProviderHeaderValue,
-  resolveAgentPiProxyBaseUrl,
-} from "../../../Source/AgentSystem/PiShared/AgentPiProxyProtocol.js";
-import { projectPiModelsResponse } from "../../../Source/AgentSystem/PiProxy/AgentPiOpenAiResponseProjector.js";
+  AgentModelEndpointKinds,
+  AgentNativeToolApiByEndpoint,
+  resolveAgentNativeToolRoute,
+} from "../../../Source/AgentSystem/ModelEndpoints/AgentModelEndpointContract.js";
 import { AgentTokenProjector } from "../../../Source/AgentSystem/Text/AgentTokenProjection.js";
-import { AgentPiToolObservationProtocol } from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
+import { compilePiToolObservation } from "../Support/PiToolObservationFixtures.js";
 
 describe("Pi projection behavior", () => {
-  test("projects every distinct configured model in the proxy catalog", () => {
-    expect(projectPiModelsResponse(["model-a", "model-b", "model-a"]).data.map(({ id }) => id)).toEqual([
-      "model-a",
-      "model-b",
-    ]);
-  });
-
-  test.each(AgentModelEndpointKinds)("projects %s providers through the local Pi proxy", (endpoint) => {
+  test.each(AgentModelEndpointKinds)("projects %s providers through the BAML planning provider", (endpoint) => {
     const provider = createProvider({
       Endpoint: endpoint,
       Capabilities: {
@@ -44,55 +32,106 @@ describe("Pi projection behavior", () => {
       ContextWindowTokens: 128_000,
       MaxModelOutputTokens: 8_192,
     });
-    const projected = projectSeneraModelProviderToPi(provider, createConfig());
+    const projected = projectSeneraModelProviderToPi(provider);
 
-    expect(projected.providerId).toBe(AgentPiProxyProtocol.providerId);
-    expect(projected.apiKey).toBe(AgentPiProxyProtocol.apiKey);
+    expect(projected.providerId).toBe("senera");
     expect(projected.model).toMatchObject({
       id: "test-model",
       name: "main",
-      api: AgentPiProxyProtocol.modelApi,
-      provider: AgentPiProxyProtocol.providerId,
-      baseUrl: resolveAgentPiProxyBaseUrl(createConfig()),
+      api: "senera-planning",
+      provider: "senera",
+      baseUrl: "senera://planning",
       input: ["text", "image"],
       reasoning: true,
       contextWindow: 128_000,
       maxTokens: 8_192,
-      compat: {
-        supportsDeveloperRole: false,
+    });
+    expect(projected.model).not.toHaveProperty("headers");
+    expect(projected.model).not.toHaveProperty("compat");
+  });
+
+  test.each(AgentModelEndpointKinds)("projects %s providers through its declared native Pi API", (endpoint) => {
+    const provider = createProvider({
+      Endpoint: endpoint,
+      ToolPlanningMode: "native",
+      Headers: { "x-senera-test": "enabled" },
+      Capabilities: {
+        ToolCalling: true,
+        Vision: true,
+        Reasoning: true,
+        DeveloperRole: false,
+        StreamingUsage: true,
       },
+    });
+
+    const projected = projectSeneraModelProviderToPi(provider);
+
+    const route = resolveAgentNativeToolRoute(endpoint, provider.BaseUrl);
+    expect(projected).toMatchObject({
+      providerId: provider.ProviderId,
+      toolPlanningMode: "native",
+      model: {
+        api: AgentNativeToolApiByEndpoint[endpoint],
+        provider: provider.ProviderId,
+        baseUrl: route.baseUrl,
+        headers: { "x-senera-test": "enabled" },
+      },
+    });
+    expect(projected.model.headers).not.toHaveProperty("Authorization");
+    expect(projected.model.headers).not.toHaveProperty("x-api-key");
+    expect(projected.model.headers).not.toHaveProperty("x-goog-api-key");
+  });
+
+  test.each([
+    ["https://chat.senerapi.com/v1", "https://chat.senerapi.com/"],
+    ["https://chat.senerapi.com/proxy/v1/", "https://chat.senerapi.com/proxy"],
+    ["https://chat.senerapi.com/v11", "https://chat.senerapi.com/v11"],
+  ])("normalizes only an exact Claude SDK-owned path suffix in %s", (baseUrl, expected) => {
+    expect(resolveAgentNativeToolRoute("ClaudeMessages", baseUrl)).toEqual({
+      api: "anthropic-messages",
+      baseUrl: expected,
     });
   });
 
-  test("encodes non-ASCII model provider ids before passing them through Pi proxy headers", () => {
-    const provider = createProvider({
-      Id: "测试2/deepseek-v4-flash",
-      Model: "deepseek-v4-flash",
-    });
+  test("sends Claude native requests to one exact /v1/messages path through the Pi adapter", async () => {
     const projected = projectSeneraModelProviderToPi(
-      provider,
-      createConfig({
-        ModelProviders: [
-          {
-            Id: "测试2/deepseek-v4-flash",
-            ProviderId: "main",
-            Endpoint: "ChatCompletions",
-            Model: "deepseek-v4-flash",
-          },
-        ],
+      createProvider({
+        Endpoint: "ClaudeMessages",
+        BaseUrl: "https://chat.senerapi.com/v1",
+        ToolPlanningMode: "native",
+        Capabilities: { Chat: true, ToolCalling: true },
       }),
     );
-
-    expect(projected.headers[AgentPiProxyModelProviderHeader]).toBe(
-      encodePiProxyModelProviderHeaderValue("测试2/deepseek-v4-flash"),
+    let requestedUrl = "";
+    const fetch: typeof globalThis.fetch = async (input) => {
+      requestedUrl = input instanceof Request ? input.url : String(input);
+      return new Response(
+        JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "test stop" } }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      );
+    };
+    const stream = streamAnthropic(
+      projected.model as Model<"anthropic-messages">,
+      {
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "Route probe" }],
+            timestamp: Date.now(),
+          },
+        ],
+      },
+      { apiKey: "test-key", fetch, maxRetries: 0 },
     );
-    expect(isAsciiHeaderValue(projected.headers[AgentPiProxyModelProviderHeader] ?? "")).toBe(true);
+
+    const result = await stream.result();
+    expect(result.stopReason).toBe("error");
+    expect(requestedUrl).toBe("https://chat.senerapi.com/v1/messages");
   });
 
   test("uses the resolved context window and bounded output metadata when output limits are unknown", () => {
     const projected = projectSeneraModelProviderToPi(
       createProvider({ ContextWindowTokens: 64_000, MaxModelOutputTokens: -1, MaxOutputTokens: -1 }),
-      createConfig(),
     );
 
     expect(projected.model.contextWindow).toBe(64_000);
@@ -119,20 +158,26 @@ describe("Pi projection behavior", () => {
         content: [
           {
             type: "text",
-            text: JSON.stringify({
-              type: AgentPiToolObservationProtocol.type,
-              artifact_uri: "senera://artifact/weather",
-              evidence: [
-                {
-                  evidence_uri: "senera://evidence/weather-beijing",
-                  kind: "weather",
-                  label: "Beijing forecast",
-                  artifact_uri: "senera://artifact/weather-source",
-                  artifact_refs: ["raw", "evidence"],
-                  facts: [{ name: "city", value: "Beijing" }],
+            text: JSON.stringify(
+              compilePiToolObservation({
+                toolName: "WeatherTool",
+                callId: "call-weather",
+                artifact: {
+                  artifactUri: "senera://artifact/weather",
+                  evidence: [
+                    {
+                      evidenceUri: "senera://evidence/weather-beijing",
+                      kind: "weather",
+                      label: "Beijing forecast",
+                      artifactUri: "senera://artifact/weather-source",
+                      artifactRefs: ["raw", "evidence"],
+                      facts: [{ name: "city", value: "Beijing" }],
+                    },
+                  ],
+                  delta: [],
                 },
-              ],
-            }),
+              }),
+            ),
           },
         ],
         isError: false,
@@ -251,6 +296,7 @@ function createProvider(overrides: Partial<ResolvedAgentModelProviderConfig> = {
     ApiKey: "secret",
     ApiVersion: "",
     Model: "test-model",
+    ToolPlanningMode: "baml",
     ContextWindowTokens: 128_000,
     Temperature: 0,
     MaxOutputTokens: 1_024,
@@ -263,24 +309,6 @@ function createProvider(overrides: Partial<ResolvedAgentModelProviderConfig> = {
     RetryMaxDelayMs: 10_000,
     RetryAfterMaxDelayMs: 60_000,
     Headers: {},
-    ...overrides,
-  };
-}
-
-function createConfig(overrides: Partial<AgentSystemConfig> = {}): AgentSystemConfig {
-  return {
-    Server: {
-      Host: "127.0.0.1",
-      Port: 8787,
-    },
-    ModelProviders: [
-      {
-        Id: "main",
-        ProviderId: "endpoint-1",
-        Endpoint: "ChatCompletions",
-        Model: "test-model",
-      },
-    ],
     ...overrides,
   };
 }
@@ -313,6 +341,7 @@ function createRetrievalTool(name: string, capability: string): RegisteredTool {
       Network: "Deny",
       Workspace: "ReadOnly",
     },
+    childGrant: "inherit",
     evidenceCapabilities: [],
   };
 }
@@ -355,6 +384,11 @@ function artifactReference(artifactUri: string, toolName: string) {
 }
 
 function toolResultWithArtifact(artifactUri: string): AgentMessage {
+  const observation = compilePiToolObservation({
+    toolName: "VisibleTool",
+    callId: "call-visible",
+    artifact: { artifactUri, evidence: [], delta: [] },
+  });
   return {
     role: "toolResult",
     toolCallId: "call-visible",
@@ -362,14 +396,10 @@ function toolResultWithArtifact(artifactUri: string): AgentMessage {
     content: [
       {
         type: "text",
-        text: JSON.stringify({ type: AgentPiToolObservationProtocol.type, artifact_uri: artifactUri }),
+        text: JSON.stringify(observation),
       },
     ],
     isError: false,
     timestamp: Date.now(),
   };
-}
-
-function isAsciiHeaderValue(value: string): boolean {
-  return [...value].every((character) => character.charCodeAt(0) <= 0x7f);
 }

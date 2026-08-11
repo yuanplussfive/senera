@@ -12,7 +12,7 @@ import { projectSeneraModelProviderToPi } from "./AgentPiModelProjector.js";
 import { AgentPiPromptTemplateProjector } from "./AgentPiPromptTemplateProjector.js";
 import { projectSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic, type AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
-import { resolveAgentLoopConfig } from "../AgentDefaults.js";
+import { resolveAgentLoopConfig, resolveToolExecutionConfig } from "../AgentDefaults.js";
 import type {
   AgentPiModelProjection,
   AgentPiProviderProjection,
@@ -22,11 +22,10 @@ import type {
 import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import { AgentPiContextPolicy } from "./AgentPiContextPolicy.js";
-import type { AgentPiToolObservationDigester } from "./AgentPiToolObservationDigester.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { createAgentDefaultToolResourceCapabilities } from "../ToolRuntime/AgentToolResourceCapabilities.js";
 import { AgentToolResourceClaimProjector } from "../ToolRuntime/AgentToolResourceClaimProjector.js";
-import { AgentToolResourceScheduler } from "../ToolRuntime/AgentToolResourceScheduler.js";
+import { AgentToolExecutionScheduler } from "../ToolRuntime/AgentToolExecutionScheduler.js";
 import { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
@@ -39,8 +38,9 @@ import type {
   AgentPiSessionRuntimeStatus,
 } from "./AgentPiSessionManagement.js";
 import type { AgentPiRuntimeService, AgentPiSessionOptions, AgentPiSessionResult } from "./AgentPiRuntimeTypes.js";
-import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
+import { projectSeneraProcessBackendsToToolTargets } from "../ToolRuntime/AgentToolExecutionPlan.js";
 
 export type {
   AgentPiRuntimeService,
@@ -61,6 +61,7 @@ export interface AgentPiSubstrateOptions {
   workspaceRoot: string;
   config: AgentSystemConfig;
   modelProvider: ResolvedAgentModelProviderConfig;
+  planningCompilerFactory: AgentPiPlanningCompilerFactory;
   registry: AgentExtensionRegistry;
   toolCallExecutor: AgentPiToolCallExecutorPort;
   artifactRecorder: AgentPiArtifactRecorderPort;
@@ -68,9 +69,7 @@ export interface AgentPiSubstrateOptions {
   resourcesPath?: string;
   toolPermissionGate?: AgentToolPermissionGate;
   sessionPool?: AgentPiCodingAgentSessionPool;
-  toolObservationDigester?: AgentPiToolObservationDigester;
   diagnostics?: AgentPiDiagnosticSink;
-  turnContexts: AgentPiTurnContextStore;
   uploadStore?: AgentUploadStore;
 }
 
@@ -92,10 +91,11 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
   private readonly promptTemplateProjector: AgentPiPromptTemplateProjector;
   private readonly sessionPool: AgentPiCodingAgentSessionPool;
   private readonly contextPolicy: AgentPiContextPolicy;
+  private readonly maxConcurrentToolPreflights: number;
 
   constructor(private readonly options: AgentPiSubstrateOptions) {
     const piSessionsConfig = resolveAgentLoopConfig(options.config).PiSessions;
-    this.provider = projectSeneraModelProviderToPi(options.modelProvider, options.config);
+    this.provider = projectSeneraModelProviderToPi(options.modelProvider);
     this.contextPolicy = new AgentPiContextPolicy(options.modelProvider.Model);
     this.env = options.executionEnv;
     this.promptTemplateProjector = new AgentPiPromptTemplateProjector(options.registry);
@@ -105,17 +105,18 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         workspaceRoot: options.workspaceRoot,
         sessionsRoot: piSessionsConfig.RootDir,
         systemSkillsRoot: path.join(path.resolve(options.resourcesPath ?? options.workspaceRoot), "System", "Skills"),
+        additionalSkillPaths: options.registry.listSkills().map((skill) => skill.descriptionFile),
         provider: this.provider,
         modelProvider: options.modelProvider,
+        planningCompilerFactory: options.planningCompilerFactory,
         maxIdleSessions: piSessionsConfig.MaxCachedSessions,
         compaction: piSessionsConfig.Compaction,
-        toolObservationDigester: options.toolObservationDigester,
         diagnostics: options.diagnostics,
       });
     this.permissionHook = new AgentPiToolPermissionHook({
       registry: options.registry,
       permissionGate: options.toolPermissionGate,
-      turnContexts: options.turnContexts,
+      executionCapabilities: () => options.executionEnv.capabilities,
     });
     const resourceClaims = new AgentToolResourceClaimProjector(
       createAgentDefaultToolResourceCapabilities({
@@ -125,6 +126,8 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         uploadStore: options.uploadStore,
       }),
     );
+    const toolExecution = resolveToolExecutionConfig(options.config);
+    this.maxConcurrentToolPreflights = toolExecution.MaxConcurrentCallsPerRun;
     this.toolProjector = new AgentPiToolRegistryProjector({
       config: options.config,
       registry: options.registry,
@@ -132,8 +135,10 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         model: this.provider.model.id,
         executeToolCall: options.toolCallExecutor.execute.bind(options.toolCallExecutor),
         recordToolArtifacts: options.artifactRecorder.record.bind(options.artifactRecorder),
-        resourceScheduler: new AgentToolResourceScheduler(resourceClaims),
-        turnContexts: options.turnContexts,
+        executionScheduler: new AgentToolExecutionScheduler({
+          maxConcurrentCallsPerRun: toolExecution.MaxConcurrentCallsPerRun,
+          resourceClaims,
+        }),
       }),
       runtimeContracts: {
         projectToolInvocationSchema: (tool, schema) =>
@@ -143,6 +148,8 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
           options.toolCallExecutor.projectToolDescription?.call(options.toolCallExecutor, tool, description) ??
           description,
       },
+      availableExecutionTargets: () =>
+        projectSeneraProcessBackendsToToolTargets(options.executionEnv.capabilities.processBackends),
     });
   }
 
@@ -215,6 +222,8 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       signal: options.signal,
       allTools,
       activeToolNames: activeToolSet.activeToolNames,
+      thinkingLevel: options.thinkingLevel,
+      inheritProjectContext: options.inheritProjectContext ?? true,
       frame: {
         sessionId,
         requestId: options.requestId,
@@ -222,7 +231,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         onEvent: options.onEvent,
         diagnostics: options.diagnostics ?? this.options.diagnostics,
         systemPrompt: options.systemPrompt,
-        piTurnContextId: options.piTurnContextId,
+        turnState: options.turnState,
         activeSkills: options.activeSkills,
         skillCatalogFingerprint: skillCatalogFingerprint(this.options.registry.listSkills()),
         rootCommand: options.rootCommand,
@@ -238,7 +247,17 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
             outputReserveTokens: this.provider.model.maxTokens,
           }),
         signal: options.signal,
-        preflight: (event) => this.permissionHook.authorize({ ...options, toolExposure }, event),
+        preflight: (event) => {
+          const preflight = async (candidate: typeof event) => {
+            const turnDecision = options.turnState?.authorizeToolTurn();
+            if (turnDecision?.block) return turnDecision;
+            return this.permissionHook.authorize({ ...options, toolExposure }, candidate);
+          };
+          if (options.turnState) {
+            return options.turnState.preflightToolCall(event, this.maxConcurrentToolPreflights, preflight);
+          }
+          return preflight(event);
+        },
       },
     });
     try {

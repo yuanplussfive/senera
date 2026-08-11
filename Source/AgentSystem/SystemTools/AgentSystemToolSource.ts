@@ -12,6 +12,7 @@ import {
   type AgentExtensionLocalizedText,
 } from "../Extensions/AgentExtensionLocalization.js";
 import { AgentSkillScanner } from "../Skills/AgentSkillScanner.js";
+import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
 import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 import { ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
@@ -94,6 +95,7 @@ export class AgentSystemExtensionCatalog {
       this.registerPackage(registry, path.join(root, entry.name), entry.name, options);
       packageIds.add(entry.name);
     }
+    this.applySkillToolBindings(registry);
     const unknownConfigurations = Object.keys(options.configurations ?? {}).filter((id) => !packageIds.has(id));
     if (unknownConfigurations.length > 0) {
       throw new Error(
@@ -116,6 +118,28 @@ export class AgentSystemExtensionCatalog {
     return [...this.extensions].sort(
       (left, right) => (right.priority ?? 0) - (left.priority ?? 0) || left.id.localeCompare(right.id),
     );
+  }
+
+  private applySkillToolBindings(registry: AgentExtensionRegistry): void {
+    const skillsBySource = new Map<string, RegisteredSkill[]>();
+    for (const skill of registry.listSkills()) {
+      if (skill.source.kind !== "system") continue;
+      const sourceId = `system:${skill.source.id}`;
+      const skills = skillsBySource.get(sourceId) ?? [];
+      skills.push(skill);
+      skillsBySource.set(sourceId, skills);
+    }
+
+    for (const [sourceId, skills] of skillsBySource) {
+      let changed = false;
+      const projected = skills.map((skill) => {
+        const recommendedTools = [...new Set([...skill.recommendedTools, ...(this.bindings.get(skill.name) ?? [])])];
+        if (recommendedTools.length === skill.recommendedTools.length) return skill;
+        changed = true;
+        return { ...skill, recommendedTools };
+      });
+      if (changed) registry.replaceSkills(sourceId, projected);
+    }
   }
 
   private registerPackage(
@@ -177,7 +201,7 @@ export class AgentSystemExtensionCatalog {
         this.bindings.set(skill, toolNames);
       }
       return {
-        registered: this.project(owner, contract, contribution.capability),
+        registered: this.project(owner, contract, contribution.capability, contribution.childGrant),
         settings: {
           name: contract.name,
           description: contract.search?.Summary ?? contract.description,
@@ -259,6 +283,7 @@ export class AgentSystemExtensionCatalog {
     owner: RegisteredTool["owner"],
     source: AgentSystemToolContract & { observation: AgentToolObservationProjectionManifest },
     capability: string,
+    childGrant: RegisteredTool["childGrant"],
   ): RegisteredTool {
     return {
       owner,
@@ -280,6 +305,7 @@ export class AgentSystemExtensionCatalog {
       observationProjection: source.observation,
       sources: source.sources,
       search: source.search ?? { Summary: source.description },
+      childGrant,
       evidenceCapabilities: source.evidenceCapabilities,
       approval: source.approval,
       artifactPolicy: source.artifacts,

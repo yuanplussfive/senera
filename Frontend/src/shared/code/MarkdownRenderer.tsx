@@ -7,19 +7,24 @@ import {
   type AnchorHTMLAttributes,
   type CSSProperties,
   type ComponentPropsWithoutRef,
+  type ImgHTMLAttributes,
   type MouseEvent,
   type ReactElement,
   type ReactNode,
   type TableHTMLAttributes,
 } from "react";
-import { Check, Copy, ExternalLink, Eye, Maximize2 } from "lucide-react";
-import Markdown from "react-markdown";
+import { Check, Copy, ExternalLink, Maximize2 } from "lucide-react";
+import Markdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { MotionIconSwap } from "../motion";
 import { Spinner, Tooltip, useClipboardCopy } from "../ui";
 import { CollapsibleCodeBlock } from "./CollapsibleCodeBlock";
 import { type CodeArtifact, readCodeArtifact } from "./CodeArtifactModel";
+import { parseWorkspaceResourceLocator } from "../workspace/WorkspaceResourceLocator";
+import { WorkspaceMarkdownImage } from "../workspace/WorkspaceMarkdownImage";
+import { useWorkspaceResourceController } from "../workspace/WorkspaceResourceProvider";
 import "../../styles/markdown.css";
 
 const DEFAULT_CODE_PREVIEW_LINES = 10;
@@ -39,6 +44,7 @@ export interface MarkdownRendererProps {
 
 interface AnchorProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
   href?: string;
+  node?: unknown;
 }
 
 export function MarkdownRenderer({
@@ -55,8 +61,10 @@ export function MarkdownRenderer({
       <Markdown
         className={rendererClassName}
         remarkPlugins={[remarkGfm]}
+        urlTransform={transformMarkdownUrl}
         components={{
           a: MarkdownLink,
+          img: MarkdownImage,
           pre: lightweightCode ? LightweightCodeBlock : CodeBlock,
           table: MarkdownTable,
         }}
@@ -84,21 +92,61 @@ function LightweightCodeBlock({ children, className, ...props }: ComponentPropsW
   );
 }
 
-function MarkdownLink({ href, children, className, ...props }: AnchorProps): JSX.Element {
+function MarkdownLink({ href, children, className, node: _node, ...props }: AnchorProps): JSX.Element {
   const external = typeof href === "string" && /^https?:\/\//i.test(href);
+  const resource = parseWorkspaceResourceLocator(href);
+  const resourceController = useWorkspaceResourceController();
+
+  if (resource) {
+    const openResource = (event: MouseEvent<HTMLAnchorElement>): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      resourceController?.openResource(resource);
+    };
+    return (
+      <a
+        {...props}
+        href={href}
+        className={cn("markdown-renderer__link markdown-renderer__link--resource", className)}
+        data-workspace-resource={resource.path}
+        onClick={openResource}
+        onAuxClick={openResource}
+      >
+        <span>{children}</span>
+      </a>
+    );
+  }
 
   return (
     <a
+      {...props}
       href={href}
       className={cn("markdown-renderer__link", className)}
       target={external ? "_blank" : props.target}
       rel={external ? "noreferrer noopener" : props.rel}
-      {...props}
     >
       <span>{children}</span>
       {external ? <ExternalLink className="h-3.5 w-3.5 shrink-0" /> : null}
     </a>
   );
+}
+
+function MarkdownImage({
+  src,
+  alt,
+  className,
+  node: _node,
+  ...props
+}: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }): JSX.Element {
+  const resource = parseWorkspaceResourceLocator(src);
+  if (resource) {
+    return <WorkspaceMarkdownImage {...props} locator={resource} alt={alt} className={className} />;
+  }
+  return <img {...props} src={src} alt={alt ?? ""} className={cn("max-w-full", className)} loading="lazy" />;
+}
+
+function transformMarkdownUrl(value: string): string {
+  return parseWorkspaceResourceLocator(value) ? value : defaultUrlTransform(value);
 }
 
 function MarkdownTable({ children, className, ...props }: TableHTMLAttributes<HTMLTableElement>): JSX.Element {
@@ -149,9 +197,7 @@ function PreviewCodeBlock({
           language={artifact.language}
           lineCount={artifact.lineCount}
           copied={copied}
-          preview={artifact.preview}
-          onOpenViewer={() => openArtifactViewer("source")}
-          onPreview={() => openArtifactViewer("preview")}
+          onOpenViewer={() => openArtifactViewer(artifact.preview ? "preview" : "source")}
           onCopy={onCopy}
         />
       </figcaption>
@@ -162,17 +208,6 @@ function PreviewCodeBlock({
         previewLines={DEFAULT_CODE_PREVIEW_LINES}
         className="markdown-renderer__artifact-source"
       />
-      <button
-        type="button"
-        role="button"
-        className="markdown-renderer__artifact-card"
-        onClick={() => openArtifactViewer(artifact.preview ? "preview" : "source")}
-      >
-        <div className="markdown-renderer__artifact-summary">
-          <span>{artifact.filename}</span>
-          <span>{artifact.lineCount} lines</span>
-        </div>
-      </button>
       {viewerOpen ? (
         <Suspense fallback={<CodeArtifactViewerLoading />}>
           <LazyCodeArtifactViewer
@@ -200,17 +235,13 @@ function CodeBlockHeader({
   language,
   lineCount,
   copied,
-  preview,
   onOpenViewer,
-  onPreview,
   onCopy,
 }: {
   language: string;
   lineCount: number;
   copied: boolean;
-  preview: CodeArtifact["preview"];
   onOpenViewer?: () => void;
-  onPreview?: () => void;
   onCopy: () => void;
 }): JSX.Element {
   const countLabel = `${lineCount} lines`;
@@ -229,22 +260,6 @@ function CodeBlockHeader({
         >
           {countLabel}
         </span>
-        {preview && onPreview ? (
-          <Tooltip content={preview.label} side="top">
-            <button
-              type="button"
-              onClick={(event) => {
-                stopButtonEvent(event);
-                onPreview();
-              }}
-              onPointerDown={stopButtonEvent}
-              className="markdown-renderer__code-iconbtn"
-              aria-label={preview.label}
-            >
-              <Eye className="h-3.5 w-3.5" />
-            </button>
-          </Tooltip>
-        ) : null}
         {onOpenViewer ? (
           <Tooltip content={frontendMessage("code.viewSource")} side="top">
             <button
@@ -272,7 +287,9 @@ function CodeBlockHeader({
             className="markdown-renderer__code-iconbtn"
             aria-label={frontendMessage("code.copyLanguage", { language })}
           >
-            {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
+            <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
+              {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
+            </MotionIconSwap>
           </button>
         </Tooltip>
       </div>

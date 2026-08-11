@@ -7,6 +7,7 @@ import {
 import type { AgentEventEnvelope } from "../Events/AgentEvent.js";
 import { renderAgentEventDisplay, type AgentEventDisplayMode } from "../TerminalDisplay/AgentEventDisplayCatalog.js";
 import { measureTerminalWidth } from "../Text/AgentTerminalText.js";
+import { serializeError } from "./AgentErrorSerializer.js";
 
 export interface AgentLoggerOptions {
   verbose?: boolean;
@@ -256,9 +257,19 @@ export class AgentLogger {
     }
 
     if (value && typeof value === "object") {
-      return "结构";
+      try {
+        const serialized = JSON.stringify(serializeError(value));
+        if (serialized.length <= this.inlineValueLimit()) return serialized;
+        return `${serialized.slice(0, this.inlineValueLimit() - 3)}...`;
+      } catch {
+        return "[unserializable]";
+      }
     }
 
     return "未定义";
+  }
+
+  private inlineValueLimit(): number {
+    return this.options.verbose ? 2400 : 600;
   }
 }

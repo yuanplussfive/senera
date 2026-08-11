@@ -15,7 +15,7 @@ import { emptyAgentToolAccessGrant } from "../Source/AgentSystem/ToolRuntime/Age
 import { AgentSkillScanner } from "../Source/AgentSystem/Skills/AgentSkillScanner.js";
 import { SeneraLocalExecutionEnv } from "../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import type { AgentPiDiagnosticEvent } from "../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
-import { AgentPiTurnContextRegistry } from "../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
+import type { AgentPiPlanningCompilerFactory } from "../Source/AgentSystem/Pi/AgentPiPlanningCompiler.js";
 
 const sessionsRoot = createTemporarySessionsRoot("turn-lease");
 const config: AgentSystemConfig = {
@@ -55,6 +55,7 @@ const modelProvider: ResolvedAgentModelProviderConfig = {
   ApiKey: "verification-key",
   ApiVersion: "",
   Model: "verification-model",
+  ToolPlanningMode: "baml",
   ContextWindowTokens: 128_000,
   Temperature: 0,
   MaxOutputTokens: -1,
@@ -108,6 +109,7 @@ const substrate = new AgentPiSubstrate({
   workspaceRoot: process.cwd(),
   config,
   modelProvider,
+  planningCompilerFactory: verificationCompilerFactory(),
   registry,
   toolCallExecutor: new AgentToolCallExecutor({
     registry,
@@ -126,7 +128,6 @@ const substrate = new AgentPiSubstrate({
   diagnostics: (event) => {
     diagnostics.push(event);
   },
-  turnContexts: new AgentPiTurnContextRegistry(),
 });
 
 const result = await withTimeout(
@@ -199,4 +200,13 @@ function withTimeout<T>(promise: Promise<T>): Promise<T> {
       },
     );
   });
+}
+
+function verificationCompilerFactory(): AgentPiPlanningCompilerFactory {
+  return {
+    create: () => ({
+      compile: async () => ({ kind: "final_text", content: "verification", toolCalls: [] }),
+      summarize: async () => "verification summary",
+    }),
+  };
 }

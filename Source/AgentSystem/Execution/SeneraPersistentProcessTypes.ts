@@ -1,11 +1,14 @@
 import type { SeneraProcessExecutionProfile } from "./SeneraExecutionProfile.js";
+import type { SeneraShellCommandSpec } from "./SeneraShellCommand.js";
 
 export interface SeneraPersistentProcessSpawnOptions {
   cwd: string;
   env?: NodeJS.ProcessEnv;
   windowsHide: boolean;
   signal?: AbortSignal;
+  maxDurationMs?: number;
   profile?: SeneraProcessExecutionProfile;
+  shellCommand?: SeneraShellCommandSpec;
 }
 
 export interface SeneraPersistentProcessChild {

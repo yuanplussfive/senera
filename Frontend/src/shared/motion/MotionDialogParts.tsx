@@ -2,9 +2,9 @@ import { motion } from "framer-motion";
 import type { HTMLMotionProps } from "framer-motion";
 import { forwardRef } from "react";
 import {
-  motionTimings,
   readDialogPanelTransition,
   readDialogPanelVariants,
+  readDrawerTransition,
   readDrawerVariants,
   readOverlayTransition,
   readOverlayVariants,
@@ -21,6 +21,7 @@ type MotionDialogContentProps = HTMLMotionProps<"div"> & {
 } & RadixMotionProps;
 type MotionSheetContentProps = HTMLMotionProps<"div"> & {
   side?: "left" | "right";
+  onPresenceAnimationComplete?: (state: RadixPresenceState) => void;
 } & RadixMotionProps;
 type RadixPresenceState = "open" | "closed";
 
@@ -74,7 +75,7 @@ export const MotionDialogContent = forwardRef<HTMLDivElement, MotionDialogConten
 MotionDialogContent.displayName = "MotionDialogContent";
 
 export const MotionSheetContent = forwardRef<HTMLDivElement, MotionSheetContentProps>(
-  ({ side = "right", style, ...props }, ref) => {
+  ({ onAnimationComplete, onPresenceAnimationComplete, side = "right", style, ...props }, ref) => {
     const { level, reduceMotion, disableMotion } = useMotionLevel();
     const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
     const state = readRadixState(props);
@@ -86,7 +87,11 @@ export const MotionSheetContent = forwardRef<HTMLDivElement, MotionSheetContentP
         ref={ref}
         initial={state === "open" ? false : variants.hidden}
         animate={variants[animationState]}
-        transition={disableMotion ? { duration: 0 } : motionTimings.dialog}
+        transition={readDrawerTransition(effectiveLevel, animationState)}
+        onAnimationComplete={(definition) => {
+          onAnimationComplete?.(definition);
+          onPresenceAnimationComplete?.(state);
+        }}
         style={{ ...style, pointerEvents, willChange: "transform" }}
         {...props}
       />

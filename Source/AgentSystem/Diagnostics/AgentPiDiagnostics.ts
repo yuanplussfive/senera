@@ -78,13 +78,13 @@ export function createAgentPiDiagnosticLogger(logger: AgentLogger): AgentPiDiagn
 
 /**
  * Critical diagnostic event names that must always be logged, even when the
- * server runs in compact (non-verbose) mode. Proxy errors and model failures
+ * server runs in compact (non-verbose) mode. Provider errors and model failures
  * are essential for operators to diagnose upstream issues.
  */
-const CriticalDiagnosticNames = new Set(["proxy_error", "model_timing"]);
+const CriticalDiagnosticNames = new Set(["provider_error", "model_timing"]);
 
 /**
- * Creates a diagnostic sink that always logs critical events (proxy errors,
+ * Creates a diagnostic sink that always logs critical events (provider errors,
  * model failures) while suppressing routine telemetry in compact mode.
  *
  * In verbose mode, all diagnostic events are logged via the full logger.

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { ToolExecutionTargets } from "../../../Source/AgentSystem/Types/AgentToolContractTypes.js";
+import {
+  AgentToolChildGrantModes,
+  ToolExecutionTargets,
+} from "../../../Source/AgentSystem/Types/AgentToolContractTypes.js";
 import { AgentMcpExecutionTargets } from "../../../Source/AgentSystem/McpPackages/AgentMcpPackageSchema.js";
 import { resolveAgentMcpPackageExecutionPolicy } from "../../../Source/AgentSystem/McpPackages/AgentMcpPackageExecutionPolicy.js";
 import { projectAgentMcpPackageTools } from "../../../Source/AgentSystem/McpPackages/AgentMcpPackageToolProjector.js";
@@ -109,6 +112,8 @@ describe("MCP package execution policy", () => {
 
     expect(workspaceTool?.owner).toMatchObject({ trusted: false, requiresApproval: true });
     expect(bundledTool?.owner).toMatchObject({ trusted: true, requiresApproval: false });
+    expect(workspaceTool?.childGrant).toBe(AgentToolChildGrantModes.Inherit);
+    expect(bundledTool?.childGrant).toBe(AgentToolChildGrantModes.Inherit);
   });
 });
 

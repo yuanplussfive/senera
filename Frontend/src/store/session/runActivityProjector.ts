@@ -19,14 +19,17 @@ export const runActivityEventHandlers = {
     if (existing) {
       existing.status = status;
       existing.endedAt = data.state === "started" ? undefined : env.timestamp;
+      existing.durationMs = data.durationMs;
     } else {
       activities.push({
         id: data.activityId,
+        parentId: data.parentActivityId,
         activity: data.activity,
         status,
         step: env.step,
-        startedAt: env.timestamp,
+        startedAt: data.startedAt,
         endedAt: data.state === "started" ? undefined : env.timestamp,
+        durationMs: data.durationMs,
       });
     }
     run.liveActivity =

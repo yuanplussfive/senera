@@ -65,6 +65,7 @@ describe("agent protocol integration", () => {
 
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId,
       input: "需要审批",
@@ -110,6 +111,7 @@ describe("agent protocol integration", () => {
 
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId,
       input: "等待取消",
@@ -132,6 +134,7 @@ describe("agent protocol integration", () => {
 
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId,
       input: "检查协议链路",
@@ -220,6 +223,7 @@ describe("agent protocol integration", () => {
 
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId: "missing_input",
       input: "",
     });
@@ -230,10 +234,11 @@ describe("agent protocol integration", () => {
     const sandbox = await harness.client.waitForEvent(AgentEventKinds.SandboxStatusSnapshot, undefined, {
       afterSequence: invalid.sequence,
     });
-    expect(readDataRecord(sandbox)).toMatchObject({
-      state: "unavailable",
-      effectiveMode: "unavailable",
-    });
+    expect(readDataRecord(sandbox)).toMatchObject(
+      process.platform === "win32"
+        ? { state: "disabled", effectiveMode: "host", effectiveTarget: "Local" }
+        : { state: "unavailable", effectiveMode: "unavailable" },
+    );
   });
 
   test("history replay remains isolated when multiple sessions share one websocket", async () => {
@@ -293,6 +298,7 @@ describe("agent protocol integration", () => {
 
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId,
       input: "需要审批后拒绝",
@@ -332,6 +338,7 @@ describe("agent protocol integration", () => {
 
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId,
       input: "审批等待超时",
@@ -365,6 +372,7 @@ describe("agent protocol integration", () => {
     for (const run of runs) {
       harness.client.send({
         type: "session.message",
+        approvalMode: "agent",
         sessionId: run.sessionId,
         requestId: run.requestId,
         input: run.input,
@@ -450,6 +458,7 @@ async function createCompletedSession(
   const beforeMessage = harness.client.snapshot().at(-1)?.sequence ?? 0;
   harness.client.send({
     type: "session.message",
+    approvalMode: "agent",
     sessionId,
     requestId: `${sessionId}:request`,
     input,

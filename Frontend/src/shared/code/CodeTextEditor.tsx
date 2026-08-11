@@ -5,7 +5,7 @@ import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import CodeMirror from "@uiw/react-codemirror";
 import { tags } from "@lezer/highlight";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { cn } from "../../lib/util";
 
 export type CodeTextEditorLanguage = "json" | "markdown" | "text";
@@ -16,6 +16,9 @@ export interface CodeTextEditorProps {
   disabled?: boolean;
   ariaLabel?: string;
   className?: string;
+  extraExtensions?: readonly Extension[];
+  initialLine?: number;
+  initialColumn?: number;
   onChange: (value: string) => void;
 }
 
@@ -107,11 +110,30 @@ export function CodeTextEditor({
   ariaLabel,
   className,
   disabled = false,
+  extraExtensions = [],
+  initialColumn,
+  initialLine,
   language,
   onChange,
   value,
 }: CodeTextEditorProps): JSX.Element {
-  const extensions = useMemo(() => [...editorBaseExtensions, ...languageExtensions[language]()], [language]);
+  const extensions = useMemo(
+    () => [...editorBaseExtensions, ...languageExtensions[language](), ...extraExtensions],
+    [extraExtensions, language],
+  );
+  const positionInitialSelection = useCallback(
+    (view: EditorView): void => {
+      if (!initialLine) return;
+      const line = view.state.doc.line(Math.min(Math.max(initialLine, 1), view.state.doc.lines));
+      const anchor = Math.min(line.to, line.from + Math.max((initialColumn ?? 1) - 1, 0));
+      view.dispatch({
+        selection: { anchor },
+        effects: EditorView.scrollIntoView(anchor, { y: "center" }),
+      });
+      view.focus();
+    },
+    [initialColumn, initialLine],
+  );
 
   return (
     <CodeMirror
@@ -130,6 +152,7 @@ export function CodeTextEditor({
       editable={!disabled}
       extensions={extensions}
       height="100%"
+      onCreateEditor={positionInitialSelection}
       readOnly={disabled}
       value={value}
       onChange={onChange}

@@ -3,7 +3,6 @@ import { inspectTextIncludes, workflowJobBlock } from "./Support/WorkflowGoverna
 const ReleaseWorkflowLabel = ".github/workflows/release.yml";
 
 export function inspectContainerReleasePipeline(workflow: string): string[] {
-  const sandboxJob = workflowJobBlock(workflow, "sandbox-archive");
   const desktopJob = workflowJobBlock(workflow, "desktop");
   const buildJob = workflowJobBlock(workflow, "container-build");
   const sandboxRuntimeBuildJob = workflowJobBlock(workflow, "sandbox-runtime-build");
@@ -12,33 +11,19 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
   const retiredPublishJob = workflowJobBlock(workflow, "publish");
   const violations: string[] = [];
 
-  if (!sandboxJob) {
-    violations.push(`${ReleaseWorkflowLabel} must define the sandbox-archive job.`);
-  } else {
-    violations.push(
-      ...inspectTextIncludes(sandboxJob, `${ReleaseWorkflowLabel} job sandbox-archive`, [
-        "./.github/actions/build-sandbox-bundle",
-        "actions/upload-artifact@v4",
-      ]),
-    );
-    if (sandboxJob.includes("gh release upload")) {
-      violations.push(`${ReleaseWorkflowLabel} job sandbox-archive must remain an internal build artifact.`);
-    }
-    if (sandboxJob.includes("environment: release-stable")) {
-      violations.push(`${ReleaseWorkflowLabel} job sandbox-archive must not create a stable deployment record.`);
-    }
-  }
-
   if (!desktopJob) {
     violations.push(`${ReleaseWorkflowLabel} must define the desktop job.`);
   } else {
     violations.push(
       ...inspectTextIncludes(desktopJob, `${ReleaseWorkflowLabel} job desktop`, [
-        "- sandbox-archive",
-        "actions/download-artifact@v4",
-        "path: Release/SandboxImage",
+        "- metadata",
+        "npm run desktop.pack",
+        "actions/upload-artifact@v4",
       ]),
     );
+    if (desktopJob.includes("actions/download-artifact")) {
+      violations.push(`${ReleaseWorkflowLabel} job desktop must not depend on a separately packaged sandbox asset.`);
+    }
     if (desktopJob.includes("gh release upload") || desktopJob.includes("environment: release-stable")) {
       violations.push(`${ReleaseWorkflowLabel} job desktop must build an internal artifact before stable publication.`);
     }
@@ -63,9 +48,6 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
       violations.push(
         `${ReleaseWorkflowLabel} job container-build must not publish a stable latest tag before smoke verification.`,
       );
-    }
-    if (buildJob.includes("sandbox-archive") || buildJob.includes("Release/SandboxImage")) {
-      violations.push(`${ReleaseWorkflowLabel} job container-build must not consume the Microsandbox archive.`);
     }
   }
 
@@ -135,7 +117,6 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
     violations.push(
       ...inspectTextIncludes(publishJob, `${ReleaseWorkflowLabel} job container`, [
         "name: Publish Verified Release",
-        "- sandbox-archive",
         "- desktop",
         "- container-build",
         "- sandbox-runtime-build",

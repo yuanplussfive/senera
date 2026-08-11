@@ -13,10 +13,18 @@ export function resolveAgentPiCompactionSettings(
   model: AgentPiProviderProjection["model"],
 ): AgentPiResolvedCompactionSettings {
   const reserveTokens = Math.min(model.maxTokens, model.contextWindow);
-  const remainingContextTokens = Math.max(0, model.contextWindow - reserveTokens);
+  const inputCapacityTokens = Math.max(0, model.contextWindow - reserveTokens);
+  const proactiveHeadroomTokens = Math.min(
+    inputCapacityTokens,
+    reserveTokens,
+    DEFAULT_COMPACTION_SETTINGS.keepRecentTokens,
+  );
   return {
     enabled: config.Enabled,
     reserveTokens,
-    keepRecentTokens: Math.min(DEFAULT_COMPACTION_SETTINGS.keepRecentTokens, remainingContextTokens),
+    keepRecentTokens: Math.min(
+      DEFAULT_COMPACTION_SETTINGS.keepRecentTokens,
+      Math.max(0, inputCapacityTokens - proactiveHeadroomTokens),
+    ),
   };
 }

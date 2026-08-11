@@ -13,17 +13,29 @@ import type { AgentSessionMessageQueueMode } from "./AgentSessionMessageQueueMod
 import { AgentSessionOperations } from "./AgentSessionOperation.js";
 import type { AgentSessionRunCoordinator } from "./AgentSessionRunCoordinator.js";
 import type { AgentSessionStore } from "./AgentSessionStore.js";
+import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
+import type { AgentSystemPromptLayer } from "../Orchestration/AgentRunDispatchPort.js";
+import type { AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 
 export interface AgentSessionMessageRequest {
   readonly sessionId: string;
   readonly requestId?: string;
   readonly modelProviderId?: string;
   readonly input: string;
+  readonly approvalMode: AgentExecutionApprovalMode;
   readonly attachments?: AgentUploadAttachment[];
   readonly disposition?: AgentSessionMessageDisposition;
   readonly queueMode?: AgentSessionMessageQueueMode;
   readonly onEvent?: AgentEventSink;
   readonly preparation?: AgentTurnPreparationSnapshot;
+  readonly systemPromptLayer?: AgentSystemPromptLayer;
+  readonly allowedToolNames?: readonly string[];
+  readonly pinnedSkills?: readonly AgentPinnedSkillReference[];
+  readonly thinkingLevel?: ModelThinkingLevel;
+  readonly inheritProjectContext?: boolean;
+  readonly sessionOwnership?: AgentSessionOwnership;
 }
 
 export interface AgentSessionMessageAcceptance {
@@ -56,7 +68,7 @@ export class AgentSessionMessageCoordinator {
     await this.options.ready();
     let lookup = this.options.store.get(request.sessionId);
     if (lookup.kind === "missing" && request.disposition === AgentSessionMessageDispositions.CreateIfMissing) {
-      const opened = this.options.store.open(request.sessionId);
+      const opened = this.options.store.open(request.sessionId, request.sessionOwnership);
       lookup = { kind: "found", session: opened.session };
       await emitAgentEvent(
         request.onEvent,

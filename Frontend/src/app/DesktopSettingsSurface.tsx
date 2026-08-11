@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Toaster } from "sonner";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "../api/useAgentSocket";
 import type { WsRequest } from "../api/eventTypes";
@@ -9,6 +9,8 @@ import { SettingsWorkbench } from "../features/settings";
 import { DiscardDraftDialog } from "../features/settings/DiscardDraftDialog";
 import type { SettingsSectionId } from "../features/settings/settingsSectionContract";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { AppMotionProvider } from "../shared/motion/MotionProvider";
+import { AppAppearanceProvider } from "../shared/theme/useAppearance";
 import { TooltipProvider } from "../shared/ui";
 import { useStore } from "../store/sessionStore";
 import { resolveRuntimeWebSocketUrl } from "../config/runtimeConfig";
@@ -17,23 +19,21 @@ const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 
 export function DesktopSettingsSurface({
   initialSection,
-  values,
-  motionLevel,
-  onValueChange,
-  onMotionLevelChange,
   socketReconnectPolicy,
 }: {
   initialSection: SettingsSectionId;
-  values: ComponentProps<typeof SettingsWorkbench>["values"];
-  motionLevel: ComponentProps<typeof SettingsWorkbench>["motionLevel"];
-  onValueChange: ComponentProps<typeof SettingsWorkbench>["onValueChange"];
-  onMotionLevelChange: ComponentProps<typeof SettingsWorkbench>["onMotionLevelChange"];
   socketReconnectPolicy: AgentSocketReconnectPolicy;
 }): JSX.Element {
   const [section, setSection] = useState(initialSection);
   const [pendingChanges, setPendingChanges] = useState(false);
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
   const ingest = useStore((state) => state.ingest);
+  const defaultSidebarCollapsed = useStore((state) => state.defaultSidebarCollapsed);
+  const defaultRightPanelCollapsed = useStore((state) => state.defaultRightPanelCollapsed);
+  const motionLevel = useStore((state) => state.motionLevel);
+  const setDefaultSidebarCollapsed = useStore((state) => state.setDefaultSidebarCollapsed);
+  const setDefaultRightPanelCollapsed = useStore((state) => state.setDefaultRightPanelCollapsed);
+  const setMotionLevel = useStore((state) => state.setMotionLevel);
   const sendRef = useRef<((request: WsRequest) => boolean) | null>(null);
   const statusRef = useRef<SocketStatus>("idle");
   const settingsEventHandlerRef = useRef<(env: Parameters<typeof ingest>[0]) => boolean>(() => false);
@@ -73,46 +73,53 @@ export function DesktopSettingsSurface({
   };
 
   return (
-    <TooltipProvider delayDuration={300}>
-      <SettingsWorkbench
-        section={section}
-        onSectionChange={changeSection}
-        onPendingChangesChange={setPendingChanges}
-        environment={{
-          appVersion: __SENERA_APP_VERSION__,
-          frontendVersion: __SENERA_FRONTEND_VERSION__,
-          mode: import.meta.env.MODE,
-          surface: "desktop",
-        }}
-        values={values}
-        motionLevel={motionLevel}
-        onValueChange={onValueChange}
-        onMotionLevelChange={onMotionLevelChange}
-        systemConfig={runtime.systemConfig}
-      />
-      <DiscardDraftDialog
-        open={closeConfirmationOpen}
-        title={frontendMessage("settings.discard.title")}
-        description={frontendMessage("settings.discard.closeDescription")}
-        consequence={frontendMessage("settings.discard.savedUnaffected")}
-        continueLabel={frontendMessage("settings.discard.continue")}
-        confirmLabel={frontendMessage("settings.discard.closeConfirm")}
-        onOpenChange={(open) => {
-          setCloseConfirmationOpen(open);
-          if (!open) void bridge?.cancelSettingsClose?.();
-        }}
-        onDiscard={() => {
-          setCloseConfirmationOpen(false);
-          setPendingChanges(false);
-          void bridge?.confirmSettingsClose?.();
-        }}
-      />
-      <Toaster
-        position="bottom-right"
-        toastOptions={{
-          className: "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
-        }}
-      />
-    </TooltipProvider>
+    <AppMotionProvider level={motionLevel}>
+      <AppAppearanceProvider motionLevel={motionLevel}>
+        <TooltipProvider delayDuration={300}>
+          <SettingsWorkbench
+            section={section}
+            onSectionChange={changeSection}
+            onPendingChangesChange={setPendingChanges}
+            environment={{
+              appVersion: __SENERA_APP_VERSION__,
+              frontendVersion: __SENERA_FRONTEND_VERSION__,
+              mode: import.meta.env.MODE,
+              surface: "desktop",
+            }}
+            values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
+            motionLevel={motionLevel}
+            onValueChange={(id, value) => {
+              if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
+              if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
+            }}
+            onMotionLevelChange={setMotionLevel}
+            systemConfig={runtime.systemConfig}
+          />
+          <DiscardDraftDialog
+            open={closeConfirmationOpen}
+            title={frontendMessage("settings.discard.title")}
+            description={frontendMessage("settings.discard.closeDescription")}
+            consequence={frontendMessage("settings.discard.savedUnaffected")}
+            continueLabel={frontendMessage("settings.discard.continue")}
+            confirmLabel={frontendMessage("settings.discard.closeConfirm")}
+            onOpenChange={(open) => {
+              setCloseConfirmationOpen(open);
+              if (!open) void bridge?.cancelSettingsClose?.();
+            }}
+            onDiscard={() => {
+              setCloseConfirmationOpen(false);
+              setPendingChanges(false);
+              void bridge?.confirmSettingsClose?.();
+            }}
+          />
+          <Toaster
+            position="bottom-right"
+            toastOptions={{
+              className: "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
+            }}
+          />
+        </TooltipProvider>
+      </AppAppearanceProvider>
+    </AppMotionProvider>
   );
 }

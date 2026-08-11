@@ -1,6 +1,6 @@
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentDomainEvent, AgentEventSink } from "../Events/AgentEvent.js";
-import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
+import { emitAgentEvent } from "../Events/AgentEvent.js";
 import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
 import type { AgentCompletedRunResult } from "../Runtime/AgentExecutionProjector.js";
 import { createAssistantMessageId, createOpaqueId } from "../Core/AgentIds.js";
@@ -14,6 +14,11 @@ import { AgentTurnPreparationService, type AgentPreparedTurn } from "./AgentTurn
 import { AgentTurnPromptRenderer } from "./AgentTurnPromptRenderer.js";
 import { AgentPiTurnExecutor } from "../Pi/AgentPiTurnExecutor.js";
 import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
+import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import { resolveAgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelToolPlanning.js";
+import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
+import type { AgentSystemPromptLayer } from "../Orchestration/AgentRunDispatchPort.js";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 
 export interface AgentLoopOptions {
   runtime: AgentSystemRuntime;
@@ -24,9 +29,14 @@ export interface AgentRunRequest {
   sessionId?: string;
   requestId: string;
   input: string;
+  approvalMode: AgentExecutionApprovalMode;
   conversationEntries?: AgentConversationEntry[];
   loadedToolNames?: string[];
-  systemPromptPreamble?: string;
+  systemPromptLayer?: AgentSystemPromptLayer;
+  allowedToolNames?: readonly string[];
+  pinnedSkills?: readonly AgentPinnedSkillReference[];
+  thinkingLevel?: ModelThinkingLevel;
+  inheritProjectContext?: boolean;
   onEvent?: AgentEventSink;
   signal?: AbortSignal;
   emitRunStarted?: boolean;
@@ -60,20 +70,23 @@ export class AgentLoop {
 
   private async runTurn(request: AgentRunRequest): Promise<AgentCompletedRunResult> {
     if (request.emitRunStarted !== false) {
-      await this.emit(request.onEvent, this.events.runStarted(request.requestId, request.input));
+      await this.emit(request.onEvent, this.events.runStarted(request.requestId, request.input, request.approvalMode));
     }
 
     const prepared = await this.prepareTurn(request);
     const prompt = await this.promptRenderer.render({
       loadedToolNames: prepared.loadedToolNames,
       rootCommand: prepared.rootCommand,
-      systemPromptPreamble: request.systemPromptPreamble,
+      toolPlanningMode: resolveAgentModelToolPlanningMode(this.options.runtime.modelProviderConfig),
+      systemPromptLayer: request.systemPromptLayer,
     });
     await this.emitAll(
       request.onEvent,
       this.events.promptRendered(request.requestId, 1, prompt.text, prompt.tokenCount),
     );
 
+    const assistantMessageId = createAssistantMessageId();
+    let finalAnswerPublished = false;
     const result = await this.piTurn.run(
       {
         sessionId: request.sessionId,
@@ -83,10 +96,21 @@ export class AgentLoop {
         prompt: prompt.text,
         conversationEntries: [...(request.conversationEntries ?? [])],
         rootCommand: prepared.rootCommand,
+        approvalMode: request.approvalMode,
         toolAccessGrant: prepared.toolAccessGrant,
         loadedToolNames: prepared.loadedToolNames,
         activeSkills: prepared.activeSkills,
         onPiBranchBoundary: request.onPiBranchBoundary,
+        onFinalResponseAvailable: async (content) => {
+          if (finalAnswerPublished) return;
+          finalAnswerPublished = true;
+          await this.emit(
+            request.onEvent,
+            this.events.finalAnswer(request.requestId, assistantMessageId, content, false),
+          );
+        },
+        thinkingLevel: request.thinkingLevel,
+        inheritProjectContext: request.inheritProjectContext,
       },
       request.onEvent,
       request.signal,
@@ -104,16 +128,7 @@ export class AgentLoop {
     };
     const terminalEvents = this.events.terminal(
       {
-        event: {
-          kind: AgentEventKinds.AssistantMessageCreated,
-          context: { requestId: request.requestId },
-          data: {
-            messageId: createAssistantMessageId(),
-            kind: "final_answer",
-            content: result.responseText,
-            terminal: true,
-          },
-        },
+        event: this.events.finalAnswer(request.requestId, assistantMessageId, result.responseText, true),
         result: completed.terminal,
       },
       request.requestId,
@@ -131,6 +146,7 @@ export class AgentLoop {
     const cached = isAgentTurnPreparationReusable(request.preparation, {
       runtimeFingerprint: this.options.preparationFingerprint,
       userInput: request.input,
+      allowedToolNames: request.allowedToolNames,
     })
       ? request.preparation
       : undefined;
@@ -148,6 +164,8 @@ export class AgentLoop {
           requestId: request.requestId,
           userInput: request.input,
           loadedToolNames: initialLoadedToolNames,
+          allowedToolNames: request.allowedToolNames,
+          pinnedSkills: request.pinnedSkills,
           signal: request.signal,
         });
 
@@ -157,6 +175,7 @@ export class AgentLoop {
         : createAgentTurnPreparationSnapshot({
             runtimeFingerprint: this.options.preparationFingerprint,
             userInput: request.input,
+            allowedToolNames: request.allowedToolNames,
             loadedToolNames: prepared.loadedToolNames,
             toolAccessGrant: prepared.toolAccessGrant,
             rootCommand: prepared.rootCommand,

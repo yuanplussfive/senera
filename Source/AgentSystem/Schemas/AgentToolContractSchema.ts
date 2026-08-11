@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ToolArtifactPolicySchema } from "./AgentArtifactContractSchema.js";
 import { ToolSearchSchema } from "./AgentToolSearchContractSchema.js";
 import {
+  inspectAgentToolSchedulingContract,
   inspectAgentToolRuntimeCapabilityContract,
   inspectAgentToolRuntimeContract,
 } from "../Types/AgentToolRuntimeContract.js";
@@ -10,6 +11,7 @@ import {
   ToolExecutionTargets,
   ToolLoadingModes,
   ToolResultAssessmentPolicies,
+  ToolSchedulingModes,
 } from "../Types/AgentToolContractTypes.js";
 import { isAgentJsonPointer } from "../Core/AgentJsonPointerOperations.js";
 
@@ -109,6 +111,8 @@ export const ToolRuntimeSchema = z
     Lifecycle: z.enum(["Immediate", "OneShot", "Persistent", "RemoteJob"]),
     ProtocolVersion: z.literal(AgentHostToolProtocolVersion).optional(),
     ResultAssessment: z.enum(ToolResultAssessmentPolicies),
+    Scheduling: z.enum(ToolSchedulingModes).optional(),
+    MaxConcurrency: z.number().int().min(1).max(1_000).optional(),
     Capabilities: ToolRuntimeCapabilitiesSchema.optional(),
   })
   .strict();
@@ -154,6 +158,23 @@ export const ToolSchema = z
       context.addIssue({
         code: "custom",
         path: ["Runtime", "Capabilities", issue.capability],
+        message: issue.message,
+      });
+    }
+    const schedulingIssuePaths = {
+      scheduling: ["Runtime", "Scheduling"],
+      maxConcurrency: ["Runtime", "MaxConcurrency"],
+      resources: ["Handler", "Resources"],
+    } as const;
+    for (const issue of inspectAgentToolSchedulingContract({
+      handlerKind: tool.Handler.Kind,
+      scheduling: tool.Runtime.Scheduling,
+      maxConcurrency: tool.Runtime.MaxConcurrency,
+      resourceCount: tool.Handler.Resources?.length ?? 0,
+    })) {
+      context.addIssue({
+        code: "custom",
+        path: [...schedulingIssuePaths[issue.field]],
         message: issue.message,
       });
     }

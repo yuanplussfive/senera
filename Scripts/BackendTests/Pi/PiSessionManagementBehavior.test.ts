@@ -12,10 +12,18 @@ import { AgentPiSessionCustomEntryTypes } from "../../../Source/AgentSystem/Pi/A
 import { AgentPiSessionExportFormats } from "../../../Source/AgentSystem/Pi/AgentPiSessionManagement.js";
 import { resolveAgentWorkspaceLayout } from "../../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import { relativePathWithin } from "../../../Source/AgentSystem/Core/AgentPath.js";
-import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
-import { createModelProvider, createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
+import {
+  createModelProvider,
+  createPiPlanningCompilerFactory,
+  createTemporaryDirectory,
+  removeDirectory,
+} from "../Support/AgentTestFixtures.js";
 import { AgentPiModelRuntimeOwner } from "../../../Source/AgentSystem/Pi/AgentPiModelRuntimeOwner.js";
 import { AgentPiBackgroundShutdownTracker } from "../../../Source/AgentSystem/Pi/AgentPiBackgroundShutdownTracker.js";
+import { AgentPiMutableSessionFrame } from "../../../Source/AgentSystem/Pi/AgentPiCodingAgentSessionFrame.js";
+import { emptyAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
+import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
+import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -68,26 +76,60 @@ describe("Pi session management", () => {
   });
 
   test("retries model runtime creation after a rejected initialization", async () => {
-    const config = testConfig();
     const modelProvider = createModelProvider({ Id: "retry-model-runtime" });
-    const provider = projectSeneraModelProviderToPi(modelProvider, config);
+    const provider = projectSeneraModelProviderToPi(modelProvider);
     const runtime = {
-      registerProvider: vi.fn(),
+      registerNativeProvider: vi.fn(),
       getModel: vi.fn(() => provider.model),
     };
     const createRuntime = vi
       .fn()
       .mockRejectedValueOnce(new Error("runtime initialization failed"))
       .mockResolvedValueOnce(runtime);
-    const owner = new AgentPiModelRuntimeOwner({
-      provider,
-      modelProvider,
-      createRuntime: createRuntime as never,
-    });
+    const owner = new AgentPiModelRuntimeOwner(
+      {
+        provider,
+        modelProvider,
+        compilerFactory: createPiPlanningCompilerFactory(),
+        createRuntime: createRuntime as never,
+      },
+      createSessionFrame(provider.model.contextWindow, provider.model.maxTokens),
+    );
 
     await expect(owner.get()).rejects.toThrow("runtime initialization failed");
     await expect(owner.get()).resolves.toEqual({ runtime, model: provider.model });
     expect(createRuntime).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    { mode: "native" as const, expectedApi: "openai-completions" },
+    { mode: "baml" as const, expectedApi: "senera-planning" },
+  ])("registers the $mode tool-planning provider without implicit fallback", async ({ mode, expectedApi }) => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: mode,
+      Capabilities: { ToolCalling: true },
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const registerNativeProvider = vi.fn();
+    const runtime = {
+      registerNativeProvider,
+      getModel: vi.fn(() => projection.model),
+    };
+    const owner = new AgentPiModelRuntimeOwner(
+      {
+        provider: projection,
+        modelProvider,
+        compilerFactory: createPiPlanningCompilerFactory(),
+        createRuntime: async () => runtime as never,
+      },
+      createSessionFrame(projection.model.contextWindow, projection.model.maxTokens),
+    );
+
+    await owner.get();
+
+    expect(registerNativeProvider).toHaveBeenCalledOnce();
+    const registered = registerNativeProvider.mock.calls[0]?.[0];
+    expect(registered?.getModels()[0]?.api).toBe(expectedApi);
   });
 
   test("bounds retained background shutdown failures", async () => {
@@ -105,6 +147,51 @@ describe("Pi session management", () => {
     ]);
   });
 
+  test("reads cached runtime status without waiting for an active turn", async () => {
+    const workspaceRoot = temporaryWorkspace();
+    const pool = createPool(workspaceRoot, "pi-live-runtime-status");
+    const sessions = (pool as unknown as { sessions: Map<string, unknown> }).sessions;
+    const waitForIdle = vi.fn();
+    sessions.set("active-session", {
+      session: {
+        getSessionStats: vi.fn(() => ({
+          sessionFile: "managed-session.jsonl",
+          sessionId: "pi-active-session",
+          contextUsage: { tokens: 80, contextWindow: 1_000, percent: 8 },
+          userMessages: 1,
+          assistantMessages: 1,
+          toolCalls: 0,
+          toolResults: 0,
+          totalMessages: 2,
+          tokens: {
+            input: 50,
+            output: 30,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 80,
+          },
+          cost: 0,
+        })),
+        getContextUsage: vi.fn(() => ({ tokens: 80, contextWindow: 1_000, percent: 8 })),
+        waitForIdle,
+      },
+    });
+
+    try {
+      await expect(pool.status("active-session")).resolves.toEqual(
+        expect.objectContaining({
+          sessionId: "active-session",
+          cached: true,
+          contextUsage: { tokens: 80, contextWindow: 1_000, percent: 8 },
+        }),
+      );
+      expect(waitForIdle).not.toHaveBeenCalled();
+    } finally {
+      sessions.delete("active-session");
+      await pool.close();
+    }
+  });
+
   test("forks the persisted Pi tree and fixes the target leaf at the requested boundary", async () => {
     const workspaceRoot = temporaryWorkspace();
     const sessionsRoot = path.join(workspaceRoot, ".senera", "pi-sessions");
@@ -117,8 +204,8 @@ describe("Pi session management", () => {
     source.appendMessage({
       role: "assistant",
       content: [{ type: "text", text: "Ready." }],
-      api: "openai-completions",
-      provider: "test-provider",
+      api: "senera-planning",
+      provider: "senera",
       model: "test-model",
       usage: {
         input: 1,
@@ -136,7 +223,6 @@ describe("Pi session management", () => {
     });
     source.appendCustomEntry("test.after_boundary", { requestId: "request-b" });
 
-    const config = testConfig();
     const modelProvider = createModelProvider({
       Id: "pi-session-management",
       ContextWindowTokens: 16_384,
@@ -146,8 +232,9 @@ describe("Pi session management", () => {
       workspaceRoot,
       sessionsRoot,
       systemSkillsRoot: path.join(workspaceRoot, "System", "Skills"),
-      provider: projectSeneraModelProviderToPi(modelProvider, config),
+      provider: projectSeneraModelProviderToPi(modelProvider),
       modelProvider,
+      planningCompilerFactory: createPiPlanningCompilerFactory(),
       compaction: { Enabled: true },
     });
 
@@ -180,18 +267,88 @@ describe("Pi session management", () => {
     }
   });
 
+  test("forks an active parent session without reacquiring its held lease", async () => {
+    const workspaceRoot = temporaryWorkspace();
+    const sessionsRoot = path.join(workspaceRoot, ".senera", "pi-sessions");
+    const source = SessionManager.create(workspaceRoot, sessionsRoot, { id: "active-source-session" });
+    source.appendMessage({
+      role: "user",
+      content: "Inspect this active parent session.",
+      timestamp: Date.now(),
+    });
+    source.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Parent session is active." }],
+      api: "senera-planning",
+      provider: "senera",
+      model: "test-model",
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    });
+    const boundaryId = source.appendCustomEntry(AgentPiSessionCustomEntryTypes.TurnBoundary, {
+      requestId: "active-parent-request",
+    });
+    const modelProvider = createModelProvider({
+      Id: "pi-active-session-fork",
+      ContextWindowTokens: 16_384,
+      MaxModelOutputTokens: 1_024,
+    });
+    const provider = projectSeneraModelProviderToPi(modelProvider);
+    const pool = new AgentPiCodingAgentSessionPool({
+      workspaceRoot,
+      sessionsRoot,
+      systemSkillsRoot: path.join(workspaceRoot, "System", "Skills"),
+      provider,
+      modelProvider,
+      planningCompilerFactory: createPiPlanningCompilerFactory(),
+      compaction: { Enabled: true },
+    });
+    const frame = createSessionFrame(provider.model.contextWindow, provider.model.maxTokens);
+    const activeLease = await pool.lease({
+      sessionId: "active-source-session",
+      allTools: {
+        fingerprint: "empty-tools",
+        activeToolNames: [],
+        materialize: () => [],
+      },
+      activeToolNames: [],
+      frame: frame.snapshot(),
+      inheritProjectContext: true,
+    });
+
+    try {
+      await expect(pool.fork("active-source-session", "active-target-session", boundaryId)).resolves.toBe(true);
+      const target = (await SessionManager.list(workspaceRoot, sessionsRoot)).find(
+        (session) => session.id === "active-target-session",
+      );
+      expect(target).toBeDefined();
+    } finally {
+      activeLease.session.dispose();
+      await pool.close();
+    }
+  });
+
   test("derives compaction reserves from the active model and Pi defaults", () => {
-    const config = testConfig();
     const modelProvider = createModelProvider({
       ContextWindowTokens: 4_096,
       MaxModelOutputTokens: 1_024,
     });
-    const model = projectSeneraModelProviderToPi(modelProvider, config).model;
+    const model = projectSeneraModelProviderToPi(modelProvider).model;
+    const inputCapacity = model.contextWindow - model.maxTokens;
+    const proactiveHeadroom = Math.min(inputCapacity, model.maxTokens, DEFAULT_COMPACTION_SETTINGS.keepRecentTokens);
 
     expect(resolveAgentPiCompactionSettings({ Enabled: true }, model)).toEqual({
       enabled: true,
       reserveTokens: model.maxTokens,
-      keepRecentTokens: Math.min(DEFAULT_COMPACTION_SETTINGS.keepRecentTokens, model.contextWindow - model.maxTokens),
+      keepRecentTokens: Math.min(DEFAULT_COMPACTION_SETTINGS.keepRecentTokens, inputCapacity - proactiveHeadroom),
     });
   });
 
@@ -208,8 +365,8 @@ describe("Pi session management", () => {
     persisted.appendMessage({
       role: "assistant",
       content: [{ type: "text", text: "Export ready." }],
-      api: "openai-completions",
-      provider: "test-provider",
+      api: "senera-planning",
+      provider: "senera",
       model: "test-model",
       usage: {
         input: 3,
@@ -223,7 +380,6 @@ describe("Pi session management", () => {
       timestamp: Date.now(),
     });
 
-    const config = testConfig();
     const modelProvider = createModelProvider({
       Id: "pi-session-export",
       ContextWindowTokens: 16_384,
@@ -233,8 +389,9 @@ describe("Pi session management", () => {
       workspaceRoot,
       sessionsRoot,
       systemSkillsRoot: path.join(workspaceRoot, "System", "Skills"),
-      provider: projectSeneraModelProviderToPi(modelProvider, config),
+      provider: projectSeneraModelProviderToPi(modelProvider),
       modelProvider,
+      planningCompilerFactory: createPiPlanningCompilerFactory(),
       compaction: { Enabled: true },
     });
 
@@ -279,7 +436,6 @@ function temporaryWorkspace(): string {
 }
 
 function createPool(workspaceRoot: string, providerId: string): AgentPiCodingAgentSessionPool {
-  const config = testConfig();
   const modelProvider = createModelProvider({
     Id: providerId,
     ContextWindowTokens: 16_384,
@@ -289,15 +445,26 @@ function createPool(workspaceRoot: string, providerId: string): AgentPiCodingAge
     workspaceRoot,
     sessionsRoot: path.join(workspaceRoot, ".senera", "pi-sessions"),
     systemSkillsRoot: path.join(workspaceRoot, "System", "Skills"),
-    provider: projectSeneraModelProviderToPi(modelProvider, config),
+    provider: projectSeneraModelProviderToPi(modelProvider),
     modelProvider,
+    planningCompilerFactory: createPiPlanningCompilerFactory(),
     compaction: { Enabled: true },
   });
 }
 
-function testConfig(): AgentSystemConfig {
-  return {
-    Server: { Host: "127.0.0.1", Port: 8787 },
-    ModelProviders: [],
-  };
+function createSessionFrame(contextWindowTokens: number, outputReserveTokens: number): AgentPiMutableSessionFrame {
+  const toolAccessGrant = emptyAgentToolAccessGrant();
+  return new AgentPiMutableSessionFrame({
+    sessionId: "runtime-owner-test",
+    skillCatalogFingerprint: "test",
+    toolAccessGrant,
+    toolExposure: new AgentToolExposureState(toolAccessGrant),
+    selectedPromptTemplates: [],
+    tokenBudget: new AgentTurnTokenBudget({
+      model: "test-model",
+      contextWindowTokens,
+      outputReserveTokens,
+    }),
+    preflight: async () => undefined,
+  });
 }

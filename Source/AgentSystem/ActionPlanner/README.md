@@ -1,14 +1,15 @@
 # ActionPlanner 模块导览
 
-`ActionPlanner` 是共享的结构化模型调用边界，不是 AgentLoop 前置状态机。生产主链中，PiProxy 根据当前 OpenAI-compatible transcript 和显式 turn context 调用 `EvolveTurn`，在选定工具后调用 `FillPiToolArguments`；结构无效时进入对应 repair。安全审计、工具观察摘要、Memory 和 Tool 学习复用同一套 transport 与 structured-output runner。
+`ActionPlanner` 是共享的结构化模型调用边界，不是 AgentLoop 前置状态机。模型选择 `ToolPlanningMode=baml` 时，`AgentPiBamlToolProvider` 把当前 Pi context 和会话局部 turn state 交给 PlanningCompiler；它调用 `EvolveTurn`，在选定工具后调用 `FillPiToolArguments`，结构无效时进入对应 repair。`native` 模式的工具规划不会经过 ActionPlanner；Pi compaction 的结构化摘要、安全审计、Memory 和 Tool 学习仍可复用同一套 transport 与 structured-output runner。
 
 ## 真实调用关系
 
 ```text
-Pi Coding Agent HTTP request
-  -> AgentPiProxyHttpApi
-  -> AgentPiAssistantCompiler
-  -> AgentPiOpenAiPlanningProjector
+Pi Coding Agent provider call
+  -> AgentPiBamlToolProvider
+  -> AgentPiPlanningCompiler
+  -> AgentPiPlanningContextCompiler
+  -> AgentPiPlanningModelAdapter
   -> AgentActionPlannerModelClient
      -> AgentActionPlannerCoreModelCalls
      -> AgentActionPlannerStructuredCaller
@@ -18,7 +19,7 @@ Pi Coding Agent HTTP request
      -> AgentActionPlannerModelTransport
 ```
 
-当前核心 BAML 函数是 `EvolveTurn`、`RepairControllerDecision`、`FillPiToolArguments`、`RepairPiToolArguments`、工具风险审计和工具观察摘要。Loop 的 turn preparation 只做确定性的 Skill/Tool/RootCommand 准备，不调用规划模型。
+当前核心 BAML 函数是 `EvolveTurn`、`RepairControllerDecision`、`FillPiToolArguments`、`RepairPiToolArguments`、`SummarizePiConversation` 和工具风险审计。Loop 的 turn preparation 只做确定性的 Skill/Tool/RootCommand 准备，不调用规划模型。
 
 ## 阅读顺序
 
@@ -57,8 +58,9 @@ Pi Coding Agent HTTP request
 ## 规划边界
 
 - Planner routing cards 只包含当前 `AgentToolExposureState` 的曝光快照；工具完整 JSON Schema 只在工具已选定后加载。
+- RootCommand 只存在于 `seneraRuntime.rootCommand`，不会同时复制到 `planningContext.systemPrompt`。system prompt、消息、routing cards 和运行时权威数据各自只有一个来源。
 - `preferredToolNames` 只影响稳定排序，不能裁剪其他 exposed 工具。`tool_choice` 只能进一步收窄，不能扩大 grant。
-- ToolSearch 可以在同一回合追加已授权工具；后续 PiProxy 请求读取新的 exposure generation。
+- ToolSearch 可以在同一回合追加已授权工具；后续 native provider 调用读取新的 exposure generation。
 - 参数草稿必须经过权威 JSON Schema/AJV 校验。模型返回的工具名、参数或依赖关系不能绕过 registry、grant、contract digest、OPA、审批或资源租约。
 - BAML parse 与 repair 集中在 structured caller；调用方不得自行解析 Markdown、临时 JSON 片段或 XML 字符串。
 - 学习调用是可观测旁路，不得改变主任务的成功或失败结果。

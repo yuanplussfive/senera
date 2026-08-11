@@ -49,6 +49,7 @@ async function main(): Promise<void> {
     onEvent: collectEvent,
   });
   const runPromise = manager.submitMessage({
+    approvalMode: "agent",
     sessionId,
     requestId,
     input: "整理当前实现状态",
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
 
   await fakeLoop.started;
   await manager.submitMessage({
+    approvalMode: "agent",
     sessionId,
     requestId: steeringRequestId,
     input: "补充说明 Pi 是否真正接管运行中消息",
@@ -86,9 +88,9 @@ async function main(): Promise<void> {
 const VerificationPiModel = {
   id: "verification-model",
   name: "verification-model",
-  api: "openai-completions" as const,
-  provider: "senera-pi-proxy",
-  baseUrl: "http://127.0.0.1:8787/v1",
+  api: "senera-planning" as const,
+  provider: "senera",
+  baseUrl: "senera://planning",
   reasoning: false,
   input: ["text" as const],
   cost: {
@@ -176,6 +178,11 @@ class QueueAwareFakePiSession implements AgentPiSession {
 
   async followUp(text: string): Promise<void> {
     this.followUps.push(text);
+  }
+
+  async requestFinalAnswer(instruction: string): Promise<boolean> {
+    this.steers.push(instruction);
+    return true;
   }
 
   async nextTurn(): Promise<void> {}

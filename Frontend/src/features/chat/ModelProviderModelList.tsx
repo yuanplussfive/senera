@@ -1,8 +1,9 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { useMemo, useRef, useState } from "react";
-import { Plus, RefreshCw, Search, Settings2, Star, Tags, Trash2 } from "lucide-react";
+import { useId, useMemo, useRef, useState } from "react";
+import { Plus, RefreshCw, Search, Settings2, Star, Tags, Trash2, X } from "lucide-react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
+import { MotionDisclosure, MotionIconSwap } from "../../shared/motion";
 import { ScrollArea, Spinner, Tooltip } from "../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
 import { defaultModelCapabilities, modelConfigId, providerEnabled, readModelCapabilities } from "./modelConfigData";
@@ -83,6 +84,7 @@ export function ProviderModelList({
   onRemoveModel?: (model: ModelProviderDraft) => void;
 }): JSX.Element {
   const [compactSearchOpen, setCompactSearchOpen] = useState(false);
+  const compactSearchId = useId();
   const scrollTopRef = useRef<HTMLDivElement | null>(null);
   const groupRefs = useRef(new Map<string, HTMLElement>());
   const scrollToGroup = (groupId: string | null): void => {
@@ -130,16 +132,29 @@ export function ProviderModelList({
             <div className="flex min-w-0 items-center gap-2">
               <span className="text-[13.5px] font-semibold text-ink-900">{frontendMessage("config.model.title")}</span>
               <span className="tabular-nums text-[11px] text-ink-500">{rows.length}</span>
-              <Tooltip content={frontendMessage("config.model.searchPlaceholder")} side="top">
+              <Tooltip
+                content={frontendMessage(
+                  compactSearchOpen ? "config.model.closeSearch" : "config.model.searchPlaceholder",
+                )}
+                side="top"
+              >
                 <button
                   type="button"
                   disabled={disabled || !selectedProvider}
                   className="grid h-8 w-8 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-45"
-                  onClick={() => setCompactSearchOpen((current) => !current)}
-                  aria-label={frontendMessage("config.model.searchPlaceholder")}
-                  aria-pressed={compactSearchOpen}
+                  onClick={() => {
+                    if (compactSearchOpen) onSearch("");
+                    setCompactSearchOpen((current) => !current);
+                  }}
+                  aria-controls={compactSearchId}
+                  aria-expanded={compactSearchOpen}
+                  aria-label={frontendMessage(
+                    compactSearchOpen ? "config.model.closeSearch" : "config.model.searchPlaceholder",
+                  )}
                 >
-                  <Search className="h-4 w-4" />
+                  <MotionIconSwap stateKey={compactSearchOpen ? "close" : "search"}>
+                    {compactSearchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+                  </MotionIconSwap>
                 </button>
               </Tooltip>
             </div>
@@ -170,11 +185,11 @@ export function ProviderModelList({
               ) : null}
             </div>
           </div>
-          {compactSearchOpen ? (
+          <MotionDisclosure id={compactSearchId} open={compactSearchOpen}>
             <div className="mt-2.5">
               <SearchInput value={search} disabled={disabled || !selectedProvider} onChange={onSearch} />
             </div>
-          ) : null}
+          </MotionDisclosure>
         </div>
       ) : (
         <ListHeader

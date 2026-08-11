@@ -119,8 +119,10 @@ function projectResolvedToolExecution(config: AgentSystemConfig): NonNullable<Ag
       config.ToolExecution?.TimeoutSeconds ??
       config.Defaults?.ToolExecution?.TimeoutSeconds ??
       AgentDefaults.ToolExecution.TimeoutSeconds,
+    MaxConcurrentCallsPerRun: resolved.MaxConcurrentCallsPerRun,
     MaxStdoutBytes: resolved.MaxStdoutBytes,
     MaxStderrBytes: resolved.MaxStderrBytes,
+    SemanticAudit: { ...resolved.SemanticAudit },
     Environment: {
       Inherit: resolved.Environment.Inherit,
       IncludeOnly: [...resolved.Environment.IncludeOnly],
@@ -130,7 +132,10 @@ function projectResolvedToolExecution(config: AgentSystemConfig): NonNullable<Ag
     Resources: {
       MaxActive: resolved.Resources.MaxActive,
       MaxBufferedBytes: resolved.Resources.MaxBufferedBytes,
+      OutputBatchMaxBytes: resolved.Resources.OutputBatchMaxBytes,
+      OutputBatchMaxDelayMs: resolved.Resources.OutputBatchMaxDelayMs,
       MaxInputBytes: resolved.Resources.MaxInputBytes,
+      InitialYieldSeconds: resolved.Resources.InitialYieldSeconds,
       MaxWaitSeconds: resolved.Resources.MaxWaitSeconds,
       IdleTtlSeconds: resolved.Resources.IdleTtlSeconds,
       TerminalTtlSeconds: resolved.Resources.TerminalTtlSeconds,

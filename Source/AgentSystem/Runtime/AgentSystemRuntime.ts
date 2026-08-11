@@ -3,8 +3,7 @@ import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js"
 import { AgentConfigLoader } from "../Config/AgentConfigLoader.js";
 import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
-import type { SeneraGvisorWorkerClient } from "../Execution/SeneraGvisorTypes.js";
-import type { SeneraMicrosandboxSdkAdapter } from "../Execution/SeneraMicrosandboxTypes.js";
+import type { SeneraSandboxWorkerClient } from "../Execution/SeneraSandboxWorkerTypes.js";
 import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
@@ -21,13 +20,14 @@ import { isAgentMcpPackageToolNameForServer } from "../McpPackages/AgentMcpPacka
 import { AgentMcpPackageCatalog } from "../McpPackages/AgentMcpPackageCatalog.js";
 import type { AgentMcpToolsChanged } from "../Mcp/AgentMcpToolCatalogChange.js";
 import type { AgentExtensionValueResolver } from "../Extensions/AgentExtensionValueExpression.js";
-import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
 import {
   composeAgentSystemRuntime,
   type AgentSystemRuntimeComposition,
   type AgentSystemRuntimeCompositionOptions,
 } from "./AgentSystemRuntimeComposition.js";
 import type { AgentWorkspaceRuntimeServices } from "./AgentWorkspaceRuntime.js";
+import type { AgentSessionApprovalLeaseStore } from "../Safety/AgentSessionApprovalLeaseStore.js";
+import type { AgentOrchestrationHostRuntime } from "../Orchestration/AgentOrchestrationHostTools.js";
 
 export interface AgentSystemRuntimeSharedOptions {
   modelProviderId?: string;
@@ -35,15 +35,15 @@ export interface AgentSystemRuntimeSharedOptions {
   logger?: AgentLogger;
   piDiagnostics?: AgentPiDiagnosticSink;
   approvalRuntime?: AgentApprovalRuntime;
+  sessionApprovals?: AgentSessionApprovalLeaseStore;
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
   executionResources?: AgentExecutionResourceBroker;
-  microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
   toolSearchMemoryStore?: AgentToolSearchMemoryStore;
   mcpInputs?: AgentExtensionValueResolver;
-  piTurnContexts?: AgentPiTurnContextStore;
   workspaceRuntime?: AgentWorkspaceRuntimeServices;
+  orchestration?: AgentOrchestrationHostRuntime;
 }
 
 export interface AgentSystemRuntimeLoadOptions extends AgentSystemRuntimeSharedOptions {
@@ -56,8 +56,9 @@ export interface AgentSystemRuntimeFromConfigOptions extends AgentSystemRuntimeS
   configPath?: string;
   config: AgentSystemConfig;
   sandboxRuntimeReady?: () => boolean;
+  sandboxAvailable?: boolean;
   sandboxProvider?: AgentSandboxRuntimeProvider;
-  gvisorWorker?: SeneraGvisorWorkerClient;
+  dockerEngineWorker?: SeneraSandboxWorkerClient;
 }
 
 export class AgentSystemRuntime {
@@ -120,10 +121,6 @@ export class AgentSystemRuntime {
 
   get piSessionRegistry() {
     return this.composition.infrastructure.piSessionRegistry;
-  }
-
-  get piTurnContexts() {
-    return this.composition.infrastructure.piTurnContexts;
   }
 
   get executionEnv() {
@@ -291,15 +288,15 @@ export class AgentSystemRuntime {
 
   private async closeResources(): Promise<void> {
     const infrastructure = this.composition.infrastructure;
-    const closures = [
-      this.piSubstrate.close(),
-      this.toolCallExecutor.close(),
-      ...(infrastructure.ownsMcpClientPool ? [infrastructure.mcpClientPool.close()] : []),
-      Promise.resolve().then(() => this.toolSearch.close()),
-      ...(infrastructure.ownsInteractionInput ? [this.interactionInput.close()] : []),
-      ...(infrastructure.ownsExecutionResources ? [this.executionResources.close()] : []),
+    const closeOperations: Array<() => void | Promise<void>> = [
+      () => this.piSubstrate.close(),
+      () => this.toolCallExecutor.close(),
+      ...(infrastructure.ownsMcpClientPool ? [() => infrastructure.mcpClientPool.close()] : []),
+      () => this.toolSearch.close(),
+      ...(infrastructure.ownsInteractionInput ? [() => this.interactionInput.close()] : []),
+      ...(infrastructure.ownsExecutionResources ? [() => this.executionResources.close()] : []),
     ];
-    const outcomes = await Promise.allSettled(closures);
+    const outcomes = await Promise.allSettled(closeOperations.map((close) => Promise.resolve().then(close)));
     const failures = outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []));
     if (failures.length === 1) throw failures[0];
     if (failures.length > 1) throw new AggregateError(failures, "Agent runtime shutdown failed.");

@@ -5,6 +5,7 @@ import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
 import { normalizeSeneraTerminalDimensions, type SeneraTerminalDimensions } from "../Execution/SeneraTerminalTypes.js";
 import type { SeneraShellCommandSpec } from "../Execution/SeneraShellCommand.js";
+import type { SeneraOutputSpool, SeneraOutputSpoolDescriptor } from "../Execution/SeneraOutputSpool.js";
 import { AgentExecutionResourceError, AgentExecutionResourceErrorCodes } from "./AgentExecutionResourceError.js";
 import type { AgentExecutionResourceDomainEvent } from "./AgentExecutionResourceEventTypes.js";
 import { AgentProcessExecutionResource } from "./AgentProcessExecutionResource.js";
@@ -45,16 +46,18 @@ export interface AgentExecutionProcessStartRequest {
   cwd: string;
   env?: NodeJS.ProcessEnv;
   profile?: SeneraProcessExecutionProfile;
+  shellCommand?: SeneraShellCommandSpec;
   executionEnv?: SeneraExecutionEnv;
   owner: AgentExecutionResourceOwner;
   correlation: AgentExecutionResourceCorrelation;
   signal?: AbortSignal;
+  maxDurationMs?: number;
+  outputSpool?: SeneraOutputSpool;
 }
 
 export interface AgentExecutionTerminalStartRequest extends AgentExecutionProcessStartRequest {
   dimensions?: Partial<SeneraTerminalDimensions>;
   terminalName?: string;
-  shellCommand?: SeneraShellCommandSpec;
 }
 
 export class AgentExecutionResourceBroker {
@@ -89,7 +92,9 @@ export class AgentExecutionResourceBroker {
         env: request.env,
         windowsHide: true,
         signal: request.signal,
+        maxDurationMs: request.maxDurationMs,
         profile: request.profile,
+        shellCommand: request.shellCommand,
       });
       return new AgentPipeProcessTransport(child);
     });
@@ -179,6 +184,10 @@ export class AgentExecutionResourceBroker {
   ): Promise<AgentExecutionResourceSnapshot> {
     const resource = this.authorize(resourceId, owner);
     return this.decorateSnapshot(resource, await resource.signal(signal));
+  }
+
+  takeOutputCapture(resourceId: string, owner: AgentExecutionResourceOwner): SeneraOutputSpoolDescriptor | undefined {
+    return this.authorize(resourceId, owner).takeOutputCapture();
   }
 
   async stopAll(owner: AgentExecutionResourceOwner): Promise<AgentExecutionResourceSnapshot[]> {
@@ -293,6 +302,8 @@ export class AgentExecutionResourceBroker {
         command: request.displayCommand ?? [request.command, ...request.args].join(" "),
         cwd: request.cwd,
         limits,
+        maxDurationMs: request.maxDurationMs,
+        outputSpool: request.outputSpool,
         now: this.now,
       });
       this.resources.set(resource.id, resource);

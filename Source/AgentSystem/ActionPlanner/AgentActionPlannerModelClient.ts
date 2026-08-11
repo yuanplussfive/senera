@@ -6,7 +6,7 @@ import type {
   PiToolArgumentsDraft as BamlPiToolArgumentsDraft,
   ToolRiskAudit as BamlToolRiskAudit,
   ToolLearningResult as BamlToolLearningResult,
-  GroundedDigest as BamlGroundedDigest,
+  PiConversationSummary as BamlPiConversationSummary,
 } from "../BamlClient/baml_client/types.js";
 import type {
   ResolvedAgentActionPlannerClientConfig,
@@ -30,9 +30,9 @@ import { resolvePlannerProvider } from "./AgentActionPlannerProviderResolver.js"
 import { AgentActionPlannerStructuredCaller } from "./AgentActionPlannerStructuredCaller.js";
 import { AgentActionPlannerCoreModelCalls } from "./AgentActionPlannerCoreModelCalls.js";
 import { AgentActionPlannerLearningModelCalls } from "./AgentActionPlannerLearningModelCalls.js";
-import type { AgentPiToolObservationDigestPromptInput } from "../Pi/AgentPiToolObservationDigestPrompt.js";
 import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
+import type { AgentPiCompactionPromptInput } from "../PiShared/AgentPiCompactionPrompt.js";
 
 export class AgentActionPlannerModelClient {
   readonly providerConfig: ResolvedAgentModelProviderConfig;
@@ -108,22 +108,22 @@ export class AgentActionPlannerModelClient {
     return this.core.repairToolRiskAudit(options, requestOptions);
   }
 
-  condenseToolObservations(
-    input: AgentPiToolObservationDigestPromptInput,
+  summarizePiConversation(
+    input: AgentPiCompactionPromptInput,
     options?: { signal?: AbortSignal },
-  ): Promise<BamlGroundedDigest> {
-    return this.core.condenseToolObservations(input, options);
+  ): Promise<BamlPiConversationSummary> {
+    return this.core.summarizePiConversation(input, options);
   }
 
-  repairToolObservationDigest(
+  repairPiConversationSummary(
     options: {
-      input: AgentPiToolObservationDigestPromptInput;
-      invalidDigest: string;
+      input: AgentPiCompactionPromptInput;
+      invalidSummary: string;
       issues: string[];
     },
     requestOptions?: { signal?: AbortSignal },
-  ): Promise<BamlGroundedDigest> {
-    return this.core.repairToolObservationDigest(options, requestOptions);
+  ): Promise<BamlPiConversationSummary> {
+    return this.core.repairPiConversationSummary(options, requestOptions);
   }
 
   learnToolUse(

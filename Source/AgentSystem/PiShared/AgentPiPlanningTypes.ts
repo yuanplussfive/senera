@@ -56,21 +56,20 @@ export interface AgentPiAssistantMessage {
 export type AgentPiAssistantCompilation = AgentPiAssistantMessage;
 
 export interface AgentPiAssistantMessageCompileInput {
-  openAiRequest: {
+  planningContext: {
     model: string;
+    systemPrompt?: string;
     messages: unknown[];
     toolTranscript: AgentPiToolTranscriptItem[];
-    toolChoice?: unknown;
-    parallelToolCalls?: boolean;
-    temperature?: number;
+    toolExecution: "parallel" | "sequential";
     maxTokens?: number;
-    stream: boolean;
     projection: {
       originalMessageCount: number;
       projectedMessageCount: number;
       omittedOlderMessages: number;
-      truncatedTextFields: number;
-      truncatedJsonFields: number;
+      originalToolCallCount: number;
+      projectedToolCallCount: number;
+      omittedOlderToolCalls: number;
       planningInputTokenBudget: number;
       hasCompactionBoundary: boolean;
     };
@@ -157,7 +156,7 @@ export interface AgentPiPlannedToolCall {
 }
 
 export interface AgentPiToolArgumentsInput {
-  openAiRequest: AgentPiAssistantMessageCompileInput["openAiRequest"];
+  planningContext: AgentPiAssistantMessageCompileInput["planningContext"];
   call: AgentPiPlannedToolCall & {
     planIndex: number;
   };

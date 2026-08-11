@@ -3,6 +3,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { Spinner } from "../shared/ui/Spinner";
 import { InlineError, RetryButton } from "../shared/ui/StateView";
+import { LogoLockup } from "../shared/ui/Logo";
 import type { ServerAuthenticationState } from "./useServerAuthentication";
 import { ServerAuthenticationError, type ServerAuthorizedAuthentication } from "../api/authClient";
 
@@ -35,12 +36,22 @@ export function ServerAuthenticationGate({
   if (state.status === "loading") {
     return <ServerAuthenticationLoading />;
   }
+  if (state.status === "revalidating") {
+    return (
+      <AuthenticationStatus
+        tone="loading"
+        icon={<Spinner size="md" />}
+        messageKey="auth.reconnecting"
+        descriptionKey="auth.reconnectingDescription"
+      />
+    );
+  }
   if (state.status === "failed") {
     return (
       <AuthenticationStatus
         tone="failed"
         icon={<AlertCircle className="h-4 w-4 text-brick-600" aria-hidden="true" />}
-        message={readServerFailureMessage(state.error)}
+        message={readServerFailureMessage(state.error) ?? frontendMessage("auth.connectionFailed")}
         actionLabel={frontendMessage("auth.retry")}
         onAction={() => void onRetry()}
       />
@@ -81,6 +92,7 @@ function LoginForm({
         className="w-full max-w-[360px] border border-ink-200 bg-paper-50 p-5 shadow-[0_18px_60px_rgba(24,27,31,0.12)]"
         onSubmit={submit}
       >
+        <LogoLockup className="mb-5" />
         <div className="flex items-center gap-3">
           <span className="grid h-9 w-9 place-items-center bg-accent-surface text-accent-content">
             <KeyRound className="h-4 w-4" aria-hidden="true" />
@@ -127,13 +139,15 @@ function AuthenticationStatus({
   tone,
   icon,
   messageKey,
+  descriptionKey,
   message,
   actionLabel,
   onAction,
 }: {
   tone: "loading" | "failed";
   icon: JSX.Element;
-  messageKey?: "auth.loading" | "auth.connectionFailed";
+  messageKey?: "auth.loading" | "auth.connectionFailed" | "auth.reconnecting";
+  descriptionKey?: "auth.reconnectingDescription";
   message?: string;
   actionLabel?: string;
   onAction?: () => void;
@@ -144,13 +158,21 @@ function AuthenticationStatus({
       <div
         role={failed ? "alert" : "status"}
         aria-busy={failed ? undefined : true}
-        className="flex items-center gap-3 border border-ink-200 bg-paper-50 px-4 py-3 shadow-[0_18px_60px_rgba(24,27,31,0.12)]"
+        className="w-full max-w-[440px] border-y border-ink-200 bg-paper-50 px-5 py-5"
       >
-        <span className="text-ink-500">{icon}</span>
-        {message || messageKey ? (
-          <p className="text-[13px] text-ink-700">{message ?? frontendMessage(messageKey!)}</p>
-        ) : null}
-        {actionLabel && onAction ? <RetryButton onRetry={onAction} label={actionLabel} /> : null}
+        <LogoLockup />
+        <div className="mt-5 flex items-start gap-3">
+          <span className="mt-0.5 text-ink-500">{icon}</span>
+          <div className="min-w-0 flex-1">
+            {message || messageKey ? (
+              <p className="text-[13px] font-medium text-ink-800">{message ?? frontendMessage(messageKey!)}</p>
+            ) : null}
+            {descriptionKey ? (
+              <p className="mt-1 text-[12px] leading-5 text-ink-500">{frontendMessage(descriptionKey)}</p>
+            ) : null}
+          </div>
+          {actionLabel && onAction ? <RetryButton onRetry={onAction} label={actionLabel} /> : null}
+        </div>
       </div>
     </main>
   );

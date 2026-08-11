@@ -17,7 +17,7 @@
   ],
   "properties": {
     "$schema": { "type": "string" },
-    "schemaVersion": { "const": 3 },
+    "schemaVersion": { "const": 4 },
     "id": { "const": "nano" },
     "source": {
       "type": "object",
@@ -55,20 +55,11 @@
         "sandbox": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["provider", "bundle"],
+          "required": ["provider", "distributionContract", "target"],
           "properties": {
-            "provider": { "const": "microsandbox" },
-            "bundle": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["distributionContract", "sourceRoot", "targetRoot", "target"],
-              "properties": {
-                "distributionContract": { "type": "string", "minLength": 1 },
-                "sourceRoot": { "type": "string", "minLength": 1 },
-                "targetRoot": { "type": "string", "minLength": 1 },
-                "target": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" }
-              }
-            }
+            "provider": { "const": "auto" },
+            "distributionContract": { "type": "string", "minLength": 1 },
+            "target": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" }
           }
         }
       }

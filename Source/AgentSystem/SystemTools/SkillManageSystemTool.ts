@@ -3,6 +3,11 @@ import { AgentManagedExtensionService } from "../ManagedExtensions/AgentManagedE
 import { AgentSkillRecommendedToolsSchema } from "../Skills/AgentSkillToolBinding.js";
 import { defineSystemTool } from "./AgentSystemToolDefinition.js";
 import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
+import {
+  AgentHostToolProtocolVersion,
+  ToolResultAssessmentPolicies,
+  ToolSchedulingModes,
+} from "../Types/AgentToolContractTypes.js";
 
 const SkillName = z.string().trim().min(1).describe("Lowercase kebab-case Skill directory name.");
 const SkillDescription = z.string().trim().min(1).describe("Trigger-focused Skill description.");
@@ -66,6 +71,13 @@ export const SkillManageSystemTool = defineSystemTool({
       "Create, update, validate, or remove a standard Skill package under .senera/skills, including optional bindings to registered tools.",
     permissions: ["filesystem:write:.senera/skills"],
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadWrite" },
+    runtime: {
+      Lifecycle: "Immediate",
+      ProtocolVersion: AgentHostToolProtocolVersion,
+      ResultAssessment: ToolResultAssessmentPolicies.ProcessExit,
+      Scheduling: ToolSchedulingModes.Parallel,
+      MaxConcurrency: 1,
+    },
     search: {
       Summary: "创建、更新、校验或移除标准 SKILL.md 技能包。",
       Tags: ["创建技能", "Skill", "工作流", "技能包", "热更新"],

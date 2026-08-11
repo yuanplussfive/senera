@@ -14,6 +14,7 @@ import type {
   ModelGroupDraft,
   ModelGroupStrategyDraft,
   ModelProviderDraft,
+  ModelToolPlanningMode,
   ProviderEndpointDraft,
   ProviderModelEndpointInput,
   ProviderModelGroup,
@@ -75,6 +76,7 @@ export function createModelDraft({
 export function copyModelRuntimeTemplate(template: Record<string, unknown>): Partial<ModelProviderDraft> {
   return {
     ...optionalCapabilities("Capabilities", template.Capabilities),
+    ...optionalToolPlanningMode(template.ToolPlanningMode),
     ...optionalNumber("ContextWindowTokens", template.ContextWindowTokens),
     ...optionalNumber("MaxModelOutputTokens", template.MaxModelOutputTokens),
     ...optionalNumber("Temperature", template.Temperature),
@@ -209,6 +211,7 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
     ProviderId: providerId,
     ...optionalString("Icon", record.Icon),
     ...optionalCapabilities("Capabilities", record.Capabilities),
+    ...optionalToolPlanningMode(record.ToolPlanningMode),
     ...optionalNumber("ContextWindowTokens", record.ContextWindowTokens),
     ...optionalNumber("MaxModelOutputTokens", record.MaxModelOutputTokens),
     Endpoint: readString(record.Endpoint) ?? "",
@@ -239,6 +242,14 @@ export function readModelCapabilities(
   };
 }
 
+export function readModelToolPlanningMode(
+  model: Pick<ModelProviderDraft, "ToolPlanningMode">,
+  template: Record<string, unknown>,
+): ModelToolPlanningMode {
+  const configured = model.ToolPlanningMode ?? template.ToolPlanningMode;
+  return configured === "baml" ? "baml" : "native";
+}
+
 export function defaultModelCapabilities(template: Record<string, unknown>): Required<ModelCapabilitiesDraft> {
   const capabilities = isRecord(template.Capabilities) ? template.Capabilities : {};
   return {
@@ -250,6 +261,7 @@ export function defaultModelCapabilities(template: Record<string, unknown>): Req
     Reasoning: readBoolean(capabilities.Reasoning) ?? false,
     DeveloperRole: readBoolean(capabilities.DeveloperRole) ?? false,
     StreamingUsage: readBoolean(capabilities.StreamingUsage) ?? true,
+    ToolCalling: readBoolean(capabilities.ToolCalling) ?? true,
   };
 }
 
@@ -490,6 +502,10 @@ export function optionalCapabilities<TKey extends string>(
   return { [key]: capabilities } as Partial<Record<TKey, ModelCapabilitiesDraft>>;
 }
 
+function optionalToolPlanningMode(value: unknown): Partial<ModelProviderDraft> {
+  return value === "native" || value === "baml" ? { ToolPlanningMode: value } : {};
+}
+
 export function readModelGroupMatch(value: unknown): ModelProviderRuleMatchKind {
   return ModelGroupMatchKinds.includes(value as ModelProviderRuleMatchKind)
     ? (value as ModelProviderRuleMatchKind)
@@ -519,6 +535,7 @@ export const ModelCapabilityKeys = [
   "Vision",
   "ImageOutput",
   "Reasoning",
+  "ToolCalling",
   "DeveloperRole",
   "StreamingUsage",
 ] as const satisfies readonly (keyof ModelCapabilitiesDraft)[];

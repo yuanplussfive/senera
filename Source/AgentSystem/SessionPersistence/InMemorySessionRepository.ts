@@ -30,7 +30,7 @@ import type {
   StoredStepTraceRun,
 } from "../Session/AgentSessionRepository.js";
 import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
-import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
 import { InMemorySessionHistoryStore } from "./InMemorySessionHistoryStore.js";
 
 export class InMemorySessionRepository implements AgentSessionRepository {

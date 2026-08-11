@@ -1,4 +1,5 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
+import type { SeneraOutputSpoolDescriptor } from "../Execution/SeneraOutputSpool.js";
 import type {
   SeneraTerminalBoundary,
   SeneraTerminalCapability,
@@ -10,6 +11,7 @@ import type { SeneraShellDialect } from "../Execution/SeneraShellCommand.js";
 export const AgentExecutionResourceStates = {
   Starting: "starting",
   Running: "running",
+  Stopping: "stopping",
   Completed: "completed",
   Failed: "failed",
   Cancelled: "cancelled",
@@ -98,7 +100,10 @@ export interface AgentExecutionResourceSnapshot {
 export interface AgentExecutionResourceLimits {
   maxActive: number;
   maxBufferedBytes: number;
+  outputBatchMaxBytes: number;
+  outputBatchMaxDelayMs: number;
   maxInputBytes: number;
+  initialYieldMs: number;
   maxWaitMs: number;
   idleTtlMs: number;
   terminalTtlMs: number;
@@ -118,5 +123,6 @@ export interface AgentExecutionResourceHandle {
   write(input: Uint8Array): Promise<AgentExecutionResourceSnapshot>;
   resize(columns: number, rows: number): Promise<AgentExecutionResourceSnapshot>;
   signal(signal: AgentExecutionResourceSignal): Promise<AgentExecutionResourceSnapshot>;
+  takeOutputCapture(): SeneraOutputSpoolDescriptor | undefined;
   close(): Promise<void>;
 }

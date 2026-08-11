@@ -58,6 +58,22 @@ describe("WebSocket request scheduling", () => {
       lane: AgentWebSocketRequestLanes.Concurrent,
     });
     expect(
+      inspectAgentWebSocketRequestScheduling(request({ type: "session.runtime_status", sessionId: "session-1" })),
+    ).toEqual({ lane: AgentWebSocketRequestLanes.Concurrent });
+    expect(
+      inspectAgentWebSocketRequestScheduling(
+        request({
+          type: "approval.resolve_batch",
+          sessionId: "session-1",
+          requestId: "request-1",
+          batchId: "batch-1",
+        }),
+      ),
+    ).toEqual({
+      lane: AgentWebSocketRequestLanes.Serial,
+      key: "approval-batch:session-1:request-1:batch-1",
+    });
+    expect(
       inspectAgentWebSocketRequestScheduling(request({ type: "execution.resource.write", resourceId: "r" })),
     ).toEqual({
       lane: AgentWebSocketRequestLanes.Serial,

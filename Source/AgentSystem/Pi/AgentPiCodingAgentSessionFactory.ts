@@ -5,6 +5,7 @@ import {
   type SessionManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
@@ -24,12 +25,15 @@ import type {
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic } from "./AgentPiDiagnostics.js";
 import { AgentPiModelRuntimeOwner } from "./AgentPiModelRuntimeOwner.js";
 import { AgentPiProjectContext } from "./AgentPiProjectContext.js";
-import { AgentPiRuntimeExtensionFactory } from "./AgentPiRuntimeExtensionFactory.js";
+import {
+  AgentPiRuntimeExtensionFactory,
+  type AgentPiRuntimeExtensionRegistration,
+} from "./AgentPiRuntimeExtensionFactory.js";
 import { AgentPiSkillResolver } from "./AgentPiSkillResolver.js";
 import { resolveAgentPiCompactionSettings } from "./AgentPiCompactionSettings.js";
 import type { AgentPiToolSet } from "./AgentPiToolRegistryProjector.js";
 
-const LocalPiProxyRetryAttempts = 0;
+const NativeProviderRetryAttempts = 0;
 const SessionDiagnosticEventTypes = new Set([
   "compaction_start",
   "compaction_end",
@@ -44,14 +48,12 @@ const SessionDiagnosticEventTypes = new Set([
 export class AgentPiCodingAgentSessionFactory {
   private readonly workspaceLayout;
   private readonly projectContext: AgentPiProjectContext;
-  private readonly modelRuntimeOwner: AgentPiModelRuntimeOwner;
   private readonly runtimeExtensions: AgentPiRuntimeExtensionFactory;
   private readonly skillResolver = new AgentPiSkillResolver();
 
   constructor(private readonly options: AgentPiCodingAgentSessionPoolOptions) {
     this.workspaceLayout = resolveAgentWorkspaceLayout(options.workspaceRoot);
     this.projectContext = new AgentPiProjectContext(this.workspaceLayout.projectContextFile);
-    this.modelRuntimeOwner = new AgentPiModelRuntimeOwner(options);
     this.runtimeExtensions = new AgentPiRuntimeExtensionFactory(options);
   }
 
@@ -63,7 +65,8 @@ export class AgentPiCodingAgentSessionFactory {
     const frame = new AgentPiMutableSessionFrame(input.frame);
     const settingsManager = this.createSettingsManager();
     const projectContext = this.projectContext.refresh();
-    const resourceLoader = this.createResourceLoader(frame, sessionManager, settingsManager);
+    const runtimeExtension = this.runtimeExtensions.create(frame, sessionManager);
+    const resourceLoader = this.createResourceLoader(settingsManager, input.inheritProjectContext, runtimeExtension);
     await resourceLoader.reload();
     await this.emitResourceDiagnostics(frame.snapshot(), resourceLoader);
     frame.update(input.frame, this.skillResolver.resolve(input.frame.activeSkills, resourceLoader.getSkills()));
@@ -73,6 +76,9 @@ export class AgentPiCodingAgentSessionFactory {
       resourceLoader,
       tools: this.materializeTools(input.allTools, frame),
       activeToolNames: input.activeToolNames,
+      frame,
+      thinkingLevel: input.thinkingLevel,
+      runtimeExtension,
     });
     return this.pooledSession({
       session,
@@ -82,6 +88,7 @@ export class AgentPiCodingAgentSessionFactory {
       toolFingerprint: input.allTools.fingerprint,
       skillCatalogFingerprint: input.frame.skillCatalogFingerprint,
       projectContextFingerprint: projectContext.fingerprint,
+      inheritProjectContext: input.inheritProjectContext,
       lastAccess,
     });
   }
@@ -108,7 +115,8 @@ export class AgentPiCodingAgentSessionFactory {
     const frame = new AgentPiMutableSessionFrame(frameValue);
     const settingsManager = this.createSettingsManager();
     const projectContext = this.projectContext.refresh();
-    const resourceLoader = this.createResourceLoader(frame, sessionManager, settingsManager);
+    const runtimeExtension = this.runtimeExtensions.create(frame, sessionManager);
+    const resourceLoader = this.createResourceLoader(settingsManager, true, runtimeExtension);
     await resourceLoader.reload();
     await this.emitResourceDiagnostics(frameValue, resourceLoader);
     frame.update(frameValue, []);
@@ -118,6 +126,9 @@ export class AgentPiCodingAgentSessionFactory {
       resourceLoader,
       tools: [],
       activeToolNames: [],
+      frame,
+      thinkingLevel: "off",
+      runtimeExtension,
     });
     return this.pooledSession({
       session,
@@ -127,6 +138,7 @@ export class AgentPiCodingAgentSessionFactory {
       toolFingerprint: "",
       skillCatalogFingerprint: frameValue.skillCatalogFingerprint,
       projectContextFingerprint: projectContext.fingerprint,
+      inheritProjectContext: true,
       lastAccess,
     });
   }
@@ -136,6 +148,9 @@ export class AgentPiCodingAgentSessionFactory {
     throwIfAborted(input.signal);
     if (pooled.toolFingerprint !== input.allTools.fingerprint) {
       throw new Error("Pi Coding Agent tool registry changed inside an active runtime snapshot.");
+    }
+    if (pooled.inheritProjectContext !== input.inheritProjectContext) {
+      throw new Error("Pi project-context inheritance cannot change inside one persisted session.");
     }
     const projectContext = this.projectContext.refresh();
     const resourcesChanged =
@@ -150,6 +165,7 @@ export class AgentPiCodingAgentSessionFactory {
     const skills = this.skillResolver.resolve(input.frame.activeSkills, pooled.resourceLoader.getSkills());
     pooled.frame.update(input.frame, skills);
     pooled.session.setActiveToolsByName([...input.activeToolNames]);
+    pooled.session.setThinkingLevel(input.thinkingLevel ?? "off");
     throwIfAborted(input.signal);
   }
 
@@ -166,21 +182,21 @@ export class AgentPiCodingAgentSessionFactory {
   }
 
   private createResourceLoader(
-    frame: AgentPiMutableSessionFrame,
-    sessionManager: SessionManager,
     settingsManager: SettingsManager,
+    inheritProjectContext: boolean,
+    runtimeExtension: AgentPiRuntimeExtensionRegistration,
   ): DefaultResourceLoader {
     return new DefaultResourceLoader({
       cwd: this.options.workspaceRoot,
       agentDir: this.workspaceLayout.stateRoot,
       settingsManager,
-      additionalSkillPaths: [this.options.systemSkillsRoot],
+      additionalSkillPaths: [...new Set([this.options.systemSkillsRoot, ...(this.options.additionalSkillPaths ?? [])])],
       noExtensions: true,
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
-      agentsFilesOverride: () => this.projectContext.agentsFiles(),
-      extensionFactories: [this.runtimeExtensions.create(frame, sessionManager)],
+      agentsFilesOverride: () => (inheritProjectContext ? this.projectContext.agentsFiles() : { agentsFiles: [] }),
+      extensionFactories: [runtimeExtension],
     });
   }
 
@@ -190,15 +206,24 @@ export class AgentPiCodingAgentSessionFactory {
     resourceLoader: DefaultResourceLoader;
     tools: ToolDefinition[];
     activeToolNames: readonly string[];
+    frame: AgentPiMutableSessionFrame;
+    thinkingLevel?: ModelThinkingLevel;
+    runtimeExtension: AgentPiRuntimeExtensionRegistration;
   }) {
-    const registeredModel = await this.modelRuntimeOwner.get();
-    if (!registeredModel.model) throw new Error("Senera Pi Proxy model was not registered in Pi Coding Agent.");
+    const registeredModel = await new AgentPiModelRuntimeOwner(
+      {
+        provider: this.options.provider,
+        modelProvider: this.options.modelProvider,
+        compilerFactory: this.options.planningCompilerFactory,
+      },
+      input.frame,
+    ).get();
     const created = await createAgentSession({
       cwd: this.options.workspaceRoot,
       agentDir: this.workspaceLayout.stateRoot,
       modelRuntime: registeredModel.runtime,
       model: registeredModel.model,
-      thinkingLevel: "off",
+      thinkingLevel: input.thinkingLevel ?? "off",
       noTools: "builtin",
       customTools: input.tools,
       resourceLoader: input.resourceLoader,
@@ -206,6 +231,7 @@ export class AgentPiCodingAgentSessionFactory {
       sessionManager: input.sessionManager,
     });
     created.session.setActiveToolsByName([...input.activeToolNames]);
+    input.runtimeExtension.install(created.session, input.settingsManager.getCompactionSettings());
     return created.session;
   }
 
@@ -229,7 +255,7 @@ export class AgentPiCodingAgentSessionFactory {
         maxRetries: this.options.modelProvider.MaxNetworkRetries,
         provider: {
           timeoutMs: this.options.modelProvider.TimeoutMs,
-          maxRetries: LocalPiProxyRetryAttempts,
+          maxRetries: NativeProviderRetryAttempts,
         },
       },
     });

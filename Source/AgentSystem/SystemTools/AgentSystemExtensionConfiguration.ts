@@ -7,7 +7,10 @@ import {
 import { projectConfigFormField } from "../Config/AgentConfigFormFieldProjector.js";
 import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
 import { deepFreeze } from "../Core/AgentDeepFreeze.js";
-import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
+import {
+  createAgentExtensionLocalizedText,
+  type AgentExtensionLocalizedText,
+} from "../Extensions/AgentExtensionLocalization.js";
 import type { AgentConfigFormSection } from "../Types/ConfigFormTypes.js";
 import { AgentSystemExtensionJsonSchema, type AgentSystemExtensionManifest } from "./AgentSystemExtensionManifest.js";
 import { resolveSystemExtensionPackageFile } from "./AgentSystemExtensionPackagePath.js";
@@ -129,12 +132,13 @@ function deriveConfigurationFields(
   pathParts: readonly string[],
   required: boolean,
 ): ConfigFormFieldDefinition<AgentExtensionLocalizedText>[] {
-  const type = readSchemaType(schema);
+  const valueSchema = readConfigurationValueSchema(schema);
+  const type = readSchemaType(valueSchema);
   if (type === "object") {
-    const properties = readSchemaProperties(schema);
+    const properties = readSchemaProperties(valueSchema);
     const requiredProperties = new Set(
-      Array.isArray(schema.required)
-        ? schema.required.filter((entry): entry is string => typeof entry === "string")
+      Array.isArray(valueSchema.required)
+        ? valueSchema.required.filter((entry): entry is string => typeof entry === "string")
         : [],
     );
     return Object.entries(properties).flatMap(([name, property]) =>
@@ -142,29 +146,31 @@ function deriveConfigurationFields(
     );
   }
   if (pathParts.length === 0) throw new Error("System extension configuration schema must describe an object.");
-  const fieldType = schemaFieldType(schema);
-  const options = Array.isArray(schema.enum)
-    ? schema.enum.filter((entry): entry is string | number | boolean =>
+  const fieldType = schemaFieldType(valueSchema);
+  const options = Array.isArray(valueSchema.enum)
+    ? valueSchema.enum.filter((entry): entry is string | number | boolean =>
         ["string", "number", "boolean"].includes(typeof entry),
       )
     : undefined;
   return [
     {
       path: [...pathParts],
-      label: untranslatedText(
-        typeof schema.title === "string" && schema.title.trim() ? schema.title : titleFromPath(pathParts),
+      label: createAgentExtensionLocalizedText(
+        typeof valueSchema.title === "string" && valueSchema.title.trim()
+          ? valueSchema.title
+          : titleFromPath(pathParts),
       ),
-      ...(typeof schema.description === "string" && schema.description.trim()
-        ? { description: untranslatedText(schema.description) }
+      ...(typeof valueSchema.description === "string" && valueSchema.description.trim()
+        ? { description: createAgentExtensionLocalizedText(valueSchema.description) }
         : {}),
       type: fieldType.type,
       ...(fieldType.itemType ? { itemType: fieldType.itemType } : {}),
       ...(options?.length ? { options } : {}),
-      ...(typeof schema.minimum === "number" ? { min: schema.minimum } : {}),
-      ...(typeof schema.maximum === "number" ? { max: schema.maximum } : {}),
-      ...(typeof schema.minLength === "number" ? { minLength: schema.minLength } : {}),
-      ...(typeof schema.maxLength === "number" ? { maxLength: schema.maxLength } : {}),
-      ...(schema.default !== undefined ? { defaultValue: schema.default } : {}),
+      ...(typeof valueSchema.minimum === "number" ? { min: valueSchema.minimum } : {}),
+      ...(typeof valueSchema.maximum === "number" ? { max: valueSchema.maximum } : {}),
+      ...(typeof valueSchema.minLength === "number" ? { minLength: valueSchema.minLength } : {}),
+      ...(typeof valueSchema.maxLength === "number" ? { maxLength: valueSchema.maxLength } : {}),
+      ...(valueSchema.default !== undefined ? { defaultValue: valueSchema.default } : {}),
       required,
       essential: true,
     },
@@ -210,6 +216,7 @@ function assertConfigurationField(
   if (field.type !== expectedType.type || field.itemType !== expectedType.itemType) {
     throw new Error(`System extension ${extensionId} UI field ${pathParts.join(".")} must use ${expectedType.type}.`);
   }
+  assertConfigurationModelSelection(extensionId, rootSchema, field, pathParts);
   const key = configurationPathKey(pathParts);
   if (declared.has(key)) {
     throw new Error(`System extension ${extensionId} UI field is duplicated: ${pathParts.join(".")}.`);
@@ -217,6 +224,66 @@ function assertConfigurationField(
   declared.add(key);
   for (const itemField of field.itemFields ?? []) {
     assertConfigurationField(extensionId, rootSchema, itemField, pathParts, declared);
+  }
+}
+
+function assertConfigurationModelSelection(
+  extensionId: string,
+  rootSchema: Record<string, unknown>,
+  field: ConfigFormFieldDefinition<AgentExtensionLocalizedText>,
+  fieldPath: readonly string[],
+): void {
+  const selection = field.modelSelection;
+  if (!selection) return;
+  const cardinality = selection.cardinality ?? "one";
+  const fieldShapeMatches =
+    cardinality === "many" ? field.type === "array" && field.itemType === "string" : field.type === "string";
+  if (!fieldShapeMatches) {
+    throw new Error(
+      `System extension ${extensionId} UI model selection ${fieldPath.join(".")} has an incompatible ${cardinality} field type.`,
+    );
+  }
+  if (selection.providerPath) {
+    assertConfigurationModelSelectionReference(
+      extensionId,
+      rootSchema,
+      fieldPath,
+      "providerPath",
+      selection.providerPath,
+      "string",
+    );
+  }
+  if (selection.inheritance) {
+    assertConfigurationModelSelectionReference(
+      extensionId,
+      rootSchema,
+      fieldPath,
+      "inheritance.path",
+      selection.inheritance.path,
+      "boolean",
+    );
+  }
+}
+
+function assertConfigurationModelSelectionReference(
+  extensionId: string,
+  rootSchema: Record<string, unknown>,
+  fieldPath: readonly string[],
+  referenceName: "providerPath" | "inheritance.path",
+  referencePath: readonly string[],
+  expectedType: "boolean" | "string",
+): void {
+  const referencedSchema = readConfigurationSchemaAtPath(rootSchema, referencePath);
+  if (!referencedSchema) {
+    throw new Error(
+      `System extension ${extensionId} UI model selection ${fieldPath.join(".")} ${referenceName} references unknown field ${referencePath.join(".")}.`,
+    );
+  }
+  const referencedType = schemaFieldType(referencedSchema);
+  if (referencedType.type !== expectedType) {
+    throw new Error(
+      `System extension ${extensionId} UI model selection ${fieldPath.join(".")} ${referenceName} must reference a ${expectedType} field: ${referencePath.join(".")}.`,
+    );
   }
 }
 
@@ -245,11 +312,12 @@ function schemaFieldType(schema: Record<string, unknown>): {
   type: ConfigFormFieldDefinition["type"];
   itemType?: ConfigFormFieldDefinition["itemType"];
 } {
-  const type = readSchemaType(schema);
+  const valueSchema = readConfigurationValueSchema(schema);
+  const type = readSchemaType(valueSchema);
   if (type === "boolean" || type === "string") return { type };
   if (type === "number" || type === "integer") return { type: "number" };
   if (type === "array") {
-    const item = schemaFieldType(asSchemaObject(schema.items, "array items"));
+    const item = schemaFieldType(asSchemaObject(valueSchema.items, "array items"));
     if (item.type === "array" || item.type === "table" || item.type === "record") {
       throw new Error("System extension configuration arrays must contain scalar values.");
     }
@@ -259,17 +327,38 @@ function schemaFieldType(schema: Record<string, unknown>): {
 }
 
 function readSchemaType(schema: Record<string, unknown>): string {
-  if (typeof schema.type !== "string") {
+  const valueSchema = readConfigurationValueSchema(schema);
+  if (typeof valueSchema.type !== "string") {
     throw new Error("System extension configuration fields require an explicit type.");
   }
-  return schema.type;
+  return valueSchema.type;
 }
 
 function readSchemaProperties(schema: Record<string, unknown>): Record<string, Record<string, unknown>> {
-  const properties = asSchemaObject(schema.properties, "object properties");
+  const properties = asSchemaObject(readConfigurationValueSchema(schema).properties, "object properties");
   return Object.fromEntries(
     Object.entries(properties).map(([name, value]) => [name, asSchemaObject(value, `property ${name}`)]),
   );
+}
+
+function readConfigurationValueSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  if (typeof schema.type === "string") return schema;
+  if (Array.isArray(schema.type)) {
+    const types = schema.type.filter((entry): entry is string => typeof entry === "string");
+    const concreteTypes = types.filter((type) => type !== "null");
+    if (schema.type.length === 2 && types.length === 2 && concreteTypes.length === 1 && types.includes("null")) {
+      return { ...schema, type: concreteTypes[0] };
+    }
+  }
+  if (Array.isArray(schema.anyOf)) {
+    const variants = schema.anyOf.map((variant, index) => asSchemaObject(variant, `anyOf variant ${index}`));
+    const nullVariants = variants.filter((variant) => variant.type === "null");
+    const concreteVariants = variants.filter((variant) => variant.type !== "null");
+    if (nullVariants.length === 1 && concreteVariants.length === 1 && typeof concreteVariants[0]!.type === "string") {
+      return { ...schema, ...concreteVariants[0] };
+    }
+  }
+  return schema;
 }
 
 function asSchemaObject(value: unknown, label: string): Record<string, unknown> {
@@ -286,8 +375,4 @@ function configurationPathKey(pathParts: readonly string[]): string {
 function titleFromPath(pathParts: readonly string[]): string {
   const value = pathParts[pathParts.length - 1] ?? "Configuration";
   return value.replaceAll(/([a-z0-9])([A-Z])/gu, "$1 $2").replaceAll(/[-_.]+/gu, " ");
-}
-
-function untranslatedText(value: string): AgentExtensionLocalizedText {
-  return { "zh-CN": value, "en-US": value };
 }

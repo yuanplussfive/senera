@@ -1,8 +1,6 @@
 # 更新记录
 
-这里记录 Senera 每个正式版本中用户能够感知的新增功能、问题修复和兼容性变化。
-
-从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
+这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
 ## [1.9.11](https://github.com/yuanplussfive/senera/compare/v1.9.10...v1.9.11) (2026-08-03)
 
@@ -10,6 +8,7 @@
 ### 问题修复
 
 * **docker:** create runtime data directory ([#93](https://github.com/yuanplussfive/senera/issues/93)) ([50f8689](https://github.com/yuanplussfive/senera/commit/50f86898a96cb37856907fdfd8a9e85c0222eb95))
+
 
 ## [1.9.10](https://github.com/yuanplussfive/senera/compare/v1.9.9...v1.9.10) (2026-08-03)
 
@@ -285,9 +284,3 @@
 * **release:** 防止发布提交静默跳过 ([c690a1c](https://github.com/yuanplussfive/senera/commit/c690a1ceeaf21678cceb16455d24de8e58a4206b))
 
 ## 1.0.21 - 2026-07-09
-
-### 发布基线
-
-- 将现有 `desktop-v1.0.21` 桌面版本确认为旧发布体系的最终基线。
-- 后续版本统一使用根 `package.json` 中的 SemVer，并采用 `vX.Y.Z` Git 标签。
-- 历史 `desktop-v1.0.x` 标签继续保留，不重写、不删除。

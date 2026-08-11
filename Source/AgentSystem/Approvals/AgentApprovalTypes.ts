@@ -77,6 +77,17 @@ export interface AgentApprovalResolveCommand {
   message?: string;
 }
 
+export interface AgentApprovalBatchReference {
+  sessionId: string;
+  requestId: string;
+  batchId: string;
+}
+
+export interface AgentApprovalResolveBatchCommand extends AgentApprovalBatchReference {
+  decision: AgentApprovalDecision;
+  message?: string;
+}
+
 export interface AgentApprovalWaitOptions {
   approval: Omit<AgentApprovalRequest, "approvalId" | "createdAt">;
   onEvent?: AgentEventSink;
@@ -88,5 +99,7 @@ export interface AgentApprovalRuntime {
   requestApproval(options: AgentApprovalWaitOptions): Promise<AgentApprovalResolution>;
   resolve(command: AgentApprovalResolveCommand): Promise<AgentApprovalResolution>;
   tryResolve(command: AgentApprovalResolveCommand): Promise<AgentApprovalResolution | undefined>;
+  resolveBatch(command: AgentApprovalResolveBatchCommand): Promise<readonly AgentApprovalResolution[]>;
+  tryResolveBatch(command: AgentApprovalResolveBatchCommand): Promise<readonly AgentApprovalResolution[] | undefined>;
   cancelByRequestId(requestId: string, error?: unknown): Promise<number>;
 }

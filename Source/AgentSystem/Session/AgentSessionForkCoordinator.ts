@@ -5,6 +5,7 @@ import { AgentSessionAdmissionCoordinator } from "./AgentSessionAdmissionCoordin
 import type { AgentSessionArtifactLifecycle } from "./AgentSessionArtifactLifecycle.js";
 import { AgentSessionForkPiMutationKinds, type AgentSessionForkMutation } from "./AgentSessionForkMutation.js";
 import type { AgentSessionForkResult, AgentSessionStore } from "./AgentSessionStore.js";
+import type { AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
 
 export type AgentSessionForkOutcome =
   | AgentSessionForkResult
@@ -33,6 +34,7 @@ export class AgentSessionForkCoordinator {
     sourceSessionId: string;
     sessionId: string;
     throughRequestId: string;
+    ownership?: AgentSessionOwnership;
   }): Promise<AgentSessionForkOutcome> {
     return this.options.admissions.runMany([request.sourceSessionId, request.sessionId], async () => {
       const pending = this.options.store.loadPendingForkMutation(request.sessionId);

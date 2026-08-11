@@ -52,7 +52,7 @@ test("chat composer waits for an attachment upload and sends the uploaded refere
 
   const fileInput = document.querySelector("input[type='file']");
   await user.upload(fileInput, new File(["report"], "report.txt", { type: "text/plain" }));
-  expect(await screen.findByText("report.txt")).toBeVisible();
+  await waitFor(() => expect(screen.getByText("report.txt")).toBeVisible());
   await user.type(screen.getByRole("textbox"), "Analyze this report");
   await user.click(screen.getByRole("button", { name: "send" }));
 
@@ -65,10 +65,10 @@ test("chat composer waits for an attachment upload and sends the uploaded refere
     }),
   );
   expect(onSend).toHaveBeenCalledWith("Analyze this report", [attachment], undefined);
-  expect(screen.queryByText("report.txt")).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByText("report.txt")).not.toBeInTheDocument());
 });
 
-test("chat composer preserves failed attachments for removal and reports the upload error", async () => {
+test("chat composer preserves failed attachments and exposes inline recovery without a duplicate toast", async () => {
   uploadFileMock.mockRejectedValue(new Error("upload service unavailable"));
   const user = userEvent.setup();
   renderComposer(createComposerProps());
@@ -76,17 +76,12 @@ test("chat composer preserves failed attachments for removal and reports the upl
   const fileInput = document.querySelector("input[type='file']");
   await user.upload(fileInput, new File(["broken"], "broken.txt", { type: "text/plain" }));
 
-  expect(await screen.findByText("broken.txt")).toBeVisible();
-  await waitFor(() => {
-    expect(readTestToastCalls()).toContainEqual(
-      expect.objectContaining({
-        variant: "error",
-        options: { description: "upload service unavailable" },
-      }),
-    );
-  });
+  await waitFor(() => expect(screen.getByText("broken.txt")).toBeVisible());
+  expect(await screen.findByText("upload service unavailable")).toBeVisible();
+  expect(screen.getByRole("button", { name: "重试" })).toBeVisible();
+  expect(readTestToastCalls()).toEqual([]);
   await user.click(screen.getByRole("button", { name: "移除附件" }));
-  expect(screen.queryByText("broken.txt")).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByText("broken.txt")).not.toBeInTheDocument());
 });
 
 test("chat composer prevents disabled and running file drops without uploading", () => {
@@ -124,7 +119,7 @@ test("chat composer keeps uploaded attachments when sending is rejected", async 
     document.querySelector("input[type='file']"),
     new File(["retry"], "retry.txt", { type: "text/plain" }),
   );
-  expect(await screen.findByText("retry.txt")).toBeVisible();
+  await waitFor(() => expect(screen.getByText("retry.txt")).toBeVisible());
   await user.type(screen.getByRole("textbox"), "Try again");
   await user.click(screen.getByRole("button", { name: "send" }));
 
@@ -170,7 +165,7 @@ test("chat composer previews an original image and transfers its ownership after
 
   expect(onSend).toHaveBeenCalledWith("Inspect this image", [attachment], undefined);
   expect(previewApi.revokeObjectURL).not.toHaveBeenCalled();
-  expect(screen.queryByRole("img", { name: "photo.png" })).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole("img", { name: "photo.png" })).not.toBeInTheDocument());
 
   view.unmount();
   expect(previewApi.revokeObjectURL).toHaveBeenCalledWith("blob:senera-preview");
@@ -186,7 +181,7 @@ test("chat composer releases pending image previews when it unmounts", async () 
     document.querySelector("input[type='file']"),
     new File(["image"], "pending.png", { type: "image/png" }),
   );
-  expect(await screen.findByRole("img", { name: "pending.png" })).toBeVisible();
+  await waitFor(() => expect(screen.getByRole("img", { name: "pending.png" })).toBeVisible());
 
   view.unmount();
   expect(previewApi.revokeObjectURL).toHaveBeenCalledTimes(1);
@@ -212,6 +207,10 @@ function createComposerProps(overrides = {}) {
       modelProviders: [],
       selectedModelProviderId: null,
       onSelectModelProvider: vi.fn(),
+    },
+    approvalConfig: {
+      mode: "agent",
+      onSelectMode: vi.fn(),
     },
     systemConfig: {
       configSnapshot: null,

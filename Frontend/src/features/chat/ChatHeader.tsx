@@ -2,24 +2,23 @@ import {
   Ban,
   CircleAlert,
   Clock3,
+  LoaderCircle,
+  ListTree,
   MessageSquareText,
   PanelLeftOpen,
   Shield,
   ShieldAlert,
-  ShieldCheck,
   SquareTerminal,
 } from "lucide-react";
-import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
+import type { SandboxStatusSnapshotData } from "../../api/eventTypes";
 import {
-  sandboxPreparationRatio,
+  executionModeLabel,
   sandboxStatusAvailabilitySuffix,
   sandboxStatusDetail,
 } from "../sandbox/sandboxPreparationPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { cn } from "../../lib/util";
 import { IconButton, Tooltip } from "../../shared/ui";
 import { ToolDock } from "./ToolDock";
-import { ListTree } from "lucide-react";
 
 export function ChatHeader({
   title,
@@ -32,7 +31,7 @@ export function ChatHeader({
   onOpenTerminalPanel,
 }: {
   title: string;
-  runStatus?: "running" | "completed" | "failed" | "cancelled";
+  runStatus?: "running" | "cancelling" | "completed" | "failed" | "cancelled";
   waitingForApproval?: boolean;
   waitingForInput?: boolean;
   sandboxStatus?: SandboxStatusSnapshotData | null;
@@ -58,7 +57,10 @@ export function ChatHeader({
           <PanelLeftOpen className="h-4 w-4" />
         </IconButton>
       ) : null}
-      <h1 className="min-w-0 flex-1 truncate text-[14.5px] font-semibold text-content-strong">{title}</h1>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5" data-chat-header-title>
+        <h1 className="min-w-0 truncate text-[14.5px] font-semibold text-content-strong">{title}</h1>
+        <SandboxStatusBadge status={sandboxStatus} />
+      </div>
       {waitingForApproval ? (
         <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-umber-200 bg-umber-50 px-2 py-0.5 font-mono text-[10px] text-umber-600">
           <Clock3 className="h-3 w-3" />
@@ -68,6 +70,11 @@ export function ChatHeader({
         <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-surface px-2 py-0.5 font-mono text-[10px] text-accent-content">
           <MessageSquareText className="h-3 w-3" />
           {frontendMessage("interaction.input.pending")}
+        </span>
+      ) : runStatus === "cancelling" ? (
+        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-umber-200 bg-umber-50 px-2 py-0.5 font-mono text-[10px] text-umber-700">
+          <LoaderCircle className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+          {frontendMessage("workflow.run.status.cancelling")}
         </span>
       ) : runStatus === "failed" ? (
         <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-brick-200 bg-brick-50 px-2 py-0.5 font-mono text-[10px] text-brick-700">
@@ -80,7 +87,6 @@ export function ChatHeader({
           {frontendMessage("workflow.run.status.cancelled")}
         </span>
       ) : null}
-      <SandboxStatusBadge status={sandboxStatus} />
       {onOpenTerminalPanel ? (
         <IconButton
           label={frontendMessage("terminal.panel.open")}
@@ -110,38 +116,32 @@ export function ChatHeader({
 
 function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | null }): JSX.Element {
   const presentation = readSandboxStatusPresentation(status);
-  const Icon = presentation.Icon;
-  const progressRatio = sandboxPreparationRatio(status?.progress);
+  const StatusIcon = presentation.Icon;
 
   return (
     <Tooltip
-      content={<span className="max-w-[260px] whitespace-normal leading-5">{presentation.tooltip}</span>}
-      side="bottom"
-      align="end"
-    >
-      <button
-        type="button"
-        className={cn(
-          "relative ml-1 inline-flex h-8 shrink-0 items-center gap-1.5 overflow-hidden rounded-md border px-2 text-[12px] transition",
-          presentation.className,
-        )}
-      >
-        <Icon className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline lg:hidden">{presentation.label}</span>
-        <span className="hidden max-w-[220px] truncate lg:inline">
-          {status?.state === "preparing" ? sandboxStatusDetail(status) : presentation.label}
+      content={
+        <span className="max-w-[260px] whitespace-normal leading-5">
+          <span className="block font-medium">{presentation.label}</span>
+          <span className="mt-0.5 block text-ink-300">{presentation.tooltip}</span>
         </span>
-        {status?.state === "preparing" ? (
-          <span
-            className={cn(
-              "pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left bg-current opacity-40 transition-transform duration-200",
-              progressRatio === undefined && "animate-pulse",
-            )}
-            style={{ transform: `scaleX(${progressRatio ?? 1})` }}
-            aria-hidden="true"
-          />
-        ) : null}
-      </button>
+      }
+      side="bottom"
+      align="start"
+      delayDuration={150}
+    >
+      <span
+        role="status"
+        tabIndex={0}
+        aria-label={presentation.label}
+        data-sandbox-status={status?.state ?? "unknown"}
+        data-execution-mode={status?.effectiveMode ?? "unknown"}
+        data-window-no-drag
+        className="inline-flex h-6 min-w-0 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle bg-surface-muted px-1.5 text-[10.5px] font-medium text-content-secondary transition-colors duration-150 hover:border-line hover:text-content-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+      >
+        <StatusIcon className={`h-3.5 w-3.5 ${presentation.iconClassName ?? ""}`} aria-hidden="true" />
+        <span className="max-w-[180px] truncate">{presentation.label}</span>
+      </span>
     </Tooltip>
   );
 }
@@ -150,53 +150,33 @@ function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null
   label: string;
   tooltip: string;
   Icon: typeof Shield;
-  className: string;
+  iconClassName?: string;
 } {
-  const state = status?.state ?? "unknown";
   const detail = sandboxStatusDetail(status);
   const availabilitySuffix = sandboxStatusAvailabilitySuffix(status);
   const commonTooltip = `${detail} ${availabilitySuffix}`;
+  const label = executionModeLabel(status);
 
-  const table = {
-    disabled: {
-      label: frontendMessage("sandbox.status.disabled"),
-      tooltip: commonTooltip,
-      Icon: Shield,
-      className: "border-ink-200 bg-paper-100 text-ink-500 hover:bg-ink-900/[0.04]",
-    },
-    unknown: {
-      label: frontendMessage("sandbox.status.unknown"),
-      tooltip: commonTooltip,
-      Icon: Shield,
-      className: "border-ink-200 bg-paper-100 text-ink-500 hover:bg-ink-900/[0.04]",
-    },
-    preparing: {
-      label: frontendMessage("sandbox.status.preparing"),
-      tooltip: commonTooltip,
-      Icon: Shield,
-      className: "border-umber-200 bg-umber-50/70 text-umber-600 hover:bg-umber-50",
-    },
-    ready: {
-      label: frontendMessage("sandbox.status.ready"),
-      tooltip: commonTooltip,
-      Icon: ShieldCheck,
-      className: "border-moss-100 bg-moss-50/70 text-moss-600 hover:bg-moss-50",
-    },
-    unavailable: {
-      label: frontendMessage("sandbox.status.unavailable"),
-      tooltip: commonTooltip,
-      Icon: ShieldAlert,
-      className: "border-brick-200 bg-brick-50/70 text-brick-700 hover:bg-brick-50",
-    },
-  } satisfies Record<
-    SandboxRuntimeState,
-    {
-      label: string;
-      tooltip: string;
-      Icon: typeof Shield;
-      className: string;
-    }
-  >;
+  if (!status) {
+    return { label, tooltip: commonTooltip, Icon: LoaderCircle, iconClassName: "text-content-muted" };
+  }
 
-  return table[state];
+  if (status.effectiveMode === "host") {
+    return { label, tooltip: commonTooltip, Icon: SquareTerminal };
+  }
+
+  if (status.state === "preparing") {
+    return {
+      label,
+      tooltip: commonTooltip,
+      Icon: LoaderCircle,
+      iconClassName: "text-umber-600 motion-safe:animate-spin",
+    };
+  }
+
+  if (status.effectiveMode === "sandbox") {
+    return { label, tooltip: commonTooltip, Icon: Shield };
+  }
+
+  return { label, tooltip: commonTooltip, Icon: ShieldAlert, iconClassName: "text-brick-600" };
 }

@@ -2,7 +2,7 @@
  * Returns a de-duplicated array of trimmed, non-empty strings.
  *
  * This is the single canonical implementation used across the codebase
- * (ActionPlanner, Pi, PiProxy, Artifacts, Safety, Loop). Consumers should
+ * (ActionPlanner, Pi, Artifacts, Safety, Loop). Consumers should
  * import from here rather than declaring local copies.
  */
 export function uniqueStrings(values: readonly string[]): string[] {
@@ -13,7 +13,7 @@ export function uniqueStrings(values: readonly string[]): string[] {
  * Removes entries whose values are `undefined`, empty strings, or empty arrays.
  *
  * This is the single canonical implementation used across the codebase
- * (ActionPlanner, PiProxy, Pi/SessionHistoryMaintenance). The Pi/Session
+ * (ActionPlanner, Pi/SessionHistoryMaintenance). The Pi/Session
  * variant previously filtered only `undefined`; the stricter semantics here
  * are a safe superset.
  */
@@ -57,7 +57,7 @@ export interface ReadStringArrayOptions {
  * filtering.
  *
  * This is the single canonical implementation — replaces the 5 local copies
- * previously spread across Pi, PiProxy, Safety, ToolRuntime, and
+ * previously spread across Pi, planning, Safety, ToolRuntime, and
  * SessionPersistence.
  */
 export function readStringArray(value: unknown, options?: ReadStringArrayOptions): string[] {

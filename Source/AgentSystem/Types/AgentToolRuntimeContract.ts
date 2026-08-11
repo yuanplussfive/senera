@@ -1,5 +1,6 @@
 import {
   AgentHostToolProtocolVersion,
+  ToolSchedulingModes,
   type ToolHandlerManifest,
   type ToolRuntimeManifest,
 } from "./AgentToolContractTypes.js";
@@ -40,6 +41,11 @@ export interface AgentToolRuntimeContractIssue {
 
 export interface AgentToolRuntimeCapabilityContractIssue {
   capability: ToolRuntimeCapability;
+  message: string;
+}
+
+export interface AgentToolSchedulingContractIssue {
+  field: "scheduling" | "maxConcurrency" | "resources";
   message: string;
 }
 
@@ -100,6 +106,39 @@ export function inspectAgentToolRuntimeCapabilityContract(
     capability: rule.capability,
     message: rule.message,
   }));
+}
+
+export function inspectAgentToolSchedulingContract(input: {
+  handlerKind: string;
+  scheduling?: string;
+  maxConcurrency?: number;
+  resourceCount: number;
+}): AgentToolSchedulingContractIssue[] {
+  const scheduling = input.scheduling ?? ToolSchedulingModes.Parallel;
+  const issues: AgentToolSchedulingContractIssue[] = [];
+  if (
+    scheduling === ToolSchedulingModes.ResourceClaims &&
+    input.handlerKind === "HostCapability" &&
+    input.resourceCount === 0
+  ) {
+    issues.push({
+      field: "resources",
+      message: "HostCapability ResourceClaims scheduling requires at least one resource declaration.",
+    });
+  }
+  if (scheduling !== ToolSchedulingModes.ResourceClaims && input.resourceCount > 0) {
+    issues.push({
+      field: "resources",
+      message: `Tool resources require ${ToolSchedulingModes.ResourceClaims} scheduling.`,
+    });
+  }
+  if (scheduling === ToolSchedulingModes.SelfManaged && input.maxConcurrency !== undefined) {
+    issues.push({
+      field: "maxConcurrency",
+      message: "SelfManaged scheduling owns its concurrency and must not declare MaxConcurrency.",
+    });
+  }
+  return issues;
 }
 
 function readHandlerContract(handlerKind: string): ToolHandlerRuntimeContract | undefined {

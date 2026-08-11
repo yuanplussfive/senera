@@ -36,7 +36,7 @@ test("optional model selection can return to automatic resolution", async () => 
   const user = userEvent.setup();
   await user.selectOptions(screen.getByRole("combobox"), "");
 
-  expect(onChange).toHaveBeenCalledWith("");
+  expect(onChange).toHaveBeenCalledWith(undefined);
 });
 
 function modelField(options) {

@@ -33,6 +33,14 @@ describe("MCP management", () => {
     expect(management.listSystemTools()).toBe(firstSystem.tools);
     expect(management.mcpSettingsSnapshot()).toBe(firstMcp);
     expect(management.listMcpServers()).toBe(firstMcp.servers);
+    const delegation = firstSystem.extensions.find((extension) => extension.id === "agent-delegation");
+    const skillField = delegation?.configuration?.sections
+      .flatMap((section) => section.fields)
+      .find((field) => field.path.join(".") === "defaults.skills");
+    expect(skillField).toMatchObject({
+      optionSource: { catalog: "skills" },
+      options: expect.arrayContaining(["workspace-investigation"]),
+    });
 
     management.setInput("web-research", "TAVILY_API_KEY", "snapshot-secret");
 

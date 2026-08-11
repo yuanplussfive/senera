@@ -19,6 +19,7 @@ import {
 import type { AgentSessionMessageAcceptance, AgentSessionMessageRequest } from "./AgentSessionMessageCoordinator.js";
 import type { AgentSessionRunCoordinator } from "./AgentSessionRunCoordinator.js";
 import type { AgentSessionStore } from "./AgentSessionStore.js";
+import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 
 export interface AgentSessionHistoryReplayRequest {
   readonly sessionId: string;
@@ -39,6 +40,7 @@ export interface AgentSessionRegenerateRequest {
   readonly requestId: string;
   readonly modelProviderId?: string;
   readonly input: string;
+  readonly approvalMode: AgentExecutionApprovalMode;
   readonly attachments?: AgentUploadAttachment[];
   readonly onEvent?: AgentEventSink;
 }
@@ -166,6 +168,7 @@ export class AgentSessionHistoryController {
           requestId: request.requestId,
           modelProviderId: request.modelProviderId,
           input: request.input,
+          approvalMode: request.approvalMode,
           attachments: request.attachments,
           preparation,
           onEvent: request.onEvent,

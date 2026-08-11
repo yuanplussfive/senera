@@ -24,3 +24,11 @@ ModelEndpoints 模块负责把不同供应商协议适配成统一模型接口�
 - streaming chunk 必须归一化成统一增量。
 - 模型契约和模型入口归属本目录；`AgentSystem` 根目录只引用统一接口。
 - 新增端点必须补模型端点配置和 timeout 验证。
+
+## Native Tool 路由合同
+
+Native Tool Calling 的 Pi adapter 只由模型声明的 Endpoint kind 选择，不能从模型名称、供应商名称或 Base URL 文本猜测协议。`AgentModelEndpointContract.ts` 同时声明 Endpoint 到 Pi API adapter 的映射，以及 adapter 自己会追加的 Base URL 路径段。
+
+配置中的 `BaseUrl` 表示供应商 API 根。若 Pi SDK 已拥有相同的末尾路径，Senera 只按完整 URL segment 移除精确重叠，再把结果交给 SDK。例如 Anthropic adapter 自己追加 `/v1/messages`，所以配置 `https://chat.senerapi.com/v1` 会投影为 SDK base `https://chat.senerapi.com/`，最终请求仍是且仅是 `https://chat.senerapi.com/v1/messages`。`/v11` 不匹配，`/proxy/v1` 只移除末尾 `v1` 并保留代理前缀。
+
+该归一化只属于 Native Pi 投影；BAML 和 Senera 自有 Endpoint 客户端继续使用各自的正式 URL 合同。新增 Endpoint 或升级 SDK 时，必须用 adapter 的真实 fetch 探针验证最终请求 URL，不能只断言中间字符串。

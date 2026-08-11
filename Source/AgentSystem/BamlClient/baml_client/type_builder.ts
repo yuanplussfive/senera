@@ -39,10 +39,6 @@ export default class TypeBuilder {
     
     ExecuteDecision: ClassViewer<'ExecuteDecision', "kind" | "fragment">;
     
-    GroundedDigest: ClassViewer<'GroundedDigest', "entries">;
-    
-    GroundedDigestEntry: ClassViewer<'GroundedDigestEntry', "text" | "sources">;
-    
     MemoryCandidate: ClassViewer<'MemoryCandidate', "type" | "subject" | "claim" | "howToApply" | "tags" | "triggers" | "sourceRefs" | "reason" | "confidence">;
     
     MemoryConsolidationAction: ClassViewer<'MemoryConsolidationAction', "operation" | "type" | "subject" | "claim" | "howToApply" | "tags" | "triggers" | "sourceRefs" | "candidateUris" | "targetMemoryUri" | "reason" | "confidence">;
@@ -54,6 +50,8 @@ export default class TypeBuilder {
     MemoryWriteDecision: ClassViewer<'MemoryWriteDecision', "operation" | "type" | "subject" | "claim" | "howToApply" | "tags" | "triggers" | "sourceRefs" | "candidateUris" | "targetMemoryUri" | "reason" | "confidence">;
     
     MemoryWriteResolutionResult: ClassViewer<'MemoryWriteResolutionResult', "decision">;
+    
+    PiConversationSummary: ClassViewer<'PiConversationSummary', "summary">;
     
     PiToolArgumentsDraft: ClassViewer<'PiToolArgumentsDraft', "arguments" | "missingInputs" | "assumptions">;
     
@@ -122,7 +120,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ActionPlanInput","ActionRunState","AskUserDecision","DirectDecision","EvidenceSlot","ExecuteDecision","GroundedDigest","GroundedDigestEntry","MemoryCandidate","MemoryConsolidationAction","MemoryConsolidationResult","MemoryLearningResult","MemoryWriteDecision","MemoryWriteResolutionResult","PiToolArgumentsDraft","PlanFragment","PlannedToolCall","PlannerActiveSkill","PlannerCurrentUserTurn","PlannerEvidenceMemoryItem","PlannerEvidenceRequirement","PlannerEvidenceStateItem","PlannerJournalItem","PlannerRoleplayPreset","PlannerRoleplayPresetDocument","PlannerTimelineTurn","PlannerToolCallStateItem","ProgressSignals","RepeatedCallWarning","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","ToolCatalogSummaryItem","ToolEvidenceCapabilityItem","ToolLearningRecord","ToolLearningResult","ToolRiskAudit",
+            "ActionPlanInput","ActionRunState","AskUserDecision","DirectDecision","EvidenceSlot","ExecuteDecision","MemoryCandidate","MemoryConsolidationAction","MemoryConsolidationResult","MemoryLearningResult","MemoryWriteDecision","MemoryWriteResolutionResult","PiConversationSummary","PiToolArgumentsDraft","PlanFragment","PlannedToolCall","PlannerActiveSkill","PlannerCurrentUserTurn","PlannerEvidenceMemoryItem","PlannerEvidenceRequirement","PlannerEvidenceStateItem","PlannerJournalItem","PlannerRoleplayPreset","PlannerRoleplayPresetDocument","PlannerTimelineTurn","PlannerToolCallStateItem","ProgressSignals","RepeatedCallWarning","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","ToolCatalogSummaryItem","ToolEvidenceCapabilityItem","ToolLearningRecord","ToolLearningResult","ToolRiskAudit",
           ]),
           enums: new Set([
             "AskUserDecisionKind","DirectDecisionKind","ExecuteDecisionKind","ExecutionDeltaOp","ToolCallStatus","ToolRiskAuditDecision","ToolRiskLevel",
@@ -154,14 +152,6 @@ export default class TypeBuilder {
           "kind","fragment",
         ]);
         
-        this.GroundedDigest = this.tb.classViewer("GroundedDigest", [
-          "entries",
-        ]);
-        
-        this.GroundedDigestEntry = this.tb.classViewer("GroundedDigestEntry", [
-          "text","sources",
-        ]);
-        
         this.MemoryCandidate = this.tb.classViewer("MemoryCandidate", [
           "type","subject","claim","howToApply","tags","triggers","sourceRefs","reason","confidence",
         ]);
@@ -184,6 +174,10 @@ export default class TypeBuilder {
         
         this.MemoryWriteResolutionResult = this.tb.classViewer("MemoryWriteResolutionResult", [
           "decision",
+        ]);
+        
+        this.PiConversationSummary = this.tb.classViewer("PiConversationSummary", [
+          "summary",
         ]);
         
         this.PiToolArgumentsDraft = this.tb.classViewer("PiToolArgumentsDraft", [

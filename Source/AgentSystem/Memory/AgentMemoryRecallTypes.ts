@@ -1,9 +1,4 @@
 import { z } from "zod";
-import {
-  normalizeToolArrayArgument,
-  normalizeToolNumberArgument,
-  normalizeToolStringArgument,
-} from "../ToolRuntime/AgentToolArgumentNormalization.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentMemorySourceRepository } from "./AgentMemorySourceRepository.js";
 import { AgentMemoryTypes } from "./AgentMemorySourceRepository.js";
@@ -19,10 +14,14 @@ export const MemoryRecallPolicy = {
 
 export const MemoryRecallArgumentsSchema = z
   .object({
-    query: z.preprocess(normalizeToolStringArgument, z.string().trim().min(1)),
-    scope: z.enum(MemoryRecallScopeValues).optional(),
-    limit: z.preprocess(normalizeToolNumberArgument, z.number().int().positive()).optional(),
-    refs: z.preprocess(normalizeToolArrayArgument, z.array(z.string().trim().min(1)).min(1)).optional(),
+    query: z.string().trim().min(1).describe("User, preference, knowledge, or story context to recall."),
+    scope: z.enum(MemoryRecallScopeValues).describe("Memory scope; defaults to all.").optional(),
+    limit: z.number().int().positive().describe("Maximum number of recalled records.").optional(),
+    refs: z
+      .array(z.string().trim().min(1))
+      .min(1)
+      .describe("Exact memory, source, evidence, or artifact references.")
+      .optional(),
   })
   .strict();
 

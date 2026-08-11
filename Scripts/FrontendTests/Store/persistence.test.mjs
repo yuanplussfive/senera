@@ -35,6 +35,7 @@ describe("session persistence migration", () => {
       defaultSidebarCollapsed: false,
       defaultRightPanelCollapsed: true,
       motionLevel: "full",
+      executionApprovalMode: "agent",
       selectedModelProviderId: "provider-1",
       selectedModelProviderIdsBySession: { "legacy-active": "provider-1" },
       userProfile: {
@@ -64,6 +65,7 @@ describe("session persistence migration", () => {
     expect(migrated).toMatchObject({
       defaultSidebarCollapsed: true,
       motionLevel: "reduced",
+      executionApprovalMode: "agent",
       workflowDockWidth: 555,
     });
   });
@@ -78,6 +80,7 @@ describe("session persistence migration", () => {
     );
     expect(migrated).toMatchObject({
       motionLevel: "full",
+      executionApprovalMode: "agent",
       workflowDockWidth: 420,
     });
   });
@@ -123,6 +126,7 @@ describe("readPersistedSessionPreferences", () => {
       defaultSidebarCollapsed: true,
       defaultRightPanelCollapsed: false,
       motionLevel: "reduced",
+      executionApprovalMode: "agent",
       selectedModelProviderId: "main",
       selectedModelProviderIdsBySession: { topic_a: "main" },
       userProfile: undefined,

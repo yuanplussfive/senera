@@ -1,15 +1,43 @@
 import type { Story } from "@ladle/react";
 import { ChevronDown, Copy, FileText, Info, LogOut, Settings, Trash2, User, UserRoundPen, Wifi } from "lucide-react";
+import { useState } from "react";
 import { Button } from "./Button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuMeta,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./DropdownMenu";
+
+export const WithSelection: Story = () => {
+  const [showDiagnostics, setShowDiagnostics] = useState(true);
+
+  return (
+    <div className="flex min-h-[400px] items-center justify-center p-8">
+      <DropdownMenu defaultOpen>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline">视图选项</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>显示内容</DropdownMenuLabel>
+            <DropdownMenuCheckboxItem
+              checked={showDiagnostics}
+              onCheckedChange={(checked) => setShowDiagnostics(checked === true)}
+            >
+              诊断详情
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+};
 
 export const BasicMenu: Story = () => (
   <div className="flex min-h-[400px] items-center justify-center p-8">

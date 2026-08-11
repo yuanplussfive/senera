@@ -19,7 +19,10 @@ import { AgentToolHostCapabilityRegistry } from "../../../Source/AgentSystem/Too
 import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
-import { listDefaultAgentHostCapabilityNames } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
+import {
+  AgentHostCapabilityNames,
+  listDefaultAgentHostCapabilityNames,
+} from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import { StandardAgentToolObservationProjection } from "../../../Source/AgentSystem/ToolRuntime/AgentToolObservationProjectionPlan.js";
 
 describe("System Tool catalog", () => {
@@ -44,7 +47,13 @@ describe("System Tool catalog", () => {
       capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
     });
 
-    expect(registry.listTools()).toHaveLength(19);
+    const extensions = catalog.listExtensions();
+    expect(
+      registry
+        .listTools()
+        .map((tool) => tool.name)
+        .sort(),
+    ).toEqual(extensions.flatMap((extension) => extension.tools.map((tool) => tool.name)).sort());
     expect(registry.getTool("WorkspaceApplyPatch")).toMatchObject({
       owner: {
         kind: "system",
@@ -55,10 +64,67 @@ describe("System Tool catalog", () => {
       handler: { kind: "HostCapability", capability: "workspace.apply_patch" },
       contract: { outputSchema: undefined },
     });
+    expect(registry.getTool("WorkspaceInspectTool")).toBeUndefined();
+    for (const [name, commandAlias, capabilityId] of [
+      ["WorkspaceRead", "read", "workspace.file.read"],
+      ["WorkspaceGrep", "grep", "workspace.content.search"],
+      ["WorkspaceFind", "find", "workspace.file.find"],
+      ["WorkspaceList", "ls", "workspace.directory.list"],
+    ] as const) {
+      expect(registry.getTool(name)).toMatchObject({
+        owner: { kind: "system", name: "workspace-tools" },
+        execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
+        runtime: { Scheduling: "Parallel", Capabilities: { Cancellation: true } },
+        search: {
+          Tags: expect.arrayContaining([commandAlias]),
+          Capabilities: [
+            expect.objectContaining({ Id: capabilityId, Aliases: expect.arrayContaining([commandAlias]) }),
+          ],
+        },
+      });
+    }
     expect(registry.getTool("TavilySearchTool")).toBeUndefined();
+    expect(registry.getTool("AgentSpawn")).toMatchObject({
+      owner: { kind: "system", name: "agent-delegation" },
+      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentSpawn },
+      childGrant: "delegation",
+    });
+    expect(registry.getTool("AgentWait")).toMatchObject({
+      owner: { kind: "system", name: "agent-delegation" },
+      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentWait },
+    });
+    expect(registry.getTool("AgentInput")).toMatchObject({
+      owner: { kind: "system", name: "agent-delegation" },
+      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentInput },
+    });
+    expect(registry.getTool("AgentStop")).toMatchObject({
+      owner: { kind: "system", name: "agent-delegation" },
+      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentStop },
+    });
+    expect(registry.getTool("AgentResume")).toMatchObject({
+      owner: { kind: "system", name: "agent-delegation" },
+      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentResume },
+      childGrant: "delegation",
+    });
+    expect(registry.getTool("AgentContactSupervisor")).toMatchObject({ childGrant: "internal" });
+    expect(registry.getSkill("agent-orchestration")).toMatchObject({
+      source: { kind: "system", id: "agent-delegation" },
+      recommendedTools: ["AgentSpawn", "AgentWait", "AgentInput", "AgentStop", "AgentResume"],
+    });
+    expect(registry.getTool("AgentSubmitStructuredResult")).toBeUndefined();
+    expect(registry.getTool("AgentScheduleManage")).toMatchObject({
+      owner: { kind: "system", name: "agent-scheduler" },
+      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.ScheduleManage },
+    });
+    expect(registry.listDiscoverySources()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "orchestration" }),
+        expect.objectContaining({ id: "orchestration.scheduler" }),
+      ]),
+    );
     for (const tool of registry.listTools()) {
       expect(tool.observationProjection).toMatchObject({
-        schemaVersion: 1,
+        schemaVersion: 2,
         artifactFallback: { strategy: "reference" },
       });
       expect(tool.observationProjection?.sources.length).toBeGreaterThan(0);
@@ -69,8 +135,14 @@ describe("System Tool catalog", () => {
       cursor: "/cursor",
     });
 
-    const extensions = catalog.listExtensions();
-    expect(extensions).toHaveLength(12);
+    expect(extensions.map((extension) => extension.id)).toEqual(
+      expect.arrayContaining(["agent-delegation", "agent-scheduler"]),
+    );
+    const delegationExtension = extensions.find((extension) => extension.id === "agent-delegation");
+    expect(delegationExtension?.skillCount).toBe(
+      registry.listSkills().filter((skill) => skill.source.kind === "system" && skill.source.id === "agent-delegation")
+        .length,
+    );
     for (const extension of extensions) {
       expect(resolveAgentExtensionLocalizedText(extension.displayName)).not.toBe("");
       expect(resolveAgentExtensionLocalizedText(extension.displayName, AgentExtensionLocales.EnUs)).not.toBe("");
@@ -166,9 +238,9 @@ describe("System Tool catalog", () => {
     });
 
     expect(registry.getTool("DocumentExtract")).toBeUndefined();
-    expect(registry.listTools()).toHaveLength(18);
     const extension = catalog.listExtensions().find((item) => item.id === "agent-document-tools");
     expect(extension).toMatchObject({ enabled: false, configured: true, tools: [{ name: "DocumentExtract" }] });
+    for (const tool of extension?.tools ?? []) expect(registry.getTool(tool.name)).toBeUndefined();
     expect(extension?.configuration).toMatchObject({
       configured: true,
       value: { output: { maxChunks: 7 } },
@@ -276,6 +348,101 @@ describe("System Tool catalog", () => {
           capabilities: new Set(["shell.run"]),
         }),
       ).toThrow(/omits configuration fields: mode/u);
+    } finally {
+      removeDirectory(root);
+    }
+  });
+
+  test("validates model selection field shapes and referenced configuration paths", () => {
+    const root = createTemporaryDirectory("senera-system-extension-model-selection-ui");
+    try {
+      const schema = {
+        type: "object",
+        properties: {
+          inheritParent: { type: "boolean", default: true },
+          modelProviderIds: { type: "array", items: { type: "string" }, default: [] },
+          providerEnabled: { type: "boolean", default: true },
+          modelName: { type: "string", default: "" },
+        },
+        additionalProperties: false,
+      };
+      const packageRoot = writeConfigurableExtension(
+        root,
+        "model-selection-ui",
+        schema,
+        configurationUi([
+          { path: ["inheritParent"], label: "Inherit parent", type: "boolean" },
+          {
+            path: ["modelProviderIds"],
+            label: "Model pool",
+            type: "array",
+            itemType: "string",
+            modelSelection: {
+              id: "child-model-pool",
+              capability: "Chat",
+              valueKind: "model-id",
+              mutation: "config",
+              cardinality: "many",
+              inheritance: { source: "parent-model", path: ["modelProviderIds"] },
+              required: false,
+            },
+          },
+          { path: ["providerEnabled"], label: "Provider enabled", type: "boolean" },
+          { path: ["modelName"], label: "Model name", type: "string" },
+        ]),
+      );
+      const register = () =>
+        new AgentSystemExtensionCatalog().registerRoot(new AgentExtensionRegistry(), root, {
+          capabilities: new Set(["shell.run"]),
+        });
+
+      expect(register).toThrow(/inheritance\.path must reference a boolean field: modelProviderIds/u);
+
+      writeJson(
+        path.join(packageRoot, "ui.schema.json"),
+        configurationUi([
+          { path: ["inheritParent"], label: "Inherit parent", type: "boolean" },
+          { path: ["modelProviderIds"], label: "Model pool", type: "array", itemType: "string" },
+          { path: ["providerEnabled"], label: "Provider enabled", type: "boolean" },
+          {
+            path: ["modelName"],
+            label: "Model name",
+            type: "string",
+            modelSelection: {
+              id: "provider-model",
+              capability: "Chat",
+              valueKind: "provider-model",
+              mutation: "config",
+              providerPath: ["providerEnabled"],
+              required: false,
+            },
+          },
+        ]),
+      );
+      expect(register).toThrow(/providerPath must reference a string field: providerEnabled/u);
+
+      writeJson(
+        path.join(packageRoot, "ui.schema.json"),
+        configurationUi([
+          { path: ["inheritParent"], label: "Inherit parent", type: "boolean" },
+          { path: ["modelProviderIds"], label: "Model pool", type: "array", itemType: "string" },
+          { path: ["providerEnabled"], label: "Provider enabled", type: "boolean" },
+          {
+            path: ["modelName"],
+            label: "Model name",
+            type: "string",
+            modelSelection: {
+              id: "invalid-pool",
+              capability: "Chat",
+              valueKind: "model-id",
+              mutation: "config",
+              cardinality: "many",
+              required: false,
+            },
+          },
+        ]),
+      );
+      expect(register).toThrow(/modelName has an incompatible many field type/u);
     } finally {
       removeDirectory(root);
     }
@@ -507,7 +674,12 @@ function minimalContract(name: string) {
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     permissions: [],
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
-    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
+    runtime: {
+      Lifecycle: "Immediate",
+      ProtocolVersion: 2,
+      ResultAssessment: "ProcessExit",
+      Scheduling: "Parallel",
+    },
     resources: [],
     sources: [],
     evidenceCapabilities: [],

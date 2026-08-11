@@ -115,7 +115,7 @@ export function layoutSteps(
       source,
       target,
       type: "smoothstep",
-      animated: status === "running",
+      animated: status === "running" || status === "cancelling",
       style: edgeStyle(status),
     });
   };
@@ -201,11 +201,9 @@ export function layoutSteps(
       for (const step of entry.steps) {
         addStepNode(step);
       }
-      connectSources(
-        entry.steps.map((step) => step.id),
-        aggregateStatus(entry.steps),
-      );
-      openTails = entry.steps.map((step) => step.id);
+      const targets = entry.steps.map((step) => step.id);
+      connectSources(targets, aggregateStatus(entry.steps));
+      openTails = targets;
       continue;
     }
 
@@ -268,6 +266,90 @@ export function layoutSteps(
   });
 
   return { nodes, edges };
+}
+
+/**
+ * Identifies changes that can affect dagre topology or the estimated node
+ * dimensions. Live status and result text are refreshed separately so a
+ * streaming event does not trigger another full graph layout.
+ */
+export function readWorkflowLayoutKey(steps: readonly TimelineStep[]): string {
+  return JSON.stringify(
+    steps.map((step) => [
+      step.id,
+      step.kind,
+      estimateNodeHeight(step),
+      step.scope?.parentSessionId,
+      step.scope?.parentRequestId,
+      step.scope?.workflowName,
+      step.scope?.jobId,
+      step.scope?.childRunId,
+      step.scope?.agentName,
+      step.scope?.role,
+      step.toolBatch?.id,
+      step.toolBatch?.index,
+      step.toolBatch?.size,
+      step.toolBatch?.executionMode,
+    ]),
+  );
+}
+
+export function refreshWorkflowGraphState(
+  positionedNodes: readonly Node<StepNodeData>[],
+  positionedEdges: readonly Edge[],
+  steps: readonly TimelineStep[],
+): { nodes: Node<StepNodeData>[]; edges: Edge[] } {
+  const stepsById = new Map(steps.map((step) => [step.id, step]));
+  const scopeStatuses = new Map<string, TimelineStep["status"]>();
+  for (const step of steps) {
+    if (!step.scope?.parentRequestId) continue;
+    const id = scopeNodeId(step);
+    scopeStatuses.set(id, mergeNodeStatus(scopeStatuses.get(id) ?? "done", step.status));
+  }
+
+  let nodesChanged = false;
+  const nodes = positionedNodes.map((node) => {
+    if (node.data.kind === "step") {
+      const step = stepsById.get(node.id);
+      if (!step || node.data.step === step) return node;
+      nodesChanged = true;
+      return { ...node, data: { ...node.data, step } };
+    }
+    const status = scopeStatuses.get(node.id);
+    if (!status || node.data.group.status === status) return node;
+    nodesChanged = true;
+    return { ...node, data: { ...node.data, group: { ...node.data.group, status } } };
+  });
+
+  let edgesChanged = false;
+  const edges = positionedEdges.map((edge) => {
+    const status = mergeNodeStatus(
+      nodeStatus(edge.source, stepsById, scopeStatuses),
+      nodeStatus(edge.target, stepsById, scopeStatuses),
+    );
+    const animated = status === "running" || status === "cancelling";
+    const style = edgeStyle(status);
+    if (edge.animated === animated && sameEdgeStyle(edge.style, style)) return edge;
+    edgesChanged = true;
+    return { ...edge, animated, style };
+  });
+
+  return {
+    nodes: nodesChanged ? nodes : (positionedNodes as Node<StepNodeData>[]),
+    edges: edgesChanged ? edges : (positionedEdges as Edge[]),
+  };
+}
+
+function nodeStatus(
+  nodeId: string,
+  stepsById: ReadonlyMap<string, TimelineStep>,
+  scopeStatuses: ReadonlyMap<string, TimelineStep["status"]>,
+): TimelineStep["status"] {
+  return stepsById.get(nodeId)?.status ?? scopeStatuses.get(nodeId) ?? "done";
+}
+
+function sameEdgeStyle(left: React.CSSProperties | undefined, right: React.CSSProperties): boolean {
+  return left?.stroke === right.stroke && left?.strokeWidth === right.strokeWidth;
 }
 
 function createWorkflowNodeLayout(
@@ -413,7 +495,15 @@ function aggregateStatus(steps: readonly TimelineStep[]): TimelineStep["status"]
 }
 
 function scopeNodeId(step: TimelineStep): string {
-  return ["scope", step.scope?.workflowName, step.scope?.role, step.scope?.jobId, step.scope?.agentName]
+  return [
+    "scope",
+    step.scope?.parentSessionId,
+    step.scope?.workflowName,
+    step.scope?.role,
+    step.scope?.jobId,
+    step.scope?.childRunId,
+    step.scope?.agentName,
+  ]
     .filter((value) => value !== undefined && value !== "")
     .join(":");
 }
@@ -428,6 +518,7 @@ function scopeNodeLabel(step: TimelineStep): string {
 function mergeNodeStatus(current: TimelineStep["status"], next: TimelineStep["status"]): TimelineStep["status"] {
   if (current === "failed" || next === "failed") return "failed";
   if (current === "running" || next === "running") return "running";
+  if (current === "cancelling" || next === "cancelling") return "cancelling";
   if (current === "pending" || next === "pending") return "pending";
   return "done";
 }
@@ -435,6 +526,7 @@ function mergeNodeStatus(current: TimelineStep["status"], next: TimelineStep["st
 function edgeStyle(status: TimelineStep["status"]): React.CSSProperties {
   if (status === "failed") return { stroke: "rgb(var(--color-brick-600))", strokeWidth: 1.5 };
   if (status === "running") return { stroke: "rgb(var(--color-umber-500))", strokeWidth: 1.5 };
+  if (status === "cancelling") return { stroke: "var(--accent-content)", strokeWidth: 1.5 };
   return { stroke: "var(--line-strong)", strokeWidth: 1 };
 }
 

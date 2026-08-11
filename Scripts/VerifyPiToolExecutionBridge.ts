@@ -18,14 +18,19 @@ import {
   AgentToolSuccessOutcome,
   createAgentToolFailureOutcome,
 } from "../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
-import { AgentPiTurnContextRegistry } from "../Source/AgentSystem/PiShared/AgentPiTurnContext.js";
 import { AgentToolExposureState } from "../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
-
-const turnContexts = new AgentPiTurnContextRegistry();
+import { AgentPiTurnState } from "../Source/AgentSystem/Pi/AgentPiTurnState.js";
+import { AgentModelUsageLedger } from "../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
+import { AgentPiToolPlanCoordinator } from "../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
+import {
+  AgentPiToolObservationProtocol,
+  AgentPiToolObservationSourceViewProtocol,
+} from "../Source/AgentSystem/PiShared/AgentPiToolObservationProtocol.js";
+import { AgentTurnTokenBudget } from "../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 
 class AgentPiToolExecutionBridge extends AgentPiToolExecutionBridgeBase {
-  constructor(options: Omit<AgentPiToolExecutionBridgeOptions, "turnContexts">) {
-    super({ ...options, turnContexts });
+  constructor(options: AgentPiToolExecutionBridgeOptions) {
+    super(options);
   }
 }
 
@@ -75,11 +80,7 @@ async function verifyToolResultProjection(): Promise<void> {
     params: {
       text: "hello",
     },
-    context: {
-      toolAccessGrant,
-      requestId: "verify-pi-tool-bridge",
-      step: 2,
-    },
+    context: createToolContext("call_echo", "verify-pi-tool-bridge", 2),
   });
 
   assert.equal(calls.length, 1);
@@ -91,12 +92,13 @@ async function verifyToolResultProjection(): Promise<void> {
     },
     expectedContractDigest: null,
     callId: "call_echo",
+    index: 0,
   });
   assert.equal(result.details.senera.toolName, "SeneraEchoTool");
   assert.equal(result.details.senera.callId, "call_echo");
   assert.equal(result.details.senera.artifactUri, "senera://artifact/art_0123456789abcdef01234567");
   const text = result.content[0]?.type === "text" ? result.content[0].text : "";
-  assert.match(text, /senera\.tool_observation\.v1/);
+  assert.equal((JSON.parse(text) as { type?: string }).type, AgentPiToolObservationProtocol.type);
   assert.match(text, /evidence_uri/);
   assert.match(text, /senera:\/\/artifact\/art_0123456789abcdef01234567/);
 }
@@ -104,11 +106,7 @@ async function verifyToolResultProjection(): Promise<void> {
 async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
   const hugeText = "workspace-result\n".repeat(20_000);
   const artifact = artifactFixtureRequired();
-  const contextId = turnContexts.register({
-    requestId: "verify-pi-large-result",
-    toolAccessGrant,
-    toolExposure: new AgentToolExposureState(toolAccessGrant),
-  });
+  const context = createToolContext("call_large", "verify-pi-large-result", 1, 8_192);
   const bridge = new AgentPiToolExecutionBridge({
     model: "test-model",
     executeToolCall: async () => ({
@@ -129,30 +127,25 @@ async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
       })),
   });
 
-  try {
-    const result = await bridge.execute({
-      tool,
-      toolCallId: "call_large",
-      params: {},
-      context: { toolAccessGrant, piTurnContextId: contextId },
-    });
-    const text = result.content[0]?.type === "text" ? result.content[0].text : "";
-    const observation = JSON.parse(text) as {
-      artifact_uri?: string;
-      observation_view?: { complete?: boolean };
-      detail?: { result?: { text?: string } };
-    };
-    const captured = turnContexts.takeExecutedToolResult(contextId, "call_large");
+  const result = await bridge.execute({
+    tool,
+    toolCallId: "call_large",
+    params: {},
+    context,
+  });
+  const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+  const observation = JSON.parse(text) as {
+    observation_view?: { complete?: boolean; artifact_uri?: string };
+    detail?: { result?: { text?: string } };
+  };
+  const captured = context.turnState.takeExecutedToolResult("call_large");
 
-    assert.equal(observation.artifact_uri, artifact.artifactUri);
-    assert.equal(observation.observation_view?.complete, false);
-    assert.notEqual(observation.detail?.result?.text, hugeText);
-    assert.deepEqual(captured?.result, { text: hugeText });
-    assert.equal(text.includes(hugeText), false);
-    assert.equal(JSON.stringify(result.details).includes("workspace-result"), false);
-  } finally {
-    turnContexts.release(contextId);
-  }
+  assert.equal(observation.observation_view?.artifact_uri, artifact.artifactUri);
+  assert.equal(observation.observation_view?.complete, false);
+  assert.notEqual(observation.detail?.result?.text, hugeText);
+  assert.deepEqual(captured?.result, { text: hugeText });
+  assert.equal(text.includes(hugeText), false);
+  assert.equal(JSON.stringify(result.details).includes("workspace-result"), false);
 }
 
 async function verifyAskUserProjection(): Promise<void> {
@@ -174,27 +167,21 @@ async function verifyAskUserProjection(): Promise<void> {
     tool,
     toolCallId: "call_ask",
     params: {},
-    context: { toolAccessGrant, requestId: "verify-pi-ask" },
+    context: createToolContext("call_ask", "verify-pi-ask"),
   });
 
   assert.equal(result.terminate, true);
   const observation = JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "null") as {
     type?: string;
-    tool_name?: string;
-    call_id?: string;
-    batch_id?: string;
     status?: string;
-    observation_view?: { type?: string; complete?: boolean };
+    observation_view?: { type?: string; complete?: boolean; artifact_uri?: string };
     detail?: { summary?: string; result?: unknown };
     summary?: unknown;
     control?: unknown;
   };
-  assert.equal(observation.type, "senera.tool_observation.v1");
-  assert.equal(observation.tool_name, tool.name);
-  assert.equal(observation.call_id, "call_ask");
-  assert.equal(observation.batch_id, "verify-pi-ask:1");
+  assert.equal(observation.type, AgentPiToolObservationProtocol.type);
   assert.equal(observation.status, "waiting");
-  assert.equal(observation.observation_view?.type, "senera.tool_observation_source_view.v1");
+  assert.equal(observation.observation_view?.type, AgentPiToolObservationSourceViewProtocol.type);
   assert.equal(observation.observation_view?.complete, true);
   assert.equal(observation.detail?.summary, "需要哪个目录？");
   assert.deepEqual(observation.detail?.result, {
@@ -233,7 +220,7 @@ async function verifyStructuredToolErrorProjection(): Promise<void> {
     tool,
     toolCallId: "call_error",
     params: {},
-    context: { toolAccessGrant },
+    context: createToolContext("call_error"),
   });
   assert.equal(result.details.senera.status, AgentPiToolResultStatuses.Failure);
   assert.deepEqual(result.details.senera.error, {
@@ -266,6 +253,7 @@ function createToolFixture(name: string): RegisteredTool {
       kind: "HostCapability",
       capability: "verify",
     },
+    childGrant: "inherit",
     evidenceCapabilities: [],
     sources: [],
     execution: {
@@ -347,6 +335,34 @@ function artifactFixtureRequired(): ExecutedToolCallArtifact {
 
 function artifactFixture(): ExecutedToolCallResult["artifact"] {
   return artifactFixtureRequired();
+}
+
+function createToolContext(callId: string, requestId = `request-${callId}`, step = 1, contextWindowTokens = 128_000) {
+  const tokenBudget = new AgentTurnTokenBudget({
+    model: "test-model",
+    contextWindowTokens,
+    outputReserveTokens: Math.min(2_048, Math.max(1, Math.floor(contextWindowTokens / 4))),
+  });
+  const turnState = new AgentPiTurnState({
+    approvalMode: "agent",
+    requestId,
+    step,
+    toolAccessGrant,
+    toolExposure: new AgentToolExposureState(toolAccessGrant),
+    activeSkills: [],
+    usageLedger: new AgentModelUsageLedger(),
+    toolPlan: new AgentPiToolPlanCoordinator(),
+    tokenBudget,
+  });
+  turnState.registerToolBatch(`batch-${callId}`, [{ toolCallId: callId, toolName: "VerificationTool", input: {} }]);
+  return {
+    requestId,
+    step,
+    toolAccessGrant,
+    toolExposure: turnState.context.toolExposure,
+    turnState,
+    tokenBudget,
+  };
 }
 
 main().catch((error: unknown) => {

@@ -17,8 +17,6 @@ const StructuralLimitsSchema = z
     maxDepth: z.number().int().min(0),
     maxArrayItems: z.number().int().min(0),
     maxObjectProperties: z.number().int().min(0),
-    maxStringCharacters: z.number().int().min(0),
-    maxTotalCharacters: z.number().int().min(0),
     maxNodes: z.number().int().min(1),
   })
   .strict();
@@ -28,6 +26,7 @@ const SourceRuleSchema = z
     source: z.enum(AgentToolObservationProjectionSources),
     mode: z.enum(AgentToolObservationProjectionModes),
     priority: z.enum(AgentToolObservationPriorityTiers),
+    requiredForCompletion: z.boolean(),
     pointer: JsonPointerSchema.optional(),
     maxTokens: z.number().int().min(1),
     limits: StructuralLimitsSchema,

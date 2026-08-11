@@ -4,7 +4,7 @@ import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
 import { parseAgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
-import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
 import {
   entryToRow,
   parseStoredRunEvent,

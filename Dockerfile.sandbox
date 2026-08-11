@@ -8,6 +8,16 @@ ARG SENERA_SANDBOX_DISTRIBUTION_VERSION
 ARG SENERA_SANDBOX_TARGET
 ARG SENERA_SANDBOX_SOURCE_IMAGE
 
+COPY Build/SandboxRuntimeAptPackages.txt /tmp/senera-sandbox-runtime-packages.txt
+COPY Packages/TerminalSidecar /opt/senera-terminal-sidecar
+
+RUN apt-get update \
+  && xargs --no-run-if-empty apt-get install -y --no-install-recommends < /tmp/senera-sandbox-runtime-packages.txt \
+  && npm install --prefix /opt/senera-terminal-sidecar --omit=dev --ignore-scripts --no-audit --no-fund --package-lock=false \
+  && chmod 0555 /opt/senera-terminal-sidecar/bin/senera-terminal-sidecar.js \
+  && rm -rf /var/lib/apt/lists/* /tmp/senera-sandbox-runtime-packages.txt \
+  && npm cache clean --force
+
 LABEL ai.senera.sandbox.distribution-id="${SENERA_SANDBOX_DISTRIBUTION_ID}" \
   ai.senera.sandbox.distribution-version="${SENERA_SANDBOX_DISTRIBUTION_VERSION}" \
   ai.senera.sandbox.target="${SENERA_SANDBOX_TARGET}" \

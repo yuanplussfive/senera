@@ -33,7 +33,8 @@ export function resolveAgentLoopConfig(config: AgentSystemConfig) {
 
 export function resolveToolExecutionConfig(config: AgentSystemConfig): ResolvedAgentToolExecutionConfig {
   const defaults = resolveAgentDefaults(config);
-  const { TimeoutSeconds, Environment, Resources, ...configuredToolExecution } = config.ToolExecution ?? {};
+  const { TimeoutSeconds, SemanticAudit, Environment, Resources, ...configuredToolExecution } =
+    config.ToolExecution ?? {};
   const resolvedResources = {
     ...defaults.ToolExecution.Resources,
     ...Resources,
@@ -42,6 +43,10 @@ export function resolveToolExecutionConfig(config: AgentSystemConfig): ResolvedA
     ...defaults.ToolExecution,
     ...configuredToolExecution,
     TimeoutMs: optionalSecondsToMilliseconds(TimeoutSeconds) ?? defaults.ToolExecution.TimeoutMs,
+    SemanticAudit: {
+      ...defaults.ToolExecution.SemanticAudit,
+      ...SemanticAudit,
+    },
     Environment: {
       ...defaults.ToolExecution.Environment,
       ...Environment,
@@ -54,6 +59,7 @@ export function resolveToolExecutionConfig(config: AgentSystemConfig): ResolvedA
     },
     Resources: {
       ...resolvedResources,
+      InitialYieldMs: optionalSecondsToMilliseconds(Resources?.InitialYieldSeconds) ?? resolvedResources.InitialYieldMs,
       MaxWaitMs: optionalSecondsToMilliseconds(Resources?.MaxWaitSeconds) ?? resolvedResources.MaxWaitMs,
       IdleTtlMs: optionalSecondsToMilliseconds(Resources?.IdleTtlSeconds) ?? resolvedResources.IdleTtlMs,
       TerminalTtlMs: optionalSecondsToMilliseconds(Resources?.TerminalTtlSeconds) ?? resolvedResources.TerminalTtlMs,
@@ -71,10 +77,9 @@ export function resolveSandboxRuntimeConfig(config: AgentSystemConfig): Resolved
   return {
     ...defaults.SandboxRuntime,
     ...configured,
-    Gvisor: {
-      ...defaults.SandboxRuntime.Gvisor,
-      ...configured.Gvisor,
+    Docker: {
+      ...defaults.SandboxRuntime.Docker,
+      ...configured.Docker,
     },
-    Provisioning: structuredClone(configured.Provisioning ?? defaults.SandboxRuntime.Provisioning),
   };
 }

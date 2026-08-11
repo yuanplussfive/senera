@@ -1,5 +1,6 @@
 import type { AgentMcpExecution } from "./AgentMcpPackageSchema.js";
 import type { AgentMcpPackageServer, AgentMcpPackageSourceKind } from "./AgentMcpPackageTypes.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 export interface AgentMcpDescriptorContext {
   readonly packageRoot: string;
@@ -22,7 +23,7 @@ export interface AgentMcpDescriptorAdapter {
   project(context: AgentMcpDescriptorContext, document: unknown): AgentMcpDescriptorProjection;
 }
 
-export class AgentMcpDescriptorError extends Error {
+export class AgentMcpDescriptorError extends AgentBaseError {
   constructor(
     message: string,
     readonly path: readonly PropertyKey[] = [],

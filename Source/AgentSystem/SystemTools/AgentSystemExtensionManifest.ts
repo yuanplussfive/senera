@@ -12,6 +12,8 @@ import {
   ToolSearchSchema,
 } from "../Schemas/AgentToolContractSchema.js";
 import { AgentToolObservationProjectionSchema } from "../Schemas/AgentToolObservationProjectionSchema.js";
+import { inspectAgentToolSchedulingContract } from "../Types/AgentToolRuntimeContract.js";
+import { AgentToolChildGrantModes } from "../Types/AgentToolContractTypes.js";
 
 export const AgentSystemExtensionManifestFileName = "extension.json";
 
@@ -37,7 +39,33 @@ export const AgentSystemToolContractSchema = z
     approval: ToolApprovalSchema.optional(),
     artifacts: ToolArtifactPolicySchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((tool, context) => {
+    if (tool.runtime.Scheduling === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["runtime", "Scheduling"],
+        message: "System Tools must declare Runtime.Scheduling explicitly.",
+      });
+    }
+    const issuePaths = {
+      scheduling: ["runtime", "Scheduling"],
+      maxConcurrency: ["runtime", "MaxConcurrency"],
+      resources: ["resources"],
+    } as const;
+    for (const issue of inspectAgentToolSchedulingContract({
+      handlerKind: "HostCapability",
+      scheduling: tool.runtime.Scheduling,
+      maxConcurrency: tool.runtime.MaxConcurrency,
+      resourceCount: tool.resources.length,
+    })) {
+      context.addIssue({
+        code: "custom",
+        path: [...issuePaths[issue.field]],
+        message: issue.message,
+      });
+    }
+  });
 
 const HostToolContributionSchema = z
   .object({
@@ -45,6 +73,7 @@ const HostToolContributionSchema = z
     contract: z.string().trim().min(1),
     capability: z.string().trim().min(1),
     recommendedForSkills: z.array(AgentExtensionNameSchema).default([]),
+    childGrant: z.enum(AgentToolChildGrantModes).default(AgentToolChildGrantModes.Inherit),
   })
   .strict();
 

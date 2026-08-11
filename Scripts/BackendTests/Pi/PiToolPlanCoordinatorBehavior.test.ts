@@ -1,19 +1,20 @@
 import { describe, expect, test, vi } from "vitest";
 import {
-  AgentPiAssistantCompiler,
-  type AgentPiAssistantCompilerModelClient,
-} from "../../../Source/AgentSystem/PiProxy/AgentPiAssistantCompiler.js";
+  AgentPiPlanningCompiler,
+  type AgentPiPlanningModelClient,
+} from "../../../Source/AgentSystem/Pi/AgentPiPlanningCompiler.js";
 import type {
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
-} from "../../../Source/AgentSystem/PiProxy/AgentPiAssistantMessageTypes.js";
+} from "../../../Source/AgentSystem/PiShared/AgentPiPlanningTypes.js";
 import {
   AgentPiToolPlanCoordinator,
   AgentPiToolPlanNodeStatuses,
 } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
 import { createModelProvider, toolAccessGrant } from "../Support/AgentTestFixtures.js";
 import { compilePiToolObservation } from "../Support/PiToolObservationFixtures.js";
-import { validateAgentPiCompletion } from "../../../Source/AgentSystem/PiProxy/AgentPiCompletionGate.js";
+import { validateAgentPiCompletion } from "../../../Source/AgentSystem/Pi/AgentPiCompletionGate.js";
+import { projectSeneraModelProviderToPi } from "../../../Source/AgentSystem/Pi/AgentPiModelProjector.js";
 
 describe("Pi tool plan coordination", () => {
   test("does not release descendants while a prerequisite is waiting for user input", () => {
@@ -109,7 +110,7 @@ describe("Pi tool plan coordination", () => {
     const compiler = createCompiler(client);
     const toolPlan = new AgentPiToolPlanCoordinator();
     const first = await compiler.compile({
-      request: requestWithTranscript([]),
+      ...requestWithTranscript([]),
       toolAccessGrant: planToolAccessGrant(),
       runtime: { toolPlan },
     });
@@ -121,7 +122,7 @@ describe("Pi tool plan coordination", () => {
     if (first.kind !== "tool_calls") throw new Error("Expected the first tool wave.");
 
     const second = await compiler.compile({
-      request: requestWithTranscript(
+      ...requestWithTranscript(
         first.toolCalls.map((call) => ({
           id: call.id!,
           name: call.name,
@@ -156,7 +157,7 @@ describe("Pi tool plan coordination", () => {
     const compiler = createCompiler(client);
     const toolPlan = new AgentPiToolPlanCoordinator();
     const first = await compiler.compile({
-      request: requestWithTranscript([]),
+      ...requestWithTranscript([]),
       toolAccessGrant: planToolAccessGrant(),
       runtime: { toolPlan },
     });
@@ -164,7 +165,7 @@ describe("Pi tool plan coordination", () => {
 
     const [failed, succeeded] = first.toolCalls;
     const second = await compiler.compile({
-      request: requestWithTranscript([
+      ...requestWithTranscript([
         {
           id: failed!.id!,
           name: failed!.name,
@@ -192,7 +193,7 @@ describe("Pi tool plan coordination", () => {
   });
 
   test("does not mark valid siblings as dispatched when a required call fails argument materialization", async () => {
-    const client: AgentPiAssistantCompilerModelClient = {
+    const client: AgentPiPlanningModelClient = {
       evolveTurn: async () => ({
         kind: "Execute",
         fragment: {
@@ -222,11 +223,12 @@ describe("Pi tool plan coordination", () => {
       },
       fillPiToolArguments: async () => ({ arguments: {}, missingInputs: ["key"], assumptions: [] }),
       repairPiToolArguments: async () => ({ arguments: {}, missingInputs: ["key"], assumptions: [] }),
+      summarizePiConversation: async () => ({ summary: "unused" }),
     };
     const toolPlan = new AgentPiToolPlanCoordinator();
 
     const compilation = await createCompiler(client).compile({
-      request: requestWithTranscript([]),
+      ...requestWithTranscript([]),
       toolAccessGrant: planToolAccessGrant(),
       runtime: { toolPlan },
     });
@@ -245,7 +247,7 @@ function planToolAccessGrant() {
   return toolAccessGrant(tools, tools);
 }
 
-class PlannedCompilerClient implements AgentPiAssistantCompilerModelClient {
+class PlannedCompilerClient implements AgentPiPlanningModelClient {
   readonly evolveTurn = vi.fn(async () => {
     const call = this.evolveTurn.mock.calls.length;
     return call === 1 ? plannedAction() : this.options.fallbackAction;
@@ -272,6 +274,10 @@ class PlannedCompilerClient implements AgentPiAssistantCompilerModelClient {
 
   async repairPiToolArguments(_input: AgentPiToolArgumentsRepairInput): Promise<never> {
     throw new Error("All test calls provide valid argument hints.");
+  }
+
+  async summarizePiConversation(): Promise<never> {
+    throw new Error("Unexpected conversation summary.");
   }
 }
 
@@ -310,83 +316,104 @@ function requestWithTranscript(
     status: "success" | "failure";
   }[],
 ) {
+  const modelProvider = createModelProvider({
+    Model: "test-model",
+    MaxModelOutputTokens: 1_024,
+  });
   return {
-    model: "test-model",
-    messages: [
-      { role: "user" as const, content: "Collect and combine the status." },
-      ...completed.flatMap((call) => [
-        {
-          role: "assistant" as const,
-          content: null,
-          tool_calls: [
-            {
-              id: call.id,
-              type: "function" as const,
-              function: { name: call.name, arguments: JSON.stringify(call.arguments) },
-            },
-          ],
-        },
-        {
-          role: "tool" as const,
-          tool_call_id: call.id,
-          content: JSON.stringify(
-            compilePiToolObservation({
-              callId: call.id,
-              toolName: call.name,
-              status: call.status,
-              outputAvailability: call.status === "success" ? "complete" : "none",
-              summary: `${call.name} ${call.status}`,
-              result: {},
-            }),
-          ),
-        },
-      ]),
-    ],
-    tools: [
-      tool(
-        "SearchTool",
-        {
-          query: { type: "string" },
-        },
-        ["query"],
-      ),
-      tool(
-        "LookupTool",
-        {
-          key: { type: "string" },
-        },
-        ["key"],
-      ),
-      tool(
-        "MergeTool",
-        {
-          sources: { type: "array", items: { type: "string" } },
-        },
-        ["sources"],
-      ),
-    ],
+    model: projectSeneraModelProviderToPi(modelProvider).model,
+    context: {
+      messages: [
+        { role: "user" as const, content: "Collect and combine the status.", timestamp: 1 },
+        ...completed.flatMap((call) => [
+          {
+            role: "assistant" as const,
+            api: "senera-planning" as const,
+            provider: "senera",
+            model: "test-model",
+            content: [{ type: "toolCall" as const, id: call.id, name: call.name, arguments: call.arguments }],
+            usage: emptyUsage(),
+            stopReason: "toolUse" as const,
+            timestamp: 2,
+          },
+          {
+            role: "toolResult" as const,
+            toolCallId: call.id,
+            toolName: call.name,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  compilePiToolObservation({
+                    callId: call.id,
+                    toolName: call.name,
+                    status: call.status,
+                    outputAvailability: call.status === "success" ? "complete" : "none",
+                    summary: `${call.name} ${call.status}`,
+                    result: {},
+                  }),
+                ),
+              },
+            ],
+            isError: call.status === "failure",
+            timestamp: 3,
+          },
+        ]),
+      ],
+      tools: [
+        tool(
+          "SearchTool",
+          {
+            query: { type: "string" },
+          },
+          ["query"],
+        ),
+        tool(
+          "LookupTool",
+          {
+            key: { type: "string" },
+          },
+          ["key"],
+        ),
+        tool(
+          "MergeTool",
+          {
+            sources: { type: "array", items: { type: "string" } },
+          },
+          ["sources"],
+        ),
+      ],
+    },
   };
 }
 
 function tool(name: string, properties: Record<string, unknown>, required: string[]) {
   return {
-    type: "function" as const,
-    function: {
-      name,
-      description: `${name} description.`,
-      parameters: {
-        type: "object",
-        properties,
-        required,
-        additionalProperties: false,
-      },
+    name,
+    description: `${name} description.`,
+    parameters: {
+      type: "object",
+      properties,
+      required,
+      additionalProperties: false,
     },
   };
 }
 
-function createCompiler(client: AgentPiAssistantCompilerModelClient): AgentPiAssistantCompiler {
-  return new AgentPiAssistantCompiler({
+function createCompiler(client: AgentPiPlanningModelClient): AgentPiPlanningCompiler {
+  return new AgentPiPlanningCompiler({
     modelProvider: createModelProvider(),
     client,
   });
+}
+
+function emptyUsage() {
+  return {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
 }

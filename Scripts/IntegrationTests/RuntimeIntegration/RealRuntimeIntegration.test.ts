@@ -24,6 +24,7 @@ describe("real runtime integration", () => {
 
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId,
       input: RealRuntimeIntegrationValues.DirectRequestInput,
@@ -33,6 +34,7 @@ describe("real runtime integration", () => {
 
     harness.client.send({
       type: "session.regenerate",
+      approvalMode: "agent",
       sessionId,
       fromRequestId: requestId,
       requestId: firstReplacementRequestId,
@@ -40,6 +42,7 @@ describe("real runtime integration", () => {
     });
     harness.client.send({
       type: "session.regenerate",
+      approvalMode: "agent",
       sessionId,
       fromRequestId: requestId,
       requestId: replacementRequestId,
@@ -78,12 +81,13 @@ describe("real runtime integration", () => {
     pausedEvolution.release();
 
     expect(harness.modelServer.count("evolveTurn")).toBe(2);
-    expect(
-      harness.client
-        .snapshot()
-        .filter((event) => event.kind === AgentEventKinds.AssistantMessageCreated)
-        .map((event) => event.requestId),
-    ).toEqual([replacementRequestId]);
+    const answerEvents = harness.client
+      .snapshot()
+      .filter((event) => event.kind === AgentEventKinds.AssistantMessageCreated);
+    expect(answerEvents.map((event) => event.requestId)).toEqual([replacementRequestId, replacementRequestId]);
+    const answerLifecycle = answerEvents.map((event) => readData(event));
+    expect(answerLifecycle.map((data) => data.terminal)).toEqual([false, true]);
+    expect(new Set(answerLifecycle.map((data) => data.messageId)).size).toBe(1);
   }, 30_000);
 
   test("reuses the Pi session across direct responses and regeneration", async () => {
@@ -94,6 +98,7 @@ describe("real runtime integration", () => {
 
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId,
       input: RealRuntimeIntegrationValues.DirectRequestInput,
@@ -114,6 +119,7 @@ describe("real runtime integration", () => {
     const followUpRequestId = `${requestId}_follow_up`;
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId: followUpRequestId,
       input: RealRuntimeIntegrationValues.DirectRequestInput,
@@ -132,6 +138,7 @@ describe("real runtime integration", () => {
     const regeneratedRequestId = `${requestId}_regenerated`;
     harness.client.send({
       type: "session.regenerate",
+      approvalMode: "agent",
       sessionId,
       fromRequestId: requestId,
       requestId: regeneratedRequestId,
@@ -165,7 +172,7 @@ describe("real runtime integration", () => {
     expect(harness.modelServer.count("evolveTurn")).toBe(3);
   }, 30_000);
 
-  test("runs BAML planning, Pi proxy model streaming, a host tool, and persisted session replay", async () => {
+  test("runs BAML provider streaming, a host tool, and persisted session replay", async () => {
     const harness = await createRealRuntimeIntegrationHarness();
     openHarnesses.push(harness);
     const sessionId = "session_real_runtime_e2e";
@@ -175,6 +182,7 @@ describe("real runtime integration", () => {
     await harness.client.waitForEvent(AgentEventKinds.SessionCreated, (event) => event.sessionId === sessionId);
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId,
       input: RealRuntimeIntegrationValues.RequestInput,
@@ -194,9 +202,8 @@ describe("real runtime integration", () => {
       timeoutMs: 20_000,
       afterSequence: finalAnswer.sequence,
     });
-    expect(harness.modelServer.stages).toEqual(
-      expect.arrayContaining(["evolveTurn", "fillPiToolArguments", "auditToolRisk"]),
-    );
+    expect(harness.modelServer.stages).toEqual(expect.arrayContaining(["evolveTurn", "fillPiToolArguments"]));
+    expect(harness.modelServer.stages).not.toContain("auditToolRisk");
     expect(harness.modelServer.count("evolveTurn")).toBe(2);
 
     harness.client.send({ type: "session.history", sessionId, refresh: true });
@@ -208,8 +215,8 @@ describe("real runtime integration", () => {
     );
     expect(JSON.stringify(history.data)).toContain(RealRuntimeIntegrationValues.RequestInput);
     expect(JSON.stringify(history.data)).toContain('"source":"provider_reported"');
-    expect(JSON.stringify(history.data)).toContain('"totalTokens":440');
-    expect(JSON.stringify(history.data)).toContain('"stage":"AuditToolRisk"');
+    expect(JSON.stringify(history.data)).toContain('"totalTokens":330');
+    expect(JSON.stringify(history.data)).not.toContain('"stage":"AuditToolRisk"');
     expect(JSON.stringify(history.data)).toContain('"stage":"EvolveTurn"');
   }, 30_000);
   test("cancels a run while the planner is paused mid-stage and accepts follow-up work", async () => {
@@ -221,6 +228,7 @@ describe("real runtime integration", () => {
 
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId,
       input: RealRuntimeIntegrationValues.DirectRequestInput,
@@ -236,6 +244,7 @@ describe("real runtime integration", () => {
     const followUpRequestId = `${requestId}_follow_up`;
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId: followUpRequestId,
       input: RealRuntimeIntegrationValues.DirectRequestInput,
@@ -263,6 +272,7 @@ describe("real runtime integration", () => {
 
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId,
       input: RealRuntimeIntegrationValues.DirectRequestInput,
@@ -275,6 +285,7 @@ describe("real runtime integration", () => {
     const retryRequestId = `${requestId}_retry`;
     harness.client.send({
       type: "session.message",
+      approvalMode: "agent",
       sessionId,
       requestId: retryRequestId,
       input: RealRuntimeIntegrationValues.DirectRequestInput,

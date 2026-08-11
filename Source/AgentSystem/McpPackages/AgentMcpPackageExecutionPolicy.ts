@@ -1,4 +1,4 @@
-import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
+import type { SeneraExecutionRuntimeCapabilities } from "../Execution/SeneraExecutionRuntimeCapabilities.js";
 import type { SeneraProcessBackendPreference } from "../Execution/SeneraExecutionProfile.js";
 import { ToolExecutionTargets, type ToolExecutionTarget } from "../Types/AgentToolContractTypes.js";
 import { AgentMcpExecutionTargets, type AgentMcpExecution } from "./AgentMcpPackageSchema.js";
@@ -30,7 +30,9 @@ type NonEmptyAgentMcpExecutionTargets = readonly [AgentMcpExecutionTarget, ...Ag
 export function resolveAgentMcpPackageExecutionPolicy(
   package_: AgentMcpPackage,
   server: AgentMcpPackageServer,
-  executionEnv: Pick<SeneraExecutionEnv, "capabilities">,
+  executionEnv: {
+    readonly capabilities: Pick<SeneraExecutionRuntimeCapabilities, "persistentProcessBackends">;
+  },
 ): AgentMcpPackageExecutionPolicy {
   if (server.configuration.type === "http") {
     return {

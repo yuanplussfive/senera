@@ -95,11 +95,11 @@ describe("Sandbox execution context behavior", () => {
             release: () => Promise.reject(new Error("rootfs cleanup failed")),
           },
         ],
-        { backend: "microsandbox" },
+        { backend: "docker-engine" },
       ),
     ).rejects.toMatchObject({
       code: SeneraExecutionErrorCodes.CleanupFailed,
-      details: { backend: "microsandbox", reason: "rootfs_cleanup_failed" },
+      details: { backend: "docker-engine", reason: "rootfs_cleanup_failed" },
     });
   });
 });

@@ -3,6 +3,9 @@ import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 import type { AgentToolAccessGrant } from "./AgentToolAccessGrant.js";
 import type { AgentToolExposureState } from "./AgentToolExposureState.js";
+import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 
 export type AgentToolCallExecutionResult =
   | {
@@ -12,6 +15,10 @@ export type AgentToolCallExecutionResult =
   | {
       kind: "AskUser";
       value: AskUserControlResult;
+    }
+  | {
+      kind: "SuspendChildRun";
+      value: SuspendChildRunControlResult;
     };
 
 export type AgentExecutionResult = AgentToolCallExecutionResult;
@@ -19,6 +26,12 @@ export type AgentExecutionResult = AgentToolCallExecutionResult;
 export interface AskUserControlResult {
   question: string;
   reason_code?: string;
+}
+
+export interface SuspendChildRunControlResult {
+  readonly childRunId: string;
+  readonly messageId: string;
+  readonly message: string;
 }
 
 export interface AgentToolCallExecutionContext {
@@ -31,6 +44,11 @@ export interface AgentToolCallExecutionContext {
   batchId?: string;
   signal?: AbortSignal;
   tokenBudget?: AgentToolTokenBudget;
+  approvalMode?: AgentExecutionApprovalMode;
+  activeSkills?: readonly AgentActivatedSkill[];
+  thinkingLevel?: ModelThinkingLevel;
+  onLifecycleSettled?: (status: "completed" | "failed") => void;
+  deferResultDetail?: boolean;
 }
 
 export interface AgentToolCallExecutionRequest {

@@ -1,158 +1,225 @@
 import { Check, CircleStop, ShieldCheck, X } from "lucide-react";
 import type { ComponentType } from "react";
-import type { ApprovalDecision } from "../../api/approvalEventTypes";
+import type { ApprovalBatchReference, ApprovalDecision } from "../../api/approvalEventTypes";
 import type { ApprovalRunRecord } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { MotionList, MotionListItem } from "../../shared/motion";
 import { Button, MetaLabel, Spinner } from "../../shared/ui";
 
 export interface ApprovalRequestStripProps {
   approvals: ApprovalRunRecord[];
+  sessionId?: string;
+  requestId?: string;
   disabled?: boolean;
   onResolve: (approvalId: string, decision: ApprovalDecision) => void;
+  onResolveBatch?: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
 }
 
 interface ApprovalDecisionPresentation {
   Icon: ComponentType<{ className?: string }>;
   variant: "default" | "ghost";
   className: string;
-  label: (approval: ApprovalRunRecord) => string;
+  singleLabel: (approval: ApprovalRunRecord) => string;
+  batchLabel: Parameters<typeof frontendMessage>[0];
 }
 
-const ApprovalDecisionPresentations = {
+const DecisionPresentation = {
   approve_once: {
     Icon: Check,
     variant: "default",
-    className: "h-7 bg-ink-900 px-2 text-paper-50 hover:bg-ink-800",
-    label: (approval) =>
+    className: "bg-ink-900 text-paper-50 hover:bg-ink-800",
+    singleLabel: (approval) =>
       frontendMessage(
         approval.availableDecisions.includes("approve_session") ? "approval.allowOnce" : "approval.allow",
       ),
+    batchLabel: "approval.allowAllOnce",
   },
   approve_session: {
     Icon: ShieldCheck,
     variant: "default",
-    className: "h-7 bg-ink-900 px-2 text-paper-50 hover:bg-ink-800",
-    label: () => frontendMessage("approval.allowSession"),
+    className: "bg-ink-900 text-paper-50 hover:bg-ink-800",
+    singleLabel: () => frontendMessage("approval.allowSession"),
+    batchLabel: "approval.allowAllSession",
   },
   deny: {
     Icon: X,
     variant: "ghost",
-    className: "h-7 px-2 text-ink-500 hover:bg-brick-50 hover:text-brick-700",
-    label: () => frontendMessage("approval.deny"),
+    className: "text-ink-500 hover:bg-brick-50 hover:text-brick-700",
+    singleLabel: () => frontendMessage("approval.deny"),
+    batchLabel: "approval.denyAll",
   },
   deny_and_interrupt: {
     Icon: CircleStop,
     variant: "ghost",
-    className: "h-7 px-2 text-brick-700 hover:bg-brick-50",
-    label: () => frontendMessage("approval.denyAndInterrupt"),
+    className: "text-brick-700 hover:bg-brick-50",
+    singleLabel: () => frontendMessage("approval.denyAndInterrupt"),
+    batchLabel: "approval.denyAllAndInterrupt",
   },
 } satisfies Record<ApprovalDecision, ApprovalDecisionPresentation>;
 
+interface ApprovalGroup {
+  key: string;
+  batchId?: string;
+  approvals: ApprovalRunRecord[];
+}
+
 export function ApprovalRequestStrip({
   approvals,
+  sessionId,
+  requestId,
   disabled = false,
   onResolve,
-}: ApprovalRequestStripProps): JSX.Element | null {
-  const pendingApprovals = approvals.filter((approval) => approval.status === "pending");
-  if (pendingApprovals.length === 0) return null;
-
+  onResolveBatch,
+}: ApprovalRequestStripProps): JSX.Element {
+  const groups = groupApprovals(
+    approvals.filter((approval) => approval.status === "pending"),
+    Boolean(sessionId && requestId && onResolveBatch),
+  );
   return (
-    <div className="mb-3 flex flex-col gap-1.5">
-      {pendingApprovals.map((approval) => (
-        <ApprovalRequestItem
-          key={approval.approvalId}
-          approval={approval}
-          disabled={disabled || approval.resolutionPending === true}
-          onResolve={onResolve}
-        />
+    <MotionList className="flex flex-col gap-1.5">
+      {groups.map((group) => (
+        <MotionListItem key={group.key} layout="position" className="last:mb-3">
+          <ApprovalGroupView
+            group={group}
+            batchReference={
+              group.batchId && sessionId && requestId ? { sessionId, requestId, batchId: group.batchId } : undefined
+            }
+            disabled={disabled || group.approvals.some((approval) => approval.resolutionPending)}
+            onResolve={onResolve}
+            onResolveBatch={onResolveBatch}
+          />
+        </MotionListItem>
       ))}
-    </div>
+    </MotionList>
   );
 }
 
-function ApprovalRequestItem({
-  approval,
+export default ApprovalRequestStrip;
+
+function ApprovalGroupView({
+  group,
+  batchReference,
   disabled,
   onResolve,
+  onResolveBatch,
 }: {
-  approval: ApprovalRunRecord;
+  group: ApprovalGroup;
+  batchReference?: ApprovalBatchReference;
   disabled: boolean;
   onResolve: ApprovalRequestStripProps["onResolve"];
+  onResolveBatch?: ApprovalRequestStripProps["onResolveBatch"];
 }): JSX.Element {
-  const riskLabels = approvalRiskLabels(approval);
-  const argumentSummary = summarizeApprovalArguments(approval.subject.arguments);
-  const displayName = approval.subject.toolName;
+  const batch = group.approvals.length > 1;
+  const primary = group.approvals[0]!;
+  const decisions = sharedDecisions(group.approvals);
+  const resolve = (decision: ApprovalDecision): void => {
+    if (batchReference && onResolveBatch) onResolveBatch(batchReference, decision);
+    else onResolve(primary.approvalId, decision);
+  };
 
   return (
-    <section className="rounded-xl border border-line bg-surface-raised px-3 py-2.5 shadow-panel">
-      <div className="flex min-w-0 flex-col gap-2.5 sm:flex-row sm:items-start">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-umber-600" />
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="truncate text-[12.5px] font-semibold text-content-primary">{displayName}</span>
-            <MetaLabel size="sm" className="text-umber-600">
-              {frontendMessage("approval.tool.pending")}
-            </MetaLabel>
-            {approval.rule ? (
-              <span className="rounded-[4px] bg-umber-50 px-1.5 py-0.5 font-mono text-[10px] text-umber-600">
-                {approval.rule}
-              </span>
-            ) : null}
-          </div>
-          <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-content-secondary">{approval.reason}</p>
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-            {riskLabels.map((label) => (
-              <span
-                key={label}
-                className="rounded-[4px] border border-line-subtle bg-surface-subtle px-1.5 py-0.5 font-mono text-[10px] text-content-secondary"
-              >
-                {label}
-              </span>
-            ))}
-            {argumentSummary ? (
-              <span className="min-w-0 truncate font-mono text-[10.5px] text-content-muted">{argumentSummary}</span>
-            ) : null}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {approval.availableDecisions.map((decision) => (
-            <ApprovalDecisionButton
-              key={decision}
-              approval={approval}
-              decision={decision}
-              disabled={disabled}
-              onResolve={onResolve}
-            />
-          ))}
-        </div>
+    <section className="rounded-lg border border-line bg-surface-raised px-3 py-2.5 shadow-panel">
+      <div className="flex min-w-0 items-center gap-2">
+        <ShieldCheck className="h-4 w-4 shrink-0 text-umber-600" />
+        <span className="min-w-0 truncate text-[12.5px] font-semibold text-content-primary">
+          {batch
+            ? frontendMessage("approval.batch.pending", { count: group.approvals.length })
+            : primary.subject.toolName}
+        </span>
+        <MetaLabel size="sm" className="shrink-0 text-umber-600">
+          {frontendMessage("approval.tool.pending")}
+        </MetaLabel>
+      </div>
+
+      <div className={batch ? "mt-2 divide-y divide-line-subtle border-y border-line-subtle" : "mt-1"}>
+        {group.approvals.map((approval) => (
+          <ApprovalSummary key={approval.approvalId} approval={approval} showName={batch} />
+        ))}
+      </div>
+
+      <div className="mt-2.5 flex flex-wrap items-center justify-end gap-1">
+        {decisions.map((decision) => (
+          <ApprovalDecisionButton
+            key={decision}
+            approval={primary}
+            decision={decision}
+            batch={batch}
+            disabled={disabled}
+            resolving={group.approvals.some(
+              (approval) => approval.resolutionPending && approval.pendingDecision === decision,
+            )}
+            onResolve={resolve}
+          />
+        ))}
       </div>
     </section>
   );
 }
 
+function ApprovalSummary({ approval, showName }: { approval: ApprovalRunRecord; showName: boolean }): JSX.Element {
+  const risks = approvalRiskLabels(approval);
+  const argumentsText = summarizeApprovalArguments(approval.subject.arguments);
+  return (
+    <div className={showName ? "py-2 first:pt-1.5 last:pb-1.5" : undefined}>
+      {showName ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <span className="truncate text-[11.5px] font-medium text-content-primary">{approval.subject.toolName}</span>
+          {approval.rule ? <RuleLabel value={approval.rule} /> : null}
+        </div>
+      ) : approval.rule ? (
+        <RuleLabel value={approval.rule} />
+      ) : null}
+      <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-content-secondary">{approval.reason}</p>
+      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+        {risks.map((label) => (
+          <span
+            key={label}
+            className="rounded-[4px] border border-line-subtle bg-surface-subtle px-1.5 py-0.5 font-mono text-[10px] text-content-secondary"
+          >
+            {label}
+          </span>
+        ))}
+        {argumentsText ? (
+          <span className="min-w-0 truncate font-mono text-[10.5px] text-content-muted">{argumentsText}</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function RuleLabel({ value }: { value: string }): JSX.Element {
+  return <span className="rounded-[4px] bg-umber-50 px-1.5 py-0.5 font-mono text-[10px] text-umber-600">{value}</span>;
+}
+
 function ApprovalDecisionButton({
   approval,
   decision,
+  batch,
   disabled,
+  resolving,
   onResolve,
 }: {
   approval: ApprovalRunRecord;
   decision: ApprovalDecision;
+  batch: boolean;
   disabled: boolean;
-  onResolve: ApprovalRequestStripProps["onResolve"];
+  resolving: boolean;
+  onResolve: (decision: ApprovalDecision) => void;
 }): JSX.Element {
-  const presentation = ApprovalDecisionPresentations[decision];
-  const resolving = approval.resolutionPending === true && approval.pendingDecision === decision;
+  const presentation = DecisionPresentation[decision];
+  const label = resolving
+    ? frontendMessage("approval.resolving")
+    : batch
+      ? frontendMessage(presentation.batchLabel)
+      : presentation.singleLabel(approval);
   const Icon = presentation.Icon;
-  const label = resolving ? frontendMessage("approval.resolving") : presentation.label(approval);
-
   return (
     <Button
       size="sm"
       variant={presentation.variant}
       disabled={disabled}
-      onClick={() => onResolve(approval.approvalId, decision)}
-      className={presentation.className}
+      onClick={() => onResolve(decision)}
+      className={`h-8 px-2.5 ${presentation.className}`}
       aria-label={label}
     >
       {resolving ? <Spinner size="sm" /> : <Icon className="h-3.5 w-3.5" />}
@@ -161,10 +228,29 @@ function ApprovalDecisionButton({
   );
 }
 
+function groupApprovals(approvals: ApprovalRunRecord[], batches: boolean): ApprovalGroup[] {
+  const groups = new Map<string, ApprovalGroup>();
+  for (const approval of approvals) {
+    const batchId = batches ? approval.batchId : undefined;
+    const key = batchId ? `batch:${batchId}` : `approval:${approval.approvalId}`;
+    const group = groups.get(key) ?? { key, batchId, approvals: [] };
+    group.approvals.push(approval);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+function sharedDecisions([first, ...rest]: ApprovalRunRecord[]): ApprovalDecision[] {
+  return first
+    ? first.availableDecisions.filter((decision) =>
+        rest.every((approval) => approval.availableDecisions.includes(decision)),
+      )
+    : [];
+}
+
 function approvalRiskLabels(approval: ApprovalRunRecord): string[] {
-  const signals = approval.riskSignals ?? [];
   const execution = approval.subject.execution;
-  const executionLabels = execution
+  const labels = execution
     ? [
         frontendMessage(execution.target === "Sandbox" ? "approval.execution.sandbox" : "approval.execution.local"),
         frontendMessage(
@@ -177,26 +263,23 @@ function approvalRiskLabels(approval: ApprovalRunRecord): string[] {
         ),
       ]
     : [];
-  return [...executionLabels, ...(signals.length > 0 ? signals : [frontendMessage("approval.manualReview")])].slice(
-    0,
-    5,
-  );
+  return [
+    ...labels,
+    ...(approval.riskSignals?.length ? approval.riskSignals : [frontendMessage("approval.manualReview")]),
+  ].slice(0, 5);
 }
 
 function summarizeApprovalArguments(args: Record<string, unknown>): string {
-  const entries = Object.entries(args).slice(0, 3);
-  if (entries.length === 0) return "";
-  return entries.map(([key, value]) => `${key}=${summarizeValue(value)}`).join(" · ");
-}
-
-function summarizeValue(value: unknown): string {
-  const text =
-    typeof value === "string"
-      ? value
-      : Array.isArray(value)
-        ? `[${value.length}]`
-        : value && typeof value === "object"
-          ? "{...}"
-          : String(value);
-  return text.length > 42 ? `${text.slice(0, 39)}...` : text;
+  return Object.entries(args)
+    .slice(0, 3)
+    .map(([key, value]) => {
+      const text =
+        typeof value === "string"
+          ? value
+          : Array.isArray(value)
+            ? `[${value.length}]`
+            : (JSON.stringify(value) ?? String(value));
+      return `${key}=${text.length > 42 ? `${text.slice(0, 39)}...` : text}`;
+    })
+    .join(" · ");
 }

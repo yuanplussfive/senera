@@ -37,6 +37,7 @@ test("sent images use authenticated content URLs and open the full-image dialog"
   expect(screen.getByRole("button", { name: "放大" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "实际尺寸" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "下载原图" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "关闭" })).toBeEnabled();
   expect(screen.queryByRole("button", { name: "在新窗口打开原图" })).not.toBeInTheDocument();
 
   const dialogImage = within(dialog).getByRole("img", { name: "first.png" });
@@ -51,6 +52,9 @@ test("sent images use authenticated content URLs and open the full-image dialog"
   await user.click(screen.getByRole("button", { name: "适合窗口" }));
   expect(dialogImage.style.width).toBe("");
   expect(dialogImage.style.height).toBe("");
+
+  await user.click(screen.getByRole("button", { name: "关闭" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "查看图片：first.png" })).not.toBeInTheDocument());
 });
 
 test("failed image rendering becomes an explicit file attachment state", () => {

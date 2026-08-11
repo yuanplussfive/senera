@@ -16,6 +16,11 @@ const LazyThinkingTimelineCanvas = lazy(() =>
     default: module.ThinkingTimelineCanvas,
   })),
 );
+const LazyWorkflowDockGraph = lazy(() =>
+  import("./WorkflowDockGraph").then((module) => ({
+    default: module.WorkflowDockGraph,
+  })),
+);
 
 export function ThinkingTimeline({
   presentation = "auto",
@@ -90,7 +95,7 @@ function ThinkingPanel({
           onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
           onClosePanel={onClosePanel}
         />
-        <CanvasArea run={run} focusOpen={focusOpen} onToggleFocus={toggleFocus} />
+        <CanvasArea run={run} compact={presentation === "dock"} focusOpen={focusOpen} onToggleFocus={toggleFocus} />
       </aside>
       <TimelineFocusDialog
         open={focusOpen}
@@ -280,17 +285,30 @@ function TimelineFocusDialog({
 
 function CanvasArea({
   run,
+  compact = false,
   focusVersion = 0,
   layoutDirection = "vertical",
   focusOpen = false,
   onToggleFocus,
 }: {
   run?: RunRecord;
+  compact?: boolean;
   focusVersion?: number;
   layoutDirection?: WorkflowLayoutDirection;
   focusOpen?: boolean;
   onToggleFocus?: () => void;
 }): JSX.Element {
+  if (compact && run) {
+    return (
+      <div className="relative flex min-h-0 flex-1 overflow-hidden bg-transparent" data-workflow-execution-content>
+        <CanvasFocusAction focusOpen={focusOpen} onToggleFocus={onToggleFocus} />
+        <Suspense fallback={<CanvasLoading />}>
+          <LazyWorkflowDockGraph run={run} />
+        </Suspense>
+      </div>
+    );
+  }
+
   if (!shouldLoadWorkflowCanvas(run)) {
     return (
       <div

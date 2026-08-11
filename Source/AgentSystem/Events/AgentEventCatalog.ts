@@ -18,6 +18,7 @@ export const AgentEventPhases = {
   Approval: "approval",
   Sandbox: "sandbox",
   Config: "config",
+  Orchestration: "orchestration",
 } as const;
 
 export type AgentEventPhase = (typeof AgentEventPhases)[keyof typeof AgentEventPhases];
@@ -68,6 +69,34 @@ export const AgentEventKinds = {
   RunCompleted: "run.completed",
   RunFailed: "run.failed",
   RunCancelled: "run.cancelled",
+  ChildRunQueued: "child_run.queued",
+  ChildRunStarted: "child_run.started",
+  ChildRunAwaitingSupervisor: "child_run.awaiting_supervisor",
+  ChildRunResumed: "child_run.resumed",
+  ChildRunMessageCreated: "child_run.message.created",
+  ChildRunSnapshotUpdated: "child_run.snapshot.updated",
+  ChildRunDeadlineExtended: "child_run.deadline.extended",
+  ChildRunWrappingUp: "child_run.wrapping_up",
+  ChildRunCancelling: "child_run.cancelling",
+  ChildRunCompleted: "child_run.completed",
+  ChildRunPartialCompleted: "child_run.partial_completed",
+  ChildRunInterrupted: "child_run.interrupted",
+  ChildRunTimedOut: "child_run.timed_out",
+  ChildRunFailed: "child_run.failed",
+  ChildRunCancelled: "child_run.cancelled",
+  WorkflowStarted: "workflow.started",
+  WorkflowSnapshotUpdated: "workflow.snapshot.updated",
+  WorkflowPaused: "workflow.paused",
+  WorkflowCancelling: "workflow.cancelling",
+  WorkflowCompleted: "workflow.completed",
+  WorkflowPartialCompleted: "workflow.partial_completed",
+  WorkflowFailed: "workflow.failed",
+  WorkflowCancelled: "workflow.cancelled",
+  ScheduledTaskChanged: "scheduled_task.changed",
+  ScheduledTaskRunStarted: "scheduled_task.run.started",
+  ScheduledTaskRunCompleted: "scheduled_task.run.completed",
+  ScheduledTaskRunFailed: "scheduled_task.run.failed",
+  SchedulerStatusSnapshot: "scheduler.status.snapshot",
   RequestInvalid: "request.invalid",
   ConfigReloaded: "config.reloaded",
   ConfigFailed: "config.failed",
@@ -275,6 +304,118 @@ export const AgentEventSpecTable: {
   [AgentEventKinds.RunCancelled]: {
     layer: AgentEventLayers.Terminal,
     phase: AgentEventPhases.Run,
+  },
+  [AgentEventKinds.ChildRunQueued]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunStarted]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunAwaitingSupervisor]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunResumed]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunMessageCreated]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunSnapshotUpdated]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunDeadlineExtended]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunWrappingUp]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunCancelling]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunCompleted]: {
+    layer: AgentEventLayers.Terminal,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunPartialCompleted]: {
+    layer: AgentEventLayers.Terminal,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunInterrupted]: {
+    layer: AgentEventLayers.Terminal,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunTimedOut]: {
+    layer: AgentEventLayers.Terminal,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunFailed]: {
+    layer: AgentEventLayers.Error,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ChildRunCancelled]: {
+    layer: AgentEventLayers.Terminal,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.WorkflowStarted]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.WorkflowSnapshotUpdated]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.WorkflowPaused]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.WorkflowCancelling]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.WorkflowCompleted]: {
+    layer: AgentEventLayers.Terminal,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.WorkflowPartialCompleted]: {
+    layer: AgentEventLayers.Terminal,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.WorkflowFailed]: {
+    layer: AgentEventLayers.Error,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.WorkflowCancelled]: {
+    layer: AgentEventLayers.Terminal,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ScheduledTaskChanged]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ScheduledTaskRunStarted]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ScheduledTaskRunCompleted]: {
+    layer: AgentEventLayers.Terminal,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.ScheduledTaskRunFailed]: {
+    layer: AgentEventLayers.Error,
+    phase: AgentEventPhases.Orchestration,
+  },
+  [AgentEventKinds.SchedulerStatusSnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Orchestration,
   },
   [AgentEventKinds.RequestInvalid]: {
     layer: AgentEventLayers.Error,

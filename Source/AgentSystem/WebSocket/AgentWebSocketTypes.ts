@@ -14,7 +14,6 @@ import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteracti
 import type { AgentWebSocketEventPersistenceOptions } from "./AgentWebSocketEventSender.js";
 import type { AgentRunEventWriter } from "./AgentRunEventWriter.js";
 import type { AgentPiDiagnosticSink } from "../PiShared/AgentPiDiagnosticsTypes.js";
-import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
 import type { AgentMcpManagementService } from "../McpPackages/AgentMcpManagementService.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 
@@ -36,7 +35,6 @@ export interface AgentWebSocketServerOptions {
   eventPersistence?: AgentWebSocketEventPersistenceOptions;
   eventWriter: AgentRunEventWriter;
   mcpManagement?: AgentMcpManagementService;
-  piTurnContexts: AgentPiTurnContextStore;
   uploadStore?: AgentUploadStore;
 }
 

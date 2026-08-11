@@ -9,19 +9,16 @@ import {
   type DesktopFrontendSource,
 } from "./DesktopFrontendSource.js";
 import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
-import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
+import { AgentConfigService, loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
 import { isTrustedDesktopNavigation } from "./DesktopNavigationPolicy.js";
 import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolicy.js";
 import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
 import { desktopMessage } from "./DesktopMessageCatalog.js";
 import { resolveAgentExternalUrl } from "../../Source/AgentSystem/Interaction/AgentExternalUrlPolicy.js";
-import { createDesktopMicrosandboxRuntimeAccess } from "./DesktopMicrosandboxModuleLoader.js";
-import {
-  DesktopMicrosandboxRuntimeSmokeArgument,
-  runDesktopMicrosandboxRuntimeSmoke,
-} from "./DesktopMicrosandboxRuntimeSmoke.js";
+import { startSeneraSandboxWorkerProcess, type SeneraSandboxWorkerBootstrap } from "../SandboxWorkerProcess.js";
 
 let serverHandle: SeneraServerHandle | undefined;
+let sandboxWorkerHandle: SeneraSandboxWorkerBootstrap | undefined;
 let mainWindow: BrowserWindow | undefined;
 let settingsWindow: BrowserWindow | undefined;
 let desktopTray: Tray | undefined;
@@ -32,7 +29,6 @@ let runtimePaths: DesktopRuntimePaths | undefined;
 let frontendSource: DesktopFrontendSource | undefined;
 const desktopModuleDir = path.dirname(fileURLToPath(import.meta.url));
 const remoteDebuggingPort = process.env.SENERA_DESKTOP_REMOTE_DEBUGGING_PORT?.trim();
-const microsandboxRuntimeSmoke = process.argv.includes(DesktopMicrosandboxRuntimeSmokeArgument);
 
 const settingsSectionIds = new Set([
   "model-service",
@@ -63,11 +59,6 @@ app
       `starting desktop runtime workspace=${runtimePaths.workspaceRoot} configDatabase=${runtimePaths.configDatabasePath}`,
     );
     const paths = runtimePaths;
-    if (microsandboxRuntimeSmoke) {
-      await runDesktopMicrosandboxRuntimeSmoke(paths);
-      app.quit();
-      return;
-    }
     desktopTray = createDesktopTray(paths.windowIconPath);
     frontendSource = createDesktopFrontendSource({
       devServerUrl: process.env.SENERA_DESKTOP_FRONTEND_URL,
@@ -75,22 +66,38 @@ app
     });
     registerDesktopIpc();
     const seedConfig = loadConfigFile(paths.configSeedPath);
-    const microsandboxRuntime = createDesktopMicrosandboxRuntimeAccess(paths.microsandboxRuntimeBridgePath);
+    const configSource = {
+      kind: "sqlite" as const,
+      databasePath: paths.configDatabasePath,
+      seedConfig,
+      label: paths.configDatabasePath,
+    };
+    const bootstrapConfigService = new AgentConfigService({
+      workspaceRoot: paths.workspaceRoot,
+      source: configSource,
+    });
+    const bootstrapConfig = (() => {
+      try {
+        return projectDesktopRuntimeConfig(paths, bootstrapConfigService.snapshot().value);
+      } finally {
+        bootstrapConfigService.close();
+      }
+    })();
+    sandboxWorkerHandle = await startSeneraSandboxWorkerProcess({
+      workspaceRoot: paths.workspaceRoot,
+      config: bootstrapConfig,
+      entrypoint: paths.sandboxWorkerEntrypoint,
+      resourcesPath: paths.resourceRoot,
+    });
     serverHandle = await startSeneraServer({
       workspaceRoot: paths.workspaceRoot,
       resourcesPath: paths.resourceRoot,
       upgradeStateRoot: path.join(paths.desktopDataRoot, ".senera"),
       upgradeDataRoots: [paths.desktopDataRoot],
-      configSource: {
-        kind: "sqlite",
-        databasePath: paths.configDatabasePath,
-        seedConfig,
-        label: paths.configDatabasePath,
-      },
-      runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config, { packaged: app.isPackaged }),
-      sandboxBundleRoot: paths.sandboxBundleRoot,
-      microsandboxModuleLoader: microsandboxRuntime.moduleLoader,
-      microsandboxPackageEntryResolver: microsandboxRuntime.packageEntryResolver,
+      configSource,
+      runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config),
+      sandboxRuntimeAvailability: sandboxWorkerHandle.availability,
+      dockerEngineWorker: sandboxWorkerHandle.client,
     });
     mainWindow = createMainWindow();
     void loadDesktopFrontend(mainWindow, frontendSource);
@@ -99,15 +106,12 @@ app
       showAllDesktopWindows();
     });
   })
-  .catch((error) => {
+  .catch(async (error) => {
+    await sandboxWorkerHandle?.close().catch(() => undefined);
+    sandboxWorkerHandle = undefined;
     const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
     const logPath = runtimePaths?.logPath ?? path.join(app.getPath("userData"), "desktop.log");
     appendDesktopLog(logPath, `startup failed\n${message}`);
-    if (microsandboxRuntimeSmoke) {
-      process.stderr.write(`${message}\n`);
-      app.exit(1);
-      return;
-    }
     dialog.showErrorBox(desktopMessage("startup.failedTitle", {}, app.getLocale()), message);
     app.exit(1);
   });
@@ -122,10 +126,12 @@ app.on("before-quit", (event) => {
   desktopTray?.destroy();
   desktopTray = undefined;
   const handle = serverHandle;
+  const sandboxWorker = sandboxWorkerHandle;
   serverHandle = undefined;
-  if (!handle) return;
+  sandboxWorkerHandle = undefined;
+  if (!handle && !sandboxWorker) return;
   event.preventDefault();
-  void handle.stop().finally(() => app.quit());
+  void Promise.all([handle?.stop(), sandboxWorker?.close()]).finally(() => app.quit());
 });
 
 function registerDesktopIpc(): void {

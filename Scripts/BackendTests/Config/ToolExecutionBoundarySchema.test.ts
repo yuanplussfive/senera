@@ -102,6 +102,10 @@ describe("tool execution manifest schema", () => {
   test("accepts capability-declared MCP resource arguments", () => {
     const result = ToolSchema.safeParse({
       ...mcpTool(),
+      Runtime: {
+        ...mcpTool().Runtime,
+        Scheduling: "ResourceClaims",
+      },
       Handler: {
         Kind: "McpTool",
         Server: "filesystem",
@@ -123,6 +127,50 @@ describe("tool execution manifest schema", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  test("defaults resource-free tools to bounded parallel scheduling", () => {
+    expect(ToolSchema.safeParse(tool(["Local"])).success).toBe(true);
+    expect(
+      ToolSchema.safeParse({
+        ...tool(["Local"]),
+        Runtime: { ...tool(["Local"]).Runtime, Scheduling: "Parallel", MaxConcurrency: 3 },
+      }).success,
+    ).toBe(true);
+  });
+
+  test("requires resource declarations and scheduling mode to agree", () => {
+    const missingResource = ToolSchema.safeParse({
+      ...tool(["Local"]),
+      Runtime: { ...tool(["Local"]).Runtime, Scheduling: "ResourceClaims" },
+    });
+    expect(missingResource.success).toBe(false);
+
+    const ignoredResource = ToolSchema.safeParse({
+      ...tool(["Local"]),
+      Handler: {
+        Kind: "HostCapability",
+        Capability: "test",
+        Resources: [{ Capability: "senera.workspace.path", Pointer: "/path" }],
+      },
+    });
+    expect(ignoredResource.success).toBe(false);
+  });
+
+  test("keeps SelfManaged concurrency under plugin ownership", () => {
+    const result = ToolSchema.safeParse({
+      ...tool(["Local"]),
+      Runtime: {
+        ...tool(["Local"]).Runtime,
+        Scheduling: "SelfManaged",
+        MaxConcurrency: 2,
+      },
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toContainEqual(expect.objectContaining({ path: ["Runtime", "MaxConcurrency"] }));
+    }
   });
 
   test.each([
@@ -273,6 +321,23 @@ describe("tool execution plan", () => {
     expect(schema.required).toEqual(["command", "executionTarget"]);
   });
 
+  test("projects a dual-target tool as Local-only when the active runtime has no sandbox", () => {
+    const tool_ = registeredTool(["Sandbox", "Local"]);
+    const invocation = resolveAgentToolInvocation(tool_, { command: "pwd" }, ["Local"]);
+
+    expect(invocation.executionPlan).toMatchObject({
+      target: "Local",
+      backend: "local",
+      availableTargets: ["Local"],
+    });
+    expect(projectAgentToolInvocationSchema(tool_, objectSchema(), ["Local"]).properties).not.toHaveProperty(
+      AgentToolExecutionTargetArgument,
+    );
+    expect(() => resolveAgentToolInvocation(registeredTool(["Sandbox"]), {}, ["Local"])).toThrow(
+      expect.objectContaining({ kind: "unavailable", availableTargets: [] }),
+    );
+  });
+
   test("rejects an undeclared target for all tools", () => {
     expect(() => resolveAgentToolInvocation(registeredTool(["Local"]), { executionTarget: "Sandbox" })).toThrow(
       AgentToolExecutionTargetError,
@@ -346,6 +411,7 @@ function registeredTool(Targets: Array<"Sandbox" | "Local">): RegisteredTool {
     execution: { Targets, Network: "Deny", Workspace: "ReadOnly" },
     handler: { kind: "HostCapability", capability: "test" },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
+    childGrant: "inherit",
     evidenceCapabilities: [],
   };
 }

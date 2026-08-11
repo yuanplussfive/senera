@@ -19,6 +19,7 @@ describe("Session run coordinator queue behavior", () => {
     const fixture = createCoordinatorFixture({ loop: pendingLoop.loop });
     const events: AgentDomainEvent[] = [];
     const run = fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-cancelled",
       input: "Long-running inspection",
       onEvent: (event) => {
@@ -78,6 +79,7 @@ describe("Session run coordinator queue behavior", () => {
     const fixture = createCoordinatorFixture({ loop: pendingLoop.loop, piSessions });
     const pi = new RecordingPiQueueSession();
     const run = fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-active",
       input: "Inspect the workspace",
     });
@@ -129,6 +131,7 @@ describe("Session run coordinator queue behavior", () => {
     const piSessions = new AgentPiActiveSessionRegistry();
     const fixture = createCoordinatorFixture({ loop: pendingLoop.loop, piSessions });
     const run = fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-active",
       input: "Inspect the workspace",
     });
@@ -167,6 +170,7 @@ describe("Session run coordinator queue behavior", () => {
     const fixture = createCoordinatorFixture({ loop: pendingLoop.loop, piSessions });
     const pi = new RecordingPiQueueSession();
     const run = fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-active",
       input: "Inspect the workspace",
     });
@@ -206,7 +210,7 @@ describe("Session run coordinator queue behavior", () => {
     await run;
   });
 
-  test("waits for the run even when Pi abort rejects first", async () => {
+  test("settles the run without turning a Pi cleanup failure into a cancellation failure", async () => {
     const runStarted = createDeferred<void>();
     const allowRunToSettle = createDeferred<void>();
     const piSessions = new AgentPiActiveSessionRegistry();
@@ -222,6 +226,7 @@ describe("Session run coordinator queue behavior", () => {
       },
     });
     const run = fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-active",
       input: "Inspect the workspace",
     });
@@ -245,7 +250,7 @@ describe("Session run coordinator queue behavior", () => {
     expect(stopSettled).toBe(false);
 
     allowRunToSettle.resolve();
-    await expect(stop).rejects.toThrow("Pi abort failed");
+    await expect(stop).resolves.toBe(true);
     await run;
     unregister();
   });

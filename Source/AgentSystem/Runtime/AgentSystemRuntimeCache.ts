@@ -7,12 +7,12 @@ import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentEx
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import { createAgentRuntimePreparationFingerprint } from "./AgentRuntimePreparationFingerprint.js";
 import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
-import type { SeneraMicrosandboxSdkAdapter } from "../Execution/SeneraMicrosandboxTypes.js";
-import type { SeneraGvisorWorkerClient } from "../Execution/SeneraGvisorTypes.js";
+import type { SeneraSandboxWorkerClient } from "../Execution/SeneraSandboxWorkerTypes.js";
 import type { AgentSandboxRuntimeProvider } from "../Sandbox/AgentSandboxRuntimeTypes.js";
 import type { AgentExtensionValueResolver } from "../Extensions/AgentExtensionValueExpression.js";
-import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
 import type { AgentWorkspaceRuntimeServices } from "./AgentWorkspaceRuntime.js";
+import type { AgentSessionApprovalLeaseStore } from "../Safety/AgentSessionApprovalLeaseStore.js";
+import type { AgentOrchestrationHostRuntime } from "../Orchestration/AgentOrchestrationHostTools.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
@@ -34,17 +34,18 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   logger?: AgentLogger;
   piDiagnostics?: AgentPiDiagnosticSink;
   approvalRuntime?: AgentApprovalRuntime;
+  sessionApprovals?: AgentSessionApprovalLeaseStore;
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
   executionResources?: AgentExecutionResourceBroker;
   sandboxRuntimeReady?: () => boolean;
-  microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
+  sandboxAvailable?: boolean;
   sandboxProvider?: AgentSandboxRuntimeProvider;
-  gvisorWorker?: SeneraGvisorWorkerClient;
+  dockerEngineWorker?: SeneraSandboxWorkerClient;
   mcpInputs?: AgentExtensionValueResolver;
-  piTurnContexts?: AgentPiTurnContextStore;
   workspaceRuntime?: AgentWorkspaceRuntimeServices;
+  orchestration?: AgentOrchestrationHostRuntime;
 }
 
 export interface AgentSystemRuntimeLease<TRuntime extends AgentSystemRuntimeCacheRuntime> {
@@ -61,17 +62,18 @@ export interface AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRunt
   logger?: AgentLogger;
   piDiagnostics?: AgentPiDiagnosticSink;
   approvalRuntime?: AgentApprovalRuntime;
+  sessionApprovals?: AgentSessionApprovalLeaseStore;
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
   executionResources?: AgentExecutionResourceBroker;
   sandboxRuntimeReady?: () => boolean;
-  microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
+  sandboxAvailable?: boolean;
   sandboxProvider?: AgentSandboxRuntimeProvider;
-  gvisorWorker?: SeneraGvisorWorkerClient;
+  dockerEngineWorker?: SeneraSandboxWorkerClient;
   mcpInputs?: AgentExtensionValueResolver;
-  piTurnContexts?: AgentPiTurnContextStore;
   workspaceRuntime?: AgentWorkspaceRuntimeServices;
+  orchestration?: AgentOrchestrationHostRuntime;
   maxIdleEntries?: number;
   runtimeFactory?: (input: AgentSystemRuntimeCacheRuntimeFactoryInput) => TRuntime;
 }
@@ -145,17 +147,18 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
         logger: this.options.logger,
         piDiagnostics: this.options.piDiagnostics,
         approvalRuntime: this.options.approvalRuntime,
+        sessionApprovals: this.options.sessionApprovals,
         interactionInput: this.options.interactionInput,
         piSessionRegistry: this.options.piSessionRegistry,
         resourcesPath: this.options.resourcesPath,
         executionResources: this.options.executionResources,
         sandboxRuntimeReady: this.options.sandboxRuntimeReady,
-        microsandboxSdk: this.options.microsandboxSdk,
+        sandboxAvailable: this.options.sandboxAvailable,
         sandboxProvider: this.options.sandboxProvider,
-        gvisorWorker: this.options.gvisorWorker,
+        dockerEngineWorker: this.options.dockerEngineWorker,
         mcpInputs: this.options.mcpInputs,
-        piTurnContexts: this.options.piTurnContexts,
         workspaceRuntime: this.options.workspaceRuntime,
+        orchestration: this.options.orchestration,
       });
     }
 
@@ -167,17 +170,18 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       logger: this.options.logger,
       piDiagnostics: this.options.piDiagnostics,
       approvalRuntime: this.options.approvalRuntime,
+      sessionApprovals: this.options.sessionApprovals,
       interactionInput: this.options.interactionInput,
       piSessionRegistry: this.options.piSessionRegistry,
       resourcesPath: this.options.resourcesPath,
       executionResources: this.options.executionResources,
       sandboxRuntimeReady: this.options.sandboxRuntimeReady,
-      microsandboxSdk: this.options.microsandboxSdk,
+      sandboxAvailable: this.options.sandboxAvailable,
       sandboxProvider: this.options.sandboxProvider,
-      gvisorWorker: this.options.gvisorWorker,
+      dockerEngineWorker: this.options.dockerEngineWorker,
       mcpInputs: this.options.mcpInputs,
-      piTurnContexts: this.options.piTurnContexts,
       workspaceRuntime: this.options.workspaceRuntime,
+      orchestration: this.options.orchestration,
     }) as unknown as TRuntime;
   }
 

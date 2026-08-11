@@ -9,6 +9,7 @@ import { MenuItemContent, menuItemClassName, menuSeparatorClassName, menuSurface
 export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
+export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
 
 interface ContentProps extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content> {
   className?: string;
@@ -120,8 +121,8 @@ export const DropdownMenuCheckboxItem = forwardRef<
       {...props}
     >
       <span className="absolute left-2.5 grid h-4 w-4 place-items-center text-accent-content">
-        <DropdownMenuPrimitive.ItemIndicator>
-          <Check className="h-3.5 w-3.5" />
+        <DropdownMenuPrimitive.ItemIndicator forceMount asChild>
+          <Check className="menu-check h-3.5 w-3.5" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       <span className="min-w-0 flex-1 truncate">{children}</span>

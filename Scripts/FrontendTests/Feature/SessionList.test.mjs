@@ -47,6 +47,23 @@ test("session panel renders store sessions and selects a row", async () => {
   expect(new Set(rows.map((row) => (row.classList.contains("h-11") ? "h-11" : "h-9"))).size).toBe(1);
 });
 
+test("hides a session after the backend confirms that its history is missing", () => {
+  resetSessionStore({
+    sessions: {
+      stale: session("stale", "Stale local placeholder"),
+      current: session("current", "Current session"),
+    },
+    sessionOrder: ["stale", "current"],
+    activeSessionId: "current",
+    missingOnServerIds: { stale: true },
+  });
+
+  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
+
+  expect(screen.queryByText("Stale local placeholder")).not.toBeInTheDocument();
+  expect(screen.getByText("Current session")).toBeVisible();
+});
+
 test("integrated sidebar exposes collapse, new-session, and real session search", async () => {
   const onNewSession = vi.fn();
   const onClosePanel = vi.fn();
@@ -158,6 +175,7 @@ function resetSessionStore(overrides = {}) {
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
+    childSessionParentIds: {},
     ...overrides,
   });
 }

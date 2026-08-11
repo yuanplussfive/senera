@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import fs from "node:fs/promises";
 import {
   AgentHostCapabilityNames,
   createDefaultHostCapabilityRegistry,
 } from "../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import { SeneraLocalExecutionEnv } from "../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import type {
-  SeneraShellExecutionRequest,
-  SeneraShellExecutionResult,
-} from "../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
+  SeneraPersistentProcessChild,
+  SeneraPersistentProcessSpawnOptions,
+} from "../Source/AgentSystem/Execution/SeneraPersistentProcessTypes.js";
+import { AgentExecutionResourceBroker } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceBroker.js";
+import { resolveAgentExecutionResourceLimits } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceConfig.js";
 import { AgentToolRunner } from "../Source/AgentSystem/ToolRuntime/AgentToolRunner.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
@@ -36,35 +40,104 @@ const VerificationConfig: AgentSystemConfig = {
 };
 
 async function main(): Promise<void> {
-  const executionEnv = new SpySeneraExecutionEnv({ workspaceRoot: WorkspaceRoot });
+  const processRequests: PersistentProcessRequest[] = [];
+  const executionEnv = new SeneraLocalExecutionEnv({
+    workspaceRoot: WorkspaceRoot,
+    persistentProcessSpawner: async (command, args, options) => {
+      processRequests.push({ command, args, options });
+      const child = new VerificationPersistentProcessChild();
+      setImmediate(() => {
+        child.stdout.emit("data", Buffer.from("boundary\n"));
+        child.emitClose(0);
+      });
+      return child;
+    },
+  });
+  const broker = new AgentExecutionResourceBroker({
+    workspaceRoot: WorkspaceRoot,
+    executionEnv,
+    limits: resolveAgentExecutionResourceLimits(VerificationConfig),
+  });
   const shellTool = createTool();
   const runner = new AgentToolRunner(
     VerificationConfig,
     WorkspaceRoot,
-    createDefaultHostCapabilityRegistry(),
+    createDefaultHostCapabilityRegistry({ executionResources: broker }),
     createRegistry([shellTool]),
     executionEnv,
   );
 
   const dialect = process.platform === "win32" ? "powershell" : "posix-sh";
-  const result = await runner.run(shellTool, {
-    command: { mode: "shell", dialect, script: "echo boundary" },
-    cwd: ".",
-  });
-  assert.equal(result.response.ok, true);
-  assert.equal(executionEnv.shellRequests.length, 1);
-  assert.equal(executionEnv.shellRequests[0].command, "echo boundary");
-  assert.equal(executionEnv.shellRequests[0].dialect, dialect);
-  assert.equal(executionEnv.shellRequests[0].cwd, WorkspaceRoot);
-  console.log("Senera execution env boundary verification passed.");
+  let outputCaptureDirectory: string | undefined;
+  try {
+    const result = await runner.run(
+      shellTool,
+      {
+        command: { mode: "shell", dialect, script: "echo boundary" },
+        cwd: ".",
+      },
+      {
+        sessionId: "verification-session",
+        requestId: "verification-request",
+        step: 1,
+        toolCallId: "verification-tool-call",
+      },
+    );
+    outputCaptureDirectory = result.outputCapture?.directory;
+
+    assert.equal(result.response.ok, true, JSON.stringify(result.response));
+    assert.equal(result.stdout, "boundary\n");
+    assert.equal(processRequests.length, 1);
+    const request = processRequests[0];
+    assert.ok(request);
+    assert.equal(request.command, "echo boundary");
+    assert.deepEqual(request.args, []);
+    assert.equal(request.options.cwd, WorkspaceRoot);
+    assert.equal(request.options.shellCommand?.dialect, dialect);
+    assert.equal(request.options.shellCommand?.script, "echo boundary");
+    assert.equal(request.options.profile?.backend, "local");
+    assert.equal(request.options.profile?.sandbox, undefined);
+    console.log("Senera execution env boundary verification passed.");
+  } finally {
+    await runner.close();
+    await broker.close();
+    if (outputCaptureDirectory) {
+      await fs.rm(outputCaptureDirectory, { recursive: true, force: true });
+    }
+  }
 }
 
-class SpySeneraExecutionEnv extends SeneraLocalExecutionEnv {
-  readonly shellRequests: SeneraShellExecutionRequest[] = [];
+interface PersistentProcessRequest {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly options: SeneraPersistentProcessSpawnOptions;
+}
 
-  override async executeShell(request: SeneraShellExecutionRequest): Promise<SeneraShellExecutionResult> {
-    this.shellRequests.push(request);
-    return { stdout: "boundary\n", stderr: "", exitCode: 0, signal: null };
+class VerificationPersistentProcessChild extends EventEmitter implements SeneraPersistentProcessChild {
+  readonly stdout = new EventEmitter();
+  readonly stderr = new EventEmitter();
+  readonly stdin = {
+    write: (): boolean => true,
+    once: (_event: "drain", _listener: () => void): void => undefined,
+    end: (): void => undefined,
+  };
+  exitCode: number | null = null;
+  signalCode: NodeJS.Signals | null = null;
+
+  kill(signal: NodeJS.Signals = "SIGTERM"): boolean {
+    void this.terminateTree(signal);
+    return true;
+  }
+
+  async terminateTree(signal: NodeJS.Signals): Promise<void> {
+    if (this.exitCode !== null || this.signalCode !== null) return;
+    queueMicrotask(() => this.emitClose(null, signal));
+  }
+
+  emitClose(exitCode: number | null, signal: NodeJS.Signals | null = null): void {
+    this.exitCode = exitCode;
+    this.signalCode = signal;
+    this.emit("close", exitCode, signal);
   }
 }
 
@@ -91,6 +164,7 @@ function createTool(): RegisteredTool {
     handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.ShellRun },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
     execution: DefaultExecution,
+    childGrant: "inherit",
     evidenceCapabilities: [],
   };
 }

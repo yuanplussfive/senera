@@ -15,7 +15,7 @@ import {
 } from "../../../Source/AgentSystem/Conversation/AgentConversation.js";
 import type { AgentSession } from "../../../Source/AgentSystem/Session/AgentSession.js";
 import type { SessionRow } from "../../../Source/AgentSystem/SessionPersistence/AgentSessionSqlRows.js";
-import type { StepTrace } from "../../../Source/AgentSystem/Runtime/AgentStepTrace.js";
+import type { StepTrace } from "../../../Source/AgentSystem/Core/AgentStepTrace.js";
 
 describe("Session projection behavior", () => {
   test("collects only fresh conversation entries and removes duplicate ids while preserving latest order", () => {

@@ -1,5 +1,7 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
+import { AgentLogger } from "../../../Source/AgentSystem/Diagnostics/AgentLogger.js";
+import { serializeError } from "../../../Source/AgentSystem/Diagnostics/AgentErrorSerializer.js";
 import {
   installAgentProcessFailureGuard,
   installAgentProcessShutdownGuard,
@@ -52,6 +54,28 @@ describe("process failure guard", () => {
     expect(logger.lines).toHaveLength(1);
     expect(logger.lines[0]?.level).toBe("error");
     expect(JSON.stringify(logger.lines[0]?.details)).toContain("stray rejection");
+    expect(logger.lines[0]?.details).toMatchObject({
+      errorId: expect.stringMatching(/^err_/),
+      name: "Error",
+      message: "stray rejection",
+    });
+  });
+
+  it("renders serialized error details instead of an opaque structure label", () => {
+    const lines: string[] = [];
+    const output = {
+      isTTY: false,
+      write(value: string): boolean {
+        lines.push(value);
+        return true;
+      },
+    } as unknown as NodeJS.WriteStream;
+    const logger = new AgentLogger({ output });
+
+    logger.error("startup failed", { error: serializeError(new Error("database contract failed")) });
+
+    expect(lines.join("")).toContain('"message":"database contract failed"');
+    expect(lines.join("")).not.toContain("error=结构");
   });
 
   it("exits with code 1 on uncaught exception when no fatal shutdown is provided", () => {
@@ -62,6 +86,11 @@ describe("process failure guard", () => {
     target.emit("uncaughtException", new Error("boom"));
 
     expect(target.exitCodes).toEqual([1]);
+    expect(logger.lines[0]?.details).toMatchObject({
+      errorId: expect.stringMatching(/^err_/),
+      name: "Error",
+      message: "boom",
+    });
   });
 
   it("runs the fatal shutdown before exiting", async () => {

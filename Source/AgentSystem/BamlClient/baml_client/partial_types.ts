@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ActionPlanInput,  ActionRunState,  AskUserDecision,  AskUserDecisionKind,  DirectDecision,  DirectDecisionKind,  EvidenceSlot,  ExecuteDecision,  ExecuteDecisionKind,  ExecutionDeltaOp,  GroundedDigest,  GroundedDigestEntry,  MemoryCandidate,  MemoryConsolidationAction,  MemoryConsolidationResult,  MemoryLearningResult,  MemoryWriteDecision,  MemoryWriteResolutionResult,  PiToolArgumentsDraft,  PlanFragment,  PlannedToolCall,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerRoleplayPreset,  PlannerRoleplayPresetDocument,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolLearningRecord,  ToolLearningResult,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel } from "./types.js"
+import type {  ActionPlanInput,  ActionRunState,  AskUserDecision,  AskUserDecisionKind,  DirectDecision,  DirectDecisionKind,  EvidenceSlot,  ExecuteDecision,  ExecuteDecisionKind,  ExecutionDeltaOp,  MemoryCandidate,  MemoryConsolidationAction,  MemoryConsolidationResult,  MemoryLearningResult,  MemoryWriteDecision,  MemoryWriteResolutionResult,  PiConversationSummary,  PiToolArgumentsDraft,  PlanFragment,  PlannedToolCall,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerRoleplayPreset,  PlannerRoleplayPresetDocument,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolLearningRecord,  ToolLearningResult,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -72,13 +72,6 @@ export namespace partial_types {
       kind?: types.ExecuteDecisionKind | null
       fragment?: PlanFragment | null
     }
-    export interface GroundedDigest {
-      entries: GroundedDigestEntry[]
-    }
-    export interface GroundedDigestEntry {
-      text?: string | null
-      sources: string[]
-    }
     export interface MemoryCandidate {
       type?: string | null
       subject?: string | null
@@ -126,6 +119,9 @@ export namespace partial_types {
     }
     export interface MemoryWriteResolutionResult {
       decision?: MemoryWriteDecision | null
+    }
+    export interface PiConversationSummary {
+      summary?: string | null
     }
     export interface PiToolArgumentsDraft {
       arguments: Record<string, ToolCallArgumentValue>

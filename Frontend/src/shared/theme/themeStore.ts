@@ -1,4 +1,4 @@
-import type { MotionLevel } from "../motion";
+import type { MotionLevel } from "../motion/types";
 import {
   appearancePreferenceStorageKey,
   areAppearanceSnapshotsEqual,

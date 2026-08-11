@@ -1,10 +1,11 @@
 import { compactObject, readArray, readRecord } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
 import { readAgentString, type AgentUnknownRecord } from "../Core/AgentUnknownValue.js";
 import {
+  AgentPiToolObservationProtocol,
   AgentPiToolObservationSourceViewProtocol,
-  createAgentPiToolObservation,
+  parseAgentPiToolObservation,
+  type AgentPiToolObservation,
 } from "../Pi/AgentPiToolObservation.js";
-import { AgentBudgetedJsonProjector } from "../Text/AgentBudgetedJsonProjection.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import {
   AgentToolObservationProjectionModes,
@@ -43,10 +44,12 @@ export interface AgentToolObservationContextCompilerInput {
   readonly result: unknown;
   readonly arguments: unknown;
   readonly artifact: unknown;
+  readonly semanticProjection?: unknown;
 }
 
 interface ProjectedSource {
   readonly key: string;
+  readonly requiredForCompletion: boolean;
   readonly value: unknown;
   readonly complete: boolean;
   readonly omissionCount: number;
@@ -57,10 +60,10 @@ const RuntimeFailureLimits: AgentToolObservationStructuralLimits = {
   maxDepth: 3,
   maxArrayItems: 0,
   maxObjectProperties: 8,
-  maxStringCharacters: 1_024,
-  maxTotalCharacters: 2_048,
   maxNodes: 24,
 };
+
+const RuntimeFailureTokenLimit = 512;
 
 const SourceOutputKeys = {
   [AgentToolObservationProjectionSources.Headline]: "headline",
@@ -78,40 +81,39 @@ const SourceOutputKeys = {
   [AgentToolObservationProjectionSources.SummaryFacts]: "summary_facts",
   [AgentToolObservationProjectionSources.Limitations]: "limitations",
   [AgentToolObservationProjectionSources.Outcome]: "outcome",
+  [AgentToolObservationProjectionSources.SemanticDigest]: "semantic_digest",
 } as const satisfies Record<AgentToolObservationProjectionSource, string>;
 
 export class AgentToolObservationContextCompiler {
   private readonly tokenProjector: AgentTokenProjector;
-  private readonly jsonProjector: AgentBudgetedJsonProjector;
   private readonly structuralProjector = new AgentToolObservationStructuralProjector();
 
   constructor(options: AgentToolObservationContextCompilerOptions) {
     this.tokenProjector = new AgentTokenProjector(options.model);
-    this.jsonProjector = new AgentBudgetedJsonProjector(options.model);
   }
 
   compile(
     input: AgentToolObservationContextCompilerInput,
     manifest: AgentToolObservationProjectionManifest,
     availableTokens = manifest.maxTokens,
-  ): AgentUnknownRecord {
+  ): AgentPiToolObservation {
     const maxTokens = Math.max(1, Math.min(manifest.maxTokens, normalizePositiveInteger(availableTokens)));
     const artifact = readRecord(input.artifact);
     const structuredSummary = readRecord(artifact?.structuredSummary);
     const artifactUri = inputArtifactUri(artifact);
-    const requiredFailure = this.projectRequiredFailure(input.status, input.error, manifest.maxOmissions);
-    const envelope = createAgentPiToolObservation(
-      compactObject({
-        tool_name: input.toolName,
-        call_id: input.callId,
-        batch_id: input.batchId,
-        status: input.status,
-        execution_status: input.executionStatus,
-        output_availability: input.outputAvailability,
-        artifact_uri: artifactUri,
-        error: requiredFailure?.value,
-      }),
+    const requiredFailure = this.projectRequiredFailure(
+      input.status,
+      input.error,
+      manifest.maxOmissions,
+      Math.min(maxTokens, RuntimeFailureTokenLimit),
     );
+    const envelope = compactObject({
+      type: AgentPiToolObservationProtocol.type,
+      status: input.status,
+      execution_status: input.executionStatus,
+      output_availability: input.outputAvailability,
+      error: requiredFailure?.value,
+    });
     const orderedRules = orderRules(manifest.sources);
     const projectedSources = orderedRules.flatMap((rule) => {
       const source = this.readSource(rule.source, input, artifact, structuredSummary, manifest.continuation);
@@ -123,72 +125,81 @@ export class AgentToolObservationContextCompiler {
     const initialOmissionCount =
       (requiredFailure?.omissionCount ?? 0) +
       projectedSources.reduce((total, source) => total + source.omissionCount, 0);
+    const requiredOmissionCount =
+      (requiredFailure?.omissionCount ?? 0) +
+      projectedSources.reduce((total, source) => total + (source.requiredForCompletion ? source.omissionCount : 0), 0);
     const detail = Object.fromEntries(projectedSources.map((source) => [source.key, source.value]));
     const initialView = sourceView({
-      complete: projectedSources.every((source) => source.complete),
+      complete:
+        requiredOmissionCount === 0 &&
+        projectedSources.every((source) => source.complete || !source.requiredForCompletion),
       omissionCount: initialOmissionCount,
       omissions: initialOmissions.slice(0, manifest.maxOmissions),
       artifactUri,
-      manifest,
     });
-    const detailBudget = Math.max(
-      1,
-      maxTokens - this.tokenProjector.countJson({ ...envelope, observation_view: initialView, detail: {} }),
-    );
-    const detailProjection = this.jsonProjector.project(detail, detailBudget);
-    const tokenOmission: AgentToolObservationProjectionOmission[] = detailProjection.complete
+    const initialProjection = this.projectDetail(envelope, initialView, detail, maxTokens);
+    if (!initialProjection) {
+      return this.minimumObservation(envelope, artifactUri, initialOmissionCount);
+    }
+    const tokenOmission: AgentToolObservationProjectionOmission[] = initialProjection.complete
       ? []
       : [{ path: "/detail", reason: AgentToolObservationOmissionReasons.TokenLimit }];
     const allOmissions = [...initialOmissions, ...tokenOmission];
     const view = sourceView({
-      complete: initialOmissionCount === 0 && detailProjection.complete,
+      complete:
+        requiredOmissionCount === 0 &&
+        projectedSources.every((source) => source.complete || !source.requiredForCompletion) &&
+        initialProjection.complete,
       omissionCount: initialOmissionCount + tokenOmission.length,
       omissions: allOmissions.slice(0, manifest.maxOmissions),
       artifactUri,
-      manifest,
     });
-    return this.fitObservation(envelope, view, detail, detailProjection.value, maxTokens, manifest.maxOmissions);
+    const finalProjection = this.projectDetail(envelope, view, detail, maxTokens);
+    return finalProjection
+      ? parseAgentPiToolObservation(finalProjection.value)
+      : this.minimumObservation(envelope, artifactUri, initialOmissionCount);
   }
 
-  private fitObservation(
-    envelope: AgentUnknownRecord,
+  private projectDetail(
+    envelope: Readonly<Record<string, unknown>>,
     view: AgentUnknownRecord,
-    detail: AgentUnknownRecord,
-    projectedDetail: unknown,
-    maxTokens: number,
-    maxOmissions: number,
-  ): AgentUnknownRecord {
-    const candidate = { ...envelope, observation_view: view, detail: projectedDetail };
-    if (this.tokenProjector.fitsJson(candidate, maxTokens)) return candidate;
+    detail: Readonly<Record<string, unknown>>,
+    tokenLimit: number,
+  ) {
+    const observationEnvelope = { ...envelope, observation_view: view };
+    return this.tokenProjector.fitsJson({ ...observationEnvelope, detail: {} }, tokenLimit)
+      ? this.tokenProjector.projectJsonMember(observationEnvelope, "detail", detail, tokenLimit)
+      : undefined;
+  }
 
-    const boundedView = appendTokenOmission(view, maxOmissions);
-    const fixedTokens = this.tokenProjector.countJson({ ...envelope, observation_view: boundedView, detail: {} });
-    let low = 1;
-    let high = Math.max(1, maxTokens - fixedTokens);
-    let best: unknown = {};
-    while (low <= high) {
-      const middle = Math.floor((low + high) / 2);
-      const projection = this.jsonProjector.project(detail, middle);
-      const current = { ...envelope, observation_view: boundedView, detail: projection.value };
-      if (this.tokenProjector.fitsJson(current, maxTokens)) {
-        best = projection.value;
-        low = middle + 1;
-      } else {
-        high = middle - 1;
-      }
-    }
-    return { ...envelope, observation_view: boundedView, detail: best };
+  private minimumObservation(
+    envelope: Readonly<Record<string, unknown>>,
+    artifactUri: string | undefined,
+    sourceOmissionCount: number,
+  ): AgentPiToolObservation {
+    const minimum = {
+      ...envelope,
+      observation_view: sourceView({
+        complete: false,
+        omissionCount: Math.max(1, sourceOmissionCount + 1),
+        omissions: [{ path: "/detail", reason: AgentToolObservationOmissionReasons.TokenLimit }],
+        artifactUri,
+      }),
+      detail: {},
+    };
+    return parseAgentPiToolObservation(minimum);
   }
 
   private projectRequiredFailure(
     status: unknown,
     error: unknown,
     maxOmissions: number,
+    tokenLimit: number,
   ): AgentToolObservationStructuralProjection | undefined {
     if (status !== AgentPiToolObservationStatuses.Failure) return undefined;
     const record = readRecord(error);
     if (!record) return undefined;
-    return this.structuralProjector.project(
+    const structural = this.structuralProjector.project(
       compactObject({
         code: record.code,
         kind: record.kind,
@@ -199,6 +210,18 @@ export class AgentToolObservationContextCompiler {
       RuntimeFailureLimits,
       maxOmissions,
     );
+    const tokenProjection = this.tokenProjector.projectJson(structural.value, tokenLimit);
+    return {
+      value: tokenProjection.projectedValue,
+      complete: structural.complete && tokenProjection.complete,
+      omissionCount: structural.omissionCount + (tokenProjection.complete ? 0 : 1),
+      omissions: [
+        ...structural.omissions,
+        ...(tokenProjection.complete
+          ? []
+          : [{ path: "", reason: AgentToolObservationOmissionReasons.TokenLimit } as const]),
+      ].slice(0, maxOmissions),
+    };
   }
 
   private projectSource(
@@ -210,6 +233,7 @@ export class AgentToolObservationContextCompiler {
     if (rule.mode === AgentToolObservationProjectionModes.ArtifactOnly) {
       return {
         key,
+        requiredForCompletion: rule.requiredForCompletion,
         value: undefined,
         complete: false,
         omissionCount: 1,
@@ -220,6 +244,7 @@ export class AgentToolObservationContextCompiler {
     if (!matchesProjectionMode(selected, rule.mode)) {
       return {
         key,
+        requiredForCompletion: rule.requiredForCompletion,
         value: undefined,
         complete: false,
         omissionCount: 1,
@@ -232,6 +257,7 @@ export class AgentToolObservationContextCompiler {
       const tokenOmitted = preview.truncated ? 1 : 0;
       return {
         key,
+        requiredForCompletion: rule.requiredForCompletion,
         value: preview.text,
         complete: structural.complete && !preview.truncated,
         omissionCount: structural.omissionCount + tokenOmitted,
@@ -243,11 +269,12 @@ export class AgentToolObservationContextCompiler {
         ],
       };
     }
-    const tokenProjection = this.jsonProjector.project(structural.value, rule.maxTokens);
+    const tokenProjection = this.tokenProjector.projectJson(structural.value, rule.maxTokens);
     const tokenOmitted = tokenProjection.complete ? 0 : 1;
     return {
       key,
-      value: tokenProjection.value,
+      requiredForCompletion: rule.requiredForCompletion,
+      value: tokenProjection.projectedValue,
       complete: structural.complete && tokenProjection.complete,
       omissionCount: structural.omissionCount + tokenOmitted,
       omissions: [
@@ -297,6 +324,8 @@ export class AgentToolObservationContextCompiler {
         return structuredSummary?.limitations;
       case AgentToolObservationProjectionSources.Outcome:
         return input.outcome;
+      case AgentToolObservationProjectionSources.SemanticDigest:
+        return readAgentString(readRecord(input.semanticProjection)?.text);
     }
   }
 }
@@ -306,18 +335,13 @@ function sourceView(input: {
   omissionCount: number;
   omissions: readonly AgentToolObservationProjectionOmission[];
   artifactUri: string | undefined;
-  manifest: AgentToolObservationProjectionManifest;
 }): AgentUnknownRecord {
   return {
     type: AgentPiToolObservationSourceViewProtocol.type,
     complete: input.complete,
     omission_count: input.omissionCount,
     omissions: input.omissions,
-    artifact_fallback: {
-      strategy: input.manifest.artifactFallback.strategy,
-      required_when_truncated: input.manifest.artifactFallback.requiredWhenTruncated,
-      available: input.artifactUri !== undefined,
-    },
+    artifact_uri: input.artifactUri,
   };
 }
 
@@ -404,26 +428,6 @@ function prefixOmissions(
 
 function inputArtifactUri(artifact: Record<string, unknown> | undefined): string | undefined {
   return readAgentString(artifact?.artifactUri);
-}
-
-function appendTokenOmission(view: AgentUnknownRecord, maxOmissions: number): AgentUnknownRecord {
-  const omissions = Array.isArray(view.omissions) ? view.omissions : [];
-  const alreadyRecorded = omissions.some(
-    (omission) =>
-      readRecord(omission)?.path === "/detail" &&
-      readRecord(omission)?.reason === AgentToolObservationOmissionReasons.TokenLimit,
-  );
-  return {
-    ...view,
-    complete: false,
-    omission_count: Number(view.omission_count ?? 0) + (alreadyRecorded ? 0 : 1),
-    omissions: alreadyRecorded
-      ? omissions
-      : [...omissions, { path: "/detail", reason: AgentToolObservationOmissionReasons.TokenLimit }].slice(
-          0,
-          maxOmissions,
-        ),
-  };
 }
 
 function escapeJsonPointerSegment(value: string): string {

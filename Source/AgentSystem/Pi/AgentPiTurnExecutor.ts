@@ -3,13 +3,12 @@ import type { AgentEventSink } from "../Events/AgentEvent.js";
 import { AgentRunActivities } from "../Events/AgentRunEventTypes.js";
 import { AgentRunActivityReporter } from "../Events/AgentRunActivityReporter.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
-import { buildAnswerTrace } from "../Runtime/AgentStepTrace.js";
+import { buildAnswerTrace } from "../Core/AgentStepTrace.js";
 import { AgentPiRunCollector } from "./AgentPiRunCollector.js";
 import { AgentPiConversationProjector } from "./AgentPiConversationProjector.js";
 import type { AgentPiRuntimeService, AgentPiSessionResult } from "./AgentPiRuntimeTypes.js";
 import type { AgentPiActiveSessionRegistry } from "./AgentPiActiveSessionRegistry.js";
 import type { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntime.js";
-import type { AgentPiTurnContextStore } from "../PiShared/AgentPiTurnContext.js";
 import {
   AgentModelUsageLedger,
   AgentModelUsageSources,
@@ -25,6 +24,7 @@ import { projectAgentPiPlanningSkills } from "../PiShared/AgentPiPlanningTypes.j
 import { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 import { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
 import type { AgentPiTurnRequest, AgentPiTurnResult } from "./AgentPiTurnTypes.js";
+import { AgentPiTurnState } from "./AgentPiTurnState.js";
 
 type AgentPiTurnRuntimeService = Pick<AgentPiRuntimeService, "model" | "leaseTurn">;
 
@@ -40,7 +40,6 @@ export interface AgentPiTurnRuntimePort {
     estimate(text: string): { tokenCount: number };
   };
   piDiagnostics?: AgentPiDiagnosticSink;
-  piTurnContexts: AgentPiTurnContextStore;
 }
 
 export interface AgentPiTurnExecutorOptions {
@@ -93,46 +92,45 @@ export class AgentPiTurnExecutor {
       contextWindowTokens: model.contextWindow,
       outputReserveTokens: model.maxTokens,
     });
-    return this.options.runtime.piTurnContexts.withContext(
-      {
-        sessionId: command.sessionId,
-        requestId: command.requestId,
-        step: command.step,
-        onEvent,
-        diagnostics: this.options.runtime.piDiagnostics,
-        rootCommand: command.rootCommand,
-        toolAccessGrant: command.toolAccessGrant,
-        toolExposure,
-        activeSkills: projectAgentPiPlanningSkills(command.activeSkills),
-        usageLedger,
-        toolPlan: new AgentPiToolPlanCoordinator(),
-        tokenBudget,
-      },
-      (piTurnContextId) => {
-        const collector = new AgentPiRunCollector({
-          sessionId: command.sessionId,
-          requestId: command.requestId,
-          step: command.step,
-          onEvent,
-          diagnostics: this.options.runtime.piDiagnostics,
-          streamModelDeltas: true,
-          piTurnContextId,
-          turnContexts: this.options.runtime.piTurnContexts,
-          activityReporter: activities,
-        });
-        return this.runWithContext(
-          command,
-          collector,
-          projected,
-          piTurnContextId,
-          usageLedger,
-          toolExposure,
-          tokenBudget,
-          activities,
-          signal,
-          onEvent,
-        );
-      },
+    const turnState = new AgentPiTurnState({
+      sessionId: command.sessionId,
+      requestId: command.requestId,
+      step: command.step,
+      onEvent,
+      diagnostics: this.options.runtime.piDiagnostics,
+      rootCommand: command.rootCommand,
+      approvalMode: command.approvalMode,
+      toolAccessGrant: command.toolAccessGrant,
+      toolExposure,
+      activeSkills: projectAgentPiPlanningSkills(command.activeSkills),
+      usageLedger,
+      toolPlan: new AgentPiToolPlanCoordinator(),
+      tokenBudget,
+      thinkingLevel: command.thinkingLevel,
+      activityReporter: activities,
+    });
+    const collector = new AgentPiRunCollector({
+      sessionId: command.sessionId,
+      requestId: command.requestId,
+      step: command.step,
+      onEvent,
+      diagnostics: this.options.runtime.piDiagnostics,
+      streamModelDeltas: true,
+      turnState,
+      activityReporter: activities,
+      onFinalResponseAvailable: command.onFinalResponseAvailable,
+    });
+    return this.runWithContext(
+      command,
+      collector,
+      projected,
+      turnState,
+      usageLedger,
+      toolExposure,
+      tokenBudget,
+      activities,
+      signal,
+      onEvent,
     );
   }
 
@@ -140,7 +138,7 @@ export class AgentPiTurnExecutor {
     command: AgentPiTurnRequest,
     collector: AgentPiRunCollector,
     projected: ReturnType<AgentPiConversationProjector["project"]>,
-    piTurnContextId: string,
+    turnState: AgentPiTurnState,
     usageLedger: AgentModelUsageLedger,
     toolExposure: AgentToolExposureState,
     tokenBudget: AgentTurnTokenBudget,
@@ -183,10 +181,13 @@ export class AgentPiTurnExecutor {
               toolExposure,
               onEvent,
               signal,
-              piTurnContextId,
+              turnState,
               activeSkills: command.activeSkills,
               rootCommand: command.rootCommand,
+              approvalMode: command.approvalMode,
               tokenBudget,
+              thinkingLevel: command.thinkingLevel,
+              inheritProjectContext: command.inheritProjectContext,
             }),
           sessionLeaseTimeoutMs,
           signal,

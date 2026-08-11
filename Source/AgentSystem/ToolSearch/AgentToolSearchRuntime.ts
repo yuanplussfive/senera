@@ -15,7 +15,7 @@ import {
   type AgentToolSearchCurrentSetPolicy,
   type LoadedToolsState,
 } from "./AgentToolSearchRuntimeTypes.js";
-import { ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
+import { ToolLoadingModes, type ToolExecutionTarget } from "../Types/AgentToolContractTypes.js";
 import {
   createAgentToolDiscoveryResult,
   createToolSearchArgumentsSchema,
@@ -53,6 +53,7 @@ import { AgentToolDisclosurePlanner } from "./AgentToolDisclosurePlanner.js";
 import type { AgentToolTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 import { AgentToolSearchContractProjector } from "./AgentToolSearchContractProjector.js";
 import { AgentLruCache } from "../Core/AgentLruCache.js";
+import { resolveAvailableAgentToolExecutionTargets } from "../ToolRuntime/AgentToolExecutionPlan.js";
 
 export type { LoadedToolsState } from "./AgentToolSearchRuntimeTypes.js";
 export { ToolSearchToolName } from "./AgentToolSearchRuntimeTypes.js";
@@ -67,6 +68,7 @@ export interface AgentToolSearchRuntimeOptions {
   rerank?: {
     client: AgentCapabilityRerankClient;
   };
+  availableExecutionTargets?: () => readonly ToolExecutionTarget[];
 }
 
 export class AgentToolSearchRuntime {
@@ -77,6 +79,7 @@ export class AgentToolSearchRuntime {
   private readonly disclosure: AgentToolDisclosurePlanner;
   private readonly logger?: AgentLogger;
   private index?: AgentToolSearchIndex;
+  private searchIndexIdentity?: string;
   private capabilities?: AgentCapabilitySearchIndex;
   private capabilityCatalogIdentity?: string;
   private readonly capabilityEmbeddingCache = new AgentLruCache<string, readonly number[]>(
@@ -289,6 +292,7 @@ export class AgentToolSearchRuntime {
 
   refresh(): void {
     this.index = undefined;
+    this.searchIndexIdentity = undefined;
     this.capabilities = undefined;
     this.capabilityCatalogIdentity = undefined;
     this.contractProjector.refresh();
@@ -348,16 +352,30 @@ export class AgentToolSearchRuntime {
   }
 
   private catalogRevision(): string {
+    return this.availableToolCatalogIdentity(this.availableTools());
+  }
+
+  private availableToolCatalogIdentity(
+    tools: readonly ReturnType<AgentExtensionRegistry["listTools"]>[number][],
+  ): string {
+    const runtimeTargets = this.options.availableExecutionTargets?.() ?? ["Local", "Sandbox"];
     return sha256HexOfCanonicalJson(
-      this.registry
-        .listTools()
+      tools
         .map((tool) => {
           const owner = resolveAgentToolOwner(tool);
           return {
             name: tool.name,
-            owner: owner.name,
-            ownerRevision: owner.revision,
+            owner: {
+              name: owner.name,
+              title: owner.title,
+              description: owner.description,
+              revision: owner.revision,
+            },
+            loading: tool.loading,
+            sources: tool.sources,
+            search: tool.search,
             contractDigest: tool.contract?.digest,
+            executionTargets: resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets),
           };
         })
         .sort((left, right) => left.name.localeCompare(right.name)),
@@ -365,7 +383,8 @@ export class AgentToolSearchRuntime {
   }
 
   private existingToolNames(toolNames: readonly string[]): string[] {
-    return toolNames.filter((name) => Boolean(this.registry.getTool(name)));
+    const available = new Set(this.availableTools().map((tool) => tool.name));
+    return toolNames.filter((name) => available.has(name));
   }
 
   private projectCurrentLoadedTools(
@@ -376,28 +395,31 @@ export class AgentToolSearchRuntime {
   }
 
   private mergeVisibleTools(toolNames: readonly string[]): string[] {
-    const unique = [...new Set(toolNames)].filter((name) => Boolean(this.registry.getTool(name)));
+    const available = new Set(this.availableTools().map((tool) => tool.name));
+    const unique = [...new Set(toolNames)].filter((name) => available.has(name));
     const required = this.bootstrapToolNames();
     return [...required, ...unique.filter((name) => !required.includes(name))];
   }
 
   private bootstrapToolNames(): string[] {
-    return this.registry
-      .listTools()
+    return this.availableTools()
       .filter((tool) => tool.loading === ToolLoadingModes.Bootstrap)
       .map((tool) => tool.name);
   }
 
   private searchIndex(): AgentToolSearchIndex {
+    const availableTools = this.availableTools();
+    const identity = this.availableToolCatalogIdentity(availableTools);
+    if (this.index && this.searchIndexIdentity === identity) return this.index;
     const capabilities = this.capabilitySearchIndex();
-    this.index ??= new AgentToolSearchIndex(this.registry, this.config, capabilities);
+    this.index = new AgentToolSearchIndex({ listTools: () => [...availableTools] }, this.config, capabilities);
+    this.searchIndexIdentity = identity;
     return this.index;
   }
 
   private capabilitySearchIndex(): AgentCapabilitySearchIndex {
     const documentBuilder = new AgentToolSearchDocumentBuilder();
-    const toolDocuments = this.registry
-      .listTools()
+    const toolDocuments = this.availableTools()
       .filter((tool) => resolveAgentToolOwner(tool).kind !== "system")
       .map((tool) => buildToolCapabilityDocument(tool, documentBuilder.build(tool)));
     const skillDocuments = this.registry.listSkills().map(buildSkillCapabilityDocument);
@@ -434,6 +456,13 @@ export class AgentToolSearchRuntime {
     this.capabilityCatalogIdentity = identity;
     this.index = undefined;
     return this.capabilities;
+  }
+
+  private availableTools(): ReturnType<AgentExtensionRegistry["listTools"]> {
+    const runtimeTargets = this.options.availableExecutionTargets?.() ?? ["Local", "Sandbox"];
+    return this.registry
+      .listTools()
+      .filter((tool) => resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets).length > 0);
   }
 
   private refreshEmbeddingCache(documents: readonly AgentCapabilitySearchDocument[], model: string | undefined): void {

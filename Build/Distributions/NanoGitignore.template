@@ -24,5 +24,3 @@ tmp/
 .env.*
 senera.config.json
 Release/*
-!Release/SandboxImage/
-!Release/SandboxImage/**

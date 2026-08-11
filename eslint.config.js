@@ -55,6 +55,7 @@ export default tseslint.config(
       "senera-evaluation/**",
       "senera-code-review/**",
       "senera-project-analysis/**",
+      ".tmp/**",
       "tmp/**",
     ],
   },

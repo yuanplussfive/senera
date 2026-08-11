@@ -53,6 +53,7 @@ describe("Session run coordinator behavior", () => {
     });
 
     await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-success",
       input: "Inspect the release workflow",
       onEvent: (event) => {
@@ -124,10 +125,12 @@ describe("Session run coordinator behavior", () => {
     const fixture = createCoordinatorFixture({ loop });
 
     await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-tools-first",
       input: "Run a diagnostic command",
     });
     await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-tools-second",
       input: "Run another diagnostic command",
     });
@@ -157,6 +160,7 @@ describe("Session run coordinator behavior", () => {
     };
 
     await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-direct",
       input: "Thanks",
     });
@@ -183,6 +187,7 @@ describe("Session run coordinator behavior", () => {
 
     await expect(
       fixture.coordinator.runTurn(fixture.session, {
+        approvalMode: "agent",
         requestId: "request-publish-failure",
         input: "Complete despite a disconnected client",
         onEvent: (event) => {
@@ -221,10 +226,12 @@ describe("Session run coordinator behavior", () => {
     const replayedEvents: AgentDomainEvent[] = [];
 
     await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-idempotent",
       input: "Inspect once",
     });
     await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-idempotent",
       input: "Inspect once",
       onEvent: (event) => {
@@ -248,12 +255,14 @@ describe("Session run coordinator behavior", () => {
     const fixture = createCoordinatorFixture({ loop: { run } });
 
     await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-conflict",
       input: "Original request",
     });
 
     await expect(
       fixture.coordinator.runTurn(fixture.session, {
+        approvalMode: "agent",
         requestId: "request-conflict",
         input: "Different request",
       }),
@@ -272,6 +281,7 @@ describe("Session run coordinator behavior", () => {
 
     await expect(
       fixture.coordinator.runTurn(fixture.session, {
+        approvalMode: "agent",
         requestId: "request-terminal-commit-failure",
         input: "Do not leak the answer",
       }),
@@ -289,6 +299,7 @@ describe("Session run coordinator behavior", () => {
     const pending = createPendingLoop();
     const fixture = createCoordinatorFixture({ loop: pending.loop });
     const run = fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-shutdown",
       input: "Wait for shutdown",
     });
@@ -305,6 +316,7 @@ describe("Session run coordinator behavior", () => {
     );
     await expect(
       fixture.coordinator.runTurn(fixture.session, {
+        approvalMode: "agent",
         requestId: "request-after-shutdown",
         input: "Must be rejected",
       }),
@@ -322,6 +334,7 @@ describe("Session run coordinator behavior", () => {
     const events: AgentDomainEvent[] = [];
 
     await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-failed",
       input: "Inspect the workspace",
       onEvent: (event) => {
@@ -366,6 +379,7 @@ describe("Session run coordinator behavior", () => {
     const events: AgentDomainEvent[] = [];
 
     await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-cancelled-directly",
       input: "Cancel this turn",
       onEvent: (event) => {
@@ -412,6 +426,7 @@ describe("Session run coordinator behavior", () => {
     });
 
     await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-owned-interaction",
       input: "Inspect the workspace",
     });
@@ -437,6 +452,7 @@ describe("Session run coordinator behavior", () => {
       },
     });
     const run = fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-cancelled-interaction",
       input: "Wait for input",
     });
@@ -461,6 +477,7 @@ describe("Session run coordinator behavior", () => {
     });
 
     await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-cleanup-failure",
       input: "Inspect the workspace",
     });
@@ -478,6 +495,7 @@ describe("Session run coordinator behavior", () => {
     });
 
     await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
       requestId: "request-resource-context",
       input: "Inspect the workspace",
     });

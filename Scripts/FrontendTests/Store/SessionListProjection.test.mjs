@@ -1,8 +1,11 @@
 import { expect, test } from "vitest";
 import {
   deleteSessionRuntimeState,
+  deleteSessionRuntimeStates,
   ingestSessionList,
+  markSessionDeletionRequested,
   readFirstAvailableSessionId,
+  restorePendingSessionDeletion,
 } from "../../../Frontend/src/store/session/sessionListProjection.ts";
 
 test("session list ingest preserves pending local creation and selects the first useful server session", () => {
@@ -51,6 +54,34 @@ test("pending deletion remains hidden until the server confirms removal", () => 
   expect(state.pendingDeletedSessionIds.deleting).toBeUndefined();
   expect(state.historyLoadedIds.deleting).toBeUndefined();
   expect(state.viewedRunIdBySession.deleting).toBeUndefined();
+});
+
+test("deletion keeps runtime state available and restores it after a close failure", () => {
+  const state = createState({
+    sessions: {
+      deleting: session("deleting", { messages: [message("message-1")] }),
+      keep: session("keep"),
+    },
+    sessionOrder: ["deleting", "keep"],
+    activeSessionId: "deleting",
+    pendingCreatedSessionIds: { deleting: true },
+    selectedModelProviderIdsBySession: { deleting: "model-a" },
+  });
+
+  markSessionDeletionRequested(state, ["deleting"]);
+  expect(state.sessions.deleting).toBeDefined();
+  expect(state.sessions.deleting.messages).toHaveLength(1);
+  expect(state.pendingDeletedSessionIds.deleting).toBe(true);
+  expect(state.pendingCreatedSessionIds.deleting).toBeUndefined();
+  expect(state.sessionOrder).toEqual(["keep"]);
+  expect(state.activeSessionId).toBe("keep");
+
+  restorePendingSessionDeletion(state, ["deleting"]);
+  expect(state.sessions.deleting).toBeDefined();
+  expect(state.pendingDeletedSessionIds.deleting).toBeUndefined();
+  expect(state.sessionOrder).toEqual(["keep", "deleting"]);
+  expect(state.activeSessionId).toBe("keep");
+  expect(state.selectedModelProviderIdsBySession.deleting).toBe("model-a");
 });
 
 test("server refresh normalizes running metadata and settles completed history loading", () => {
@@ -120,6 +151,51 @@ test("availability and runtime deletion ignore missing or pending-deleted sessio
   expect(state.sessionOrder).toEqual(["missing", "deleting"]);
 });
 
+test("known child sessions stay out of the top-level list and active-session fallback", () => {
+  const state = createState({
+    sessions: {
+      child: session("child"),
+      parent: session("parent"),
+    },
+    sessionOrder: ["child", "parent"],
+    activeSessionId: "child",
+    childSessionParentIds: { child: "parent" },
+  });
+
+  ingestSessionList(state, [listItem("child"), listItem("parent", { messageCount: 1 })]);
+
+  expect(state.sessionOrder).toEqual(["parent"]);
+  expect(state.activeSessionId).toBe("parent");
+  expect(readFirstAvailableSessionId(state)).toBe("parent");
+});
+
+test("bulk runtime deletion removes sessions and descendants in one projection", () => {
+  const state = createState({
+    sessions: {
+      first: session("first"),
+      child: session("child"),
+      second: session("second"),
+      keep: session("keep"),
+    },
+    sessionOrder: ["first", "child", "second", "keep"],
+    childSessionParentIds: { child: "first", nested: "child", keep: "other" },
+    historyLoadedIds: { first: true, second: true, keep: true },
+    viewedRunIdBySession: { first: "run-first", second: "run-second", keep: "run-keep" },
+    processedEventIds: { eventFirst: "first", eventSecond: "second", eventKeep: "keep", unowned: null },
+    processedEventIdOrder: ["eventFirst", "eventSecond", "eventKeep", "unowned"],
+  });
+
+  deleteSessionRuntimeStates(state, ["first", "second", "first"]);
+
+  expect(state.sessionOrder).toEqual(["child", "keep"]);
+  expect(state.sessions).toEqual({ child: expect.any(Object), keep: expect.any(Object) });
+  expect(state.childSessionParentIds).toEqual({ nested: "child", keep: "other" });
+  expect(state.historyLoadedIds).toEqual({ keep: true });
+  expect(state.viewedRunIdBySession).toEqual({ keep: "run-keep" });
+  expect(state.processedEventIds).toEqual({ eventKeep: "keep", unowned: null });
+  expect(state.processedEventIdOrder).toEqual(["eventKeep", "unowned"]);
+});
+
 function createState(overrides = {}) {
   return {
     sessions: {},
@@ -138,6 +214,7 @@ function createState(overrides = {}) {
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
+    childSessionParentIds: {},
     defaultModelProviderId: null,
     selectedModelProviderIdsBySession: {},
     ...overrides,

@@ -3,6 +3,37 @@ import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
 
+test("orphan run failures stay out of the conversation projection", () => {
+  const state = createTestState({
+    sessions: {
+      [TestSessionId]: {
+        sessionId: TestSessionId,
+        title: "新对话",
+        status: "ready",
+        createdAt: "2026-07-09T00:00:00.000Z",
+        updatedAt: "2026-07-09T00:00:00.000Z",
+        entryCount: 0,
+        messageCount: 0,
+        messages: [],
+        runs: [],
+      },
+    },
+    sessionOrder: [TestSessionId],
+    activeSessionId: TestSessionId,
+  });
+
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunFailed, {
+      message: "A control-plane request failed.",
+    }),
+  );
+
+  expect(state.sessions[TestSessionId].messages).toEqual([]);
+  expect(state.sessions[TestSessionId].messageCount).toBe(0);
+  expect(state.sessions[TestSessionId].runs).toEqual([]);
+});
+
 test("complete tool-assisted run projects chat messages, approvals, tool details, and completion state", () => {
   const state = createTestState();
 

@@ -5,6 +5,7 @@ export function applyCredentialedCors(
   response: ServerResponse,
   options: {
     readonly allowedMethods: readonly string[];
+    readonly allowedHeaders?: readonly string[];
     readonly isOriginAllowed: (origin: string) => boolean;
   },
 ): boolean {
@@ -19,7 +20,10 @@ export function applyCredentialedCors(
   response.setHeader("Access-Control-Allow-Origin", origin);
   response.setHeader("Access-Control-Allow-Credentials", "true");
   response.setHeader("Access-Control-Allow-Methods", options.allowedMethods.join(", "));
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Senera-Csrf");
+  response.setHeader(
+    "Access-Control-Allow-Headers",
+    (options.allowedHeaders ?? ["Content-Type", "X-Senera-Csrf"]).join(", "),
+  );
   appendVaryHeader(response, "Origin");
   return true;
 }

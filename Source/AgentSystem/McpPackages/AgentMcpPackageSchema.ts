@@ -77,16 +77,16 @@ export const AgentMcpConfigurationDocumentSchema = z
         path: ["mcpServers"],
       });
     }
-    if (!configuration.execution && Object.values(configuration.mcpServers).some((server) => server.type === "stdio")) {
-      context.addIssue({
-        code: "custom",
-        message: "execution is required when the package declares a stdio MCP server.",
-        path: ["execution"],
-      });
-    }
   });
 
 export type AgentMcpConfigurationDocument = z.infer<typeof AgentMcpConfigurationDocumentSchema>;
 export type AgentMcpLegacyServerConfiguration = z.infer<typeof AgentMcpLegacyServerConfigurationSchema>;
 export type AgentMcpExecutionTarget = z.infer<typeof AgentMcpExecutionTargetSchema>;
 export type AgentMcpExecution = z.infer<typeof AgentMcpExecutionSchema>;
+
+export function createAgentMcpDefaultLocalExecution(): AgentMcpExecution {
+  return {
+    targets: [AgentMcpExecutionTargets.Local],
+    preferred: AgentMcpExecutionTargets.Local,
+  };
+}

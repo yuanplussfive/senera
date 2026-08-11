@@ -11,6 +11,10 @@ import {
 } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 import type { AgentRootCommand } from "../../../Source/AgentSystem/AgentRootCommand.js";
+import type {
+  AgentPiPlanningCompilerFactory,
+  AgentPiPlanningCompilerPort,
+} from "../../../Source/AgentSystem/Pi/AgentPiPlanningCompiler.js";
 
 export function toolAccessGrant(
   exposedToolNames: readonly string[] = [],
@@ -37,7 +41,7 @@ export function toolRootCommand(
     outputMode: "open",
     toolAccess: "restricted",
     objective: "Complete the current request.",
-    instruction: "Complete the current request.",
+    instruction: null,
     toolAccessGrant: toolAccessGrant(exposedToolNames, preferredToolNames),
     forbiddenOutputs: ["unregistered_tools"],
     insufficiencyPolicy: "Report missing capabilities.",
@@ -46,10 +50,10 @@ export function toolRootCommand(
     includeToolCatalog: false,
     visibleOutput: {
       audience: "runtime",
-      start: "pi_tool_turn",
-      format: "openai_tool_calls_or_final_text",
+      start: "answer_body",
+      format: "final_text",
       rules: [],
-      repair: { instruction: "Retry using the tool protocol.", rules: [] },
+      repair: { instruction: "Return only the user-facing answer.", rules: [] },
     },
   };
 }
@@ -59,7 +63,7 @@ export function createTemporaryDirectory(prefix: string): string {
 }
 
 export function removeDirectory(directory: string): void {
-  fs.rmSync(directory, { recursive: true, force: true });
+  fs.rmSync(directory, { force: true, maxRetries: 8, recursive: true, retryDelay: 100 });
 }
 
 export function createPlannerConfig(
@@ -99,6 +103,7 @@ export function createModelProvider(
     ApiKey: "test-key",
     ApiVersion: "",
     Model: "test-model",
+    ToolPlanningMode: "baml",
     ContextWindowTokens: 128_000,
     Temperature: 0,
     MaxOutputTokens: -1,
@@ -112,5 +117,17 @@ export function createModelProvider(
     RetryAfterMaxDelayMs: 60_000,
     Headers: {},
     ...overrides,
+  };
+}
+
+export function createPiPlanningCompilerFactory(
+  overrides: Partial<AgentPiPlanningCompilerPort> = {},
+): AgentPiPlanningCompilerFactory {
+  return {
+    create: () => ({
+      compile: async () => ({ kind: "final_text", content: "test response", toolCalls: [] }),
+      summarize: async () => "test conversation summary",
+      ...overrides,
+    }),
   };
 }

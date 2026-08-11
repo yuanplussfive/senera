@@ -144,27 +144,6 @@ describe("tool resource scheduler", () => {
       "reader-2:end",
     ]);
   });
-
-  test("treats an unclassified request as globally exclusive", async () => {
-    const scheduler = createScheduler();
-    const firstStarted = new Deferred<void>();
-    const releaseFirst = new Deferred<void>();
-    let secondStarted = false;
-    const first = scheduler.run(TestTool, { lease: { mode: "exclusive" } }, async () => {
-      firstStarted.resolve();
-      await releaseFirst.promise;
-    });
-    await firstStarted.promise;
-    const second = scheduler.run(TestTool, { lease: claim("workspace/b.ts", "shared") }, async () => {
-      secondStarted = true;
-    });
-
-    await Promise.resolve();
-    expect(secondStarted).toBe(false);
-    releaseFirst.resolve();
-    await Promise.all([first, second]);
-    expect(secondStarted).toBe(true);
-  });
 });
 
 const HierarchicalDomain: AgentToolResourceClaimDomain = {

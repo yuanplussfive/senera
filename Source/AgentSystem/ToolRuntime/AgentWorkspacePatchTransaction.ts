@@ -13,8 +13,8 @@ export interface WorkspacePatchTarget {
 export type WorkspacePatchPrecondition =
   { target: WorkspacePatchTarget; state: "missing" } | { target: WorkspacePatchTarget; state: "file"; sha256: string };
 
-interface WorkspacePatchTransactionPlan {
-  writes: ReadonlyMap<string, { target: WorkspacePatchTarget; content: string }>;
+export interface WorkspacePatchTransactionPlan {
+  writes: ReadonlyMap<string, { target: WorkspacePatchTarget; content: string | Uint8Array }>;
   deletes: ReadonlyMap<string, { target: WorkspacePatchTarget }>;
   createDirectories: ReadonlyMap<string, { target: WorkspacePatchTarget }>;
   deleteDirectories: ReadonlyMap<string, { target: WorkspacePatchTarget; recursive: boolean }>;
