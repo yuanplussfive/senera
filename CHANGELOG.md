@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.10.0](https://github.com/yuanplussfive/senera/compare/v1.9.11...v1.10.0) (2026-08-11)
+
+
+### 新增功能
+
+* **agent:** 完善 Pi 工具、子代理、沙箱与运行观测 ([#95](https://github.com/yuanplussfive/senera/issues/95)) ([1c4c54d](https://github.com/yuanplussfive/senera/commit/1c4c54d380c739ff246963ed89e11ce35a35ade2))
+
 ## [1.9.11](https://github.com/yuanplussfive/senera/compare/v1.9.10...v1.9.11) (2026-08-03)
 
 
