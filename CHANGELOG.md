@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.10.1](https://github.com/yuanplussfive/senera/compare/v1.10.0...v1.10.1) (2026-08-11)
+
+
+### 问题修复
+
+* **nano:** 修复 Nano 分发类型与沙箱验证 ([#97](https://github.com/yuanplussfive/senera/issues/97)) ([9cf2e23](https://github.com/yuanplussfive/senera/commit/9cf2e233cff8e306f51f364e2bd8dda18849d173))
+
 ## [1.10.0](https://github.com/yuanplussfive/senera/compare/v1.9.11...v1.10.0) (2026-08-11)
 
 
