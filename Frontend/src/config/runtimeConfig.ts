@@ -7,7 +7,9 @@ export interface SeneraRuntimeConfig {
 }
 
 export function readSeneraRuntimeConfig(): SeneraRuntimeConfig {
-  return window.__SENERA_RUNTIME_CONFIG__ ?? {};
+  const configured = window.__SENERA_RUNTIME_CONFIG__ ?? {};
+  const queryWebSocketUrl = new URL(window.location.href).searchParams.get("webSocketUrl")?.trim();
+  return queryWebSocketUrl ? { ...configured, webSocketUrl: queryWebSocketUrl } : configured;
 }
 
 export function resolveRuntimeWebSocketUrl(buildTimeUrl: string): string {
