@@ -17,6 +17,7 @@
       "package.json",
       "package-lock.json",
       "senera.config.example.json",
+      "Apps/DevServer.ts",
       "Apps/RuntimeConfigBootstrap.ts",
       "Apps/SandboxWorker.ts",
       "Apps/SandboxWorkerProcess.ts",
@@ -35,10 +36,6 @@
       {
         "source": "Build/Distributions/NanoGitignore.template",
         "target": ".gitignore"
-      },
-      {
-        "source": "Build/Distributions/NanoDevServer.ts.template",
-        "target": "Apps/DevServer.ts"
       }
     ]
   },
@@ -71,6 +68,7 @@
         "@types/dockerode",
         "@types/react",
         "@types/react-dom",
+        "@types/tar-fs",
         "@types/tar-stream",
         "@types/ws",
         "@tailwindcss/vite",
