@@ -13,6 +13,7 @@ import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/S
 import type { AgentSystemToolDefinition } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolDefinition.js";
 import {
   PiWorkspaceSystemTools,
+  resolveAsarUnpackedExecutablePath,
   WorkspaceFindSystemTool,
   WorkspaceGrepSystemTool,
   WorkspaceListSystemTool,
@@ -28,6 +29,19 @@ afterEach(() => {
 });
 
 describe("Pi workspace System Tools", () => {
+  test("prefers Electron's unpacked path for native executables", () => {
+    const packagedPath = path.join("runtime", "resources", "app.asar", "node_modules", "rg.exe");
+    const unpackedPath = path.join("runtime", "resources", "app.asar.unpacked", "node_modules", "rg.exe");
+
+    expect(resolveAsarUnpackedExecutablePath(packagedPath, (candidate) => candidate === unpackedPath)).toBe(
+      unpackedPath,
+    );
+    expect(resolveAsarUnpackedExecutablePath(packagedPath, () => false)).toBe(packagedPath);
+    expect(resolveAsarUnpackedExecutablePath(path.join("runtime", "node_modules", "rg.exe"))).toBe(
+      path.join("runtime", "node_modules", "rg.exe"),
+    );
+  });
+
   test("derives every invocation contract from Pi's public parameter schema", () => {
     const piSchemas = [
       createPiReadTool().parameters,

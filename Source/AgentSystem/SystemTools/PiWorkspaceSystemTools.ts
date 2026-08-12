@@ -30,6 +30,8 @@ import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilit
 import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import { defineSystemTool, type AgentSystemToolMetadata } from "./AgentSystemToolDefinition.js";
 
+const bundledRipgrepPath = resolveAsarUnpackedExecutablePath(rgPath);
+
 const PiReadTool = createPiReadTool();
 const PiGrepContract = createGrepToolDefinition(".");
 const PiFindContract = createFindToolDefinition(".");
@@ -336,7 +338,7 @@ function enumerateWorkspaceFiles(request: WorkspaceFileEnumerationRequest): Prom
     const args = ["--files", "--hidden", "--no-require-git", "--color=never"];
     for (const ignored of request.ignore) args.push("--glob", `!${ignored}`);
 
-    const child = spawn(rgPath, args, {
+    const child = spawn(bundledRipgrepPath, args, {
       cwd: request.cwd,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
@@ -402,8 +404,10 @@ let bundledRipgrepExposed = false;
 
 function assertBundledRipgrepAvailable(): void {
   if (bundledRipgrepVerified) return;
-  if (!fs.existsSync(rgPath)) throw new Error(`Bundled ripgrep is unavailable: ${rgPath}`);
-  const probe = spawnSync(rgPath, ["--version"], { stdio: "ignore", windowsHide: true });
+  if (!fs.existsSync(bundledRipgrepPath)) {
+    throw new Error(`Bundled ripgrep is unavailable: ${bundledRipgrepPath}`);
+  }
+  const probe = spawnSync(bundledRipgrepPath, ["--version"], { stdio: "ignore", windowsHide: true });
   if (probe.error || probe.status !== 0) {
     throw new Error(`Bundled ripgrep cannot start: ${probe.error?.message ?? `exit ${String(probe.status)}`}`);
   }
@@ -413,7 +417,7 @@ function assertBundledRipgrepAvailable(): void {
 function exposeBundledRipgrepToPi(): void {
   if (bundledRipgrepExposed) return;
   assertBundledRipgrepAvailable();
-  const executableDirectory = path.dirname(rgPath);
+  const executableDirectory = path.dirname(bundledRipgrepPath);
   const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
   const currentPath = process.env[pathKey] ?? "";
   const normalizedDirectory = normalizePathEntry(executableDirectory);
@@ -428,6 +432,20 @@ function exposeBundledRipgrepToPi(): void {
 function normalizePathEntry(value: string): string {
   const normalized = path.resolve(value);
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+export function resolveAsarUnpackedExecutablePath(
+  candidate: string,
+  fileExists: (file: string) => boolean = fs.existsSync,
+): string {
+  const asarSegment = `${path.sep}app.asar${path.sep}`;
+  const segmentIndex = candidate.indexOf(asarSegment);
+  if (segmentIndex < 0) return candidate;
+
+  const unpackedCandidate = `${candidate.slice(0, segmentIndex)}${path.sep}app.asar.unpacked${path.sep}${candidate.slice(
+    segmentIndex + asarSegment.length,
+  )}`;
+  return fileExists(unpackedCandidate) ? unpackedCandidate : candidate;
 }
 
 function toolCallId(context: AgentHostToolContext): string {
