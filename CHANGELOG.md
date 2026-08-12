@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.10.2](https://github.com/yuanplussfive/senera/compare/v1.10.1...v1.10.2) (2026-08-11)
+
+
+### 问题修复
+
+* **nano:** 修复桌面端更新 ([#99](https://github.com/yuanplussfive/senera/issues/99)) ([63f0103](https://github.com/yuanplussfive/senera/commit/63f0103f5b3bb07b132e0b0071dce4ff20c1f689))
+
 ## [1.10.1](https://github.com/yuanplussfive/senera/compare/v1.10.0...v1.10.1) (2026-08-11)
 
 
