@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.10.3](https://github.com/yuanplussfive/senera/compare/v1.10.2...v1.10.3) (2026-08-12)
+
+
+### 问题修复
+
+* **desktop:** 修复打包版 ripgrep 启动路径 ([#101](https://github.com/yuanplussfive/senera/issues/101)) ([5ee89ad](https://github.com/yuanplussfive/senera/commit/5ee89ad2857e44792c11c4738543116c7eddf900))
+
 ## [1.10.2](https://github.com/yuanplussfive/senera/compare/v1.10.1...v1.10.2) (2026-08-11)
 
 
