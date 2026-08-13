@@ -139,14 +139,14 @@ describe("tool execution manifest schema", () => {
     ).toBe(true);
   });
 
-  test("requires resource declarations and scheduling mode to agree", () => {
+  test("requires claims scheduling to declare resources while allowing access-only declarations", () => {
     const missingResource = ToolSchema.safeParse({
       ...tool(["Local"]),
       Runtime: { ...tool(["Local"]).Runtime, Scheduling: "ResourceClaims" },
     });
     expect(missingResource.success).toBe(false);
 
-    const ignoredResource = ToolSchema.safeParse({
+    const accessOnlyResource = ToolSchema.safeParse({
       ...tool(["Local"]),
       Handler: {
         Kind: "HostCapability",
@@ -154,7 +154,7 @@ describe("tool execution manifest schema", () => {
         Resources: [{ Capability: "senera.workspace.path", Pointer: "/path" }],
       },
     });
-    expect(ignoredResource.success).toBe(false);
+    expect(accessOnlyResource.success).toBe(true);
   });
 
   test("keeps SelfManaged concurrency under plugin ownership", () => {

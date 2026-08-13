@@ -14,11 +14,18 @@ const { ChatComposer } = await import("../../../Frontend/src/features/chat/ChatC
 const { ScrollToBottomButton } = await import("../../../Frontend/src/features/chat/ScrollToBottomButton.tsx");
 const { MessageActions } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { MessageList, readMessageListItemKey } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
+const { projectAssistantTurns, readAssistantTurnActionMessage } = await import(
+  "../../../Frontend/src/features/chat/assistantTurnProjection.ts"
+);
+const { projectAssistantTurnStages } = await import(
+  "../../../Frontend/src/features/chat/assistantTurnStageProjection.ts"
+);
 const {
   ConversationEventRail,
   projectConversationEventMarkers,
   projectConversationEvents,
   readConversationEventIndex,
+  readConversationEventPositionIndex,
 } = await import("../../../Frontend/src/features/chat/ConversationEventRail.tsx");
 const { frontendMessage, FrontendLocales } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
 const { setFrontendLocale } = await import("../../../Frontend/src/i18n/frontendLocaleStore.ts");
@@ -196,6 +203,30 @@ test("chat composer preserves a failed draft and leaves Escape to active interac
   preventedEscape.preventDefault();
   window.dispatchEvent(preventedEscape);
   expect(onCancel).not.toHaveBeenCalled();
+});
+
+test("chat composer opens the preset dialog only after the tools menu releases interaction ownership", async () => {
+  const onOutsideClick = vi.fn();
+  const user = userEvent.setup();
+  renderWithFrontendProviders(
+    React.createElement(
+      React.Fragment,
+      null,
+      withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps())),
+      React.createElement("button", { type: "button", onClick: onOutsideClick }, "外部操作"),
+    ),
+  );
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("chat.composer.toolkit.tooltip") }));
+  await user.click(screen.getByRole("menuitem", { name: frontendMessage("chat.composer.toolkit.preset") }));
+
+  expect(await screen.findByRole("dialog", { name: frontendMessage("preset.ui.title") })).toBeInTheDocument();
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: frontendMessage("ui.close") }));
+
+  await waitFor(() => expect(document.body.style.pointerEvents).toBe(""));
+  await user.click(screen.getByRole("button", { name: "外部操作" }));
+  expect(onOutsideClick).toHaveBeenCalledTimes(1);
 });
 
 test("settling composer queues follow-up messages without exposing run interruption", async () => {
@@ -406,7 +437,7 @@ test("message overflow keeps workflow and mutation actions reachable", async () 
   expect(onDelete).toHaveBeenCalledTimes(1);
 });
 
-test("message list renders messages and streaming run as stable keyed items", () => {
+test("message list renders messages and streaming run as stable assistant turns", () => {
   const onViewWorkflow = vi.fn();
   const userMessage = createMessage({
     id: "message-user",
@@ -437,13 +468,346 @@ test("message list renders messages and streaming run as stable keyed items", ()
 
   expect(screen.getByText("帮我检查项目")).toBeInTheDocument();
   expect(screen.getByText("我准备读取文件。")).toBeInTheDocument();
-  expect(screen.getByTestId("virtuoso").querySelector("[data-message-key='__streaming__']")).not.toBeNull();
+  const streamingTurn = projectAssistantTurns([assistantMessage], [runningRun], runningRun).at(-1);
+  expect(screen.getByTestId("virtuoso").querySelector("[data-message-key='assistant-turn:request-streaming:0']")).not.toBeNull();
   expect(readMessageListItemKey(undefined, 4)).toBe("__placeholder__:4");
   expect(readMessageListItemKey(userMessage)).toBe("message-user");
-  expect(readMessageListItemKey({ __streaming: true, run: runningRun })).toBe("__streaming__");
+  expect(readMessageListItemKey(streamingTurn)).toBe("assistant-turn:request-streaming:0");
   expect(document.querySelector("[data-message-list-end-spacer]")).toHaveClass("h-3");
   expect(document.querySelector("[data-message-list-end-spacer]")).not.toHaveClass("h-24");
   expect(screen.getByRole("navigation", { name: "回复事件位置" })).toBeInTheDocument();
+});
+
+test("message list groups tool prefaces and final replies from one request into one assistant turn", () => {
+  const preface = createMessage({
+    id: "message-preface",
+    requestId: "request-grouped",
+    kind: "AssistantToolPreface",
+    content: "我先检查项目。",
+  });
+  const answer = createMessage({
+    id: "message-answer",
+    requestId: "request-grouped",
+    kind: "AssistantFinal",
+    content: "检查完成。",
+  });
+
+  renderWithFrontendProviders(
+    React.createElement(MessageList, createMessageListProps({ messages: [preface, answer] })),
+  );
+
+  const turn = document.querySelector("[data-assistant-turn='request-grouped']");
+  expect(turn).toContainElement(screen.getByText("我先检查项目。"));
+  expect(turn).toContainElement(screen.getByText("检查完成。"));
+  expect(turn.querySelectorAll("[data-message-avatar='assistant']")).toHaveLength(1);
+  expect(turn.querySelectorAll("[data-assistant-turn-segment]")).toHaveLength(2);
+  const stages = turn.querySelectorAll("[data-assistant-turn-stage]");
+  expect(stages).toHaveLength(2);
+  expect(stages[0]).toHaveAttribute("data-assistant-turn-stage", "execution");
+  expect(stages[0]).toContainElement(screen.getByText("我先检查项目。"));
+  expect(stages[0].querySelector("[data-assistant-turn-segment='AssistantToolPreface']")).toBeInTheDocument();
+  expect(stages[0].querySelector("[data-tool-stage-details]")).not.toBeInTheDocument();
+  expect(stages[1]).toHaveAttribute("data-assistant-turn-stage", "final");
+  expect(stages[1]).toContainElement(screen.getByText("检查完成。"));
+});
+
+test("assistant turn stages attach each execution batch to its own preface", () => {
+  const requestId = "request-staged";
+  const sharedTime = "2026-01-01T00:00:00.000Z";
+  const firstPreface = createMessage({
+    id: "stage-preface-1",
+    requestId,
+    kind: "AssistantToolPreface",
+    content: "先读取入口。",
+    createdAt: sharedTime,
+  });
+  const secondPreface = createMessage({
+    id: "stage-preface-2",
+    requestId,
+    kind: "AssistantToolPreface",
+    content: "接着检查依赖。",
+    createdAt: sharedTime,
+  });
+  const answer = createMessage({
+    id: "stage-answer",
+    requestId,
+    kind: "AssistantFinal",
+    content: "检查完成。",
+    createdAt: sharedTime,
+  });
+  const run = createRun({
+    requestId,
+    status: "completed",
+    steps: [
+      stageMarker(requestId, firstPreface, "decision", "tool_preface", sharedTime),
+      stageTool("tool-a", "WorkspaceRead", sharedTime),
+      stageMarker(requestId, secondPreface, "decision", "tool_preface", sharedTime),
+      stageTool("tool-b", "WorkspaceGrep", sharedTime),
+      {
+        id: "delegate-reviewer",
+        kind: "delegation",
+        title: "委派 reviewer",
+        status: "done",
+        startedAt: sharedTime,
+        endedAt: sharedTime,
+      },
+      stageMarker(requestId, answer, "answer", "final_answer", sharedTime),
+    ],
+  });
+  const turn = {
+    __assistantTurn: true,
+    key: `assistant-turn:${requestId}:0`,
+    requestId,
+    createdAt: sharedTime,
+    messages: [firstPreface, secondPreface, answer],
+    run,
+    streaming: false,
+  };
+
+  const stages = projectAssistantTurnStages(turn);
+
+  expect(stages).toHaveLength(3);
+  expect(stages[0]).toMatchObject({ kind: "execution", message: firstPreface, current: false });
+  expect(stages[0].run?.steps.map((step) => step.id)).toEqual(["tool-a"]);
+  expect(stages[1]).toMatchObject({ kind: "execution", message: secondPreface, current: false });
+  expect(stages[1].run?.steps.map((step) => step.id)).toEqual(["tool-b", "delegate-reviewer"]);
+  expect(stages[2]).toMatchObject({ kind: "final", message: answer, current: false, run: undefined });
+});
+
+test("only the active assistant stage receives live execution state", () => {
+  const requestId = "request-live-stage";
+  const firstPreface = createMessage({
+    id: "live-preface-1",
+    requestId,
+    kind: "AssistantToolPreface",
+    content: "先读取入口。",
+  });
+  const secondPreface = createMessage({
+    id: "live-preface-2",
+    requestId,
+    kind: "AssistantToolPreface",
+    content: "继续执行检查。",
+    createdAt: "2026-01-01T00:00:01.000Z",
+  });
+  const approval = createApproval();
+  const run = createRun({
+    requestId,
+    startedAt: "2025-12-31T23:59:00.000Z",
+    displayMessageId: secondPreface.id,
+    visibleKind: "tool_calls",
+    approvals: [approval],
+    steps: [
+      stageMarker(requestId, firstPreface, "decision", "tool_preface", firstPreface.createdAt),
+      stageTool("live-tool-a", "WorkspaceRead", firstPreface.createdAt, "running"),
+      stageMarker(requestId, secondPreface, "decision", "tool_preface", secondPreface.createdAt),
+      stageTool("live-tool-b", "WorkspaceGrep", secondPreface.createdAt, "running"),
+    ],
+  });
+  const stages = projectAssistantTurnStages({
+    __assistantTurn: true,
+    key: `assistant-turn:${requestId}:0`,
+    requestId,
+    createdAt: firstPreface.createdAt,
+    messages: [firstPreface, secondPreface],
+    run,
+    streaming: true,
+  });
+
+  expect(stages[0]).toMatchObject({ current: false });
+  expect(stages[0].run?.startedAt).toBe(run.startedAt);
+  expect(stages[0].run).toMatchObject({ status: "completed", endedAt: secondPreface.createdAt });
+  expect(stages[0].run?.steps).toEqual([
+    expect.objectContaining({ id: "live-tool-a", status: "done", endedAt: secondPreface.createdAt }),
+  ]);
+  expect(stages[0].run?.approvals).toEqual([]);
+  expect(stages[1]).toMatchObject({ current: true });
+  expect(stages[1].run?.startedAt).toBe(run.startedAt);
+  expect(stages[1].run?.status).toBe("running");
+  expect(stages[1].run?.steps.map((step) => step.id)).toEqual(["live-tool-b"]);
+  expect(stages[1].run?.approvals).toEqual([approval]);
+});
+
+test("a live execution stage keeps tools visible before its preface message is persisted", () => {
+  const requestId = "request-transient-stage";
+  const startedAt = "2026-01-01T00:00:00.000Z";
+  const transientMessageId = "transient-preface";
+  const run = createRun({
+    requestId,
+    displayMessageId: transientMessageId,
+    displayText: "正在检查工作区。",
+    visibleKind: "tool_preface",
+    steps: [
+      stageMarker(
+        requestId,
+        { id: transientMessageId, content: "正在检查工作区。" },
+        "decision",
+        "tool_preface",
+        startedAt,
+      ),
+      stageTool("transient-tool", "WorkspaceRead", startedAt, "running"),
+    ],
+  });
+
+  const stages = projectAssistantTurnStages({
+    __assistantTurn: true,
+    key: `assistant-turn:${requestId}:0`,
+    requestId,
+    createdAt: startedAt,
+    messages: [],
+    run,
+    streaming: true,
+  });
+
+  expect(stages).toHaveLength(1);
+  expect(stages[0]).toMatchObject({ kind: "execution", current: true });
+  expect(stages[0].message).toBeUndefined();
+  expect(stages[0].run?.steps.map((step) => step.id)).toEqual(["transient-tool"]);
+});
+
+test("assistant turn projection preserves conversation boundaries and targets the terminal message", () => {
+  const preface = createMessage({
+    id: "projection-preface",
+    requestId: "request-projection",
+    kind: "AssistantToolPreface",
+    content: "准备检查。",
+  });
+  const answer = createMessage({
+    id: "projection-answer",
+    requestId: "request-projection",
+    kind: "AssistantFinal",
+    content: "检查完成。",
+  });
+  const user = createMessage({
+    id: "projection-user",
+    requestId: "request-user",
+    role: "user",
+    content: "继续",
+  });
+  const laterPreface = createMessage({
+    id: "projection-later-preface",
+    requestId: "request-projection",
+    kind: "AssistantToolPreface",
+    content: "新的回复边界。",
+  });
+
+  const projected = projectAssistantTurns([preface, answer, user, laterPreface], []);
+
+  expect(projected).toHaveLength(3);
+  expect(projected[0]).toMatchObject({
+    key: "assistant-turn:request-projection:0",
+    messages: [preface, answer],
+  });
+  expect(projected[1]).toBe(user);
+  expect(projected[2]).toMatchObject({
+    key: "assistant-turn:request-projection:1",
+    messages: [laterPreface],
+  });
+  expect(readAssistantTurnActionMessage(projected[0])).toBe(answer);
+  expect(readAssistantTurnActionMessage(projected[2])).toBeUndefined();
+});
+
+test("assistant turn projection keeps an active run attached when a follow-up message is queued", () => {
+  const preface = createMessage({
+    id: "active-preface",
+    requestId: "request-active",
+    kind: "AssistantToolPreface",
+    content: "仍在执行。",
+  });
+  const queuedUserMessage = createMessage({
+    id: "queued-user",
+    requestId: "request-queued",
+    role: "user",
+    content: "完成后继续。",
+  });
+  const activeRun = createRun({ requestId: "request-active" });
+
+  const projected = projectAssistantTurns([preface, queuedUserMessage], [activeRun], activeRun);
+
+  expect(projected).toHaveLength(2);
+  expect(projected[0]).toMatchObject({ requestId: "request-active", run: activeRun, streaming: true });
+  expect(projected[1]).toBe(queuedUserMessage);
+});
+
+test("assistant turn projection preserves a cancelled execution slice between its request and follow-up", () => {
+  const requestId = "request-cancelled-slice";
+  const startedAt = "2026-01-01T00:00:00.000Z";
+  const userMessage = createMessage({
+    id: "cancelled-user",
+    requestId,
+    role: "user",
+    content: "检查项目并告诉我结果",
+    createdAt: startedAt,
+  });
+  const followUpMessage = createMessage({
+    id: "cancelled-follow-up",
+    requestId: "request-follow-up",
+    role: "user",
+    content: "继续",
+    createdAt: "2026-01-01T00:01:00.000Z",
+  });
+  const cancelledRun = createRun({
+    requestId,
+    status: "cancelled",
+    startedAt,
+    endedAt: "2026-01-01T00:00:30.000Z",
+    steps: [
+      stageTool("cancelled-tool", "WorkspaceRead", startedAt),
+      {
+        id: `${requestId}-cancelled`,
+        kind: "error",
+        title: "已取消",
+        status: "failed",
+        startedAt: "2026-01-01T00:00:30.000Z",
+        endedAt: "2026-01-01T00:00:30.000Z",
+      },
+    ],
+  });
+
+  const projected = projectAssistantTurns([userMessage, followUpMessage], [cancelledRun]);
+
+  expect(projected).toHaveLength(3);
+  expect(projected[0]).toBe(userMessage);
+  expect(projected[1]).toMatchObject({
+    key: `assistant-run-slice:${requestId}`,
+    requestId,
+    streaming: false,
+    run: cancelledRun,
+  });
+  expect(projected[2]).toBe(followUpMessage);
+
+  const stages = projectAssistantTurnStages(projected[1]);
+  expect(stages).toHaveLength(1);
+  expect(stages[0]).toMatchObject({ kind: "execution", current: false });
+  expect(stages[0].run?.steps.map((step) => step.id)).toEqual(["cancelled-tool", `${requestId}-cancelled`]);
+});
+
+test("assistant turn exposes one action menu bound to the final reply", async () => {
+  const user = userEvent.setup();
+  const onRegenerate = vi.fn();
+  const preface = createMessage({
+    id: "action-preface",
+    requestId: "request-actions",
+    kind: "AssistantToolPreface",
+    content: "先执行工具。",
+  });
+  const answer = createMessage({
+    id: "action-answer",
+    requestId: "request-actions",
+    kind: "AssistantFinal",
+    content: "最终结论。",
+  });
+
+  renderWithFrontendProviders(
+    React.createElement(
+      MessageList,
+      createMessageListProps({ messages: [preface, answer], onRegenerate }),
+    ),
+  );
+
+  expect(screen.getAllByRole("button", { name: "更多操作" })).toHaveLength(1);
+  await user.click(screen.getByRole("button", { name: "更多操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "从此处重新回答" }));
+  expect(onRegenerate).toHaveBeenCalledWith(answer);
 });
 
 test("conversation event rail keeps reply landmarks and excludes internal tool activity", () => {
@@ -494,6 +858,41 @@ test("conversation event rail positions landmarks from measured message heights"
   );
 
   expect(markers.map((marker) => marker.position)).toEqual([0, 0.8]);
+});
+
+test("conversation event rail distinguishes landmarks inside one grouped assistant turn", () => {
+  const events = projectConversationEvents([
+    {
+      key: "preface-grouped",
+      requestId: "request-grouped",
+      eventKind: "assistant_tool_preface",
+      content: "开始检查。",
+      itemIndex: 1,
+      itemProgress: 0.2,
+    },
+    {
+      key: "answer-grouped",
+      requestId: "request-grouped",
+      eventKind: "assistant_final",
+      content: "检查完成。",
+      itemIndex: 1,
+      itemProgress: 0.8,
+    },
+  ]);
+  const markers = projectConversationEventMarkers(
+    events,
+    ["user", "assistant-turn"],
+    new Map([
+      ["user", 100],
+      ["assistant-turn", 500],
+    ]),
+    132,
+  );
+
+  expect(markers.map((marker) => marker.position)).toEqual([1 / 3, 5 / 6]);
+  expect(readConversationEventIndex(events, 1)).toBe(0);
+  expect(readConversationEventPositionIndex(markers, 0.4)).toBe(0);
+  expect(readConversationEventPositionIndex(markers, 0.9)).toBe(1);
 });
 
 test("conversation event rail previews and navigates to an exact reply event", async () => {
@@ -661,7 +1060,7 @@ test("user messages edit inline and keep the existing replay command", async () 
   expect(screen.queryByRole("textbox", { name: "编辑用户消息" })).not.toBeInTheDocument();
 });
 
-test("completed workflow disclosure expands inline below assistant metadata", async () => {
+test("completed assistant turns keep workflow details out of the final stage", async () => {
   const user = userEvent.setup();
   const onViewWorkflow = vi.fn();
   const assistantMessage = createMessage({
@@ -697,18 +1096,41 @@ test("completed workflow disclosure expands inline below assistant metadata", as
     ),
   );
 
-  const disclosure = screen.getByRole("button", { name: /已完成.*1 步.*3\.0s/ });
   const answer = screen.getByText("Completed answer body");
-  expect(disclosure.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  const finalStage = answer.closest("[data-assistant-turn-stage='final']");
+  expect(finalStage).toContainElement(answer);
+  expect(screen.queryByRole("button", { name: /已完成.*1 步.*3\.0s/ })).not.toBeInTheDocument();
+  expect(screen.queryByText("生成回复")).not.toBeInTheDocument();
 
-  await user.click(disclosure);
-  const detail = screen.getByText("生成回复");
-  expect(disclosure.closest(".conversation-frame--wide")).toContainElement(detail);
-  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-
-  await user.click(screen.getByRole("button", { name: "查看完整工作流" }));
+  await user.click(screen.getByRole("button", { name: "更多操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "查看工作流" }));
   expect(onViewWorkflow).toHaveBeenCalledTimes(1);
 });
+
+function stageMarker(requestId, message, kind, decisionKind, startedAt) {
+  return {
+    id: `${requestId}-assistant-message-${message.id}`,
+    kind,
+    title: message.content,
+    status: "done",
+    startedAt,
+    endedAt: startedAt,
+    decisionKind,
+  };
+}
+
+function stageTool(id, toolName, startedAt, status = "done") {
+  return {
+    id,
+    kind: "tool",
+    title: `调用 ${toolName}`,
+    status,
+    startedAt,
+    endedAt: status === "running" ? undefined : startedAt,
+    toolName,
+    callId: id,
+  };
+}
 
 test("streaming approvals refresh when their content changes at the same length", async () => {
   const initialRun = createRun({

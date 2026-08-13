@@ -111,6 +111,7 @@ export class AgentWebSocketServer {
         interactionInput: options.interactionInput,
         sandboxRuntimeService,
         executionResources: options.executionResources,
+        interactiveTerminals: options.interactiveTerminals,
         workspaceRoot: options.workspaceRoot ?? process.cwd(),
         mcpManagement: options.mcpManagement,
       },

@@ -17,6 +17,7 @@ import {
   resolveArtifactsConfig,
   resolveSandboxRuntimeConfig,
   resolveServerConfig,
+  resolveToolExecutionConfig,
   resolveUploadsConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
@@ -39,6 +40,8 @@ import { AgentSystemRuntimeCache } from "../Source/AgentSystem/Runtime/AgentSyst
 import { AgentSessionApprovalLeaseStore } from "../Source/AgentSystem/Safety/AgentSessionApprovalLeaseStore.js";
 import { AgentSandboxRuntimeService } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeService.js";
 import { AgentExecutionResourceBroker } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceBroker.js";
+import { AgentInteractiveTerminalRuntime } from "../Source/AgentSystem/ExecutionResources/AgentInteractiveTerminalRuntime.js";
+import { createSeneraExecutionEnvironments } from "../Source/AgentSystem/Execution/SeneraExecutionEnvFactory.js";
 import { resolveAgentExecutionResourceLimits } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceConfig.js";
 import { AgentInteractionInputRuntime } from "../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
 import { createAgentRequestCancellationResource } from "../Source/AgentSystem/Session/AgentSessionRunResource.js";
@@ -331,6 +334,25 @@ async function startSeneraServerRuntime(
     acquireRuntime: (modelProviderId) => runtimeCache.acquire(modelProviderId),
     diagnostics: piDiagnostics,
   });
+  const interactiveTerminals = new AgentInteractiveTerminalRuntime({
+    workspaceRoot,
+    broker: executionResources,
+    acquireExecutionEnv: () => {
+      const config = configSnapshot();
+      const executionEnvironments = createSeneraExecutionEnvironments({
+        workspaceRoot,
+        resourcesPath: options.resourcesPath,
+        sandboxEnabled: resolveSandboxRuntimeConfig(config).Enabled,
+        sandboxAvailable: sandboxRuntimeService.sandboxBackendAvailable(),
+        sandboxRuntimeReady: () => sandboxRuntimeService.snapshot().state === "ready",
+        sandboxProvider: sandboxRuntimeService.runtimeProvider(),
+        dockerEngineWorker: sandboxRuntimeService.dockerEngineWorkerClient(),
+        environmentPolicy: resolveToolExecutionConfig(config).Environment,
+        terminationGraceMs: resolveAgentExecutionResourceLimits(config).terminationGraceMs,
+      });
+      return { executionEnv: executionEnvironments.system, release: () => undefined };
+    },
+  });
 
   const persistence = resolvePersistenceConfig(initialConfig);
   const repository = createRepository(workspaceRoot, initialConfig, upgradeSession, logger);
@@ -410,6 +432,7 @@ async function startSeneraServerRuntime(
     interactionInput,
     sandboxRuntimeService,
     executionResources,
+    interactiveTerminals,
     logger,
     eventLogger,
     piDiagnostics,

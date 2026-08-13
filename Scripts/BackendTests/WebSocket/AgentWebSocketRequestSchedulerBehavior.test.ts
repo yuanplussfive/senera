@@ -30,6 +30,34 @@ describe("WebSocket request scheduling", () => {
     await messageTask;
   });
 
+  test("starts an interactive terminal without waiting for the active agent turn", async () => {
+    const scheduler = new AgentWebSocketRequestScheduler();
+    const run = createDeferred<void>();
+    const terminalStarted = createDeferred<void>();
+    const messageTask = scheduler.run(
+      request({ type: "session.message", sessionId: "session-1", input: "keep working" }),
+      () => run.promise,
+    );
+
+    await scheduler.run(request({ type: "execution.resource.start_terminal", sessionId: "session-1" }), async () =>
+      terminalStarted.resolve(),
+    );
+
+    await terminalStarted.promise;
+    let messageSettled = false;
+    void messageTask.finally(() => {
+      messageSettled = true;
+    });
+    expect(messageSettled).toBe(false);
+    expect(
+      inspectAgentWebSocketRequestScheduling(
+        request({ type: "execution.resource.start_terminal", sessionId: "session-1" }),
+      ),
+    ).toEqual({ lane: AgentWebSocketRequestLanes.Concurrent });
+    run.resolve();
+    await messageTask;
+  });
+
   test("serializes the same session across sockets while allowing different sessions", async () => {
     const scheduler = new AgentWebSocketRequestScheduler();
     const firstFinished = createDeferred<void>();
@@ -75,6 +103,12 @@ describe("WebSocket request scheduling", () => {
     });
     expect(
       inspectAgentWebSocketRequestScheduling(request({ type: "execution.resource.write", resourceId: "r" })),
+    ).toEqual({
+      lane: AgentWebSocketRequestLanes.Serial,
+      key: "execution-resource:r",
+    });
+    expect(
+      inspectAgentWebSocketRequestScheduling(request({ type: "execution.resource.close", resourceId: "r" })),
     ).toEqual({
       lane: AgentWebSocketRequestLanes.Serial,
       key: "execution-resource:r",

@@ -178,7 +178,6 @@ function recoveryRun(requestId, revision) {
     visibleKind: "unknown",
     expectedOutputMode: "unknown",
     decisionMode: "none",
-    pendingToolArgsByName: {},
     recoverySource: "history",
   };
 }

@@ -1,6 +1,9 @@
 import { EventKinds, type EventKind, type EventLayer } from "../../api/generatedEventCatalog";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import type { EventJournalRecord } from "./eventJournalStore";
+import { readJsonPointer } from "./eventJournalProjection";
+import { projectToolActivity, type ToolActivityStatus } from "../workflow/toolActivityPresentation";
+import type { ToolEventOrigin } from "../../api/eventTypes";
 
 export type EventTrailTone = "context" | "progress" | "success" | "error" | "neutral";
 
@@ -36,9 +39,52 @@ const EventTitleKeys: Partial<Record<EventKind, FrontendMessageKey>> = {
 };
 
 export function readEventTitle(record: Pick<EventJournalRecord, "kind" | "summary">): string {
+  const toolTitle = readToolEventTitle(record);
+  if (toolTitle) return toolTitle;
   const key = EventTitleKeys[record.kind as EventKind];
   if (key) return frontendMessage(key);
-  return record.summary || frontendMessage("observability.event.technical", { kind: record.kind });
+  return record.summary || record.kind;
+}
+
+function readToolEventTitle(
+  record: Pick<EventJournalRecord, "kind" | "summary" | "projection">,
+): string | undefined {
+  const statusByKind: Partial<Record<EventKind, ToolActivityStatus>> = {
+    [EventKinds.ToolCallStarted]: "active",
+    [EventKinds.ToolCallCompleted]: "completed",
+    [EventKinds.ToolCallFailed]: "failed",
+  };
+  const status = statusByKind[record.kind as EventKind];
+  if (!status) return undefined;
+  const toolName = readString(readJsonPointer(record.projection, "/data/toolName"));
+  if (!toolName) return undefined;
+  return projectToolActivity({
+    toolName,
+    origin: readToolOrigin(readJsonPointer(record.projection, "/data/origin")),
+    arguments: readJsonPointer(record.projection, "/data/arguments"),
+    status,
+  });
+}
+
+function readToolOrigin(value: unknown): ToolEventOrigin | undefined {
+  if (!isRecord(value) || (value.kind !== "system" && value.kind !== "mcp") || typeof value.name !== "string") {
+    return undefined;
+  }
+  return {
+    kind: value.kind,
+    name: value.name,
+    ...(typeof value.capability === "string" ? { capability: value.capability } : {}),
+    ...(typeof value.server === "string" ? { server: value.server } : {}),
+    ...(typeof value.tool === "string" ? { tool: value.tool } : {}),
+  };
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function readEventTone(record: Pick<EventJournalRecord, "layer" | "direction">): EventTrailTone {

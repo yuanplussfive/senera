@@ -12,6 +12,7 @@ import type { AgentPiToolPlanCoordinator } from "../PiShared/AgentPiToolPlanCoor
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentRunActivityReporter } from "../Events/AgentRunActivityReporter.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
 import {
   AgentPiToolCallPreflightCoordinator,
   type AgentPiToolCallPreflight,
@@ -42,6 +43,7 @@ export class AgentPiTurnState {
   private readonly toolPreflights = new AgentPiToolCallPreflightCoordinator();
   private readonly executedToolResultsByCallId = new Map<string, ExecutedToolCallResult>();
   private readonly executorLifecycleStatusByCallId = new Map<string, "completed" | "failed">();
+  private readonly resourceAccessGrantsByCallId = new Map<string, AgentResourceAccessGrant>();
   private wrapUpReason?: "child_deadline";
 
   constructor(readonly context: AgentPiTurnStateOptions) {}
@@ -100,6 +102,23 @@ export class AgentPiTurnState {
 
   toolBatchIndex(callId: string): number | undefined {
     return this.toolPreflights.batchIndex(callId);
+  }
+
+  toolCallPurpose(callId: string): string | undefined {
+    return this.toolPreflights.purpose(callId);
+  }
+
+  registerResourceAccessGrant(callId: string, grant: AgentResourceAccessGrant): void {
+    if (!this.toolPreflights.batchId(callId)) {
+      throw new Error(`Pi tool call ${callId} is not registered in an active tool batch.`);
+    }
+    this.resourceAccessGrantsByCallId.set(callId, grant);
+  }
+
+  takeResourceAccessGrant(callId: string): AgentResourceAccessGrant | undefined {
+    const grant = this.resourceAccessGrantsByCallId.get(callId);
+    this.resourceAccessGrantsByCallId.delete(callId);
+    return grant;
   }
 
   recordExecutorLifecycleStatus(callId: string, status: "completed" | "failed"): void {

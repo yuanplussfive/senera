@@ -34,6 +34,8 @@ import { SeneraWorkspaceBoundary, SeneraWorkspaceBoundaryError } from "./SeneraW
 import {
   AgentResourceAccessAuthorities,
   AgentResourceAccessIntents,
+  type AgentResourceAccessGrant,
+  type AgentResourceAccessRequest,
   type AgentResourceAccessAuthority,
   type AgentResourceAccessIntent,
   type SeneraResourceAccessAuthorizer,
@@ -64,6 +66,7 @@ export interface SeneraLocalExecutionEnvOptions {
   terminalSpawner?: SeneraTerminalSpawner;
   resourceAccessPolicy?: SeneraResourceAccessAuthorizer;
   resourceAccessAuthority?: AgentResourceAccessAuthority;
+  resourceAccessGrant?: AgentResourceAccessGrant;
   runtimeCapabilities?: () => SeneraExecutionRuntimeCapabilities;
 }
 
@@ -82,16 +85,20 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   private readonly terminalSpawner: SeneraTerminalSpawner;
   private readonly resourceAccessPolicy?: SeneraResourceAccessAuthorizer;
   private readonly resourceAccessAuthority: AgentResourceAccessAuthority;
+  private readonly resourceAccessGrant?: AgentResourceAccessGrant;
 
   constructor(options: SeneraLocalExecutionEnvOptions, sharedState?: SeneraLocalExecutionEnvSharedState) {
     this.workspaceRoot = path.resolve(options.workspaceRoot);
     this.cwd = this.workspaceRoot;
     this.ownedTempRoots = sharedState?.ownedTempRoots ?? new Map();
     this.resourceAccessAuthority = options.resourceAccessAuthority ?? AgentResourceAccessAuthorities.Tool;
+    this.resourceAccessGrant = options.resourceAccessGrant;
     this.workspaceBoundary = new SeneraWorkspaceBoundary({
       workspaceRoot: this.workspaceRoot,
       policy: options.resourceAccessPolicy,
       authority: this.resourceAccessAuthority,
+      allowOutside: options.resourceAccessGrant !== undefined,
+      resourceAccessGrant: options.resourceAccessGrant,
     });
     this.resourceAccessPolicy = options.resourceAccessPolicy;
     this.runtimeCapabilities = options.runtimeCapabilities ?? (() => createSeneraExecutionRuntimeCapabilities());
@@ -114,6 +121,24 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
         terminalSpawner: this.terminalSpawner,
         resourceAccessPolicy: this.resourceAccessPolicy,
         resourceAccessAuthority: authority,
+        resourceAccessGrant: this.resourceAccessGrant,
+        runtimeCapabilities: this.runtimeCapabilities,
+      },
+      { ownedTempRoots: this.ownedTempRoots },
+    );
+  }
+
+  withResourceAccessGrant(grant: AgentResourceAccessGrant): SeneraExecutionEnv {
+    if (this.resourceAccessGrant === grant) return this;
+    return new SeneraLocalExecutionEnv(
+      {
+        workspaceRoot: this.workspaceRoot,
+        processBackend: this.processBackend,
+        persistentProcessSpawner: this.persistentProcessSpawner,
+        terminalSpawner: this.terminalSpawner,
+        resourceAccessPolicy: this.resourceAccessPolicy,
+        resourceAccessAuthority: this.resourceAccessAuthority,
+        resourceAccessGrant: grant,
         runtimeCapabilities: this.runtimeCapabilities,
       },
       { ownedTempRoots: this.ownedTempRoots },
@@ -255,6 +280,23 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
 
   async resolveResourcePath(value: string, intent: AgentResourceAccessIntent): Promise<Result<string, FileError>> {
     return this.resolveFilePath(value, intent);
+  }
+
+  async inspectResourcePath(value: string, intent: AgentResourceAccessIntent): Promise<AgentResourceAccessRequest> {
+    const inspectionBoundary = new SeneraWorkspaceBoundary({
+      workspaceRoot: this.workspaceRoot,
+      authority: this.resourceAccessAuthority,
+      allowOutside: true,
+      linkPolicy: "deny",
+    });
+    const inspected = await inspectionBoundary.inspect(value, intent);
+    return {
+      addressedPath: inspected.addressedPath ?? path.resolve(this.cwd, value),
+      ...(inspected.absolutePath ? { canonicalPath: inspected.absolutePath } : {}),
+      intent,
+      recursive: inspected.facts.finalEntry === "directory",
+      facts: inspected.facts,
+    };
   }
 
   async joinPath(parts: string[]): Promise<Result<string, FileError>> {
@@ -601,6 +643,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
 
   private boundaryForAddressedPath(value: string): SeneraWorkspaceBoundary | undefined {
     if (isPathWithin(this.workspaceRoot, value)) return this.workspaceBoundary;
+    if (this.resourceAccessGrant) return this.workspaceBoundary;
     return [...this.ownedTempRoots].find(([root]) => isPathWithin(root, value))?.[1];
   }
 

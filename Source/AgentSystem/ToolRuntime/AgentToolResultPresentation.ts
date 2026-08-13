@@ -96,6 +96,7 @@ function projectFacts(result: ExecutedToolCallResult): AgentToolResultPresentati
 
 function projectChanges(result: ExecutedToolCallResult): AgentToolResultPresentationChange[] {
   const changes = result.artifact?.delta ?? [];
+  const workspaceChanges = new Map(result.artifact?.workspace?.changes.map((change) => [change.path, change]) ?? []);
   const seen = new Set<string>();
   return changes.flatMap((change) => {
     const key = `${change.kind}\u0000${change.status}\u0000${change.key}`;
@@ -103,12 +104,15 @@ function projectChanges(result: ExecutedToolCallResult): AgentToolResultPresenta
       return [];
     }
     seen.add(key);
+    const workspaceChange = change.kind === "workspace" ? workspaceChanges.get(change.key) : undefined;
     return [
       {
         kind: change.kind,
         status: change.status,
         key: change.key,
         summary: change.summary,
+        addedLines: workspaceChange?.addedLines,
+        removedLines: workspaceChange?.removedLines,
       },
     ];
   });

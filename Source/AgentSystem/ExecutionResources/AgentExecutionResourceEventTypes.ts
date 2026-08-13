@@ -62,7 +62,7 @@ export type AgentExecutionResourceDomainEvent =
       kind: typeof AgentEventKinds.ExecutionResourceSnapshot;
       context: AgentEventContext;
       data: {
-        operation: "list" | "inspect" | "write" | "resize" | "signal" | "stop_all";
+        operation: "start_terminal" | "list" | "inspect" | "write" | "resize" | "signal" | "close" | "stop_all";
         resources: AgentExecutionResourceSnapshot[];
       };
     };

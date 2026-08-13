@@ -58,7 +58,7 @@
     "Scheduling": "Parallel",
     "Capabilities": { "Cancellation": true }
   },
-  "resources": [],
+  "resources": [{ "Capability": "senera.workspace.path", "Pointer": "/path", "Parameters": { "Intent": "read" } }],
   "sources": [],
   "search": {
     "Summary": "读取工作区中的文本文件或受支持图像，并使用 offset/limit 继续读取大文件。",

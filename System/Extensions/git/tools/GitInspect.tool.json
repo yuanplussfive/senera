@@ -55,7 +55,8 @@
         "required": ["operation", "repository"],
         "additionalProperties": false
       }
-    ]
+    ],
+    "type": "object"
   },
   "outputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -85,7 +86,8 @@
     "Capabilities": { "OutputStreaming": true, "Cancellation": true }
   },
   "resources": [
-    { "Capability": "senera.workspace.path", "Pointer": "/repository", "Parameters": { "Intent": "inspect" } }
+    { "Capability": "senera.workspace.path", "Pointer": "/repository", "Parameters": { "Intent": "inspect" } },
+    { "Capability": "senera.workspace.path", "Pointer": "/repository", "Parameters": { "Intent": "execute" } }
   ],
   "sources": [],
   "search": {

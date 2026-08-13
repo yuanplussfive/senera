@@ -8,6 +8,10 @@ import type { AgentToolRunnerLike } from "../../../Source/AgentSystem/ToolRuntim
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import { createXmlProtocolSpec } from "../../../Source/AgentSystem/Xml/AgentXmlPolicy.js";
+import {
+  AgentResourceAccessGrantModes,
+  createAgentResourceAccessGrant,
+} from "../../../Source/AgentSystem/Execution/SeneraResourceAccess.js";
 
 describe("tool call executor outcome", () => {
   test("preserves thinking plus separate authorized and exposed Tool sets in the runner context", async () => {
@@ -44,6 +48,44 @@ describe("tool call executor outcome", () => {
         authorizedToolNames: [tool.name, "AuthorizedButNotExposed"],
       }),
     );
+  });
+
+  test("rejects a resource grant bound to a different tool call before dispatch", async () => {
+    const tool = registeredTool();
+    const registry = new AgentExtensionRegistry();
+    registry.registerToolExtension(tool.owner, [tool]);
+    const run = vi.fn<AgentToolRunnerLike["run"]>();
+    const executor = new AgentToolCallExecutor({
+      registry,
+      config: { ModelProviders: [] },
+      protocol: createXmlProtocolSpec(),
+      toolRunner: { run },
+      emitLifecycleEvents: false,
+    });
+
+    await expect(
+      executor.execute(
+        { name: tool.name, callId: "call-current" },
+        {
+          sessionId: "session-current",
+          requestId: "request-current",
+          toolAccessGrant: createAgentToolAccessGrant({
+            authorizedToolNames: [tool.name],
+            exposedToolNames: [tool.name],
+          }),
+          resourceAccessGrant: createAgentResourceAccessGrant({
+            mode: AgentResourceAccessGrantModes.FullHost,
+            binding: {
+              sessionId: "session-current",
+              requestId: "request-current",
+              toolCallId: "call-other",
+              toolName: tool.name,
+            },
+          }),
+        },
+      ),
+    ).rejects.toThrow("does not belong to tool call call-current");
+    expect(run).not.toHaveBeenCalled();
   });
 
   test("projects a nonzero process exit into result, presentation, and lifecycle failure", async () => {
@@ -201,7 +243,10 @@ describe("tool call executor outcome", () => {
   });
 
   test("publishes backend-measured lifecycle timing for system tools", async () => {
-    const tool = registeredTool();
+    const tool = {
+      ...registeredTool(),
+      artifactPolicy: { Redact: { Keys: ["token"] } },
+    } satisfies RegisteredTool;
     const registry = new AgentExtensionRegistry();
     registry.registerToolExtension(tool.owner, [tool]);
     const clock = new TestLifecycleClock(1_000);
@@ -220,7 +265,11 @@ describe("tool call executor outcome", () => {
     });
 
     await executor.execute(
-      { name: tool.name, callId: "call-timed" },
+      {
+        name: tool.name,
+        callId: "call-timed",
+        arguments: { query: "inspect workspace", token: "secret-token" },
+      },
       {
         requestId: "request-timed",
         step: 1,
@@ -236,6 +285,7 @@ describe("tool call executor outcome", () => {
 
     expect(events.find((event) => event.kind === "tool.call.started")?.data).toMatchObject({
       callId: "call-timed",
+      arguments: { query: "inspect workspace", token: "[REDACTED]" },
       startedAt: "1970-01-01T00:00:01.000Z",
     });
     expect(events.find((event) => event.kind === "tool.call.completed")?.data).toMatchObject({

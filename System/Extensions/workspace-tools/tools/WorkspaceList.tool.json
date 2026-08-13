@@ -56,7 +56,7 @@
     "Scheduling": "Parallel",
     "Capabilities": { "Cancellation": true }
   },
-  "resources": [],
+  "resources": [{ "Capability": "senera.workspace.path", "Pointer": "/path", "Parameters": { "Intent": "read" } }],
   "sources": [],
   "search": {
     "Summary": "按字母顺序列出工作区目录，包含点文件并标识子目录。",

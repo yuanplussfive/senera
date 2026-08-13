@@ -278,7 +278,6 @@ function sessionWithRun(sessionId, requestId) {
         visibleKind: "unknown",
         expectedOutputMode: "open",
         decisionMode: "none",
-        pendingToolArgsByName: {},
       },
     ],
   };

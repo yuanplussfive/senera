@@ -286,6 +286,7 @@ export class AgentPiRunCollector {
       toolName: event.toolName,
       callId: event.toolCallId,
       batchId: this.batchIdFor(event.toolCallId),
+      purpose: this.options.turnState.toolCallPurpose(event.toolCallId),
       toolArgs: clampField(executed?.arguments ?? active.args),
       toolPreview: executed?.presentation?.headline,
       toolPresentation: executed?.presentation,

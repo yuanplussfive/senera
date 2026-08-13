@@ -132,11 +132,13 @@ export class AgentWebSocketMessageRouter {
       "approval.resolve_batch": (entry) => this.approval.resolveBatch(entry, sendEvent),
       "interaction.input.resolve": (entry) => this.interactionInput.resolve(entry),
       "sandbox.status": () => this.sandbox.status(sendEvent),
+      "execution.resource.start_terminal": (entry) => this.executionResources.startTerminal(entry, sendEvent),
       "execution.resource.list": (entry) => this.executionResources.list(entry, sendEvent),
       "execution.resource.inspect": (entry) => this.executionResources.inspect(entry, sendEvent),
       "execution.resource.write": (entry) => this.executionResources.write(entry, sendEvent),
       "execution.resource.resize": (entry) => this.executionResources.resize(entry, sendEvent),
       "execution.resource.signal": (entry) => this.executionResources.signal(entry, sendEvent),
+      "execution.resource.close": (entry) => this.executionResources.close(entry, sendEvent),
       "execution.resource.stop_all": (entry) => this.executionResources.stopAll(entry, sendEvent),
     });
   }

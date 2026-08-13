@@ -1,4 +1,5 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
+import type { AgentResourceAccessIntent } from "../Execution/SeneraResourceAccess.js";
 import type { AgentToolExecutionPlan } from "../ToolRuntime/AgentToolExecutionPlan.js";
 
 export const AgentApprovalKinds = {
@@ -57,7 +58,14 @@ export type AgentApprovalSubject = {
   toolName: string;
   arguments: Record<string, unknown>;
   execution?: AgentToolExecutionPlan;
+  resources?: readonly AgentApprovalResource[];
 };
+
+export interface AgentApprovalResource {
+  canonicalPath: string;
+  intent: AgentResourceAccessIntent;
+  recursive: boolean;
+}
 
 export type AgentApprovalScope = "once" | "session";
 

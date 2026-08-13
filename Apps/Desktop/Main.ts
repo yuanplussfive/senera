@@ -2,7 +2,28 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import { startSeneraServer, type SeneraServerHandle } from "../ServerRuntime.js";
-import { appendDesktopLog, prepareDesktopRuntime, type DesktopRuntimePaths } from "./DesktopRuntime.js";
+import {
+  appendDesktopLog,
+  chooseDesktopDataRoot,
+  chooseDesktopWorkspace,
+  DesktopDataResolutionError,
+  DesktopInstallationSelectionRequiredError,
+  DesktopWorkspaceResolutionError,
+  persistDesktopInstallation,
+  persistDesktopWorkspace,
+  prepareDesktopRuntime,
+  type DesktopRuntimePaths,
+} from "./DesktopRuntime.js";
+import {
+  isDesktopDataDirectory,
+  readDesktopInstallationSelection,
+  resolveDesktopInstallationSelectionPath,
+} from "./DesktopInstallationSelection.js";
+import {
+  isDesktopWorkspaceDirectory,
+  readLegacyDesktopWorkspaceSelection,
+  resolveDesktopWorkspaceSelectionPath,
+} from "./DesktopWorkspaceSelection.js";
 import {
   createDesktopFrontendSource,
   loadDesktopFrontend,
@@ -24,6 +45,7 @@ let settingsWindow: BrowserWindow | undefined;
 let desktopTray: Tray | undefined;
 let forceSettingsWindowClose = false;
 let desktopQuitting = false;
+let desktopRestartRequested = false;
 const settingsClosePolicy = new DesktopClosePolicy();
 let runtimePaths: DesktopRuntimePaths | undefined;
 let frontendSource: DesktopFrontendSource | undefined;
@@ -45,6 +67,14 @@ const settingsSectionIds = new Set([
 ]);
 
 app.setName("Senera");
+const defaultDesktopDataRoot = path.resolve(app.getPath("userData"));
+const defaultInstallationSelectionPath = resolveDesktopInstallationSelectionPath(defaultDesktopDataRoot);
+const startupInstallationSelection = readDesktopInstallationSelection(defaultInstallationSelectionPath);
+const configuredDataRoot = process.env.SENERA_DATA_ROOT?.trim();
+const startupDataRoot = configuredDataRoot || startupInstallationSelection?.dataRoot;
+if (startupDataRoot && isDesktopDataDirectory(startupDataRoot)) {
+  app.setPath("userData", path.resolve(startupDataRoot));
+}
 if (remoteDebuggingPort) {
   app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort);
 }
@@ -53,13 +83,16 @@ Menu.setApplicationMenu(null);
 app
   .whenReady()
   .then(async () => {
-    runtimePaths = prepareDesktopRuntime();
+    if (app.isPackaged && !(await ensurePackagedInstallationSelection())) return;
+    runtimePaths = await prepareDesktopRuntime({ installationAnchorPath: defaultInstallationSelectionPath });
     appendDesktopLog(
       runtimePaths.logPath,
-      `starting desktop runtime workspace=${runtimePaths.workspaceRoot} configDatabase=${runtimePaths.configDatabasePath}`,
+      `starting desktop runtime dataRoot=${runtimePaths.dataRoot} workspace=${runtimePaths.workspaceRoot} resources=${runtimePaths.resourceRoot} configDatabase=${runtimePaths.configDatabasePath}`,
     );
     const paths = runtimePaths;
-    desktopTray = createDesktopTray(paths.windowIconPath);
+    desktopTray = createDesktopTray(paths.windowIconPath, () => {
+      void selectDesktopWorkspaceAndRestart();
+    });
     frontendSource = createDesktopFrontendSource({
       devServerUrl: process.env.SENERA_DESKTOP_FRONTEND_URL,
       frontendIndexHtml: paths.frontendIndexHtml,
@@ -131,7 +164,10 @@ app.on("before-quit", (event) => {
   sandboxWorkerHandle = undefined;
   if (!handle && !sandboxWorker) return;
   event.preventDefault();
-  void Promise.all([handle?.stop(), sandboxWorker?.close()]).finally(() => app.quit());
+  void Promise.all([handle?.stop(), sandboxWorker?.close()]).finally(() => {
+    if (desktopRestartRequested) app.relaunch();
+    app.quit();
+  });
 });
 
 function registerDesktopIpc(): void {
@@ -195,7 +231,7 @@ function resolveSettingsSection(section: string | undefined): string {
   return section as string;
 }
 
-function createDesktopTray(iconPath: string): Tray {
+function createDesktopTray(iconPath: string, onSelectWorkspace: () => void): Tray {
   const tray = new Tray(iconPath);
   tray.setToolTip("Senera");
   tray.setContextMenu(
@@ -203,6 +239,16 @@ function createDesktopTray(iconPath: string): Tray {
       {
         label: desktopMessage("tray.show", {}, app.getLocale()),
         click: showAllDesktopWindows,
+      },
+      {
+        label: desktopMessage("tray.selectWorkspace", {}, app.getLocale()),
+        click: onSelectWorkspace,
+      },
+      {
+        label: desktopMessage("tray.selectDataDirectory", {}, app.getLocale()),
+        click: () => {
+          void selectDesktopDataRootAndRestart();
+        },
       },
       { type: "separator" },
       {
@@ -213,6 +259,73 @@ function createDesktopTray(iconPath: string): Tray {
   );
   tray.on("click", showAllDesktopWindows);
   return tray;
+}
+
+async function selectDesktopWorkspaceAndRestart(): Promise<void> {
+  if (!runtimePaths) return;
+  const selected = await chooseDesktopWorkspace();
+  if (!selected || path.resolve(selected) === path.resolve(runtimePaths.workspaceRoot)) return;
+  persistDesktopWorkspace(runtimePaths, selected);
+  desktopRestartRequested = true;
+  app.quit();
+}
+
+async function selectDesktopDataRootAndRestart(): Promise<void> {
+  if (!runtimePaths) return;
+  const selected = await chooseDesktopDataRoot(runtimePaths.dataRoot);
+  if (!selected || path.resolve(selected) === path.resolve(runtimePaths.dataRoot)) return;
+  persistDesktopInstallation(runtimePaths, {
+    dataRoot: selected,
+    workspaceRoot: runtimePaths.workspaceRoot,
+  });
+  desktopRestartRequested = true;
+  app.quit();
+}
+
+async function ensurePackagedInstallationSelection(): Promise<boolean> {
+  if (!app.isPackaged) return true;
+  const currentDataRoot = path.resolve(app.getPath("userData"));
+  const currentSelection = readDesktopInstallationSelection(resolveDesktopInstallationSelectionPath(currentDataRoot));
+  const configuredWorkspaceRoot = process.env.SENERA_WORKSPACE_ROOT?.trim();
+  const legacyWorkspaceRoot = readLegacyDesktopWorkspaceSelection(
+    resolveDesktopWorkspaceSelectionPath(currentDataRoot),
+    currentDataRoot,
+  );
+  const workspaceRoot =
+    configuredWorkspaceRoot ||
+    currentSelection?.workspaceRoot ||
+    startupInstallationSelection?.workspaceRoot ||
+    legacyWorkspaceRoot;
+  if (configuredWorkspaceRoot && !isDesktopWorkspaceDirectory(configuredWorkspaceRoot)) {
+    throw new DesktopWorkspaceResolutionError(configuredWorkspaceRoot);
+  }
+  const dataRoot = configuredDataRoot
+    ? path.resolve(configuredDataRoot)
+    : startupInstallationSelection?.dataRoot
+      ? path.resolve(startupInstallationSelection.dataRoot)
+      : currentSelection?.dataRoot
+        ? path.resolve(currentSelection.dataRoot)
+        : legacyWorkspaceRoot
+          ? currentDataRoot
+          : undefined;
+  if (!dataRoot) throw new DesktopInstallationSelectionRequiredError(defaultInstallationSelectionPath);
+  if (!isDesktopDataDirectory(dataRoot)) {
+    throw new DesktopDataResolutionError(dataRoot);
+  }
+  const selectedWorkspaceRoot =
+    workspaceRoot && isDesktopWorkspaceDirectory(workspaceRoot) ? path.resolve(workspaceRoot) : undefined;
+  if (!selectedWorkspaceRoot) {
+    throw new DesktopInstallationSelectionRequiredError(
+      currentSelection ? resolveDesktopInstallationSelectionPath(currentDataRoot) : defaultInstallationSelectionPath,
+    );
+  }
+
+  if (path.resolve(currentDataRoot) === path.resolve(dataRoot)) {
+    return true;
+  }
+  app.relaunch();
+  app.exit(0);
+  return false;
 }
 
 function hideAllDesktopWindows(): void {

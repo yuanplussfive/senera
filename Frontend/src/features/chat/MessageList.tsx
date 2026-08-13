@@ -7,10 +7,16 @@ import { useResponsiveMode } from "../../shared/responsive";
 import { useMotionLevel } from "../../shared/motion";
 import { PerformanceMonitor } from "../../app/PerformanceMonitor";
 import { DeleteMessageDialog } from "./DeleteMessageDialog";
+import { AssistantTurnRow } from "./AssistantTurnRow";
 import { MessageRow } from "./MessageRow";
 import { MotionMessageItem } from "./MotionMessageItem";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
-import { StreamingRow } from "./StreamingRow";
+import {
+  isAssistantTurnListItem,
+  projectAssistantTurns,
+  readAssistantTurnAnchorId,
+  type ProjectedMessageListItem,
+} from "./assistantTurnProjection";
 import { useMessageHeightObserver } from "./useMessageHeightObserver";
 import { useStreamingDisplayTicker } from "./useStreamingDisplayTicker";
 import { useVirtuosoAutoStickToBottom } from "./useVirtuosoAutoStickToBottom";
@@ -49,18 +55,11 @@ const MESSAGE_ITEM_DEFAULT_HEIGHT = 132;
 const MESSAGE_LIST_OVERSCAN_PX = 240;
 const EVENT_NAVIGATION_SETTLE_MS = 320;
 
-type MessageListItem = ChatMessage | { __streaming: true; run: RunRecord };
-
-function isStreamingListItem(
-  item: MessageListItem | undefined,
-): item is Extract<MessageListItem, { __streaming: true }> {
-  if (!item) return false;
-  return "__streaming" in item;
-}
+type MessageListItem = ProjectedMessageListItem;
 
 export function readMessageListItemKey(item: MessageListItem | undefined, fallbackIndex?: number): string {
   if (!item) return `__placeholder__:${fallbackIndex ?? "unknown"}`;
-  return isStreamingListItem(item) ? "__streaming__" : item.id;
+  return isAssistantTurnListItem(item) ? item.key : item.id;
 }
 
 function readMeasuredMessageKey(element: HTMLElement): string | null {
@@ -119,31 +118,50 @@ export function MessageList({
     [displayedMessages],
   );
   const items = useMemo(
-    () =>
-      streamingRun ? [...displayedMessages, { __streaming: true as const, run: streamingRun }] : displayedMessages,
-    [displayedMessages, streamingRun],
+    () => projectAssistantTurns(displayedMessages, runs, streamingRun),
+    [displayedMessages, runs, streamingRun],
   );
   const itemKeys = useMemo(() => items.map((item, index) => readMessageListItemKey(item, index)), [items]);
   const eventSourceItems = useMemo<ConversationEventSourceItem[]>(
     () =>
-      items.map((item, index) =>
-        isStreamingListItem(item)
-          ? {
-              key: readMessageListItemKey(item, index),
-              requestId: item.run.requestId,
-              eventKind: readStreamingConversationEventKind(
-                item.run,
-                item.run.displayMessageId !== undefined && displayedMessageIds.has(item.run.displayMessageId),
-              ),
-              content: item.run.displayText,
-            }
-          : {
-              key: readMessageListItemKey(item, index),
-              requestId: item.requestId,
-              eventKind: readMessageConversationEventKind(item),
-              content: item.content,
-            },
-      ),
+      items.flatMap((item, index): ConversationEventSourceItem[] => {
+        if (!isAssistantTurnListItem(item)) {
+          return [{
+            key: readMessageListItemKey(item, index),
+            requestId: item.requestId,
+            eventKind: readMessageConversationEventKind(item),
+            content: item.content,
+            itemIndex: index,
+          }];
+        }
+
+        const sources: ConversationEventSourceItem[] = item.messages.map((message, messageIndex) => ({
+          key: message.id,
+          requestId: message.requestId,
+          eventKind: readMessageConversationEventKind(message),
+          content: message.content,
+          itemIndex: index,
+          itemProgress: readTurnEventProgress(messageIndex, item.messages.length, message.kind),
+          anchorId: readAssistantTurnAnchorId(message),
+        }));
+        const transientKind = item.run
+          ? readStreamingConversationEventKind(
+              item.run,
+              item.run.displayMessageId !== undefined && displayedMessageIds.has(item.run.displayMessageId),
+            )
+          : null;
+        if (item.streaming && transientKind) {
+          sources.push({
+            key: `${item.key}:streaming`,
+            requestId: item.requestId,
+            eventKind: transientKind,
+            content: item.run?.displayText ?? "",
+            itemIndex: index,
+            itemProgress: transientKind === "assistant_tool_preface" ? 0.15 : 0.8,
+          });
+        }
+        return sources;
+      }),
     [displayedMessageIds, items],
   );
   const conversationEvents = useMemo(() => projectConversationEvents(eventSourceItems), [eventSourceItems]);
@@ -279,6 +297,13 @@ export function MessageList({
       eventNavigationTimerRef.current = window.setTimeout(
         () => {
           eventNavigationTimerRef.current = null;
+          const anchor = event.anchorId ? document.getElementById(event.anchorId) : null;
+          if (anchor && chatScrollerRef.current?.contains(anchor)) {
+            anchor.scrollIntoView({
+              block: "center",
+              behavior: reduceMotion || disableMotion ? "auto" : "smooth",
+            });
+          }
           endManualScroll();
         },
         reduceMotion || disableMotion ? 0 : EVENT_NAVIGATION_SETTLE_MS,
@@ -314,21 +339,29 @@ export function MessageList({
           itemContent={(index, item) => {
             const itemKey = readMessageListItemKey(item, index);
             if (!item) return <div className="h-px" data-message-key={itemKey} />;
-            if (isStreamingListItem(item)) {
+            if (isAssistantTurnListItem(item)) {
+              const shouldHighlightCompletedStream = item.requestId === completedRunIdToHighlight;
+              const shouldAnimateMount = shouldHighlightCompletedStream || index >= items.length - 2;
               return (
                 <div
                   className="chat-message-item box-border w-full pb-3 pt-1"
                   data-message-key={itemKey}
                   ref={heightObserverRef}
                 >
-                  <MotionMessageItem motionKey={`streaming:${item.run.requestId}`}>
-                    <StreamingRow
+                  <MotionMessageItem
+                    motionKey={item.key}
+                    animateOnMount={shouldAnimateMount}
+                    className={shouldHighlightCompletedStream ? "streaming-complete-highlight" : undefined}
+                  >
+                    <AssistantTurnRow
                       sessionId={sessionId}
-                      run={item.run}
-                      hasActiveToolPrefaceMessage={
-                        item.run.displayMessageId !== undefined && displayedMessageIds.has(item.run.displayMessageId)
-                      }
+                      turn={item}
+                      showInlineActions={showInlineMessageActions}
                       approvalDisabled={approvalDisabled}
+                      onForkFromMessage={onForkFromMessage}
+                      onRegenerate={onRegenerate}
+                      onDeleteFromMessage={setDeleting}
+                      onViewWorkflow={onViewWorkflow}
                       onResolveApproval={onResolveApproval}
                       onResolveApprovalBatch={onResolveApprovalBatch}
                       onResolveInteractionInput={onResolveInteractionInput}
@@ -337,10 +370,7 @@ export function MessageList({
                 </div>
               );
             }
-            const shouldHighlightCompletedStream =
-              item.role === "assistant" && item.requestId === completedRunIdToHighlight;
-            const isRecentMessage = index >= displayedMessages.length - 2;
-            const shouldAnimateMount = shouldHighlightCompletedStream || isRecentMessage;
+            const shouldAnimateMount = index >= items.length - 2;
             return (
               <div
                 className="chat-message-item box-border w-full pb-3 pt-1"
@@ -350,7 +380,6 @@ export function MessageList({
                 <MotionMessageItem
                   motionKey={item.id}
                   animateOnMount={shouldAnimateMount}
-                  className={shouldHighlightCompletedStream ? "streaming-complete-highlight" : undefined}
                 >
                   <MessageRow
                     message={item}
@@ -461,4 +490,14 @@ function readStreamingConversationEventKind(
     case "tool_calls":
       return null;
   }
+}
+
+function readTurnEventProgress(
+  messageIndex: number,
+  messageCount: number,
+  kind: ChatMessage["kind"],
+): number {
+  if (kind === "AssistantToolPreface") return Math.min(0.4, (messageIndex + 1) / (messageCount + 2));
+  if (kind === "AssistantFinal" || kind === "AssistantAsk" || kind === "Error") return 0.82;
+  return (messageIndex + 1) / (messageCount + 1);
 }

@@ -43,16 +43,6 @@ export function resolveSocketErrorToast(env: EventEnvelope, state: SocketErrorTo
     };
   }
 
-  if (env.kind === EventKinds.ToolCallFailed) {
-    return {
-      variant: "error",
-      title: frontendMessage("socket.toolCallFailed", {
-        toolName: readDataString(env.data, "toolName") ?? "",
-      }),
-      description: resolveBackendMessage(env.data),
-    };
-  }
-
   if (env.kind === EventKinds.RequestInvalid) {
     const message = resolveBackendMessage(env.data) ?? "";
     if (readDataString(env.data, "code") === "session_close_failed") {

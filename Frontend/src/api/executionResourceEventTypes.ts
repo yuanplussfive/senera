@@ -90,10 +90,14 @@ export interface ExecutionResourceSnapshotData {
   exitCode?: number | null;
   signal?: string | number | null;
   error?: string;
+  presentation?: {
+    purpose: "background-process" | "command-task" | "interactive-shell";
+    title?: string;
+  };
   terminal?: ExecutionResourceTerminalData;
 }
 
 export interface ExecutionResourceSnapshotEventData {
-  operation: "list" | "inspect" | "write" | "resize" | "signal" | "stop_all";
+  operation: "start_terminal" | "list" | "inspect" | "write" | "resize" | "signal" | "close" | "stop_all";
   resources: ExecutionResourceSnapshotData[];
 }

@@ -26,9 +26,20 @@ export function frontendMessage(
   return formatFrontendMessage(FrontendMessageCatalog[locale][key], params);
 }
 
+export function isFrontendMessageKey(value: unknown): value is FrontendMessageKey {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(FrontendMessagesZhCn, value);
+}
+
 export function formatFrontendMessage(template: string, params: FrontendMessageParams): string {
   return template.replace(/\{([A-Za-z0-9_]+)\}/g, (match, name: string) => {
     const value = params[name];
     return value === undefined || value === null ? match : String(value);
   });
+}
+
+export function formatFrontendList(
+  values: readonly string[],
+  locale: FrontendLocale = getFrontendLocale(),
+): string {
+  return new Intl.ListFormat(locale, { style: "long", type: "conjunction" }).format(values);
 }

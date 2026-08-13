@@ -5,6 +5,7 @@ import { AgentLoopRunEventFactory } from "./AgentLoopRunEventFactory.js";
 import { AgentLoopToolEventFactory } from "./AgentLoopToolEventFactory.js";
 import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.js";
 
 export class AgentLoopEventFactory {
   private readonly runEvents = new AgentLoopRunEventFactory();
@@ -49,7 +50,7 @@ export class AgentLoopEventFactory {
     index: number,
     toolName: string,
     callId: string,
-    metadata: { batchId?: string; startedAt?: string } = {},
+    metadata: { arguments?: unknown; origin?: AgentToolEventOrigin; batchId?: string; startedAt?: string } = {},
   ): AgentDomainEvent {
     return this.toolEvents.toolCallStarted(requestId, step, index, toolName, callId, metadata);
   }
@@ -61,7 +62,7 @@ export class AgentLoopEventFactory {
     toolName: string,
     callId: string,
     presentation?: AgentToolResultPresentation,
-    metadata: { batchId?: string; startedAt?: string; durationMs?: number } = {},
+    metadata: { origin?: AgentToolEventOrigin; batchId?: string; startedAt?: string; durationMs?: number } = {},
   ): AgentDomainEvent {
     return this.toolEvents.toolCallCompleted(requestId, step, index, toolName, callId, presentation, metadata);
   }
@@ -74,7 +75,7 @@ export class AgentLoopEventFactory {
     callId: string,
     message: string,
     code?: string,
-    metadata: { batchId?: string; startedAt?: string; durationMs?: number } = {},
+    metadata: { origin?: AgentToolEventOrigin; batchId?: string; startedAt?: string; durationMs?: number } = {},
   ): AgentDomainEvent {
     return this.toolEvents.toolCallFailed(requestId, step, index, toolName, callId, message, code, metadata);
   }
@@ -86,7 +87,7 @@ export class AgentLoopEventFactory {
     toolName: string,
     callId: string,
     value: unknown,
-    metadata: { batchId?: string } = {},
+    metadata: { origin?: AgentToolEventOrigin; batchId?: string } = {},
   ): AgentDomainEvent {
     return this.toolEvents.toolCallResultDetail(requestId, step, index, toolName, callId, value, metadata);
   }

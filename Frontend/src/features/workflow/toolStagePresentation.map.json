@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "defaultCategory": "tools",
+  "singleToolLabels": {
+    "active": "workflow.stage.singleTool.active",
+    "completed": "workflow.stage.singleTool.completed"
+  },
+  "categories": [
+    {
+      "id": "tools",
+      "icon": "wrench",
+      "match": {},
+      "labels": {
+        "active": "workflow.stage.tools.active",
+        "completed": "workflow.stage.tools.completed"
+      }
+    },
+    {
+      "id": "tool-discovery",
+      "icon": "search",
+      "match": { "exactToolNames": ["ToolSearchTool"] },
+      "labels": {
+        "active": "workflow.stage.toolDiscovery.active",
+        "completed": "workflow.stage.toolDiscovery.completed"
+      }
+    },
+    {
+      "id": "skill-search",
+      "icon": "book-search",
+      "match": { "exactToolNames": ["SkillSearch", "SkillSearchTool"] },
+      "labels": {
+        "active": "workflow.stage.skillSearch.active",
+        "completed": "workflow.stage.skillSearch.completed"
+      }
+    },
+    {
+      "id": "skill-management",
+      "icon": "book-open",
+      "match": { "exactToolNames": ["SkillManage"] },
+      "labels": {
+        "active": "workflow.stage.skillManagement.active",
+        "completed": "workflow.stage.skillManagement.completed"
+      }
+    },
+    {
+      "id": "workspace-search",
+      "icon": "folder-search",
+      "match": { "exactToolNames": ["WorkspaceFind", "WorkspaceGrep"] },
+      "labels": {
+        "active": "workflow.stage.workspaceSearch.active",
+        "completed": "workflow.stage.workspaceSearch.completed"
+      }
+    },
+    {
+      "id": "workspace-read",
+      "icon": "file-text",
+      "match": {
+        "exactToolNames": ["ArtifactReadTool", "WorkspaceList", "WorkspaceRead"]
+      },
+      "labels": {
+        "active": "workflow.stage.workspaceRead.active",
+        "completed": "workflow.stage.workspaceRead.completed"
+      }
+    },
+    {
+      "id": "workspace-write",
+      "icon": "pencil",
+      "match": { "exactToolNames": ["WorkspaceApplyPatch"] },
+      "labels": {
+        "active": "workflow.stage.workspaceWrite.active",
+        "completed": "workflow.stage.workspaceWrite.completed"
+      }
+    },
+    {
+      "id": "command",
+      "icon": "terminal",
+      "match": { "exactToolNames": ["ShellCommandTool", "TerminalStartTool"] },
+      "labels": {
+        "active": "workflow.stage.command.active",
+        "completed": "workflow.stage.command.completed"
+      }
+    },
+    {
+      "id": "background-wait",
+      "icon": "clock",
+      "match": { "exactToolNames": ["AgentWait", "ExecutionResourceWait"] },
+      "labels": {
+        "active": "workflow.stage.backgroundWait.active",
+        "completed": "workflow.stage.backgroundWait.completed"
+      }
+    },
+    {
+      "id": "background-task",
+      "icon": "monitor-cog",
+      "match": { "toolNamePrefixes": ["ExecutionResource"] },
+      "labels": {
+        "active": "workflow.stage.backgroundTask.active",
+        "completed": "workflow.stage.backgroundTask.completed"
+      }
+    },
+    {
+      "id": "version-control",
+      "icon": "git-branch",
+      "match": { "toolNamePrefixes": ["Git"] },
+      "labels": {
+        "active": "workflow.stage.versionControl.active",
+        "completed": "workflow.stage.versionControl.completed"
+      }
+    },
+    {
+      "id": "delegation",
+      "icon": "workflow",
+      "match": {
+        "stepKinds": ["delegation"],
+        "toolNamePrefixes": ["AgentContact", "AgentInput", "AgentResume", "AgentSpawn", "AgentStop"]
+      },
+      "labels": {
+        "active": "workflow.stage.delegation.active",
+        "completed": "workflow.stage.delegation.completed"
+      }
+    },
+    {
+      "id": "memory",
+      "icon": "brain",
+      "match": {
+        "exactToolNames": ["LearningManage", "MemoryRecallTool", "MemoryWriteTool"]
+      },
+      "labels": {
+        "active": "workflow.stage.memory.active",
+        "completed": "workflow.stage.memory.completed"
+      }
+    },
+    {
+      "id": "schedule",
+      "icon": "calendar-clock",
+      "match": { "exactToolNames": ["AgentScheduleManage"] },
+      "labels": {
+        "active": "workflow.stage.schedule.active",
+        "completed": "workflow.stage.schedule.completed"
+      }
+    },
+    {
+      "id": "document",
+      "icon": "file-search",
+      "match": { "exactToolNames": ["DocumentExtract"] },
+      "labels": {
+        "active": "workflow.stage.document.active",
+        "completed": "workflow.stage.document.completed"
+      }
+    },
+    {
+      "id": "image",
+      "icon": "image",
+      "match": { "exactToolNames": ["ImageAnalyze"] },
+      "labels": {
+        "active": "workflow.stage.image.active",
+        "completed": "workflow.stage.image.completed"
+      }
+    },
+    {
+      "id": "interaction",
+      "icon": "message-circle",
+      "match": { "exactToolNames": ["AskUserTool"] },
+      "labels": {
+        "active": "workflow.stage.interaction.active",
+        "completed": "workflow.stage.interaction.completed"
+      }
+    }
+  ]
+}

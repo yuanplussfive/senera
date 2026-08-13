@@ -3,8 +3,7 @@ import type { FileRejection } from "react-dropzone";
 import { AlertTriangle, BookUser, Check } from "lucide-react";
 import type { PresetFormat, PresetItem, PresetMutationState } from "../../api/eventTypes";
 import { cn, errorMessage } from "../../lib/util";
-import { useResponsiveMode } from "../../shared/responsive";
-import { Dialog, DialogContent, FileDropZone, Tooltip, type FileDropZoneAccept } from "../../shared/ui";
+import { Dialog, DialogContent, FileDropZone, type FileDropZoneAccept } from "../../shared/ui";
 import {
   describeRejectedImports,
   readPresetDisplayName,
@@ -14,7 +13,7 @@ import {
   withPresetFormatExtension,
 } from "./presetPanelUtils";
 import { PresetSidebar } from "./PresetSidebar";
-import { PresetInspector, PresetWorkspace } from "./PresetWorkspace";
+import { PresetWorkspace } from "./PresetWorkspace";
 import { ConfirmLayer, DropOverlay, type PresetConfirmAction } from "./PresetOverlays";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
@@ -31,6 +30,8 @@ type DraftPatch = Partial<{
 }>;
 
 export function PresetControl({
+  open,
+  onOpenChange,
   disabled,
   enabled,
   rootDir,
@@ -42,6 +43,8 @@ export function PresetControl({
   onDelete,
   onSetActive,
 }: {
+  open?: boolean;
+  onOpenChange?: (value: boolean) => void;
   disabled: boolean;
   enabled: boolean;
   rootDir: string;
@@ -53,7 +56,10 @@ export function PresetControl({
   onDelete: (name: string) => string | null;
   onSetActive: (name: string | null) => string | null;
 }): JSX.Element {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = open !== undefined && onOpenChange !== undefined;
+  const dialogOpen = isControlled ? open : internalOpen;
+  const handleOpenChange = onOpenChange ?? setInternalOpen;
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [draftFormat, setDraftFormat] = useState<PresetFormat>("markdown");
@@ -66,9 +72,7 @@ export function PresetControl({
   const [confirmAction, setConfirmAction] = useState<PresetConfirmAction | null>(null);
   const [importing, setImporting] = useState(false);
   const [filterText, setFilterText] = useState("");
-  const { viewport } = useResponsiveMode();
-  const useThreePaneLayout = viewport === "desktop" || viewport === "wide";
-  const tokenState = usePresetTokenCount(draftContent, open);
+  const tokenState = usePresetTokenCount(draftContent, dialogOpen);
 
   const selected = useMemo(
     () => presets.find((preset) => preset.name === selectedName) ?? null,
@@ -158,23 +162,23 @@ export function PresetControl({
   };
 
   useEffect(() => {
-    if (!open) return;
+    if (!dialogOpen) return;
     if (selectedName && presets.some((preset) => preset.name === selectedName)) return;
     if (selectedName === null && dirty) return;
     setSelectedName(activePresetName ?? presets[0]?.name ?? null);
-  }, [activePresetName, dirty, open, presets, selectedName]);
+  }, [activePresetName, dialogOpen, dirty, presets, selectedName]);
 
   useEffect(() => {
-    if (!open || presets.length > 0 || selectedName !== null || dirty || draftName || draftContent) return;
+    if (!dialogOpen || presets.length > 0 || selectedName !== null || dirty || draftName || draftContent) return;
     replaceDraft({
       name: "roleplay-preset.md",
       format: "markdown",
       content: "",
     });
-  }, [dirty, draftContent, draftName, open, presets.length, selectedName]);
+  }, [dialogOpen, dirty, draftContent, draftName, presets.length, selectedName]);
 
   useEffect(() => {
-    if (!open || !selected) return;
+    if (!dialogOpen || !selected) return;
     replaceDraft({
       name: selected.name,
       format: selected.format,
@@ -182,7 +186,7 @@ export function PresetControl({
     });
     setDirty(false);
     setLocalError(null);
-  }, [open, selected]);
+  }, [dialogOpen, selected]);
 
   useEffect(() => {
     if (!saveOperation) return;
@@ -317,8 +321,8 @@ export function PresetControl({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <Tooltip content={frontendMessage("preset.ui.title")} side="top">
+    <>
+      {!isControlled ? (
         <button
           type="button"
           className={cn(
@@ -329,95 +333,45 @@ export function PresetControl({
           )}
           aria-label={frontendMessage("preset.ui.title")}
           disabled={disabled}
-          onClick={() => setOpen(true)}
+          onClick={() => setInternalOpen(true)}
         >
           <BookUser className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">{frontendMessage("preset.ui.shortTitle")}</span>
           {activePreset ? <Check className="h-3 w-3 text-accent-content" aria-hidden="true" /> : null}
           {hasDiagnostics ? <AlertTriangle className="h-3.5 w-3.5 text-umber-500" /> : null}
         </button>
-      </Tooltip>
-
-      <DialogContent
-        title={frontendMessage("preset.ui.title")}
-        description={rootDir || frontendMessage("preset.ui.localPresets")}
-        motionPreset="focus"
-        className="h-[min(900px,calc(100dvh_-_20px))] max-h-none w-[min(1440px,calc(100vw_-_20px))] max-w-none rounded-lg bg-paper-100 sm:w-[min(1440px,calc(100vw_-_32px))]"
-        bodyClassName="flex min-h-0 flex-1 bg-paper-100"
-      >
-        <FileDropZone
-          accept={PresetFileAccept}
-          className="flex min-h-0 flex-1 overflow-hidden bg-[var(--theme-config-stage-bg)]"
-          disabled={disabled || busy}
-          multiple
-          onFiles={handleImportedFiles}
+      ) : null}
+      <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
+        <DialogContent
+          title={frontendMessage("preset.ui.title")}
+          description={rootDir || frontendMessage("preset.ui.localPresets")}
+          motionPreset="focus"
+          className="h-[min(760px,calc(100dvh_-_24px))] max-h-none w-[min(1080px,calc(100vw_-_24px))] max-w-none rounded-[10px] bg-paper-100 sm:w-[min(1080px,calc(100vw_-_48px))]"
+          bodyClassName="flex min-h-0 flex-1 flex-col bg-paper-100"
         >
-          {({ isDragActive, isDragReject, open: openFileDialog }) => (
-            <>
-              {isDragActive ? <DropOverlay rejected={isDragReject} /> : null}
-              {confirmAction ? (
-                <ConfirmLayer
-                  action={confirmAction}
-                  onCancel={() => setConfirmAction(null)}
-                  onConfirm={() => {
-                    const action = confirmAction.onConfirm;
-                    setConfirmAction(null);
-                    action();
-                  }}
-                />
-              ) : null}
+          <FileDropZone
+            accept={PresetFileAccept}
+            className="flex min-h-0 flex-1 overflow-hidden bg-[var(--theme-config-stage-bg)]"
+            disabled={disabled || busy}
+            multiple
+            onFiles={handleImportedFiles}
+          >
+            {({ isDragActive, isDragReject, open: openFileDialog }) => (
+              <>
+                {isDragActive ? <DropOverlay rejected={isDragReject} /> : null}
+                {confirmAction ? (
+                  <ConfirmLayer
+                    action={confirmAction}
+                    onCancel={() => setConfirmAction(null)}
+                    onConfirm={() => {
+                      const action = confirmAction.onConfirm;
+                      setConfirmAction(null);
+                      action();
+                    }}
+                  />
+                ) : null}
 
-              {useThreePaneLayout ? (
-                <div className="grid min-h-0 flex-1 grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(260px,300px)] overflow-hidden">
-                  <PresetSidebar
-                    activePreset={activePreset}
-                    busy={busy}
-                    enabled={enabled}
-                    filterText={filterText}
-                    importing={importing}
-                    presets={filteredPresets}
-                    rootDir={rootDir}
-                    selectedName={selected?.name ?? null}
-                    totalPresets={presets.length}
-                    onCreate={createPreset}
-                    onFilterTextChange={setFilterText}
-                    onImport={openFileDialog}
-                    onRefresh={onRefresh}
-                    onSelect={selectPreset}
-                  />
-                  <PresetWorkspace
-                    busy={busy}
-                    deleting={deleting}
-                    diagnostics={diagnostics}
-                    dirty={dirty}
-                    draftContent={draftContent}
-                    draftFormat={draftFormat}
-                    draftName={draftName}
-                    importing={importing}
-                    saving={saving}
-                    selected={selected}
-                    selectedIsActive={selectedIsActive}
-                    settingActive={settingActive}
-                    tokenState={tokenState}
-                    onContentChange={(content) => updateDraft({ content })}
-                    onDelete={removeSelected}
-                    onFormatChange={changeDraftFormat}
-                    onNameChange={(name) => updateDraft({ name })}
-                    onSave={save}
-                    onToggleActive={toggleActive}
-                  />
-                  <PresetInspector
-                    active={selectedIsActive}
-                    content={draftContent}
-                    dirty={dirty}
-                    format={draftFormat}
-                    name={currentName}
-                    preset={selected}
-                    tokenState={tokenState}
-                  />
-                </div>
-              ) : (
-                <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
                   <PresetSidebar
                     activePreset={activePreset}
                     busy={busy}
@@ -456,11 +410,11 @@ export function PresetControl({
                     onToggleActive={toggleActive}
                   />
                 </div>
-              )}
-            </>
-          )}
-        </FileDropZone>
-      </DialogContent>
-    </Dialog>
+              </>
+            )}
+          </FileDropZone>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

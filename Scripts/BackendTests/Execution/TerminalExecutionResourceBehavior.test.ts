@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentEventSink } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentExecutionResourceBroker } from "../../../Source/AgentSystem/ExecutionResources/AgentExecutionResourceBroker.js";
 import type { AgentExecutionResourceLimits } from "../../../Source/AgentSystem/ExecutionResources/AgentExecutionResourceTypes.js";
+import { AgentExecutionResourcePurposes } from "../../../Source/AgentSystem/ExecutionResources/AgentExecutionResourceTypes.js";
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import type {
   SeneraTerminalChild,
@@ -16,11 +17,15 @@ describe("PTY execution resources", () => {
     const eventSink = vi.fn();
     const broker = createTerminalBroker(async () => terminal, eventSink);
     const owner = sessionOwner("terminal-session");
-    const started = await broker.startTerminal(startRequest(owner));
+    const started = await broker.startTerminal({
+      ...startRequest(owner),
+      presentation: { purpose: AgentExecutionResourcePurposes.CommandTask, title: "Run checks" },
+    });
 
     expect(started).toEqual(
       expect.objectContaining({
         kind: "terminal",
+        presentation: { purpose: "command-task", title: "Run checks" },
         terminal: expect.objectContaining({
           backend: "conpty",
           shellDialect: process.platform === "win32" ? "powershell" : "posix-sh",
@@ -101,6 +106,36 @@ describe("PTY execution resources", () => {
       const completed = await waitUntilTerminal(broker, started.resourceId, owner, ready.cursor);
       expect(outputText(completed)).toContain("terminal-echo:continue");
       expect(completed).toEqual(expect.objectContaining({ kind: "terminal", state: "completed", exitCode: 0 }));
+    } finally {
+      await broker.close();
+    }
+  }, 10_000);
+
+  it("stops a real platform PTY without relying on POSIX signals on Windows", async () => {
+    const executionEnv = new SeneraLocalExecutionEnv({ workspaceRoot: process.cwd() });
+    const broker = new AgentExecutionResourceBroker({
+      workspaceRoot: process.cwd(),
+      limits: resourceLimits(),
+    });
+    const owner = sessionOwner("real-terminal-stop-session");
+    try {
+      const started = await broker.startTerminal({
+        command: process.execPath,
+        args: ["-e", "process.stdout.write('terminal-running\\r\\n');setInterval(()=>{},1_000)"],
+        cwd: process.cwd(),
+        executionEnv,
+        owner,
+        correlation: { sessionId: owner.sessionId, requestId: owner.requestId },
+        dimensions: { columns: 90, rows: 25 },
+      });
+      const ready = await broker.wait(started.resourceId, owner, started.cursor, 5_000);
+      expect(outputText(ready)).toContain("terminal-running");
+
+      await broker.stopTerminals(owner);
+
+      expect(() => broker.inspect(started.resourceId, owner)).toThrowError(
+        expect.objectContaining({ code: "execution_resource_not_found" }),
+      );
     } finally {
       await broker.close();
     }

@@ -6,9 +6,11 @@ import {
   AgentResourceAccessIntents,
   type AgentResourceAccessAuthority,
   type AgentResourceAccessFacts,
+  type AgentResourceAccessGrant,
   type AgentResourceAccessIntent,
   type SeneraResourceAccessAuthorizer,
 } from "./SeneraResourceAccess.js";
+import { resourceAccessGrantAllows } from "./SeneraResourceAccess.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { isPathWithin, isSamePath } from "../Core/AgentPath.js";
@@ -49,6 +51,8 @@ export interface SeneraWorkspaceBoundaryOptions {
   readonly policy?: SeneraResourceAccessAuthorizer;
   readonly authority?: AgentResourceAccessAuthority;
   readonly linkPolicy?: "allow_internal" | "deny";
+  readonly allowOutside?: boolean;
+  readonly resourceAccessGrant?: AgentResourceAccessGrant;
 }
 
 export class SeneraWorkspaceBoundary {
@@ -61,7 +65,12 @@ export class SeneraWorkspaceBoundary {
 
   async resolve(value: string | undefined, intent: AgentResourceAccessIntent): Promise<SeneraResolvedWorkspaceTarget> {
     const inspection = await this.inspect(value, intent);
-    if (this.options.policy) {
+    const grantedOutside =
+      inspection.facts.containment === "outside" &&
+      inspection.absolutePath !== undefined &&
+      this.options.resourceAccessGrant !== undefined &&
+      resourceAccessGrantAllows(this.options.resourceAccessGrant, inspection.absolutePath, intent);
+    if (this.options.policy && !grantedOutside) {
       try {
         await this.options.policy.authorize(inspection.facts);
       } catch (error) {
@@ -73,7 +82,7 @@ export class SeneraWorkspaceBoundary {
         );
       }
     }
-    if (!inspection.absolutePath) {
+    if (!inspection.absolutePath || (inspection.facts.containment === "outside" && !grantedOutside)) {
       const deniedLink = this.options.linkPolicy === "deny" && inspection.facts.linkTraversal !== "none";
       throw new SeneraWorkspaceBoundaryError(
         deniedLink
@@ -130,7 +139,7 @@ export class SeneraWorkspaceBoundary {
       : path.resolve(this.workspaceRoot, requested);
     const lexicalRelative = path.relative(this.workspaceRoot, candidate);
     const relativePath = toPortableRelativePath(lexicalRelative);
-    if (!isInsidePath(this.workspaceRoot, candidate)) {
+    if (!isInsidePath(this.workspaceRoot, candidate) && !this.options.allowOutside) {
       return {
         facts: this.resourceFacts(intent, relativePath, "outside", "none", "unknown", candidate),
       };
@@ -145,7 +154,11 @@ export class SeneraWorkspaceBoundary {
     }
 
     const finalEntry = finalStat.value ? entryKind(finalStat.value) : "missing";
-    const anchor = finalStat.value ? candidate : await nearestExistingAncestor(candidate, this.workspaceRoot);
+    const anchor = finalStat.value
+      ? candidate
+      : this.options.allowOutside
+        ? await nearestExistingAncestorAnywhere(candidate)
+        : await nearestExistingAncestor(candidate, this.workspaceRoot);
     if (!anchor) {
       return {
         facts: this.resourceFacts(intent, relativePath, "unknown", "broken", finalEntry, candidate),
@@ -160,7 +173,8 @@ export class SeneraWorkspaceBoundary {
       const traversedLink = !isSamePath(anchor, canonicalAnchor) || finalEntry === "link";
       const linkTraversal = traversedLink ? (containment === "inside" ? "internal" : "external") : "none";
       const executable =
-        containment === "inside" &&
+        (containment === "inside" || this.options.allowOutside) &&
+        linkTraversal !== "external" &&
         !(this.options.linkPolicy === "deny" && traversedLink) &&
         !(finalEntry === "link" && MutationIntents.has(intent));
       return {
@@ -237,6 +251,18 @@ async function nearestExistingAncestor(candidate: string, root: string): Promise
     current = path.dirname(current);
   }
   return undefined;
+}
+
+async function nearestExistingAncestorAnywhere(candidate: string): Promise<string | undefined> {
+  let current = path.dirname(candidate);
+  while (true) {
+    const stat = await lstatIfPresent(current);
+    if (stat.kind === "error") return undefined;
+    if (stat.value) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
 }
 
 function entryKind(stat: Awaited<ReturnType<typeof lstat>>): AgentResourceAccessFacts["finalEntry"] {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import type { AgentResourceAccessIntent } from "../Execution/SeneraResourceAccess.js";
+import type { AgentResourceAccessRequest } from "../Execution/SeneraResourceAccess.js";
 import type { ToolResourceArgumentManifest } from "../Types/AgentToolContractTypes.js";
 import type { AgentToolResourceCapability } from "./AgentToolResourceCapabilityRegistry.js";
 import { AgentToolResourceCapabilityIds } from "./AgentToolResourceCapabilityIds.js";
@@ -58,6 +59,7 @@ interface WorkspacePathResourceInput {
 const SharedResourceIntents = new Set<AgentResourceAccessIntent>([
   AgentResourceAccessIntents.Inspect,
   AgentResourceAccessIntents.Read,
+  AgentResourceAccessIntents.Execute,
 ]);
 
 export class AgentToolWorkspacePathResourceCapability implements AgentToolResourceCapability {
@@ -67,7 +69,10 @@ export class AgentToolWorkspacePathResourceCapability implements AgentToolResour
     overlaps: workspacePathsOverlap,
   });
 
-  constructor(private readonly executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath">) {}
+  constructor(
+    private readonly executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath"> &
+      Partial<Pick<SeneraExecutionEnv, "inspectResourcePath">>,
+  ) {}
 
   async project(input: WorkspacePathResourceInput) {
     const resolved = await this.resolve(input);
@@ -88,6 +93,16 @@ export class AgentToolWorkspacePathResourceCapability implements AgentToolResour
           : AgentToolResourceAccessModes.Exclusive,
       },
     ];
+  }
+
+  async inspect(input: WorkspacePathResourceInput): Promise<readonly AgentResourceAccessRequest[]> {
+    if (typeof input.value !== "string") {
+      throw new TypeError(`Workspace resource ${input.resource.Pointer} must be a string.`);
+    }
+    const parameters = WorkspacePathParametersSchema.parse(input.resource.Parameters ?? {});
+    const intent = resolveIntent(parameters, input.args);
+    const inspected = await this.executionEnv.inspectResourcePath?.(input.value, intent);
+    return inspected ? [inspected] : [];
   }
 
   private async resolve(input: WorkspacePathResourceInput): Promise<{

@@ -12,7 +12,11 @@ export const runDecisionEventHandlers = {
       id: `${run.requestId}-prompt-${env.step ?? 0}`,
       kind: "prompt",
       title: frontendMessage("workflow.plan.promptRendered"),
-      description: frontendMessage("workflow.projection.stepIndex", { step: env.step ?? 0 }),
+      description: frontendMessage("workflow.projection.promptTokenSummary", {
+        count: data.tokenCount,
+        chars: data.chars,
+        lines: data.lines,
+      }),
       status: "done",
       startedAt: env.timestamp,
       endedAt: env.timestamp,

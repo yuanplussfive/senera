@@ -188,7 +188,9 @@ export class AgentArtifactRetentionService {
         else await remove(candidate, false);
       }
       for (const candidate of candidates.incomplete) {
-        if (candidate.sessionId === sessionId) await remove(candidate, true);
+        // An active publication owns its directory until it commits or marks the
+        // marker failed. Removing it here races the publisher's next marker write.
+        if (candidate.sessionId === sessionId && candidate.state === "failed") await remove(candidate, true);
       }
       for (const candidate of candidates.spools) {
         if (candidate.sessionId === sessionId) await removeSpool(candidate);
@@ -196,7 +198,9 @@ export class AgentArtifactRetentionService {
     } else {
       const incompleteRetentionMs = config.IncompleteRetentionHours * 3_600_000;
       for (const candidate of candidates.incomplete) {
-        if (now - candidate.modifiedAt >= incompleteRetentionMs) await remove(candidate, true);
+        if (now - candidate.modifiedAt >= incompleteRetentionMs) {
+          await remove(candidate, true);
+        }
       }
       for (const candidate of candidates.spools) {
         if (candidate.state === "committed" || now - candidate.modifiedAt >= incompleteRetentionMs) {
@@ -323,7 +327,8 @@ async function scanDirectory(
     return;
   }
   if (entries.some((entry) => entry.isFile() && entry.name === ".artifact-writing")) {
-    incomplete.push(await readIncompleteCandidate(boundary, directory, concurrency));
+    const candidate = await readIncompleteCandidate(boundary, directory, concurrency);
+    if (candidate) incomplete.push(candidate);
   }
   await runWithConcurrency(
     entries.filter(
@@ -409,9 +414,13 @@ async function readIncompleteCandidate(
   boundary: SeneraWorkspaceBoundary,
   directory: string,
   concurrency: number,
-): Promise<IncompleteArtifactCandidate> {
+): Promise<IncompleteArtifactCandidate | undefined> {
   const markerPath = path.join(directory, ".artifact-writing");
-  const marker = await readTextFileSnapshot(boundary, markerPath);
+  const marker = await readTextFileSnapshot(boundary, markerPath).catch((error: unknown) => {
+    if (isMissingFileError(error)) return undefined;
+    throw error;
+  });
+  if (!marker) return undefined;
   let sessionId: string | undefined;
   let state: IncompleteArtifactCandidate["state"] = "failed";
   try {
@@ -553,7 +562,11 @@ async function removeDirectoryTree(directory: string, canonicalRoot: string): Pr
   const entries = await fs.readdir(canonicalDirectory, { withFileTypes: true });
   for (const entry of entries) {
     const child = path.join(canonicalDirectory, entry.name);
-    const stat = await fs.lstat(child);
+    const stat = await fs.lstat(child).catch((error: unknown) => {
+      if (isMissingFileError(error)) return undefined;
+      throw error;
+    });
+    if (!stat) continue;
     if (stat.isSymbolicLink()) {
       throw new Error(`拒绝删除包含链接的 artifact 目录：${child}`);
     }
@@ -563,7 +576,9 @@ async function removeDirectoryTree(directory: string, canonicalRoot: string): Pr
     }
     await fs.rm(child, { force: true, recursive: false });
   }
-  await fs.rmdir(canonicalDirectory);
+  await fs.rmdir(canonicalDirectory).catch((error: unknown) => {
+    if (!isMissingFileError(error)) throw error;
+  });
 }
 
 function isInsideCanonicalRoot(root: string, target: string): boolean {

@@ -308,6 +308,7 @@ export interface StepTraceDto {
   toolName?: string;
   callId?: string;
   batchId?: string;
+  purpose?: string;
   status: "done" | "failed";
   startedAt?: string;
   endedAt?: string;
@@ -669,7 +670,7 @@ export interface ModelCompletedData {
 export interface ToolCallsPlannedData {
   toolCount: number;
   tools: string[];
-  calls?: Array<{ callId: string; toolName: string }>;
+  calls?: Array<{ callId: string; toolName: string; purpose?: string }>;
   status?: "planned" | "discovery_escalated" | "blocked";
   executionMode?: "parallel" | "sequential";
   batchId?: string;
@@ -677,10 +678,21 @@ export interface ToolCallsPlannedData {
   issues?: string[];
 }
 
+export interface ToolEventOrigin {
+  kind: "system" | "mcp";
+  name: string;
+  capability?: string;
+  server?: string;
+  tool?: string;
+}
+
 export interface ToolCallStartedData {
   index: number;
   toolName: string;
   callId: string;
+  /** Redacted, bounded arguments for live workflow inspection. */
+  arguments?: unknown;
+  origin?: ToolEventOrigin;
   batchId?: string;
   /** Explicit backend lifecycle start; diagnostic views reject spans without it. */
   startedAt?: string;
@@ -724,6 +736,7 @@ export interface ToolCallCompletedData {
   /** Explicit backend lifecycle duration. Clients must not infer it. */
   durationMs?: number;
   presentation?: ToolResultPresentation;
+  origin?: ToolEventOrigin;
 }
 
 export interface ToolCallFailedData {
@@ -738,6 +751,7 @@ export interface ToolCallFailedData {
   startedAt?: string;
   /** Explicit backend lifecycle duration. Clients must not infer it. */
   durationMs?: number;
+  origin?: ToolEventOrigin;
 }
 
 export interface ToolCallResultDetailData {
@@ -747,6 +761,7 @@ export interface ToolCallResultDetailData {
   callId: string;
   batchId?: string;
   value: unknown;
+  origin?: ToolEventOrigin;
 }
 
 export interface AssistantMessageCreatedData {

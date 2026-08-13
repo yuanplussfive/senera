@@ -22,6 +22,7 @@ import {
   type WorkflowLayoutDirection,
 } from "./layout";
 import { NodeDetailDrawer } from "./NodeDetailDrawer";
+import { projectWorkflowSteps } from "./workflowPresentationProjection";
 
 const NODE_TYPES = { step: StepNode };
 const FIT_VIEW_DURATION_MS = 240;
@@ -106,7 +107,7 @@ function CanvasArea({
   const canvasRef = useRef<HTMLDivElement>(null);
   const viewportSessionRef = useRef<{ key: string; followLive: boolean } | null>(null);
   const rf = useReactFlow<Node<StepNodeData>>();
-  const steps = run.steps;
+  const steps = useMemo(() => projectWorkflowSteps(run), [run]);
   const selectedStep = useMemo(() => steps.find((step) => step.id === selectedStepId) ?? null, [steps, selectedStepId]);
 
   const layoutKey = useMemo(() => readWorkflowLayoutKey(steps), [steps]);

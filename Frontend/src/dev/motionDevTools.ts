@@ -202,7 +202,6 @@ function generateMockRuns(messages: ChatMessage[], now: number): RunRecord[] {
         visibleKind: "final_answer",
         expectedOutputMode: "final_text",
         decisionMode: "none",
-        pendingToolArgsByName: {},
         modelProvider: {
           id: "dev-model",
           kind: "dev",

@@ -14,6 +14,7 @@ import {
 import { AgentToolObservationProjectionSchema } from "../Schemas/AgentToolObservationProjectionSchema.js";
 import { inspectAgentToolSchedulingContract } from "../Types/AgentToolRuntimeContract.js";
 import { AgentToolChildGrantModes } from "../Types/AgentToolContractTypes.js";
+import { isObjectJsonSchema } from "../ToolContracts/AgentJsonSchemaObjectRoot.js";
 
 export const AgentSystemExtensionManifestFileName = "extension.json";
 
@@ -126,24 +127,3 @@ export type AgentSystemToolContract = z.infer<typeof AgentSystemToolContractSche
 export type AgentSystemExtensionManifest = z.infer<typeof AgentSystemExtensionManifestSchema>;
 export type AgentSystemHostToolContribution = z.infer<typeof HostToolContributionSchema>;
 export { AgentToolObservationProjectionSchema };
-
-function isObjectJsonSchema(schema: Record<string, unknown>): boolean {
-  if (schema.type === "object") return true;
-  for (const keyword of ["oneOf", "anyOf"] as const) {
-    const branches = schema[keyword];
-    if (
-      Array.isArray(branches) &&
-      branches.length > 0 &&
-      branches.every(
-        (branch) =>
-          typeof branch === "object" &&
-          branch !== null &&
-          !Array.isArray(branch) &&
-          isObjectJsonSchema(branch as Record<string, unknown>),
-      )
-    ) {
-      return true;
-    }
-  }
-  return false;
-}

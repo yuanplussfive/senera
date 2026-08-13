@@ -17,6 +17,7 @@ import {
   sandboxStatusDetail,
 } from "../sandbox/sandboxPreparationPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { cn } from "../../lib/util";
 import { IconButton, Tooltip } from "../../shared/ui";
 import { ToolDock } from "./ToolDock";
 
@@ -28,7 +29,6 @@ export function ChatHeader({
   sandboxStatus,
   onOpenSessionPanel,
   onOpenWorkflowPanel,
-  onOpenTerminalPanel,
 }: {
   title: string;
   runStatus?: "running" | "cancelling" | "completed" | "failed" | "cancelled";
@@ -37,7 +37,6 @@ export function ChatHeader({
   sandboxStatus?: SandboxStatusSnapshotData | null;
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
-  onOpenTerminalPanel?: () => void;
 }): JSX.Element {
   return (
     <div
@@ -87,17 +86,6 @@ export function ChatHeader({
           {frontendMessage("workflow.run.status.cancelled")}
         </span>
       ) : null}
-      {onOpenTerminalPanel ? (
-        <IconButton
-          label={frontendMessage("terminal.panel.open")}
-          tooltip={frontendMessage("terminal.panel.open")}
-          tooltipSide="bottom"
-          onClick={onOpenTerminalPanel}
-          touchSafe
-        >
-          <SquareTerminal className="h-4 w-4" />
-        </IconButton>
-      ) : null}
       {onOpenWorkflowPanel ? (
         <ToolDock
           items={[
@@ -117,6 +105,8 @@ export function ChatHeader({
 function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | null }): JSX.Element {
   const presentation = readSandboxStatusPresentation(status);
   const StatusIcon = presentation.Icon;
+  const expanded =
+    !status || status.state === "preparing" || (status.effectiveMode !== "host" && status.effectiveMode !== "sandbox");
 
   return (
     <Tooltip
@@ -137,10 +127,15 @@ function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | n
         data-sandbox-status={status?.state ?? "unknown"}
         data-execution-mode={status?.effectiveMode ?? "unknown"}
         data-window-no-drag
-        className="inline-flex h-6 min-w-0 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle bg-surface-muted px-1.5 text-[10.5px] font-medium text-content-secondary transition-colors duration-150 hover:border-line hover:text-content-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+        className={cn(
+          "inline-flex h-6 min-w-0 shrink-0 items-center justify-center rounded-md text-[10.5px] font-medium transition-[background-color,border-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+          expanded
+            ? "gap-1.5 border border-line-subtle bg-surface-muted px-1.5 text-content-secondary hover:border-line hover:text-content-strong"
+            : "w-6 text-content-muted hover:bg-surface-hover hover:text-content-primary",
+        )}
       >
         <StatusIcon className={`h-3.5 w-3.5 ${presentation.iconClassName ?? ""}`} aria-hidden="true" />
-        <span className="max-w-[180px] truncate">{presentation.label}</span>
+        {expanded ? <span className="max-w-[180px] truncate">{presentation.label}</span> : null}
       </span>
     </Tooltip>
   );

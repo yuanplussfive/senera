@@ -35,9 +35,14 @@ export function resolveDesktopResourceRoot(input: DesktopResourceRootResolutionI
 export function resolveDesktopWorkspaceRoot(input: {
   isPackaged: boolean;
   resourceRoot: string;
-  userDataRoot: string;
-}): string {
-  return input.isPackaged ? path.resolve(input.userDataRoot) : path.resolve(input.resourceRoot);
+  configuredWorkspaceRoot?: string;
+  persistedWorkspaceRoot?: string;
+}): string | undefined {
+  const configured = input.configuredWorkspaceRoot?.trim();
+  if (configured) return path.resolve(configured);
+  if (!input.isPackaged) return path.resolve(input.resourceRoot);
+  const persisted = input.persistedWorkspaceRoot?.trim();
+  return persisted ? path.resolve(persisted) : undefined;
 }
 
 export class DesktopRuntimePathResolutionError extends Error {

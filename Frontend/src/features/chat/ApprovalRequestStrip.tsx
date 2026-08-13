@@ -159,6 +159,7 @@ function ApprovalGroupView({
 function ApprovalSummary({ approval, showName }: { approval: ApprovalRunRecord; showName: boolean }): JSX.Element {
   const risks = approvalRiskLabels(approval);
   const argumentsText = summarizeApprovalArguments(approval.subject.arguments);
+  const resources = approval.subject.resources ?? [];
   return (
     <div className={showName ? "py-2 first:pt-1.5 last:pb-1.5" : undefined}>
       {showName ? (
@@ -170,6 +171,20 @@ function ApprovalSummary({ approval, showName }: { approval: ApprovalRunRecord; 
         <RuleLabel value={approval.rule} />
       ) : null}
       <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-content-secondary">{approval.reason}</p>
+      {resources.length ? (
+        <div className="mt-1 space-y-0.5">
+          {resources.map((resource) => (
+            <div
+              key={`${resource.intent}:${resource.canonicalPath}`}
+              className="flex min-w-0 items-baseline gap-1.5 font-mono text-[10.5px] leading-4"
+              title={resource.canonicalPath}
+            >
+              <span className="shrink-0 text-umber-600">{resourceIntentLabel(resource.intent)}</span>
+              <span className="min-w-0 break-all text-content-secondary">{resource.canonicalPath}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
         {risks.map((label) => (
           <span
@@ -179,12 +194,16 @@ function ApprovalSummary({ approval, showName }: { approval: ApprovalRunRecord; 
             {label}
           </span>
         ))}
-        {argumentsText ? (
+        {argumentsText && !resources.length ? (
           <span className="min-w-0 truncate font-mono text-[10.5px] text-content-muted">{argumentsText}</span>
         ) : null}
       </div>
     </div>
   );
+}
+
+function resourceIntentLabel(intent: NonNullable<ApprovalRunRecord["subject"]["resources"]>[number]["intent"]): string {
+  return frontendMessage(`approval.resource.${intent}`);
 }
 
 function RuleLabel({ value }: { value: string }): JSX.Element {

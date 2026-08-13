@@ -23,6 +23,12 @@ import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentSessionApprovalLeaseStore } from "./AgentSessionApprovalLeaseStore.js";
 import { AgentToolSemanticAuditModes, type AgentToolSemanticAuditMode } from "../Types/AgentRuntimeConfigTypes.js";
 import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import {
+  AgentResourceAccessGrantModes,
+  createAgentResourceAccessGrant,
+  type AgentResourceAccessGrantEntry,
+  type AgentResourceAccessGrant,
+} from "../Execution/SeneraResourceAccess.js";
 
 export class AgentToolPermissionDeniedError extends AgentBaseError {
   constructor(
@@ -51,6 +57,7 @@ export class AgentToolPermissionGate {
   constructor(private readonly options: AgentToolPermissionGateOptions) {}
 
   async authorize(request: AgentToolPermissionGateRequest): Promise<AgentPermissionDecision> {
+    this.assertGrantableExternalResources(request);
     const policyDecision = await this.options.policy.decideToolCall(request, {
       includeSemanticAuditors: shouldRunSemanticAudit(
         this.options.semanticAuditMode ?? AgentToolSemanticAuditModes.ApprovalSensitive,
@@ -58,20 +65,27 @@ export class AgentToolPermissionGate {
         this.options.toolPlanningMode,
       ),
     });
-    if (policyDecision.action === AgentPermissionActions.Ask && this.hasSessionApprovalLease(request, policyDecision)) {
+    const projectedDecision = projectAgentExecutionApprovalDecision(policyDecision, request.approvalMode);
+    const decision = this.requireExternalApproval(request, projectedDecision);
+    if (decision.action === AgentPermissionActions.Ask && this.hasSessionApprovalLease(request, decision)) {
       return {
-        ...policyDecision,
+        ...decision,
         action: AgentPermissionActions.Allow,
-        rule: `approval.session_lease:${policyDecision.rule}`,
+        rule: `approval.session_lease:${decision.rule}`,
         reason: agentErrorMessage("approval.sessionLeaseMatched"),
+        resourceGrant: this.createResourceGrant(request, AgentResourceAccessGrantModes.ApprovedHost),
       };
     }
-    const decision =
-      request.executionPlan?.backend === "local" && request.approvalMode !== AgentExecutionApprovalModes.FullAccess
-        ? policyDecision
-        : projectAgentExecutionApprovalDecision(policyDecision, request.approvalMode);
     const authorizers: Record<AgentPermissionDecision["action"], () => Promise<AgentPermissionDecision>> = {
-      allow: async () => decision,
+      allow: async () => ({
+        ...decision,
+        resourceGrant: this.createResourceGrant(
+          request,
+          request.approvalMode === AgentExecutionApprovalModes.FullAccess
+            ? AgentResourceAccessGrantModes.FullHost
+            : AgentResourceAccessGrantModes.ApprovedHost,
+        ),
+      }),
       deny: async () => {
         throw new AgentToolPermissionDeniedError(decision.reason, decision);
       },
@@ -114,6 +128,7 @@ export class AgentToolPermissionGate {
           toolName: request.toolName,
           arguments: request.arguments,
           execution: request.executionPlan,
+          resources: externalGrantEntries(request),
         },
       },
     });
@@ -125,6 +140,7 @@ export class AgentToolPermissionGate {
         rule: decision.rule,
         reason: resolution.message ?? agentErrorMessage("approval.toolCallApproved"),
         riskSignals: decision.riskSignals,
+        resourceGrant: this.createResourceGrant(request, AgentResourceAccessGrantModes.ApprovedHost),
       };
     }
 
@@ -155,6 +171,61 @@ export class AgentToolPermissionGate {
   ): void {
     this.options.sessionApprovals.grant(request.sessionId, sessionApprovalLeaseKey(request, decision));
   }
+
+  private requireExternalApproval(
+    request: AgentToolPermissionGateRequest,
+    decision: AgentPermissionDecision,
+  ): AgentPermissionDecision {
+    if (
+      request.resourceAccess?.external.length &&
+      request.approvalMode === AgentExecutionApprovalModes.AlwaysAsk &&
+      decision.action === AgentPermissionActions.Allow
+    ) {
+      return {
+        ...decision,
+        action: AgentPermissionActions.Ask,
+        rule: `resource.external.requires_approval:${decision.rule}`,
+        reason: agentErrorMessage("approval.externalResourceRequiresApproval"),
+      };
+    }
+    return decision;
+  }
+
+  private assertGrantableExternalResources(request: AgentToolPermissionGateRequest): void {
+    const invalid = request.resourceAccess?.external.filter(
+      (resource) =>
+        !resource.canonicalPath ||
+        resource.facts.linkTraversal === "external" ||
+        resource.facts.linkTraversal === "broken",
+    );
+    if (!invalid?.length) return;
+    const decision: AgentPermissionDecision = {
+      action: AgentPermissionActions.Deny,
+      rule: "resource.external.unresolved",
+      reason: agentErrorMessage("approval.externalResourceUnresolved"),
+      riskSignals: invalid.map((resource) => `resource.path:${resource.addressedPath}`),
+    };
+    throw new AgentToolPermissionDeniedError(decision.reason, decision);
+  }
+
+  private createResourceGrant(
+    request: AgentToolPermissionGateRequest,
+    mode: (typeof AgentResourceAccessGrantModes)[keyof typeof AgentResourceAccessGrantModes],
+  ): AgentResourceAccessGrant | undefined {
+    if (mode === AgentResourceAccessGrantModes.ApprovedHost && !request.resourceAccess?.external.length) {
+      return undefined;
+    }
+    return createAgentResourceAccessGrant({
+      mode,
+      resources: externalGrantEntries(request),
+      binding: {
+        sessionId: request.sessionId,
+        requestId: request.requestId,
+        toolCallId: request.toolCallId,
+        toolName: request.toolName,
+      },
+    });
+  }
 }
 
 function shouldRunSemanticAudit(
@@ -182,5 +253,16 @@ function sessionApprovalLeaseKey(request: AgentToolPermissionGateRequest, decisi
       : undefined,
     permissions: [...(request.tool?.permissions ?? [])].sort(),
     effects: [...(request.tool?.capabilityEffects ?? [])].sort(),
+    resourceAccess: request.resourceAccess,
   });
+}
+
+function externalGrantEntries(request: AgentToolPermissionGateRequest): readonly AgentResourceAccessGrantEntry[] {
+  return (
+    request.resourceAccess?.external.flatMap((resource) =>
+      resource.canonicalPath
+        ? [{ canonicalPath: resource.canonicalPath, intent: resource.intent, recursive: resource.recursive }]
+        : [],
+    ) ?? []
+  );
 }

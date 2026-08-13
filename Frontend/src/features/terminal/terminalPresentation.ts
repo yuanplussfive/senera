@@ -7,38 +7,26 @@ import type {
 } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
-export const TerminalPalette = {
-  canvas: "#101310",
-  chrome: "#171b18",
-  elevated: "#1d221e",
-  border: "#343a36",
-  separator: "#2b302c",
-  foreground: "#e7ebe6",
-  muted: "#8d978f",
-  subtle: "#68716a",
-  accent: "#72a58d",
-  selection: "#53645b99",
-} as const;
-
 export const TerminalSurfaceStyle = {
-  "--terminal-canvas": TerminalPalette.canvas,
-  "--terminal-chrome": TerminalPalette.chrome,
-  "--terminal-elevated": TerminalPalette.elevated,
-  "--terminal-border": TerminalPalette.border,
-  "--terminal-separator": TerminalPalette.separator,
-  "--terminal-foreground": TerminalPalette.foreground,
-  "--terminal-muted": TerminalPalette.muted,
-  "--terminal-subtle": TerminalPalette.subtle,
-  "--terminal-accent": TerminalPalette.accent,
+  "--terminal-canvas": "var(--theme-code-editor-bg)",
+  "--terminal-chrome": "var(--surface-subtle)",
+  "--terminal-elevated": "var(--surface-raised)",
+  "--terminal-border": "var(--line-default)",
+  "--terminal-separator": "var(--line-subtle)",
+  "--terminal-foreground": "var(--theme-code-editor-fg)",
+  "--terminal-muted": "var(--content-secondary)",
+  "--terminal-subtle": "var(--content-muted)",
+  "--terminal-accent": "var(--accent-solid)",
+  "--terminal-hover": "var(--surface-hover)",
 } as CSSProperties;
 
 export const TerminalXtermTheme = {
-  background: TerminalPalette.canvas,
-  foreground: TerminalPalette.foreground,
-  cursor: TerminalPalette.accent,
-  cursorAccent: TerminalPalette.canvas,
-  selectionBackground: TerminalPalette.selection,
-  black: TerminalPalette.canvas,
+  background: "#101310",
+  foreground: "#e7ebe6",
+  cursor: "#72a58d",
+  cursorAccent: "#101310",
+  selectionBackground: "#53645b99",
+  black: "#101310",
   brightBlack: "#707a72",
   red: "#d8706a",
   brightRed: "#ee8f87",
@@ -56,6 +44,41 @@ export const TerminalXtermTheme = {
   brightWhite: "#f5f7f4",
 } as const satisfies ITheme;
 
+export function readTerminalXtermTheme(container: HTMLElement): ITheme {
+  const probe = document.createElement("span");
+  const selectionProbe = document.createElement("span");
+  probe.style.cssText = [
+    "position:absolute",
+    "visibility:hidden",
+    "pointer-events:none",
+    "background:var(--terminal-canvas)",
+    "color:var(--terminal-foreground)",
+    "border-color:var(--terminal-accent)",
+    "outline-color:var(--terminal-muted)",
+  ].join(";");
+  selectionProbe.style.cssText = [
+    "position:absolute",
+    "visibility:hidden",
+    "pointer-events:none",
+    "background:color-mix(in srgb,var(--terminal-accent) 24%,transparent)",
+  ].join(";");
+  container.append(probe, selectionProbe);
+  const style = getComputedStyle(probe);
+  const selectionStyle = getComputedStyle(selectionProbe);
+  const theme = {
+    ...TerminalXtermTheme,
+    background: style.backgroundColor || TerminalXtermTheme.background,
+    foreground: style.color || TerminalXtermTheme.foreground,
+    cursor: style.borderColor || TerminalXtermTheme.cursor,
+    cursorAccent: style.backgroundColor || TerminalXtermTheme.cursorAccent,
+    selectionBackground: selectionStyle.backgroundColor || TerminalXtermTheme.selectionBackground,
+    brightBlack: style.outlineColor || TerminalXtermTheme.brightBlack,
+  } satisfies ITheme;
+  probe.remove();
+  selectionProbe.remove();
+  return theme;
+}
+
 export type TerminalCapability = ExecutionResourceTerminalData["capabilities"][number];
 
 export function isTerminalState(state: ExecutionResourceState): boolean {
@@ -70,9 +93,20 @@ export function supportsTerminalCapability(
 }
 
 export function terminalTabLabel(resource: ExecutionResourceSnapshotData): string {
-  const command = resource.command.trim();
-  const executable = command.split(/[\\/]/u).at(-1) ?? command;
-  return executable || resource.resourceId;
+  const explicitTitle = resource.presentation?.title?.trim();
+  if (explicitTitle) return explicitTitle;
+  if (resource.presentation?.purpose === "command-task") return frontendMessage("terminal.kind.commandTask");
+  if (resource.terminal?.shellDialect === "powershell") return frontendMessage("terminal.kind.powershell");
+  if (resource.terminal?.shellDialect === "posix-sh") return frontendMessage("terminal.kind.shell");
+  return frontendMessage("terminal.kind.process");
+}
+
+export function terminalPurposeLabel(resource: ExecutionResourceSnapshotData): string {
+  if (resource.presentation?.purpose === "command-task") return frontendMessage("terminal.kind.commandTask");
+  if (resource.presentation?.purpose === "interactive-shell") return frontendMessage("terminal.kind.interactiveShell");
+  return resource.kind === "terminal"
+    ? frontendMessage("terminal.kind.interactiveShell")
+    : frontendMessage("terminal.kind.process");
 }
 
 export function terminalStatusLabel(state: ExecutionResourceState): string {

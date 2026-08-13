@@ -85,6 +85,8 @@ export interface AgentToolResultPresentationChange {
   status: "added" | "changed" | "unchanged";
   key: string;
   summary: string;
+  addedLines?: number;
+  removedLines?: number;
 }
 
 export interface ExecutedToolCallArtifact {
@@ -159,6 +161,8 @@ export interface ToolWorkspaceChange {
   afterHash: string;
   beforeSize: number;
   afterSize: number;
+  addedLines?: number;
+  removedLines?: number;
   patch?: ToolWorkspaceChangePatch;
 }
 

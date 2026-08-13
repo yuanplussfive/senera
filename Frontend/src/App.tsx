@@ -110,15 +110,6 @@ export function App({
     }
   }, []);
 
-  const handleOpenTerminalPanel = useCallback((): void => {
-    handleWorkflowDockToolChange("terminal");
-    if (hasPersistentWorkflowPanel) {
-      setRightPanelCollapsed(false);
-      return;
-    }
-    setWorkflowDrawerOpen(true);
-  }, [handleWorkflowDockToolChange, hasPersistentWorkflowPanel, setRightPanelCollapsed]);
-
   useEffect(() => {
     if (terminalPanelLoadState.status !== "loading") return;
     let active = true;
@@ -328,10 +319,12 @@ export function App({
         key={terminalRuntimeRevision}
         resources={executionResourceCommands.resources}
         outputs={executionResourceCommands.outputs}
+        onStartTerminal={executionResourceCommands.startTerminal}
         onRefresh={executionResourceCommands.refresh}
         onWrite={executionResourceCommands.write}
         onResize={executionResourceCommands.resize}
         onSignal={executionResourceCommands.signal}
+        onClose={executionResourceCommands.close}
         onStopAll={executionResourceCommands.stopAll}
       />
     </TerminalRuntimeBoundary>
@@ -433,7 +426,6 @@ export function App({
                         (hasPersistentWorkflowPanel ? rightPanelCollapsed : !workflowDrawerOpen)
                           ? handleOpenWorkflowPanel
                           : undefined,
-                      onOpenTerminalPanel: activeId ? handleOpenTerminalPanel : undefined,
                       onRetryHistory: requestSessionHistory,
                     }}
                   />

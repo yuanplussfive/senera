@@ -14,6 +14,7 @@ import {
 import { AgentSkillScanner } from "../Skills/AgentSkillScanner.js";
 import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
 import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
+import { ensureObjectRootJsonSchema } from "../ToolContracts/AgentJsonSchemaObjectRoot.js";
 import { ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type { AgentSystemExtensionConfig } from "../Types/AgentSystemConfigTypes.js";
@@ -261,7 +262,11 @@ export class AgentSystemExtensionCatalog {
     filePath: string,
     packageRoot: string,
   ): AgentSystemToolContract & { observation: AgentToolObservationProjectionManifest } {
-    const source = deepFreeze(this.json.load(filePath, AgentSystemToolContractSchema) as AgentSystemToolContract);
+    const loaded = this.json.load(filePath, AgentSystemToolContractSchema) as AgentSystemToolContract;
+    const source = deepFreeze({
+      ...loaded,
+      inputSchema: ensureObjectRootJsonSchema(loaded.inputSchema, `System Tool ${loaded.name} input`),
+    });
     const projectionPath = resolveSystemExtensionPackageFile(
       packageRoot,
       source.observationProjection,

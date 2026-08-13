@@ -87,7 +87,13 @@ describe("Pi assistant controller compilation", () => {
 
     expect(compilation).toMatchObject({
       kind: "tool_calls",
-      toolCalls: [{ name: "LargeSearchTool", arguments: { query: "current release" } }],
+      toolCalls: [
+        {
+          name: "LargeSearchTool",
+          arguments: { query: "current release" },
+          purpose: "Find the current release.",
+        },
+      ],
     });
     expect(client.evolveInputs[0]?.routingCards).toEqual([
       expect.objectContaining({

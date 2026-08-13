@@ -1,5 +1,6 @@
 import React from "react";
 import { cleanup, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 import { EventKinds, EventSpecs } from "../../../Frontend/src/api/generatedEventCatalog.ts";
@@ -48,13 +49,19 @@ test("shows a time-scaled diagnostic waterfall without rendering workflow nodes"
 
   renderWithFrontendProviders(React.createElement(RuntimeDiagnosticPanel));
 
-  expect(screen.getByRole("heading", { name: "运行诊断" })).toBeVisible();
-  expect(document.querySelector('[data-runtime-lane="model"]')).toHaveTextContent("模型");
-  expect(document.querySelector('[data-runtime-lane="tools"]')).toHaveTextContent("工具");
+  expect(screen.getByRole("heading", { name: "Senera 运行状态" })).toBeVisible();
+  expect(screen.getByRole("region", { name: "运行控制台" })).toBeVisible();
+  expect(document.querySelector("[data-runtime-terminal-stream]")).toBeVisible();
+  expect(document.querySelector('[data-runtime-lane="model"]')).not.toBeInTheDocument();
+  expect(document.querySelector('[data-runtime-lane="tools"]')).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /search/ })).toBeVisible();
-  expect(screen.getByRole("region", { name: "运行时间轴" })).toBeVisible();
+  expect(screen.getByRole("region", { name: "运行记录" })).toBeVisible();
   expect(document.querySelectorAll("[data-runtime-span]")).toHaveLength(2);
   expect(document.querySelectorAll("[data-node-id]")).toHaveLength(0);
+
+  await userEvent.click(screen.getByRole("button", { name: /search/ }));
+  expect(document.querySelector("[data-runtime-span-detail]")).toBeVisible();
+  expect(document.querySelectorAll("[data-runtime-span-detail]")).toHaveLength(1);
 });
 
 function projected(kind, sequence, data) {

@@ -15,17 +15,17 @@ export function EventObservabilityPanel(): JSX.Element {
       className="flex h-full min-h-0 w-full flex-col"
       data-observability-workbench
     >
-      <div className="shrink-0 border-b border-line-subtle bg-transparent px-3 pt-2">
-        <TabsList className="h-8 w-full rounded-none border-0 bg-transparent p-0">
+      <div className="shrink-0 border-b border-line-subtle bg-surface-panel px-3">
+        <TabsList className="h-9 w-full justify-start gap-4 rounded-none border-0 bg-transparent p-0">
           <TabsTrigger
             value="diagnostic"
-            className="h-8 rounded-none border-b-2 border-transparent px-2 data-[state=active]:border-accent-content data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            className="h-9 flex-none rounded-none border-b border-transparent px-0 text-[11px] data-[state=active]:border-content-primary data-[state=active]:bg-transparent data-[state=active]:text-content-primary data-[state=active]:shadow-none"
           >
             {frontendMessage("observability.view.diagnostic")}
           </TabsTrigger>
           <TabsTrigger
             value="events"
-            className="h-8 rounded-none border-b-2 border-transparent px-2 data-[state=active]:border-accent-content data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            className="h-9 flex-none rounded-none border-b border-transparent px-0 text-[11px] data-[state=active]:border-content-primary data-[state=active]:bg-transparent data-[state=active]:text-content-primary data-[state=active]:shadow-none"
           >
             {frontendMessage("observability.view.events")}
           </TabsTrigger>

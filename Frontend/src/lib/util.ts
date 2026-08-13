@@ -51,15 +51,20 @@ export function formatDuration(startIso?: string, endIso?: string): string {
   try {
     const start = new Date(startIso).getTime();
     const end = endIso ? new Date(endIso).getTime() : Date.now();
-    const ms = Math.max(0, end - start);
-    if (ms < 1000) return `${ms}ms`;
-    if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
-    const m = Math.floor(ms / 60_000);
-    const s = Math.floor((ms % 60_000) / 1000);
-    return `${m}m${s.toString().padStart(2, "0")}s`;
+    const elapsed = end - start;
+    return elapsed > 0 ? formatDurationMs(elapsed) : "";
   } catch {
     return "";
   }
+}
+
+export function formatDurationMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+  const m = Math.floor(ms / 60_000);
+  const s = Math.floor((ms % 60_000) / 1000);
+  return `${m}m${s.toString().padStart(2, "0")}s`;
 }
 
 export function hasMeasuredDuration(startIso?: string, endIso?: string): boolean {

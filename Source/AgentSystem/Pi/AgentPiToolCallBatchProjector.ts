@@ -8,11 +8,16 @@ export interface AgentPiToolCallProjection extends AgentPiToolCallPreflightInput
   readonly id: string;
 }
 
+export interface AgentPiToolCallBatchProjectionOptions {
+  readonly purposesByCallId?: ReadonlyMap<string, string>;
+}
+
 export async function registerAgentPiToolCallBatch(
   frame: AgentPiMutableSessionFrame,
   message: AssistantMessage,
+  options: AgentPiToolCallBatchProjectionOptions = {},
 ): Promise<void> {
-  const toolCalls = projectToolCalls(message);
+  const toolCalls = projectToolCalls(message, options);
   if (toolCalls.length === 0) return;
   const snapshot = frame.snapshot();
   if (!snapshot.turnState) throw new Error("Pi tool calls require an active turn state.");
@@ -49,7 +54,11 @@ export async function registerAgentPiToolCallBatch(
     data: {
       toolCount: toolCalls.length,
       tools: toolCalls.map((call) => call.toolName),
-      calls: toolCalls.map((call) => ({ callId: call.toolCallId, toolName: call.toolName })),
+      calls: toolCalls.map((call) => ({
+        callId: call.toolCallId,
+        toolName: call.toolName,
+        purpose: call.purpose,
+      })),
       status: "planned",
       executionMode: "parallel",
       batchId,
@@ -58,7 +67,10 @@ export async function registerAgentPiToolCallBatch(
   });
 }
 
-function projectToolCalls(message: AssistantMessage): AgentPiToolCallProjection[] {
+function projectToolCalls(
+  message: AssistantMessage,
+  options: AgentPiToolCallBatchProjectionOptions,
+): AgentPiToolCallProjection[] {
   return message.content.flatMap((entry) =>
     entry.type === "toolCall"
       ? [
@@ -67,6 +79,7 @@ function projectToolCalls(message: AssistantMessage): AgentPiToolCallProjection[
             toolCallId: requireToolCallId(entry.id),
             toolName: entry.name,
             input: entry.arguments,
+            purpose: options.purposesByCallId?.get(entry.id),
           },
         ]
       : [],

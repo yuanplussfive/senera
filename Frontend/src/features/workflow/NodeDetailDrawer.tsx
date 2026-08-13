@@ -1,8 +1,8 @@
-import { memo, useCallback, useEffect, useState } from "react";
-import { X, Copy, Check } from "lucide-react";
+import { memo, useCallback, useEffect, useId, useState } from "react";
+import { X, Copy, Check, ChevronDown } from "lucide-react";
 import type { TimelineChildRunMessage, TimelineStep } from "../../store/sessionStore";
 import { friendlyDecisionKind } from "../../store/sessionStore";
-import { cn, formatTime, formatDuration } from "../../lib/util";
+import { cn, formatTime, formatDurationMs } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { MotionIconSwap } from "../../shared/motion";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
@@ -10,6 +10,7 @@ import { MetaLabel, Sheet, SheetContent, Skeleton, Tooltip, useClipboardCopy } f
 import { readStepKindLabel, readStepStatusLabel } from "./stepPresentation";
 import { DataView } from "./DataView";
 import { ChildRunOverview } from "./ChildRunOverview";
+import { readWorkflowStepDurationMs } from "./workflowPresentationProjection";
 
 export interface NodeDetailDrawerProps {
   step: TimelineStep | null;
@@ -160,23 +161,9 @@ export const WorkflowStepDetail = memo(function WorkflowStepDetail({ step }: { s
         </Section>
       ) : null}
 
-      {step.toolPresentation ? <ToolResultPresentationView presentation={step.toolPresentation} /> : null}
+      {step.toolPresentation ? <ToolResultSummary presentation={step.toolPresentation} /> : null}
 
-      {step.toolResult !== undefined ? (
-        <Section label={frontendMessage("workflow.node.section.rawToolResult")} copyValue={step.toolResult}>
-          <DataCard>
-            <DataView value={step.toolResult} />
-          </DataCard>
-        </Section>
-      ) : null}
-
-      {step.detailJson !== undefined ? (
-        <Section label={frontendMessage("workflow.node.section.actionDetails")} copyValue={step.detailJson}>
-          <DataCard>
-            <DataView value={step.detailJson} />
-          </DataCard>
-        </Section>
-      ) : null}
+      {hasTechnicalDetails(step) ? <TechnicalDetails key={step.id} step={step} /> : null}
     </div>
   );
 });
@@ -251,7 +238,71 @@ function ToolOutputBlock({ stream, text }: { stream: "stdout" | "stderr"; text: 
   );
 }
 
-function ToolResultPresentationView({
+function ToolResultSummary({
+  presentation,
+}: {
+  presentation: NonNullable<TimelineStep["toolPresentation"]>;
+}): JSX.Element {
+  const summary = presentation.summary || presentation.headline;
+  if (!summary) return <></>;
+
+  return (
+    <Section label={frontendMessage("workflow.node.section.resultSummary")} copyValue={summary}>
+      <MarkdownRenderer
+        className="px-0 py-0"
+        contentClassName="text-[13px] leading-relaxed"
+        compact
+        lightweightCode
+      >
+        {summary}
+      </MarkdownRenderer>
+    </Section>
+  );
+}
+
+function TechnicalDetails({ step }: { step: TimelineStep }): JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const contentId = useId();
+
+  return (
+    <section className="border-t border-line-subtle pt-2" data-workflow-technical-details>
+      <button
+        type="button"
+        className="flex min-h-8 w-full items-center gap-2 rounded px-1 text-left text-[12px] font-medium text-content-secondary transition-colors hover:bg-surface-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+        aria-expanded={expanded}
+        aria-controls={contentId}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <span className="flex-1">{frontendMessage("workflow.node.technicalDetails")}</span>
+        <ChevronDown
+          className={cn("h-3.5 w-3.5 text-content-muted transition-transform", expanded && "rotate-180")}
+          aria-hidden="true"
+        />
+      </button>
+      {expanded ? (
+        <div id={contentId} className="mt-3 flex flex-col gap-5 border-l border-line-subtle pl-3">
+          {step.toolPresentation ? <ToolResultTechnicalDetails presentation={step.toolPresentation} /> : null}
+          {step.toolResult !== undefined ? (
+            <Section label={frontendMessage("workflow.node.section.rawToolResult")} copyValue={step.toolResult}>
+              <DataCard>
+                <DataView value={step.toolResult} />
+              </DataCard>
+            </Section>
+          ) : null}
+          {step.detailJson !== undefined ? (
+            <Section label={frontendMessage("workflow.node.section.actionDetails")} copyValue={step.detailJson}>
+              <DataCard>
+                <DataView value={step.detailJson} />
+              </DataCard>
+            </Section>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ToolResultTechnicalDetails({
   presentation,
 }: {
   presentation: NonNullable<TimelineStep["toolPresentation"]>;
@@ -281,19 +332,6 @@ function ToolResultPresentationView({
 
   return (
     <>
-      {presentation.summary ? (
-        <Section label={frontendMessage("workflow.node.section.resultSummary")} copyValue={presentation.summary}>
-          <MarkdownRenderer
-            className="px-0 py-0"
-            contentClassName="text-[13px] leading-relaxed"
-            compact
-            lightweightCode
-          >
-            {presentation.summary}
-          </MarkdownRenderer>
-        </Section>
-      ) : null}
-
       {facts.length > 0 ? (
         <Section label={frontendMessage("workflow.node.section.facts")} copyValue={facts}>
           <DataCard>
@@ -324,16 +362,19 @@ function ToolResultPresentationView({
         </Section>
       ) : null}
 
-      {!presentation.summary &&
-      facts.length === 0 &&
-      evidence.length === 0 &&
-      changes.length === 0 &&
-      !presentation.artifactUri ? (
-        <div className="text-[12.5px] leading-5 text-content-secondary">
-          {frontendMessage("workflow.node.emptyResult")}
-        </div>
-      ) : null}
     </>
+  );
+}
+
+function hasTechnicalDetails(step: TimelineStep): boolean {
+  const presentation = step.toolPresentation;
+  return Boolean(
+    step.toolResult !== undefined ||
+      step.detailJson !== undefined ||
+      presentation?.artifactUri ||
+      presentation?.facts.length ||
+      presentation?.evidence.length ||
+      presentation?.changes.length,
   );
 }
 
@@ -375,10 +416,11 @@ function MetaStrip({ step }: { step: TimelineStep }): JSX.Element {
         .join(" · "),
     });
   }
-  if (step.startedAt && step.endedAt)
+  const durationMs = readWorkflowStepDurationMs(step);
+  if (durationMs !== undefined)
     chips.push({
       label: frontendMessage("workflow.node.meta.duration"),
-      value: formatDuration(step.startedAt, step.endedAt),
+      value: formatDurationMs(durationMs),
       mono: true,
     });
   else if (step.startedAt)

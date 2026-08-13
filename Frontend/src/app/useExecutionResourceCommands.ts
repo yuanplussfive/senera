@@ -26,10 +26,12 @@ export interface UseExecutionResourceCommandsResult {
   resources: ExecutionResourceSnapshotData[];
   outputs: Readonly<Record<string, ExecutionResourceOutputBuffer>>;
   handleEvent: (event: EventEnvelope) => boolean;
+  startTerminal: (options?: { cwd?: string; columns?: number; rows?: number }) => boolean;
   refresh: () => boolean;
   write: (resourceId: string, input: string) => boolean;
   resize: (resourceId: string, columns: number, rows: number) => boolean;
   signal: (resourceId: string, signal: "interrupt" | "terminate" | "kill") => boolean;
+  close: (resourceId: string) => boolean;
   stopAll: () => boolean;
 }
 
@@ -56,6 +58,15 @@ export function useExecutionResourceCommands(input: {
 
   const refresh = useCallback(
     () => sendForSession((sessionId) => ({ type: "execution.resource.list", sessionId })),
+    [sendForSession],
+  );
+  const startTerminal = useCallback(
+    (options: { cwd?: string; columns?: number; rows?: number } = {}) =>
+      sendForSession((sessionId) => ({
+        type: "execution.resource.start_terminal",
+        sessionId,
+        ...options,
+      })),
     [sendForSession],
   );
 
@@ -85,8 +96,14 @@ export function useExecutionResourceCommands(input: {
       }
       if (event.kind === EventKinds.ExecutionResourceSnapshot) {
         const data = event.data as ExecutionResourceSnapshotEventData;
-        if (data.operation === "list") {
+        if (data.operation === "list" || data.operation === "close") {
           setResources(data.resources);
+          if (data.operation === "close") {
+            const retainedIds = new Set(data.resources.map((resource) => resource.resourceId));
+            setOutputs((current) =>
+              Object.fromEntries(Object.entries(current).filter(([resourceId]) => retainedIds.has(resourceId))),
+            );
+          }
           for (const resource of data.resources) {
             send({
               type: "execution.resource.inspect",
@@ -196,19 +213,26 @@ export function useExecutionResourceCommands(input: {
     () => sendForSession((sessionId) => ({ type: "execution.resource.stop_all", sessionId })),
     [sendForSession],
   );
+  const close = useCallback(
+    (resourceId: string) =>
+      sendForSession((sessionId) => ({ type: "execution.resource.close", sessionId, resourceId })),
+    [sendForSession],
+  );
 
   return useMemo(
     () => ({
       resources,
       outputs,
       handleEvent,
+      startTerminal,
       refresh,
       write,
       resize,
       signal,
+      close,
       stopAll,
     }),
-    [handleEvent, outputs, refresh, resize, resources, signal, stopAll, write],
+    [close, handleEvent, outputs, refresh, resize, resources, signal, startTerminal, stopAll, write],
   );
 }
 

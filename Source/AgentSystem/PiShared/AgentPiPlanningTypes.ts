@@ -45,6 +45,8 @@ export interface AgentPiAssistantToolCall {
   id?: string;
   name: string;
   arguments: Record<string, unknown>;
+  /** Planner-authored intent. Native providers may omit it. */
+  purpose?: string;
 }
 
 export interface AgentPiAssistantMessage {

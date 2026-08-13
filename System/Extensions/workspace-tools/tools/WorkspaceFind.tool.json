@@ -61,7 +61,7 @@
     "Scheduling": "Parallel",
     "Capabilities": { "Cancellation": true }
   },
-  "resources": [],
+  "resources": [{ "Capability": "senera.workspace.path", "Pointer": "/path", "Parameters": { "Intent": "read" } }],
   "sources": [],
   "search": {
     "Summary": "按 glob 查找工作区文件，包含隐藏文件并遵循嵌套 .gitignore。",

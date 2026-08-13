@@ -184,6 +184,7 @@ function projectOpaInput(input: AgentToolApprovalPolicyInput): Record<string, un
       security: input.tool?.security,
     },
     execution: input.executionPlan,
+    resourceAccess: input.resourceAccess,
     toolCallId: input.toolCallId,
     args: input.arguments,
     toolAccessGrant: input.toolAccessGrant,

@@ -1,6 +1,11 @@
 import type { ExecutionEnv } from "@earendil-works/pi-agent-core";
 import type { SeneraProcessExecutionProfile } from "./SeneraExecutionProfile.js";
-import type { AgentResourceAccessAuthority, AgentResourceAccessIntent } from "./SeneraResourceAccess.js";
+import type {
+  AgentResourceAccessAuthority,
+  AgentResourceAccessGrant,
+  AgentResourceAccessIntent,
+  AgentResourceAccessPlan,
+} from "./SeneraResourceAccess.js";
 import type { FileError, Result } from "@earendil-works/pi-agent-core";
 import type {
   SeneraPersistentProcessChild,
@@ -96,7 +101,9 @@ export interface SeneraExecutionEnv extends ExecutionEnv {
   readonly workspaceRoot: string;
   readonly capabilities: SeneraExecutionRuntimeCapabilities;
   resolveResourcePath(value: string, intent: AgentResourceAccessIntent): Promise<Result<string, FileError>>;
+  inspectResourcePath(value: string, intent: AgentResourceAccessIntent): Promise<AgentResourceAccessPlan["requests"][number]>;
   withResourceAccessAuthority(authority: AgentResourceAccessAuthority): SeneraExecutionEnv;
+  withResourceAccessGrant(grant: AgentResourceAccessGrant): SeneraExecutionEnv;
   executeShell(request: SeneraShellExecutionRequest): Promise<SeneraShellExecutionResult>;
   executeProcess(request: SeneraArgvExecutionRequest): Promise<SeneraShellExecutionResult>;
   spawnPersistentProcess(

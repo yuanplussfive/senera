@@ -360,6 +360,7 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
         id: createToolCallId(),
         name: entry.call.toolName,
         arguments: draft.arguments,
+        purpose: entry.call.purpose,
       },
       entry,
     };

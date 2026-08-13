@@ -19,6 +19,7 @@ import {
   type AgentExecutionResourceHandle,
   type AgentExecutionResourceLimits,
   type AgentExecutionResourceOwner,
+  type AgentExecutionResourcePresentation,
   type AgentExecutionResourceSignal,
   type AgentExecutionResourceSnapshot,
 } from "./AgentExecutionResourceTypes.js";
@@ -53,6 +54,7 @@ export interface AgentExecutionProcessStartRequest {
   signal?: AbortSignal;
   maxDurationMs?: number;
   outputSpool?: SeneraOutputSpool;
+  presentation?: AgentExecutionResourcePresentation;
 }
 
 export interface AgentExecutionTerminalStartRequest extends AgentExecutionProcessStartRequest {
@@ -186,15 +188,31 @@ export class AgentExecutionResourceBroker {
     return this.decorateSnapshot(resource, await resource.signal(signal));
   }
 
+  async release(resourceId: string, owner: AgentExecutionResourceOwner): Promise<void> {
+    const resource = this.authorize(resourceId, owner);
+    await this.cleanupResource(resource, "released");
+  }
+
   takeOutputCapture(resourceId: string, owner: AgentExecutionResourceOwner): SeneraOutputSpoolDescriptor | undefined {
     return this.authorize(resourceId, owner).takeOutputCapture();
   }
 
   async stopAll(owner: AgentExecutionResourceOwner): Promise<AgentExecutionResourceSnapshot[]> {
+    return this.stopMatching(owner, () => true);
+  }
+
+  async stopTerminals(owner: AgentExecutionResourceOwner): Promise<AgentExecutionResourceSnapshot[]> {
+    return this.stopMatching(owner, (resource) => resource.kind === "terminal");
+  }
+
+  private async stopMatching(
+    owner: AgentExecutionResourceOwner,
+    matches: (resource: AgentExecutionResourceHandle) => boolean,
+  ): Promise<AgentExecutionResourceSnapshot[]> {
     this.assertOpen();
     this.assertOwner(owner);
     const resources = [...this.resources.values()].filter(
-      (resource) => sameOwner(resource.owner, owner) && !resource.closed,
+      (resource) => sameOwner(resource.owner, owner) && !resource.closed && matches(resource),
     );
     const settlements = await Promise.allSettled(
       resources.map((resource) => this.cleanupResource(resource, "stop_all")),
@@ -300,6 +318,7 @@ export class AgentExecutionResourceBroker {
         },
         transport,
         command: request.displayCommand ?? [request.command, ...request.args].join(" "),
+        presentation: request.presentation,
         cwd: request.cwd,
         limits,
         maxDurationMs: request.maxDurationMs,

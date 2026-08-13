@@ -6,7 +6,7 @@
     "Packages/*",
     "Frontend"
   ],
-  "main": "Dist/Source/AgentSystem/Runtime/AgentSystemRuntime.js",
+  "main": "Dist/Apps/Desktop/Main.js",
   "bin": {
     "senera": "Dist/Apps/SeneraCli.js"
   },
@@ -158,7 +158,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Senera",
-      "artifactName": "SeneraSetup-${version}.${ext}"
+      "artifactName": "SeneraSetup-${version}.${ext}",
+      "include": "Build/installer.nsh"
     }
   },
   "dependencies": {

@@ -5,6 +5,7 @@ import type {
   ExecutedToolCallResult,
 } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
+import { compareWorkspaceSnapshots } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceSnapshotDiff.js";
 import {
   AgentToolFailureSources,
   AgentToolSuccessOutcome,
@@ -51,6 +52,16 @@ describe("Tool result presentation", () => {
   });
 
   test("projects workspace changes and does not stringify opaque raw objects for the default view", () => {
+    const workspaceChanges = compareWorkspaceSnapshots(
+      {
+        capturedAt: "2026-08-13T00:00:00.000Z",
+        files: [workspaceFile("Source/example.ts", "export const before = true;\n")],
+      },
+      {
+        capturedAt: "2026-08-13T00:00:01.000Z",
+        files: [workspaceFile("Source/example.ts", "export const after = true;\nexport const ready = true;\n")],
+      },
+    );
     const result = fixture({
       result: { opaque: { deeply: ["structured", "payload"] } },
       delta: [
@@ -61,6 +72,11 @@ describe("Tool result presentation", () => {
           summary: "modified: Source/example.ts",
         },
       ],
+      workspace: {
+        before: { files: [], capturedAt: "2026-08-13T00:00:00.000Z" },
+        after: { files: [], capturedAt: "2026-08-13T00:00:01.000Z" },
+        changes: workspaceChanges,
+      },
     });
 
     const presentation = projectAgentToolResultPresentation(result);
@@ -73,6 +89,8 @@ describe("Tool result presentation", () => {
         status: "changed",
         key: "Source/example.ts",
         summary: "modified: Source/example.ts",
+        addedLines: 2,
+        removedLines: 1,
       },
     ]);
     expect(presentation.headline).not.toContain("opaque");
@@ -116,6 +134,7 @@ function fixture(input: {
   exitCode?: number | null;
   evidence?: NonNullable<ExecutedToolCallResult["artifact"]>["evidence"];
   delta?: NonNullable<ExecutedToolCallResult["artifact"]>["delta"];
+  workspace?: NonNullable<ExecutedToolCallResult["artifact"]>["workspace"];
 }): ExecutedToolCallResult {
   return {
     callId: "call_test",
@@ -141,6 +160,26 @@ function fixture(input: {
       summary: "",
       evidence: input.evidence ?? [],
       delta: input.delta ?? [],
+      workspace: input.workspace,
+    },
+  };
+}
+
+function workspaceFile(path: string, text: string) {
+  return {
+    path,
+    absolutePath: `C:/workspace/${path}`,
+    exists: true,
+    kind: "file" as const,
+    size: Buffer.byteLength(text),
+    mtimeMs: 0,
+    hash: text,
+    content: {
+      state: "captured" as const,
+      encoding: "utf8" as const,
+      byteLength: Buffer.byteLength(text),
+      lineCount: text.split("\n").length,
+      text,
     },
   };
 }

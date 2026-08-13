@@ -183,14 +183,6 @@ export const runLifecycleEventHandlers = {
       run.status = "cancelled";
       settleRunActivities(run, "failed", env.timestamp);
       run.endedAt = env.timestamp;
-      run.streamingRaw = "";
-      run.xmlPreview = "";
-      run.visibleText = "";
-      run.displayText = "";
-      run.displayMessageId = undefined;
-      run.visibleKind = "unknown";
-      run.decisionMode = "none";
-      run.plannedDecisionMode = undefined;
       upsertStep(run, {
         id: `${run.requestId}-cancelled`,
         kind: "error",
@@ -200,6 +192,8 @@ export const runLifecycleEventHandlers = {
         startedAt: env.timestamp,
         endedAt: env.timestamp,
       });
+      run.activeFlags = undefined;
+      touchRun(run);
     }
     session.activeRequestId = undefined;
     session.updatedAt = env.timestamp;

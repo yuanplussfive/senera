@@ -44,4 +44,64 @@ describe("execution resource WebSocket requests", () => {
       },
     });
   });
+
+  test("starts an interactive terminal through the dedicated runtime", async () => {
+    const sendEvent = vi.fn();
+    const start = vi.fn().mockResolvedValue({ resourceId: "terminal-a", kind: "terminal" });
+    const createSession = vi.fn();
+    const handlers = new AgentWebSocketExecutionResourceRequestHandlers({
+      workspaceRoot: "E:\\workspace",
+      interactiveTerminals: { start },
+      sessionManager: { createSession },
+    } as unknown as AgentWebSocketRequestContext);
+
+    await handlers.startTerminal(
+      {
+        type: "execution.resource.start_terminal",
+        sessionId: "session-a",
+        cwd: "E:\\workspace",
+        columns: 120,
+        rows: 36,
+      },
+      sendEvent,
+    );
+
+    expect(start).toHaveBeenCalledWith({
+      sessionId: "session-a",
+      cwd: "E:\\workspace",
+      dimensions: { columns: 120, rows: 36 },
+    });
+    expect(createSession).toHaveBeenCalledWith({ sessionId: "session-a", onEvent: sendEvent });
+    expect(sendEvent).toHaveBeenCalledWith({
+      kind: "execution.resource.snapshot",
+      context: { sessionId: "session-a" },
+      data: {
+        operation: "start_terminal",
+        resources: [{ resourceId: "terminal-a", kind: "terminal" }],
+      },
+    });
+  });
+
+  test("closes one resource and returns the remaining resource snapshot", async () => {
+    const sendEvent = vi.fn();
+    const release = vi.fn().mockResolvedValue(undefined);
+    const list = vi.fn().mockReturnValue([{ resourceId: "terminal-b", kind: "terminal" }]);
+    const handlers = new AgentWebSocketExecutionResourceRequestHandlers({
+      workspaceRoot: "E:\\workspace",
+      executionResources: { release, list },
+    } as unknown as AgentWebSocketRequestContext);
+
+    await handlers.close(
+      { type: "execution.resource.close", sessionId: "session-a", resourceId: "terminal-a" },
+      sendEvent,
+    );
+
+    expect(release).toHaveBeenCalledWith("terminal-a", { workspaceRoot: "E:\\workspace", sessionId: "session-a" });
+    expect(list).toHaveBeenCalledWith({ workspaceRoot: "E:\\workspace", sessionId: "session-a" });
+    expect(sendEvent).toHaveBeenCalledWith({
+      kind: "execution.resource.snapshot",
+      context: { sessionId: "session-a" },
+      data: { operation: "close", resources: [{ resourceId: "terminal-b", kind: "terminal" }] },
+    });
+  });
 });

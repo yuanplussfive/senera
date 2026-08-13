@@ -20,6 +20,7 @@ import type {
 import { AgentSessionApprovalLeaseStore } from "../../../Source/AgentSystem/Safety/AgentSessionApprovalLeaseStore.js";
 import { AgentToolSemanticAuditModes } from "../../../Source/AgentSystem/Types/AgentRuntimeConfigTypes.js";
 import { toolAccessGrant } from "../Support/AgentTestFixtures.js";
+import type { AgentResourceAccessPlan } from "../../../Source/AgentSystem/Execution/SeneraResourceAccess.js";
 
 describe("execution approval modes", () => {
   test("projects policy decisions through the declared run mode", () => {
@@ -66,6 +67,144 @@ describe("execution approval modes", () => {
       action: AgentPermissionActions.Allow,
     });
     expect(approvalRuntime.requestApproval).not.toHaveBeenCalled();
+  });
+
+  test("always-ask obtains a call-bound grant before accessing an external host path", async () => {
+    const requestApproval = vi.fn(async () => ({
+      approvalId: "approval-external",
+      decision: "approve_once" as const,
+      status: "approved" as const,
+      disposition: "proceed" as const,
+      scope: "once" as const,
+      resolvedAt: new Date().toISOString(),
+    }));
+    const gate = new AgentToolPermissionGate({
+      policy: policy(decision(AgentPermissionActions.Allow)),
+      sessionApprovals: new AgentSessionApprovalLeaseStore(),
+      approvalRuntime: { requestApproval } as unknown as AgentApprovalRuntime,
+      toolPlanningMode: "native",
+    });
+
+    const result = await gate.authorize({
+      ...request(AgentExecutionApprovalModes.AlwaysAsk),
+      resourceAccess: externalResourceAccess(),
+    });
+
+    expect(requestApproval).toHaveBeenCalledOnce();
+    expect(requestApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        approval: expect.objectContaining({
+          reason: "本次工具调用将访问工作区外的宿主路径，需要你的批准。",
+          subject: expect.objectContaining({
+            resources: [{ canonicalPath: expect.any(String), intent: "read", recursive: true }],
+          }),
+        }),
+      }),
+    );
+    expect(result).toMatchObject({
+      action: AgentPermissionActions.Allow,
+      resourceGrant: {
+        mode: "approved-host",
+        resources: [{ canonicalPath: expect.any(String), intent: "read", recursive: true }],
+        binding: {
+          sessionId: "session-approval-mode",
+          requestId: "request-approval-mode",
+          toolCallId: "call-approval-mode",
+          toolName: "TestTool",
+        },
+      },
+    });
+  });
+
+  test("reuses a session approval only for the same external resource scope", async () => {
+    const requestApproval = vi.fn(async () => ({
+      approvalId: "approval-external-session",
+      decision: "approve_session" as const,
+      status: "approved" as const,
+      disposition: "proceed" as const,
+      scope: "session" as const,
+      resolvedAt: new Date().toISOString(),
+    }));
+    const gate = new AgentToolPermissionGate({
+      policy: policy(decision(AgentPermissionActions.Allow)),
+      sessionApprovals: new AgentSessionApprovalLeaseStore(),
+      approvalRuntime: { requestApproval } as unknown as AgentApprovalRuntime,
+      toolPlanningMode: "native",
+    });
+    const first = { ...request(AgentExecutionApprovalModes.AlwaysAsk), resourceAccess: externalResourceAccess() };
+
+    await gate.authorize(first);
+    await expect(gate.authorize({ ...first, toolCallId: "call-external-second" })).resolves.toMatchObject({
+      action: AgentPermissionActions.Allow,
+      rule: expect.stringContaining("session_lease"),
+      resourceGrant: { mode: "approved-host" },
+    });
+    expect(requestApproval).toHaveBeenCalledOnce();
+
+    const otherScope = externalResourceAccess("C:/other-external");
+    await gate.authorize({ ...first, toolCallId: "call-external-other", resourceAccess: otherScope });
+    expect(requestApproval).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    [AgentExecutionApprovalModes.Agent, "approved-host"],
+    [AgentExecutionApprovalModes.FullAccess, "full-host"],
+  ] as const)("%s authorizes external host access without user interaction", async (approvalMode, grantMode) => {
+    const requestApproval = vi.fn();
+    const gate = new AgentToolPermissionGate({
+      policy: policy(decision(AgentPermissionActions.Ask)),
+      sessionApprovals: new AgentSessionApprovalLeaseStore(),
+      approvalRuntime: { requestApproval } as unknown as AgentApprovalRuntime,
+      toolPlanningMode: "native",
+    });
+
+    await expect(
+      gate.authorize({ ...request(approvalMode), resourceAccess: externalResourceAccess() }),
+    ).resolves.toMatchObject({ action: AgentPermissionActions.Allow, resourceGrant: { mode: grantMode } });
+    expect(requestApproval).not.toHaveBeenCalled();
+  });
+
+  test("does not mint a host grant for workspace-contained access", async () => {
+    const gate = new AgentToolPermissionGate({
+      policy: policy(decision(AgentPermissionActions.Allow)),
+      sessionApprovals: new AgentSessionApprovalLeaseStore(),
+      toolPlanningMode: "native",
+    });
+
+    await expect(
+      gate.authorize({
+        ...request(AgentExecutionApprovalModes.Agent),
+        resourceAccess: { requests: [], external: [] },
+      }),
+    ).resolves.toMatchObject({ action: AgentPermissionActions.Allow, resourceGrant: undefined });
+  });
+
+  test("rejects an unresolvable external resource before policy evaluation or approval", async () => {
+    const decideToolCall = vi.fn(async () => decision(AgentPermissionActions.Allow));
+    const requestApproval = vi.fn();
+    const gate = new AgentToolPermissionGate({
+      policy: { decideToolCall },
+      sessionApprovals: new AgentSessionApprovalLeaseStore(),
+      approvalRuntime: { requestApproval } as unknown as AgentApprovalRuntime,
+      toolPlanningMode: "native",
+    });
+    const resourceAccess = externalResourceAccess();
+    const unresolved = {
+      ...resourceAccess.external[0]!,
+      canonicalPath: undefined,
+      facts: { ...resourceAccess.external[0]!.facts, linkTraversal: "external" as const },
+    };
+
+    await expect(
+      gate.authorize({
+        ...request(AgentExecutionApprovalModes.FullAccess),
+        resourceAccess: { requests: [unresolved], external: [unresolved] },
+      }),
+    ).rejects.toMatchObject({
+      decision: { action: AgentPermissionActions.Deny, rule: "resource.external.unresolved" },
+    });
+    expect(decideToolCall).not.toHaveBeenCalled();
+    expect(requestApproval).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -155,4 +294,25 @@ function request(approvalMode: (typeof AgentExecutionApprovalModes)[keyof typeof
     arguments: {},
     toolAccessGrant: toolAccessGrant(["TestTool"], ["TestTool"]),
   };
+}
+
+function externalResourceAccess(canonicalPath = "C:/external"): AgentResourceAccessPlan {
+  const request = {
+    addressedPath: canonicalPath,
+    canonicalPath,
+    intent: "read" as const,
+    recursive: true,
+    facts: {
+      scope: "workspace" as const,
+      intent: "read" as const,
+      authority: "tool" as const,
+      domain: "workspace-content" as const,
+      domainRoot: false,
+      relativePath: "../external",
+      containment: "outside" as const,
+      linkTraversal: "none" as const,
+      finalEntry: "directory" as const,
+    },
+  };
+  return { requests: [request], external: [request] };
 }

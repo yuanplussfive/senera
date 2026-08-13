@@ -198,7 +198,6 @@ function createRun() {
     visibleKind: "unknown",
     expectedOutputMode: "unknown",
     decisionMode: "none",
-    pendingToolArgsByName: {},
   };
 }
 

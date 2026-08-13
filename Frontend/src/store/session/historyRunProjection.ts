@@ -124,7 +124,6 @@ export function rebuildRunFromHistory(run: SessionHistoryStepsData["runs"][numbe
     expectedOutputMode: "unknown",
     decisionMode: "none",
     plannedDecisionMode: undefined,
-    pendingToolArgsByName: {},
     approvals: [],
     interactionInputs: [],
     modelProvider: run.modelProvider,
@@ -161,6 +160,7 @@ const stepTraceProjectors = {
     endedAt,
     toolName: trace.toolName,
     callId: trace.callId,
+    purpose: trace.purpose,
     toolBatch: toolBatchForTrace(requestId, trace),
     toolArgs: trace.toolArgs,
     toolPreview: trace.toolPreview,
@@ -176,6 +176,7 @@ const stepTraceProjectors = {
     status: trace.status,
     startedAt,
     endedAt,
+    decisionKind: trace.decisionKind,
   }),
 
   retry: ({ trace, startedAt, endedAt }) => ({

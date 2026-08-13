@@ -6,6 +6,27 @@ import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./
 export class AgentWebSocketExecutionResourceRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
 
+  async startTerminal(
+    request: AgentWebSocketRequestOf<"execution.resource.start_terminal">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    const runtime = this.context.interactiveTerminals;
+    if (!runtime) throw new Error("Interactive terminal creation is unavailable.");
+    await this.context.sessionManager.createSession({ sessionId: request.sessionId, onEvent: sendEvent });
+    await this.sendSnapshot(
+      "start_terminal",
+      request.sessionId,
+      [
+        await runtime.start({
+          sessionId: request.sessionId,
+          cwd: request.cwd,
+          dimensions: { columns: request.columns, rows: request.rows },
+        }),
+      ],
+      sendEvent,
+    );
+  }
+
   async list(
     request: AgentWebSocketRequestOf<"execution.resource.list">,
     sendEvent: AgentWebSocketEventSender,
@@ -67,6 +88,15 @@ export class AgentWebSocketExecutionResourceRequestHandlers {
     );
   }
 
+  async close(
+    request: AgentWebSocketRequestOf<"execution.resource.close">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    const owner = this.owner(request.sessionId);
+    await this.broker.release(request.resourceId, owner);
+    await this.sendSnapshot("close", request.sessionId, this.broker.list(owner), sendEvent);
+  }
+
   async stopAll(
     request: AgentWebSocketRequestOf<"execution.resource.stop_all">,
     sendEvent: AgentWebSocketEventSender,
@@ -74,13 +104,13 @@ export class AgentWebSocketExecutionResourceRequestHandlers {
     await this.sendSnapshot(
       "stop_all",
       request.sessionId,
-      await this.broker.stopAll(this.owner(request.sessionId)),
+      await this.broker.stopTerminals(this.owner(request.sessionId)),
       sendEvent,
     );
   }
 
   private sendSnapshot(
-    operation: "list" | "inspect" | "write" | "resize" | "signal" | "stop_all",
+    operation: "start_terminal" | "list" | "inspect" | "write" | "resize" | "signal" | "close" | "stop_all",
     sessionId: string,
     resources: AgentExecutionResourceSnapshot[],
     sendEvent: AgentWebSocketEventSender,

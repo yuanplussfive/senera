@@ -16,6 +16,7 @@ import type { AgentRunEventWriter } from "./AgentRunEventWriter.js";
 import type { AgentPiDiagnosticSink } from "../PiShared/AgentPiDiagnosticsTypes.js";
 import type { AgentMcpManagementService } from "../McpPackages/AgentMcpManagementService.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import type { AgentInteractiveTerminalRuntime } from "../ExecutionResources/AgentInteractiveTerminalRuntime.js";
 
 export interface AgentWebSocketServerOptions {
   config: AgentSystemConfig;
@@ -32,6 +33,7 @@ export interface AgentWebSocketServerOptions {
   interactionInput?: AgentInteractionInputRuntime;
   sandboxRuntimeService?: AgentSandboxRuntimeService;
   executionResources?: AgentExecutionResourceBroker;
+  interactiveTerminals?: AgentInteractiveTerminalRuntime;
   eventPersistence?: AgentWebSocketEventPersistenceOptions;
   eventWriter: AgentRunEventWriter;
   mcpManagement?: AgentMcpManagementService;
@@ -50,6 +52,7 @@ export interface AgentWebSocketRequestContext {
   interactionInput?: AgentInteractionInputRuntime;
   sandboxRuntimeService: AgentSandboxRuntimeService;
   executionResources?: AgentExecutionResourceBroker;
+  interactiveTerminals?: AgentInteractiveTerminalRuntime;
   workspaceRoot: string;
   mcpManagement?: AgentMcpManagementService;
 }

@@ -9,6 +9,12 @@ import {
 import { truncate } from "../../store/session/sessionPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { activeRunActivityLabel, runActivityLabel, runActivityPresentationPriority } from "./runActivityPresentation";
+import {
+  isWorkflowLiveActivityVisible,
+  projectWorkflowActivities,
+  projectWorkflowSteps,
+} from "./workflowPresentationProjection";
+import { projectToolActivity, projectToolBatchSummary } from "./toolActivityPresentation";
 
 export type FeedItemKind = "activity" | "tool" | "trace";
 
@@ -19,6 +25,7 @@ export interface FeedItem {
   title: string;
   subtitle?: string;
   meta?: string;
+  step?: TimelineStep;
 }
 
 export interface FeedGroup {
@@ -33,6 +40,7 @@ export interface FeedGroup {
 export interface FeedModel {
   headline: FeedItem;
   groups: FeedGroup[];
+  stepCount: number;
   bodyText: string;
   placeholder: string;
   footer?: string;
@@ -41,8 +49,8 @@ export interface FeedModel {
 const TimelineStatusPresentation = {
   running: {
     labelKey: "workflow.feed.running",
-    dotClass: "bg-umber-500",
-    textClass: "text-umber-600",
+    dotClass: "bg-accent-solid",
+    textClass: "text-accent-content",
   },
   cancelling: {
     labelKey: "workflow.run.status.cancelling",
@@ -79,16 +87,17 @@ const TimelineStatusPresentation = {
 >;
 
 export function deriveFeedModel(run: RunRecord): FeedModel {
-  const latestStep = run.steps[run.steps.length - 1];
-  const latestDecision = [...run.steps].reverse().find((step) => step.kind === "decision");
+  const steps = projectWorkflowSteps(run);
+  const latestStep = steps[steps.length - 1];
+  const latestDecision = [...steps].reverse().find((step) => step.kind === "decision");
   const activeStep = resolveActiveStep(
     run,
     latestStep,
-    [...run.steps].reverse().find((step) => isActiveTimelineStatus(step.status)),
+    [...steps].reverse().find((step) => isActiveTimelineStatus(step.status)),
     latestDecision,
   );
-  const rootSteps = run.steps.filter((step) => !step.scope?.parentRequestId);
-  const scopedGroups = collectScopedGroups(run.steps);
+  const rootSteps = steps.filter((step) => !step.scope?.parentRequestId);
+  const scopedGroups = collectScopedGroups(steps);
   const rootToolGroups = collectRootToolGroups(rootSteps);
   const traceItems = rootSteps
     .filter((step) => step.id !== activeStep?.id)
@@ -99,7 +108,7 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
     .map((step) => mapTraceItem(step));
   const groups: FeedGroup[] = [];
 
-  const activityGroup = collectActivityGroup(run.activities ?? []);
+  const activityGroup = collectActivityGroup(projectWorkflowActivities(run));
   if (activityGroup) groups.push(activityGroup);
   groups.push(...rootToolGroups.groups);
   groups.push(...scopedGroups);
@@ -115,6 +124,7 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
   return {
     headline: mapHeadlineItem(run, activeStep, latestDecision),
     groups,
+    stepCount: steps.length,
     bodyText: run.visibleKind === "tool_calls" ? "" : run.displayText,
     placeholder: derivePendingLabel(run, activeStep, latestDecision),
     footer: foregroundActivityLabel(run) ? undefined : deriveFooter(activeStep),
@@ -320,7 +330,12 @@ function mapHeadlineItem(
       id: activeStep.id,
       kind: "tool",
       status: activeStep.status,
-      title: frontendMessage("workflow.feed.callTool", { toolName: activeStep.toolName }),
+      title: projectToolActivity({
+        toolName: activeStep.toolName,
+        origin: activeStep.toolOrigin,
+        arguments: activeStep.toolArgs,
+        status: activeStep.status === "failed" ? "failed" : activeStep.status === "done" ? "completed" : "active",
+      }),
       subtitle: summarizeToolSubtitle(activeStep),
       meta: activeStep.callId ? `call ${activeStep.callId.slice(0, 12)}` : undefined,
     };
@@ -414,7 +429,7 @@ function mapHeadlineItem(
     id: "live",
     kind: "trace",
     status: "running",
-    title: frontendMessage("workflow.feed.executing"),
+    title: frontendMessage("workflow.feed.thinking"),
   };
 }
 
@@ -423,9 +438,17 @@ function mapToolItem(step: TimelineStep): FeedItem {
     id: step.id,
     kind: "tool",
     status: step.status,
-    title: step.toolName ?? step.title,
+    title: step.toolName
+      ? projectToolActivity({
+          toolName: step.toolName,
+          origin: step.toolOrigin,
+          arguments: step.toolArgs,
+          status: step.status === "failed" ? "failed" : step.status === "done" ? "completed" : "active",
+        })
+      : step.title,
     subtitle: summarizeToolSubtitle(step),
     meta: toolItemMeta(step),
+    step,
   };
 }
 
@@ -436,8 +459,16 @@ function summarizeToolGroup(steps: TimelineStep[], items: FeedItem[]): { label: 
   const plan = [...steps].reverse().find((step) => step.kind === "tool" && !step.toolName && step.toolBatch?.size);
   const size = plan?.toolBatch?.size ?? items.length;
   const mode = plan?.toolBatch?.executionMode;
-  const label =
-    mode === "parallel" && size > 1
+  const toolSteps = steps.filter(
+    (step): step is TimelineStep & { toolName: string } => step.kind === "tool" && Boolean(step.toolName),
+  );
+  const actionStatus = items.some((item) => item.status === "running" || item.status === "pending" || item.status === "cancelling")
+    ? "active"
+    : "completed";
+  const actionSummary = projectToolBatchSummary(toolSteps, actionStatus, { completed: done, failed });
+  const label = actionSummary
+    ? actionSummary
+    : mode === "parallel" && size > 1
       ? frontendMessage("workflow.feed.parallelToolBatch", { count: size })
       : mode === "sequential"
         ? frontendMessage("workflow.feed.sequentialToolCalls", { count: items.length })
@@ -449,9 +480,15 @@ function summarizeToolGroup(steps: TimelineStep[], items: FeedItem[]): { label: 
         ? frontendMessage("workflow.feed.sequential")
         : undefined;
   const failedLabel = failed > 0 ? frontendMessage("workflow.feed.failedCount", { count: failed }) : undefined;
+  const resultLabel =
+    failed > 0
+      ? frontendMessage("workflow.feed.toolBatchResult", { completed: done, failed })
+      : undefined;
   return {
     label,
-    meta: [modeLabel, progress, failedLabel].filter(Boolean).join(" · "),
+    meta: [modeLabel, resultLabel ?? progress, failedLabel && !resultLabel ? failedLabel : undefined]
+      .filter(Boolean)
+      .join(" · "),
   };
 }
 
@@ -464,11 +501,12 @@ function toolItemMeta(step: TimelineStep): string | undefined {
 function mapTraceItem(step: TimelineStep): FeedItem {
   return {
     id: step.id,
-    kind: "trace",
+    kind: step.kind === "tool" ? "tool" : "trace",
     status: step.status,
     title: step.title,
     subtitle: summarizeStepSubtitle(step),
     meta: childRunItemMeta(step) ?? statusLabel(step.status),
+    step,
   };
 }
 
@@ -519,6 +557,8 @@ function isToolPrefaceStep(step: TimelineStep): boolean {
 
 function summarizeToolSubtitle(step: TimelineStep): string | undefined {
   if (step.toolErrorMessage) return step.toolErrorMessage;
+
+  if (step.purpose) return truncate(step.purpose, 180);
 
   const presentation = step.toolPresentation;
   if (presentation?.summary) return truncate(presentation.summary, 160);
@@ -572,9 +612,12 @@ function derivePendingLabel(run: RunRecord, activeStep?: TimelineStep, latestDec
   if (foregroundActivity) return foregroundActivity;
   const liveActivity = liveActivityLabel(run);
   if (activeStep?.kind === "tool" && activeStep.toolName) {
-    return activeStep.status === "running"
-      ? frontendMessage("workflow.feed.executingTool", { toolName: activeStep.toolName })
-      : frontendMessage("workflow.feed.preparingTool", { toolName: activeStep.toolName });
+    return projectToolActivity({
+      toolName: activeStep.toolName,
+      origin: activeStep.toolOrigin,
+      arguments: activeStep.toolArgs,
+      status: activeStep.status === "failed" ? "failed" : activeStep.status === "done" ? "completed" : "active",
+    });
   }
 
   if (run.visibleKind === "tool_calls" || run.visibleKind === "tool_preface") {
@@ -611,13 +654,14 @@ function derivePendingLabel(run: RunRecord, activeStep?: TimelineStep, latestDec
   }
 
   return run.status === "running"
-    ? frontendMessage("workflow.feed.nextStep")
+    ? frontendMessage("workflow.feed.thinking")
     : frontendMessage("workflow.feed.waitingOutput");
 }
 
 function liveActivityLabel(run: RunRecord): string | undefined {
-  if (!run.liveActivity) return undefined;
-  return activeRunActivityLabel(run.liveActivity);
+  const activity = run.liveActivity;
+  if (!isWorkflowLiveActivityVisible(activity) || !activity) return undefined;
+  return activeRunActivityLabel(activity);
 }
 
 function foregroundActivityLabel(run: RunRecord): string | undefined {

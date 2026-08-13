@@ -11,6 +11,10 @@ import {
   SeneraExecutionErrorCodes,
 } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
+import {
+  AgentResourceAccessGrantModes,
+  createAgentResourceAccessGrant,
+} from "../../../Source/AgentSystem/Execution/SeneraResourceAccess.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -98,6 +102,35 @@ describe("Local execution environment behavior", () => {
         limits: executionLimits(),
       }),
     ).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.InvalidWorkspacePath });
+  });
+
+  test("scopes approved and full-host resource grants without weakening the default boundary", async () => {
+    const workspaceRoot = createWorkspace();
+    const outsideRoot = createWorkspace();
+    const externalFile = path.join(outsideRoot, "external.txt");
+    fs.writeFileSync(externalFile, "outside", "utf8");
+    const env = new SeneraLocalExecutionEnv({ workspaceRoot });
+    const approved = env.withResourceAccessGrant(
+      createAgentResourceAccessGrant({
+        mode: AgentResourceAccessGrantModes.ApprovedHost,
+        resources: [{ canonicalPath: outsideRoot, intent: "read", recursive: true }],
+      }),
+    );
+    const full = env.withResourceAccessGrant(
+      createAgentResourceAccessGrant({ mode: AgentResourceAccessGrantModes.FullHost }),
+    );
+
+    await expect(env.readTextFile(externalFile)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "permission_denied" },
+    });
+    await expect(approved.readTextFile(externalFile)).resolves.toEqual({ ok: true, value: "outside" });
+    await expect(approved.writeFile(externalFile, "blocked")).resolves.toMatchObject({
+      ok: false,
+      error: { code: "permission_denied" },
+    });
+    await expect(full.writeFile(externalFile, "full access")).resolves.toEqual({ ok: true, value: undefined });
+    expect(fs.readFileSync(externalFile, "utf8")).toBe("full access");
   });
 
   test("honors aborted file requests before touching the filesystem", async () => {

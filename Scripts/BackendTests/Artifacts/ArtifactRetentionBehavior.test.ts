@@ -66,7 +66,27 @@ describe("artifact retention", () => {
 
     await fixture.service.removeSessionArtifacts("session-a");
     await expect(fs.stat(complete)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.stat(partial)).resolves.toBeDefined();
+  });
+
+  test("removes a failed partial publication owned by the deleted session", async () => {
+    const fixture = createFixture();
+    const partial = await createPartialArtifact(fixture.root, "failed-partial", Date.now(), "session-a", "failed");
+
+    await fixture.service.removeSessionArtifacts("session-a");
+
     await expect(fs.stat(partial)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("keeps an active publication directory while its marker is still writing", async () => {
+    const fixture = createFixture();
+    const active = await createPartialArtifact(fixture.root, "active", Date.now(), "session-a", "writing");
+
+    await fixture.service.cleanup();
+    await expect(fs.stat(active)).resolves.toBeDefined();
+
+    await fixture.service.removeSessionArtifacts("session-a");
+    await expect(fs.stat(active)).resolves.toBeDefined();
   });
 
   test("reclaims committed and stale failed output spools", async () => {
@@ -230,13 +250,14 @@ async function createPartialArtifact(
   name: string,
   modifiedAt: number,
   sessionId?: string,
+  state: "writing" | "failed" = "writing",
 ): Promise<string> {
   const directory = path.join(root, name);
   await fs.mkdir(directory, { recursive: true });
   const marker = path.join(directory, ".artifact-writing");
   await fs.writeFile(
     marker,
-    JSON.stringify({ sessionId, state: "writing", startedAt: new Date(modifiedAt).toISOString() }),
+    JSON.stringify({ sessionId, state, startedAt: new Date(modifiedAt).toISOString() }),
     "utf8",
   );
   const date = new Date(modifiedAt);

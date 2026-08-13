@@ -14,6 +14,11 @@ export interface ToolCallApprovalSubjectData {
   kind: "tool_call";
   toolName: string;
   arguments: Record<string, unknown>;
+  resources?: Array<{
+    canonicalPath: string;
+    intent: "inspect" | "read" | "create" | "replace" | "remove" | "execute";
+    recursive: boolean;
+  }>;
   execution?: {
     target: "Sandbox" | "Local";
     backend: "sandbox" | "local";

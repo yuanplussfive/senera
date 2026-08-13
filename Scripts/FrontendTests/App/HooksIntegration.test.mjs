@@ -248,7 +248,7 @@ test("refreshes runtime usage as a run becomes observable and after it settles",
   expect(send).toHaveBeenCalledWith({ type: "session.runtime_status", sessionId: "session-1" });
 });
 
-test("useSocketErrorToasts resolves history failures and tool failures from store state", () => {
+test("useSocketErrorToasts keeps contextual tool failures out of global notifications", () => {
   useStore.setState({
     sessions: {
       session_history: {
@@ -290,16 +290,10 @@ test("useSocketErrorToasts resolves history failures and tool failures from stor
           message: "exit 1",
         }),
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  expect(readTestToastCalls()).toEqual([
-    expect.objectContaining({
-      variant: "error",
-      title: "工具调用失败：ShellCommandTool",
-      options: expect.objectContaining({ description: "exit 1" }),
-    }),
-  ]);
+  expect(readTestToastCalls()).toEqual([]);
 });
 
 test("useConfigMutationController routes preset and main config acknowledgements to their owning domains", async () => {

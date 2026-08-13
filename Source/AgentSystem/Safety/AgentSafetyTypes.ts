@@ -2,6 +2,7 @@ import type { ToolApprovalManifest, ToolSearchCapabilityRiskManifest } from "../
 import type { AgentExtensionOwnerKind } from "../Types/AgentExtensionRuntimeTypes.js";
 import type { AgentToolExecutionPlan } from "../ToolRuntime/AgentToolExecutionPlan.js";
 import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
+import type { AgentResourceAccessGrant, AgentResourceAccessPlan } from "../Execution/SeneraResourceAccess.js";
 
 export const AgentPermissionActions = {
   Allow: "allow",
@@ -21,6 +22,7 @@ export interface AgentToolPermissionRequest {
   arguments: Record<string, unknown>;
   executionPlan?: AgentToolExecutionPlan;
   toolAccessGrant: AgentToolAccessGrant;
+  resourceAccess?: AgentResourceAccessPlan;
   tool?: AgentToolSafetyMetadata;
 }
 
@@ -45,16 +47,19 @@ export type AgentPermissionDecision =
       rule: string;
       reason: string;
       riskSignals: readonly string[];
+      resourceGrant?: AgentResourceAccessGrant;
     }
   | {
       action: typeof AgentPermissionActions.Ask;
       rule: string;
       reason: string;
       riskSignals: readonly string[];
+      resourceGrant?: AgentResourceAccessGrant;
     }
   | {
       action: typeof AgentPermissionActions.Deny;
       rule: string;
       reason: string;
       riskSignals: readonly string[];
+      resourceGrant?: AgentResourceAccessGrant;
     };

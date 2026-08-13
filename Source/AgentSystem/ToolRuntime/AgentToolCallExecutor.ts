@@ -1,6 +1,8 @@
 import { AgentWorkspaceChangeCapture } from "../Artifacts/AgentWorkspaceChangeCapture.js";
+import { redactArtifactSecrets } from "../Artifacts/AgentArtifactRedaction.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { createToolCallId } from "../Core/AgentIds.js";
+import { clampField } from "../Core/AgentStepTrace.js";
 import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import { SystemAgentLifecycleClock, type AgentLifecycleClock } from "../Events/AgentLifecycleClock.js";
@@ -33,6 +35,7 @@ import type {
   AskUserControlResult,
   SuspendChildRunControlResult,
 } from "./AgentToolCallExecutionTypes.js";
+import { projectAgentToolEventOrigin } from "./AgentToolEventOrigin.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import { projectSeneraProcessBackendsToToolTargets, resolveAgentToolInvocation } from "./AgentToolExecutionPlan.js";
 import { isAgentToolAuthorized, type AgentToolAccessGrant } from "./AgentToolAccessGrant.js";
@@ -40,6 +43,7 @@ import type { AgentMcpToolsChangedHandler } from "../Mcp/AgentMcpToolCatalogChan
 import type { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
 import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import { resourceAccessGrantMatchesBinding } from "../Execution/SeneraResourceAccess.js";
 
 export interface AgentToolCallExecutorOptions {
   registry: AgentExtensionRegistry;
@@ -194,6 +198,18 @@ export class AgentToolCallExecutor {
       projectSeneraProcessBackendsToToolTargets(this.executionEnv.capabilities.processBackends),
     );
     const args = invocation.arguments;
+    const origin = projectAgentToolEventOrigin(tool);
+    if (
+      context.resourceAccessGrant &&
+      !resourceAccessGrantMatchesBinding(context.resourceAccessGrant, {
+        sessionId: context.sessionId,
+        requestId: context.requestId,
+        toolCallId: callId,
+        toolName: tool.name,
+      })
+    ) {
+      throw new Error(`Resource access grant does not belong to tool call ${callId}.`);
+    }
     const capture = await this.workspaceCapture.prepare({
       policy: tool.artifactPolicy,
       args,
@@ -209,6 +225,8 @@ export class AgentToolCallExecutor {
     }
     await this.emitLifecycle(context, ({ requestId, step }) =>
       this.events.toolCallStarted(requestId, step, index, tool.name, callId, {
+        arguments: clampField(redactArtifactSecrets(args, tool.artifactPolicy)),
+        origin,
         batchId: context.batchId,
         startedAt,
       }),
@@ -236,6 +254,7 @@ export class AgentToolCallExecutor {
           approvalMode: context.approvalMode,
           activeSkills: context.activeSkills,
           thinkingLevel: context.thinkingLevel,
+          resourceAccessGrant: context.resourceAccessGrant,
         }),
         tool.runtime.ResultAssessment,
       );
@@ -277,14 +296,14 @@ export class AgentToolCallExecutor {
       await this.emitResultLifecycle(context, index, executed, {
         startedAt,
         durationMs: this.elapsedDuration(startedAtMonotonic),
-      });
+      }, origin);
       return executed;
     } catch (error) {
       if (!terminalLifecycleAttempted) {
         await this.emitFailureLifecycle(context, index, tool.name, callId, error, {
           startedAt,
           durationMs: this.elapsedDuration(startedAtMonotonic),
-        });
+        }, origin);
       }
       throw error;
     }
@@ -295,11 +314,13 @@ export class AgentToolCallExecutor {
     index: number,
     result: ExecutedToolCallResult,
     timing: AgentToolLifecycleTiming,
+    origin: ReturnType<typeof projectAgentToolEventOrigin>,
   ): Promise<void> {
     const error = readAgentToolFailure(result.outcome);
     const lifecycleEmitted = await this.emitLifecycle(context, ({ requestId, step }) =>
       error
         ? this.events.toolCallFailed(requestId, step, index, result.name, result.callId, error.message, error.code, {
+            origin,
             batchId: context.batchId,
             ...timing,
           })
@@ -310,13 +331,14 @@ export class AgentToolCallExecutor {
             result.name,
             result.callId,
             result.presentation ?? projectAgentToolResultPresentation(result),
-            { batchId: context.batchId, ...timing },
+            { origin, batchId: context.batchId, ...timing },
           ),
     );
     if (lifecycleEmitted) context.onLifecycleSettled?.(error ? "failed" : "completed");
     if (!context.deferResultDetail) {
       await this.emitLifecycle(context, ({ requestId, step }) =>
         this.events.toolCallResultDetail(requestId, step, index, result.name, result.callId, result, {
+          origin,
           batchId: context.batchId,
         }),
       );
@@ -330,10 +352,12 @@ export class AgentToolCallExecutor {
     callId: string,
     error: unknown,
     timing: AgentToolLifecycleTiming,
+    origin: ReturnType<typeof projectAgentToolEventOrigin>,
   ): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     const lifecycleEmitted = await this.emitLifecycle(context, ({ requestId, step }) =>
       this.events.toolCallFailed(requestId, step, index, toolName, callId, message, undefined, {
+        origin,
         batchId: context.batchId,
         ...timing,
       }),
