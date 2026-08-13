@@ -90,6 +90,13 @@ export type WsRequest =
       message?: string;
     }
   | { type: "sandbox.status" }
+  | {
+      type: "execution.resource.start_terminal";
+      sessionId: string;
+      cwd?: string;
+      columns?: number;
+      rows?: number;
+    }
   | { type: "execution.resource.list"; sessionId: string }
   | { type: "execution.resource.inspect"; sessionId: string; resourceId: string; cursor?: number }
   | { type: "execution.resource.write"; sessionId: string; resourceId: string; input: string }
@@ -106,4 +113,5 @@ export type WsRequest =
       resourceId: string;
       signal: "interrupt" | "terminate" | "kill";
     }
+  | { type: "execution.resource.close"; sessionId: string; resourceId: string }
   | { type: "execution.resource.stop_all"; sessionId: string };

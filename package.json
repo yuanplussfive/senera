@@ -158,7 +158,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Senera",
-      "artifactName": "SeneraSetup-${version}.${ext}"
+      "artifactName": "SeneraSetup-${version}.${ext}",
+      "include": "Build/installer.nsh"
     }
   },
   "dependencies": {

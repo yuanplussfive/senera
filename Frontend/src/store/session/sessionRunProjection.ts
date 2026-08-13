@@ -20,7 +20,6 @@ export function createRunRecord(input: { requestId: string; startedAt: string; i
     expectedOutputMode: "unknown",
     decisionMode: "none",
     plannedDecisionMode: undefined,
-    pendingToolArgsByName: {},
     approvals: [],
     interactionInputs: [],
   };

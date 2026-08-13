@@ -1,5 +1,6 @@
 import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test } from "vitest";
 import { NodeDetailDrawer } from "../../../Frontend/src/features/workflow/NodeDetailDrawer.tsx";
 import { deriveFeedModel } from "../../../Frontend/src/features/workflow/feedModel.ts";
@@ -8,6 +9,7 @@ import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
 afterEach(cleanup);
 
 test("tool result surface presents evidence and retains inspectable structured data", async () => {
+  const user = userEvent.setup();
   render(
     React.createElement(
       TooltipProvider,
@@ -20,6 +22,15 @@ test("tool result surface presents evidence and retains inspectable structured d
   );
 
   expect(await screen.findByText("结果摘要")).toBeTruthy();
+  expect(screen.getByText("当前天气已更新。")).toBeTruthy();
+  expect(screen.getByText("技术细节")).toBeTruthy();
+  expect(screen.queryByText("北京：晴，26 C")).toBeNull();
+  expect(screen.queryByText("关键事实")).toBeNull();
+  expect(screen.queryByText("证据")).toBeNull();
+  expect(screen.queryByText("变更")).toBeNull();
+  expect(screen.queryByText("原始工具结果")).toBeNull();
+
+  await user.click(screen.getByRole("button", { name: "技术细节" }));
   expect(screen.getByText("关键事实")).toBeTruthy();
   expect(screen.getByText("证据")).toBeTruthy();
   expect(screen.getByText("变更")).toBeTruthy();
@@ -45,7 +56,6 @@ test("workflow feed uses the human summary rather than raw JSON", () => {
     visibleKind: "unknown",
     expectedOutputMode: "unknown",
     decisionMode: "none",
-    pendingToolArgsByName: {},
   });
 
   expect(feed.groups[0]?.items[0]?.subtitle).toBe("当前天气已更新。");
@@ -76,7 +86,6 @@ test("workflow feed does not duplicate tool prefaces or expose their internal de
     displayText: "我先检查工作区文件。",
     expectedOutputMode: "open",
     decisionMode: "tool_candidate",
-    pendingToolArgsByName: {},
   };
 
   const toolFeed = deriveFeedModel({ ...baseRun, visibleKind: "tool_calls" });
@@ -152,7 +161,7 @@ test("child-run detail shows directional messages as readable text", async () =>
   expect(screen.getAllByText("配置入口位于 Source/AgentSystem。")).not.toHaveLength(0);
 });
 
-test("workflow feed presents transient run activity without requiring a workflow step", () => {
+test("workflow feed keeps internal lifecycle telemetry out of the user workflow", () => {
   const feed = deriveFeedModel({
     requestId: "request-live-activity",
     revision: 1,
@@ -185,23 +194,11 @@ test("workflow feed presents transient run activity without requiring a workflow
     visibleKind: "unknown",
     expectedOutputMode: "open",
     decisionMode: "none",
-    pendingToolArgsByName: {},
   });
 
-  expect(feed).toMatchObject({
-    headline: { id: "live-activity", title: "Senera 正在执行当前轮次", status: "running" },
-    groups: [
-      {
-        label: "Senera 运行状态",
-        variant: "activity",
-        items: [
-          { id: "activity-context", title: "准备对话上下文", status: "done" },
-          { id: "activity-model", title: "执行当前轮次", status: "running" },
-        ],
-      },
-    ],
-    placeholder: "等待输出",
-  });
+  expect(feed.groups).toEqual([]);
+  expect(feed.stepCount).toBe(0);
+  expect(feed.headline).toMatchObject({ id: "live", title: "Senera 正在思考…", status: "running" });
 });
 
 test("context compaction overrides a stale running tool without hiding an available answer", () => {
@@ -229,7 +226,6 @@ test("context compaction overrides a stale running tool without hiding an availa
     visibleKind: "final_answer",
     expectedOutputMode: "open",
     decisionMode: "final_text",
-    pendingToolArgsByName: {},
   });
 
   expect(feed.headline).toMatchObject({
@@ -272,7 +268,6 @@ test("workflow feed keeps concurrent child runs with the same role in separate g
     visibleKind: "unknown",
     expectedOutputMode: "open",
     decisionMode: "none",
-    pendingToolArgsByName: {},
   });
 
   const delegationGroups = feed.groups.filter((group) => group.variant === "delegation");
@@ -314,7 +309,6 @@ test("workflow feed distinguishes a child run that is cancelling from active exe
     visibleKind: "unknown",
     expectedOutputMode: "open",
     decisionMode: "none",
-    pendingToolArgsByName: {},
   });
 
   expect(feed.headline).toMatchObject({

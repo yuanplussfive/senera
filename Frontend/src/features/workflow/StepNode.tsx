@@ -15,12 +15,13 @@ import {
   X,
 } from "lucide-react";
 import type { TimelineStep, TimelineStepKind } from "../../store/sessionStore";
-import { cn, formatDuration } from "../../lib/util";
+import { cn, formatDurationMs } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/motion";
 import { Spinner } from "../../shared/ui";
 import { readWorkflowHandlePositions, type StepNodeData, type WorkflowLayoutDirection } from "./layout";
 import { readStepStatusLabel } from "./stepPresentation";
+import { readWorkflowStepDurationMs } from "./workflowPresentationProjection";
 
 const KindIcon: Record<TimelineStepKind, React.ComponentType<{ className?: string }>> = {
   understand: MessageSquareText,
@@ -232,13 +233,15 @@ function StatusIcon({
 }
 
 function StatusFooter({ step, motionLevel }: { step: TimelineStep; motionLevel: MotionLevel }): JSX.Element | null {
-  const label = step.endedAt
-    ? formatDuration(step.startedAt, step.endedAt)
-    : step.status === "running"
-      ? frontendMessage("workflow.node.runningLive")
-      : step.status === "cancelling"
-        ? frontendMessage("workflow.run.status.cancelling")
-        : null;
+  const durationMs = readWorkflowStepDurationMs(step);
+  const label =
+    durationMs !== undefined
+      ? formatDurationMs(durationMs)
+      : step.status === "running"
+        ? frontendMessage("workflow.node.runningLive")
+        : step.status === "cancelling"
+          ? frontendMessage("workflow.run.status.cancelling")
+          : null;
   if (!label) return null;
   const transition = motionLevel === "none" ? { duration: 0 } : motionTimings.fast;
   return (

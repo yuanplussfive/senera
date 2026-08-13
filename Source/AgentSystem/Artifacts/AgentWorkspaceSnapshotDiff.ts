@@ -3,6 +3,7 @@ import type {
   ToolWorkspaceFileSnapshot,
   ToolWorkspaceSnapshot,
 } from "../Types/ToolRuntimeTypes.js";
+import { diffLines } from "diff";
 import { missingWorkspaceSnapshot } from "./AgentWorkspaceSnapshotUtils.js";
 
 export function compareWorkspaceSnapshots(
@@ -17,6 +18,7 @@ export function compareWorkspaceSnapshots(
     const left =
       beforeByPath.get(filePath) ?? missingWorkspaceSnapshot(filePath, afterByPath.get(filePath)?.absolutePath ?? "");
     const right = afterByPath.get(filePath) ?? missingWorkspaceSnapshot(filePath, left.absolutePath);
+    const lineChanges = projectLineChanges(left, right);
     return {
       path: filePath,
       absolutePath: right.absolutePath || left.absolutePath,
@@ -27,8 +29,30 @@ export function compareWorkspaceSnapshots(
       afterHash: right.hash,
       beforeSize: left.size,
       afterSize: right.size,
+      ...lineChanges,
     };
   });
+}
+
+function projectLineChanges(
+  before: ToolWorkspaceFileSnapshot,
+  after: ToolWorkspaceFileSnapshot,
+): Pick<ToolWorkspaceChange, "addedLines" | "removedLines"> {
+  const oldText = readCapturedText(before);
+  const newText = readCapturedText(after);
+  if (oldText === undefined && newText === undefined) return {};
+
+  return diffLines(oldText ?? "", newText ?? "").reduce(
+    (stats, change) => ({
+      addedLines: stats.addedLines + (change.added ? change.count : 0),
+      removedLines: stats.removedLines + (change.removed ? change.count : 0),
+    }),
+    { addedLines: 0, removedLines: 0 },
+  );
+}
+
+function readCapturedText(snapshot: ToolWorkspaceFileSnapshot): string | undefined {
+  return snapshot.content?.state === "captured" ? snapshot.content.text : undefined;
 }
 
 function workspaceChangeStatus(

@@ -4369,6 +4369,38 @@
       "properties": {
         "type": {
           "type": "string",
+          "const": "execution.resource.start_terminal"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cwd": {
+          "type": "string",
+          "minLength": 1
+        },
+        "columns": {
+          "type": "integer",
+          "minimum": 20,
+          "maximum": 500
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 200
+        }
+      },
+      "required": [
+        "type",
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
           "const": "execution.resource.list"
         },
         "sessionId": {
@@ -4501,6 +4533,29 @@
         "sessionId",
         "resourceId",
         "signal"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "execution.resource.close"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceId": {
+          "type": "string",
+          "pattern": "^res_[a-f0-9]{32}$"
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "resourceId"
       ],
       "additionalProperties": false
     },

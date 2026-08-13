@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import { z } from "zod";
 import { AgentBundledHostToolInputContracts } from "../../../Source/AgentSystem/SystemTools/AgentBundledHostToolInputContracts.js";
 import { AgentSystemExtensionManifestSchema } from "../../../Source/AgentSystem/SystemTools/AgentSystemExtensionManifest.js";
+import { ensureObjectRootJsonSchema } from "../../../Source/AgentSystem/ToolContracts/AgentJsonSchemaObjectRoot.js";
 
 describe("bundled Host Tool input contracts", () => {
   test("publishes the runtime-owned standard JSON array schemas", () => {
@@ -12,7 +13,33 @@ describe("bundled Host Tool input contracts", () => {
       const contractPath = contributions.get(definition.capability);
       expect(contractPath, definition.capability).toBeDefined();
       const contract = readJson(contractPath!) as { inputSchema?: Record<string, unknown> };
-      expect(contract.inputSchema).toEqual(z.toJSONSchema(definition.input, { target: "draft-7", io: "input" }));
+      expect(contract.inputSchema).toEqual(
+        ensureObjectRootJsonSchema(z.toJSONSchema(definition.input, { target: "draft-7", io: "input" })),
+      );
+    }
+  });
+
+  test("publishes an explicit object root for every bundled tool contract", () => {
+    for (const contractPath of discoverContributions().values()) {
+      const contract = readJson(contractPath) as { inputSchema?: Record<string, unknown> };
+      expect(contract.inputSchema?.type, contractPath).toBe("object");
+    }
+  });
+
+  test("declares executable cwd resources for bundled shell tools", () => {
+    for (const contractPath of discoverContributions().values()) {
+      const contract = readJson(contractPath) as {
+        inputSchema?: { properties?: Record<string, unknown> };
+        permissions?: string[];
+        resources?: Array<{ Capability?: string; Pointer?: string; Parameters?: { Intent?: string } }>;
+      };
+      if (!contract.permissions?.includes("process:shell") || !contract.inputSchema?.properties?.cwd) continue;
+
+      expect(contract.resources, contractPath).toContainEqual({
+        Capability: "senera.workspace.path",
+        Pointer: "/cwd",
+        Parameters: { Intent: "execute" },
+      });
     }
   });
 

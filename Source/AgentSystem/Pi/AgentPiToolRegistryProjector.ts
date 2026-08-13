@@ -12,6 +12,7 @@ import { resolveAvailableAgentToolExecutionTargets } from "../ToolRuntime/AgentT
 import type { ToolExecutionTarget } from "../Types/AgentToolContractTypes.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { orderToolNamesByPreference } from "../ToolRuntime/AgentToolAccessGrant.js";
+import { ensureObjectRootJsonSchema } from "../ToolContracts/AgentJsonSchemaObjectRoot.js";
 
 export interface AgentPiToolRuntimeContractProjector {
   projectToolInvocationSchema(tool: RegisteredTool, schema: Readonly<Record<string, unknown>>): Record<string, unknown>;
@@ -122,11 +123,12 @@ export class AgentPiToolRegistryProjector {
     const staticSchema = tool.contract?.arguments?.jsonSchema ?? EmptyObjectParameterSchema;
     const runtimeSchema =
       this.options.runtimeContracts?.projectToolInvocationSchema(tool, staticSchema) ?? staticSchema;
+    const parameters = ensureObjectRootJsonSchema(runtimeSchema, `Tool ${tool.name} input`);
     return Object.freeze({
       name: tool.name,
       label: owner.title ?? tool.name,
       description: this.projectDescription(tool),
-      parameters: projectAgentToolInvocationSchema(tool, runtimeSchema, runtimeTargets),
+      parameters: projectAgentToolInvocationSchema(tool, parameters, runtimeTargets),
       executionMode: "parallel" as const,
     });
   }

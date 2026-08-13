@@ -18,6 +18,7 @@ export interface StepTrace {
   toolName?: string;
   callId?: string;
   batchId?: string;
+  purpose?: string;
   status: "done" | "failed";
   startedAt?: string;
   endedAt?: string;

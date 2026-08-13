@@ -32,7 +32,7 @@
     "Scheduling": "Parallel",
     "Capabilities": { "OutputStreaming": true, "Cancellation": true, "ResumableEvents": true }
   },
-  "resources": [],
+  "resources": [{ "Capability": "senera.workspace.path", "Pointer": "/cwd", "Parameters": { "Intent": "execute" } }],
   "sources": [
     {
       "Id": "execution",

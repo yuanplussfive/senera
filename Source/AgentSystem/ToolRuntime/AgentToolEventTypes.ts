@@ -2,6 +2,7 @@ import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
 import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
 import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
+import type { AgentToolEventOrigin } from "./AgentToolEventOrigin.js";
 
 type AgentToolEventContext = Required<Pick<AgentEventContext, "requestId" | "step">> &
   Partial<Pick<AgentEventContext, "sessionId">>;
@@ -13,7 +14,7 @@ export type AgentToolDomainEvent =
       data: {
         toolCount: number;
         tools: string[];
-        calls?: Array<{ callId: string; toolName: string }>;
+        calls?: Array<{ callId: string; toolName: string; purpose?: string }>;
         status?: "planned" | "discovery_escalated" | "blocked";
         executionMode?: "parallel" | "sequential";
         batchId?: string;
@@ -28,6 +29,9 @@ export type AgentToolDomainEvent =
         index: number;
         toolName: string;
         callId: string;
+        /** Redacted, bounded arguments for live workflow inspection. */
+        arguments?: unknown;
+        origin?: AgentToolEventOrigin;
         batchId?: string;
         /** Explicit lifecycle start; absent only when the producer never observed a start. */
         startedAt?: string;
@@ -80,6 +84,7 @@ export type AgentToolDomainEvent =
         /** Measured by the backend tool lifecycle, never inferred by the client. */
         durationMs?: number;
         presentation?: AgentToolResultPresentation;
+        origin?: AgentToolEventOrigin;
       };
     }
   | {
@@ -97,6 +102,7 @@ export type AgentToolDomainEvent =
         startedAt?: string;
         /** Measured by the backend tool lifecycle, never inferred by the client. */
         durationMs?: number;
+        origin?: AgentToolEventOrigin;
       };
     }
   | {
@@ -109,5 +115,6 @@ export type AgentToolDomainEvent =
         callId: string;
         batchId?: string;
         value: unknown;
+        origin?: AgentToolEventOrigin;
       };
     };

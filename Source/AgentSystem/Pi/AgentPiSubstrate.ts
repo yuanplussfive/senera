@@ -113,19 +113,19 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         compaction: piSessionsConfig.Compaction,
         diagnostics: options.diagnostics,
       });
+    const resourceCapabilities = createAgentDefaultToolResourceCapabilities({
+      config: options.config,
+      workspaceRoot: options.workspaceRoot,
+      executionEnv: options.executionEnv,
+      uploadStore: options.uploadStore,
+    });
     this.permissionHook = new AgentPiToolPermissionHook({
       registry: options.registry,
       permissionGate: options.toolPermissionGate,
       executionCapabilities: () => options.executionEnv.capabilities,
+      resourceCapabilities,
     });
-    const resourceClaims = new AgentToolResourceClaimProjector(
-      createAgentDefaultToolResourceCapabilities({
-        config: options.config,
-        workspaceRoot: options.workspaceRoot,
-        executionEnv: options.executionEnv,
-        uploadStore: options.uploadStore,
-      }),
-    );
+    const resourceClaims = new AgentToolResourceClaimProjector(resourceCapabilities);
     const toolExecution = resolveToolExecutionConfig(options.config);
     this.maxConcurrentToolPreflights = toolExecution.MaxConcurrentCallsPerRun;
     this.toolProjector = new AgentPiToolRegistryProjector({

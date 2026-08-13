@@ -171,6 +171,7 @@ test("tool.call.result.detail attaches structured result to the matching tool ca
         toolName: "WorkspaceReadFile",
         callId: "call_read",
         batchId: "batch_read",
+        arguments: { path: "README.md" },
       },
       { step: 1, sequence: 2, phase: "tool" },
     ),
@@ -236,6 +237,7 @@ test("tool.call.result.detail attaches structured result to the matching tool ca
   expect(toolStep.toolPresentation?.summary).toBe("包含项目说明。");
   expect(toolStep.toolBatch?.id).toBe("batch_read");
   expect(toolStep.toolBatch?.index).toBe(0);
+  expect(toolStep.toolArgs).toEqual({ path: "README.md" });
   expect(toolStep.toolResult).toEqual({
     callId: "call_read",
     name: "WorkspaceReadFile",

@@ -10,12 +10,17 @@ export interface ConversationEventSourceItem {
   requestId?: string;
   eventKind: ConversationEventKind | null;
   content: string;
+  itemIndex?: number;
+  itemProgress?: number;
+  anchorId?: string;
 }
 
 export interface ConversationEventLandmark {
   id: string;
   requestId?: string;
   itemIndex: number;
+  itemProgress: number;
+  anchorId?: string;
   kind: ConversationEventKind;
   content: string;
 }
@@ -86,7 +91,12 @@ export function ConversationEventRail({
     const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
     setScrollable(maxScrollTop > 1);
     setScrollProgress(maxScrollTop > 0 ? Math.min(1, Math.max(0, scroller.scrollTop / maxScrollTop)) : 0);
-  }, [scroller]);
+    const readingPosition = Math.min(
+      1,
+      Math.max(0, (scroller.scrollTop + scroller.clientHeight * 0.28) / Math.max(1, scroller.scrollHeight)),
+    );
+    onActiveEventChange(readConversationEventPositionIndex(markers, readingPosition));
+  }, [markers, onActiveEventChange, scroller]);
 
   const scheduleScrollMetricsSync = useCallback((): void => {
     if (scrollFrameRef.current !== null) return;
@@ -282,7 +292,7 @@ export function projectConversationEvents(items: readonly ConversationEventSourc
   const toolPrefaceScopes = new Set<string>();
   let fallbackRequestScope = "conversation-start";
 
-  items.forEach((item, itemIndex) => {
+  items.forEach((item, sourceIndex) => {
     if (item.eventKind === "user_request") fallbackRequestScope = `user:${item.key}`;
     if (item.eventKind === null) return;
 
@@ -295,7 +305,9 @@ export function projectConversationEvents(items: readonly ConversationEventSourc
     events.push({
       id: `event:${item.key}:${item.eventKind}`,
       requestId: item.requestId,
-      itemIndex,
+      itemIndex: item.itemIndex ?? sourceIndex,
+      itemProgress: Math.min(1, Math.max(0, item.itemProgress ?? 0)),
+      anchorId: item.anchorId,
       kind: item.eventKind,
       content: compactPreview(item.content),
     });
@@ -316,16 +328,35 @@ export function projectConversationEventMarkers(
     offsets.push(offsets[offsets.length - 1]! + (measuredHeights.get(key) ?? defaultItemHeight));
   }
   const totalHeight = Math.max(1, offsets[offsets.length - 1] ?? 1);
-  return events.map((event) => ({
-    ...event,
-    position: Math.min(1, Math.max(0, (offsets[event.itemIndex] ?? 0) / totalHeight)),
-  }));
+  return events.map((event) => {
+    const itemStart = offsets[event.itemIndex] ?? 0;
+    const itemHeight = measuredHeights.get(itemKeys[event.itemIndex] ?? "") ?? defaultItemHeight;
+    return {
+      ...event,
+      position: Math.min(1, Math.max(0, (itemStart + itemHeight * event.itemProgress) / totalHeight)),
+    };
+  });
 }
 
 export function readConversationEventIndex(events: readonly ConversationEventLandmark[], itemIndex: number): number {
   if (events.length === 0) return 0;
+  let previousIndex = 0;
+  for (let index = 0; index < events.length; index += 1) {
+    const eventItemIndex = events[index]!.itemIndex;
+    if (eventItemIndex === itemIndex) return index;
+    if (eventItemIndex > itemIndex) return previousIndex;
+    previousIndex = index;
+  }
+  return previousIndex;
+}
+
+export function readConversationEventPositionIndex(
+  events: readonly Pick<ConversationEventMarker, "position">[],
+  position: number,
+): number {
+  if (events.length === 0) return 0;
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    if (events[index]!.itemIndex <= itemIndex) return index;
+    if (events[index]!.position <= position) return index;
   }
   return 0;
 }

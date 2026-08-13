@@ -62,7 +62,8 @@
         "required": ["action", "name"],
         "additionalProperties": false
       }
-    ]
+    ],
+    "type": "object"
   },
   "outputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

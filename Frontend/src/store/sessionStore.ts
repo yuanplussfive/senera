@@ -125,10 +125,13 @@ export interface TimelineStep {
   status: TimelineStepStatus;
   startedAt: string;
   endedAt?: string;
+  durationMs?: number;
   scope?: TimelineStepScope;
   toolName?: string;
+  toolOrigin?: import("../api/eventTypes").ToolEventOrigin;
   callId?: string;
   toolBatch?: TimelineToolBatch;
+  purpose?: string;
   toolArgs?: unknown;
   toolPreview?: string;
   toolPresentation?: import("../api/eventTypes").ToolResultPresentation;
@@ -233,8 +236,6 @@ export interface RunRecord {
   decisionMode: "none" | "tool_candidate" | "final_text";
   /** Planner decision to apply to the next model stream, before that stream starts. */
   plannedDecisionMode?: "tool_candidate" | "final_text";
-  /** 工具参数暂存，供工具节点显示 */
-  pendingToolArgsByName: Record<string, unknown>;
   approvals?: ApprovalRunRecord[];
   interactionInputs?: InteractionInputRunRecord[];
   modelProvider?: ModelProviderMetadata;

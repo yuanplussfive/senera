@@ -11,7 +11,10 @@ import { createAgentShellExecutionProfile } from "./AgentShellCommandRuntime.js"
 import { resolveAgentExecutionResourceWaitTimeoutMs } from "../ExecutionResources/AgentExecutionResourceConfig.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
-import type { AgentExecutionResourceSnapshot } from "../ExecutionResources/AgentExecutionResourceTypes.js";
+import {
+  AgentExecutionResourcePurposes,
+  type AgentExecutionResourceSnapshot,
+} from "../ExecutionResources/AgentExecutionResourceTypes.js";
 
 const ResourceIdSchema = z
   .string()
@@ -23,6 +26,7 @@ const TerminalStartArgumentsSchema = z
     command: SeneraShellCommandSpecSchema,
     cwd: z.string().trim().min(1).optional(),
     justification: z.string().trim().min(1).optional(),
+    title: z.string().trim().min(1).max(80).optional(),
     columns: z.coerce
       .number()
       .int()
@@ -152,6 +156,7 @@ async function startTerminalResource(
     command: z.output<typeof SeneraShellCommandSpecSchema>;
     cwd?: string;
     justification?: string;
+    title?: string;
     columns?: number;
     rows?: number;
   },
@@ -178,6 +183,10 @@ async function startTerminalResource(
       onEvent: context.onEvent,
     },
     signal: context.signal,
+    presentation: {
+      purpose: AgentExecutionResourcePurposes.CommandTask,
+      title: args.title,
+    },
   } as const;
   return broker.startTerminal({
     ...request,

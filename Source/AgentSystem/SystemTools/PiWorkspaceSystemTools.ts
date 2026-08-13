@@ -24,6 +24,7 @@ import {
   AgentHostToolProtocolVersion,
   ToolResultAssessmentPolicies,
   ToolSchedulingModes,
+  type ToolResourceArgumentManifest,
   type ToolSearchManifest,
 } from "../Types/AgentToolContractTypes.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
@@ -41,6 +42,11 @@ const WorkspaceReadInput = piInputSchema<ReadToolInput>(PiReadTool.parameters);
 const WorkspaceGrepInput = piInputSchema<GrepToolInput>(PiGrepContract.parameters);
 const WorkspaceFindInput = piInputSchema<FindToolInput>(PiFindContract.parameters);
 const WorkspaceListInput = piInputSchema<LsToolInput>(PiListContract.parameters);
+const WorkspaceReadResource = Object.freeze({
+  Capability: "senera.workspace.path",
+  Pointer: "/path",
+  Parameters: { Intent: "read" },
+}) satisfies ToolResourceArgumentManifest;
 
 const PiToolContent = z.discriminatedUnion("type", [
   z
@@ -211,6 +217,7 @@ function workspaceToolMetadata(description: string, search: ToolSearchManifest):
       Scheduling: ToolSchedulingModes.Parallel,
       Capabilities: { Cancellation: true },
     },
+    resources: [WorkspaceReadResource],
     search,
   };
 }

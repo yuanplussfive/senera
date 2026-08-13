@@ -1,10 +1,22 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowUp, Check, ChevronDown, Paperclip, RotateCcw, Square, X } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowUp,
+  BookUser,
+  Check,
+  ChevronDown,
+  Paperclip,
+  Plus,
+  RotateCcw,
+  Square,
+  X,
+} from "lucide-react";
 import { buildStyles, CircularProgressbar } from "react-circular-progressbar";
 import type { UploadAttachmentData, ModelProviderListItem } from "../../api/eventTypes";
 import type { UploadProgress } from "../../api/uploadClient";
 import { cn, formatFileSize } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendChatMessage } from "../../i18n/frontendChatMessageCatalog";
 import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { useResponsiveMode } from "../../shared/responsive";
 import { MotionButton, MotionList, MotionListItem } from "../../shared/motion";
@@ -77,6 +89,9 @@ export function ChatComposer({
   const setValue = onValueChange ?? setInternalValue;
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const openPresetAfterToolkitCloseRef = useRef(false);
+  const [toolkitOpen, setToolkitOpen] = useState(false);
+  const [presetOpen, setPresetOpen] = useState(false);
   const attachments = useComposerAttachments({
     uploadUrl: runtime.uploadUrl,
     uploadCsrfToken: runtime.uploadCsrfToken,
@@ -131,6 +146,12 @@ export function ChatComposer({
     taRef.current?.focus();
     taRef.current?.setSelectionRange(controlledValue.length, controlledValue.length);
   }, [controlledValue]);
+
+  useEffect(() => {
+    if (toolkitOpen || !openPresetAfterToolkitCloseRef.current) return;
+    openPresetAfterToolkitCloseRef.current = false;
+    setPresetOpen(true);
+  }, [toolkitOpen]);
 
   const submit = (queueMode?: MessageQueueMode): void => {
     const text = value.trim();
@@ -208,18 +229,41 @@ export function ChatComposer({
 
           <div className="flex min-w-0 items-center gap-2 pt-0.5">
             <div className="flex min-w-0 flex-1 items-center gap-1">
-              <IconButton
-                label="attach"
-                tooltip={frontendMessage("chat.attachment.tooltip")}
-                tooltipSide="top"
-                tone="muted"
-                disabled={disabled || running || cancelling}
-                onClick={() => fileInputRef.current?.click()}
-                touchSafe
-              >
-                <Paperclip className="h-4 w-4" />
-              </IconButton>
+              <DropdownMenu open={toolkitOpen} onOpenChange={setToolkitOpen}>
+                <DropdownMenuTrigger asChild disabled={disabled || running || cancelling}>
+                  <IconButton
+                    label={frontendChatMessage("chat.composer.toolkit.tooltip")}
+                    tooltip={frontendChatMessage("chat.composer.toolkit.tooltip")}
+                    tooltipSide="top"
+                    tone="muted"
+                    disabled={disabled || running || cancelling}
+                    touchSafe
+                    className="[&[data-state=open]>svg]:rotate-45"
+                  >
+                    <Plus className="h-4 w-4 transition-transform duration-[var(--icon-rotate-dur)] ease-[var(--icon-rotate-ease)]" />
+                  </IconButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top" sideOffset={6} alignOffset={6}>
+                  <DropdownMenuItem
+                    icon={<Paperclip className="h-4 w-4" />}
+                    onSelect={() => fileInputRef.current?.click()}
+                  >
+                    {frontendChatMessage("chat.composer.toolkit.fileAndImage")}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    icon={<BookUser className="h-4 w-4" />}
+                    onSelect={() => {
+                      openPresetAfterToolkitCloseRef.current = true;
+                    }}
+                  >
+                    {frontendChatMessage("chat.composer.toolkit.preset")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <PresetControl
+                open={presetOpen}
+                onOpenChange={setPresetOpen}
                 disabled={disabled || running || cancelling}
                 enabled={presetConfig.presetsEnabled}
                 rootDir={presetConfig.presetRootDir}

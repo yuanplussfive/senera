@@ -129,7 +129,8 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         title: scopedStepTitle(env, frontendMessage("workflow.plan.promptRendered")),
         description: scopedStepDescription(
           env,
-          frontendMessage("workflow.projection.promptStats", {
+          frontendMessage("workflow.projection.promptTokenSummary", {
+            count: data.tokenCount,
             chars: data.chars,
             lines: data.lines,
           }),
@@ -193,6 +194,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
           startedAt: env.timestamp,
           toolName: call.toolName,
           callId: call.callId,
+          purpose: call.purpose,
           toolBatch: {
             ...toolBatch,
             index,
@@ -213,8 +215,10 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         status: "running",
         startedAt: env.timestamp,
         toolName: data.toolName,
+        toolOrigin: data.origin,
         callId: data.callId,
         toolBatch: toolBatchFromEvent(env, data),
+        toolArgs: data.arguments,
         scope,
       });
       return true;
@@ -282,6 +286,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.callId));
       if (step) {
         step.status = "done";
+        step.toolOrigin = data.origin ?? step.toolOrigin;
         step.endedAt = env.timestamp;
         step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
         step.toolPreview = step.toolPresentation?.headline;
@@ -297,6 +302,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       const step = run.steps.find((entry) => entry.id === id);
       if (step) {
         step.status = "failed";
+        step.toolOrigin = data.origin ?? step.toolOrigin;
         step.endedAt = env.timestamp;
         step.toolErrorMessage = message;
         touchRun(run);
@@ -312,6 +318,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
           startedAt: env.timestamp,
           endedAt: env.timestamp,
           toolName: data.toolName,
+          toolOrigin: data.origin,
           callId: data.callId,
           toolBatch: toolBatchFromEvent(env, data),
           toolErrorMessage: message,
@@ -326,6 +333,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       const step = run.steps.find((item) => item.id === scopedStepId(env, "tool", data.callId));
       if (step) {
         step.toolResult = data.value;
+        step.toolOrigin = data.origin ?? step.toolOrigin;
         step.toolPresentation = mergeToolResultPresentation(
           step.toolPresentation,
           readToolResultPresentation(data.value),

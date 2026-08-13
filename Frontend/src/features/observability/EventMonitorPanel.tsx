@@ -1,17 +1,13 @@
 import { useMemo, useState } from "react";
 import {
-  ArrowDownLeft,
-  ArrowUpRight,
   Check,
   CirclePause,
   CirclePlay,
   CircleAlert,
   CircleCheck,
-  CircleDot,
   Copy,
   Pause,
   Play,
-  RadioTower,
   Search,
   Trash2,
   X,
@@ -66,19 +62,16 @@ export function EventMonitorPanel(): JSX.Element {
 
   return (
     <section
-      className="flex h-full min-h-0 flex-col bg-transparent"
+      className="flex h-full min-h-0 flex-col bg-surface-panel font-mono"
       aria-label={frontendMessage("observability.title")}
     >
-      <div className="shrink-0 border-b border-line-subtle bg-surface-subtle/45 px-3 pb-2.5 pt-2">
+      <div className="shrink-0 border-b border-line-subtle px-3 pb-2 pt-2">
         <div className="flex min-w-0 items-center gap-2">
           <span
-            className={cn(
-              "h-2 w-2 shrink-0 rounded-full",
-              recording ? "bg-moss-500 shadow-[0_0_0_3px_rgb(var(--color-moss-100)/0.65)]" : "bg-ink-300",
-            )}
+            className={cn("h-1.5 w-1.5 shrink-0 rounded-full", recording ? "bg-moss-500" : "bg-ink-300")}
             aria-hidden="true"
           />
-          <span className="min-w-0 flex-1 truncate text-[11px] font-medium tabular-nums text-content-secondary">
+          <span className="min-w-0 flex-1 truncate text-[10px] tabular-nums text-content-muted">
             {frontendMessage(recording ? "observability.recording" : "observability.stopped")} · {records.length} ·{" "}
             {formatByteSize(totalBytes)}
           </span>
@@ -118,15 +111,15 @@ export function EventMonitorPanel(): JSX.Element {
           </div>
         </div>
 
-        <div className="mt-2 flex min-w-0 items-center gap-2">
+        <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">{frontendMessage("observability.search")}</span>
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-content-muted" />
+            <Search className="pointer-events-none absolute left-0 top-1/2 h-3 w-3 -translate-y-1/2 text-content-disabled" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={frontendMessage("observability.search")}
-              className="h-8 w-full min-w-0 rounded-md border border-line bg-surface-panel pl-8 pr-2 text-[12px] text-content-primary outline-none placeholder:text-content-disabled focus:border-accent-border focus:ring-2 focus:ring-accent-focus"
+              className="h-7 w-full min-w-0 border-0 border-b border-line-subtle bg-transparent pl-5 pr-1 font-sans text-[10.5px] text-content-primary outline-none placeholder:text-content-disabled focus:border-accent-border"
             />
           </label>
           <MenuSelect
@@ -137,7 +130,7 @@ export function EventMonitorPanel(): JSX.Element {
               value,
               label: frontendMessage(`observability.direction.${value}`),
             }))}
-            triggerClassName="w-[96px] shrink-0"
+            triggerClassName="h-7 w-[82px] shrink-0 rounded-none border-0 border-b border-line-subtle bg-transparent px-1 text-[10px] shadow-none"
             contentClassName="min-w-[150px]"
             onChange={(value) => setDirection(value as DirectionFilter)}
           />
@@ -149,13 +142,13 @@ export function EventMonitorPanel(): JSX.Element {
               value,
               label: frontendMessage(`observability.phase.${value}`),
             }))}
-            triggerClassName="w-[96px] shrink-0"
+            triggerClassName="h-7 w-[82px] shrink-0 rounded-none border-0 border-b border-line-subtle bg-transparent px-1 text-[10px] shadow-none"
             contentClassName="min-w-[140px]"
             onChange={(value) => setPhase(value as PhaseFilter)}
           />
         </div>
 
-        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-content-muted">
+        <div className="mt-1.5 flex items-center justify-between gap-3 text-[9.5px] text-content-muted">
           <span>{frontendMessage("observability.wireDescription")}</span>
           <Switch
             checked={wireCapture}
@@ -206,79 +199,58 @@ function EventRow({
   selected: boolean;
   onSelect: () => void;
 }): JSX.Element {
-  const errored = record.layer === "error" || record.stage === "malformed";
   const tone = readEventTone(record);
   const toneClasses = eventToneClasses(tone);
   const title = readEventTitle(record);
+  const secondary = readEventSecondary(record, title);
+  const showTechnicalKind = record.kind !== title;
   return (
     <button
       type="button"
       aria-pressed={selected}
       onClick={onSelect}
       className={cn(
-        "group relative flex min-h-[56px] w-full min-w-0 gap-2.5 border-b border-line-subtle px-3 py-2.5 text-left outline-none transition-colors",
-        selected ? toneClasses.selected : "bg-transparent hover:bg-surface-hover",
+        "group relative flex min-h-8 w-full min-w-0 items-start gap-2 px-3 py-1.5 text-left outline-none transition-colors",
+        selected ? toneClasses.selected : "bg-transparent hover:bg-surface-hover/65",
         "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus",
       )}
     >
-      <span className="relative flex w-3 shrink-0 justify-center" aria-hidden="true">
-        <span className={cn("absolute bottom-[-10px] top-[-10px] w-px", toneClasses.line)} />
-        <span className={cn("relative mt-1 h-2.5 w-2.5 rounded-full ring-2 ring-inset", toneClasses.dot)} />
-      </span>
-      <DirectionBadge record={record} errored={errored} />
+      <time className="w-[54px] shrink-0 pt-px text-[9.5px] tabular-nums text-content-disabled">
+        {formatEventTime(record.observedAt)}
+      </time>
+      <span className={cn("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", toneClasses.dot)} aria-hidden="true" />
       <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-content-primary">{title}</span>
-          {record.phase ? <PhaseBadge phase={record.phase} /> : null}
-          <time className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted">
-            {formatEventTime(record.observedAt)}
-          </time>
+        <span className="block min-w-0 truncate font-sans text-[10.5px] leading-4 text-content-secondary group-hover:text-content-primary">
+          {title}
         </span>
-        <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[10.5px] text-content-muted">
-          <span className="shrink-0 uppercase tracking-wide">{record.stage}</span>
-          {record.step !== undefined ? <span className="shrink-0">#{record.step}</span> : null}
-          {record.summary ? <span className="min-w-0 truncate">{record.summary}</span> : null}
-          <span className="min-w-0 truncate font-mono">{record.kind}</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-[9px] leading-3.5 text-content-muted">
+          {secondary ? <span className="min-w-0 truncate">{secondary}</span> : null}
+          {showTechnicalKind ? (
+            <span className="min-w-0 truncate font-mono text-content-disabled">{record.kind}</span>
+          ) : null}
         </span>
       </span>
       {isTerminalEventLayer(record.layer) ? (
-        <span className={cn("mt-1 shrink-0", tone === "error" ? "text-brick-600" : "text-moss-600")} aria-hidden="true">
-          {tone === "error" ? <CircleAlert className="h-3.5 w-3.5" /> : <CircleCheck className="h-3.5 w-3.5" />}
+        <span
+          className={cn("mt-0.5 shrink-0", tone === "error" ? "text-brick-600" : "text-moss-600")}
+          aria-hidden="true"
+        >
+          {tone === "error" ? <CircleAlert className="h-3 w-3" /> : <CircleCheck className="h-3 w-3" />}
         </span>
       ) : null}
     </button>
   );
 }
 
-function DirectionBadge({ record, errored }: { record: EventJournalRecord; errored: boolean }): JSX.Element {
-  const DirectionIcon =
-    record.direction === "inbound" ? ArrowDownLeft : record.direction === "outbound" ? ArrowUpRight : RadioTower;
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
-        directionTone(record, errored),
-      )}
-    >
-      <DirectionIcon className="h-3.5 w-3.5" />
-    </span>
-  );
-}
-
-function directionTone(record: EventJournalRecord, errored: boolean): string {
-  if (errored) return "bg-brick-100 text-brick-600";
-  if (record.direction === "outbound") return "bg-umber-100 text-umber-600";
-  if (record.direction === "inbound") return "bg-accent-surface text-accent-content";
-  return "bg-ink-100 text-ink-500";
-}
-
-function PhaseBadge({ phase }: { phase: NonNullable<EventJournalRecord["phase"]> }): JSX.Element {
-  return (
-    <span className="shrink-0 rounded-full bg-surface-subtle px-1.5 py-px text-[9.5px] font-medium uppercase leading-4 tracking-wide text-content-muted ring-1 ring-inset ring-line-subtle">
-      {phase}
-    </span>
-  );
+function readEventSecondary(record: EventJournalRecord, title = readEventTitle(record)): string | undefined {
+  if (
+    record.kind === "tool.call.started" ||
+    record.kind === "tool.call.completed" ||
+    record.kind === "tool.call.failed"
+  ) {
+    return undefined;
+  }
+  return record.summary && record.summary !== title ? record.summary : undefined;
 }
 
 function EventDetail({ record, onClose }: { record: EventJournalRecord; onClose: () => void }): JSX.Element {
@@ -286,17 +258,14 @@ function EventDetail({ record, onClose }: { record: EventJournalRecord; onClose:
   const detail = useMemo(() => projectRecordDetail(record), [record]);
   const toneClasses = eventToneClasses(readEventTone(record));
   return (
-    <div className="flex h-full min-h-0 flex-col bg-surface-raised" data-event-detail-drawer>
-      <div className="flex min-h-14 shrink-0 items-center gap-2 border-b border-line-subtle px-4 py-3">
-        <span
-          className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-md", toneClasses.icon)}
-          aria-hidden="true"
-        >
-          <CircleDot className="h-4 w-4" />
-        </span>
+    <div className="flex h-full min-h-0 flex-col bg-surface-panel font-mono" data-event-detail-drawer>
+      <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-line-subtle px-3 py-2">
+        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", toneClasses.dot)} aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold text-content-primary">{readEventTitle(record)}</div>
-          <div className="mt-0.5 truncate font-mono text-[10.5px] text-content-muted">{record.kind}</div>
+          <div className="truncate font-sans text-[11px] font-medium text-content-primary">
+            {readEventTitle(record)}
+          </div>
+          <div className="truncate text-[9.5px] text-content-muted">{record.kind}</div>
         </div>
         <IconButton
           label={frontendMessage("observability.copy")}
@@ -317,7 +286,7 @@ function EventDetail({ record, onClose }: { record: EventJournalRecord; onClose:
           <X className="h-3.5 w-3.5" />
         </IconButton>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto px-4 py-3 font-mono text-[11px] leading-5">
+      <div className="min-h-0 flex-1 overflow-auto px-3 py-3 text-[10px] leading-5">
         <JsonView
           data={detail}
           shouldExpandNode={(level) => level < 3}
@@ -346,16 +315,9 @@ function EventDetail({ record, onClose }: { record: EventJournalRecord; onClose:
 
 function EmptyJournal({ filtered }: { filtered: boolean }): JSX.Element {
   return (
-    <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-subtle ring-1 ring-inset ring-line-subtle">
-        <RadioTower className="h-5 w-5 text-content-muted" />
-      </span>
-      <p className="mt-3.5 text-[13px] font-medium text-content-primary">
-        {frontendMessage(filtered ? "observability.emptyFiltered" : "observability.empty")}
-      </p>
-      <p className="mt-1 max-w-[280px] text-[11.5px] leading-5 text-content-muted">
-        {frontendMessage(filtered ? "observability.emptyFilteredDescription" : "observability.emptyDescription")}
-      </p>
+    <div className="flex h-full items-start gap-2 px-3 py-4 text-[10.5px] text-content-muted">
+      <span className="text-content-disabled">›</span>
+      <span>{frontendMessage(filtered ? "observability.emptyFiltered" : "observability.empty")}</span>
     </div>
   );
 }

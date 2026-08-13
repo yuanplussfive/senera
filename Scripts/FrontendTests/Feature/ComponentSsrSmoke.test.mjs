@@ -52,6 +52,13 @@ test("approval strip SSR smoke covers pending action controls", () => {
             arguments: {
               command: "pnpm run build",
             },
+            resources: [
+              {
+                canonicalPath: "C:\\Program Files\\Senera",
+                intent: "execute",
+                recursive: true,
+              },
+            ],
           },
         },
       ],
@@ -63,6 +70,8 @@ test("approval strip SSR smoke covers pending action controls", () => {
   expect(markup).toMatch(/等待审批/);
   expect(markup).toMatch(/拒绝/);
   expect(markup).toMatch(/通过/);
+  expect(markup).toMatch(/在此执行/);
+  expect(markup).toMatch(/C:\\Program Files\\Senera/);
 });
 
 test("code artifact source SSR smoke covers source and preview metadata", () => {

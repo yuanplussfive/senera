@@ -41,6 +41,7 @@ import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprova
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { createAgentToolOutputSpool } from "./AgentToolOutputSpool.js";
+import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -67,6 +68,7 @@ export interface AgentToolRunnerContext {
   approvalMode?: AgentExecutionApprovalMode;
   activeSkills?: readonly AgentActivatedSkill[];
   thinkingLevel?: ModelThinkingLevel;
+  resourceAccessGrant?: AgentResourceAccessGrant;
 }
 
 export class AgentToolRunner implements AgentToolRunnerLike {
@@ -180,6 +182,19 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       );
     }
     const runtime = resolveAgentToolRuntimeCapabilities(tool);
+    const executionEnv = context.resourceAccessGrant
+      ? this.executionEnv.withResourceAccessGrant(context.resourceAccessGrant)
+      : this.executionEnv;
+    const projectedArguments = await projectAgentToolResourceArguments(
+      invocation.arguments,
+      tool.handler.resources ?? [],
+      createAgentDefaultToolResourceCapabilities({
+        config: this.config,
+        workspaceRoot: this.workspaceRoot,
+        executionEnv,
+        uploadStore: this.uploadStore,
+      }),
+    );
     const outputSpool =
       runtime.outputStreaming && !runtime.resumableEvents
         ? await createAgentToolOutputSpool(this.config, this.workspaceRoot, {
@@ -202,16 +217,18 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       HostCapability: () =>
         this.runHostCapability(
           tool,
-          invocation.arguments,
+          projectedArguments,
           { ...context, executionPlan: invocation.executionPlan },
           reporter,
+          executionEnv,
         ),
       McpTool: () =>
         this.mcpRunner.run(
           tool,
-          invocation.arguments,
+          projectedArguments,
           { ...context, executionPlan: invocation.executionPlan },
           reporter,
+          executionEnv,
         ),
     } satisfies Record<RegisteredTool["handler"]["kind"], () => Promise<AgentToolProcessRunResult>>;
 
@@ -306,6 +323,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     args: Record<string, unknown>,
     context: AgentToolRunnerContext,
     reporter: AgentToolExecutionReporter,
+    executionEnv: SeneraExecutionEnv,
   ): Promise<AgentToolProcessRunResult> {
     if (tool.handler.kind !== "HostCapability") {
       return this.failure(agentErrorMessage("tool.notHostCapability", { toolName: tool.name }), {
@@ -326,24 +344,13 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       );
     }
 
-    const projectedArguments = await projectAgentToolResourceArguments(
-      args,
-      tool.handler.resources ?? [],
-      createAgentDefaultToolResourceCapabilities({
-        config: this.config,
-        workspaceRoot: this.workspaceRoot,
-        executionEnv: this.executionEnv,
-        uploadStore: this.uploadStore,
-      }),
-    );
-
-    return handler(projectedArguments, {
+    return handler(args, {
       tool,
       config: this.config,
       configPath: context.configPath,
       workspaceRoot: this.workspaceRoot,
       registry: this.registry,
-      executionEnv: this.executionEnv,
+      executionEnv,
       uploadStore: this.uploadStore,
       sessionId: context.sessionId,
       requestId: context.requestId,

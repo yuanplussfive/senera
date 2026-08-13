@@ -126,12 +126,6 @@ export function inspectAgentToolSchedulingContract(input: {
       message: "HostCapability ResourceClaims scheduling requires at least one resource declaration.",
     });
   }
-  if (scheduling !== ToolSchedulingModes.ResourceClaims && input.resourceCount > 0) {
-    issues.push({
-      field: "resources",
-      message: `Tool resources require ${ToolSchedulingModes.ResourceClaims} scheduling.`,
-    });
-  }
   if (scheduling === ToolSchedulingModes.SelfManaged && input.maxConcurrency !== undefined) {
     issues.push({
       field: "maxConcurrency",

@@ -22,12 +22,15 @@ test("projects only explicit activity and tool lifecycle intervals", () => {
         index: 0,
         toolName: "search",
         callId: "call-1",
+        origin: { kind: "system", name: "Workspace Tools", capability: "workspace.content.search" },
         startedAt: "2026-08-04T00:00:00.250Z",
+        arguments: { pattern: "agent" },
       }),
       projected(EventKinds.ToolCallCompleted, 4, {
         index: 0,
         toolName: "search",
         callId: "call-1",
+        origin: { kind: "system", name: "Workspace Tools", capability: "workspace.content.search" },
         startedAt: "2026-08-04T00:00:00.250Z",
         durationMs: 350,
       }),
@@ -49,6 +52,8 @@ test("projects only explicit activity and tool lifecycle intervals", () => {
       lane: "tools",
       status: "completed",
       durationMs: 350,
+      toolOrigin: { kind: "system", capability: "workspace.content.search" },
+      toolArguments: { pattern: "agent" },
     },
   ]);
 });

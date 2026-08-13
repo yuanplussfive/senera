@@ -45,6 +45,9 @@ describe("Pi tool contract cache behavior", () => {
 
     expect(second.map((tool) => tool.parameters)).toEqual(first.map((tool) => tool.parameters));
     second.forEach((tool, index) => expect(tool.parameters).toBe(first[index]?.parameters));
+    for (const toolName of ["SkillManage", "GitInspect", "GitMutate", "AgentScheduleManage"]) {
+      expect(second.find((tool) => tool.name === toolName)?.parameters, toolName).toMatchObject({ type: "object" });
+    }
   }, 15_000);
 
   test("resolves activated Skills from the Pi resource catalog by stable file identity", () => {

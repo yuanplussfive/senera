@@ -31,6 +31,20 @@ export type AgentExecutionResourceSignal =
 
 export type AgentExecutionResourceKind = "process" | "terminal";
 
+export const AgentExecutionResourcePurposes = {
+  BackgroundProcess: "background-process",
+  CommandTask: "command-task",
+  InteractiveShell: "interactive-shell",
+} as const;
+
+export type AgentExecutionResourcePurpose =
+  (typeof AgentExecutionResourcePurposes)[keyof typeof AgentExecutionResourcePurposes];
+
+export interface AgentExecutionResourcePresentation {
+  purpose: AgentExecutionResourcePurpose;
+  title?: string;
+}
+
 export interface AgentExecutionResourceTerminalMetadata {
   backend: string;
   shellDialect: SeneraShellDialect;
@@ -93,6 +107,7 @@ export interface AgentExecutionResourceSnapshot {
   events: AgentExecutionResourceEvent[];
   exitCode?: number | null;
   signal?: NodeJS.Signals | number | null;
+  presentation?: AgentExecutionResourcePresentation;
   terminal?: AgentExecutionResourceTerminalMetadata;
   error?: string;
 }
@@ -114,6 +129,7 @@ export interface AgentExecutionResourceLimits {
 export interface AgentExecutionResourceHandle {
   readonly id: string;
   readonly owner: AgentExecutionResourceOwner;
+  readonly kind: AgentExecutionResourceKind;
   readonly state: AgentExecutionResourceState;
   readonly terminal: boolean;
   readonly closed: boolean;

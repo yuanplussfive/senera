@@ -92,11 +92,15 @@ const RequestSchedulingCatalog = {
   ),
   "interaction.input.resolve": concurrent,
   "sandbox.status": concurrent,
+  // Terminal control is an independent control-plane lane. It must remain
+  // available while the session's agent turn owns the data-plane lease.
+  "execution.resource.start_terminal": concurrent,
   "execution.resource.list": concurrent,
   "execution.resource.inspect": concurrent,
   "execution.resource.write": serial((request) => resourceKey(request.resourceId)),
   "execution.resource.resize": serial((request) => resourceKey(request.resourceId)),
   "execution.resource.signal": serial((request) => resourceKey(request.resourceId)),
+  "execution.resource.close": serial((request) => resourceKey(request.resourceId)),
   "execution.resource.stop_all": serial((request) => sessionKey(request.sessionId)),
 } satisfies RequestSchedulingCatalog;
 

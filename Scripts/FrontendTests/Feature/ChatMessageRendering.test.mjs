@@ -47,7 +47,7 @@ test("streaming assistant content uses the same readable body and caret for pref
   expect(document.querySelector("[data-assistant-streaming-body] .caret-blink")).toBeInTheDocument();
 });
 
-test("live tool preface is a separate message above the execution feed", () => {
+test("live tool preface follows its execution status inside one assistant turn", async () => {
   renderWithFrontendProviders(
     React.createElement(StreamingRow, {
       run: createRun({
@@ -55,26 +55,31 @@ test("live tool preface is a separate message above the execution feed", () => {
         displayText: "搜索当前已加载的工具目录……",
         steps: [
           {
-            id: "model-step",
-            kind: "model",
-            title: "调用模型",
+            id: "tool-step",
+            kind: "tool",
+            title: "搜索工作区",
             status: "running",
             startedAt: "2026-01-01T00:00:00.000Z",
+            toolName: "WorkspaceGrep",
+            callId: "call-workspace-grep",
           },
         ],
       }),
     }),
   );
 
-  const preface = document.querySelector("[data-assistant-tool-preface-stream]");
-  expect(preface).toBeInTheDocument();
-  expect(preface).toContainElement(screen.getByText("搜索当前已加载的工具目录……"));
-  expect(
-    document.querySelector("[data-assistant-tool-preface-stream] [data-assistant-streaming-body]"),
-  ).toBeInTheDocument();
-  expect(
-    document.querySelector("[data-assistant-tool-preface-stream] + .conversation-frame--wide"),
-  ).toBeInTheDocument();
+  const turn = document.querySelector("[data-assistant-turn='request-1']");
+  expect(turn).toBeInTheDocument();
+  expect(turn).toContainElement(screen.getByText("搜索当前已加载的工具目录……"));
+  expect(turn.querySelector("[data-assistant-streaming-body]")).toHaveTextContent("搜索当前已加载的工具目录……");
+  expect(turn.querySelector("[data-assistant-turn-execution]")).toBeInTheDocument();
+  const stage = turn.querySelector("[data-assistant-turn-stage='execution']");
+  const execution = stage.firstElementChild;
+  const body = turn.querySelector("[data-assistant-streaming-body]");
+  expect(execution).toHaveAttribute("aria-hidden", "true");
+  expect(execution.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  expect(turn.querySelectorAll("[data-message-avatar='assistant']")).toHaveLength(1);
+  expect(document.querySelectorAll(".conversation-frame--wide")).toHaveLength(1);
   expect(screen.getAllByText("搜索当前已加载的工具目录……")).toHaveLength(1);
 });
 

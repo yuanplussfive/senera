@@ -47,10 +47,17 @@ export class AgentPiToolExecutionBridge {
   private async executeWithLease(input: AgentPiToolExecutionInput): Promise<AgentPiToolResult> {
     const toolAccessGrant = input.context.toolAccessGrant;
     if (!toolAccessGrant) throw new AgentLocalizedError("toolAccess.missingGrant");
-    const requestId = input.context.requestId ?? createRequestId();
-    const step = input.context.step ?? 1;
     const turnState = input.context.turnState;
     if (!turnState) throw new Error("Pi tool execution requires an active turn state.");
+    const sessionId =
+      input.context.sessionId ??
+      turnState.context.sessionId ??
+      input.context.requestId ??
+      turnState.context.requestId ??
+      input.toolCallId;
+    const artifactSessionId = input.context.sessionId ?? turnState.context.sessionId;
+    const requestId = input.context.requestId ?? turnState.context.requestId ?? createRequestId();
+    const step = input.context.step ?? turnState.context.step ?? 1;
     const batchId = turnState.toolBatchId(input.toolCallId);
     if (!batchId) throw new Error(`Pi tool call ${input.toolCallId} is not registered in a tool batch.`);
     const projection = input.tool.observationProjection ?? StandardAgentToolObservationProjection;
@@ -65,11 +72,12 @@ export class AgentPiToolExecutionBridge {
           index: turnState.toolBatchIndex(input.toolCallId),
         },
         {
-          sessionId: input.context.sessionId,
+          sessionId,
           requestId,
           step,
           onEvent: input.context.onEvent,
           toolAccessGrant,
+          resourceAccessGrant: turnState.takeResourceAccessGrant(input.toolCallId),
           toolExposure: input.context.toolExposure,
           batchId,
           signal: input.signal,
@@ -90,7 +98,7 @@ export class AgentPiToolExecutionBridge {
       }
 
       const [recorded] = await this.options.recordToolArtifacts({
-        ...(input.context.sessionId ? { sessionId: input.context.sessionId } : {}),
+        ...(artifactSessionId ? { sessionId: artifactSessionId } : {}),
         requestId,
         step,
         results: execution.value,

@@ -9,6 +9,8 @@
   "approval.toolCallExpired": "The tool-call approval expired.",
   "approval.toolCallInterrupted": "The user interrupted the tool-call approval.",
   "approval.toolCallTitle": "Allow tool call: {toolName}",
+  "approval.externalResourceRequiresApproval": "This tool call will access a host path outside the workspace and requires your approval.",
+  "approval.externalResourceUnresolved": "The external path cannot be resolved to a stable resource and cannot be authorized.",
   "approval.waitExpired": "The approval wait period has expired.",
   "json.parseFailed": "JSON parsing failed.",
   "json.syntaxError": "JSON syntax error: {filePath}",

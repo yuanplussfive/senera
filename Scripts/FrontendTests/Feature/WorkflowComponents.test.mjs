@@ -14,7 +14,6 @@ const {
 } = await import("../../../Frontend/src/features/workflow/ThinkingTimelineCanvas.tsx");
 const { StepNode } = await import("../../../Frontend/src/features/workflow/StepNode.tsx");
 const { layoutSteps, readWorkflowLayoutKey } = await import("../../../Frontend/src/features/workflow/layout.ts");
-const { AgentExecutionFeed } = await import("../../../Frontend/src/features/workflow/AgentExecutionFeed.tsx");
 const { ChatHeader } = await import("../../../Frontend/src/features/chat/ChatHeader.tsx");
 const { ThinkingSummaryBar } = await import("../../../Frontend/src/features/chat/ThinkingSummaryBar.tsx");
 const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
@@ -22,6 +21,17 @@ const { AppMotionProvider } = await import("../../../Frontend/src/shared/motion/
 const { Position, ReactFlowProvider } = await import("@xyflow/react");
 const { useStore } = await import("../../../Frontend/src/store/sessionStore.ts");
 const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
+const { frontendFeatureMessage } = await import("../../../Frontend/src/i18n/frontendFeatureMessageCatalog.ts");
+const { projectWorkflowActivities, projectWorkflowSteps } =
+  await import("../../../Frontend/src/features/workflow/workflowPresentationProjection.ts");
+const { createRun, createSession, createStep, createToolBatchRun, viewportNode, workflowNodeData, workflowNodeLayout } =
+  await import("./workflowComponentFixtures.mjs");
+
+function renderWorkflowNode(props) {
+  return renderWithFrontendProviders(
+    React.createElement(ReactFlowProvider, null, React.createElement(StepNode, props)),
+  );
+}
 
 beforeEach(() => {
   installMemoryLocalStorage();
@@ -32,6 +42,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -133,8 +144,7 @@ test("chat header exposes one neutral workflow tool entry for panel toggling", a
   expect(onToggle).toHaveBeenCalledTimes(1);
 });
 
-test("chat header always exposes the effective execution mode beside terminal access", () => {
-  const onOpenTerminalPanel = vi.fn();
+test("chat header exposes the effective execution mode without duplicating terminal access", () => {
   const baseStatus = {
     provider: "docker-engine",
     platform: "win32",
@@ -149,7 +159,6 @@ test("chat header always exposes the effective execution mode beside terminal ac
     React.createElement(ChatHeader, {
       title: "Sandbox status",
       sandboxStatus: { ...baseStatus, state: "ready" },
-      onOpenTerminalPanel,
     }),
   );
 
@@ -160,7 +169,16 @@ test("chat header always exposes the effective execution mode beside terminal ac
       }),
     }),
   ).toHaveAttribute("data-execution-mode", "sandbox");
-  expect(screen.getByRole("button", { name: frontendMessage("terminal.panel.open") })).toBeInTheDocument();
+  expect(
+    screen
+      .getByRole("status", {
+        name: frontendMessage("execution.mode.sandbox", {
+          provider: frontendMessage("sandbox.provider.dockerEngine"),
+        }),
+      })
+      .querySelector("span"),
+  ).toBeNull();
+  expect(screen.queryByRole("button", { name: frontendMessage("terminal.panel.open") })).not.toBeInTheDocument();
 
   rerender(
     React.createElement(
@@ -175,7 +193,6 @@ test("chat header always exposes the effective execution mode beside terminal ac
           effectiveMode: "host",
           shellDialect: "powershell",
         },
-        onOpenTerminalPanel,
       }),
     ),
   );
@@ -185,6 +202,13 @@ test("chat header always exposes the effective execution mode beside terminal ac
       name: frontendMessage("execution.mode.host", { shell: frontendMessage("execution.shell.powershell") }),
     }),
   ).toHaveAttribute("data-execution-mode", "host");
+  expect(
+    screen
+      .getByRole("status", {
+        name: frontendMessage("execution.mode.host", { shell: frontendMessage("execution.shell.powershell") }),
+      })
+      .querySelector("span"),
+  ).toBeNull();
 
   rerender(
     React.createElement(
@@ -193,7 +217,6 @@ test("chat header always exposes the effective execution mode beside terminal ac
       React.createElement(ChatHeader, {
         title: "Sandbox status",
         sandboxStatus: { ...baseStatus, state: "unavailable", effectiveMode: "unavailable" },
-        onOpenTerminalPanel,
       }),
     ),
   );
@@ -202,7 +225,10 @@ test("chat header always exposes the effective execution mode beside terminal ac
     "data-execution-mode",
     "unavailable",
   );
-  expect(screen.getByRole("button", { name: frontendMessage("terminal.panel.open") })).toBeInTheDocument();
+  expect(screen.getByRole("status", { name: frontendMessage("execution.mode.unavailable") })).toHaveTextContent(
+    frontendMessage("execution.mode.unavailable"),
+  );
+  expect(screen.queryByRole("button", { name: frontendMessage("terminal.panel.open") })).not.toBeInTheDocument();
 });
 
 test("persistent workflow panel owns its tool header and only collapse control", async () => {
@@ -274,6 +300,7 @@ test("dock execution view renders a vertical workflow graph with expandable comp
         kind: "tool",
         title: "WorkspaceRead",
         toolName: "WorkspaceRead",
+        toolOrigin: { kind: "system", name: "Workspace tools", capability: "workspace.file.read" },
         toolArgs: { path: "Source/runtime.ts" },
         toolResult: { content: "export const runtime = true;" },
       }),
@@ -292,10 +319,24 @@ test("dock execution view renders a vertical workflow graph with expandable comp
   expect(screen.getByText(/WorkspaceGrep/)).toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.childRun.board.title"))).not.toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.childRun.board.empty"))).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: /展开WorkspaceRead/ }));
+  await user.click(screen.getByRole("button", { name: /展开读取文件：Source\/runtime.ts/ }));
+  await waitFor(() => expect(document.querySelector("[data-tool-step-inspector]")).toBeInTheDocument());
+  expect(screen.getByText(frontendFeatureMessage("workflow.inspector.action"))).toBeVisible();
+  expect(document.querySelector("[data-tool-step-inspector]")).toHaveTextContent("读取文件：Source/runtime.ts");
+  expect(screen.getByText(frontendFeatureMessage("workflow.inspector.scope"))).toBeVisible();
+  expect(screen.getByText("Source/runtime.ts")).toBeVisible();
+  expect(screen.queryByText(frontendMessage("workflow.node.section.toolArgs"))).not.toBeInTheDocument();
+  expect(screen.queryByText(frontendMessage("workflow.node.section.rawToolResult"))).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: frontendFeatureMessage("workflow.node.technicalDetails") }));
   expect(screen.getByText(frontendMessage("workflow.node.section.toolArgs"))).toBeVisible();
   expect(screen.getByText(frontendMessage("workflow.node.section.rawToolResult"))).toBeVisible();
   expect(screen.getByText(/export const runtime = true/)).toBeVisible();
+  expect(
+    document.querySelector("[data-workflow-dock-step='tool-read'] [data-tool-step-inspector]")?.parentElement,
+  ).toHaveClass("border-l", "border-line-subtle");
+  expect(
+    document.querySelector("[data-workflow-dock-step='tool-read'] [data-tool-step-inspector]")?.parentElement,
+  ).not.toHaveClass("rounded-md", "bg-surface-subtle/35");
   expect(document.querySelector(".react-flow")).not.toBeInTheDocument();
 });
 
@@ -347,6 +388,143 @@ test("thinking timeline canvas lays out and renders real workflow nodes", async 
     "content",
   );
   expect(document.querySelector("[data-workflow-layout-direction='vertical']")).toBeInTheDocument();
+});
+
+test("workflow presentation keeps context tokens and errors while filtering model lifecycle telemetry", () => {
+  const run = createRun({
+    steps: [
+      createStep({ id: "request", kind: "understand", title: "User request" }),
+      createStep({
+        id: "tokens",
+        kind: "prompt",
+        title: "Context tokens",
+        description: "22967 tokens · 100000 chars · 3200 lines",
+        promptTokenCount: 22_967,
+      }),
+      createStep({ id: "model", kind: "model", title: "Generate response" }),
+      createStep({ id: "failure", kind: "error", title: "Request failed", status: "failed" }),
+    ],
+    activities: [
+      {
+        id: "context",
+        activity: "preparing_context",
+        status: "done",
+        startedAt: "2026-07-11T00:00:00.000Z",
+        endedAt: "2026-07-11T00:00:00.100Z",
+      },
+      {
+        id: "compaction",
+        activity: "compacting_context",
+        status: "running",
+        startedAt: "2026-07-11T00:00:01.000Z",
+      },
+      {
+        id: "finalize-failure",
+        activity: "finalizing_response",
+        status: "failed",
+        startedAt: "2026-07-11T00:00:02.000Z",
+        endedAt: "2026-07-11T00:00:03.000Z",
+      },
+    ],
+  });
+
+  expect(projectWorkflowSteps(run).map((step) => step.id)).toEqual(["request", "tokens", "failure"]);
+  expect(projectWorkflowActivities(run).map((activity) => activity.id)).toEqual(["compaction", "finalize-failure"]);
+});
+
+test("workflow presentation folds model duration into the visible reply and removes duplicate answer traces", () => {
+  const run = createRun({
+    steps: [
+      createStep({
+        id: "history-answer",
+        kind: "answer",
+        title: "Generate response",
+        decisionKind: "final_answer",
+        startedAt: "2026-07-11T00:00:00.000Z",
+        endedAt: "2026-07-11T00:00:27.000Z",
+      }),
+      createStep({ id: "request", kind: "understand", title: "User request" }),
+      createStep({ id: "tokens", kind: "prompt", title: "Context tokens", promptTokenCount: 629 }),
+      createStep({
+        id: "model",
+        kind: "model",
+        title: "Generate response",
+        startedAt: "2026-07-11T00:00:01.000Z",
+        endedAt: "2026-07-11T00:00:03.500Z",
+      }),
+      createStep({
+        id: "assistant-answer",
+        kind: "answer",
+        title: "Generate response",
+        description: "Done.",
+        decisionKind: "final_answer",
+        startedAt: "2026-07-11T00:00:03.500Z",
+        endedAt: "2026-07-11T00:00:03.500Z",
+      }),
+    ],
+  });
+
+  const steps = projectWorkflowSteps(run);
+  expect(steps.map((step) => step.id)).toEqual(["request", "tokens", "assistant-answer"]);
+  expect(steps.at(-1)).toMatchObject({
+    startedAt: "2026-07-11T00:00:03.500Z",
+    endedAt: "2026-07-11T00:00:03.500Z",
+    durationMs: 2500,
+  });
+});
+
+test("workflow presentation preserves a unique historical answer duration when model timing is unavailable", () => {
+  const run = createRun({
+    steps: [
+      createStep({
+        id: "history-answer",
+        kind: "answer",
+        title: "Generate response",
+        decisionKind: "final_answer",
+        startedAt: "2026-07-11T00:00:00.000Z",
+        endedAt: "2026-07-11T00:00:27.000Z",
+      }),
+      createStep({
+        id: "assistant-answer",
+        kind: "answer",
+        title: "Generate response",
+        description: "Done.",
+        decisionKind: "final_answer",
+        startedAt: "2026-07-11T00:00:27.000Z",
+        endedAt: "2026-07-11T00:00:27.000Z",
+      }),
+    ],
+  });
+
+  expect(projectWorkflowSteps(run)).toEqual([
+    expect.objectContaining({
+      id: "assistant-answer",
+      startedAt: "2026-07-11T00:00:27.000Z",
+      endedAt: "2026-07-11T00:00:27.000Z",
+      durationMs: 27_000,
+    }),
+  ]);
+});
+
+test("instantaneous workflow records do not present a misleading zero duration", () => {
+  renderWorkflowNode({
+    data: {
+      layout: workflowNodeLayout("vertical"),
+      kind: "step",
+      step: createStep({
+        id: "context-tokens",
+        kind: "prompt",
+        title: "Context tokens",
+        description: "22967 tokens",
+        startedAt: "2026-07-11T00:00:00.000Z",
+        endedAt: "2026-07-11T00:00:00.000Z",
+      }),
+    },
+    selected: false,
+  });
+
+  expect(screen.getByText("22967 tokens")).toBeVisible();
+  expect(screen.queryByText("0ms")).not.toBeInTheDocument();
 });
 
 test("focused workflow canvas uses a horizontal layout with free panning", async () => {
@@ -425,6 +603,30 @@ test("dock workflow graph compresses a parallel batch only until the user expand
   await user.click(batch);
   expect(screen.getByRole("button", { name: /展开Call WorkspaceFind/ })).toBeVisible();
   expect(screen.getByRole("button", { name: /展开Call WorkspaceRead/ })).toBeVisible();
+});
+
+test("dock workflow graph represents partial batch failures proportionally", () => {
+  const toolNames = Array.from({ length: 13 }, (_value, index) => `WorkspaceRead${index}`);
+  const run = createToolBatchRun(toolNames);
+  run.steps.find((step) => step.toolName === "WorkspaceRead12").status = "failed";
+  resetFrontendStore({
+    activeSessionId: "session-a",
+    sessionOrder: ["session-a"],
+    sessions: { "session-a": createSession([run]) },
+  });
+
+  renderWithFrontendProviders(React.createElement(ThinkingTimeline, { presentation: "dock", hidePanelTitle: true }));
+
+  const succeeded = document.querySelector("[data-workflow-batch-segment='done']");
+  const failed = document.querySelector("[data-workflow-batch-segment='failed']");
+  expect(succeeded).toHaveAttribute("data-count", "12");
+  expect(succeeded).toHaveStyle({ width: `${(12 / 13) * 100}%` });
+  expect(failed).toHaveAttribute("data-count", "1");
+  expect(failed).toHaveStyle({ width: `${(1 / 13) * 100}%` });
+  expect(screen.getByText("成功 12")).toBeVisible();
+  expect(screen.getByText("失败 1")).toBeVisible();
+  expect(screen.getByText("13/13")).toHaveClass("text-content-muted");
+  expect(screen.getByText("13/13")).not.toHaveClass("text-brick-600");
 });
 
 test("workflow layout key ignores live status but tracks dimension changes", () => {
@@ -541,242 +743,3 @@ test("step node presents running steps and grouped child-agent scopes", () => {
   expect(document.querySelector(".react-flow__handle-left")).toBeInTheDocument();
   expect(document.querySelector(".react-flow__handle-right")).toBeInTheDocument();
 });
-
-test("execution feed keeps action batches summarized until the user expands them", async () => {
-  const user = userEvent.setup();
-  const initialRun = createToolBatchRun(["WorkspaceReadFile", "WorkspaceSearchFiles"]);
-  const view = renderWithFrontendProviders(React.createElement(AgentExecutionFeed, { run: initialRun }));
-  const feed = document.querySelector("[data-execution-feed]");
-  const group = document.querySelector("[data-feed-group='tools:batch-actions']");
-
-  expect(feed).toBeInTheDocument();
-  expect(feed).not.toHaveClass("rounded-xl", "border", "bg-surface-raised", "shadow-panel");
-  expect(document.querySelector("[data-execution-rail]")).toBeInTheDocument();
-  expect(screen.queryByText("tool_preface")).not.toBeInTheDocument();
-  expect(group).toBeInstanceOf(HTMLButtonElement);
-  expect(group).toHaveAttribute("aria-expanded", "false");
-  expect(document.querySelector("[data-feed-detail-surface]")).not.toBeInTheDocument();
-  expect(screen.queryByText("WorkspaceReadFile")).not.toBeInTheDocument();
-  expect(screen.queryByText("WorkspaceSearchFiles")).not.toBeInTheDocument();
-
-  await user.click(group);
-  await waitFor(() => expect(screen.getByText("WorkspaceReadFile")).toBeVisible());
-  expect(screen.getByText("WorkspaceSearchFiles")).toBeVisible();
-  expect(group).toHaveAttribute("aria-expanded", "true");
-  expect(document.querySelector("[data-feed-detail-surface]")).toHaveClass(
-    "border-line-subtle",
-    "bg-surface-subtle/70",
-  );
-
-  view.rerender(
-    React.createElement(
-      TooltipProvider,
-      { delayDuration: 0 },
-      React.createElement(AgentExecutionFeed, {
-        run: createToolBatchRun(["WorkspaceReadFile", "WorkspaceSearchFiles", "WorkspaceListDirectory"]),
-      }),
-    ),
-  );
-  expect(screen.getByText("WorkspaceListDirectory")).toBeVisible();
-  expect(document.querySelector("[data-feed-group='tools:batch-actions']")).toHaveAttribute("aria-expanded", "true");
-});
-
-test("execution feed keeps workflow steps while the answer body is projected below it", () => {
-  const run = createToolBatchRun(["WorkspaceReadFile"]);
-  run.visibleKind = "final_answer";
-  run.displayText = "最终回答正文";
-
-  renderWithFrontendProviders(
-    React.createElement(AgentExecutionFeed, {
-      run,
-      showBody: false,
-    }),
-  );
-
-  expect(document.querySelector("[data-feed-group='tools:batch-actions']")).toBeInTheDocument();
-  expect(screen.queryByText("最终回答正文")).not.toBeInTheDocument();
-});
-
-test("execution feed renders Senera live activities without adding workflow nodes", async () => {
-  const user = userEvent.setup();
-  const run = createToolBatchRun([]);
-  const workflowStepCount = run.steps.length;
-  run.liveActivity = "compacting_context";
-  run.activities = [
-    {
-      id: "activity-context",
-      activity: "preparing_context",
-      status: "done",
-      step: 1,
-      startedAt: run.startedAt,
-      endedAt: run.startedAt,
-    },
-    {
-      id: "activity-model",
-      activity: "running_agent_turn",
-      status: "done",
-      step: 1,
-      startedAt: run.startedAt,
-      endedAt: run.startedAt,
-    },
-    {
-      id: "activity-compaction",
-      activity: "compacting_context",
-      status: "running",
-      step: 1,
-      startedAt: run.startedAt,
-    },
-  ];
-
-  renderWithFrontendProviders(React.createElement(AgentExecutionFeed, { run }));
-
-  // 活动组默认折叠为单行摘要:组头可见,活动明细收进折叠面板。
-  const activityToggle = screen.getByText(frontendMessage("workflow.feed.seneraActivity"));
-  expect(activityToggle).toBeVisible();
-  expect(document.querySelector("[data-feed-group-variant='activity']")).toBeInTheDocument();
-  expect(document.querySelector("[data-feed-detail-surface]")).not.toBeInTheDocument();
-
-  // 展开后可见活动明细(等待展开动画完成)。
-  await user.click(activityToggle);
-  await waitFor(() => expect(screen.getByText(frontendMessage("workflow.activity.preparingContext"))).toBeVisible());
-  expect(screen.getByText(frontendMessage("workflow.activity.runningAgentTurn"))).toBeVisible();
-  expect(screen.getByText(frontendMessage("workflow.activity.compactingContext"))).toBeVisible();
-  expect(run.steps).toHaveLength(workflowStepCount);
-});
-
-test("execution feed contains failed events and respects reduced motion", () => {
-  const run = createRun({
-    status: "running",
-    endedAt: undefined,
-    steps: [
-      createStep({ id: "failed-context", status: "failed", title: "Prepare context" }),
-      createStep({ id: "running-model", status: "running", title: "Generate response" }),
-    ],
-  });
-
-  renderWithFrontendProviders(
-    React.createElement(AppMotionProvider, { level: "reduced" }, React.createElement(AgentExecutionFeed, { run })),
-  );
-
-  expect(screen.getByText("Prepare context").parentElement?.parentElement).toHaveClass(
-    "border-brick-200",
-    "bg-brick-50",
-  );
-  expect(document.querySelector("[data-execution-feed] .animate-spin")).not.toBeInTheDocument();
-});
-
-function renderWorkflowNode(props) {
-  return renderWithFrontendProviders(
-    React.createElement(ReactFlowProvider, null, React.createElement(StepNode, props)),
-  );
-}
-
-function viewportNode(id, data) {
-  return {
-    id,
-    type: "step",
-    position: { x: 0, y: 0 },
-    data: { layout: workflowNodeLayout("vertical"), ...data },
-  };
-}
-
-function workflowNodeData(direction, width, height) {
-  return {
-    layout: workflowNodeLayout(direction, width, height),
-    kind: "step",
-    step: createStep(),
-  };
-}
-
-function workflowNodeLayout(direction, width = 240, height = 76) {
-  return { direction, width, height };
-}
-
-function createSession(runs) {
-  return {
-    sessionId: "session-a",
-    title: "Workflow session",
-    status: "ready",
-    createdAt: "2026-07-11T00:00:00.000Z",
-    updatedAt: "2026-07-11T00:00:02.000Z",
-    entryCount: 2,
-    messageCount: 2,
-    messages: [],
-    runs,
-  };
-}
-
-function createRun(overrides = {}) {
-  return {
-    requestId: "run-a",
-    revision: 0,
-    startedAt: "2026-07-11T00:00:00.000Z",
-    endedAt: "2026-07-11T00:00:02.000Z",
-    status: "completed",
-    input: "run input",
-    steps: [createStep()],
-    streamingRaw: "",
-    xmlPreview: "",
-    visibleText: "",
-    displayText: "",
-    displayTarget: "",
-    displayedChars: 0,
-    expectedOutputMode: "open",
-    ...overrides,
-  };
-}
-
-function createStep(overrides = {}) {
-  return {
-    id: "step-a",
-    kind: "model",
-    title: "Model step",
-    status: "done",
-    startedAt: "2026-07-11T00:00:00.000Z",
-    ...overrides,
-  };
-}
-
-function createToolBatchRun(toolNames) {
-  const toolBatch = { id: "batch-actions", size: toolNames.length, executionMode: "parallel" };
-  return createRun({
-    requestId: "run-action-batch",
-    status: "running",
-    endedAt: undefined,
-    steps: [
-      createStep({
-        id: "batch-preface",
-        kind: "decision",
-        title: "Preface before tool calls",
-        description: "我先检查这一批工作区文件。",
-        status: "done",
-        decisionKind: "tool_preface",
-        toolBatch,
-      }),
-      createStep({
-        id: "batch-plan",
-        kind: "tool",
-        title: "Prepare action batch",
-        status: "done",
-        toolBatch,
-      }),
-      ...toolNames.map((toolName, index) =>
-        createStep({
-          id: `tool-${index}`,
-          kind: "tool",
-          title: `Call ${toolName}`,
-          status: "done",
-          toolName,
-          callId: `call-${index}`,
-          toolBatch: { ...toolBatch, index },
-        }),
-      ),
-      createStep({
-        id: "compose-answer",
-        kind: "model",
-        title: "Compose answer",
-        status: "running",
-      }),
-    ],
-  });
-}

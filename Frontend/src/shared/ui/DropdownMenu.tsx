@@ -111,8 +111,8 @@ export const DropdownMenuCheckboxItem = forwardRef<
       ref={ref}
       checked={checked}
       className={cn(
-        "relative flex min-h-10 cursor-pointer select-none items-center rounded-md px-2.5 py-2 pl-8 text-[13px] leading-5 outline-none",
-        "transition-[background-color,color] duration-100",
+        "relative flex min-h-9 cursor-pointer select-none items-center rounded-md px-2.5 py-1.5 pl-8 text-[13px] leading-5 outline-none",
+        "transition-[background-color,color,transform] duration-100 active:scale-[0.985] motion-reduce:active:scale-100",
         isCoarsePointer && "min-h-11",
         "text-content-primary data-[highlighted]:bg-accent-surface data-[highlighted]:text-accent-content",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-45",

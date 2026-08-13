@@ -1,6 +1,7 @@
 import type { ToolResourceArgumentManifest } from "../Types/AgentToolContractTypes.js";
 import type { AgentToolResourceProjection } from "./AgentToolResourceArgumentProjector.js";
 import type { AgentToolResourceClaim } from "./AgentToolResourceClaimTypes.js";
+import type { AgentResourceAccessRequest } from "../Execution/SeneraResourceAccess.js";
 
 export interface AgentToolResourceCapability {
   readonly id: string;
@@ -14,6 +15,11 @@ export interface AgentToolResourceCapability {
     value: unknown;
     args: Readonly<Record<string, unknown>>;
   }): Promise<readonly AgentToolResourceClaim[]>;
+  inspect?(input: {
+    resource: ToolResourceArgumentManifest;
+    value: unknown;
+    args: Readonly<Record<string, unknown>>;
+  }): Promise<readonly AgentResourceAccessRequest[]>;
 }
 
 export class AgentToolResourceCapabilityRegistry {
@@ -45,5 +51,15 @@ export class AgentToolResourceCapabilityRegistry {
     const capability = this.capabilities.get(resource.Capability);
     if (!capability) throw new Error(`Tool resource capability is not available: ${resource.Capability}`);
     return capability.claim?.({ resource, value, args });
+  }
+
+  async inspect(
+    resource: ToolResourceArgumentManifest,
+    value: unknown,
+    args: Readonly<Record<string, unknown>>,
+  ): Promise<readonly AgentResourceAccessRequest[]> {
+    const capability = this.capabilities.get(resource.Capability);
+    if (!capability) throw new Error(`Tool resource capability is not available: ${resource.Capability}`);
+    return capability.inspect?.({ resource, value, args }) ?? [];
   }
 }

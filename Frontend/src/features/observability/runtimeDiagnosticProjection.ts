@@ -2,6 +2,7 @@ import { EventKinds, RunActivitySpecs, type RunActivity } from "../../api/genera
 import { RuntimeDiagnosticSpecs, type EventDiagnosticSpec } from "../../api/generatedRuntimeDiagnosticCatalog";
 import type { EventJournalRecord } from "./eventJournalStore";
 import { readJsonPointer } from "./eventJournalProjection";
+import type { ToolEventOrigin } from "../../api/eventTypes";
 
 export const RuntimeDiagnosticLanes = {
   Context: "context",
@@ -31,6 +32,8 @@ export interface RuntimeDiagnosticSpan {
   readonly status: RuntimeDiagnosticSpanStatus;
   readonly operation?: RunActivity;
   readonly toolName?: string;
+  readonly toolOrigin?: ToolEventOrigin;
+  readonly toolArguments?: unknown;
   readonly callId?: string;
   readonly requestId: string;
   readonly step?: number;
@@ -102,6 +105,8 @@ interface DiagnosticSpanCandidate {
   readonly identity: string;
   readonly source: RuntimeDiagnosticSpanSource;
   readonly label: string;
+  readonly toolOrigin?: ToolEventOrigin;
+  readonly toolArguments?: unknown;
   readonly state: DiagnosticLifecycleState;
   readonly requestId: string;
   readonly step?: number;
@@ -260,6 +265,8 @@ function readSpanCandidate(
     identity,
     source: diagnostic.source,
     label,
+    toolOrigin: diagnostic.source === "tool" ? readToolOrigin(projection) : undefined,
+    toolArguments: diagnostic.source === "tool" ? readJsonPointer(projection, "/data/arguments") : undefined,
     state,
     requestId,
     step: record.step,
@@ -295,6 +302,8 @@ function createSpan(id: string, candidate: DiagnosticSpanCandidate): RuntimeDiag
     startedAt: candidate.startedAt,
     startedAtEpoch: candidate.startedAtEpoch,
     durationMs: candidate.durationMs,
+    toolOrigin: candidate.toolOrigin,
+    toolArguments: candidate.toolArguments,
   };
 }
 
@@ -314,6 +323,22 @@ function mergeSpan(
     status: nextStatus,
     step: candidate.step ?? existing.step,
     durationMs: candidate.durationMs,
+    toolOrigin: candidate.toolOrigin ?? existing.toolOrigin,
+    toolArguments: candidate.toolArguments ?? existing.toolArguments,
+  };
+}
+
+function readToolOrigin(projection: Record<string, unknown>): ToolEventOrigin | undefined {
+  const value = readJsonPointer(projection, "/data/origin");
+  if (!isRecord(value) || (value.kind !== "system" && value.kind !== "mcp") || typeof value.name !== "string") {
+    return undefined;
+  }
+  return {
+    kind: value.kind,
+    name: value.name,
+    ...(typeof value.capability === "string" ? { capability: value.capability } : {}),
+    ...(typeof value.server === "string" ? { server: value.server } : {}),
+    ...(typeof value.tool === "string" ? { tool: value.tool } : {}),
   };
 }
 

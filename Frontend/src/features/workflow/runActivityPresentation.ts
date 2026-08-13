@@ -10,14 +10,14 @@ export type RunActivityPresentationPriority =
   (typeof RunActivityPresentationPriorities)[keyof typeof RunActivityPresentationPriorities];
 
 const RunActivityPresentation = {
-  preparing_context: { labelKey: "workflow.activity.preparingContext", priority: "foreground" },
-  initializing_runtime: { labelKey: "workflow.activity.initializingRuntime", priority: "foreground" },
-  synchronizing_context: { labelKey: "workflow.activity.synchronizingContext", priority: "foreground" },
-  evaluating_context: { labelKey: "workflow.activity.evaluatingContext", priority: "foreground" },
+  preparing_context: { labelKey: "workflow.activity.preparingContext", priority: "ambient" },
+  initializing_runtime: { labelKey: "workflow.activity.initializingRuntime", priority: "ambient" },
+  synchronizing_context: { labelKey: "workflow.activity.synchronizingContext", priority: "ambient" },
+  evaluating_context: { labelKey: "workflow.activity.evaluatingContext", priority: "ambient" },
   compacting_context: { labelKey: "workflow.activity.compactingContext", priority: "foreground" },
   running_agent_turn: { labelKey: "workflow.activity.runningAgentTurn", priority: "ambient" },
-  generating_response: { labelKey: "workflow.activity.generatingResponse", priority: "foreground" },
-  finalizing_response: { labelKey: "workflow.activity.finalizingResponse", priority: "foreground" },
+  generating_response: { labelKey: "workflow.activity.generatingResponse", priority: "ambient" },
+  finalizing_response: { labelKey: "workflow.activity.finalizingResponse", priority: "ambient" },
 } as const satisfies Record<
   RunActivity,
   { readonly labelKey: FrontendMessageKey; readonly priority: RunActivityPresentationPriority }

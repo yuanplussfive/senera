@@ -34,7 +34,14 @@ describe("Senera BAML tool provider", () => {
         compile: async () => ({
           kind: "tool_calls",
           content: "Inspecting the workspace.",
-          toolCalls: [{ id: "call-native", name: "WorkspaceRead", arguments: { path: "package.json" } }],
+          toolCalls: [
+            {
+              id: "call-native",
+              name: "WorkspaceRead",
+              arguments: { path: "package.json" },
+              purpose: "Read the package metadata.",
+            },
+          ],
         }),
         summarize: async () => "unused",
       }),
@@ -70,6 +77,7 @@ describe("Senera BAML tool provider", () => {
       },
     });
     expect(turnState.toolBatchId("call-native")).toEqual(expect.stringMatching(/^toolbatch_/u));
+    expect(turnState.toolCallPurpose("call-native")).toBe("Read the package metadata.");
   });
 });
 

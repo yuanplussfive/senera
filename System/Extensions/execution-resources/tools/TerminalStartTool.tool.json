@@ -18,6 +18,12 @@
       },
       "cwd": { "type": "string" },
       "justification": { "type": "string" },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80,
+        "description": "用于终端标签的简短任务标题，不要重复完整命令。"
+      },
       "columns": { "type": "number" },
       "rows": { "type": "number" }
     },
@@ -43,7 +49,7 @@
       "ResumableEvents": true
     }
   },
-  "resources": [],
+  "resources": [{ "Capability": "senera.workspace.path", "Pointer": "/cwd", "Parameters": { "Intent": "execute" } }],
   "sources": [
     {
       "Id": "execution",

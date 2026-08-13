@@ -121,7 +121,13 @@ export class AgentPiBamlToolProvider {
         compilation.toolCalls.length > 0 ? "toolUse" : "stop",
         compilation,
       );
-      await registerAgentPiToolCallBatch(this.options.frame, message);
+      await registerAgentPiToolCallBatch(this.options.frame, message, {
+        purposesByCallId: new Map(
+          compilation.toolCalls.flatMap((call) =>
+            call.id && call.purpose?.trim() ? [[call.id, call.purpose.trim()] as const] : [],
+          ),
+        ),
+      });
       emitAssistantMessage(stream, message);
     } catch (error) {
       const reason = options?.signal?.aborted ? "aborted" : "error";
@@ -176,7 +182,7 @@ function createAssistantMessage<TApi extends Api>(
   stopReason: AssistantMessage["stopReason"],
   compilation?: {
     content: string;
-    toolCalls: Array<{ id?: string; name: string; arguments: Record<string, unknown> }>;
+    toolCalls: Array<{ id?: string; name: string; arguments: Record<string, unknown>; purpose?: string }>;
   },
 ): AssistantMessage {
   return {

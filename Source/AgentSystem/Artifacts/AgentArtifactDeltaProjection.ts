@@ -32,6 +32,8 @@ export function buildArtifactDelta(input: {
             afterHash: change.afterHash,
             beforeSize: change.beforeSize,
             afterSize: change.afterSize,
+            addedLines: change.addedLines,
+            removedLines: change.removedLines,
             patch: change.patch,
           },
         }) satisfies ToolArtifactDeltaRecord,

@@ -4,6 +4,7 @@ import {
   CircleStop,
   Ellipsis,
   Info,
+  Plus,
   RefreshCw,
   Search,
   Square,
@@ -13,6 +14,7 @@ import {
 import { useRef, type KeyboardEvent } from "react";
 import type { ExecutionResourceSnapshotData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { cn } from "../../lib/util";
 import {
   DropdownMenu,
@@ -29,8 +31,9 @@ import {
   terminalStatusIndicatorClass,
   terminalStatusLabel,
   terminalTabLabel,
-  TerminalSurfaceStyle,
+  terminalPurposeLabel,
 } from "./terminalPresentation";
+import { TerminalSurfaceStyle } from "./terminalTheme";
 
 type TerminalSignal = "interrupt" | "terminate" | "kill";
 
@@ -38,10 +41,12 @@ export interface TerminalTitlebarProps {
   resources: readonly ExecutionResourceSnapshotData[];
   selected?: ExecutionResourceSnapshotData;
   searchOpen: boolean;
+  onStartTerminal: () => void;
   onSelect: (resourceId: string) => void;
   onSearchOpenChange: (open: boolean) => void;
   onRefresh: () => void;
   onSignal: (resourceId: string, signal: TerminalSignal) => void;
+  onClose: (resourceId: string) => void;
   onStopAll: () => void;
 }
 
@@ -66,13 +71,13 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
   };
 
   return (
-    <div className="flex h-full min-w-0 items-stretch gap-1">
+    <div className="flex h-full min-w-0 items-stretch">
       <div className="flex min-w-0 flex-1 items-stretch">
         <div
-          className="grid w-8 shrink-0 place-items-center text-[var(--terminal-muted)]"
+          className="grid w-7 shrink-0 place-items-center text-[var(--terminal-subtle)]"
           aria-label={frontendMessage("terminal.panel.title")}
         >
-          <SquareTerminal className="h-4 w-4" aria-hidden="true" />
+          <SquareTerminal className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
         </div>
         {props.resources.length > 0 ? (
           <div
@@ -84,45 +89,77 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
               const selected = resource.resourceId === props.selected?.resourceId;
               const label = terminalTabLabel(resource);
               return (
-                <button
+                <div
                   key={resource.resourceId}
-                  ref={(element) => {
-                    tabRefs.current[index] = element;
-                  }}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  aria-label={label}
-                  tabIndex={selected ? 0 : -1}
-                  title={resource.command}
-                  onClick={() => props.onSelect(resource.resourceId)}
-                  onKeyDown={(event) => handleTabKeyDown(event, index)}
+                  role="presentation"
                   className={cn(
-                    "group relative flex h-full min-w-[92px] max-w-[180px] items-center gap-2 px-2.5 text-left outline-none",
-                    "font-mono text-[11px] text-[var(--terminal-muted)] transition-colors",
-                    "hover:bg-white/[0.045] hover:text-[var(--terminal-foreground)]",
-                    "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--terminal-accent)]",
+                    "group relative flex h-full min-w-0 items-center",
+                    props.resources.length === 1 ? "flex-1" : "w-[148px] shrink-0",
                     selected &&
-                      "bg-[var(--terminal-canvas)] text-[var(--terminal-foreground)] after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:bg-[var(--terminal-accent)]",
+                      "bg-[var(--terminal-canvas)] after:absolute after:inset-x-2 after:bottom-0 after:h-px after:bg-[var(--terminal-accent)]",
                   )}
                 >
-                  <span
-                    className={cn("h-1.5 w-1.5 shrink-0 rounded-full", terminalStatusIndicatorClass(resource.state))}
-                    aria-hidden="true"
-                  />
-                  <span className="truncate">{label}</span>
-                </button>
+                  <button
+                    ref={(element) => {
+                      tabRefs.current[index] = element;
+                    }}
+                    type="button"
+                    id={`terminal-tab-${resource.resourceId}`}
+                    role="tab"
+                    aria-controls={`terminal-panel-${resource.resourceId}`}
+                    aria-selected={selected}
+                    aria-label={label}
+                    tabIndex={selected ? 0 : -1}
+                    title={resource.command}
+                    onClick={() => props.onSelect(resource.resourceId)}
+                    onKeyDown={(event) => handleTabKeyDown(event, index)}
+                    className={cn(
+                      "flex h-full min-w-0 flex-1 items-center gap-2 px-2 text-left text-[11.5px] outline-none",
+                      "text-[var(--terminal-muted)] transition-colors hover:bg-[var(--terminal-hover)] hover:text-[var(--terminal-foreground)]",
+                      "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--terminal-accent)]",
+                      selected && "text-[var(--terminal-foreground)]",
+                    )}
+                  >
+                    <span
+                      className={cn("h-1.5 w-1.5 shrink-0 rounded-full", terminalStatusIndicatorClass(resource.state))}
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 truncate">{label}</span>
+                  </button>
+                  <IconButton
+                    label={frontendFeatureMessage("terminal.resource.close")}
+                    tooltip={frontendFeatureMessage("terminal.resource.close")}
+                    size="sm"
+                    onClick={() => props.onClose(resource.resourceId)}
+                    className={cn(
+                      "mr-1 h-6 w-6 shrink-0 text-[var(--terminal-subtle)] opacity-60 transition-opacity",
+                      "group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-[var(--terminal-hover)] hover:text-[var(--terminal-foreground)]",
+                      selected && "opacity-100",
+                    )}
+                  >
+                    <X className="h-3 w-3" />
+                  </IconButton>
+                </div>
               );
             })}
           </div>
         ) : (
-          <span className="flex min-w-0 flex-1 items-center truncate px-1 text-[12px] font-medium text-[var(--terminal-foreground)]">
+          <span className="flex min-w-0 flex-1 items-center truncate px-1 text-[11.5px] font-medium text-[var(--terminal-muted)]">
             {frontendMessage("terminal.panel.title")}
           </span>
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-0.5" data-workbench-interactive>
+      <div className="flex shrink-0 items-center" data-workbench-interactive>
+        <IconButton
+          label={frontendFeatureMessage("terminal.resource.create")}
+          tooltip={frontendFeatureMessage("terminal.resource.create")}
+          size="sm"
+          onClick={() => props.onStartTerminal()}
+          className={terminalToolbarButtonClassName(false)}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </IconButton>
         <IconButton
           label={frontendMessage("terminal.search.open")}
           tooltip={frontendMessage("terminal.search.open")}
@@ -236,6 +273,7 @@ function TerminalDetails({ resource }: { resource: ExecutionResourceSnapshotData
   const details = resource.terminal
     ? [
         [frontendMessage("terminal.info.shell"), resource.terminal.shellDialect],
+        [frontendFeatureMessage("terminal.info.purpose"), terminalPurposeLabel(resource)],
         [frontendMessage("terminal.info.backend"), resource.terminal.backend],
         [frontendMessage("terminal.info.boundary"), resource.terminal.effectiveBoundary],
         [frontendMessage("terminal.info.dimensions"), `${resource.terminal.columns}x${resource.terminal.rows}`],
@@ -319,17 +357,17 @@ export function TerminalSearchOverlay(props: {
 
 export function TerminalStatusBar({ resource }: { resource: ExecutionResourceSnapshotData }): JSX.Element {
   return (
-    <div className="flex h-6 shrink-0 items-center gap-2 border-t border-[var(--terminal-separator)] bg-[var(--terminal-chrome)] px-2.5 font-mono text-[10px]">
+    <div className="flex h-6 shrink-0 items-center gap-2 border-t border-[var(--terminal-separator)] bg-[var(--terminal-chrome)] px-2.5 text-[10px]">
       <span
         className={cn("h-1.5 w-1.5 shrink-0 rounded-full", terminalStatusIndicatorClass(resource.state))}
         aria-hidden="true"
       />
       <span className="shrink-0 text-[var(--terminal-muted)]">{terminalStatusLabel(resource.state)}</span>
-      <span className="min-w-0 flex-1 truncate text-[var(--terminal-subtle)]" title={resource.cwd}>
+      <span className="min-w-0 flex-1 truncate font-mono text-[var(--terminal-subtle)]" title={resource.cwd}>
         {resource.cwd}
       </span>
       {resource.terminal ? (
-        <span className="shrink-0 text-[var(--terminal-subtle)]">
+        <span className="shrink-0 font-mono text-[var(--terminal-subtle)]">
           <span className="hidden sm:inline">{resource.terminal.shellDialect} · </span>
           {resource.terminal.columns}x{resource.terminal.rows}
         </span>
@@ -351,13 +389,13 @@ function resolveTabDestination(key: string, currentIndex: number, lastIndex: num
 
 function terminalToolbarButtonClassName(active: boolean): string {
   return cn(
-    "h-7 w-7 text-[var(--terminal-muted)] hover:bg-white/[0.07] hover:text-[var(--terminal-foreground)]",
-    active && "bg-white/[0.08] text-[var(--terminal-foreground)]",
+    "h-7 w-7 text-[var(--terminal-muted)] hover:bg-[var(--terminal-hover)] hover:text-[var(--terminal-foreground)]",
+    active && "bg-[var(--terminal-hover)] text-[var(--terminal-foreground)]",
   );
 }
 
 const terminalMenuItemClassName =
-  "text-[var(--terminal-muted)] data-[highlighted]:bg-white/[0.07] data-[highlighted]:text-[var(--terminal-foreground)]";
+  "text-[var(--terminal-muted)] data-[highlighted]:bg-[var(--terminal-hover)] data-[highlighted]:text-[var(--terminal-foreground)]";
 
 const terminalDestructiveMenuItemClassName =
-  "text-brick-200 data-[highlighted]:bg-brick-500/15 data-[highlighted]:text-brick-100";
+  "text-brick-600 data-[highlighted]:bg-brick-500/10 data-[highlighted]:text-brick-700";

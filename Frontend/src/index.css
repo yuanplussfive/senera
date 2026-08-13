@@ -312,6 +312,35 @@ textarea::-webkit-scrollbar-track {
   max-width: 76ch;
 }
 
+.assistant-turn-flow {
+  min-width: 0;
+}
+
+.assistant-turn-flow [id^="conversation-event:"] {
+  scroll-margin-block: 64px;
+}
+
+.assistant-turn-stage + .assistant-turn-stage {
+  margin-top: 18px;
+}
+
+.assistant-turn-stage > [data-execution-stage-feed] {
+  margin-top: 4px;
+}
+
+.assistant-turn-stage-interactions:not(:empty) {
+  margin-top: 14px;
+}
+
+.assistant-turn-stage [data-feed-group] {
+  width: 100%;
+  margin-inline: 0;
+}
+
+.assistant-turn-stage[data-current-stage="true"] [data-execution-stage-feed] {
+  position: relative;
+}
+
 @container workspace-main (max-width: 720px) {
   .conversation-frame {
     max-width: none;

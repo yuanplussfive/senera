@@ -94,6 +94,7 @@ export const runToolAndAnswerEventHandlers = {
         startedAt: env.timestamp,
         toolName: call.toolName,
         callId: call.callId,
+        purpose: call.purpose,
         toolBatch: {
           ...toolBatch,
           index,
@@ -115,9 +116,10 @@ export const runToolAndAnswerEventHandlers = {
       status: "running",
       startedAt: env.timestamp,
       toolName: data.toolName,
+      toolOrigin: data.origin,
       callId: data.callId,
       toolBatch: toolBatchFromEvent(env, data),
-      toolArgs: run.pendingToolArgsByName[data.toolName],
+      toolArgs: data.arguments,
     });
   },
 
@@ -185,6 +187,7 @@ export const runToolAndAnswerEventHandlers = {
     const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
     if (step) {
       step.status = "done";
+      step.toolOrigin = data.origin ?? step.toolOrigin;
       step.endedAt = env.timestamp;
       step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
       step.toolPreview = step.toolPresentation?.headline;
@@ -200,6 +203,7 @@ export const runToolAndAnswerEventHandlers = {
     const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
     if (step) {
       step.status = "failed";
+      step.toolOrigin = data.origin ?? step.toolOrigin;
       step.endedAt = env.timestamp;
       step.toolErrorMessage = message;
       touchRun(run);
@@ -213,6 +217,7 @@ export const runToolAndAnswerEventHandlers = {
       startedAt: env.timestamp,
       endedAt: env.timestamp,
       toolName: data.toolName,
+      toolOrigin: data.origin,
       callId: data.callId,
       toolBatch: toolBatchFromEvent(env, data),
       toolErrorMessage: message,
@@ -226,6 +231,7 @@ export const runToolAndAnswerEventHandlers = {
     const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
     if (step) {
       step.toolResult = data.value;
+      step.toolOrigin = data.origin ?? step.toolOrigin;
       step.toolPresentation = mergeToolResultPresentation(
         step.toolPresentation,
         readToolResultPresentation(data.value),

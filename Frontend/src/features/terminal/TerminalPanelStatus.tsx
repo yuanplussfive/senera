@@ -2,7 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import type { ReactNode } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { ErrorBoundary, RetryButton, Spinner } from "../../shared/ui";
-import { TerminalSurfaceStyle } from "./terminalPresentation";
+import { TerminalSurfaceStyle } from "./terminalTheme";
 
 export interface TerminalPanelStatusProps {
   status: "loading" | "error";

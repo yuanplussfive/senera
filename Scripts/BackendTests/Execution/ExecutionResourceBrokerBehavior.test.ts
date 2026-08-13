@@ -306,6 +306,26 @@ describe("execution resource broker", () => {
     await broker.close();
   });
 
+  it("releases one resource without affecting its owner's other resources", async () => {
+    const firstChild = new FakePersistentChild();
+    const secondChild = new FakePersistentChild();
+    const children = [firstChild, secondChild];
+    const broker = createBroker(async () => children.shift()!);
+    const owner = sessionOwner("session-release-one");
+    const first = await broker.startProcess(startRequest(owner));
+    const second = await broker.startProcess(startRequest(owner));
+
+    await broker.release(first.resourceId, owner);
+
+    expect(firstChild.killedSignals).toEqual(["SIGTERM"]);
+    expect(secondChild.killedSignals).toEqual([]);
+    expect(() => broker.inspect(first.resourceId, owner)).toThrowError(
+      expect.objectContaining({ code: AgentExecutionResourceErrorCodes.NotFound }),
+    );
+    expect(broker.inspect(second.resourceId, owner).resourceId).toBe(second.resourceId);
+    await broker.close();
+  });
+
   it("retains a resource and suppresses removed events when termination cannot be confirmed", async () => {
     const child = new FakePersistentChild();
     child.closeOnKill = false;

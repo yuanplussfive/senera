@@ -14,6 +14,15 @@ import type {
 import { AgentPiSubstrate } from "../../../Source/AgentSystem/Pi/AgentPiSubstrate.js";
 import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnState.js";
 import { AgentSkillScanner } from "../../../Source/AgentSystem/Skills/AgentSkillScanner.js";
+import { listDefaultAgentHostCapabilityNames } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
+import { AgentSessionApprovalLeaseStore } from "../../../Source/AgentSystem/Safety/AgentSessionApprovalLeaseStore.js";
+import { AgentToolPermissionGate } from "../../../Source/AgentSystem/Safety/AgentToolPermissionGate.js";
+import {
+  registerAgentSystemToolHandlers,
+  systemToolCapability,
+} from "../../../Source/AgentSystem/SystemTools/AgentSystemToolCatalog.js";
+import { AgentSystemExtensionCatalog } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolSource.js";
+import { createAgentSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
 import {
   AgentModelUsageLedger,
   AgentModelUsageSources,
@@ -50,6 +59,105 @@ afterEach(async () => {
 });
 
 describe("Pi Coding Agent production substrate", () => {
+  test("authorizes and reads an external host file through the production WorkspaceRead chain", async () => {
+    const workspaceRoot = await createTemporaryWorkspace();
+    const externalRoot = await createTemporaryWorkspace();
+    const externalFile = path.join(externalRoot, "outside-workspace.txt");
+    const marker = "EXTERNAL_WORKSPACE_READ_E2E";
+    await fs.writeFile(externalFile, marker, "utf8");
+    const config = testConfig(workspaceRoot);
+    const modelProvider = createModelProvider({
+      Id: "external-workspace-read-test",
+      Model: "deterministic-external-workspace-read",
+      ContextWindowTokens: 16_384,
+      MaxModelOutputTokens: 1_024,
+    });
+    const compiler = new RecordingCompilerFactory((request) =>
+      request.context.messages.some((message) => message.role === "toolResult")
+        ? { kind: "final_text", content: "The external file was read.", toolCalls: [] }
+        : {
+            kind: "tool_calls",
+            content: "Reading the requested file.",
+            toolCalls: [{ id: "call_external_read", name: "WorkspaceRead", arguments: { path: externalFile } }],
+          },
+    );
+    const registry = new AgentExtensionRegistry();
+    const systemTools = createAgentSystemTools(config);
+    new AgentSystemExtensionCatalog().registerRoot(registry, path.resolve("System", "Extensions"), {
+      capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...systemTools.map(systemToolCapability)]),
+    });
+    const hostCapabilities = new AgentToolHostCapabilityRegistry();
+    registerAgentSystemToolHandlers(hostCapabilities, systemTools);
+    const executionEnv = new SeneraLocalExecutionEnv({ workspaceRoot });
+    const toolCallExecutor = new AgentToolCallExecutor({
+      registry,
+      config,
+      protocol: createXmlProtocolSpec(config),
+      workspaceRoot,
+      hostCapabilities,
+      executionEnv,
+      emitLifecycleEvents: false,
+    });
+    const substrate = new AgentPiSubstrate({
+      workspaceRoot,
+      config,
+      modelProvider,
+      planningCompilerFactory: compiler,
+      registry,
+      toolCallExecutor,
+      artifactRecorder: new AgentToolExecutionArtifactRecorder({
+        workspaceRoot,
+        config: resolveArtifactsConfig(config),
+        model: modelProvider.Model,
+      }),
+      executionEnv,
+      resourcesPath: path.resolve(),
+      toolPermissionGate: new AgentToolPermissionGate({
+        policy: {
+          async decideToolCall() {
+            return { action: "ask", rule: "test.external_path", reason: "External path", riskSignals: [] };
+          },
+        },
+        sessionApprovals: new AgentSessionApprovalLeaseStore(),
+        toolPlanningMode: "native",
+      }),
+    });
+    const grant = createAgentToolAccessGrant({
+      authorizedToolNames: ["WorkspaceRead"],
+      exposedToolNames: ["WorkspaceRead"],
+      preferredToolNames: ["WorkspaceRead"],
+    });
+    const turn = createTurnState("external-read-session", "external-read-request", 1, grant, modelProvider);
+
+    try {
+      const lease = await substrate.leaseTurn({
+        sessionId: "external-read-session",
+        requestId: "external-read-request",
+        step: 1,
+        input: `Read ${externalFile}.`,
+        systemPrompt: "Use WorkspaceRead and report whether the file was read.",
+        toolAccessGrant: grant,
+        toolExposure: turn.context.toolExposure,
+        tokenBudget: turn.context.tokenBudget,
+        turnState: turn,
+      });
+      try {
+        await lease.session.setHistory([]);
+        await lease.session.prompt(`Read ${externalFile}.`, { source: "extension" });
+        expect(lease.session.getLastAssistantText()).toBe("The external file was read.");
+      } finally {
+        lease.session.dispose();
+      }
+
+      expect(compiler.requests).toHaveLength(2);
+      expect(JSON.stringify(compiler.requests[1]?.context.messages)).toContain(marker);
+      expect(turn.takeResourceAccessGrant("call_external_read")).toBeUndefined();
+    } finally {
+      await substrate.close();
+      await toolCallExecutor.close();
+    }
+  });
+
   test("runs an authorized host tool loop through the BAML provider and records its artifact", async () => {
     const workspaceRoot = await createTemporaryWorkspace();
     const config = testConfig(workspaceRoot);

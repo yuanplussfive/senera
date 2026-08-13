@@ -39,10 +39,12 @@
 | `approval.resolve_batch` | 按会话、请求和工具批次原子提交一组审批决定。 |
 | `config.get` | 获取当前有效系统配置及表单投影。 |
 | `config.update` | 保存完整系统配置，可选择同步 JSON 镜像。 |
+| `execution.resource.close` | 关闭并移除指定后台执行资源。 |
 | `execution.resource.inspect` | 按游标检查指定后台执行资源。 |
 | `execution.resource.list` | 列出指定会话拥有的后台执行资源。 |
 | `execution.resource.resize` | 调整指定 PTY 终端的字符网格尺寸。 |
 | `execution.resource.signal` | 向指定后台执行资源发送控制信号。 |
+| `execution.resource.start_terminal` | 在当前会话和工作区中创建一个可交互 PTY 终端。 |
 | `execution.resource.stop_all` | 停止指定会话拥有的全部活动后台执行资源。 |
 | `execution.resource.write` | 向指定后台终端或进程写入输入。 |
 | `interaction.input.resolve` | 提交 MCP 表单交互结果：接受并返回字段、明确拒绝或取消。 |

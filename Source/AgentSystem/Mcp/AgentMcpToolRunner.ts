@@ -46,6 +46,7 @@ export class AgentMcpToolRunner {
     args: Record<string, unknown>,
     context: AgentToolRunnerContext,
     reporter: AgentToolExecutionReporter,
+    executionEnv: SeneraExecutionEnv = this.options.executionEnv,
   ): Promise<AgentToolProcessRunResult> {
     if (tool.handler.kind !== "McpTool") {
       return mcpToolFailure(`工具不是 MCP 工具：${tool.name}`, {
@@ -70,7 +71,7 @@ export class AgentMcpToolRunner {
       const connection = {
         server: handler.server,
         requestTimeoutMs: toolExecution.TimeoutMs,
-        spawnPersistentProcess: this.options.executionEnv.spawnPersistentProcess,
+        spawnPersistentProcess: executionEnv.spawnPersistentProcess,
         executionProfile,
         terminationGraceMs: toolExecution.Resources.TerminationGraceMs,
         maxFrameBytes: Math.max(toolExecution.MaxStdoutBytes, toolExecution.MaxStderrBytes),

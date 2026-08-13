@@ -20,6 +20,7 @@ import {
 import { resolveSystemExtensionPackageFile } from "../Source/AgentSystem/SystemTools/AgentSystemExtensionPackagePath.js";
 import { AgentBundledHostToolInputContracts } from "../Source/AgentSystem/SystemTools/AgentBundledHostToolInputContracts.js";
 import { AgentOrchestrationConfigurationContracts } from "../Source/AgentSystem/Orchestration/AgentOrchestrationConfig.js";
+import { ensureObjectRootJsonSchema } from "../Source/AgentSystem/ToolContracts/AgentJsonSchemaObjectRoot.js";
 
 const check = process.argv.includes("--check");
 const outputRoot = path.join(process.cwd(), "System", "Extensions");
@@ -67,7 +68,10 @@ async function synchronizeExtension(definitions: readonly AgentSystemToolDefinit
     await synchronize(path.join(extensionRoot, "tools", `${definition.name}.tool.json`), {
       name: definition.name,
       description: metadata.description,
-      inputSchema: z.toJSONSchema(definition.input, { target: "draft-7", io: "input" }),
+      inputSchema: ensureObjectRootJsonSchema(
+        z.toJSONSchema(definition.input, { target: "draft-7", io: "input" }),
+        `System Tool ${definition.name} input`,
+      ),
       outputSchema: z.toJSONSchema(definition.output, { target: "draft-7", io: "output" }),
       observationProjection: observationPath,
       permissions: [...(metadata.permissions ?? [])],
@@ -204,7 +208,10 @@ async function synchronizeBundledHostToolInputContracts(): Promise<void> {
     AgentSystemToolContractSchema.parse(contractSource);
     await synchronize(contribution.contractPath, {
       ...(contractSource as Record<string, unknown>),
-      inputSchema: z.toJSONSchema(definition.input, { target: "draft-7", io: "input" }),
+      inputSchema: ensureObjectRootJsonSchema(
+        z.toJSONSchema(definition.input, { target: "draft-7", io: "input" }),
+        `Bundled Host Tool ${definition.capability} input`,
+      ),
     });
   }
 }

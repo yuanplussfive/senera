@@ -5,6 +5,7 @@ import {
   TerminalSidecarClientFrameDecoder,
   encodeTerminalSidecarServerMessage,
 } from "../protocol.js";
+import { applyTerminalSignal } from "../terminal-control.js";
 
 if (process.argv.length === 3 && process.argv[2] === "--probe") {
   process.stdout.write(`${JSON.stringify({ protocolVersion: SeneraTerminalSidecarProtocolVersion })}\n`);
@@ -77,12 +78,7 @@ async function withTerminal(requestId, operation, action) {
 
 function terminateTerminal(signal) {
   if (!terminal) return;
-  const strategies = {
-    interrupt: () => (process.platform === "win32" ? terminal.write("\u0003") : terminal.kill("SIGINT")),
-    terminate: () => terminal.kill("SIGTERM"),
-    kill: () => terminal.kill("SIGKILL"),
-  };
-  strategies[signal]();
+  applyTerminalSignal(terminal, signal);
 }
 
 function send(message, onFlushed) {

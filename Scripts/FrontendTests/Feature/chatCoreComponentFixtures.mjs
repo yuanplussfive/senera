@@ -194,3 +194,28 @@ export function createRun(overrides = {}) {
     ...overrides,
   };
 }
+
+export function stageMarker(requestId, message, kind, decisionKind, startedAt) {
+  return {
+    id: `${requestId}-assistant-message-${message.id}`,
+    kind,
+    title: message.content,
+    status: "done",
+    startedAt,
+    endedAt: startedAt,
+    decisionKind,
+  };
+}
+
+export function stageTool(id, toolName, startedAt, status = "done") {
+  return {
+    id,
+    kind: "tool",
+    title: `调用 ${toolName}`,
+    status,
+    startedAt,
+    endedAt: status === "running" ? undefined : startedAt,
+    toolName,
+    callId: id,
+  };
+}

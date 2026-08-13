@@ -6,6 +6,7 @@ import type { AgentToolExposureState } from "./AgentToolExposureState.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
 
 export type AgentToolCallExecutionResult =
   | {
@@ -40,6 +41,7 @@ export interface AgentToolCallExecutionContext {
   step?: number;
   onEvent?: AgentEventSink;
   toolAccessGrant: AgentToolAccessGrant;
+  resourceAccessGrant?: AgentResourceAccessGrant;
   toolExposure?: AgentToolExposureState;
   batchId?: string;
   signal?: AbortSignal;

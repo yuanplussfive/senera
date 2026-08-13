@@ -68,7 +68,7 @@
     "Scheduling": "Parallel",
     "Capabilities": { "Cancellation": true }
   },
-  "resources": [],
+  "resources": [{ "Capability": "senera.workspace.path", "Pointer": "/path", "Parameters": { "Intent": "read" } }],
   "sources": [],
   "search": {
     "Summary": "使用 Pi 原生 grep 和随包 ripgrep 搜索工作区内容，遵循 .gitignore。",

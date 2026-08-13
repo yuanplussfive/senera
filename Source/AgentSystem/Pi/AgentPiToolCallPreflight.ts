@@ -4,6 +4,7 @@ export interface AgentPiToolCallPreflightInput {
   readonly toolCallId: string;
   readonly toolName: string;
   readonly input: Record<string, unknown>;
+  readonly purpose?: string;
 }
 
 export interface AgentPiToolCallPreflightResult {
@@ -66,6 +67,10 @@ export class AgentPiToolCallPreflightCoordinator {
     const batch = this.batchesByCallId.get(callId);
     const index = batch?.calls.findIndex((call) => call.toolCallId === callId) ?? -1;
     return index >= 0 ? index : undefined;
+  }
+
+  purpose(callId: string): string | undefined {
+    return this.batchesByCallId.get(callId)?.calls.find((call) => call.toolCallId === callId)?.purpose;
   }
 
   async run(

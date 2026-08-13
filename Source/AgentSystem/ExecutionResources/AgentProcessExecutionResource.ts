@@ -7,8 +7,10 @@ import {
   type AgentExecutionResourceCorrelation,
   type AgentExecutionResourceEvent,
   type AgentExecutionResourceHandle,
+  type AgentExecutionResourceKind,
   type AgentExecutionResourceLimits,
   type AgentExecutionResourceOwner,
+  type AgentExecutionResourcePresentation,
   type AgentExecutionResourceSignal,
   type AgentExecutionResourceSnapshot,
   type AgentExecutionResourceState,
@@ -31,6 +33,7 @@ export interface AgentProcessExecutionResourceOptions {
   correlation: AgentExecutionResourceCorrelation;
   transport: AgentExecutionResourceTransport;
   command: string;
+  presentation?: AgentExecutionResourcePresentation;
   cwd: string;
   limits: AgentExecutionResourceLimits;
   maxDurationMs?: number;
@@ -41,8 +44,10 @@ export interface AgentProcessExecutionResourceOptions {
 export class AgentProcessExecutionResource implements AgentExecutionResourceHandle {
   readonly id: string;
   readonly owner: AgentExecutionResourceOwner;
+  readonly kind: AgentExecutionResourceKind;
   private readonly correlation: AgentExecutionResourceCorrelation;
   private readonly command: string;
+  private readonly presentation: AgentExecutionResourcePresentation | undefined;
   private readonly cwd: string;
   private readonly limits: AgentExecutionResourceLimits;
   private readonly now: () => number;
@@ -82,8 +87,10 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
   ) {
     this.id = options.id;
     this.owner = options.owner;
+    this.kind = transport.kind;
     this.correlation = options.correlation;
     this.command = options.command;
+    this.presentation = options.presentation;
     this.cwd = options.cwd;
     this.limits = options.limits;
     this.outputSpool = options.outputSpool;
@@ -137,6 +144,7 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
       exitCode: this.exitCode,
       signal: this.exitSignal,
       error: this.error,
+      presentation: this.presentation,
       terminal: this.transport.terminalMetadata,
     };
   }

@@ -1,5 +1,6 @@
 import { AgentEventKinds, createEventDetailId, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
+import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.js";
 import { projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 
 export class AgentLoopToolEventFactory {
@@ -36,7 +37,7 @@ export class AgentLoopToolEventFactory {
     index: number,
     toolName: string,
     callId: string,
-    metadata: { batchId?: string; startedAt?: string } = {},
+    metadata: { arguments?: unknown; origin?: AgentToolEventOrigin; batchId?: string; startedAt?: string } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallStarted,
@@ -45,6 +46,8 @@ export class AgentLoopToolEventFactory {
         index,
         toolName,
         callId,
+        ...(metadata.arguments === undefined ? {} : { arguments: metadata.arguments }),
+        origin: metadata.origin,
         batchId: metadata.batchId,
         ...(metadata.startedAt === undefined ? {} : { startedAt: metadata.startedAt }),
       },
@@ -58,7 +61,7 @@ export class AgentLoopToolEventFactory {
     toolName: string,
     callId: string,
     presentation?: AgentToolResultPresentation,
-    metadata: { batchId?: string; startedAt?: string; durationMs?: number } = {},
+    metadata: { origin?: AgentToolEventOrigin; batchId?: string; startedAt?: string; durationMs?: number } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallCompleted,
@@ -68,6 +71,7 @@ export class AgentLoopToolEventFactory {
         toolName,
         callId,
         presentation,
+        origin: metadata.origin,
         batchId: metadata.batchId,
         ...(metadata.startedAt === undefined ? {} : { startedAt: metadata.startedAt }),
         ...(metadata.durationMs === undefined ? {} : { durationMs: metadata.durationMs }),
@@ -83,7 +87,7 @@ export class AgentLoopToolEventFactory {
     callId: string,
     message: string,
     code?: string,
-    metadata: { batchId?: string; startedAt?: string; durationMs?: number } = {},
+    metadata: { origin?: AgentToolEventOrigin; batchId?: string; startedAt?: string; durationMs?: number } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallFailed,
@@ -95,6 +99,7 @@ export class AgentLoopToolEventFactory {
         ...projectAgentMessage("tool.callFailed"),
         message,
         code,
+        origin: metadata.origin,
         batchId: metadata.batchId,
         ...(metadata.startedAt === undefined ? {} : { startedAt: metadata.startedAt }),
         ...(metadata.durationMs === undefined ? {} : { durationMs: metadata.durationMs }),
@@ -109,7 +114,7 @@ export class AgentLoopToolEventFactory {
     toolName: string,
     callId: string,
     value: unknown,
-    metadata: { batchId?: string } = {},
+    metadata: { origin?: AgentToolEventOrigin; batchId?: string } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallResultDetail,
@@ -121,6 +126,7 @@ export class AgentLoopToolEventFactory {
         callId,
         batchId: metadata.batchId,
         value,
+        origin: metadata.origin,
       },
     };
   }

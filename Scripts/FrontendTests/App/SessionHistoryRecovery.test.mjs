@@ -22,7 +22,8 @@ afterEach(() => {
 });
 
 test.each([
-  ["open active session without history", historyRequestState(), true],
+  ["open active session without history", historyRequestState(), false],
+  ["open active session with history", historyRequestState({ sessionHasHistory: true }), true],
   ["catalog has not arrived", historyRequestState({ catalogSynced: false }), false],
   ["active session is not in the authoritative catalog", historyRequestState({ sessionExists: false }), false],
   ["closed socket", historyRequestState({ status: "closed" }), false],
@@ -56,7 +57,7 @@ test("automatically loads the active session exactly once after the socket opens
   const send = vi.fn(() => true);
   const handleRef = { current: null };
   useStore.setState({
-    sessions: { active: session("active") },
+    sessions: { active: session("active", [], { messageCount: 1 }) },
     sessionOrder: ["active"],
     activeSessionId: "active",
     catalogSynced: { sessions: true, presets: false },
@@ -142,6 +143,7 @@ function historyRequestState(overrides = {}) {
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
+    sessionHasHistory: false,
     sessionExists: true,
     sessionInOrder: true,
     status: "open",
@@ -149,17 +151,18 @@ function historyRequestState(overrides = {}) {
   };
 }
 
-function session(sessionId, runs = []) {
+function session(sessionId, runs = [], overrides = {}) {
   return {
     sessionId,
     title: sessionId,
     status: "ready",
     createdAt: "2026-07-12T00:00:00.000Z",
     updatedAt: "2026-07-12T00:00:00.000Z",
-    entryCount: 0,
-    messageCount: 0,
+    entryCount: overrides.entryCount ?? 0,
+    messageCount: overrides.messageCount ?? 0,
     messages: [],
     runs,
+    ...overrides,
   };
 }
 
@@ -178,7 +181,6 @@ function recoveryRun(requestId, revision) {
     visibleKind: "unknown",
     expectedOutputMode: "unknown",
     decisionMode: "none",
-    pendingToolArgsByName: {},
     recoverySource: "history",
   };
 }

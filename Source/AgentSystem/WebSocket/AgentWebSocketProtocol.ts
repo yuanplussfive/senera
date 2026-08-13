@@ -372,6 +372,25 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("execution.resource.start_terminal"),
+      ...AgentExecutionResourceSessionSchema,
+      cwd: z.string().trim().min(1).optional(),
+      columns: z
+        .number()
+        .int()
+        .min(SeneraTerminalDimensionLimits.minColumns)
+        .max(SeneraTerminalDimensionLimits.maxColumns)
+        .optional(),
+      rows: z
+        .number()
+        .int()
+        .min(SeneraTerminalDimensionLimits.minRows)
+        .max(SeneraTerminalDimensionLimits.maxRows)
+        .optional(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("execution.resource.list"),
       ...AgentExecutionResourceSessionSchema,
     })
@@ -411,6 +430,13 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       ...AgentExecutionResourceSessionSchema,
       resourceId: AgentExecutionResourceIdSchema,
       signal: z.enum(["interrupt", "terminate", "kill"]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("execution.resource.close"),
+      ...AgentExecutionResourceSessionSchema,
+      resourceId: AgentExecutionResourceIdSchema,
     })
     .strict(),
   z

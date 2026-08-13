@@ -9,6 +9,8 @@
   "approval.toolCallExpired": "工具调用审批已过期。",
   "approval.toolCallInterrupted": "用户中断了工具调用审批。",
   "approval.toolCallTitle": "允许工具调用：{toolName}",
+  "approval.externalResourceRequiresApproval": "本次工具调用将访问工作区外的宿主路径，需要你的批准。",
+  "approval.externalResourceUnresolved": "工作区外路径无法安全解析为稳定资源，不能授权本次访问。",
   "approval.waitExpired": "审批等待已过期。",
   "json.parseFailed": "JSON 解析失败。",
   "json.syntaxError": "JSON 语法错误：{filePath}",

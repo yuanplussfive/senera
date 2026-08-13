@@ -191,6 +191,11 @@ function gitMetadata(
         Pointer: "/repository",
         Parameters: { Intent: intent },
       },
+      {
+        Capability: AgentToolResourceCapabilityIds.WorkspacePath,
+        Pointer: "/repository",
+        Parameters: { Intent: "execute" },
+      },
     ],
     search,
   };

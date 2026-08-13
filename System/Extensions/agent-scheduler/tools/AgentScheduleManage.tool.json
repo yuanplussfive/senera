@@ -54,7 +54,8 @@
         "required": ["action"],
         "additionalProperties": false
       }
-    ]
+    ],
+    "type": "object"
   },
   "outputSchema": { "type": "object", "additionalProperties": true },
   "observationProjection": "observations/AgentScheduleManage.projection.json",

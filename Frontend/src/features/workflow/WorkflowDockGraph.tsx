@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentType } from "react";
+import { lazy, Suspense, useMemo, useState, type ComponentType } from "react";
 import {
   AlertTriangle,
   Braces,
@@ -20,16 +20,27 @@ import type {
   TimelineStepStatus,
 } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { cn, formatDuration } from "../../lib/util";
+import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
+import { cn, formatDurationMs } from "../../lib/util";
 import { Spinner } from "../../shared/ui";
 import { WorkflowStepDetail } from "./NodeDetailDrawer";
 import { runActivityLabel } from "./runActivityPresentation";
 import { readStepStatusLabel } from "./stepPresentation";
+import { projectToolActivity } from "./toolActivityPresentation";
+import {
+  projectWorkflowActivities,
+  projectWorkflowSteps,
+  readWorkflowStepDurationMs,
+} from "./workflowPresentationProjection";
 
 type DockWorkflowEntry =
   | { kind: "step"; id: string; order: number; step: TimelineStep }
   | { kind: "batch"; id: string; order: number; steps: TimelineStep[]; tools: TimelineStep[] }
   | { kind: "activity"; id: string; order: number; activity: RunActivityRecord };
+
+const ToolStepInspector = lazy(() =>
+  import("./ToolStepInspector").then((module) => ({ default: module.ToolStepInspector })),
+);
 
 const StepKindIcon: Record<TimelineStepKind, ComponentType<{ className?: string }>> = {
   understand: MessageSquareText,
@@ -83,11 +94,13 @@ export function WorkflowDockGraph({ run }: { run: RunRecord }): JSX.Element {
 }
 
 export function projectDockWorkflow(run: RunRecord): DockWorkflowEntry[] {
-  const batches = collectDockToolBatches(run.steps);
+  const steps = projectWorkflowSteps(run);
+  const activities = projectWorkflowActivities(run);
+  const batches = collectDockToolBatches(steps);
   const emittedBatches = new Set<string>();
   const entries: DockWorkflowEntry[] = [];
 
-  run.steps.forEach((step, index) => {
+  steps.forEach((step, index) => {
     const batchId = step.toolBatch?.id;
     const batch = batchId ? batches.get(batchId) : undefined;
     if (batch) {
@@ -105,11 +118,11 @@ export function projectDockWorkflow(run: RunRecord): DockWorkflowEntry[] {
     entries.push({ kind: "step", id: `step:${step.id}`, order: readEntryOrder(step.startedAt, index), step });
   });
 
-  for (const [index, activity] of (run.activities ?? []).entries()) {
+  for (const [index, activity] of activities.entries()) {
     entries.push({
       kind: "activity",
       id: `activity:${activity.id}`,
-      order: readEntryOrder(activity.startedAt, run.steps.length + index),
+      order: readEntryOrder(activity.startedAt, steps.length + index),
       activity,
     });
   }
@@ -132,6 +145,7 @@ function DockStepNode({
   const title = readDockStepTitle(step);
   const summary = readDockStepSummary(step);
   const contentId = `dock-step-detail-${step.id}`;
+  const durationMs = readWorkflowStepDurationMs(step);
 
   return (
     <div
@@ -150,7 +164,7 @@ function DockStepNode({
           "group flex min-h-11 w-full min-w-0 items-start gap-2.5 rounded-md py-2 text-left transition-colors",
           nested ? "px-2" : "pl-0 pr-1.5",
           "hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-          expanded && "bg-surface-subtle/70",
+          expanded && "text-content-primary",
         )}
       >
         <DockNodeMarker status={step.status}>
@@ -167,8 +181,8 @@ function DockStepNode({
           </div>
           <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] leading-4 text-content-muted">
             {summary ? <span className="min-w-0 flex-1 truncate">{summary}</span> : <span className="flex-1" />}
-            {step.startedAt && step.endedAt ? (
-              <span className="shrink-0 tabular-nums">{formatDuration(step.startedAt, step.endedAt)}</span>
+            {durationMs !== undefined ? (
+              <span className="shrink-0 tabular-nums">{formatDurationMs(durationMs)}</span>
             ) : null}
           </div>
         </div>
@@ -181,12 +195,30 @@ function DockStepNode({
         />
       </button>
       {expanded ? (
-        <div id={contentId} className={cn("pb-3", nested ? "ml-7 pl-2" : "ml-5 border-l border-line-strong pl-4 pr-1")}>
-          <div className="border-y border-line-subtle bg-surface-subtle/35 px-3 py-4">
-            <WorkflowStepDetail step={step} />
-          </div>
+        <div
+          id={contentId}
+          className={cn("border-l border-line-subtle pb-3 pt-1", nested ? "ml-7 pl-3" : "ml-5 pl-4 pr-1")}
+        >
+          {step.kind === "tool" && step.toolName ? (
+            <Suspense fallback={<DockInspectorLoading />}>
+              <ToolStepInspector step={step} showHeader={false} />
+            </Suspense>
+          ) : (
+            <div className="py-3">
+              <WorkflowStepDetail step={step} />
+            </div>
+          )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function DockInspectorLoading(): JSX.Element {
+  return (
+    <div className="flex min-h-16 items-center gap-2 px-4 py-3 text-[11.5px] text-content-muted" role="status">
+      <Spinner size="xs" />
+      <span>{frontendMessage("ui.loading")}</span>
     </div>
   );
 }
@@ -201,7 +233,8 @@ function DockBatchNode({
   onToggle: () => void;
 }): JSX.Element {
   const [expandedStepIds, setExpandedStepIds] = useState<ReadonlySet<string>>(() => new Set());
-  const status = aggregateStepStatus(entry.steps);
+  const summary = summarizeBatchSteps(entry.tools);
+  const status = aggregateStepStatus(entry.tools);
   const mode = entry.tools[0]?.toolBatch?.executionMode;
   const title =
     mode === "parallel" && entry.tools.length > 1
@@ -209,7 +242,6 @@ function DockBatchNode({
       : mode === "sequential" && entry.tools.length > 1
         ? frontendMessage("workflow.feed.sequentialToolCalls", { count: entry.tools.length })
         : frontendMessage("workflow.feed.toolCalls", { count: entry.tools.length });
-  const completed = entry.tools.filter((step) => step.status === "done" || step.status === "failed").length;
   const contentId = `dock-batch-${entry.id.replace(/[^A-Za-z0-9_-]/g, "-")}`;
 
   return (
@@ -228,7 +260,7 @@ function DockBatchNode({
         className={cn(
           "group flex min-h-11 w-full min-w-0 items-start gap-2.5 rounded-md py-2 pl-0 pr-1.5 text-left transition-colors",
           "hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-          expanded && "bg-surface-subtle/70",
+          expanded && "text-content-primary",
         )}
       >
         <DockNodeMarker status={status} batch>
@@ -239,16 +271,32 @@ function DockBatchNode({
             <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium leading-5 text-content-primary">
               {title}
             </span>
-            <span className={cn("shrink-0 text-[10.5px] tabular-nums", statusTextClass(status))}>
-              {completed}/{entry.tools.length}
+            <span className="shrink-0 text-[10.5px] tabular-nums text-content-muted">
+              {summary.finished}/{summary.total}
             </span>
           </div>
-          <div className="mt-1 h-1 overflow-hidden rounded-full bg-line-subtle">
-            <span
-              className={cn("block h-full transition-[width] duration-300", progressClass(status))}
-              style={{ width: `${entry.tools.length > 0 ? (completed / entry.tools.length) * 100 : 0}%` }}
-            />
+          <div
+            className="mt-1 flex h-1 overflow-hidden rounded-full bg-line-subtle"
+            data-workflow-batch-progress
+            aria-label={readBatchProgressLabel(summary)}
+          >
+            <BatchProgressSegment kind="done" count={summary.done} total={summary.total} />
+            <BatchProgressSegment kind="failed" count={summary.failed} total={summary.total} />
+            <BatchProgressSegment kind="running" count={summary.running} total={summary.total} />
+            <BatchProgressSegment kind="cancelling" count={summary.cancelling} total={summary.total} />
           </div>
+          {summary.failed > 0 ? (
+            <div className="mt-1 flex items-center gap-2 text-[10.5px] tabular-nums">
+              {summary.done > 0 ? (
+                <span className="text-moss-600">
+                  {frontendFeatureMessage("workflow.dock.batchSucceeded", { count: summary.done })}
+                </span>
+              ) : null}
+              <span className="text-brick-600">
+                {frontendFeatureMessage("workflow.dock.batchFailed", { count: summary.failed })}
+              </span>
+            </div>
+          ) : null}
         </div>
         <ChevronDown
           className={cn(
@@ -311,7 +359,8 @@ function DockNodeMarker({
       className={cn(
         "relative z-10 mt-0.5 grid h-[19px] w-[19px] shrink-0 place-items-center rounded-full bg-surface-canvas ring-[3px] ring-surface-canvas",
         statusTextClass(status),
-        batch && "bg-accent-surface text-accent-content",
+        batch && status !== "failed" && "bg-accent-surface text-accent-content",
+        batch && status === "failed" && "bg-brick-50 text-brick-600",
       )}
       aria-hidden="true"
     >
@@ -345,6 +394,14 @@ function readDockStepTitle(step: TimelineStep): string {
   if (step.kind === "delegation" && step.scope?.agentName) {
     return frontendMessage("workflow.scope.agentNamed", { name: step.scope.agentName });
   }
+  if (step.kind === "tool" && step.toolName && step.toolOrigin) {
+    return projectToolActivity({
+      toolName: step.toolName,
+      origin: step.toolOrigin,
+      arguments: step.toolArgs,
+      status: step.status === "failed" ? "failed" : step.status === "done" ? "completed" : "active",
+    });
+  }
   return step.title;
 }
 
@@ -366,11 +423,70 @@ function readEntryOrder(timestamp: string | undefined, sequence: number): number
 }
 
 function aggregateStepStatus(steps: readonly TimelineStep[]): TimelineStepStatus {
-  if (steps.some((step) => step.status === "failed")) return "failed";
   if (steps.some((step) => step.status === "running")) return "running";
   if (steps.some((step) => step.status === "cancelling")) return "cancelling";
   if (steps.some((step) => step.status === "pending")) return "pending";
+  if (steps.length > 0 && steps.every((step) => step.status === "failed")) return "failed";
   return "done";
+}
+
+interface BatchStepSummary {
+  readonly total: number;
+  readonly done: number;
+  readonly failed: number;
+  readonly running: number;
+  readonly cancelling: number;
+  readonly pending: number;
+  readonly finished: number;
+}
+
+function summarizeBatchSteps(steps: readonly TimelineStep[]): BatchStepSummary {
+  const summary = {
+    total: steps.length,
+    done: 0,
+    failed: 0,
+    running: 0,
+    cancelling: 0,
+    pending: 0,
+  };
+  for (const step of steps) summary[step.status] += 1;
+  return { ...summary, finished: summary.done + summary.failed };
+}
+
+function BatchProgressSegment({
+  kind,
+  count,
+  total,
+}: {
+  kind: "done" | "failed" | "running" | "cancelling";
+  count: number;
+  total: number;
+}): JSX.Element | null {
+  if (count === 0 || total === 0) return null;
+  const className = {
+    done: "bg-moss-500",
+    failed: "bg-brick-500",
+    running: "bg-umber-500",
+    cancelling: "bg-accent-solid",
+  }[kind];
+  return (
+    <span
+      className={cn("block h-full transition-[width] duration-300", className)}
+      style={{ width: `${(count / total) * 100}%` }}
+      data-workflow-batch-segment={kind}
+      data-count={count}
+      aria-hidden="true"
+    />
+  );
+}
+
+function readBatchProgressLabel(summary: BatchStepSummary): string {
+  return [
+    frontendFeatureMessage("workflow.dock.batchSucceeded", { count: summary.done }),
+    frontendFeatureMessage("workflow.dock.batchFailed", { count: summary.failed }),
+    frontendFeatureMessage("workflow.dock.batchRunning", { count: summary.running + summary.cancelling }),
+    frontendFeatureMessage("workflow.dock.batchPending", { count: summary.pending }),
+  ].join(" · ");
 }
 
 function statusTextClass(status: TimelineStepStatus): string {
@@ -379,13 +495,6 @@ function statusTextClass(status: TimelineStepStatus): string {
   if (status === "cancelling") return "text-accent-content";
   if (status === "done") return "text-moss-600";
   return "text-content-muted";
-}
-
-function progressClass(status: TimelineStepStatus): string {
-  if (status === "failed") return "bg-brick-500";
-  if (status === "running") return "bg-umber-500";
-  if (status === "cancelling") return "bg-accent-solid";
-  return "bg-moss-500";
 }
 
 function toggleSetEntry(values: ReadonlySet<string>, value: string): ReadonlySet<string> {
