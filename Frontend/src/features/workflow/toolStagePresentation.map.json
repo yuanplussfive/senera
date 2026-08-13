@@ -8,7 +8,6 @@
   "categories": [
     {
       "id": "tools",
-      "icon": "wrench",
       "match": {},
       "labels": {
         "active": "workflow.stage.tools.active",
@@ -17,7 +16,6 @@
     },
     {
       "id": "tool-discovery",
-      "icon": "search",
       "match": { "exactToolNames": ["ToolSearchTool"] },
       "labels": {
         "active": "workflow.stage.toolDiscovery.active",
@@ -26,7 +24,6 @@
     },
     {
       "id": "skill-search",
-      "icon": "book-search",
       "match": { "exactToolNames": ["SkillSearch", "SkillSearchTool"] },
       "labels": {
         "active": "workflow.stage.skillSearch.active",
@@ -35,7 +32,6 @@
     },
     {
       "id": "skill-management",
-      "icon": "book-open",
       "match": { "exactToolNames": ["SkillManage"] },
       "labels": {
         "active": "workflow.stage.skillManagement.active",
@@ -44,7 +40,6 @@
     },
     {
       "id": "workspace-search",
-      "icon": "folder-search",
       "match": { "exactToolNames": ["WorkspaceFind", "WorkspaceGrep"] },
       "labels": {
         "active": "workflow.stage.workspaceSearch.active",
@@ -53,7 +48,6 @@
     },
     {
       "id": "workspace-read",
-      "icon": "file-text",
       "match": {
         "exactToolNames": ["ArtifactReadTool", "WorkspaceList", "WorkspaceRead"]
       },
@@ -64,7 +58,6 @@
     },
     {
       "id": "workspace-write",
-      "icon": "pencil",
       "match": { "exactToolNames": ["WorkspaceApplyPatch"] },
       "labels": {
         "active": "workflow.stage.workspaceWrite.active",
@@ -73,7 +66,6 @@
     },
     {
       "id": "command",
-      "icon": "terminal",
       "match": { "exactToolNames": ["ShellCommandTool", "TerminalStartTool"] },
       "labels": {
         "active": "workflow.stage.command.active",
@@ -82,7 +74,6 @@
     },
     {
       "id": "background-wait",
-      "icon": "clock",
       "match": { "exactToolNames": ["AgentWait", "ExecutionResourceWait"] },
       "labels": {
         "active": "workflow.stage.backgroundWait.active",
@@ -91,7 +82,6 @@
     },
     {
       "id": "background-task",
-      "icon": "monitor-cog",
       "match": { "toolNamePrefixes": ["ExecutionResource"] },
       "labels": {
         "active": "workflow.stage.backgroundTask.active",
@@ -100,7 +90,6 @@
     },
     {
       "id": "version-control",
-      "icon": "git-branch",
       "match": { "toolNamePrefixes": ["Git"] },
       "labels": {
         "active": "workflow.stage.versionControl.active",
@@ -109,7 +98,6 @@
     },
     {
       "id": "delegation",
-      "icon": "workflow",
       "match": {
         "stepKinds": ["delegation"],
         "toolNamePrefixes": ["AgentContact", "AgentInput", "AgentResume", "AgentSpawn", "AgentStop"]
@@ -121,7 +109,6 @@
     },
     {
       "id": "memory",
-      "icon": "brain",
       "match": {
         "exactToolNames": ["LearningManage", "MemoryRecallTool", "MemoryWriteTool"]
       },
@@ -132,7 +119,6 @@
     },
     {
       "id": "schedule",
-      "icon": "calendar-clock",
       "match": { "exactToolNames": ["AgentScheduleManage"] },
       "labels": {
         "active": "workflow.stage.schedule.active",
@@ -141,7 +127,6 @@
     },
     {
       "id": "document",
-      "icon": "file-search",
       "match": { "exactToolNames": ["DocumentExtract"] },
       "labels": {
         "active": "workflow.stage.document.active",
@@ -150,7 +135,6 @@
     },
     {
       "id": "image",
-      "icon": "image",
       "match": { "exactToolNames": ["ImageAnalyze"] },
       "labels": {
         "active": "workflow.stage.image.active",
@@ -159,7 +143,6 @@
     },
     {
       "id": "interaction",
-      "icon": "message-circle",
       "match": { "exactToolNames": ["AskUserTool"] },
       "labels": {
         "active": "workflow.stage.interaction.active",

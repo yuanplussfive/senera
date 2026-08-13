@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
+import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { cn } from "../../lib/util";
 import { activeRunActivityLabel, runActivityLabel } from "../workflow/runActivityPresentation";
 import { projectToolActivity } from "../workflow/toolActivityPresentation";
@@ -111,7 +112,7 @@ function ConsoleHeader({
       <div className="flex min-w-0 items-center gap-2 text-[11px]">
         <span className={cn("h-2 w-2 shrink-0 rounded-full", statusDotClass(overallStatus))} aria-hidden="true" />
         <h2 className="min-w-0 flex-1 truncate font-sans text-[12px] font-semibold text-content-primary">
-          {frontendMessage("observability.diagnostic.consoleTitle")}
+          {frontendFeatureMessage("observability.diagnostic.consoleTitle")}
         </h2>
         <span className={cn("shrink-0 font-sans text-[10px]", statusTextClass(overallStatus))}>
           {statusLabel(overallStatus)}
@@ -248,7 +249,7 @@ function RuntimeConsole({
   return (
     <section aria-label={frontendMessage("observability.diagnostic.timeline")} data-runtime-waterfall>
       <div className="px-3 pb-1 pt-2 text-[9.5px] uppercase text-content-disabled sm:px-4">
-        {frontendMessage("observability.diagnostic.consoleStream")}
+        {frontendFeatureMessage("observability.diagnostic.consoleStream")}
       </div>
       <div data-runtime-terminal-stream>
         {model.spans.map((span) => (
@@ -293,7 +294,10 @@ function RuntimeConsoleRow({
         <time className="w-[54px] shrink-0 pt-px text-[9.5px] tabular-nums text-content-disabled">
           {formatConsoleTime(span.startedAt)}
         </time>
-        <span className={cn("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", statusDotClass(span.status))} aria-hidden="true" />
+        <span
+          className={cn("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", statusDotClass(span.status))}
+          aria-hidden="true"
+        />
         <span className="min-w-0 flex-1 font-sans text-[11px] leading-[17px] text-content-secondary group-hover:text-content-primary">
           {label}
         </span>
@@ -309,11 +313,17 @@ function RuntimeConsoleRow({
 
 function RuntimeConsoleDetail({ span, nowEpoch }: { span: RuntimeDiagnosticSpan; nowEpoch: number }): JSX.Element {
   const values = [
-    [frontendMessage("observability.diagnostic.detail.type"), span.source === "tool" ? toolOriginLabel(span) : frontendMessage(SourceMessageKeys.activity)],
-    [frontendMessage("observability.diagnostic.detail.status"), statusLabel(span.status)],
-    [frontendMessage("observability.diagnostic.detail.duration"), formatSpanDuration(span, nowEpoch)],
-    [frontendMessage("observability.diagnostic.detail.step"), span.step === undefined ? undefined : String(span.step)],
-    [frontendMessage("observability.diagnostic.detail.callId"), span.callId],
+    [
+      frontendFeatureMessage("observability.diagnostic.detail.type"),
+      span.source === "tool" ? toolOriginLabel(span) : frontendMessage(SourceMessageKeys.activity),
+    ],
+    [frontendFeatureMessage("observability.diagnostic.detail.status"), statusLabel(span.status)],
+    [frontendFeatureMessage("observability.diagnostic.detail.duration"), formatSpanDuration(span, nowEpoch)],
+    [
+      frontendFeatureMessage("observability.diagnostic.detail.step"),
+      span.step === undefined ? undefined : String(span.step),
+    ],
+    [frontendFeatureMessage("observability.diagnostic.detail.callId"), span.callId],
   ] as const;
   return (
     <div className="pb-2 pl-[88px] pr-4 text-[9.5px] leading-4 text-content-muted" data-runtime-span-detail>
@@ -323,7 +333,9 @@ function RuntimeConsoleDetail({ span, nowEpoch }: { span: RuntimeDiagnosticSpan;
             <span className="w-12 shrink-0 text-content-disabled">{label}</span>
             <span className="min-w-0 break-all text-content-secondary">{value}</span>
           </div>
-        ) : [],
+        ) : (
+          []
+        ),
       )}
     </div>
   );
@@ -381,7 +393,7 @@ function statusLabel(status: RuntimeDiagnosticHealth | RuntimeDiagnosticSpan["st
 
 function healthStatusLabel(id: keyof typeof HealthMessageKeys, status: RuntimeDiagnosticHealth): string {
   if (status !== "unknown" || id === "connection") return statusLabel(status);
-  return frontendMessage("observability.diagnostic.status.idle");
+  return frontendFeatureMessage("observability.diagnostic.status.idle");
 }
 
 function formatSpanDuration(span: RuntimeDiagnosticSpan, nowEpoch: number): string {

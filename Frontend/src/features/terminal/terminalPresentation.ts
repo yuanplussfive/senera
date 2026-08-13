@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import type { ITheme } from "@xterm/xterm";
 import type {
   ExecutionResourceSnapshotData,
@@ -6,19 +5,7 @@ import type {
   ExecutionResourceTerminalData,
 } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-
-export const TerminalSurfaceStyle = {
-  "--terminal-canvas": "var(--theme-code-editor-bg)",
-  "--terminal-chrome": "var(--surface-subtle)",
-  "--terminal-elevated": "var(--surface-raised)",
-  "--terminal-border": "var(--line-default)",
-  "--terminal-separator": "var(--line-subtle)",
-  "--terminal-foreground": "var(--theme-code-editor-fg)",
-  "--terminal-muted": "var(--content-secondary)",
-  "--terminal-subtle": "var(--content-muted)",
-  "--terminal-accent": "var(--accent-solid)",
-  "--terminal-hover": "var(--surface-hover)",
-} as CSSProperties;
+import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 
 export const TerminalXtermTheme = {
   background: "#101310",
@@ -95,17 +82,18 @@ export function supportsTerminalCapability(
 export function terminalTabLabel(resource: ExecutionResourceSnapshotData): string {
   const explicitTitle = resource.presentation?.title?.trim();
   if (explicitTitle) return explicitTitle;
-  if (resource.presentation?.purpose === "command-task") return frontendMessage("terminal.kind.commandTask");
-  if (resource.terminal?.shellDialect === "powershell") return frontendMessage("terminal.kind.powershell");
-  if (resource.terminal?.shellDialect === "posix-sh") return frontendMessage("terminal.kind.shell");
+  if (resource.presentation?.purpose === "command-task") return frontendFeatureMessage("terminal.kind.commandTask");
+  if (resource.terminal?.shellDialect === "powershell") return frontendFeatureMessage("terminal.kind.powershell");
+  if (resource.terminal?.shellDialect === "posix-sh") return frontendFeatureMessage("terminal.kind.shell");
   return frontendMessage("terminal.kind.process");
 }
 
 export function terminalPurposeLabel(resource: ExecutionResourceSnapshotData): string {
-  if (resource.presentation?.purpose === "command-task") return frontendMessage("terminal.kind.commandTask");
-  if (resource.presentation?.purpose === "interactive-shell") return frontendMessage("terminal.kind.interactiveShell");
+  if (resource.presentation?.purpose === "command-task") return frontendFeatureMessage("terminal.kind.commandTask");
+  if (resource.presentation?.purpose === "interactive-shell")
+    return frontendFeatureMessage("terminal.kind.interactiveShell");
   return resource.kind === "terminal"
-    ? frontendMessage("terminal.kind.interactiveShell")
+    ? frontendFeatureMessage("terminal.kind.interactiveShell")
     : frontendMessage("terminal.kind.process");
 }
 

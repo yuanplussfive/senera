@@ -8,6 +8,7 @@ import {
 } from "../../store/sessionStore";
 import { truncate } from "../../store/session/sessionPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { activeRunActivityLabel, runActivityLabel, runActivityPresentationPriority } from "./runActivityPresentation";
 import {
   isWorkflowLiveActivityVisible,
@@ -429,7 +430,7 @@ function mapHeadlineItem(
     id: "live",
     kind: "trace",
     status: "running",
-    title: frontendMessage("workflow.feed.thinking"),
+    title: frontendFeatureMessage("workflow.feed.thinking"),
   };
 }
 
@@ -462,7 +463,9 @@ function summarizeToolGroup(steps: TimelineStep[], items: FeedItem[]): { label: 
   const toolSteps = steps.filter(
     (step): step is TimelineStep & { toolName: string } => step.kind === "tool" && Boolean(step.toolName),
   );
-  const actionStatus = items.some((item) => item.status === "running" || item.status === "pending" || item.status === "cancelling")
+  const actionStatus = items.some(
+    (item) => item.status === "running" || item.status === "pending" || item.status === "cancelling",
+  )
     ? "active"
     : "completed";
   const actionSummary = projectToolBatchSummary(toolSteps, actionStatus, { completed: done, failed });
@@ -481,9 +484,7 @@ function summarizeToolGroup(steps: TimelineStep[], items: FeedItem[]): { label: 
         : undefined;
   const failedLabel = failed > 0 ? frontendMessage("workflow.feed.failedCount", { count: failed }) : undefined;
   const resultLabel =
-    failed > 0
-      ? frontendMessage("workflow.feed.toolBatchResult", { completed: done, failed })
-      : undefined;
+    failed > 0 ? frontendFeatureMessage("workflow.feed.toolBatchResult", { completed: done, failed }) : undefined;
   return {
     label,
     meta: [modeLabel, resultLabel ?? progress, failedLabel && !resultLabel ? failedLabel : undefined]
@@ -654,7 +655,7 @@ function derivePendingLabel(run: RunRecord, activeStep?: TimelineStep, latestDec
   }
 
   return run.status === "running"
-    ? frontendMessage("workflow.feed.thinking")
+    ? frontendFeatureMessage("workflow.feed.thinking")
     : frontendMessage("workflow.feed.waitingOutput");
 }
 

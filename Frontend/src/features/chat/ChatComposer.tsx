@@ -16,6 +16,7 @@ import type { UploadAttachmentData, ModelProviderListItem } from "../../api/even
 import type { UploadProgress } from "../../api/uploadClient";
 import { cn, formatFileSize } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendChatMessage } from "../../i18n/frontendChatMessageCatalog";
 import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { useResponsiveMode } from "../../shared/responsive";
 import { MotionButton, MotionList, MotionListItem } from "../../shared/motion";
@@ -231,8 +232,8 @@ export function ChatComposer({
               <DropdownMenu open={toolkitOpen} onOpenChange={setToolkitOpen}>
                 <DropdownMenuTrigger asChild disabled={disabled || running || cancelling}>
                   <IconButton
-                    label={frontendMessage("chat.composer.toolkit.tooltip")}
-                    tooltip={frontendMessage("chat.composer.toolkit.tooltip")}
+                    label={frontendChatMessage("chat.composer.toolkit.tooltip")}
+                    tooltip={frontendChatMessage("chat.composer.toolkit.tooltip")}
                     tooltipSide="top"
                     tone="muted"
                     disabled={disabled || running || cancelling}
@@ -247,7 +248,7 @@ export function ChatComposer({
                     icon={<Paperclip className="h-4 w-4" />}
                     onSelect={() => fileInputRef.current?.click()}
                   >
-                    {frontendMessage("chat.composer.toolkit.fileAndImage")}
+                    {frontendChatMessage("chat.composer.toolkit.fileAndImage")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -256,7 +257,7 @@ export function ChatComposer({
                       openPresetAfterToolkitCloseRef.current = true;
                     }}
                   >
-                    {frontendMessage("chat.composer.toolkit.preset")}
+                    {frontendChatMessage("chat.composer.toolkit.preset")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

@@ -4,6 +4,7 @@ import type { TimelineChildRunMessage, TimelineStep } from "../../store/sessionS
 import { friendlyDecisionKind } from "../../store/sessionStore";
 import { cn, formatTime, formatDurationMs } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { MotionIconSwap } from "../../shared/motion";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
 import { MetaLabel, Sheet, SheetContent, Skeleton, Tooltip, useClipboardCopy } from "../../shared/ui";
@@ -248,12 +249,7 @@ function ToolResultSummary({
 
   return (
     <Section label={frontendMessage("workflow.node.section.resultSummary")} copyValue={summary}>
-      <MarkdownRenderer
-        className="px-0 py-0"
-        contentClassName="text-[13px] leading-relaxed"
-        compact
-        lightweightCode
-      >
+      <MarkdownRenderer className="px-0 py-0" contentClassName="text-[13px] leading-relaxed" compact lightweightCode>
         {summary}
       </MarkdownRenderer>
     </Section>
@@ -273,7 +269,7 @@ function TechnicalDetails({ step }: { step: TimelineStep }): JSX.Element {
         aria-controls={contentId}
         onClick={() => setExpanded((current) => !current)}
       >
-        <span className="flex-1">{frontendMessage("workflow.node.technicalDetails")}</span>
+        <span className="flex-1">{frontendFeatureMessage("workflow.node.technicalDetails")}</span>
         <ChevronDown
           className={cn("h-3.5 w-3.5 text-content-muted transition-transform", expanded && "rotate-180")}
           aria-hidden="true"
@@ -361,7 +357,6 @@ function ToolResultTechnicalDetails({
           <span className="break-all font-mono text-[12px] text-ink-500">{presentation.artifactUri}</span>
         </Section>
       ) : null}
-
     </>
   );
 }
@@ -370,11 +365,11 @@ function hasTechnicalDetails(step: TimelineStep): boolean {
   const presentation = step.toolPresentation;
   return Boolean(
     step.toolResult !== undefined ||
-      step.detailJson !== undefined ||
-      presentation?.artifactUri ||
-      presentation?.facts.length ||
-      presentation?.evidence.length ||
-      presentation?.changes.length,
+    step.detailJson !== undefined ||
+    presentation?.artifactUri ||
+    presentation?.facts.length ||
+    presentation?.evidence.length ||
+    presentation?.changes.length,
   );
 }
 

@@ -1,28 +1,8 @@
 import {
-  BookOpen,
-  BookOpenText,
-  Brain,
-  CalendarClock,
-  Clock3,
-  FileSearch,
-  FileText,
-  FolderSearch,
-  GitBranch,
-  Image,
-  MessageCircle,
-  MonitorCog,
-  Pencil,
-  Search,
-  Terminal,
-  Workflow,
-  Wrench,
-  type LucideIcon,
-} from "lucide-react";
-import {
-  frontendMessage,
-  isFrontendMessageKey,
-  type FrontendMessageKey,
-} from "../../i18n/frontendMessageCatalog";
+  frontendFeatureMessage,
+  isFrontendFeatureMessageKey,
+  type FrontendFeatureMessageKey,
+} from "../../i18n/frontendFeatureMessageCatalog";
 import type { TimelineStep, TimelineStepKind, TimelineStepStatus } from "../../store/sessionStore";
 import RawToolStagePresentationMap from "./toolStagePresentation.map.json";
 import { projectToolActivity, projectToolBatchSummary, type ToolActivityStatus } from "./toolActivityPresentation";
@@ -31,7 +11,6 @@ export type ToolStageStatus = TimelineStepStatus | "neutral";
 
 export interface ToolStagePresentation {
   category: string;
-  icon: LucideIcon;
   mode: "single-tool" | "semantic-batch";
   status: ToolStageStatus;
   title: string;
@@ -44,13 +23,12 @@ export interface ToolStagePresentation {
 }
 
 interface ToolStageLabels {
-  active: FrontendMessageKey;
-  completed: FrontendMessageKey;
+  active: FrontendFeatureMessageKey;
+  completed: FrontendFeatureMessageKey;
 }
 
 interface ToolStageCategoryRule {
   id: string;
-  icon: keyof typeof ToolStageIconCatalog;
   match: {
     exactToolNames?: string[];
     toolNamePrefixes?: string[];
@@ -66,30 +44,12 @@ interface ToolStagePresentationMap {
   categories: ToolStageCategoryRule[];
 }
 
-const ToolStageIconCatalog = {
-  "book-open": BookOpen,
-  "book-search": BookOpenText,
-  brain: Brain,
-  "calendar-clock": CalendarClock,
-  clock: Clock3,
-  "file-search": FileSearch,
-  "file-text": FileText,
-  "folder-search": FolderSearch,
-  "git-branch": GitBranch,
-  image: Image,
-  "message-circle": MessageCircle,
-  "monitor-cog": MonitorCog,
-  pencil: Pencil,
-  search: Search,
-  terminal: Terminal,
-  workflow: Workflow,
-  wrench: Wrench,
-} as const satisfies Record<string, LucideIcon>;
-
 const ToolStagePresentationMap = parseToolStagePresentationMap(RawToolStagePresentationMap);
-const FailedToolStageLabel: FrontendMessageKey = "workflow.stage.tools.failed";
+const FailedToolStageLabel: FrontendFeatureMessageKey = "workflow.stage.tools.failed";
 
-export function projectToolStagePresentation(run: { readonly steps: readonly TimelineStep[] }): ToolStagePresentation | undefined {
+export function projectToolStagePresentation(run: {
+  readonly steps: readonly TimelineStep[];
+}): ToolStagePresentation | undefined {
   const executionSteps = run.steps.filter(isStageExecutionStep);
   if (executionSteps.length === 0) return undefined;
 
@@ -105,9 +65,9 @@ export function projectToolStagePresentation(run: { readonly steps: readonly Tim
   );
   const category = singleToolStep
     ? resolveCategory(singleToolStep)
-      : categoryIds.size === 1
-        ? readCategory([...categoryIds][0]!)
-        : readCategory(ToolStagePresentationMap.defaultCategory);
+    : categoryIds.size === 1
+      ? readCategory([...categoryIds][0]!)
+      : readCategory(ToolStagePresentationMap.defaultCategory);
   const status = summarizeStageStatus(executionSteps);
   const counts = summarizeStageCounts(semanticSteps);
   const labels = singleToolStep ? ToolStagePresentationMap.singleToolLabels : category.labels;
@@ -121,15 +81,13 @@ export function projectToolStagePresentation(run: { readonly steps: readonly Tim
       })
     : undefined;
   const batchTitle = !singleToolStep ? projectToolBatchTitle(semanticSteps, status, counts) : undefined;
-  const actionSummary =
-    singleToolStep
-      ? activityTitle ?? frontendMessage(labelKey, { toolName: singleToolStep.toolName })
-      : batchTitle ?? frontendMessage(labelKey);
+  const actionSummary = singleToolStep
+    ? (activityTitle ?? frontendFeatureMessage(labelKey, { toolName: singleToolStep.toolName }))
+    : (batchTitle ?? frontendFeatureMessage(labelKey));
   const intent = summarizeStageIntent(semanticSteps);
 
   return {
     category: category.id,
-    icon: ToolStageIconCatalog[category.icon],
     mode: singleToolStep ? "single-tool" : "semantic-batch",
     status,
     title: intent ?? actionSummary,
@@ -139,11 +97,9 @@ export function projectToolStagePresentation(run: { readonly steps: readonly Tim
 }
 
 function summarizeStageIntent(steps: readonly TimelineStep[]): string | undefined {
-  const intents = [...new Set(
-    steps
-      .map((step) => compactIntent(step.purpose))
-      .filter((value): value is string => Boolean(value)),
-  )];
+  const intents = [
+    ...new Set(steps.map((step) => compactIntent(step.purpose)).filter((value): value is string => Boolean(value))),
+  ];
   return intents.length === 1 ? intents[0] : undefined;
 }
 
@@ -164,7 +120,9 @@ function projectToolBatchTitle(
   status: ToolStageStatus,
   counts: { readonly total: number; readonly completed: number; readonly failed: number },
 ): string | undefined {
-  const toolSteps = steps.filter((step): step is TimelineStep & { toolName: string } => step.kind === "tool" && Boolean(step.toolName));
+  const toolSteps = steps.filter(
+    (step): step is TimelineStep & { toolName: string } => step.kind === "tool" && Boolean(step.toolName),
+  );
   if (toolSteps.length === 0) return undefined;
   const actionStatus = status === "running" || status === "cancelling" || status === "pending" ? "active" : "completed";
   return projectToolBatchSummary(toolSteps, actionStatus, counts);
@@ -231,11 +189,7 @@ function readCategory(id: string): ToolStageCategoryRule {
 function parseToolStagePresentationMap(value: unknown): ToolStagePresentationMap {
   if (!value || typeof value !== "object") throw new Error("Tool stage presentation map must be an object.");
   const record = value as Record<string, unknown>;
-  if (
-    record.version !== 1 ||
-    typeof record.defaultCategory !== "string" ||
-    !Array.isArray(record.categories)
-  ) {
+  if (record.version !== 1 || typeof record.defaultCategory !== "string" || !Array.isArray(record.categories)) {
     throw new Error("Tool stage presentation map has an unsupported structure.");
   }
   const categories = record.categories.map(parseCategoryRule);
@@ -251,12 +205,11 @@ function parseCategoryRule(value: unknown): ToolStageCategoryRule {
   const record = value as Record<string, unknown>;
   const labels = record.labels as Record<string, unknown> | undefined;
   const match = (record.match as Record<string, unknown> | undefined) ?? {};
-  if (typeof record.id !== "string" || !isToolStageIcon(record.icon) || !labels) {
-    throw new Error("Tool stage category is missing its identity, icon, or labels.");
+  if (typeof record.id !== "string" || !labels) {
+    throw new Error("Tool stage category is missing its identity or labels.");
   }
   return {
     id: record.id,
-    icon: record.icon,
     match: {
       exactToolNames: readStringArray(match.exactToolNames),
       toolNamePrefixes: readStringArray(match.toolNamePrefixes),
@@ -271,14 +224,10 @@ function parseLabels(value: unknown, source: string): ToolStageLabels {
     throw new Error(`Tool stage ${source} is missing its labels.`);
   }
   const labels = value as Record<string, unknown>;
-  if (!isFrontendMessageKey(labels.active) || !isFrontendMessageKey(labels.completed)) {
+  if (!isFrontendFeatureMessageKey(labels.active) || !isFrontendFeatureMessageKey(labels.completed)) {
     throw new Error(`Tool stage ${source} references an unknown message key.`);
   }
   return { active: labels.active, completed: labels.completed };
-}
-
-function isToolStageIcon(value: unknown): value is keyof typeof ToolStageIconCatalog {
-  return typeof value === "string" && Object.prototype.hasOwnProperty.call(ToolStageIconCatalog, value);
 }
 
 function readStringArray(value: unknown): string[] | undefined {

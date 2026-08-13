@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import type { ApprovalBatchReference, ApprovalDecision } from "../../api/approvalEventTypes";
 import type { ApprovalRunRecord } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendFeatureMessage, type FrontendFeatureMessageKey } from "../../i18n/frontendFeatureMessageCatalog";
 import { MotionList, MotionListItem } from "../../shared/motion";
 import { Button, MetaLabel, Spinner } from "../../shared/ui";
 
@@ -203,7 +204,7 @@ function ApprovalSummary({ approval, showName }: { approval: ApprovalRunRecord; 
 }
 
 function resourceIntentLabel(intent: NonNullable<ApprovalRunRecord["subject"]["resources"]>[number]["intent"]): string {
-  return frontendMessage(`approval.resource.${intent}`);
+  return frontendFeatureMessage(`approval.resource.${intent}` as FrontendFeatureMessageKey);
 }
 
 function RuleLabel({ value }: { value: string }): JSX.Element {

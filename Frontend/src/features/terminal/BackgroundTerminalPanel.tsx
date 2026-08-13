@@ -10,12 +10,9 @@ import { Plus, SquareTerminal } from "lucide-react";
 import type { ExecutionResourceSnapshotData } from "../../api/eventTypes";
 import type { ExecutionResourceOutputBuffer } from "../../app/useExecutionResourceCommands";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import {
-  isTerminalState,
-  readTerminalXtermTheme,
-  supportsTerminalCapability,
-  TerminalSurfaceStyle,
-} from "./terminalPresentation";
+import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
+import { isTerminalState, readTerminalXtermTheme, supportsTerminalCapability } from "./terminalPresentation";
+import { TerminalSurfaceStyle } from "./terminalTheme";
 import { TerminalSearchOverlay, TerminalStatusBar, TerminalTitlebar } from "./TerminalWorkbenchChrome";
 
 export interface BackgroundTerminalPanelProps {
@@ -133,7 +130,7 @@ export function BackgroundTerminalPanel(props: BackgroundTerminalPanelProps): JS
                 className="inline-flex h-7 items-center gap-1.5 rounded px-2 text-[11px] text-[var(--terminal-muted)] transition-colors hover:bg-[var(--terminal-hover)] hover:text-[var(--terminal-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--terminal-accent)]"
               >
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                {frontendMessage("terminal.resource.create")}
+                {frontendFeatureMessage("terminal.resource.create")}
               </button>
             </div>
           </div>

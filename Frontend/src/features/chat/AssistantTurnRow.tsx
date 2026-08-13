@@ -105,8 +105,7 @@ export function AssistantTurnRow({
   );
 }
 
-interface RenderedAssistantStage extends AssistantTurnStage {
-}
+type RenderedAssistantStage = AssistantTurnStage;
 
 function AssistantStage({
   stage,
@@ -140,10 +139,7 @@ function AssistantStage({
       ) : null}
       {stage.message ? <TurnMessageSegment message={stage.message} run={stage.run} /> : null}
       {stage.transientContent && stage.transientKind ? (
-        <AssistantMessageBody
-          message={{ kind: stage.transientKind, content: stage.transientContent }}
-          streaming
-        />
+        <AssistantMessageBody message={{ kind: stage.transientKind, content: stage.transientContent }} streaming />
       ) : null}
       {stage.current ? (
         <StageInteractionContent
@@ -255,11 +251,7 @@ function readTransientAnswer(turn: AssistantTurnListItem, terminalMessages: read
   return run.displayText;
 }
 
-function readTurnCopyContent(
-  turn: AssistantTurnListItem,
-  transientPreface: string,
-  transientAnswer: string,
-): string {
+function readTurnCopyContent(turn: AssistantTurnListItem, transientPreface: string, transientAnswer: string): string {
   const segments = turn.messages
     .map((message) => readAssistantDisplayContent(message, turn.run).trim())
     .filter(Boolean);
@@ -319,8 +311,9 @@ function projectCurrentStageRun(run?: AssistantTurnListItem["run"]): AssistantTu
   if (!run) return undefined;
   return {
     ...run,
-    steps: run.steps.filter((step) =>
-      step.kind === "tool" || step.kind === "delegation" || step.kind === "retry" || step.kind === "error"),
+    steps: run.steps.filter(
+      (step) => step.kind === "tool" || step.kind === "delegation" || step.kind === "retry" || step.kind === "error",
+    ),
     visibleText: "",
     displayText: "",
     visibleKind: "unknown",

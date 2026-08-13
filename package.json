@@ -6,7 +6,7 @@
     "Packages/*",
     "Frontend"
   ],
-  "main": "Dist/Apps/Desktop/Main.js",
+  "main": "Dist/Source/AgentSystem/Runtime/AgentSystemRuntime.js",
   "bin": {
     "senera": "Dist/Apps/SeneraCli.js"
   },

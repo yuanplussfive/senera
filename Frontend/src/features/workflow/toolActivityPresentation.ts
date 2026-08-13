@@ -1,8 +1,8 @@
 import {
-  frontendMessage,
-  isFrontendMessageKey,
-  type FrontendMessageKey,
-} from "../../i18n/frontendMessageCatalog";
+  frontendFeatureMessage,
+  isFrontendFeatureMessageKey,
+  type FrontendFeatureMessageKey,
+} from "../../i18n/frontendFeatureMessageCatalog";
 import type { ToolEventOrigin } from "../../api/eventTypes";
 import RawToolActivityMap from "./toolActivityPresentation.map.json";
 
@@ -16,14 +16,14 @@ export interface ToolActivityInput {
 }
 
 interface ToolActivityLabels {
-  readonly active: FrontendMessageKey;
-  readonly completed: FrontendMessageKey;
-  readonly failed: FrontendMessageKey;
+  readonly active: FrontendFeatureMessageKey;
+  readonly completed: FrontendFeatureMessageKey;
+  readonly failed: FrontendFeatureMessageKey;
 }
 
 interface ToolActivityBatchLabels {
-  readonly active: FrontendMessageKey;
-  readonly completed: FrontendMessageKey;
+  readonly active: FrontendFeatureMessageKey;
+  readonly completed: FrontendFeatureMessageKey;
 }
 
 interface ToolActivityRule extends ToolActivityLabels {
@@ -59,35 +59,40 @@ export interface ToolActivityInspection {
 
 export function projectToolActivityInspection(input: ToolActivityInput): ToolActivityInspection {
   const rule = resolveRule(input.toolName, input.origin?.capability);
-  const labels: ToolActivityLabels = input.origin?.kind === "mcp" ? ToolActivityMap.mcp : rule ?? ToolActivityMap.default;
+  const labels: ToolActivityLabels =
+    input.origin?.kind === "mcp" ? ToolActivityMap.mcp : (rule ?? ToolActivityMap.default);
   const command = rule?.argumentPath ? readStringAtPath(input.arguments, rule.argumentPath) : undefined;
   const toolName = displayToolName(input.toolName, input.origin);
-  const batchFallback = rule?.argumentPath && !command && input.status !== "failed"
-    ? projectToolBatchSummary(
-        [{ toolName: input.toolName, origin: input.origin }],
-        input.status === "active" ? "active" : "completed",
-      )
-    : undefined;
+  const batchFallback =
+    rule?.argumentPath && !command && input.status !== "failed"
+      ? projectToolBatchSummary(
+          [{ toolName: input.toolName, origin: input.origin }],
+          input.status === "active" ? "active" : "completed",
+        )
+      : undefined;
   return {
     label:
       batchFallback ??
-      frontendMessage(labels[input.status], {
+      frontendFeatureMessage(labels[input.status], {
         toolName,
         command: command ? compactPreview(command) : toolName,
       }),
-    category: input.origin?.kind === "mcp" ? "mcp" : rule?.id ?? "system",
+    category: input.origin?.kind === "mcp" ? "mcp" : (rule?.id ?? "system"),
     subjects: uniqueStrings((rule?.detailPaths ?? []).flatMap((path) => readStringsAtPath(input.arguments, path))),
   };
 }
 
 export function projectToolBatchAction(
-  input: Pick<ToolActivityInput, "toolName" | "origin"> & { readonly count: number; readonly status: "active" | "completed" },
+  input: Pick<ToolActivityInput, "toolName" | "origin"> & {
+    readonly count: number;
+    readonly status: "active" | "completed";
+  },
 ): { readonly category: string; readonly label: string } {
   const rule = resolveRule(input.toolName, input.origin?.capability);
-  const presentation = input.origin?.kind === "mcp" ? ToolActivityMap.mcp : rule ?? ToolActivityMap.default;
+  const presentation = input.origin?.kind === "mcp" ? ToolActivityMap.mcp : (rule ?? ToolActivityMap.default);
   return {
-    category: input.origin?.kind === "mcp" ? "mcp" : rule?.id ?? "system",
-    label: frontendMessage(presentation.batchLabels[input.status], {
+    category: input.origin?.kind === "mcp" ? "mcp" : (rule?.id ?? "system"),
+    label: frontendFeatureMessage(presentation.batchLabels[input.status], {
       count: input.count,
       toolName: displayToolName(input.toolName, input.origin),
     }),
@@ -104,9 +109,7 @@ export function projectToolBatchActions(
     const existing = grouped.get(action.category);
     grouped.set(action.category, { count: (existing?.count ?? 0) + 1, input: existing?.input ?? input });
   }
-  return [...grouped.values()].map(({ count, input }) =>
-    projectToolBatchAction({ ...input, count, status }).label,
-  );
+  return [...grouped.values()].map(({ count, input }) => projectToolBatchAction({ ...input, count, status }).label);
 }
 
 export function projectToolBatchSummary(
@@ -119,20 +122,22 @@ export function projectToolBatchSummary(
   const visibleActions = actions.slice(0, ToolActivityMap.batchSummaryMaxActions);
   const hiddenActionCount = actions.length - visibleActions.length;
   const visibleActionSummary = visibleActions.join(" · ");
-  const actionSummary = hiddenActionCount > 0
-    ? frontendMessage("workflow.stage.actions.withRemainder", {
-        actions: visibleActionSummary,
-        count: hiddenActionCount,
-      })
-    : visibleActionSummary;
-  const key = status === "active"
-    ? counts?.failed
-      ? "workflow.stage.actions.progress"
-      : "workflow.stage.actions.active"
-    : counts?.failed
-      ? "workflow.stage.actions.result"
-      : "workflow.stage.actions.completed";
-  return frontendMessage(key, {
+  const actionSummary =
+    hiddenActionCount > 0
+      ? frontendFeatureMessage("workflow.stage.actions.withRemainder", {
+          actions: visibleActionSummary,
+          count: hiddenActionCount,
+        })
+      : visibleActionSummary;
+  const key =
+    status === "active"
+      ? counts?.failed
+        ? "workflow.stage.actions.progress"
+        : "workflow.stage.actions.active"
+      : counts?.failed
+        ? "workflow.stage.actions.result"
+        : "workflow.stage.actions.completed";
+  return frontendFeatureMessage(key, {
     actions: actionSummary,
     completed: counts?.completed ?? 0,
     failed: counts?.failed ?? 0,
@@ -149,13 +154,16 @@ function resolveRule(toolName: string, capability: string | undefined): ToolActi
 function matchScore(rule: ToolActivityRule, toolName: string, capability: string | undefined): number {
   return Math.max(
     ...(capability
-      ? rule.exactCapabilities?.filter((value) => value === capability).map((value) => 4_000 + value.length) ?? []
+      ? (rule.exactCapabilities?.filter((value) => value === capability).map((value) => 4_000 + value.length) ?? [])
       : []),
     ...(capability
-      ? rule.capabilityPrefixes?.filter((value) => capability.startsWith(value)).map((value) => 3_000 + value.length) ?? []
+      ? (rule.capabilityPrefixes
+          ?.filter((value) => capability.startsWith(value))
+          .map((value) => 3_000 + value.length) ?? [])
       : []),
     ...(rule.exactToolNames?.filter((value) => value === toolName).map((value) => 2_000 + value.length) ?? []),
-    ...(rule.toolNamePrefixes?.filter((value) => toolName.startsWith(value)).map((value) => 1_000 + value.length) ?? []),
+    ...(rule.toolNamePrefixes?.filter((value) => toolName.startsWith(value)).map((value) => 1_000 + value.length) ??
+      []),
     0,
   );
 }
@@ -243,7 +251,12 @@ function uniqueStrings(values: readonly string[]): string[] {
 }
 
 function parseLabels(value: unknown, source: string): ToolActivityLabels {
-  if (!isRecord(value) || !isFrontendMessageKey(value.active) || !isFrontendMessageKey(value.completed) || !isFrontendMessageKey(value.failed)) {
+  if (
+    !isRecord(value) ||
+    !isFrontendFeatureMessageKey(value.active) ||
+    !isFrontendFeatureMessageKey(value.completed) ||
+    !isFrontendFeatureMessageKey(value.failed)
+  ) {
     throw new Error(`Tool activity ${source} has invalid message keys.`);
   }
   return { active: value.active, completed: value.completed, failed: value.failed };
@@ -256,10 +269,17 @@ function parsePresentation(
   if (!isRecord(value)) throw new Error(`Tool activity ${source} is not an object.`);
   const labels = isRecord(value.labels) ? value.labels : value;
   const batchLabels = value.batchLabels;
-  if (!isRecord(batchLabels) || !isFrontendMessageKey(batchLabels.active) || !isFrontendMessageKey(batchLabels.completed)) {
+  if (
+    !isRecord(batchLabels) ||
+    !isFrontendFeatureMessageKey(batchLabels.active) ||
+    !isFrontendFeatureMessageKey(batchLabels.completed)
+  ) {
     throw new Error(`Tool activity ${source} has invalid batch message keys.`);
   }
-  return { ...parseLabels(labels, source), batchLabels: { active: batchLabels.active, completed: batchLabels.completed } };
+  return {
+    ...parseLabels(labels, source),
+    batchLabels: { active: batchLabels.active, completed: batchLabels.completed },
+  };
 }
 
 function readStringArray(value: unknown): string[] | undefined {

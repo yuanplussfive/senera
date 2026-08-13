@@ -4,7 +4,7 @@ import { TooltipProvider, ErrorBoundary } from "./shared/ui";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
 import { buildUploadUrl } from "./api/uploadClient";
 import { useStore } from "./store/sessionStore";
-import { ChatPanel } from "./features/chat";
+import { ChatPanel } from "./features/chat/ChatPanel";
 import { SessionList } from "./features/session";
 import { AppShell, readAppShellRenderPlan, type WorkflowDockTool } from "./layout/AppShell";
 import { EventKinds, type EventEnvelope, type WsRequest } from "./api/eventTypes";

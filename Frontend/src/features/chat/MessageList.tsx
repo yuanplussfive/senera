@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Virtuoso } from "react-virtuoso";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
 import type { ApprovalBatchReference, ApprovalDecision } from "../../api/approvalEventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useMotionLevel } from "../../shared/motion";
 import { PerformanceMonitor } from "../../app/PerformanceMonitor";
-import { DeleteMessageDialog } from "./DeleteMessageDialog";
 import { AssistantTurnRow } from "./AssistantTurnRow";
+import { DeleteMessageDialog } from "./DeleteMessageDialog";
 import { MessageRow } from "./MessageRow";
 import { MotionMessageItem } from "./MotionMessageItem";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
@@ -54,6 +53,10 @@ const MESSAGE_LIST_BOTTOM_THRESHOLD = 80;
 const MESSAGE_ITEM_DEFAULT_HEIGHT = 132;
 const MESSAGE_LIST_OVERSCAN_PX = 240;
 const EVENT_NAVIGATION_SETTLE_MS = 320;
+
+const LazyMessageListVirtualizer = lazy(() =>
+  import("./MessageListVirtualizer").then((module) => ({ default: module.MessageListVirtualizer })),
+);
 
 type MessageListItem = ProjectedMessageListItem;
 
@@ -126,13 +129,15 @@ export function MessageList({
     () =>
       items.flatMap((item, index): ConversationEventSourceItem[] => {
         if (!isAssistantTurnListItem(item)) {
-          return [{
-            key: readMessageListItemKey(item, index),
-            requestId: item.requestId,
-            eventKind: readMessageConversationEventKind(item),
-            content: item.content,
-            itemIndex: index,
-          }];
+          return [
+            {
+              key: readMessageListItemKey(item, index),
+              requestId: item.requestId,
+              eventKind: readMessageConversationEventKind(item),
+              content: item.content,
+              itemIndex: index,
+            },
+          ];
         }
 
         const sources: ConversationEventSourceItem[] = item.messages.map((message, messageIndex) => ({
@@ -315,109 +320,108 @@ export function MessageList({
   return (
     <PerformanceMonitor id="MessageList" enabled={import.meta.env.DEV}>
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <Virtuoso
-          ref={autoScroll.ref}
-          scrollerRef={setChatContainerScrollerRef}
-          style={{ flex: 1, minHeight: 0 }}
-          data={items}
-          totalCount={items.length}
-          followOutput={autoScroll.followOutput}
-          atBottomStateChange={(atBottom) => {
-            autoScroll.atBottomStateChange(atBottom);
-            setIsAtBottom(atBottom);
-          }}
-          rangeChanged={(range) => {
-            setActiveEventIndex(readConversationEventIndex(conversationEvents, range.startIndex));
-          }}
-          totalListHeightChanged={autoScroll.totalListHeightChanged}
-          defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
-          initialTopMostItemIndex={{ index: Math.max(0, items.length - 1), align: "end" }}
-          atBottomThreshold={MESSAGE_LIST_BOTTOM_THRESHOLD}
-          overscan={{ main: MESSAGE_LIST_OVERSCAN_PX, reverse: MESSAGE_LIST_OVERSCAN_PX }}
-          computeItemKey={(index, item) => readMessageListItemKey(item, index)}
-          itemSize={measureMessageItemSize}
-          itemContent={(index, item) => {
-            const itemKey = readMessageListItemKey(item, index);
-            if (!item) return <div className="h-px" data-message-key={itemKey} />;
-            if (isAssistantTurnListItem(item)) {
-              const shouldHighlightCompletedStream = item.requestId === completedRunIdToHighlight;
-              const shouldAnimateMount = shouldHighlightCompletedStream || index >= items.length - 2;
+        <Suspense fallback={<MessageListVirtualizerLoadingState />}>
+          <LazyMessageListVirtualizer
+            ref={autoScroll.ref}
+            scrollerRef={setChatContainerScrollerRef}
+            style={{ flex: 1, minHeight: 0 }}
+            data={items}
+            totalCount={items.length}
+            followOutput={autoScroll.followOutput}
+            atBottomStateChange={(atBottom) => {
+              autoScroll.atBottomStateChange(atBottom);
+              setIsAtBottom(atBottom);
+            }}
+            rangeChanged={(range) => {
+              setActiveEventIndex(readConversationEventIndex(conversationEvents, range.startIndex));
+            }}
+            totalListHeightChanged={autoScroll.totalListHeightChanged}
+            defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
+            initialTopMostItemIndex={{ index: Math.max(0, items.length - 1), align: "end" }}
+            atBottomThreshold={MESSAGE_LIST_BOTTOM_THRESHOLD}
+            overscan={{ main: MESSAGE_LIST_OVERSCAN_PX, reverse: MESSAGE_LIST_OVERSCAN_PX }}
+            computeItemKey={(index, item) => readMessageListItemKey(item, index)}
+            itemSize={measureMessageItemSize}
+            itemContent={(index, item) => {
+              const itemKey = readMessageListItemKey(item, index);
+              if (!item) return <div className="h-px" data-message-key={itemKey} />;
+              if (isAssistantTurnListItem(item)) {
+                const shouldHighlightCompletedStream = item.requestId === completedRunIdToHighlight;
+                const shouldAnimateMount = shouldHighlightCompletedStream || index >= items.length - 2;
+                return (
+                  <div
+                    className="chat-message-item box-border w-full pb-3 pt-1"
+                    data-message-key={itemKey}
+                    ref={heightObserverRef}
+                  >
+                    <MotionMessageItem
+                      motionKey={item.key}
+                      animateOnMount={shouldAnimateMount}
+                      className={shouldHighlightCompletedStream ? "streaming-complete-highlight" : undefined}
+                    >
+                      <AssistantTurnRow
+                        sessionId={sessionId}
+                        turn={item}
+                        showInlineActions={showInlineMessageActions}
+                        approvalDisabled={approvalDisabled}
+                        onForkFromMessage={onForkFromMessage}
+                        onRegenerate={onRegenerate}
+                        onDeleteFromMessage={setDeleting}
+                        onViewWorkflow={onViewWorkflow}
+                        onResolveApproval={onResolveApproval}
+                        onResolveApprovalBatch={onResolveApprovalBatch}
+                        onResolveInteractionInput={onResolveInteractionInput}
+                      />
+                    </MotionMessageItem>
+                  </div>
+                );
+              }
+              const shouldAnimateMount = index >= items.length - 2;
               return (
                 <div
                   className="chat-message-item box-border w-full pb-3 pt-1"
                   data-message-key={itemKey}
                   ref={heightObserverRef}
                 >
-                  <MotionMessageItem
-                    motionKey={item.key}
-                    animateOnMount={shouldAnimateMount}
-                    className={shouldHighlightCompletedStream ? "streaming-complete-highlight" : undefined}
-                  >
-                    <AssistantTurnRow
-                      sessionId={sessionId}
-                      turn={item}
+                  <MotionMessageItem motionKey={item.id} animateOnMount={shouldAnimateMount}>
+                    <MessageRow
+                      message={item}
+                      run={item.requestId ? runsByRequestId.get(item.requestId) : undefined}
+                      uploadUrl={uploadUrl}
+                      onClickBubble={() => {
+                        if (item.role !== "user") return;
+                        if (!item.requestId) return;
+                        setEditing({ id: item.id, message: item });
+                        setDraft(item.content ?? "");
+                      }}
+                      isEditing={editing?.id === item.id}
+                      editDraft={editing?.id === item.id ? draft : ""}
+                      onEditDraftChange={setDraft}
+                      onCancelEdit={closeEditor}
+                      onSubmitEdit={() => {
+                        if (editing?.id !== item.id) return;
+                        const next = draft.trim();
+                        if (!next) return;
+                        onEditUserMessage(item, next);
+                        closeEditor();
+                      }}
+                      userProfile={userProfile}
                       showInlineActions={showInlineMessageActions}
-                      approvalDisabled={approvalDisabled}
-                      onForkFromMessage={onForkFromMessage}
-                      onRegenerate={onRegenerate}
-                      onDeleteFromMessage={setDeleting}
-                      onViewWorkflow={onViewWorkflow}
-                      onResolveApproval={onResolveApproval}
-                      onResolveApprovalBatch={onResolveApprovalBatch}
-                      onResolveInteractionInput={onResolveInteractionInput}
+                      onFork={() => onForkFromMessage(item)}
+                      onRegenerate={() => onRegenerate(item)}
+                      onDelete={() => setDeleting(item)}
+                      onViewWorkflow={() => onViewWorkflow(item)}
                     />
                   </MotionMessageItem>
                 </div>
               );
-            }
-            const shouldAnimateMount = index >= items.length - 2;
-            return (
-              <div
-                className="chat-message-item box-border w-full pb-3 pt-1"
-                data-message-key={itemKey}
-                ref={heightObserverRef}
-              >
-                <MotionMessageItem
-                  motionKey={item.id}
-                  animateOnMount={shouldAnimateMount}
-                >
-                  <MessageRow
-                    message={item}
-                    run={item.requestId ? runsByRequestId.get(item.requestId) : undefined}
-                    uploadUrl={uploadUrl}
-                    onClickBubble={() => {
-                      if (item.role !== "user") return;
-                      if (!item.requestId) return;
-                      setEditing({ id: item.id, message: item });
-                      setDraft(item.content ?? "");
-                    }}
-                    isEditing={editing?.id === item.id}
-                    editDraft={editing?.id === item.id ? draft : ""}
-                    onEditDraftChange={setDraft}
-                    onCancelEdit={closeEditor}
-                    onSubmitEdit={() => {
-                      if (editing?.id !== item.id) return;
-                      const next = draft.trim();
-                      if (!next) return;
-                      onEditUserMessage(item, next);
-                      closeEditor();
-                    }}
-                    userProfile={userProfile}
-                    showInlineActions={showInlineMessageActions}
-                    onFork={() => onForkFromMessage(item)}
-                    onRegenerate={() => onRegenerate(item)}
-                    onDelete={() => setDeleting(item)}
-                    onViewWorkflow={() => onViewWorkflow(item)}
-                  />
-                </MotionMessageItem>
-              </div>
-            );
-          }}
-          components={{
-            Header: () => <div className="h-6" />,
-            Footer: () => <div className="h-3" data-message-list-end-spacer />,
-          }}
-        />
+            }}
+            components={{
+              Header: () => <div className="h-6" />,
+              Footer: () => <div className="h-3" data-message-list-end-spacer />,
+            }}
+          />
+        </Suspense>
         <ConversationEventRail
           events={conversationEvents}
           itemKeys={itemKeys}
@@ -446,6 +450,10 @@ export function MessageList({
       </div>
     </PerformanceMonitor>
   );
+}
+
+function MessageListVirtualizerLoadingState(): JSX.Element {
+  return <div className="min-h-0 flex-1" aria-busy="true" data-message-list-loading />;
 }
 
 function shouldDeferTerminalMessage(message: ChatMessage, run: RunRecord): boolean {
@@ -492,11 +500,7 @@ function readStreamingConversationEventKind(
   }
 }
 
-function readTurnEventProgress(
-  messageIndex: number,
-  messageCount: number,
-  kind: ChatMessage["kind"],
-): number {
+function readTurnEventProgress(messageIndex: number, messageCount: number, kind: ChatMessage["kind"]): number {
   if (kind === "AssistantToolPreface") return Math.min(0.4, (messageIndex + 1) / (messageCount + 2));
   if (kind === "AssistantFinal" || kind === "AssistantAsk" || kind === "Error") return 0.82;
   return (messageIndex + 1) / (messageCount + 1);

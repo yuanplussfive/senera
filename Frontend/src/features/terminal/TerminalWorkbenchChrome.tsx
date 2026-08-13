@@ -14,6 +14,7 @@ import {
 import { useRef, type KeyboardEvent } from "react";
 import type { ExecutionResourceSnapshotData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { cn } from "../../lib/util";
 import {
   DropdownMenu,
@@ -31,8 +32,8 @@ import {
   terminalStatusLabel,
   terminalTabLabel,
   terminalPurposeLabel,
-  TerminalSurfaceStyle,
 } from "./terminalPresentation";
+import { TerminalSurfaceStyle } from "./terminalTheme";
 
 type TerminalSignal = "interrupt" | "terminate" | "kill";
 
@@ -126,8 +127,8 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
                     <span className="min-w-0 truncate">{label}</span>
                   </button>
                   <IconButton
-                    label={frontendMessage("terminal.resource.close")}
-                    tooltip={frontendMessage("terminal.resource.close")}
+                    label={frontendFeatureMessage("terminal.resource.close")}
+                    tooltip={frontendFeatureMessage("terminal.resource.close")}
                     size="sm"
                     onClick={() => props.onClose(resource.resourceId)}
                     className={cn(
@@ -151,8 +152,8 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
 
       <div className="flex shrink-0 items-center" data-workbench-interactive>
         <IconButton
-          label={frontendMessage("terminal.resource.create")}
-          tooltip={frontendMessage("terminal.resource.create")}
+          label={frontendFeatureMessage("terminal.resource.create")}
+          tooltip={frontendFeatureMessage("terminal.resource.create")}
           size="sm"
           onClick={() => props.onStartTerminal()}
           className={terminalToolbarButtonClassName(false)}
@@ -272,7 +273,7 @@ function TerminalDetails({ resource }: { resource: ExecutionResourceSnapshotData
   const details = resource.terminal
     ? [
         [frontendMessage("terminal.info.shell"), resource.terminal.shellDialect],
-        [frontendMessage("terminal.info.purpose"), terminalPurposeLabel(resource)],
+        [frontendFeatureMessage("terminal.info.purpose"), terminalPurposeLabel(resource)],
         [frontendMessage("terminal.info.backend"), resource.terminal.backend],
         [frontendMessage("terminal.info.boundary"), resource.terminal.effectiveBoundary],
         [frontendMessage("terminal.info.dimensions"), `${resource.terminal.columns}x${resource.terminal.rows}`],

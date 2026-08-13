@@ -1,6 +1,10 @@
 import { expect, test } from "vitest";
 import enUsMessages from "../../../Frontend/src/i18n/messages/en-US.json" with { type: "json" };
 import zhCnMessages from "../../../Frontend/src/i18n/messages/zh-CN.json" with { type: "json" };
+import enUsChatMessages from "../../../Frontend/src/i18n/messages/chat.en-US.json" with { type: "json" };
+import zhCnChatMessages from "../../../Frontend/src/i18n/messages/chat.zh-CN.json" with { type: "json" };
+import enUsFeatureMessages from "../../../Frontend/src/i18n/messages/feature.en-US.json" with { type: "json" };
+import zhCnFeatureMessages from "../../../Frontend/src/i18n/messages/feature.zh-CN.json" with { type: "json" };
 import {
   FrontendDefaultLocale,
   FrontendLocales,
@@ -10,10 +14,15 @@ import {
 } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 
 test("frontend i18n catalogs expose the same message keys across locales", () => {
-  const expectedKeys = Object.keys(zhCnMessages).sort();
-
-  expect(Object.keys(enUsMessages).sort()).toEqual(expectedKeys);
-  expect(new Set(expectedKeys).size).toBe(expectedKeys.length);
+  for (const [enUs, zhCn] of [
+    [enUsMessages, zhCnMessages],
+    [enUsChatMessages, zhCnChatMessages],
+    [enUsFeatureMessages, zhCnFeatureMessages],
+  ]) {
+    const expectedKeys = Object.keys(zhCn).sort();
+    expect(Object.keys(enUs).sort()).toEqual(expectedKeys);
+    expect(new Set(expectedKeys).size).toBe(expectedKeys.length);
+  }
 });
 
 test("frontend i18n resolves supported locales and falls back to default", () => {

@@ -20,6 +20,7 @@ import type {
   TimelineStepStatus,
 } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { cn, formatDurationMs } from "../../lib/util";
 import { Spinner } from "../../shared/ui";
 import { WorkflowStepDetail } from "./NodeDetailDrawer";
@@ -288,11 +289,11 @@ function DockBatchNode({
             <div className="mt-1 flex items-center gap-2 text-[10.5px] tabular-nums">
               {summary.done > 0 ? (
                 <span className="text-moss-600">
-                  {frontendMessage("workflow.dock.batchSucceeded", { count: summary.done })}
+                  {frontendFeatureMessage("workflow.dock.batchSucceeded", { count: summary.done })}
                 </span>
               ) : null}
               <span className="text-brick-600">
-                {frontendMessage("workflow.dock.batchFailed", { count: summary.failed })}
+                {frontendFeatureMessage("workflow.dock.batchFailed", { count: summary.failed })}
               </span>
             </div>
           ) : null}
@@ -481,10 +482,10 @@ function BatchProgressSegment({
 
 function readBatchProgressLabel(summary: BatchStepSummary): string {
   return [
-    frontendMessage("workflow.dock.batchSucceeded", { count: summary.done }),
-    frontendMessage("workflow.dock.batchFailed", { count: summary.failed }),
-    frontendMessage("workflow.dock.batchRunning", { count: summary.running + summary.cancelling }),
-    frontendMessage("workflow.dock.batchPending", { count: summary.pending }),
+    frontendFeatureMessage("workflow.dock.batchSucceeded", { count: summary.done }),
+    frontendFeatureMessage("workflow.dock.batchFailed", { count: summary.failed }),
+    frontendFeatureMessage("workflow.dock.batchRunning", { count: summary.running + summary.cancelling }),
+    frontendFeatureMessage("workflow.dock.batchPending", { count: summary.pending }),
   ].join(" · ");
 }
 

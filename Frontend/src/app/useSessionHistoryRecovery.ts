@@ -26,6 +26,7 @@ export function shouldRequestActiveSessionHistory({
   missingOnServerIds,
   pendingCreatedSessionIds,
   pendingDeletedSessionIds,
+  sessionHasHistory,
   sessionExists,
   sessionInOrder,
   status,
@@ -37,6 +38,7 @@ export function shouldRequestActiveSessionHistory({
   missingOnServerIds: Record<string, boolean>;
   pendingCreatedSessionIds: Record<string, boolean>;
   pendingDeletedSessionIds: Record<string, boolean>;
+  sessionHasHistory: boolean;
   sessionExists: boolean;
   sessionInOrder: boolean;
   status: SocketStatus;
@@ -47,6 +49,7 @@ export function shouldRequestActiveSessionHistory({
     !activeSessionId ||
     !sessionExists ||
     !sessionInOrder ||
+    !sessionHasHistory ||
     pendingCreatedSessionIds[activeSessionId] ||
     pendingDeletedSessionIds[activeSessionId]
   ) {
@@ -101,6 +104,10 @@ export function useSessionHistoryRecovery({
   const activeSessionPendingDeletion = useStore((state) =>
     Boolean(activeSessionId && state.pendingDeletedSessionIds[activeSessionId]),
   );
+  const activeSessionHasHistory = useStore((state) => {
+    const session = activeSessionId ? state.sessions[activeSessionId] : undefined;
+    return Boolean(session?.messageCount || session?.activeRequestId);
+  });
   useEffect(
     () => () => {
       for (const timer of historyTimeoutTimersRef.current.values()) window.clearTimeout(timer);
@@ -153,6 +160,7 @@ export function useSessionHistoryRecovery({
         missingOnServerIds: state.missingOnServerIds,
         pendingCreatedSessionIds: state.pendingCreatedSessionIds,
         pendingDeletedSessionIds: state.pendingDeletedSessionIds,
+        sessionHasHistory: activeSessionHasHistory,
         sessionExists: activeSessionExists,
         sessionInOrder: activeSessionInOrder,
         status,
@@ -165,6 +173,7 @@ export function useSessionHistoryRecovery({
     activeSessionExists,
     activeSessionId,
     activeSessionInOrder,
+    activeSessionHasHistory,
     activeSessionPendingCreation,
     activeSessionPendingDeletion,
     requestSessionHistory,

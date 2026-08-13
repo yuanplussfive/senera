@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useId, useMemo, useState, type AriaRole, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronDown, Circle, LoaderCircle, X, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, Circle, LoaderCircle, X } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { type RunRecord } from "../../store/sessionStore";
 import { deriveFeedModel, statusTextClass, type FeedGroup, type FeedItem } from "./feedModel";
 import { FeedGroupIconCatalog, FeedItemIconCatalog } from "./feedPresentation";
@@ -97,7 +98,6 @@ export function AgentExecutionStageFeed({ run }: { run: RunRecord }): JSX.Elemen
     ) : null;
   }
 
-  const Icon = presentation.icon;
   return (
     <div
       className="relative min-w-0"
@@ -112,7 +112,7 @@ export function AgentExecutionStageFeed({ run }: { run: RunRecord }): JSX.Elemen
         data-tool-stage-summary
       >
         <span className="mt-0.5 shrink-0">
-          <StageStatusIcon status={presentation.status} Icon={Icon} />
+          <StageStatusIcon status={presentation.status} />
         </span>
         <span className="min-w-0">
           <span className="flex min-w-0 items-baseline gap-2">
@@ -174,13 +174,7 @@ function FeedTimelineGroup({
   return <FeedGroupRows group={group} nowEpoch={nowEpoch} />;
 }
 
-function FeedGroupRows({
-  group,
-  nowEpoch,
-}: {
-  group: FeedGroup;
-  nowEpoch: number;
-}): JSX.Element {
+function FeedGroupRows({ group, nowEpoch }: { group: FeedGroup; nowEpoch: number }): JSX.Element {
   const variant = group.variant ?? "trace";
   const Icon = FeedGroupIconCatalog[variant];
 
@@ -268,9 +262,7 @@ function FeedGroupBlock({
         >
           <span className="min-w-0 flex-1 truncate text-[12.75px] font-medium text-content-primary">{group.label}</span>
           {group.meta ? (
-            <span className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted">
-              {group.meta}
-            </span>
+            <span className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted">{group.meta}</span>
           ) : null}
           <ChevronDown
             className={cn(
@@ -312,10 +304,7 @@ function TimelineFeedItem({ item, nowEpoch }: { item: FeedItem; nowEpoch: number
       <FeedItemContent
         item={item}
         nowEpoch={nowEpoch}
-        className={cn(
-          "min-h-5 pb-1",
-          item.status === "failed" && "-mt-1 border-l-2 border-brick-400 py-1 pl-2",
-        )}
+        className={cn("min-h-5 pb-1", item.status === "failed" && "-mt-1 border-l-2 border-brick-400 py-1 pl-2")}
       />
     </div>
   );
@@ -337,11 +326,7 @@ function FeedRow({
 
   if (expandable && detailMode === "inline") {
     return (
-      <div
-        className={cn("min-w-0 py-1.5", compact && "py-1")}
-        role="listitem"
-        data-feed-item-kind={item.kind}
-      >
+      <div className={cn("min-w-0 py-1.5", compact && "py-1")} role="listitem" data-feed-item-kind={item.kind}>
         <button
           type="button"
           className="group flex w-full min-w-0 items-start gap-2 rounded px-0.5 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
@@ -373,11 +358,7 @@ function FeedRow({
   }
 
   return (
-    <div
-      className={cn("min-w-0 py-1.5", compact && "py-1")}
-      role="listitem"
-      data-feed-item-kind={item.kind}
-    >
+    <div className={cn("min-w-0 py-1.5", compact && "py-1")} role="listitem" data-feed-item-kind={item.kind}>
       {expandable ? (
         <Popover>
           <PopoverTrigger asChild>
@@ -526,18 +507,19 @@ function FeedStatusIcon({ status, className }: { status: FeedStatus; className?:
   return <Check className={cn("h-4 w-4 shrink-0", statusTextClass(status), className)} />;
 }
 
-function StageStatusIcon({
-  status,
-  Icon,
-}: {
-  status: FeedStatus;
-  Icon: LucideIcon;
-}): JSX.Element {
+function StageStatusIcon({ status }: { status: FeedStatus }): JSX.Element {
   if (status === "running") return <Spinner size="sm" className={cn("shrink-0", statusTextClass(status))} />;
   if (status === "cancelling") {
-    return <LoaderCircle className={cn("h-3.5 w-3.5 shrink-0 animate-spin", statusTextClass(status))} aria-hidden="true" />;
+    return (
+      <LoaderCircle className={cn("h-3.5 w-3.5 shrink-0 animate-spin", statusTextClass(status))} aria-hidden="true" />
+    );
   }
-  return <Icon className="h-3.5 w-3.5 shrink-0 self-center" aria-hidden="true" />;
+  if (status === "failed")
+    return <X className={cn("h-3.5 w-3.5 shrink-0", statusTextClass(status))} aria-hidden="true" />;
+  if (status === "pending" || status === "neutral") {
+    return <Circle className={cn("h-3 w-3 shrink-0", statusTextClass(status))} aria-hidden="true" />;
+  }
+  return <Check className={cn("h-3.5 w-3.5 shrink-0", statusTextClass(status))} aria-hidden="true" />;
 }
 
 function isLiveFeedStatus(status: FeedStatus): boolean {
@@ -547,18 +529,18 @@ function isLiveFeedStatus(status: FeedStatus): boolean {
 function formatFeedElapsed(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
   if (totalSeconds < 60) {
-    return frontendMessage("workflow.feed.elapsed.seconds", { seconds: totalSeconds });
+    return frontendFeatureMessage("workflow.feed.elapsed.seconds", { seconds: totalSeconds });
   }
 
   const totalMinutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   if (totalMinutes < 60) {
-    return frontendMessage("workflow.feed.elapsed.minutes", { minutes: totalMinutes, seconds });
+    return frontendFeatureMessage("workflow.feed.elapsed.minutes", { minutes: totalMinutes, seconds });
   }
 
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  return frontendMessage("workflow.feed.elapsed.hours", { hours, minutes, seconds });
+  return frontendFeatureMessage("workflow.feed.elapsed.hours", { hours, minutes, seconds });
 }
 
 function useLiveNow(live: boolean): number {
@@ -589,14 +571,11 @@ function projectWaitingHeadline(run: RunRecord, headline: FeedItem): FeedItem {
     id: "live-waiting",
     kind: "trace",
     status: "running",
-    title: frontendMessage("workflow.feed.thinking"),
+    title: frontendFeatureMessage("workflow.feed.thinking"),
   };
 }
 
-function shouldShowWaitingHeadline(
-  run: RunRecord,
-  status: FeedStatus,
-): boolean {
+function shouldShowWaitingHeadline(run: RunRecord, status: FeedStatus): boolean {
   if (run.status !== "running" && run.status !== "cancelling") return false;
   if (run.liveActivity && runActivityPresentationPriority(run.liveActivity) === "foreground") return true;
   if (isLiveFeedStatus(status)) return false;

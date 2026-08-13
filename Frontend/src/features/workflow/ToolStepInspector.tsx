@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from "react";
 import { Check, ChevronDown, Circle, LoaderCircle, X } from "lucide-react";
 import { cn, formatDurationMs } from "../../lib/util";
+import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { TimelineStep } from "../../store/sessionStore";
 import { Spinner } from "../../shared/ui/Spinner";
@@ -9,7 +10,13 @@ import { projectToolActivityInspection } from "./toolActivityPresentation";
 import { readStepStatusLabel } from "./stepPresentation";
 import { readWorkflowStepDurationMs } from "./workflowPresentationProjection";
 
-export function ToolStepInspector({ step, showHeader = true }: { step: TimelineStep; showHeader?: boolean }): JSX.Element {
+export function ToolStepInspector({
+  step,
+  showHeader = true,
+}: {
+  step: TimelineStep;
+  showHeader?: boolean;
+}): JSX.Element {
   const activity = projectToolActivityInspection({
     toolName: step.toolName ?? step.title,
     origin: step.toolOrigin,
@@ -42,7 +49,7 @@ export function ToolStepInspector({ step, showHeader = true }: { step: TimelineS
 
       <div className="divide-y divide-line-subtle px-4">
         <InspectorSection
-          label={frontendMessage(step.purpose ? "workflow.inspector.purpose" : "workflow.inspector.action")}
+          label={frontendFeatureMessage(step.purpose ? "workflow.inspector.purpose" : "workflow.inspector.action")}
         >
           <p className="whitespace-pre-wrap break-words text-[12.5px] leading-5 text-content-secondary">
             {step.purpose ?? activity.label}
@@ -50,7 +57,7 @@ export function ToolStepInspector({ step, showHeader = true }: { step: TimelineS
         </InspectorSection>
 
         {activity.subjects.length > 0 ? (
-          <InspectorSection label={frontendMessage("workflow.inspector.scope")}>
+          <InspectorSection label={frontendFeatureMessage("workflow.inspector.scope")}>
             <ul className="space-y-1" data-tool-inspector-subjects>
               {activity.subjects.map((subject) => (
                 <li key={subject} className="break-all font-mono text-[11.5px] leading-5 text-content-primary">
@@ -62,7 +69,7 @@ export function ToolStepInspector({ step, showHeader = true }: { step: TimelineS
         ) : null}
 
         {result ? (
-          <InspectorSection label={frontendMessage("workflow.inspector.result")}>
+          <InspectorSection label={frontendFeatureMessage("workflow.inspector.result")}>
             <p
               className={cn(
                 "whitespace-pre-wrap break-words text-[12.5px] leading-5",
@@ -75,7 +82,7 @@ export function ToolStepInspector({ step, showHeader = true }: { step: TimelineS
         ) : null}
 
         {changes.length > 0 ? (
-          <InspectorSection label={frontendMessage("workflow.inspector.changes")}>
+          <InspectorSection label={frontendFeatureMessage("workflow.inspector.changes")}>
             <div className="divide-y divide-line-subtle" data-tool-inspector-changes>
               {changes.map((change, index) => (
                 <div key={`${change.kind}:${change.key}:${index}`} className="flex min-w-0 items-baseline gap-3 py-1.5">
@@ -126,7 +133,7 @@ function ToolTechnicalDetails({ step }: { step: TimelineStep }): JSX.Element {
         aria-controls={contentId}
         onClick={() => setExpanded((value) => !value)}
       >
-        <span className="flex-1">{frontendMessage("workflow.node.technicalDetails")}</span>
+        <span className="flex-1">{frontendFeatureMessage("workflow.node.technicalDetails")}</span>
         <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} aria-hidden="true" />
       </button>
       {expanded ? (
@@ -147,7 +154,11 @@ function ToolTechnicalDetails({ step }: { step: TimelineStep }): JSX.Element {
             <TechnicalData label={frontendMessage("workflow.node.section.actionDetails")} value={step.detailJson} />
           ) : null}
           {step.toolPresentation?.artifactUri ? (
-            <TechnicalValue label={frontendMessage("workflow.node.section.archive")} value={step.toolPresentation.artifactUri} mono />
+            <TechnicalValue
+              label={frontendMessage("workflow.node.section.archive")}
+              value={step.toolPresentation.artifactUri}
+              mono
+            />
           ) : null}
         </div>
       ) : null}
@@ -204,12 +215,12 @@ function readResultSummary(step: TimelineStep): string | undefined {
 function hasTechnicalDetails(step: TimelineStep): boolean {
   return Boolean(
     step.callId ||
-      step.toolArgs !== undefined ||
-      step.toolProgress ||
-      step.toolOutput?.stdout ||
-      step.toolOutput?.stderr ||
-      step.toolResult !== undefined ||
-      step.detailJson !== undefined ||
-      step.toolPresentation?.artifactUri,
+    step.toolArgs !== undefined ||
+    step.toolProgress ||
+    step.toolOutput?.stdout ||
+    step.toolOutput?.stderr ||
+    step.toolResult !== undefined ||
+    step.detailJson !== undefined ||
+    step.toolPresentation?.artifactUri,
   );
 }
