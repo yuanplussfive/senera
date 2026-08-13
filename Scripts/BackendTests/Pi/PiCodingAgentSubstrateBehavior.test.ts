@@ -84,10 +84,7 @@ describe("Pi Coding Agent production substrate", () => {
     const registry = new AgentExtensionRegistry();
     const systemTools = createAgentSystemTools(config);
     new AgentSystemExtensionCatalog().registerRoot(registry, path.resolve("System", "Extensions"), {
-      capabilities: new Set([
-        ...listDefaultAgentHostCapabilityNames(),
-        ...systemTools.map(systemToolCapability),
-      ]),
+      capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...systemTools.map(systemToolCapability)]),
     });
     const hostCapabilities = new AgentToolHostCapabilityRegistry();
     registerAgentSystemToolHandlers(hostCapabilities, systemTools);

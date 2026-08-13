@@ -35,16 +35,19 @@ export function StreamingRow({
         key: `assistant-turn:${run.requestId}:0`,
         requestId: run.requestId,
         createdAt: run.startedAt,
-        messages: hasActiveToolPrefaceMessage && run.displayMessageId
-          ? [{
-              id: run.displayMessageId,
-              role: "assistant",
-              kind: "AssistantToolPreface",
-              requestId: run.requestId,
-              content: run.displayText,
-              createdAt: run.startedAt,
-            }]
-          : [],
+        messages:
+          hasActiveToolPrefaceMessage && run.displayMessageId
+            ? [
+                {
+                  id: run.displayMessageId,
+                  role: "assistant",
+                  kind: "AssistantToolPreface",
+                  requestId: run.requestId,
+                  content: run.displayText,
+                  createdAt: run.startedAt,
+                },
+              ]
+            : [],
         run,
         streaming: true,
       }}

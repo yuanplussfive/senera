@@ -293,17 +293,31 @@ export class AgentToolCallExecutor {
       };
 
       terminalLifecycleAttempted = true;
-      await this.emitResultLifecycle(context, index, executed, {
-        startedAt,
-        durationMs: this.elapsedDuration(startedAtMonotonic),
-      }, origin);
+      await this.emitResultLifecycle(
+        context,
+        index,
+        executed,
+        {
+          startedAt,
+          durationMs: this.elapsedDuration(startedAtMonotonic),
+        },
+        origin,
+      );
       return executed;
     } catch (error) {
       if (!terminalLifecycleAttempted) {
-        await this.emitFailureLifecycle(context, index, tool.name, callId, error, {
-          startedAt,
-          durationMs: this.elapsedDuration(startedAtMonotonic),
-        }, origin);
+        await this.emitFailureLifecycle(
+          context,
+          index,
+          tool.name,
+          callId,
+          error,
+          {
+            startedAt,
+            durationMs: this.elapsedDuration(startedAtMonotonic),
+          },
+          origin,
+        );
       }
       throw error;
     }

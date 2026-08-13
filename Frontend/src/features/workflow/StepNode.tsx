@@ -234,13 +234,14 @@ function StatusIcon({
 
 function StatusFooter({ step, motionLevel }: { step: TimelineStep; motionLevel: MotionLevel }): JSX.Element | null {
   const durationMs = readWorkflowStepDurationMs(step);
-  const label = durationMs !== undefined
-    ? formatDurationMs(durationMs)
-    : step.status === "running"
-      ? frontendMessage("workflow.node.runningLive")
-      : step.status === "cancelling"
-        ? frontendMessage("workflow.run.status.cancelling")
-        : null;
+  const label =
+    durationMs !== undefined
+      ? formatDurationMs(durationMs)
+      : step.status === "running"
+        ? frontendMessage("workflow.node.runningLive")
+        : step.status === "cancelling"
+          ? frontendMessage("workflow.run.status.cancelling")
+          : null;
   if (!label) return null;
   const transition = motionLevel === "none" ? { duration: 0 } : motionTimings.fast;
   return (

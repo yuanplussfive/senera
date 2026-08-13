@@ -155,12 +155,7 @@ export function PresetWorkspace({
       <Diagnostics items={diagnostics} />
 
       <div className="min-h-0 flex-1 bg-surface-subtle p-3 sm:p-4">
-        <PresetEditor
-          content={draftContent}
-          format={draftFormat}
-          disabled={busy}
-          onChange={onContentChange}
-        />
+        <PresetEditor content={draftContent} format={draftFormat} disabled={busy} onChange={onContentChange} />
       </div>
 
       <PresetStatusBar

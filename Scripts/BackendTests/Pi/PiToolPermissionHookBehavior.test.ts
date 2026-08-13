@@ -87,9 +87,7 @@ describe("Pi tool permission hook behavior", () => {
         outputReserveTokens: 1_024,
       }),
     });
-    turnState.registerToolBatch("batch-turn-mode", [
-      { toolCallId: "call-turn-mode", toolName: "TestTool", input: {} },
-    ]);
+    turnState.registerToolBatch("batch-turn-mode", [{ toolCallId: "call-turn-mode", toolName: "TestTool", input: {} }]);
     const authorize = vi.fn(async () => ({ action: "allow" as const, rule: "test", reason: "ok", riskSignals: [] }));
     const hook = new AgentPiToolPermissionHook({
       registry: { getTool: () => undefined } as unknown as AgentExtensionRegistry,

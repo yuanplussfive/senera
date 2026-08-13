@@ -68,10 +68,7 @@ export function EventMonitorPanel(): JSX.Element {
       <div className="shrink-0 border-b border-line-subtle px-3 pb-2 pt-2">
         <div className="flex min-w-0 items-center gap-2">
           <span
-            className={cn(
-              "h-1.5 w-1.5 shrink-0 rounded-full",
-              recording ? "bg-moss-500" : "bg-ink-300",
-            )}
+            className={cn("h-1.5 w-1.5 shrink-0 rounded-full", recording ? "bg-moss-500" : "bg-ink-300")}
             aria-hidden="true"
           />
           <span className="min-w-0 flex-1 truncate text-[10px] tabular-nums text-content-muted">
@@ -234,7 +231,10 @@ function EventRow({
         </span>
       </span>
       {isTerminalEventLayer(record.layer) ? (
-        <span className={cn("mt-0.5 shrink-0", tone === "error" ? "text-brick-600" : "text-moss-600")} aria-hidden="true">
+        <span
+          className={cn("mt-0.5 shrink-0", tone === "error" ? "text-brick-600" : "text-moss-600")}
+          aria-hidden="true"
+        >
           {tone === "error" ? <CircleAlert className="h-3 w-3" /> : <CircleCheck className="h-3 w-3" />}
         </span>
       ) : null}
@@ -262,7 +262,9 @@ function EventDetail({ record, onClose }: { record: EventJournalRecord; onClose:
       <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-line-subtle px-3 py-2">
         <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", toneClasses.dot)} aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-sans text-[11px] font-medium text-content-primary">{readEventTitle(record)}</div>
+          <div className="truncate font-sans text-[11px] font-medium text-content-primary">
+            {readEventTitle(record)}
+          </div>
           <div className="truncate text-[9.5px] text-content-muted">{record.kind}</div>
         </div>
         <IconButton

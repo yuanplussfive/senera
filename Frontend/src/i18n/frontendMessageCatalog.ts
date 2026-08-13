@@ -37,9 +37,6 @@ export function formatFrontendMessage(template: string, params: FrontendMessageP
   });
 }
 
-export function formatFrontendList(
-  values: readonly string[],
-  locale: FrontendLocale = getFrontendLocale(),
-): string {
+export function formatFrontendList(values: readonly string[], locale: FrontendLocale = getFrontendLocale()): string {
   return new Intl.ListFormat(locale, { style: "long", type: "conjunction" }).format(values);
 }

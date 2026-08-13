@@ -12,9 +12,7 @@ export interface AssistantTurnListItem {
 
 export type ProjectedMessageListItem = ChatMessage | AssistantTurnListItem;
 
-export function isAssistantTurnListItem(
-  item: ProjectedMessageListItem | undefined,
-): item is AssistantTurnListItem {
+export function isAssistantTurnListItem(item: ProjectedMessageListItem | undefined): item is AssistantTurnListItem {
   return !!item && "__assistantTurn" in item;
 }
 
@@ -26,7 +24,9 @@ export function projectAssistantTurns(
   const runsByRequestId = new Map(runs.map((run) => [run.requestId, run]));
   const requestOccurrences = new Map<string, number>();
   const assistantRequestIds = new Set(
-    messages.filter((message) => message.role === "assistant" && message.requestId).map((message) => message.requestId!),
+    messages
+      .filter((message) => message.role === "assistant" && message.requestId)
+      .map((message) => message.requestId!),
   );
   const orphanCancelledRuns = runs
     .filter((run) => run.status === "cancelled")
@@ -125,9 +125,7 @@ function findLatestTurn(
 }
 
 export function readAssistantTurnActionMessage(turn: AssistantTurnListItem): ChatMessage | undefined {
-  return [...turn.messages]
-    .reverse()
-    .find((message) => message.kind !== "AssistantToolPreface");
+  return [...turn.messages].reverse().find((message) => message.kind !== "AssistantToolPreface");
 }
 
 export function readAssistantTurnAnchorId(message: Pick<ChatMessage, "id">): string {

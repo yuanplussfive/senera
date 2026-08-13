@@ -101,7 +101,10 @@ export interface SeneraExecutionEnv extends ExecutionEnv {
   readonly workspaceRoot: string;
   readonly capabilities: SeneraExecutionRuntimeCapabilities;
   resolveResourcePath(value: string, intent: AgentResourceAccessIntent): Promise<Result<string, FileError>>;
-  inspectResourcePath(value: string, intent: AgentResourceAccessIntent): Promise<AgentResourceAccessPlan["requests"][number]>;
+  inspectResourcePath(
+    value: string,
+    intent: AgentResourceAccessIntent,
+  ): Promise<AgentResourceAccessPlan["requests"][number]>;
   withResourceAccessAuthority(authority: AgentResourceAccessAuthority): SeneraExecutionEnv;
   withResourceAccessGrant(grant: AgentResourceAccessGrant): SeneraExecutionEnv;
   executeShell(request: SeneraShellExecutionRequest): Promise<SeneraShellExecutionResult>;

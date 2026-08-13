@@ -7,9 +7,7 @@ import type { RunActivityRecord, RunRecord, TimelineStep } from "../../store/ses
  */
 export function projectWorkflowSteps(run: Pick<RunRecord, "steps">): TimelineStep[] {
   const detailedAnswers = new Set(
-    run.steps
-      .filter((step) => step.kind === "answer" && Boolean(step.description?.trim()))
-      .map(answerSemanticKind),
+    run.steps.filter((step) => step.kind === "answer" && Boolean(step.description?.trim())).map(answerSemanticKind),
   );
   const answerTraces = collectMeasuredAnswerTraces(run.steps);
 
@@ -20,9 +18,7 @@ export function projectWorkflowSteps(run: Pick<RunRecord, "steps">): TimelineSte
     .filter((step) => !isSupersededAnswerTrace(step, detailedAnswers));
 }
 
-export function projectWorkflowActivities(
-  run: Pick<RunRecord, "activities">,
-): RunActivityRecord[] {
+export function projectWorkflowActivities(run: Pick<RunRecord, "activities">): RunActivityRecord[] {
   return (run.activities ?? []).filter(isWorkflowActivityVisible);
 }
 
@@ -37,8 +33,7 @@ export function isWorkflowStepVisible(step: TimelineStep): boolean {
 
 export function isWorkflowActivityVisible(activity: RunActivityRecord): boolean {
   return (
-    activity.status === "failed" ||
-    (activity.status !== "done" && isWorkflowLiveActivityVisible(activity.activity))
+    activity.status === "failed" || (activity.status !== "done" && isWorkflowLiveActivityVisible(activity.activity))
   );
 }
 
@@ -86,11 +81,7 @@ function projectAnswerTraceDuration(
   return { ...step, durationMs: readWorkflowStepDurationMs(matches[0]) };
 }
 
-function projectModelDuration(
-  steps: readonly TimelineStep[],
-  step: TimelineStep,
-  index: number,
-): TimelineStep {
+function projectModelDuration(steps: readonly TimelineStep[], step: TimelineStep, index: number): TimelineStep {
   if ((step.kind !== "decision" && step.kind !== "answer") || hasMeasuredDuration(step)) return step;
 
   for (let cursor = index - 1; cursor >= 0; cursor -= 1) {

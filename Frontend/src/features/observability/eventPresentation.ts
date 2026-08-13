@@ -46,9 +46,7 @@ export function readEventTitle(record: Pick<EventJournalRecord, "kind" | "summar
   return record.summary || record.kind;
 }
 
-function readToolEventTitle(
-  record: Pick<EventJournalRecord, "kind" | "summary" | "projection">,
-): string | undefined {
+function readToolEventTitle(record: Pick<EventJournalRecord, "kind" | "summary" | "projection">): string | undefined {
   const statusByKind: Partial<Record<EventKind, ToolActivityStatus>> = {
     [EventKinds.ToolCallStarted]: "active",
     [EventKinds.ToolCallCompleted]: "completed",

@@ -107,7 +107,7 @@ export function projectAssistantTurnStages(turn: AssistantTurnListItem): Assista
     !displayedStage;
   let activeStage = hasTransientMessage
     ? undefined
-    : displayedStage ?? [...stages].reverse().find((stage) => stage.kind === activeKind);
+    : (displayedStage ?? [...stages].reverse().find((stage) => stage.kind === activeKind));
   if (!activeStage) {
     activeStage = {
       id: `stage:${turn.requestId ?? turn.key}:current`,
@@ -123,7 +123,7 @@ export function projectAssistantTurnStages(turn: AssistantTurnListItem): Assista
 
   if (run) {
     const boundary = activeStage.message
-      ? boundaries.get(activeStage.message.id) ?? emptyHistoricalBoundary(run, activeStage.message.createdAt)
+      ? (boundaries.get(activeStage.message.id) ?? emptyHistoricalBoundary(run, activeStage.message.createdAt))
       : currentStageBoundary(run);
     activeStage.run = projectStageRun(run, boundary, true);
   }
@@ -162,10 +162,7 @@ function readStageBoundaries(
   return result;
 }
 
-function readMessageStepIndexes(
-  run: RunRecord | undefined,
-  messages: readonly ChatMessage[],
-): Map<string, number> {
+function readMessageStepIndexes(run: RunRecord | undefined, messages: readonly ChatMessage[]): Map<string, number> {
   const result = new Map<string, number>();
   if (!run) return result;
 
@@ -235,19 +232,19 @@ function currentStageBoundary(run: RunRecord): StageBoundary {
 
 function projectStageRun(run: RunRecord | undefined, boundary: StageBoundary, live: boolean): RunRecord | undefined {
   if (!run) return undefined;
-  const stageEndedAt = live ? undefined : boundary.endedAt ?? run.endedAt;
+  const stageEndedAt = live ? undefined : (boundary.endedAt ?? run.endedAt);
   const stageSettled = !live && (stageEndedAt !== undefined || !isLiveRunStatus(run.status));
   const steps = run.steps
     .slice(boundary.stepStart, boundary.stepEnd)
     .filter(isStageExecutionStep)
-    .map((step) => stageSettled ? settleHistoricalRecord(step, stageEndedAt, run.status) : step);
+    .map((step) => (stageSettled ? settleHistoricalRecord(step, stageEndedAt, run.status) : step));
   const activities = run.activities
     ?.filter(
       (activity) =>
         isInStageWindow(activity.startedAt, boundary.startedAt, boundary.endedAt) ||
         (live && activity.status === "running" && activity.activity === run.liveActivity),
     )
-    .map((activity) => stageSettled ? settleHistoricalRecord(activity, stageEndedAt, run.status) : activity);
+    .map((activity) => (stageSettled ? settleHistoricalRecord(activity, stageEndedAt, run.status) : activity));
   if (!live && steps.length === 0 && (!activities || activities.length === 0)) return undefined;
 
   return {
@@ -255,7 +252,7 @@ function projectStageRun(run: RunRecord | undefined, boundary: StageBoundary, li
     status: live ? run.status : historicalRunStatus(run.status),
     // Stage slices share the request clock. A phase boundary scopes content, not elapsed time.
     startedAt: run.startedAt,
-    endedAt: live ? undefined : stageEndedAt ?? latestRecordEnd(steps, activities),
+    endedAt: live ? undefined : (stageEndedAt ?? latestRecordEnd(steps, activities)),
     steps,
     activities,
     liveActivity: live ? run.liveActivity : undefined,
@@ -273,11 +270,9 @@ function projectStageRun(run: RunRecord | undefined, boundary: StageBoundary, li
   };
 }
 
-function settleHistoricalRecord<TRecord extends { status: TimelineStep["status"]; startedAt: string; endedAt?: string; durationMs?: number }>(
-  record: TRecord,
-  stageEndedAt?: string,
-  runStatus: RunRecord["status"] = "completed",
-): TRecord {
+function settleHistoricalRecord<
+  TRecord extends { status: TimelineStep["status"]; startedAt: string; endedAt?: string; durationMs?: number },
+>(record: TRecord, stageEndedAt?: string, runStatus: RunRecord["status"] = "completed"): TRecord {
   if (record.status === "done" || record.status === "failed") return record;
   const endedAt = record.endedAt ?? stageEndedAt ?? record.startedAt;
   const started = Date.parse(record.startedAt);
@@ -319,6 +314,8 @@ function isInStageWindow(value: string, startedAt?: string, endedAt?: string): b
   if (!Number.isFinite(time)) return false;
   const start = startedAt ? Date.parse(startedAt) : Number.NEGATIVE_INFINITY;
   const end = endedAt ? Date.parse(endedAt) : Number.POSITIVE_INFINITY;
-  return time >= (Number.isFinite(start) ? start : Number.NEGATIVE_INFINITY) &&
-    time < (Number.isFinite(end) ? end : Number.POSITIVE_INFINITY);
+  return (
+    time >= (Number.isFinite(start) ? start : Number.NEGATIVE_INFINITY) &&
+    time < (Number.isFinite(end) ? end : Number.POSITIVE_INFINITY)
+  );
 }
