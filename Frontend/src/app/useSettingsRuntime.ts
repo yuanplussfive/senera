@@ -21,9 +21,11 @@ export interface SettingsRuntimeHandle {
 }
 
 export function useSettingsRuntime({
+  httpBaseUrl,
   sendRef,
   statusRef,
 }: {
+  httpBaseUrl: string;
   sendRef: MutableRefObject<((request: WsRequest) => boolean) | null>;
   statusRef: MutableRefObject<SocketStatus>;
 }): SettingsRuntimeHandle {
@@ -68,6 +70,23 @@ export function useSettingsRuntime({
     (serverId: string): boolean => sendWhenConnected({ type: "mcpServer.restart", serverId }),
     [sendWhenConnected],
   );
+  const readProviderApiKey = useCallback(
+    async (providerId: string): Promise<string> => {
+      const url = new URL("/api/provider-credentials", `${httpBaseUrl}/`);
+      url.searchParams.set("providerId", providerId);
+      const response = await fetch(url, {
+        cache: "no-store",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok || !isProviderCredentialResponse(payload, providerId)) {
+        throw new Error(`Unable to read credentials for provider ${providerId}.`);
+      }
+      return payload.apiKey;
+    },
+    [httpBaseUrl],
+  );
 
   const systemConfig = useMemo<SettingsSystemConfigHandle>(
     () => ({
@@ -80,6 +99,7 @@ export function useSettingsRuntime({
       mcpInputOperation,
       providerModelCatalogs,
       providerModelErrors,
+      readProviderApiKey,
       refreshToolSettings,
       updateMcpInputs,
       restartMcpServer,
@@ -91,6 +111,7 @@ export function useSettingsRuntime({
       mcpInputOperation,
       providerModelCatalogs,
       providerModelErrors,
+      readProviderApiKey,
       refreshToolSettings,
       restartMcpServer,
       updateMcpInputs,
@@ -127,4 +148,10 @@ export function useSettingsRuntime({
   );
 
   return { controller, systemConfig, ingestSettingsEvent };
+}
+
+function isProviderCredentialResponse(value: unknown, providerId: string): value is { apiKey: string } {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return record.ok === true && record.providerId === providerId && typeof record.apiKey === "string";
 }

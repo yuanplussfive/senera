@@ -9,13 +9,23 @@ import {
   type ReadableArtifactRef,
 } from "../Memory/AgentArtifactMemoryTypes.js";
 import { projectAgentExecutedToolResultStatus, readAgentToolFailure } from "../ToolRuntime/AgentToolResultOutcome.js";
-import type { ExecutedToolCallArtifact, ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import type {
+  AgentToolArtifactAssetReference,
+  ExecutedToolCallArtifact,
+  ExecutedToolCallResult,
+} from "../Types/ToolRuntimeTypes.js";
 import { buildArtifactDelta } from "./AgentArtifactDeltaProjection.js";
 import type { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
 import type { createAgentArtifactLocator } from "./AgentArtifactLocator.js";
 import { collectArtifactEvidence } from "./AgentArtifactEvidenceProjection.js";
 import { buildArtifactSummary } from "./AgentArtifactTemplateProjection.js";
 import type { AgentToolResultSummaryCompiler } from "./AgentToolResultSummaryCompiler.js";
+import { redactArtifactSecrets } from "./AgentArtifactRedaction.js";
+import {
+  attachAgentToolEvidenceAssets,
+  createAgentToolEvidenceCandidates,
+  readAgentToolEvidenceCandidates,
+} from "../ToolRuntime/AgentToolFeedbackAdapter.js";
 
 export interface RestorePublishedArtifactInput {
   readonly locator: ReturnType<typeof createAgentArtifactLocator>;
@@ -66,7 +76,13 @@ export class AgentArtifactPublicationRecovery {
       this.readPublishedText(input.locator.files.summary, manifest.contents, "summary"),
       this.readPublishedText(input.locator.files.projection, manifest.contents, "projection"),
     ]);
-    const evidence = collectArtifactEvidence(input.redactedRaw, input.policy, input.locator.artifactId);
+    const artifactAssets = readArtifactAssetReferences(manifest.assets);
+    const evidence = collectArtifactEvidence(
+      input.redactedRaw,
+      input.policy,
+      input.locator.artifactId,
+      projectToolEvidenceCandidates(input.result, input.redactedRaw, input.policy, artifactAssets),
+    );
     const workspace = input.result.workspaceCapture;
     const delta = buildArtifactDelta({
       evidence,
@@ -96,6 +112,7 @@ export class AgentArtifactPublicationRecovery {
       relativePath: input.locator.relativeDir,
       manifestPath: input.locator.files.manifest,
       files: input.locator.files,
+      assets: artifactAssets,
       summary,
       projection,
       structuredSummary: this.summaryCompiler.compile({
@@ -153,6 +170,25 @@ export class AgentArtifactPublicationRecovery {
   }
 }
 
+const ArtifactAssetReferenceSchema = z.array(
+  z
+    .object({
+      id: z.string().min(1),
+      fileName: z.string().min(1),
+      mediaType: z.string().min(1),
+      relativePath: z.string().min(1),
+      workspacePath: z.string().min(1),
+      byteLength: z.number().int().nonnegative(),
+      sha256: z.string().min(1),
+    })
+    .strict(),
+);
+
+function readArtifactAssetReferences(value: unknown) {
+  const parsed = ArtifactAssetReferenceSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
 const ArtifactPublicationIdentitySchema = z
   .object({
     artifactId: z.string().min(1),
@@ -185,6 +221,21 @@ function publicationIdentityMatches(
   expected: ArtifactPublicationIdentity,
 ): boolean {
   return ArtifactPublicationIdentityFields.every((field) => actual[field] === expected[field]);
+}
+
+function projectToolEvidenceCandidates(
+  result: ExecutedToolCallResult,
+  redactedRaw: unknown,
+  policy: ExecutedToolCallResult["artifactPolicy"],
+  assets: readonly AgentToolArtifactAssetReference[] | undefined,
+) {
+  const declared = readAgentToolEvidenceCandidates(
+    redactArtifactSecrets(result.artifactPayload?.evidence ?? [], policy),
+  );
+  const automatic = createAgentToolEvidenceCandidates(redactedRaw, {
+    source: `${result.name} result`,
+  });
+  return attachAgentToolEvidenceAssets([...declared, ...automatic], assets);
 }
 
 export class AgentArtifactPublicationConflictError extends AgentBaseError {

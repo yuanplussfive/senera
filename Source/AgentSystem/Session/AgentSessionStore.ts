@@ -262,10 +262,9 @@ export class AgentSessionStore {
     };
 
     const traces = history.traces.map((item) => structuredClone(item));
-    const runSnapshots = history.runSnapshots.map((snapshot) => ({
-      ...structuredClone(snapshot),
-      sessionId: session.id,
-    }));
+    const runSnapshots = history.runSnapshots.map((snapshot) =>
+      projectForkRunSnapshot(snapshot, session.id, timestamp),
+    );
     const turnPreparations = history.turnPreparations.map(({ requestId, snapshot: preparation }) => {
       if (request.piBranchBoundaryId) return { requestId, snapshot: structuredClone(preparation) };
       const { piBranchBoundaryId: _sourceBoundary, ...portablePreparation } = structuredClone(preparation);
@@ -669,4 +668,18 @@ export class AgentSessionStore {
       return projected ? [projected] : [];
     });
   }
+}
+
+function projectForkRunSnapshot(snapshot: StoredRunSnapshot, sessionId: string, forkedAt: string): StoredRunSnapshot {
+  const cloned = structuredClone(snapshot);
+  if (cloned.status !== "running") return { ...cloned, sessionId };
+  // The source executor is not transferred to a fork. A terminal snapshot
+  // prevents the new conversation from rendering a task that can never run.
+  return {
+    ...cloned,
+    sessionId,
+    status: "cancelled",
+    updatedAt: forkedAt,
+    endedAt: forkedAt,
+  };
 }

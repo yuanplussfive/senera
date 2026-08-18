@@ -25,7 +25,7 @@ import { useSettingsRuntime } from "./app/useSettingsRuntime";
 import { useWebSettingsController } from "./app/useWebSettingsController";
 import { useExecutionResourceCommands } from "./app/useExecutionResourceCommands";
 import { TerminalPanelStatus, TerminalRuntimeBoundary } from "./features/terminal/TerminalPanelStatus";
-import { loadWebSettingsOverlayComponent, preloadWebSettingsSurface } from "./app/applicationModuleLoaders";
+import { loadWebSettingsOverlayComponent } from "./app/applicationModuleLoaders";
 import { SettingsSurfaceLoading } from "./app/SurfaceLoading";
 import { scheduleIdleTask } from "./shared/scheduling/scheduleIdleTask";
 import { frontendMessage } from "./i18n/frontendMessageCatalog";
@@ -36,13 +36,13 @@ import { WorkspaceResourceProvider } from "./shared/workspace/WorkspaceResourceP
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
 type BackgroundTerminalPanelComponent = (typeof import("./features/terminal"))["BackgroundTerminalPanel"];
+type SettingsOverlayComponentType = (typeof import("./features/settings/SettingsOverlay"))["SettingsOverlay"];
 type ThinkingTimelineProps = ComponentProps<
   (typeof import("./features/workflow/ThinkingTimeline"))["ThinkingTimeline"]
 >;
 const LazyThinkingTimeline = lazy(() =>
   import("./features/workflow/ThinkingTimeline").then((module) => ({ default: module.ThinkingTimeline })),
 );
-const LazySettingsOverlay = lazy(loadWebSettingsOverlayComponent);
 const LazyEventObservabilityPanel = lazy(() =>
   import("./features/observability/EventObservabilityPanel").then((module) => ({
     default: module.EventObservabilityPanel,
@@ -97,9 +97,20 @@ export function App({
   const [terminalRuntimeRevision, setTerminalRuntimeRevision] = useState(0);
   const uploadUrl = useMemo(() => buildUploadUrl(HTTP_BASE_URL), []);
   const appShellRenderPlan = readAppShellRenderPlan(responsiveMode);
-  const settingsController = useWebSettingsController();
+  const [SettingsOverlayComponent, setSettingsOverlayComponent] = useState<SettingsOverlayComponentType | null>(null);
+  const prepareSettingsOverlay = useCallback(async (): Promise<void> => {
+    const module = await loadWebSettingsOverlayComponent();
+    setSettingsOverlayComponent(() => module.default);
+  }, []);
+  const settingsController = useWebSettingsController({ prepareSurface: prepareSettingsOverlay });
 
-  useEffect(() => scheduleIdleTask(preloadWebSettingsSurface), []);
+  useEffect(
+    () =>
+      scheduleIdleTask(() => {
+        void prepareSettingsOverlay().catch(() => undefined);
+      }),
+    [prepareSettingsOverlay],
+  );
 
   const handleWorkflowDockToolChange = useCallback((tool: WorkflowDockTool): void => {
     setWorkflowDockTool(tool);
@@ -131,7 +142,7 @@ export function App({
   const lastSendRef = useRef<LastSentMessage | null>(null);
   const settingsEventHandlerRef = useRef<(env: EventEnvelope) => boolean>(() => false);
   const executionResourceEventHandlerRef = useRef<(env: EventEnvelope) => boolean>(() => false);
-  const { sandboxStatus, ingestSandboxEvent } = useSandboxRuntimeStatus();
+  const { ingestSandboxEvent } = useSandboxRuntimeStatus();
 
   const handleOpenSessionPanel = useCallback((): void => {
     if (hasPersistentSessionPanel) {
@@ -224,8 +235,8 @@ export function App({
 
   sendRef.current = send;
   statusRef.current = status;
-  const settingsRuntime = useSettingsRuntime({ sendRef, statusRef });
-  settingsEventHandlerRef.current = settingsRuntime.controller.ingestConfigMutationEvent;
+  const settingsRuntime = useSettingsRuntime({ httpBaseUrl: HTTP_BASE_URL, sendRef, statusRef });
+  settingsEventHandlerRef.current = settingsRuntime.ingestSettingsEvent;
   const executionResourceCommands = useExecutionResourceCommands({
     activeSessionId: activeId,
     send,
@@ -353,8 +364,9 @@ export function App({
     onUpdateUserProfile: handleUpdateUserProfile,
     onLogout,
     socketStatus: status,
-    sandboxStatus,
-    onSettingsIntent: preloadWebSettingsSurface,
+    onSettingsIntent: () => {
+      void prepareSettingsOverlay().catch(() => undefined);
+    },
     onOpenSettings: (section, returnFocus) => {
       void settingsController
         .openSettings(section, returnFocus)
@@ -387,6 +399,11 @@ export function App({
                       defaultModelProviderId,
                       onSelectModelProvider: selectModelProvider,
                       onApplyDefaultModel: applyDefaultModelToActiveSession,
+                      onAddModel: () => {
+                        void settingsController
+                          .openSettings("model-service")
+                          .catch(() => toast.error(frontendMessage("settings.loadFailed")));
+                      },
                     }}
                     presetConfig={{
                       presets,
@@ -403,7 +420,6 @@ export function App({
                       socketStatus: status,
                       uploadUrl,
                       uploadCsrfToken,
-                      sandboxStatus,
                     }}
                     messageActions={{
                       onSend: handleSend,
@@ -448,11 +464,9 @@ export function App({
               responsiveMode={responsiveMode}
             />
             {settingsController.section !== null || settingsController.closeConfirmationOpen ? (
-              <Suspense fallback={<SettingsSurfaceLoading presentation="overlay" />}>
-                <LazySettingsOverlay
+              SettingsOverlayComponent ? (
+                <SettingsOverlayComponent
                   controller={settingsController}
-                  send={send}
-                  status={status}
                   workbench={{
                     environment: {
                       appVersion: __SENERA_APP_VERSION__,
@@ -470,7 +484,9 @@ export function App({
                     systemConfig: settingsRuntime.systemConfig,
                   }}
                 />
-              </Suspense>
+              ) : (
+                <SettingsSurfaceLoading presentation="overlay" />
+              )
             ) : null}
             <Toaster
               position="bottom-right"

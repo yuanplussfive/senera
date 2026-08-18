@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DefaultModelSection } from "../../../Frontend/src/features/settings/sections/DefaultModelSection.tsx";
@@ -13,7 +13,7 @@ describe("DefaultModelSection", () => {
     const setDefaultProviderModel = vi.fn(() => "default-command");
     const draftState = createDraftState(updateDraft);
     const user = userEvent.setup();
-    renderWithFrontendProviders(
+    const { container } = renderWithFrontendProviders(
       React.createElement(DefaultModelSection, {
         draftState,
         systemConfig: createSystemConfig(setDefaultProviderModel),
@@ -22,6 +22,11 @@ describe("DefaultModelSection", () => {
 
     expect(screen.getByText("模型职责")).toBeVisible();
     expect(screen.getAllByText("必填")).toHaveLength(3);
+    expect(container.querySelectorAll("[data-model-assignment-group]")).toHaveLength(3);
+    expect(container.querySelectorAll("[data-model-assignment-row]")).toHaveLength(3);
+    expect(container.querySelector('[data-model-assignment-icon="assistant"]')?.tagName).toBe("svg");
+    expect(container.querySelector('[data-model-assignment-icon="planner"]')?.tagName).toBe("svg");
+    expect(container.querySelector('[data-model-assignment-icon="embedding"]')?.tagName).toBe("svg");
 
     await user.click(screen.getByRole("button", { name: /默认模型: Chat Alpha/ }));
     expect(screen.queryByRole("menuitem", { name: /embedding-alpha/ })).not.toBeInTheDocument();
@@ -57,7 +62,7 @@ describe("DefaultModelSection", () => {
   it("edits an extension-owned child model pool from the central model roles view", async () => {
     const updateDraft = vi.fn();
     const user = userEvent.setup();
-    renderWithFrontendProviders(
+    const { container } = renderWithFrontendProviders(
       React.createElement(DefaultModelSection, {
         draftState: createDraftState(updateDraft),
         systemConfig: createSystemConfig(vi.fn(), { includeChildModelPool: true }),
@@ -66,7 +71,10 @@ describe("DefaultModelSection", () => {
 
     expect(screen.getByText("子代理编排 · 子代理模型池")).toBeVisible();
     expect(screen.getByText("父运行当前模型")).toBeVisible();
-    expect(screen.getByText("chat-b")).toBeVisible();
+    const modelPool = container.querySelector("[data-model-pool-assignment]");
+    expect(modelPool).toBeInTheDocument();
+    expect(within(modelPool).getByText("Chat Beta")).toBeVisible();
+    expect(within(modelPool).getByText("provider-b")).toBeVisible();
 
     await user.click(screen.getByRole("switch", { name: "继承发起委派的模型" }));
     expect(updateDraft).toHaveBeenCalledWith(

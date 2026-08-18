@@ -1,18 +1,15 @@
-import type { ReactNode } from "react";
-import {
-  Activity,
-  ArrowUpDown,
-  BrainCircuit,
-  Database,
-  Eye,
-  ImageIcon,
-  MessageCircle,
-  Network,
-  ShieldCheck,
-  Wrench,
-} from "lucide-react";
+import type { ElementType, ReactNode } from "react";
+import ArrowsUpDownIcon from "@heroicons/react/24/outline/ArrowsUpDownIcon";
+import ChatBubbleLeftRightIcon from "@heroicons/react/24/outline/ChatBubbleLeftRightIcon";
+import CircleStackIcon from "@heroicons/react/24/outline/CircleStackIcon";
+import CommandLineIcon from "@heroicons/react/24/outline/CommandLineIcon";
+import EyeIcon from "@heroicons/react/24/outline/EyeIcon";
+import LightBulbIcon from "@heroicons/react/24/outline/LightBulbIcon";
+import PhotoIcon from "@heroicons/react/24/outline/PhotoIcon";
+import SignalIcon from "@heroicons/react/24/outline/SignalIcon";
+import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
 import { cn } from "../../lib/util";
-import { SwitchTrack } from "../../shared/ui";
+import { SwitchTrack, Tooltip } from "../../shared/ui";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ModelCapabilitiesDraft, ModelToolPlanningMode } from "./modelConfigTypes";
 
@@ -30,20 +27,21 @@ export function ToolPlanningModeControl({
     {
       value: "native",
       label: frontendMessage("config.model.toolPlanning.native"),
-      icon: <Network className="h-3.5 w-3.5" />,
+      icon: <WrenchScrewdriverIcon className="h-3.5 w-3.5" />,
     },
     {
       value: "baml",
       label: frontendMessage("config.model.toolPlanning.baml"),
-      icon: <BrainCircuit className="h-3.5 w-3.5" />,
+      icon: <LightBulbIcon className="h-3.5 w-3.5" />,
     },
   ] as const;
 
   return (
     <div
-      className="grid grid-cols-2 gap-1 rounded-lg border border-ink-200 bg-paper-100 p-1"
+      className="flex items-center gap-1 border-b border-ink-200/80"
       role="radiogroup"
       aria-label={label}
+      data-model-tool-planning-mode
     >
       {options.map((option) => {
         const selected = option.value === value;
@@ -55,10 +53,8 @@ export function ToolPlanningModeControl({
             aria-checked={selected}
             disabled={disabled}
             className={cn(
-              "inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-md px-3 text-[12.5px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:pointer-events-none disabled:opacity-50",
-              selected
-                ? "border border-ink-200 bg-paper-50 text-ink-900 shadow-sm"
-                : "border border-transparent text-ink-600 hover:bg-ink-900/[0.035] hover:text-ink-900",
+              "inline-flex h-9 min-w-0 items-center justify-center gap-2 border-b-2 px-3 text-[12.5px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:pointer-events-none disabled:opacity-50",
+              selected ? "border-accent-solid text-ink-900" : "border-transparent text-ink-500 hover:text-ink-900",
             )}
             onClick={() => onChange(option.value)}
           >
@@ -76,19 +72,25 @@ export function CapabilityIconStrip({ capabilities }: { capabilities: Required<M
   if (enabledItems.length === 0) {
     return <span className="text-[10px] text-ink-500">{frontendMessage("config.model.noCapabilities")}</span>;
   }
+  const visibleItems = enabledItems.slice(0, 3);
+  const remainingCount = enabledItems.length - visibleItems.length;
+  const summary = enabledItems.map((item) => item.label).join(" · ");
+
   return (
-    <span className="flex min-w-0 items-center gap-1">
-      {enabledItems.map((item) => (
-        <span
-          key={item.key}
-          className={cn("grid h-5 w-5 place-items-center text-[10px]", item.className)}
-          title={item.label}
-          aria-label={item.label}
-        >
-          {item.icon}
-        </span>
-      ))}
-    </span>
+    <Tooltip content={summary} side="top">
+      <span
+        className="inline-flex h-5 items-center gap-1 rounded-sm bg-ink-900/[0.045] px-1.5 text-ink-500"
+        data-model-capability-summary
+        data-capability-count={enabledItems.length}
+        role="img"
+        aria-label={summary}
+      >
+        {visibleItems.map((item) => (
+          <item.Icon key={item.key} className="h-3 w-3" aria-hidden="true" />
+        ))}
+        {remainingCount > 0 ? <span className="text-[9px] font-medium leading-none">+{remainingCount}</span> : null}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -113,17 +115,18 @@ export function CapabilityToggle({
       type="button"
       disabled={disabled}
       className={cn(
-        "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-        active
-          ? "border-ink-300 bg-paper-50 text-ink-900"
-          : "border-ink-200 bg-paper-100 text-ink-650 hover:bg-ink-900/[0.035]",
+        "flex min-w-0 items-center justify-between gap-3 rounded-sm px-2.5 py-2 text-left transition hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+        active ? "text-ink-900" : "text-ink-600",
         disabled && "pointer-events-none opacity-50",
       )}
       onClick={() => onChange(!active)}
-      aria-pressed={active}
+      role="switch"
+      aria-checked={active}
+      aria-label={label}
+      data-model-capability-toggle
     >
       <span className="flex min-w-0 items-center gap-2">
-        <span className={cn("grid h-6 w-6 shrink-0 place-items-center", iconClassName)}>{icon}</span>
+        <span className={cn("grid h-5 w-5 shrink-0 place-items-center", iconClassName)}>{icon}</span>
         <span className="truncate text-[12.5px] font-medium">{label}</span>
       </span>
       <SwitchTrack checked={active} />
@@ -135,60 +138,70 @@ export const ModelCapabilityIconItems = [
   {
     key: "Chat",
     label: frontendMessage("config.model.capability.chat"),
-    icon: <MessageCircle className="h-3 w-3" />,
+    Icon: ChatBubbleLeftRightIcon,
+    icon: <ChatBubbleLeftRightIcon className="h-3.5 w-3.5" />,
     className: "text-ink-500",
   },
   {
     key: "Embedding",
     label: frontendMessage("config.model.capability.embedding"),
-    icon: <Database className="h-3 w-3" />,
+    Icon: CircleStackIcon,
+    icon: <CircleStackIcon className="h-3.5 w-3.5" />,
     className: "text-ink-500",
   },
   {
     key: "Rerank",
     label: frontendMessage("config.model.capability.rerank"),
-    icon: <ArrowUpDown className="h-3 w-3" />,
+    Icon: ArrowsUpDownIcon,
+    icon: <ArrowsUpDownIcon className="h-3.5 w-3.5" />,
     className: "text-ink-500",
   },
   {
     key: "Vision",
     label: frontendMessage("config.model.capability.vision"),
-    icon: <Eye className="h-3 w-3" />,
+    Icon: EyeIcon,
+    icon: <EyeIcon className="h-3.5 w-3.5" />,
     className: "text-ink-500",
   },
   {
     key: "ImageOutput",
     label: frontendMessage("config.model.capability.imageOutput"),
-    icon: <ImageIcon className="h-3 w-3" />,
+    Icon: PhotoIcon,
+    icon: <PhotoIcon className="h-3.5 w-3.5" />,
     className: "text-ink-500",
   },
   {
     key: "Reasoning",
     label: frontendMessage("config.model.capability.reasoning"),
-    icon: <BrainCircuit className="h-3 w-3" />,
+    Icon: LightBulbIcon,
+    icon: <LightBulbIcon className="h-3.5 w-3.5" />,
     className: "text-ink-500",
   },
   {
     key: "ToolCalling",
     label: frontendMessage("config.model.capability.toolCalling"),
-    icon: <Wrench className="h-3 w-3" />,
+    Icon: WrenchScrewdriverIcon,
+    icon: <WrenchScrewdriverIcon className="h-3.5 w-3.5" />,
     className: "text-ink-500",
   },
   {
     key: "DeveloperRole",
     label: frontendMessage("config.model.capability.developerRole"),
-    icon: <ShieldCheck className="h-3 w-3" />,
+    Icon: CommandLineIcon,
+    icon: <CommandLineIcon className="h-3.5 w-3.5" />,
     className: "text-ink-500",
   },
   {
     key: "StreamingUsage",
     label: frontendMessage("config.model.capability.streamingUsage"),
-    icon: <Activity className="h-3 w-3" />,
-    className: "text-umber-600",
+    Icon: SignalIcon,
+    icon: <SignalIcon className="h-3.5 w-3.5" />,
+    className: "text-ink-500",
   },
 ] as const satisfies readonly {
   key: keyof ModelCapabilitiesDraft;
   label: string;
+  Icon: ElementType<{ className?: string; "aria-hidden"?: boolean }>;
   icon: JSX.Element;
   className: string;
 }[];

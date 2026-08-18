@@ -1,7 +1,7 @@
-# Production deployments should set both variables to registry references with
-# digests. Versioned tags remain as local-development defaults.
-x-senera-image: &senera-image ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:1.9.11}
-x-senera-sandbox-image: &senera-sandbox-image ${SENERA_SANDBOX_IMAGE:-ghcr.io/yuanplussfive/senera:sandbox-runtime-1.1.0}
+# Compose follows the last fully verified stable release. Production deployments
+# should override both values with immutable registry digests for controlled rollout.
+x-senera-image: &senera-image ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:latest}
+x-senera-sandbox-image: &senera-sandbox-image ${SENERA_SANDBOX_IMAGE:-ghcr.io/yuanplussfive/senera:sandbox-runtime-latest}
 
 x-senera-runtime: &senera-runtime
   image: *senera-image

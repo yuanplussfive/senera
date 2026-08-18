@@ -4,7 +4,7 @@ import type {
   ToolArtifactEvidenceSlotManifest,
   ToolArtifactPolicyManifest,
 } from "../Types/AgentToolContractTypes.js";
-import type { ToolArtifactEvidenceRecord } from "../Types/ToolRuntimeTypes.js";
+import type { AgentToolEvidenceCandidate, ToolArtifactEvidenceRecord } from "../Types/ToolRuntimeTypes.js";
 import { selectJsonValues } from "./AgentArtifactJsonSelector.js";
 import { stableArtifactStringify } from "./AgentArtifactStableJson.js";
 import { createAgentEvidenceUri } from "./AgentEvidenceUri.js";
@@ -21,6 +21,7 @@ export function collectArtifactEvidence(
   value: unknown,
   policy: ToolArtifactPolicyManifest | undefined,
   artifactId: string,
+  candidates: readonly AgentToolEvidenceCandidate[] = [],
 ): ToolArtifactEvidenceRecord[] {
   const evidence = new Map<string, ToolArtifactEvidenceRecord>();
   for (const rule of policy?.Evidence ?? []) {
@@ -33,7 +34,80 @@ export function collectArtifactEvidence(
     }
   }
 
+  for (const candidate of candidates) {
+    const record = projectEvidenceCandidate(candidate, artifactId);
+    if (record && !evidence.has(record.key)) {
+      evidence.set(record.key, record);
+    }
+  }
+
   return [...evidence.values()];
+}
+
+function projectEvidenceCandidate(
+  candidate: AgentToolEvidenceCandidate,
+  artifactId: string,
+): ToolArtifactEvidenceRecord | undefined {
+  const kind = readNonBlank(candidate.kind);
+  const locator = readNonBlank(candidate.locator);
+  const display = readNonBlank(candidate.display);
+  if (!kind || !locator || !display) return undefined;
+
+  const key = readNonBlank(candidate.key) ?? evidenceKey(kind, [locator]);
+  if (!key) return undefined;
+
+  const facts = (candidate.facts ?? []).flatMap((fact) => {
+    const name = readNonBlank(fact.name);
+    const value = normalizeModelSlotValue(fact.value);
+    return name && value !== undefined ? [{ name, value }] : [];
+  });
+  const slots = Object.fromEntries(facts.map((fact) => [fact.name, fact.value]));
+  const label = readNonBlank(candidate.label) ?? display;
+  const source = readNonBlank(candidate.source) ?? "Tool result";
+  const confidence = normalizeConfidence(candidate.confidence);
+  return {
+    key,
+    evidenceUri: createAgentEvidenceUri({ artifactId, evidenceKey: key }),
+    kind,
+    locator: previewAgentText(locator, EvidenceModelTextLimits.presentationChars),
+    display: previewAgentText(display, EvidenceModelTextLimits.presentationChars),
+    label: previewAgentText(label, EvidenceModelTextLimits.presentationChars),
+    source: previewAgentText(source, EvidenceModelTextLimits.presentationChars),
+    confidence,
+    slots,
+    modelSlots: facts,
+    plannerMemory: {
+      facts,
+      artifactRefs: normalizeArtifactRefs(candidate.artifactRefs),
+    },
+    metadata: candidate.metadata ? projectCandidateMetadata(candidate.metadata) : undefined,
+  };
+}
+
+function readNonBlank(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function normalizeConfidence(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.5;
+}
+
+function normalizeArtifactRefs(value: unknown): string[] {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0))]
+    : [];
+}
+
+function projectCandidateMetadata(value: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const metadata: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry === "string") {
+      metadata[key] = previewAgentText(entry, EvidenceModelTextLimits.slotChars);
+    } else if (typeof entry === "number" || typeof entry === "boolean" || entry === null) {
+      metadata[key] = entry;
+    }
+  }
+  return metadata;
 }
 
 function projectEvidenceRule(root: unknown, rule: ToolArtifactEvidenceManifest): ToolArtifactEvidenceRecord[] {

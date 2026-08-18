@@ -41,41 +41,37 @@ export function ConfigFieldVisibilityControl({
   ];
 
   return (
-    <div className="mb-5 flex min-w-0 items-center justify-between gap-3 border-b border-ink-200/70 pb-3">
-      <span className="text-[11.5px] font-medium text-ink-500">
-        {frontendMessage("settings.config.visibilityLabel")}
-      </span>
-      <div
-        role="group"
-        aria-label={frontendMessage("settings.config.visibilityLabel")}
-        className="grid h-8 shrink-0 grid-cols-2 rounded-lg bg-ink-900/[0.055] p-1"
-      >
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={value === option.value}
-            className={cn(
-              "inline-flex min-w-[74px] items-center justify-center gap-1 rounded-md px-2 text-[11.5px] transition",
-              value === option.value ? "bg-paper-50 text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-800",
-            )}
-            onClick={() => onChange(option.value)}
-          >
-            <span>{option.label}</span>
-            <span className={cn("font-mono text-[10px]", value === option.value ? "text-ink-500" : "text-ink-350")}>
-              {option.count}
-            </span>
-          </button>
-        ))}
-      </div>
+    <div
+      role="group"
+      aria-label={frontendMessage("settings.config.visibilityLabel")}
+      className="grid h-8 shrink-0 grid-cols-2 rounded-md bg-ink-900/[0.05] p-0.5"
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-label={`${option.label} ${option.count}`}
+          aria-pressed={value === option.value}
+          className={cn(
+            "inline-flex min-w-[64px] items-center justify-center rounded-[5px] px-2 text-[11.5px] transition-colors",
+            value === option.value
+              ? "bg-paper-50 text-ink-900 ring-1 ring-ink-900/[0.06]"
+              : "text-ink-500 hover:text-ink-800",
+          )}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
     </div>
   );
 }
 
-export function ConfigFieldRequirementLabel({ required }: Pick<ConfigFieldPresentation, "required">): JSX.Element {
+export function ConfigFieldRequirementLabel({
+  required,
+}: Pick<ConfigFieldPresentation, "required">): JSX.Element | null {
+  if (!required) return null;
   return (
-    <span className={cn("text-[10.5px] font-normal", required ? "text-brick-600" : "text-ink-350")}>
-      {frontendMessage(required ? "settings.config.fieldRequired" : "settings.config.fieldOptional")}
-    </span>
+    <span className="text-[10.5px] font-normal text-brick-600">{frontendMessage("settings.config.fieldRequired")}</span>
   );
 }

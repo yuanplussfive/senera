@@ -617,7 +617,10 @@ function startSandboxRuntimePreparation(input: {
   prepared: boolean;
 }): void {
   const sandboxRuntimeConfig = resolveSandboxRuntimeConfig(input.config);
-  if (!sandboxRuntimeConfig.Enabled || process.platform === "win32") {
+  if (
+    !sandboxRuntimeConfig.Enabled ||
+    (process.platform === "win32" && !input.sandboxRuntimeService.sandboxBackendAvailable())
+  ) {
     input.sandboxRuntimeService.markDisabled();
     input.logger.info("sandbox.runtime.disabled", {
       provider: input.sandboxRuntimeService.runtimeProvider(),

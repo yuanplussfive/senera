@@ -1,8 +1,8 @@
 import { lazy, StrictMode, Suspense, useCallback, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root as ReactRoot } from "react-dom/client";
 import { resolveAppSurface, resolveSettingsSection } from "./app/appSurface";
 import { readDesktopBridge } from "./app/desktopBridge";
-import { ServerAuthenticationBoundary, ServerAuthenticationLoading } from "./app/ServerAuthenticationGate";
+import { ServerAuthenticationBoundary } from "./app/ServerAuthenticationGate";
 import { useServerAuthentication } from "./app/useServerAuthentication";
 import type { AgentSocketReconnectPolicy } from "./api/useAgentSocket";
 import { AuthenticationSessionStates } from "./api/generatedEventCatalog";
@@ -10,8 +10,9 @@ import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "./config/
 import { installMotionDevTools } from "./dev/motionDevTools";
 import { FrontendI18nProvider, useFrontendLocale } from "./i18n/useFrontendLocale";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
-import { loadAuthenticatedSurfaceComponent } from "./app/applicationModuleLoaders";
+import { AuthenticatedSurface } from "./app/AuthenticatedSurface";
 import { useAuthenticatedApplicationPreload } from "./app/useAuthenticatedApplicationPreload";
+import { installViteDynamicImportRecovery } from "./app/viteDynamicImportRecovery";
 import "./styles/fonts.css";
 import "./index.css";
 import "./styles/transitions.css";
@@ -25,8 +26,16 @@ const root = document.getElementById("root");
 
 if (import.meta.env.DEV) installMotionDevTools();
 if (!root) throw new Error("#root not found in index.html");
+installViteDynamicImportRecovery();
 
-createRoot(root).render(
+// Vite can re-evaluate this entry module during development HMR. Reusing the
+// root prevents a second React tree from competing with the first one and
+// avoids removeChild errors and visible settings flashes after updates.
+const rootElement = root as HTMLElement & { __seneraReactRoot?: ReactRoot };
+const appRoot = rootElement.__seneraReactRoot ?? createRoot(rootElement);
+rootElement.__seneraReactRoot = appRoot;
+
+appRoot.render(
   <StrictMode>
     <Root />
   </StrictMode>,
@@ -46,7 +55,6 @@ function Root(): JSX.Element {
 }
 
 function ApplicationRoot(): JSX.Element {
-  const [LazyAuthenticatedSurface] = useState(() => lazy(loadAuthenticatedSurfaceComponent));
   useFrontendLocale();
   const isDesktop = Boolean(readDesktopBridge()?.isDesktop);
   const surface = resolveAppSurface(window.location, isDesktop);
@@ -69,19 +77,17 @@ function ApplicationRoot(): JSX.Element {
       onRetry={authentication.refresh}
     >
       {(resolvedAuthentication) => (
-        <Suspense fallback={<ServerAuthenticationLoading />}>
-          <LazyAuthenticatedSurface
-            authentication={resolvedAuthentication}
-            surface={surface}
-            settingsSection={settingsSection}
-            socketReconnectPolicy={socketReconnectPolicy}
-            onLogout={
-              resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
-                ? authentication.logout
-                : undefined
-            }
-          />
-        </Suspense>
+        <AuthenticatedSurface
+          authentication={resolvedAuthentication}
+          surface={surface}
+          settingsSection={settingsSection}
+          socketReconnectPolicy={socketReconnectPolicy}
+          onLogout={
+            resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
+              ? authentication.logout
+              : undefined
+          }
+        />
       )}
     </ServerAuthenticationBoundary>
   );

@@ -1,4 +1,5 @@
-import { Loader2 } from "lucide-react";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { cn } from "../../lib/util";
 
 export type SpinnerSize = "xs" | "sm" | "md";
@@ -15,6 +16,12 @@ const sizeClasses: Record<SpinnerSize, string> = {
  */
 export function Spinner({ size = "sm", className }: { size?: SpinnerSize; className?: string }): JSX.Element {
   return (
-    <Loader2 aria-hidden="true" className={cn("shrink-0 motion-safe:animate-spin", sizeClasses[size], className)} />
+    <HugeiconsIcon
+      icon={Loading03Icon}
+      size="100%"
+      strokeWidth={1.75}
+      aria-hidden="true"
+      className={cn("shrink-0 motion-safe:animate-spin", sizeClasses[size], className)}
+    />
   );
 }

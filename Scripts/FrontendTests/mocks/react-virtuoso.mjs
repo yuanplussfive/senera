@@ -2,6 +2,7 @@ import React from "react";
 
 export const Virtuoso = React.forwardRef(function TestVirtuoso(props, ref) {
   React.useImperativeHandle(ref, () => ({
+    autoscrollToBottom: () => undefined,
     scrollTo: () => undefined,
     scrollToIndex: () => undefined,
   }));

@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Plus, RotateCcw, Server, SlidersHorizontal, Trash2 } from "lucide-react";
+import { EyeOff, Plus, RotateCcw, ScanEye, Server, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
@@ -57,8 +57,8 @@ export function ProviderConnectionEditor({
   disabled,
   localError,
   operation,
-  providerModelCount,
   providerIndex,
+  onReadApiKey,
   onChange,
   onConfirm,
   onDelete,
@@ -69,21 +69,44 @@ export function ProviderConnectionEditor({
   disabled: boolean;
   localError: string | null;
   operation?: SettingsConfigCommands["providerEndpointOperations"][string];
-  providerModelCount: number;
   providerIndex: number;
+  onReadApiKey?: (providerId: string) => Promise<string>;
   onChange: (patch: Partial<ProviderEndpointDraft>) => void;
   onConfirm: (patch?: Partial<ProviderEndpointDraft>) => void;
   onDelete?: () => void;
 }): JSX.Element {
   const [showKey, setShowKey] = useState(false);
+  const [apiKeyDraft, setApiKeyDraft] = useState<string | null>(null);
+  const [revealedApiKey, setRevealedApiKey] = useState<string | null>(null);
   const [requestConfigOpen, setRequestConfigOpen] = useState(false);
   const [requestHeadersDraft, setRequestHeadersDraft] = useState<HeaderRow[]>([]);
   const provider = draftProvider;
   const providerId = provider?.Id;
+  const acceptedProviderApiKey = acceptedProvider?.ApiKey;
 
   useEffect(() => {
     setShowKey(false);
-  }, [providerId]);
+    setApiKeyDraft(null);
+    const snapshotApiKey = acceptedProviderApiKey;
+    if (typeof snapshotApiKey === "string" && !isRedactedConfigSecret(snapshotApiKey)) {
+      setRevealedApiKey(snapshotApiKey);
+      return;
+    }
+    setRevealedApiKey(null);
+    if (!providerId || !onReadApiKey) return;
+    let current = true;
+    void onReadApiKey(providerId).then(
+      (apiKey) => {
+        if (current) setRevealedApiKey(apiKey);
+      },
+      () => {
+        if (current) setRevealedApiKey("");
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [acceptedProviderApiKey, onReadApiKey, providerId]);
 
   if (!provider || !acceptedProvider || providerIndex < 0) {
     return (
@@ -97,7 +120,7 @@ export function ProviderConnectionEditor({
 
   const enabled = providerEnabled(provider);
   const protectedProvider = isProtectedProvider(provider.Id);
-  const storedApiKey = isRedactedConfigSecret(provider.ApiKey);
+  const displayedApiKey = apiKeyDraft ?? revealedApiKey ?? "";
   const pending = operation?.status === "pending";
   const operationError = operation?.status === "error" ? operation.message : null;
   const errorMessage = localError ?? operationError;
@@ -105,15 +128,10 @@ export function ProviderConnectionEditor({
 
   return (
     <div className="bg-paper-50">
-      <div className="mx-auto w-full max-w-[960px] px-5 py-4 lg:px-7">
+      <div className="mx-auto w-full max-w-[980px] px-5 py-4 lg:px-7">
         <DetailTitle
           icon={<ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={22} />}
           title={providerIdLabel(provider)}
-          subtitle={readProviderConnectionSubtitle({
-            enabled,
-            protectedProvider,
-            providerModelCount,
-          })}
           actions={
             <>
               {errorMessage && dirty ? (
@@ -153,34 +171,36 @@ export function ProviderConnectionEditor({
           }
         />
 
-        <div className="grid gap-3">
+        <div className="grid gap-2.5">
           <ConnectionField label={frontendMessage("settings.provider.apiKey")}>
-            <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
+            <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200/80 bg-paper-50 transition-[border-color,box-shadow] focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <input
-                type={showKey && !storedApiKey ? "text" : "password"}
-                value={storedApiKey ? "" : (provider.ApiKey ?? "")}
+                type={showKey ? "text" : "password"}
+                value={displayedApiKey}
                 disabled={disabled}
-                placeholder={storedApiKey ? frontendMessage("settings.provider.apiKeyStored") : "sk-..."}
+                placeholder="sk-..."
                 spellCheck={false}
                 className={cn(inputClassName, "h-full font-mono")}
                 onChange={(event) => {
-                  onChange({ ApiKey: event.currentTarget.value });
+                  const value = event.currentTarget.value;
+                  setApiKeyDraft(value);
+                  onChange({ ApiKey: value });
                 }}
                 onBlur={() => onConfirm()}
               />
               <button
                 type="button"
-                disabled={storedApiKey}
-                className="grid h-9 w-9 shrink-0 place-items-center border-l border-ink-200 text-ink-450 transition hover:text-ink-800 disabled:pointer-events-none disabled:opacity-40"
+                disabled={displayedApiKey.length === 0}
+                className="grid h-9 w-9 shrink-0 place-items-center text-ink-450 transition hover:bg-ink-900/[0.035] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-40"
                 onClick={() => setShowKey((current) => !current)}
                 aria-label={frontendMessage(showKey ? "config.provider.hideApiKey" : "config.provider.showApiKey")}
               >
-                {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <ScanEye className="h-3.5 w-3.5" />}
               </button>
             </div>
           </ConnectionField>
           <ConnectionField label={frontendMessage("settings.provider.apiUrl")}>
-            <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
+            <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200/80 bg-paper-50 transition-[border-color,box-shadow] focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <input
                 value={provider.BaseUrl ?? ""}
                 disabled={disabled}
@@ -196,7 +216,11 @@ export function ProviderConnectionEditor({
           </ConnectionField>
         </div>
 
-        <div className="mt-2">{errorMessage ? <ProviderFormError message={errorMessage} /> : null}</div>
+        {errorMessage ? (
+          <div className="mt-2">
+            <ProviderFormError message={errorMessage} />
+          </div>
+        ) : null}
       </div>
       <Dialog
         open={requestConfigOpen}
@@ -257,8 +281,8 @@ export function ProviderConnectionEditor({
 
 function ConnectionField({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
   return (
-    <label className="block min-w-0">
-      <span className="mb-1.5 block text-[12px] font-medium text-ink-650">{label}</span>
+    <label className="grid min-w-0 gap-1.5 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center sm:gap-3">
+      <span className="text-[11.5px] font-medium text-ink-600">{label}</span>
       {children}
     </label>
   );
@@ -320,20 +344,4 @@ function HeadersEditor({
       </Button>
     </div>
   );
-}
-
-function readProviderConnectionSubtitle({
-  enabled,
-  protectedProvider,
-  providerModelCount,
-}: {
-  enabled: boolean;
-  protectedProvider: boolean;
-  providerModelCount: number;
-}): string {
-  const identity = frontendMessage(
-    protectedProvider ? "settings.provider.builtIn" : "settings.provider.customIdentity",
-  );
-  const state = frontendMessage(enabled ? "settings.state.enabled" : "settings.state.disabled");
-  return frontendMessage("settings.provider.connectionStatus", { identity, state, count: providerModelCount });
 }

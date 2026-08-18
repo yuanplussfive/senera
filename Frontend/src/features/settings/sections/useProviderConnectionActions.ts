@@ -43,7 +43,6 @@ export interface UseProviderConnectionActionsInput {
 export interface ProviderConnectionActions {
   acceptedProvider: ProviderEndpointDraft | null;
   selectedProviderIndex: number;
-  selectedProviderModelCount: number;
   providerOperation: SettingsConfigCommands["providerEndpointOperations"][string] | undefined;
   selectedProviderCatalog: SettingsConfigCommands["providerModelCatalogs"][string] | undefined;
   selectedProviderError: SettingsConfigCommands["providerModelErrors"][string] | undefined;
@@ -202,9 +201,6 @@ export function useProviderConnectionActions({
   const selectedProviderIndex = acceptedProvider
     ? state.providers.findIndex((provider) => provider.Id === acceptedProvider.Id)
     : -1;
-  const selectedProviderModelCount = acceptedProvider
-    ? state.models.filter((model) => model.ProviderId === acceptedProvider.Id).length
-    : 0;
   const providerOperation = acceptedProvider?.Id ? operations[acceptedProvider.Id] : undefined;
   const selectedProviderCatalog = acceptedProvider?.Id ? catalogs[acceptedProvider.Id] : undefined;
   const selectedProviderError = acceptedProvider?.Id ? errors[acceptedProvider.Id] : undefined;
@@ -404,7 +400,6 @@ export function useProviderConnectionActions({
   return {
     acceptedProvider,
     selectedProviderIndex,
-    selectedProviderModelCount,
     providerOperation: providerSaveOperation,
     selectedProviderCatalog,
     selectedProviderError,

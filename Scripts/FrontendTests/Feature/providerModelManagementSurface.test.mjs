@@ -33,7 +33,7 @@ test("model editor stays open after a failed save so the draft can be retried", 
   );
 
   await user.click(screen.getByRole("button", { name: "配置" }));
-  await user.click(screen.getByRole("button", { name: "对话" }));
+  await user.click(screen.getByRole("switch", { name: "对话" }));
   await waitFor(() => expect(onUpsertProviderModel).toHaveBeenCalledTimes(1));
   expect(screen.getByRole("dialog")).toBeInTheDocument();
 
@@ -44,7 +44,7 @@ test("model editor stays open after a failed save so the draft can be retried", 
     message: "model rejected",
     updatedAt: "2026-07-12T00:00:00.000Z",
   };
-  await user.click(screen.getByRole("button", { name: "对话" }));
+  await user.click(screen.getByRole("switch", { name: "对话" }));
 
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /重试|Retry/ })).toBeInTheDocument();
@@ -72,7 +72,7 @@ test("model tool planning defaults to native and keeps native prerequisites cons
   const bamlMode = within(dialog).getByRole("radio", {
     name: frontendMessage("config.model.toolPlanning.baml"),
   });
-  const toolCalling = within(dialog).getByRole("button", {
+  const toolCalling = within(dialog).getByRole("switch", {
     name: frontendMessage("config.model.capability.toolCalling"),
   });
   const streaming = within(dialog).getByRole("switch", {
@@ -80,16 +80,16 @@ test("model tool planning defaults to native and keeps native prerequisites cons
   });
 
   expect(nativeMode).toHaveAttribute("aria-checked", "true");
-  expect(toolCalling).toHaveAttribute("aria-pressed", "true");
+  expect(toolCalling).toHaveAttribute("aria-checked", "true");
   expect(streaming).toHaveAttribute("aria-checked", "true");
 
   await user.click(toolCalling);
   expect(bamlMode).toHaveAttribute("aria-checked", "true");
-  expect(toolCalling).toHaveAttribute("aria-pressed", "false");
+  expect(toolCalling).toHaveAttribute("aria-checked", "false");
 
   await user.click(nativeMode);
   expect(nativeMode).toHaveAttribute("aria-checked", "true");
-  expect(toolCalling).toHaveAttribute("aria-pressed", "true");
+  expect(toolCalling).toHaveAttribute("aria-checked", "true");
   expect(streaming).toHaveAttribute("aria-checked", "true");
 
   await user.click(streaming);

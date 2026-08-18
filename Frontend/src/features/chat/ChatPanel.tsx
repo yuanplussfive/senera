@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useMemo, useState } from "react";
 import { useStore, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
+import type { ChatMessage, RunRecord } from "../../store/sessionStore";
 import { useChatState } from "../../store/selectors/chatSelectors";
 import { ErrorBoundary } from "../../shared/ui";
 import { useEventJournalStore } from "../observability/eventJournalStore";
@@ -36,6 +37,8 @@ export function ChatPanel({
   );
 
   const messages = session?.messages ?? [];
+  const runs = session?.runs ?? [];
+  const hasConversationContent = hasRenderableConversationContent(messages, runs);
   const currentRun = session?.runs[session.runs.length - 1];
   const isRunning = currentRun?.status === "running";
   const isSettling = isRunning && (currentRun.outputState === "available" || currentRun.outputState === "committed");
@@ -44,6 +47,7 @@ export function ChatPanel({
   const composerDisabled = runtime.socketStatus !== "open" || historyLoading || isCancelling;
   const shouldShowHistoryRecovery =
     messages.length === 0 &&
+    !hasConversationContent &&
     !isActive &&
     !!session &&
     session.messageCount > 0 &&
@@ -56,7 +60,6 @@ export function ChatPanel({
           runStatus={currentRun?.status}
           waitingForApproval={currentRun?.activeFlags?.includes("waiting_for_approval") === true}
           waitingForInput={currentRun?.activeFlags?.includes("waiting_for_input") === true}
-          sandboxStatus={runtime.sandboxStatus}
           onOpenSessionPanel={navigationActions?.onOpenSessionPanel}
           onOpenWorkflowPanel={navigationActions?.onOpenWorkflowPanel}
         />
@@ -77,7 +80,7 @@ export function ChatPanel({
                 retryDisabled={runtime.socketStatus !== "open"}
               />
             </ChatContentMotion>
-          ) : messages.length === 0 && !isActive ? (
+          ) : !hasConversationContent && !isActive ? (
             <ChatContentMotion key={`empty:${activeId ?? "none"}`} motionLevel={effectiveMotionLevel}>
               <div className="flex flex-1 items-center justify-center px-8 py-16 sm:px-12">
                 <EmptyChatState onSelectSuggestion={runtime.socketStatus === "open" ? setComposerValue : undefined} />
@@ -90,7 +93,7 @@ export function ChatPanel({
                   sessionId={session?.sessionId ?? activeId ?? ""}
                   uploadUrl={runtime.uploadUrl}
                   messages={messages}
-                  runs={session?.runs ?? []}
+                  runs={runs}
                   currentRun={isActive ? currentRun : undefined}
                   userProfile={userProfile}
                   onForkFromMessage={messageActions.onForkFromMessage}
@@ -129,6 +132,13 @@ export function ChatPanel({
       </main>
     </UploadPreviewProvider>
   );
+}
+
+export function hasRenderableConversationContent(
+  messages: readonly ChatMessage[],
+  runs: readonly RunRecord[],
+): boolean {
+  return messages.length > 0 || runs.length > 0;
 }
 
 function ChatContentMotion({

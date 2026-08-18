@@ -101,6 +101,19 @@ export class AgentArtifactFileWriter {
     };
   }
 
+  async writeBase64(filePath: string, value: string): Promise<AgentArtifactFileReceipt> {
+    const normalized = value.replace(/\s+/gu, "");
+    if (!isBase64(normalized)) throw new Error(`Artifact asset is not valid base64: ${filePath}`);
+    const content = Buffer.from(normalized, "base64");
+    const target = await this.prepareTarget(filePath);
+    await writeFileAtomic(target.absolutePath, content);
+    return {
+      filePath: target.absolutePath,
+      byteLength: content.byteLength,
+      sha256: createHash("sha256").update(content).digest("hex"),
+    };
+  }
+
   private async writeJsonStream(filePath: string, value: unknown): Promise<AgentArtifactFileReceipt> {
     const target = await this.prepareTarget(filePath);
     const temporary = path.join(path.dirname(target.absolutePath), `.${path.basename(filePath)}.${randomUUID()}.tmp`);
@@ -237,6 +250,14 @@ function byteLength(value: string): number {
 function assertJsonBudget(value: number): void {
   if (!Number.isSafeInteger(value) || value < 1)
     throw new RangeError(`JSON byte budget must be a positive safe integer: ${value}`);
+}
+
+function isBase64(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length % 4 === 0 &&
+    /^(?:[a-z0-9+/]{4})*(?:[a-z0-9+/]{2}==|[a-z0-9+/]{3}=)?$/iu.test(value)
+  );
 }
 
 async function readUtf8Prefix(filePath: string, maxBytes: number): Promise<string> {

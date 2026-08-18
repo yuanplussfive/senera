@@ -13,7 +13,7 @@ describe("sandbox deployment boundary", () => {
     ).not.toThrow();
   });
 
-  test("requires a Worker only after POSIX sandbox availability was established", () => {
+  test("requires a Worker only after sandbox availability was established", () => {
     expect(() => createSeneraExecutionEnvironments({ workspaceRoot: process.cwd() })).not.toThrow();
     expect(() =>
       createSeneraExecutionEnvironments({
@@ -25,21 +25,23 @@ describe("sandbox deployment boundary", () => {
     ).toThrow("requires a Worker client");
   });
 
-  test("exposes only governed host execution on Windows", () => {
+  test("exposes the Docker Engine sandbox on Windows when its Worker is ready", () => {
     const environments = createSeneraExecutionEnvironments({
       workspaceRoot: process.cwd(),
       platform: "win32",
       sandboxEnabled: true,
       sandboxAvailable: true,
+      sandboxProvider: "docker-engine",
+      dockerEngineWorker: {} as never,
     });
 
     expect(environments.tool.capabilities).toMatchObject({
-      effectiveMode: "host",
-      effectiveBackend: "local",
-      shellDialect: "powershell",
-      processBackends: ["local"],
-      persistentProcessBackends: ["local"],
-      terminalBackends: ["local"],
+      effectiveMode: "sandbox",
+      effectiveBackend: "sandbox",
+      shellDialect: "posix-sh",
+      processBackends: ["sandbox"],
+      persistentProcessBackends: ["sandbox"],
+      terminalBackends: ["sandbox"],
     });
   });
 

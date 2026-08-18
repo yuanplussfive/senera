@@ -1,8 +1,10 @@
-import { MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
+import { MoreVertical, PenLine, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
-import { cn, formatShortTime } from "../../../lib/util";
+import { cn } from "../../../lib/util";
+import { motionTimings, useMotionLevel } from "../../../shared/motion";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,6 +46,8 @@ export function ProviderConnectionList({
   onDelete: (provider: ProviderEndpointDraft) => void;
 }): JSX.Element {
   const [providerSearch, setProviderSearch] = useState("");
+  const { reduceMotion, disableMotion } = useMotionLevel();
+  const animateSelection = !reduceMotion && !disableMotion;
   const providerQuery = providerSearch.trim().toLowerCase();
   const providerResults = sortProviderRows(providers).filter(({ provider }) => {
     if (!providerQuery) return true;
@@ -66,25 +70,33 @@ export function ProviderConnectionList({
           const protectedProvider = isProtectedProvider(provider.Id);
           const statusText = loading
             ? frontendMessage("settings.modelManagement.fetching")
-            : catalog
-              ? frontendMessage("settings.provider.catalogSummary", {
-                  models: frontendMessage("settings.provider.modelsCount", { count: modelCount }),
-                  time: formatShortTime(catalog.fetchedAt),
-                })
-              : null;
+            : error
+              ? frontendMessage("settings.modelManagement.fetchFailed", { error: error.message })
+              : catalog
+                ? frontendMessage("settings.provider.modelsCount", { count: modelCount })
+                : null;
           return (
             <div
               key={provider.Id}
               className={cn(
-                "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md px-2 py-2 transition-colors",
-                active ? "bg-ink-900/[0.055] text-ink-900" : "text-ink-650 hover:bg-ink-900/[0.03] hover:text-ink-900",
+                "relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-0.5 rounded-md px-1.5 py-1.5 transition-colors",
+                active ? "text-ink-900" : "text-ink-650 hover:bg-ink-900/[0.03] hover:text-ink-900",
                 !enabled && "opacity-65",
               )}
             >
+              {active ? (
+                <motion.span
+                  layoutId={animateSelection ? "settings-provider-selection" : undefined}
+                  className="absolute inset-0 rounded-md bg-ink-900/[0.055] shadow-[inset_0_0_0_1px_rgb(110_100_84/0.035)]"
+                  transition={animateSelection ? motionTimings.selection : { duration: 0 }}
+                  aria-hidden="true"
+                  data-provider-selection-indicator
+                />
+              ) : null}
               <button
                 type="button"
                 disabled={disabled}
-                className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-left disabled:pointer-events-none disabled:opacity-60"
+                className="relative z-[1] grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-left disabled:pointer-events-none disabled:opacity-60"
                 aria-label={frontendMessage("settings.provider.rowAria", {
                   provider: providerIdLabel(provider),
                   models: frontendMessage("settings.provider.modelsCount", { count: modelCount }),
@@ -94,15 +106,15 @@ export function ProviderConnectionList({
                 aria-pressed={active}
                 onClick={() => onSelect(provider)}
               >
-                <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-md border border-ink-200/80 bg-paper-50">
-                  <ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={20} />
+                <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-md bg-paper-50/75 shadow-[inset_0_0_0_1px_rgb(110_100_84/0.1)]">
+                  <ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={19} />
                 </span>
                 <span className="min-w-0 self-center">
-                  <span className="block truncate text-[13px] font-semibold" title={providerIdLabel(provider)}>
+                  <span className="block truncate text-[12.5px] font-semibold" title={providerIdLabel(provider)}>
                     {providerIdLabel(provider)}
                   </span>
                   {statusText ? (
-                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-ink-500">
+                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10.5px] text-ink-500">
                       <ProviderStatusIcon loading={loading} catalog={catalog} error={error} />
                       <span className="truncate">{statusText}</span>
                     </span>
@@ -121,7 +133,7 @@ export function ProviderConnectionList({
                   <button
                     type="button"
                     disabled={disabled}
-                    className="grid h-8 w-8 place-items-center rounded-md text-ink-400 transition hover:bg-ink-900/[0.045] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-45"
+                    className="relative z-[1] grid h-8 w-8 place-items-center rounded-md text-ink-400 transition hover:bg-ink-900/[0.045] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-45"
                     aria-label={frontendMessage("settings.provider.operations")}
                   >
                     <MoreVertical className="h-3.5 w-3.5" />
@@ -129,7 +141,7 @@ export function ProviderConnectionList({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44 bg-paper-50">
                   <DropdownMenuItem
-                    icon={<Pencil className="h-3.5 w-3.5" />}
+                    icon={<PenLine className="h-3.5 w-3.5" />}
                     disabled={protectedProvider}
                     onSelect={() => onRename(provider)}
                   >
@@ -167,39 +179,39 @@ export function ProviderConnectionList({
   );
 
   return (
-    <div className="h-full min-h-0 overflow-hidden">
-      <ScrollArea className="h-full min-h-0" viewportClassName="h-full">
-        <div className="border-b border-ink-200/70 bg-paper-50 p-3">
-          {compact ? (
-            <div className="flex min-w-0 items-center gap-2" data-provider-list-toolbar="compact">
-              <SearchInput
-                value={providerSearch}
-                disabled={providers.length === 0}
-                placeholder={frontendMessage("settings.provider.searchPlaceholder")}
-                className="flex-1"
-                onChange={setProviderSearch}
-              />
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-ink-200/55 bg-paper-50/80 p-3">
+        {compact ? (
+          <div className="flex min-w-0 items-center gap-2" data-provider-list-toolbar="compact">
+            <SearchInput
+              value={providerSearch}
+              disabled={providers.length === 0}
+              placeholder={frontendMessage("settings.provider.searchPlaceholder")}
+              className="flex-1"
+              onChange={setProviderSearch}
+            />
+            {addProviderButton}
+          </div>
+        ) : (
+          <>
+            <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-semibold text-ink-900">
+                  {frontendMessage("settings.model.serviceTitle")}
+                </div>
+              </div>
               {addProviderButton}
             </div>
-          ) : (
-            <>
-              <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate text-[14px] font-semibold text-ink-900">
-                    {frontendMessage("settings.model.serviceTitle")}
-                  </div>
-                </div>
-                {addProviderButton}
-              </div>
-              <SearchInput
-                value={providerSearch}
-                disabled={providers.length === 0}
-                placeholder={frontendMessage("settings.provider.searchPlaceholder")}
-                onChange={setProviderSearch}
-              />
-            </>
-          )}
-        </div>
+            <SearchInput
+              value={providerSearch}
+              disabled={providers.length === 0}
+              placeholder={frontendMessage("settings.provider.searchPlaceholder")}
+              onChange={setProviderSearch}
+            />
+          </>
+        )}
+      </div>
+      <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
         {providerRows}
       </ScrollArea>
     </div>

@@ -11,7 +11,7 @@ import {
 
 export const PERSIST_KEY = "senera-frontend@v1";
 
-type PersistedSessionState = Partial<
+export type PersistedSessionState = Partial<
   Pick<
     StoreState,
     | "defaultSidebarCollapsed"

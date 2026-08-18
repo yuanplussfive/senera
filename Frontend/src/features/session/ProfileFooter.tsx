@@ -1,19 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Camera,
-  Info,
-  Settings,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-  User,
-  UserRoundPen,
-  Wifi,
-  WifiOff,
-} from "lucide-react";
+import { Camera, Info, Settings, User, UserRoundPen, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
-import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
-import { sandboxStatusAvailabilitySuffix, sandboxStatusDetail } from "../sandbox/sandboxPreparationPresentation";
 import type { UserProfile } from "../../store/sessionStore";
 import type { SettingsSectionId } from "../settings/types";
 import { cn } from "../../lib/util";
@@ -45,7 +32,6 @@ export function UserFooter({
   collapsed = false,
   profile,
   socketStatus,
-  sandboxStatus,
   onUpdateProfile,
   onLogout,
   onSettingsIntent,
@@ -54,7 +40,6 @@ export function UserFooter({
   collapsed?: boolean;
   profile: UserProfile;
   socketStatus: string;
-  sandboxStatus?: SandboxStatusSnapshotData | null;
   onUpdateProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   onLogout?: () => Promise<void>;
   onSettingsIntent?: () => void;
@@ -149,7 +134,6 @@ export function UserFooter({
           >
             {frontendMessage("profile.menu.connectionStatus")}
           </DropdownMenuMeta>
-          <SandboxStatusMeta status={sandboxStatus} />
         </DropdownMenuContent>
       </DropdownMenu>
       <ProfileDialog
@@ -175,60 +159,6 @@ export function UserFooter({
         }
       />
     </>
-  );
-}
-
-function SandboxStatusMeta({ status }: { status?: SandboxStatusSnapshotData | null }): JSX.Element {
-  const state = status?.state ?? "unknown";
-  const detail = sandboxStatusDetail(status);
-  const suffix = sandboxStatusAvailabilitySuffix(status);
-  const table = {
-    disabled: {
-      label: frontendMessage("sandbox.status.disabled"),
-      Icon: Shield,
-      className: "text-content-muted",
-    },
-    unknown: {
-      label: frontendMessage("sandbox.status.unknown"),
-      Icon: Shield,
-      className: "text-content-muted",
-    },
-    preparing: {
-      label: frontendMessage("sandbox.status.preparing"),
-      Icon: Shield,
-      className: "text-umber-600",
-    },
-    ready: {
-      label: frontendMessage("sandbox.status.ready"),
-      Icon: ShieldCheck,
-      className: "text-moss-600",
-    },
-    unavailable: {
-      label: frontendMessage("sandbox.status.unavailable"),
-      Icon: ShieldAlert,
-      className: "text-brick-600",
-    },
-  } satisfies Record<
-    SandboxRuntimeState,
-    {
-      label: string;
-      Icon: typeof Shield;
-      className: string;
-    }
-  >;
-  const presentation = table[state];
-  const StatusIcon = presentation.Icon;
-
-  return (
-    <DropdownMenuMeta
-      aria-label={`${frontendMessage("sandbox.status.label")}: ${presentation.label}`}
-      title={`${detail} ${suffix}`}
-      icon={<StatusIcon className={`h-3.5 w-3.5 ${presentation.className}`} aria-hidden="true" />}
-      value={presentation.label}
-      data-sandbox-status={state}
-    >
-      {frontendMessage("sandbox.status.label")}
-    </DropdownMenuMeta>
   );
 }
 

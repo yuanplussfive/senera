@@ -56,7 +56,7 @@ interface SharedExecutionDependencies {
 
 function createSharedExecutionDependencies(options: SeneraExecutionEnvFactoryOptions): SharedExecutionDependencies {
   const platform = options.platform ?? process.platform;
-  const sandboxEnabled = platform !== "win32" && (options.sandboxEnabled ?? options.sandboxAvailable === true);
+  const sandboxEnabled = options.sandboxEnabled ?? options.sandboxAvailable === true;
   const sandboxAvailable = sandboxEnabled && options.sandboxAvailable === true;
   const environmentPolicy =
     options.environmentPolicy instanceof SeneraProcessEnvironmentPolicy

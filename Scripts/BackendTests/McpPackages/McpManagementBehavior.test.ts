@@ -42,7 +42,7 @@ describe("MCP management", () => {
       options: expect.arrayContaining(["workspace-investigation"]),
     });
 
-    management.setInput("web-research", "TAVILY_API_KEY", "snapshot-secret");
+    management.setInput("credential-test", "TEST_SECRET", "snapshot-secret");
 
     expect(management.systemSettingsSnapshot()).toBe(firstSystem);
     expect(management.mcpSettingsSnapshot()).not.toBe(firstMcp);
@@ -71,54 +71,56 @@ describe("MCP management", () => {
 
   test("projects typed inputs without exposing Secret values and isolates them by server", () => {
     const { inputs, management } = createManagement();
-    const secret = "tavily-secret-that-must-not-be-projected";
+    const secret = "credential-test-secret-that-must-not-be-projected";
 
-    expect(management.listMcpServers()).toEqual([
-      expect.objectContaining({
-        id: "weather",
-        status: "needs_input",
-        inputs: expect.arrayContaining([
-          expect.objectContaining({ id: "QWEATHER_API_KEY", secret: true, configured: false, source: "missing" }),
-        ]),
-      }),
-      expect.objectContaining({
-        id: "web-research",
-        status: "needs_input",
-        inputs: expect.arrayContaining([
-          expect.objectContaining({ id: "TAVILY_API_KEY", secret: true, configured: false, source: "missing" }),
-        ]),
-      }),
-    ]);
+    expect(management.listMcpServers()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "credential-test",
+          status: "needs_input",
+          inputs: expect.arrayContaining([
+            expect.objectContaining({ id: "TEST_SECRET", secret: true, configured: false, source: "missing" }),
+          ]),
+        }),
+        expect.objectContaining({
+          id: "weather",
+          status: "needs_input",
+          inputs: expect.arrayContaining([
+            expect.objectContaining({ id: "QWEATHER_API_KEY", secret: true, configured: false, source: "missing" }),
+          ]),
+        }),
+      ]),
+    );
 
-    management.setInput("web-research", "TAVILY_API_KEY", secret);
+    management.setInput("credential-test", "TEST_SECRET", secret);
 
     const servers = management.listMcpServers();
-    expect(servers.find((server) => server.id === "web-research")).toMatchObject({
+    expect(servers.find((server) => server.id === "credential-test")).toMatchObject({
       status: "configured",
       inputs: expect.arrayContaining([
-        expect.objectContaining({ id: "TAVILY_API_KEY", configured: true, source: "vault" }),
+        expect.objectContaining({ id: "TEST_SECRET", configured: true, source: "vault" }),
       ]),
     });
     expect(servers.find((server) => server.id === "weather")?.status).toBe("needs_input");
     expect(JSON.stringify(servers)).not.toContain(secret);
-    expect(inputs.resolve("weather", { source: "secret", inputId: "TAVILY_API_KEY" })).toBeUndefined();
+    expect(inputs.resolve("weather", { source: "secret", inputId: "TEST_SECRET" })).toBeUndefined();
   });
 
   test("accepts only declared variables and includes server identity in restart revisions", () => {
     const { management } = createManagement();
     const initial = management.revision();
 
-    expect(() => management.setInput("web-research", "UNDECLARED", "value")).toThrow(/does not declare input/u);
+    expect(() => management.setInput("credential-test", "UNDECLARED", "value")).toThrow(/does not declare input/u);
 
     management.restart("weather");
     const weatherRestart = management.revision();
-    management.restart("web-research");
+    management.restart("credential-test");
     const bothRestarted = management.revision();
 
     expect(weatherRestart).not.toBe(initial);
     expect(weatherRestart).toContain("weather=1");
     expect(bothRestarted).toContain("weather=1");
-    expect(bothRestarted).toContain("web-research=1");
+    expect(bothRestarted).toContain("credential-test=1");
   });
 
   test("validates input request boundaries and descriptor-owned value types", () => {
@@ -126,15 +128,15 @@ describe("MCP management", () => {
     expect(
       AgentWebSocketRequestSchema.safeParse({
         type: "mcpInput.set",
-        serverId: "web-research",
-        inputId: "TAVILY_API_KEY",
+        serverId: "credential-test",
+        inputId: "TEST_SECRET",
         value: "secret",
       }).success,
     ).toBe(true);
     expect(
       AgentWebSocketRequestSchema.safeParse({
         type: "mcpInput.set",
-        serverId: "web-research",
+        serverId: "credential-test",
         inputId: "",
         value: "secret",
       }).success,
@@ -142,32 +144,32 @@ describe("MCP management", () => {
     expect(
       AgentWebSocketRequestSchema.safeParse({
         type: "mcpInput.set",
-        serverId: "web-research",
-        inputId: "TAVILY_BASE_URL",
+        serverId: "credential-test",
+        inputId: "TEST_BASE_URL",
         value: true,
       }).success,
     ).toBe(true);
-    expect(() => management.setInput("web-research", "TAVILY_BASE_URL", true)).toThrow(/Expected string/u);
+    expect(() => management.setInput("credential-test", "TEST_BASE_URL", true)).toThrow(/Expected string/u);
     expect(
       AgentWebSocketRequestSchema.safeParse({
         type: "mcpInput.delete",
         serverId: "",
-        inputId: "TAVILY_API_KEY",
+        inputId: "TEST_SECRET",
       }).success,
     ).toBe(false);
     expect(
       AgentWebSocketRequestSchema.safeParse({
         type: "mcpInput.update",
         requestId: "mcp-update-1",
-        serverId: "web-research",
-        values: { TAVILY_API_KEY: "secret", TAVILY_BASE_URL: "https://example.test" },
+        serverId: "credential-test",
+        values: { TEST_SECRET: "secret", TEST_BASE_URL: "https://example.test" },
         deletes: ["OPTIONAL_INPUT"],
       }).success,
     ).toBe(true);
     expect(
       AgentWebSocketRequestSchema.safeParse({
         type: "mcpInput.update",
-        serverId: "web-research",
+        serverId: "credential-test",
         values: {},
       }).success,
     ).toBe(false);
@@ -175,7 +177,7 @@ describe("MCP management", () => {
       AgentWebSocketRequestSchema.safeParse({
         type: "mcpInput.update",
         requestId: " ",
-        serverId: "web-research",
+        serverId: "credential-test",
         values: {},
       }).success,
     ).toBe(false);
@@ -183,11 +185,11 @@ describe("MCP management", () => {
       AgentWebSocketRequestSchema.safeParse({
         type: "mcpInput.update",
         requestId: "mcp-update-2",
-        serverId: "web-research",
+        serverId: "credential-test",
         values: { "": "invalid" },
       }).success,
     ).toBe(false);
-    expect(() => management.updateInputs("web-research", { TAVILY_API_KEY: "secret" }, ["TAVILY_API_KEY"])).toThrow(
+    expect(() => management.updateInputs("credential-test", { TEST_SECRET: "secret" }, ["TEST_SECRET"])).toThrow(
       /cannot be set and deleted together/u,
     );
   });
@@ -204,8 +206,8 @@ describe("MCP management", () => {
       {
         type: "mcpInput.update",
         requestId: "mcp-update-success",
-        serverId: "web-research",
-        values: { TAVILY_API_KEY: secret },
+        serverId: "credential-test",
+        values: { TEST_SECRET: secret },
       },
       (event) => {
         events.push(event);
@@ -228,8 +230,8 @@ describe("MCP management", () => {
     const failure = projectAgentWebSocketRequestFailure(
       {
         type: "mcpInput.set",
-        serverId: "web-research",
-        inputId: "TAVILY_API_KEY",
+        serverId: "credential-test",
+        inputId: "TEST_SECRET",
         value: secret,
       },
       new Error("credential rejected"),
@@ -241,8 +243,8 @@ describe("MCP management", () => {
         code: "tool_settings_request_failed",
         details: {
           requestType: "mcpInput.set",
-          serverId: "web-research",
-          inputId: "TAVILY_API_KEY",
+          serverId: "credential-test",
+          inputId: "TEST_SECRET",
         },
       },
     });
@@ -252,9 +254,9 @@ describe("MCP management", () => {
       {
         type: "mcpInput.update",
         requestId: "mcp-update-failed",
-        serverId: "web-research",
-        values: { TAVILY_API_KEY: secret },
-        deletes: ["TAVILY_BASE_URL"],
+        serverId: "credential-test",
+        values: { TEST_SECRET: secret },
+        deletes: ["TEST_BASE_URL"],
       },
       new Error("batch rejected"),
     );
@@ -265,12 +267,12 @@ describe("MCP management", () => {
         details: {
           requestType: "mcpInput.update",
           requestId: "mcp-update-failed",
-          serverId: "web-research",
+          serverId: "credential-test",
         },
       },
     });
     expect(JSON.stringify(batchFailure)).not.toContain(secret);
-    expect(JSON.stringify(batchFailure)).not.toContain("TAVILY_BASE_URL");
+    expect(JSON.stringify(batchFailure)).not.toContain("TEST_BASE_URL");
   });
 });
 
@@ -281,6 +283,29 @@ function createManagement(config: () => AgentSystemConfig = () => ({ ModelProvid
 } {
   const workspaceRoot = createTemporaryDirectory("senera-mcp-management");
   workspaces.add(workspaceRoot);
+  const mcpRoot = resolveAgentWorkspaceLayout(workspaceRoot).mcpRoot;
+  const packageRoot = path.join(mcpRoot, "credential-test");
+  fs.mkdirSync(packageRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(packageRoot, ".mcp.json"),
+    `${JSON.stringify(
+      {
+        mcpServers: {
+          "credential-test": {
+            type: "stdio",
+            command: "node",
+            env: {
+              TEST_SECRET: ["$", "{TEST_SECRET}"].join(""),
+              TEST_BASE_URL: ["$", "{TEST_BASE_URL:-https://example.test}"].join(""),
+            },
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
   const inputs = AgentMcpInputService.open(workspaceRoot, {});
   inputServices.add(inputs);
   return {

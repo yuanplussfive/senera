@@ -10,14 +10,14 @@ const windows = new AgentSandboxRuntimeService({
   clock,
 }).snapshot();
 assert.equal(windows.platform, "win32");
-assert.equal(windows.provider, undefined);
-assert.equal(windows.supported, false);
-assert.equal(windows.state, "disabled");
-assert.equal(windows.effectiveMode, "host");
-assert.equal(windows.effectiveTarget, "Local");
-assert.equal(windows.shellDialect, "powershell");
-assert.deepEqual(windows.availableExecutionTargets, ["Local"]);
-assert.equal(windows.diagnostics[0]?.code, "host_execution_platform_policy");
+assert.equal(windows.provider, "docker-engine");
+assert.equal(windows.supported, true);
+assert.equal(windows.state, "unknown");
+assert.equal(windows.effectiveMode, "unavailable");
+assert.equal(windows.effectiveTarget, undefined);
+assert.equal(windows.shellDialect, undefined);
+assert.deepEqual(windows.availableExecutionTargets, []);
+assert.equal(windows.diagnostics[0]?.code, "docker-engine_backend_configured");
 
 const service = new AgentSandboxRuntimeService({
   platform: "linux",

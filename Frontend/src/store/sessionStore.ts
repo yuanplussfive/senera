@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import { clampWorkflowDockWidth, DEFAULT_WORKFLOW_DOCK_WIDTH } from "../shared/responsive/workflowDock";
 import { immer } from "zustand/middleware/immer";
 import { DEFAULT_SESSION_TITLE } from "./session/defaults";
-import { clearPersistedStore, sessionPersistOptions } from "./session/persistence";
+import { clearPersistedStore, sessionPersistOptions, type PersistedSessionState } from "./session/persistence";
 import { installSessionPreferenceSynchronization } from "./session/sessionPreferenceSync";
 import {
   advanceRunDisplayText,
@@ -419,8 +419,8 @@ const nowIso = (): string => new Date().toISOString();
 // =========================
 
 export const useStore = create<StoreState>()(
-  persist(
-    immer((set) => ({
+  persist<StoreState, [], [["zustand/immer", never]], PersistedSessionState>(
+    immer<StoreState, [["zustand/persist", unknown]]>((set) => ({
       sessions: {},
       sessionOrder: [],
       activeSessionId: null,
@@ -566,7 +566,7 @@ export const useStore = create<StoreState>()(
 
       markApprovalResolutionPending: (approvalId, decision) =>
         set((state) => {
-          for (const session of Object.values(state.sessions)) {
+          for (const session of Object.values(state.sessions as Record<string, SessionRecord>)) {
             for (const run of session.runs) {
               const approval = run.approvals?.find((entry) => entry.approvalId === approvalId);
               if (!approval || approval.status !== "pending") continue;
@@ -580,7 +580,7 @@ export const useStore = create<StoreState>()(
 
       markApprovalBatchResolutionPending: (batch, decision) =>
         set((state) => {
-          const session = state.sessions[batch.sessionId];
+          const session = (state.sessions as Record<string, SessionRecord>)[batch.sessionId];
           const run = session?.runs.find((entry) => entry.requestId === batch.requestId);
           if (!run) return;
           let changed = false;
@@ -595,7 +595,7 @@ export const useStore = create<StoreState>()(
 
       markInteractionInputResolutionPending: (interactionId, action) =>
         set((state) => {
-          for (const session of Object.values(state.sessions)) {
+          for (const session of Object.values(state.sessions as Record<string, SessionRecord>)) {
             for (const run of session.runs) {
               const interaction = run.interactionInputs?.find((entry) => entry.interactionId === interactionId);
               if (!interaction || interaction.status === "resolved") continue;
@@ -615,7 +615,7 @@ export const useStore = create<StoreState>()(
 
       clearAllSessions: (sessionIds) =>
         set((state) => {
-          const ids = [...new Set(sessionIds?.length ? sessionIds : state.sessionOrder)];
+          const ids = [...new Set<string>(sessionIds?.length ? sessionIds : state.sessionOrder)];
           markSessionDeletionRequested(state, ids);
           syncActiveSessionModelSelection(state);
         }),
@@ -738,7 +738,9 @@ export const useStore = create<StoreState>()(
       advanceStreamingDisplay: (sessionId, requestId) => {
         let pending = false;
         set((state) => {
-          const run = state.sessions[sessionId]?.runs.find((item) => item.requestId === requestId);
+          const run = (state.sessions as Record<string, SessionRecord>)[sessionId]?.runs.find(
+            (item) => item.requestId === requestId,
+          );
           if (!run) return;
           pending = advanceRunDisplayText(run, state.motionLevel);
         });

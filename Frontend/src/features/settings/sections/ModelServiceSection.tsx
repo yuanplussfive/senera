@@ -198,9 +198,9 @@ export function ModelServiceSection({
           draftProvider={actions.connectionDraft}
           localError={actions.localError}
           operation={actions.providerOperation}
-          providerModelCount={actions.selectedProviderModelCount}
           providerIndex={actions.selectedProviderIndex}
           disabled={false}
+          onReadApiKey={systemConfig.readProviderApiKey}
           onChange={actions.updateDraftProvider}
           onConfirm={actions.confirmDraft}
           onDelete={actions.acceptedProvider ? () => setProviderPendingRemoval(actions.acceptedProvider!) : undefined}
@@ -242,7 +242,7 @@ export function ModelServiceSection({
     );
 
   return (
-    <div ref={layoutRef} className="h-full min-h-0 overflow-hidden">
+    <div ref={layoutRef} className="h-full min-h-0 overflow-hidden" data-model-service-layout={layout}>
       {content}
       <AddProviderDialog
         open={actions.showAddDialog}

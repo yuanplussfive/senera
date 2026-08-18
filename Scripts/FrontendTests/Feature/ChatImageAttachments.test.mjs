@@ -41,17 +41,26 @@ test("sent images use authenticated content URLs and open the full-image dialog"
   expect(screen.queryByRole("button", { name: "在新窗口打开原图" })).not.toBeInTheDocument();
 
   const dialogImage = within(dialog).getByRole("img", { name: "first.png" });
+  const canvas = within(dialog).getByRole("region", { name: "first.png" });
+  const viewer = canvas.closest("[data-image-canvas-viewer]");
+  expect(canvas).toHaveClass("overflow-hidden");
+  expect(viewer).not.toHaveClass("overflow-auto");
   Object.defineProperties(dialogImage, {
     naturalWidth: { configurable: true, value: 1600 },
     naturalHeight: { configurable: true, value: 900 },
   });
   fireEvent.load(dialogImage);
   await user.click(screen.getByRole("button", { name: "实际尺寸" }));
-  expect(dialogImage).toHaveStyle({ width: "1600px", height: "900px", maxWidth: "none" });
+  expect(dialogImage).toHaveStyle({
+    width: "1600px",
+    height: "900px",
+    marginLeft: "-800px",
+    marginTop: "-450px",
+  });
+  expect(viewer).toHaveAttribute("data-image-view-mode", "actual");
 
   await user.click(screen.getByRole("button", { name: "适合窗口" }));
-  expect(dialogImage.style.width).toBe("");
-  expect(dialogImage.style.height).toBe("");
+  expect(viewer).toHaveAttribute("data-image-view-mode", "fit");
 
   await user.click(screen.getByRole("button", { name: "关闭" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "查看图片：first.png" })).not.toBeInTheDocument());

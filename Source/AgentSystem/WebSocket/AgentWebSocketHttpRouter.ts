@@ -6,11 +6,13 @@ import { type AgentAuthenticationHttpApi } from "../Auth/AgentAuthenticationHttp
 import type { AgentAccessFailure, AgentServerAccessGuard } from "../Auth/AgentServerAccessGuard.js";
 import type { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
 import type { AgentWorkspaceResourceHttpApi } from "../WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
+import type { AgentProviderCredentialHttpApi } from "../Config/AgentProviderCredentialHttpApi.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
     private readonly options: {
       uploadApi: AgentUploadHttpApi;
+      providerCredentialApi?: AgentProviderCredentialHttpApi;
       workspaceResourceApi?: AgentWorkspaceResourceHttpApi;
       staticFrontendApi?: AgentStaticFrontendHttpApi;
       authenticationApi?: AgentAuthenticationHttpApi;
@@ -27,6 +29,14 @@ export class AgentWebSocketHttpRouter {
 
     if (this.options.healthApi?.canHandle(request)) {
       this.options.healthApi.handle(request, response);
+      return;
+    }
+
+    if (this.options.providerCredentialApi?.canHandle(request)) {
+      if (request.method !== "OPTIONS" && !this.authorize(request, response)) {
+        return;
+      }
+      this.options.providerCredentialApi.handle(request, response);
       return;
     }
 

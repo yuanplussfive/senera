@@ -6,7 +6,7 @@ import { describe, expect, test } from "vitest";
 describe("bundled standard MCP servers", () => {
   test.each([
     ["weather", "forecast"],
-    ["web-research", "search"],
+    ["imagen", "ImageGenerate"],
   ])("%s exposes %s through tools/list", async (packageName, toolName) => {
     const client = new Client({ name: "senera-mcp-package-test", version: "1.0.0" });
     await client.connect(

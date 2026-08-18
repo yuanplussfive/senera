@@ -9,6 +9,7 @@ import { AssistantMessageBody } from "./AssistantMessageBody";
 import { InteractionInputStrip } from "./InteractionInputStrip";
 import { MessageActions } from "./MessageActions";
 import { AssistantMessageAvatar, MessageMeta } from "./MessageChrome";
+import { ThinkingSummaryBar } from "./ThinkingSummaryBar";
 import { readAssistantDisplayContent } from "./messagePresentation";
 import { projectAssistantTurnStages, type AssistantTurnStage } from "./assistantTurnStageProjection";
 import {
@@ -21,13 +22,16 @@ const ApprovalRequestStrip = lazy(() => import("./ApprovalRequestStrip"));
 const AgentExecutionStageFeed = lazy(() =>
   import("../workflow/AgentExecutionFeed").then((module) => ({ default: module.AgentExecutionStageFeed })),
 );
+const AgentExecutionStageFold = lazy(() =>
+  import("../workflow/AgentExecutionFeed").then((module) => ({ default: module.AgentExecutionStageFold })),
+);
 
 export interface AssistantTurnRowProps {
   sessionId: string;
   turn: AssistantTurnListItem;
   showInlineActions: boolean;
   approvalDisabled?: boolean;
-  onForkFromMessage: (message: ChatMessage) => void;
+  onForkFromMessage: (message: Pick<ChatMessage, "requestId">) => void;
   onRegenerate: (message: ChatMessage) => void;
   onDeleteFromMessage: (message: ChatMessage) => void;
   onViewWorkflow: (message: ChatMessage) => void;
@@ -58,18 +62,29 @@ export function AssistantTurnRow({
   const terminalMessages = turn.messages.filter((message) => message.kind !== "AssistantToolPreface");
   const actionMessage = readAssistantTurnActionMessage(turn);
   const fallbackMessage = turn.messages.at(-1);
+  const forkBoundary = actionMessage ?? (turn.requestId ? { requestId: turn.requestId } : undefined);
   const transientPreface = readTransientPreface(turn, prefaces);
   const transientAnswer = readTransientAnswer(turn, terminalMessages);
   const copyContent = readTurnCopyContent(turn, transientPreface, transientAnswer);
   const stages = projectAssistantTurnStages(turn);
   const renderedStages = projectTransientStages(stages, turn, transientPreface, transientAnswer);
+  const showLiveExecution = run?.status === "running" || run?.status === "cancelling";
+  const liveToolStageId = showLiveExecution ? readLatestToolStageId(renderedStages) : undefined;
+  const currentStageId = renderedStages.find((stage) => stage.current)?.id;
+  const foregroundActivity =
+    showLiveExecution && run?.liveActivity && runActivityPresentationPriority(run.liveActivity) === "foreground";
+  const liveExecutionStageId = liveToolStageId ?? (foregroundActivity ? currentStageId : undefined);
 
   return (
     <ConversationFrame mode="wide" className="group/msg" data-assistant-turn={turn.requestId ?? turn.key}>
       <div className="flex min-w-0 items-start gap-3" data-assistant-message>
         <AssistantMessageAvatar />
-        <div className="min-w-0 flex-1">
+        <div className="assistant-turn-content min-w-0 flex-1">
           <MessageMeta title="Senera" timestamp={turn.createdAt} />
+          <ThinkingSummaryBar
+            run={run}
+            presentation={run?.status === "running" ? "live-final-answer" : "terminal-only"}
+          />
 
           <div className="assistant-turn-flow" data-assistant-turn-stage-list>
             {renderedStages.map((stage) => (
@@ -81,22 +96,29 @@ export function AssistantTurnRow({
                 onResolveApproval={onResolveApproval}
                 onResolveApprovalBatch={onResolveApprovalBatch}
                 onResolveInteractionInput={onResolveInteractionInput}
+                showExecution={stage.id === liveExecutionStageId}
+                keepOpenWhileRunActive={showLiveExecution && stage.id === liveExecutionStageId}
               />
             ))}
           </div>
 
-          {fallbackMessage && copyContent ? (
+          {forkBoundary ? (
             <MessageActions
               content={copyContent}
               placement="left"
-              hasRequestId={!!turn.requestId}
-              hasWorkflow={!!run}
+              hasRequestId
+              hasWorkflow={!!run && !!(actionMessage ?? fallbackMessage)}
+              allowFork
               allowMutation={!!actionMessage}
+              allowCopy={!!copyContent}
               showInlineActions={showInlineActions}
-              onFork={() => actionMessage && onForkFromMessage(actionMessage)}
+              onFork={() => onForkFromMessage(forkBoundary)}
               onRegenerate={() => actionMessage && onRegenerate(actionMessage)}
               onDelete={() => actionMessage && onDeleteFromMessage(actionMessage)}
-              onViewWorkflow={() => onViewWorkflow(actionMessage ?? fallbackMessage)}
+              onViewWorkflow={() => {
+                const workflowMessage = actionMessage ?? fallbackMessage;
+                if (workflowMessage) onViewWorkflow(workflowMessage);
+              }}
             />
           ) : null}
         </div>
@@ -114,6 +136,8 @@ function AssistantStage({
   onResolveApproval,
   onResolveApprovalBatch,
   onResolveInteractionInput,
+  showExecution,
+  keepOpenWhileRunActive,
 }: {
   stage: RenderedAssistantStage;
   sessionId: string;
@@ -125,22 +149,33 @@ function AssistantStage({
     action: InteractionInputAction,
     content?: InteractionInputContent,
   ) => void;
+  showExecution: boolean;
+  keepOpenWhileRunActive: boolean;
 }): JSX.Element {
+  const stageRunActive = stage.run?.status === "running" || stage.run?.status === "cancelling";
+  const shouldRenderExecution = !!stage.run && (!stageRunActive || showExecution);
+  const execution =
+    shouldRenderExecution && stage.run ? (
+      <Suspense fallback={<ExecutionFeedFallback run={stage.run} />}>
+        {showExecution ? (
+          <AgentExecutionStageFeed run={stage.run} keepOpenWhileRunActive={keepOpenWhileRunActive} />
+        ) : (
+          <AgentExecutionStageFold run={stage.run} />
+        )}
+      </Suspense>
+    ) : null;
   return (
     <section
       className="assistant-turn-stage"
       data-assistant-turn-stage={stage.kind}
       data-current-stage={stage.current ? "true" : "false"}
     >
-      {stage.run ? (
-        <Suspense fallback={<ExecutionFeedFallback run={stage.run} />}>
-          <AgentExecutionStageFeed run={stage.run} />
-        </Suspense>
-      ) : null}
+      {stage.kind === "final" ? execution : null}
       {stage.message ? <TurnMessageSegment message={stage.message} run={stage.run} /> : null}
       {stage.transientContent && stage.transientKind ? (
         <AssistantMessageBody message={{ kind: stage.transientKind, content: stage.transientContent }} streaming />
       ) : null}
+      {stage.kind === "execution" ? execution : null}
       {stage.current ? (
         <StageInteractionContent
           sessionId={sessionId}
@@ -153,6 +188,17 @@ function AssistantStage({
       ) : null}
     </section>
   );
+}
+
+function readLatestToolStageId(stages: readonly RenderedAssistantStage[]): string | undefined {
+  const latestExecutionStage = [...stages]
+    .reverse()
+    .find((stage) => stage.kind === "execution" && stage.run?.steps.some(hasNamedToolStep));
+  return latestExecutionStage?.id ?? [...stages].reverse().find((stage) => stage.run?.steps.some(hasNamedToolStep))?.id;
+}
+
+function hasNamedToolStep(step: NonNullable<AssistantTurnListItem["run"]>["steps"][number]): boolean {
+  return step.kind === "tool" && Boolean(step.toolName?.trim());
 }
 
 function TurnMessageSegment({
@@ -277,7 +323,7 @@ function projectTransientStages(
         stage.current = false;
       });
       projected.push({
-        id: `stage:${turn.requestId ?? turn.key}:transient-preface`,
+        id: readTransientStageId(turn, "transient-preface"),
         kind: "execution",
         run: projectCurrentStageRun(turn.run),
         current: true,
@@ -296,7 +342,7 @@ function projectTransientStages(
         stage.current = false;
       });
       projected.push({
-        id: `stage:${turn.requestId ?? turn.key}:transient-answer`,
+        id: readTransientStageId(turn, "transient-answer"),
         kind: "final",
         current: true,
         transientContent: transientAnswer,
@@ -305,6 +351,13 @@ function projectTransientStages(
     }
   }
   return projected;
+}
+
+function readTransientStageId(turn: AssistantTurnListItem, fallback: string): string {
+  const matchingDecision = [...(turn.run?.steps ?? [])]
+    .reverse()
+    .find((step) => step.kind === (turn.run?.visibleKind === "final_answer" ? "answer" : "decision"));
+  return `stage:${turn.requestId ?? turn.key}:${matchingDecision ? `step:${matchingDecision.id}` : fallback}`;
 }
 
 function projectCurrentStageRun(run?: AssistantTurnListItem["run"]): AssistantTurnListItem["run"] {

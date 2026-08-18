@@ -27,6 +27,12 @@ describe("MCP tool runner outcome", () => {
         details: { mcpIsError: true },
       },
     });
+    expect(result.artifactPayload?.rawResponse).toEqual(
+      expect.objectContaining({
+        isError: true,
+        content: [{ type: "text", text: "upstream rejected the request" }],
+      }),
+    );
   });
 
   test("keeps a successful MCP business payload containing error data successful", async () => {

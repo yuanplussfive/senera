@@ -19,6 +19,55 @@ import type {
   AgentToolSemanticProjectionRequest,
 } from "../ToolRuntime/AgentToolSemanticProjection.js";
 
+export interface AgentToolArtifactAsset {
+  readonly id: string;
+  readonly fileName: string;
+  readonly mediaType: string;
+  readonly dataBase64: string;
+}
+
+/**
+ * A bounded, host-generated or adapter-generated provenance hint. It is not
+ * the raw tool result; the raw result remains in the published artifact.
+ */
+export interface AgentToolEvidenceCandidate {
+  readonly key?: string;
+  readonly kind: string;
+  readonly locator: string;
+  readonly display: string;
+  readonly label?: string;
+  readonly source?: string;
+  readonly confidence?: number;
+  readonly facts?: readonly {
+    readonly name: string;
+    readonly value: unknown;
+  }[];
+  readonly artifactRefs?: readonly string[];
+  readonly metadata?: Readonly<Record<string, unknown>>;
+}
+
+export interface AgentToolArtifactPayload {
+  /**
+   * Redacted and durable-only source response. It is never included in the
+   * immediate model result when the adapter can provide a bounded projection.
+   */
+  readonly rawResponse?: unknown;
+  /** Binary or otherwise non-inline material referenced by the model result. */
+  readonly assets?: readonly AgentToolArtifactAsset[];
+  /** Bounded provenance hints; the complete response remains the Artifact. */
+  readonly evidence?: readonly AgentToolEvidenceCandidate[];
+}
+
+export interface AgentToolArtifactAssetReference {
+  readonly id: string;
+  readonly fileName: string;
+  readonly mediaType: string;
+  readonly relativePath: string;
+  readonly workspacePath: string;
+  readonly byteLength: number;
+  readonly sha256: string;
+}
+
 export interface ExecutedToolCallResult {
   callId: string;
   name: string;
@@ -30,6 +79,7 @@ export interface ExecutedToolCallResult {
     stdout: string;
     stderr: string;
   };
+  artifactPayload?: AgentToolArtifactPayload;
   outputCapture?: SeneraOutputSpoolDescriptor;
   semanticProjectionRequest?: AgentToolSemanticProjectionRequest;
   semanticProjection?: AgentToolSemanticProjection;
@@ -96,6 +146,7 @@ export interface ExecutedToolCallArtifact {
   relativePath: string;
   manifestPath: string;
   files: Record<string, string>;
+  assets?: readonly AgentToolArtifactAssetReference[];
   summary: string;
   projection?: string;
   structuredSummary?: AgentToolResultSummary;

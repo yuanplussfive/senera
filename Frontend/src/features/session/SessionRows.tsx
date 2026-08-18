@@ -14,6 +14,7 @@ import {
   IconButton,
   Spinner,
   StateView,
+  Tooltip,
 } from "../../shared/ui";
 import { motionTimings, useMotionLevel } from "../../shared/motion";
 import { ContextSessionMenuItems, DropdownSessionMenuItems } from "./SessionMenuActions";
@@ -97,26 +98,28 @@ export function SessionRow({
               data-active-session-indicator
             />
           ) : null}
-          <button
-            ref={selectionButtonRef}
-            type="button"
-            aria-current={active ? "true" : undefined}
-            aria-label={frontendMessage("session.open", { title })}
-            onClick={onClick}
-            onKeyDown={(event) => {
-              if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
-              event.preventDefault();
-              const rect = event.currentTarget.getBoundingClientRect();
-              event.currentTarget.dispatchEvent(
-                new MouseEvent("contextmenu", {
-                  bubbles: true,
-                  clientX: rect.left + Math.min(rect.width / 2, 120),
-                  clientY: rect.top + Math.min(rect.height / 2, 24),
-                }),
-              );
-            }}
-            className="absolute inset-0 z-10 cursor-pointer rounded-[9px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
-          />
+          <Tooltip content={title} side="right">
+            <button
+              ref={selectionButtonRef}
+              type="button"
+              aria-current={active ? "true" : undefined}
+              aria-label={frontendMessage("session.open", { title })}
+              onClick={onClick}
+              onKeyDown={(event) => {
+                if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                event.currentTarget.dispatchEvent(
+                  new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    clientX: rect.left + Math.min(rect.width / 2, 120),
+                    clientY: rect.top + Math.min(rect.height / 2, 24),
+                  }),
+                );
+              }}
+              className="absolute inset-0 z-10 cursor-pointer rounded-[9px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
+            />
+          </Tooltip>
           <div className="pointer-events-none relative z-20 min-w-0 overflow-hidden pr-1">
             <div className="flex min-w-0 items-center gap-1.5">
               {accent === "running" ? (
@@ -130,7 +133,6 @@ export function SessionRow({
                 />
               ) : null}
               <span
-                title={title}
                 className={cn(
                   "block min-w-0 max-w-full cursor-[inherit] select-none truncate text-[13px] leading-5 transition-colors duration-150",
                   active ? "font-medium" : "font-normal",

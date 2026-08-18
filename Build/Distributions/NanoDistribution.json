@@ -12,6 +12,7 @@
       ".editorconfig",
       ".gitattributes",
       ".npmrc",
+      ".nvmrc",
       ".senera/skills",
       "LICENSE",
       "package.json",
@@ -52,7 +53,7 @@
       "private": true,
       "description": "Senera Nano source development distribution.",
       "engines": {
-        "node": ">=22 <23"
+        "node": ">=24 <25"
       }
     },
     "scripts": ["dev", "dev.server", "dev.server.dry-run", "dev.frontend", "check.types", "check.frontend-types"],

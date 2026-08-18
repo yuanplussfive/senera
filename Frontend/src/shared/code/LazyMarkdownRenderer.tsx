@@ -14,6 +14,7 @@ export function LazyMarkdownRenderer({
   contentClassName,
   compact,
   lightweightCode,
+  externalLinkPresentation,
 }: MarkdownRendererProps): JSX.Element {
   if (isPlainTextMarkdown(children)) {
     return (
@@ -54,6 +55,7 @@ export function LazyMarkdownRenderer({
         contentClassName={contentClassName}
         compact={compact}
         lightweightCode={lightweightCode}
+        externalLinkPresentation={externalLinkPresentation}
       >
         {children}
       </LazyMarkdownRendererImpl>

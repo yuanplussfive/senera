@@ -9,7 +9,7 @@ import {
   SlidersHorizontal,
   Target,
   ServerCog,
-  Wrench,
+  Package,
   type LucideIcon,
 } from "lucide-react";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
@@ -52,7 +52,7 @@ export const settingsSections = [
   ),
   defineSettingsSection(
     "system-tools",
-    Wrench,
+    Package,
     "settings.section.systemTools.label",
     "settings.section.systemTools.description",
   ),

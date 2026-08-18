@@ -48,12 +48,6 @@ describe("MCP package runtime discovery", () => {
           artifactFallback: { strategy: "reference" },
           sources: expect.arrayContaining([expect.objectContaining({ source: "result", mode: "auto" })]),
         });
-        expect(runtime.registry.getTool("mcp__web_research__search")?.handler).toMatchObject({
-          kind: "McpTool",
-          tool: "search",
-          server: { transport: "stdio", env: { TAVILY_API_KEY: "test-key" } },
-        });
-
         const input = "查询北京今天的天气";
         const activeSkills = await runtime.skillActivation.activate({ input });
         const recommendedTools = runtime.skillActivation.recommendedToolNames(activeSkills);

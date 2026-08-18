@@ -1,7 +1,6 @@
 import type {
   ConfigMutationState,
   ConfigSnapshotData,
-  SandboxStatusSnapshotData,
   ModelProviderListItem,
   PresetFormat,
   PresetItem,
@@ -27,6 +26,8 @@ export interface ChatModelConfig {
   onSelectModelProvider: (id: string) => void;
   /** Restores the active conversation to the current default model. */
   onApplyDefaultModel?: () => void;
+  /** Opens provider settings so another model can be configured. */
+  onAddModel?: () => void;
 }
 
 export interface ChatApprovalConfig {
@@ -60,13 +61,12 @@ export interface ChatRuntimeState {
   socketStatus: SocketStatus;
   uploadUrl: string;
   uploadCsrfToken?: string;
-  sandboxStatus?: SandboxStatusSnapshotData | null;
 }
 
 export interface ChatMessageActions {
   onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => boolean;
   onCancel: () => void;
-  onForkFromMessage: (message: ChatMessage) => void;
+  onForkFromMessage: (message: Pick<ChatMessage, "requestId">) => void;
   onRegenerate: (message: ChatMessage) => void;
   onEditUserMessage: (message: ChatMessage, nextContent: string) => void;
   onDeleteFromMessage: (message: ChatMessage) => void;

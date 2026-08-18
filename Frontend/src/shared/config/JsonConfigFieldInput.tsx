@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Check } from "lucide-react";
 import type { ConfigFormFieldData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { Switch } from "../ui";
+import { SegmentedControl, Switch } from "../ui";
 import { JsonConfigArrayFieldControl } from "./JsonConfigArrayFieldControl";
 import { jsonConfigInputClassName } from "./JsonConfigControlStyles";
 import { JsonConfigRecordField } from "./JsonConfigRecordField";
@@ -101,30 +100,19 @@ function OptionControl({
 }): JSX.Element {
   const options = field.options ?? [];
   if (!field.modelSelection && options.length <= 4) {
+    const selectedIndex = options.findIndex((option) => sameOptionValue(value, option));
     return (
-      <div className="grid w-full grid-cols-1 gap-1.5 sm:grid-cols-2">
-        {options.map((option) => {
-          const active = sameOptionValue(value, option);
-          return (
-            <button
-              key={String(option)}
-              type="button"
-              disabled={disabled}
-              className={cn(
-                "inline-flex min-h-8 min-w-0 items-center justify-center gap-1.5 border px-2.5 py-1.5 text-center text-[12px] leading-4 transition",
-                active
-                  ? "border-ink-800 bg-ink-900 text-paper-50"
-                  : "border-ink-200 bg-paper-100 text-ink-600 hover:bg-ink-900/[0.04]",
-                disabled && "pointer-events-none opacity-50",
-              )}
-              onClick={() => onChange(option)}
-            >
-              {active ? <Check className="h-3.5 w-3.5" /> : null}
-              {optionLabel(field, option)}
-            </button>
-          );
-        })}
-      </div>
+      <SegmentedControl
+        ariaLabel={field.label}
+        options={options.map((option, index) => ({ value: String(index), label: optionLabel(field, option) }))}
+        value={selectedIndex >= 0 ? String(selectedIndex) : ""}
+        disabled={disabled}
+        className="w-full"
+        onChange={(index) => {
+          const option = options[Number(index)];
+          if (option !== undefined) onChange(option);
+        }}
+      />
     );
   }
   return (

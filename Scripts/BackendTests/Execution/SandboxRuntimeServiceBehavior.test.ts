@@ -3,7 +3,37 @@ import { AgentSandboxRuntimeService } from "../../../Source/AgentSystem/Sandbox/
 import { agentErrorMessage } from "../../../Source/AgentSystem/I18n/AgentMessageCatalog.js";
 
 describe("sandbox runtime service behavior", () => {
-  test("uses governed host execution on Windows regardless of Docker availability", () => {
+  test("uses the Docker Engine sandbox on Windows when Docker Desktop is available", () => {
+    const snapshot = new AgentSandboxRuntimeService({
+      platform: "win32",
+      availability: { kind: "available", provider: "docker-engine" },
+    }).snapshot();
+
+    expect(snapshot).toMatchObject({
+      state: "unknown",
+      supported: true,
+      effectiveMode: "unavailable",
+      availableExecutionTargets: [],
+      localExecution: {
+        mode: "windows-governed-local",
+        isolation: "host",
+        authorization: "opa",
+        processOwnership: "windows-job",
+      },
+      message: agentErrorMessage("sandbox.configured.snapshotMessage"),
+      diagnostics: [
+        expect.objectContaining({
+          code: "docker-engine_backend_configured",
+          message: agentErrorMessage("sandbox.configured.message"),
+        }),
+      ],
+    });
+    expect(snapshot.provider).toBe("docker-engine");
+    expect(snapshot).not.toHaveProperty("effectiveTarget");
+    expect(snapshot).not.toHaveProperty("shellDialect");
+  });
+
+  test("keeps governed host execution on Windows when Docker Desktop is unavailable", () => {
     const snapshot = new AgentSandboxRuntimeService({ platform: "win32" }).snapshot();
 
     expect(snapshot).toMatchObject({
@@ -13,19 +43,7 @@ describe("sandbox runtime service behavior", () => {
       effectiveTarget: "Local",
       shellDialect: "powershell",
       availableExecutionTargets: ["Local"],
-      localExecution: {
-        mode: "windows-governed-local",
-        isolation: "host",
-        authorization: "opa",
-        processOwnership: "windows-job",
-      },
-      message: agentErrorMessage("sandbox.hostPolicy.statusMessage"),
-      diagnostics: [
-        expect.objectContaining({
-          code: "host_execution_platform_policy",
-          message: agentErrorMessage("sandbox.hostPolicy.message"),
-        }),
-      ],
+      diagnostics: [expect.objectContaining({ code: "docker_auto_disabled" })],
     });
     expect(snapshot).not.toHaveProperty("provider");
   });
@@ -149,7 +167,7 @@ describe("sandbox runtime service behavior", () => {
     now = new Date("2026-01-01T00:00:00.100Z");
     service.reportProgress({
       stage: "pulling_image",
-      item: "node:22-bookworm-slim",
+      item: "node:24-bookworm-slim",
       completed: 0,
       total: 1,
       downloadedBytes: 512,
@@ -162,7 +180,7 @@ describe("sandbox runtime service behavior", () => {
       state: "preparing",
       progress: {
         stage: "pulling_image",
-        item: "node:22-bookworm-slim",
+        item: "node:24-bookworm-slim",
         downloadedBytes: 512,
         totalBytes: 1024,
       },

@@ -1,15 +1,4 @@
-import {
-  Download,
-  File,
-  FileCode2,
-  Image as ImageIcon,
-  Maximize2,
-  RefreshCw,
-  Save,
-  X,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
+import { Download, File, FileCode2, Image as ImageIcon, RefreshCw, Save, X } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
@@ -21,6 +10,7 @@ import {
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn, formatFileSize } from "../../lib/util";
 import { CodeTextEditor } from "../code/CodeTextEditor";
+import { ImageCanvasViewer } from "../media/ImageCanvasViewer";
 import { Dialog, DialogContent, Tooltip } from "../ui";
 import { formatWorkspaceResourceLocation, type WorkspaceResourceLocator } from "./WorkspaceResourceLocator";
 import { resolveWorkspaceEditorLanguage } from "./WorkspaceResourceEditorLanguage";
@@ -294,8 +284,6 @@ function WorkspaceImageStage({
 }): JSX.Element {
   const [source, setSource] = useState<string>();
   const [error, setError] = useState<string>();
-  const [zoom, setZoom] = useState(1);
-  const [fit, setFit] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -319,53 +307,23 @@ function WorkspaceImageStage({
   }, [httpBaseUrl, path]);
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-[linear-gradient(45deg,var(--theme-code-editor-bg)_25%,transparent_25%),linear-gradient(-45deg,var(--theme-code-editor-bg)_25%,transparent_25%),linear-gradient(45deg,transparent_75%,var(--theme-code-editor-bg)_75%),linear-gradient(-45deg,transparent_75%,var(--theme-code-editor-bg)_75%)] bg-[length:20px_20px]">
-      <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5 rounded-md border border-line bg-surface-panel/95 p-0.5 shadow-soft backdrop-blur-sm">
-        <ResourceIconButton
-          label={frontendMessage("resource.zoomOut")}
-          disabled={!source || zoom <= 0.25}
-          onClick={() => {
-            setFit(false);
-            setZoom((value) => Math.max(0.25, value - 0.25));
+    <div className="relative h-full min-h-0 overflow-hidden bg-surface-muted">
+      {source ? (
+        <ImageCanvasViewer
+          alt={name}
+          labels={{
+            actualSize: frontendMessage("resource.actualSize"),
+            fit: frontendMessage("resource.fit"),
+            zoomIn: frontendMessage("resource.zoomIn"),
+            zoomOut: frontendMessage("resource.zoomOut"),
           }}
-        >
-          <ZoomOut className="h-4 w-4" />
-        </ResourceIconButton>
-        <ResourceIconButton
-          label={frontendMessage("resource.fit")}
-          disabled={!source}
-          onClick={() => {
-            setFit(true);
-            setZoom(1);
-          }}
-        >
-          <Maximize2 className="h-4 w-4" />
-        </ResourceIconButton>
-        <ResourceIconButton
-          label={frontendMessage("resource.zoomIn")}
-          disabled={!source || zoom >= 4}
-          onClick={() => {
-            setFit(false);
-            setZoom((value) => Math.min(4, value + 0.25));
-          }}
-        >
-          <ZoomIn className="h-4 w-4" />
-        </ResourceIconButton>
-      </div>
-      <div className="grid min-h-0 flex-1 place-items-center overflow-auto p-8 scrollbar-thin">
-        {source ? (
-          <img
-            src={source}
-            alt={name}
-            className={cn("block object-contain", fit ? "max-h-full max-w-full" : "max-h-none max-w-none")}
-            style={fit ? undefined : { transform: `scale(${zoom})`, transformOrigin: "center" }}
-          />
-        ) : error ? (
-          <ResourceError message={error} />
-        ) : (
-          <ResourceLoading />
-        )}
-      </div>
+          source={source}
+        />
+      ) : error ? (
+        <ResourceError message={error} />
+      ) : (
+        <ResourceLoading />
+      )}
     </div>
   );
 }

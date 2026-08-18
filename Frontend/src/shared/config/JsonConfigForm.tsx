@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { ConfigFormFieldData, ConfigFormSectionData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
@@ -38,19 +38,22 @@ export function JsonConfigSettingsView({
 }): JSX.Element {
   const [fieldVisibility, setFieldVisibility] = useState<ConfigFieldVisibility>("essential");
   const { allFields, visibleSections } = projectJsonConfigFieldVisibility(sections, fieldVisibility);
+  const visibilityControl = (
+    <ConfigFieldVisibilityControl fields={allFields} value={fieldVisibility} onChange={setFieldVisibility} />
+  );
   const content = (
     <div
       onBlurCapture={onCommit}
-      className={cn("mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6 sm:py-7", layoutMode === "panel" && "min-h-full")}
+      className={cn("mx-auto w-full max-w-[960px] px-4 py-5 sm:px-6 sm:py-7", layoutMode === "panel" && "min-h-full")}
     >
-      <ConfigFieldVisibilityControl fields={allFields} value={fieldVisibility} onChange={setFieldVisibility} />
       {visibleSections.length > 0 ? (
-        <div className="space-y-7">
-          {visibleSections.map((section) => (
+        <div className="space-y-6">
+          {visibleSections.map((section, index) => (
             <JsonSettingsSection
               key={section.name}
               section={section}
               showHeading={showSectionHeading}
+              headerAction={index === 0 ? visibilityControl : undefined}
               value={value}
               disabled={Boolean(disabled)}
               onUpdateField={(field, nextValue) =>
@@ -63,15 +66,21 @@ export function JsonConfigSettingsView({
           ))}
         </div>
       ) : (
-        <StateView
-          status="empty"
-          className="min-h-64 border-y border-ink-200/70 bg-paper-50"
-          description={
-            fieldVisibility === "essential" && allFields.length > 0
-              ? frontendMessage("settings.config.noEssentialFields")
-              : emptyText
-          }
-        />
+        <div>
+          <SettingsSectionHeading
+            title={frontendMessage("settings.config.primaryGroupTitle")}
+            action={visibilityControl}
+          />
+          <StateView
+            status="empty"
+            className="min-h-64 rounded-lg border border-line bg-paper-50"
+            description={
+              fieldVisibility === "essential" && allFields.length > 0
+                ? frontendMessage("settings.config.noEssentialFields")
+                : emptyText
+            }
+          />
+        </div>
       )}
     </div>
   );
@@ -87,29 +96,29 @@ export function JsonConfigSettingsView({
 function JsonSettingsSection({
   section,
   showHeading,
+  headerAction,
   value,
   disabled,
   onUpdateField,
 }: {
   section: ConfigFormSectionData;
   showHeading: boolean;
+  headerAction?: ReactNode;
   value: JsonConfigObject;
   disabled: boolean;
   onUpdateField: (field: ConfigFormFieldData, value: unknown) => void;
 }): JSX.Element {
   return (
     <section>
-      {showHeading ? (
-        <div className="mb-2 min-w-0 px-0.5">
-          <div className="min-w-0">
-            <h3 className="text-[13px] font-semibold text-ink-900">{section.label}</h3>
-            {section.description ? (
-              <p className="mt-0.5 text-[12px] leading-5 text-ink-500">{section.description}</p>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-      <div className="border-y border-ink-200/70 bg-paper-100">
+      <SettingsSectionHeading
+        title={showHeading ? section.label : frontendMessage("settings.config.primaryGroupTitle")}
+        description={showHeading ? section.description : undefined}
+        action={headerAction}
+      />
+      <div
+        className="divide-y divide-line-subtle overflow-hidden rounded-lg border border-line bg-paper-50"
+        data-json-config-section={section.name}
+      >
         {section.fields.map((field) => (
           <JsonConfigFieldControl
             key={field.path.join("\u001f")}
@@ -121,5 +130,25 @@ function JsonSettingsSection({
         ))}
       </div>
     </section>
+  );
+}
+
+function SettingsSectionHeading({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  action?: ReactNode;
+}): JSX.Element {
+  return (
+    <div className="mb-2.5 flex min-w-0 items-end justify-between gap-4 px-0.5">
+      <div className="min-w-0">
+        <h3 className="text-[13px] font-semibold text-ink-900">{title}</h3>
+        {description ? <p className="mt-0.5 text-[11.5px] leading-5 text-ink-500">{description}</p> : null}
+      </div>
+      {action}
+    </div>
   );
 }

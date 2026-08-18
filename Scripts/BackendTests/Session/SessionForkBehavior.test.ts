@@ -20,6 +20,8 @@ import {
   type AgentSessionRepository,
 } from "../../../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
 import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSessionStore.js";
+import { AgentSessionAdmissionCoordinator } from "../../../Source/AgentSystem/Session/AgentSessionAdmissionCoordinator.js";
+import { AgentSessionForkCoordinator } from "../../../Source/AgentSystem/Session/AgentSessionForkCoordinator.js";
 import { AgentSessionManager } from "../../../Source/AgentSystem/Session/AgentSessionManager.js";
 import { AgentSessionForkPiMutationKinds } from "../../../Source/AgentSystem/Session/AgentSessionForkMutation.js";
 import type { AgentSessionArtifactLifecycle } from "../../../Source/AgentSystem/Session/AgentSessionArtifactLifecycle.js";
@@ -137,6 +139,41 @@ describe.each(["memory", "sqlite"] as const)("Session fork behavior (%s)", (repo
       fixture.close();
     }
   });
+
+  test("converts a running source snapshot into a terminal fork prefix", () => {
+    const fixture = createRepositoryFixture(repositoryKind);
+    try {
+      const store = new AgentSessionStore({ repository: fixture.repository });
+      const projector = new AgentConversationProjector();
+      store.open("session-source");
+      store.persistEntries("session-source", [projector.projectUserInput("request-a", "Inspect", timestamp(1))]);
+      store.persistRunSnapshot({
+        sessionId: "session-source",
+        requestId: "request-a",
+        input: "Inspect",
+        status: "running",
+        startedAt: timestamp(1),
+        updatedAt: timestamp(1),
+      });
+
+      const prepared = store.prepareFork({
+        sourceSessionId: "session-source",
+        sessionId: "session-fork",
+        throughRequestId: "request-a",
+      });
+
+      expect(prepared).toMatchObject({
+        kind: "prepared",
+        snapshot: {
+          runSnapshots: [
+            expect.objectContaining({ sessionId: "session-fork", status: "cancelled", endedAt: expect.any(String) }),
+          ],
+        },
+      });
+    } finally {
+      fixture.close();
+    }
+  });
 });
 
 test("session manager emits the fork identity before replaying authoritative history", async () => {
@@ -234,6 +271,46 @@ test("session manager commits a fork only after Pi history branches at the store
     kind: "missing",
     sessionId: "session-failed-target",
   });
+});
+
+test("forks an active source prefix without waiting for its admission or cloning Pi", async () => {
+  const store = new AgentSessionStore();
+  prepareInitializedPiForkSource(store);
+  const admissions = new AgentSessionAdmissionCoordinator();
+  const sourceLeaseStarted = createDeferred<void>();
+  const releaseSourceLease = createDeferred<void>();
+  const piFork = vi.fn(async () => true);
+  const coordinator = new AgentSessionForkCoordinator({
+    store,
+    admissions,
+    piManagement: {
+      fork: piFork,
+    },
+    piMutations: { reset: vi.fn(async () => true) },
+    isSourceRunActive: (sessionId) => sessionId === "session-source",
+  });
+  const sourceLease = admissions.run("session-source", async () => {
+    sourceLeaseStarted.resolve();
+    await releaseSourceLease.promise;
+  });
+  await sourceLeaseStarted.promise;
+
+  const result = await coordinator.fork({
+    sourceSessionId: "session-source",
+    sessionId: "session-active-fork",
+    throughRequestId: "request-a",
+  });
+
+  expect(result).toMatchObject({ kind: "forked", session: { id: "session-active-fork" } });
+  expect(piFork).not.toHaveBeenCalled();
+  const target = store.get("session-active-fork");
+  expect(target.kind).toBe("found");
+  if (target.kind === "found") {
+    expect(resolveAgentPiSessionLifecycle(target.session.metadata).initialized).toBe(false);
+  }
+
+  releaseSourceLease.resolve();
+  await sourceLease;
 });
 
 test("failed Pi branching removes the candidate fork from SQLite", async () => {

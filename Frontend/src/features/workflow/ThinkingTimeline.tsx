@@ -179,7 +179,7 @@ function TopBar({
           className={cn(
             "shrink-0",
             presentation === "dock"
-              ? "mx-3 mt-3 rounded-[14px] border border-line-subtle bg-surface-raised px-3 py-2.5 shadow-[var(--theme-node-shadow)]"
+              ? "mx-3 mt-2 border-b border-line-subtle px-1 pb-2.5 pt-1"
               : "border-b border-line-subtle bg-surface-subtle/45 px-3 py-2",
           )}
           data-workflow-run-summary

@@ -1,12 +1,12 @@
 {
   "formatVersion": 6,
   "id": "senera-node-runtime",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "targets": {
     "x64": {
-      "sourceImage": "docker.io/library/node@sha256:8607a9064d4a571140998ae9e52a3b3fcf9cff361d04642d5971e6cd76d39e27",
-      "runtimeImage": "senera.local/senera-node-runtime:1.1.0-x64",
-      "registryImage": "ghcr.io/yuanplussfive/senera:sandbox-runtime-1.1.0",
+      "sourceImage": "docker.io/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03",
+      "runtimeImage": "senera.local/senera-node-runtime:1.2.0-x64",
+      "registryImage": "ghcr.io/yuanplussfive/senera:sandbox-runtime-1.2.0",
       "probes": [
         { "id": "bash", "command": "bash", "arguments": ["--version"] },
         { "id": "git", "command": "git", "arguments": ["--version"] },

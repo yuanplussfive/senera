@@ -1,13 +1,10 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import type { ServerAuthorizedAuthentication } from "../api/authClient";
 import type { AgentSocketReconnectPolicy } from "../api/useAgentSocket";
 import type { AppSurface } from "./appSurface";
 import type { SettingsSectionId } from "../features/settings/settingsSectionContract";
 import { loadDesktopSettingsSurfaceComponent, loadMainApplicationComponent } from "./applicationModuleLoaders";
 import { ApplicationSurfaceLoading, SettingsSurfaceLoading } from "./SurfaceLoading";
-
-const LazyMainApplication = lazy(loadMainApplicationComponent);
-const LazyDesktopSettingsSurface = lazy(loadDesktopSettingsSurfaceComponent);
 
 export function AuthenticatedSurface({
   authentication,
@@ -22,6 +19,11 @@ export function AuthenticatedSurface({
   socketReconnectPolicy: AgentSocketReconnectPolicy;
   onLogout?: () => Promise<void>;
 }): JSX.Element {
+  // The parent error boundary remounts this surface after a chunk failure. Recreate
+  // the lazy wrapper for that mount so the recoverable loader can issue a fresh import.
+  const LazyMainApplication = useMemo(() => lazy(loadMainApplicationComponent), []);
+  const LazyDesktopSettingsSurface = useMemo(() => lazy(loadDesktopSettingsSurfaceComponent), []);
+
   return surface === "settings" ? (
     <Suspense fallback={<SettingsSurfaceLoading presentation="desktop" />}>
       <LazyDesktopSettingsSurface initialSection={settingsSection} socketReconnectPolicy={socketReconnectPolicy} />

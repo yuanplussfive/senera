@@ -31,8 +31,12 @@ vi.mock("@xterm/xterm", () => ({
     blur() {
       this.operations.push("blur");
     }
-    write() {}
-    reset() {}
+    write(value) {
+      this.operations.push(["write", value]);
+    }
+    reset() {
+      this.operations.push("reset");
+    }
     dispose() {
       this.disposed = true;
       this.operations.push("dispose");
@@ -88,20 +92,11 @@ vi.mock("@xterm/addon-web-links", () => ({
     kind = "web-links";
   },
 }));
-vi.mock("@xterm/addon-webgl", () => ({
-  WebglAddon: class MockWebglAddon {
-    kind = "webgl";
-    onContextLoss() {}
-    dispose() {}
-  },
-}));
-
 const { BackgroundTerminalPanel } = await import("../../../Frontend/src/features/terminal/BackgroundTerminalPanel.tsx");
 const { TerminalRuntimeBoundary } = await import("../../../Frontend/src/features/terminal/TerminalPanelStatus.tsx");
 
 beforeEach(() => {
   xterm.instances.length = 0;
-  vi.stubGlobal("WebGL2RenderingContext", class WebGL2RenderingContext {});
 });
 
 afterEach(() => {
@@ -143,8 +138,9 @@ test("terminal controls follow the effective backend capabilities", async () => 
   expect(xterm.instances).toHaveLength(1);
   const terminal = xterm.instances[0];
   expect(terminal.options.allowProposedApi).toBe(true);
+  expect(terminal.options.theme.background).toBe("#0c0c0c");
   expect(terminal.unicode.activeVersion).toBe("11");
-  expect(terminal.operations.indexOf("open")).toBeLessThan(terminal.operations.indexOf("load:webgl"));
+  expect(terminal.operations).not.toContain("load:webgl");
   expect(terminal.operations).toContain("blur");
   expect(terminal.options.disableStdin).toBe(true);
 
@@ -171,23 +167,70 @@ test("terminal controls follow the effective backend capabilities", async () => 
   });
 });
 
-test("only the selected resource owns an xterm instance", async () => {
-  const user = userEvent.setup();
-  const view = render(
+test("terminal output appends by cursor without replaying a trimmed text buffer", async () => {
+  const resource = terminalResource(["interactive-input"]);
+  const panel = (output) =>
     React.createElement(
       TooltipProvider,
       { delayDuration: 0 },
       React.createElement(BackgroundTerminalPanel, {
-        resources: [
-          terminalResource([], "res_00000000000000000000000000000001", "shell-one", "2026-07-16T00:00:02.000Z", {
-            purpose: "interactive-shell",
-            title: "shell-one",
-          }),
-          terminalResource([], "res_00000000000000000000000000000002", "shell-two", "2026-07-16T00:00:01.000Z", {
-            purpose: "interactive-shell",
-            title: "shell-two",
-          }),
-        ],
+        resources: [resource],
+        outputs: { [resource.resourceId]: output },
+        onStartTerminal: vi.fn(),
+        onRefresh: vi.fn(),
+        onWrite: vi.fn(),
+        onResize: vi.fn(),
+        onSignal: vi.fn(),
+        onClose: vi.fn(),
+        onStopAll: vi.fn(),
+      }),
+    );
+  const view = render(
+    panel({
+      cursor: 1,
+      generation: 0,
+      chunks: [{ cursor: 1, text: "PS E:\\workspace> " }],
+      text: "PS E:\\workspace> ",
+      truncated: false,
+    }),
+  );
+
+  await waitFor(() => expect(xterm.instances).toHaveLength(1));
+  const terminal = xterm.instances[0];
+  expect(terminal.operations).toContainEqual(["write", "PS E:\\workspace> "]);
+
+  view.rerender(
+    panel({
+      cursor: 2,
+      generation: 0,
+      chunks: [{ cursor: 2, text: "111" }],
+      text: "... earlier terminal output omitted ...\r\n111",
+      truncated: true,
+    }),
+  );
+
+  await waitFor(() => expect(terminal.operations).toContainEqual(["write", "111"]));
+  expect(terminal.operations).not.toContain("reset");
+});
+
+test("visited terminal instances survive tab switches without being rebuilt", async () => {
+  const user = userEvent.setup();
+  const resources = [
+    terminalResource([], "res_00000000000000000000000000000001", "shell-one", "2026-07-16T00:00:02.000Z", {
+      purpose: "interactive-shell",
+      title: "shell-one",
+    }),
+    terminalResource([], "res_00000000000000000000000000000002", "shell-two", "2026-07-16T00:00:01.000Z", {
+      purpose: "interactive-shell",
+      title: "shell-two",
+    }),
+  ];
+  const panel = (nextResources) =>
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(BackgroundTerminalPanel, {
+        resources: nextResources,
         outputs: {},
         onStartTerminal: vi.fn(),
         onRefresh: vi.fn(),
@@ -197,8 +240,8 @@ test("only the selected resource owns an xterm instance", async () => {
         onClose: vi.fn(),
         onStopAll: vi.fn(),
       }),
-    ),
-  );
+    );
+  const view = render(panel(resources));
 
   await waitFor(() => expect(xterm.instances).toHaveLength(1));
   const first = xterm.instances[0];
@@ -206,8 +249,53 @@ test("only the selected resource owns an xterm instance", async () => {
   await user.keyboard("{ArrowRight}");
   expect(screen.getByRole("tab", { name: "shell-two" })).toHaveAttribute("aria-selected", "true");
   await waitFor(() => expect(xterm.instances).toHaveLength(2));
-  expect(first.disposed).toBe(true);
+  expect(first.disposed).toBe(false);
+  screen.getByRole("tab", { name: "shell-two" }).focus();
+  await user.keyboard("{ArrowLeft}");
+  expect(screen.getByRole("tab", { name: "shell-one" })).toHaveAttribute("aria-selected", "true");
+  expect(xterm.instances).toHaveLength(2);
+
+  const second = xterm.instances[1];
+  view.rerender(panel([resources[0]]));
+  await waitFor(() => expect(second.disposed).toBe(true));
+  expect(first.disposed).toBe(false);
   view.unmount();
+});
+
+test("discarding a terminal cancels buffered input instead of sending it to the removed resource", async () => {
+  const onWrite = vi.fn();
+  const props = {
+    outputs: {},
+    onStartTerminal: vi.fn(),
+    onRefresh: vi.fn(),
+    onWrite,
+    onResize: vi.fn(),
+    onSignal: vi.fn(),
+    onClose: vi.fn(),
+    onStopAll: vi.fn(),
+  };
+  const panel = (resources) =>
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(BackgroundTerminalPanel, { ...props, resources }),
+    );
+  const view = render(panel([terminalResource(["interactive-input"])]));
+  await waitFor(() => expect(xterm.instances).toHaveLength(1));
+
+  let pendingFrame;
+  vi.stubGlobal("requestAnimationFrame", (callback) => {
+    pendingFrame = callback;
+    return 91;
+  });
+  const cancelFrame = vi.fn();
+  vi.stubGlobal("cancelAnimationFrame", cancelFrame);
+  act(() => xterm.instances[0].emitInput("not-sent"));
+  view.rerender(panel([]));
+  act(() => pendingFrame?.(performance.now()));
+
+  expect(cancelFrame).toHaveBeenCalledWith(91);
+  expect(onWrite).not.toHaveBeenCalled();
 });
 
 test("a newly created terminal becomes the active tab", async () => {
@@ -425,12 +513,11 @@ test("terminal workbench creates an interactive terminal and ignores non-termina
 
   expect(screen.queryByRole("tab", { name: "npm run dev" })).not.toBeInTheDocument();
   expect(screen.getByText("没有打开的终端")).toBeVisible();
-  const sizingHost = document.querySelector("[data-terminal-panel] > div.relative");
-  Object.defineProperty(sizingHost, "clientWidth", { configurable: true, value: 560 });
-  Object.defineProperty(sizingHost, "clientHeight", { configurable: true, value: 720 });
+  expect(xterm.instances).toHaveLength(0);
   await user.click(screen.getAllByRole("button", { name: "新建终端" })[0]);
   expect(onStartTerminal).toHaveBeenCalledOnce();
-  expect(onStartTerminal).toHaveBeenCalledWith({ columns: 84, rows: 32 });
+  expect(onStartTerminal).toHaveBeenCalledWith();
+  expect(xterm.instances).toHaveLength(0);
 });
 
 test("terminal labels use presentation metadata and never parse URL fragments from commands", async () => {

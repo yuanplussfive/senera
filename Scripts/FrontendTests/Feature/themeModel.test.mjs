@@ -114,6 +114,7 @@ describe("themeModel", () => {
     expect(snapshot.tokens.cssVariables).toEqual(
       expect.objectContaining({
         "--theme-font-scale": "1.04",
+        "--theme-reading-font-family": expect.stringContaining("Microsoft YaHei UI"),
         "--theme-chat-user-bg": expect.any(String),
         "--theme-chat-composer-bg": expect.any(String),
         "--theme-code-editor-bg": expect.any(String),

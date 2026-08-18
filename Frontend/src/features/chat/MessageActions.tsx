@@ -17,7 +17,10 @@ export interface MessageActionsProps {
   placement: "left" | "right";
   hasRequestId: boolean;
   hasWorkflow: boolean;
+  /** A fork creates a new session and never mutates the source conversation. */
+  allowFork?: boolean;
   allowMutation?: boolean;
+  allowCopy?: boolean;
   showInlineActions: boolean;
   onFork: () => void;
   onRegenerate: () => void;
@@ -30,18 +33,23 @@ export type MessageActionIntent = "copy" | "viewWorkflow" | "fork" | "regenerate
 export interface MessageActionAvailability {
   hasRequestId: boolean;
   hasWorkflow: boolean;
+  allowFork?: boolean;
   allowMutation?: boolean;
+  allowCopy?: boolean;
 }
 
 export function readMessageActionIntents({
   hasRequestId,
   hasWorkflow,
+  allowFork,
   allowMutation = true,
+  allowCopy = true,
 }: MessageActionAvailability): MessageActionIntent[] {
-  const intents: MessageActionIntent[] = ["copy"];
+  const intents: MessageActionIntent[] = allowCopy ? ["copy"] : [];
   if (!hasRequestId) return intents;
   if (hasWorkflow) intents.push("viewWorkflow");
-  if (allowMutation) intents.push("fork", "regenerate", "delete");
+  if (allowFork ?? allowMutation) intents.push("fork");
+  if (allowMutation) intents.push("regenerate", "delete");
   return intents;
 }
 
@@ -50,7 +58,9 @@ export function MessageActions({
   placement,
   hasRequestId,
   hasWorkflow,
+  allowFork,
   allowMutation = true,
+  allowCopy = true,
   showInlineActions,
   onFork,
   onRegenerate,
@@ -58,7 +68,7 @@ export function MessageActions({
   onViewWorkflow,
 }: MessageActionsProps): JSX.Element {
   const { copied, copyText } = useClipboardCopy();
-  const intents = readMessageActionIntents({ hasRequestId, hasWorkflow, allowMutation });
+  const intents = readMessageActionIntents({ hasRequestId, hasWorkflow, allowFork, allowMutation, allowCopy });
   const secondaryIntents = intents.filter((intent) => intent !== "copy");
 
   return (
@@ -69,11 +79,13 @@ export function MessageActions({
         placement === "right" ? "justify-end" : "justify-start",
       )}
     >
-      <ActionBtn label={frontendMessage("chat.action.copy")} onClick={() => void copyText(content)}>
-        <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
-          {copied ? <Check className="h-3.5 w-3.5 text-moss-600" /> : <Copy className="h-3.5 w-3.5" />}
-        </MotionIconSwap>
-      </ActionBtn>
+      {intents.includes("copy") ? (
+        <ActionBtn label={frontendMessage("chat.action.copy")} onClick={() => void copyText(content)}>
+          <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
+            {copied ? <Check className="h-3.5 w-3.5 text-moss-600" /> : <Copy className="h-3.5 w-3.5" />}
+          </MotionIconSwap>
+        </ActionBtn>
+      ) : null}
 
       {secondaryIntents.length > 0 ? (
         <DropdownMenu>

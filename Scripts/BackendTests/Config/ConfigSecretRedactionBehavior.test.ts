@@ -51,6 +51,60 @@ describe("config secret redaction", () => {
     expect(config.ModelProviderEndpoints?.[0]?.Headers?.Authorization).toBe("Bearer raw-token");
   });
 
+  it("redacts extension configuration secrets recursively and restores them on full updates", () => {
+    const baseline: AgentSystemConfig = {
+      ModelProviders: [],
+      Extensions: {
+        "web-tools": {
+          Enabled: true,
+          Configuration: {
+            search: {
+              exaApiKey: "exa-live-secret",
+              tavilyApiKey: "tavily-live-secret",
+              endpoint: "https://search.example",
+            },
+            connection: { clientSecret: "nested-live-secret" },
+          },
+        },
+      },
+    };
+
+    const redacted = redactAgentSystemConfigSecrets(baseline);
+    const configuration = redacted.Extensions?.["web-tools"]?.Configuration;
+    expect(configuration).toMatchObject({
+      search: {
+        exaApiKey: Placeholder,
+        tavilyApiKey: Placeholder,
+        endpoint: "https://search.example",
+      },
+      connection: { clientSecret: Placeholder },
+    });
+    expect(JSON.stringify(redacted)).not.toContain("live-secret");
+    expect(JSON.stringify(baseline)).toContain("exa-live-secret");
+
+    const restored = restoreAgentSystemConfigSecrets(redacted, baseline);
+    expect(restored).toEqual(baseline);
+  });
+
+  it("keeps replacement extension configuration secrets while restoring unchanged placeholders", () => {
+    const baseline: AgentSystemConfig = {
+      ModelProviders: [],
+      Extensions: {
+        "web-tools": {
+          Configuration: { search: { exaApiKey: "old-secret", endpoint: "https://search.example" } },
+        },
+      },
+    };
+    const edited = redactAgentSystemConfigSecrets(baseline);
+    const search = edited.Extensions?.["web-tools"]?.Configuration?.search as Record<string, unknown>;
+    search.exaApiKey = "rotated-secret";
+
+    const restored = restoreAgentSystemConfigSecrets(edited, baseline);
+    expect(restored.Extensions?.["web-tools"]?.Configuration).toEqual({
+      search: { exaApiKey: "rotated-secret", endpoint: "https://search.example" },
+    });
+  });
+
   it("returns the same reference when there is nothing to redact", () => {
     const config: AgentSystemConfig = { ModelProviders: [] };
     expect(redactAgentSystemConfigSecrets(config)).toBe(config);
@@ -122,5 +176,22 @@ describe("config secret redaction", () => {
     expect(serialized).not.toContain("raw-header-key");
     expect(serialized).toContain("https://senera.example");
     expect(JSON.stringify(snapshot.value)).toContain("sk-live-secret");
+  });
+
+  it("does not restore a redaction marker from non-sensitive extension fields", () => {
+    const baseline: AgentSystemConfig = {
+      ModelProviders: [],
+      Extensions: {
+        sample: { Configuration: { status: "ready" } },
+      },
+    };
+    const next: AgentSystemConfig = {
+      ModelProviders: [],
+      Extensions: {
+        sample: { Configuration: { status: Placeholder } },
+      },
+    };
+
+    expect(restoreAgentSystemConfigSecrets(next, baseline)).toBe(next);
   });
 });

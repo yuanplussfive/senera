@@ -1208,6 +1208,7 @@
           {
             "path": ["ActionPlanner", "Enabled"],
             "label": "启用 Planner",
+            "description": "在复杂任务中先生成结构化行动计划，并根据执行证据修正后续步骤。",
             "type": "boolean",
             "required": false,
             "essential": true
@@ -1341,6 +1342,7 @@
           {
             "path": ["ToolLearning", "Enabled"],
             "label": "启用工具学习",
+            "description": "从成功的工具调用中归纳可复用模式，改进后续工具选择与参数。",
             "type": "boolean",
             "required": false,
             "essential": true
@@ -1413,6 +1415,7 @@
           {
             "path": ["MemoryLearning", "Enabled"],
             "label": "启用记忆学习",
+            "description": "从对话中提取可持久化事实，形成可供后续任务检索的长期记忆。",
             "type": "boolean",
             "required": false,
             "essential": true

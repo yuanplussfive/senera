@@ -3,8 +3,10 @@ import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsWorkbench } from "../../../Frontend/src/features/settings/SettingsWorkbench.tsx";
+import { ProviderConnectionEditor } from "../../../Frontend/src/features/settings/sections/ProviderConnectionEditor.tsx";
 import { FrontendLocales } from "../../../Frontend/src/i18n/frontendLocaleModel.ts";
 import { setFrontendLocale } from "../../../Frontend/src/i18n/frontendLocaleStore.ts";
+import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
 const baseProps = {
@@ -39,9 +41,12 @@ afterEach(() => {
 
 describe("SettingsWorkbench", () => {
   it("offers launch preferences for both side panels", () => {
-    renderWithFrontendProviders(React.createElement(SettingsWorkbench, baseProps));
+    const { container } = renderWithFrontendProviders(React.createElement(SettingsWorkbench, baseProps));
 
     expect(screen.getAllByRole("switch")).toHaveLength(2);
+    expect(container.querySelectorAll("[data-settings-content-frame]")).toHaveLength(1);
+    expect(container.querySelector("[data-settings-section='general']")).toBeInTheDocument();
+    expect(container.querySelectorAll("[data-settings-panel]")).toHaveLength(3);
   });
 
   it("uses grouped navigation without migration cards or persistent sync badges", async () => {
@@ -54,6 +59,7 @@ describe("SettingsWorkbench", () => {
     for (const label of ["模型", "能力与运行", "工具", "个人", "系统"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+    expect(document.querySelectorAll("[data-settings-navigation-indicator]")).toHaveLength(1);
     expect(screen.queryByText("已同步")).not.toBeInTheDocument();
     expect(screen.queryByText(/迁移/)).not.toBeInTheDocument();
     expect(screen.queryByText(/状态卡/)).not.toBeInTheDocument();
@@ -88,7 +94,7 @@ describe("SettingsWorkbench", () => {
     expect(rail).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("submits typed MCP inputs without retaining a Secret in the input", () => {
+  it("automatically syncs typed MCP inputs without retaining a Secret in the input", async () => {
     const systemConfig = createSystemConfig({
       mcpServers: [
         {
@@ -106,9 +112,9 @@ describe("SettingsWorkbench", () => {
               required: true,
               secret: true,
               multiple: false,
-              configured: false,
-              stored: false,
-              source: "missing",
+              configured: true,
+              stored: true,
+              source: "vault",
               provenance: "mcpb",
             },
           ],
@@ -123,16 +129,80 @@ describe("SettingsWorkbench", () => {
       }),
     );
 
-    const input = screen.getByLabelText("Tavily API key");
+    const input = await screen.findByLabelText("Tavily API key");
     fireEvent.change(input, { target: { value: "secret-value" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存全部更改" }));
 
-    expect(systemConfig.updateMcpInputs).toHaveBeenCalledWith("web-research", { TAVILY_API_KEY: "secret-value" }, []);
+    await waitFor(() =>
+      expect(systemConfig.updateMcpInputs).toHaveBeenCalledWith("web-research", { TAVILY_API_KEY: "secret-value" }, []),
+    );
+    expect(screen.queryByRole("button", { name: "保存全部更改" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Clear the workspace value for Tavily API key" }),
+    ).not.toBeInTheDocument();
     expect(input).toHaveValue("");
     expect(screen.queryByDisplayValue("secret-value")).not.toBeInTheDocument();
   });
 
-  it("submits multiple MCP choices as a typed array", async () => {
+  it("keeps a newer MCP value while the previous hot update is awaiting its receipt", async () => {
+    let updateNumber = 0;
+    const updateMcpInputs = vi.fn(() => `mcp-save-${++updateNumber}`);
+    const systemConfig = createSystemConfig({
+      updateMcpInputs,
+      mcpServers: [
+        {
+          id: "local-tool",
+          packageName: "local-tool",
+          source: "workspace",
+          descriptorKind: "mcpb",
+          transport: "stdio",
+          status: "needs_input",
+          inputs: [
+            {
+              id: "endpoint",
+              title: "Endpoint",
+              type: "string",
+              required: true,
+              secret: false,
+              multiple: false,
+              configured: false,
+              stored: false,
+              source: "missing",
+              provenance: "mcpb",
+            },
+          ],
+        },
+      ],
+    });
+    const view = renderWithFrontendProviders(
+      React.createElement(SettingsWorkbench, {
+        ...baseProps,
+        section: "mcp-servers",
+        systemConfig,
+      }),
+    );
+
+    const input = await screen.findByLabelText("Endpoint");
+    fireEvent.change(input, { target: { value: "first-value" } });
+    await waitFor(() => expect(updateMcpInputs).toHaveBeenCalledWith("local-tool", { endpoint: "first-value" }, []));
+    fireEvent.change(input, { target: { value: "newer-value" } });
+
+    systemConfig.mcpInputOperation = { requestId: "mcp-save-1", status: "success" };
+    view.rerender(
+      React.createElement(
+        TooltipProvider,
+        { delayDuration: 0 },
+        React.createElement(SettingsWorkbench, {
+          ...baseProps,
+          section: "mcp-servers",
+          systemConfig,
+        }),
+      ),
+    );
+
+    await waitFor(() => expect(updateMcpInputs).toHaveBeenCalledWith("local-tool", { endpoint: "newer-value" }, []));
+  });
+
+  it("automatically syncs multiple MCP choices as a typed array", async () => {
     const user = userEvent.setup();
     const systemConfig = createSystemConfig({
       mcpServers: [
@@ -169,16 +239,17 @@ describe("SettingsWorkbench", () => {
       }),
     );
 
-    await user.click(screen.getByRole("button", { name: /Regions/ }));
+    await user.click(await screen.findByRole("button", { name: /Regions/ }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "us" }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "eu" }));
     await user.keyboard("{Escape}");
-    await user.click(screen.getByRole("button", { name: "保存全部更改" }));
 
-    expect(systemConfig.updateMcpInputs).toHaveBeenCalledWith("regional-search", { regions: ["us", "eu"] }, []);
+    await waitFor(() =>
+      expect(systemConfig.updateMcpInputs).toHaveBeenCalledWith("regional-search", { regions: ["us", "eu"] }, []),
+    );
   });
 
-  it("renders System tools as extension packages with one package-level save", () => {
+  it("hot-updates System extension packages without a separate save flow", async () => {
     const systemConfig = createSystemConfig({
       systemExtensions: [
         {
@@ -212,15 +283,132 @@ describe("SettingsWorkbench", () => {
       }),
     );
 
-    expect(screen.getAllByText("命令执行")).toHaveLength(2);
-    expect(screen.getByText("在受控执行环境中运行命令。")).toBeInTheDocument();
+    expect(await screen.findAllByText("命令执行")).toHaveLength(2);
+    expect(await screen.findByText("在受控执行环境中运行命令。")).toBeInTheDocument();
     expect(screen.getByText("ShellCommandTool")).toBeInTheDocument();
+    expect(screen.queryByText(/v1\.0\.0/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("switch", { name: "启用或停用 命令执行" }));
-    fireEvent.click(screen.getByRole("button", { name: "保存更改" }));
-    expect(systemConfig.saveConfig).toHaveBeenCalledWith({ Extensions: { execution: { Enabled: false } } });
+    expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "放弃更改" })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(systemConfig.saveConfig).toHaveBeenCalledWith({ Extensions: { execution: { Enabled: false } } }),
+    );
   });
 
-  it("renders the declared English extension metadata when the interface locale changes", () => {
+  it("loads the real provider key into a password field and keeps a newer typed value stable", async () => {
+    const provider = {
+      Id: "openai",
+      Enabled: true,
+      BaseUrl: "https://api.openai.com/v1",
+      ApiKey: "__senera_redacted_secret__",
+    };
+    const props = {
+      acceptedProvider: provider,
+      dirty: false,
+      draftProvider: provider,
+      disabled: false,
+      localError: null,
+      providerIndex: 0,
+      onReadApiKey: vi.fn(async () => "sk-stored-secret"),
+      onChange: vi.fn(),
+      onConfirm: vi.fn(),
+    };
+    const view = renderWithFrontendProviders(React.createElement(ProviderConnectionEditor, props));
+    const apiKeyInput = screen.getByPlaceholderText("sk-...");
+
+    expect(apiKeyInput).toHaveAttribute("type", "password");
+    await waitFor(() => expect(apiKeyInput).toHaveValue("sk-stored-secret"));
+    expect(props.onReadApiKey).toHaveBeenCalledWith("openai");
+    fireEvent.click(screen.getByRole("button", { name: "显示 API Key" }));
+    expect(apiKeyInput).toHaveAttribute("type", "text");
+
+    fireEvent.change(apiKeyInput, { target: { value: "sk-local-draft" } });
+    expect(apiKeyInput).toHaveValue("sk-local-draft");
+
+    view.rerender(
+      React.createElement(
+        TooltipProvider,
+        { delayDuration: 0 },
+        React.createElement(ProviderConnectionEditor, {
+          ...props,
+          operation: { commandId: "save-1", kind: "provider.endpoint.upsert", status: "success" },
+          draftProvider: { ...provider },
+        }),
+      ),
+    );
+
+    expect(screen.getByDisplayValue("sk-local-draft")).toBeInTheDocument();
+    expect(screen.queryByText(/已启用.*已配置模型/)).not.toBeInTheDocument();
+  });
+
+  it("debounces System extension configuration through the shared settings draft", async () => {
+    const systemConfig = createSystemConfig({
+      systemExtensions: [
+        {
+          id: "execution",
+          version: "1.0.0",
+          displayName: { "zh-CN": "命令执行", "en-US": "Shell Commands" },
+          description: { "zh-CN": "运行命令。", "en-US": "Runs commands." },
+          enabled: true,
+          configured: false,
+          tools: [],
+          skillCount: 0,
+          mcpServerCount: 0,
+          configuration: {
+            configured: false,
+            value: {},
+            defaults: { defaultCommand: "" },
+            effectiveValue: { defaultCommand: "" },
+            sections: [
+              {
+                name: "execution",
+                label: { "zh-CN": "执行设置", "en-US": "Execution settings" },
+                keyCount: 1,
+                fields: [
+                  {
+                    label: { "zh-CN": "默认命令", "en-US": "Default command" },
+                    section: "execution",
+                    key: "defaultCommand",
+                    path: ["defaultCommand"],
+                    type: "string",
+                    value: undefined,
+                    effectiveValue: "",
+                    configured: false,
+                    missing: false,
+                    valueSource: "default",
+                    required: false,
+                    essential: true,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+    renderWithFrontendProviders(
+      React.createElement(SettingsWorkbench, {
+        ...baseProps,
+        section: "system-tools",
+        systemConfig,
+      }),
+    );
+
+    const field = (await screen.findByText("默认命令")).closest(".grid");
+    const input = field?.querySelector("input");
+    expect(input).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "npm run check.types" } });
+
+    await waitFor(() =>
+      expect(systemConfig.saveConfig).toHaveBeenCalledWith({
+        Extensions: {
+          execution: { Enabled: true, Configuration: { defaultCommand: "npm run check.types" } },
+        },
+      }),
+    );
+  });
+
+  it("renders the declared English extension metadata when the interface locale changes", async () => {
     setFrontendLocale(FrontendLocales.EnUs);
     const systemConfig = createSystemConfig({
       systemExtensions: [
@@ -249,8 +437,8 @@ describe("SettingsWorkbench", () => {
       }),
     );
 
-    expect(screen.getAllByText("Shell Commands")).toHaveLength(2);
-    expect(screen.getByText("Runs commands in a controlled execution environment.")).toBeInTheDocument();
+    expect(await screen.findAllByText("Shell Commands")).toHaveLength(2);
+    expect(await screen.findByText("Runs commands in a controlled execution environment.")).toBeInTheDocument();
   });
 });
 

@@ -8,63 +8,28 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 
 export const TerminalXtermTheme = {
-  background: "#101310",
-  foreground: "#e7ebe6",
-  cursor: "#72a58d",
-  cursorAccent: "#101310",
-  selectionBackground: "#53645b99",
-  black: "#101310",
-  brightBlack: "#707a72",
-  red: "#d8706a",
-  brightRed: "#ee8f87",
-  green: "#87a978",
-  brightGreen: "#a5c995",
-  yellow: "#c9a45c",
-  brightYellow: "#e0bd73",
-  blue: "#7895ad",
-  brightBlue: "#91aec5",
-  magenta: "#aa8daa",
-  brightMagenta: "#c4a5c4",
-  cyan: "#6faaa3",
-  brightCyan: "#88c4bc",
-  white: "#d5d9d4",
-  brightWhite: "#f5f7f4",
+  background: "#0c0c0c",
+  foreground: "#cccccc",
+  cursor: "#f2f2f2",
+  cursorAccent: "#0c0c0c",
+  selectionBackground: "#264f78",
+  black: "#0c0c0c",
+  brightBlack: "#767676",
+  red: "#c50f1f",
+  brightRed: "#e74856",
+  green: "#13a10e",
+  brightGreen: "#16c60c",
+  yellow: "#c19c00",
+  brightYellow: "#f9f1a5",
+  blue: "#0037da",
+  brightBlue: "#3b78ff",
+  magenta: "#881798",
+  brightMagenta: "#b4009e",
+  cyan: "#3a96dd",
+  brightCyan: "#61d6d6",
+  white: "#cccccc",
+  brightWhite: "#f2f2f2",
 } as const satisfies ITheme;
-
-export function readTerminalXtermTheme(container: HTMLElement): ITheme {
-  const probe = document.createElement("span");
-  const selectionProbe = document.createElement("span");
-  probe.style.cssText = [
-    "position:absolute",
-    "visibility:hidden",
-    "pointer-events:none",
-    "background:var(--terminal-canvas)",
-    "color:var(--terminal-foreground)",
-    "border-color:var(--terminal-accent)",
-    "outline-color:var(--terminal-muted)",
-  ].join(";");
-  selectionProbe.style.cssText = [
-    "position:absolute",
-    "visibility:hidden",
-    "pointer-events:none",
-    "background:color-mix(in srgb,var(--terminal-accent) 24%,transparent)",
-  ].join(";");
-  container.append(probe, selectionProbe);
-  const style = getComputedStyle(probe);
-  const selectionStyle = getComputedStyle(selectionProbe);
-  const theme = {
-    ...TerminalXtermTheme,
-    background: style.backgroundColor || TerminalXtermTheme.background,
-    foreground: style.color || TerminalXtermTheme.foreground,
-    cursor: style.borderColor || TerminalXtermTheme.cursor,
-    cursorAccent: style.backgroundColor || TerminalXtermTheme.cursorAccent,
-    selectionBackground: selectionStyle.backgroundColor || TerminalXtermTheme.selectionBackground,
-    brightBlack: style.outlineColor || TerminalXtermTheme.brightBlack,
-  } satisfies ITheme;
-  probe.remove();
-  selectionProbe.remove();
-  return theme;
-}
 
 export type TerminalCapability = ExecutionResourceTerminalData["capabilities"][number];
 
@@ -102,11 +67,11 @@ export function terminalStatusLabel(state: ExecutionResourceState): string {
 }
 
 const StatusIndicatorClassNames = {
-  starting: "bg-umber-500 animate-pulse",
+  starting: "bg-[#d19a66] animate-pulse",
   running: "bg-[var(--terminal-accent)]",
-  stopping: "bg-amber-400 animate-pulse",
-  completed: "bg-moss-400",
-  failed: "bg-brick-500",
+  stopping: "bg-[#d7ba7d] animate-pulse",
+  completed: "bg-[#89d185]",
+  failed: "bg-[#f14c4c]",
   cancelled: "bg-[var(--terminal-subtle)]",
 } as const satisfies Record<ExecutionResourceState, string>;
 

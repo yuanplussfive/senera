@@ -60,8 +60,7 @@ export class AgentSandboxRuntimeService {
     this.clock = options.clock ?? (() => new Date());
     this.progressUpdateIntervalMs = options.progressUpdateIntervalMs ?? 200;
     this.availability = normalizeSandboxAvailability(
-      this.platform,
-      options.availability ?? defaultSandboxAvailability(this.runtimeConfig(), this.platform),
+      options.availability ?? defaultSandboxAvailability(this.runtimeConfig()),
     );
     this.worker = options.dockerEngineWorker;
     this.preparationStatus =
@@ -73,7 +72,7 @@ export class AgentSandboxRuntimeService {
   snapshot(): AgentSandboxRuntimeSnapshot {
     const runtimeConfig = this.runtimeConfig();
     const configuredEnabled = runtimeConfig?.Enabled ?? true;
-    const sandboxEnabled = configuredEnabled && this.platform !== "win32";
+    const sandboxEnabled = configuredEnabled && (this.platform !== "win32" || this.availability.kind === "available");
     const deploymentAvailable = sandboxEnabled && this.availability.kind === "available";
     const pathResolution = deploymentAvailable ? this.runtimePaths(runtimeConfig) : { paths: undefined };
     const state: AgentSandboxRuntimeState = !sandboxEnabled
@@ -142,7 +141,7 @@ export class AgentSandboxRuntimeService {
     if (this.preparationPromise) return this.preparationPromise;
     const config = options.config ?? this.runtimeConfig();
     if (!config) throw new Error("Sandbox runtime preparation requires a resolved runtime configuration.");
-    if (!config.Enabled || this.platform === "win32") {
+    if (!config.Enabled || (this.platform === "win32" && this.availability.kind !== "available")) {
       this.markDisabled();
       return undefined;
     }
@@ -280,26 +279,22 @@ export class AgentSandboxRuntimeService {
   }
 
   private sandboxRequested(): boolean {
-    return this.platform !== "win32" && (this.runtimeConfig()?.Enabled ?? true);
+    return (
+      (this.runtimeConfig()?.Enabled ?? true) && (this.platform !== "win32" || this.availability.kind === "available")
+    );
   }
 }
 
 function defaultSandboxAvailability(
   config: ResolvedAgentSandboxRuntimeConfig | undefined,
-  platform: NodeJS.Platform,
 ): AgentSandboxRuntimeAvailability {
-  return platform === "win32"
-    ? { kind: "disabled", reason: "platform-host-policy" }
-    : config?.Enabled === false
-      ? { kind: "disabled", reason: "configuration-disabled" }
-      : { kind: "disabled", reason: "docker-engine-unavailable" };
+  return config?.Enabled === false
+    ? { kind: "disabled", reason: "configuration-disabled" }
+    : { kind: "disabled", reason: "docker-engine-unavailable" };
 }
 
-function normalizeSandboxAvailability(
-  platform: NodeJS.Platform,
-  availability: AgentSandboxRuntimeAvailability,
-): AgentSandboxRuntimeAvailability {
-  return platform === "win32" ? { kind: "disabled", reason: "platform-host-policy" } : availability;
+function normalizeSandboxAvailability(availability: AgentSandboxRuntimeAvailability): AgentSandboxRuntimeAvailability {
+  return availability;
 }
 
 function dependencyWarnings(

@@ -2,7 +2,6 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
@@ -11,7 +10,8 @@ import type { ExecutionResourceSnapshotData } from "../../api/eventTypes";
 import type { ExecutionResourceOutputBuffer } from "../../app/useExecutionResourceCommands";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
-import { isTerminalState, readTerminalXtermTheme, supportsTerminalCapability } from "./terminalPresentation";
+import { cn } from "../../lib/util";
+import { isTerminalState, supportsTerminalCapability, TerminalXtermTheme } from "./terminalPresentation";
 import { TerminalSurfaceStyle } from "./terminalTheme";
 import { TerminalSearchOverlay, TerminalStatusBar, TerminalTitlebar } from "./TerminalWorkbenchChrome";
 
@@ -34,9 +34,9 @@ interface SearchRequest {
 }
 
 export function BackgroundTerminalPanel(props: BackgroundTerminalPanelProps): JSX.Element {
-  const terminalSizingHostRef = useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = useState<string>();
-  const latestResourceIdRef = useRef<string>();
+  const [visitedIds, setVisitedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const latestResourceIdRef = useRef<string | undefined>(undefined);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchRequest, setSearchRequest] = useState<SearchRequest>();
@@ -48,6 +48,10 @@ export function BackgroundTerminalPanel(props: BackgroundTerminalPanelProps): JS
     [props.resources],
   );
   const selected = orderedResources.find((resource) => resource.resourceId === selectedId) ?? orderedResources[0];
+  const selectedResourceId = selected?.resourceId;
+  const mountedResources = orderedResources.filter(
+    (resource) => resource.resourceId === selectedResourceId || visitedIds.has(resource.resourceId),
+  );
 
   useEffect(() => {
     const latestId = orderedResources[0]?.resourceId;
@@ -61,6 +65,16 @@ export function BackgroundTerminalPanel(props: BackgroundTerminalPanelProps): JS
     if (!selectedExists || (previousLatestId && previousLatestId !== latestId)) setSelectedId(latestId);
   }, [orderedResources, selectedId]);
 
+  useEffect(() => {
+    setVisitedIds((current) => {
+      const availableIds = new Set(orderedResources.map((resource) => resource.resourceId));
+      const next = new Set([...current].filter((resourceId) => availableIds.has(resourceId)));
+      if (selectedResourceId) next.add(selectedResourceId);
+      if (setsEqual(current, next)) return current;
+      return next;
+    });
+  }, [orderedResources, selectedResourceId]);
+
   const runSearch = (direction: SearchRequest["direction"]): void => {
     const query = searchQuery.trim();
     if (!query) return;
@@ -68,8 +82,8 @@ export function BackgroundTerminalPanel(props: BackgroundTerminalPanelProps): JS
   };
 
   const startTerminal = (): void => {
-    const dimensions = measureTerminalDimensions(terminalSizingHostRef.current);
-    if (dimensions) props.onStartTerminal(dimensions);
+    const terminal = selected?.terminal;
+    if (terminal) props.onStartTerminal({ columns: terminal.columns, rows: terminal.rows });
     else props.onStartTerminal();
   };
 
@@ -80,6 +94,8 @@ export function BackgroundTerminalPanel(props: BackgroundTerminalPanelProps): JS
       role="region"
       aria-label={frontendMessage("terminal.panel.title")}
       data-terminal-panel
+      data-terminal-theme="fixed-dark"
+      data-terminal-palette="windows"
     >
       <div
         className="h-10 shrink-0 border-b border-[var(--terminal-separator)] bg-[var(--terminal-chrome)] px-1"
@@ -98,7 +114,7 @@ export function BackgroundTerminalPanel(props: BackgroundTerminalPanelProps): JS
           onStopAll={props.onStopAll}
         />
       </div>
-      <div ref={terminalSizingHostRef} className="relative min-h-0 flex-1 overflow-hidden">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         {selected ? (
           <>
             {searchOpen ? (
@@ -109,15 +125,21 @@ export function BackgroundTerminalPanel(props: BackgroundTerminalPanelProps): JS
                 onClose={() => setSearchOpen(false)}
               />
             ) : null}
-            <TerminalViewport
-              key={selected.resourceId}
-              resource={selected}
-              output={props.outputs[selected.resourceId]?.text ?? ""}
-              searchRequest={searchRequest}
-              onWrite={props.onWrite}
-              onResize={props.onResize}
-              onSearchOpen={() => setSearchOpen(true)}
-            />
+            {mountedResources.map((resource) => {
+              const active = resource.resourceId === selected.resourceId;
+              return (
+                <TerminalViewport
+                  key={resource.resourceId}
+                  active={active}
+                  resource={resource}
+                  output={props.outputs[resource.resourceId]}
+                  searchRequest={active ? searchRequest : undefined}
+                  onWrite={props.onWrite}
+                  onResize={props.onResize}
+                  onSearchOpen={() => setSearchOpen(true)}
+                />
+              );
+            })}
           </>
         ) : (
           <div className="grid h-full min-h-0 place-items-center px-5 text-center text-[12px] text-[var(--terminal-muted)]">
@@ -142,6 +164,7 @@ export function BackgroundTerminalPanel(props: BackgroundTerminalPanelProps): JS
 }
 
 const TerminalViewport = memo(function TerminalViewport({
+  active,
   resource,
   output,
   searchRequest,
@@ -149,17 +172,20 @@ const TerminalViewport = memo(function TerminalViewport({
   onResize,
   onSearchOpen,
 }: {
+  active: boolean;
   resource: ExecutionResourceSnapshotData;
-  output: string;
+  output?: ExecutionResourceOutputBuffer;
   searchRequest?: SearchRequest;
   onWrite: (resourceId: string, input: string) => void;
   onResize: (resourceId: string, columns: number, rows: number) => void;
   onSearchOpen: () => void;
 }): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
-  const terminalRef = useRef<Terminal>();
-  const searchRef = useRef<SearchAddon>();
-  const outputRef = useRef("");
+  const terminalRef = useRef<Terminal | undefined>(undefined);
+  const fitRef = useRef<FitAddon | undefined>(undefined);
+  const searchRef = useRef<SearchAddon | undefined>(undefined);
+  const renderedOutputRef = useRef<{ cursor: number; generation: number } | undefined>(undefined);
+  const activeRef = useRef(active);
   const inputEnabledRef = useRef(false);
   const resizeEnabledRef = useRef(false);
   const onWriteRef = useRef(onWrite);
@@ -169,16 +195,17 @@ const TerminalViewport = memo(function TerminalViewport({
     columns: resource.terminal?.columns,
     rows: resource.terminal?.rows,
   });
-  const lastDimensionsRef = useRef<{ columns: number; rows: number }>();
+  const lastDimensionsRef = useRef<{ columns: number; rows: number } | undefined>(undefined);
   onWriteRef.current = onWrite;
   onResizeRef.current = onResize;
   onSearchOpenRef.current = onSearchOpen;
+  activeRef.current = active;
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const terminal = new Terminal({
-      ...createTerminalOptions(container),
+      ...createTerminalOptions(),
       cols: initialDimensionsRef.current.columns,
       rows: initialDimensionsRef.current.rows,
     });
@@ -196,28 +223,9 @@ const TerminalViewport = memo(function TerminalViewport({
       if (event.type === "keydown") onSearchOpenRef.current();
       return false;
     });
-    if ("WebGL2RenderingContext" in window) {
-      let webgl: WebglAddon | undefined;
-      try {
-        webgl = new WebglAddon();
-        terminal.loadAddon(webgl);
-        const activeWebgl = webgl;
-        activeWebgl.onContextLoss(() => activeWebgl.dispose());
-      } catch {
-        webgl?.dispose();
-        // Canvas renderer remains active when WebGL initialization fails.
-      }
-    }
     terminalRef.current = terminal;
+    fitRef.current = fit;
     searchRef.current = search;
-
-    const themeObserver = new MutationObserver(() => {
-      terminal.options.theme = readTerminalXtermTheme(container);
-    });
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-theme", "data-color-scheme", "data-accent-color"],
-    });
 
     const input = createTerminalInputScheduler((value) => onWriteRef.current(resource.resourceId, value));
     const inputDisposable = terminal.onData((data) => {
@@ -236,6 +244,7 @@ const TerminalViewport = memo(function TerminalViewport({
     });
     let animationFrame = 0;
     const observer = new ResizeObserver(() => {
+      if (!activeRef.current) return;
       cancelAnimationFrame(animationFrame);
       animationFrame = requestAnimationFrame(() => fit.fit());
     });
@@ -244,7 +253,6 @@ const TerminalViewport = memo(function TerminalViewport({
 
     return () => {
       observer.disconnect();
-      themeObserver.disconnect();
       cancelAnimationFrame(animationFrame);
       cancelAnimationFrame(initialFitFrame);
       window.clearTimeout(resizeTimer);
@@ -253,8 +261,9 @@ const TerminalViewport = memo(function TerminalViewport({
       resizeDisposable.dispose();
       terminal.dispose();
       terminalRef.current = undefined;
+      fitRef.current = undefined;
       searchRef.current = undefined;
-      outputRef.current = "";
+      renderedOutputRef.current = undefined;
     };
   }, [resource.resourceId]);
 
@@ -262,24 +271,41 @@ const TerminalViewport = memo(function TerminalViewport({
     const terminal = terminalRef.current;
     if (!terminal) return;
     inputEnabledRef.current =
-      supportsTerminalCapability(resource, "interactive-input") && !isTerminalState(resource.state);
-    resizeEnabledRef.current = supportsTerminalCapability(resource, "resize") && !isTerminalState(resource.state);
+      active && supportsTerminalCapability(resource, "interactive-input") && !isTerminalState(resource.state);
+    resizeEnabledRef.current =
+      active && supportsTerminalCapability(resource, "resize") && !isTerminalState(resource.state);
     terminal.options.disableStdin = !inputEnabledRef.current;
     terminal.options.cursorBlink = inputEnabledRef.current;
+    if (!active) {
+      terminal.blur();
+      return;
+    }
+    fitRef.current?.fit();
     if (inputEnabledRef.current) terminal.focus();
     else terminal.blur();
-  }, [resource, resource.state]);
+  }, [active, resource, resource.state]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
-    const previous = outputRef.current;
-    if (output.startsWith(previous)) terminal.write(output.slice(previous.length));
-    else {
-      terminal.reset();
-      terminal.write(output);
+    const rendered = renderedOutputRef.current;
+    if (!rendered) {
+      if (output?.text) terminal.write(output.text);
+      renderedOutputRef.current = { cursor: output?.cursor ?? 0, generation: output?.generation ?? 0 };
+      return;
     }
-    outputRef.current = output;
+    if (!output || output.cursor <= rendered.cursor) return;
+    if (output.generation !== rendered.generation) {
+      terminal.reset();
+      if (output.text) terminal.write(output.text);
+    } else {
+      const appended = output.chunks
+        .filter((chunk) => chunk.cursor > rendered.cursor)
+        .map((chunk) => chunk.text)
+        .join("");
+      if (appended) terminal.write(appended);
+    }
+    renderedOutputRef.current = { cursor: output.cursor, generation: output.generation };
   }, [output]);
 
   useEffect(() => {
@@ -295,8 +321,13 @@ const TerminalViewport = memo(function TerminalViewport({
       id={`terminal-panel-${resource.resourceId}`}
       role="tabpanel"
       aria-labelledby={`terminal-tab-${resource.resourceId}`}
-      className="absolute inset-0 overflow-hidden bg-[var(--terminal-canvas)] px-3 py-2.5 [&_.xterm]:h-full [&_.xterm-viewport]:!bg-[var(--terminal-canvas)]"
+      aria-hidden={!active}
+      className={cn(
+        "absolute inset-0 overflow-hidden bg-[var(--terminal-canvas)] px-3 py-2.5 [&_.xterm]:h-full [&_.xterm-viewport]:!bg-[var(--terminal-canvas)]",
+        active ? "visible z-10" : "invisible z-0 pointer-events-none",
+      )}
       data-terminal-viewport
+      data-terminal-active={active ? "true" : "false"}
       data-terminal-input-enabled={supportsTerminalCapability(resource, "interactive-input") ? "true" : "false"}
       data-terminal-purpose={resource.presentation?.purpose ?? "unspecified"}
     />
@@ -324,11 +355,15 @@ function createTerminalInputScheduler(send: (input: string) => void): { push(inp
       buffered += input;
       if (!animationFrame) animationFrame = requestAnimationFrame(flush);
     },
-    dispose: flush,
+    dispose: () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = 0;
+      buffered = "";
+    },
   };
 }
 
-function createTerminalOptions(container: HTMLElement): ConstructorParameters<typeof Terminal>[0] {
+function createTerminalOptions(): ConstructorParameters<typeof Terminal>[0] {
   return {
     allowProposedApi: true,
     allowTransparency: false,
@@ -340,27 +375,8 @@ function createTerminalOptions(container: HTMLElement): ConstructorParameters<ty
     fontSize: 12.5,
     lineHeight: 1.34,
     scrollback: 10_000,
-    theme: readTerminalXtermTheme(container),
+    theme: TerminalXtermTheme,
   };
-}
-
-function measureTerminalDimensions(host: HTMLDivElement | null): { columns: number; rows: number } | undefined {
-  if (!host || host.clientWidth <= 0 || host.clientHeight <= 0) return undefined;
-  const probe = document.createElement("div");
-  probe.style.cssText =
-    "position:absolute;inset:0;visibility:hidden;pointer-events:none;padding:10px 12px;overflow:hidden";
-  host.append(probe);
-  const terminal = new Terminal({ ...createTerminalOptions(probe), disableStdin: true, cursorBlink: false });
-  const fit = new FitAddon();
-  try {
-    terminal.loadAddon(fit);
-    terminal.open(probe);
-    const dimensions = fit.proposeDimensions();
-    return dimensions ? { columns: dimensions.cols, rows: dimensions.rows } : undefined;
-  } finally {
-    terminal.dispose();
-    probe.remove();
-  }
 }
 
 const C0_CONTROL_CHARACTER_LIMIT = 0x1f;
@@ -372,4 +388,10 @@ function containsTerminalControlCharacter(value: string): boolean {
     if (codeUnit <= C0_CONTROL_CHARACTER_LIMIT || codeUnit === DELETE_CONTROL_CHARACTER) return true;
   }
   return false;
+}
+
+function setsEqual(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  if (left.size !== right.size) return false;
+  for (const value of left) if (!right.has(value)) return false;
+  return true;
 }

@@ -1,5 +1,9 @@
 import { z } from "zod";
-import type { AgentToolProcessError, AgentToolProcessResponse } from "../Types/ToolRuntimeTypes.js";
+import type {
+  AgentToolArtifactPayload,
+  AgentToolProcessError,
+  AgentToolProcessResponse,
+} from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 import { agentJsonPathToPointer } from "../Diagnostics/AgentJsonPointer.js";
 import { AgentExecutionErrorCodes } from "../Xml/AgentXmlStatus.js";
@@ -80,13 +84,17 @@ export function createToolProcessFailureResponse(error: AgentToolProcessError): 
   };
 }
 
-export function toolProcessSuccessResult(result: unknown): AgentToolProcessRunResult {
+export function toolProcessSuccessResult(
+  result: unknown,
+  options: { readonly artifactPayload?: AgentToolArtifactPayload } = {},
+): AgentToolProcessRunResult {
   return {
     response: createToolProcessSuccessResponse(result),
     stdout: "",
     stderr: "",
     exitCode: null,
     signal: null,
+    ...(options.artifactPayload ? { artifactPayload: options.artifactPayload } : {}),
   };
 }
 

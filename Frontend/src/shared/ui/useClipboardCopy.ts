@@ -57,7 +57,7 @@ export function useClipboardCopy({
   clipboard,
 }: ClipboardCopyOptions = {}): ClipboardCopyResult {
   const [copied, setCopied] = useState(false);
-  const resetTimerRef = useRef<number>();
+  const resetTimerRef = useRef<number | undefined>(undefined);
 
   const clearResetTimer = useCallback((): void => {
     if (resetTimerRef.current === undefined) return;

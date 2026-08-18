@@ -1,24 +1,11 @@
 {
-  "version": 1,
-  "batchSummaryMaxActions": 3,
+  "version": 3,
   "default": {
-    "active": "workflow.toolActivity.system.active",
-    "completed": "workflow.toolActivity.system.completed",
-    "failed": "workflow.toolActivity.system.failed",
-    "batchLabels": {
-      "active": "workflow.toolBatch.system.active",
-      "completed": "workflow.toolBatch.system.completed"
-    }
+    "action": "Run"
   },
   "origins": {
     "mcp": {
-      "active": "workflow.toolActivity.mcp.active",
-      "completed": "workflow.toolActivity.mcp.completed",
-      "failed": "workflow.toolActivity.mcp.failed",
-      "batchLabels": {
-        "active": "workflow.toolBatch.mcp.active",
-        "completed": "workflow.toolBatch.mcp.completed"
-      }
+      "action": "Call"
     }
   },
   "capabilityRules": [
@@ -30,15 +17,7 @@
       },
       "argumentPath": "command.script",
       "detailPaths": ["command.script", "cwd"],
-      "labels": {
-        "active": "workflow.toolActivity.shell.active",
-        "completed": "workflow.toolActivity.shell.completed",
-        "failed": "workflow.toolActivity.shell.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.shell.active",
-        "completed": "workflow.toolBatch.shell.completed"
-      }
+      "action": "Run"
     },
     {
       "id": "workspace-search",
@@ -48,15 +27,7 @@
       },
       "argumentPath": "pattern",
       "detailPaths": ["pattern", "path", "glob"],
-      "labels": {
-        "active": "workflow.toolActivity.workspaceSearch.active",
-        "completed": "workflow.toolActivity.workspaceSearch.completed",
-        "failed": "workflow.toolActivity.workspaceSearch.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.workspaceSearch.active",
-        "completed": "workflow.toolBatch.workspaceSearch.completed"
-      }
+      "action": "Search"
     },
     {
       "id": "workspace-find",
@@ -66,15 +37,7 @@
       },
       "argumentPath": "pattern",
       "detailPaths": ["pattern", "path"],
-      "labels": {
-        "active": "workflow.toolActivity.workspaceFind.active",
-        "completed": "workflow.toolActivity.workspaceFind.completed",
-        "failed": "workflow.toolActivity.workspaceFind.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.workspaceFind.active",
-        "completed": "workflow.toolBatch.workspaceFind.completed"
-      }
+      "action": "Find"
     },
     {
       "id": "workspace-read",
@@ -84,15 +47,7 @@
       },
       "argumentPath": "path",
       "detailPaths": ["path"],
-      "labels": {
-        "active": "workflow.toolActivity.workspaceRead.active",
-        "completed": "workflow.toolActivity.workspaceRead.completed",
-        "failed": "workflow.toolActivity.workspaceRead.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.workspaceRead.active",
-        "completed": "workflow.toolBatch.workspaceRead.completed"
-      }
+      "action": "Read"
     },
     {
       "id": "workspace-list",
@@ -102,15 +57,7 @@
       },
       "argumentPath": "path",
       "detailPaths": ["path"],
-      "labels": {
-        "active": "workflow.toolActivity.workspaceList.active",
-        "completed": "workflow.toolActivity.workspaceList.completed",
-        "failed": "workflow.toolActivity.workspaceList.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.workspaceList.active",
-        "completed": "workflow.toolBatch.workspaceList.completed"
-      }
+      "action": "List"
     },
     {
       "id": "workspace-write",
@@ -119,15 +66,7 @@
         "exactToolNames": ["WorkspaceApplyPatch"]
       },
       "detailPaths": ["operations.*.path", "operations.*.source", "operations.*.destination"],
-      "labels": {
-        "active": "workflow.toolActivity.workspaceWrite.active",
-        "completed": "workflow.toolActivity.workspaceWrite.completed",
-        "failed": "workflow.toolActivity.workspaceWrite.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.workspaceWrite.active",
-        "completed": "workflow.toolBatch.workspaceWrite.completed"
-      }
+      "action": "Edit"
     },
     {
       "id": "git-inspect",
@@ -137,15 +76,7 @@
       },
       "argumentPath": "operation",
       "detailPaths": ["operation", "path", "paths.*"],
-      "labels": {
-        "active": "workflow.toolActivity.gitInspect.active",
-        "completed": "workflow.toolActivity.gitInspect.completed",
-        "failed": "workflow.toolActivity.gitInspect.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.gitInspect.active",
-        "completed": "workflow.toolBatch.gitInspect.completed"
-      }
+      "action": "Inspect"
     },
     {
       "id": "git-mutate",
@@ -155,15 +86,7 @@
       },
       "argumentPath": "operation",
       "detailPaths": ["operation", "path", "paths.*"],
-      "labels": {
-        "active": "workflow.toolActivity.gitMutate.active",
-        "completed": "workflow.toolActivity.gitMutate.completed",
-        "failed": "workflow.toolActivity.gitMutate.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.gitMutate.active",
-        "completed": "workflow.toolBatch.gitMutate.completed"
-      }
+      "action": "Update"
     },
     {
       "id": "tool-search",
@@ -173,15 +96,7 @@
       },
       "argumentPath": "query",
       "detailPaths": ["query"],
-      "labels": {
-        "active": "workflow.toolActivity.toolSearch.active",
-        "completed": "workflow.toolActivity.toolSearch.completed",
-        "failed": "workflow.toolActivity.toolSearch.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.toolSearch.active",
-        "completed": "workflow.toolBatch.toolSearch.completed"
-      }
+      "action": "Search"
     },
     {
       "id": "skill-manage",
@@ -191,15 +106,7 @@
       },
       "argumentPath": "action",
       "detailPaths": ["action", "name"],
-      "labels": {
-        "active": "workflow.toolActivity.skillManage.active",
-        "completed": "workflow.toolActivity.skillManage.completed",
-        "failed": "workflow.toolActivity.skillManage.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.skillManage.active",
-        "completed": "workflow.toolBatch.skillManage.completed"
-      }
+      "action": "Manage"
     },
     {
       "id": "ask-user",
@@ -207,15 +114,7 @@
         "exactCapabilities": ["conversation.ask-user", "conversation.ask_user"],
         "exactToolNames": ["AskUserTool"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.askUser.active",
-        "completed": "workflow.toolActivity.askUser.completed",
-        "failed": "workflow.toolActivity.askUser.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.askUser.active",
-        "completed": "workflow.toolBatch.askUser.completed"
-      }
+      "action": "Ask"
     },
     {
       "id": "schedule-manage",
@@ -225,15 +124,7 @@
       },
       "argumentPath": "action",
       "detailPaths": ["action", "name", "taskId"],
-      "labels": {
-        "active": "workflow.toolActivity.schedule.active",
-        "completed": "workflow.toolActivity.schedule.completed",
-        "failed": "workflow.toolActivity.schedule.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.schedule.active",
-        "completed": "workflow.toolBatch.schedule.completed"
-      }
+      "action": "Schedule"
     },
     {
       "id": "learning-manage",
@@ -242,15 +133,7 @@
         "exactToolNames": ["LearningManage"]
       },
       "argumentPath": "action",
-      "labels": {
-        "active": "workflow.toolActivity.learning.active",
-        "completed": "workflow.toolActivity.learning.completed",
-        "failed": "workflow.toolActivity.learning.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.learning.active",
-        "completed": "workflow.toolBatch.learning.completed"
-      }
+      "action": "Learn"
     },
     {
       "id": "agent-spawn",
@@ -260,15 +143,7 @@
       },
       "argumentPath": "role",
       "detailPaths": ["role", "task"],
-      "labels": {
-        "active": "workflow.toolActivity.agentSpawn.active",
-        "completed": "workflow.toolActivity.agentSpawn.completed",
-        "failed": "workflow.toolActivity.agentSpawn.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.agentSpawn.active",
-        "completed": "workflow.toolBatch.agentSpawn.completed"
-      }
+      "action": "Delegate"
     },
     {
       "id": "agent-wait",
@@ -276,15 +151,7 @@
         "exactCapabilities": ["orchestration.agent-wait", "orchestration.agent.wait"],
         "exactToolNames": ["AgentWait"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.agentWait.active",
-        "completed": "workflow.toolActivity.agentWait.completed",
-        "failed": "workflow.toolActivity.agentWait.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.agentWait.active",
-        "completed": "workflow.toolBatch.agentWait.completed"
-      }
+      "action": "Wait"
     },
     {
       "id": "agent-input",
@@ -292,15 +159,7 @@
         "exactCapabilities": ["orchestration.agent-input", "orchestration.agent.input"],
         "exactToolNames": ["AgentInput"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.agentInput.active",
-        "completed": "workflow.toolActivity.agentInput.completed",
-        "failed": "workflow.toolActivity.agentInput.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.agentInput.active",
-        "completed": "workflow.toolBatch.agentInput.completed"
-      }
+      "action": "Send"
     },
     {
       "id": "agent-stop",
@@ -308,15 +167,7 @@
         "exactCapabilities": ["orchestration.agent-stop", "orchestration.agent.stop"],
         "exactToolNames": ["AgentStop"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.agentStop.active",
-        "completed": "workflow.toolActivity.agentStop.completed",
-        "failed": "workflow.toolActivity.agentStop.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.agentStop.active",
-        "completed": "workflow.toolBatch.agentStop.completed"
-      }
+      "action": "Stop"
     },
     {
       "id": "agent-resume",
@@ -324,15 +175,7 @@
         "exactCapabilities": ["orchestration.agent-resume", "orchestration.agent.resume"],
         "exactToolNames": ["AgentResume"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.agentResume.active",
-        "completed": "workflow.toolActivity.agentResume.completed",
-        "failed": "workflow.toolActivity.agentResume.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.agentResume.active",
-        "completed": "workflow.toolBatch.agentResume.completed"
-      }
+      "action": "Resume"
     },
     {
       "id": "agent-contact-supervisor",
@@ -340,15 +183,7 @@
         "exactCapabilities": ["orchestration.agent-contact-supervisor", "orchestration.agent.contact_supervisor"],
         "exactToolNames": ["AgentContactSupervisor"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.agentContact.active",
-        "completed": "workflow.toolActivity.agentContact.completed",
-        "failed": "workflow.toolActivity.agentContact.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.agentContact.active",
-        "completed": "workflow.toolBatch.agentContact.completed"
-      }
+      "action": "Contact"
     },
     {
       "id": "artifact-read",
@@ -356,15 +191,7 @@
         "exactCapabilities": ["artifact.read", "artifact.memory.read"],
         "exactToolNames": ["ArtifactReadTool"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.artifactRead.active",
-        "completed": "workflow.toolActivity.artifactRead.completed",
-        "failed": "workflow.toolActivity.artifactRead.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.artifactRead.active",
-        "completed": "workflow.toolBatch.artifactRead.completed"
-      }
+      "action": "Read"
     },
     {
       "id": "memory-read",
@@ -372,15 +199,7 @@
         "exactCapabilities": ["memory.recall"],
         "exactToolNames": ["MemoryRecallTool"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.memoryRead.active",
-        "completed": "workflow.toolActivity.memoryRead.completed",
-        "failed": "workflow.toolActivity.memoryRead.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.memoryRead.active",
-        "completed": "workflow.toolBatch.memoryRead.completed"
-      }
+      "action": "Recall"
     },
     {
       "id": "memory-write",
@@ -388,15 +207,7 @@
         "exactCapabilities": ["memory.write"],
         "exactToolNames": ["MemoryWriteTool"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.memoryWrite.active",
-        "completed": "workflow.toolActivity.memoryWrite.completed",
-        "failed": "workflow.toolActivity.memoryWrite.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.memoryWrite.active",
-        "completed": "workflow.toolBatch.memoryWrite.completed"
-      }
+      "action": "Save"
     },
     {
       "id": "terminal-start",
@@ -406,15 +217,7 @@
       },
       "argumentPath": "command",
       "detailPaths": ["command", "cwd"],
-      "labels": {
-        "active": "workflow.toolActivity.terminalStart.active",
-        "completed": "workflow.toolActivity.terminalStart.completed",
-        "failed": "workflow.toolActivity.terminalStart.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.terminalStart.active",
-        "completed": "workflow.toolBatch.terminalStart.completed"
-      }
+      "action": "Start"
     },
     {
       "id": "execution-inspect",
@@ -422,15 +225,7 @@
         "exactCapabilities": ["execution.resource-inspect", "execution.resource.inspect"],
         "exactToolNames": ["ExecutionResourceInspect", "ExecutionResourceList"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.executionInspect.active",
-        "completed": "workflow.toolActivity.executionInspect.completed",
-        "failed": "workflow.toolActivity.executionInspect.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.executionInspect.active",
-        "completed": "workflow.toolBatch.executionInspect.completed"
-      }
+      "action": "Inspect"
     },
     {
       "id": "execution-wait",
@@ -438,15 +233,7 @@
         "exactCapabilities": ["execution.resource-wait", "execution.resource.wait"],
         "exactToolNames": ["ExecutionResourceWait"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.executionWait.active",
-        "completed": "workflow.toolActivity.executionWait.completed",
-        "failed": "workflow.toolActivity.executionWait.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.executionWait.active",
-        "completed": "workflow.toolBatch.executionWait.completed"
-      }
+      "action": "Wait"
     },
     {
       "id": "execution-input",
@@ -454,15 +241,7 @@
         "exactCapabilities": ["execution.resource-write", "execution.resource.write"],
         "exactToolNames": ["ExecutionResourceWrite"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.executionInput.active",
-        "completed": "workflow.toolActivity.executionInput.completed",
-        "failed": "workflow.toolActivity.executionInput.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.executionInput.active",
-        "completed": "workflow.toolBatch.executionInput.completed"
-      }
+      "action": "Send"
     },
     {
       "id": "execution-control",
@@ -477,15 +256,7 @@
         ],
         "exactToolNames": ["ExecutionResourceSignal", "ExecutionResourceResize", "ExecutionResourceStopAll"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.executionControl.active",
-        "completed": "workflow.toolActivity.executionControl.completed",
-        "failed": "workflow.toolActivity.executionControl.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.executionControl.active",
-        "completed": "workflow.toolBatch.executionControl.completed"
-      }
+      "action": "Control"
     },
     {
       "id": "execution-resource",
@@ -493,15 +264,7 @@
         "capabilityPrefixes": ["execution."],
         "toolNamePrefixes": ["ExecutionResource"]
       },
-      "labels": {
-        "active": "workflow.toolActivity.backgroundTask.active",
-        "completed": "workflow.toolActivity.backgroundTask.completed",
-        "failed": "workflow.toolActivity.backgroundTask.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.backgroundTask.active",
-        "completed": "workflow.toolBatch.backgroundTask.completed"
-      }
+      "action": "Manage"
     },
     {
       "id": "document-extract",
@@ -511,15 +274,7 @@
       },
       "argumentPath": "mode",
       "detailPaths": ["uploadUri", "mode"],
-      "labels": {
-        "active": "workflow.toolActivity.document.active",
-        "completed": "workflow.toolActivity.document.completed",
-        "failed": "workflow.toolActivity.document.failed"
-      },
-      "batchLabels": {
-        "active": "workflow.toolBatch.document.active",
-        "completed": "workflow.toolBatch.document.completed"
-      }
+      "action": "Read"
     },
     {
       "id": "image-analysis",
@@ -529,15 +284,92 @@
       },
       "argumentPath": "task",
       "detailPaths": ["uploadUri", "task", "question"],
-      "labels": {
-        "active": "workflow.toolActivity.image.active",
-        "completed": "workflow.toolActivity.image.completed",
-        "failed": "workflow.toolActivity.image.failed"
+      "action": "Analyze"
+    },
+    {
+      "id": "web-search",
+      "match": {
+        "exactCapabilities": ["system.tool.web-tools.WebSearch"],
+        "exactToolNames": ["WebSearch"]
       },
-      "batchLabels": {
-        "active": "workflow.toolBatch.image.active",
-        "completed": "workflow.toolBatch.image.completed"
-      }
+      "argumentPath": "query",
+      "detailPaths": ["query", "allowedDomains.*", "blockedDomains.*"],
+      "action": "Search"
+    },
+    {
+      "id": "web-fetch",
+      "match": {
+        "exactCapabilities": ["system.tool.web-tools.WebFetch"],
+        "exactToolNames": ["WebFetch"]
+      },
+      "argumentPath": "url",
+      "detailPaths": ["url", "contentMode"],
+      "action": "Fetch"
+    },
+    {
+      "id": "browser-navigation",
+      "match": {
+        "exactToolNames": ["BrowserOpen", "BrowserBack", "BrowserForward", "BrowserReload"]
+      },
+      "action": "Navigate"
+    },
+    {
+      "id": "browser-read",
+      "match": {
+        "exactToolNames": [
+          "BrowserRead",
+          "BrowserSnapshot",
+          "BrowserGetText",
+          "BrowserGetUrl",
+          "BrowserGetTitle",
+          "BrowserTabList"
+        ]
+      },
+      "action": "Read"
+    },
+    {
+      "id": "browser-interaction",
+      "match": {
+        "exactToolNames": [
+          "BrowserClick",
+          "BrowserFill",
+          "BrowserType",
+          "BrowserPress",
+          "BrowserCheck",
+          "BrowserUncheck",
+          "BrowserSelect",
+          "BrowserScroll"
+        ]
+      },
+      "action": "Interact"
+    },
+    {
+      "id": "browser-wait",
+      "match": {
+        "exactToolNames": ["BrowserWait", "BrowserWaitForSelector", "BrowserWaitForText", "BrowserWaitForLoad"]
+      },
+      "action": "Wait"
+    },
+    {
+      "id": "browser-screenshot",
+      "match": {
+        "exactToolNames": ["BrowserScreenshot"]
+      },
+      "action": "Capture"
+    },
+    {
+      "id": "browser-tabs",
+      "match": {
+        "exactToolNames": ["BrowserTabNew", "BrowserTabSwitch", "BrowserTabClose"]
+      },
+      "action": "Manage"
+    },
+    {
+      "id": "browser-session",
+      "match": {
+        "exactToolNames": ["BrowserClose"]
+      },
+      "action": "Close"
     }
   ]
 }

@@ -35,10 +35,12 @@ export interface PublishToolArtifactFilesInput {
   readonly absoluteDir: string;
   readonly relativeDir: string;
   readonly workspaceArtifacts?: Awaited<ReturnType<typeof writeToolWorkspaceArtifacts>>;
+  readonly artifactAssetReceipts?: ReadonlyMap<string, AgentArtifactFileReceipt>;
 }
 
 export async function publishToolArtifactFiles(input: PublishToolArtifactFilesInput): Promise<void> {
   const receipts = new Map<string, AgentArtifactFileReceipt>();
+  for (const receipt of input.artifactAssetReceipts?.values() ?? []) retainReceipt(receipts, receipt);
   if (input.workspaceArtifacts) retainReceipt(receipts, input.workspaceArtifacts.patchReceipt);
   if (input.result.outputCapture) {
     retainReceipt(receipts, await copyCapturedOutput(input, "stdout"));
@@ -207,6 +209,15 @@ function buildArtifactManifest(
       : undefined,
     contents: collectArtifactContents(input.artifact.files, receipts),
     files: input.artifact.files,
+    assets: input.artifact.assets?.map((asset) => ({
+      id: asset.id,
+      fileName: asset.fileName,
+      mediaType: asset.mediaType,
+      relativePath: asset.relativePath,
+      workspacePath: asset.workspacePath,
+      byteLength: asset.byteLength,
+      sha256: asset.sha256,
+    })),
   };
 }
 

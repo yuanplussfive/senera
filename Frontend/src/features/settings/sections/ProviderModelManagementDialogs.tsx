@@ -14,6 +14,7 @@ import {
   Skeleton,
   Spinner,
   StateView,
+  Tooltip,
 } from "../../../shared/ui";
 import { groupProviderModelRows, modelConfigId } from "../../chat/modelConfigData";
 import { SearchInput } from "../../chat/ModelConfigPrimitives";
@@ -199,21 +200,23 @@ function CatalogModelDialogContent({
         {groups.length > 1 ? (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {groups.map((group) => (
-              <button
-                key={group.id}
-                type="button"
-                className={cn(
-                  "inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md border border-ink-200/80 bg-paper-50 px-2.5",
-                  "text-[11px] font-medium text-ink-650 transition-colors duration-150",
-                  "hover:border-accent-border-strong hover:text-accent-content-hover",
-                )}
-                title={`${group.label}: ${group.rows.length}`}
-                onClick={() => groupRefs.current.get(group.id)?.scrollIntoView({ block: "start", behavior: "smooth" })}
-              >
-                <ModelProviderIcon icon={group.icon} size={13} className="rounded-sm" />
-                <span className="max-w-28 truncate">{group.label}</span>
-                <span className="tabular-nums text-[10px] text-ink-400">{group.rows.length}</span>
-              </button>
+              <Tooltip key={group.id} content={`${group.label}: ${group.rows.length}`} side="top">
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md border border-ink-200/80 bg-paper-50 px-2.5",
+                    "text-[11px] font-medium text-ink-650 transition-colors duration-150",
+                    "hover:border-accent-border-strong hover:text-accent-content-hover",
+                  )}
+                  onClick={() =>
+                    groupRefs.current.get(group.id)?.scrollIntoView({ block: "start", behavior: "smooth" })
+                  }
+                >
+                  <ModelProviderIcon icon={group.icon} size={13} className="rounded-sm" />
+                  <span className="max-w-28 truncate">{group.label}</span>
+                  <span className="tabular-nums text-[10px] text-ink-400">{group.rows.length}</span>
+                </button>
+              </Tooltip>
             ))}
           </div>
         ) : null}
@@ -298,9 +301,9 @@ function CatalogModelRow({
         <ModelProviderIcon icon={inferModelProviderIcon(row.id)} size={18} className="rounded" />
       </span>
       <span className="min-w-0">
-        <span className="block truncate font-mono text-[12.5px] leading-5 text-ink-850" title={row.id}>
-          {row.id}
-        </span>
+        <Tooltip content={row.id} side="top">
+          <span className="block truncate font-mono text-[12.5px] leading-5 text-ink-850">{row.id}</span>
+        </Tooltip>
         <span className="mt-0.5 block truncate text-[11px] text-ink-500">
           {row.ownedBy || frontendMessage("settings.modelManagement.providerModel")}
         </span>

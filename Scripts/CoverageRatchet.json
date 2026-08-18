@@ -6,10 +6,10 @@
   "suites": {
     "frontend": {
       "total": {
-        "lines": 65,
-        "functions": 63,
-        "branches": 56,
-        "statements": 62
+        "lines": 68,
+        "functions": 66,
+        "branches": 59,
+        "statements": 65
       },
       "groups": {}
     },
@@ -22,7 +22,7 @@
       },
       "groups": {
         "Source/AgentSystem/{ActionPlanner,Auth,Execution,Memory,ModelEndpoints,Pi,Session,Text,ToolSearch,Uploads,Xml}/**/*.ts": {
-          "lines": 79,
+          "lines": 80,
           "functions": 79,
           "branches": 65,
           "statements": 77

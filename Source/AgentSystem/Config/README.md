@@ -19,7 +19,7 @@ Config 模块负责配置的读取、数据库镜像、表单投影和模型列�
 - `Types/AgentConfigTypes.ts` 与 `Schemas/AgentSystemConfigSchema.ts` 是兼容入口，只做聚合和顶层装配。
 - 需要前端编辑时，先改 `AgentSystemConfig.form.json`，必要时再扩展 form projector 和前端配置 UI。
 - 供应商凭据属于 provider endpoint，模型能力属于 model 配置。
-- `ModelProviderEndpoints[].ApiKey` 在内存和 WebSocket 快照中保持明文语义，只能在 JSON/SQLite 持久化边界加解密；新增存储路径不得绕过 `AgentConfigSecretCodec`。
+- `ModelProviderEndpoints[].ApiKey` 在服务端内存中保持明文语义，只能在 JSON/SQLite 持久化边界加解密；通用 WebSocket 配置快照必须脱敏。设置界面需要查看现有密钥时，仅可通过已鉴权、禁止缓存的单供应商凭证接口按需读取，且不得进入事件日志或运行诊断。
 - 配置命令幂等是有界协议：`CommandReceiptRetentionHours` 定义重试时间窗，`CommandReceiptMaxCount` 提供高流量硬上限。超出窗口或上限的 command ID 可以作为新命令再次使用。
 - SQLite 清理先删除过期和超额 command receipt，再删除不在最近 `RevisionRetentionCount` 且不再被有效 receipt 引用的 revision；清理与命令提交使用同一事务。JSON source 的进程内 receipt ledger 必须应用相同策略。
 - Provider rename 必须同步迁移规范模型 ID 及其配置引用，并保留 `ModelProviderIdAliases`，避免历史会话引用立即失效。

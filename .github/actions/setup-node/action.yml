@@ -5,7 +5,7 @@ inputs:
   node-version:
     description: Node.js major version to install.
     required: false
-    default: "22"
+    default: "24"
   install-electron:
     description: Download Electron during npm installation for jobs that execute or package the desktop application.
     required: false

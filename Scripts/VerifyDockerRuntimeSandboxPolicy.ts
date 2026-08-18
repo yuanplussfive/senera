@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import {
-  AgentSandboxRuntimeImageLabels,
-  readAgentSandboxDistributionContract,
-} from "../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
+import { AgentSandboxRuntimeImageLabels } from "../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
 
 const workspaceRoot = process.cwd();
 const read = (relativePath: string): string => fs.readFileSync(path.join(workspaceRoot, relativePath), "utf8");
@@ -13,6 +10,7 @@ const dockerfile = read("Dockerfile");
 const sandboxDockerfile = read("Dockerfile.sandbox");
 const aptPackages = read("Build/SandboxRuntimeAptPackages.txt").split(/\r?\n/u).filter(Boolean);
 const dockerignore = read(".dockerignore");
+const composeSource = read("compose.yaml");
 const dockerEntrypoint = read("Apps/DockerEntrypoint.sh");
 const dockerServer = read("Apps/DockerServer.ts");
 const sandboxWorker = read("Apps/SandboxWorker.ts");
@@ -24,7 +22,6 @@ const releaseWorkflow = read(".github/workflows/release.yml");
 const providerRegistry = readRecord(parseYaml(read("Source/AgentSystem/Sandbox/ProviderRegistry/contract.json")));
 const dockerEnginePolicy = readRecord(parseYaml(read("Source/AgentSystem/Sandbox/DockerEngine/contract.json")));
 const compose = readRecord(parseYaml(read("compose.yaml"), { merge: true }));
-const distribution = readAgentSandboxDistributionContract();
 
 assert.match(
   dockerfile,
@@ -117,7 +114,20 @@ assert.equal(runtimeImage.read_only, true);
 const workerEnvironment = readRecord(worker.environment);
 assert.equal(workerEnvironment.SENERA_DOCKER_SANDBOX_PROVIDER, "auto");
 assert.equal(workerEnvironment.SENERA_DOCKER_SANDBOX_PULL_POLICY, "never");
-assert.ok(String(workerEnvironment.SENERA_DOCKER_SANDBOX_IMAGE).includes(`sandbox-runtime-${distribution.version}`));
+assert.match(
+  composeSource,
+  /x-senera-image:\s*&senera-image\s*\$\{SENERA_IMAGE:-ghcr\.io\/yuanplussfive\/senera:latest\}/u,
+  "Compose must use the verified application latest tag unless an operator supplies an immutable override.",
+);
+assert.match(
+  composeSource,
+  /x-senera-sandbox-image:\s*&senera-sandbox-image\s*\$\{SENERA_SANDBOX_IMAGE:-ghcr\.io\/yuanplussfive\/senera:sandbox-runtime-latest\}/u,
+  "Compose must use the verified sandbox latest tag unless an operator supplies an immutable override.",
+);
+assert.ok(
+  String(workerEnvironment.SENERA_DOCKER_SANDBOX_IMAGE).includes("sandbox-runtime-latest"),
+  "Sandbox Worker must receive the same default sandbox image selected by Compose.",
+);
 
 assert.ok(
   releaseWorkflow.includes("sandbox-runtime-build:") &&

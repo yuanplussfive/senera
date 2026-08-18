@@ -1,17 +1,27 @@
 import { lazy, Suspense, useEffect, useId, useMemo, useState, type AriaRole, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronDown, Circle, LoaderCircle, X } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { type RunRecord } from "../../store/sessionStore";
 import { deriveFeedModel, statusTextClass, type FeedGroup, type FeedItem } from "./feedModel";
 import { FeedGroupIconCatalog, FeedItemIconCatalog } from "./feedPresentation";
-import { motionTimings, readFeedItemVariants, useMotionLevel, type MotionLevel } from "../../shared/motion";
+import {
+  MotionDisclosure,
+  motionTimings,
+  readFeedItemVariants,
+  useMotionLevel,
+  type MotionLevel,
+} from "../../shared/motion";
 import { Spinner } from "../../shared/ui/Spinner";
+import { AppIcon } from "../../shared/ui/AppIcon";
 import { Popover, PopoverContent, PopoverTrigger } from "../../shared/ui/Popover";
 import { projectToolStagePresentation } from "./toolStagePresentation";
 import { runActivityPresentationPriority } from "./runActivityPresentation";
+import { ToolActionIcon } from "./ToolActionIcon";
+import { ToolActivityGroup } from "./ToolActivityGroup";
+import { projectToolBatchActivity, ToolBatchActivity } from "./ToolBatchActivity";
 
 type FeedStatus = FeedItem["status"];
 
@@ -84,54 +94,141 @@ export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; s
 }
 
 /** A phase-local execution view for the conversation. The full run remains in the workflow dock. */
-export function AgentExecutionStageFeed({ run }: { run: RunRecord }): JSX.Element | null {
+export function AgentExecutionStageFeed({
+  run,
+  keepOpenWhileRunActive = false,
+}: {
+  run: RunRecord;
+  keepOpenWhileRunActive?: boolean;
+}): JSX.Element | null {
   const model = useMemo(() => deriveFeedModel(run), [run]);
   const presentation = useMemo(() => projectToolStagePresentation(run), [run]);
-  const nowEpoch = useLiveNow(run.status === "running" || run.status === "cancelling");
-  const elapsedMs = readRunElapsedMs(run, nowEpoch);
-  if (!presentation || shouldShowWaitingHeadline(run, presentation.status)) {
+  const toolBatchActivity = useMemo(() => projectToolBatchActivity(run), [run]);
+  if (!presentation || shouldShowWaitingHeadline(run, presentation.status, Boolean(toolBatchActivity))) {
     const headline = projectWaitingHeadline(run, model.headline);
     return run.status === "running" || run.status === "cancelling" || model.headline.kind === "activity" ? (
       <div className="relative min-w-0" data-execution-stage-feed>
-        <FeedHeadline item={headline} elapsedMs={elapsedMs} />
+        <FeedHeadline item={headline} />
       </div>
     ) : null;
   }
 
+  if (toolBatchActivity) {
+    return (
+      <div
+        className="relative w-full min-w-0"
+        role="status"
+        aria-label={toolBatchActivity.label}
+        data-execution-stage-feed
+        data-tool-stage-category={presentation.category}
+        data-tool-stage-mode={presentation.mode}
+        data-tool-stage-status={presentation.status}
+      >
+        <ToolBatchActivity
+          activity={toolBatchActivity}
+          defaultOpen={toolBatchActivity.live}
+          keepOpenWhileRunActive={keepOpenWhileRunActive}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
-      className="relative min-w-0"
+      className="relative w-full min-w-0"
       data-execution-stage-feed
       data-tool-stage-category={presentation.category}
       data-tool-stage-mode={presentation.mode}
+      data-tool-stage-status={presentation.status}
     >
       <div
-        className="inline-flex min-h-5 max-w-full min-w-0 items-start gap-2 px-0.5 text-left"
+        className={cn(
+          "tool-activity-stage-list relative min-w-0 px-0.5 text-left",
+          presentation.activities.length > 1 && "tool-activity-stage-list--connected pl-5",
+        )}
         role="status"
-        aria-label={presentation.title}
+        aria-label={presentation.accessibleTitle}
         data-tool-stage-summary
       >
-        <span className="mt-0.5 shrink-0">
-          <StageStatusIcon status={presentation.status} />
-        </span>
-        <span className="min-w-0">
-          <span className="flex min-w-0 items-baseline gap-2">
-            <span className="min-w-0 break-words text-[12.75px] font-medium leading-5 text-content-secondary">
-              {presentation.title}
-            </span>
-            {isLiveFeedStatus(presentation.status) && elapsedMs !== undefined ? (
-              <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-content-muted" data-feed-elapsed>
-                {formatFeedElapsed(elapsedMs)}
-              </span>
-            ) : null}
-          </span>
-          {presentation.summary ? (
-            <span className="block break-words text-[11px] leading-4 text-content-muted" data-tool-stage-result-summary>
-              {presentation.summary}
-            </span>
-          ) : null}
-        </span>
+        {presentation.activities.map((activity) => (
+          <ToolActivityGroup key={activity.id} activity={activity} defaultOpen={false} />
+        ))}
       </div>
+    </div>
+  );
+}
+
+/** A completed preface-to-response interval. Its complete tool sequence is opt-in, not chat-height by default. */
+export function AgentExecutionStageFold({ run }: { run: RunRecord }): JSX.Element | null {
+  const contentId = useId();
+  const [open, setOpen] = useState(false);
+  const presentation = useMemo(() => projectToolStagePresentation(run), [run]);
+  const toolBatchActivity = useMemo(() => projectToolBatchActivity(run), [run]);
+  const hasToolSteps = useMemo(
+    () => run.steps.some((step) => step.kind === "tool" && Boolean(step.toolName?.trim())),
+    [run.steps],
+  );
+
+  if (!presentation || !hasToolSteps) return <AgentExecutionStageFeed run={run} />;
+
+  if (toolBatchActivity) {
+    return (
+      <div
+        className="tool-batch-activity-stage min-w-0"
+        data-execution-stage-fold
+        data-tool-stage-category={presentation.category}
+        data-tool-stage-status={presentation.status}
+      >
+        <ToolBatchActivity activity={toolBatchActivity} defaultOpen={false} />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="execution-stage-fold min-w-0"
+      data-execution-stage-fold
+      data-tool-stage-category={presentation.category}
+      data-tool-stage-status={presentation.status}
+    >
+      <button
+        type="button"
+        className="execution-stage-fold__trigger group flex w-full min-w-0 items-center gap-2 rounded-md py-1 text-left text-content-secondary transition-colors hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+        aria-expanded={open}
+        aria-controls={contentId}
+        aria-label={presentation.accessibleTitle}
+        onClick={() => setOpen((value) => !value)}
+        data-execution-stage-fold-trigger
+      >
+        <ToolActionIcon icon={presentation.icon} status={presentation.status} size="xs" showLiveIndicator={false} />
+        <span className="min-w-0 flex-1 truncate text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)]">
+          {presentation.title}
+        </span>
+        <ChevronRight
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-200",
+            open && "rotate-90",
+          )}
+          aria-hidden="true"
+        />
+      </button>
+      <MotionDisclosure id={contentId} open={open} className="execution-stage-fold__details">
+        <div className="pt-1" data-execution-stage-fold-details>
+          <ThinkingToolChain run={run} />
+        </div>
+      </MotionDisclosure>
+    </div>
+  );
+}
+
+export function ThinkingToolChain({ run }: { run: RunRecord }): JSX.Element {
+  const toolBatchActivity = projectToolBatchActivity(run);
+
+  if (toolBatchActivity) return <ToolBatchActivity activity={toolBatchActivity} defaultOpen={false} />;
+
+  return (
+    <div className="relative min-w-0 pl-5 text-[12.5px] leading-5 text-content-primary" data-thinking-tool-chain>
+      <span className="text-content-muted">{frontendMessage("workflow.summary.noToolCalls")}</span>
     </div>
   );
 }
@@ -176,16 +273,26 @@ function FeedTimelineGroup({
 
 function FeedGroupRows({ group, nowEpoch }: { group: FeedGroup; nowEpoch: number }): JSX.Element {
   const variant = group.variant ?? "trace";
-  const Icon = FeedGroupIconCatalog[variant];
+  const icon = FeedGroupIconCatalog[variant];
+  const status = summarizeGroupStatus(group);
 
   return (
     <div className="relative flex min-w-0 items-start gap-2.5" role="listitem" data-feed-group-variant={variant}>
-      <TimelineMarker status={summarizeGroupStatus(group)}>
-        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      <TimelineMarker status={status}>
+        {group.toolIcons?.length ? (
+          <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
+        ) : (
+          <AppIcon icon={icon} size={14} aria-hidden="true" />
+        )}
       </TimelineMarker>
       <div className="min-w-0 flex-1 pb-1">
-        <div className="flex min-h-5 min-w-0 items-center gap-2">
-          <span className="min-w-0 flex-1 text-[12.75px] font-medium text-content-primary">{group.label}</span>
+        <div className="flex min-h-5 min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          {group.toolIcons?.[0] ? (
+            <ToolActionIcon icon={group.toolIcons[0]} status={status} className="self-center" />
+          ) : null}
+          <span className="min-w-0 flex-1 basis-48 break-words text-[12.75px] font-medium text-content-primary">
+            {group.label}
+          </span>
           {group.meta ? (
             <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-content-muted">{group.meta}</span>
           ) : null}
@@ -238,14 +345,18 @@ function FeedGroupBlock({
   nowEpoch: number;
 }): JSX.Element {
   const variant = group.variant ?? "trace";
-  const Icon = FeedGroupIconCatalog[variant];
+  const icon = FeedGroupIconCatalog[variant];
   const contentId = useId();
   const status = summarizeGroupStatus(group);
 
   return (
     <div className="relative flex min-w-0 items-start gap-2.5" role="listitem" data-feed-group-variant={variant}>
       <TimelineMarker status={status}>
-        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        {group.toolIcons?.length ? (
+          <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
+        ) : (
+          <AppIcon icon={icon} size={14} aria-hidden="true" />
+        )}
       </TimelineMarker>
       <div className="min-w-0 flex-1">
         <button
@@ -253,14 +364,26 @@ function FeedGroupBlock({
           onClick={onToggle}
           aria-expanded={expanded}
           aria-controls={contentId}
+          aria-label={
+            group.toolAccessibleLabel
+              ? frontendMessage(expanded ? "workflow.dock.collapseNode" : "workflow.dock.expandNode", {
+                  title: group.toolAccessibleLabel,
+                })
+              : undefined
+          }
           data-feed-group={group.id}
           className={cn(
-            "group -mx-1 flex min-h-8 w-[calc(100%+0.5rem)] min-w-0 items-center gap-2 rounded px-1 text-left transition-colors",
+            "group -mx-1 flex min-h-8 w-[calc(100%+0.5rem)] min-w-0 items-start gap-2 rounded px-1 py-1.5 text-left transition-colors",
             status === "failed" ? "hover:bg-brick-50" : "hover:bg-surface-hover",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
           )}
         >
-          <span className="min-w-0 flex-1 truncate text-[12.75px] font-medium text-content-primary">{group.label}</span>
+          {group.toolIcons?.[0] ? (
+            <ToolActionIcon icon={group.toolIcons[0]} status={status} className="mt-0.5" />
+          ) : null}
+          <span className="min-w-0 flex-1 break-words text-[12.75px] font-medium leading-5 text-content-primary">
+            {group.label}
+          </span>
           {group.meta ? (
             <span className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted">{group.meta}</span>
           ) : null}
@@ -294,12 +417,17 @@ function FeedGroupBlock({
 }
 
 function TimelineFeedItem({ item, nowEpoch }: { item: FeedItem; nowEpoch: number }): JSX.Element {
-  const Icon = FeedItemIconCatalog[item.kind];
+  const toolPresentation = item.step ? projectToolStagePresentation({ steps: [item.step] }) : undefined;
+  const icon = FeedItemIconCatalog[item.kind];
 
   return (
     <div className="relative flex min-w-0 items-start gap-2.5" role="listitem" data-feed-item-kind={item.kind}>
       <TimelineMarker status={item.status}>
-        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        {toolPresentation ? (
+          <ToolActionIcon icon={toolPresentation.icon} status={item.status} size="xs" />
+        ) : (
+          <AppIcon icon={icon} size={14} aria-hidden="true" />
+        )}
       </TimelineMarker>
       <FeedItemContent
         item={item}
@@ -336,7 +464,7 @@ function FeedRow({
           })}
           onClick={() => setInlineExpanded((value) => !value)}
         >
-          <FeedRowStatus status={item.status} />
+          <FeedRowStatus item={item} />
           <FeedItemContent item={item} nowEpoch={nowEpoch} />
           <ChevronDown
             className={cn(
@@ -367,7 +495,7 @@ function FeedRow({
               className="group flex w-full min-w-0 items-start gap-2 rounded px-0.5 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
               aria-label={frontendMessage("workflow.dock.expandNode", { title: item.title })}
             >
-              <FeedRowStatus status={item.status} />
+              <FeedRowStatus item={item} />
               <FeedItemContent item={item} nowEpoch={nowEpoch} />
               <ChevronDown
                 className="mt-1 h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-200 group-data-[state=open]:rotate-180"
@@ -375,7 +503,10 @@ function FeedRow({
               />
             </button>
           </PopoverTrigger>
-          <PopoverContent className="w-[min(34rem,calc(100vw-2rem))] p-0" data-feed-tool-detail>
+          <PopoverContent
+            className="w-[min(36rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] p-0"
+            data-feed-tool-detail
+          >
             <Suspense fallback={<ToolInspectorLoading />}>
               <ToolStepInspector step={item.step!} />
             </Suspense>
@@ -383,7 +514,7 @@ function FeedRow({
         </Popover>
       ) : (
         <div className="flex min-w-0 items-start gap-2">
-          <FeedRowStatus status={item.status} />
+          <FeedRowStatus item={item} />
           <FeedItemContent item={item} nowEpoch={nowEpoch} />
         </div>
       )}
@@ -411,8 +542,8 @@ function FeedItemContent({
 }): JSX.Element {
   const elapsedMs = readStepElapsedMs(item.step, nowEpoch);
   return (
-    <div className={cn("flex min-w-0 flex-1 items-start gap-2", className)}>
-      <div className="min-w-0 flex-1">
+    <div className={cn("flex min-w-0 flex-1 flex-wrap items-start gap-x-2 gap-y-0.5", className)}>
+      <div className="min-w-0 flex-1 basis-48">
         <div className="break-words text-[12.75px] leading-5 text-content-primary">{item.title}</div>
         {item.subtitle ? (
           <div className="mt-0.5 break-words text-[11.5px] leading-[1.45] text-content-secondary">{item.subtitle}</div>
@@ -443,7 +574,7 @@ function TimelineMarker({
       aria-hidden="true"
       className={cn(
         "relative z-10 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-surface-canvas text-content-muted ring-[3px] ring-surface-canvas",
-        filled ? markerFilledTone(status) : statusTextClass(status),
+        filled ? markerFilledTone(status) : markerTone(status),
         emphasis && "mt-0.5",
       )}
       data-feed-marker-status={status}
@@ -451,6 +582,12 @@ function TimelineMarker({
       {children}
     </span>
   );
+}
+
+function markerTone(status: FeedStatus): string {
+  if (status === "failed") return "text-brick-500";
+  if (status === "running" || status === "cancelling") return "text-accent-content";
+  return "text-content-muted";
 }
 
 function markerFilledTone(status: FeedStatus): string {
@@ -468,23 +605,36 @@ function markerFilledTone(status: FeedStatus): string {
   }
 }
 
-function FeedRowStatus({ status }: { status: FeedStatus }): JSX.Element {
+function FeedRowStatus({ item }: { item: FeedItem }): JSX.Element {
+  const { status } = item;
+  if (item.step) {
+    const presentation = projectToolStagePresentation({ steps: [item.step] });
+    if (presentation) {
+      return <ToolActionIcon icon={presentation.icon} status={status} size="xs" className="mt-1" />;
+    }
+  }
   const iconClassName = cn("mt-1 h-3 w-3 shrink-0", statusTextClass(status));
   if (status === "running") {
     return <Spinner size="xs" className={iconClassName} />;
   }
-  if (status === "cancelling") return <LoaderCircle className={cn(iconClassName, "animate-spin")} aria-hidden="true" />;
-  if (status === "failed") return <X className={iconClassName} aria-hidden="true" />;
-  if (status === "done") return <Check className={iconClassName} aria-hidden="true" />;
-  return <Circle className={cn(iconClassName, "h-2.5 w-2.5")} aria-hidden="true" />;
+  if (status === "cancelling") return <Spinner size="xs" className={iconClassName} />;
+  if (status === "failed") return <AppIcon icon="cancel" size={12} className={iconClassName} aria-hidden="true" />;
+  if (status === "done") return <AppIcon icon="check" size={12} className={iconClassName} aria-hidden="true" />;
+  return (
+    <span
+      className={cn("mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-current", statusTextClass(status))}
+      aria-hidden="true"
+    />
+  );
 }
 
 function summarizeGroupStatus(group: FeedGroup): FeedStatus {
-  if (group.items.some((item) => item.status === "failed")) return "failed";
   if (group.items.some((item) => item.status === "running")) return "running";
   if (group.items.some((item) => item.status === "cancelling")) return "cancelling";
   if (group.items.some((item) => item.status === "pending")) return "pending";
+  if (group.items.length > 0 && group.items.every((item) => item.status === "failed")) return "failed";
   if (group.items.every((item) => item.status === "done")) return "done";
+  if (group.items.some((item) => item.status === "done")) return "done";
   return "neutral";
 }
 
@@ -498,28 +648,20 @@ function toggleSetEntry(values: ReadonlySet<string>, value: string): ReadonlySet
 function FeedStatusIcon({ status, className }: { status: FeedStatus; className?: string }): JSX.Element {
   if (status === "running") return <Spinner size="md" className={cn(statusTextClass(status), className)} />;
   if (status === "cancelling") {
-    return <LoaderCircle className={cn("h-4 w-4 shrink-0 animate-spin", statusTextClass(status), className)} />;
+    return <Spinner size="md" className={cn(statusTextClass(status), className)} />;
   }
-  if (status === "failed") return <X className={cn("h-4 w-4 shrink-0", statusTextClass(status), className)} />;
+  if (status === "failed") {
+    return <AppIcon icon="cancel" size={16} className={cn(statusTextClass(status), className)} aria-hidden="true" />;
+  }
   if (status === "pending" || status === "neutral") {
-    return <Circle className={cn("h-3 w-3 shrink-0", statusTextClass(status), className)} />;
-  }
-  return <Check className={cn("h-4 w-4 shrink-0", statusTextClass(status), className)} />;
-}
-
-function StageStatusIcon({ status }: { status: FeedStatus }): JSX.Element {
-  if (status === "running") return <Spinner size="sm" className={cn("shrink-0", statusTextClass(status))} />;
-  if (status === "cancelling") {
     return (
-      <LoaderCircle className={cn("h-3.5 w-3.5 shrink-0 animate-spin", statusTextClass(status))} aria-hidden="true" />
+      <span
+        className={cn("h-2 w-2 shrink-0 rounded-full bg-current", statusTextClass(status), className)}
+        aria-hidden="true"
+      />
     );
   }
-  if (status === "failed")
-    return <X className={cn("h-3.5 w-3.5 shrink-0", statusTextClass(status))} aria-hidden="true" />;
-  if (status === "pending" || status === "neutral") {
-    return <Circle className={cn("h-3 w-3 shrink-0", statusTextClass(status))} aria-hidden="true" />;
-  }
-  return <Check className={cn("h-3.5 w-3.5 shrink-0", statusTextClass(status))} aria-hidden="true" />;
+  return <AppIcon icon="check" size={16} className={cn(statusTextClass(status), className)} aria-hidden="true" />;
 }
 
 function isLiveFeedStatus(status: FeedStatus): boolean {
@@ -571,13 +713,14 @@ function projectWaitingHeadline(run: RunRecord, headline: FeedItem): FeedItem {
     id: "live-waiting",
     kind: "trace",
     status: "running",
-    title: frontendFeatureMessage("workflow.feed.thinking"),
+    title: "Thinking...",
   };
 }
 
-function shouldShowWaitingHeadline(run: RunRecord, status: FeedStatus): boolean {
+function shouldShowWaitingHeadline(run: RunRecord, status: FeedStatus, hasToolPresentation: boolean): boolean {
   if (run.status !== "running" && run.status !== "cancelling") return false;
   if (run.liveActivity && runActivityPresentationPriority(run.liveActivity) === "foreground") return true;
+  if (hasToolPresentation) return false;
   if (isLiveFeedStatus(status)) return false;
   if (["pending", "streaming"].includes(run.outputState)) return true;
   return run.visibleKind === "tool_calls" || run.visibleKind === "tool_preface";

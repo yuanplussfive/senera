@@ -2,7 +2,15 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 interface BundledToolExecution {
   readonly data: Record<string, unknown>;
-  readonly summary: string;
+  readonly artifactPayload?: {
+    readonly rawResponse?: unknown;
+    readonly assets?: readonly {
+      readonly id: string;
+      readonly fileName: string;
+      readonly mediaType: string;
+      readonly dataBase64: string;
+    }[];
+  };
 }
 
 interface BundledToolModule {
@@ -18,45 +26,6 @@ interface BundledToolModule {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("bundled MCP package behavior", () => {
-  test("web research omits nullable provider fields and satisfies its output schema", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({
-        query: "Senera",
-        answer: null,
-        results: [
-          {
-            title: "Senera",
-            url: "https://example.test/senera",
-            content: "A source-backed result.",
-            raw_content: null,
-            published_date: null,
-            favicon: null,
-            score: 0.9,
-          },
-        ],
-        images: null,
-        response_time: 0.1,
-        request_id: "request-1",
-        usage: { credits: 1 },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const controller = new AbortController();
-    const execution = await executeBundledTool(
-      "web-research",
-      "search",
-      { query: "Senera" },
-      {
-        TAVILY_API_KEY: "test-key",
-      },
-      controller.signal,
-    );
-
-    expect(execution.data).not.toHaveProperty("answer");
-    expect(execution.data).toMatchObject({ query: "Senera", images: [], source: "Tavily" });
-    expect(fetchMock).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({ signal: controller.signal }));
-  });
-
   test("weather normalizes numeric provider strings and omits unavailable optional fields", async () => {
     const fetchMock = vi
       .fn()
@@ -110,6 +79,71 @@ describe("bundled MCP package behavior", () => {
       source: "QWeather",
     });
     expect(execution.data).not.toHaveProperty("humidity");
+  });
+
+  test("imagen uses the generations route and keeps image bytes in the artifact payload", async () => {
+    const imageBase64 = Buffer.from("fake-png").toString("base64");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ data: [{ b64_json: imageBase64, revised_prompt: "A small blue bird." }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const execution = await executeBundledTool(
+      "imagen",
+      "generate",
+      { prompt: "A small blue bird." },
+      {
+        IMAGEN_API_KEY: "test-key",
+        IMAGEN_API_URL: "https://example.test/v1",
+        IMAGEN_REQUEST_MODE: "images",
+      },
+    );
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://example.test/v1/images/generations");
+    expect(JSON.parse(String(request.body))).toMatchObject({
+      model: "gpt-image-2",
+      prompt: "A small blue bird.",
+      size: "1536x1024",
+    });
+    expect(execution.data).toMatchObject({ mode: "images", model: "gpt-image-2", size: "1536x1024" });
+    expect(execution.data.markdown).toContain("senera://artifact-asset/imagen-1");
+    expect(execution.artifactPayload?.rawResponse).toMatchObject({ data: [{ b64_json: imageBase64 }] });
+    expect(execution.artifactPayload?.assets?.[0]).toMatchObject({
+      id: "imagen-1",
+      mediaType: "image/png",
+      dataBase64: imageBase64,
+    });
+  });
+
+  test("imagen uses chat completions and preserves provider markdown links", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        id: "chatcmpl-test",
+        choices: [{ message: { content: "Here is the image:\n\n![A sunset](https://cdn.example.test/sunset.png)" } }],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const execution = await executeBundledTool(
+      "imagen",
+      "generate",
+      { prompt: "A sunset", mode: "chat", size: "1024x1024" },
+      {
+        IMAGEN_API_KEY: "test-key",
+        IMAGEN_API_URL: "https://example.test/v1",
+        IMAGEN_REQUEST_MODE: "images",
+      },
+    );
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(request.body));
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://example.test/v1/chat/completions");
+    expect(body).toMatchObject({ model: "gpt-image-2", stream: false });
+    expect(body.messages[0].content).toContain("size: 1024x1024");
+    expect(execution.data).toMatchObject({ mode: "chat", text: expect.stringContaining("Here is the image") });
+    expect(execution.data.markdown).toContain("https://cdn.example.test/sunset.png");
+    expect(execution.artifactPayload?.assets).toEqual([]);
   });
 });
 

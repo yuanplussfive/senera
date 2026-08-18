@@ -27,15 +27,23 @@ describe("standard MCP package discovery", () => {
         servers: package_.servers.map((server) => server.name),
       })),
     ).toEqual([
+      { name: "imagen", descriptorKind: "mcpb", servers: ["imagen"] },
       { name: "weather", descriptorKind: "mcpb", servers: ["weather"] },
-      { name: "web-research", descriptorKind: "mcpb", servers: ["web-research"] },
     ]);
-    expect(packages[0]?.configurationPath).toBe(path.resolve("McpServers", "weather", "manifest.json"));
+    expect(packages.find((package_) => package_.name === "weather")?.configurationPath).toBe(
+      path.resolve("McpServers", "weather", "manifest.json"),
+    );
     expect(packages.every((package_) => package_.execution?.preferred === "local")).toBe(true);
-    expect(packages[0]?.servers[0]?.inputs).toEqual(
+    expect(packages.find((package_) => package_.name === "weather")?.servers[0]?.inputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "QWEATHER_API_KEY", secret: true, provenance: "mcpb" }),
         expect.objectContaining({ id: "WEATHER_UNIT", secret: false, choices: ["m", "i"] }),
+      ]),
+    );
+    expect(packages.find((package_) => package_.name === "imagen")?.servers[0]?.inputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "IMAGEN_API_KEY", secret: true, provenance: "mcpb" }),
+        expect.objectContaining({ id: "IMAGEN_REQUEST_MODE", secret: false, choices: ["images", "chat"] }),
       ]),
     );
   });

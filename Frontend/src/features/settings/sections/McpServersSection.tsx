@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
-import { Folder, KeyRound, RefreshCw, RotateCcw, RotateCw, Save, ServerCog, Settings2 } from "lucide-react";
+import { useEffect, useState, type ElementType } from "react";
+import AdjustmentsHorizontalIcon from "@heroicons/react/24/outline/AdjustmentsHorizontalIcon";
+import ArrowPathIcon from "@heroicons/react/24/outline/ArrowPathIcon";
+import ArrowPathRoundedSquareIcon from "@heroicons/react/24/outline/ArrowPathRoundedSquareIcon";
+import FolderIcon from "@heroicons/react/24/outline/FolderIcon";
+import KeyIcon from "@heroicons/react/24/outline/KeyIcon";
+import PauseCircleIcon from "@heroicons/react/24/outline/PauseCircleIcon";
+import ServerStackIcon from "@heroicons/react/24/outline/ServerStackIcon";
 import type { McpInputStatus, McpInputValue, McpServerSettingsItem } from "../../../api/eventTypes";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
-import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
 import { cn } from "../../../lib/util";
 import {
   Button,
@@ -15,13 +20,21 @@ import {
   MenuMultiSelect,
   MenuSelect,
   ScrollArea,
+  Spinner,
   StateView,
   Switch,
 } from "../../../shared/ui";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 
 const EmptyMcpServers: readonly McpServerSettingsItem[] = [];
+const McpInputSyncDebounceMs = 350;
 type McpInputDraft = McpInputValue | "";
+
+interface McpSyncRequest {
+  requestId: string;
+  serverId: string;
+  values: Record<string, McpInputValue>;
+}
 
 export function McpServersSection({
   systemConfig,
@@ -30,67 +43,105 @@ export function McpServersSection({
   systemConfig?: SettingsSystemConfigHandle;
   onDirtyChange?: (dirty: boolean) => void;
 }): JSX.Element {
-  const locale = useFrontendLocale();
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, McpInputDraft>>({});
-  const [deletes, setDeletes] = useState<string[]>([]);
-  const [saveRequestId, setSaveRequestId] = useState<string | null>(null);
+  const [syncRequest, setSyncRequest] = useState<McpSyncRequest | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const servers = systemConfig?.mcpServers ?? EmptyMcpServers;
   const selectedServer = servers.find((server) => server.id === selectedServerId) ?? servers[0];
-  const dirty = Object.keys(drafts).length > 0 || deletes.length > 0;
-  const saving = Boolean(
-    saveRequestId &&
-    systemConfig?.mcpInputOperation?.requestId === saveRequestId &&
-    systemConfig.mcpInputOperation.status === "pending",
-  );
+  const pendingChanges = Object.keys(drafts).length > 0;
+  const syncing = syncRequest !== null;
   const connected = systemConfig?.socketStatus === "open";
-  const dateFormatter = useMemo(
-    () => new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }),
-    [locale],
-  );
 
   useEffect(() => {
-    onDirtyChange?.(dirty);
+    // MCP changes are sent automatically; the settings shell must not open a
+    // second save flow or block navigation for a transient local draft.
+    onDirtyChange?.(false);
     return () => onDirtyChange?.(false);
-  }, [dirty, onDirtyChange]);
+  }, [onDirtyChange]);
 
   useEffect(() => {
     if (servers.length === 0) {
       setSelectedServerId(null);
       setDrafts({});
-      setDeletes([]);
+      setSyncRequest(null);
       return;
     }
     if (!servers.some((server) => server.id === selectedServerId)) {
       setSelectedServerId(servers[0]?.id ?? null);
       setDrafts({});
-      setDeletes([]);
+      setSyncRequest(null);
+      setOperationError(null);
     }
   }, [selectedServerId, servers]);
 
   useEffect(() => {
-    if (!saveRequestId || systemConfig?.mcpInputOperation?.requestId !== saveRequestId) return;
+    if (!syncRequest || systemConfig?.mcpInputOperation?.requestId !== syncRequest.requestId) return;
+    const request = syncRequest;
+    const requestServer = servers.find((server) => server.id === request.serverId);
+    const isCurrentServer = selectedServer?.id === request.serverId;
     if (systemConfig.mcpInputOperation.status === "success") {
-      setSaveRequestId(null);
-      setDrafts({});
-      setDeletes([]);
+      if (isCurrentServer) {
+        setDrafts((current) => reconcileMcpDrafts(current, request, requestServer, "success"));
+      }
+      setSyncRequest(null);
       setOperationError(null);
     } else if (systemConfig.mcpInputOperation.status === "error") {
-      setSaveRequestId(null);
-      setOperationError(systemConfig.mcpInputOperation.message ?? frontendMessage("settings.mcp.saveFailed"));
+      if (isCurrentServer) {
+        setDrafts((current) => reconcileMcpDrafts(current, request, requestServer, "error"));
+        setOperationError(systemConfig.mcpInputOperation.message ?? frontendMessage("settings.mcp.saveFailed"));
+      }
+      setSyncRequest(null);
     }
-  }, [saveRequestId, systemConfig?.mcpInputOperation]);
+  }, [selectedServer?.id, servers, syncRequest, systemConfig?.mcpInputOperation]);
+
+  useEffect(() => {
+    if (connected || !syncRequest) return;
+    const request = syncRequest;
+    const requestServer = servers.find((server) => server.id === request.serverId);
+    if (selectedServer?.id === request.serverId) {
+      setDrafts((current) => reconcileMcpDrafts(current, request, requestServer, "error"));
+      setOperationError(frontendMessage("settings.mcp.saveFailed"));
+    }
+    setSyncRequest(null);
+  }, [connected, selectedServer?.id, servers, syncRequest]);
+
+  useEffect(() => {
+    if (!selectedServer || !pendingChanges || syncing || !connected) return;
+    const timer = window.setTimeout(() => {
+      const mutation = readMcpInputMutation(selectedServer, drafts);
+      if (mutation.error) {
+        setOperationError(mutation.error);
+        return;
+      }
+      const values = mutation.values;
+      if (!values) return;
+      const requestId = systemConfig?.updateMcpInputs(selectedServer.id, values, []);
+      if (!requestId) {
+        setOperationError(frontendMessage("settings.mcp.commandUnavailable"));
+        return;
+      }
+      setSyncRequest({
+        requestId,
+        serverId: selectedServer.id,
+        values,
+      });
+      // Clear only the exact Secret value that crossed the transport boundary.
+      // A newer keystroke must survive the response for this request.
+      setDrafts((current) => removeSentSecretDrafts(current, values, selectedServer));
+      setOperationError(null);
+    }, McpInputSyncDebounceMs);
+    return () => window.clearTimeout(timer);
+  }, [connected, drafts, pendingChanges, selectedServer, syncing, systemConfig]);
 
   if (!systemConfig || !systemConfig.toolSettingsSynced.mcpServers) {
     return <StateView status="loading" description={frontendMessage("settings.mcp.loading")} />;
   }
 
   const selectServer = (serverId: string): void => {
-    if (dirty || saving) return;
+    if (pendingChanges) return;
     setSelectedServerId(serverId);
     setDrafts({});
-    setDeletes([]);
     setOperationError(null);
   };
   const updateDraft = (input: McpInputStatus, value: McpInputDraft): void => {
@@ -101,67 +152,6 @@ export function McpServersSection({
       else next[input.id] = value;
       return next;
     });
-    setDeletes((current) => current.filter((inputId) => inputId !== input.id));
-    setOperationError(null);
-  };
-  const toggleReset = (input: McpInputStatus): void => {
-    setDrafts((current) => {
-      const next = { ...current };
-      delete next[input.id];
-      return next;
-    });
-    setDeletes((current) =>
-      current.includes(input.id) ? current.filter((inputId) => inputId !== input.id) : [...current, input.id],
-    );
-    setOperationError(null);
-  };
-  const discard = (): void => {
-    setDrafts({});
-    setDeletes([]);
-    setOperationError(null);
-  };
-  const save = (): void => {
-    if (!selectedServer) return;
-    const values: Record<string, McpInputValue> = {};
-    try {
-      for (const input of selectedServer.inputs) {
-        if (!(input.id in drafts)) continue;
-        const draft = drafts[input.id];
-        if (input.secret && draft === "") continue;
-        const value = normalizeDraft(input, draft ?? "");
-        if (input.required && isEmptyValue(value)) {
-          throw new InputValidationError(frontendMessage("settings.mcp.inputValueRequired", { name: input.title }));
-        }
-        values[input.id] = value;
-      }
-      for (const inputId of deletes) {
-        const input = selectedServer.inputs.find((candidate) => candidate.id === inputId);
-        if (input?.required && input.defaultValue === undefined && input.source !== "environment") {
-          throw new InputValidationError(frontendMessage("settings.mcp.inputValueRequired", { name: input.title }));
-        }
-      }
-    } catch (error) {
-      setOperationError(
-        error instanceof InputValidationError
-          ? error.message
-          : frontendMessage("settings.mcp.inputValueInvalid", { name: selectedServer.id }),
-      );
-      return;
-    }
-    const requestId = systemConfig.updateMcpInputs(selectedServer.id, values, deletes);
-    if (!requestId) {
-      setOperationError(frontendMessage("settings.mcp.commandUnavailable"));
-      return;
-    }
-    setSaveRequestId(requestId);
-    setDrafts((current) =>
-      Object.fromEntries(
-        Object.entries(current).filter(([inputId]) => {
-          const input = selectedServer.inputs.find((candidate) => candidate.id === inputId);
-          return !input?.secret;
-        }),
-      ),
-    );
     setOperationError(null);
   };
   const restartServer = (): void => {
@@ -173,7 +163,7 @@ export function McpServersSection({
   };
 
   return (
-    <section className="grid h-full min-h-0 grid-cols-1 grid-rows-[minmax(180px,36%)_minmax(0,1fr)] overflow-hidden bg-paper-50 md:grid-cols-[272px_minmax(0,1fr)] md:grid-rows-1">
+    <section className="grid h-full min-h-0 grid-cols-1 grid-rows-[minmax(180px,36%)_minmax(0,1fr)] overflow-hidden bg-paper-50 md:grid-cols-[248px_minmax(0,1fr)] md:grid-rows-1">
       <div className="flex min-h-0 flex-col border-b border-ink-200/70 md:border-b-0 md:border-r">
         <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-ink-200/70 px-3">
           <div className="text-[12px] text-ink-500">
@@ -184,16 +174,16 @@ export function McpServersSection({
             tooltip={frontendMessage("settings.mcp.refresh")}
             size="sm"
             tone="muted"
-            disabled={!connected || saving}
+            disabled={!connected || syncing}
             onClick={systemConfig.refreshToolSettings}
           >
-            <RefreshCw className="h-4 w-4" />
+            <ArrowPathIcon className="h-4 w-4" />
           </IconButton>
         </div>
         {servers.length === 0 ? (
           <StateView
             status="empty"
-            icon={<ServerCog className="h-4 w-4 text-ink-400" />}
+            icon={<ServerStackIcon className="h-4 w-4 text-ink-400" />}
             title={frontendMessage("settings.mcp.empty")}
           />
         ) : (
@@ -204,7 +194,7 @@ export function McpServersSection({
                   key={server.id}
                   server={server}
                   selected={server.id === selectedServer?.id}
-                  disabled={(dirty || saving) && server.id !== selectedServer?.id}
+                  disabled={(pendingChanges || syncing) && server.id !== selectedServer?.id}
                   onSelect={() => selectServer(server.id)}
                 />
               ))}
@@ -214,29 +204,36 @@ export function McpServersSection({
       </div>
       {selectedServer ? (
         <div className="flex min-h-0 flex-col overflow-hidden">
-          <div className="flex min-w-0 shrink-0 flex-wrap items-start justify-between gap-3 border-b border-ink-200/70 px-4 py-3.5 sm:px-5">
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <h3 className="truncate text-[15px] font-semibold text-ink-900">{selectedServer.id}</h3>
-                <McpStatus status={selectedServer.status} />
+          <div className="flex min-w-0 shrink-0 flex-wrap items-start justify-between gap-3 border-b border-ink-200/70 px-5 py-3.5 sm:px-6">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <ServerStackIcon className="mt-0.5 h-4 w-4 shrink-0 text-ink-450" aria-hidden="true" />
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2">
+                  <h3 className="truncate text-[14px] font-semibold text-ink-900">{selectedServer.id}</h3>
+                  <McpStatus status={selectedServer.status} />
+                </div>
+                <p className="mt-1 text-[11.5px] text-ink-500">
+                  {frontendMessage(`settings.mcp.source.${selectedServer.source}`)} ·{" "}
+                  {selectedServer.transport.toUpperCase()}
+                </p>
               </div>
-              <p className="mt-1 text-[11.5px] text-ink-500">
-                {frontendMessage("settings.mcp.serverMetadata", {
-                  packageName: selectedServer.packageName,
-                  source: frontendMessage(`settings.mcp.source.${selectedServer.source}`),
-                  transport: selectedServer.transport,
-                  descriptor: selectedServer.descriptorKind,
-                })}
-              </p>
             </div>
-            <Button variant="outline" size="sm" disabled={!connected || saving} onClick={restartServer}>
-              <RotateCw className="h-3.5 w-3.5" />
-              {frontendMessage("settings.mcp.restart")}
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              {syncing ? (
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-500" aria-live="polite">
+                  <Spinner size="xs" className="text-accent-content" />
+                  {frontendMessage("settings.mcp.saving")}
+                </span>
+              ) : null}
+              <Button variant="outline" size="sm" disabled={!connected || syncing} onClick={restartServer}>
+                <ArrowPathRoundedSquareIcon className="h-3.5 w-3.5" />
+                {frontendMessage("settings.mcp.restart")}
+              </Button>
+            </div>
           </div>
           <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
-            {operationError ? <InlineError className="mx-4 mt-3 sm:mx-5">{operationError}</InlineError> : null}
-            <div className="px-4 py-4 sm:px-5">
+            {operationError ? <InlineError className="mx-5 mt-3 sm:mx-6">{operationError}</InlineError> : null}
+            <div className="px-5 py-5 sm:px-6">
               <div className="mb-2 text-[12px] font-semibold text-ink-800">
                 {frontendMessage("settings.mcp.inputs")}
               </div>
@@ -247,17 +244,11 @@ export function McpServersSection({
               ) : (
                 <div className="divide-y divide-ink-200/70 border-y border-ink-200/70">
                   {selectedServer.inputs.map((input) => {
-                    const deleted = deletes.includes(input.id);
-                    const value = deleted
-                      ? (input.defaultValue ?? "")
-                      : (drafts[input.id] ?? input.value ?? input.defaultValue ?? "");
+                    const value = drafts[input.id] ?? input.value ?? input.defaultValue ?? "";
                     return (
                       <div
                         key={input.id}
-                        className={cn(
-                          "grid gap-3 py-4 lg:grid-cols-[minmax(180px,0.5fr)_minmax(260px,1fr)] lg:gap-6",
-                          deleted && "opacity-65",
-                        )}
+                        className="grid gap-3 py-3.5 lg:grid-cols-[minmax(190px,0.5fr)_minmax(260px,1fr)] lg:gap-6"
                       >
                         <div className="min-w-0">
                           <div className="flex min-w-0 items-center gap-2">
@@ -268,44 +259,20 @@ export function McpServersSection({
                               </span>
                             ) : null}
                           </div>
-                          <code className="mt-0.5 block truncate text-[10.5px] text-ink-400">{input.id}</code>
-                          <div className="mt-1 text-[11px] leading-4 text-ink-500">
-                            {deleted
-                              ? frontendMessage("settings.mcp.inputSource.reset")
-                              : frontendMessage(`settings.mcp.inputSource.${input.source}`)}
-                            {!deleted && input.updatedAt ? ` · ${dateFormatter.format(new Date(input.updatedAt))}` : ""}
-                          </div>
+                          {shouldShowInputSource(input.source) ? (
+                            <div className="mt-1 text-[11px] leading-4 text-ink-500">
+                              {frontendMessage(`settings.mcp.inputSource.${input.source}`)}
+                            </div>
+                          ) : null}
                         </div>
                         <FormField className="min-w-0 gap-1.5">
                           <FormLabel className="sr-only">{input.title}</FormLabel>
-                          <div className="flex min-w-0 items-center gap-2">
-                            <div className="min-w-0 flex-1">
-                              <McpInputControl
-                                input={input}
-                                value={value}
-                                disabled={!connected || saving || deleted}
-                                onChange={(next) => updateDraft(input, next)}
-                              />
-                            </div>
-                            {input.stored ? (
-                              <IconButton
-                                label={frontendMessage(
-                                  deleted ? "settings.mcp.cancelReset" : "settings.mcp.resetInput",
-                                  { name: input.title },
-                                )}
-                                tooltip={frontendMessage(
-                                  deleted ? "settings.mcp.cancelReset" : "settings.mcp.resetInput",
-                                  { name: input.title },
-                                )}
-                                size="sm"
-                                tone={deleted ? "muted" : "danger"}
-                                disabled={!connected || saving}
-                                onClick={() => toggleReset(input)}
-                              >
-                                <RotateCcw className="h-3.5 w-3.5" />
-                              </IconButton>
-                            ) : null}
-                          </div>
+                          <McpInputControl
+                            input={input}
+                            value={value}
+                            disabled={!connected}
+                            onChange={(next) => updateDraft(input, next)}
+                          />
                           {input.description ? <FormHint>{input.description}</FormHint> : null}
                         </FormField>
                       </div>
@@ -315,25 +282,6 @@ export function McpServersSection({
               )}
             </div>
           </ScrollArea>
-          <div className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-t border-ink-200/70 bg-paper-100 px-4 py-2.5 sm:px-5">
-            <div className="text-[11px] text-ink-500" aria-live="polite">
-              {saving
-                ? frontendMessage("settings.mcp.saving")
-                : dirty
-                  ? frontendMessage("settings.mcp.unsaved")
-                  : frontendMessage("settings.mcp.saved")}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={!dirty || saving} onClick={discard}>
-                <RotateCcw className="h-3.5 w-3.5" />
-                {frontendMessage("settings.mcp.discard")}
-              </Button>
-              <Button size="sm" disabled={!dirty || !connected || saving} onClick={save}>
-                <Save className="h-3.5 w-3.5" />
-                {frontendMessage("settings.mcp.saveChanges")}
-              </Button>
-            </div>
-          </div>
         </div>
       ) : (
         <StateView status="empty" title={frontendMessage("settings.mcp.selectServer")} />
@@ -384,7 +332,11 @@ function McpInputControl({
       />
     );
   }
-  const Icon = input.secret ? KeyRound : input.type === "filepath" || input.type === "directory" ? Folder : Settings2;
+  const Icon: ElementType<{ className?: string }> = input.secret
+    ? KeyIcon
+    : input.type === "filepath" || input.type === "directory"
+      ? FolderIcon
+      : AdjustmentsHorizontalIcon;
   return (
     <div className="relative min-w-0">
       <Icon className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-350" />
@@ -407,6 +359,64 @@ function McpInputControl({
       />
     </div>
   );
+}
+
+function readMcpInputMutation(
+  server: McpServerSettingsItem,
+  drafts: Record<string, McpInputDraft>,
+): { values?: Record<string, McpInputValue>; error?: string } {
+  try {
+    const values: Record<string, McpInputValue> = {};
+    for (const input of server.inputs) {
+      if (!(input.id in drafts)) continue;
+      const draft = drafts[input.id];
+      if (input.secret && draft === "") continue;
+      const value = normalizeDraft(input, draft ?? "");
+      if (input.required && isEmptyValue(value)) {
+        throw new InputValidationError(frontendMessage("settings.mcp.inputValueRequired", { name: input.title }));
+      }
+      values[input.id] = value;
+    }
+    return { values: Object.keys(values).length > 0 ? values : undefined };
+  } catch (error) {
+    return {
+      error:
+        error instanceof InputValidationError
+          ? error.message
+          : frontendMessage("settings.mcp.inputValueInvalid", { name: server.id }),
+    };
+  }
+}
+
+function removeSentSecretDrafts(
+  drafts: Record<string, McpInputDraft>,
+  values: Readonly<Record<string, McpInputValue>>,
+  server: McpServerSettingsItem,
+): Record<string, McpInputDraft> {
+  const next = { ...drafts };
+  for (const input of server.inputs) {
+    if (!input.secret || !(input.id in values) || !(input.id in next)) continue;
+    if (sameDraft(next[input.id], values[input.id])) delete next[input.id];
+  }
+  return next;
+}
+
+function reconcileMcpDrafts(
+  drafts: Record<string, McpInputDraft>,
+  request: McpSyncRequest,
+  server: McpServerSettingsItem | undefined,
+  outcome: "success" | "error",
+): Record<string, McpInputDraft> {
+  const next = { ...drafts };
+  for (const [inputId, value] of Object.entries(request.values)) {
+    if (outcome === "success") {
+      if (inputId in next && sameDraft(next[inputId], value)) delete next[inputId];
+      continue;
+    }
+    const input = server?.inputs.find((candidate) => candidate.id === inputId);
+    if (input?.secret && !(inputId in next)) next[inputId] = value;
+  }
+  return next;
 }
 
 function normalizeDraft(input: McpInputStatus, draft: McpInputDraft): McpInputValue {
@@ -476,7 +486,7 @@ function McpServerRow({
       type="button"
       disabled={disabled}
       className={cn(
-        "grid min-h-[54px] w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors",
+        "flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors",
         selected
           ? "bg-accent-surface text-accent-content"
           : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
@@ -487,14 +497,13 @@ function McpServerRow({
     >
       <span className="min-w-0">
         <span className="block truncate text-[13px] font-semibold">{server.id}</span>
-        <span className="mt-0.5 block truncate text-[10.5px] text-ink-500">
-          {server.packageName} · {server.transport}
-        </span>
       </span>
-      <span
-        aria-label={frontendMessage(`settings.mcp.status.${server.status}`)}
-        className={cn("h-2 w-2 rounded-full", server.status === "configured" ? "bg-accent-solid" : "bg-brick-500")}
-      />
+      {server.status === "needs_input" ? (
+        <PauseCircleIcon
+          className="ml-auto h-4 w-4 shrink-0 text-umber-600"
+          aria-label={frontendMessage(`settings.mcp.status.${server.status}`)}
+        />
+      ) : null}
     </button>
   );
 }
@@ -517,3 +526,7 @@ function McpStatus({ status }: { status: McpServerSettingsItem["status"] }): JSX
 }
 
 class InputValidationError extends Error {}
+
+function shouldShowInputSource(source: McpInputStatus["source"]): boolean {
+  return source === "vault" || source === "environment" || source === "oauth";
+}

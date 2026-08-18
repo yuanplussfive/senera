@@ -1,4 +1,4 @@
-import { Check, ChevronDown, X as XIcon } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, CircleSlash2, ListTree } from "lucide-react";
 import type { RunRecord } from "../../store/sessionStore";
 import { cn, formatDuration, formatTime } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -98,34 +98,31 @@ export function RunSelector({
 }
 
 function RunStatusIcon({ status, className }: { status: RunRecord["status"]; className?: string }): JSX.Element {
-  const baseClassName = "grid h-[18px] w-[18px] shrink-0 place-items-center rounded-md";
+  const baseClassName = "grid h-[18px] w-[18px] shrink-0 place-items-center";
   if (status === "running" || status === "cancelling") {
     return (
-      <span className={cn(baseClassName, "bg-umber-50 text-umber-600", className)} data-workflow-run-status={status}>
+      <span className={cn(baseClassName, "text-umber-600", className)} data-workflow-run-status={status}>
         <Spinner size="xs" />
       </span>
     );
   }
   if (status === "failed") {
     return (
-      <span className={cn(baseClassName, "bg-brick-50 text-brick-600", className)} data-workflow-run-status={status}>
-        <XIcon className="h-3 w-3" />
+      <span className={cn(baseClassName, "text-brick-600", className)} data-workflow-run-status={status}>
+        <AlertTriangle className="h-3.5 w-3.5" />
       </span>
     );
   }
   if (status === "cancelled") {
     return (
-      <span
-        className={cn(baseClassName, "bg-surface-subtle text-content-muted", className)}
-        data-workflow-run-status={status}
-      >
-        <XIcon className="h-3 w-3" />
+      <span className={cn(baseClassName, "text-content-muted", className)} data-workflow-run-status={status}>
+        <CircleSlash2 className="h-3.5 w-3.5" />
       </span>
     );
   }
   return (
-    <span className={cn(baseClassName, "bg-moss-50 text-moss-600", className)} data-workflow-run-status={status}>
-      <Check className="h-3 w-3" />
+    <span className={cn(baseClassName, "text-content-muted", className)} data-workflow-run-status={status}>
+      <ListTree className="h-3.5 w-3.5" />
     </span>
   );
 }

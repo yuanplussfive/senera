@@ -12,6 +12,7 @@ import { readStepKindLabel, readStepStatusLabel } from "./stepPresentation";
 import { DataView } from "./DataView";
 import { ChildRunOverview } from "./ChildRunOverview";
 import { readWorkflowStepDurationMs } from "./workflowPresentationProjection";
+import { ToolStepInspector } from "./ToolStepInspector";
 
 export interface NodeDetailDrawerProps {
   step: TimelineStep | null;
@@ -38,7 +39,7 @@ export function NodeDetailDrawer({ step, onClose }: NodeDetailDrawerProps): JSX.
     >
       <SheetContent
         side="right"
-        title={step?.title ?? frontendMessage("workflow.node.detailFallbackTitle")}
+        title={readDrawerTitle(step) ?? frontendMessage("workflow.node.detailFallbackTitle")}
         className="w-[min(560px,90vw)] p-0"
         deferContentMount={false}
         showClose={false}
@@ -48,7 +49,15 @@ export function NodeDetailDrawer({ step, onClose }: NodeDetailDrawerProps): JSX.
           <>
             <Header step={step} onClose={onClose} />
             <div className="scrollbar-thin flex-1 overflow-y-auto px-5 pb-8 pt-3">
-              {contentReady ? <WorkflowStepDetail step={step} /> : <DetailSkeleton />}
+              {contentReady ? (
+                step.kind === "tool" && step.toolName ? (
+                  <ToolStepInspector step={step} showHeader={false} />
+                ) : (
+                  <WorkflowStepDetail step={step} />
+                )
+              ) : (
+                <DetailSkeleton />
+              )}
             </div>
           </>
         ) : null}
@@ -77,7 +86,7 @@ function Header({ step, onClose }: { step: TimelineStep; onClose: () => void }):
   return (
     <div className="flex h-14 items-center gap-2 border-b border-ink-200/60 px-5">
       <div className="min-w-0 flex-1">
-        <h2 className="truncate text-[15px] font-semibold text-ink-950">{step.title}</h2>
+        <h2 className="truncate text-[15px] font-semibold text-ink-950">{readDrawerTitle(step)}</h2>
         <div className="mt-0.5 text-[10.5px] text-ink-500">{readStepKindLabel(step.kind)}</div>
       </div>
       <button
@@ -90,6 +99,11 @@ function Header({ step, onClose }: { step: TimelineStep; onClose: () => void }):
       </button>
     </div>
   );
+}
+
+function readDrawerTitle(step: TimelineStep | null): string | undefined {
+  if (!step) return undefined;
+  return step.kind === "tool" && step.toolName ? step.toolName : step.title;
 }
 
 export const WorkflowStepDetail = memo(function WorkflowStepDetail({ step }: { step: TimelineStep }): JSX.Element {

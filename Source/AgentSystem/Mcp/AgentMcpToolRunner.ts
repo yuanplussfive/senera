@@ -16,9 +16,17 @@ import { resolveAgentToolRuntimeCapabilities } from "../ToolRuntime/AgentToolRun
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import type { AgentInteractionInputOwner } from "../Interaction/AgentInteractionInputTypes.js";
 import { errorMessage } from "../Core/AgentErrors.js";
-import { agentUnknownRecordOrEmpty, isAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
+import { agentUnknownRecordOrEmpty } from "../Core/AgentUnknownValue.js";
 import { createAgentMcpSamplingHandler, type AgentMcpSamplingHandler } from "./AgentMcpSamplingRuntime.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { extractAgentMcpText, projectAgentMcpToolFeedback } from "./AgentMcpToolResultAdapter.js";
+
+export {
+  projectAgentMcpArtifactPayload,
+  projectAgentMcpToolFeedback,
+  projectAgentMcpToolResult,
+  extractAgentMcpText,
+} from "./AgentMcpToolResultAdapter.js";
 
 export interface AgentMcpToolRunnerOptions {
   config: AgentSystemConfig;
@@ -130,15 +138,19 @@ export class AgentMcpToolRunner {
           ? await callPooledTool()
           : await withAgentMcpToolClient({ ...connection, signal: context.signal }, callTool);
 
+      const projection = projectAgentMcpToolFeedback(result);
       if (agentUnknownRecordOrEmpty(result).isError === true) {
-        return mcpToolFailure(extractMcpText(result) || `MCP tool ${handler.tool} failed.`, {
+        const failure = mcpToolFailure(extractAgentMcpText(result) || `MCP tool ${handler.tool} failed.`, {
           toolName: tool.name,
           serverId: handler.server,
           mcpToolName: handler.tool,
           mcpIsError: true,
         });
+        return projection.artifactPayload ? { ...failure, artifactPayload: projection.artifactPayload } : failure;
       }
-      return toolProcessSuccessResult(projectAgentMcpToolResult(result));
+      return toolProcessSuccessResult(projection.result, {
+        ...(projection.artifactPayload ? { artifactPayload: projection.artifactPayload } : {}),
+      });
     } catch (error) {
       return mcpToolFailure(
         error,
@@ -194,25 +206,6 @@ function reportMcpProgress(reporter: AgentToolExecutionReporter, progress: Agent
     total: progress.total,
     message: progress.message,
   });
-}
-
-export function projectAgentMcpToolResult(result: unknown): unknown {
-  const record = agentUnknownRecordOrEmpty(result);
-  return isAgentUnknownRecord(record.structuredContent) ? record.structuredContent : { text: extractMcpText(record) };
-}
-
-function extractMcpText(value: unknown): string {
-  const record = agentUnknownRecordOrEmpty(value);
-  const structured = agentUnknownRecordOrEmpty(record.structuredContent);
-  if (typeof structured.content === "string") {
-    return structured.content;
-  }
-
-  const content = Array.isArray(record.content) ? record.content : [];
-  return content
-    .map((item) => agentUnknownRecordOrEmpty(item).text)
-    .filter((text): text is string => typeof text === "string")
-    .join("\n");
 }
 
 function mcpToolFailure(

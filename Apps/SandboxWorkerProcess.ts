@@ -38,7 +38,6 @@ export async function startSeneraSandboxWorkerProcess(
 ): Promise<SeneraSandboxWorkerBootstrap> {
   const config = resolveSandboxRuntimeConfig(resolveWorkerConfig(options));
   if (!config.Enabled) return disabledBootstrap("configuration-disabled");
-  if ((options.platform ?? process.platform) === "win32") return disabledBootstrap("platform-host-policy");
 
   const engineEndpoint = resolveAgentDockerEngineEndpoint({ configuredEndpoint: config.Docker.EngineEndpoint });
   const docker = createAgentDockerEngineClient(engineEndpoint, {

@@ -81,13 +81,12 @@ export function MessageRow({
     <ConversationFrame mode="wide" className="group/msg">
       <div className="flex min-w-0 items-start gap-3" data-assistant-message>
         <AssistantMessageAvatar />
-        <div className="min-w-0 flex-1">
+        <div className="assistant-turn-content min-w-0 flex-1">
           <MessageMeta title="Senera" timestamp={message.createdAt} />
           {message.kind !== "AssistantToolPreface" ? (
             <ThinkingSummaryBar
               run={run}
               presentation={run?.status === "running" ? "live-final-answer" : "terminal-only"}
-              onViewWorkflow={onViewWorkflow}
             />
           ) : null}
           <AssistantMessageBody message={{ ...message, content: displayContent }} streaming={isStreamingPreface} />
