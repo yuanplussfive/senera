@@ -56,7 +56,7 @@ test("renders chat external links as compact citation sources", async () => {
     ),
   );
 
-  const link = screen.getByRole("link", { name: /example\.com/u });
+  const link = screen.getByRole("link", { name: /^(?:查看来源：|View source: )example\.com$/u });
   expect(link).toHaveAttribute("data-link-kind", "external-citation");
   expect(link).toHaveTextContent("example.com");
   expect(link).toHaveAttribute("target", "_blank");

@@ -315,16 +315,21 @@ function resolveDuckDuckGoResultUrl(value: string | undefined, baseUrl: string):
   if (!value) return undefined;
   try {
     const parsed = new URL(value, baseUrl);
-    if (parsed.hostname.endsWith("duckduckgo.com") && parsed.pathname.startsWith("/l/")) {
+    if (isDuckDuckGoHost(parsed.hostname) && parsed.pathname.startsWith("/l/")) {
       const destination = parsed.searchParams.get("uddg");
       if (!destination) return undefined;
       return normalizeResultUrl(destination);
     }
-    if (parsed.hostname.endsWith("duckduckgo.com")) return undefined;
+    if (isDuckDuckGoHost(parsed.hostname)) return undefined;
     return normalizeResultUrl(parsed.toString());
   } catch {
     return undefined;
   }
+}
+
+function isDuckDuckGoHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return normalized === "duckduckgo.com" || normalized.endsWith(".duckduckgo.com");
 }
 
 function normalizeResultUrl(value: string): string | undefined {

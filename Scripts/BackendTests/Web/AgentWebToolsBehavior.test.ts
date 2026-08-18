@@ -365,14 +365,23 @@ describe("web host tools", () => {
     expect(JSON.stringify(requestInit?.headers)).not.toMatch(/TAVILY|BRAVE|api.key/iu);
   });
 
-  test("projects DuckDuckGo result links and ignores internal links", () => {
+  test("projects DuckDuckGo result links, ignores internal links, and preserves lookalike hosts", () => {
+    const lookalikeDestination = encodeURIComponent("https://attacker.example/redirect");
     const results = parseDuckDuckGoResults(
       `<div class="result"><h2><a class="result__a" href="/l/?uddg=${encodeURIComponent("https://docs.example/guide#part")}">Docs</a></h2><div class="result__snippet">Summary</div></div>
-       <div class="result"><h2><a class="result__a" href="/settings">Internal</a></h2></div>`,
+       <div class="result"><h2><a class="result__a" href="/settings">Internal</a></h2></div>
+       <div class="result"><h2><a class="result__a" href="https://evilduckduckgo.com/l/?uddg=${lookalikeDestination}">Lookalike</a></h2></div>`,
       "https://html.duckduckgo.com/html/",
     );
 
-    expect(results).toEqual([{ title: "Docs", url: "https://docs.example/guide", summary: "Summary" }]);
+    expect(results).toEqual([
+      { title: "Docs", url: "https://docs.example/guide", summary: "Summary" },
+      {
+        title: "Lookalike",
+        url: `https://evilduckduckgo.com/l/?uddg=${lookalikeDestination}`,
+        summary: "",
+      },
+    ]);
   });
 
   test("evicts the oldest search entry when the configured cache capacity is reached", async () => {
