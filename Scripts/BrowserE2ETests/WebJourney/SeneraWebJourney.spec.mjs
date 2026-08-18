@@ -317,7 +317,7 @@ test.describe("authenticationMode=disabled", () => {
   });
 
   test("shows the application error UI when a dynamic chunk returns 404", async ({ page }) => {
-    await page.route(/\/assets\/AuthenticatedSurface-[^/]+\.js(?:\?.*)?$/, async (route) => {
+    await page.route(/\/assets\/App-[^/]+\.js(?:\?.*)?$/, async (route) => {
       await route.fulfill({
         status: 404,
         contentType: "application/javascript",
@@ -329,8 +329,8 @@ test.describe("authenticationMode=disabled", () => {
 
     const alert = page.getByRole("alert");
     await expect(alert.getByRole("heading", { name: "界面暂时无法继续显示" })).toBeVisible();
-    await expect(alert.getByRole("button", { name: "重新渲染" })).toBeVisible();
     await expect(alert.getByRole("button", { name: "刷新页面" })).toBeVisible();
+    await expect(alert.getByRole("button", { name: "重新渲染" })).toHaveCount(0);
   });
 });
 

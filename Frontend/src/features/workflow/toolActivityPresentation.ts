@@ -1,8 +1,3 @@
-import {
-  frontendFeatureMessage,
-  isFrontendFeatureMessageKey,
-  type FrontendFeatureMessageKey,
-} from "../../i18n/frontendFeatureMessageCatalog";
 import type { ToolEventOrigin } from "../../api/eventTypes";
 import RawToolActivityMap from "./toolActivityPresentation.map.json";
 
@@ -15,18 +10,11 @@ export interface ToolActivityInput {
   readonly status: ToolActivityStatus;
 }
 
-interface ToolActivityLabels {
-  readonly active: FrontendFeatureMessageKey;
-  readonly completed: FrontendFeatureMessageKey;
-  readonly failed: FrontendFeatureMessageKey;
+interface ToolActivityPresentation {
+  readonly action: string;
 }
 
-interface ToolActivityBatchLabels {
-  readonly active: FrontendFeatureMessageKey;
-  readonly completed: FrontendFeatureMessageKey;
-}
-
-interface ToolActivityRule extends ToolActivityLabels {
+interface ToolActivityRule extends ToolActivityPresentation {
   readonly id: string;
   readonly exactCapabilities?: readonly string[];
   readonly capabilityPrefixes?: readonly string[];
@@ -34,14 +22,12 @@ interface ToolActivityRule extends ToolActivityLabels {
   readonly toolNamePrefixes?: readonly string[];
   readonly argumentPath?: string;
   readonly detailPaths?: readonly string[];
-  readonly batchLabels: ToolActivityBatchLabels;
 }
 
 interface ToolActivityMap {
-  readonly version: 1;
-  readonly batchSummaryMaxActions: number;
-  readonly default: ToolActivityLabels & { readonly batchLabels: ToolActivityBatchLabels };
-  readonly mcp: ToolActivityLabels & { readonly batchLabels: ToolActivityBatchLabels };
+  readonly version: 3;
+  readonly default: ToolActivityPresentation;
+  readonly mcp: ToolActivityPresentation;
   readonly rules: readonly ToolActivityRule[];
 }
 
@@ -55,93 +41,41 @@ export interface ToolActivityInspection {
   readonly label: string;
   readonly category: string;
   readonly subjects: readonly string[];
+  readonly argumentPreview?: string;
 }
 
 export function projectToolActivityInspection(input: ToolActivityInput): ToolActivityInspection {
   const rule = resolveRule(input.toolName, input.origin?.capability);
-  const labels: ToolActivityLabels =
-    input.origin?.kind === "mcp" ? ToolActivityMap.mcp : (rule ?? ToolActivityMap.default);
+  const presentation = input.origin?.kind === "mcp" ? ToolActivityMap.mcp : (rule ?? ToolActivityMap.default);
   const command = rule?.argumentPath ? readStringAtPath(input.arguments, rule.argumentPath) : undefined;
   const toolName = displayToolName(input.toolName, input.origin);
-  const batchFallback =
-    rule?.argumentPath && !command && input.status !== "failed"
-      ? projectToolBatchSummary(
-          [{ toolName: input.toolName, origin: input.origin }],
-          input.status === "active" ? "active" : "completed",
-        )
-      : undefined;
+  const subjects = uniqueStrings((rule?.detailPaths ?? []).flatMap((path) => readStringsAtPath(input.arguments, path)));
+  const argumentPreview = readActivityArgumentPreview({
+    toolName,
+    isKnownTool: Boolean(rule),
+    command,
+    subjects,
+    arguments: input.arguments,
+  });
   return {
-    label:
-      batchFallback ??
-      frontendFeatureMessage(labels[input.status], {
-        toolName,
-        command: command ? compactPreview(command) : toolName,
-      }),
+    // Completion and failure are expressed by the row marker. Keep copy to one compact action.
+    label: appendArgumentPreview(presentation.action, argumentPreview),
     category: input.origin?.kind === "mcp" ? "mcp" : (rule?.id ?? "system"),
-    subjects: uniqueStrings((rule?.detailPaths ?? []).flatMap((path) => readStringsAtPath(input.arguments, path))),
+    subjects,
+    argumentPreview,
   };
 }
 
-export function projectToolBatchAction(
-  input: Pick<ToolActivityInput, "toolName" | "origin"> & {
-    readonly count: number;
-    readonly status: "active" | "completed";
-  },
-): { readonly category: string; readonly label: string } {
+export function projectToolBatchAction(input: Pick<ToolActivityInput, "toolName" | "origin">): {
+  readonly category: string;
+  readonly label: string;
+} {
   const rule = resolveRule(input.toolName, input.origin?.capability);
   const presentation = input.origin?.kind === "mcp" ? ToolActivityMap.mcp : (rule ?? ToolActivityMap.default);
   return {
     category: input.origin?.kind === "mcp" ? "mcp" : (rule?.id ?? "system"),
-    label: frontendFeatureMessage(presentation.batchLabels[input.status], {
-      count: input.count,
-      toolName: displayToolName(input.toolName, input.origin),
-    }),
+    label: presentation.action,
   };
-}
-
-export function projectToolBatchActions(
-  inputs: readonly Pick<ToolActivityInput, "toolName" | "origin">[],
-  status: "active" | "completed",
-): string[] {
-  const grouped = new Map<string, { count: number; input: Pick<ToolActivityInput, "toolName" | "origin"> }>();
-  for (const input of inputs) {
-    const action = projectToolBatchAction({ ...input, count: 1, status });
-    const existing = grouped.get(action.category);
-    grouped.set(action.category, { count: (existing?.count ?? 0) + 1, input: existing?.input ?? input });
-  }
-  return [...grouped.values()].map(({ count, input }) => projectToolBatchAction({ ...input, count, status }).label);
-}
-
-export function projectToolBatchSummary(
-  inputs: readonly Pick<ToolActivityInput, "toolName" | "origin">[],
-  status: "active" | "completed",
-  counts?: { readonly completed: number; readonly failed: number },
-): string | undefined {
-  const actions = projectToolBatchActions(inputs, status);
-  if (actions.length === 0) return undefined;
-  const visibleActions = actions.slice(0, ToolActivityMap.batchSummaryMaxActions);
-  const hiddenActionCount = actions.length - visibleActions.length;
-  const visibleActionSummary = visibleActions.join(" · ");
-  const actionSummary =
-    hiddenActionCount > 0
-      ? frontendFeatureMessage("workflow.stage.actions.withRemainder", {
-          actions: visibleActionSummary,
-          count: hiddenActionCount,
-        })
-      : visibleActionSummary;
-  const key =
-    status === "active"
-      ? counts?.failed
-        ? "workflow.stage.actions.progress"
-        : "workflow.stage.actions.active"
-      : counts?.failed
-        ? "workflow.stage.actions.result"
-        : "workflow.stage.actions.completed";
-  return frontendFeatureMessage(key, {
-    actions: actionSummary,
-    completed: counts?.completed ?? 0,
-    failed: counts?.failed ?? 0,
-  });
 }
 
 function resolveRule(toolName: string, capability: string | undefined): ToolActivityRule | undefined {
@@ -194,29 +128,78 @@ function readStringsAtPath(value: unknown, path: string): string[] {
   return visit(value, 0);
 }
 
+function appendArgumentPreview(label: string, argumentPreview: string | undefined): string {
+  return argumentPreview ? `${label} · ${argumentPreview}` : label;
+}
+
+function readActivityArgumentPreview({
+  toolName,
+  isKnownTool,
+  command,
+  subjects,
+  arguments: value,
+}: {
+  readonly toolName: string;
+  readonly isKnownTool: boolean;
+  readonly command?: string;
+  readonly subjects: readonly string[];
+  readonly arguments?: unknown;
+}): string | undefined {
+  const supplemental = command ? subjects.filter((subject) => subject !== command) : subjects;
+  const values = [
+    ...(isKnownTool ? [] : [toolName]),
+    ...(command ? [command] : []),
+    ...(supplemental.length > 0 ? supplemental : !command && subjects.length === 0 ? collectArgumentValues(value) : []),
+  ];
+  return compactArgumentValues(values);
+}
+
+function collectArgumentValues(value: unknown): string[] {
+  const entries: string[] = [];
+  const visit = (current: unknown, path: string[], depth: number): void => {
+    if (entries.length >= 3 || depth > 2 || current === null || current === undefined) return;
+    if (typeof current === "string" || typeof current === "number" || typeof current === "boolean") {
+      const text = String(current).trim();
+      if (text) entries.push(path.length > 0 ? `${path.join(".")}=${text}` : text);
+      return;
+    }
+    if (Array.isArray(current)) {
+      current.slice(0, 2).forEach((entry, index) => visit(entry, [...path, String(index + 1)], depth + 1));
+      return;
+    }
+    if (!isRecord(current)) return;
+    Object.entries(current).forEach(([key, entry]) => {
+      if (!isSensitiveArgumentKey(key)) visit(entry, [...path, key], depth + 1);
+    });
+  };
+  visit(value, [], 0);
+  return entries;
+}
+
+function isSensitiveArgumentKey(key: string): boolean {
+  return /authorization|credential|cookie|password|secret|token|api[-_]?key/iu.test(key);
+}
+
+function compactArgumentValues(values: readonly string[]): string | undefined {
+  const normalized = [...new Set(values.map(compactPreview).filter(Boolean))].slice(0, 3);
+  if (normalized.length === 0) return undefined;
+  return compactPreview(normalized.join(" · "));
+}
+
 function compactPreview(value: string): string {
   const normalized = value.replace(/\s+/gu, " ").trim();
-  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+  return normalized.length > 96 ? `${normalized.slice(0, 93)}...` : normalized;
 }
 
 function parseToolActivityMap(value: unknown): ToolActivityMap {
-  if (
-    !isRecord(value) ||
-    value.version !== 1 ||
-    typeof value.batchSummaryMaxActions !== "number" ||
-    !Number.isInteger(value.batchSummaryMaxActions) ||
-    value.batchSummaryMaxActions < 1 ||
-    !isRecord(value.default) ||
-    !isRecord(value.origins)
-  ) {
+  if (!isRecord(value) || value.version !== 3 || !isRecord(value.default) || !isRecord(value.origins)) {
     throw new Error("Tool activity presentation map has an unsupported structure.");
   }
   const defaultPresentation = parsePresentation(value.default, "default");
   const mcp = parsePresentation(value.origins.mcp, "MCP origin");
   const rules = Array.isArray(value.capabilityRules) ? value.capabilityRules.map(parseRule) : [];
   return {
-    version: 1,
-    batchSummaryMaxActions: value.batchSummaryMaxActions,
+    version: 3,
     default: defaultPresentation,
     mcp,
     rules,
@@ -250,36 +233,11 @@ function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => compactPreview(value)).filter(Boolean))];
 }
 
-function parseLabels(value: unknown, source: string): ToolActivityLabels {
-  if (
-    !isRecord(value) ||
-    !isFrontendFeatureMessageKey(value.active) ||
-    !isFrontendFeatureMessageKey(value.completed) ||
-    !isFrontendFeatureMessageKey(value.failed)
-  ) {
-    throw new Error(`Tool activity ${source} has invalid message keys.`);
+function parsePresentation(value: unknown, source: string): ToolActivityPresentation {
+  if (!isRecord(value) || typeof value.action !== "string" || !value.action.trim()) {
+    throw new Error(`Tool activity ${source} must declare a compact action.`);
   }
-  return { active: value.active, completed: value.completed, failed: value.failed };
-}
-
-function parsePresentation(
-  value: unknown,
-  source: string,
-): ToolActivityLabels & { readonly batchLabels: ToolActivityBatchLabels } {
-  if (!isRecord(value)) throw new Error(`Tool activity ${source} is not an object.`);
-  const labels = isRecord(value.labels) ? value.labels : value;
-  const batchLabels = value.batchLabels;
-  if (
-    !isRecord(batchLabels) ||
-    !isFrontendFeatureMessageKey(batchLabels.active) ||
-    !isFrontendFeatureMessageKey(batchLabels.completed)
-  ) {
-    throw new Error(`Tool activity ${source} has invalid batch message keys.`);
-  }
-  return {
-    ...parseLabels(labels, source),
-    batchLabels: { active: batchLabels.active, completed: batchLabels.completed },
-  };
+  return { action: value.action.trim() };
 }
 
 function readStringArray(value: unknown): string[] | undefined {

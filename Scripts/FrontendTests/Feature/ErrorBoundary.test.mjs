@@ -92,6 +92,22 @@ test("app presentation provides localized retry and reload actions", async () =>
   }
 });
 
+test("app presentation only offers page reload after a dynamic module load failure", () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const preventExpectedError = (event) => event.preventDefault();
+  window.addEventListener("error", preventExpectedError);
+
+  try {
+    render(React.createElement(ErrorBoundary, { presentation: "app" }, React.createElement(DynamicModuleFailure)));
+
+    expect(screen.getByRole("button", { name: frontendMessage("app.errorBoundary.reload") })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: frontendMessage("app.errorBoundary.retry") })).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(frontendMessage("app.errorBoundary.dynamicImportDescription"));
+  } finally {
+    window.removeEventListener("error", preventExpectedError);
+  }
+});
+
 test("notifies the owner when the retry action resets the boundary", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   const onReset = vi.fn();
@@ -116,4 +132,8 @@ function ThrowingChild({ shouldThrow }) {
     throw error;
   }
   return React.createElement("span", null, "Recovered session");
+}
+
+function DynamicModuleFailure() {
+  throw new TypeError("Failed to fetch dynamically imported module: https://example.test/assets/App.js");
 }

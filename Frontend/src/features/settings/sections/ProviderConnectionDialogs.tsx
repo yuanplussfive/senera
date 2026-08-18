@@ -1,4 +1,4 @@
-import { Pencil, Plus } from "lucide-react";
+import { PenLine, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import {
@@ -217,7 +217,7 @@ export function RenameProviderDialog({
             onClick={() => provider && onRename(provider.Id, targetId)}
           >
             <span className="inline-flex items-center gap-1.5">
-              <Pencil className="h-3.5 w-3.5" />
+              <PenLine className="h-3.5 w-3.5" />
               {frontendMessage("settings.action.rename")}
             </span>
           </DialogActionButton>

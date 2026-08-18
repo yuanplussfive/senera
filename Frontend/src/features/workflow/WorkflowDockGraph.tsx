@@ -1,17 +1,5 @@
-import { lazy, Suspense, useMemo, useState, type ComponentType } from "react";
-import {
-  AlertTriangle,
-  Braces,
-  Check,
-  ChevronDown,
-  Cpu,
-  FileCode2,
-  GitBranch,
-  GitFork,
-  Globe,
-  MessageSquareText,
-  RotateCcw,
-} from "lucide-react";
+import { lazy, Suspense, useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import type {
   RunActivityRecord,
   RunRecord,
@@ -22,11 +10,12 @@ import type {
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { cn, formatDurationMs } from "../../lib/util";
-import { Spinner } from "../../shared/ui";
+import { AppIcon, type AppIconName, Spinner } from "../../shared/ui";
 import { WorkflowStepDetail } from "./NodeDetailDrawer";
 import { runActivityLabel } from "./runActivityPresentation";
 import { readStepStatusLabel } from "./stepPresentation";
-import { projectToolActivity } from "./toolActivityPresentation";
+import { projectToolStagePresentation } from "./toolStagePresentation";
+import { ToolActionIcon } from "./ToolActionIcon";
 import {
   projectWorkflowActivities,
   projectWorkflowSteps,
@@ -42,16 +31,16 @@ const ToolStepInspector = lazy(() =>
   import("./ToolStepInspector").then((module) => ({ default: module.ToolStepInspector })),
 );
 
-const StepKindIcon: Record<TimelineStepKind, ComponentType<{ className?: string }>> = {
-  understand: MessageSquareText,
-  prompt: FileCode2,
-  model: Cpu,
-  decision: Braces,
-  delegation: GitBranch,
-  tool: Globe,
-  retry: RotateCcw,
-  answer: Check,
-  error: AlertTriangle,
+const StepKindIcon: Record<TimelineStepKind, AppIconName> = {
+  understand: "message",
+  prompt: "file-code",
+  model: "brain",
+  decision: "code",
+  delegation: "git-branch",
+  tool: "globe",
+  retry: "activity",
+  answer: "message",
+  error: "cancel",
 };
 
 export function WorkflowDockGraph({ run }: { run: RunRecord }): JSX.Element {
@@ -141,11 +130,12 @@ function DockStepNode({
   onToggle: () => void;
   nested?: boolean;
 }): JSX.Element {
-  const Icon = StepKindIcon[step.kind];
+  const icon = StepKindIcon[step.kind];
   const title = readDockStepTitle(step);
   const summary = readDockStepSummary(step);
   const contentId = `dock-step-detail-${step.id}`;
   const durationMs = readWorkflowStepDurationMs(step);
+  const toolPresentation = step.kind === "tool" ? projectToolStagePresentation({ steps: [step] }) : undefined;
 
   return (
     <div
@@ -159,7 +149,9 @@ function DockStepNode({
         onClick={onToggle}
         aria-expanded={expanded}
         aria-controls={contentId}
-        aria-label={frontendMessage(expanded ? "workflow.dock.collapseNode" : "workflow.dock.expandNode", { title })}
+        aria-label={frontendMessage(expanded ? "workflow.dock.collapseNode" : "workflow.dock.expandNode", {
+          title,
+        })}
         className={cn(
           "group flex min-h-11 w-full min-w-0 items-start gap-2.5 rounded-md py-2 text-left transition-colors",
           nested ? "px-2" : "pl-0 pr-1.5",
@@ -167,8 +159,12 @@ function DockStepNode({
           expanded && "text-content-primary",
         )}
       >
-        <DockNodeMarker status={step.status}>
-          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        <DockNodeMarker status={step.status} preserveIcon={Boolean(toolPresentation)}>
+          {toolPresentation ? (
+            <ToolActionIcon icon={toolPresentation.icon} status={step.status} size="xs" />
+          ) : (
+            <AppIcon icon={icon} size={14} aria-hidden="true" />
+          )}
         </DockNodeMarker>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
@@ -235,13 +231,7 @@ function DockBatchNode({
   const [expandedStepIds, setExpandedStepIds] = useState<ReadonlySet<string>>(() => new Set());
   const summary = summarizeBatchSteps(entry.tools);
   const status = aggregateStepStatus(entry.tools);
-  const mode = entry.tools[0]?.toolBatch?.executionMode;
-  const title =
-    mode === "parallel" && entry.tools.length > 1
-      ? frontendMessage("workflow.feed.parallelToolBatch", { count: entry.tools.length })
-      : mode === "sequential" && entry.tools.length > 1
-        ? frontendMessage("workflow.feed.sequentialToolCalls", { count: entry.tools.length })
-        : frontendMessage("workflow.feed.toolCalls", { count: entry.tools.length });
+  const title = frontendFeatureMessage("workflow.stage.toolBatch.accessible", { count: entry.tools.length });
   const contentId = `dock-batch-${entry.id.replace(/[^A-Za-z0-9_-]/g, "-")}`;
 
   return (
@@ -256,7 +246,9 @@ function DockBatchNode({
         onClick={onToggle}
         aria-expanded={expanded}
         aria-controls={contentId}
-        aria-label={frontendMessage(expanded ? "workflow.dock.collapseNode" : "workflow.dock.expandNode", { title })}
+        aria-label={frontendMessage(expanded ? "workflow.dock.collapseNode" : "workflow.dock.expandNode", {
+          title,
+        })}
         className={cn(
           "group flex min-h-11 w-full min-w-0 items-start gap-2.5 rounded-md py-2 pl-0 pr-1.5 text-left transition-colors",
           "hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
@@ -264,16 +256,18 @@ function DockBatchNode({
         )}
       >
         <DockNodeMarker status={status} batch>
-          <GitFork className="h-3.5 w-3.5" aria-hidden="true" />
+          <AppIcon icon="git-branch" size={14} aria-hidden="true" />
         </DockNodeMarker>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium leading-5 text-content-primary">
               {title}
             </span>
-            <span className="shrink-0 text-[10.5px] tabular-nums text-content-muted">
-              {summary.finished}/{summary.total}
-            </span>
+            {summary.finished < summary.total ? (
+              <span className="shrink-0 text-[10.5px] tabular-nums text-content-muted">
+                {summary.finished}/{summary.total}
+              </span>
+            ) : null}
           </div>
           <div
             className="mt-1 flex h-1 overflow-hidden rounded-full bg-line-subtle"
@@ -285,18 +279,6 @@ function DockBatchNode({
             <BatchProgressSegment kind="running" count={summary.running} total={summary.total} />
             <BatchProgressSegment kind="cancelling" count={summary.cancelling} total={summary.total} />
           </div>
-          {summary.failed > 0 ? (
-            <div className="mt-1 flex items-center gap-2 text-[10.5px] tabular-nums">
-              {summary.done > 0 ? (
-                <span className="text-moss-600">
-                  {frontendFeatureMessage("workflow.dock.batchSucceeded", { count: summary.done })}
-                </span>
-              ) : null}
-              <span className="text-brick-600">
-                {frontendFeatureMessage("workflow.dock.batchFailed", { count: summary.failed })}
-              </span>
-            </div>
-          ) : null}
         </div>
         <ChevronDown
           className={cn(
@@ -331,7 +313,7 @@ function DockActivityNode({ activity }: { activity: RunActivityRecord }): JSX.El
       data-workflow-dock-activity
     >
       <DockNodeMarker status={activity.status}>
-        <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
+        <AppIcon icon="brain" size={14} aria-hidden="true" />
       </DockNodeMarker>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[12.5px] font-medium leading-5 text-content-primary">
@@ -348,10 +330,12 @@ function DockActivityNode({ activity }: { activity: RunActivityRecord }): JSX.El
 function DockNodeMarker({
   status,
   batch = false,
+  preserveIcon = false,
   children,
 }: {
   status: TimelineStepStatus;
   batch?: boolean;
+  preserveIcon?: boolean;
   children: React.ReactNode;
 }): JSX.Element {
   return (
@@ -364,7 +348,7 @@ function DockNodeMarker({
       )}
       aria-hidden="true"
     >
-      {status === "running" || status === "cancelling" ? <Spinner size="xs" /> : children}
+      {!preserveIcon && (status === "running" || status === "cancelling") ? <Spinner size="xs" /> : children}
     </span>
   );
 }
@@ -394,19 +378,13 @@ function readDockStepTitle(step: TimelineStep): string {
   if (step.kind === "delegation" && step.scope?.agentName) {
     return frontendMessage("workflow.scope.agentNamed", { name: step.scope.agentName });
   }
-  if (step.kind === "tool" && step.toolName && step.toolOrigin) {
-    return projectToolActivity({
-      toolName: step.toolName,
-      origin: step.toolOrigin,
-      arguments: step.toolArgs,
-      status: step.status === "failed" ? "failed" : step.status === "done" ? "completed" : "active",
-    });
-  }
+  if (step.kind === "tool" && step.toolName) return step.toolName;
   return step.title;
 }
 
 function readDockStepSummary(step: TimelineStep): string | undefined {
   if (step.toolErrorMessage || step.errorMessage) return step.toolErrorMessage || step.errorMessage;
+  if (step.kind === "tool") return undefined;
   if (step.childRun?.activeTools?.length) {
     return step.childRun.activeTools.join(" · ");
   }
@@ -493,7 +471,7 @@ function statusTextClass(status: TimelineStepStatus): string {
   if (status === "failed") return "text-brick-600";
   if (status === "running") return "text-umber-600";
   if (status === "cancelling") return "text-accent-content";
-  if (status === "done") return "text-moss-600";
+  if (status === "done") return "text-content-muted";
   return "text-content-muted";
 }
 

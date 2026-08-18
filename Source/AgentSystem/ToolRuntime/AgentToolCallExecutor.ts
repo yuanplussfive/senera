@@ -280,6 +280,7 @@ export class AgentToolCallExecutor {
         arguments: requestedArguments,
         execution: invocation.executionPlan,
         process,
+        artifactPayload: execution.artifactPayload,
         outputCapture: execution.outputCapture,
         semanticProjectionRequest: execution.semanticProjectionRequest,
         result,

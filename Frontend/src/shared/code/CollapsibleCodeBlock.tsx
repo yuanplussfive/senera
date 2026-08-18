@@ -32,7 +32,7 @@ export function CollapsibleCodeBlock({
   const previewCode = useMemo(() => readPreviewCode(code, previewLines), [code, previewLines]);
 
   if (!shouldCollapse) {
-    return <CodeArtifactSourceView code={code} language={language} className={className} />;
+    return <CodeArtifactSourceView code={code} language={language} lineNumbers={false} className={className} />;
   }
 
   return (
@@ -47,7 +47,7 @@ export function CollapsibleCodeBlock({
               exit={disableMotion ? undefined : { opacity: 0 }}
               transition={transition}
             >
-              <CodeArtifactSourceView code={code} language={language} className={className} />
+              <CodeArtifactSourceView code={code} language={language} lineNumbers={false} className={className} />
             </motion.div>
           ) : (
             <motion.div
@@ -60,23 +60,20 @@ export function CollapsibleCodeBlock({
               <CodeArtifactSourceView
                 code={previewCode}
                 language={language}
+                lineNumbers={false}
                 maxVisibleLines={previewLines}
                 className={className}
               />
             </motion.div>
           )}
         </AnimatePresence>
-
-        {!isExpanded && (
-          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-ink-900/5 to-transparent" />
-        )}
       </div>
 
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         aria-expanded={isExpanded}
-        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 py-1.5 text-[12px] font-medium text-ink-600 transition hover:bg-ink-50 hover:text-ink-800 focus:outline-none focus:ring-2 focus:ring-accent-focus"
+        className="flex w-full items-center justify-center gap-1.5 border-t border-line-subtle bg-transparent py-2 text-[12px] font-medium text-content-secondary transition-colors hover:bg-surface-hover hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
       >
         {isExpanded ? (
           <>

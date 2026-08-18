@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
 import type { ApprovalBatchReference, ApprovalDecision } from "../../api/approvalEventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
@@ -34,7 +34,7 @@ interface MessageListProps {
   runs: RunRecord[];
   currentRun?: RunRecord;
   userProfile: UserProfile;
-  onForkFromMessage: (m: ChatMessage) => void;
+  onForkFromMessage: (message: Pick<ChatMessage, "requestId">) => void;
   onRegenerate: (m: ChatMessage) => void;
   onEditUserMessage: (m: ChatMessage, nextContent: string) => void;
   onDeleteFromMessage: (m: ChatMessage) => void;
@@ -51,8 +51,12 @@ interface MessageListProps {
 
 const MESSAGE_LIST_BOTTOM_THRESHOLD = 80;
 const MESSAGE_ITEM_DEFAULT_HEIGHT = 132;
-const MESSAGE_LIST_OVERSCAN_PX = 240;
+const MESSAGE_LIST_FORWARD_OVERSCAN_PX = 160;
+const MESSAGE_LIST_REVERSE_OVERSCAN_PX = 96;
 const EVENT_NAVIGATION_SETTLE_MS = 320;
+// The rail is navigational chrome, so update it after the message layout settles instead
+// of competing with image decoding and inertial scrolling on every ResizeObserver entry.
+const EVENT_RAIL_HEIGHT_SAMPLE_MS = 160;
 
 const LazyMessageListVirtualizer = lazy(() =>
   import("./MessageListVirtualizer").then((module) => ({ default: module.MessageListVirtualizer })),
@@ -97,7 +101,7 @@ export function MessageList({
   const [isAtBottom, setIsAtBottom] = useState(true);
   const measuredHeightsRef = useRef<Map<string, number>>(new Map());
   const [eventMeasuredHeights, setEventMeasuredHeights] = useState<ReadonlyMap<string, number>>(new Map());
-  const heightLayoutFrameRef = useRef<number | null>(null);
+  const eventHeightSampleTimerRef = useRef<number | null>(null);
   const eventNavigationTimerRef = useRef<number | null>(null);
   const activeEventSessionRef = useRef(sessionId);
   const previousStreamingRunIdRef = useRef<string | null>(null);
@@ -162,7 +166,7 @@ export function MessageList({
             eventKind: transientKind,
             content: item.run?.displayText ?? "",
             itemIndex: index,
-            itemProgress: transientKind === "assistant_tool_preface" ? 0.15 : 0.8,
+            itemProgress: 0.82,
           });
         }
         return sources;
@@ -188,11 +192,11 @@ export function MessageList({
   }, [sessionId]);
 
   const scheduleEventHeightSnapshot = useCallback((): void => {
-    if (heightLayoutFrameRef.current !== null) return;
-    heightLayoutFrameRef.current = window.requestAnimationFrame(() => {
-      heightLayoutFrameRef.current = null;
-      setEventMeasuredHeights(new Map(measuredHeightsRef.current));
-    });
+    if (eventHeightSampleTimerRef.current !== null) return;
+    eventHeightSampleTimerRef.current = window.setTimeout(() => {
+      eventHeightSampleTimerRef.current = null;
+      startTransition(() => setEventMeasuredHeights(new Map(measuredHeightsRef.current)));
+    }, EVENT_RAIL_HEIGHT_SAMPLE_MS);
   }, []);
 
   const handleHeightMeasured = useCallback(
@@ -206,7 +210,7 @@ export function MessageList({
 
   useEffect(
     () => () => {
-      if (heightLayoutFrameRef.current !== null) window.cancelAnimationFrame(heightLayoutFrameRef.current);
+      if (eventHeightSampleTimerRef.current !== null) window.clearTimeout(eventHeightSampleTimerRef.current);
       if (eventNavigationTimerRef.current !== null) window.clearTimeout(eventNavigationTimerRef.current);
     },
     [],
@@ -339,7 +343,7 @@ export function MessageList({
             defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
             initialTopMostItemIndex={{ index: Math.max(0, items.length - 1), align: "end" }}
             atBottomThreshold={MESSAGE_LIST_BOTTOM_THRESHOLD}
-            overscan={{ main: MESSAGE_LIST_OVERSCAN_PX, reverse: MESSAGE_LIST_OVERSCAN_PX }}
+            overscan={{ main: MESSAGE_LIST_FORWARD_OVERSCAN_PX, reverse: MESSAGE_LIST_REVERSE_OVERSCAN_PX }}
             computeItemKey={(index, item) => readMessageListItemKey(item, index)}
             itemSize={measureMessageItemSize}
             itemContent={(index, item) => {
@@ -347,7 +351,8 @@ export function MessageList({
               if (!item) return <div className="h-px" data-message-key={itemKey} />;
               if (isAssistantTurnListItem(item)) {
                 const shouldHighlightCompletedStream = item.requestId === completedRunIdToHighlight;
-                const shouldAnimateMount = shouldHighlightCompletedStream || index >= items.length - 2;
+                const shouldAnimateMount =
+                  !item.streaming && (shouldHighlightCompletedStream || index >= items.length - 2);
                 return (
                   <div
                     className="chat-message-item box-border w-full pb-3 pt-1"
@@ -429,11 +434,8 @@ export function MessageList({
           defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
           activeEventIndex={activeEventIndex}
           scroller={chatScroller}
-          reducedMotion={reduceMotion || disableMotion}
           onActiveEventChange={setActiveEventIndex}
           onNavigate={navigateToEvent}
-          onManualScrollStart={beginManualScroll}
-          onManualScrollEnd={endManualScroll}
         />
         <ScrollToBottomButton visible={showScrollButton} onClick={scrollToBottom} />
         <DeleteMessageDialog
@@ -470,7 +472,7 @@ function readMessageConversationEventKind(message: ChatMessage): ConversationEve
   if (message.role === "system") return null;
   switch (message.kind) {
     case "AssistantToolPreface":
-      return "assistant_tool_preface";
+      return null;
     case "AssistantFinal":
       return "assistant_final";
     case "AssistantAsk":
@@ -489,7 +491,7 @@ function readStreamingConversationEventKind(
   if (hasVisibleDisplayMessage) return null;
   switch (run.visibleKind) {
     case "tool_preface":
-      return "assistant_tool_preface";
+      return null;
     case "final_answer":
       return "assistant_final";
     case "ask_user":
@@ -501,7 +503,6 @@ function readStreamingConversationEventKind(
 }
 
 function readTurnEventProgress(messageIndex: number, messageCount: number, kind: ChatMessage["kind"]): number {
-  if (kind === "AssistantToolPreface") return Math.min(0.4, (messageIndex + 1) / (messageCount + 2));
   if (kind === "AssistantFinal" || kind === "AssistantAsk" || kind === "Error") return 0.82;
   return (messageIndex + 1) / (messageCount + 1);
 }

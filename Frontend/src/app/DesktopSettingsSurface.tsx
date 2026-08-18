@@ -13,9 +13,10 @@ import { AppMotionProvider } from "../shared/motion/MotionProvider";
 import { AppAppearanceProvider } from "../shared/theme/useAppearance";
 import { TooltipProvider } from "../shared/ui";
 import { useStore } from "../store/sessionStore";
-import { resolveRuntimeWebSocketUrl } from "../config/runtimeConfig";
+import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "../config/runtimeConfig";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
+const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
 
 export function DesktopSettingsSurface({
   initialSection,
@@ -47,7 +48,7 @@ export function DesktopSettingsSurface({
   });
   sendRef.current = send;
   statusRef.current = status;
-  const runtime = useSettingsRuntime({ sendRef, statusRef });
+  const runtime = useSettingsRuntime({ httpBaseUrl: HTTP_BASE_URL, sendRef, statusRef });
   settingsEventHandlerRef.current = runtime.ingestSettingsEvent;
   const bridge = readDesktopBridge();
 

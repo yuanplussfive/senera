@@ -6,8 +6,12 @@ import type {
   AgentToolHostCapabilityRegistry,
 } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
-import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
-import type { AgentSystemToolDefinition } from "./AgentSystemToolDefinition.js";
+import {
+  AgentExecutionErrorCodes,
+  AgentToolProcessErrorPhases,
+  isAgentExecutionErrorCode,
+} from "../Xml/AgentXmlStatus.js";
+import { isSystemToolExecutionResult, type AgentSystemToolDefinition } from "./AgentSystemToolDefinition.js";
 
 export function registerAgentSystemToolHandlers(
   registry: AgentToolHostCapabilityRegistry,
@@ -44,10 +48,14 @@ function createSystemToolHandler(definition: AgentSystemToolDefinition): AgentHo
     }
 
     try {
-      const output = await definition.execute(input.data, {
+      const executionContext = {
         ...context,
         ...(isRecord(resources) ? { resources } : {}),
-      });
+      };
+      const executed = definition.executeWithArtifacts
+        ? await definition.executeWithArtifacts(input.data, executionContext)
+        : await definition.execute(input.data, executionContext);
+      const output = isSystemToolExecutionResult(executed) ? executed.result : executed;
       const parsedOutput = definition.output.safeParse(output);
       if (!parsedOutput.success) {
         return toolProcessFailureResult({
@@ -60,11 +68,15 @@ function createSystemToolHandler(definition: AgentSystemToolDefinition): AgentHo
           },
         });
       }
-      return toolProcessSuccessResult(parsedOutput.data);
+      return toolProcessSuccessResult(parsedOutput.data, {
+        ...(isSystemToolExecutionResult(executed) && executed.artifactPayload
+          ? { artifactPayload: executed.artifactPayload }
+          : {}),
+      });
     } catch (error) {
       const diagnostics = errorDiagnostics(error);
       return toolProcessFailureResult({
-        code: AgentExecutionErrorCodes.ToolExecutionError,
+        code: executionErrorCode(error),
         message: errorMessage(error),
         details: {
           phase: AgentToolProcessErrorPhases.RuntimeExecution,
@@ -75,6 +87,12 @@ function createSystemToolHandler(definition: AgentSystemToolDefinition): AgentHo
       });
     }
   };
+}
+
+function executionErrorCode(error: unknown) {
+  return isRecord(error) && isAgentExecutionErrorCode(error.code)
+    ? error.code
+    : AgentExecutionErrorCodes.ToolExecutionError;
 }
 
 function errorDiagnostics(error: unknown): AgentSourceDiagnostic[] {

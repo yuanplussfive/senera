@@ -156,6 +156,36 @@ test("useSettingsRuntime sends isolated typed MCP commands without storing Secre
   expect(JSON.stringify(useStore.getState())).not.toContain("transient-secret");
 });
 
+test("useSettingsRuntime settles MCP mutations from the dedicated settings event path", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  useStore.setState({
+    systemTools: [],
+    systemExtensions: [],
+    mcpServers: [],
+    toolSettingsSynced: { systemTools: true, mcpServers: true },
+  });
+
+  render(React.createElement(SettingsRuntimeHarness, { send, status: "open", handleRef }));
+  let requestId;
+  await act(async () => {
+    requestId = handleRef.current.systemConfig.updateMcpInputs("web-research", { API_KEY: "value" });
+  });
+
+  await act(async () => {
+    expect(
+      handleRef.current.ingestSettingsEvent(
+        event(EventKinds.McpServerSnapshot, "config", {
+          servers: [],
+          operation: { requestId, kind: "mcp_input_update" },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  expect(handleRef.current.systemConfig.mcpInputOperation).toMatchObject({ requestId, status: "success" });
+});
+
 test("useSocketPostIngestEffects runs config reload requests and profile sync", () => {
   const send = vi.fn(() => true);
   const markUserProfileSynced = vi.fn();

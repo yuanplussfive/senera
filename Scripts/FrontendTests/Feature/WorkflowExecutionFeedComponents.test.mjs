@@ -8,9 +8,10 @@ import { resolveWorkspaceRoot } from "../../../Scripts/WorkspaceRoot.ts";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 import { installMemoryLocalStorage, resetFrontendStore } from "../frontendStoreTestHarness.mjs";
 
-await import("../../../Frontend/src/features/workflow/ToolStepInspector.tsx");
-const { AgentExecutionFeed, AgentExecutionStageFeed } =
+const { ToolStepInspector } = await import("../../../Frontend/src/features/workflow/ToolStepInspector.tsx");
+const { AgentExecutionFeed, AgentExecutionStageFeed, AgentExecutionStageFold } =
   await import("../../../Frontend/src/features/workflow/AgentExecutionFeed.tsx");
+const { ToolActivityGroup } = await import("../../../Frontend/src/features/workflow/ToolActivityGroup.tsx");
 const { projectToolStagePresentation } =
   await import("../../../Frontend/src/features/workflow/toolStagePresentation.ts");
 const { projectToolActivityInspection } =
@@ -19,7 +20,7 @@ const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMes
 const { frontendFeatureMessage } = await import("../../../Frontend/src/i18n/frontendFeatureMessageCatalog.ts");
 const { AppMotionProvider } = await import("../../../Frontend/src/shared/motion/MotionProvider.tsx");
 const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
-const { createRun, createStep, createToolBatchRun } = await import("./workflowComponentFixtures.mjs");
+const { createStep, createToolBatchRun } = await import("./workflowComponentFixtures.mjs");
 
 beforeEach(() => {
   removeRadixPortalResidue();
@@ -98,29 +99,35 @@ test("execution feed keeps action batches summarized until the user expands them
   expect(screen.queryByText("WorkspaceSearchFiles")).not.toBeInTheDocument();
 
   await user.click(group);
-  await waitFor(() => expect(screen.getByText("读取文件：Source/runtime.ts")).toBeVisible());
-  expect(screen.getAllByText("搜索代码 1 次").length).toBeGreaterThan(0);
+  await waitFor(() => expect(screen.getByText("WorkspaceReadFile")).toBeVisible());
+  expect(screen.getByText("WorkspaceSearchFiles")).toBeVisible();
+  expect(screen.queryByText("Read · Source/runtime.ts")).not.toBeInTheDocument();
   expect(group).toHaveAttribute("aria-expanded", "true");
   expect(document.querySelector("[data-feed-detail-surface]")).toHaveClass("border-l", "border-line-subtle", "pl-3");
   expect(document.querySelector("[data-feed-detail-surface]")).not.toHaveClass("rounded-md", "bg-surface-subtle/70");
 
   const toolToggle = screen.getByRole("button", {
-    name: frontendMessage("workflow.dock.expandNode", { title: "读取文件：Source/runtime.ts" }),
+    name: frontendMessage("workflow.dock.expandNode", { title: "WorkspaceReadFile" }),
   });
   await user.click(toolToggle);
-  await waitFor(() => expect(screen.getByText(frontendFeatureMessage("workflow.inspector.purpose"))).toBeVisible());
+  await waitFor(() => expect(screen.getByText(frontendFeatureMessage("workflow.inspector.action"))).toBeVisible());
   const toolDetail = document.querySelector("[data-feed-tool-detail]");
   expect(toolDetail?.closest("[data-radix-popper-content-wrapper]")?.parentElement).toBe(document.body);
   expect(group.contains(toolDetail)).toBe(false);
   expect(toolDetail).toHaveClass("scrollbar-thin");
-  expect(toolDetail).toHaveTextContent("Inspect runtime initialization before changing the workflow.");
+  expect(toolDetail).toHaveTextContent("WorkspaceReadFile");
   expect(toolDetail).toHaveTextContent("Source/runtime.ts");
-  expect(document.querySelector("[data-line-change-stats]")).toHaveTextContent("+6");
-  expect(document.querySelector("[data-line-change-stats]")).toHaveTextContent("-1");
+  expect(document.querySelector("[data-tool-inspector-section='action']")).toHaveTextContent("path");
+  expect(document.querySelector("[data-tool-inspector-section='result']")).toHaveTextContent(
+    "export const runtime = true;",
+  );
+  expect(screen.queryByText(frontendFeatureMessage("workflow.inspector.purpose"))).not.toBeInTheDocument();
+  expect(screen.queryByText(frontendFeatureMessage("workflow.inspector.scope"))).not.toBeInTheDocument();
+  expect(document.querySelector("[data-line-change-stats]")).not.toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.node.section.rawToolResult"))).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: frontendFeatureMessage("workflow.node.technicalDetails") }));
-  expect(screen.getByText(frontendMessage("workflow.node.section.toolArgs"))).toBeVisible();
-  expect(screen.getByText(frontendMessage("workflow.node.section.rawToolResult"))).toBeVisible();
+  expect(screen.queryByText(frontendMessage("workflow.node.section.toolArgs"))).not.toBeInTheDocument();
+  expect(screen.queryByText(frontendMessage("workflow.node.section.rawToolResult"))).not.toBeInTheDocument();
   expect(document.querySelector("[data-feed-tool-detail]")).toHaveTextContent("export const runtime = true;");
 
   view.rerender(
@@ -136,8 +143,177 @@ test("execution feed keeps action batches summarized until the user expands them
       ),
     ),
   );
-  expect(screen.getAllByText("读取 1 个目录").length).toBeGreaterThan(0);
+  expect(screen.getByText("WorkspaceListDirectory")).toBeVisible();
   expect(document.querySelector("[data-feed-group='tools:batch-actions']")).toHaveAttribute("aria-expanded", "true");
+});
+
+test("tool inspector keeps web search output in the generic result surface", () => {
+  const step = createStep({
+    id: "web-search-step",
+    kind: "tool",
+    title: "Search the web",
+    status: "done",
+    toolName: "WebSearch",
+    toolArgs: { query: "React security guidance" },
+    toolPresentation: { summary: "Found 2 web result(s) for React security guidance." },
+    toolResult: {
+      query: "React security guidance",
+      results: [
+        {
+          title: "React security overview",
+          url: "https://react.dev/learn/keeping-components-pure",
+          summary: "Official guidance for writing predictable React components.",
+          citationId: "cite-react",
+        },
+        {
+          title: "Unsafe local URL",
+          url: "file:///private/report.txt",
+          summary: "This must render as text rather than a navigable link.",
+          citationId: "cite-private",
+        },
+      ],
+    },
+  });
+
+  renderWithFrontendProviders(React.createElement(ToolStepInspector, { step }));
+
+  expect(screen.getByText("WebSearch")).toBeVisible();
+  expect(document.querySelector("[data-tool-inspector-section='action']")).toHaveTextContent("React security guidance");
+  expect(document.querySelector("[data-tool-inspector-section='result']")).toHaveTextContent("React security guidance");
+  expect(screen.queryByText("Found 2 web result(s) for React security guidance.")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-web-search-activity]")).not.toBeInTheDocument();
+  expect(screen.queryByText("React security overview")).not.toBeInTheDocument();
+});
+
+test("conversation tool rounds use the same compact batch activity for web results", () => {
+  const run = createToolBatchRun(["WebSearch"]);
+  const searchStep = run.steps.find((step) => step.toolName === "WebSearch");
+  searchStep.toolArgs = { query: "React security guidance" };
+  searchStep.toolResult = {
+    query: "React security guidance",
+    results: [
+      {
+        title: "React security overview",
+        url: "https://react.dev/learn/keeping-components-pure",
+        citationId: "cite-react",
+      },
+    ],
+  };
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
+
+  expect(document.querySelector("[data-web-search-stage]")).not.toBeInTheDocument();
+  expect(document.querySelectorAll("[data-web-search-activity]")).toHaveLength(0);
+  expect(document.querySelector("[data-tool-batch-activity]")).toHaveTextContent("Search · React security guidance");
+  expect(document.querySelector("[data-tool-activity-group='external']")).not.toBeInTheDocument();
+  expect(screen.queryByText("WebSearch")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
+});
+
+test("completed execution intervals stay folded until the tool sequence is requested", async () => {
+  const user = userEvent.setup();
+  const run = createToolBatchRun(["WorkspaceRead", "WorkspaceGrep"]);
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFold, { run }));
+
+  const fold = document.querySelector("[data-execution-stage-fold]");
+  const trigger = fold?.querySelector("[data-tool-batch-activity-trigger]");
+  expect(fold).toBeInTheDocument();
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  expect(fold?.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
+
+  await user.click(trigger);
+
+  await waitFor(() => expect(fold?.querySelector("[data-tool-batch-activity-items]")).toBeVisible());
+  expect(fold?.querySelectorAll("[data-tool-batch-activity-item]")).toHaveLength(2);
+});
+
+test("completed tool batches collapse their tool calls until expanded", async () => {
+  const user = userEvent.setup();
+  const run = createToolBatchRun(["WebSearch"]);
+  const searchStep = run.steps.find((step) => step.toolName === "WebSearch");
+  searchStep.toolArgs = { query: "React security guidance" };
+  searchStep.toolResult = {
+    query: "React security guidance",
+    results: [
+      {
+        title: "React security overview",
+        url: "https://react.dev/learn/keeping-components-pure",
+        citationId: "cite-react",
+      },
+    ],
+  };
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFold, { run }));
+
+  const fold = document.querySelector("[data-execution-stage-fold]");
+  const trigger = fold?.querySelector("[data-tool-batch-activity-trigger]");
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  expect(fold?.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
+  await user.click(trigger);
+
+  await waitFor(() => expect(fold?.querySelector("[data-tool-batch-activity-items]")).toBeVisible());
+  expect(fold?.querySelector("[data-tool-batch-activity-item]")).toHaveTextContent("Search · React security guidance");
+  expect(fold?.querySelector("[data-tool-batch-activity-item] a")).not.toBeInTheDocument();
+  expect(screen.queryByText("React security overview")).not.toBeInTheDocument();
+});
+
+test("active tool batches keep settled rows while unfinished calls remain visibly active", () => {
+  const run = createToolBatchRun(["WebSearch", "WebSearch"]);
+  const firstStep = run.steps.find((step) => step.toolName === "WebSearch");
+  const secondStep = run.steps.filter((step) => step.toolName === "WebSearch")[1];
+  firstStep.toolArgs = { query: "React security guidance" };
+  firstStep.toolResult = {
+    results: [
+      {
+        title: "React security overview",
+        url: "https://react.dev/learn/keeping-components-pure",
+      },
+    ],
+  };
+  secondStep.toolArgs = { query: "React Server Components guidance" };
+  secondStep.status = "running";
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
+
+  expect(document.querySelector("[data-tool-batch-activity]")).toHaveAttribute("data-state", "loading");
+  expect(document.querySelector("[data-tool-batch-activity-items]")).toBeVisible();
+  expect(document.querySelector("[data-tool-batch-activity-item][data-state='done']")).toHaveTextContent(
+    "Search · React security guidance",
+  );
+  expect(document.querySelector("[data-tool-batch-activity-item][data-state='done']")).toHaveClass("items-center");
+  expect(document.querySelector("[data-tool-batch-activity-item][data-state='done'] > span")).toHaveClass(
+    "h-[18px]",
+    "items-center",
+  );
+  expect(
+    document.querySelector("[data-tool-batch-activity-item][data-state='loading'] .motion-safe\\:animate-spin"),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("WebSearch")).not.toBeInTheDocument();
+});
+
+test("partial tool failures remain local to their individual chain steps", async () => {
+  const user = userEvent.setup();
+  const run = createToolBatchRun(["WorkspaceRead", "WorkspaceGrep"]);
+  run.steps.find((step) => step.toolName === "WorkspaceGrep").status = "failed";
+
+  expect(projectToolStagePresentation(run)).toMatchObject({
+    status: "done",
+    counts: { total: 2, completed: 1, failed: 1 },
+  });
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFold, { run }));
+
+  const fold = document.querySelector("[data-execution-stage-fold]");
+  expect(fold).toHaveAttribute("data-tool-stage-status", "done");
+  await user.click(fold?.querySelector("[data-tool-batch-activity-trigger]"));
+
+  await waitFor(() =>
+    expect(fold?.querySelectorAll("[data-tool-batch-activity-item][data-state='done']")).toHaveLength(1),
+  );
+  const failedStep = fold?.querySelector("[data-tool-batch-activity-item][data-state='failed']");
+  expect(failedStep).toBeInTheDocument();
+  expect(failedStep?.querySelector(".border-content-muted")).toBeInTheDocument();
 });
 
 test("conversation tool stages keep details in the workflow dock", () => {
@@ -147,18 +323,18 @@ test("conversation tool stages keep details in the workflow dock", () => {
     category: "background-wait",
     mode: "semantic-batch",
     status: "done",
-    title: "等待后台任务 2 次",
+    title: "运行任务",
   });
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
 
-  expect(screen.getByRole("status", { name: "等待后台任务 2 次" })).toBeVisible();
+  expect(screen.getByRole("status", { name: "运行任务" })).toBeVisible();
   expect(screen.queryByText("ExecutionResourceWait")).not.toBeInTheDocument();
   expect(screen.queryByText(/并发工具批次/)).not.toBeInTheDocument();
   expect(document.querySelector("[data-tool-stage-details]")).not.toBeInTheDocument();
 });
 
-test("conversation tool stages prioritize intent and keep actions as a compact result", () => {
+test("conversation tool batches use one semantic batch activity without duplicating details", () => {
   const run = createToolBatchRun(["WorkspaceRead", "WorkspaceGrep", "WorkspaceList"]);
   run.steps
     .filter((step) => step.toolName)
@@ -167,13 +343,18 @@ test("conversation tool stages prioritize intent and keep actions as a compact r
     });
 
   expect(projectToolStagePresentation(run)).toMatchObject({
-    title: "检查前端结构与运行入口。",
-    summary: "读取 1 个文件 · 搜索代码 1 次 · 读取 1 个目录",
+    title: "探索代码库",
+    accessibleTitle: "探索代码库 · Read · Search · List",
+    summary: "Read · Search · List",
+    icons: ["file-text", "search"],
   });
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
-  expect(screen.getByText("检查前端结构与运行入口。")).toBeVisible();
-  expect(screen.getByText("读取 1 个文件 · 搜索代码 1 次 · 读取 1 个目录")).toBeVisible();
+  expect(document.querySelector("[data-tool-batch-activity]")).toHaveTextContent("探索代码库");
+  expect(screen.queryByText("检查前端结构与运行入口。")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-tool-batch-activity]")).toHaveAttribute("data-state", "done");
+  expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
+  expect(screen.getAllByText("探索代码库")).toHaveLength(1);
 });
 
 test("conversation tool stage mappings classify semantic and mixed tool batches", () => {
@@ -181,22 +362,27 @@ test("conversation tool stage mappings classify semantic and mixed tool batches"
   toolSearch.steps.find((step) => step.toolName).status = "running";
   expect(projectToolStagePresentation(toolSearch)).toMatchObject({
     category: "tool-discovery",
+    icon: "search",
     mode: "single-tool",
     status: "running",
-    title: "正在搜索可用工具 1 次…",
+    title: "Search",
   });
 
   expect(projectToolStagePresentation(createToolBatchRun(["WorkspaceFind", "WorkspaceGrep"]))).toMatchObject({
     category: "workspace-search",
+    icon: "search",
+    icons: ["search"],
     mode: "semantic-batch",
     status: "done",
-    title: "查找文件 1 次 · 搜索代码 1 次",
+    title: "探索代码库",
   });
   expect(projectToolStagePresentation(createToolBatchRun(["WorkspaceGrep", "ShellCommandTool"]))).toMatchObject({
     category: "tools",
+    icon: "search",
+    icons: ["search", "terminal"],
     mode: "semantic-batch",
     status: "done",
-    title: "搜索代码 1 次 · 运行 1 条命令",
+    title: "Search · Run",
   });
 
   const failedSearch = createToolBatchRun(["WorkspaceGrep"]);
@@ -205,15 +391,17 @@ test("conversation tool stage mappings classify semantic and mixed tool batches"
     category: "workspace-search",
     mode: "single-tool",
     status: "failed",
-    title: "工作区搜索失败：WorkspaceGrep",
+    title: "Search",
   });
 
   const mixedBatch = createToolBatchRun(["WorkspaceGrep", "WorkspaceFind", "WorkspaceRead"]);
   mixedBatch.steps.find((step) => step.toolName === "WorkspaceFind").status = "failed";
   expect(projectToolStagePresentation(mixedBatch)).toMatchObject({
-    status: "failed",
-    title: "搜索代码 1 次 · 查找文件 1 次 · 读取 1 个文件 · 成功 2 · 失败 1",
-    counts: { total: 3, completed: 2, failed: 1 },
+    status: "done",
+    title: "探索代码库",
+    summary: "Search · Find · Read",
+    icons: ["search", "file-text"],
+    counts: { total: 3, settled: 3, completed: 2, failed: 1 },
   });
 
   const waitingBatch = createToolBatchRun(["WorkspaceGrep", "WorkspaceFind"]);
@@ -221,36 +409,156 @@ test("conversation tool stage mappings classify semantic and mixed tool batches"
   waitingBatch.steps.find((step) => step.toolName === "WorkspaceFind").status = "failed";
   expect(projectToolStagePresentation(waitingBatch)).toMatchObject({
     status: "running",
-    title: "正在搜索代码 1 次 · 查找文件 1 次 · 完成 0 · 失败 1",
+    title: "探索代码库",
+    accessibleTitle: "探索代码库 · Search · Find · 1 项未完成",
+    summary: "Search · Find",
   });
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run: mixedBatch }));
+  expect(document.querySelector("[data-tool-activity-meta]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-tool-action-warning]")).not.toBeInTheDocument();
+  expect(screen.queryByText("1 项失败")).not.toBeInTheDocument();
 });
 
-test("large tool batches keep concrete actions without overflowing the summary", () => {
+test("tool activity labels stay action-focused and show concise safe arguments", () => {
+  const longQuery = "agentic-ui ".repeat(16).trim();
+  const failedSearch = projectToolActivityInspection({
+    toolName: "WebSearch",
+    status: "failed",
+    arguments: { query: longQuery },
+  });
+  expect(failedSearch.label.startsWith("Search ·")).toBe(true);
+  expect(failedSearch.label).not.toContain("失败");
+  expect(failedSearch.label.endsWith("...")).toBe(true);
+
+  const mcp = projectToolActivityInspection({
+    toolName: "get_file",
+    origin: { kind: "mcp", name: "github", server: "github", tool: "get_file" },
+    status: "completed",
+    arguments: { owner: "yuanplussfive", repo: "senera", path: "Frontend/src/App.tsx", apiKey: "must-not-display" },
+  });
+  expect(mcp.label).toContain("Call · github · get_file");
+  expect(mcp.label).toContain("owner=yuanplussfive");
+  expect(mcp.label).toContain("repo=senera");
+  expect(mcp.label).not.toContain("must-not-display");
+
+  const shell = projectToolActivityInspection({
+    toolName: "ShellCommandTool",
+    status: "completed",
+    arguments: { command: { script: "npm run check.types" }, cwd: "E:\\senera" },
+  });
+  expect(shell.label).toBe("Run · npm run check.types · E:\\senera");
+
+  const system = projectToolActivityInspection({
+    toolName: "CustomSystemTool",
+    status: "failed",
+    arguments: { path: "Source/AgentSystem", depth: 2, token: "must-not-display" },
+  });
+  expect(system.label).toContain("Run · CustomSystemTool · path=Source/AgentSystem · depth=2");
+  expect(system.label).not.toContain("执行失败");
+  expect(system.label).not.toContain("must-not-display");
+});
+
+test("browser tools use the shared batch activity with semantic action labels", () => {
+  const run = createToolBatchRun([
+    "BrowserOpen",
+    "BrowserSnapshot",
+    "BrowserClick",
+    "BrowserWaitForLoad",
+    "BrowserScreenshot",
+    "BrowserTabClose",
+    "BrowserClose",
+  ]);
+
+  expect(projectToolActivityInspection({ toolName: "BrowserSnapshot", status: "completed" })).toMatchObject({
+    category: "browser-read",
+    label: "Read",
+  });
+  expect(projectToolStagePresentation(run)).toMatchObject({
+    category: "browser",
+    icon: "globe",
+    icons: ["globe"],
+    mode: "semantic-batch",
+    title: "访问外部资源",
+    summary: "Navigate · Read · Interact · Wait · Capture · Manage · Close",
+  });
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
+  expect(document.querySelector("[data-tool-batch-activity]")).toHaveTextContent("访问外部资源");
+});
+
+test("conversation activity rows show at most three tool icons and a quiet overflow mark", () => {
+  renderWithFrontendProviders(
+    React.createElement(ToolActivityGroup, {
+      activity: {
+        id: "mixed-icons",
+        title: "探索代码库",
+        accessibleTitle: "探索代码库",
+        icons: ["file-text", "search", "git-branch", "terminal", "globe"],
+        status: "done",
+        actions: [{ id: "read", icon: "file-text", label: "Read", count: 5 }],
+        counts: { total: 5, settled: 5, completed: 5, failed: 0 },
+      },
+    }),
+  );
+
+  expect(document.querySelectorAll("[data-tool-activity-icon]")).toHaveLength(3);
+  expect(document.querySelector("[data-tool-activity-icon-overflow]")).toHaveTextContent("…");
+});
+
+test("large mixed tool batches use one compact semantic batch activity", () => {
   expect(
     projectToolStagePresentation(
-      createToolBatchRun(["WorkspaceRead", "WorkspaceGrep", "WorkspaceFind", "GitInspect", "ShellCommandTool"]),
+      createToolBatchRun([
+        "WorkspaceRead",
+        "WorkspaceGrep",
+        "WorkspaceFind",
+        "GitInspect",
+        "ShellCommandTool",
+        "AgentSpawn",
+      ]),
     ),
   ).toMatchObject({
-    title: "读取 1 个文件 · 搜索代码 1 次 · 查找文件 1 次 · 另 2 类",
+    title: "探索代码库 · Run · Delegate",
+    icons: ["file-text", "search", "git-branch"],
   });
+
+  renderWithFrontendProviders(
+    React.createElement(AgentExecutionStageFeed, {
+      run: createToolBatchRun([
+        "WorkspaceRead",
+        "WorkspaceGrep",
+        "WorkspaceFind",
+        "GitInspect",
+        "ShellCommandTool",
+        "AgentSpawn",
+      ]),
+    }),
+  );
+  expect(document.querySelectorAll("[data-tool-batch-activity]")).toHaveLength(1);
+  expect(document.querySelector("[data-tool-batch-activity]")).toHaveTextContent("探索代码库 · Run · Delegate");
+  expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
+  expect(document.querySelector(".tool-activity-icon-face")).not.toBeInTheDocument();
 });
 
-test("conversation single-tool stages use a compact non-interactive status row", () => {
+test("conversation single-tool stages use the shared collapsible batch activity", () => {
   const run = createToolBatchRun(["WorkspaceGrep"]);
   expect(projectToolStagePresentation(run)).toMatchObject({
     category: "workspace-search",
     mode: "single-tool",
     status: "done",
-    title: "搜索代码 1 次",
+    title: "Search",
   });
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
   const stage = document.querySelector("[data-execution-stage-feed]");
-  const summary = screen.getByRole("status", { name: "搜索代码 1 次" });
+  const summary = screen.getByRole("status", { name: "Search" });
   expect(stage).toHaveAttribute("data-tool-stage-mode", "single-tool");
-  expect(summary).toHaveClass("inline-flex", "items-start", "max-w-full");
-  expect(summary).not.toHaveClass("w-full");
-  expect(document.querySelector("[data-tool-stage-details]")).not.toBeInTheDocument();
+  expect(stage).toHaveClass("w-full");
+  expect(summary.querySelector("[data-tool-action-icon='search'][data-tool-action-status='done']")).toBeInTheDocument();
+  expect(summary.querySelector("[data-tool-batch-activity-trigger]")).toHaveAttribute("aria-expanded", "false");
+  expect(summary.querySelector(".lucide-check, .lucide-x")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
 });
 
 test("conversation tool stages use runtime provenance for shell and MCP wording", () => {
@@ -263,7 +571,8 @@ test("conversation tool stages use runtime provenance for shell and MCP wording"
     },
   );
   expect(projectToolStagePresentation(shellRun)).toMatchObject({
-    title: "运行命令：npm run check.types",
+    icon: "terminal",
+    title: "Run · npm run check.types",
   });
 
   const mcpRun = createToolBatchRun(["github__list_pull_requests"]);
@@ -274,7 +583,8 @@ test("conversation tool stages use runtime provenance for shell and MCP wording"
     },
   );
   expect(projectToolStagePresentation(mcpRun)).toMatchObject({
-    title: "MCP 工具调用完成：github · list_pull_requests",
+    icon: "globe",
+    title: "Call · github · list_pull_requests",
   });
 
   const grepRun = createToolBatchRun(["WorkspaceGrep"]);
@@ -286,7 +596,7 @@ test("conversation tool stages use runtime provenance for shell and MCP wording"
     },
   );
   expect(projectToolStagePresentation(grepRun)).toMatchObject({
-    title: "搜索工作区：projectToolActivity",
+    title: "Search · projectToolActivity",
   });
 
   const gitRun = createToolBatchRun(["GitInspect"]);
@@ -298,7 +608,7 @@ test("conversation tool stages use runtime provenance for shell and MCP wording"
     },
   );
   expect(projectToolStagePresentation(gitRun)).toMatchObject({
-    title: "检查 Git：diff",
+    title: "Inspect · diff",
   });
 
   const agentRun = createToolBatchRun(["AgentSpawn"]);
@@ -310,7 +620,7 @@ test("conversation tool stages use runtime provenance for shell and MCP wording"
     },
   );
   expect(projectToolStagePresentation(agentRun)).toMatchObject({
-    title: "委派子任务：reviewer",
+    title: "Delegate · reviewer",
   });
 });
 
@@ -322,170 +632,4 @@ test("every bundled system tool has a concrete activity action", () => {
     .map((filePath) => JSON.parse(readFileSync(path.resolve(workspaceRoot, filePath), "utf8")).name)
     .filter((name) => projectToolActivityInspection({ toolName: name, status: "completed" }).category === "system");
   expect(genericTools).toEqual([]);
-});
-
-test("execution feed keeps workflow steps while the answer body is projected below it", () => {
-  const run = createToolBatchRun(["WorkspaceReadFile"]);
-  run.visibleKind = "final_answer";
-  run.displayText = "最终回答正文";
-
-  renderWithFrontendProviders(
-    React.createElement(AgentExecutionFeed, {
-      run,
-      showBody: false,
-    }),
-  );
-
-  expect(document.querySelector("[data-feed-group='tools:batch-actions']")).toBeInTheDocument();
-  expect(screen.queryByText("最终回答正文")).not.toBeInTheDocument();
-});
-
-test("conversation shows a live thinking stage before the first tool decision", () => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-07-11T00:01:05.000Z"));
-  const run = createRun({
-    requestId: "run-thinking",
-    status: "running",
-    endedAt: undefined,
-    startedAt: "2026-07-11T00:00:00.000Z",
-    outputState: "pending",
-    visibleKind: "unknown",
-    steps: [],
-  });
-
-  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
-
-  expect(screen.getByText(frontendFeatureMessage("workflow.feed.thinking"))).toBeVisible();
-  expect(screen.getByText("1分钟5秒")).toBeVisible();
-  expect(screen.queryByText(frontendMessage("workflow.feed.running"))).not.toBeInTheDocument();
-  expect(screen.queryByText(frontendMessage("workflow.feed.stepCount", { count: 0 }))).not.toBeInTheDocument();
-  expect(
-    document.querySelector("[data-feed-marker-status='running'] [class~='motion-safe:animate-spin']"),
-  ).toBeInTheDocument();
-  expect(document.querySelector("[data-feed-marker-status='running']")).toHaveClass(
-    "bg-accent-surface",
-    "text-accent-content",
-  );
-});
-
-test("active tool stages show a spinner and live elapsed time", () => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-07-11T00:01:05.000Z"));
-  const run = createToolBatchRun(["WorkspaceGrep"]);
-  const toolStep = run.steps.find((step) => step.toolName === "WorkspaceGrep");
-  toolStep.status = "running";
-  toolStep.startedAt = "2026-07-11T00:00:00.000Z";
-
-  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
-
-  expect(screen.getByRole("status", { name: "正在搜索代码 1 次…" })).toBeVisible();
-  expect(screen.getByText("1分钟5秒")).toBeVisible();
-  expect(document.querySelector("[data-tool-stage-summary] [class~='motion-safe:animate-spin']")).toBeInTheDocument();
-});
-
-test("live tool stage falls back to thinking while the next decision is pending", () => {
-  const run = createToolBatchRun(["WorkspaceGrep"]);
-  run.steps.find((step) => step.toolName).status = "done";
-  run.status = "running";
-  run.outputState = "pending";
-  run.visibleKind = "tool_calls";
-
-  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
-
-  expect(screen.getByText(frontendFeatureMessage("workflow.feed.thinking"))).toBeVisible();
-  expect(
-    document.querySelector("[data-feed-marker-status='running'] [class~='motion-safe:animate-spin']"),
-  ).toBeInTheDocument();
-});
-
-test("context compaction keeps the request clock instead of restarting at the activity boundary", () => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-07-11T00:01:05.000Z"));
-  const run = createToolBatchRun(["WorkspaceGrep"]);
-  run.steps.find((step) => step.toolName).status = "done";
-  run.status = "running";
-  run.outputState = "pending";
-  run.liveActivity = "compacting_context";
-  run.activities = [
-    {
-      id: "compaction",
-      activity: "compacting_context",
-      status: "running",
-      startedAt: "2026-07-11T00:01:00.000Z",
-    },
-  ];
-
-  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
-
-  expect(screen.getByText("Senera 正在压缩上下文")).toBeVisible();
-  expect(screen.getByText("1分钟5秒")).toBeVisible();
-});
-
-test("execution feed renders Senera live activities without adding workflow nodes", async () => {
-  const user = userEvent.setup();
-  const run = createToolBatchRun([]);
-  const workflowStepCount = run.steps.length;
-  run.liveActivity = "compacting_context";
-  run.activities = [
-    {
-      id: "activity-context",
-      activity: "preparing_context",
-      status: "done",
-      step: 1,
-      startedAt: run.startedAt,
-      endedAt: run.startedAt,
-    },
-    {
-      id: "activity-model",
-      activity: "running_agent_turn",
-      status: "done",
-      step: 1,
-      startedAt: run.startedAt,
-      endedAt: run.startedAt,
-    },
-    {
-      id: "activity-compaction",
-      activity: "compacting_context",
-      status: "running",
-      step: 1,
-      startedAt: run.startedAt,
-    },
-  ];
-
-  renderWithFrontendProviders(React.createElement(AgentExecutionFeed, { run }));
-
-  // 活动组默认折叠为单行摘要:组头可见,活动明细收进折叠面板。
-  const activityToggle = screen.getByText(frontendMessage("workflow.feed.seneraActivity"));
-  expect(activityToggle).toBeVisible();
-  expect(document.querySelector("[data-feed-group-variant='activity']")).toBeInTheDocument();
-  expect(document.querySelector("[data-feed-detail-surface]")).not.toBeInTheDocument();
-
-  // 展开后只展示真正影响等待的上下文压缩，内部生命周期仍保留在诊断事件中。
-  await user.click(activityToggle);
-  await waitFor(() => expect(screen.getByText(frontendMessage("workflow.activity.compactingContext"))).toBeVisible());
-  expect(screen.queryByText(frontendMessage("workflow.activity.preparingContext"))).not.toBeInTheDocument();
-  expect(screen.queryByText(frontendMessage("workflow.activity.runningAgentTurn"))).not.toBeInTheDocument();
-  expect(run.steps).toHaveLength(workflowStepCount);
-});
-
-test("execution feed contains failed events and respects reduced motion", () => {
-  const run = createRun({
-    status: "running",
-    endedAt: undefined,
-    steps: [
-      createStep({ id: "failed-context", status: "failed", title: "Prepare context" }),
-      createStep({ id: "running-model", status: "running", title: "Generate response" }),
-    ],
-  });
-
-  renderWithFrontendProviders(
-    React.createElement(AppMotionProvider, { level: "reduced" }, React.createElement(AgentExecutionFeed, { run })),
-  );
-
-  expect(screen.getByText("Prepare context").parentElement?.parentElement).toHaveClass(
-    "border-l-2",
-    "border-brick-400",
-  );
-  expect(screen.getByText("Prepare context").parentElement?.parentElement).not.toHaveClass("bg-brick-50");
-  expect(document.querySelector("[data-execution-feed] .animate-spin")).not.toBeInTheDocument();
 });

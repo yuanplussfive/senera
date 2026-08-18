@@ -15,7 +15,9 @@ import {
   projectWorkflowActivities,
   projectWorkflowSteps,
 } from "./workflowPresentationProjection";
-import { projectToolActivity, projectToolBatchSummary } from "./toolActivityPresentation";
+import { projectToolActivity } from "./toolActivityPresentation";
+import { projectToolStagePresentation } from "./toolStagePresentation";
+import type { ToolStageIconName } from "./toolStageIconContract";
 
 export type FeedItemKind = "activity" | "tool" | "trace";
 
@@ -36,6 +38,8 @@ export interface FeedGroup {
   meta?: string;
   items: FeedItem[];
   collapsible?: boolean;
+  toolIcons?: readonly ToolStageIconName[];
+  toolAccessibleLabel?: string;
 }
 
 export interface FeedModel {
@@ -205,6 +209,8 @@ function collectRootToolGroups(rootSteps: TimelineStep[]): {
       meta: toolGroup.meta,
       items,
       collapsible: true,
+      toolIcons: toolGroup.icons,
+      toolAccessibleLabel: toolGroup.accessibleLabel,
     };
   });
 
@@ -439,38 +445,37 @@ function mapToolItem(step: TimelineStep): FeedItem {
     id: step.id,
     kind: "tool",
     status: step.status,
-    title: step.toolName
-      ? projectToolActivity({
-          toolName: step.toolName,
-          origin: step.toolOrigin,
-          arguments: step.toolArgs,
-          status: step.status === "failed" ? "failed" : step.status === "done" ? "completed" : "active",
-        })
-      : step.title,
-    subtitle: summarizeToolSubtitle(step),
+    // The execution console is an inspection surface. Preserve the runtime identity here;
+    // semantic action text belongs to the conversation projection, not the diagnostic trace.
+    title: step.toolName ?? step.title,
     meta: toolItemMeta(step),
     step,
   };
 }
 
-function summarizeToolGroup(steps: TimelineStep[], items: FeedItem[]): { label: string; meta: string } {
+function summarizeToolGroup(
+  steps: TimelineStep[],
+  items: FeedItem[],
+): {
+  label: string;
+  meta: string;
+  icons?: readonly ToolStageIconName[];
+  accessibleLabel?: string;
+} {
   const done = items.filter((item) => item.status === "done").length;
   const failed = items.filter((item) => item.status === "failed").length;
-  const progress = `${done}/${items.length}`;
+  const settled = done + failed;
+  const progress = `${settled}/${items.length}`;
   const plan = [...steps].reverse().find((step) => step.kind === "tool" && !step.toolName && step.toolBatch?.size);
   const size = plan?.toolBatch?.size ?? items.length;
   const mode = plan?.toolBatch?.executionMode;
-  const toolSteps = steps.filter(
-    (step): step is TimelineStep & { toolName: string } => step.kind === "tool" && Boolean(step.toolName),
-  );
-  const actionStatus = items.some(
+  const toolSteps = steps.filter((step) => step.kind === "tool" && Boolean(step.toolName));
+  const live = items.some(
     (item) => item.status === "running" || item.status === "pending" || item.status === "cancelling",
-  )
-    ? "active"
-    : "completed";
-  const actionSummary = projectToolBatchSummary(toolSteps, actionStatus, { completed: done, failed });
-  const label = actionSummary
-    ? actionSummary
+  );
+  const presentation = projectToolStagePresentation({ steps: toolSteps });
+  const label = presentation?.title
+    ? presentation.title
     : mode === "parallel" && size > 1
       ? frontendMessage("workflow.feed.parallelToolBatch", { count: size })
       : mode === "sequential"
@@ -482,14 +487,11 @@ function summarizeToolGroup(steps: TimelineStep[], items: FeedItem[]): { label: 
       : mode === "sequential"
         ? frontendMessage("workflow.feed.sequential")
         : undefined;
-  const failedLabel = failed > 0 ? frontendMessage("workflow.feed.failedCount", { count: failed }) : undefined;
-  const resultLabel =
-    failed > 0 ? frontendFeatureMessage("workflow.feed.toolBatchResult", { completed: done, failed }) : undefined;
   return {
     label,
-    meta: [modeLabel, resultLabel ?? progress, failedLabel && !resultLabel ? failedLabel : undefined]
-      .filter(Boolean)
-      .join(" · "),
+    meta: [modeLabel, live ? progress : undefined].filter(Boolean).join(" · "),
+    icons: presentation?.icons,
+    accessibleLabel: presentation?.accessibleTitle,
   };
 }
 

@@ -1,16 +1,16 @@
-import { useMemo, useState, type ComponentType } from "react";
-import {
-  ArrowDown,
-  ArrowUp,
-  BrainCircuit,
-  Check,
-  GitFork,
-  ListFilter,
-  Plus,
-  Search,
-  Target,
-  Trash2,
-} from "lucide-react";
+import { useMemo, useState, type ElementType } from "react";
+import ArrowsRightLeftIcon from "@heroicons/react/24/outline/ArrowsRightLeftIcon";
+import BarsArrowUpIcon from "@heroicons/react/24/outline/BarsArrowUpIcon";
+import ChatBubbleBottomCenterTextIcon from "@heroicons/react/24/outline/ChatBubbleBottomCenterTextIcon";
+import CircleStackIcon from "@heroicons/react/24/outline/CircleStackIcon";
+import CpuChipIcon from "@heroicons/react/24/outline/CpuChipIcon";
+import EyeIcon from "@heroicons/react/24/outline/EyeIcon";
+import MagnifyingGlassIcon from "@heroicons/react/24/outline/MagnifyingGlassIcon";
+import QueueListIcon from "@heroicons/react/24/outline/QueueListIcon";
+import ShareIcon from "@heroicons/react/24/outline/ShareIcon";
+import ViewfinderCircleIcon from "@heroicons/react/24/outline/ViewfinderCircleIcon";
+import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
+import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
 import { IconButton, MenuSelect, Spinner, StateView, Switch } from "../../../shared/ui";
@@ -103,9 +103,9 @@ export function DefaultModelSection({
   }
 
   return (
-    <div className="bg-paper-50 px-3 py-4 sm:px-5 sm:py-5">
-      <section className="mx-auto max-w-[900px]">
-        <header className="border-b border-ink-200/70 pb-3">
+    <div className="bg-paper-50 px-4 py-5 sm:px-7 sm:py-6">
+      <section className="mx-auto max-w-[980px]">
+        <header className="border-b border-ink-200/80 pb-4">
           <h2 className="text-[14px] font-semibold text-ink-900">
             {frontendMessage("settings.model.assignmentsTitle")}
           </h2>
@@ -114,11 +114,11 @@ export function DefaultModelSection({
           </p>
         </header>
 
-        <div className="mt-3 border-y border-ink-200/70">
+        <div className="mt-5 space-y-7">
           {assignmentGroups.map((group) => (
-            <section key={group.id} className="border-b border-ink-200/70 last:border-b-0">
-              <div className="flex h-9 items-center gap-2 bg-[var(--theme-config-list-bg)] px-3 text-[11.5px] font-semibold text-ink-600">
-                <AssignmentGroupIcon fields={group.fields} />
+            <section key={group.id} data-model-assignment-group>
+              <div className="flex items-center gap-2 border-b border-ink-200/80 pb-2 text-[12.5px] font-semibold text-ink-700">
+                <AssignmentGroupIcon groupId={group.id} fields={group.fields} />
                 {group.label}
               </div>
               <div className="divide-y divide-ink-200/70">
@@ -210,7 +210,10 @@ function ModelAssignmentRow({
   };
 
   return (
-    <div className="grid min-h-[76px] min-w-0 gap-3 bg-paper-50 px-3 py-3 md:grid-cols-[minmax(190px,0.8fr)_minmax(260px,1.2fr)] md:items-center">
+    <div
+      className="grid min-h-[68px] min-w-0 gap-3 py-3.5 md:grid-cols-[minmax(220px,0.85fr)_minmax(300px,1.15fr)] md:items-center"
+      data-model-assignment-row
+    >
       <AssignmentLabel field={field} />
 
       <div className="min-w-0">
@@ -301,79 +304,72 @@ function ModelPoolAssignmentRow({
   };
 
   return (
-    <div className="grid min-h-[76px] min-w-0 gap-3 bg-paper-50 px-3 py-3 md:grid-cols-[minmax(190px,0.8fr)_minmax(260px,1.2fr)] md:items-start">
-      <AssignmentLabel field={field} />
-
-      <div className="min-w-0">
-        <div className="divide-y divide-ink-200/70 border-y border-ink-200/70">
-          {hasInheritance ? (
-            <div className="flex min-h-10 min-w-0 items-center gap-2 px-1.5 py-1">
-              <AssignmentPriority value={selection.inheritanceEnabled ? 1 : undefined} />
-              <GitFork className="h-3.5 w-3.5 shrink-0 text-ink-500" />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[12px] font-medium text-ink-800">{inheritanceSourceLabel(field)}</div>
-                <div className="truncate text-[10.5px] text-ink-450">
-                  {frontendMessage("settings.model.poolRuntimeResolved")}
-                </div>
+    <div className="min-w-0" data-model-pool-assignment>
+      <div className="py-3.5">
+        <AssignmentLabel field={field} />
+      </div>
+      <div className="divide-y divide-line-subtle border-t border-line-subtle">
+        {hasInheritance ? (
+          <div className="flex min-h-[62px] min-w-0 items-center gap-4 py-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="text-[12.5px] font-medium text-ink-850">{inheritanceSourceLabel(field)}</div>
+              <div className="mt-0.5 text-[11.5px] leading-5 text-ink-500">
+                {frontendMessage("settings.model.poolRuntimeResolved")}
               </div>
-              <Switch
-                checked={selection.inheritanceEnabled}
-                disabled={selection.inheritanceEnabled && selection.modelIds.length === 0}
-                ariaLabel={frontendMessage("settings.model.poolToggleInheritance")}
-                onCheckedChange={(inheritanceEnabled) => update({ ...selection, inheritanceEnabled })}
-              />
             </div>
-          ) : null}
+            <Switch
+              checked={selection.inheritanceEnabled}
+              disabled={selection.inheritanceEnabled && selection.modelIds.length === 0}
+              ariaLabel={frontendMessage("settings.model.poolToggleInheritance")}
+              onCheckedChange={(inheritanceEnabled) => update({ ...selection, inheritanceEnabled })}
+            />
+          </div>
+        ) : null}
 
-          {selection.modelIds.map((modelId, index) => {
-            const candidate = candidatesById.get(modelId);
-            const priority = index + 1 + Number(hasInheritance && selection.inheritanceEnabled);
-            const unavailable = !candidate;
-            const cannotRemove = sourceCount <= 1;
-            return (
-              <div key={`${modelId}:${index}`} className="flex min-h-10 min-w-0 items-center gap-2 px-1.5 py-1">
-                <AssignmentPriority value={priority} />
-                <span className="min-w-0 flex-1">
-                  <AssignmentOption candidate={candidate} label={modelId} unavailable={unavailable} />
-                </span>
-                <div className="flex shrink-0 items-center gap-0.5">
-                  <IconButton
-                    label={frontendMessage("settings.model.poolMoveUp", { model: modelId })}
-                    tooltip={frontendMessage("settings.model.poolMoveUpShort")}
-                    size="sm"
-                    tone="muted"
-                    disabled={index === 0}
-                    onClick={() => moveModel(index, -1)}
-                  >
-                    <ArrowUp className="h-3.5 w-3.5" />
-                  </IconButton>
-                  <IconButton
-                    label={frontendMessage("settings.model.poolMoveDown", { model: modelId })}
-                    tooltip={frontendMessage("settings.model.poolMoveDownShort")}
-                    size="sm"
-                    tone="muted"
-                    disabled={index === selection.modelIds.length - 1}
-                    onClick={() => moveModel(index, 1)}
-                  >
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  </IconButton>
-                  <IconButton
-                    label={frontendMessage("settings.model.poolRemove", { model: modelId })}
-                    tooltip={frontendMessage("settings.model.poolRemoveShort")}
-                    size="sm"
-                    tone="danger"
-                    disabled={cannotRemove}
-                    onClick={() => removeModel(index)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </IconButton>
-                </div>
+        {selection.modelIds.map((modelId, index) => {
+          const candidate = candidatesById.get(modelId);
+          const unavailable = !candidate;
+          const cannotRemove = sourceCount <= 1;
+          return (
+            <div key={`${modelId}:${index}`} className="flex min-h-[58px] min-w-0 items-center gap-3 py-2">
+              <PoolCandidateLabel candidate={candidate} modelId={modelId} unavailable={unavailable} />
+              <div className="flex shrink-0 items-center gap-0.5">
+                <IconButton
+                  label={frontendMessage("settings.model.poolMoveUp", { model: modelId })}
+                  tooltip={frontendMessage("settings.model.poolMoveUpShort")}
+                  size="sm"
+                  tone="muted"
+                  disabled={index === 0}
+                  onClick={() => moveModel(index, -1)}
+                >
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </IconButton>
+                <IconButton
+                  label={frontendMessage("settings.model.poolMoveDown", { model: modelId })}
+                  tooltip={frontendMessage("settings.model.poolMoveDownShort")}
+                  size="sm"
+                  tone="muted"
+                  disabled={index === selection.modelIds.length - 1}
+                  onClick={() => moveModel(index, 1)}
+                >
+                  <ArrowDown className="h-3.5 w-3.5" />
+                </IconButton>
+                <IconButton
+                  label={frontendMessage("settings.model.poolRemove", { model: modelId })}
+                  tooltip={frontendMessage("settings.model.poolRemoveShort")}
+                  size="sm"
+                  tone="danger"
+                  disabled={cannotRemove}
+                  onClick={() => removeModel(index)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </IconButton>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
 
-        <div className="mt-2">
+        <div className="py-2">
           <MenuSelect
             value=""
             placeholder={field.placeholder ?? frontendMessage("settings.model.poolAdd")}
@@ -385,18 +381,39 @@ function ModelPoolAssignmentRow({
             disabled={availableCandidates.length === 0}
             emptyState={frontendMessage("settings.model.poolNoAdditionalCandidates")}
             leading={<Plus className="h-3.5 w-3.5" />}
+            triggerClassName="border-0 bg-transparent px-0 hover:border-transparent focus-visible:border-transparent focus-visible:ring-0"
             renderOption={(option) => (
               <AssignmentOption candidate={candidatesById.get(option.value)} label={option.label} />
             )}
             onChange={addModel}
           />
+          {selection.modelIds.some((modelId) => !candidatesById.has(modelId)) ? (
+            <p className="pb-1 text-[11px] leading-4 text-umber-600">
+              {frontendMessage("settings.model.poolUnavailable")}
+            </p>
+          ) : null}
         </div>
+      </div>
+    </div>
+  );
+}
 
-        {selection.modelIds.some((modelId) => !candidatesById.has(modelId)) ? (
-          <p className="mt-1.5 text-[11px] leading-4 text-umber-600">
-            {frontendMessage("settings.model.poolUnavailable")}
-          </p>
-        ) : null}
+function PoolCandidateLabel({
+  candidate,
+  modelId,
+  unavailable,
+}: {
+  candidate?: RuntimeModelAssignmentCandidate;
+  modelId: string;
+  unavailable: boolean;
+}): JSX.Element {
+  const icon = candidate?.model.Icon ?? inferModelProviderIcon(candidate?.model.Model ?? modelId);
+  return (
+    <div className={cn("flex min-w-0 flex-1 items-center gap-2.5", unavailable && "text-umber-600")}>
+      <ModelProviderIcon icon={icon} size={18} />
+      <div className="min-w-0">
+        <div className="truncate text-[12.5px] font-medium text-ink-850">{candidate?.model.Model ?? modelId}</div>
+        {candidate ? <div className="mt-0.5 truncate text-[10.5px] text-ink-450">{candidate.provider.Id}</div> : null}
       </div>
     </div>
   );
@@ -404,9 +421,9 @@ function ModelPoolAssignmentRow({
 
 function AssignmentLabel({ field }: { field: RuntimeModelAssignmentField }): JSX.Element {
   return (
-    <div className="flex min-w-0 items-start gap-2.5">
-      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border border-ink-200/70 bg-paper-100 text-ink-500">
-        <AssignmentCapabilityIcon capability={field.modelSelection.capability} />
+    <div className="flex min-w-0 items-start gap-2">
+      <span className="mt-[3px] grid h-4 w-4 shrink-0 place-items-center text-ink-450">
+        <AssignmentRoleIcon field={field} />
       </span>
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -416,12 +433,6 @@ function AssignmentLabel({ field }: { field: RuntimeModelAssignmentField }): JSX
         {field.description ? <p className="mt-0.5 text-[11px] leading-4 text-ink-500">{field.description}</p> : null}
       </div>
     </div>
-  );
-}
-
-function AssignmentPriority({ value }: { value?: number }): JSX.Element {
-  return (
-    <span className="w-4 shrink-0 text-center font-mono text-[10px] tabular-nums text-ink-400">{value ?? "-"}</span>
   );
 }
 
@@ -451,25 +462,56 @@ function AssignmentOption({
   );
 }
 
-function AssignmentGroupIcon({ fields }: { fields: readonly RuntimeModelAssignmentField[] }): JSX.Element {
+function AssignmentGroupIcon({
+  groupId,
+  fields,
+}: {
+  groupId: string;
+  fields: readonly RuntimeModelAssignmentField[];
+}): JSX.Element {
   const capability = fields[0]?.modelSelection.capability;
-  const Icon: ComponentType<{ className?: string }> = fields.some(isRuntimeModelPoolAssignment)
-    ? GitFork
-    : capability === "Embedding"
-      ? Search
-      : capability === "Rerank"
-        ? ListFilter
-        : capability === "Chat"
-          ? BrainCircuit
-          : Target;
+  const Icon: ElementType<{ className?: string }> = fields.some(isRuntimeModelPoolAssignment)
+    ? QueueListIcon
+    : groupId === "models"
+      ? CpuChipIcon
+      : groupId === "planning"
+        ? ShareIcon
+        : groupId === "retrieval"
+          ? MagnifyingGlassIcon
+          : capability === "Embedding"
+            ? ViewfinderCircleIcon
+            : capability === "Rerank"
+              ? BarsArrowUpIcon
+              : capability === "Vision"
+                ? EyeIcon
+                : CpuChipIcon;
   return <Icon className="h-3.5 w-3.5 text-ink-500" />;
 }
 
-function AssignmentCapabilityIcon({
-  capability,
-}: {
-  capability: RuntimeModelAssignmentField["modelSelection"]["capability"];
-}): JSX.Element {
-  const Icon = capability === "Embedding" ? Search : capability === "Rerank" ? ListFilter : BrainCircuit;
-  return <Icon className="h-3.5 w-3.5" />;
+const assignmentRoleIcons: Readonly<Record<string, ElementType<{ className?: string }>>> = {
+  assistant: CpuChipIcon,
+  planner: QueueListIcon,
+  "planner-base": QueueListIcon,
+  "action-planner": ArrowsRightLeftIcon,
+  "final-answer": ChatBubbleBottomCenterTextIcon,
+  "tool-learning": WrenchScrewdriverIcon,
+  "memory-learning": CircleStackIcon,
+  embedding: ViewfinderCircleIcon,
+  rerank: BarsArrowUpIcon,
+};
+
+function AssignmentRoleIcon({ field }: { field: RuntimeModelAssignmentField }): JSX.Element {
+  const selection = field.modelSelection;
+  const Icon =
+    assignmentRoleIcons[selection.id] ??
+    (isRuntimeModelPoolAssignment(field)
+      ? QueueListIcon
+      : selection.capability === "Embedding"
+        ? ViewfinderCircleIcon
+        : selection.capability === "Rerank"
+          ? BarsArrowUpIcon
+          : selection.capability === "Vision"
+            ? EyeIcon
+            : CpuChipIcon);
+  return <Icon className="h-3.5 w-3.5" data-model-assignment-icon={selection.id} />;
 }

@@ -16,6 +16,38 @@ afterEach(() => {
 });
 
 describe("artifact publication", () => {
+  test("generates bounded generic evidence for arbitrary tool output", async () => {
+    const { recorder } = createRecorder();
+    const [recorded] = await recorder.record({
+      requestId: "request-generic-evidence",
+      step: 1,
+      results: [
+        {
+          callId: "call-generic-evidence",
+          name: "CustomMcpTool",
+          arguments: { input: "value" },
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          result: {
+            providerSpecificField: { arbitrary: true },
+            imageData: "provider-defined-value",
+          },
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {},
+        },
+      ],
+    });
+
+    expect(recorded?.artifact?.evidence).toEqual([
+      expect.objectContaining({
+        kind: "tool-output",
+        key: "result:$",
+        locator: "$",
+        plannerMemory: expect.objectContaining({ artifactRefs: ["raw"] }),
+      }),
+    ]);
+    expect(recorded?.artifact?.evidence[0]?.modelSlots).toEqual([]);
+  });
+
   test("serializes concurrent retries and reuses one immutable publication", async () => {
     const { recorder } = createRecorder();
     const input = recordInput("call-retry");

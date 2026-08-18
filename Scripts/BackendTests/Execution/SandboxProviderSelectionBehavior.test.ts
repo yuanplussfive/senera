@@ -24,6 +24,16 @@ describe("sandbox provider selection", () => {
     expect(selectAgentSandboxProvider({ preference: "auto", platform: "darwin" })).toBeUndefined();
   });
 
+  test("selects the Docker Engine provider for Docker Desktop on Windows", () => {
+    expect(
+      selectAgentSandboxProvider({
+        preference: "auto",
+        platform: "win32",
+        capabilities: { dockerEngine: true, registeredDockerRuntimes: ["runc"] },
+      }),
+    ).toBe("docker-engine");
+  });
+
   test("rejects an explicitly selected provider when probed capabilities prove it unavailable", () => {
     expect(() =>
       selectAgentSandboxProvider({

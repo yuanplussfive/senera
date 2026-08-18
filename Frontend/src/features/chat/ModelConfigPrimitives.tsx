@@ -34,21 +34,19 @@ export function DetailTitle({
 }: {
   icon: ReactNode;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   actions: ReactNode;
 }): JSX.Element {
   return (
-    <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3">
+    <div className="mb-4 flex min-w-0 items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2.5">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-ink-200 bg-paper-100 text-ink-650">
-          {icon}
-        </span>
+        <span className="grid h-7 w-7 shrink-0 place-items-center text-ink-650">{icon}</span>
         <span className="min-w-0">
-          <span className="block truncate text-[14px] font-semibold text-ink-900">{title}</span>
-          <span className="mt-0.5 block truncate text-[11.5px] text-ink-500">{subtitle}</span>
+          <span className="block truncate text-[13.5px] font-semibold leading-5 text-ink-900">{title}</span>
+          {subtitle ? <span className="block truncate text-[11px] leading-4 text-ink-500">{subtitle}</span> : null}
         </span>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">{actions}</div>
+      <div className="flex shrink-0 items-center gap-1">{actions}</div>
     </div>
   );
 }
@@ -64,7 +62,7 @@ export function SectionLabel({ icon, title }: { icon: ReactNode; title: string }
 
 export function SettingsTable({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <div className="overflow-hidden border border-ink-200/70 bg-paper-100 shadow-panel">
+    <div className="overflow-hidden rounded-md border border-ink-200/65 bg-paper-100/65">
       <div className="divide-y divide-ink-200/70">{children}</div>
     </div>
   );

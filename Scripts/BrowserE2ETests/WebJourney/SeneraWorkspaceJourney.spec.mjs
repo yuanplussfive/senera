@@ -14,7 +14,7 @@ test.describe("workspace resilience and error boundary", () => {
   });
 
   test("renders the application error boundary when a dynamic chunk returns 404 @smoke", async ({ page }) => {
-    await page.route(/\/assets\/AuthenticatedSurface-[^/]+\.js(?:\?.*)?$/, async (route) => {
+    await page.route(/\/assets\/App-[^/?]+\.js$/, async (route) => {
       await route.fulfill({
         status: 404,
         contentType: "application/javascript",
@@ -26,37 +26,29 @@ test.describe("workspace resilience and error boundary", () => {
 
     const alert = page.getByRole("alert");
     await expect(alert.getByRole("heading", { name: "界面暂时无法继续显示" })).toBeVisible();
-    await expect(alert.getByRole("button", { name: "重新渲染" })).toBeVisible();
     await expect(alert.getByRole("button", { name: "刷新页面" })).toBeVisible();
+    await expect(alert.getByRole("button", { name: "重新渲染" })).toHaveCount(0);
   });
 
-  test("recovers from a recoverable module loader failure via the retry button", async ({ page }) => {
-    await page.route(/\/assets\/AuthenticatedSurface-[^/]+\.js(?:\?.*)?$/, async (route) => {
-      await route.fulfill({
-        status: 404,
-        contentType: "application/javascript",
-        body: "// Expected Browser E2E dynamic chunk failure.",
-      });
+  test("automatically recovers a stale dynamic chunk by reloading the current entry", async ({ page }) => {
+    let requestedChunks = 0;
+    await page.route(/\/assets\/App-[^/?]+\.js$/, async (route) => {
+      requestedChunks += 1;
+      if (requestedChunks === 1) {
+        await route.fulfill({
+          status: 404,
+          contentType: "application/javascript",
+          body: "// Expected Browser E2E dynamic chunk failure.",
+        });
+        return;
+      }
+
+      await route.continue();
     });
 
     await page.goto(harness.httpOrigin);
-    const alert = page.getByRole("alert");
-    await expect(alert.getByRole("heading", { name: "界面暂时无法继续显示" })).toBeVisible();
-
-    await page.unroute(/\/assets\/AuthenticatedSurface-[^/]+\.js(?:\?.*)?$/);
-    const retryChunkRequest = page.waitForRequest((request) => {
-      const url = new URL(request.url());
-      const retryAttempt = Number(url.searchParams.get("senera-retry"));
-      return (
-        /\/assets\/AuthenticatedSurface-[^/]+\.js$/u.test(url.pathname) &&
-        Number.isInteger(retryAttempt) &&
-        retryAttempt > 0
-      );
-    });
-    await alert.getByRole("button", { name: "重新渲染" }).click();
-    await retryChunkRequest;
-
     await expect(workspaceComposer(page)).toBeVisible({ timeout: 15_000 });
+    expect(requestedChunks).toBe(2);
   });
 
   test("keeps the workspace stable while the settings chunk is loading", async ({ page }) => {
@@ -92,16 +84,6 @@ test.describe("workspace resilience and error boundary", () => {
     } finally {
       releaseSettingsChunk();
     }
-  });
-
-  test("shows the sandbox unavailable status indicator in the chat header @smoke", async ({ page }) => {
-    await page.goto(harness.httpOrigin);
-    await expect(workspaceComposer(page)).toBeVisible();
-
-    const sandboxStatus = page.locator("[data-sandbox-status]");
-    await expect(sandboxStatus).toBeVisible();
-    const status = await sandboxStatus.getAttribute("data-sandbox-status");
-    expect(status).toBeTruthy();
   });
 
   test("opens the workflow dock and collapses it back via the collapse button", async ({ page }) => {

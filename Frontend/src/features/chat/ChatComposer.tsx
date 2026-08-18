@@ -8,6 +8,7 @@ import {
   Paperclip,
   Plus,
   RotateCcw,
+  Settings2,
   Square,
   X,
 } from "lucide-react";
@@ -275,15 +276,6 @@ export function ChatComposer({
                 onDelete={presetConfig.onDeletePreset}
                 onSetActive={presetConfig.onSetActivePreset}
               />
-              <ModelSelector
-                disabled={disabled || running}
-                models={modelConfig.modelProviders}
-                selectedId={modelConfig.selectedModelProviderId}
-                defaultModelId={modelConfig.defaultModelProviderId}
-                onSelect={modelConfig.onSelectModelProvider}
-                onUseDefault={modelConfig.onApplyDefaultModel}
-                prefersCompactControls={prefersCompactControls}
-              />
               <Suspense fallback={<span className={cn("h-7 w-24 shrink-0", prefersCompactControls && "h-11 w-11")} />}>
                 <ApprovalModeControl
                   disabled={disabled || running || cancelling}
@@ -292,34 +284,80 @@ export function ChatComposer({
                   prefersCompactControls={prefersCompactControls}
                 />
               </Suspense>
-              <ContextUsageIndicator
-                usage={runtimeUsage?.contextUsage}
-                prefersCompactControls={prefersCompactControls}
-              />
             </div>
 
-            {cancelling ? (
-              <Tooltip content={frontendMessage("chat.composer.cancelling")} side="top">
-                <MotionButton
-                  disabled
-                  className={cn(
-                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-muted text-content-muted",
-                    prefersCompactControls && "min-h-11 min-w-11",
-                  )}
-                  aria-label="cancelling"
-                >
-                  <Spinner size="sm" />
-                </MotionButton>
-              </Tooltip>
-            ) : running && !settling ? (
-              <div className="flex shrink-0 items-center gap-1.5">
+            <div className="flex min-w-0 shrink-0 items-center gap-1" data-composer-trailing-controls>
+              <ContextUsageIndicator usage={runtimeUsage?.contextUsage} />
+              <ModelSelector
+                disabled={disabled || running}
+                models={modelConfig.modelProviders}
+                selectedId={modelConfig.selectedModelProviderId}
+                defaultModelId={modelConfig.defaultModelProviderId}
+                onSelect={modelConfig.onSelectModelProvider}
+                onUseDefault={modelConfig.onApplyDefaultModel}
+                onAddModel={modelConfig.onAddModel}
+                prefersCompactControls={prefersCompactControls}
+              />
+              {cancelling ? (
+                <Tooltip content={frontendMessage("chat.composer.cancelling")} side="top">
+                  <MotionButton
+                    disabled
+                    className={cn(
+                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-muted text-content-muted",
+                      prefersCompactControls && "min-h-11 min-w-11",
+                    )}
+                    aria-label="cancelling"
+                  >
+                    <Spinner size="sm" />
+                  </MotionButton>
+                </Tooltip>
+              ) : running && !settling ? (
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Tooltip
+                    content={frontendMessage("chat.composer.inject")}
+                    side="top"
+                    shortcut={prefersCompactControls ? undefined : "↵"}
+                  >
+                    <MotionButton
+                      onClick={() => submit("steer")}
+                      disabled={!canSend}
+                      className={cn(
+                        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
+                        prefersCompactControls && "min-h-11 min-w-11",
+                        canSend
+                          ? "border-content-strong bg-content-strong text-content-inverse shadow-panel hover:border-accent-solid hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
+                          : "border-line-subtle bg-surface-muted text-content-disabled",
+                      )}
+                      aria-label="inject-current-run"
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </MotionButton>
+                  </Tooltip>
+                  <Tooltip
+                    content={frontendMessage("chat.composer.cancelRunning")}
+                    side="top"
+                    shortcut={prefersCompactControls ? undefined : "Esc"}
+                  >
+                    <MotionButton
+                      onClick={onCancel}
+                      className={cn(
+                        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200",
+                        prefersCompactControls && "min-h-11 min-w-11",
+                      )}
+                      aria-label="cancel"
+                    >
+                      <Square className="h-3.5 w-3.5 fill-current" />
+                    </MotionButton>
+                  </Tooltip>
+                </div>
+              ) : (
                 <Tooltip
-                  content={frontendMessage("chat.composer.inject")}
+                  content={frontendMessage(settling ? "chat.composer.followUp" : "chat.composer.send")}
                   side="top"
                   shortcut={prefersCompactControls ? undefined : "↵"}
                 >
                   <MotionButton
-                    onClick={() => submit("steer")}
+                    onClick={() => submit(settling ? "follow_up" : undefined)}
                     disabled={!canSend}
                     className={cn(
                       "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
@@ -328,50 +366,13 @@ export function ChatComposer({
                         ? "border-content-strong bg-content-strong text-content-inverse shadow-panel hover:border-accent-solid hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
                         : "border-line-subtle bg-surface-muted text-content-disabled",
                     )}
-                    aria-label="inject-current-run"
+                    aria-label={settling ? "queue-follow-up" : "send"}
                   >
                     <ArrowUp className="h-4 w-4" />
                   </MotionButton>
                 </Tooltip>
-                <Tooltip
-                  content={frontendMessage("chat.composer.cancelRunning")}
-                  side="top"
-                  shortcut={prefersCompactControls ? undefined : "Esc"}
-                >
-                  <MotionButton
-                    onClick={onCancel}
-                    className={cn(
-                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200",
-                      prefersCompactControls && "min-h-11 min-w-11",
-                    )}
-                    aria-label="cancel"
-                  >
-                    <Square className="h-3.5 w-3.5 fill-current" />
-                  </MotionButton>
-                </Tooltip>
-              </div>
-            ) : (
-              <Tooltip
-                content={frontendMessage(settling ? "chat.composer.followUp" : "chat.composer.send")}
-                side="top"
-                shortcut={prefersCompactControls ? undefined : "↵"}
-              >
-                <MotionButton
-                  onClick={() => submit(settling ? "follow_up" : undefined)}
-                  disabled={!canSend}
-                  className={cn(
-                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
-                    prefersCompactControls && "min-h-11 min-w-11",
-                    canSend
-                      ? "border-content-strong bg-content-strong text-content-inverse shadow-panel hover:border-accent-solid hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
-                      : "border-line-subtle bg-surface-muted text-content-disabled",
-                  )}
-                  aria-label={settling ? "queue-follow-up" : "send"}
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </MotionButton>
-              </Tooltip>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </ConversationFrame>
@@ -379,29 +380,34 @@ export function ChatComposer({
   );
 }
 
-function ContextUsageIndicator({
-  usage,
-  prefersCompactControls,
-}: {
-  usage?: RuntimeContextUsage;
-  prefersCompactControls: boolean;
-}): JSX.Element {
+function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.Element {
   const hasTokens = usage?.tokens !== null && usage?.tokens !== undefined;
   const used = hasTokens ? Math.max(0, usage.tokens) : 0;
   const percent = usage
     ? Math.max(0, Math.min(100, usage.percent ?? (hasTokens ? (used / usage.contextWindow) * 100 : 0)))
     : 0;
-  const sizeClass = prefersCompactControls ? "h-7 w-7" : "h-5 w-5";
   const value = usage && hasTokens ? percent : 0;
+  const roundedPercent = Math.round(percent);
+  const remainingPercent = Math.max(0, 100 - roundedPercent);
 
   return (
     <Tooltip
       content={
-        <span className="grid gap-0.5 text-left">
-          <span className="font-medium">{frontendMessage("chat.composer.contextUsage")}</span>
-          <span className="font-mono tabular-nums">
+        <span className="grid gap-0.5 text-left leading-5">
+          <span className="font-medium">
             {usage && hasTokens
-              ? `${percent.toFixed(2)}% · ${formatComposerTokenCount(used)} / ${formatComposerTokenCount(usage.contextWindow)}`
+              ? frontendMessage("chat.composer.contextUsageSummary", {
+                  used: roundedPercent,
+                  remaining: remainingPercent,
+                })
+              : frontendMessage("chat.composer.contextUsage")}
+          </span>
+          <span className="tabular-nums text-ink-300">
+            {usage && hasTokens
+              ? frontendMessage("chat.composer.contextUsageTokens", {
+                  used: formatComposerTokenCount(used),
+                  total: formatComposerTokenCount(usage.contextWindow),
+                })
               : frontendMessage("chat.composer.contextUsagePending")}
           </span>
         </span>
@@ -417,12 +423,11 @@ function ContextUsageIndicator({
         aria-valuemax={100}
         aria-valuenow={value}
         aria-valuetext={
-          usage && hasTokens ? `${percent.toFixed(2)}%` : frontendMessage("chat.composer.contextUsagePending")
+          usage && hasTokens ? `${roundedPercent}%` : frontendMessage("chat.composer.contextUsagePending")
         }
         data-context-usage-indicator
         className={cn(
-          "inline-block shrink-0 rounded-full outline-none transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-accent-focus",
-          sizeClass,
+          "mx-0.5 inline-block h-4 w-4 shrink-0 rounded-full outline-none opacity-75 transition-[filter,opacity] hover:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-focus",
         )}
       >
         <CircularProgressbar
@@ -443,9 +448,13 @@ function ContextUsageIndicator({
 }
 
 function formatComposerTokenCount(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(2)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(2)}K`;
+  if (tokens >= 1_000_000) return `${trimCompactNumber(tokens / 1_000_000)}m`;
+  if (tokens >= 1_000) return `${trimCompactNumber(tokens / 1_000)}k`;
   return `${Math.round(tokens)}`;
+}
+
+function trimCompactNumber(value: number): string {
+  return (value >= 10 ? value.toFixed(0) : value.toFixed(1)).replace(/\.0$/u, "");
 }
 
 function hasActiveInteractionLayer(event: KeyboardEvent): boolean {
@@ -480,7 +489,6 @@ function AttachmentTray({
               <img
                 src={entry.previewUrl}
                 alt={entry.fileName}
-                title={entry.fileName}
                 className="h-full w-full object-contain"
                 onError={() => onPreviewUnavailable(entry.id)}
               />
@@ -491,15 +499,16 @@ function AttachmentTray({
                 </span>
               ) : null}
               {entry.status === "error" ? (
-                <button
-                  type="button"
-                  onClick={() => onRetry(entry.id)}
-                  title={entry.error ?? undefined}
-                  aria-label={frontendMessage("ui.retry")}
-                  className="absolute bottom-1 left-1 grid h-5 w-5 place-items-center rounded-full bg-brick-50 text-brick-600 transition hover:bg-brick-100"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                </button>
+                <Tooltip content={entry.error ?? frontendMessage("ui.retry")} side="top">
+                  <button
+                    type="button"
+                    onClick={() => onRetry(entry.id)}
+                    aria-label={frontendMessage("ui.retry")}
+                    className="absolute bottom-1 left-1 grid h-5 w-5 place-items-center rounded-full bg-brick-50 text-brick-600 transition hover:bg-brick-100"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                  </button>
+                </Tooltip>
               ) : null}
               <IconButton
                 label={frontendMessage("chat.attachment.remove")}
@@ -554,9 +563,9 @@ function AttachmentTray({
                 ) : null}
                 {entry.status === "error" ? (
                   <span className="flex min-w-0 items-center gap-1.5 text-[10px] text-brick-600">
-                    <span className="min-w-0 truncate" title={entry.error ?? undefined}>
-                      {entry.error ?? frontendMessage("upload.fileFailed")}
-                    </span>
+                    <Tooltip content={entry.error ?? frontendMessage("upload.fileFailed")} side="top">
+                      <span className="min-w-0 truncate">{entry.error ?? frontendMessage("upload.fileFailed")}</span>
+                    </Tooltip>
                     <button
                       type="button"
                       onClick={() => onRetry(entry.id)}
@@ -618,6 +627,7 @@ function ModelSelector({
   defaultModelId,
   onSelect,
   onUseDefault,
+  onAddModel,
   prefersCompactControls,
 }: {
   disabled: boolean;
@@ -626,61 +636,67 @@ function ModelSelector({
   defaultModelId?: string | null;
   onSelect: (id: string) => void;
   onUseDefault?: () => void;
+  onAddModel?: () => void;
   prefersCompactControls: boolean;
 }): JSX.Element {
   const chatModels = useMemo(() => readChatModelProviders(models), [models]);
   const selected = useMemo(() => readSelectedModelProvider(chatModels, selectedId) ?? null, [chatModels, selectedId]);
-  const label = readModelSelectorLabel(selected);
+  const label = selected ? readModelSelectorLabel(selected) : frontendMessage("chat.composer.selectModel");
   const defaultModel = useMemo(
     () => readSelectedModelProvider(chatModels, defaultModelId ?? null) ?? null,
     [chatModels, defaultModelId],
   );
   const usesDefault = Boolean(defaultModel && defaultModel.id === selected?.id);
+  const selectorDisabled = disabled || (chatModels.length === 0 && !onAddModel);
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild disabled={disabled || chatModels.length === 0}>
+      <DropdownMenuTrigger asChild disabled={selectorDisabled}>
         <MotionButton
           className={cn(
-            "inline-flex h-9 min-w-0 max-w-[180px] items-center gap-1.5 rounded-md px-2 text-[11px] sm:h-7 sm:max-w-[230px]",
-            prefersCompactControls && "min-h-11 min-w-11",
-            "text-content-secondary transition hover:bg-surface-hover hover:text-content-primary",
+            "group inline-flex h-8 min-w-0 max-w-[190px] items-center gap-1 rounded-md border-0 bg-transparent px-1.5 text-[11.5px] font-medium",
+            prefersCompactControls && "h-9 max-w-[122px] px-1",
+            "text-content-muted shadow-none transition-colors hover:bg-surface-hover hover:text-content-primary data-[state=open]:bg-surface-hover data-[state=open]:text-content-primary",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-            (disabled || chatModels.length === 0) && "pointer-events-none opacity-55",
+            selectorDisabled && "pointer-events-none opacity-55",
           )}
           aria-label={frontendMessage("chat.composer.selectModel")}
+          data-composer-model-selector
         >
-          <ModelProviderIcon className="shrink-0" icon={selected?.icon} size={14} />
           <span className="truncate">{label}</span>
-          <ChevronDown className="h-3 w-3 shrink-0 text-content-muted" />
+          <ChevronDown className="h-3 w-3 shrink-0 text-content-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
         </MotionButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side="top" className="w-[min(280px,calc(100vw-24px))]">
         <DropdownMenuLabel>{frontendMessage("chat.model.currentConversation")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuGroup className="max-h-[min(360px,calc(100dvh-200px))] overflow-y-auto pr-1 scrollbar-thin">
-          {chatModels.map((model) => {
-            const active = model.id === selected?.id;
-            return (
-              <DropdownMenuItem
-                key={model.id}
-                onSelect={() => onSelect(model.id)}
-                className="h-10 py-2"
-                icon={
-                  active ? (
-                    <Check className="h-3.5 w-3.5 text-accent-content" />
-                  ) : (
-                    <ModelProviderIcon icon={model.icon} size={14} />
-                  )
-                }
-              >
-                <span className="min-w-0 truncate text-[13px] text-content-primary">
-                  {readModelSelectorLabel(model)}
-                </span>
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuGroup>
+        {chatModels.length > 0 ? (
+          <DropdownMenuGroup className="max-h-[min(360px,calc(100dvh-200px))] overflow-y-auto pr-1 scrollbar-thin">
+            {chatModels.map((model) => {
+              const active = model.id === selected?.id;
+              return (
+                <DropdownMenuItem
+                  key={model.id}
+                  onSelect={() => onSelect(model.id)}
+                  className="h-10 py-2"
+                  icon={
+                    active ? (
+                      <Check className="h-3.5 w-3.5 text-accent-content" />
+                    ) : (
+                      <ModelProviderIcon icon={model.icon} size={14} />
+                    )
+                  }
+                >
+                  <span className="min-w-0 truncate text-[13px] text-content-primary">
+                    {readModelSelectorLabel(model)}
+                  </span>
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuGroup>
+        ) : (
+          <div className="px-2 py-3 text-[12px] text-content-muted">{frontendMessage("config.model.noConfigured")}</div>
+        )}
         {!usesDefault && defaultModel && onUseDefault ? (
           <>
             <DropdownMenuSeparator />
@@ -694,6 +710,20 @@ function ModelSelector({
             >
               <span className="min-w-0 truncate text-[13px] text-content-primary">
                 {frontendMessage("chat.model.useDefault")}
+              </span>
+            </DropdownMenuItem>
+          </>
+        ) : null}
+        {onAddModel ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={onAddModel}
+              className="h-10 bg-surface-muted py-2"
+              icon={<Settings2 className="h-3.5 w-3.5 text-content-secondary" />}
+            >
+              <span className="min-w-0 truncate text-[13px] text-content-primary">
+                {frontendMessage("config.model.addModel")}
               </span>
             </DropdownMenuItem>
           </>

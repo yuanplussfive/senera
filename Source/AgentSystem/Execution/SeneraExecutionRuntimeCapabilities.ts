@@ -44,7 +44,7 @@ export function createSeneraExecutionRuntimeCapabilities(
   } = {},
 ): SeneraExecutionRuntimeCapabilities {
   const platform = input.platform ?? process.platform;
-  const sandboxSelected = platform !== "win32" && input.sandboxEnabled === true;
+  const sandboxSelected = input.sandboxEnabled === true;
   const sandboxReady = sandboxSelected && input.sandboxReady === true && input.sandboxProvider !== undefined;
   const effectiveMode: SeneraExecutionEffectiveMode = sandboxSelected
     ? sandboxReady

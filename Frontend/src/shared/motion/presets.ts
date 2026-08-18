@@ -178,9 +178,9 @@ export function readDialogPanelVariants(level: MotionLevel, preset: DialogMotion
     };
   }
   return {
-    hidden: { opacity: 0, scale: 0.985 },
-    show: { opacity: 1, scale: 1 },
-    exit: { opacity: 0, scale: 0.99 },
+    hidden: { opacity: 0, y: 4 },
+    show: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: 2 },
   };
 }
 

@@ -1,12 +1,13 @@
-import { useRef, useState } from "react";
-import { Download, Maximize2, Scan, X, ZoomIn, ZoomOut } from "lucide-react";
+import { useState } from "react";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
 import type { UploadAttachmentData } from "../../api/eventTypes";
 import { buildUploadContentUrl } from "../../api/uploadClient";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { isImageFilePreview } from "../../lib/filePreview";
 import { cn, formatFileSize } from "../../lib/util";
-import { Dialog, DialogContent, IconButton } from "../../shared/ui";
+import { ImagePreviewDialog } from "../../shared/media/ImagePreviewDialog";
+import { IconButton } from "../../shared/ui";
 import { FilePreviewIcon } from "./FilePreviewIcon";
 import { useUploadPreviewRegistry } from "./UploadPreviewRegistry";
 
@@ -20,14 +21,6 @@ interface ImageAttachmentSource {
   canonicalSource: string;
   previewSource?: string;
 }
-
-const ImageViewerScale = {
-  min: 0.1,
-  max: 8,
-  step: 0.25,
-} as const;
-
-type ImageViewerScaleValue = "fit" | number;
 
 export function MessageAttachments({ attachments, uploadUrl }: MessageAttachmentsProps): JSX.Element {
   const [failedUploadUris, setFailedUploadUris] = useState<ReadonlySet<string>>(() => new Set());
@@ -110,7 +103,7 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
       ) : null}
 
       {selectedImage ? (
-        <ImagePreviewDialog
+        <AttachmentImagePreviewDialog
           key={selectedImage.attachment.uploadUri}
           image={selectedImage}
           onClose={() => setSelectedUploadUri(null)}
@@ -184,7 +177,7 @@ function AttachmentFileRow({
   );
 }
 
-function ImagePreviewDialog({
+function AttachmentImagePreviewDialog({
   image,
   onClose,
   onLoadError,
@@ -193,138 +186,43 @@ function ImagePreviewDialog({
   onClose: () => void;
   onLoadError: () => void;
 }): JSX.Element {
-  const [scale, setScale] = useState<ImageViewerScaleValue>("fit");
-  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
-  const controlClassName = "text-content-secondary hover:bg-surface-hover hover:text-content-primary";
   const source = image.previewSource ?? image.canonicalSource;
 
-  const changeScale = (delta: number): void => {
-    const currentScale = scale === "fit" ? readRenderedImageScale(imageRef.current) : scale;
-    setScale(Math.min(ImageViewerScale.max, Math.max(ImageViewerScale.min, currentScale + delta)));
-  };
-
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent
-        title={frontendMessage("chat.attachment.imagePreview", { name: image.attachment.name })}
-        showClose={false}
-        showHeader={false}
-        placement="inset"
-        motionPreset="focus"
-        frameClassName="inset-2 sm:inset-4"
-        className="h-full !max-h-none w-full max-w-none"
-        bodyClassName="flex min-h-0 flex-1 flex-col"
-        data-image-preview-dialog
-        aria-describedby={undefined}
-      >
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line-subtle px-2 sm:px-3">
-          <span
-            className="min-w-0 flex-1 truncate px-1 text-[12px] text-content-secondary"
-            title={image.attachment.name}
-          >
-            {image.attachment.name}
-          </span>
-          <div className="flex shrink-0 items-center gap-0.5">
-            <IconButton
-              label={frontendMessage("chat.attachment.zoomOut")}
-              tooltip={frontendMessage("chat.attachment.zoomOut")}
-              tooltipSide="bottom"
-              size="md"
-              className={controlClassName}
-              disabled={scale !== "fit" && scale <= ImageViewerScale.min}
-              onClick={() => changeScale(-ImageViewerScale.step)}
-            >
-              <ZoomOut className="h-4 w-4" />
-            </IconButton>
-            <IconButton
-              label={frontendMessage("chat.attachment.fitImage")}
-              tooltip={frontendMessage("chat.attachment.fitImage")}
-              tooltipSide="bottom"
-              size="md"
-              className={controlClassName}
-              onClick={() => setScale("fit")}
-            >
-              <Maximize2 className="h-4 w-4" />
-            </IconButton>
-            <IconButton
-              label={frontendMessage("chat.attachment.zoomIn")}
-              tooltip={frontendMessage("chat.attachment.zoomIn")}
-              tooltipSide="bottom"
-              size="md"
-              className={controlClassName}
-              disabled={scale !== "fit" && scale >= ImageViewerScale.max}
-              onClick={() => changeScale(ImageViewerScale.step)}
-            >
-              <ZoomIn className="h-4 w-4" />
-            </IconButton>
-            <IconButton
-              label={frontendMessage("chat.attachment.actualSize")}
-              tooltip={frontendMessage("chat.attachment.actualSize")}
-              tooltipSide="bottom"
-              size="md"
-              className={controlClassName}
-              disabled={scale === 1}
-              onClick={() => setScale(1)}
-            >
-              <Scan className="h-4 w-4" />
-            </IconButton>
-            <IconButton
-              label={frontendMessage("chat.attachment.downloadImage")}
-              tooltip={frontendMessage("chat.attachment.downloadImage")}
-              tooltipSide="bottom"
-              size="md"
-              className={controlClassName}
-              onClick={() => {
-                void downloadImage(image.canonicalSource, image.attachment.name).catch(() => {
-                  toast.error(frontendMessage("chat.attachment.downloadFailed"));
-                });
-              }}
-            >
-              <Download className="h-4 w-4" />
-            </IconButton>
-            <IconButton
-              label={frontendMessage("ui.close")}
-              tooltip={frontendMessage("ui.close")}
-              tooltipSide="bottom"
-              size="md"
-              className={controlClassName}
-              onClick={onClose}
-            >
-              <X className="h-4 w-4" />
-            </IconButton>
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-surface-muted p-3 sm:p-5">
-          <div className="grid min-h-full min-w-full place-items-center overflow-visible">
-            <img
-              ref={imageRef}
-              src={source}
-              alt={image.attachment.name}
-              className={cn(
-                "block shrink-0 object-contain",
-                scale === "fit" && "max-h-[calc(100dvh-6.5rem)] max-w-full",
-              )}
-              style={
-                scale !== "fit" && naturalSize
-                  ? { width: naturalSize.width * scale, height: naturalSize.height * scale, maxWidth: "none" }
-                  : undefined
-              }
-              onLoad={(event) => {
-                setNaturalSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight });
-              }}
-              onError={onLoadError}
-            />
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <ImagePreviewDialog
+      alt={image.attachment.name}
+      closeLabel={frontendMessage("ui.close")}
+      labels={{
+        actualSize: frontendMessage("chat.attachment.actualSize"),
+        fit: frontendMessage("chat.attachment.fitImage"),
+        zoomIn: frontendMessage("chat.attachment.zoomIn"),
+        zoomOut: frontendMessage("chat.attachment.zoomOut"),
+      }}
+      open
+      source={source}
+      title={frontendMessage("chat.attachment.imagePreview", { name: image.attachment.name })}
+      onError={onLoadError}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      headerActions={
+        <IconButton
+          label={frontendMessage("chat.attachment.downloadImage")}
+          tooltip={frontendMessage("chat.attachment.downloadImage")}
+          tooltipSide="bottom"
+          size="md"
+          className="text-content-secondary hover:bg-surface-hover hover:text-content-primary"
+          onClick={() => {
+            void downloadImage(image.canonicalSource, image.attachment.name).catch(() => {
+              toast.error(frontendMessage("chat.attachment.downloadFailed"));
+            });
+          }}
+        >
+          <Download className="h-4 w-4" />
+        </IconButton>
+      }
+    />
   );
-}
-
-function readRenderedImageScale(image: HTMLImageElement | null): number {
-  if (!image || image.naturalWidth <= 0) return 1;
-  return image.getBoundingClientRect().width / image.naturalWidth;
 }
 
 async function downloadImage(source: string, fileName: string): Promise<void> {

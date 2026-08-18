@@ -25,6 +25,7 @@ import { AgentWebSocketCloseCodes, AgentWebSocketCloseReasons } from "./AgentWeb
 import { errorMessage } from "../Core/AgentErrors.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentWorkspaceResourceHttpApi } from "../WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
+import { AgentProviderCredentialHttpApi } from "../Config/AgentProviderCredentialHttpApi.js";
 
 export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 
@@ -36,6 +37,7 @@ export class AgentWebSocketServer {
   private readonly eventSender: AgentWebSocketEventEnvelopeSender;
   private readonly httpRouter: AgentWebSocketHttpRouter;
   private readonly uploadApi: AgentUploadHttpApi;
+  private readonly providerCredentialApi: AgentProviderCredentialHttpApi;
   private readonly workspaceResourceApi: AgentWorkspaceResourceHttpApi;
   private readonly messageRouter: AgentWebSocketMessageRouter;
   private readonly accessGuard: AgentServerAccessGuard;
@@ -83,6 +85,10 @@ export class AgentWebSocketServer {
         });
       },
     });
+    this.providerCredentialApi = new AgentProviderCredentialHttpApi({
+      configSnapshot,
+      isOriginAllowed: (origin) => this.accessGuard.allowsOrigin(origin),
+    });
     this.workspaceResourceApi = new AgentWorkspaceResourceHttpApi({
       workspaceRoot: options.workspaceRoot ?? process.cwd(),
       maxTextBytes: this.serverConfig.RequestMaxBytes,
@@ -90,6 +96,7 @@ export class AgentWebSocketServer {
     });
     this.httpRouter = new AgentWebSocketHttpRouter({
       uploadApi: this.uploadApi,
+      providerCredentialApi: this.providerCredentialApi,
       workspaceResourceApi: this.workspaceResourceApi,
       staticFrontendApi: options.staticFrontendRoot
         ? new AgentStaticFrontendHttpApi({ rootDir: options.staticFrontendRoot })

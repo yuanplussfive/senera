@@ -18,10 +18,11 @@ export function JsonConfigFieldControl({
   return (
     <div
       className={cn(
-        "grid min-w-0 gap-3 border-t border-ink-200/65 px-4 py-3.5 first:border-t-0 md:grid-cols-[minmax(220px,1fr)_minmax(290px,420px)]",
+        "grid min-h-[64px] min-w-0 gap-3 px-4 py-3 sm:px-5 md:grid-cols-[minmax(220px,1fr)_minmax(260px,380px)]",
         field.type === "array" || field.type === "record" ? "md:items-start" : "md:items-center",
-        wide && "md:grid-cols-1 md:gap-3 md:px-4 md:py-4",
+        wide && "md:grid-cols-1 md:gap-3 md:px-5 md:py-4",
       )}
+      data-json-config-field={field.path.join(".")}
     >
       <div className={cn("min-w-0 pr-2", wide && "pr-0")}>
         <div className="flex min-w-0 items-baseline gap-2">
@@ -30,7 +31,7 @@ export function JsonConfigFieldControl({
           </div>
           <ConfigFieldRequirementLabel required={field.required} />
         </div>
-        {field.description ? <p className="mt-1 text-[12px] leading-5 text-ink-500">{field.description}</p> : null}
+        {field.description ? <p className="mt-0.5 text-[11.5px] leading-5 text-ink-500">{field.description}</p> : null}
       </div>
       <div className={cn("min-w-0 md:justify-self-end", wide && "md:w-full md:justify-self-stretch")}>
         {renderJsonConfigFieldInput(field, value ?? field.defaultValue, disabled, onChange)}

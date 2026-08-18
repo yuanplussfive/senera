@@ -106,7 +106,7 @@ test("settings form updates boolean, option, number, array, and record controls"
   render(React.createElement(ConfigHarness, { onChange }));
 
   await user.click(screen.getByRole("switch", { name: "Enabled" }));
-  await user.click(screen.getByRole("button", { name: "Safe" }));
+  await user.click(screen.getByRole("radio", { name: "Safe" }));
   const number = screen.getByRole("spinbutton");
   await user.clear(number);
   await user.type(number, "3");
@@ -114,6 +114,7 @@ test("settings form updates boolean, option, number, array, and record controls"
   await user.click(screen.getByRole("button", { name: "添加键值" }));
 
   expect(screen.getByRole("switch", { name: "Enabled" })).toHaveAttribute("aria-checked", "true");
+  expect(screen.getByRole("radio", { name: "Safe" })).toHaveAttribute("aria-checked", "true");
   expect(number).toHaveValue(3);
   const tagsSection = screen.getByText("Tags").closest("div.grid");
   expect(within(tagsSection).getAllByRole("textbox")).toHaveLength(2);
@@ -142,7 +143,7 @@ test("settings can hide section headings", () => {
 
 test("settings use declared essential visibility independently from required validation", async () => {
   const user = userEvent.setup();
-  render(
+  const { container } = render(
     React.createElement(JsonConfigSettingsView, {
       sections: [
         {
@@ -185,11 +186,12 @@ test("settings use declared essential visibility independently from required val
   expect(screen.getByText("Optional switch")).toBeVisible();
   expect(screen.queryByText("Optional value")).not.toBeInTheDocument();
   expect(screen.getAllByText("必填")).toHaveLength(1);
+  expect(container.querySelector('[data-json-config-section="scope"]')).toHaveClass("rounded-lg", "border");
 
   await user.click(screen.getByRole("button", { name: /全部/ }));
 
   expect(screen.getByText("Optional value")).toBeVisible();
-  expect(screen.getAllByText("可选")).not.toHaveLength(0);
+  expect(screen.queryByText("可选")).not.toBeInTheDocument();
 });
 
 test("disabled settings form blocks every mutable control", () => {

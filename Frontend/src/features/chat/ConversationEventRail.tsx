@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 
-export type ConversationEventKind =
-  "user_request" | "assistant_tool_preface" | "assistant_final" | "assistant_ask" | "assistant_error";
+export type ConversationEventKind = "user_request" | "assistant_final" | "assistant_ask" | "assistant_error";
 
 export interface ConversationEventSourceItem {
   key: string;
@@ -36,23 +36,19 @@ interface ConversationEventRailProps {
   defaultItemHeight: number;
   activeEventIndex: number;
   scroller: HTMLElement | null;
-  reducedMotion: boolean;
   onActiveEventChange: (index: number) => void;
   onNavigate: (event: ConversationEventLandmark) => void;
-  onManualScrollStart: () => void;
-  onManualScrollEnd: () => void;
 }
 
 const EVENT_LABEL_KEYS = {
   user_request: "chat.eventRail.kind.userRequest",
-  assistant_tool_preface: "chat.eventRail.kind.toolPreface",
   assistant_final: "chat.eventRail.kind.finalAnswer",
   assistant_ask: "chat.eventRail.kind.askUser",
   assistant_error: "chat.eventRail.kind.error",
 } as const satisfies Record<ConversationEventKind, FrontendMessageKey>;
 
 const PREVIEW_MAX_CHARACTERS = 180;
-const POINTER_CLICK_TOLERANCE_PX = 4;
+const EVENT_WINDOW_SIZE = 23;
 
 export function ConversationEventRail({
   events,
@@ -61,24 +57,12 @@ export function ConversationEventRail({
   defaultItemHeight,
   activeEventIndex,
   scroller,
-  reducedMotion,
   onActiveEventChange,
   onNavigate,
-  onManualScrollStart,
-  onManualScrollEnd,
 }: ConversationEventRailProps): JSX.Element | null {
-  const railRef = useRef<HTMLDivElement>(null);
   const previewId = useId();
-  const pointerStateRef = useRef<{
-    pointerId: number;
-    startY: number;
-    moved: boolean;
-    eventIndex: number;
-  } | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
-  const [scrollProgress, setScrollProgress] = useState(1);
   const [hoveredEventIndex, setHoveredEventIndex] = useState<number | null>(null);
-  const [hoverY, setHoverY] = useState(0);
   const [scrollable, setScrollable] = useState(false);
 
   const markers = useMemo(
@@ -90,7 +74,6 @@ export function ConversationEventRail({
     if (!scroller) return;
     const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
     setScrollable(maxScrollTop > 1);
-    setScrollProgress(maxScrollTop > 0 ? Math.min(1, Math.max(0, scroller.scrollTop / maxScrollTop)) : 0);
     const readingPosition = Math.min(
       1,
       Math.max(0, (scroller.scrollTop + scroller.clientHeight * 0.28) / Math.max(1, scroller.scrollHeight)),
@@ -127,34 +110,7 @@ export function ConversationEventRail({
 
   if (events.length === 0) return null;
 
-  const hoveredEvent = hoveredEventIndex === null ? undefined : markers[hoveredEventIndex];
-  const currentEvent = markers[Math.min(activeEventIndex, markers.length - 1)];
-
-  const updateHover = (clientY: number): number | null => {
-    const point = readRailPoint(railRef.current, clientY);
-    if (!point) return null;
-    const eventIndex = findNearestMarkerIndex(markers, point.ratio);
-    setHoverY(point.y);
-    setHoveredEventIndex(eventIndex);
-    return eventIndex;
-  };
-
-  const scrollFromPointer = (clientY: number): void => {
-    if (!scroller) return;
-    const point = readRailPoint(railRef.current, clientY);
-    if (!point) return;
-    const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-    scroller.scrollTo({ top: maxScrollTop * point.ratio, behavior: "auto" });
-  };
-
-  const endPointerInteraction = (event: PointerEvent<HTMLDivElement>): void => {
-    const pointerState = pointerStateRef.current;
-    if (!pointerState || pointerState.pointerId !== event.pointerId) return;
-    pointerStateRef.current = null;
-    if (railRef.current?.hasPointerCapture(event.pointerId)) railRef.current.releasePointerCapture(event.pointerId);
-    onManualScrollEnd();
-    if (!pointerState.moved) navigateToEvent(pointerState.eventIndex);
-  };
+  const visibleEvents = projectConversationEventWindow(events, activeEventIndex, EVENT_WINDOW_SIZE);
 
   const navigateToEvent = (eventIndex: number): void => {
     const event = events[eventIndex];
@@ -163,10 +119,10 @@ export function ConversationEventRail({
     onNavigate(event);
   };
 
-  const navigateByKeyboard = (event: KeyboardEvent<HTMLDivElement>): void => {
+  const navigateByKeyboard = (event: KeyboardEvent<HTMLElement>): void => {
     let nextIndex = activeEventIndex;
-    if (event.key === "ArrowUp" || event.key === "PageUp") nextIndex -= 1;
-    else if (event.key === "ArrowDown" || event.key === "PageDown") nextIndex += 1;
+    if (event.key === "ArrowUp" || event.key === "PageUp" || event.key.toLowerCase() === "k") nextIndex -= 1;
+    else if (event.key === "ArrowDown" || event.key === "PageDown" || event.key.toLowerCase() === "j") nextIndex += 1;
     else if (event.key === "Home") nextIndex = 0;
     else if (event.key === "End") nextIndex = markers.length - 1;
     else return;
@@ -179,128 +135,91 @@ export function ConversationEventRail({
       className={cn("chat-event-rail", !scrollable && events.length < 2 && "chat-event-rail--idle")}
       aria-label={frontendMessage("chat.eventRail.ariaLabel")}
       data-chat-event-rail
+      onKeyDown={navigateByKeyboard}
     >
-      <div
-        ref={railRef}
-        className="chat-event-rail__track"
-        role="scrollbar"
-        tabIndex={0}
-        aria-orientation="vertical"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(scrollProgress * 100)}
-        aria-valuetext={
-          currentEvent
-            ? frontendMessage("chat.eventRail.current", {
-                current: activeEventIndex + 1,
-                total: markers.length,
-                label: readConversationEventLabel(currentEvent.kind),
-              })
-            : undefined
-        }
-        onKeyDown={navigateByKeyboard}
-        onPointerEnter={(event) => updateHover(event.clientY)}
-        onPointerLeave={() => {
-          if (!pointerStateRef.current) setHoveredEventIndex(null);
-        }}
-        onPointerDown={(event) => {
-          if (event.button !== 0 || !scroller) return;
-          event.currentTarget.setPointerCapture(event.pointerId);
-          const eventIndex = updateHover(event.clientY) ?? activeEventIndex;
-          pointerStateRef.current = {
-            pointerId: event.pointerId,
-            startY: event.clientY,
-            moved: false,
-            eventIndex,
-          };
-          onManualScrollStart();
-          scrollFromPointer(event.clientY);
-        }}
-        onPointerMove={(event) => {
-          const eventIndex = updateHover(event.clientY);
-          const pointerState = pointerStateRef.current;
-          if (!pointerState || pointerState.pointerId !== event.pointerId) return;
-          if (Math.abs(event.clientY - pointerState.startY) >= POINTER_CLICK_TOLERANCE_PX) pointerState.moved = true;
-          if (eventIndex !== null) pointerState.eventIndex = eventIndex;
-          scrollFromPointer(event.clientY);
-        }}
-        onPointerUp={endPointerInteraction}
-        onPointerCancel={endPointerInteraction}
+      <button
+        type="button"
+        className="chat-event-rail__step chat-event-rail__step--previous"
+        aria-label={frontendMessage("chat.eventRail.previous")}
+        disabled={activeEventIndex <= 0}
+        onClick={() => navigateToEvent(activeEventIndex - 1)}
       >
-        <span className="chat-event-rail__ruler" aria-hidden="true" />
-        <span
-          className="chat-event-rail__thumb"
-          style={{ top: `${scrollProgress * 100}%` }}
-          data-reduced-motion={reducedMotion ? "true" : "false"}
-          aria-hidden="true"
-        />
+        <ChevronUp aria-hidden="true" />
+      </button>
+
+      <div className="chat-event-rail__events" data-chat-event-window>
+        {visibleEvents.map(({ event, index }) => (
+          <button
+            key={event.id}
+            type="button"
+            className="chat-event-rail__event"
+            data-kind={event.kind}
+            data-active={index === activeEventIndex ? "true" : "false"}
+            data-hovered={index === hoveredEventIndex ? "true" : "false"}
+            aria-current={index === activeEventIndex ? "location" : undefined}
+            aria-describedby={index === hoveredEventIndex ? previewId : undefined}
+            aria-label={frontendMessage("chat.eventRail.jump", {
+              index: index + 1,
+              label: readConversationEventLabel(event.kind),
+            })}
+            onPointerEnter={() => setHoveredEventIndex(index)}
+            onPointerLeave={() => setHoveredEventIndex(null)}
+            onFocus={() => setHoveredEventIndex(index)}
+            onBlur={() => setHoveredEventIndex(null)}
+            onClick={() => navigateToEvent(index)}
+          >
+            <span className="chat-event-rail__tick" aria-hidden="true" />
+            {index === hoveredEventIndex ? (
+              <span id={previewId} className="chat-event-rail__preview" role="tooltip" data-chat-event-preview>
+                <span className="chat-event-rail__preview-meta">{readConversationEventSpeaker(event.kind)}</span>
+                {event.content ? <span className="chat-event-rail__preview-body">{event.content}</span> : null}
+              </span>
+            ) : null}
+          </button>
+        ))}
       </div>
 
-      {markers.map((event, index) => (
-        <button
-          key={event.id}
-          type="button"
-          className="chat-event-rail__event"
-          style={{ top: `${event.position * 100}%` }}
-          data-kind={event.kind}
-          data-active={index === activeEventIndex ? "true" : "false"}
-          data-hovered={index === hoveredEventIndex ? "true" : "false"}
-          aria-current={index === activeEventIndex ? "location" : undefined}
-          aria-describedby={index === hoveredEventIndex ? previewId : undefined}
-          aria-label={frontendMessage("chat.eventRail.jump", {
-            index: index + 1,
-            label: readConversationEventLabel(event.kind),
-          })}
-          onPointerEnter={() => {
-            setHoveredEventIndex(index);
-            setHoverY(event.position * (railRef.current?.clientHeight ?? 0));
-          }}
-          onPointerLeave={() => setHoveredEventIndex(null)}
-          onFocus={() => {
-            setHoveredEventIndex(index);
-            setHoverY(event.position * (railRef.current?.clientHeight ?? 0));
-          }}
-          onBlur={() => setHoveredEventIndex(null)}
-          onClick={() => navigateToEvent(index)}
-        />
-      ))}
-
-      {hoveredEvent ? (
-        <div
-          id={previewId}
-          className="chat-event-rail__preview"
-          style={{ top: `clamp(68px, ${hoverY}px, calc(100% - 68px))` }}
-          role="tooltip"
-          data-chat-event-preview
-        >
-          <div className="chat-event-rail__preview-meta">
-            {frontendMessage("chat.eventRail.event", {
-              index: hoveredEventIndex! + 1,
-              total: markers.length,
-            })}
-          </div>
-          <div className="chat-event-rail__preview-title">{readConversationEventLabel(hoveredEvent.kind)}</div>
-          {hoveredEvent.content ? <div className="chat-event-rail__preview-body">{hoveredEvent.content}</div> : null}
-        </div>
-      ) : null}
+      <button
+        type="button"
+        className="chat-event-rail__step chat-event-rail__step--next"
+        aria-label={frontendMessage("chat.eventRail.next")}
+        disabled={activeEventIndex >= events.length - 1}
+        onClick={() => navigateToEvent(activeEventIndex + 1)}
+      >
+        <ChevronDown aria-hidden="true" />
+      </button>
+      <span className="sr-only">
+        {frontendMessage("chat.eventRail.current", {
+          current: activeEventIndex + 1,
+          total: events.length,
+          label: readConversationEventLabel(events[Math.min(activeEventIndex, events.length - 1)]!.kind),
+        })}
+      </span>
     </nav>
   );
 }
 
+export function projectConversationEventWindow<T>(
+  events: readonly T[],
+  activeEventIndex: number,
+  windowSize = EVENT_WINDOW_SIZE,
+): Array<{ event: T; index: number }> {
+  if (events.length === 0 || windowSize <= 0) return [];
+  const visibleCount = Math.min(events.length, Math.max(1, Math.floor(windowSize)));
+  const safeActiveIndex = Math.min(events.length - 1, Math.max(0, activeEventIndex));
+  const preferredStart = safeActiveIndex - Math.floor(visibleCount / 2);
+  const start = Math.min(events.length - visibleCount, Math.max(0, preferredStart));
+  return events.slice(start, start + visibleCount).map((event, offset) => ({
+    event,
+    index: start + offset,
+  }));
+}
+
 export function projectConversationEvents(items: readonly ConversationEventSourceItem[]): ConversationEventLandmark[] {
   const events: ConversationEventLandmark[] = [];
-  const toolPrefaceScopes = new Set<string>();
-  let fallbackRequestScope = "conversation-start";
 
   items.forEach((item, sourceIndex) => {
-    if (item.eventKind === "user_request") fallbackRequestScope = `user:${item.key}`;
     if (item.eventKind === null) return;
-
-    if (item.eventKind === "assistant_tool_preface") {
-      const scope = item.requestId ? `request:${item.requestId}` : fallbackRequestScope;
-      if (toolPrefaceScopes.has(scope)) return;
-      toolPrefaceScopes.add(scope);
-    }
 
     events.push({
       id: `event:${item.key}:${item.eventKind}`,
@@ -365,27 +284,20 @@ function readConversationEventLabel(kind: ConversationEventKind): string {
   return frontendMessage(EVENT_LABEL_KEYS[kind]);
 }
 
-function readRailPoint(element: HTMLElement | null, clientY: number): { y: number; ratio: number } | undefined {
-  if (!element) return undefined;
-  const rect = element.getBoundingClientRect();
-  const y = Math.min(rect.height, Math.max(0, clientY - rect.top));
-  return { y, ratio: rect.height > 0 ? y / rect.height : 0 };
-}
-
-function findNearestMarkerIndex(markers: readonly ConversationEventMarker[], ratio: number): number {
-  let nearestIndex = 0;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-  markers.forEach((marker, index) => {
-    const distance = Math.abs(marker.position - ratio);
-    if (distance >= nearestDistance) return;
-    nearestDistance = distance;
-    nearestIndex = index;
-  });
-  return nearestIndex;
+function readConversationEventSpeaker(kind: ConversationEventKind): string {
+  return frontendMessage(kind === "user_request" ? "chat.eventRail.speaker.user" : "chat.eventRail.speaker.assistant");
 }
 
 function compactPreview(value: string): string {
-  const compact = value.replace(/\s+/g, " ").trim();
+  const compact = value
+    .replace(/^```[^\n]*$/gmu, "")
+    .replace(/^\s*(?:#{1,6}|>|[-*+])\s+/gmu, "")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/gu, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/gu, "$1")
+    .replace(/`([^`]+)`/gu, "$1")
+    .replace(/[*_~]+/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
   if (compact.length <= PREVIEW_MAX_CHARACTERS) return compact;
   return `${compact.slice(0, PREVIEW_MAX_CHARACTERS - 1)}…`;
 }

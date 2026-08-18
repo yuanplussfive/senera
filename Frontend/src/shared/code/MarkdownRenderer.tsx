@@ -2,10 +2,10 @@ import {
   Children,
   isValidElement,
   lazy,
+  memo,
   Suspense,
   useState,
   type AnchorHTMLAttributes,
-  type CSSProperties,
   type ComponentPropsWithoutRef,
   type ImgHTMLAttributes,
   type MouseEvent,
@@ -19,9 +19,11 @@ import remarkGfm from "remark-gfm";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { MotionIconSwap } from "../motion";
+import { ImagePreviewDialog } from "../media/ImagePreviewDialog";
 import { Spinner, Tooltip, useClipboardCopy } from "../ui";
 import { CollapsibleCodeBlock } from "./CollapsibleCodeBlock";
 import { type CodeArtifact, readCodeArtifact } from "./CodeArtifactModel";
+import { MarkdownCitationLink } from "./MarkdownCitationLink";
 import { parseWorkspaceResourceLocator } from "../workspace/WorkspaceResourceLocator";
 import { WorkspaceMarkdownImage } from "../workspace/WorkspaceMarkdownImage";
 import { useWorkspaceResourceController } from "../workspace/WorkspaceResourceProvider";
@@ -40,19 +42,22 @@ export interface MarkdownRendererProps {
   contentClassName?: string;
   compact?: boolean;
   lightweightCode?: boolean;
+  externalLinkPresentation?: "text" | "citation";
 }
 
 interface AnchorProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
   href?: string;
   node?: unknown;
+  externalLinkPresentation?: "text" | "citation";
 }
 
-export function MarkdownRenderer({
+export const MarkdownRenderer = memo(function MarkdownRenderer({
   children,
   className,
   contentClassName,
   compact = false,
   lightweightCode = false,
+  externalLinkPresentation = "text",
 }: MarkdownRendererProps): JSX.Element {
   const rendererClassName = cn("markdown-renderer", compact && "markdown-renderer--compact", contentClassName);
 
@@ -63,7 +68,7 @@ export function MarkdownRenderer({
         remarkPlugins={[remarkGfm]}
         urlTransform={transformMarkdownUrl}
         components={{
-          a: MarkdownLink,
+          a: (props) => <MarkdownLink {...props} externalLinkPresentation={externalLinkPresentation} />,
           img: MarkdownImage,
           pre: lightweightCode ? LightweightCodeBlock : CodeBlock,
           table: MarkdownTable,
@@ -73,7 +78,7 @@ export function MarkdownRenderer({
       </Markdown>
     </div>
   );
-}
+});
 
 function LightweightCodeBlock({ children, className, ...props }: ComponentPropsWithoutRef<"pre">): JSX.Element {
   const code = findChildByTag(children, "code");
@@ -92,7 +97,15 @@ function LightweightCodeBlock({ children, className, ...props }: ComponentPropsW
   );
 }
 
-function MarkdownLink({ href, children, className, node: _node, ...props }: AnchorProps): JSX.Element {
+function MarkdownLink({
+  href,
+  children,
+  className,
+  node: _node,
+  title: sourceTitle,
+  externalLinkPresentation = "text",
+  ...props
+}: AnchorProps): JSX.Element {
   const external = typeof href === "string" && /^https?:\/\//i.test(href);
   const resource = parseWorkspaceResourceLocator(href);
   const resourceController = useWorkspaceResourceController();
@@ -108,12 +121,21 @@ function MarkdownLink({ href, children, className, node: _node, ...props }: Anch
         {...props}
         href={href}
         className={cn("markdown-renderer__link markdown-renderer__link--resource", className)}
+        data-link-kind="workspace"
         data-workspace-resource={resource.path}
         onClick={openResource}
         onAuxClick={openResource}
       >
-        <span>{children}</span>
+        {children}
       </a>
+    );
+  }
+
+  if (external && externalLinkPresentation === "citation") {
+    return (
+      <MarkdownCitationLink {...props} href={href} className={className} title={sourceTitle}>
+        {children}
+      </MarkdownCitationLink>
     );
   }
 
@@ -122,11 +144,12 @@ function MarkdownLink({ href, children, className, node: _node, ...props }: Anch
       {...props}
       href={href}
       className={cn("markdown-renderer__link", className)}
+      data-link-kind={external ? "external" : "internal"}
       target={external ? "_blank" : props.target}
       rel={external ? "noreferrer noopener" : props.rel}
     >
-      <span>{children}</span>
-      {external ? <ExternalLink className="h-3.5 w-3.5 shrink-0" /> : null}
+      {children}
+      {external ? <ExternalLink className="markdown-renderer__link-icon" aria-hidden="true" /> : null}
     </a>
   );
 }
@@ -138,11 +161,57 @@ function MarkdownImage({
   node: _node,
   ...props
 }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }): JSX.Element {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const resource = parseWorkspaceResourceLocator(src);
   if (resource) {
-    return <WorkspaceMarkdownImage {...props} locator={resource} alt={alt} className={className} />;
+    return (
+      <WorkspaceMarkdownImage
+        {...props}
+        locator={resource}
+        alt={alt}
+        className={cn("markdown-renderer__workspace-image", className)}
+      />
+    );
   }
-  return <img {...props} src={src} alt={alt ?? ""} className={cn("max-w-full", className)} loading="lazy" />;
+
+  const source = typeof src === "string" ? src : "";
+  const imageLabel = alt?.trim() || frontendMessage("markdown.imagePreview");
+
+  return (
+    <>
+      <button
+        type="button"
+        className="markdown-renderer__image-trigger"
+        aria-label={frontendMessage("chat.attachment.imagePreview", { name: imageLabel })}
+        onClick={() => setPreviewOpen(true)}
+      >
+        <img
+          {...props}
+          src={src}
+          alt={alt ?? ""}
+          className={cn("markdown-renderer__image", className)}
+          loading="lazy"
+          decoding="async"
+        />
+      </button>
+      {previewOpen && source ? (
+        <ImagePreviewDialog
+          alt={imageLabel}
+          closeLabel={frontendMessage("ui.close")}
+          labels={{
+            actualSize: frontendMessage("chat.attachment.actualSize"),
+            fit: frontendMessage("chat.attachment.fitImage"),
+            zoomIn: frontendMessage("chat.attachment.zoomIn"),
+            zoomOut: frontendMessage("chat.attachment.zoomOut"),
+          }}
+          open={previewOpen}
+          source={source}
+          title={frontendMessage("chat.attachment.imagePreview", { name: imageLabel })}
+          onOpenChange={setPreviewOpen}
+        />
+      ) : null}
+    </>
+  );
 }
 
 function transformMarkdownUrl(value: string): string {
@@ -195,7 +264,6 @@ function PreviewCodeBlock({
       <figcaption className="markdown-renderer__code-header">
         <CodeBlockHeader
           language={artifact.language}
-          lineCount={artifact.lineCount}
           copied={copied}
           onOpenViewer={() => openArtifactViewer(artifact.preview ? "preview" : "source")}
           onCopy={onCopy}
@@ -233,18 +301,15 @@ function CodeArtifactViewerLoading(): JSX.Element {
 
 function CodeBlockHeader({
   language,
-  lineCount,
   copied,
   onOpenViewer,
   onCopy,
 }: {
   language: string;
-  lineCount: number;
   copied: boolean;
   onOpenViewer?: () => void;
   onCopy: () => void;
 }): JSX.Element {
-  const countLabel = `${lineCount} lines`;
   const stopButtonEvent = (event: MouseEvent<HTMLButtonElement>): void => {
     event.stopPropagation();
   };
@@ -253,13 +318,6 @@ function CodeBlockHeader({
     <div className="markdown-renderer__code-toolbar">
       <span className="markdown-renderer__code-language">{language}</span>
       <div className="markdown-renderer__code-actions">
-        <span
-          className="markdown-renderer__code-lines"
-          aria-label="line-count"
-          style={{ "--code-lines-width": `${countLabel.length}ch` } as CSSProperties}
-        >
-          {countLabel}
-        </span>
         {onOpenViewer ? (
           <Tooltip content={frontendMessage("code.viewSource")} side="top">
             <button

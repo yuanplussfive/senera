@@ -55,6 +55,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
       return (
         <DefaultErrorFallback
+          error={this.state.error}
           onReset={this.resetErrorBoundary}
           presentation={this.props.presentation ?? "component"}
           onReload={this.props.reload}
@@ -67,13 +68,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 }
 
 interface DefaultErrorFallbackProps {
+  error: Error;
   onReset: () => void;
   onReload?: () => void;
   presentation: "component" | "app";
 }
 
-function DefaultErrorFallback({ onReset, onReload, presentation }: DefaultErrorFallbackProps): JSX.Element {
+function DefaultErrorFallback({ error, onReset, onReload, presentation }: DefaultErrorFallbackProps): JSX.Element {
   const appPresentation = presentation === "app";
+  const requiresPageReload = appPresentation && isDynamicModuleLoadError(error);
   const titleId = useId();
   const Container = appPresentation ? "main" : "section";
   const Heading = appPresentation ? "h1" : "h2";
@@ -101,13 +104,21 @@ function DefaultErrorFallback({ onReset, onReload, presentation }: DefaultErrorF
               {frontendMessage("app.errorBoundary.title")}
             </Heading>
             <p className="mt-1.5 max-w-[64ch] text-[13px] leading-5 text-ink-600">
-              {frontendMessage("app.errorBoundary.description")}
+              {frontendMessage(
+                requiresPageReload ? "app.errorBoundary.dynamicImportDescription" : "app.errorBoundary.description",
+              )}
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-2">
-              <Button onClick={onReset} size="sm">
-                {frontendMessage("app.errorBoundary.retry")}
-              </Button>
-              {appPresentation ? (
+              {requiresPageReload ? (
+                <Button onClick={onReload ?? (() => globalThis.location?.reload())} size="sm">
+                  {frontendMessage("app.errorBoundary.reload")}
+                </Button>
+              ) : (
+                <Button onClick={onReset} size="sm">
+                  {frontendMessage("app.errorBoundary.retry")}
+                </Button>
+              )}
+              {appPresentation && !requiresPageReload ? (
                 <Button onClick={onReload ?? (() => globalThis.location?.reload())} size="sm" variant="ghost">
                   {frontendMessage("app.errorBoundary.reload")}
                 </Button>
@@ -118,4 +129,8 @@ function DefaultErrorFallback({ onReset, onReload, presentation }: DefaultErrorF
       </div>
     </Container>
   );
+}
+
+function isDynamicModuleLoadError(error: Error): boolean {
+  return /failed to fetch dynamically imported module|importing a module script failed/i.test(error.message);
 }

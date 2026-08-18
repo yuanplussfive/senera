@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG NODE_IMAGE=docker.io/library/node:22-trixie-slim@sha256:e6d9a389d34ff9678438af985c9913fbd1eb6ed36e80fea56644f4b4f6dd70ba
+ARG NODE_IMAGE=docker.io/library/node:24-trixie-slim@sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b24a47daa5fb60e74d
 
 FROM ${NODE_IMAGE} AS builder
 
@@ -32,9 +32,10 @@ WORKDIR /app
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
   apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates util-linux
+  && apt-get install -y --no-install-recommends ca-certificates chromium fonts-liberation util-linux
 
 ENV NODE_ENV=production
+ENV SENERA_CONTAINER=1
 ENV SENERA_WORKSPACE_ROOT=/data
 ENV AGENT_CONFIG_PATH=/data/senera.config.json
 ENV SENERA_SERVER_HOST=0.0.0.0

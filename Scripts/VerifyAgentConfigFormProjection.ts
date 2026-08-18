@@ -79,6 +79,19 @@ assert.equal((models.effectiveValue as Array<{ Capabilities?: { Chat?: boolean }
 
 assert.equal(findOptionalField(form, ["AgentLoop", "LoadedTools"]), undefined);
 
+assert.equal(
+  findField(form, ["ActionPlanner", "Enabled"]).description,
+  "在复杂任务中先生成结构化行动计划，并根据执行证据修正后续步骤。",
+);
+assert.equal(
+  findField(form, ["ToolLearning", "Enabled"]).description,
+  "从成功的工具调用中归纳可复用模式，改进后续工具选择与参数。",
+);
+assert.equal(
+  findField(form, ["MemoryLearning", "Enabled"]).description,
+  "从对话中提取可持久化事实，形成可供后续任务检索的长期记忆。",
+);
+
 const plannerModel = findField(form, ["ActionPlanner", "Client", "ModelProviderId"]);
 assert.equal(plannerModel.type, "string");
 assert.equal(plannerModel.valueSource, "missing");

@@ -7,6 +7,7 @@ import type { AgentStaticFrontendHttpApi } from "../../../Source/AgentSystem/Web
 import { AgentWebSocketHttpRouter } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketHttpRouter.js";
 import type { AgentHealthHttpApi } from "../../../Source/AgentSystem/WebSocket/AgentHealthHttpApi.js";
 import type { AgentWorkspaceResourceHttpApi } from "../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
+import type { AgentProviderCredentialHttpApi } from "../../../Source/AgentSystem/Config/AgentProviderCredentialHttpApi.js";
 
 describe("WebSocket HTTP router", () => {
   test("routes authentication before generic access control", async () => {
@@ -89,6 +90,15 @@ describe("WebSocket HTTP router", () => {
     expect(writeFixture.workspaceResource.handle).toHaveBeenCalledTimes(1);
   });
 
+  test("authorizes provider credential reads without CSRF", async () => {
+    const fixture = createRouterFixture({ providerCredential: true });
+
+    await fixture.router.handle(request("GET", "/api/provider-credentials?providerId=openai"), fixture.response.value);
+
+    expect(fixture.authorizeHttp).toHaveBeenCalledWith(expect.anything(), { requireCsrf: false });
+    expect(fixture.providerCredential.handle).toHaveBeenCalledTimes(1);
+  });
+
   test("serves static frontend routes without invoking API authorization", async () => {
     const fixture = createRouterFixture({ staticFrontend: true });
 
@@ -121,6 +131,7 @@ function createRouterFixture(
     upload?: boolean;
     staticFrontend?: boolean;
     workspaceResource?: boolean;
+    providerCredential?: boolean;
     accessResult?: unknown;
   } = {},
 ) {
@@ -129,6 +140,7 @@ function createRouterFixture(
   const upload = createApi(options.upload ?? false);
   const staticFrontend = createApi(options.staticFrontend ?? false);
   const workspaceResource = createApi(options.workspaceResource ?? false);
+  const providerCredential = createApi(options.providerCredential ?? false);
   const authorizeHttp = vi.fn(() => options.accessResult ?? { ok: true });
   const response = createResponse();
   return {
@@ -137,12 +149,14 @@ function createRouterFixture(
     upload,
     staticFrontend,
     workspaceResource,
+    providerCredential,
     authorizeHttp,
     response,
     router: new AgentWebSocketHttpRouter({
       authenticationApi: authentication as unknown as AgentAuthenticationHttpApi,
       healthApi: health as unknown as AgentHealthHttpApi,
       uploadApi: upload as unknown as AgentUploadHttpApi,
+      providerCredentialApi: providerCredential as unknown as AgentProviderCredentialHttpApi,
       workspaceResourceApi: workspaceResource as unknown as AgentWorkspaceResourceHttpApi,
       staticFrontendApi: staticFrontend as unknown as AgentStaticFrontendHttpApi,
       accessGuard: { authorizeHttp } as unknown as AgentServerAccessGuard,

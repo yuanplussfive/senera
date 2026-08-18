@@ -1,38 +1,27 @@
 import { memo } from "react";
 import { Handle, type Node, type NodeProps } from "@xyflow/react";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  Check,
-  Globe,
-  AlertTriangle,
-  RotateCcw,
-  Braces,
-  MessageSquareText,
-  Cpu,
-  FileCode2,
-  GitBranch,
-  LoaderCircle,
-  X,
-} from "lucide-react";
 import type { TimelineStep, TimelineStepKind } from "../../store/sessionStore";
 import { cn, formatDurationMs } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/motion";
-import { Spinner } from "../../shared/ui";
+import { AppIcon, type AppIconName, Spinner } from "../../shared/ui";
 import { readWorkflowHandlePositions, type StepNodeData, type WorkflowLayoutDirection } from "./layout";
 import { readStepStatusLabel } from "./stepPresentation";
 import { readWorkflowStepDurationMs } from "./workflowPresentationProjection";
+import { projectToolStagePresentation } from "./toolStagePresentation";
+import { ToolActionIcon } from "./ToolActionIcon";
 
-const KindIcon: Record<TimelineStepKind, React.ComponentType<{ className?: string }>> = {
-  understand: MessageSquareText,
-  prompt: FileCode2,
-  model: Cpu,
-  decision: Braces,
-  delegation: GitBranch,
-  tool: Globe,
-  retry: RotateCcw,
-  answer: Check,
-  error: AlertTriangle,
+const KindIcon: Record<TimelineStepKind, AppIconName> = {
+  understand: "message",
+  prompt: "file-code",
+  model: "brain",
+  decision: "code",
+  delegation: "git-branch",
+  tool: "globe",
+  retry: "activity",
+  answer: "message",
+  error: "cancel",
 };
 
 type WorkflowStepNode = Node<StepNodeData>;
@@ -46,7 +35,9 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
   }
 
   const step = data.step;
-  const Icon = KindIcon[step.kind];
+  const icon = KindIcon[step.kind];
+  const title = step.kind === "tool" && step.toolName ? step.toolName : step.title;
+  const toolPresentation = step.kind === "tool" ? projectToolStagePresentation({ steps: [step] }) : undefined;
   const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
   const statusClass =
     step.status === "failed" || step.kind === "error"
@@ -86,16 +77,20 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
 
       <div className={cn("flex items-start gap-2.5", isParallelBatch && "border-l-2 border-accent-content/60 pl-2")}>
         <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center">
-          <StatusIcon
-            status={step.status}
-            kind={step.kind}
-            icon={Icon}
-            className={iconClass}
-            motionLevel={effectiveLevel}
-          />
+          {toolPresentation ? (
+            <ToolActionIcon icon={toolPresentation.icon} status={step.status} />
+          ) : (
+            <StatusIcon
+              status={step.status}
+              kind={step.kind}
+              icon={icon}
+              className={iconClass}
+              motionLevel={effectiveLevel}
+            />
+          )}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12.5px] font-medium text-content-primary">{step.title}</div>
+          <div className="truncate text-[12.5px] font-medium text-content-primary">{title}</div>
           {step.description ? (
             <p className="mt-1 line-clamp-2 text-[11.5px] leading-[1.45] text-content-secondary">{step.description}</p>
           ) : null}
@@ -162,7 +157,7 @@ function ScopeNode({
         className="!h-1.5 !w-1.5 !border-surface-raised !bg-content-muted"
       />
       <div className="flex items-start gap-2.5">
-        <GitBranch className="mt-0.5 h-4 w-4 shrink-0 text-content-secondary" />
+        <AppIcon icon="git-branch" size={16} className="mt-0.5 text-content-secondary" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[12.5px] font-medium text-content-primary">{group.label}</div>
           {group.description ? (
@@ -196,13 +191,13 @@ function ScopeNode({
 function StatusIcon({
   status,
   kind,
-  icon: Icon,
+  icon,
   className,
   motionLevel,
 }: {
   status: TimelineStep["status"];
   kind: TimelineStep["kind"];
-  icon: React.ComponentType<{ className?: string }>;
+  icon: AppIconName;
   className: string;
   motionLevel: MotionLevel;
 }): JSX.Element {
@@ -221,11 +216,11 @@ function StatusIcon({
         {status === "running" ? (
           <Spinner size="xs" className={className} />
         ) : status === "cancelling" ? (
-          <LoaderCircle className={cn("h-3 w-3 animate-spin", className)} />
+          <Spinner size="xs" className={className} />
         ) : status === "failed" || kind === "error" ? (
-          <X className={cn("h-3 w-3", className)} />
+          <AppIcon icon="cancel" size={12} className={className} aria-hidden="true" />
         ) : (
-          <Icon className={cn("h-3 w-3", className)} />
+          <AppIcon icon={icon} size={12} className={className} aria-hidden="true" />
         )}
       </motion.span>
     </AnimatePresence>

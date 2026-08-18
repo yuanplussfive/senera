@@ -30,6 +30,40 @@ describe("WebSocket request scheduling", () => {
     await messageTask;
   });
 
+  test("starts a prefix fork without waiting for the active source turn", async () => {
+    const scheduler = new AgentWebSocketRequestScheduler();
+    const run = createDeferred<void>();
+    const forkStarted = createDeferred<void>();
+    const messageTask = scheduler.run(
+      request({ type: "session.message", sessionId: "session-1", input: "keep working" }),
+      () => run.promise,
+    );
+
+    await scheduler.run(
+      request({
+        type: "session.fork",
+        sourceSessionId: "session-1",
+        sessionId: "session-2",
+        throughRequestId: "request-1",
+      }),
+      async () => forkStarted.resolve(),
+    );
+
+    await forkStarted.promise;
+    expect(
+      inspectAgentWebSocketRequestScheduling(
+        request({
+          type: "session.fork",
+          sourceSessionId: "session-1",
+          sessionId: "session-2",
+          throughRequestId: "request-1",
+        }),
+      ),
+    ).toEqual({ lane: AgentWebSocketRequestLanes.Concurrent });
+    run.resolve();
+    await messageTask;
+  });
+
   test("starts an interactive terminal without waiting for the active agent turn", async () => {
     const scheduler = new AgentWebSocketRequestScheduler();
     const run = createDeferred<void>();
@@ -56,6 +90,48 @@ describe("WebSocket request scheduling", () => {
     ).toEqual({ lane: AgentWebSocketRequestLanes.Concurrent });
     run.resolve();
     await messageTask;
+  });
+
+  test("closes distinct terminals concurrently while preserving same-terminal order", async () => {
+    const scheduler = new AgentWebSocketRequestScheduler();
+    const firstStarted = createDeferred<void>();
+    const firstFinished = createDeferred<void>();
+    const differentStarted = createDeferred<void>();
+    const differentFinished = createDeferred<void>();
+    const sameStarted = createDeferred<void>();
+    let sameHasStarted = false;
+    const closeRequest = (resourceId: string) =>
+      request({ type: "execution.resource.close", sessionId: "session-1", resourceId });
+
+    const first = scheduler.run(closeRequest("terminal-a"), async () => {
+      firstStarted.resolve();
+      await firstFinished.promise;
+    });
+    const different = scheduler.run(closeRequest("terminal-b"), async () => {
+      differentStarted.resolve();
+      await differentFinished.promise;
+    });
+    const same = scheduler.run(closeRequest("terminal-a"), async () => {
+      sameHasStarted = true;
+      sameStarted.resolve();
+    });
+
+    await Promise.all([firstStarted.promise, differentStarted.promise]);
+    expect(inspectAgentWebSocketRequestScheduling(closeRequest("terminal-a"))).toEqual({
+      lane: AgentWebSocketRequestLanes.Serial,
+      key: "execution-resource:terminal-a",
+    });
+    expect(inspectAgentWebSocketRequestScheduling(closeRequest("terminal-b"))).toEqual({
+      lane: AgentWebSocketRequestLanes.Serial,
+      key: "execution-resource:terminal-b",
+    });
+    await Promise.resolve();
+    expect(sameHasStarted).toBe(false);
+    firstFinished.resolve();
+    await first;
+    await sameStarted.promise;
+    differentFinished.resolve();
+    await Promise.all([different, same]);
   });
 
   test("serializes the same session across sockets while allowing different sessions", async () => {
@@ -108,7 +184,9 @@ describe("WebSocket request scheduling", () => {
       key: "execution-resource:r",
     });
     expect(
-      inspectAgentWebSocketRequestScheduling(request({ type: "execution.resource.close", resourceId: "r" })),
+      inspectAgentWebSocketRequestScheduling(
+        request({ type: "execution.resource.close", sessionId: "session-1", resourceId: "r" }),
+      ),
     ).toEqual({
       lane: AgentWebSocketRequestLanes.Serial,
       key: "execution-resource:r",

@@ -1,7 +1,13 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { BrainCircuit, Network, Settings2, SlidersHorizontal, Trash2 } from "lucide-react";
+import AdjustmentsHorizontalIcon from "@heroicons/react/24/outline/AdjustmentsHorizontalIcon";
+import ArrowsRightLeftIcon from "@heroicons/react/24/outline/ArrowsRightLeftIcon";
+import CommandLineIcon from "@heroicons/react/24/outline/CommandLineIcon";
+import CpuChipIcon from "@heroicons/react/24/outline/CpuChipIcon";
+import SwatchIcon from "@heroicons/react/24/outline/SwatchIcon";
+import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
+import { Trash2 } from "lucide-react";
 import { cn } from "../../lib/util";
-import { Button, Dialog, DialogContent, InlineError, MenuSelect, ScrollArea } from "../../shared/ui";
+import { Button, Dialog, DialogContent, InlineError, MenuSelect, ScrollArea, Tooltip } from "../../shared/ui";
 import { ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
 import {
   readBooleanWithTemplate,
@@ -127,6 +133,29 @@ export function ModelOptionsDialog({
     });
   };
 
+  const removeButton = (
+    <button
+      type="button"
+      disabled={disabled || !isSaved || Boolean(removeDisabledReason)}
+      className={cn(
+        "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] transition disabled:pointer-events-none disabled:opacity-50",
+        isSaved
+          ? "border-ink-200 bg-paper-50 text-brick-600 hover:border-brick-200 hover:bg-brick-50 hover:text-brick-700"
+          : "border-ink-200 bg-paper-50 text-ink-500",
+      )}
+      onClick={() => {
+        if (modelIndex !== null) onRemove(modelIndex);
+      }}
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+      {removeDisabledReason
+        ? frontendMessage("config.model.changeDefaultFirst")
+        : isSaved
+          ? frontendMessage("config.model.remove")
+          : frontendMessage("config.model.unsaved")}
+    </button>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -140,7 +169,7 @@ export function ModelOptionsDialog({
           <div className="space-y-5 px-5 py-4" onBlurCapture={onCommitDraft}>
             <section>
               <SectionLabel
-                icon={<Network className="h-4 w-4" />}
+                icon={<WrenchScrewdriverIcon className="h-4 w-4" />}
                 title={frontendMessage("config.model.toolPlanningTitle")}
               />
               <ToolPlanningModeControl value={toolPlanningMode} disabled={disabled} onChange={updateToolPlanningMode} />
@@ -148,10 +177,10 @@ export function ModelOptionsDialog({
 
             <section>
               <SectionLabel
-                icon={<SlidersHorizontal className="h-4 w-4" />}
+                icon={<AdjustmentsHorizontalIcon className="h-4 w-4" />}
                 title={frontendMessage("config.model.capabilitiesTitle")}
               />
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-x-4 gap-y-1 border-y border-ink-200/75 py-1 sm:grid-cols-2 lg:grid-cols-3">
                 {ModelCapabilityIconItems.map((item) => (
                   <CapabilityToggle
                     key={item.key}
@@ -168,7 +197,7 @@ export function ModelOptionsDialog({
 
             <section>
               <SectionLabel
-                icon={<Settings2 className="h-4 w-4" />}
+                icon={<CpuChipIcon className="h-4 w-4" />}
                 title={frontendMessage("config.model.identityTitle")}
               />
               <SettingsTable>
@@ -176,14 +205,14 @@ export function ModelOptionsDialog({
                   label={frontendMessage("config.model.modelId")}
                   value={model.Model}
                   disabled
-                  icon={<Settings2 className="h-3.5 w-3.5" />}
+                  icon={<CommandLineIcon className="h-3.5 w-3.5" />}
                 />
               </SettingsTable>
             </section>
 
             <section>
               <SectionLabel
-                icon={<BrainCircuit className="h-4 w-4" />}
+                icon={<CpuChipIcon className="h-4 w-4" />}
                 title={frontendMessage("config.model.parametersTitle")}
               />
               <SettingsTable>
@@ -206,7 +235,7 @@ export function ModelOptionsDialog({
                   onChange={(MaxModelOutputTokens) => onChange({ MaxModelOutputTokens })}
                 />
                 <MenuRow
-                  icon={<Settings2 className="h-3.5 w-3.5" />}
+                  icon={<ArrowsRightLeftIcon className="h-3.5 w-3.5" />}
                   label={frontendMessage("config.model.endpointProtocol")}
                 >
                   <MenuSelect
@@ -218,7 +247,7 @@ export function ModelOptionsDialog({
                     onChange={(Endpoint) => onChange({ Endpoint })}
                   />
                 </MenuRow>
-                <MenuRow icon={<BrainCircuit className="h-3.5 w-3.5" />} label={frontendMessage("config.model.icon")}>
+                <MenuRow icon={<SwatchIcon className="h-3.5 w-3.5" />} label={frontendMessage("config.model.icon")}>
                   <MenuSelect
                     value={model.Icon ?? ""}
                     placeholder={frontendMessage("config.model.selectIcon")}
@@ -247,7 +276,7 @@ export function ModelOptionsDialog({
 
             <section>
               <SectionLabel
-                icon={<SlidersHorizontal className="h-4 w-4" />}
+                icon={<AdjustmentsHorizontalIcon className="h-4 w-4" />}
                 title={frontendMessage("config.model.runtimeParameters")}
               />
               <SettingsTable>
@@ -379,27 +408,13 @@ export function ModelOptionsDialog({
         <div className="shrink-0 border-t border-ink-200/70 bg-paper-100 px-5 py-3">
           {errorMessage ? <InlineError className="mb-2">{errorMessage}</InlineError> : null}
           <div className="flex items-center justify-between">
-            <button
-              type="button"
-              disabled={disabled || !isSaved || Boolean(removeDisabledReason)}
-              title={removeDisabledReason}
-              className={cn(
-                "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] transition disabled:pointer-events-none disabled:opacity-50",
-                isSaved
-                  ? "border-ink-200 bg-paper-50 text-brick-600 hover:border-brick-200 hover:bg-brick-50 hover:text-brick-700"
-                  : "border-ink-200 bg-paper-50 text-ink-500",
-              )}
-              onClick={() => {
-                if (modelIndex !== null) onRemove(modelIndex);
-              }}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              {removeDisabledReason
-                ? frontendMessage("config.model.changeDefaultFirst")
-                : isSaved
-                  ? frontendMessage("config.model.remove")
-                  : frontendMessage("config.model.unsaved")}
-            </button>
+            {removeDisabledReason ? (
+              <Tooltip content={removeDisabledReason} side="top">
+                <span className="inline-flex">{removeButton}</span>
+              </Tooltip>
+            ) : (
+              removeButton
+            )}
             <div className="flex items-center gap-2">
               {discardAction ? (
                 <Button size="sm" variant="outline" onClick={discardAction.onDiscard}>

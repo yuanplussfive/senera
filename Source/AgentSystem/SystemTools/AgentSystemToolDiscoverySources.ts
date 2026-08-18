@@ -6,6 +6,11 @@ export const AgentSystemToolDiscoverySources = {
     Title: "Web",
     Description: "Public internet information, online services, and current external data.",
   },
+  Browser: {
+    Id: "browser",
+    Title: "Browser",
+    Description: "Controlled browser sessions for interactive public web pages.",
+  },
   Uploads: {
     Id: "uploads",
     Title: "Uploads",

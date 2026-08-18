@@ -3,6 +3,7 @@ import { RuntimeDiagnosticSpecs, type EventDiagnosticSpec } from "../../api/gene
 import type { EventJournalRecord } from "./eventJournalStore";
 import { readJsonPointer } from "./eventJournalProjection";
 import type { ToolEventOrigin } from "../../api/eventTypes";
+import type { RunRecord, TimelineStep } from "../../store/sessionStore";
 
 export const RuntimeDiagnosticLanes = {
   Context: "context",
@@ -23,7 +24,7 @@ export const RuntimeDiagnosticLaneOrder: readonly RuntimeDiagnosticLane[] = [
 ];
 
 export type RuntimeDiagnosticSpanStatus = "running" | "completed" | "failed";
-export type RuntimeDiagnosticSpanSource = "activity" | "tool";
+export type RuntimeDiagnosticSpanSource = "activity" | "tool" | "step";
 
 export interface RuntimeDiagnosticSpan {
   readonly id: string;
@@ -31,6 +32,7 @@ export interface RuntimeDiagnosticSpan {
   readonly lane: RuntimeDiagnosticLane;
   readonly status: RuntimeDiagnosticSpanStatus;
   readonly operation?: RunActivity;
+  readonly label?: string;
   readonly toolName?: string;
   readonly toolOrigin?: ToolEventOrigin;
   readonly toolArguments?: unknown;
@@ -117,7 +119,12 @@ interface DiagnosticSpanCandidate {
 
 export function projectRuntimeDiagnostic(
   records: readonly EventJournalRecord[],
-  options: { readonly nowEpoch?: number; readonly pausedAt?: number; readonly activeSessionId?: string | null } = {},
+  options: {
+    readonly nowEpoch?: number;
+    readonly pausedAt?: number;
+    readonly activeSessionId?: string | null;
+    readonly requestId?: string;
+  } = {},
 ): RuntimeDiagnosticModel {
   const nowEpoch = options.nowEpoch ?? Date.now();
   const visibleRecords = records.filter(
@@ -126,7 +133,7 @@ export function projectRuntimeDiagnostic(
   const sessionRecords = options.activeSessionId
     ? visibleRecords.filter((record) => record.sessionId === options.activeSessionId)
     : visibleRecords;
-  const requestId = readLatestRequestId(sessionRecords);
+  const requestId = options.requestId ?? readLatestRequestId(sessionRecords);
   const scopedRecords = requestId ? sessionRecords.filter((record) => record.requestId === requestId) : [];
   const spans = projectSpans(scopedRecords, requestId);
   const sortedSpans = [...spans.values()].sort(compareSpans);
@@ -162,6 +169,137 @@ export function projectRuntimeDiagnostic(
     contextUsage: readLatestContextUsage(sessionRecords),
     sessionUsage: readLatestSessionUsage(sessionRecords),
   };
+}
+
+/**
+ * Rebuilds the same console model from the durable session run projection.
+ * The transport journal is intentionally short-lived; historical runs must
+ * remain inspectable after the journal has rotated or the page has refreshed.
+ */
+export function projectRuntimeDiagnosticFromRun(
+  run: RunRecord,
+  options: {
+    readonly nowEpoch?: number;
+    readonly sessionUsage?: RuntimeSessionUsage;
+    readonly contextUsage?: RuntimeContextUsage;
+  } = {},
+): RuntimeDiagnosticModel {
+  const nowEpoch = options.nowEpoch ?? Date.now();
+  const candidates = [
+    ...run.steps.map((step) => spanFromTimelineStep(run.requestId, step)),
+    ...(run.activities ?? []).map((activity) => spanFromActivity(run.requestId, activity)),
+  ].filter((span): span is RuntimeDiagnosticSpan => span !== undefined);
+  const sortedSpans = candidates.sort(compareSpans);
+  const lanes = RuntimeDiagnosticLaneOrder.map((lane) =>
+    projectLane(
+      lane,
+      sortedSpans.filter((span) => span.lane === lane),
+      nowEpoch,
+    ),
+  );
+  const laidOutSpans = lanes.flatMap((lane) => lane.spans).sort(compareSpans);
+  const startedAtEpoch =
+    laidOutSpans.length > 0 ? Math.min(...laidOutSpans.map((span) => span.startedAtEpoch)) : undefined;
+  const endAtEpoch =
+    laidOutSpans.length > 0
+      ? Math.max(
+          ...laidOutSpans.map((span) =>
+            span.status === "running" ? nowEpoch : spanEndEpoch(span, span.startedAtEpoch),
+          ),
+        )
+      : undefined;
+
+  return {
+    requestId: run.requestId,
+    spans: laidOutSpans,
+    lanes,
+    startedAtEpoch,
+    endAtEpoch,
+    nowEpoch,
+    current: readCurrentSpan(laidOutSpans),
+    connection:
+      run.status === "failed"
+        ? "failed"
+        : run.status === "running" || run.status === "cancelling"
+          ? "active"
+          : "healthy",
+    contextUsage: options.contextUsage,
+    sessionUsage: options.sessionUsage,
+  };
+}
+
+function spanFromTimelineStep(requestId: string, step: TimelineStep): RuntimeDiagnosticSpan | undefined {
+  if (step.status === "pending") return undefined;
+  const startedAtEpoch = parseTimestamp(step.startedAt);
+  if (startedAtEpoch === undefined) return undefined;
+  const status = toRunSpanStatus(step.status);
+  const source: RuntimeDiagnosticSpanSource = step.kind === "tool" ? "tool" : "step";
+  const lane = step.kind === "tool" ? RuntimeDiagnosticLanes.Tools : timelineStepLane(step);
+  return {
+    id: `run:${requestId}:${step.id}`,
+    source,
+    lane,
+    status,
+    ...(source === "tool"
+      ? {
+          toolName: step.toolName,
+          toolOrigin: step.toolOrigin,
+          toolArguments: step.toolArgs,
+          callId: step.callId,
+        }
+      : { label: step.title }),
+    requestId,
+    startedAt: step.startedAt,
+    startedAtEpoch,
+    durationMs: readTimelineDuration(step),
+  };
+}
+
+function spanFromActivity(
+  requestId: string,
+  activity: NonNullable<RunRecord["activities"]>[number],
+): RuntimeDiagnosticSpan | undefined {
+  if (activity.status === "pending") return undefined;
+  const startedAtEpoch = parseTimestamp(activity.startedAt);
+  if (startedAtEpoch === undefined || !isRunActivity(activity.activity)) return undefined;
+  return {
+    id: `activity:${requestId}:${activity.id}`,
+    source: "activity",
+    lane: activityLane(activity.activity),
+    status: toRunSpanStatus(activity.status),
+    operation: activity.activity,
+    requestId,
+    step: activity.step,
+    startedAt: activity.startedAt,
+    startedAtEpoch,
+    durationMs: readTimelineDuration(activity),
+  };
+}
+
+function timelineStepLane(step: TimelineStep): RuntimeDiagnosticLane {
+  if (step.kind === "prompt" || step.kind === "understand") return RuntimeDiagnosticLanes.Context;
+  if (step.kind === "model") return RuntimeDiagnosticLanes.Model;
+  if (step.kind === "answer") return RuntimeDiagnosticLanes.Response;
+  if (step.kind === "error") return RuntimeDiagnosticLanes.Response;
+  return RuntimeDiagnosticLanes.Runtime;
+}
+
+function toRunSpanStatus(status: TimelineStep["status"]): RuntimeDiagnosticSpanStatus {
+  if (status === "failed") return "failed";
+  if (status === "done") return "completed";
+  return "running";
+}
+
+function readTimelineDuration(value: Pick<TimelineStep, "startedAt" | "endedAt" | "durationMs">): number | undefined {
+  if (typeof value.durationMs === "number" && Number.isFinite(value.durationMs) && value.durationMs >= 0) {
+    return value.durationMs;
+  }
+  if (!value.endedAt) return undefined;
+  const startedAt = Date.parse(value.startedAt);
+  const endedAt = Date.parse(value.endedAt);
+  return Number.isFinite(startedAt) && Number.isFinite(endedAt) && endedAt >= startedAt
+    ? endedAt - startedAt
+    : undefined;
 }
 
 export function projectRuntimeUsage(

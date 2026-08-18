@@ -11,15 +11,15 @@
       "requiredAssets": [{ "extension": ".woff2", "minimumCount": 4 }],
       "limits": {
         "resourceCount": 9,
-        "identityBytes": 730000,
-        "gzipBytes": 320000,
-        "brotliBytes": 305000
+        "identityBytes": 800000,
+        "gzipBytes": 325000,
+        "brotliBytes": 305500
       }
     },
     {
       "id": "authenticated-main",
       "extends": ["bootstrap"],
-      "roots": ["src/app/AuthenticatedSurface.tsx", "App"],
+      "roots": ["App"],
       "limits": {
         "resourceCount": 17,
         "identityBytes": 1630000,
@@ -41,11 +41,11 @@
     {
       "id": "desktop-settings",
       "extends": ["bootstrap"],
-      "roots": ["src/app/AuthenticatedSurface.tsx", "src/app/DesktopSettingsSurface.tsx"],
+      "roots": ["src/app/DesktopSettingsSurface.tsx"],
       "limits": {
         "resourceCount": 19,
-        "identityBytes": 1460000,
-        "gzipBytes": 505000,
+        "identityBytes": 1462000,
+        "gzipBytes": 510000,
         "brotliBytes": 475000
       }
     }

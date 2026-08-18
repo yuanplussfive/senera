@@ -23,6 +23,7 @@ export function AssistantMessageBody({ message, streaming = false }: AssistantMe
         <LazyMarkdownRenderer
           className="mt-1 min-w-0"
           contentClassName="text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
+          externalLinkPresentation="citation"
         >
           {message.content}
         </LazyMarkdownRenderer>

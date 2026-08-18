@@ -16,6 +16,7 @@ interface StageBoundary {
   stepEnd: number;
   startedAt?: string;
   endedAt?: string;
+  identity?: string;
 }
 
 export function projectAssistantTurnStages(turn: AssistantTurnListItem): AssistantTurnStage[] {
@@ -26,21 +27,14 @@ export function projectAssistantTurnStages(turn: AssistantTurnListItem): Assista
   const markerIndexes = readMessageStepIndexes(run, messages);
   const boundaries = readStageBoundaries(run, messages, markerIndexes);
   const stages: AssistantTurnStage[] = [];
+  const executionBoundaries = new Map<string, StageBoundary>();
 
   if (run && !turn.streaming && messages.length === 0) {
-    const executionRun = projectStageRun(
-      run,
-      { stepStart: 0, stepEnd: run.steps.length, startedAt: run.startedAt },
-      false,
-    );
-    if (executionRun) {
-      stages.push({
-        id: `stage:${turn.requestId ?? turn.key}:execution`,
-        kind: "execution",
-        run: executionRun,
-        current: false,
-      });
-    }
+    appendExecutionStages(stages, executionBoundaries, turn, run, {
+      stepStart: 0,
+      stepEnd: run.steps.length,
+      startedAt: run.startedAt,
+    });
     const output = readTerminalRunOutput(run);
     if (output) {
       stages.push({
@@ -54,40 +48,20 @@ export function projectAssistantTurnStages(turn: AssistantTurnListItem): Assista
     return stages;
   }
 
-  for (const message of prefaces) {
-    const boundary = boundaries.get(message.id) ?? emptyHistoricalBoundary(run, message.createdAt);
-    stages.push({
-      id: `stage:${message.id}`,
-      kind: "execution",
-      message,
-      run: projectStageRun(run, boundary, false),
-      current: false,
-    });
+  const leadingBoundary = messages.length > 0 ? readLeadingExecutionBoundary(run, messages, markerIndexes) : undefined;
+  if (leadingBoundary) {
+    appendExecutionStages(stages, executionBoundaries, turn, run, leadingBoundary);
   }
 
-  const firstTerminal = terminalMessages[0];
-  if (prefaces.length === 0 && firstTerminal) {
-    const terminalIndex = markerIndexes.get(firstTerminal.id) ?? run?.steps.length ?? 0;
-    const boundary: StageBoundary = {
-      stepStart: 0,
-      stepEnd: terminalIndex,
-      startedAt: run?.startedAt,
-      endedAt: firstTerminal.createdAt,
-    };
-    const executionRun = projectStageRun(run, boundary, false);
-    if (executionRun) {
-      stages.push({
-        id: `stage:${turn.requestId ?? turn.key}:execution`,
-        kind: "execution",
-        run: executionRun,
-        current: false,
-      });
-    }
+  for (const message of prefaces) {
+    const boundary = boundaries.get(message.id) ?? emptyHistoricalBoundary(run, message.createdAt);
+    appendExecutionStages(stages, executionBoundaries, turn, run, boundary, message);
   }
 
   for (const message of terminalMessages) {
+    const markerIndex = markerIndexes.get(message.id);
     stages.push({
-      id: `stage:${message.id}`,
+      id: readStageId(turn, { identity: readStepIdentity(run, markerIndex) }, `message:${message.id}`),
       kind: "final",
       message,
       run: undefined,
@@ -105,12 +79,16 @@ export function projectAssistantTurnStages(turn: AssistantTurnListItem): Assista
     !!run?.displayText &&
     (run.visibleKind === "tool_preface" || run.visibleKind === "final_answer" || run.visibleKind === "ask_user") &&
     !displayedStage;
+  const latestExecutionStage = [...stages].reverse().find((stage) => stage.kind === "execution");
+  const fallbackActiveStage = [...stages].reverse().find((stage) => stage.kind === activeKind);
   let activeStage = hasTransientMessage
     ? undefined
-    : (displayedStage ?? [...stages].reverse().find((stage) => stage.kind === activeKind));
+    : run?.visibleKind === "tool_calls"
+      ? latestExecutionStage
+      : (displayedStage ?? fallbackActiveStage);
   if (!activeStage) {
     activeStage = {
-      id: `stage:${turn.requestId ?? turn.key}:current`,
+      id: readStageId(turn, run ? currentStageBoundary(run) : undefined, "current"),
       kind: activeKind,
       current: false,
     };
@@ -122,13 +100,32 @@ export function projectAssistantTurnStages(turn: AssistantTurnListItem): Assista
   });
 
   if (run) {
-    const boundary = activeStage.message
-      ? (boundaries.get(activeStage.message.id) ?? emptyHistoricalBoundary(run, activeStage.message.createdAt))
-      : currentStageBoundary(run);
+    const boundary = executionBoundaries.get(activeStage.id) ?? currentStageBoundary(run);
     activeStage.run = projectStageRun(run, boundary, true);
   }
 
   return stages;
+}
+
+function appendExecutionStages(
+  stages: AssistantTurnStage[],
+  executionBoundaries: Map<string, StageBoundary>,
+  turn: AssistantTurnListItem,
+  run: RunRecord | undefined,
+  boundary: StageBoundary,
+  message?: ChatMessage,
+): void {
+  const executionRun = projectStageRun(run, boundary, false);
+  if (!message && !executionRun) return;
+  const id = readStageId(turn, boundary, message ? `message:${message.id}` : "execution");
+  stages.push({
+    id,
+    kind: "execution",
+    message,
+    run: executionRun,
+    current: false,
+  });
+  executionBoundaries.set(id, boundary);
 }
 
 function readTerminalRunOutput(run: RunRecord): string {
@@ -156,6 +153,7 @@ function readStageBoundaries(
       stepEnd: nextMarker?.index ?? run.steps.length,
       startedAt: marker.message.createdAt,
       endedAt: nextMarker?.message.createdAt,
+      identity: readStepIdentity(run, marker.index),
     });
   }
 
@@ -208,6 +206,29 @@ function emptyHistoricalBoundary(run: RunRecord | undefined, startedAt?: string)
   };
 }
 
+function readLeadingExecutionBoundary(
+  run: RunRecord | undefined,
+  messages: readonly ChatMessage[],
+  markerIndexes: ReadonlyMap<string, number>,
+): StageBoundary | undefined {
+  if (!run) return undefined;
+
+  const firstMarker = messages
+    .map((message) => markerIndexes.get(message.id))
+    .filter((index): index is number => index !== undefined)
+    .sort((left, right) => left - right)[0];
+  const stepEnd = firstMarker ?? run.steps.length;
+  if (!run.steps.slice(0, stepEnd).some(isStageExecutionStep)) return undefined;
+
+  return {
+    stepStart: 0,
+    stepEnd,
+    startedAt: run.startedAt,
+    endedAt: firstMarker === undefined ? undefined : run.steps[firstMarker]?.startedAt,
+    identity: `leading:${readStepIdentity(run, firstMarker) ?? "start"}`,
+  };
+}
+
 function currentStageBoundary(run: RunRecord): StageBoundary {
   const displayMarkerId = run.displayMessageId
     ? `${run.requestId}-assistant-message-${run.displayMessageId}`
@@ -227,7 +248,22 @@ function currentStageBoundary(run: RunRecord): StageBoundary {
     stepStart,
     stepEnd: run.steps.length,
     startedAt: markerIndex >= 0 ? run.steps[markerIndex]?.startedAt : run.startedAt,
+    identity: readStepIdentity(run, markerIndex),
   };
+}
+
+function readStageId(
+  turn: AssistantTurnListItem,
+  boundary: Pick<StageBoundary, "identity"> | undefined,
+  fallback: string,
+): string {
+  return `stage:${turn.requestId ?? turn.key}:${boundary?.identity ?? fallback}`;
+}
+
+function readStepIdentity(run: RunRecord | undefined, index: number | undefined): string | undefined {
+  if (index === undefined || index < 0) return undefined;
+  const step = run?.steps[index];
+  return step ? `step:${step.id}` : undefined;
 }
 
 function projectStageRun(run: RunRecord | undefined, boundary: StageBoundary, live: boolean): RunRecord | undefined {

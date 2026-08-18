@@ -1,10 +1,20 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useId, useMemo, useRef, useState } from "react";
-import { Plus, RefreshCw, Search, Settings2, Star, Tags, Trash2, X } from "lucide-react";
+import AdjustmentsHorizontalIcon from "@heroicons/react/24/outline/AdjustmentsHorizontalIcon";
+import { MoreHorizontal, Plus, RefreshCw, Search, Star, Tags, Trash2, X } from "lucide-react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { MotionDisclosure, MotionIconSwap } from "../../shared/motion";
-import { ScrollArea, Spinner, Tooltip } from "../../shared/ui";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  ScrollArea,
+  Spinner,
+  Tooltip,
+} from "../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
 import { defaultModelCapabilities, modelConfigId, providerEnabled, readModelCapabilities } from "./modelConfigData";
 import type {
@@ -29,11 +39,6 @@ function pendingModelOperationLabel(kind: string): string {
   if (kind === "provider.defaultModel.set") return frontendMessage("settings.modelManagement.settingDefault");
   return frontendMessage("settings.modelManagement.adding");
 }
-const modelActionClassName =
-  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[10.5px] font-medium text-ink-650 transition hover:bg-ink-900/[0.05] hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50";
-const modelRemoveActionClassName =
-  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[10.5px] font-medium text-brick-700 transition hover:bg-brick-50 disabled:pointer-events-none disabled:opacity-50";
-
 export function ProviderModelList({
   selectedProvider,
   catalog,
@@ -387,12 +392,12 @@ function ProviderModelRow({
     : defaultModelCapabilities(modelTemplate);
 
   return (
-    <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 transition hover:bg-paper-100/80 [content-visibility:auto] [contain-intrinsic-size:52px]">
+    <div className="group/model grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 transition hover:bg-paper-100/80 [content-visibility:auto] [contain-intrinsic-size:52px]">
       <ModelProviderIcon icon={configured?.Icon ?? inferModelProviderIcon(model.id)} size={22} className="rounded" />
       <span className="min-w-0">
-        <span className="block truncate font-mono text-[12px] text-ink-850" title={model.id}>
-          {model.id}
-        </span>
+        <Tooltip content={model.id} side="top">
+          <span className="block truncate font-mono text-[12px] text-ink-850">{model.id}</span>
+        </Tooltip>
         <span className="mt-1 flex min-w-0 items-center gap-1.5">
           <span className="truncate text-[10.5px] text-ink-400">
             {model.ownedBy || frontendMessage("config.model.providerModel")}
@@ -400,79 +405,83 @@ function ProviderModelRow({
           <CapabilityIconStrip capabilities={capabilities} />
         </span>
       </span>
-      <span className="flex flex-wrap items-center justify-end gap-1.5">
-        <ConfiguredModelBadge isDefault={isDefault} configured={Boolean(configured)} />
+      <span className="flex items-center justify-end gap-1">
+        <ConfiguredModelBadge isDefault={isDefault} />
         {pendingKind ? (
           <span className="inline-flex items-center gap-1.5 text-[10.5px] font-medium text-ink-600">
             <Spinner size="xs" className="text-accent-content" /> {pendingModelOperationLabel(pendingKind)}
           </span>
-        ) : configured && (onSetDefaultModel || onRemoveModel) ? (
+        ) : configured ? (
           <>
-            <button
-              type="button"
-              disabled={disabled || !providerId}
-              className={modelActionClassName}
-              onClick={() => onConfigureModel(model)}
-            >
-              <Settings2 className="h-3 w-3" />
-              {frontendMessage("chat.model.configure")}
-            </button>
-            {!isDefault && onSetDefaultModel ? (
+            <Tooltip content={frontendMessage("chat.model.configure")} side="top">
               <button
                 type="button"
                 disabled={disabled || !providerId}
-                className={modelActionClassName}
-                onClick={() => onSetDefaultModel(configured)}
+                className={iconButtonClassName}
+                aria-label={frontendMessage("chat.model.configure")}
+                onClick={() => onConfigureModel(model)}
               >
-                <Star className="h-3 w-3" />
-                {frontendMessage("chat.model.setDefault")}
+                <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
               </button>
-            ) : null}
-            {onRemoveModel ? (
-              <button
-                type="button"
-                disabled={disabled || !providerId}
-                className={modelRemoveActionClassName}
-                onClick={() => onRemoveModel(configured)}
-              >
-                <Trash2 className="h-3 w-3" />
-                {frontendMessage("chat.model.remove")}
-              </button>
+            </Tooltip>
+            {onRemoveModel || (!isDefault && onSetDefaultModel) ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={disabled || !providerId}
+                    className={iconButtonClassName}
+                    aria-label={frontendMessage("chat.action.more")}
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44 bg-paper-50">
+                  {!isDefault && onSetDefaultModel ? (
+                    <DropdownMenuItem
+                      icon={<Star className="h-3.5 w-3.5" />}
+                      onSelect={() => onSetDefaultModel(configured)}
+                    >
+                      {frontendMessage("chat.model.setDefault")}
+                    </DropdownMenuItem>
+                  ) : null}
+                  {!isDefault && onSetDefaultModel && onRemoveModel ? <DropdownMenuSeparator /> : null}
+                  {onRemoveModel ? (
+                    <DropdownMenuItem
+                      icon={<Trash2 className="h-3.5 w-3.5" />}
+                      destructive
+                      onSelect={() => onRemoveModel(configured)}
+                    >
+                      {frontendMessage("chat.model.remove")}
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : null}
           </>
         ) : (
-          <button
-            type="button"
-            disabled={disabled || !providerId}
-            className={iconButtonClassName}
-            title={frontendMessage("chat.model.configure")}
-            aria-label={frontendMessage("chat.model.configure")}
-            onClick={() => onConfigureModel(model)}
-          >
-            <Settings2 className="h-3.5 w-3.5" />
-          </button>
+          <Tooltip content={frontendMessage("chat.model.configure")} side="top">
+            <button
+              type="button"
+              disabled={disabled || !providerId}
+              className={iconButtonClassName}
+              aria-label={frontendMessage("chat.model.configure")}
+              onClick={() => onConfigureModel(model)}
+            >
+              <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
         )}
       </span>
     </div>
   );
 }
 
-function ConfiguredModelBadge({
-  isDefault,
-  configured,
-}: {
-  isDefault: boolean;
-  configured: boolean;
-}): JSX.Element | null {
+function ConfiguredModelBadge({ isDefault }: { isDefault: boolean }): JSX.Element | null {
   if (isDefault) {
     return (
       <span className="text-[10.5px] font-medium text-accent-content">{frontendMessage("config.model.default")}</span>
     );
-  }
-  if (configured) {
-    // TODO: this is a configured-state badge, not model enablement. Persisted
-    // model Enabled plus runtime filtering require a backend contract first.
-    return <span className="text-[10.5px] text-ink-500">{frontendMessage("settings.modelManagement.added")}</span>;
   }
   return null;
 }
@@ -492,28 +501,29 @@ function ModelGroupSummary({
   return (
     <div className="border-b border-ink-200/70 bg-paper-50 px-2.5 py-2">
       <div className="flex min-w-0 flex-wrap gap-1">
-        <button
-          type="button"
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-accent-border px-1.5 text-[11px] text-ink-800 transition-colors duration-150 hover:text-accent-content-hover"
-          onClick={() => onSelectGroup(null)}
-          title={frontendMessage("config.model.allModelsTitle", { count: total })}
-        >
-          <Tags className="h-3.5 w-3.5" />
-          <span className="font-medium">{frontendMessage("config.model.allModels")}</span>
-          <span className="tabular-nums text-[10px] text-ink-400">{total}</span>
-        </button>
-        {groups.map((group) => (
+        <Tooltip content={frontendMessage("config.model.allModelsTitle", { count: total })} side="top">
           <button
             type="button"
-            key={group.id}
-            className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-transparent px-1.5 text-[11px] text-ink-650 transition-colors duration-150 hover:border-ink-350 hover:text-ink-850"
-            title={`${group.label}: ${group.rows.length}`}
-            onClick={() => onSelectGroup(group.id)}
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-accent-border px-1.5 text-[11px] text-ink-800 transition-colors duration-150 hover:text-accent-content-hover"
+            onClick={() => onSelectGroup(null)}
           >
-            <ModelProviderIcon icon={group.icon} size={14} className="rounded" />
-            <span className="max-w-24 truncate font-medium">{group.label}</span>
-            <span className="tabular-nums text-[10px] text-ink-400">{group.rows.length}</span>
+            <Tags className="h-3.5 w-3.5" />
+            <span className="font-medium">{frontendMessage("config.model.allModels")}</span>
+            <span className="tabular-nums text-[10px] text-ink-400">{total}</span>
           </button>
+        </Tooltip>
+        {groups.map((group) => (
+          <Tooltip key={group.id} content={`${group.label}: ${group.rows.length}`} side="top">
+            <button
+              type="button"
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-transparent px-1.5 text-[11px] text-ink-650 transition-colors duration-150 hover:border-ink-350 hover:text-ink-850"
+              onClick={() => onSelectGroup(group.id)}
+            >
+              <ModelProviderIcon icon={group.icon} size={14} className="rounded" />
+              <span className="max-w-24 truncate font-medium">{group.label}</span>
+              <span className="tabular-nums text-[10px] text-ink-400">{group.rows.length}</span>
+            </button>
+          </Tooltip>
         ))}
       </div>
     </div>

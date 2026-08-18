@@ -4,7 +4,7 @@
 > 让模型像正常聊天一样表达，也能在需要行动时稳定地搜索、读写文件、调用工具、留下证据。
 
 <p>
-  <img alt="Node" src="https://img.shields.io/badge/Node.js-22%2B-43853d">
+  <img alt="Node" src="https://img.shields.io/badge/Node.js-24-43853d">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6">
   <img alt="Protocols" src="https://img.shields.io/badge/LLM-OpenAI%20%7C%20Claude%20%7C%20Gemini-8a2be2">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
@@ -90,7 +90,7 @@ Agent 只创建标准 Skill，目录位于 `.senera/skills/<name>/`。Skill 可�
 
 ## 快速开始
 
-本地运行要求 Node.js 22+。真实密钥放在 `senera.config.json`，这个文件已被 git 忽略。
+本地运行要求 Node.js 24。真实密钥放在 `senera.config.json`，这个文件已被 git 忽略。
 
 ### Nano 轻量开发分支
 
@@ -126,6 +126,8 @@ export SENERA_SANDBOX_IMAGE=ghcr.io/yuanplussfive/senera@sha256:<sandbox-digest>
 docker compose pull
 docker compose up -d --pull always
 ```
+
+未设置镜像变量时，`compose.yaml` 使用已验证的 `ghcr.io/yuanplussfive/senera:latest` 与 `ghcr.io/yuanplussfive/senera:sandbox-runtime-latest`。需要可复现升级、回退或生产变更窗口时，再用同一发布对应的 digest 覆盖这两个变量。
 
 不要使用 `docker run` 单独启动应用镜像。镜像需要 Compose 同时准备 `sandbox-runtime`、`sandbox-worker`、私有控制 Socket 和数据卷；缺少其中任何一项都会在启动阶段明确失败。
 

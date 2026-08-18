@@ -4,7 +4,7 @@
 
 ## 开始使用
 
-需要 Node.js 22、npm 10 或更高版本，以及已启动 Linux containers 模式的 Docker Desktop / Docker Engine。
+需要 Node.js 24、npm 10 或更高版本，以及已启动 Linux containers 模式的 Docker Desktop / Docker Engine。
 
 ```bash
 git clone --depth 1 --branch {{outputBranch}} --single-branch {{repositoryUrl}}.git senera

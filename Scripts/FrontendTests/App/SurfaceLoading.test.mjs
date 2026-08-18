@@ -23,8 +23,8 @@ describe("application loading surfaces", () => {
     const status = screen.getByRole("status", { name: frontendMessage("settings.loading") });
     expect(status).toHaveAttribute("data-settings-loading-presentation", "desktop");
     expect(status.parentElement).toHaveClass("h-dvh", "min-h-[320px]");
-    expect(status.querySelector("aside")).toHaveClass("w-[220px]");
-    expect(status.querySelector("main > header")).toHaveClass("h-[58px]");
+    expect(status.querySelector("aside")).toHaveClass("w-[240px]");
+    expect(status.querySelector("main > header")).toHaveClass("h-[52px]");
     expect(screen.getByRole("heading", { name: frontendMessage("settings.header.title") })).toBeInTheDocument();
   });
 

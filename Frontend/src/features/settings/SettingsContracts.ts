@@ -23,6 +23,7 @@ export interface SettingsConfigCommands {
   providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
   providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
   providerModelLoadingIds: Record<string, boolean>;
+  readProviderApiKey: (providerId: string) => Promise<string>;
   refreshConfig: () => void;
   saveConfig: (config: Record<string, unknown>) => string | null;
   fetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
@@ -42,6 +43,7 @@ export interface SettingsConfigCommands {
  */
 export interface SettingsSystemConfigHandle extends ConfigMutationController {
   configSnapshot: ConfigSnapshotData | null;
+  readProviderApiKey: (providerId: string) => Promise<string>;
   systemTools: readonly SystemToolSettingsItem[];
   systemExtensions: readonly SystemExtensionSettingsItem[];
   mcpServers: readonly McpServerSettingsItem[];

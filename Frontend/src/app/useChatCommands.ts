@@ -37,7 +37,7 @@ export interface ChatCommandsHandle {
   cancelActiveSession: () => void;
   deleteFromMessage: (message: ChatMessage) => void;
   editUserMessage: (message: ChatMessage, nextContent: string) => void;
-  forkFromMessage: (message: ChatMessage) => void;
+  forkFromMessage: (message: Pick<ChatMessage, "requestId">) => void;
   regenerateMessage: (message: ChatMessage) => void;
   resolveApproval: (approvalId: string, decision: ApprovalDecision) => void;
   resolveApprovalBatch: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
@@ -212,7 +212,7 @@ export function useChatCommands({
   );
 
   const forkFromMessage = useCallback(
-    (message: ChatMessage): void => {
+    (message: Pick<ChatMessage, "requestId">): void => {
       if (!activeSessionId || status !== "open") return;
       if (!message.requestId) {
         toast.error(frontendMessage("chat.forkMissingRequestId"));

@@ -95,6 +95,8 @@ export function useConfigSettingsDraftState({
 
   useEffect(() => {
     if (!saveOperation) return;
+    const savedDraft = saveRequestDraftRef.current;
+    const hasNewerDraft = savedDraft !== null && !sameJson(savedDraft, draftRef.current);
     if (saveOperation.status === "success") {
       setSaveRequestId(null);
       saveRequestIdRef.current = null;
@@ -123,6 +125,14 @@ export function useConfigSettingsDraftState({
       setSaveRequestId(null);
       saveRequestIdRef.current = null;
       saveRequestDraftRef.current = null;
+      // An older write can settle after the user has already corrected the draft.
+      // Keep the newer draft eligible for automatic persistence instead of surfacing a stale error.
+      if (hasNewerDraft) {
+        setLocalError(null);
+        setAutoSaveBlocked(false);
+        setConflict(false);
+        return;
+      }
       const stale = isConfigConflict(saveOperation);
       setConflict(stale);
       setLocalError(

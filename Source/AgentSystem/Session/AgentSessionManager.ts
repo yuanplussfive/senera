@@ -130,6 +130,7 @@ export class AgentSessionManager {
       piMutations: options.piSessionMutations,
       artifacts: options.artifactSessionCleanup,
       recoverSourceHistory: (sessionId) => this.historyController.recoverSession(sessionId),
+      isSourceRunActive: (sessionId) => this.runCoordinator.hasActiveRun(sessionId),
     });
     void this.ready().catch(() => undefined);
   }
@@ -389,9 +390,6 @@ export class AgentSessionManager {
             ...projectAgentMessage("session.forkBoundaryMissing", { requestId: result.requestId }),
           },
         });
-        return;
-      case "pi_unavailable":
-        await this.piManagement.emitUnavailable(request, AgentSessionOperations.Fork);
         return;
       case "pi_failed":
         await this.rejectPiSessionFork(result.sessionId, request.onEvent);

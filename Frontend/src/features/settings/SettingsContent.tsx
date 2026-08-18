@@ -1,9 +1,9 @@
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { RotateCcw } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { JsonConfigSettingsView } from "../../shared/config/JsonConfigForm";
-import { Button, ScrollArea, StateView } from "../../shared/ui";
+import { Button, ScrollArea, StateView, Tooltip } from "../../shared/ui";
 import type { SettingsSystemConfigHandle } from "./SettingsContracts";
 import type { SettingsContentProps } from "./SettingsWorkbenchContracts";
 import { readSettingsDraftInteraction } from "./settingsInteractionModel";
@@ -12,12 +12,12 @@ import type { SettingsSectionDefinition, SettingsSectionId } from "./types";
 import { AboutSettings } from "./sections/AboutSettings";
 import { AppearanceSettings } from "./sections/AppearanceSettings";
 import type { ConfigSettingsDraftState } from "./sections/configSettingsDraftState";
-import { DefaultModelSection } from "./sections/DefaultModelSection";
 import { GeneralSettings } from "./sections/GeneralSettings";
-import { ModelServiceSection } from "./sections/ModelServiceSection";
-import { McpServersSection } from "./sections/McpServersSection";
 import { projectSectionConfigFields } from "./sections/runtimeModelAssignments";
-import { SystemToolsSection } from "./sections/SystemToolsSection";
+
+const SettingsExtensionSection = lazy(() =>
+  import("./sections/SettingsExtensionSection").then((module) => ({ default: module.SettingsExtensionSection })),
+);
 
 export function SettingsContent({
   activeSection,
@@ -46,14 +46,40 @@ export function SettingsContent({
     values,
   });
 
-  if (isFullHeightWorkspace(activeSection.id)) {
-    return <div className="min-h-0 flex-1 overflow-hidden">{content}</div>;
-  }
-
   return (
-    <ScrollArea className="min-h-0 flex-1" viewportClassName="p-3 sm:p-4">
-      <div className={sectionWidthClassName(activeSection.id)}>{content}</div>
-    </ScrollArea>
+    <div className="min-h-0 flex-1 overflow-hidden" data-settings-content-frame>
+      {isFullHeightWorkspace(activeSection.id) ? (
+        <SettingsSectionTransition sectionId={activeSection.id} className="h-full min-h-0">
+          <Suspense fallback={<SettingsSectionLoading />}>{content}</Suspense>
+        </SettingsSectionTransition>
+      ) : (
+        <ScrollArea className="h-full min-h-0" viewportClassName={settingsViewportClassName(activeSection.id)}>
+          <SettingsSectionTransition sectionId={activeSection.id} className={sectionWidthClassName(activeSection.id)}>
+            <Suspense fallback={<SettingsSectionLoading />}>{content}</Suspense>
+          </SettingsSectionTransition>
+        </ScrollArea>
+      )}
+    </div>
+  );
+}
+
+function SettingsSectionLoading(): JSX.Element {
+  return <StateView status="loading" className="min-h-[260px]" />;
+}
+
+function SettingsSectionTransition({
+  sectionId,
+  className,
+  children,
+}: {
+  sectionId: SettingsSectionId;
+  className: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <div className={className} data-settings-section={sectionId}>
+      {children}
+    </div>
   );
 }
 
@@ -98,15 +124,25 @@ function renderSettingsContent({
     case "default-model":
       return (
         <DraftBackedSection draftState={configDraftState} ready={Boolean(systemConfig?.configSnapshot)}>
-          <DefaultModelSection draftState={configDraftState} systemConfig={systemConfig} />
+          <SettingsExtensionSection
+            sectionId={activeSection.id}
+            draftState={configDraftState}
+            systemConfig={systemConfig}
+            onEntityDraftChange={onEntityDraftChange}
+          />
         </DraftBackedSection>
       );
     case "model-service":
-      return <ModelServiceSection systemConfig={systemConfig} onDirtyChange={onEntityDraftChange} />;
     case "system-tools":
-      return <SystemToolsSection systemConfig={systemConfig} onDirtyChange={onEntityDraftChange} />;
     case "mcp-servers":
-      return <McpServersSection systemConfig={systemConfig} onDirtyChange={onEntityDraftChange} />;
+      return (
+        <SettingsExtensionSection
+          sectionId={activeSection.id}
+          draftState={configDraftState}
+          systemConfig={systemConfig}
+          onEntityDraftChange={onEntityDraftChange}
+        />
+      );
     case "about":
       return <AboutSettings environment={environment} />;
   }
@@ -203,25 +239,27 @@ function DraftBackedSection({
         <div className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-ink-200/70 bg-paper-50 px-4 py-2.5">
           <div className="min-w-0 text-[11.5px] leading-5 text-ink-500">{interaction.detail}</div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={interaction.refreshDisabled}
-              onClick={draftState.refreshOrRestore}
-              title={recoveryTitle}
-            >
-              {recoveryLabel}
-            </Button>
+            <Tooltip content={recoveryTitle} side="top">
+              <span className="inline-flex">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={interaction.refreshDisabled}
+                  onClick={draftState.refreshOrRestore}
+                >
+                  {recoveryLabel}
+                </Button>
+              </span>
+            </Tooltip>
             {interaction.status === "conflict" || (interaction.status === "invalid" && !interaction.saveDisabled) ? (
-              <Button
-                size="sm"
-                disabled={interaction.saveDisabled}
-                onClick={draftState.save}
-                title={interaction.saveTitle}
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                {frontendMessage("settings.action.retry")}
-              </Button>
+              <Tooltip content={interaction.saveTitle} side="top">
+                <span className="inline-flex">
+                  <Button size="sm" disabled={interaction.saveDisabled} onClick={draftState.save}>
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    {frontendMessage("settings.action.retry")}
+                  </Button>
+                </span>
+              </Tooltip>
             ) : null}
           </div>
         </div>
@@ -236,8 +274,21 @@ function isFullHeightWorkspace(sectionId: SettingsSectionId): boolean {
 }
 
 function sectionWidthClassName(sectionId: SettingsSectionId): string {
-  if (sectionId === "appearance" || sectionId === "general") return "mx-auto w-full max-w-[1160px]";
-  if (sectionId === "about") return "mx-auto w-full max-w-[1000px]";
+  if (sectionId === "appearance") return "mx-auto w-full max-w-[1080px]";
+  if (sectionId === "general" || sectionId === "about") return "mx-auto w-full max-w-[880px]";
   if (sectionId === "default-model") return "mx-auto w-full max-w-[960px]";
-  return "mx-auto w-full max-w-[1280px]";
+  return "mx-auto w-full max-w-[1120px]";
+}
+
+function settingsViewportClassName(sectionId: SettingsSectionId): string {
+  if (
+    sectionId === "default-model" ||
+    sectionId === "runtime" ||
+    sectionId === "planning" ||
+    sectionId === "retrieval" ||
+    sectionId === "storage"
+  ) {
+    return "";
+  }
+  return "px-4 py-5 sm:px-6 sm:py-7";
 }

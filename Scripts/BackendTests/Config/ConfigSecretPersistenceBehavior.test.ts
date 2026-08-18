@@ -18,6 +18,41 @@ afterEach(() => {
 });
 
 describe("configuration secret persistence", () => {
+  it("encrypts extension configuration secrets without changing neighboring values", () => {
+    const workspaceRoot = createTemporaryDirectory("senera-config-extension-secret");
+    temporaryDirectories.push(workspaceRoot);
+    const codec = testCodec(workspaceRoot);
+    const config: AgentSystemConfig = {
+      ModelProviders: [],
+      Extensions: {
+        "web-tools": {
+          Enabled: true,
+          Configuration: {
+            search: {
+              exaApiKey: "exa-extension-secret",
+              endpoint: "https://mcp.exa.ai/mcp",
+            },
+          },
+        },
+      },
+    };
+
+    const protectedConfig = codec.protectConfig(config);
+    const protectedSearch = protectedConfig.Extensions?.["web-tools"]?.Configuration?.search as Record<string, unknown>;
+    expect(protectedSearch.exaApiKey).toMatch(/^senera:secret:v1:/u);
+    expect(protectedSearch.endpoint).toBe("https://mcp.exa.ai/mcp");
+    expect(config.Extensions?.["web-tools"]?.Configuration?.search).toMatchObject({
+      exaApiKey: "exa-extension-secret",
+    });
+
+    const revealed = codec.revealConfig(protectedConfig);
+    expect(revealed).toMatchObject({
+      protectedSecretsFound: true,
+      plaintextSecretsFound: false,
+    });
+    expect(revealed.value).toEqual(config);
+  });
+
   it("rejects encrypted provider credentials when the protection key does not match", () => {
     const workspaceRoot = createTemporaryDirectory("senera-config-secret-authentication");
     temporaryDirectories.push(workspaceRoot);

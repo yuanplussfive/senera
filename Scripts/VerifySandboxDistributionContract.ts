@@ -77,7 +77,10 @@ for (const fragment of [
   assert.ok(releaseWorkflow.includes(fragment), `Docker sandbox runtime release is missing: ${fragment}`);
 }
 assert.ok(
-  Object.values(contract.targets).some((target) => compose.includes(target.registryImage)),
-  "Compose must pin a registry image declared by the sandbox distribution contract.",
+  Object.values(contract.targets).some((target) => {
+    const registryRepository = target.registryImage.slice(0, target.registryImage.lastIndexOf(":"));
+    return compose.includes(`${registryRepository}:sandbox-runtime-latest`);
+  }),
+  "Compose must use the contract registry's sandbox-runtime-latest image by default.",
 );
 console.log("Sandbox distribution contract verified.");

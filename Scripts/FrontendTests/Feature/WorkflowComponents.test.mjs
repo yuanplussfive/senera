@@ -16,7 +16,6 @@ const { StepNode } = await import("../../../Frontend/src/features/workflow/StepN
 const { layoutSteps, readWorkflowLayoutKey } = await import("../../../Frontend/src/features/workflow/layout.ts");
 const { ChatHeader } = await import("../../../Frontend/src/features/chat/ChatHeader.tsx");
 const { ThinkingSummaryBar } = await import("../../../Frontend/src/features/chat/ThinkingSummaryBar.tsx");
-const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
 const { AppMotionProvider } = await import("../../../Frontend/src/shared/motion/MotionProvider.tsx");
 const { Position, ReactFlowProvider } = await import("@xyflow/react");
 const { useStore } = await import("../../../Frontend/src/store/sessionStore.ts");
@@ -62,19 +61,16 @@ test("thinking timeline renders its empty state and opens a focused workflow vie
 
 test("completed run summary keeps disclosure semantics when motion is disabled", async () => {
   const user = userEvent.setup();
-  const onViewWorkflow = vi.fn();
   const run = createRun({ steps: [createStep({ title: "Inspect projected context" })] });
   renderWithFrontendProviders(
-    React.createElement(
-      AppMotionProvider,
-      { level: "none" },
-      React.createElement(ThinkingSummaryBar, { run, onViewWorkflow }),
-    ),
+    React.createElement(AppMotionProvider, { level: "none" }, React.createElement(ThinkingSummaryBar, { run })),
   );
 
   const trigger = document.querySelector("[data-ui-chrome] button[aria-expanded]");
   expect(trigger).toBeInstanceOf(HTMLButtonElement);
   expect(trigger).toHaveAttribute("aria-expanded", "false");
+  expect(trigger).toHaveAccessibleName("Thinking 2.0s");
+  expect(trigger).not.toHaveTextContent("1 步");
 
   await user.click(trigger);
 
@@ -82,13 +78,123 @@ test("completed run summary keeps disclosure semantics when motion is disabled",
   expect(trigger).toHaveAttribute("aria-expanded", "true");
   expect(disclosureId).not.toBeNull();
   await waitFor(() =>
-    expect(document.getElementById(disclosureId)).toContainElement(
-      screen.getByRole("button", { name: frontendMessage("workflow.summary.viewFull") }),
-    ),
+    expect(document.getElementById(disclosureId)).toContainElement(screen.getByText("本轮未调用工具")),
   );
+  expect(screen.queryByText(frontendMessage("workflow.summary.viewFull"))).not.toBeInTheDocument();
 
   await user.click(trigger);
   await waitFor(() => expect(document.getElementById(disclosureId)).not.toBeInTheDocument());
+});
+
+test("live run summary uses the quiet Thinking label without completed-run chrome", () => {
+  const run = createRun({ status: "running", endedAt: undefined });
+  renderWithFrontendProviders(React.createElement(ThinkingSummaryBar, { run, presentation: "live-final-answer" }));
+
+  const trigger = document.querySelector("[data-ui-chrome] button[aria-expanded]");
+  expect(trigger).toHaveAccessibleName("Thinking...");
+  expect(trigger).toHaveTextContent("Thinking...");
+  expect(trigger).not.toHaveTextContent("2.0s");
+  expect(trigger?.querySelector(".lucide-chevron-down")).not.toBeInTheDocument();
+});
+
+test("thinking summary expands tool rounds through the shared batch activity", async () => {
+  const user = userEvent.setup();
+  const run = createToolBatchRun(["WorkspaceRead", "WorkspaceRead", "WorkspaceGrep"]);
+  run.status = "completed";
+  run.endedAt = "2026-07-11T00:00:05.000Z";
+  run.steps.find((step) => step.toolName === "WorkspaceGrep").status = "failed";
+  run.steps.find((step) => step.kind === "model").status = "done";
+
+  renderWithFrontendProviders(React.createElement(ThinkingSummaryBar, { run }));
+  await user.click(document.querySelector("[data-ui-chrome] button[aria-expanded]"));
+
+  const trigger = await waitFor(() => {
+    const element = document.querySelector("[data-tool-batch-activity-trigger]");
+    expect(element).toBeInstanceOf(HTMLButtonElement);
+    return element;
+  });
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await user.click(trigger);
+
+  await waitFor(() => expect(document.querySelectorAll("[data-tool-batch-activity-item]")).toHaveLength(3));
+  expect(document.querySelectorAll("[data-tool-batch-activity-item][data-state='done']")).toHaveLength(2);
+  expect(document.querySelector("[data-tool-batch-activity-item][data-state='failed']")).toBeInTheDocument();
+  expect(screen.queryByText(frontendMessage("workflow.summary.viewFull"))).not.toBeInTheDocument();
+});
+
+test("thinking summary keeps sequential tools in one collapsible batch", async () => {
+  const user = userEvent.setup();
+  const run = createRun({
+    steps: [
+      createStep({ id: "read", kind: "tool", toolName: "WorkspaceRead", status: "done" }),
+      createStep({ id: "shell", kind: "tool", toolName: "ShellCommandTool", status: "done" }),
+    ],
+  });
+
+  renderWithFrontendProviders(React.createElement(ThinkingSummaryBar, { run }));
+  await user.click(document.querySelector("[data-ui-chrome] button[aria-expanded]"));
+
+  const trigger = await waitFor(() => {
+    const element = document.querySelector("[data-tool-batch-activity-trigger]");
+    expect(element).toBeInstanceOf(HTMLButtonElement);
+    return element;
+  });
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await user.click(trigger);
+
+  await waitFor(() => expect(document.querySelectorAll("[data-tool-batch-activity-item]")).toHaveLength(2));
+  expect(document.querySelector("[data-thinking-tool-popover]")).toHaveClass(
+    "thinking-tool-popover",
+    "overflow-hidden",
+  );
+  expect(document.querySelector("[data-tool-batch-activity]").parentElement).toHaveClass(
+    "thinking-tool-popover__body",
+    "overflow-y-auto",
+    "scrollbar-thin",
+  );
+});
+
+test("thinking summary keeps web search evidence out of the tool chain", async () => {
+  const user = userEvent.setup();
+  const run = createRun({
+    steps: [
+      createStep({
+        id: "web-search",
+        kind: "tool",
+        toolName: "WebSearch",
+        status: "done",
+        toolArgs: { query: "React security guidance" },
+        toolResult: {
+          query: "React security guidance",
+          results: [
+            {
+              title: "React security overview",
+              url: "https://react.dev/learn/keeping-components-pure",
+              citationId: "cite-react",
+            },
+          ],
+        },
+      }),
+    ],
+  });
+
+  renderWithFrontendProviders(React.createElement(ThinkingSummaryBar, { run }));
+  await user.click(document.querySelector("[data-ui-chrome] button[aria-expanded]"));
+
+  const trigger = await waitFor(() => {
+    const element = document.querySelector("[data-tool-batch-activity-trigger]");
+    expect(element).toBeInstanceOf(HTMLButtonElement);
+    return element;
+  });
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await user.click(trigger);
+
+  await waitFor(() => expect(document.querySelector("[data-tool-batch-activity-items]")).toBeVisible());
+  expect(document.querySelector("[data-tool-batch-activity-item]")).toHaveTextContent(
+    "Search · React security guidance",
+  );
+  expect(screen.queryByText("React security overview")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-tool-batch-activity-item] a")).not.toBeInTheDocument();
 });
 
 test("expanding the workflow keeps the dock vertical and opens a horizontal canvas", async () => {
@@ -144,90 +250,12 @@ test("chat header exposes one neutral workflow tool entry for panel toggling", a
   expect(onToggle).toHaveBeenCalledTimes(1);
 });
 
-test("chat header exposes the effective execution mode without duplicating terminal access", () => {
-  const baseStatus = {
-    provider: "docker-engine",
-    platform: "win32",
-    supported: true,
-    effectiveMode: "sandbox",
-    dependencies: { errors: [], warnings: [] },
-    diagnostics: [],
-    message: "Sandbox runtime is ready",
-    updatedAt: "2026-07-09T00:00:00.000Z",
-  };
-  const { rerender } = renderWithFrontendProviders(
-    React.createElement(ChatHeader, {
-      title: "Sandbox status",
-      sandboxStatus: { ...baseStatus, state: "ready" },
-    }),
-  );
+test("chat header leaves execution environment details to settings", () => {
+  renderWithFrontendProviders(React.createElement(ChatHeader, { title: "Focused conversation" }));
 
-  expect(
-    screen.getByRole("status", {
-      name: frontendMessage("execution.mode.sandbox", {
-        provider: frontendMessage("sandbox.provider.dockerEngine"),
-      }),
-    }),
-  ).toHaveAttribute("data-execution-mode", "sandbox");
-  expect(
-    screen
-      .getByRole("status", {
-        name: frontendMessage("execution.mode.sandbox", {
-          provider: frontendMessage("sandbox.provider.dockerEngine"),
-        }),
-      })
-      .querySelector("span"),
-  ).toBeNull();
-  expect(screen.queryByRole("button", { name: frontendMessage("terminal.panel.open") })).not.toBeInTheDocument();
-
-  rerender(
-    React.createElement(
-      TooltipProvider,
-      { delayDuration: 0 },
-      React.createElement(ChatHeader, {
-        title: "Sandbox status",
-        sandboxStatus: {
-          ...baseStatus,
-          provider: undefined,
-          state: "disabled",
-          effectiveMode: "host",
-          shellDialect: "powershell",
-        },
-      }),
-    ),
-  );
-
-  expect(
-    screen.getByRole("status", {
-      name: frontendMessage("execution.mode.host", { shell: frontendMessage("execution.shell.powershell") }),
-    }),
-  ).toHaveAttribute("data-execution-mode", "host");
-  expect(
-    screen
-      .getByRole("status", {
-        name: frontendMessage("execution.mode.host", { shell: frontendMessage("execution.shell.powershell") }),
-      })
-      .querySelector("span"),
-  ).toBeNull();
-
-  rerender(
-    React.createElement(
-      TooltipProvider,
-      { delayDuration: 0 },
-      React.createElement(ChatHeader, {
-        title: "Sandbox status",
-        sandboxStatus: { ...baseStatus, state: "unavailable", effectiveMode: "unavailable" },
-      }),
-    ),
-  );
-
-  expect(screen.getByRole("status", { name: frontendMessage("execution.mode.unavailable") })).toHaveAttribute(
-    "data-execution-mode",
-    "unavailable",
-  );
-  expect(screen.getByRole("status", { name: frontendMessage("execution.mode.unavailable") })).toHaveTextContent(
-    frontendMessage("execution.mode.unavailable"),
-  );
+  expect(screen.getByRole("heading", { name: "Focused conversation" })).toBeVisible();
+  expect(document.querySelector("[data-sandbox-status]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-execution-mode]")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: frontendMessage("terminal.panel.open") })).not.toBeInTheDocument();
 });
 
@@ -245,7 +273,7 @@ test("persistent workflow panel owns its tool header and only collapse control",
   expect(onClosePanel).toHaveBeenCalledTimes(1);
 });
 
-test("dock execution view hides its composed title and keeps the raised run summary", () => {
+test("dock execution view hides its composed title and keeps a flat run summary", () => {
   const run = createRun({
     requestId: "run-dock",
     input: "Inspect the new dock prototype",
@@ -268,8 +296,10 @@ test("dock execution view hides its composed title and keeps the raised run summ
 
   expect(document.querySelector("[data-workspace-tool-dock]")).not.toBeInTheDocument();
   expect(document.querySelector("[data-window-drag-region]")).not.toBeInTheDocument();
-  expect(document.querySelector("[data-workflow-run-summary]")).toHaveClass("rounded-[14px]", "bg-surface-raised");
-  expect(document.querySelector("[data-workflow-run-status='completed']")).toHaveClass("bg-moss-50");
+  expect(document.querySelector("[data-workflow-run-summary]")).toHaveClass("border-b", "border-line-subtle");
+  expect(document.querySelector("[data-workflow-run-summary]")).not.toHaveClass("rounded-[14px]", "bg-surface-raised");
+  expect(document.querySelector("[data-workflow-run-status='completed']")).toHaveClass("text-content-muted");
+  expect(document.querySelector("[data-workflow-run-status='completed'] .lucide-list-tree")).toBeInTheDocument();
 });
 
 test("dock execution view renders a vertical workflow graph with expandable complete node details", async () => {
@@ -319,18 +349,22 @@ test("dock execution view renders a vertical workflow graph with expandable comp
   expect(screen.getByText(/WorkspaceGrep/)).toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.childRun.board.title"))).not.toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.childRun.board.empty"))).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: /展开读取文件：Source\/runtime.ts/ }));
+  expect(
+    document.querySelector("[data-workflow-dock-step='tool-read'] [data-tool-action-icon='file-text']"),
+  ).toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-dock-step='tool-read'] .lucide-check")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /展开WorkspaceRead/ }));
   await waitFor(() => expect(document.querySelector("[data-tool-step-inspector]")).toBeInTheDocument());
   expect(screen.getByText(frontendFeatureMessage("workflow.inspector.action"))).toBeVisible();
-  expect(document.querySelector("[data-tool-step-inspector]")).toHaveTextContent("读取文件：Source/runtime.ts");
-  expect(screen.getByText(frontendFeatureMessage("workflow.inspector.scope"))).toBeVisible();
+  expect(screen.getByText(frontendFeatureMessage("workflow.inspector.result"))).toBeVisible();
+  expect(screen.queryByText(frontendFeatureMessage("workflow.inspector.scope"))).not.toBeInTheDocument();
   expect(screen.getByText("Source/runtime.ts")).toBeVisible();
+  expect(document.querySelector("[data-tool-inspector-section='action']")).toHaveTextContent("path");
+  expect(document.querySelector("[data-tool-inspector-section='result']")).toHaveTextContent(
+    "export const runtime = true;",
+  );
   expect(screen.queryByText(frontendMessage("workflow.node.section.toolArgs"))).not.toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.node.section.rawToolResult"))).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: frontendFeatureMessage("workflow.node.technicalDetails") }));
-  expect(screen.getByText(frontendMessage("workflow.node.section.toolArgs"))).toBeVisible();
-  expect(screen.getByText(frontendMessage("workflow.node.section.rawToolResult"))).toBeVisible();
-  expect(screen.getByText(/export const runtime = true/)).toBeVisible();
   expect(
     document.querySelector("[data-workflow-dock-step='tool-read'] [data-tool-step-inspector]")?.parentElement,
   ).toHaveClass("border-l", "border-line-subtle");
@@ -597,12 +631,12 @@ test("dock workflow graph compresses a parallel batch only until the user expand
 
   renderWithFrontendProviders(React.createElement(ThinkingTimeline, { presentation: "dock", hidePanelTitle: true }));
 
-  const batch = await screen.findByRole("button", { name: /展开并发工具批次/ });
+  const batch = await screen.findByRole("button", { name: /展开2 次工具调用/ });
   expect(document.querySelectorAll("[data-workflow-dock-batch]")).toHaveLength(1);
-  expect(screen.queryByRole("button", { name: /展开Call WorkspaceFind/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /展开WorkspaceFind/ })).not.toBeInTheDocument();
   await user.click(batch);
-  expect(screen.getByRole("button", { name: /展开Call WorkspaceFind/ })).toBeVisible();
-  expect(screen.getByRole("button", { name: /展开Call WorkspaceRead/ })).toBeVisible();
+  expect(screen.getByRole("button", { name: /展开WorkspaceFind/ })).toBeVisible();
+  expect(screen.getByRole("button", { name: /展开WorkspaceRead/ })).toBeVisible();
 });
 
 test("dock workflow graph represents partial batch failures proportionally", () => {
@@ -623,10 +657,11 @@ test("dock workflow graph represents partial batch failures proportionally", () 
   expect(succeeded).toHaveStyle({ width: `${(12 / 13) * 100}%` });
   expect(failed).toHaveAttribute("data-count", "1");
   expect(failed).toHaveStyle({ width: `${(1 / 13) * 100}%` });
-  expect(screen.getByText("成功 12")).toBeVisible();
-  expect(screen.getByText("失败 1")).toBeVisible();
-  expect(screen.getByText("13/13")).toHaveClass("text-content-muted");
-  expect(screen.getByText("13/13")).not.toHaveClass("text-brick-600");
+  expect(document.querySelector("[data-tool-action-warning]")).not.toBeInTheDocument();
+  expect(screen.queryByText("1 项失败")).not.toBeInTheDocument();
+  expect(screen.queryByText("成功 12")).not.toBeInTheDocument();
+  expect(screen.queryByText("13/13")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-assistant-ui-tool-group]")).not.toBeInTheDocument();
 });
 
 test("workflow layout key ignores live status but tracks dimension changes", () => {

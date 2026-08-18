@@ -52,7 +52,9 @@ const RequestSchedulingCatalog = {
   "session.cancel": concurrent,
   "session.truncate_from": serial((request) => sessionKey(request.sessionId)),
   "session.regenerate": concurrent,
-  "session.fork": serial((request) => sessionKey(request.sourceSessionId)),
+  // A running source can fork its durable prefix without touching the active
+  // model state. The fork coordinator still serializes the new target session.
+  "session.fork": concurrent,
   "session.compact": serial((request) => sessionKey(request.sessionId)),
   // Runtime status is a read-only snapshot and must remain observable during
   // an active turn instead of waiting behind that turn's serial lease.
@@ -100,6 +102,8 @@ const RequestSchedulingCatalog = {
   "execution.resource.write": serial((request) => resourceKey(request.resourceId)),
   "execution.resource.resize": serial((request) => resourceKey(request.resourceId)),
   "execution.resource.signal": serial((request) => resourceKey(request.resourceId)),
+  // A close only mutates one resource. Keep that resource's lifecycle ordered,
+  // while allowing unrelated terminals in the same session to close together.
   "execution.resource.close": serial((request) => resourceKey(request.resourceId)),
   "execution.resource.stop_all": serial((request) => sessionKey(request.sessionId)),
 } satisfies RequestSchedulingCatalog;

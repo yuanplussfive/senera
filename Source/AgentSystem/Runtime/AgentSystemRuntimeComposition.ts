@@ -47,6 +47,8 @@ import {
 import { registerAgentSystemToolHandlers, systemToolCapability } from "../SystemTools/AgentSystemToolCatalog.js";
 import { createAgentSystemTools } from "../SystemTools/AgentSystemTools.js";
 import { AgentSystemExtensionCatalog } from "../SystemTools/AgentSystemToolSource.js";
+import { AgentBrowserConfigurationSchema } from "../Browser/AgentBrowserConfiguration.js";
+import { AgentBrowserRuntime } from "../Browser/AgentBrowserRuntime.js";
 import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
 import { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import { AgentToolCatalogProjector } from "../ToolRuntime/AgentToolCatalogProjector.js";
@@ -106,20 +108,14 @@ export type AgentRuntimeInfrastructure = ReturnType<typeof createAgentRuntimeInf
 export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeCompositionOptions) {
   const registry = new AgentExtensionRegistry();
   const modelProviderConfig = resolveModelProviderConfig(options.config, options.modelProviderId);
-  const systemTools = createAgentSystemTools(options.config, options.modelProviderId);
   const resourcesRoot = path.resolve(options.resourcesPath ?? options.workspaceRoot);
-  const systemExtensions = new AgentSystemExtensionCatalog();
-  systemExtensions.registerRoot(registry, path.join(resourcesRoot, "System", "Extensions"), {
-    capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...systemTools.map(systemToolCapability)]),
-    configurations: options.config.Extensions,
-  });
-  new AgentPromptAssetCatalog().registerRoot(registry, path.join(resourcesRoot, "System", "Prompts"));
   const approvalRuntime = options.approvalRuntime ?? new AgentApprovalRuntime();
   const interactionInput = options.interactionInput ?? new AgentInteractionInputRuntime();
   const piSessionRegistry = options.piSessionRegistry ?? new AgentPiActiveSessionRegistry();
   const authorizationPolicyClient = new AgentSeneraOpaPolicyClient({ registry });
   const sandboxRuntimeConfig = resolveSandboxRuntimeConfig(options.config);
-  const sandboxEnabled = sandboxRuntimeConfig.Enabled && process.platform !== "win32";
+  const sandboxEnabled =
+    sandboxRuntimeConfig.Enabled && (process.platform !== "win32" || options.sandboxAvailable === true);
   const sandboxAvailable = sandboxEnabled && options.sandboxAvailable === true;
   const sandboxProvider = options.sandboxProvider;
   const dockerEngineWorker = options.dockerEngineWorker;
@@ -144,6 +140,19 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
     terminationGraceMs: executionResourceLimits.terminationGraceMs,
     resourceAccessPolicy: new AgentResourceAccessPolicy(authorizationPolicyClient),
   });
+  const browserRuntime = new AgentBrowserRuntime({
+    workspaceRoot: options.workspaceRoot,
+    configuration: AgentBrowserConfigurationSchema.parse(
+      options.config.Extensions?.["agent-browser"]?.Configuration ?? {},
+    ),
+  });
+  const systemTools = createAgentSystemTools(options.config, options.modelProviderId, { browserRuntime });
+  const systemExtensions = new AgentSystemExtensionCatalog();
+  systemExtensions.registerRoot(registry, path.join(resourcesRoot, "System", "Extensions"), {
+    capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...systemTools.map(systemToolCapability)]),
+    configurations: options.config.Extensions,
+  });
+  new AgentPromptAssetCatalog().registerRoot(registry, path.join(resourcesRoot, "System", "Prompts"));
 
   return {
     registry,
@@ -164,6 +173,7 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
         limits: executionResourceLimits,
       }),
     mcpClientPool,
+    browserRuntime,
     uploadStore,
     mcpSampling,
     mcpInputs: options.mcpInputs,

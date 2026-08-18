@@ -207,9 +207,8 @@ test("event journal accounts for retained metadata independently from observed f
   });
 });
 
-test("event journal recorder installation is idempotent", () => {
-  installEventJournalRecorder();
-  installEventJournalRecorder();
+test("event journal recorder installation is idempotent", async () => {
+  await Promise.all([installEventJournalRecorder(), installEventJournalRecorder()]);
   publishAgentTransportObservation(lifecycle("open"));
 
   expect(useEventJournalStore.getState().records.map((record) => record.kind)).toEqual(["socket.open"]);

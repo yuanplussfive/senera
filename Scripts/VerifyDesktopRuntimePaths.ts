@@ -7,6 +7,7 @@ import {
   resolveDesktopWorkspaceRoot,
 } from "../Apps/Desktop/DesktopRuntimePathResolver.js";
 import {
+  isCurrentDesktopInstallationSelection,
   readDesktopInstallationSelection,
   resolveDesktopInstallationSelectionPath,
   writeDesktopInstallationSelection,
@@ -32,12 +33,18 @@ for (const requiredInstallerContract of [
   "SeneraWriteInstallationSelection",
   "!ifndef BUILD_UNINSTALLER",
   "SeneraHasValidInstallationSelection",
+  "SeneraVerifyInstallationSelection",
 ]) {
   assert.ok(
     installerScript.includes(requiredInstallerContract),
     `NSIS installer contract is missing: ${requiredInstallerContract}`,
   );
 }
+assert.ok(!installerScript.includes("SeneraDataRoot"), "The installer must not expose a configurable data root.");
+assert.ok(
+  !installerScript.includes("SeneraCopySelectionToInstallAnchor"),
+  "The installer must not write an install anchor.",
+);
 const temporaryRoot = path.join(workspaceRoot, ".cache", "desktop-path-verification");
 fs.rmSync(temporaryRoot, { recursive: true, force: true });
 fs.mkdirSync(temporaryRoot, { recursive: true });
@@ -112,32 +119,26 @@ assert.throws(
 );
 
 const selectionPath = resolveDesktopInstallationSelectionPath(temporaryRoot);
-const dataRootA = path.join(temporaryRoot, "data-a");
-const dataRootB = path.join(temporaryRoot, "data-b");
 writeDesktopInstallationSelection(selectionPath, {
-  dataRoot: dataRootA,
   workspaceRoot,
 });
 assert.deepEqual(readDesktopInstallationSelection(selectionPath), {
-  version: 1,
-  dataRoot: dataRootA,
+  version: 2,
   workspaceRoot,
 });
+assert.equal(isCurrentDesktopInstallationSelection(selectionPath), true);
 
-const movedSelection = { dataRoot: dataRootB, workspaceRoot };
-writeDesktopInstallationSelection(selectionPath, movedSelection);
-const movedSelectionPath = resolveDesktopInstallationSelectionPath(dataRootB);
-writeDesktopInstallationSelection(movedSelectionPath, movedSelection);
-assert.deepEqual(readDesktopInstallationSelection(selectionPath), {
-  version: 1,
-  dataRoot: dataRootB,
+const legacySelectionPath = path.join(temporaryRoot, "legacy-installation.json");
+fs.writeFileSync(
+  legacySelectionPath,
+  `${JSON.stringify({ version: 1, dataRoot: path.join(temporaryRoot, "obsolete-data"), workspaceRoot }, null, 2)}\n`,
+  "utf8",
+);
+assert.deepEqual(readDesktopInstallationSelection(legacySelectionPath), {
+  version: 2,
   workspaceRoot,
 });
-assert.deepEqual(readDesktopInstallationSelection(movedSelectionPath), {
-  version: 1,
-  dataRoot: dataRootB,
-  workspaceRoot,
-});
+assert.equal(isCurrentDesktopInstallationSelection(legacySelectionPath), false);
 
 const legacyWorkspacePath = resolveDesktopWorkspaceSelectionPath(temporaryRoot);
 writeDesktopWorkspaceSelection(legacyWorkspacePath, temporaryRoot);

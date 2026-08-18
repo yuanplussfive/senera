@@ -30,6 +30,8 @@ npm run benchmark.pi-planner -- -- --stage=direct-flow --iterations=3
 
 容器监听 `8787`，所有运行数据都放在容器内的 `/data`。`compose.yaml` 使用 Docker named volume，首次部署不需要先处理宿主机目录权限。Docker 部署不需要把 `/dev/kvm` 或 `NET_ADMIN` 传给 Senera 主服务；宿主已注册 `runsc` 时使用 gVisor，否则使用受限 Docker Engine 容器。
 
+受控浏览器随应用镜像安装 Chromium，因此 Docker 部署不需要再执行 `playwright install` 或在宿主机安装 Chrome。容器没有图形显示服务器，浏览器扩展应保持 `runtime.headed: false`；需要观察页面操作时，请在桌面端启用“显示浏览器窗口”。
+
 镜像入口只在权限准备阶段以 root 运行，然后通过 `exec` 以非 root `node` 启动主服务。Compose 另起一个网络隔离、只读的 `sandbox-worker`，该 Worker 是唯一挂载 Docker Engine Socket 的组件，并且只接受版本化 Worker 协议允许的镜像、挂载和资源策略；主服务仅通过私有 Unix Socket 访问 Worker。
 
 Senera 不提供可直接用于生产的默认密码。首次启动前，直接编辑 `compose.yaml` 中已写明的管理员资料和访问 Origin：
@@ -45,13 +47,15 @@ SENERA_ALLOW_INSECURE_HTTP: "true"
 然后启动：
 
 ```bash
-# 生产环境固定应用和沙箱镜像的发布 digest；未设置时 Compose 使用版本 tag。
+# 生产环境固定应用和沙箱镜像的发布 digest；未设置时 Compose 使用已验证的 latest 标签。
 export SENERA_IMAGE=ghcr.io/yuanplussfive/senera@sha256:<application-digest>
 export SENERA_SANDBOX_IMAGE=ghcr.io/yuanplussfive/senera@sha256:<sandbox-digest>
 docker compose pull
 docker compose up -d --pull always
 docker compose logs -f senera
 ```
+
+默认镜像分别是 `ghcr.io/yuanplussfive/senera:latest` 和 `ghcr.io/yuanplussfive/senera:sandbox-runtime-latest`。它们只在产品发布通过桌面安装包、容器构建、沙箱和 Compose smoke 后更新；需要可复现部署或回退时，始终改用对应发布的 digest。
 
 应用镜像不是可独立运行的单容器部署单元。不要用 `docker run` 绕过编排；主服务需要 Compose 创建的 `sandbox-worker`、私有控制 Socket 和共享数据卷。Worker 会在 `auto` 模式下检测 Docker Engine：已注册 `runsc` 时使用 gVisor，否则使用受限 Docker Engine provider；缺少 Worker 本身属于部署不完整，不会降级为让主服务直接访问 Docker Socket。
 
@@ -70,7 +74,17 @@ curl http://127.0.0.1:8787/health/ready
 
 ### 原生 SQLite 依赖
 
-Docker 镜像运行的是标准 Node.js 22，不是 Electron，因此不需要安装系统 `sqlite3` 命令，也不需要执行 Electron ABI 重建。应用使用的 SQLite 驱动是 npm 依赖 `better-sqlite3`；镜像构建会在跳过依赖安装脚本后，使用镜像内的编译工具为 Node ABI 构建该原生模块，并在裁剪生产依赖后运行 SQLite smoke test。桌面端则由 Electron 打包流程单独准备自己的原生模块。
+Docker 镜像运行的是标准 Node.js 24，不是 Electron，因此不需要安装系统 `sqlite3` 命令，也不需要执行 Electron ABI 重建。应用使用的 SQLite 驱动是 npm 依赖 `better-sqlite3`；镜像构建会在跳过依赖安装脚本后，使用镜像内的编译工具为 Node ABI 构建该原生模块，并在裁剪生产依赖后运行 SQLite smoke test。桌面端则由 Electron 打包流程单独准备自己的原生模块。
+
+### 受控浏览器
+
+受控浏览器的控制层是生产依赖 `playwright-core`，它不下载也不携带浏览器二进制。这样桌面安装包不会额外内置第二个 Chromium，运行时也不会在用户机器上隐式下载浏览器。
+
+- Windows 桌面端自动发现当前用户已安装的 Chrome、Edge 或 Brave。`runtime.headed: true` 会打开独立的受控浏览器窗口，不使用 Electron 的渲染窗口；留空 `runtime.executablePath` 即可，只有自动发现失败或要固定版本时才填写路径。
+- 官方 Docker 镜像已安装 Chromium 与运行所需字体，容器部署不需要挂载宿主浏览器。镜像没有显示服务器，因此必须保持 `runtime.headed: false`；启用可见窗口会在启动前返回明确配置错误。Chromium 使用非 root `node` 用户运行，并启用 `--disable-dev-shm-usage` 以适配 Docker 默认共享内存大小。
+- 裸 Linux 源码或二进制部署需要自行安装 Chrome、Chromium 或兼容的发行版包及其系统依赖，然后保持默认自动发现，或通过 `runtime.executablePath` 指向实际可执行文件。不要执行 `playwright install` 作为 Senera 运行时前提；那是仓库 E2E 测试使用的受管测试浏览器。
+
+受控会话拥有单独的临时 profile，不读取或改写用户日常浏览器的 profile、Cookie 与启动参数。浏览器找不到时会指出应安装浏览器或配置可执行路径，而不是退回 Electron WebView 或静默关闭浏览能力。
 
 默认 `compose.yaml` 做了这些事情：
 

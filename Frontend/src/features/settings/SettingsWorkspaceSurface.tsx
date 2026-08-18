@@ -8,5 +8,5 @@ export function SettingsWorkspaceFrame({
   children: ReactNode;
   className?: string;
 }): JSX.Element {
-  return <section className={cn("overflow-hidden bg-paper-50", className)}>{children}</section>;
+  return <section className={cn("overflow-hidden", className)}>{children}</section>;
 }

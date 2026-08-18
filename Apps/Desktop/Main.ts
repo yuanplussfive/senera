@@ -4,26 +4,11 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, type IpcMainInv
 import { startSeneraServer, type SeneraServerHandle } from "../ServerRuntime.js";
 import {
   appendDesktopLog,
-  chooseDesktopDataRoot,
   chooseDesktopWorkspace,
-  DesktopDataResolutionError,
-  DesktopInstallationSelectionRequiredError,
-  DesktopWorkspaceResolutionError,
-  persistDesktopInstallation,
   persistDesktopWorkspace,
   prepareDesktopRuntime,
   type DesktopRuntimePaths,
 } from "./DesktopRuntime.js";
-import {
-  isDesktopDataDirectory,
-  readDesktopInstallationSelection,
-  resolveDesktopInstallationSelectionPath,
-} from "./DesktopInstallationSelection.js";
-import {
-  isDesktopWorkspaceDirectory,
-  readLegacyDesktopWorkspaceSelection,
-  resolveDesktopWorkspaceSelectionPath,
-} from "./DesktopWorkspaceSelection.js";
 import {
   createDesktopFrontendSource,
   loadDesktopFrontend,
@@ -67,14 +52,6 @@ const settingsSectionIds = new Set([
 ]);
 
 app.setName("Senera");
-const defaultDesktopDataRoot = path.resolve(app.getPath("userData"));
-const defaultInstallationSelectionPath = resolveDesktopInstallationSelectionPath(defaultDesktopDataRoot);
-const startupInstallationSelection = readDesktopInstallationSelection(defaultInstallationSelectionPath);
-const configuredDataRoot = process.env.SENERA_DATA_ROOT?.trim();
-const startupDataRoot = configuredDataRoot || startupInstallationSelection?.dataRoot;
-if (startupDataRoot && isDesktopDataDirectory(startupDataRoot)) {
-  app.setPath("userData", path.resolve(startupDataRoot));
-}
 if (remoteDebuggingPort) {
   app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort);
 }
@@ -83,8 +60,7 @@ Menu.setApplicationMenu(null);
 app
   .whenReady()
   .then(async () => {
-    if (app.isPackaged && !(await ensurePackagedInstallationSelection())) return;
-    runtimePaths = await prepareDesktopRuntime({ installationAnchorPath: defaultInstallationSelectionPath });
+    runtimePaths = await prepareDesktopRuntime();
     appendDesktopLog(
       runtimePaths.logPath,
       `starting desktop runtime dataRoot=${runtimePaths.dataRoot} workspace=${runtimePaths.workspaceRoot} resources=${runtimePaths.resourceRoot} configDatabase=${runtimePaths.configDatabasePath}`,
@@ -244,12 +220,6 @@ function createDesktopTray(iconPath: string, onSelectWorkspace: () => void): Tra
         label: desktopMessage("tray.selectWorkspace", {}, app.getLocale()),
         click: onSelectWorkspace,
       },
-      {
-        label: desktopMessage("tray.selectDataDirectory", {}, app.getLocale()),
-        click: () => {
-          void selectDesktopDataRootAndRestart();
-        },
-      },
       { type: "separator" },
       {
         label: desktopMessage("tray.quit", {}, app.getLocale()),
@@ -263,69 +233,17 @@ function createDesktopTray(iconPath: string, onSelectWorkspace: () => void): Tra
 
 async function selectDesktopWorkspaceAndRestart(): Promise<void> {
   if (!runtimePaths) return;
-  const selected = await chooseDesktopWorkspace();
-  if (!selected || path.resolve(selected) === path.resolve(runtimePaths.workspaceRoot)) return;
-  persistDesktopWorkspace(runtimePaths, selected);
-  desktopRestartRequested = true;
-  app.quit();
-}
-
-async function selectDesktopDataRootAndRestart(): Promise<void> {
-  if (!runtimePaths) return;
-  const selected = await chooseDesktopDataRoot(runtimePaths.dataRoot);
-  if (!selected || path.resolve(selected) === path.resolve(runtimePaths.dataRoot)) return;
-  persistDesktopInstallation(runtimePaths, {
-    dataRoot: selected,
-    workspaceRoot: runtimePaths.workspaceRoot,
-  });
-  desktopRestartRequested = true;
-  app.quit();
-}
-
-async function ensurePackagedInstallationSelection(): Promise<boolean> {
-  if (!app.isPackaged) return true;
-  const currentDataRoot = path.resolve(app.getPath("userData"));
-  const currentSelection = readDesktopInstallationSelection(resolveDesktopInstallationSelectionPath(currentDataRoot));
-  const configuredWorkspaceRoot = process.env.SENERA_WORKSPACE_ROOT?.trim();
-  const legacyWorkspaceRoot = readLegacyDesktopWorkspaceSelection(
-    resolveDesktopWorkspaceSelectionPath(currentDataRoot),
-    currentDataRoot,
-  );
-  const workspaceRoot =
-    configuredWorkspaceRoot ||
-    currentSelection?.workspaceRoot ||
-    startupInstallationSelection?.workspaceRoot ||
-    legacyWorkspaceRoot;
-  if (configuredWorkspaceRoot && !isDesktopWorkspaceDirectory(configuredWorkspaceRoot)) {
-    throw new DesktopWorkspaceResolutionError(configuredWorkspaceRoot);
+  try {
+    const selected = await chooseDesktopWorkspace();
+    if (!selected || path.resolve(selected) === path.resolve(runtimePaths.workspaceRoot)) return;
+    persistDesktopWorkspace(runtimePaths, selected);
+    desktopRestartRequested = true;
+    app.quit();
+  } catch (error) {
+    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    appendDesktopLog(runtimePaths.logPath, `workspace selection failed\n${message}`);
+    dialog.showErrorBox(desktopMessage("workspace.selectionFailedTitle", {}, app.getLocale()), message);
   }
-  const dataRoot = configuredDataRoot
-    ? path.resolve(configuredDataRoot)
-    : startupInstallationSelection?.dataRoot
-      ? path.resolve(startupInstallationSelection.dataRoot)
-      : currentSelection?.dataRoot
-        ? path.resolve(currentSelection.dataRoot)
-        : legacyWorkspaceRoot
-          ? currentDataRoot
-          : undefined;
-  if (!dataRoot) throw new DesktopInstallationSelectionRequiredError(defaultInstallationSelectionPath);
-  if (!isDesktopDataDirectory(dataRoot)) {
-    throw new DesktopDataResolutionError(dataRoot);
-  }
-  const selectedWorkspaceRoot =
-    workspaceRoot && isDesktopWorkspaceDirectory(workspaceRoot) ? path.resolve(workspaceRoot) : undefined;
-  if (!selectedWorkspaceRoot) {
-    throw new DesktopInstallationSelectionRequiredError(
-      currentSelection ? resolveDesktopInstallationSelectionPath(currentDataRoot) : defaultInstallationSelectionPath,
-    );
-  }
-
-  if (path.resolve(currentDataRoot) === path.resolve(dataRoot)) {
-    return true;
-  }
-  app.relaunch();
-  app.exit(0);
-  return false;
 }
 
 function hideAllDesktopWindows(): void {

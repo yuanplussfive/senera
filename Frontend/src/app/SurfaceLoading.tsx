@@ -24,7 +24,10 @@ export function ApplicationSurfaceLoading(): JSX.Element {
 export function SettingsSurfaceLoading({ presentation }: { presentation: "desktop" | "overlay" }): JSX.Element {
   const shell = (
     <section
-      className="flex h-full min-h-0 w-full overflow-hidden border border-ink-200 bg-paper-100 text-ink-900"
+      className={cn(
+        "flex h-full min-h-0 w-full overflow-hidden border border-ink-200/70 bg-paper-50 text-ink-900",
+        presentation === "overlay" && "rounded-[10px]",
+      )}
       role="status"
       aria-busy="true"
       aria-live="polite"
@@ -32,17 +35,16 @@ export function SettingsSurfaceLoading({ presentation }: { presentation: "deskto
       data-settings-loading
       data-settings-loading-presentation={presentation}
     >
-      <aside className="hidden w-[220px] shrink-0 border-r border-ink-200/70 bg-paper-50 sm:flex sm:flex-col">
-        <div className="flex h-[58px] shrink-0 items-center gap-3 border-b border-ink-200/70 px-4">
-          <div className="h-5 w-5 bg-ink-900/[0.08] motion-safe:animate-pulse" />
-          <div className="h-3 w-24 bg-ink-900/[0.08] motion-safe:animate-pulse" />
+      <aside className="hidden w-[240px] shrink-0 border-r border-ink-200/55 bg-paper-100/55 sm:flex sm:flex-col">
+        <div className="flex h-[52px] shrink-0 items-center gap-3 px-4">
+          <div className="h-3 w-20 rounded-sm bg-ink-900/[0.08] motion-safe:animate-pulse" />
         </div>
         <div className="space-y-3 px-3 py-4" aria-hidden="true">
           {Array.from({ length: 5 }, (_, index) => (
             <div
               key={index}
               className={cn(
-                "h-8 bg-ink-900/[0.055] motion-safe:animate-pulse",
+                "h-8 rounded-md bg-ink-900/[0.055] motion-safe:animate-pulse",
                 index === 0 ? "w-full" : index % 2 === 0 ? "w-[82%]" : "w-[91%]",
               )}
             />
@@ -51,7 +53,7 @@ export function SettingsSurfaceLoading({ presentation }: { presentation: "deskto
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[58px] shrink-0 items-center gap-3 border-b border-ink-200/70 bg-paper-50 px-4 sm:px-5">
+        <header className="flex h-[52px] shrink-0 items-center gap-3 border-b border-ink-200/55 bg-paper-50 px-4 sm:px-5">
           <div className="h-5 w-5 bg-ink-900/[0.08] motion-safe:animate-pulse" aria-hidden="true" />
           <div className="min-w-0 space-y-1">
             <h1 className="text-[14px] font-semibold leading-5 text-ink-900">

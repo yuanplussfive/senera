@@ -11,6 +11,7 @@ interface CodeArtifactSourceViewProps {
   code: string;
   language: string;
   wrapped?: boolean;
+  lineNumbers?: boolean;
   maxVisibleLines?: number;
   className?: string;
   contentClassName?: string;
@@ -20,6 +21,7 @@ export function CodeArtifactSourceView({
   code,
   language,
   wrapped = false,
+  lineNumbers = true,
   maxVisibleLines,
   className,
   contentClassName,
@@ -70,7 +72,14 @@ export function CodeArtifactSourceView({
       onWheel={stopNestedScroll}
       onTouchMove={stopNestedScroll}
     >
-      <div className={cn("code-artifact-viewer__highlighted", wrapped && "is-wrapped", contentClassName)}>
+      <div
+        className={cn(
+          "code-artifact-viewer__highlighted",
+          wrapped && "is-wrapped",
+          !lineNumbers && "without-line-numbers",
+          contentClassName,
+        )}
+      >
         <HighlightedCodeView state={highlightedSource} code={code} language={language} />
       </div>
     </div>

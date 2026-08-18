@@ -90,7 +90,7 @@ export function GeneralSettings({
             <option value={FrontendLocales.EnUs}>{frontendMessage("settings.general.languageEnUs")}</option>
           </select>
         </label>
-      </SettingsPanel>{" "}
+      </SettingsPanel>
       <SettingsPanel
         title={frontendMessage("settings.general.animationTitle")}
         description={frontendMessage("settings.general.animationDescription")}

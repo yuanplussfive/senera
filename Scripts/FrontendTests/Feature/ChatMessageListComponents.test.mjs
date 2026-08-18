@@ -17,6 +17,7 @@ const {
   ConversationEventRail,
   projectConversationEventMarkers,
   projectConversationEvents,
+  projectConversationEventWindow,
   readConversationEventIndex,
   readConversationEventPositionIndex,
 } = await import("../../../Frontend/src/features/chat/ConversationEventRail.tsx");
@@ -83,6 +84,52 @@ test("assistant turn projection preserves a cancelled execution slice between it
   expect(stages[0].run?.steps.map((step) => step.id)).toEqual(["cancelled-tool", `${requestId}-cancelled`]);
 });
 
+test("a live execution stage keeps its decision identity when the preface is persisted", () => {
+  const requestId = "request-stable-decision-stage";
+  const createdAt = "2026-01-01T00:00:00.000Z";
+  const preface = createMessage({
+    id: "decision-preface",
+    requestId,
+    role: "assistant",
+    kind: "AssistantToolPreface",
+    content: "先读取配置。",
+    createdAt,
+  });
+  const run = createRun({
+    requestId,
+    status: "running",
+    visibleKind: "tool_preface",
+    steps: [
+      {
+        id: `${requestId}-assistant-message-${preface.id}`,
+        kind: "decision",
+        title: "规划读取配置",
+        status: "done",
+        startedAt: createdAt,
+        endedAt: createdAt,
+        decisionKind: "tool_preface",
+      },
+      stageTool("stable-decision-tool", "WorkspaceRead", createdAt, "running"),
+    ],
+  });
+  const liveTurn = {
+    __assistantTurn: true,
+    key: `assistant-turn:${requestId}:0`,
+    requestId,
+    createdAt,
+    messages: [],
+    run,
+    streaming: true,
+  };
+  const persistedTurn = { ...liveTurn, messages: [preface] };
+
+  const liveStage = projectAssistantTurnStages(liveTurn).find((stage) => stage.kind === "execution");
+  const persistedStage = projectAssistantTurnStages(persistedTurn).find((stage) => stage.kind === "execution");
+
+  expect(liveStage?.id).toBe(`stage:${requestId}:step:${requestId}-assistant-message-${preface.id}`);
+  expect(persistedStage?.id).toBe(liveStage?.id);
+});
+
 test("assistant turn exposes one action menu bound to the final reply", async () => {
   const user = userEvent.setup();
   const onRegenerate = vi.fn();
@@ -113,19 +160,19 @@ test("assistant turn exposes one action menu bound to the final reply", async ()
   expect(onRegenerate).toHaveBeenCalledWith(answer);
 });
 
-test("conversation event rail keeps reply landmarks and excludes internal tool activity", () => {
+test("conversation event rail keeps user and terminal assistant landmarks only", () => {
   const events = projectConversationEvents([
     { key: "user-1", requestId: "request-1", eventKind: "user_request", content: "检查构建" },
     {
       key: "preface-1",
       requestId: "request-1",
-      eventKind: "assistant_tool_preface",
+      eventKind: null,
       content: "我先读取项目配置。",
     },
     {
       key: "preface-2",
       requestId: "request-1",
-      eventKind: "assistant_tool_preface",
+      eventKind: null,
       content: "我再检查测试配置。",
     },
     { key: "tool-1", requestId: "request-1", eventKind: null, content: "WorkspaceRead completed" },
@@ -134,13 +181,12 @@ test("conversation event rail keeps reply landmarks and excludes internal tool a
 
   expect(events).toMatchObject([
     { itemIndex: 0, kind: "user_request", content: "检查构建" },
-    { itemIndex: 1, kind: "assistant_tool_preface", content: "我先读取项目配置。" },
     { itemIndex: 4, kind: "assistant_final", content: "构建通过。" },
   ]);
-  expect(readConversationEventIndex(events, 2)).toBe(1);
-  expect(readConversationEventIndex(events, 3)).toBe(1);
-  expect(readConversationEventIndex(events, 4)).toBe(2);
-  expect(readConversationEventIndex(events, 99)).toBe(2);
+  expect(readConversationEventIndex(events, 2)).toBe(0);
+  expect(readConversationEventIndex(events, 3)).toBe(0);
+  expect(readConversationEventIndex(events, 4)).toBe(1);
+  expect(readConversationEventIndex(events, 99)).toBe(1);
 });
 
 test("conversation event rail positions landmarks from measured message heights", () => {
@@ -166,10 +212,10 @@ test("conversation event rail positions landmarks from measured message heights"
 test("conversation event rail distinguishes landmarks inside one grouped assistant turn", () => {
   const events = projectConversationEvents([
     {
-      key: "preface-grouped",
+      key: "ask-grouped",
       requestId: "request-grouped",
-      eventKind: "assistant_tool_preface",
-      content: "开始检查。",
+      eventKind: "assistant_ask",
+      content: "需要确认。",
       itemIndex: 1,
       itemProgress: 0.2,
     },
@@ -198,6 +244,21 @@ test("conversation event rail distinguishes landmarks inside one grouped assista
   expect(readConversationEventPositionIndex(markers, 0.9)).toBe(1);
 });
 
+test("conversation event rail keeps long conversations in a centered local window", () => {
+  const events = Array.from({ length: 40 }, (_, index) => `event-${index}`);
+  expect(projectConversationEventWindow(events, 20, 7)).toEqual([
+    { event: "event-17", index: 17 },
+    { event: "event-18", index: 18 },
+    { event: "event-19", index: 19 },
+    { event: "event-20", index: 20 },
+    { event: "event-21", index: 21 },
+    { event: "event-22", index: 22 },
+    { event: "event-23", index: 23 },
+  ]);
+  expect(projectConversationEventWindow(events, 0, 7)[0]).toEqual({ event: "event-0", index: 0 });
+  expect(projectConversationEventWindow(events, 39, 7).at(-1)).toEqual({ event: "event-39", index: 39 });
+});
+
 test("conversation event rail previews and navigates to an exact reply event", async () => {
   const user = userEvent.setup();
   const onNavigate = vi.fn();
@@ -207,7 +268,7 @@ test("conversation event rail previews and navigates to an exact reply event", a
     {
       key: "preface-1",
       requestId: "request-1",
-      eventKind: "assistant_tool_preface",
+      eventKind: null,
       content: "我先读取配置。",
     },
     { key: "answer-1", requestId: "request-1", eventKind: "assistant_final", content: "构建通过。" },
@@ -221,11 +282,8 @@ test("conversation event rail previews and navigates to an exact reply event", a
       defaultItemHeight: 132,
       activeEventIndex: 0,
       scroller: null,
-      reducedMotion: false,
       onActiveEventChange,
       onNavigate,
-      onManualScrollStart: vi.fn(),
-      onManualScrollEnd: vi.fn(),
     }),
   );
 
@@ -233,16 +291,19 @@ test("conversation event rail previews and navigates to an exact reply event", a
     "data-kind",
     "user_request",
   );
-  const finalReply = screen.getByRole("button", { name: "跳到第 3 个事件：最终回复" });
+  const finalReply = screen.getByRole("button", { name: "跳到第 2 个事件：最终回复" });
   expect(finalReply).toHaveAttribute("data-kind", "assistant_final");
+  expect(finalReply.querySelector(".chat-event-rail__tick")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "跳到上一个回复事件" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "跳到下一个回复事件" })).toBeEnabled();
   await user.hover(finalReply);
-  expect(screen.getByRole("tooltip")).toHaveTextContent("第 3/3 个回复事件");
-  expect(screen.getByRole("tooltip")).toHaveTextContent("最终回复");
+  expect(screen.getByRole("tooltip")).toHaveTextContent("Senera");
   expect(screen.getByRole("tooltip")).toHaveTextContent("构建通过。");
+  expect(screen.getByRole("tooltip")).not.toHaveTextContent("第 3/3 个回复事件");
 
   await user.click(finalReply);
-  expect(onActiveEventChange).toHaveBeenCalledWith(2);
-  expect(onNavigate).toHaveBeenCalledWith(events[2]);
+  expect(onActiveEventChange).toHaveBeenCalledWith(1);
+  expect(onNavigate).toHaveBeenCalledWith(events[1]);
 });
 
 test("message list reveals an available final answer while the run is still settling", async () => {

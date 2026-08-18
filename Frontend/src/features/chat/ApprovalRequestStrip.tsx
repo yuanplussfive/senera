@@ -178,7 +178,6 @@ function ApprovalSummary({ approval, showName }: { approval: ApprovalRunRecord; 
             <div
               key={`${resource.intent}:${resource.canonicalPath}`}
               className="flex min-w-0 items-baseline gap-1.5 font-mono text-[10.5px] leading-4"
-              title={resource.canonicalPath}
             >
               <span className="shrink-0 text-umber-600">{resourceIntentLabel(resource.intent)}</span>
               <span className="min-w-0 break-all text-content-secondary">{resource.canonicalPath}</span>

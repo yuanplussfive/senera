@@ -4,12 +4,13 @@ description: Research current external information from web pages, news, officia
 metadata:
   senera:
     recommended-tools:
-      - mcp__web_research__search
+      - WebSearch
+      - WebFetch
 ---
 
 # Web Research
 
-Use `mcp__web_research__search` to gather current external evidence.
+Use `WebSearch` to gather current external evidence and `WebFetch` when the result page needs to be read. Both default to the configured deadline; use `timeoutMs` only when a specific source needs a longer or shorter bounded wait. Omit `WebFetch.maxBytes` for ordinary pages so the configured response budget applies. When setting it, prefer a large budget: the tool retains and marks the available prefix when a page exceeds the budget, so a truncated result must not be treated as complete evidence.
 
 1. Turn the request into one or more concrete search queries.
 2. Prefer official and primary sources when available.

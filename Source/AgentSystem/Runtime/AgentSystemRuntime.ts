@@ -291,13 +291,20 @@ export class AgentSystemRuntime {
     const closeOperations: Array<() => void | Promise<void>> = [
       () => this.piSubstrate.close(),
       () => this.toolCallExecutor.close(),
+      () => infrastructure.browserRuntime.close(),
       ...(infrastructure.ownsMcpClientPool ? [() => infrastructure.mcpClientPool.close()] : []),
       () => this.toolSearch.close(),
       ...(infrastructure.ownsInteractionInput ? [() => this.interactionInput.close()] : []),
       ...(infrastructure.ownsExecutionResources ? [() => this.executionResources.close()] : []),
     ];
-    const outcomes = await Promise.allSettled(closeOperations.map((close) => Promise.resolve().then(close)));
-    const failures = outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []));
+    const failures: unknown[] = [];
+    for (const close of closeOperations) {
+      try {
+        await close();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
     if (failures.length === 1) throw failures[0];
     if (failures.length > 1) throw new AggregateError(failures, "Agent runtime shutdown failed.");
   }

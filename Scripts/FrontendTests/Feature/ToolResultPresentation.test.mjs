@@ -8,7 +8,7 @@ import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
 
 afterEach(cleanup);
 
-test("tool result surface presents evidence and retains inspectable structured data", async () => {
+test("tool detail uses the runtime name and keeps raw arguments and results separate from presentation metadata", async () => {
   const user = userEvent.setup();
   render(
     React.createElement(
@@ -21,27 +21,30 @@ test("tool result surface presents evidence and retains inspectable structured d
     ),
   );
 
-  expect(await screen.findByText("结果摘要")).toBeTruthy();
-  expect(screen.getByText("当前天气已更新。")).toBeTruthy();
+  expect((await screen.findAllByText("WeatherTool")).length).toBeGreaterThan(0);
+  expect(screen.getByText("动作")).toBeTruthy();
+  expect(screen.getByText("结果")).toBeTruthy();
   expect(screen.getByText("技术细节")).toBeTruthy();
+  expect(screen.queryByText("结果摘要")).toBeNull();
+  expect(screen.queryByText("当前天气已更新。")).toBeNull();
   expect(screen.queryByText("北京：晴，26 C")).toBeNull();
   expect(screen.queryByText("关键事实")).toBeNull();
   expect(screen.queryByText("证据")).toBeNull();
   expect(screen.queryByText("变更")).toBeNull();
   expect(screen.queryByText("原始工具结果")).toBeNull();
+  expect(document.querySelector("[data-tool-inspector-section='result']")).toHaveTextContent("北京");
+  expect(document.querySelector("[data-tool-inspector-section='result']")).not.toHaveTextContent("presentation");
+  expect(screen.queryByText("senera://artifact/weather")).toBeNull();
 
   await user.click(screen.getByRole("button", { name: "技术细节" }));
-  expect(screen.getByText("关键事实")).toBeTruthy();
-  expect(screen.getByText("证据")).toBeTruthy();
-  expect(screen.getByText("变更")).toBeTruthy();
-  expect(screen.getByText("原始工具结果")).toBeTruthy();
-  expect(screen.getByText("北京：晴，26 C")).toBeTruthy();
-  expect(screen.getAllByText("weather").length).toBeGreaterThan(0);
-  expect(screen.getAllByText("temperature").length).toBeGreaterThan(0);
-  expect(screen.getByText("Source/weather.ts")).toBeTruthy();
+  expect(screen.queryByText("关键事实")).toBeNull();
+  expect(screen.queryByText("证据")).toBeNull();
+  expect(screen.queryByText("变更")).toBeNull();
+  expect(screen.queryByText("原始工具结果")).toBeNull();
+  expect(screen.getAllByText("senera://artifact/weather").length).toBeGreaterThan(0);
 });
 
-test("workflow feed uses the human summary rather than raw JSON", () => {
+test("execution feed uses the runtime tool identity without a presentation-derived subtitle", () => {
   const feed = deriveFeedModel({
     requestId: "request-weather",
     revision: 1,
@@ -58,8 +61,8 @@ test("workflow feed uses the human summary rather than raw JSON", () => {
     decisionMode: "none",
   });
 
-  expect(feed.groups[0]?.items[0]?.subtitle).toBe("当前天气已更新。");
-  expect(feed.groups[0]?.items[0]?.subtitle).not.toContain("senera.tool_observation");
+  expect(feed.groups[0]?.items[0]?.title).toBe("WeatherTool");
+  expect(feed.groups[0]?.items[0]?.subtitle).toBeUndefined();
 });
 
 test("workflow feed does not duplicate tool prefaces or expose their internal decision kind", () => {
@@ -366,23 +369,18 @@ function toolStep() {
       artifactUri: "senera://artifact/weather",
     },
     toolResult: {
-      type: "senera.tool_observation.v3",
-      status: "success",
-      execution_status: "completed",
-      output_availability: "complete",
-      observation_view: {
-        type: "senera.tool_observation_source_view.v3",
-        complete: true,
-        omission_count: 0,
-        omissions: [],
-        artifact_uri: "senera://artifact/weather",
+      callId: "call_weather",
+      name: "WeatherTool",
+      arguments: {},
+      result: {
+        city: "北京",
+        temperature: 26,
+        condition: "晴",
       },
-      detail: {
-        result: {
-          city: "北京",
-          temperature: 26,
-          condition: "晴",
-        },
+      outcome: { status: "success" },
+      presentation: {
+        summary: "当前天气已更新。",
+        artifactUri: "senera://artifact/weather",
       },
     },
   };

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 export type SettingsShellLayout = "compact" | "persistent";
 export type SettingsContentLayout = "compact" | "standard" | "wide";
@@ -16,11 +16,11 @@ export function classifySettingsContentLayout(width: number): SettingsContentLay
 export function useObservedLayout<T extends HTMLElement, TLayout>(
   classify: (width: number) => TLayout,
   initial: TLayout,
-): { ref: RefObject<T>; layout: TLayout } {
+): { ref: RefObject<T | null>; layout: TLayout } {
   const ref = useRef<T>(null);
   const [layout, setLayout] = useState<TLayout>(initial);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
 

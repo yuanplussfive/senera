@@ -52,7 +52,7 @@ export function WorkspaceMarkdownImage({
         <img
           src={source}
           alt={alt ?? ""}
-          className="max-h-72 max-w-full object-contain transition-transform duration-150 group-hover:scale-[1.01]"
+          className="markdown-renderer__image max-w-full object-contain transition-transform duration-150 group-hover:scale-[1.01]"
         />
       ) : (
         <span className="flex items-center gap-2 px-4 py-6 text-[12px] text-content-muted">

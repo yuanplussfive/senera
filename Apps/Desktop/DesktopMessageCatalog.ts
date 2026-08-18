@@ -11,8 +11,8 @@ const DesktopMessagesZhCn = {
   "startup.failedTitle": "Senera 启动失败",
   "tray.show": "显示 Senera",
   "tray.selectWorkspace": "选择工作区",
-  "tray.selectDataDirectory": "选择数据目录",
   "tray.quit": "退出 Senera",
+  "workspace.selectionFailedTitle": "工作区切换失败",
   "settings.title": "Senera 设置",
 } as const;
 
@@ -20,8 +20,8 @@ const DesktopMessagesEnUs: Record<DesktopMessageKey, string> = {
   "startup.failedTitle": "Senera failed to start",
   "tray.show": "Show Senera",
   "tray.selectWorkspace": "Select workspace",
-  "tray.selectDataDirectory": "Select data directory",
   "tray.quit": "Quit Senera",
+  "workspace.selectionFailedTitle": "Failed to switch workspace",
   "settings.title": "Senera settings",
 };
 

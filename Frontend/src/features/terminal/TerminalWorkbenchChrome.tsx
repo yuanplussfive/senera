@@ -24,6 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   IconButton,
+  Tooltip,
 } from "../../shared/ui";
 import {
   isTerminalState,
@@ -83,7 +84,8 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
           <div
             role="tablist"
             aria-label={frontendMessage("terminal.resource.select")}
-            className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="terminal-tablist flex min-w-0 flex-1 items-stretch overflow-x-auto"
+            data-terminal-tablist
           >
             {props.resources.map((resource, index) => {
               const selected = resource.resourceId === props.selected?.resourceId;
@@ -99,43 +101,52 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
                       "bg-[var(--terminal-canvas)] after:absolute after:inset-x-2 after:bottom-0 after:h-px after:bg-[var(--terminal-accent)]",
                   )}
                 >
-                  <button
-                    ref={(element) => {
-                      tabRefs.current[index] = element;
-                    }}
-                    type="button"
-                    id={`terminal-tab-${resource.resourceId}`}
-                    role="tab"
-                    aria-controls={`terminal-panel-${resource.resourceId}`}
-                    aria-selected={selected}
-                    aria-label={label}
-                    tabIndex={selected ? 0 : -1}
-                    title={resource.command}
-                    onClick={() => props.onSelect(resource.resourceId)}
-                    onKeyDown={(event) => handleTabKeyDown(event, index)}
-                    className={cn(
-                      "flex h-full min-w-0 flex-1 items-center gap-2 px-2 text-left text-[11.5px] outline-none",
-                      "text-[var(--terminal-muted)] transition-colors hover:bg-[var(--terminal-hover)] hover:text-[var(--terminal-foreground)]",
-                      "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--terminal-accent)]",
-                      selected && "text-[var(--terminal-foreground)]",
-                    )}
-                  >
-                    <span
-                      className={cn("h-1.5 w-1.5 shrink-0 rounded-full", terminalStatusIndicatorClass(resource.state))}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 truncate">{label}</span>
-                  </button>
+                  <Tooltip content={resource.command} side="bottom">
+                    <button
+                      ref={(element) => {
+                        tabRefs.current[index] = element;
+                      }}
+                      type="button"
+                      id={`terminal-tab-${resource.resourceId}`}
+                      role="tab"
+                      aria-controls={`terminal-panel-${resource.resourceId}`}
+                      aria-selected={selected}
+                      aria-label={label}
+                      tabIndex={selected ? 0 : -1}
+                      onClick={() => props.onSelect(resource.resourceId)}
+                      onKeyDown={(event) => handleTabKeyDown(event, index)}
+                      className={cn(
+                        "flex h-full min-w-0 flex-1 items-center gap-2 px-2 text-left text-[11.5px] outline-none",
+                        "text-[var(--terminal-muted)] transition-colors hover:bg-[var(--terminal-hover)] hover:text-[var(--terminal-foreground)]",
+                        "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--terminal-accent)]",
+                        selected && "text-[var(--terminal-foreground)]",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 shrink-0 rounded-full",
+                          terminalStatusIndicatorClass(resource.state),
+                        )}
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 truncate">{label}</span>
+                    </button>
+                  </Tooltip>
                   <IconButton
                     label={frontendFeatureMessage("terminal.resource.close")}
                     tooltip={frontendFeatureMessage("terminal.resource.close")}
                     size="sm"
-                    onClick={() => props.onClose(resource.resourceId)}
+                    data-terminal-tab-close
                     className={cn(
-                      "mr-1 h-6 w-6 shrink-0 text-[var(--terminal-subtle)] opacity-60 transition-opacity",
-                      "group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-[var(--terminal-hover)] hover:text-[var(--terminal-foreground)]",
-                      selected && "opacity-100",
+                      "mr-1 h-6 w-6 shrink-0 text-[var(--terminal-subtle)]",
+                      "hover:bg-[var(--terminal-hover)] hover:text-[var(--terminal-foreground)]",
                     )}
+                    disabled={resource.state === "stopping"}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      props.onClose(resource.resourceId);
+                    }}
                   >
                     <X className="h-3 w-3" />
                   </IconButton>
@@ -285,9 +296,9 @@ function TerminalDetails({ resource }: { resource: ExecutionResourceSnapshotData
       {details.map(([label, value]) => (
         <div key={label} className="contents">
           <dt className="text-[var(--terminal-subtle)]">{label}</dt>
-          <dd className="truncate text-right text-[var(--terminal-muted)]" title={value}>
-            {value}
-          </dd>
+          <Tooltip content={value} side="top">
+            <dd className="truncate text-right text-[var(--terminal-muted)]">{value}</dd>
+          </Tooltip>
         </div>
       ))}
     </dl>
@@ -363,9 +374,9 @@ export function TerminalStatusBar({ resource }: { resource: ExecutionResourceSna
         aria-hidden="true"
       />
       <span className="shrink-0 text-[var(--terminal-muted)]">{terminalStatusLabel(resource.state)}</span>
-      <span className="min-w-0 flex-1 truncate font-mono text-[var(--terminal-subtle)]" title={resource.cwd}>
-        {resource.cwd}
-      </span>
+      <Tooltip content={resource.cwd} side="top">
+        <span className="min-w-0 flex-1 truncate font-mono text-[var(--terminal-subtle)]">{resource.cwd}</span>
+      </Tooltip>
       {resource.terminal ? (
         <span className="shrink-0 font-mono text-[var(--terminal-subtle)]">
           <span className="hidden sm:inline">{resource.terminal.shellDialect} · </span>

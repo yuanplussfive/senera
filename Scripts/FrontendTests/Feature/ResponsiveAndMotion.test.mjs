@@ -18,18 +18,20 @@ import {
   readFocusPanelVariants,
   readTapScale,
 } from "../../../Frontend/src/shared/motion/index.ts";
-import { mergeScheduledScroll } from "../../../Frontend/src/features/chat/useVirtuosoAutoStickToBottom.ts";
+import {
+  mergeScheduledScroll,
+  resolveVirtuosoFollowOutput,
+  shouldRequestDynamicHeightAutoscroll,
+} from "../../../Frontend/src/features/chat/useVirtuosoAutoStickToBottom.ts";
 
-test("chat scroll scheduling prioritizes new items and preserves smooth requests", () => {
-  expect(
-    mergeScheduledScroll({ kind: "align-bottom", behavior: "auto" }, { kind: "last-item", behavior: "auto" }),
-  ).toEqual({ kind: "last-item", behavior: "auto" });
-  expect(
-    mergeScheduledScroll({ kind: "last-item", behavior: "smooth" }, { kind: "align-bottom", behavior: "auto" }),
-  ).toEqual({ kind: "last-item", behavior: "smooth" });
-  expect(
-    mergeScheduledScroll({ kind: "last-item", behavior: "auto" }, { kind: "last-item", behavior: "smooth" }),
-  ).toEqual({ kind: "last-item", behavior: "smooth" });
+test("chat scroll scheduling preserves the requested manual-scroll behavior", () => {
+  expect(mergeScheduledScroll({ behavior: "smooth" }, { behavior: "auto" })).toEqual({ behavior: "smooth" });
+  expect(mergeScheduledScroll({ behavior: "auto" }, { behavior: "smooth" })).toEqual({ behavior: "smooth" });
+  expect(resolveVirtuosoFollowOutput(true)).toBe("auto");
+  expect(resolveVirtuosoFollowOutput(false)).toBe(false);
+  expect(shouldRequestDynamicHeightAutoscroll({ shouldStickToBottom: true, hasPendingRequest: false })).toBe(true);
+  expect(shouldRequestDynamicHeightAutoscroll({ shouldStickToBottom: true, hasPendingRequest: true })).toBe(false);
+  expect(shouldRequestDynamicHeightAutoscroll({ shouldStickToBottom: false, hasPendingRequest: false })).toBe(false);
 });
 
 test("responsive mode derives stable layout capabilities from media query matches", () => {
@@ -140,6 +142,8 @@ test("motion presets expose deterministic reduced-motion variants", () => {
   expect(readTapScale("none")).toBe(undefined);
   expect(readTapScale("full")).toBeLessThan(1);
   expect(readDialogPanelVariants("none").hidden).toEqual({ opacity: 0 });
+  expect(readDialogPanelVariants("full").hidden).toEqual({ opacity: 0, y: 4 });
+  expect(readDialogPanelVariants("full").show).toEqual({ opacity: 1, y: 0 });
   expect(readFocusPanelVariants("reduced").hidden).toEqual({ opacity: 0 });
 });
 

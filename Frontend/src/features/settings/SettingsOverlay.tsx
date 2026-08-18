@@ -1,9 +1,5 @@
-import { useEffect } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { X } from "lucide-react";
-import type { SocketStatus } from "../../api/useAgentSocket";
-import type { WsRequest } from "../../api/eventTypes";
-import { buildSettingsSurfaceSyncRequests } from "../../app/settingsSurfaceSync";
 import type { WebSettingsController } from "../../app/useWebSettingsController";
 import { Dialog, DialogContent, IconButton } from "../../shared/ui";
 import { DiscardDraftDialog } from "./DiscardDraftDialog";
@@ -11,21 +7,12 @@ import { SettingsWorkbench, type SettingsWorkbenchProps } from "./SettingsWorkbe
 
 export function SettingsOverlay({
   controller,
-  send,
-  status,
   workbench,
 }: {
   controller: WebSettingsController;
-  send: (request: WsRequest) => boolean;
-  status: SocketStatus;
   workbench: Omit<SettingsWorkbenchProps, "section" | "onSectionChange" | "onPendingChangesChange" | "shellActions">;
 }): JSX.Element {
   const { section } = controller;
-
-  useEffect(() => {
-    if (!section || status !== "open") return;
-    for (const request of buildSettingsSurfaceSyncRequests()) send(request);
-  }, [section, send, status]);
 
   return (
     <>
@@ -41,10 +28,15 @@ export function SettingsOverlay({
             description={frontendMessage("settings.overlay.description")}
             showHeader={false}
             showClose={false}
+            contentInitial={false}
             className="h-[min(900px,calc(100dvh-48px))] max-h-[calc(100dvh-48px)] w-[min(1440px,calc(100vw-64px))] max-w-none overflow-hidden p-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:w-screen max-sm:rounded-none max-sm:border-0"
             bodyClassName="min-h-0 flex-1 overflow-hidden"
             onPointerDownOutside={(event) => event.preventDefault()}
             onInteractOutside={(event) => event.preventDefault()}
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              document.querySelector<HTMLElement>("[data-settings-workbench]")?.focus({ preventScroll: true });
+            }}
             onEscapeKeyDown={(event) => {
               event.preventDefault();
               controller.requestClose();
@@ -62,7 +54,6 @@ export function SettingsOverlay({
               shellActions={
                 <IconButton
                   label={frontendMessage("settings.overlay.close")}
-                  tooltip={frontendMessage("settings.overlay.close")}
                   size="sm"
                   tone="muted"
                   onClick={controller.requestClose}
