@@ -24,7 +24,6 @@ const RuntimeEnvironmentSchema = z.object({
   SENERA_RELEASE_SHA: CommitShaSchema,
   SENERA_RELEASE_BRANCH: z.string().trim().min(1),
   SENERA_RELEASE_TRIGGER_SHA: z.string().optional(),
-  SENERA_RELEASE_RECOVERY_SHA: z.string().optional(),
   SENERA_VERIFY_WORKFLOW: z.string().trim().min(1),
 });
 
@@ -33,7 +32,6 @@ export interface ProductReleaseSourceVerificationOptions {
   readonly releaseSha: string;
   readonly releaseBranch: string;
   readonly triggerSha?: string;
-  readonly recoverySha?: string;
   readonly verificationWorkflow: string;
   readonly token: string;
   readonly fetch?: typeof globalThis.fetch;
@@ -47,7 +45,6 @@ if (isMainModule(import.meta.url)) {
     releaseSha: environment.SENERA_RELEASE_SHA,
     releaseBranch: environment.SENERA_RELEASE_BRANCH,
     triggerSha: normalizeOptionalSha(environment.SENERA_RELEASE_TRIGGER_SHA),
-    recoverySha: normalizeOptionalSha(environment.SENERA_RELEASE_RECOVERY_SHA),
     verificationWorkflow: environment.SENERA_VERIFY_WORKFLOW,
     token: environment.GITHUB_TOKEN,
   });
@@ -58,7 +55,6 @@ export async function verifyProductReleaseSource(options: ProductReleaseSourceVe
   const repository = RepositorySchema.parse(options.repository);
   const releaseSha = CommitShaSchema.parse(options.releaseSha);
   const triggerSha = options.triggerSha ? CommitShaSchema.parse(options.triggerSha) : undefined;
-  const recoverySha = options.recoverySha ? CommitShaSchema.parse(options.recoverySha) : undefined;
   const releaseBranch = z.string().trim().min(1).parse(options.releaseBranch);
   const verificationWorkflow = z.string().trim().min(1).parse(options.verificationWorkflow);
   const fetchImplementation = options.fetch ?? globalThis.fetch;
@@ -68,15 +64,6 @@ export async function verifyProductReleaseSource(options: ProductReleaseSourceVe
     throw new Error(
       `Release source ${releaseSha} does not match triggering verification ${triggerSha}; release artifacts must be built from the exact verified commit.`,
     );
-  }
-
-  if (recoverySha) {
-    if (releaseSha !== recoverySha) {
-      throw new Error(
-        `Release source ${releaseSha} does not match recovered verification ${recoverySha}; release artifacts must be built from the exact verified commit.`,
-      );
-    }
-    return;
   }
 
   const runsUrl = new URL(`actions/workflows/${encodeURIComponent(verificationWorkflow)}/runs`, repositoryUrl);
