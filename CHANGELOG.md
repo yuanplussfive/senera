@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.12.2](https://github.com/yuanplussfive/senera/compare/v1.12.1...v1.12.2) (2026-08-18)
+
+
+### 问题修复
+
+* **release:** run downstream jobs after recovery gates ([#111](https://github.com/yuanplussfive/senera/issues/111)) ([8865339](https://github.com/yuanplussfive/senera/commit/88653395bc8799ce297725debdb9eaa7bb28789d))
+
 ## [1.12.1](https://github.com/yuanplussfive/senera/compare/v1.12.0...v1.12.1) (2026-08-18)
 
 
