@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.12.3](https://github.com/yuanplussfive/senera/compare/v1.12.2...v1.12.3) (2026-08-18)
+
+
+### 问题修复
+
+* **runtime:** upgrade native SQLite for Node 24 ([#113](https://github.com/yuanplussfive/senera/issues/113)) ([4e2990d](https://github.com/yuanplussfive/senera/commit/4e2990d7b87286d9208b680f26bed5aa0d95e010))
+
 ## [1.12.2](https://github.com/yuanplussfive/senera/compare/v1.12.1...v1.12.2) (2026-08-18)
 
 
