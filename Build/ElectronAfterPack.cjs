@@ -2,7 +2,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const NativeModules = {
-  "better-sqlite3": "better_sqlite3.node",
+  "better-sqlite3": (platform, architecture) => [
+    `prebuilds/${platform}-${architecture}.node`,
+    ...(platform === "linux" ? [`prebuilds/linuxmusl-${architecture}.node`] : []),
+    "build/Release/better_sqlite3.node",
+  ],
 };
 
 module.exports = async function injectStagedElectronNativeModules(context) {
@@ -15,19 +19,23 @@ module.exports = async function injectStagedElectronNativeModules(context) {
     `electron-${electronVersion}-${process.arch}`,
   );
 
-  for (const [moduleName, binaryName] of Object.entries(NativeModules)) {
-    const source = path.join(stageRoot, "node_modules", moduleName, "build", "Release", binaryName);
+  for (const [moduleName, artifactPaths] of Object.entries(NativeModules)) {
+    const moduleRoot = path.join(stageRoot, "node_modules", moduleName);
+    const artifactPath = artifactPaths(process.platform, process.arch).find((candidate) =>
+      fs.existsSync(path.join(moduleRoot, candidate)),
+    );
+    if (!artifactPath) {
+      throw new Error(`Staged Electron native module is missing: ${moduleRoot}`);
+    }
+    const source = path.join(moduleRoot, artifactPath);
     const target = path.join(
       context.appOutDir,
       "resources",
       "app.asar.unpacked",
       "node_modules",
       moduleName,
-      "build",
-      "Release",
-      binaryName,
+      artifactPath,
     );
-    if (!fs.existsSync(source)) throw new Error(`Staged Electron native module is missing: ${source}`);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.copyFileSync(source, target);
   }

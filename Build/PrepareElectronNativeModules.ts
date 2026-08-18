@@ -10,6 +10,18 @@ const { sync: spawnSync } = crossSpawn;
 
 export const ElectronNativeStageDirectory = path.join(".cache", "electron-native");
 export const ElectronNativeModuleNames = ["better-sqlite3"] as const;
+const NativeModuleArtifactPaths = {
+  "better-sqlite3": (platform: NodeJS.Platform, architecture: NodeJS.Architecture) => [
+    `prebuilds/${platform}-${architecture}.node`,
+    ...(platform === "linux" ? [`prebuilds/linuxmusl-${architecture}.node`] : []),
+    "build/Release/better_sqlite3.node",
+  ],
+} as const satisfies Record<(typeof ElectronNativeModuleNames)[number], NativeModuleArtifactPathResolver>;
+
+type NativeModuleArtifactPathResolver = (
+  platform: NodeJS.Platform,
+  architecture: NodeJS.Architecture,
+) => readonly string[];
 
 interface NativeStageManifest {
   fingerprint: string;
@@ -49,7 +61,7 @@ export async function prepareElectronNativeModules(workspaceRoot: string): Promi
     for (const moduleName of ElectronNativeModuleNames) {
       await copyNativeModuleSource(workspaceRoot, stagingRoot, moduleName);
     }
-    rebuildNativeModules(stagingRoot, electronVersion, process.arch);
+    rebuildNativeModules(stagingRoot, electronVersion, process.platform, process.arch);
     assertNativeStage(stagingRoot);
     await writeFile(
       path.join(stagingRoot, "manifest.json"),
@@ -82,13 +94,29 @@ export function resolveElectronNativeStageRoot(
   return path.join(workspaceRoot, ElectronNativeStageDirectory, `electron-${electronVersion}-${architecture}`);
 }
 
-function rebuildNativeModules(stagingRoot: string, electronVersion: string, architecture: NodeJS.Architecture): void {
+function rebuildNativeModules(
+  stagingRoot: string,
+  electronVersion: string,
+  platform: NodeJS.Platform,
+  architecture: NodeJS.Architecture,
+): void {
+  const modulesToRebuild = ElectronNativeModuleNames.filter(
+    (moduleName) =>
+      !hasNativeModuleArtifact(
+        path.join(stagingRoot, "node_modules", ...moduleName.split("/")),
+        moduleName,
+        platform,
+        architecture,
+      ),
+  );
+  if (modulesToRebuild.length === 0) return;
+
   const result = spawnSync(
     "electron-rebuild",
     [
       "--force",
       "--only",
-      ElectronNativeModuleNames.join(","),
+      modulesToRebuild.join(","),
       "--module-dir",
       stagingRoot,
       "--version",
@@ -155,17 +183,41 @@ function isCurrentStage(stageRoot: string, fingerprint: string): boolean {
 }
 
 function assertNativeStage(stageRoot: string): void {
-  const missing = ElectronNativeModuleNames.map((moduleName) =>
-    path.join(stageRoot, "node_modules", ...moduleName.split("/"), "build", "Release", nativeBinaryName(moduleName)),
-  ).filter((file) => !fs.existsSync(file));
+  const missing = ElectronNativeModuleNames.filter(
+    (moduleName) =>
+      !hasNativeModuleArtifact(
+        path.join(stageRoot, "node_modules", ...moduleName.split("/")),
+        moduleName,
+        process.platform,
+        process.arch,
+      ),
+  ).map((moduleName) =>
+    path.join(stageRoot, "node_modules", ...moduleName.split("/"), nativeModuleArtifactDescription(moduleName)),
+  );
   if (missing.length > 0) throw new Error(`Electron native module staging is incomplete: ${missing.join(", ")}`);
 }
 
-function nativeBinaryName(moduleName: (typeof ElectronNativeModuleNames)[number]): string {
-  const names = {
-    "better-sqlite3": "better_sqlite3.node",
-  } as const satisfies Record<(typeof ElectronNativeModuleNames)[number], string>;
-  return names[moduleName];
+export function nativeModuleArtifactRelativePaths(
+  moduleName: (typeof ElectronNativeModuleNames)[number],
+  platform: NodeJS.Platform = process.platform,
+  architecture: NodeJS.Architecture = process.arch,
+): readonly string[] {
+  return NativeModuleArtifactPaths[moduleName](platform, architecture);
+}
+
+function hasNativeModuleArtifact(
+  moduleRoot: string,
+  moduleName: (typeof ElectronNativeModuleNames)[number],
+  platform: NodeJS.Platform,
+  architecture: NodeJS.Architecture,
+): boolean {
+  return nativeModuleArtifactRelativePaths(moduleName, platform, architecture).some((relativePath) =>
+    fs.existsSync(path.join(moduleRoot, relativePath)),
+  );
+}
+
+function nativeModuleArtifactDescription(moduleName: (typeof ElectronNativeModuleNames)[number]): string {
+  return nativeModuleArtifactRelativePaths(moduleName).join(" or ");
 }
 
 function readPackageVersion(packageRoot: string): string {
