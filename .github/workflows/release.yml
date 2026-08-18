@@ -40,7 +40,7 @@ jobs:
         with:
           ref: ${{ inputs.recovery_sha }}
           fetch-depth: 0
-      - name: Require a missing release tag at its merged manifest commit
+      - name: Require a recoverable release tag at its merged manifest commit
         shell: bash
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -60,8 +60,8 @@ jobs:
           test "$manifest_commit" = "$RECOVERY_SHA"
 
           if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
-            echo "::error::${RELEASE_TAG} already exists; rebuild it without recovery_sha."
-            exit 1
+            git fetch origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+            test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$RECOVERY_SHA"
           fi
 
   recovery-core:
@@ -178,7 +178,28 @@ jobs:
         with:
           ref: ${{ inputs.recovery_sha }}
           fetch-depth: 0
+      - id: tag-state
+        name: Inspect recovered release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RECOVERY_SHA: ${{ inputs.recovery_sha }}
+          REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if ! git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git fetch origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$RECOVERY_SHA"
+          test "$(gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json isDraft --jq .isDraft)" = "true"
+          echo "exists=true" >> "$GITHUB_OUTPUT"
       - id: release
+        if: steps.tag-state.outputs.exists != 'true'
         uses: googleapis/release-please-action@v4
         with:
           config-file: Build/Release/ReleasePleaseConfig.json
@@ -191,14 +212,19 @@ jobs:
         env:
           EXPECTED_TAG: ${{ inputs.release_tag }}
           RECOVERY_SHA: ${{ inputs.recovery_sha }}
+          TAG_EXISTS: ${{ steps.tag-state.outputs.exists }}
           RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
           RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
         run: |
           set -euo pipefail
-          test "$RELEASE_CREATED" = "true"
-          test "$RELEASE_TAG" = "$EXPECTED_TAG"
           test "$(git rev-parse HEAD)" = "$RECOVERY_SHA"
-          echo "tag_name=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
+          if [ "$TAG_EXISTS" != "true" ]; then
+            test "$RELEASE_CREATED" = "true"
+            test "$RELEASE_TAG" = "$EXPECTED_TAG"
+          fi
+
+          echo "tag_name=${EXPECTED_TAG}" >> "$GITHUB_OUTPUT"
           echo "source_sha=${RECOVERY_SHA}" >> "$GITHUB_OUTPUT"
 
   release-please:
@@ -328,13 +354,22 @@ jobs:
           SENERA_RELEASE_TAG: ${{ env.RELEASE_TAG }}
           SENERA_RELEASE_SHA: ${{ steps.source.outputs.sha }}
         run: npx tsx Build/ProductReleaseInfo.ts
+      - name: Require recovered release source
+        if: needs.recovery-tag.outputs.source_sha != ''
+        shell: bash
+        env:
+          SENERA_RELEASE_SHA: ${{ steps.source.outputs.sha }}
+          SENERA_RELEASE_RECOVERY_SHA: ${{ needs.recovery-tag.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          test "$SENERA_RELEASE_SHA" = "$SENERA_RELEASE_RECOVERY_SHA"
       - name: Require verified release source
+        if: needs.recovery-tag.outputs.source_sha == ''
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SENERA_RELEASE_SHA: ${{ steps.source.outputs.sha }}
           SENERA_RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
           SENERA_RELEASE_TRIGGER_SHA: ${{ github.event.workflow_run.head_sha || '' }}
-          SENERA_RELEASE_RECOVERY_SHA: ${{ needs.recovery-tag.outputs.source_sha || '' }}
           SENERA_VERIFY_WORKFLOW: verify.yml
         run: npx tsx Scripts/VerifyProductReleaseSource.ts
 

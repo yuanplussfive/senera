@@ -50,29 +50,6 @@ describe("product release source verification", () => {
     expect(fetchImplementation).toHaveBeenCalledOnce();
     expect(String(fetchImplementation.mock.calls[0]?.[0])).toContain("/actions/workflows/verify.yml/runs?");
   });
-
-  test("accepts a release source verified by the dedicated recovery gates", async () => {
-    const fetchImplementation = createGitHubApi({ includeSuccessfulRun: false });
-
-    await verifyProductReleaseSource({
-      ...verificationOptions(fetchImplementation, { releaseSha: ReleaseSha, triggerSha: ReleaseSha }),
-      recoverySha: ReleaseSha,
-    });
-
-    expect(fetchImplementation).not.toHaveBeenCalled();
-  });
-
-  test("rejects a recovery proof for another release source", async () => {
-    const fetchImplementation = createGitHubApi({ includeSuccessfulRun: false });
-
-    await expect(
-      verifyProductReleaseSource({
-        ...verificationOptions(fetchImplementation, { releaseSha: ReleaseSha, triggerSha: ReleaseSha }),
-        recoverySha: TriggerSha,
-      }),
-    ).rejects.toThrow("release artifacts must be built from the exact verified commit");
-    expect(fetchImplementation).not.toHaveBeenCalled();
-  });
 });
 
 function verificationOptions(
