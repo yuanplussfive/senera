@@ -12,8 +12,12 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing vX.Y.Z release tag to rebuild after a failed product release.
+        description: Existing vX.Y.Z release tag to rebuild, or the missing tag to recover.
         required: true
+        type: string
+      recovery_sha:
+        description: Exact merged release commit to fully verify before recovering a missing tag.
+        required: false
         type: string
 
 permissions:
@@ -27,6 +31,176 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  recovery-source:
+    name: Validate Release Recovery Source
+    if: github.event_name == 'workflow_dispatch' && inputs.recovery_sha != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.recovery_sha }}
+          fetch-depth: 0
+      - name: Require a missing release tag at its merged manifest commit
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RECOVERY_SHA: ${{ inputs.recovery_sha }}
+          RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          git fetch origin "+refs/heads/${RELEASE_BRANCH}:refs/remotes/origin/${RELEASE_BRANCH}"
+          test "$(git rev-parse HEAD)" = "$RECOVERY_SHA"
+          git merge-base --is-ancestor "$RECOVERY_SHA" "origin/${RELEASE_BRANCH}"
+
+          release_version="$(node --input-type=module -e 'import fs from "node:fs"; const manifest = JSON.parse(fs.readFileSync("Build/Release/ReleasePleaseManifest.json", "utf8")); console.log(manifest["."]);')"
+          test "v${release_version}" = "$RELEASE_TAG"
+
+          manifest_commit="$(git log -1 --format=%H -- Build/Release/ReleasePleaseManifest.json)"
+          test "$manifest_commit" = "$RECOVERY_SHA"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "::error::${RELEASE_TAG} already exists; rebuild it without recovery_sha."
+            exit 1
+          fi
+
+  recovery-core:
+    name: Reverify Release Source
+    needs:
+      - recovery-source
+    if: github.event_name == 'workflow_dispatch' && inputs.recovery_sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.recovery_sha }}
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+      - run: npm run policy.verify
+      - run: npm run quality.baml
+      - run: npm run build
+      - run: npm run quality.lint
+      - run: npm run quality.format.full
+      - run: npm run test.frontend.static
+      - run: npm run test.integration
+      - run: npm run verify.suite -- workspace core integration e2e release
+
+  recovery-browser-e2e:
+    name: Reverify Release Chromium E2E
+    needs:
+      - recovery-source
+    if: github.event_name == 'workflow_dispatch' && inputs.recovery_sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.recovery_sha }}
+      - uses: ./.github/actions/setup-node
+      - id: playwright
+        name: Resolve Playwright version
+        shell: bash
+        run: node -p "'version=' + require('@playwright/test/package.json').version" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ steps.playwright.outputs.version }}
+      - name: Install cached Chromium
+        run: npm run test.e2e.web.setup
+        timeout-minutes: 8
+      - run: npm run test.e2e.web
+      - name: Upload browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-chromium-e2e-diagnostics
+          path: |
+            .cache/playwright-results
+            .cache/playwright-report
+          if-no-files-found: ignore
+
+  recovery-windows:
+    name: Reverify Release Windows Platform
+    needs:
+      - recovery-source
+    if: github.event_name == 'workflow_dispatch' && inputs.recovery_sha != ''
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.recovery_sha }}
+      - uses: ./.github/actions/setup-node
+        with:
+          install-electron: "true"
+      - run: npm run build
+      - run: npm --workspace senera-frontend run build
+      - run: npm run test.e2e.desktop.run
+      - run: npm run verify.suite -- platform
+
+  recovery-coverage:
+    name: Reverify Release Coverage
+    needs:
+      - recovery-source
+    if: github.event_name == 'workflow_dispatch' && inputs.recovery_sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.recovery_sha }}
+      - uses: ./.github/actions/setup-node
+      - run: npm run test.coverage.frontend
+      - run: npm run test.coverage.backend
+      - run: npm run quality.coverage.ratchet
+
+  recovery-tag:
+    name: Recover Verified Release Tag
+    needs:
+      - recovery-core
+      - recovery-browser-e2e
+      - recovery-windows
+      - recovery-coverage
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.recovery_sha != '' &&
+      needs.recovery-core.result == 'success' &&
+      needs.recovery-browser-e2e.result == 'success' &&
+      needs.recovery-windows.result == 'success' &&
+      needs.recovery-coverage.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.recovery.outputs.tag_name }}
+      source_sha: ${{ steps.recovery.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.recovery_sha }}
+          fetch-depth: 0
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: Build/Release/ReleasePleaseConfig.json
+          manifest-file: Build/Release/ReleasePleaseManifest.json
+          skip-github-pull-request: true
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+      - id: recovery
+        name: Require recovered release tag
+        shell: bash
+        env:
+          EXPECTED_TAG: ${{ inputs.release_tag }}
+          RECOVERY_SHA: ${{ inputs.recovery_sha }}
+          RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          test "$RELEASE_CREATED" = "true"
+          test "$RELEASE_TAG" = "$EXPECTED_TAG"
+          test "$(git rev-parse HEAD)" = "$RECOVERY_SHA"
+          echo "tag_name=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "source_sha=${RECOVERY_SHA}" >> "$GITHUB_OUTPUT"
+
   release-please:
     name: Prepare Version Release
     if: >-
@@ -61,7 +235,7 @@ jobs:
           else
             current_version_sha="$(git log -1 --format=%H -- Build/Release/ReleasePleaseManifest.json)"
             if [ -z "$current_version_sha" ] || [ "$current_version_sha" != "$VERIFIED_SHA" ]; then
-              echo "::error::Current manifest release ${current_tag} belongs to ${current_version_sha:-unknown}, but this run verified ${VERIFIED_SHA}. Rerun Verify for the release commit before recovering its tag."
+              echo "::error::Current manifest release ${current_tag} belongs to ${current_version_sha:-unknown}, but this run verified ${VERIFIED_SHA}. Dispatch Product Release with release_tag=${current_tag} and recovery_sha=${current_version_sha} to reverify and recover that exact release commit."
               exit 1
             fi
             echo "skip_pull_request=true" >> "$GITHUB_OUTPUT"
@@ -118,9 +292,13 @@ jobs:
     name: Verify Release Metadata
     needs:
       - release-please
+      - recovery-tag
     if: >-
       always() && !cancelled() && (
-        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'workflow_dispatch' && (
+          inputs.recovery_sha == '' ||
+          needs.recovery-tag.outputs.tag_name != ''
+        )) ||
         needs.release-please.outputs.release_created == 'true'
       )
     runs-on: ubuntu-latest
@@ -137,7 +315,7 @@ jobs:
       sandbox_runtime_target: ${{ steps.release.outputs.sandbox_runtime_target }}
       source_sha: ${{ steps.source.outputs.sha }}
     env:
-      RELEASE_TAG: ${{ inputs.release_tag || needs.release-please.outputs.tag_name }}
+      RELEASE_TAG: ${{ needs.recovery-tag.outputs.tag_name || inputs.release_tag || needs.release-please.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -156,6 +334,7 @@ jobs:
           SENERA_RELEASE_SHA: ${{ steps.source.outputs.sha }}
           SENERA_RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
           SENERA_RELEASE_TRIGGER_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+          SENERA_RELEASE_RECOVERY_SHA: ${{ needs.recovery-tag.outputs.source_sha || '' }}
           SENERA_VERIFY_WORKFLOW: verify.yml
         run: npx tsx Scripts/VerifyProductReleaseSource.ts
 
