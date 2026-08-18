@@ -134,7 +134,9 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-chromium-${{ steps.playwright.outputs.version }}
-      - run: npx playwright install --with-deps chromium
+      - name: Install cached Chromium
+        run: npm run test.e2e.web.setup
+        timeout-minutes: 8
       - run: npm run test.e2e.web
       - name: Upload browser diagnostics
         if: failure()

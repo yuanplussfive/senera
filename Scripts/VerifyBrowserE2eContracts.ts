@@ -35,6 +35,18 @@ assert.ok(
   ),
   "Chromium Browser E2E must resolve the Playwright cache version without nested shell command quoting.",
 );
+assert.ok(
+  verifyWorkflowSource.includes("run: npm run test.e2e.web.setup"),
+  "Chromium Browser E2E must reuse the cached Chromium installation script.",
+);
+assert.ok(
+  !verifyWorkflowSource.includes("playwright install --with-deps"),
+  "Chromium Browser E2E must not invoke APT system dependency installation on hosted runners.",
+);
+assert.ok(
+  verifyWorkflowSource.includes("timeout-minutes: 8"),
+  "Chromium Browser E2E browser installation must have a bounded timeout.",
+);
 
 let caseCount = 0;
 let browserTestSource = "";
