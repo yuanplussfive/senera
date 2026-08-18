@@ -22,7 +22,7 @@ test("tool detail uses the runtime name and keeps raw arguments and results sepa
   );
 
   expect((await screen.findAllByText("WeatherTool")).length).toBeGreaterThan(0);
-  expect(screen.getByText("动作")).toBeTruthy();
+  expect(await screen.findByText("动作")).toBeTruthy();
   expect(screen.getByText("结果")).toBeTruthy();
   expect(screen.getByText("技术细节")).toBeTruthy();
   expect(screen.queryByText("结果摘要")).toBeNull();
