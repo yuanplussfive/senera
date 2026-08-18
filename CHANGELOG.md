@@ -2,6 +2,15 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.12.1](https://github.com/yuanplussfive/senera/compare/v1.12.0...v1.12.1) (2026-08-18)
+
+
+### 问题修复
+
+* **release:** recover verified missing release tags ([#108](https://github.com/yuanplussfive/senera/issues/108)) ([cf1d1c9](https://github.com/yuanplussfive/senera/commit/cf1d1c944eed145cefcefd637657d7099ef3e5c3))
+* **release:** resume verified release recovery ([#109](https://github.com/yuanplussfive/senera/issues/109)) ([8be073a](https://github.com/yuanplussfive/senera/commit/8be073a6ee73930dc0ada8bd91cdfcdc6301aa49))
+* 稳定 Nano 与 Chromium 验证 ([#107](https://github.com/yuanplussfive/senera/issues/107)) ([6207373](https://github.com/yuanplussfive/senera/commit/6207373db8f0562591bffdd9fc879a825747e97a))
+
 ## [1.12.0](https://github.com/yuanplussfive/senera/compare/v1.11.0...v1.12.0) (2026-08-18)
 
 
