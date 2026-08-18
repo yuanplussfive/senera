@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.12.0](https://github.com/yuanplussfive/senera/compare/v1.11.0...v1.12.0) (2026-08-18)
+
+
+### 新增功能
+
+* 增强智能体工具与桌面工作台 ([#105](https://github.com/yuanplussfive/senera/issues/105)) ([091b717](https://github.com/yuanplussfive/senera/commit/091b7178f1ad6c49617d7c7d94036bf5ced61305))
+
 ## [1.11.0](https://github.com/yuanplussfive/senera/compare/v1.10.3...v1.11.0) (2026-08-13)
 
 
