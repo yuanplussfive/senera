@@ -71,6 +71,7 @@
         "@types/react-dom",
         "@types/tar-fs",
         "@types/tar-stream",
+        "@types/turndown",
         "@types/ws",
         "@tailwindcss/vite",
         "@vitejs/plugin-react",
