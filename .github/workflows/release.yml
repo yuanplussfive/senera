@@ -377,7 +377,7 @@ jobs:
     name: Build Windows Installer
     needs:
       - metadata
-    if: needs.metadata.result == 'success'
+    if: always() && needs.metadata.result == 'success'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -397,7 +397,7 @@ jobs:
     name: Build Container Candidate
     needs:
       - metadata
-    if: needs.metadata.result == 'success'
+    if: always() && needs.metadata.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -438,7 +438,7 @@ jobs:
     name: Build Sandbox Runtime Candidate
     needs:
       - metadata
-    if: needs.metadata.result == 'success'
+    if: always() && needs.metadata.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -487,6 +487,7 @@ jobs:
       - container-build
       - sandbox-runtime-build
     if: >-
+      always() &&
       needs.metadata.result == 'success' &&
       needs.container-build.result == 'success' &&
       needs.sandbox-runtime-build.result == 'success'
@@ -551,6 +552,7 @@ jobs:
       - sandbox-runtime-build
       - container-smoke
     if: >-
+      always() &&
       needs.metadata.result == 'success' &&
       needs.desktop.result == 'success' &&
       needs.container-build.result == 'success' &&
