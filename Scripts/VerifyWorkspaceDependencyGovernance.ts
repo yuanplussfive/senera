@@ -536,6 +536,7 @@ function inspectReleaseWorkflowGates(): string[] {
       "SENERA_RELEASE_TRIGGER_SHA: ${{ github.event.workflow_run.head_sha || '' }}",
       "SENERA_VERIFY_WORKFLOW: verify.yml",
       "npx tsx Scripts/VerifyProductReleaseSource.ts",
+      "always() && needs.metadata.result == 'success'",
       "npm run desktop.pack",
       "gh release upload",
       "container-build:",
