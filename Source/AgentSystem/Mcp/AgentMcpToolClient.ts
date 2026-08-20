@@ -3,12 +3,14 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { InMemoryTaskStore } from "@modelcontextprotocol/sdk/experimental/tasks";
 import { CreateMessageRequestSchema, UrlElicitationRequiredError } from "@modelcontextprotocol/sdk/types.js";
 import { AgentMcpStdioTransport } from "./AgentMcpStdioTransport.js";
+import { createAgentMcpStdioRuntimeLaunch } from "./AgentMcpNodeRuntime.js";
 import { AgentMcpProtocol } from "./AgentMcpProtocol.js";
 import { createAgentMcpToolListChangedHandlers, type AgentMcpToolDeclaration } from "./AgentMcpToolCatalogChange.js";
 import { AgentMcpCallNotificationController } from "./AgentMcpCallNotificationController.js";
 import { AgentMcpElicitationController, reportAgentMcpBackgroundError } from "./AgentMcpElicitationController.js";
 import { AgentMcpTaskController } from "./AgentMcpTaskController.js";
 import type { AgentMcpToolCallOptions, AgentMcpToolClientOptions } from "./AgentMcpToolClientContracts.js";
+import type { AgentMcpStdioRuntimeEndpoint } from "../McpPackages/AgentMcpPackageTypes.js";
 import { agentMcpRequestOptions, preferAgentMcpConnectionFailure } from "./AgentMcpToolClientRequestPolicy.js";
 
 export type {
@@ -51,18 +53,7 @@ export async function openAgentMcpToolClient(options: AgentMcpToolClientOptions)
       ? new StreamableHTTPClientTransport(new URL(options.server.url), {
           requestInit: { headers: options.server.headers },
         })
-      : new AgentMcpStdioTransport({
-          command: options.server.command,
-          args: options.server.args,
-          cwd: options.server.cwd,
-          env: options.server.env,
-          signal: options.signal,
-          profile: options.executionProfile,
-          spawnPersistentProcess: options.spawnPersistentProcess,
-          terminationGraceMs: options.terminationGraceMs,
-          maxFrameBytes: options.maxFrameBytes,
-          maxStderrBytes: options.maxStderrBytes,
-        });
+      : createStdioTransport(options, options.server);
   transport.onerror = captureConnectionFailure;
   const clientTaskStore = options.interactionInput ? new InMemoryTaskStore() : undefined;
   const client = new Client(
@@ -92,6 +83,25 @@ export async function openAgentMcpToolClient(options: AgentMcpToolClientOptions)
     throw preferAgentMcpConnectionFailure(error, connectionFailure);
   }
   return toolClient;
+}
+
+function createStdioTransport(
+  options: AgentMcpToolClientOptions,
+  server: AgentMcpStdioRuntimeEndpoint,
+): AgentMcpStdioTransport {
+  const launch = createAgentMcpStdioRuntimeLaunch(server, options.executionProfile.backend);
+  return new AgentMcpStdioTransport({
+    command: launch.command,
+    args: launch.args,
+    cwd: server.cwd,
+    env: launch.env,
+    signal: options.signal,
+    profile: options.executionProfile,
+    spawnPersistentProcess: options.spawnPersistentProcess,
+    terminationGraceMs: options.terminationGraceMs,
+    maxFrameBytes: options.maxFrameBytes,
+    maxStderrBytes: options.maxStderrBytes,
+  });
 }
 
 export class AgentMcpToolClient {

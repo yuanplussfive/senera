@@ -30,7 +30,7 @@ import { summarizeToolPlan, toolPlanTitle, truncate } from "./sessionPresentatio
 import { currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
 import { touchRun } from "./sessionRunProjection";
 import { timelineScopeFromEvent, toolBatchFromEvent } from "./timelineProjection";
-import { mergeToolResultPresentation, readToolResultPresentation } from "./toolResultPresentation";
+import { mergeToolResultPresentation } from "./toolResultPresentation";
 import { projectToolOutput, projectToolProgress } from "./toolRuntimeProjection";
 import type { RunRecord, StoreState, TimelineChildRunMessage, TimelineChildRunState, TimelineStep } from "./types";
 
@@ -215,10 +215,10 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         status: "running",
         startedAt: env.timestamp,
         toolName: data.toolName,
-        toolOrigin: data.origin,
         callId: data.callId,
         toolBatch: toolBatchFromEvent(env, data),
-        toolArgs: data.arguments,
+        ...(data.origin ? { toolOrigin: data.origin } : {}),
+        ...(data.arguments === undefined ? {} : { toolArgs: data.arguments }),
         scope,
       });
       return true;
@@ -334,10 +334,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       if (step) {
         step.toolResult = data.value;
         step.toolOrigin = data.origin ?? step.toolOrigin;
-        step.toolPresentation = mergeToolResultPresentation(
-          step.toolPresentation,
-          readToolResultPresentation(data.value),
-        );
+        step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
         step.toolPreview = step.toolPresentation?.headline ?? step.toolPreview;
         touchRun(run);
       }

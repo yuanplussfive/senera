@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { DesktopUpdateSnapshot } from "./DesktopUpdateProtocol.js";
 
 contextBridge.exposeInMainWorld("seneraDesktop", {
   isDesktop: true,
@@ -22,4 +23,13 @@ contextBridge.exposeInMainWorld("seneraDesktop", {
   confirmSettingsClose: () => ipcRenderer.invoke("senera:settings.confirm-close"),
   cancelSettingsClose: () => ipcRenderer.invoke("senera:settings.cancel-close"),
   openExternalUrl: (url: string) => ipcRenderer.invoke("senera:external-url.open", url),
+  getUpdateState: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.get-state"),
+  checkForUpdates: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.check"),
+  downloadUpdate: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.download"),
+  installUpdate: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.install"),
+  onUpdateStateChanged: (listener: (state: DesktopUpdateSnapshot) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, state: DesktopUpdateSnapshot): void => listener(state);
+    ipcRenderer.on("senera:update.state-changed", handler);
+    return () => ipcRenderer.removeListener("senera:update.state-changed", handler);
+  },
 });

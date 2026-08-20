@@ -293,6 +293,57 @@ describe("tool call executor outcome", () => {
       startedAt: "1970-01-01T00:00:01.000Z",
       durationMs: 42,
     });
+    expect(events.find((event) => event.kind === "tool.call.result.detail")?.data).toMatchObject({
+      callId: "call-timed",
+      value: { output: "timed" },
+      presentation: expect.objectContaining({ status: "success" }),
+    });
+  });
+
+  test("keeps effective arguments and tool provenance consistent across execution and lifecycle events", async () => {
+    const tool = registeredTool();
+    const registry = new AgentExtensionRegistry();
+    registry.registerToolExtension(tool.owner, [tool]);
+    const events: Array<{ kind: string; data: Record<string, unknown> }> = [];
+    const executor = new AgentToolCallExecutor({
+      registry,
+      config: { ModelProviders: [] },
+      protocol: createXmlProtocolSpec(),
+      toolRunner: { run: async () => toolProcessSuccessResult({ output: "ok" }) },
+    });
+
+    const execution = await executor.execute(
+      {
+        name: tool.name,
+        callId: "call-effective-arguments",
+        arguments: { query: "workspace", executionTarget: "Local" },
+      },
+      {
+        requestId: "request-effective-arguments",
+        step: 1,
+        toolAccessGrant: createAgentToolAccessGrant({
+          authorizedToolNames: [tool.name],
+          exposedToolNames: [tool.name],
+        }),
+        onEvent: async (event) => {
+          events.push({ kind: event.kind, data: event.data as Record<string, unknown> });
+        },
+      },
+    );
+
+    expect(execution).toMatchObject({
+      kind: "ToolResults",
+      value: [
+        {
+          arguments: { query: "workspace" },
+          origin: { kind: "system", name: "Outcome test", capability: "test.outcome" },
+        },
+      ],
+    });
+    expect(events.find((event) => event.kind === "tool.call.started")?.data).toMatchObject({
+      arguments: { query: "workspace" },
+      origin: { kind: "system", name: "Outcome test", capability: "test.outcome" },
+    });
   });
 
   test("closes an unexpected tool exception with an explicit failed lifecycle", async () => {

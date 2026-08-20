@@ -15,11 +15,7 @@ import {
   type SeneraOpenedWorkspaceFile,
 } from "../Execution/SeneraWorkspaceBoundary.js";
 import { AgentResourceAccessIntents } from "../Execution/SeneraResourceAccess.js";
-
-export const AgentWorkspaceResourceHttpRoutes = {
-  Resource: "/api/workspace-resources",
-  Content: "/api/workspace-resources/content",
-} as const;
+import { AgentResourceHttpRoutes } from "../Resources/AgentResourceContract.js";
 
 export interface AgentWorkspaceResourceHttpApiOptions {
   readonly workspaceRoot: string;
@@ -271,9 +267,9 @@ export class AgentWorkspaceResourceHttpApi {
 
   private readRoute(request: IncomingMessage): WorkspaceResourceRoute | undefined {
     try {
-      const pathname = new URL(request.url ?? "/", "http://senera.local").pathname;
-      if (pathname === AgentWorkspaceResourceHttpRoutes.Resource) return "resource";
-      if (pathname === AgentWorkspaceResourceHttpRoutes.Content) return "content";
+      const url = new URL(request.url ?? "/", "http://senera.local");
+      if (url.pathname === AgentResourceHttpRoutes.Collection && url.searchParams.has("path")) return "resource";
+      if (url.pathname === AgentResourceHttpRoutes.WorkspaceContent && url.searchParams.has("path")) return "content";
       return undefined;
     } catch {
       return undefined;

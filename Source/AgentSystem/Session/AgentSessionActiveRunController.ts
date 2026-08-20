@@ -16,6 +16,9 @@ import {
   type AgentPiDiagnosticSink,
 } from "../Pi/AgentPiDiagnostics.js";
 import type { AgentPiSession } from "../Pi/AgentPiRuntimeTypes.js";
+import type { ImageContent } from "@earendil-works/pi-ai";
+import { projectAgentPiImageAttachments } from "../Pi/AgentPiImageAttachmentProjector.js";
+import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import { AgentSessionStatuses, type AgentSession } from "./AgentSession.js";
 import type { AgentSessionHistoryMutationCoordinator } from "./AgentSessionHistoryMutationCoordinator.js";
@@ -45,6 +48,7 @@ export interface AgentSessionActiveRunControllerOptions {
   readonly runResources?: readonly AgentSessionRunResource[];
   readonly piSessions?: AgentPiActiveSessionRegistry;
   readonly piDiagnostics?: AgentPiDiagnosticSink;
+  readonly uploadStore?: Pick<AgentUploadStore, "resolve">;
   readonly logger?: AgentLogger;
 }
 
@@ -174,7 +178,12 @@ export class AgentSessionActiveRunController {
       timestamp,
     );
     const renderedInput = this.options.conversationPolicy.renderCurrentUserMessage(userEntry);
-    await ActiveRunQueueHandlers[request.queueMode](handle.session, renderedInput);
+    const images = await projectAgentPiImageAttachments({
+      attachments: request.attachments,
+      model: handle.session.model,
+      uploadStore: this.options.uploadStore,
+    });
+    await ActiveRunQueueHandlers[request.queueMode](handle.session, renderedInput, images);
 
     this.options.store.persistEntries(request.session.id, [userEntry]);
     request.session.conversation = mergeSessionConversationEntries([...request.session.conversation, userEntry]);
@@ -645,6 +654,11 @@ async function settleActiveRun(settlements: readonly Promise<void>[]): Promise<v
 }
 
 const ActiveRunQueueHandlers = {
-  [AgentSessionMessageQueueModes.Steer]: (session: AgentPiSession, input: string) => session.steer(input),
-  [AgentSessionMessageQueueModes.FollowUp]: (session: AgentPiSession, input: string) => session.followUp(input),
-} satisfies Record<AgentSessionMessageQueueMode, (session: AgentPiSession, input: string) => Promise<void>>;
+  [AgentSessionMessageQueueModes.Steer]: (session: AgentPiSession, input: string, images: readonly ImageContent[]) =>
+    session.steer(input, images),
+  [AgentSessionMessageQueueModes.FollowUp]: (session: AgentPiSession, input: string, images: readonly ImageContent[]) =>
+    session.followUp(input, images),
+} satisfies Record<
+  AgentSessionMessageQueueMode,
+  (session: AgentPiSession, input: string, images: readonly ImageContent[]) => Promise<void>
+>;

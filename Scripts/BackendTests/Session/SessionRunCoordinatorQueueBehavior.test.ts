@@ -188,7 +188,7 @@ describe("Session run coordinator queue behavior", () => {
       input: "Inspect the attachment",
       attachments: [
         {
-          uploadUri: "senera://upload/upload-a",
+          resourceUri: "senera://resource/upload-a",
           name: "report.txt",
           mime: "text/plain",
           size: 12,
@@ -199,7 +199,7 @@ describe("Session run coordinator queue behavior", () => {
     });
 
     expect(pi.steered[0]).toContain("<current_user_message>");
-    expect(pi.steered[0]).toContain("<uploadUri>senera://upload/upload-a</uploadUri>");
+    expect(pi.steered[0]).toContain("<resourceUri>senera://resource/upload-a</resourceUri>");
     expect(fixture.store.loadConversation(fixture.session.id).at(-1)?.metadata?.queue).toEqual({
       parentRequestId: "request-active",
       mode: AgentSessionMessageQueueModes.Steer,

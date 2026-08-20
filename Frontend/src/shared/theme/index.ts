@@ -4,6 +4,7 @@ export {
   accentColorLabels,
   colorSchemeLabels,
   createAppearanceSummary,
+  fontFamilyDescriptions,
   fontFamilyLabels,
   fontScaleLabels,
   isDefaultAppearancePreference,
@@ -23,4 +24,4 @@ export type {
   ResolvedTheme,
   ThemeMode,
 } from "./themeModel";
-export { defaultAppearancePreference } from "./themeModel";
+export { appearanceFontFamilyStacks, defaultAppearancePreference } from "./themeModel";

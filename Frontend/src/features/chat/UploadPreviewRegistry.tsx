@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 export interface UploadPreviewRegistry {
-  register(uploadUri: string, previewUrl: string): void;
-  release(uploadUri: string, previewUrl: string): void;
-  resolve(uploadUri: string): string | undefined;
+  register(resourceUri: string, previewUrl: string): void;
+  release(resourceUri: string, previewUrl: string): void;
+  resolve(resourceUri: string): string | undefined;
 }
 
 interface UploadPreviewContextValue extends UploadPreviewRegistry {
@@ -16,17 +16,17 @@ export function UploadPreviewProvider({ children }: { children: ReactNode }): JS
   const previewsRef = useRef(new Map<string, string>());
   const [revision, setRevision] = useState(0);
 
-  const register = useCallback((uploadUri: string, previewUrl: string): void => {
-    const previous = previewsRef.current.get(uploadUri);
+  const register = useCallback((resourceUri: string, previewUrl: string): void => {
+    const previous = previewsRef.current.get(resourceUri);
     if (previous === previewUrl) return;
     if (previous) URL.revokeObjectURL(previous);
-    previewsRef.current.set(uploadUri, previewUrl);
+    previewsRef.current.set(resourceUri, previewUrl);
     setRevision((current) => current + 1);
   }, []);
 
-  const release = useCallback((uploadUri: string, previewUrl: string): void => {
-    if (previewsRef.current.get(uploadUri) !== previewUrl) return;
-    previewsRef.current.delete(uploadUri);
+  const release = useCallback((resourceUri: string, previewUrl: string): void => {
+    if (previewsRef.current.get(resourceUri) !== previewUrl) return;
+    previewsRef.current.delete(resourceUri);
     URL.revokeObjectURL(previewUrl);
     setRevision((current) => current + 1);
   }, []);
@@ -45,7 +45,7 @@ export function UploadPreviewProvider({ children }: { children: ReactNode }): JS
     () => ({
       register,
       release,
-      resolve: (uploadUri) => previewsRef.current.get(uploadUri),
+      resolve: (resourceUri) => previewsRef.current.get(resourceUri),
       revision,
     }),
     [register, release, revision],

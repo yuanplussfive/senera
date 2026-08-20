@@ -9,6 +9,7 @@ import {
   AgentActionPlannerBamlPromptFactory,
 } from "./AgentActionPlannerBamlPromptFactory.js";
 import type { AgentActionPlannerModelTransport } from "./AgentActionPlannerModelTransport.js";
+import type { AgentLanguageModelImageAttachment } from "../ModelEndpoints/AgentLanguageModel.js";
 
 type BamlFunctionName = AgentActionPlannerBamlFunctionArgs["functionName"];
 type BamlFunctionArgs<TName extends BamlFunctionName> = Extract<
@@ -41,6 +42,7 @@ export class AgentActionPlannerStructuredCaller {
     functionName: TName;
     args: BamlFunctionArgs<TName>;
     signal?: AbortSignal;
+    attachments?: readonly AgentLanguageModelImageAttachment[];
     parse: (rawOutput: string) => TValue;
     repair?: (failure: {
       invalidOutput: string;
@@ -50,7 +52,7 @@ export class AgentActionPlannerStructuredCaller {
   }): Promise<TValue> {
     const result = await this.structuredOutputRunner.run({
       functionName: options.functionName,
-      request: await this.promptFactory.buildPrompt(options.args),
+      request: await this.promptFactory.buildPrompt(options.args, { attachments: options.attachments }),
       signal: options.signal,
       parse: options.parse,
       repair: options.repair
@@ -61,6 +63,7 @@ export class AgentActionPlannerStructuredCaller {
                 issues: failure.issues,
                 diagnostics: failure.diagnostics,
               }) ?? options.args,
+              { attachments: options.attachments },
             )
         : undefined,
     });
@@ -71,12 +74,14 @@ export class AgentActionPlannerStructuredCaller {
     functionName: TName;
     args: BamlFunctionArgs<TName>;
     signal?: AbortSignal;
+    attachments?: readonly AgentLanguageModelImageAttachment[];
     parse: (rawOutput: string) => TValue;
   }): Promise<TValue> {
     return this.run({
       functionName: options.functionName,
       args: options.args,
       signal: options.signal,
+      attachments: options.attachments,
       parse: options.parse,
     });
   }

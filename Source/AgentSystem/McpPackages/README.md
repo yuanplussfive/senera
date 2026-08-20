@@ -21,3 +21,7 @@ Startup discovery and persistent execution share the runtime-owned MCP client po
 An active Pi turn keeps its original tool Schemas. Calls carry the projected contract digest to the executor, which rejects a same-name tool if its registry contract changed mid-turn. Newly added tools are outside that turn's immutable authorization grant and become eligible on the next turn.
 
 MCP execution is resource-aware rather than globally serialized. Explicit resource claims take precedence. Without them, calls are isolated by MCP server identity: read-only calls to the same server may run concurrently, a write conflicts with reads and writes on that server, and calls to different servers do not block one another. Elicitation remains serialized per live connection because the MCP client owns one active user interaction at a time.
+
+Bundled first-party Node MCP servers use the repository root as their only dependency source during development and build. The desktop packager discovers each `McpServers/*/manifest.json`, bundles the declared `server.entry_point`, and ships the generated server with its executable resources. It does not install or copy a second `node_modules` tree. Docker and development runtimes continue to resolve the same root lockfile normally.
+
+External or user-provided stdio servers must be self-contained at their package boundary. MCPB packages may carry their own runtime files and dependencies; the host must not make them depend on Senera's private `node_modules`. HTTP MCP servers have no local dependency boundary.

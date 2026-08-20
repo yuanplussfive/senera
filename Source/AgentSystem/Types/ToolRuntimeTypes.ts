@@ -18,6 +18,7 @@ import type {
   AgentToolSemanticProjection,
   AgentToolSemanticProjectionRequest,
 } from "../ToolRuntime/AgentToolSemanticProjection.js";
+import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.js";
 
 export interface AgentToolArtifactAsset {
   readonly id: string;
@@ -71,6 +72,7 @@ export interface AgentToolArtifactAssetReference {
 export interface ExecutedToolCallResult {
   callId: string;
   name: string;
+  origin?: AgentToolEventOrigin;
   arguments: Record<string, unknown>;
   execution?: AgentToolExecutionPlan;
   process: {

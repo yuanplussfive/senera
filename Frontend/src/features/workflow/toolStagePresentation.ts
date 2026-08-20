@@ -182,6 +182,8 @@ function projectStageActivity(
     label: projectToolBatchAction({
       toolName: group.representative.toolName,
       origin: group.representative.toolOrigin,
+      arguments: group.representative.toolArgs,
+      status: readToolActivityStatus(group.representative.status),
     }).label,
     count: group.count,
   }));

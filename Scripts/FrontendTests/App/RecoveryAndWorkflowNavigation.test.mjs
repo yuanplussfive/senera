@@ -32,7 +32,13 @@ test("atomically recreates a missing session while replaying the last message ex
       input: "Continue the task",
       approvalMode: "full_access",
       attachments: [
-        { uploadUri: "senera://upload/source", name: "source.ts", mime: "text/plain", size: 10, status: "uploaded" },
+        {
+          resourceUri: "senera://resource/source",
+          name: "source.ts",
+          mime: "text/plain",
+          size: 10,
+          status: "uploaded",
+        },
       ],
       modelProviderId: "primary",
       queueMode: "enqueue",

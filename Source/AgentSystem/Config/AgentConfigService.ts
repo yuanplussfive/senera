@@ -65,6 +65,8 @@ export interface AgentConfigDiagnostic {
   details?: unknown;
 }
 
+export type AgentConfigSnapshotListener = (snapshot: AgentConfigSnapshot) => void;
+
 export interface AgentConfigReplaceInput extends AgentConfigCommandInput, AgentConfigRevisionGuardInput {
   config: AgentSystemConfig;
   source?: "ui_update" | "api_update";
@@ -115,6 +117,7 @@ export class AgentConfigService {
     string,
     { operationKind: string; payloadHash: string; createdAt: string }
   >();
+  private readonly snapshotListeners = new Set<AgentConfigSnapshotListener>();
 
   constructor(
     private readonly options: {
@@ -136,6 +139,11 @@ export class AgentConfigService {
 
   snapshot(): AgentConfigSnapshot {
     return this.snapshotValue;
+  }
+
+  subscribe(listener: AgentConfigSnapshotListener): () => void {
+    this.snapshotListeners.add(listener);
+    return () => this.snapshotListeners.delete(listener);
   }
 
   replaceConfig(input: AgentConfigReplaceInput): AgentConfigSnapshot {
@@ -223,10 +231,12 @@ export class AgentConfigService {
   reloadFromSources(): AgentConfigSnapshot {
     this.snapshotValue = this.initialize(this.snapshotValue.version + 1);
     this.maintainSqliteHistory();
+    this.publishSnapshot();
     return this.snapshotValue;
   }
 
   close(): void {
+    this.snapshotListeners.clear();
     this.closeRepository();
   }
 
@@ -399,6 +409,7 @@ export class AgentConfigService {
       };
       this.jsonCommandReceipts.set(input.commandId, { operationKind, payloadHash, createdAt: commandTimestamp });
       this.pruneJsonCommandReceipts(commandTimestamp, this.historyRetention(config));
+      this.publishSnapshot();
       return this.snapshotValue;
     }
 
@@ -434,7 +445,18 @@ export class AgentConfigService {
       commandTimestamp,
     );
     this.writeCommittedJsonMirror(result.revision.config, store.MirrorJson);
+    this.publishSnapshot();
     return this.snapshotValue;
+  }
+
+  private publishSnapshot(): void {
+    for (const listener of this.snapshotListeners) {
+      try {
+        listener(this.snapshotValue);
+      } catch {
+        // Configuration persistence must not fail because an observer is stale.
+      }
+    }
   }
 
   private usesSqliteStore(): boolean {

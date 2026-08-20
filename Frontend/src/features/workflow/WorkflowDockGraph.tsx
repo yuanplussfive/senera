@@ -14,6 +14,7 @@ import { AppIcon, type AppIconName, Spinner } from "../../shared/ui";
 import { WorkflowStepDetail } from "./NodeDetailDrawer";
 import { runActivityLabel } from "./runActivityPresentation";
 import { readStepStatusLabel } from "./stepPresentation";
+import { projectToolActivityInspection } from "./toolActivityPresentation";
 import { projectToolStagePresentation } from "./toolStagePresentation";
 import { ToolActionIcon } from "./ToolActionIcon";
 import {
@@ -57,11 +58,11 @@ export function WorkflowDockGraph({ run }: { run: RunRecord }): JSX.Element {
 
   return (
     <div
-      className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3 pb-8 pt-11"
+      className="scrollbar-thin min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto pl-3 pr-2 pb-8 pt-11"
       data-workflow-dock-graph
       aria-label={frontendMessage("workflow.dock.ariaLabel")}
     >
-      <div className="relative min-w-0" role="list">
+      <div className="relative min-w-0 w-full" role="list">
         <span
           className="pointer-events-none absolute bottom-4 left-[9px] top-4 w-px bg-line-subtle"
           aria-hidden="true"
@@ -193,7 +194,10 @@ function DockStepNode({
       {expanded ? (
         <div
           id={contentId}
-          className={cn("border-l border-line-subtle pb-3 pt-1", nested ? "ml-7 pl-3" : "ml-5 pl-4 pr-1")}
+          className={cn(
+            "min-w-0 max-w-full border-l border-line-subtle pb-3 pt-1",
+            nested ? "ml-7 pl-3 pr-0" : "ml-5 pl-3 pr-0",
+          )}
         >
           {step.kind === "tool" && step.toolName ? (
             <Suspense fallback={<DockInspectorLoading />}>
@@ -384,7 +388,14 @@ function readDockStepTitle(step: TimelineStep): string {
 
 function readDockStepSummary(step: TimelineStep): string | undefined {
   if (step.toolErrorMessage || step.errorMessage) return step.toolErrorMessage || step.errorMessage;
-  if (step.kind === "tool") return undefined;
+  if (step.kind === "tool" && step.toolName) {
+    return projectToolActivityInspection({
+      toolName: step.toolName,
+      origin: step.toolOrigin,
+      arguments: step.toolArgs,
+      status: step.status === "failed" ? "failed" : step.status === "done" ? "completed" : "active",
+    }).argumentPreview;
+  }
   if (step.childRun?.activeTools?.length) {
     return step.childRun.activeTools.join(" · ");
   }

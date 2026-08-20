@@ -114,7 +114,11 @@ export class AgentLoopToolEventFactory {
     toolName: string,
     callId: string,
     value: unknown,
-    metadata: { origin?: AgentToolEventOrigin; batchId?: string } = {},
+    metadata: {
+      origin?: AgentToolEventOrigin;
+      batchId?: string;
+      presentation?: AgentToolResultPresentation;
+    } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallResultDetail,
@@ -125,6 +129,7 @@ export class AgentLoopToolEventFactory {
         toolName,
         callId,
         batchId: metadata.batchId,
+        presentation: metadata.presentation,
         value,
         origin: metadata.origin,
       },

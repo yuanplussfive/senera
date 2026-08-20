@@ -31,7 +31,7 @@ export class AgentToolUploadReadResourceCapability implements AgentToolResourceC
       target: "resource" as const,
       binding,
       value: {
-        uploadUri: upload.manifest.uploadUri,
+        resourceUri: upload.manifest.resourceUri,
         filePath: upload.filePath,
         name: upload.manifest.name,
         mime: upload.manifest.mime,
@@ -47,7 +47,7 @@ export class AgentToolUploadReadResourceCapability implements AgentToolResourceC
     return [
       {
         domain: this.claimDomain,
-        identity: upload.manifest.uploadUri,
+        identity: upload.manifest.resourceUri,
         access: AgentToolResourceAccessModes.Shared,
       },
     ];

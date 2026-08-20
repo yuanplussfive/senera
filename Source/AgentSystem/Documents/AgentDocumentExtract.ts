@@ -34,7 +34,7 @@ export async function extractAgentDocument(
       declaredMime: input.declaredMime,
       size: input.size,
       sha256: input.sha256,
-      uploadUri: input.uploadUri,
+      resourceUri: input.resourceUri,
     },
     input.probe,
   );

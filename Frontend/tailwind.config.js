@@ -4,9 +4,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Segoe UI Variable"', '"Segoe UI"', "ui-sans-serif", "system-ui", "sans-serif"],
-        serif: ['"Fraunces"', "ui-serif", "Georgia", "serif"],
-        mono: ['"JetBrains Mono"', "ui-monospace", "Menlo", "Consolas", "monospace"],
+        sans: ["var(--theme-ui-font-family)"],
+        serif: ["ui-serif", "Georgia", "serif"],
+        mono: ["var(--theme-mono-font-family)"],
       },
       colors: {
         surface: {

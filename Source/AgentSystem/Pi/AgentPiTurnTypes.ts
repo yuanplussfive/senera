@@ -7,12 +7,14 @@ import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.j
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 
 export interface AgentPiTurnRequest {
   sessionId?: string;
   requestId: string;
   step: number;
   input: string;
+  attachments?: AgentUploadAttachment[];
   prompt: string;
   conversationEntries: AgentConversationEntry[];
   rootCommand: AgentRootCommand;

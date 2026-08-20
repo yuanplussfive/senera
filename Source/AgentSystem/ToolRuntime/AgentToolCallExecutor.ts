@@ -277,7 +277,8 @@ export class AgentToolCallExecutor {
       const executedBase: ExecutedToolCallResult = {
         callId,
         name: tool.name,
-        arguments: requestedArguments,
+        origin,
+        arguments: args,
         execution: invocation.executionPlan,
         process,
         artifactPayload: execution.artifactPayload,
@@ -332,6 +333,7 @@ export class AgentToolCallExecutor {
     origin: ReturnType<typeof projectAgentToolEventOrigin>,
   ): Promise<void> {
     const error = readAgentToolFailure(result.outcome);
+    const presentation = result.presentation ?? projectAgentToolResultPresentation(result);
     const lifecycleEmitted = await this.emitLifecycle(context, ({ requestId, step }) =>
       error
         ? this.events.toolCallFailed(requestId, step, index, result.name, result.callId, error.message, error.code, {
@@ -339,22 +341,19 @@ export class AgentToolCallExecutor {
             batchId: context.batchId,
             ...timing,
           })
-        : this.events.toolCallCompleted(
-            requestId,
-            step,
-            index,
-            result.name,
-            result.callId,
-            result.presentation ?? projectAgentToolResultPresentation(result),
-            { origin, batchId: context.batchId, ...timing },
-          ),
+        : this.events.toolCallCompleted(requestId, step, index, result.name, result.callId, presentation, {
+            origin,
+            batchId: context.batchId,
+            ...timing,
+          }),
     );
     if (lifecycleEmitted) context.onLifecycleSettled?.(error ? "failed" : "completed");
     if (!context.deferResultDetail) {
       await this.emitLifecycle(context, ({ requestId, step }) =>
-        this.events.toolCallResultDetail(requestId, step, index, result.name, result.callId, result, {
+        this.events.toolCallResultDetail(requestId, step, index, result.name, result.callId, result.result, {
           origin,
           batchId: context.batchId,
+          presentation,
         }),
       );
     }

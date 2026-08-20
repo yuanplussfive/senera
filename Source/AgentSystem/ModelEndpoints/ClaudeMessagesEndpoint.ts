@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { AgentLanguageModelRequest, AgentLanguageModelStream } from "./AgentLanguageModel.js";
 import type { EndpointRuntime, TextGenerationEndpoint, TextGenerationEndpointResult } from "./ModelEndpointTypes.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
-import { projectOpenAiCompatibleTextMessages } from "./OpenAiCompatibleMessageProjector.js";
+import { projectOpenAiCompatibleMessages } from "./OpenAiCompatibleMessageProjector.js";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
 import { ModelUsageNumberWireSchema, projectModelUsageNumber } from "./ModelUsageWireSchema.js";
 import { createAgentModelCompletionMetadata } from "./AgentModelCompletion.js";
@@ -96,12 +96,12 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
   }
 
   private buildPayload(request: AgentLanguageModelRequest, stream: boolean): Record<string, unknown> {
-    const messages = projectOpenAiCompatibleTextMessages(request, {
+    const messages = projectOpenAiCompatibleMessages(request, {
       developerRole: "system",
     });
     const system = messages
       .filter((message) => message.role === "system" || message.role === "developer")
-      .map((message) => message.content)
+      .map((message) => readMessageText(message.content))
       .join("\n\n");
     const payload: Record<string, unknown> = {
       model: this.runtime.config.Model,
@@ -110,7 +110,7 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
         .filter((message) => message.role === "user" || message.role === "assistant")
         .map((message) => ({
           role: message.role,
-          content: message.content,
+          content: projectClaudeContent(message.content),
         })),
       temperature: this.runtime.config.Temperature,
       stream,
@@ -128,6 +128,32 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
       ...this.runtime.config.Headers,
     };
   }
+}
+
+function projectClaudeContent(
+  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>,
+): unknown {
+  if (typeof content === "string") return content;
+  return content.map((part) => {
+    if (part.type === "text") return { type: "text", text: part.text ?? "" };
+    const dataUri = part.image_url?.url ?? "";
+    const match = /^data:([^;]+);base64,(.*)$/su.exec(dataUri);
+    if (!match) return { type: "text", text: "[image attachment unavailable]" };
+    return {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: match[1],
+        data: match[2],
+      },
+    };
+  });
+}
+
+function readMessageText(content: string | Array<{ type: string; text?: string }>): string {
+  return typeof content === "string"
+    ? content
+    : content.flatMap((part) => (part.type === "text" ? [part.text ?? ""] : [])).join("");
 }
 
 function projectClaudeUsage(usage: z.infer<typeof ClaudeUsageSchema>): AgentModelUsageValue | undefined {

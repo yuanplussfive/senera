@@ -33,7 +33,9 @@ export function preloadAuthenticatedApplication(surface: AppSurface): void {
 
 export function prepareAuthenticatedApplication(surface: AppSurface): Promise<void> {
   const routeModule = surface === "settings" ? loadDesktopSettingsSurfaceModule : loadMainApplicationModule;
-  return Promise.all([routeModule(), prepareEventJournalRecorder()]).then(() => undefined);
+  // Observability is helpful but must never delay the first authenticated surface.
+  observeSpeculativeLoad(prepareEventJournalRecorder());
+  return routeModule().then(() => undefined);
 }
 
 export function preloadWebSettingsSurface(): void {

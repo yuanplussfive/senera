@@ -7,6 +7,7 @@ import type { AgentAccessFailure, AgentServerAccessGuard } from "../Auth/AgentSe
 import type { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
 import type { AgentWorkspaceResourceHttpApi } from "../WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
 import type { AgentProviderCredentialHttpApi } from "../Config/AgentProviderCredentialHttpApi.js";
+import type { AgentRuntimeUpdateHttpApi } from "../Runtime/AgentRuntimeUpdateHttpApi.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
@@ -17,6 +18,7 @@ export class AgentWebSocketHttpRouter {
       staticFrontendApi?: AgentStaticFrontendHttpApi;
       authenticationApi?: AgentAuthenticationHttpApi;
       healthApi?: AgentHealthHttpApi;
+      runtimeUpdateApi?: AgentRuntimeUpdateHttpApi;
       accessGuard?: AgentServerAccessGuard;
     },
   ) {}
@@ -29,6 +31,14 @@ export class AgentWebSocketHttpRouter {
 
     if (this.options.healthApi?.canHandle(request)) {
       this.options.healthApi.handle(request, response);
+      return;
+    }
+
+    if (this.options.runtimeUpdateApi?.canHandle(request)) {
+      if (request.method !== "OPTIONS" && !this.authorize(request, response)) {
+        return;
+      }
+      await this.options.runtimeUpdateApi.handle(request, response);
       return;
     }
 

@@ -10,15 +10,24 @@ export interface DesktopResourceRootResolutionInput {
   appPath: string;
   isPackaged: boolean;
   launchRoot: string;
+  /** Electron's physical resources directory, available in packaged apps. */
+  resourcesPath?: string;
 }
 
 /**
- * Packaged applications load resources from Electron's app path. Development
- * runs resolve the checked-in project layout rather than user-local config.
+ * The Electron app path contains executable code and may be an app.asar
+ * archive. Packaged runtime assets are deliberately resolved from the
+ * physical resources directory so child processes can use them as cwd and
+ * regular files. Development resolves the checked-in project layout rather
+ * than user-local config.
  */
 export function resolveDesktopResourceRoot(input: DesktopResourceRootResolutionInput): string {
   if (input.isPackaged) {
-    return path.resolve(input.appPath);
+    const resourcesPath = input.resourcesPath?.trim();
+    if (!resourcesPath) {
+      throw new DesktopRuntimePathResolutionError(input);
+    }
+    return path.resolve(resourcesPath);
   }
 
   const root = findDesktopProjectRoot([input.launchRoot, input.appPath]);
@@ -48,14 +57,16 @@ export function resolveDesktopWorkspaceRoot(input: {
 export class DesktopRuntimePathResolutionError extends Error {
   readonly appPath: string;
   readonly launchRoot: string;
+  readonly resourcesPath: string | undefined;
 
-  constructor(input: { appPath: string; launchRoot: string }) {
+  constructor(input: { appPath: string; launchRoot: string; resourcesPath?: string }) {
     super(
-      `Unable to resolve the Senera development resource root from appPath=${path.resolve(input.appPath)} launchRoot=${path.resolve(input.launchRoot)}.`,
+      `Unable to resolve the Senera resource root from appPath=${path.resolve(input.appPath)} launchRoot=${path.resolve(input.launchRoot)} resourcesPath=${input.resourcesPath ? path.resolve(input.resourcesPath) : "<missing>"}.`,
     );
     this.name = "DesktopRuntimePathResolutionError";
     this.appPath = path.resolve(input.appPath);
     this.launchRoot = path.resolve(input.launchRoot);
+    this.resourcesPath = input.resourcesPath ? path.resolve(input.resourcesPath) : undefined;
   }
 }
 

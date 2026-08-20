@@ -5,17 +5,13 @@ import { pipeline, Transform, type Readable, type TransformCallback } from "node
 import busboy from "busboy";
 import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredentialedCors.js";
 import { projectAgentErrorMessage, projectAgentMessage } from "../I18n/AgentMessageProjection.js";
-import { formatAgentUploadUri } from "./AgentUploadLocator.js";
+import { AgentResourceHttpRoutes } from "../Resources/AgentResourceContract.js";
+import { createAgentResourceUri, normalizeResourceId } from "../Resources/AgentResourceUri.js";
 import { isAgentInlineImageMime } from "./AgentUploadMime.js";
 import { AgentUploadError, AgentUploadFailureKinds, type AgentUploadStore } from "./AgentUploadStore.js";
 import type { AgentUploadAttachment } from "./AgentUploadTypes.js";
 import { isMissingFileError } from "../Core/AgentFs.js";
 import { toError } from "../Core/AgentErrors.js";
-
-export const AgentUploadHttpRoutes = {
-  Uploads: "/api/uploads",
-  ContentSegment: "content",
-} as const;
 
 export const AgentUploadMaintenanceTriggers = {
   Startup: "startup",
@@ -34,7 +30,7 @@ export interface AgentUploadMaintenanceFailure {
 
 type AgentUploadHttpRoute =
   | { readonly kind: "collection" }
-  | { readonly kind: "content"; readonly uploadId: string }
+  | { readonly kind: "content"; readonly resourceId: string }
   | { readonly kind: "invalid" };
 
 export interface AgentUploadHttpApiOptions {
@@ -107,7 +103,7 @@ export class AgentUploadHttpApi {
       if (route.kind === "collection") {
         await this.handleCollection(request, response);
       } else {
-        await this.handleContent(request, response, route.uploadId);
+        await this.handleContent(request, response, route.resourceId);
       }
     } catch (error) {
       if (response.headersSent) {
@@ -144,11 +140,11 @@ export class AgentUploadHttpApi {
 
     this.sendJson(response, 200, {
       ok: true,
-      uploads,
+      resources: uploads,
     });
   }
 
-  private async handleContent(request: IncomingMessage, response: ServerResponse, uploadId: string): Promise<void> {
+  private async handleContent(request: IncomingMessage, response: ServerResponse, resourceId: string): Promise<void> {
     if (request.method !== "GET" && request.method !== "HEAD") {
       this.sendJson(response, 405, {
         ok: false,
@@ -160,23 +156,14 @@ export class AgentUploadHttpApi {
       return;
     }
 
-    const resolved = await this.resolveContentUpload(uploadId);
+    const resolved = await this.resolveContentUpload(resourceId);
     if (!resolved) {
       this.sendNotFound(response);
       return;
     }
 
-    const contentType = resolved.manifest.detectedMime;
-    if (!isAgentInlineImageMime(contentType)) {
-      this.sendJson(response, 415, {
-        ok: false,
-        error: {
-          code: "upload_content_unsupported",
-          ...projectAgentMessage("upload.contentUnsupported"),
-        },
-      });
-      return;
-    }
+    const detectedMime = resolved.manifest.detectedMime ?? resolved.manifest.mime;
+    const inline = isAgentInlineImageMime(detectedMime);
 
     let contentLength: number;
     try {
@@ -199,7 +186,10 @@ export class AgentUploadHttpApi {
       "Cache-Control": "private, max-age=0, must-revalidate",
       "Content-Length": contentLength,
       "Content-Security-Policy": "default-src 'none'; sandbox",
-      "Content-Type": contentType,
+      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(
+        resolved.manifest.name,
+      )}`,
+      "Content-Type": inline ? detectedMime : "application/octet-stream",
       ETag: etag,
       "X-Content-Type-Options": "nosniff",
     } as const;
@@ -221,9 +211,9 @@ export class AgentUploadHttpApi {
     });
   }
 
-  private async resolveContentUpload(uploadId: string) {
+  private async resolveContentUpload(resourceId: string) {
     try {
-      return await this.options.store.resolve(formatAgentUploadUri(uploadId));
+      return await this.options.store.resolve(createAgentResourceUri(resourceId));
     } catch (error) {
       if (isMissingFileError(error)) return undefined;
       throw error;
@@ -325,26 +315,32 @@ export class AgentUploadHttpApi {
   }
 
   private readRoute(request: IncomingMessage): AgentUploadHttpRoute | undefined {
-    let pathname: string;
+    let url: URL;
     try {
-      pathname = new URL(request.url ?? "/", "http://senera.local").pathname;
+      url = new URL(request.url ?? "/", "http://senera.local");
     } catch {
       return undefined;
     }
 
-    if (pathname === AgentUploadHttpRoutes.Uploads) {
-      return { kind: "collection" };
-    }
-    if (!pathname.startsWith(`${AgentUploadHttpRoutes.Uploads}/`)) {
+    if (url.pathname === AgentResourceHttpRoutes.WorkspaceContent) {
       return undefined;
     }
+    if (url.pathname === AgentResourceHttpRoutes.Collection) {
+      if (url.searchParams.has("path")) return undefined;
+      return url.search ? { kind: "invalid" } : { kind: "collection" };
+    }
 
-    const segments = pathname.slice(AgentUploadHttpRoutes.Uploads.length + 1).split("/");
-    if (segments.length !== 2 || segments[1] !== AgentUploadHttpRoutes.ContentSegment) {
+    const contentPrefix = `${AgentResourceHttpRoutes.Collection}/`;
+    if (!url.pathname.startsWith(contentPrefix)) return undefined;
+    if (url.search) return { kind: "invalid" };
+
+    const segments = url.pathname.slice(contentPrefix.length).split("/");
+    if (segments.length !== 1) {
       return { kind: "invalid" };
     }
     try {
-      return { kind: "content", uploadId: decodeURIComponent(segments[0]) };
+      const resourceId = normalizeResourceId(decodeURIComponent(segments[0] ?? ""));
+      return resourceId ? { kind: "content", resourceId } : { kind: "invalid" };
     } catch {
       return { kind: "invalid" };
     }
@@ -396,7 +392,7 @@ async function settleUploadCollection(options: SettleUploadCollectionOptions): P
   const error = options.error ?? rejected?.reason;
   if (!error) return uploads;
 
-  await options.store.deleteMany(uploads.map((upload) => upload.uploadUri));
+  await options.store.deleteMany(uploads.map((upload) => upload.resourceUri));
   throw normalizeUploadError(error);
 }
 

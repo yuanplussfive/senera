@@ -19,6 +19,7 @@ import { resolveAgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelT
 import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
 import type { AgentSystemPromptLayer } from "../Orchestration/AgentRunDispatchPort.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 
 export interface AgentLoopOptions {
   runtime: AgentSystemRuntime;
@@ -29,6 +30,7 @@ export interface AgentRunRequest {
   sessionId?: string;
   requestId: string;
   input: string;
+  attachments?: AgentUploadAttachment[];
   approvalMode: AgentExecutionApprovalMode;
   conversationEntries?: AgentConversationEntry[];
   loadedToolNames?: string[];
@@ -93,6 +95,7 @@ export class AgentLoop {
         requestId: request.requestId,
         step: 1,
         input: request.input,
+        attachments: request.attachments,
         prompt: prompt.text,
         conversationEntries: [...(request.conversationEntries ?? [])],
         rootCommand: prepared.rootCommand,

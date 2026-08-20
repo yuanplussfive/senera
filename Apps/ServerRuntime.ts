@@ -55,6 +55,7 @@ import {
   migrateLegacyAgentWorkspaceLayout,
   resolveAgentWorkspaceLayout,
 } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
+import { resolveServerConfigSource, resolveServerRuntimeConfigPath } from "./ServerRuntimeConfig.js";
 import { AgentMcpInputService } from "../Source/AgentSystem/Credentials/AgentMcpInputService.js";
 import { AgentMcpManagementService } from "../Source/AgentSystem/McpPackages/AgentMcpManagementService.js";
 import { AgentWorkspaceRuntime } from "../Source/AgentSystem/Runtime/AgentWorkspaceRuntime.js";
@@ -74,14 +75,24 @@ import {
   resolveAgentDelegationConfiguration,
   resolveAgentSchedulerConfiguration,
 } from "../Source/AgentSystem/Orchestration/AgentOrchestrationConfig.js";
+import { AgentRuntimeUpdateDeployments } from "../Source/AgentSystem/Runtime/AgentRuntimeUpdateContract.js";
+import type { AgentRuntimeUpdateHttpApiOptions } from "../Source/AgentSystem/Runtime/AgentRuntimeUpdateHttpApi.js";
+import type { AgentRuntimeUpdateOrigin } from "../Source/AgentSystem/Runtime/AgentRuntimeUpdateOrigin.js";
 
 export interface SeneraServerOptions {
   workspaceRoot?: string;
   configPath?: string;
   staticFrontendRoot?: string;
+  /**
+   * Root containing the application manifest. Electron keeps package.json in
+   * app.asar while extraResources are exposed from the physical resources root.
+   */
+  applicationRoot?: string;
   resourcesPath?: string;
   configSource?: AgentConfigSourceOptions;
   runtimeConfigProjection?: (config: AgentSystemConfig) => AgentSystemConfig;
+  /** Selects the process boundary owned by this deployment entrypoint. */
+  deployment?: SeneraServerDeployment;
   /**
    * Set only by a deployment bootstrap that has already prepared and verified
    * the configured Docker Engine runtime before opening the web server.
@@ -92,7 +103,15 @@ export interface SeneraServerOptions {
   upgradeStateRoot?: string;
   upgradeDataRoots?: readonly string[];
   runtimeImageReference?: string;
+  updateManifestUrl?: string;
 }
+
+export const SeneraServerDeployments = {
+  Local: "local",
+  Container: "container",
+} as const;
+
+export type SeneraServerDeployment = (typeof SeneraServerDeployments)[keyof typeof SeneraServerDeployments];
 
 export interface SeneraServerHandle {
   workspaceRoot: string;
@@ -107,7 +126,8 @@ type ServerEventLogDetail = "compact" | "verbose";
 export async function startSeneraServer(options: SeneraServerOptions = {}): Promise<SeneraServerHandle> {
   const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
   const resourceRoot = path.resolve(options.resourcesPath ?? process.cwd());
-  const product = readAgentProductMetadata(resourceRoot);
+  const applicationRoot = path.resolve(options.applicationRoot ?? resourceRoot);
+  const product = readAgentProductMetadata(applicationRoot);
   const upgradeSession = new AgentUpgradeSession({
     workspaceRoot,
     stateRoot: options.upgradeStateRoot,
@@ -120,7 +140,7 @@ export async function startSeneraServer(options: SeneraServerOptions = {}): Prom
   try {
     upgradeSession.recoverInterruptedUpgrade();
     migrateLegacyAgentWorkspaceLayout(workspaceRoot);
-    handle = await startSeneraServerRuntime(options, workspaceRoot, upgradeSession, cleanup);
+    handle = await startSeneraServerRuntime(options, workspaceRoot, upgradeSession, cleanup, product);
     await probeSeneraReadiness(handle.healthUrl);
     upgradeSession.markHealthy();
     cleanup.disarm();
@@ -150,6 +170,7 @@ async function startSeneraServerRuntime(
   workspaceRoot: string,
   upgradeSession: AgentUpgradeSession,
   startupCleanup: SeneraStartupCleanup,
+  product: ReturnType<typeof readAgentProductMetadata>,
 ): Promise<SeneraServerHandle> {
   const resourceRoot = path.resolve(options.resourcesPath ?? process.cwd());
   const workspaceLayout = resolveAgentWorkspaceLayout(workspaceRoot);
@@ -159,8 +180,8 @@ async function startSeneraServerRuntime(
     startupResourceCleanups.push(cancel);
     return cancel;
   };
-  const configSource = resolveConfigSource(workspaceRoot, options);
-  const configPath = resolveRuntimeConfigPath(workspaceRoot, configSource);
+  const configSource = resolveServerConfigSource(workspaceRoot, options);
+  const configPath = resolveServerRuntimeConfigPath(workspaceRoot, configSource);
   let watchedConfigPath: string | undefined;
   const eventLogDetail = resolveServerEventLogDetail(process.env.SENERA_LOG_EVENTS);
   const logger = new AgentLogger({
@@ -183,8 +204,11 @@ async function startSeneraServerRuntime(
   const interactionInput = new AgentInteractionInputRuntime();
   deferResourceCleanup(() => interactionInput.close());
   const piSessionRegistry = new AgentPiActiveSessionRegistry();
-  const projectRuntimeConfig = (config: AgentSystemConfig): AgentSystemConfig =>
-    options.runtimeConfigProjection?.(config) ?? config;
+  const deployment = options.deployment;
+  const projectRuntimeConfig = (config: AgentSystemConfig): AgentSystemConfig => {
+    const projected = options.runtimeConfigProjection?.(config) ?? config;
+    return deployment === SeneraServerDeployments.Local ? disableSandboxRuntime(projected) : projected;
+  };
   const initialSnapshot = configService.snapshot();
   const initialConfig = projectRuntimeConfig(initialSnapshot.value);
   const configSnapshot = (): AgentSystemConfig => projectRuntimeConfig(configService.snapshot().value);
@@ -403,6 +427,7 @@ async function startSeneraServerRuntime(
     ],
     piSessions: piSessionRegistry,
     piDiagnostics,
+    uploadStore: workspaceRuntime.uploadStore,
     piSessionMutations,
     piSessionManagement: piSessionMutations,
     runControl: {
@@ -439,6 +464,15 @@ async function startSeneraServerRuntime(
     eventWriter,
     mcpManagement,
     uploadStore: workspaceRuntime.uploadStore,
+    runtimeUpdate: createRuntimeUpdateOptions({
+      currentVersion: product.version,
+      deployment:
+        deployment === SeneraServerDeployments.Container
+          ? AgentRuntimeUpdateDeployments.Container
+          : AgentRuntimeUpdateDeployments.Local,
+      updateManifestUrl: options.updateManifestUrl ?? process.env.SENERA_UPDATE_MANIFEST_URL,
+      updateOrigin: product.updateOrigin,
+    }),
   });
   cancelEventWriterCleanup();
   deferResourceCleanup(() => server.stop());
@@ -566,6 +600,33 @@ async function startSeneraServerRuntime(
     websocketUrl: `ws://${serverConfig.Host}:${serverConfig.Port}`,
     healthUrl: `http://${resolveHealthCheckHost(serverConfig.Host)}:${serverConfig.Port}/health/ready`,
     stop,
+  };
+}
+
+function createRuntimeUpdateOptions({
+  currentVersion,
+  deployment,
+  updateManifestUrl,
+  updateOrigin,
+}: {
+  currentVersion: string;
+  deployment: (typeof AgentRuntimeUpdateDeployments)[keyof typeof AgentRuntimeUpdateDeployments];
+  updateManifestUrl: string | undefined;
+  updateOrigin: AgentRuntimeUpdateOrigin | undefined;
+}): AgentRuntimeUpdateHttpApiOptions {
+  if (updateManifestUrl?.trim()) {
+    return { currentVersion, deployment, manifestUrl: updateManifestUrl };
+  }
+  return { currentVersion, deployment, ...(updateOrigin ? { updateOrigin } : {}) };
+}
+
+function disableSandboxRuntime(config: AgentSystemConfig): AgentSystemConfig {
+  return {
+    ...config,
+    SandboxRuntime: {
+      ...config.SandboxRuntime,
+      Enabled: false,
+    },
   };
 }
 
@@ -701,53 +762,6 @@ class SeneraStartupCleanup {
   }
 }
 
-function resolveConfigPath(workspaceRoot: string): string {
-  const configuredPath = process.env.AGENT_CONFIG_PATH?.trim();
-  return configuredPath
-    ? path.resolve(workspaceRoot, configuredPath)
-    : path.resolve(workspaceRoot, "senera.config.json");
-}
-
 function resolveServerEventLogDetail(value: string | undefined): ServerEventLogDetail {
   return value?.trim().toLowerCase() === "verbose" ? "verbose" : "compact";
-}
-
-function resolveConfigSource(workspaceRoot: string, options: SeneraServerOptions): AgentConfigSourceOptions {
-  if (options.configSource) {
-    if (options.configPath) {
-      throw new Error("startSeneraServer 不能同时传入 configPath 和 configSource。");
-    }
-    return normalizeConfigSource(workspaceRoot, options.configSource);
-  }
-
-  return {
-    kind: "json",
-    configPath: options.configPath ? path.resolve(workspaceRoot, options.configPath) : resolveConfigPath(workspaceRoot),
-  };
-}
-
-function normalizeConfigSource(workspaceRoot: string, source: AgentConfigSourceOptions): AgentConfigSourceOptions {
-  if (source.kind === "json") {
-    return {
-      ...source,
-      configPath: resolveWorkspacePath(workspaceRoot, source.configPath),
-    };
-  }
-
-  const databasePath = resolveWorkspacePath(workspaceRoot, source.databasePath);
-  return {
-    ...source,
-    databasePath,
-    label: source.label ? resolveWorkspacePath(workspaceRoot, source.label) : databasePath,
-  };
-}
-
-function resolveRuntimeConfigPath(workspaceRoot: string, source: AgentConfigSourceOptions): string {
-  return source.kind === "json"
-    ? source.configPath
-    : (source.label ?? resolveWorkspacePath(workspaceRoot, source.databasePath));
-}
-
-function resolveWorkspacePath(workspaceRoot: string, value: string): string {
-  return path.isAbsolute(value) ? path.normalize(value) : path.resolve(workspaceRoot, value);
 }

@@ -1,4 +1,5 @@
 import { AgentModelTokenEstimator } from "./AgentTextBudget.js";
+import { estimateAgentModelInputTokens } from "./AgentMultimodalTokenBudget.js";
 
 export interface AgentTurnTokenBudgetOptions {
   readonly model: string;
@@ -214,8 +215,7 @@ export class AgentTurnTokenBudget implements AgentToolTokenBudget {
   }
 
   private estimatePayload(payload: unknown): number {
-    const serialized = JSON.stringify(payload);
-    return serialized ? this.estimator.estimate(serialized).tokenCount : 0;
+    return estimateAgentModelInputTokens(this.estimator, payload);
   }
 
   private inspectTokenCount(tokenCount: number): AgentModelInputInspection {

@@ -1,7 +1,6 @@
 !ifndef BUILD_UNINSTALLER
 
 !include "nsDialogs.nsh"
-!include "StrContains.nsh"
 
 Var SeneraInstallationDialog
 Var SeneraWorkspaceRootInput
@@ -13,10 +12,50 @@ Var SeneraInstallationTempPath
 Var SeneraSelectionHasVersion
 Var SeneraSelectionHasWorkspaceRoot
 Var SeneraSelectionValid
+Var SeneraContainsHaystack
+Var SeneraContainsNeedle
+Var SeneraContainsIndex
+Var SeneraContainsNeedleLength
+Var SeneraContainsHaystackLength
+Var SeneraContainsSlice
+Var SeneraContainsResult
+
+!macro _SeneraContainsConstructor OUT NEEDLE HAYSTACK
+  Push `${HAYSTACK}`
+  Push `${NEEDLE}`
+  Call SeneraContains
+  Pop `${OUT}`
+!macroend
+
+!define SeneraContains '!insertmacro "_SeneraContainsConstructor"'
+
+Function SeneraContains
+  Exch $SeneraContainsNeedle
+  Exch 1
+  Exch $SeneraContainsHaystack
+  StrCpy $SeneraContainsResult ""
+  StrCpy $SeneraContainsIndex -1
+  StrLen $SeneraContainsNeedleLength $SeneraContainsNeedle
+  StrLen $SeneraContainsHaystackLength $SeneraContainsHaystack
+
+senera_contains_loop:
+  IntOp $SeneraContainsIndex $SeneraContainsIndex + 1
+  StrCpy $SeneraContainsSlice $SeneraContainsHaystack $SeneraContainsNeedleLength $SeneraContainsIndex
+  StrCmp $SeneraContainsSlice $SeneraContainsNeedle senera_contains_found
+  StrCmp $SeneraContainsIndex $SeneraContainsHaystackLength senera_contains_done
+  Goto senera_contains_loop
+
+senera_contains_found:
+  StrCpy $SeneraContainsResult $SeneraContainsNeedle
+
+senera_contains_done:
+  Pop $SeneraContainsNeedle
+  Exch $SeneraContainsResult
+FunctionEnd
 
 !macro customInit
   SetShellVarContext current
-  StrCpy $SeneraWorkspaceRoot "$DOCUMENTS"
+  StrCpy $SeneraWorkspaceRoot "$DOCUMENTS\Senera"
 !macroend
 
 !macro customPageAfterChangeDir
@@ -44,7 +83,7 @@ Function SeneraInstallationPageCreate
 
   ${NSD_CreateLabel} 0 0 100% 28u "Senera 初始化"
   Pop $0
-  ${NSD_CreateLabel} 0 30u 100% 30u "安装前选择一次工作区。桌面端的数据、缓存和日志始终保存在当前用户的应用数据目录，不依赖安装目录。"
+  ${NSD_CreateLabel} 0 30u 100% 30u "选择或新建一次工作区。项目、配置、会话、日志和运行记录都会保存在这里，安装目录只保存程序资源。"
   Pop $0
 
   ${NSD_CreateLabel} 0 70u 100% 12u "工作区目录（项目、.git、.senera 和会话状态）"
@@ -79,12 +118,16 @@ Function SeneraInstallationPageLeave
     Abort
   ${EndIf}
 
-  IfFileExists "$SeneraWorkspaceRoot\." 0 senera_workspace_missing
-  Return
-
-senera_workspace_missing:
-  MessageBox MB_OK|MB_ICONEXCLAMATION "工作区目录不存在，请选择一个已有的项目目录。"
+  IfFileExists "$SeneraWorkspaceRoot\." senera_workspace_ready senera_workspace_create
+senera_workspace_create:
+  CreateDirectory "$SeneraWorkspaceRoot"
+  IfErrors senera_workspace_create_failed
+  IfFileExists "$SeneraWorkspaceRoot\." senera_workspace_ready senera_workspace_create_failed
+senera_workspace_create_failed:
+  MessageBox MB_OK|MB_ICONEXCLAMATION "无法创建工作区目录，请检查路径和权限后重试。"
   Abort
+senera_workspace_ready:
+  Return
 FunctionEnd
 
 Function SeneraWriteInstallationSelection
@@ -117,11 +160,11 @@ Function SeneraHasValidInstallationSelection
 senera_selection_validation_read:
   FileRead $SeneraInstallationFileHandle $0
   IfErrors senera_selection_validation_close
-  ${StrContains} $1 "$\"version$\": 1" $0
+  ${SeneraContains} $1 "$\"version$\": 1" $0
   StrCmp $1 "" 0 senera_selection_found_version
-  ${StrContains} $1 "$\"version$\": 2" $0
+  ${SeneraContains} $1 "$\"version$\": 2" $0
   StrCmp $1 "" 0 senera_selection_found_version
-  ${StrContains} $1 "$\"workspaceRoot$\":" $0
+  ${SeneraContains} $1 "$\"workspaceRoot$\":" $0
   StrCmp $1 "" 0 senera_selection_found_workspace_root
   Goto senera_selection_validation_read
 

@@ -67,7 +67,9 @@ export function ToolBatchActivity({
         data-tool-batch-activity-trigger
       >
         <ToolActionIcon icon={activity.icon} status={activity.status} size="xs" showLiveIndicator={false} />
-        <span className="min-w-0 flex-1 truncate font-medium text-content-primary">{activity.label}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-content-primary">{activity.label}</span>
+        </span>
         <ChevronDown
           className={cn(
             "h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-200",
@@ -98,7 +100,9 @@ function ToolBatchActivityItemRow({ item }: { item: ToolBatchActivityItem }): JS
       data-state={readToolBatchActivityItemState(item.status)}
     >
       <ToolBatchActivityStatus status={item.status} />
-      <span className="min-w-0 flex-1 truncate text-content-primary">{item.label}</span>
+      <span className="min-w-0 flex-1 truncate text-content-primary" title={item.label}>
+        {item.label}
+      </span>
     </li>
   );
 }

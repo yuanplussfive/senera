@@ -1,10 +1,12 @@
 import type { UploadAttachmentData } from "./eventTypes";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { resolveBackendMessage, type BackendMessageData } from "../i18n/backendMessage";
+import { SeneraResourceHttpRoutes } from "./resourceContract";
+import { parseResourceId } from "./resourceUri";
 
 export interface UploadResponse {
   ok: true;
-  uploads: UploadAttachmentData[];
+  resources: UploadAttachmentData[];
 }
 
 export interface UploadErrorResponse {
@@ -27,35 +29,28 @@ export interface UploadFileOptions {
 
 export const DEFAULT_UPLOAD_TIMEOUT_MS = 30_000;
 
-const UploadReference = {
-  protocol: "senera:",
-  host: "upload",
-} as const;
-
-const UploadHttpPath = "/api/uploads";
-
-export function buildUploadUrl(httpBaseUrl: string): string {
-  const url = new URL(UploadHttpPath, `${httpBaseUrl.replace(/\/+$/u, "")}/`);
-  url.pathname = UploadHttpPath;
+export function buildResourceUploadUrl(httpBaseUrl: string): string {
+  const url = new URL(SeneraResourceHttpRoutes.Collection, `${httpBaseUrl.replace(/\/+$/u, "")}/`);
+  url.pathname = SeneraResourceHttpRoutes.Collection;
   url.search = "";
   url.hash = "";
   return url.toString();
 }
 
-export function buildUploadContentUrl(uploadBaseUrl: string, uploadUri: string): string | undefined {
-  const uploadId = parseUploadId(uploadUri);
-  if (!uploadId) return undefined;
+export function buildResourceContentUrl(resourceBaseUrl: string, resourceUri: string): string | undefined {
+  const resourceId = parseResourceId(resourceUri);
+  if (!resourceId) return undefined;
 
   let url: URL;
   try {
-    url = new URL(uploadBaseUrl, window.location.href);
+    url = new URL(resourceBaseUrl, window.location.href);
   } catch {
     return undefined;
   }
   if (url.protocol === "ws:" || url.protocol === "wss:") {
     url.protocol = url.protocol === "wss:" ? "https:" : "http:";
   }
-  url.pathname = `${UploadHttpPath}/${encodeURIComponent(uploadId)}/content`;
+  url.pathname = `${SeneraResourceHttpRoutes.Collection}/${encodeURIComponent(resourceId)}`;
   url.search = "";
   url.hash = "";
   url.username = "";
@@ -88,18 +83,18 @@ export function uploadFile(
         return;
       }
 
-      const [upload] = payload.uploads;
-      if (!isUploadAttachment(upload)) {
+      const [resource] = payload.resources;
+      if (!isUploadAttachment(resource)) {
         reject(new Error(frontendMessage("upload.emptyResponse")));
         return;
       }
 
       options.onProgress?.({
-        loaded: upload.size,
-        total: upload.size,
+        loaded: resource.size,
+        total: resource.size,
         ratio: 1,
       });
-      resolve(upload);
+      resolve(resource);
     });
 
     request.addEventListener("error", () => {
@@ -136,7 +131,7 @@ function parseUploadResponse(value: string): unknown {
 }
 
 function isUploadSuccess(status: number, payload: unknown): payload is UploadResponse {
-  return status >= 200 && status < 300 && isRecord(payload) && payload.ok === true && Array.isArray(payload.uploads);
+  return status >= 200 && status < 300 && isRecord(payload) && payload.ok === true && Array.isArray(payload.resources);
 }
 
 function readUploadErrorMessage(payload: unknown): string {
@@ -149,7 +144,8 @@ function readUploadErrorMessage(payload: unknown): string {
 function isUploadAttachment(value: unknown): value is UploadAttachmentData {
   return (
     isRecord(value) &&
-    typeof value.uploadUri === "string" &&
+    typeof value.resourceUri === "string" &&
+    parseResourceId(value.resourceUri) !== undefined &&
     typeof value.name === "string" &&
     typeof value.mime === "string" &&
     typeof value.size === "number" &&
@@ -162,35 +158,4 @@ function isUploadAttachment(value: unknown): value is UploadAttachmentData {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function parseUploadId(value: string): string | undefined {
-  let uri: URL;
-  try {
-    uri = new URL(value);
-  } catch {
-    return undefined;
-  }
-
-  if (
-    uri.protocol !== UploadReference.protocol ||
-    uri.hostname !== UploadReference.host ||
-    uri.username ||
-    uri.password ||
-    uri.port ||
-    uri.search ||
-    uri.hash
-  ) {
-    return undefined;
-  }
-
-  const segments = uri.pathname.split("/").filter(Boolean);
-  if (segments.length !== 1) return undefined;
-
-  try {
-    const uploadId = decodeURIComponent(segments[0]);
-    return uploadId && uploadId !== "." && uploadId !== ".." && !/[\\/]/u.test(uploadId) ? uploadId : undefined;
-  } catch {
-    return undefined;
-  }
 }

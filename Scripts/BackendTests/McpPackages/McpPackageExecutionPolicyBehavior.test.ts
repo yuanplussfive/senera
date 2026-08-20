@@ -54,6 +54,16 @@ describe("MCP package execution policy", () => {
     });
   });
 
+  test("does not grant a local-only package to a sandbox-only host", () => {
+    expect(() =>
+      resolveAgentMcpPackageExecutionPolicy(
+        packageWith({ targets: [AgentMcpExecutionTargets.Local], preferred: AgentMcpExecutionTargets.Local }),
+        stdioServer,
+        hostWith(["sandbox"]),
+      ),
+    ).toThrow("requests local, but this host supports sandbox");
+  });
+
   test("rejects a package whose requested targets cannot run on the host", () => {
     expect(() =>
       resolveAgentMcpPackageExecutionPolicy(

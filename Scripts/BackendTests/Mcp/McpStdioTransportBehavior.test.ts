@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { describe, expect, test, vi } from "vitest";
 import {
   AgentMcpStdioConnectionClosedError,
+  AgentMcpStdioSpawnError,
   AgentMcpStdioStartupError,
   AgentMcpStdioTransport,
   AgentMcpStdioTransportCloseError,
@@ -111,6 +112,26 @@ describe("MCP stdio transport", () => {
       signal: null,
       stderr: "fatal: configuration is invalid\n",
     } satisfies Partial<AgentMcpStdioStartupError>);
+  });
+
+  test("preserves spawn context when the MCP process cannot be started", async () => {
+    const transport = new AgentMcpStdioTransport({
+      command: "Senera.exe",
+      args: ["server.mjs"],
+      cwd: "C:/Program Files/Senera/resources/McpServers/weather",
+      spawnPersistentProcess: vi.fn(async () => {
+        throw new Error("spawn ENOENT");
+      }),
+      terminationGraceMs: 5,
+    });
+
+    await expect(transport.start()).rejects.toMatchObject({
+      name: "AgentMcpStdioSpawnError",
+      command: "Senera.exe",
+      args: ["server.mjs"],
+      cwd: "C:/Program Files/Senera/resources/McpServers/weather",
+      message: expect.stringContaining("spawn ENOENT"),
+    } satisfies Partial<AgentMcpStdioSpawnError>);
   });
 
   test("reports bounded exit diagnostics when a connected server closes unexpectedly", async () => {

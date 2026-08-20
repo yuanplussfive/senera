@@ -3,7 +3,7 @@ import type { AgentLanguageModelRequest, AgentLanguageModelStream } from "./Agen
 import type { EndpointRuntime, TextGenerationEndpoint, TextGenerationEndpointResult } from "./ModelEndpointTypes.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { resolveAgentModelCompatibility } from "./ModelCompatibility.js";
-import { buildOpenAiInput } from "./OpenAiMessageProjection.js";
+import { buildOpenAiResponsesInput } from "./OpenAiMessageProjection.js";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
 import { ModelUsageNumberWireSchema, projectModelUsageNumber } from "./ModelUsageWireSchema.js";
 import { createAgentModelCompletionMetadata } from "./AgentModelCompletion.js";
@@ -157,7 +157,7 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
   }
 
   private buildInput(request: AgentLanguageModelRequest) {
-    return buildOpenAiInput(request, resolveAgentModelCompatibility(this.runtime.config));
+    return buildOpenAiResponsesInput(request, resolveAgentModelCompatibility(this.runtime.config));
   }
 }
 

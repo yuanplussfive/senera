@@ -43,6 +43,7 @@ import {
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
 import type { AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
+import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 
 export interface AgentSessionRunCoordinatorOptions {
   store: AgentSessionStore;
@@ -53,6 +54,7 @@ export interface AgentSessionRunCoordinatorOptions {
   runResources?: readonly AgentSessionRunResource[];
   piSessions?: AgentPiActiveSessionRegistry;
   piDiagnostics?: AgentPiDiagnosticSink;
+  uploadStore?: Pick<AgentUploadStore, "resolve">;
   historyMutations: Pick<AgentSessionHistoryMutationCoordinator, "truncate">;
   runControl: AgentSessionRunControlPolicy;
   loopFactory: (modelProviderId?: string) => AgentLoopRunner;
@@ -153,6 +155,7 @@ export class AgentSessionRunCoordinator {
         sessionId: session.id,
         requestId,
         input: request.input,
+        attachments: request.attachments,
         approvalMode: request.approvalMode,
         conversationEntries: [...session.conversation],
         loadedToolNames: inheritedToolNames,

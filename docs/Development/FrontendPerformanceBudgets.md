@@ -15,7 +15,7 @@ Senera 使用 Vite manifest 描述构建产物之间的关系，并按用户实�
 
 `extends` 表达前一阶段已经下载的资源。验证器使用集合合并资源，因此共享依赖只计算一次。
 
-`bootstrap.requiredAssets` 还要求构建产物至少包含 4 个 `.woff2`。它们分别是 Geist、Fraunces 正体、Fraunces 斜体和 JetBrains Mono 的本地 Latin 可变字体；字体使用 `font-display: swap`，不依赖 Google Fonts。字体文件同时计入 resource count、identity、gzip 和 Brotli 上限，删除或漏打包字体会直接使构建失败。
+`bootstrap.requiredAssets` 还要求构建产物至少包含 2 个 `.woff2`。它们分别是 Geist 和 JetBrains Mono 的本地 Latin 可变字体；圆润字体 Nunito Sans 按用户选择动态加载，系统字体和 Emoji 使用操作系统回退。字体使用 `font-display: swap`，不依赖 Google Fonts。字体文件同时计入 resource count、identity、gzip 和 Brotli 上限，删除或漏打包字体会直接使构建失败。
 
 ## Manifest 解析规则
 

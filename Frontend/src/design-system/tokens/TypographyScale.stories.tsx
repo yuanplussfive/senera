@@ -19,27 +19,29 @@ export const TypeScale: Story = () => (
         <h3 className="text-ink-900 font-medium mb-4">字体族</h3>
         <div className="space-y-3">
           <div className="rounded-lg border border-ink-200 p-4">
-            <div className="text-ink-500 text-xs mb-2">界面字体（无衬线）</div>
+            <div className="text-ink-500 text-xs mb-2">Senera 字体</div>
             <div
               className="text-ink-900 text-lg font-medium"
-              style={{ fontFamily: '"Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif' }}
+              style={{ fontFamily: '"Geist", "PingFang SC", "Microsoft YaHei UI", sans-serif' }}
             >
-              Segoe UI Variable — 清晰的界面文字帮助用户快速理解当前状态
+              Geist — 清晰的界面文字帮助用户快速理解当前状态
             </div>
             <div className="text-ink-600 text-sm mt-2 font-mono">
-              font-family: "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif
+              font-family: "Geist", "PingFang SC", "Microsoft YaHei UI", sans-serif
             </div>
           </div>
 
           <div className="rounded-lg border border-ink-200 p-4">
-            <div className="text-ink-500 text-xs mb-2">展示字体（衬线）</div>
+            <div className="text-ink-500 text-xs mb-2">圆润字体</div>
             <div
               className="text-ink-900 text-lg font-medium"
-              style={{ fontFamily: "Fraunces, ui-serif, Georgia, serif" }}
+              style={{ fontFamily: '"Nunito Sans Variable", "PingFang SC", sans-serif' }}
             >
-              Fraunces — 清晰的界面文字帮助用户快速理解当前状态
+              Nunito Sans — 圆润轻快，适合日常对话
             </div>
-            <div className="text-ink-600 text-sm mt-2 font-mono">font-family: "Fraunces", ui-serif, Georgia, serif</div>
+            <div className="text-ink-600 text-sm mt-2 font-mono">
+              font-family: "Nunito Sans Variable", "PingFang SC", sans-serif
+            </div>
           </div>
 
           <div className="rounded-lg border border-ink-200 p-4">

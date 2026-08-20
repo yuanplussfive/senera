@@ -135,6 +135,10 @@ export class AgentSystemRuntime {
     return this.composition.infrastructure.executionResources;
   }
 
+  get uploadStore() {
+    return this.composition.infrastructure.uploadStore;
+  }
+
   get modelProviderConfig() {
     return this.composition.infrastructure.modelProviderConfig;
   }
@@ -276,9 +280,22 @@ export class AgentSystemRuntime {
       onToolsChanged: (change) => this.applyMcpToolsChanged(change),
       inputs: this.composition.infrastructure.mcpInputs,
     }).discover(packages);
+    if (discovery.failures.length > 0) {
+      this.logger?.warn("mcp.discovery.failed", {
+        failures: discovery.failures.map((failure) => ({
+          packageName: failure.packageName,
+          serverName: failure.serverName,
+          error: failure.error,
+        })),
+      });
+    }
+    const deferredMcpServerNames = new Set([
+      ...discovery.unavailableServers.map((server) => server.serverName),
+      ...discovery.failures.map((failure) => failure.serverName),
+    ]);
     await this.mcpPackageCatalog.install(discovery.servers, {
       isDeferredToolReference: (toolName) =>
-        discovery.unavailableServers.some((server) => isAgentMcpPackageToolNameForServer(toolName, server.serverName)),
+        [...deferredMcpServerNames].some((serverName) => isAgentMcpPackageToolNameForServer(toolName, serverName)),
     });
   }
 

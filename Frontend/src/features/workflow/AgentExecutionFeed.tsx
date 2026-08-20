@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useId, useMemo, useState, type AriaRole, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type AriaRole, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "../../lib/util";
@@ -16,7 +16,6 @@ import {
 } from "../../shared/motion";
 import { Spinner } from "../../shared/ui/Spinner";
 import { AppIcon } from "../../shared/ui/AppIcon";
-import { Popover, PopoverContent, PopoverTrigger } from "../../shared/ui/Popover";
 import { projectToolStagePresentation } from "./toolStagePresentation";
 import { runActivityPresentationPriority } from "./runActivityPresentation";
 import { ToolActionIcon } from "./ToolActionIcon";
@@ -24,10 +23,6 @@ import { ToolActivityGroup } from "./ToolActivityGroup";
 import { projectToolBatchActivity, ToolBatchActivity } from "./ToolBatchActivity";
 
 type FeedStatus = FeedItem["status"];
-
-const ToolStepInspector = lazy(() =>
-  import("./ToolStepInspector").then((module) => ({ default: module.ToolStepInspector })),
-);
 
 export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; showBody?: boolean }): JSX.Element {
   const model = useMemo(() => deriveFeedModel(run), [run]);
@@ -441,92 +436,18 @@ function TimelineFeedItem({ item, nowEpoch }: { item: FeedItem; nowEpoch: number
 function FeedRow({
   item,
   compact = false,
-  detailMode = "popover",
   nowEpoch,
 }: {
   item: FeedItem;
   compact?: boolean;
-  detailMode?: "inline" | "popover";
   nowEpoch: number;
 }): JSX.Element {
-  const expandable = item.kind === "tool" && item.step !== undefined;
-  const [inlineExpanded, setInlineExpanded] = useState(false);
-
-  if (expandable && detailMode === "inline") {
-    return (
-      <div className={cn("min-w-0 py-1.5", compact && "py-1")} role="listitem" data-feed-item-kind={item.kind}>
-        <button
-          type="button"
-          className="group flex w-full min-w-0 items-start gap-2 rounded px-0.5 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
-          aria-expanded={inlineExpanded}
-          aria-label={frontendMessage(inlineExpanded ? "workflow.dock.collapseNode" : "workflow.dock.expandNode", {
-            title: item.title,
-          })}
-          onClick={() => setInlineExpanded((value) => !value)}
-        >
-          <FeedRowStatus item={item} />
-          <FeedItemContent item={item} nowEpoch={nowEpoch} />
-          <ChevronDown
-            className={cn(
-              "mt-1 h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-200",
-              inlineExpanded && "rotate-180",
-            )}
-            aria-hidden="true"
-          />
-        </button>
-        {inlineExpanded ? (
-          <div className="ml-4 mt-1 border-l border-line-subtle pl-3" data-feed-inline-tool-detail>
-            <Suspense fallback={<ToolInspectorLoading />}>
-              <ToolStepInspector step={item.step!} showHeader={false} />
-            </Suspense>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
   return (
     <div className={cn("min-w-0 py-1.5", compact && "py-1")} role="listitem" data-feed-item-kind={item.kind}>
-      {expandable ? (
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              className="group flex w-full min-w-0 items-start gap-2 rounded px-0.5 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
-              aria-label={frontendMessage("workflow.dock.expandNode", { title: item.title })}
-            >
-              <FeedRowStatus item={item} />
-              <FeedItemContent item={item} nowEpoch={nowEpoch} />
-              <ChevronDown
-                className="mt-1 h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-200 group-data-[state=open]:rotate-180"
-                aria-hidden="true"
-              />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            className="w-[min(36rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] p-0"
-            data-feed-tool-detail
-          >
-            <Suspense fallback={<ToolInspectorLoading />}>
-              <ToolStepInspector step={item.step!} />
-            </Suspense>
-          </PopoverContent>
-        </Popover>
-      ) : (
-        <div className="flex min-w-0 items-start gap-2">
-          <FeedRowStatus item={item} />
-          <FeedItemContent item={item} nowEpoch={nowEpoch} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ToolInspectorLoading(): JSX.Element {
-  return (
-    <div className="flex min-h-20 items-center gap-2 px-4 py-3 text-[11.5px] text-content-muted" role="status">
-      <Spinner size="xs" />
-      <span>{frontendMessage("ui.loading")}</span>
+      <div className="flex min-w-0 items-start gap-2">
+        <FeedRowStatus item={item} />
+        <FeedItemContent item={item} nowEpoch={nowEpoch} />
+      </div>
     </div>
   );
 }

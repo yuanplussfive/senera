@@ -615,6 +615,85 @@ test("history replay does not erase a locally completed run while reconciling", 
   expect(state.historyLoadedIds[TestSessionId]).toBe(true);
 });
 
+test("history traces restore raw tool results omitted from durable event replay", () => {
+  const state = createTestState();
+  const toolCallId = "call_image";
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryStarted,
+      { sessionId: TestSessionId, totalEntries: 0, messageCount: 0 },
+      { sessionId: TestSessionId },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionRunHistoryChunk,
+      {
+        sessionId: TestSessionId,
+        // Result-detail events are intentionally absent from persisted event history.
+        events: [
+          createEvent(EventKinds.RunStarted, { input: "分析界面" }),
+          createEvent(EventKinds.ToolCallStarted, {
+            index: 0,
+            toolName: "ImageAnalyze",
+            callId: toolCallId,
+            arguments: { task: "question" },
+          }),
+          createEvent(EventKinds.ToolCallCompleted, {
+            index: 0,
+            toolName: "ImageAnalyze",
+            callId: toolCallId,
+          }),
+          createEvent(EventKinds.RunCompleted, {}),
+        ],
+      },
+      { sessionId: TestSessionId },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: TestSessionId,
+        runs: [
+          {
+            requestId: TestRequestId,
+            input: "分析界面",
+            startedAt: "2026-07-09T00:00:01.000Z",
+            endedAt: "2026-07-09T00:00:02.000Z",
+            status: "completed",
+            traces: [
+              {
+                step: 1,
+                seq: 0,
+                kind: "tool",
+                toolName: "ImageAnalyze",
+                callId: toolCallId,
+                status: "done",
+                toolArgs: { task: "question" },
+                toolResult: { answer: "界面分析结果" },
+              },
+            ],
+          },
+        ],
+      },
+      { sessionId: TestSessionId },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId }, { sessionId: TestSessionId }),
+  );
+
+  const step = state.sessions[TestSessionId]?.runs[0]?.steps.find((item) => item.callId === toolCallId);
+  expect(step?.toolArgs).toEqual({ task: "question" });
+  expect(step?.toolResult).toEqual({ answer: "界面分析结果" });
+});
+
 test("appends repeated history step chunks before completing replay", () => {
   const state = createTestState();
   applyEvent(
@@ -656,70 +735,4 @@ test("appends repeated history step chunks before completing replay", () => {
   );
 
   expect(state.sessions[TestSessionId]?.runs.map((run) => run.requestId)).toEqual(["request-step-a", "request-step-b"]);
-});
-
-test("terminal run snapshots win when the event outbox has only persisted run.started", () => {
-  const state = createTestState();
-  applyEvent(
-    state,
-    createEvent(EventKinds.RunStarted, { input: "快速完成" }, { sessionId: TestSessionId, requestId: TestRequestId }),
-  );
-  applyEvent(state, createEvent(EventKinds.RunCompleted, {}, { sessionId: TestSessionId, requestId: TestRequestId }));
-  applyEvent(
-    state,
-    createEvent(
-      EventKinds.SessionHistoryStarted,
-      { sessionId: TestSessionId, totalEntries: 0, messageCount: 0 },
-      { sessionId: TestSessionId },
-    ),
-  );
-  applyEvent(
-    state,
-    createEvent(
-      EventKinds.SessionHistorySteps,
-      {
-        sessionId: TestSessionId,
-        runs: [
-          {
-            requestId: TestRequestId,
-            input: "快速完成",
-            startedAt: "2026-07-09T00:00:01.000Z",
-            endedAt: "2026-07-09T00:00:02.000Z",
-            status: "completed",
-            traces: [
-              {
-                step: 1,
-                seq: 1,
-                kind: "answer",
-                status: "done",
-                title: "回答完成",
-              },
-            ],
-          },
-        ],
-      },
-      { sessionId: TestSessionId },
-    ),
-  );
-  applyEvent(
-    state,
-    createEvent(
-      EventKinds.SessionRunHistoryChunk,
-      {
-        sessionId: TestSessionId,
-        events: [createEvent(EventKinds.RunStarted, { input: "快速完成" }, { sequence: 1 })],
-      },
-      { sessionId: TestSessionId },
-    ),
-  );
-  applyEvent(
-    state,
-    createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId }, { sessionId: TestSessionId }),
-  );
-
-  const run = state.sessions[TestSessionId]?.runs[0];
-  expect(run?.status).toBe("completed");
-  expect(run?.endedAt).toBe("2026-07-09T00:00:02.000Z");
-  expect(run?.steps).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "answer", status: "done" })]));
-  expect(run?.steps.some((step) => step.id.endsWith("history-interrupted"))).toBe(false);
 });

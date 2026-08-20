@@ -16,8 +16,6 @@ const { projectToolStagePresentation } =
   await import("../../../Frontend/src/features/workflow/toolStagePresentation.ts");
 const { projectToolActivityInspection } =
   await import("../../../Frontend/src/features/workflow/toolActivityPresentation.ts");
-const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
-const { frontendFeatureMessage } = await import("../../../Frontend/src/i18n/frontendFeatureMessageCatalog.ts");
 const { AppMotionProvider } = await import("../../../Frontend/src/shared/motion/MotionProvider.tsx");
 const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
 const { createStep, createToolBatchRun } = await import("./workflowComponentFixtures.mjs");
@@ -101,34 +99,14 @@ test("execution feed keeps action batches summarized until the user expands them
   await user.click(group);
   await waitFor(() => expect(screen.getByText("WorkspaceReadFile")).toBeVisible());
   expect(screen.getByText("WorkspaceSearchFiles")).toBeVisible();
-  expect(screen.queryByText("Read · Source/runtime.ts")).not.toBeInTheDocument();
+  expect(screen.getByText("Read · Source/runtime.ts")).toBeVisible();
   expect(group).toHaveAttribute("aria-expanded", "true");
   expect(document.querySelector("[data-feed-detail-surface]")).toHaveClass("border-l", "border-line-subtle", "pl-3");
   expect(document.querySelector("[data-feed-detail-surface]")).not.toHaveClass("rounded-md", "bg-surface-subtle/70");
 
-  const toolToggle = screen.getByRole("button", {
-    name: frontendMessage("workflow.dock.expandNode", { title: "WorkspaceReadFile" }),
-  });
-  await user.click(toolToggle);
-  await waitFor(() => expect(screen.getByText(frontendFeatureMessage("workflow.inspector.action"))).toBeVisible());
-  const toolDetail = document.querySelector("[data-feed-tool-detail]");
-  expect(toolDetail?.closest("[data-radix-popper-content-wrapper]")?.parentElement).toBe(document.body);
-  expect(group.contains(toolDetail)).toBe(false);
-  expect(toolDetail).toHaveClass("scrollbar-thin");
-  expect(toolDetail).toHaveTextContent("WorkspaceReadFile");
-  expect(toolDetail).toHaveTextContent("Source/runtime.ts");
-  expect(document.querySelector("[data-tool-inspector-section='action']")).toHaveTextContent("path");
-  expect(document.querySelector("[data-tool-inspector-section='result']")).toHaveTextContent(
-    "export const runtime = true;",
-  );
-  expect(screen.queryByText(frontendFeatureMessage("workflow.inspector.purpose"))).not.toBeInTheDocument();
-  expect(screen.queryByText(frontendFeatureMessage("workflow.inspector.scope"))).not.toBeInTheDocument();
-  expect(document.querySelector("[data-line-change-stats]")).not.toBeInTheDocument();
-  expect(screen.queryByText(frontendMessage("workflow.node.section.rawToolResult"))).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: frontendFeatureMessage("workflow.node.technicalDetails") }));
-  expect(screen.queryByText(frontendMessage("workflow.node.section.toolArgs"))).not.toBeInTheDocument();
-  expect(screen.queryByText(frontendMessage("workflow.node.section.rawToolResult"))).not.toBeInTheDocument();
-  expect(document.querySelector("[data-feed-tool-detail]")).toHaveTextContent("export const runtime = true;");
+  expect(document.querySelector("[data-feed-tool-detail]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-tool-step-inspector]")).not.toBeInTheDocument();
+  expect(screen.queryByText("export const runtime = true;")).not.toBeInTheDocument();
 
   view.rerender(
     React.createElement(

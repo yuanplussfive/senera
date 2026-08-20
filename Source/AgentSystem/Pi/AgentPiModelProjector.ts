@@ -35,6 +35,9 @@ export function projectSeneraModelProviderToPi(provider: ResolvedAgentModelProvi
     provider: SeneraPiPlanningProviderId,
     baseUrl: "senera://planning",
     reasoning: capabilities.Reasoning === true,
+    // BAML keeps its structured instruction text separate from the provider
+    // message attachments. A vision-capable planner still receives images via
+    // the endpoint's native multimodal input representation.
     input: capabilities.Vision === true ? ["text", "image"] : ["text"],
     cost: { ...FreeCostModel },
     contextWindow: provider.ContextWindowTokens,

@@ -88,6 +88,7 @@ export class AgentSessionManager {
       runResources: options.runResources,
       piSessions: options.piSessions,
       piDiagnostics: options.piDiagnostics,
+      uploadStore: options.uploadStore,
       historyMutations,
       runControl: options.runControl,
       loopFactory: options.loopFactory,

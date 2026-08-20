@@ -35,7 +35,7 @@ describe("ImageAnalyze system tool", () => {
     );
 
     const output = await tool.execute(
-      { uploadUri: upload.manifest.uploadUri, task: "describe" },
+      { resourceUri: upload.manifest.resourceUri, task: "describe" },
       hostContext(workspaceRoot, upload),
     );
 
@@ -57,7 +57,7 @@ describe("ImageAnalyze system tool", () => {
     const tool = createImageAnalyzeSystemTool({ input: { maxImageBytes: 1_024 } });
 
     await expect(
-      tool.execute({ uploadUri: upload.manifest.uploadUri, task: "describe" }, hostContext(workspaceRoot, upload)),
+      tool.execute({ resourceUri: upload.manifest.resourceUri, task: "describe" }, hostContext(workspaceRoot, upload)),
     ).rejects.toMatchObject({
       messageKey: "vision.imageTooLarge",
       messageParams: { size: 1_025, maxImageBytes: 1_024 },
@@ -77,8 +77,8 @@ function hostContext(workspaceRoot: string, upload: AgentResolvedUpload): AgentH
 function resolvedUpload(filePath: string, size: number): AgentResolvedUpload {
   return {
     manifest: {
-      uploadId: "upload-1",
-      uploadUri: "senera-upload://upload-1/image.png",
+      resourceId: "upload-1",
+      resourceUri: "senera://resource/upload-1",
       name: "image.png",
       mime: "image/png",
       size,

@@ -86,6 +86,8 @@ Docker 镜像运行的是标准 Node.js 24，不是 Electron，因此不需要�
 
 受控会话拥有单独的临时 profile，不读取或改写用户日常浏览器的 profile、Cookie 与启动参数。浏览器找不到时会指出应安装浏览器或配置可执行路径，而不是退回 Electron WebView 或静默关闭浏览能力。
 
+桌面端的安装资源和工作区是两个有意分离的路径：安装资源位于 Electron 的 `resources` 目录，随版本更新、只读使用；首次启动由用户选择或新建工作区，所有可写项目数据统一落在该工作区的 `.senera/` 下。Windows 的应用数据目录只保存工作区定位指针，避免把配置、会话、日志或升级状态默认写入 C 盘；从旧版本升级时，旧 `runtime` 中仍存在的配置数据库、升级记录和沙箱缓存会迁移到新工作区。
+
 默认 `compose.yaml` 做了这些事情：
 
 - `senera-data:/data`：配置、数据库、会话、artifact 和工作区 Skills。
@@ -222,7 +224,9 @@ sudo chown -R 1000:1000 docker-data
 
 ## 更新版本
 
-普通更新先将两个变量改成目标版本发布的完整 digest，再启动：
+桌面端可以在“设置 → 关于”中手动检查更新。新版本会先下载到 Electron 更新缓存，下载完成后再由用户点击重启安装；发布包带有 `latest.yml` 和 blockmap，因此相邻版本通常只下载差异内容。更新失败不会覆盖当前安装，重新检查即可重试。
+
+网页端和 Docker 端只提供版本检查与发布入口，不能安全地从正在运行的服务进程替换自身。Docker 更新由部署主机执行，先将两个变量改成目标版本发布的完整 digest，再启动：
 
 ```bash
 export SENERA_IMAGE=ghcr.io/yuanplussfive/senera@sha256:<application-digest>
@@ -230,6 +234,8 @@ export SENERA_SANDBOX_IMAGE=ghcr.io/yuanplussfive/senera@sha256:<sandbox-digest>
 docker compose up -d --pull always
 docker compose images
 ```
+
+未配置 `SENERA_UPDATE_MANIFEST_URL` 时，运行时会从产品仓库的最新 Release 读取 `senera-update.json`。自建镜像或发布源应将该变量指向同样结构的清单；清单只用于检查和展示，Docker 镜像仍以 Compose 中的镜像引用为准。
 
 Senera 对需要迁移的权威配置和 SQLite 数据执行固定流程：`备份 -> 校验 -> dry-run -> 迁移 -> 启动 -> GET /health/ready`。升级日志和运行时标记使用 `schemaVersion: 3`，保存在 `.senera/upgrades/`；只有 readiness 探测成功才提交健康状态。可用下面的命令查看运行中镜像声明的版本和镜像 ID：
 
@@ -344,17 +350,17 @@ docker buildx imagetools inspect "$SENERA_IMAGE" --format '{{ json .SBOM }}'
 docker buildx imagetools inspect "$SENERA_SANDBOX_IMAGE" --format '{{ json .SBOM }}'
 ```
 
-桌面、Nano、源码开发和 Compose 部署都使用同一 Docker Worker 协议与 OCI 运行时合同。`auto` 模式先验证连接的是 Linux Docker Engine，再读取已注册 runtime：存在 `runsc` 时锁定 gVisor，否则锁定收紧权限的 daemon-default 容器。显式选择 gVisor 而 Engine 未注册 `runsc` 会直接报配置错误；一次服务生命周期不会切换 provider，也不会退回本机执行。
+Compose 镜像部署使用 Docker Worker 协议与 OCI 运行时合同。`auto` 模式先验证连接的是 Linux Docker Engine，再读取已注册 runtime：存在 `runsc` 时锁定 gVisor，否则锁定收紧权限的 daemon-default 容器。显式选择 gVisor 而 Engine 未注册 `runsc` 会直接报配置错误；一次服务生命周期不会切换 provider，也不会退回本机执行。
 
-源码开发可先运行 `npm run sandbox.prepare`。该命令从固定 digest 的 Node 基础镜像构建本地 runtime，写入分发身份 labels，同时添加 registry 标签，然后以只读根文件系统、非 root 用户、无网络和全能力移除策略逐项探测 `bash`、`git`、`node`、`npm`、`python`、`pip`、`rg`、`jq`、`curl`、`ssh` 与 Linux Terminal Sidecar。正常启动按 `SandboxRuntime.Docker.PullPolicy` 使用 `always`、`if-missing` 或 `never`；镜像 labels、Engine API、Linux OS 或工具探针不符合合同都会在准备阶段失败。PTY Sidecar 及其 Linux 原生依赖直接属于版本化 runtime 镜像，桌面、Nano 和 Compose 不再生成、复制或下载宿主侧 Sidecar 目录。
+需要验证 Compose 沙箱运行时时，可运行 `npm run sandbox.prepare`。该命令从固定 digest 的 Node 基础镜像构建本地 runtime，写入分发身份 labels，同时添加 registry 标签，然后以只读根文件系统、非 root 用户、无网络和全能力移除策略逐项探测 `bash`、`git`、`node`、`npm`、`python`、`pip`、`rg`、`jq`、`curl`、`ssh` 与 Linux Terminal Sidecar。正常启动按 `SandboxRuntime.Docker.PullPolicy` 使用 `always`、`if-missing` 或 `never`；镜像 labels、Engine API、Linux OS 或工具探针不符合合同都会在准备阶段失败。PTY Sidecar 及其 Linux 原生依赖直接属于版本化 runtime 镜像。
 
-Windows 和 macOS 桌面端要求 Docker Desktop 处于 Linux containers 模式；Linux 使用本机 Docker Engine。桌面主进程通过隐藏的 Node 子进程启动 Worker，Windows 使用 named pipe，Unix 使用工作区运行时目录下的私有 Socket。应用进程持有受限 Worker 客户端，不直接调用 Docker API。
+桌面端、Nano 和源码开发使用受治理的宿主机 Node/进程边界，不启动 Docker Worker，也不要求用户安装 Docker。只有 Compose 镜像部署通过隐藏的 `sandbox-worker` 访问 Docker Engine；Windows 使用 named pipe，Unix 使用私有 Unix Socket。应用主进程不直接调用 Docker API。
 
 工作区通过 Docker bind 或 named volume 直接挂载，不复制源码树，因此 `.git`、`.senera` 和普通项目文件都保持可见，启动成本不随仓库体积线性增长。执行合同决定整个工作区挂载是只读还是可写；额外可写挂载和 rootfs copy 都必须落在 Worker 启动时建立的来源白名单内。
 
 Worker 协议不接受镜像字段，模型或工具调用无法选择任意镜像。镜像、runtime、网络模式、只读根、capability、资源上限和挂载策略全部由部署及版本化合同控制。单次容器失败只影响该调用；Engine 协商或镜像准备失败则通过正式沙箱状态事件暴露，不存在字符串猜测式重试或全局隐式降级。
 
-桌面和 Nano 不携带离线沙箱归档。发布流水线只构建一次候选 runtime 镜像，使用 Compose + 可选 gVisor 做真实 smoke，再把已验证 digest 提升为稳定标签。应用镜像和 runtime 镜像均附带 SBOM；生产部署应固定 digest。
+桌面和 Nano 不携带离线沙箱归档。发布流水线只为 Compose 构建一次候选 runtime 镜像，使用 Compose + 可选 gVisor 做真实 smoke，再把已验证 digest 提升为稳定标签。应用镜像和 runtime 镜像均附带 SBOM；生产部署应固定 digest。
 
 修改 Worker、挂载或 runtime 合同后执行 `npm run verify.sandbox.real`。该命令构建并探测本地 runtime，再验证真实 Shell 和 PTY 链路；它需要已启动的 Linux Docker Engine。
 

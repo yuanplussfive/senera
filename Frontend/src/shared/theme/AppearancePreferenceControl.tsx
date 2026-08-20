@@ -1,11 +1,19 @@
 import { Check, Monitor, Moon, Palette, Pilcrow, Sun, Type } from "lucide-react";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { fontScales, type AppearanceFontFamily, type ColorScheme, type ThemeMode } from "./themeModel";
+import {
+  appearanceFontFamilies,
+  appearanceFontFamilyStacks,
+  fontScales,
+  type AppearanceFontFamily,
+  type ColorScheme,
+  type ThemeMode,
+} from "./themeModel";
 import { colorSchemeGroups } from "./themeData";
 import {
   accentColorLabels,
   colorSchemeLabels,
+  fontFamilyDescriptions,
   fontFamilyLabels,
   fontScaleLabels,
   readAccentSwatch,
@@ -24,14 +32,6 @@ const themeModeOptions = [
   value: ThemeMode;
   label: string;
   Icon: typeof Monitor;
-}[];
-
-const fontFamilyOptions = [
-  { value: "brand", label: fontFamilyLabels.brand },
-  { value: "system", label: fontFamilyLabels.system },
-] as const satisfies readonly {
-  value: AppearanceFontFamily;
-  label: string;
 }[];
 
 export function AppearancePreferenceControl({ className }: { className?: string }): JSX.Element {
@@ -54,13 +54,7 @@ export function AppearancePreferenceControl({ className }: { className?: string 
 
       <ColorSchemeControl value={preference.colorScheme} onChange={(colorScheme) => setPreference({ colorScheme })} />
 
-      <SegmentedControl
-        label={frontendMessage("appearance.control.font")}
-        icon={<Type className="h-3.5 w-3.5" />}
-        options={fontFamilyOptions.map(({ value, label }) => ({ value, label }))}
-        value={preference.fontFamily}
-        onChange={(fontFamily) => setPreference({ fontFamily })}
-      />
+      <FontFamilyControl value={preference.fontFamily} onChange={(fontFamily) => setPreference({ fontFamily })} />
       <SegmentedControl
         label={frontendMessage("appearance.control.fontScale")}
         icon={<Pilcrow className="h-3.5 w-3.5" />}
@@ -71,6 +65,61 @@ export function AppearancePreferenceControl({ className }: { className?: string 
         value={preference.fontScale}
         onChange={(fontScale) => setPreference({ fontScale })}
       />
+    </div>
+  );
+}
+
+function FontFamilyControl({
+  value,
+  onChange,
+}: {
+  value: AppearanceFontFamily;
+  onChange: (value: AppearanceFontFamily) => void;
+}): JSX.Element {
+  return (
+    <div>
+      <ControlLabel icon={<Type className="h-3.5 w-3.5" />} label={frontendMessage("appearance.control.font")} />
+      <div
+        className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3"
+        role="radiogroup"
+        aria-label={frontendMessage("appearance.control.font")}
+      >
+        {appearanceFontFamilies.map((fontFamily) => {
+          const selected = value === fontFamily;
+          return (
+            <button
+              key={fontFamily}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onChange(fontFamily)}
+              className={cn(
+                "min-w-0 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow] duration-150",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+                selected
+                  ? "border-accent-border-strong bg-accent-surface shadow-panel"
+                  : "border-line-subtle bg-surface-panel hover:border-line-strong hover:bg-surface-subtle",
+              )}
+            >
+              <span className="flex items-start gap-2">
+                <span
+                  className="min-w-0 flex-1 truncate text-[14px] font-medium text-content-primary"
+                  style={{ fontFamily: appearanceFontFamilyStacks[fontFamily] }}
+                >
+                  {frontendMessage("appearance.fontFamilySample")}
+                </span>
+                {selected ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-content" /> : null}
+              </span>
+              <span className="mt-1 block truncate text-[12px] font-medium text-content-primary">
+                {fontFamilyLabels[fontFamily]}
+              </span>
+              <span className="mt-0.5 block truncate text-[11px] leading-4 text-content-secondary">
+                {fontFamilyDescriptions[fontFamily]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

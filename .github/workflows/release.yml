@@ -387,10 +387,38 @@ jobs:
         with:
           install-electron: "true"
       - run: npm run desktop.pack
+      - name: Verify differential update assets
+        shell: pwsh
+        env:
+          INSTALLER_PATH: ${{ needs.metadata.outputs.desktop_artifact_path }}
+        run: |
+          $required = @(
+            $env:INSTALLER_PATH,
+            "$($env:INSTALLER_PATH).blockmap",
+            "Release/latest.yml"
+          )
+          $missing = @($required | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+          if ($missing.Count -gt 0) {
+            throw "Electron update assets are missing: $($missing -join ', ')"
+          }
+      - name: Generate the verified product update manifest
+        env:
+          SENERA_RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          SENERA_RELEASE_SHA: ${{ needs.metadata.outputs.source_sha }}
+        run: >-
+          npm run generate.update-manifest --
+          --output Release/senera-update.json
+          --installer "${{ needs.metadata.outputs.desktop_artifact_path }}"
+          --repository "${{ github.repository }}"
+          --server-url "${{ github.server_url }}"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ needs.metadata.outputs.desktop_artifact_name }}
-          path: ${{ needs.metadata.outputs.desktop_artifact_path }}
+          path: |
+            ${{ needs.metadata.outputs.desktop_artifact_path }}
+            ${{ needs.metadata.outputs.desktop_artifact_path }}.blockmap
+            Release/latest.yml
+            Release/senera-update.json
           if-no-files-found: error
 
   container-build:
@@ -582,11 +610,11 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -d '' release_assets < <(find "$RELEASE_ASSET_ROOT" -type f -print0)
-          if [ "${#release_assets[@]}" -ne 1 ]; then
-            echo "Expected exactly one verified desktop release asset, found ${#release_assets[@]}." >&2
+          if [ "${#release_assets[@]}" -ne 4 ]; then
+            echo "Expected four verified desktop release assets, found ${#release_assets[@]}." >&2
             exit 1
           fi
-          gh release upload "$RELEASE_TAG" "${release_assets[0]}" --repo "$REPOSITORY" --clobber
+          gh release upload "$RELEASE_TAG" "${release_assets[@]}" --repo "$REPOSITORY" --clobber
       - id: image
         uses: docker/metadata-action@v5
         with:

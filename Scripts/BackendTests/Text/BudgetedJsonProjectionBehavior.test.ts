@@ -212,6 +212,26 @@ describe("turn token budget", () => {
     expect(() => budget.validateModelInput({ content: "large ".repeat(1_000) })).toThrow("planning input uses");
   });
 
+  test("does not count inline image base64 as text tokens", () => {
+    const budget = new AgentTurnTokenBudget({
+      model: "gpt-5.6-luna",
+      contextWindowTokens: 211_616,
+      outputReserveTokens: 0,
+    });
+    const image = {
+      type: "image",
+      mimeType: "image/png",
+      data: "a".repeat(1_800_000),
+    };
+
+    expect(() =>
+      budget.validateModelInput({
+        messages: [{ role: "user", content: [{ type: "text", text: "Describe this." }, image] }],
+      }),
+    ).not.toThrow();
+    expect(budget.snapshot().occupiedTokens).toBeLessThan(2_000);
+  });
+
   test("records over-capacity provider usage without invalidating a completed response", () => {
     const budget = new AgentTurnTokenBudget({
       model: "gpt-4o",

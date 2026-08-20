@@ -58,6 +58,8 @@ export interface AgentWorkspaceResourceClassification {
 export interface AgentWorkspaceLayout {
   readonly root: string;
   readonly stateRoot: string;
+  /** Desktop-only writable runtime state kept with the selected workspace. */
+  readonly desktopRuntimeRoot: string;
   readonly skillRoot: string;
   readonly mcpRoot: string;
   readonly contextRoot: string;
@@ -84,6 +86,7 @@ export function resolveAgentWorkspaceLayout(workspaceRoot: string): AgentWorkspa
   return {
     root,
     stateRoot,
+    desktopRuntimeRoot: path.join(stateRoot, "desktop"),
     skillRoot: path.join(stateRoot, WorkspaceLayout.skillsDirectory),
     mcpRoot: path.join(stateRoot, WorkspaceLayout.mcpDirectory),
     contextRoot: path.join(stateRoot, WorkspaceLayout.contextDirectory),

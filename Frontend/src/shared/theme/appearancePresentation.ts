@@ -96,8 +96,23 @@ export const fontFamilyLabels = {
   get brand() {
     return frontendMessage("appearance.fontFamily.brand");
   },
+  get fresh() {
+    return frontendMessage("appearance.fontFamily.fresh");
+  },
   get system() {
     return frontendMessage("appearance.fontFamily.system");
+  },
+} as const satisfies Record<AppearanceFontFamily, string>;
+
+export const fontFamilyDescriptions = {
+  get brand() {
+    return frontendMessage("appearance.fontFamilyDescription.brand");
+  },
+  get fresh() {
+    return frontendMessage("appearance.fontFamilyDescription.fresh");
+  },
+  get system() {
+    return frontendMessage("appearance.fontFamilyDescription.system");
   },
 } as const satisfies Record<AppearanceFontFamily, string>;
 

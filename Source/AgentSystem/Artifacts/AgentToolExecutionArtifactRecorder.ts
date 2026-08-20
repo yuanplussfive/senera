@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createAgentResourceId, createAgentResourceUri } from "../Resources/AgentResourceUri.js";
 import { extension as mimeExtension } from "mime-types";
 import { AgentKeyedLeaseQueue } from "../Core/AgentKeyedLeaseQueue.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
@@ -389,7 +390,9 @@ function projectArtifactAssetLinks(
   assets: readonly AgentToolArtifactAssetReference[] | undefined,
 ): unknown {
   if (!assets || assets.length === 0) return value;
-  const links = new Map(assets.map((asset) => [`senera://artifact-asset/${asset.id}`, asset.workspacePath]));
+  const links = new Map(
+    assets.map((asset) => [createAgentResourceUri(createAgentResourceId(asset.id)), asset.workspacePath]),
+  );
   return replaceArtifactAssetLinks(value, links);
 }
 

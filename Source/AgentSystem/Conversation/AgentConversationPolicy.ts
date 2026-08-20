@@ -53,7 +53,7 @@ export class AgentConversationPolicy {
   private projectAttachment(attachment: AgentUploadAttachment, index: number): Record<string, unknown> {
     return {
       ref: `ATT${index + 1}`,
-      uploadUri: attachment.uploadUri,
+      resourceUri: attachment.resourceUri,
       name: attachment.name,
       mime: attachment.mime,
       size: attachment.size,

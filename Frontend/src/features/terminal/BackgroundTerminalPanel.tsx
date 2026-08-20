@@ -200,6 +200,9 @@ const TerminalViewport = memo(function TerminalViewport({
   onResizeRef.current = onResize;
   onSearchOpenRef.current = onSearchOpen;
   activeRef.current = active;
+  const inputEnabled =
+    active && supportsTerminalCapability(resource, "interactive-input") && !isTerminalState(resource.state);
+  const resizeEnabled = active && supportsTerminalCapability(resource, "resize") && !isTerminalState(resource.state);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -270,10 +273,8 @@ const TerminalViewport = memo(function TerminalViewport({
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
-    inputEnabledRef.current =
-      active && supportsTerminalCapability(resource, "interactive-input") && !isTerminalState(resource.state);
-    resizeEnabledRef.current =
-      active && supportsTerminalCapability(resource, "resize") && !isTerminalState(resource.state);
+    inputEnabledRef.current = inputEnabled;
+    resizeEnabledRef.current = resizeEnabled;
     terminal.options.disableStdin = !inputEnabledRef.current;
     terminal.options.cursorBlink = inputEnabledRef.current;
     if (!active) {
@@ -281,9 +282,11 @@ const TerminalViewport = memo(function TerminalViewport({
       return;
     }
     fitRef.current?.fit();
-    if (inputEnabledRef.current) terminal.focus();
-    else terminal.blur();
-  }, [active, resource, resource.state]);
+    // Opening a terminal is a resource update, not an intent to type into it.
+    // xterm handles focus when the user clicks its viewport; lifecycle changes
+    // must leave the chat composer (or the current control) untouched.
+    if (!inputEnabled) terminal.blur();
+  }, [active, inputEnabled, resizeEnabled]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -371,7 +374,8 @@ function createTerminalOptions(): ConstructorParameters<typeof Terminal>[0] {
     cursorBlink: true,
     cursorStyle: "bar",
     disableStdin: false,
-    fontFamily: "Cascadia Mono, JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    fontFamily:
+      '"Cascadia Mono", "JetBrains Mono", "Segoe UI Emoji", "Noto Color Emoji", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     fontSize: 12.5,
     lineHeight: 1.34,
     scrollback: 10_000,

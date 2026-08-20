@@ -56,25 +56,36 @@ describe("upload governance behavior", () => {
     ).toThrow("Uploads.MaxStoredBytes");
   });
 
+  test("does not claim query-bearing frontend routes outside the resource API namespace", () => {
+    const harness = createStore();
+    const api = new AgentUploadHttpApi({ store: harness.store });
+
+    expect(
+      api.canHandle({ url: "/settings/appearance?surface=settings&section=appearance" } as http.IncomingMessage),
+    ).toBe(false);
+    expect(api.canHandle({ url: "/api/resources/upl_fixture" } as http.IncomingMessage)).toBe(true);
+    expect(api.canHandle({ url: "/api/resources?path=README.md" } as http.IncomingMessage)).toBe(false);
+  });
+
   test("saves, resolves, and deletes an uploaded file", async () => {
     const harness = createStore();
     const attachment = await saveText(harness.store, "notes.txt", "hello uploads");
-    const resolved = await harness.store.resolve(attachment.uploadUri);
+    const resolved = await harness.store.resolve(attachment.resourceUri);
 
     expect(attachment).toMatchObject({ name: "notes.txt", mime: "text/plain", size: 13, status: "uploaded" });
     expect(await fs.readFile(resolved!.filePath, "utf8")).toBe("hello uploads");
-    await expect(harness.store.delete(attachment.uploadUri)).resolves.toBe(true);
+    await expect(harness.store.delete(attachment.resourceUri)).resolves.toBe(true);
     await expect(fs.stat(resolved!.uploadDir)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   test("rejects same-size upload content whose digest no longer matches the manifest", async () => {
     const harness = createStore();
     const attachment = await saveText(harness.store, "notes.txt", "hello uploads");
-    const resolved = await harness.store.resolve(attachment.uploadUri);
+    const resolved = await harness.store.resolve(attachment.resourceUri);
     await fs.writeFile(resolved!.filePath, "jello uploads", "utf8");
 
-    await expect(harness.store.resolve(attachment.uploadUri)).rejects.toMatchObject({
-      uploadUri: attachment.uploadUri,
+    await expect(harness.store.resolve(attachment.resourceUri)).rejects.toMatchObject({
+      resourceUri: attachment.resourceUri,
       reason: "sha256_mismatch",
     });
   });
@@ -82,11 +93,11 @@ describe("upload governance behavior", () => {
   test("rejects upload content whose stored size no longer matches the manifest", async () => {
     const harness = createStore();
     const attachment = await saveText(harness.store, "notes.txt", "hello uploads");
-    const resolved = await harness.store.resolve(attachment.uploadUri);
+    const resolved = await harness.store.resolve(attachment.resourceUri);
     await fs.appendFile(resolved!.filePath, " changed", "utf8");
 
-    await expect(harness.store.resolve(attachment.uploadUri)).rejects.toMatchObject({
-      uploadUri: attachment.uploadUri,
+    await expect(harness.store.resolve(attachment.resourceUri)).rejects.toMatchObject({
+      resourceUri: attachment.resourceUri,
       reason: "size_mismatch",
     });
   });
@@ -94,12 +105,12 @@ describe("upload governance behavior", () => {
   test("rejects an upload path that no longer points to a regular file", async () => {
     const harness = createStore();
     const attachment = await saveText(harness.store, "notes.txt", "hello uploads");
-    const resolved = await harness.store.resolve(attachment.uploadUri);
+    const resolved = await harness.store.resolve(attachment.resourceUri);
     await fs.rm(resolved!.filePath);
     await fs.mkdir(resolved!.filePath);
 
-    await expect(harness.store.resolve(attachment.uploadUri)).rejects.toMatchObject({
-      uploadUri: attachment.uploadUri,
+    await expect(harness.store.resolve(attachment.resourceUri)).rejects.toMatchObject({
+      resourceUri: attachment.resourceUri,
       reason: "not_a_file",
     });
   });
@@ -175,7 +186,7 @@ describe("upload governance behavior", () => {
     const harness = await createHttpHarness();
     const form = new FormData();
     form.append("description", "metadata only");
-    const response = await fetch(`${harness.baseUrl}/api/uploads`, { method: "POST", body: form });
+    const response = await fetch(`${harness.baseUrl}/api/resources`, { method: "POST", body: form });
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({ ok: false, error: { code: "upload_file_missing" } });
@@ -184,7 +195,7 @@ describe("upload governance behavior", () => {
   test("serves detected raster images through GET and HEAD with private revalidation", async () => {
     const harness = await createHttpHarness();
     const attachment = await saveBytes(harness.store, "pixel.png", OnePixelPng, "image/png");
-    const contentUrl = buildContentUrl(harness.baseUrl, attachment.uploadUri);
+    const contentUrl = buildContentUrl(harness.baseUrl, attachment.resourceUri);
 
     const response = await fetch(contentUrl);
     expect(response.status).toBe(200);
@@ -212,7 +223,7 @@ describe("upload governance behavior", () => {
   test("returns 304 when the upload image ETag matches", async () => {
     const harness = await createHttpHarness();
     const attachment = await saveBytes(harness.store, "cached.png", OnePixelPng, "image/png");
-    const contentUrl = buildContentUrl(harness.baseUrl, attachment.uploadUri);
+    const contentUrl = buildContentUrl(harness.baseUrl, attachment.resourceUri);
     const initial = await fetch(contentUrl);
     const etag = initial.headers.get("etag");
     expect(etag).toBe(`"${attachment.sha256}"`);
@@ -222,7 +233,7 @@ describe("upload governance behavior", () => {
     expect((await cached.arrayBuffer()).byteLength).toBe(0);
   });
 
-  test("rejects missing, traversing, and non-raster upload content references", async () => {
+  test("serves any stored resource safely and rejects missing or traversing references", async () => {
     const harness = await createHttpHarness();
     const text = await saveText(harness.store, "notes.txt", "not an image");
     const svg = await saveBytes(
@@ -232,24 +243,23 @@ describe("upload governance behavior", () => {
       "image/svg+xml",
     );
 
-    const textResponse = await fetch(buildContentUrl(harness.baseUrl, text.uploadUri));
-    expect(textResponse.status).toBe(415);
-    await expect(textResponse.json()).resolves.toMatchObject({
-      ok: false,
-      error: { code: "upload_content_unsupported" },
-    });
+    const textResponse = await fetch(buildContentUrl(harness.baseUrl, text.resourceUri));
+    expect(textResponse.status).toBe(200);
+    expect(textResponse.headers.get("content-type")).toBe("application/octet-stream");
+    expect(textResponse.headers.get("content-disposition")).toContain("attachment");
 
-    const svgResponse = await fetch(buildContentUrl(harness.baseUrl, svg.uploadUri));
-    expect(svgResponse.status).toBe(415);
+    const svgResponse = await fetch(buildContentUrl(harness.baseUrl, svg.resourceUri));
+    expect(svgResponse.status).toBe(200);
+    expect(svgResponse.headers.get("content-type")).toBe("application/octet-stream");
 
-    const missingResponse = await fetch(`${harness.baseUrl}/api/uploads/upl_missing/content`);
+    const missingResponse = await fetch(`${harness.baseUrl}/api/resources/upl_missing`);
     expect(missingResponse.status).toBe(404);
     await expect(missingResponse.json()).resolves.toMatchObject({
       ok: false,
       error: { code: "upload_content_not_found" },
     });
 
-    const traversalResponse = await fetch(`${harness.baseUrl}/api/uploads/${encodeURIComponent("../outside")}/content`);
+    const traversalResponse = await fetch(`${harness.baseUrl}/api/resources/${encodeURIComponent("../outside")}`);
     expect(traversalResponse.status).toBe(404);
   });
 
@@ -265,7 +275,7 @@ describe("upload governance behavior", () => {
     now = new Date(createdAt.getTime() + 2 * HOUR_MS);
 
     await expect(harness.store.maintain()).resolves.toMatchObject({ removedUploads: 2 });
-    await expect(harness.store.resolve(attachment.uploadUri)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(harness.store.resolve(attachment.resourceUri)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(readUploadEntries(harness.root)).resolves.toEqual([]);
   });
 
@@ -425,9 +435,9 @@ function saveBytes(store: AgentUploadStore, name: string, content: Buffer, decla
   });
 }
 
-function buildContentUrl(baseUrl: string, uploadUri: string): string {
-  const uploadId = new URL(uploadUri).pathname.split("/").filter(Boolean)[0];
-  return `${baseUrl}/api/uploads/${encodeURIComponent(uploadId)}/content`;
+function buildContentUrl(baseUrl: string, resourceUri: string): string {
+  const resourceId = new URL(resourceUri).pathname.split("/").filter(Boolean)[0];
+  return `${baseUrl}/api/resources/${encodeURIComponent(resourceId)}`;
 }
 
 async function postFiles(baseUrl: string, files: readonly { name: string; content: string }[]): Promise<Response> {
@@ -435,7 +445,7 @@ async function postFiles(baseUrl: string, files: readonly { name: string; conten
   for (const file of files) {
     form.append("files", new Blob([file.content], { type: "text/plain" }), file.name);
   }
-  return fetch(`${baseUrl}/api/uploads`, { method: "POST", body: form });
+  return fetch(`${baseUrl}/api/resources`, { method: "POST", body: form });
 }
 
 async function readUploadEntries(workspaceRoot: string): Promise<string[]> {

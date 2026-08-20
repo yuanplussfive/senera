@@ -2,6 +2,10 @@ import { Ajv } from "ajv";
 import type { ValidateFunction } from "ajv";
 import type { Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
+import type {
+  AgentLanguageModelImageAttachment,
+  AgentLanguageModelInvocationOptions,
+} from "../ModelEndpoints/AgentLanguageModel.js";
 import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
 import { AgentStructuredOutputValidationError } from "../Diagnostics/AgentStructuredOutputValidationError.js";
@@ -74,18 +78,29 @@ export interface AgentPiPlanningCompilerFactory {
 }
 
 export interface AgentPiPlanningModelClient {
-  evolveTurn(input: AgentPiControllerDecisionInput, options?: { signal?: AbortSignal }): Promise<unknown>;
+  /** Undefined preserves compatibility with custom planner clients. */
+  readonly supportsVisualInput?: boolean;
+  evolveTurn(input: AgentPiControllerDecisionInput, options?: AgentLanguageModelInvocationOptions): Promise<unknown>;
   repairControllerDecision(
     options: {
       input: AgentPiControllerDecisionInput;
       invalidDecision: string;
       issues: string[];
     },
-    requestOptions?: { signal?: AbortSignal },
+    requestOptions?: AgentLanguageModelInvocationOptions,
   ): Promise<unknown>;
-  fillPiToolArguments(input: AgentPiToolArgumentsInput, options?: { signal?: AbortSignal }): Promise<unknown>;
-  repairPiToolArguments(input: AgentPiToolArgumentsRepairInput, options?: { signal?: AbortSignal }): Promise<unknown>;
-  summarizePiConversation(input: AgentPiCompactionPromptInput, options?: { signal?: AbortSignal }): Promise<unknown>;
+  fillPiToolArguments(
+    input: AgentPiToolArgumentsInput,
+    options?: AgentLanguageModelInvocationOptions,
+  ): Promise<unknown>;
+  repairPiToolArguments(
+    input: AgentPiToolArgumentsRepairInput,
+    options?: AgentLanguageModelInvocationOptions,
+  ): Promise<unknown>;
+  summarizePiConversation(
+    input: AgentPiCompactionPromptInput,
+    options?: AgentLanguageModelInvocationOptions,
+  ): Promise<unknown>;
 }
 
 interface AgentPiToolChoiceConstraint {
@@ -129,17 +144,28 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
     const toolChoice = resolveToolChoiceConstraint(input.context, input.toolAccessGrant, toolExposure.exposedToolNames);
     const controller = this.buildControllerContext(input, toolChoice.allowedTools);
     const promptInput = controller.input;
-    input.runtime?.tokenBudget?.validateModelInput(promptInput);
+    const attachments =
+      input.model.input.includes("image") && this.client.supportsVisualInput !== false
+        ? projectContextImageAttachments(input.context)
+        : [];
+    const modelOptions: AgentLanguageModelInvocationOptions = {
+      ...(input.signal ? { signal: input.signal } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
+    };
+    input.runtime?.tokenBudget?.validateModelInput({
+      promptInput,
+      attachments: modelOptions.attachments,
+    });
     const toolPlan = input.runtime?.toolPlan;
     toolPlan?.reconcile(promptInput.planningContext.toolTranscript);
     promptInput.seneraRuntime.planState = toolPlan?.state();
     const pendingCalls = toolPlan?.ready(promptInput.planningContext.toolExecution === "parallel") ?? [];
     if (pendingCalls.length > 0) {
-      return this.projectToolCalls(pendingCalls, promptInput, controller.toolContracts, input.signal, toolPlan);
+      return this.projectToolCalls(pendingCalls, promptInput, controller.toolContracts, modelOptions, toolPlan);
     }
-    const decision = await this.evolveTurn(promptInput, toolChoice, input.signal, toolPlan);
+    const decision = await this.evolveTurn(promptInput, toolChoice, modelOptions, toolPlan);
 
-    return this.projectDecision(decision, promptInput, controller.toolContracts, input.signal, toolPlan);
+    return this.projectDecision(decision, promptInput, controller.toolContracts, modelOptions, toolPlan);
   }
 
   async summarize(input: AgentPiCompactionPromptInput, signal?: AbortSignal): Promise<string> {
@@ -157,12 +183,10 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
   private async evolveTurn(
     input: AgentPiControllerDecisionInput,
     toolChoice: AgentPiToolChoiceConstraint,
-    signal: AbortSignal | undefined,
+    modelOptions: AgentLanguageModelInvocationOptions,
     toolPlan: AgentPiToolPlanCoordinator | undefined,
   ): Promise<ParsedControllerDecision> {
-    const rawDecision = await this.client.evolveTurn(input, {
-      signal,
-    });
+    const rawDecision = await this.client.evolveTurn(input, modelOptions);
     try {
       return this.parseDecision(rawDecision, toolChoice, toolPlan);
     } catch (error) {
@@ -175,9 +199,7 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
           invalidDecision: stringifyForRepair(rawDecision),
           issues: error.issues,
         },
-        {
-          signal,
-        },
+        modelOptions,
       );
       return this.parseDecision(repaired, toolChoice, toolPlan);
     }
@@ -206,7 +228,7 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
     decision: ParsedControllerDecision,
     input: AgentPiControllerDecisionInput,
     toolContracts: ReadonlyMap<string, AgentPiToolContract>,
-    signal: AbortSignal | undefined,
+    modelOptions: AgentLanguageModelInvocationOptions,
     toolPlan: AgentPiToolPlanCoordinator | undefined,
   ): Promise<AgentPiAssistantCompilation> {
     return matchByKind(decision, {
@@ -220,7 +242,7 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
         content: ask.question,
         toolCalls: [],
       }),
-      Execute: (execute) => this.projectToolCallsDecision(execute, input, toolContracts, signal, toolPlan),
+      Execute: (execute) => this.projectToolCallsDecision(execute, input, toolContracts, modelOptions, toolPlan),
     });
   }
 
@@ -228,7 +250,7 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
     decision: Extract<ParsedControllerDecision, { kind: "Execute" }>,
     input: AgentPiControllerDecisionInput,
     toolContracts: ReadonlyMap<string, AgentPiToolContract>,
-    signal: AbortSignal | undefined,
+    modelOptions: AgentLanguageModelInvocationOptions,
     toolPlan: AgentPiToolPlanCoordinator | undefined,
   ): Promise<AgentPiAssistantMessage> {
     const parallelToolCalls = input.planningContext.toolExecution === "parallel";
@@ -243,7 +265,7 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
       throw new AgentStructuredOutputValidationError([agentErrorMessage("pi.executeMissingReadyCall")], decision);
     }
 
-    return this.projectToolCalls(readyCalls, input, toolContracts, signal, toolPlan);
+    return this.projectToolCalls(readyCalls, input, toolContracts, modelOptions, toolPlan);
   }
 
   private acceptToolPlan(
@@ -259,11 +281,11 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
     readyCalls: readonly AgentPiMaterializableToolCall[],
     input: AgentPiControllerDecisionInput,
     toolContracts: ReadonlyMap<string, AgentPiToolContract>,
-    signal: AbortSignal | undefined,
+    modelOptions: AgentLanguageModelInvocationOptions,
     toolPlan: AgentPiToolPlanCoordinator | undefined,
   ): Promise<AgentPiAssistantMessage> {
     const materialized = await Promise.all(
-      readyCalls.map((entry) => this.materializeToolCall(entry, input, toolContracts, signal)),
+      readyCalls.map((entry) => this.materializeToolCall(entry, input, toolContracts, modelOptions)),
     );
     for (const entry of materialized) {
       if (!entry.ok && entry.entry.nodeId) toolPlan?.reject(entry.entry.nodeId, entry.message);
@@ -310,7 +332,7 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
     entry: AgentPiMaterializableToolCall,
     input: AgentPiControllerDecisionInput,
     toolContracts: ReadonlyMap<string, AgentPiToolContract>,
-    signal: AbortSignal | undefined,
+    modelOptions: AgentLanguageModelInvocationOptions,
   ): Promise<
     | {
         ok: true;
@@ -343,7 +365,7 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
       tool,
       seneraRuntime: input.seneraRuntime,
     };
-    const draft = await this.resolveArguments(argumentInput, signal);
+    const draft = await this.resolveArguments(argumentInput, modelOptions);
     const issues = this.argumentDraftIssues(draft, tool);
     if (issues.length > 0) {
       return {
@@ -368,13 +390,9 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
 
   private async resolveArguments(
     input: AgentPiToolArgumentsInput,
-    signal: AbortSignal | undefined,
+    modelOptions: AgentLanguageModelInvocationOptions,
   ): Promise<ParsedPiToolArgumentsDraft> {
-    const draft = parsePiToolArgumentsDraft(
-      await this.client.fillPiToolArguments(input, {
-        signal,
-      }),
-    );
+    const draft = parsePiToolArgumentsDraft(await this.client.fillPiToolArguments(input, modelOptions));
     const issues = this.argumentDraftIssues(draft, input.tool);
     if (issues.length === 0) {
       return draft;
@@ -387,9 +405,7 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
           invalidArguments: draft.arguments,
           issues,
         },
-        {
-          signal,
-        },
+        modelOptions,
       ),
     );
   }
@@ -473,6 +489,22 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
       toolContracts: compilation.toolContracts,
     };
   }
+}
+
+function projectContextImageAttachments(context: Context): AgentLanguageModelImageAttachment[] {
+  const currentUserMessage = [...context.messages].reverse().find((message) => message.role === "user");
+  if (!currentUserMessage || typeof currentUserMessage.content === "string") return [];
+  return currentUserMessage.content.flatMap((part) =>
+    part.type === "image"
+      ? [
+          {
+            type: "image" as const,
+            data: part.data,
+            mimeType: part.mimeType,
+          },
+        ]
+      : [],
+  );
 }
 
 function validateJsonSchema(schema: unknown, value: Record<string, unknown>): string[] {

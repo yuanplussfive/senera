@@ -6,6 +6,7 @@ import type {
 } from "../Types/ToolRuntimeTypes.js";
 import { extension as mimeExtension } from "mime-types";
 import { z } from "zod";
+import { createAgentResourceId, createAgentResourceUri } from "../Resources/AgentResourceUri.js";
 
 const LegacyArtifactMetadataKeys = ["ai.senera/artifact"] as const;
 
@@ -128,7 +129,7 @@ function projectBinaryContent(
 
   const id = `mcp-content-${index + 1}`;
   const fileName = `${id}.${mediaTypeExtension(mediaType)}`;
-  const placeholder = `senera://artifact-asset/${id}`;
+  const placeholder = createAgentResourceUri(createAgentResourceId(id));
   projected.assets.push({ id, fileName, mediaType, dataBase64: data });
   projected.blocks.push({
     type,
@@ -175,7 +176,7 @@ function projectResourceContent(
   if (typeof resource.blob === "string" && isBase64(resource.blob)) {
     const id = `mcp-resource-${index + 1}`;
     const fileName = `${id}.${mediaTypeExtension(mimeType || "application/octet-stream")}`;
-    const placeholder = `senera://artifact-asset/${id}`;
+    const placeholder = createAgentResourceUri(createAgentResourceId(id));
     projected.assets.push({
       id,
       fileName,

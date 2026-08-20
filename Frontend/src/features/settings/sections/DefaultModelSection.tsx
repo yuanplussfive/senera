@@ -13,6 +13,7 @@ import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriver
 import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
+import { MotionListItem } from "../../../shared/motion";
 import { IconButton, MenuSelect, Spinner, StateView, Switch } from "../../../shared/ui";
 import { findTopField } from "../../chat/modelConfigData";
 import { ModelProviderIcon, inferModelProviderIcon } from "../../chat/ModelProviderIcon";
@@ -105,42 +106,71 @@ export function DefaultModelSection({
   return (
     <div className="bg-paper-50 px-4 py-5 sm:px-7 sm:py-6">
       <section className="mx-auto max-w-[980px]">
-        <header className="border-b border-ink-200/80 pb-4">
-          <h2 className="text-[14px] font-semibold text-ink-900">
-            {frontendMessage("settings.model.assignmentsTitle")}
-          </h2>
-          <p className="mt-1 max-w-[720px] text-[12px] leading-5 text-ink-500">
-            {frontendMessage("settings.model.assignmentsDescription")}
-          </p>
+        <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 border-b border-ink-200/80 pb-5">
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink-900">
+              {frontendMessage("settings.model.assignmentsTitle")}
+            </h2>
+            <p className="mt-1.5 max-w-[720px] text-[12.5px] leading-6 text-ink-500">
+              {frontendMessage("settings.model.assignmentsDescription")}
+            </p>
+          </div>
+          {state.defaultModel ? <DefaultModelOverview entry={state.defaultModel} /> : null}
         </header>
 
-        <div className="mt-5 space-y-7">
-          {assignmentGroups.map((group) => (
-            <section key={group.id} data-model-assignment-group>
-              <div className="flex items-center gap-2 border-b border-ink-200/80 pb-2 text-[12.5px] font-semibold text-ink-700">
-                <AssignmentGroupIcon groupId={group.id} fields={group.fields} />
-                {group.label}
-              </div>
-              <div className="divide-y divide-ink-200/70">
-                {group.fields.map((field) => (
-                  <ModelAssignmentRow
-                    key={field.modelSelection.id}
-                    allFields={allFields}
-                    defaultModelId={defaultModelId}
-                    draftState={draftState}
-                    field={field}
-                    modelTemplate={modelTemplate}
-                    pendingModelId={pendingModelId}
-                    state={state}
-                    systemConfig={systemConfig}
-                    onDefaultModelPending={setPendingModelId}
-                  />
-                ))}
-              </div>
-            </section>
+        <div className="mt-6 space-y-8">
+          {assignmentGroups.map((group, groupIndex) => (
+            <MotionListItem key={group.id} index={groupIndex} itemCount={assignmentGroups.length}>
+              <section data-model-assignment-group>
+                <div className="flex items-center gap-2.5 border-b border-ink-200/80 pb-2.5">
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-accent-border/50 bg-accent-surface text-accent-content">
+                    <AssignmentGroupIcon groupId={group.id} fields={group.fields} />
+                  </span>
+                  <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-ink-900">{group.label}</h3>
+                </div>
+                <div className="divide-y divide-ink-200/70">
+                  {group.fields.map((field) => (
+                    <ModelAssignmentRow
+                      key={field.modelSelection.id}
+                      allFields={allFields}
+                      defaultModelId={defaultModelId}
+                      draftState={draftState}
+                      field={field}
+                      modelTemplate={modelTemplate}
+                      pendingModelId={pendingModelId}
+                      state={state}
+                      systemConfig={systemConfig}
+                      onDefaultModelPending={setPendingModelId}
+                    />
+                  ))}
+                </div>
+              </section>
+            </MotionListItem>
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+function DefaultModelOverview({
+  entry,
+}: {
+  entry: NonNullable<ReturnType<typeof readModelServiceState>>["defaultModel"];
+}): JSX.Element {
+  if (!entry) return <></>;
+  const icon = entry.model.Icon ?? inferModelProviderIcon(entry.model.Model);
+  return (
+    <div className="flex shrink-0 items-center gap-2.5 rounded-lg border border-line-subtle bg-surface-raised px-2.5 py-2 shadow-panel">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-accent-surface text-accent-content">
+        <ModelProviderIcon icon={icon} size={18} />
+      </span>
+      <div className="min-w-0">
+        <div className="text-[10.5px] leading-4 text-ink-450">{frontendMessage("settings.model.defaultOverview")}</div>
+        <div className="truncate text-[12.5px] font-semibold leading-[18px] text-ink-900">
+          {entry.model.Model} · {entry.provider?.Id ?? entry.model.ProviderId}
+        </div>
+      </div>
     </div>
   );
 }
@@ -211,7 +241,7 @@ function ModelAssignmentRow({
 
   return (
     <div
-      className="grid min-h-[68px] min-w-0 gap-3 py-3.5 md:grid-cols-[minmax(220px,0.85fr)_minmax(300px,1.15fr)] md:items-center"
+      className="grid min-h-[72px] min-w-0 gap-3 py-4 md:grid-cols-[minmax(220px,0.85fr)_minmax(300px,1.15fr)] md:items-center"
       data-model-assignment-row
     >
       <AssignmentLabel field={field} />
@@ -421,16 +451,16 @@ function PoolCandidateLabel({
 
 function AssignmentLabel({ field }: { field: RuntimeModelAssignmentField }): JSX.Element {
   return (
-    <div className="flex min-w-0 items-start gap-2">
-      <span className="mt-[3px] grid h-4 w-4 shrink-0 place-items-center text-ink-450">
+    <div className="flex min-w-0 items-start gap-3">
+      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border border-accent-border/50 bg-accent-surface text-accent-content">
         <AssignmentRoleIcon field={field} />
       </span>
-      <div className="min-w-0">
+      <div className="min-w-0 pt-0.5">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className="text-[12.5px] font-medium text-ink-850">{field.label}</span>
+          <span className="text-[13px] font-medium text-ink-900">{field.label}</span>
           <ConfigFieldRequirementLabel required={field.modelSelection.required} />
         </div>
-        {field.description ? <p className="mt-0.5 text-[11px] leading-4 text-ink-500">{field.description}</p> : null}
+        {field.description ? <p className="mt-0.5 text-[11.5px] leading-5 text-ink-500">{field.description}</p> : null}
       </div>
     </div>
   );
@@ -485,7 +515,7 @@ function AssignmentGroupIcon({
               : capability === "Vision"
                 ? EyeIcon
                 : CpuChipIcon;
-  return <Icon className="h-3.5 w-3.5 text-ink-500" />;
+  return <Icon className="h-3.5 w-3.5" />;
 }
 
 const assignmentRoleIcons: Readonly<Record<string, ElementType<{ className?: string }>>> = {
@@ -513,5 +543,5 @@ function AssignmentRoleIcon({ field }: { field: RuntimeModelAssignmentField }): 
           : selection.capability === "Vision"
             ? EyeIcon
             : CpuChipIcon);
-  return <Icon className="h-3.5 w-3.5" data-model-assignment-icon={selection.id} />;
+  return <Icon className="h-4 w-4" data-model-assignment-icon={selection.id} />;
 }

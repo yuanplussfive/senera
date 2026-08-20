@@ -55,6 +55,7 @@ export function createAgentMcpPackageEndpoint(
     packageRoot: package_.rootPath,
     revision: package_.revision,
     transport: "stdio" as const,
+    ...(configuration.runtime ? { runtime: configuration.runtime } : {}),
     command: resolve(configuration.command),
     args: configuration.args.map(resolve),
     cwd: resolvePackagePath(package_.rootPath, resolve(configuration.cwd)),

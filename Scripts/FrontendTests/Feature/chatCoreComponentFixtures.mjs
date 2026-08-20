@@ -39,7 +39,7 @@ export function createComposerProps(overrides = {}) {
     },
     runtime: {
       socketStatus: "open",
-      uploadUrl: "/upload",
+      uploadUrl: "/api/resources",
     },
     onSend: vi.fn(),
     onCancel: vi.fn(),
@@ -82,7 +82,7 @@ export function createChatPanelProps(overrides = {}) {
     },
     runtime: {
       socketStatus: "open",
-      uploadUrl: "/upload",
+      uploadUrl: "/api/resources",
     },
     messageActions: createMessageActions(),
     navigationActions: {},
@@ -111,7 +111,7 @@ export function createMessageActions(overrides = {}) {
 export function createMessageListProps(overrides = {}) {
   return {
     sessionId: "session-1",
-    uploadUrl: "http://agent.test/api/uploads",
+    uploadUrl: "http://agent.test/api/resources",
     messages: [],
     runs: [],
     userProfile: {

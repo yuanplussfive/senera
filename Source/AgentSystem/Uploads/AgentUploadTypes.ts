@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { parseAgentResourceId } from "../Resources/AgentResourceUri.js";
+import { AgentResourceUriSchema } from "../Resources/AgentResourceSchema.js";
 
 export const AgentUploadStatus = {
   Uploaded: "uploaded",
@@ -6,7 +8,7 @@ export const AgentUploadStatus = {
 
 export const AgentUploadAttachmentSchema = z
   .object({
-    uploadUri: z.string().min(1),
+    resourceUri: AgentResourceUriSchema,
     name: z.string().min(1),
     mime: z.string().min(1),
     size: z.number().int().nonnegative(),
@@ -21,7 +23,7 @@ export type AgentUploadAttachment = z.infer<typeof AgentUploadAttachmentSchema>;
 
 export const AgentResolvedUploadResourceSchema = z
   .object({
-    uploadUri: z.string().min(1),
+    resourceUri: AgentResourceUriSchema,
     filePath: z.string().min(1),
     name: z.string().min(1),
     mime: z.string().min(1),
@@ -33,10 +35,10 @@ export const AgentResolvedUploadResourceSchema = z
 
 export type AgentResolvedUploadResource = z.infer<typeof AgentResolvedUploadResourceSchema>;
 
-export const AgentUploadManifestSchema = z
+const AgentUploadManifestShape = z
   .object({
-    uploadId: z.string().min(1),
-    uploadUri: z.string().min(1),
+    resourceId: z.string().min(1),
+    resourceUri: AgentResourceUriSchema,
     name: z.string().min(1),
     mime: z.string().min(1),
     declaredMime: z.string().min(1).optional(),
@@ -51,6 +53,16 @@ export const AgentUploadManifestSchema = z
       .strict(),
   })
   .strict();
+
+export const AgentUploadManifestSchema = AgentUploadManifestShape.superRefine((manifest, context) => {
+  if (parseAgentResourceId(manifest.resourceUri) !== manifest.resourceId) {
+    context.addIssue({
+      code: "custom",
+      path: ["resourceUri"],
+      message: "resourceId must match the identifier in resourceUri.",
+    });
+  }
+});
 
 export type AgentUploadManifest = z.infer<typeof AgentUploadManifestSchema>;
 

@@ -12,6 +12,7 @@ import type { AgentSessionResource } from "./AgentSessionResource.js";
 import type { AgentSessionRunControlPolicy } from "./AgentSessionRunControlPolicy.js";
 import type { AgentSessionRunResource } from "./AgentSessionRunResource.js";
 import type { AgentSessionStore } from "./AgentSessionStore.js";
+import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 
 export interface AgentSessionManagerOptions {
   loopFactory: (modelProviderId?: string) => AgentLoopRunner;
@@ -26,6 +27,7 @@ export interface AgentSessionManagerOptions {
   sessionResources?: readonly AgentSessionResource[];
   piSessions?: AgentPiActiveSessionRegistry;
   piDiagnostics?: AgentPiDiagnosticSink;
+  uploadStore?: Pick<AgentUploadStore, "resolve">;
   piSessionMutations?: AgentPiSessionMutationPort;
   piSessionManagement?: AgentPiSessionManagementPort;
   runControl: AgentSessionRunControlPolicy;

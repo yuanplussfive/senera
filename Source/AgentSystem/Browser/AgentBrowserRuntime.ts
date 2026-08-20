@@ -6,6 +6,7 @@ import { sha256Hex } from "../Core/AgentHash.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { AgentToolArtifactAsset, AgentToolArtifactPayload } from "../Types/ToolRuntimeTypes.js";
 import { AgentExecutionErrorCodes } from "../Xml/AgentXmlStatus.js";
+import { createAgentResourceId, createAgentResourceUri } from "../Resources/AgentResourceUri.js";
 import { assertSafeWebUrl, type AgentWebAddressResolver } from "../Web/AgentWebUrlPolicy.js";
 import { matchesAgentBrowserDomain, type AgentBrowserConfiguration } from "./AgentBrowserConfiguration.js";
 import type {
@@ -395,7 +396,7 @@ export class AgentBrowserRuntime {
             screenshot: {
               assetId: screenshot.id,
               mediaType: screenshot.mediaType,
-              markdown: `![Browser screenshot](senera://artifact-asset/${screenshot.id})`,
+              markdown: `![Browser screenshot](${createAgentResourceUri(createAgentResourceId(screenshot.id))})`,
             },
           }
         : {}),

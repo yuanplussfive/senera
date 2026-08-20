@@ -1,4 +1,6 @@
 const DefaultModel = "gpt-image-2";
+import { createResourceUri } from "./resource-uri.mjs";
+
 const DefaultSize = "1536x1024";
 const DefaultBaseUrl = "https://api.openai.com/v1";
 const ArtifactMetaKey = "ai.senera/artifact";
@@ -216,7 +218,7 @@ function projectImageCandidate(candidate, index, request, assets) {
     formatMime(request.outputFormat);
   if (!url && !base64) return undefined;
   const id = `imagen-${index + 1}`;
-  const sourceUrl = base64 ? `senera://artifact-asset/${id}` : url;
+  const sourceUrl = base64 ? createResourceUri(id) : url;
   if (base64) {
     assets.push({
       id,

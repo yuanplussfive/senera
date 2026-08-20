@@ -1,5 +1,5 @@
 import { AgentModelTokenEstimator } from "./AgentTextBudget.js";
-import { maySerializeWithinTokenBudget } from "./AgentBudgetedJsonProjection.js";
+import { inspectAgentModelInputTokens } from "./AgentMultimodalTokenBudget.js";
 
 export type AgentTokenBudgetInspection =
   { readonly kind: "exact"; readonly tokens: number } | { readonly kind: "overBudget"; readonly tokenLimit: number };
@@ -13,13 +13,9 @@ export class AgentTokenBudgetOracle {
 
   inspectJson(value: unknown, tokenLimit: number): AgentTokenBudgetInspection {
     const normalizedLimit = normalizePositiveInteger(tokenLimit);
-    if (!maySerializeWithinTokenBudget(value, normalizedLimit)) {
-      return { kind: "overBudget", tokenLimit: normalizedLimit };
-    }
-    const serialized = serializeJson(value);
-    const inspection = this.estimator.inspect(serialized, normalizedLimit);
+    const inspection = inspectAgentModelInputTokens(this.estimator, value, normalizedLimit);
     return inspection.withinLimit
-      ? { kind: "exact", tokens: inspection.tokenCount }
+      ? { kind: "exact", tokens: inspection.tokenCount ?? normalizedLimit }
       : { kind: "overBudget", tokenLimit: normalizedLimit };
   }
 
@@ -30,14 +26,6 @@ export class AgentTokenBudgetOracle {
       ? { kind: "exact", tokens: inspection.tokenCount }
       : { kind: "overBudget", tokenLimit: normalizedLimit };
   }
-}
-
-function serializeJson(value: unknown): string {
-  const serialized = JSON.stringify(value, (_key, entry: unknown) =>
-    typeof entry === "bigint" ? String(entry) : entry,
-  );
-  if (serialized === undefined) throw new Error("Token budget inspection requires a JSON-serializable value.");
-  return serialized;
 }
 
 function normalizePositiveInteger(value: number): number {

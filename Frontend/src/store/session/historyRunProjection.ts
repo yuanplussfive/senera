@@ -159,6 +159,7 @@ const stepTraceProjectors = {
     startedAt,
     endedAt,
     toolName: trace.toolName,
+    toolOrigin: trace.toolOrigin,
     callId: trace.callId,
     purpose: trace.purpose,
     toolBatch: toolBatchForTrace(requestId, trace),

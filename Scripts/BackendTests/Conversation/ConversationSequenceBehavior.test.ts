@@ -43,7 +43,7 @@ describe("Conversation sequence behavior", () => {
     const projector = new AgentConversationProjector();
     const current = projector.projectUserInput("request-upload", "Inspect this file", timestamp(1), undefined, [
       {
-        uploadUri: "senera://upload/upload-a",
+        resourceUri: "senera://resource/upload-a",
         name: "report.txt",
         mime: "text/plain",
         size: 12,
@@ -59,7 +59,7 @@ describe("Conversation sequence behavior", () => {
     });
 
     expect(projection.input).toContain("<current_user_message>");
-    expect(projection.input).toContain("<uploadUri>senera://upload/upload-a</uploadUri>");
+    expect(projection.input).toContain("<resourceUri>senera://resource/upload-a</resourceUri>");
     expect(projection.input).not.toContain('"attachments"');
   });
 });

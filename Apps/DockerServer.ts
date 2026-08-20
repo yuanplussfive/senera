@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { startSeneraServer } from "./ServerRuntime.js";
+import { SeneraServerDeployments, startSeneraServer } from "./ServerRuntime.js";
 import {
   resolveFrontendConfig,
   resolveSandboxRuntimeConfig,
@@ -68,6 +68,7 @@ async function main(): Promise<void> {
     workspaceRoot: WorkspaceRoot,
     configPath: ConfigPath,
     staticFrontendRoot: FrontendRoot,
+    deployment: SeneraServerDeployments.Container,
     resourcesPath: AppRoot,
     runtimeConfigProjection: runtimeProjection,
     sandboxRuntimePrepared: true,

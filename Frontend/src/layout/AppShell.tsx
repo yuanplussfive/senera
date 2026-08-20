@@ -285,20 +285,24 @@ export function AppShell({
     };
 
     return (
-      <Tabs value={workflowDockTool} onValueChange={handleValueChange} className="flex h-full min-h-0 w-full flex-col">
+      <Tabs
+        value={workflowDockTool}
+        onValueChange={handleValueChange}
+        className="flex h-full min-h-0 min-w-0 w-full flex-col"
+      >
         {presentation === "dock" ? (
           <div className="hidden shrink-0" data-window-drag-region data-workflow-dock-titlebar-spacer />
         ) : null}
         <div
           className={cn(
-            "flex shrink-0 items-center gap-2 border-b border-line-subtle pl-3 pr-3",
+            "flex min-w-0 shrink-0 items-center gap-2 border-b border-line-subtle pl-3 pr-3",
             presentation === "dock" ? "h-[58px]" : "h-[52px]",
           )}
           data-window-drag-region
           data-workflow-dock-toolbar
         >
           <TabsList
-            className="w-full flex-1"
+            className="min-w-0 w-full flex-1"
             aria-label={frontendMessage("workflow.dock.tabs")}
             data-workflow-dock-tabs
             data-workflow-dock-tabs-list
@@ -409,7 +413,7 @@ export function AppShell({
                 animate={{ opacity: 1, x: 0 }}
                 transition={workflowPanelTransition}
                 className={cn(
-                  "pointer-events-auto absolute inset-y-0 right-0 w-full overflow-hidden",
+                  "pointer-events-auto absolute inset-y-0 right-0 min-w-0 w-full overflow-hidden",
                   renderPlan.workflowPanelLayout === "overlay"
                     ? "border-l border-line-subtle bg-surface-panel [box-shadow:var(--theme-overlay-shadow)]"
                     : "border-l border-line-subtle bg-surface-canvas [background-image:var(--theme-bg-image)]",
@@ -436,7 +440,7 @@ export function AppShell({
                 >
                   <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-accent-border-strong group-focus-visible:bg-accent-solid" />
                 </div>
-                <div className="h-full w-full" data-workflow-dock-content>
+                <div className="h-full min-w-0 w-full" data-workflow-dock-content>
                   {renderWorkflowDockSurface("dock", workflowPanel)}
                 </div>
               </motion.div>

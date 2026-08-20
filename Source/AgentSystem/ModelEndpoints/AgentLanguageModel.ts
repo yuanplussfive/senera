@@ -12,9 +12,31 @@ export interface AgentLanguageModelRequest {
   signal?: AbortSignal;
 }
 
+/**
+ * Provider-neutral visual input. The raw data is kept outside the textual
+ * prompt so endpoint adapters can project it using their native wire format.
+ */
+export interface AgentLanguageModelImageAttachment {
+  readonly type: "image";
+  readonly data: string;
+  readonly mimeType: string;
+}
+
+/**
+ * Invocation data shared by structured planner calls. Attachments are
+ * deliberately orthogonal to the structured prompt payload: image bytes must
+ * reach the model as multimodal input, never as serialized prompt text.
+ */
+export interface AgentLanguageModelInvocationOptions {
+  readonly signal?: AbortSignal;
+  readonly attachments?: readonly AgentLanguageModelImageAttachment[];
+}
+
 export interface AgentLanguageModelMessage {
   role: "system" | "developer" | "user" | "assistant";
   content: string;
+  /** Native multimodal attachments for this message. */
+  attachments?: readonly AgentLanguageModelImageAttachment[];
 }
 
 export interface AgentLanguageModelResponse {

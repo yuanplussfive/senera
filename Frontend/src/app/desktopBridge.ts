@@ -8,6 +8,17 @@ export interface DesktopWindowState {
   isMaximized: boolean;
 }
 
+export interface DesktopUpdateSnapshot {
+  state: "unsupported" | "idle" | "checking" | "available" | "not-available" | "downloading" | "downloaded" | "error";
+  currentVersion: string;
+  availableVersion?: string;
+  releaseName?: string;
+  releaseDate?: string;
+  percent?: number;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
 export interface SeneraDesktopBridge {
   readonly isDesktop: boolean;
   readonly windowControls?: "custom" | "native";
@@ -22,6 +33,11 @@ export interface SeneraDesktopBridge {
   confirmSettingsClose?: () => Promise<void>;
   cancelSettingsClose?: () => Promise<void>;
   openExternalUrl?: (url: string) => Promise<void>;
+  getUpdateState?: () => Promise<DesktopUpdateSnapshot | undefined>;
+  checkForUpdates?: () => Promise<DesktopUpdateSnapshot | undefined>;
+  downloadUpdate?: () => Promise<DesktopUpdateSnapshot | undefined>;
+  installUpdate?: () => Promise<DesktopUpdateSnapshot | undefined>;
+  onUpdateStateChanged?: (listener: (state: DesktopUpdateSnapshot) => void) => () => void;
 }
 
 export interface OpenExternalUrlOptions {

@@ -1,5 +1,4 @@
-import { startSeneraServer } from "./ServerRuntime.js";
-import { startSeneraSandboxWorkerProcess } from "./SandboxWorkerProcess.js";
+import { SeneraServerDeployments, startSeneraServer } from "./ServerRuntime.js";
 import { ensureSeneraDevelopmentConfig } from "./RuntimeConfigBootstrap.js";
 import { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
 import {
@@ -13,20 +12,13 @@ installAgentProcessFailureGuard({ logger: processLogger });
 async function main(): Promise<void> {
   const workspaceRoot = process.cwd();
   const configPath = ensureSeneraDevelopmentConfig(workspaceRoot);
-  const sandbox = await startSeneraSandboxWorkerProcess({
-    workspaceRoot,
-    configPath,
-    entrypoint: "Dist/Apps/SandboxWorker.js",
-    resourcesPath: workspaceRoot,
-  });
   const handle = await startSeneraServer({
     configPath,
-    sandboxRuntimeAvailability: sandbox.availability,
-    dockerEngineWorker: sandbox.client,
+    deployment: SeneraServerDeployments.Local,
   });
   installAgentProcessShutdownGuard({
     logger: processLogger,
-    stop: () => Promise.all([handle.stop(), sandbox.close()]),
+    stop: () => handle.stop(),
   });
 }
 

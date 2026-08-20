@@ -2,6 +2,20 @@
   "name": "senera",
   "version": "1.12.3",
   "description": "Observable, verifiable agent runtime and desktop workbench.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yuanplussfive/senera.git"
+  },
+  "senera": {
+    "update": {
+      "repositoryUrl": "https://github.com/yuanplussfive/senera",
+      "trustedRedirectHosts": [
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com"
+      ]
+    },
+    "containerImage": "ghcr.io/yuanplussfive/senera"
+  },
   "workspaces": [
     "Packages/*",
     "Frontend"
@@ -35,15 +49,18 @@
     "policy.compile": "tsx Build/CompileOpaPolicy.ts",
     "policy.verify": "tsx Build/CompileOpaPolicy.ts --check",
     "generate.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts",
+    "generate.resource-contract": "tsx Build/GenerateResourceContract.ts",
     "generate.database-contracts": "tsx Build/GenerateDatabaseContracts.ts",
     "generate.system-extension-contracts": "tsx Build/GenerateSystemExtensionContracts.ts",
     "generate.config-command-contracts": "tsx Build/GenerateConfigCommandContracts.ts",
     "generate.protocol-reference": "tsx Build/GenerateWebSocketProtocolReference.ts",
     "generate.nano": "tsx Build/Distributions/GenerateNanoDistribution.ts --output",
+    "generate.update-manifest": "tsx Build/GenerateProductUpdateManifest.ts",
     "verify.database-contracts": "tsx Build/GenerateDatabaseContracts.ts --check",
     "verify.system-extension-contracts": "tsx Build/GenerateSystemExtensionContracts.ts --check",
     "verify.config-command-contracts": "tsx Build/GenerateConfigCommandContracts.ts --check",
     "verify.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts --check",
+    "verify.resource-contract": "tsx Build/GenerateResourceContract.ts --check",
     "verify.protocol-reference": "tsx Build/GenerateWebSocketProtocolReference.ts --check",
     "verify.i18n": "tsx Scripts/VerifyAgentErrorI18n.ts && tsx Scripts/VerifyFrontendErrorI18n.ts && tsx Scripts/VerifyAgentRuntimeI18n.ts && tsx Scripts/VerifyFrontendRuntimeI18n.ts",
     "access.admin": "tsx Apps/AdminAccess.ts",
@@ -57,7 +74,7 @@
     "sandbox.prepare": "tsx Build/PrepareSandboxRuntime.ts",
     "verify.sandbox.real": "npm run build && npm run sandbox.prepare && tsx Scripts/VerifySeneraDockerEngineRealTerminal.ts",
     "check.types": "tsc --noEmit",
-    "build": "npm run verify.config-command-contracts && npm run verify.database-contracts && npm run verify.system-extension-contracts && npm run verify.frontend-events && npm run verify.protocol-reference && npm run verify.i18n && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
+    "build": "npm run verify.config-command-contracts && npm run verify.database-contracts && npm run verify.system-extension-contracts && npm run verify.frontend-events && npm run verify.resource-contract && npm run verify.protocol-reference && npm run verify.i18n && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     "dev": "concurrently -k -n server,frontend -c blue,green \"npm run dev.server\" \"npm run dev.frontend\"",
     "docker.up": "docker compose pull && docker compose up -d",
     "docker.down": "docker compose down",
@@ -83,6 +100,7 @@
     "dev.server.dry-run": "tsx Apps/ServerWatch.ts --dry-run",
     "desktop": "tsx Apps/Desktop/RunDesktop.ts",
     "desktop.prepare-native": "tsx Build/PrepareElectronNativeModules.ts",
+    "desktop.prepare-mcp-runtime": "tsx Build/PrepareDesktopMcpRuntime.ts",
     "desktop.pack": "tsx Apps/Desktop/PackageDesktop.ts",
     "verify.suite": "node Dist/Scripts/VerifySuite.js",
     "verify.suites": "node Dist/Scripts/VerifySuite.js --list",
@@ -92,7 +110,7 @@
     "verify.platform": "npm run build && npm run verify.suite -- platform",
     "verify.release": "npm run build && npm run verify.suite -- release",
     "verify.all": "npm run build && npm run verify.suite -- all-local",
-    "ci": "npm run quality.security && npm run quality.baml && npm run policy.verify && npm run quality.lint && npm run quality.format && npm run build && npm --workspace senera-frontend run build && npm run test.frontend.governance && npm run test.integration && npm run quality.coverage && npm run test.e2e.web.run && npm run verify.suite -- workspace core integration e2e platform release",
+    "ci": "npm run quality.security && npm run quality.baml && npm run policy.verify && npm run quality.lint && npm run quality.format && npm run build && npm run desktop.prepare-mcp-runtime && npm --workspace senera-frontend run build && npm run test.frontend.governance && npm run test.integration && npm run quality.coverage && npm run test.e2e.web.run && npm run verify.suite -- workspace core integration e2e platform release",
     "test": "npm run check.types && npm run test.backend && npm run test.frontend",
     "desktop.live": "tsx Apps/Desktop/RunDesktopLive.ts",
     "desktoplive": "npm run desktop.live",
@@ -111,7 +129,6 @@
     "appId": "ai.senera.desktop",
     "productName": "Senera",
     "icon": "Apps/Desktop/Assets/senera-icon",
-    "publish": null,
     "npmRebuild": false,
     "afterPack": "Build/ElectronAfterPack.cjs",
     "directories": {
@@ -119,12 +136,6 @@
     },
     "files": [
       "Dist/**/*",
-      "Frontend/dist/**/*",
-      "Apps/Desktop/Assets/**/*",
-      "McpServers/**/*",
-      "System/Prompts/**/*",
-      "System/Skills/**/*",
-      "System/Extensions/**/*",
       {
         "from": "Packages/TerminalSidecar",
         "to": "node_modules/@senera/terminal-sidecar",
@@ -132,14 +143,60 @@
           "**/*"
         ]
       },
-      "senera.config.example.json",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "Frontend/dist",
+        "to": "Frontend/dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "Apps/Desktop/Assets",
+        "to": "Apps/Desktop/Assets",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "System/Prompts",
+        "to": "System/Prompts",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "System/Skills",
+        "to": "System/Skills",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "System/Extensions",
+        "to": "System/Extensions",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": ".cache/desktop-mcp-runtime/McpServers",
+        "to": "McpServers",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "senera.config.example.json",
+        "to": "senera.config.example.json"
+      }
     ],
     "extraMetadata": {
       "main": "Dist/Apps/Desktop/Main.js"
     },
     "asarUnpack": [
-      "senera.config.example.json",
       "**/*.node",
       "**/*.dll",
       "**/*.so",
@@ -157,7 +214,7 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": false,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Senera",
@@ -194,6 +251,7 @@
     "cross-spawn": "^7.0.6",
     "diff": "^9.0.0",
     "dockerode": "^5.0.1",
+    "electron-updater": "^6.8.9",
     "entities": "^8.0.0",
     "eventsource-parser": "^3.0.8",
     "execa": "10.0.1",
@@ -256,6 +314,7 @@
     "concurrently": "^9.2.4",
     "electron": "^42.5.0",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1",
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.1.1",

@@ -23,7 +23,7 @@ describe("WebSocket HTTP router", () => {
   test("allows upload preflight without authorization", async () => {
     const fixture = createRouterFixture({ upload: true });
 
-    await fixture.router.handle(request("OPTIONS", "/api/uploads"), fixture.response.value);
+    await fixture.router.handle(request("OPTIONS", "/api/resources"), fixture.response.value);
 
     expect(fixture.authorizeHttp).not.toHaveBeenCalled();
     expect(fixture.upload.handle).toHaveBeenCalledTimes(1);
@@ -48,7 +48,7 @@ describe("WebSocket HTTP router", () => {
       },
     });
 
-    await fixture.router.handle(request("POST", "/api/uploads"), fixture.response.value);
+    await fixture.router.handle(request("POST", "/api/resources"), fixture.response.value);
 
     expect(fixture.authorizeHttp).toHaveBeenCalledWith(expect.anything(), { requireCsrf: true });
     expect(fixture.upload.handle).not.toHaveBeenCalled();
@@ -66,7 +66,7 @@ describe("WebSocket HTTP router", () => {
   test("authorizes upload content reads without CSRF", async () => {
     const fixture = createRouterFixture({ upload: true });
 
-    await fixture.router.handle(request("GET", "/api/uploads/upl_fixture/content"), fixture.response.value);
+    await fixture.router.handle(request("GET", "/api/resources/upl_fixture"), fixture.response.value);
 
     expect(fixture.authorizeHttp).toHaveBeenCalledWith(expect.anything(), { requireCsrf: false });
     expect(fixture.upload.handle).toHaveBeenCalledTimes(1);
@@ -74,18 +74,12 @@ describe("WebSocket HTTP router", () => {
 
   test("authorizes workspace resource reads and requires CSRF for saves", async () => {
     const readFixture = createRouterFixture({ workspaceResource: true });
-    await readFixture.router.handle(
-      request("GET", "/api/workspace-resources?path=README.md"),
-      readFixture.response.value,
-    );
+    await readFixture.router.handle(request("GET", "/api/resources?path=README.md"), readFixture.response.value);
     expect(readFixture.authorizeHttp).toHaveBeenCalledWith(expect.anything(), { requireCsrf: false });
     expect(readFixture.workspaceResource.handle).toHaveBeenCalledTimes(1);
 
     const writeFixture = createRouterFixture({ workspaceResource: true });
-    await writeFixture.router.handle(
-      request("PUT", "/api/workspace-resources?path=README.md"),
-      writeFixture.response.value,
-    );
+    await writeFixture.router.handle(request("PUT", "/api/resources?path=README.md"), writeFixture.response.value);
     expect(writeFixture.authorizeHttp).toHaveBeenCalledWith(expect.anything(), { requireCsrf: true });
     expect(writeFixture.workspaceResource.handle).toHaveBeenCalledTimes(1);
   });

@@ -1,4 +1,5 @@
 import type { AgentExecutionResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
+import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.js";
 import type { AgentToolResultPresentation, ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
 
@@ -16,6 +17,7 @@ export interface StepTrace {
   kind: "decision" | "tool" | "retry" | "answer";
   decisionKind?: string;
   toolName?: string;
+  toolOrigin?: AgentToolEventOrigin;
   callId?: string;
   batchId?: string;
   purpose?: string;
@@ -75,6 +77,7 @@ export function buildToolTraces(
       seq: startSeq + index,
       kind: "tool",
       toolName: result.name,
+      toolOrigin: result.origin,
       callId: result.callId,
       status: failed ? "failed" : "done",
       toolArgs: clampField(result.arguments),
