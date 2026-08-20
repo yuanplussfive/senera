@@ -1,6 +1,6 @@
 {
   "name": "senera",
-  "version": "1.12.3",
+  "version": "1.13.0",
   "description": "Observable, verifiable agent runtime and desktop workbench.",
   "repository": {
     "type": "git",
@@ -54,7 +54,7 @@
     "generate.system-extension-contracts": "tsx Build/GenerateSystemExtensionContracts.ts",
     "generate.config-command-contracts": "tsx Build/GenerateConfigCommandContracts.ts",
     "generate.protocol-reference": "tsx Build/GenerateWebSocketProtocolReference.ts",
-    "generate.nano": "tsx Build/Distributions/GenerateNanoDistribution.ts",
+    "generate.nano": "tsx Build/Distributions/GenerateNanoDistribution.ts --output",
     "generate.update-manifest": "tsx Build/GenerateProductUpdateManifest.ts",
     "verify.database-contracts": "tsx Build/GenerateDatabaseContracts.ts --check",
     "verify.system-extension-contracts": "tsx Build/GenerateSystemExtensionContracts.ts --check",
