@@ -1,6 +1,6 @@
 {
   "name": "senera",
-  "version": "1.12.3",
+  "version": "1.13.0",
   "description": "Observable, verifiable agent runtime and desktop workbench.",
   "repository": {
     "type": "git",
