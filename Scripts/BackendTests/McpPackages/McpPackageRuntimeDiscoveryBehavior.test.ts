@@ -41,7 +41,12 @@ describe("MCP package runtime discovery", () => {
         expect(weatherTool?.handler).toMatchObject({
           kind: "McpTool",
           tool: "forecast",
-          server: { transport: "stdio", env: { QWEATHER_API_KEY: "test-key" } },
+          server: {
+            transport: "stdio",
+            runtime: "node",
+            command: "node",
+            env: { QWEATHER_API_KEY: "test-key" },
+          },
         });
         expect(weatherTool?.observationProjection).toMatchObject({
           schemaVersion: 2,
@@ -88,6 +93,103 @@ describe("MCP package runtime discovery", () => {
       await runtime.close();
     }
   });
+
+  test(
+    "keeps healthy MCP servers available when another server cannot start",
+    { timeout: ProcessBackedDiscoveryTestTimeoutMs },
+    async () => {
+      const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-mcp-runtime-partial-"));
+      temporaryRoots.push(workspaceRoot);
+      const brokenRoot = path.join(workspaceRoot, ".senera", "mcp", "broken");
+      fs.mkdirSync(brokenRoot, { recursive: true });
+      fs.writeFileSync(
+        path.join(brokenRoot, ".mcp.json"),
+        JSON.stringify({
+          mcpServers: {
+            broken: {
+              type: "stdio",
+              command: process.execPath,
+              args: ["--eval", "process.stderr.write('broken MCP fixture\\n'); process.exit(23)"],
+              cwd: ".",
+            },
+          },
+        }),
+        "utf8",
+      );
+      const runtime = AgentSystemRuntime.fromConfig({
+        workspaceRoot,
+        configPath: path.join(workspaceRoot, "senera.config.json"),
+        config: loadHostExecutionExampleConfig(),
+        resourcesPath: path.resolve(),
+        toolSearchMemoryStore: new InMemoryToolSearchMemoryStore(),
+        mcpInputs: {
+          resolve(_serverId, binding) {
+            return binding.source === "secret" ? { value: "test-key", source: "vault" } : undefined;
+          },
+        },
+      });
+
+      try {
+        await expect(runtime.initialize()).resolves.toBeUndefined();
+        expect(runtime.registry.getTool("mcp__weather__forecast")).toBeDefined();
+        expect(runtime.registry.getTool("mcp__broken__broken")).toBeUndefined();
+      } finally {
+        await runtime.close();
+      }
+    },
+  );
+
+  test(
+    "keeps the runtime available when a failed MCP server is referenced by a skill",
+    { timeout: ProcessBackedDiscoveryTestTimeoutMs },
+    async () => {
+      const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-mcp-runtime-failed-skill-"));
+      const resourcesRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-mcp-resources-failed-skill-"));
+      temporaryRoots.push(workspaceRoot, resourcesRoot);
+      const skillRoot = path.join(resourcesRoot, "System", "Skills", "broken-weather");
+      const packageRoot = path.join(resourcesRoot, "McpServers", "broken");
+      fs.mkdirSync(skillRoot, { recursive: true });
+      fs.cpSync(path.resolve("System", "Prompts"), path.join(resourcesRoot, "System", "Prompts"), { recursive: true });
+      fs.mkdirSync(path.join(packageRoot, "mcp"), { recursive: true });
+      fs.writeFileSync(
+        path.join(skillRoot, "SKILL.md"),
+        "---\nname: broken-weather\ndescription: Exercise a temporarily unavailable MCP server.\nmetadata:\n  senera:\n    recommended-tools:\n      - mcp__broken__forecast\n---\nUse the weather tool when it is available.\n",
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(packageRoot, "manifest.json"),
+        JSON.stringify({
+          manifest_version: "0.3",
+          name: "broken",
+          version: "1.0.0",
+          server: { type: "node", entry_point: "mcp/server.mjs" },
+          _meta: { "ai.senera/execution": { targets: ["local"], preferred: "local" } },
+        }),
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(packageRoot, "mcp", "server.mjs"),
+        "process.stderr.write('broken MCP fixture\\n'); process.exit(23);\n",
+        "utf8",
+      );
+
+      const runtime = AgentSystemRuntime.fromConfig({
+        workspaceRoot,
+        configPath: path.join(workspaceRoot, "senera.config.json"),
+        config: loadHostExecutionExampleConfig(),
+        resourcesPath: resourcesRoot,
+        toolSearchMemoryStore: new InMemoryToolSearchMemoryStore(),
+      });
+
+      try {
+        await expect(runtime.initialize()).resolves.toBeUndefined();
+        expect(runtime.registry.getTool("mcp__broken__forecast")).toBeUndefined();
+        expect(runtime.registry.getSkill("broken-weather")?.recommendedTools).toEqual(["mcp__broken__forecast"]);
+      } finally {
+        await runtime.close();
+      }
+    },
+  );
 });
 
 function loadHostExecutionExampleConfig(): AgentSystemConfig {

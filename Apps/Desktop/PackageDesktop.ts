@@ -13,7 +13,9 @@ const steps = [
   command("npm", ["run", "build"]),
   command("npm", ["--workspace", "senera-frontend", "run", "build"]),
   command("npm", ["run", "desktop.prepare-native"]),
-  command("electron-builder"),
+  command("npm", ["run", "desktop.prepare-mcp-runtime"]),
+  // Stable release publication is gated in the release workflow after all smoke checks.
+  command("electron-builder", ["--publish", "never"]),
 ];
 
 if (isMainModule(import.meta.url)) {

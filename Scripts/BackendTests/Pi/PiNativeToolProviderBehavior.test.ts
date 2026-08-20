@@ -190,6 +190,53 @@ describe("Pi native tool provider", () => {
     expect(upstreamCalls).toBe(0);
   });
 
+  test("keeps inline image bytes out of text token budgeting while forwarding the image", async () => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: "native",
+      Capabilities: { ToolCalling: true, Vision: true },
+      Endpoint: "Responses",
+      ContextWindowTokens: 211_616,
+      MaxModelOutputTokens: 64,
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model, 211_616, 64);
+    const frame = createFrame(turnState, "native-image-session", "native-image-request");
+    let forwardedImage = false;
+    const provider = new AgentPiNativeToolProvider({
+      projection,
+      modelProvider,
+      frame,
+      apiStreams: nativeApiStreams((model, context) => {
+        const user = context.messages.find((message) => message.role === "user");
+        forwardedImage =
+          user?.role === "user" &&
+          Array.isArray(user.content) &&
+          user.content.some((part) => part.type === "image" && part.data.length === 1_800_000);
+        return completedStream(model, [{ type: "text", text: "Image received." }]);
+      }),
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the native Pi model.");
+
+    const result = await provider
+      .streamSimple(model, {
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Describe this image." },
+              { type: "image", mimeType: "image/png", data: "a".repeat(1_800_000) },
+            ],
+            timestamp: 1,
+          },
+        ],
+        tools: [tool("ToolSearch")],
+      })
+      .result();
+    expect(result.stopReason).toBe("stop");
+    expect(forwardedImage).toBe(true);
+  });
+
   test("reports an upstream stream error as a provider failure when the caller was not aborted", async () => {
     const modelProvider = createModelProvider({
       ToolPlanningMode: "native",

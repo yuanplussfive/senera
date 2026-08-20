@@ -5,7 +5,7 @@ import type { AgentResolvedUpload } from "../Uploads/AgentUploadTypes.js";
 
 export async function resolveAgentSystemUpload(
   context: Pick<AgentHostToolContext, "config" | "workspaceRoot" | "uploadStore">,
-  uploadUri: string,
+  resourceUri: string,
 ): Promise<AgentResolvedUpload> {
   const store =
     context.uploadStore ??
@@ -13,7 +13,7 @@ export async function resolveAgentSystemUpload(
       workspaceRoot: context.workspaceRoot,
       config: resolveUploadsConfig(context.config),
     });
-  const upload = await store.resolve(uploadUri);
-  if (!upload) throw new Error(`Upload was not found: ${uploadUri}`);
+  const upload = await store.resolve(resourceUri);
+  if (!upload) throw new Error(`Resource was not found: ${resourceUri}`);
   return upload;
 }

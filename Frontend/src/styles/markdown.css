@@ -177,14 +177,14 @@
   background: color-mix(in srgb, var(--surface-subtle) 86%, var(--surface-canvas));
   padding: 0.08em 0.32em;
   color: var(--content-primary);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--theme-mono-font-family, "JetBrains Mono", ui-monospace, monospace);
   font-size: 0.86em;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
 .markdown-renderer pre,
 .markdown-renderer code[data-language] {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--theme-mono-font-family, "JetBrains Mono", ui-monospace, monospace);
   font-size: 12.5px;
   line-height: 1.7;
 }
@@ -218,7 +218,7 @@
   min-width: 0;
 }
 .markdown-renderer__code-language {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--theme-mono-font-family, "JetBrains Mono", ui-monospace, monospace);
   font-size: 11px;
   text-transform: lowercase;
   color: var(--content-secondary);
@@ -235,7 +235,7 @@
   align-items: center;
   justify-content: flex-end;
   min-width: var(--code-lines-width, 7ch);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--theme-mono-font-family, "JetBrains Mono", ui-monospace, monospace);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   color: var(--content-muted);
@@ -287,7 +287,7 @@
   gap: 0.75rem;
   padding: 0.6rem 0.85rem 0.45rem;
   color: var(--content-secondary);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--theme-mono-font-family, "JetBrains Mono", ui-monospace, monospace);
   font-size: 11px;
 }
 .markdown-renderer__table-wrap {
@@ -432,7 +432,7 @@
   margin: 0;
   padding: 0.9rem 0 1rem;
   background: transparent;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--theme-mono-font-family, "JetBrains Mono", ui-monospace, monospace);
   font-size: 12.5px;
   line-height: 1.55;
 }

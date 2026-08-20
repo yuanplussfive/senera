@@ -5,7 +5,7 @@ export type ResolvedTheme = "light" | "dark";
 export type ColorScheme =
   "senera" | "classic" | "mono" | "forest" | "sakura" | "ocean" | "lavender" | "matcha" | "honey" | "celadon";
 export type AccentColor = "terra" | "sky" | "moss" | "violet" | "rose" | "apricot" | "jade";
-export type AppearanceFontFamily = "brand" | "system";
+export type AppearanceFontFamily = "brand" | "fresh" | "system";
 export type FontScale = "compact" | "standard" | "comfortable" | "large";
 
 export interface AppearancePreference {
@@ -69,8 +69,18 @@ export const accentColors = [
   "apricot",
   "jade",
 ] as const satisfies readonly AccentColor[];
-export const appearanceFontFamilies = ["brand", "system"] as const satisfies readonly AppearanceFontFamily[];
+export const appearanceFontFamilies = ["brand", "fresh", "system"] as const satisfies readonly AppearanceFontFamily[];
 export const fontScales = ["compact", "standard", "comfortable", "large"] as const satisfies readonly FontScale[];
+
+const emojiFontFamilyStack = '"Segoe UI Emoji", "Noto Color Emoji", emoji';
+
+export const appearanceFontFamilyStacks: Record<AppearanceFontFamily, string> = {
+  brand: `"Geist", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Segoe UI Variable", "Segoe UI", ${emojiFontFamilyStack}, ui-sans-serif, system-ui, sans-serif`,
+  fresh: `"Nunito Sans Variable", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Segoe UI Variable", "Segoe UI", ${emojiFontFamilyStack}, ui-sans-serif, system-ui, sans-serif`,
+  system: `-apple-system, "Segoe UI Variable", "Segoe UI", ${emojiFontFamilyStack}, "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", ui-sans-serif, system-ui, sans-serif`,
+};
+
+const themeMonoFontFamily = `"JetBrains Mono", "Cascadia Mono", ${emojiFontFamilyStack}, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
 
 const fontScaleValues: Record<FontScale, string> = {
   compact: "0.96",
@@ -255,18 +265,10 @@ export function createAppearanceTokens(
       ...visualRoleTokens[resolvedTheme],
       ...semanticColorRoleTokens[resolvedTheme],
       "--theme-font-scale": fontScaleValues[preference.fontScale],
-      "--theme-ui-font-family":
-        preference.fontFamily === "brand"
-          ? '"Geist", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif'
-          : "ui-sans-serif, system-ui, sans-serif",
-      "--theme-reading-font-family":
-        preference.fontFamily === "brand"
-          ? '"Geist", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Source Han Sans SC", "Segoe UI", ui-sans-serif, system-ui, sans-serif'
-          : '"Segoe UI Variable", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Source Han Sans SC", ui-sans-serif, system-ui, sans-serif',
-      "--theme-display-font-family":
-        preference.fontFamily === "brand"
-          ? '"Fraunces", ui-serif, Georgia, serif'
-          : "ui-sans-serif, system-ui, sans-serif",
+      "--theme-ui-font-family": appearanceFontFamilyStacks[preference.fontFamily],
+      "--theme-reading-font-family": appearanceFontFamilyStacks[preference.fontFamily],
+      "--theme-mono-font-family": themeMonoFontFamily,
+      "--theme-emoji-font-family": emojiFontFamilyStack,
       "--scrollbar-size": "8px",
       "--scrollbar-track": "transparent",
       "--code-source-max-height": "500px",
@@ -318,7 +320,7 @@ function isColorScheme(value: unknown): value is ColorScheme {
 }
 
 function isAppearanceFontFamily(value: unknown): value is AppearanceFontFamily {
-  return value === "brand" || value === "system";
+  return appearanceFontFamilies.includes(value as AppearanceFontFamily);
 }
 
 function isFontScale(value: unknown): value is FontScale {

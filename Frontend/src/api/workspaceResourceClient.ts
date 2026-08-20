@@ -1,6 +1,6 @@
 import { resolveBackendMessage } from "../i18n/backendMessage";
 
-const WorkspaceResourcePath = "/api/workspace-resources";
+import { SeneraResourceHttpRoutes } from "./resourceContract";
 
 export type WorkspaceResourceKind = "text" | "image" | "binary";
 
@@ -35,7 +35,7 @@ export function buildWorkspaceResourceUrl(httpBaseUrl: string, path: string, raw
   if (url.protocol === "ws:" || url.protocol === "wss:") {
     url.protocol = url.protocol === "wss:" ? "https:" : "http:";
   }
-  url.pathname = raw ? `${WorkspaceResourcePath}/content` : WorkspaceResourcePath;
+  url.pathname = raw ? SeneraResourceHttpRoutes.WorkspaceContent : SeneraResourceHttpRoutes.Collection;
   url.search = "";
   url.searchParams.set("path", path);
   url.hash = "";

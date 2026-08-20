@@ -1,5 +1,5 @@
 import type { AgentMessage, AgentState } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ImageContent, Message } from "@earendil-works/pi-ai";
 import type { AgentSession as CodingAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import { toError } from "../Core/AgentErrors.js";
@@ -38,12 +38,16 @@ export class AgentPiCodingAgentSession implements AgentPiSession {
     this.session.agent.state.messages = [...messages];
   }
 
-  async prompt(text: string, options?: { expandPromptTemplates?: boolean; source?: string }): Promise<void> {
+  async prompt(
+    text: string,
+    options?: { expandPromptTemplates?: boolean; source?: string; images?: readonly ImageContent[] },
+  ): Promise<void> {
     let failure: Error | undefined;
     try {
       await this.session.prompt(text, {
         expandPromptTemplates: options?.expandPromptTemplates,
         source: options?.source === "extension" ? "extension" : "interactive",
+        ...(options?.images && options.images.length > 0 ? { images: [...options.images] } : {}),
       });
       await this.session.waitForIdle();
     } catch (error) {
@@ -58,12 +62,12 @@ export class AgentPiCodingAgentSession implements AgentPiSession {
     throwIfAssistantFailed(lastAssistantMessage(this.session.messages));
   }
 
-  steer(text: string): Promise<void> {
-    return this.session.steer(text);
+  steer(text: string, images?: readonly ImageContent[]): Promise<void> {
+    return this.session.steer(text, images ? [...images] : undefined);
   }
 
-  followUp(text: string): Promise<void> {
-    return this.session.followUp(text);
+  followUp(text: string, images?: readonly ImageContent[]): Promise<void> {
+    return this.session.followUp(text, images ? [...images] : undefined);
   }
 
   async requestFinalAnswer(instruction: string): Promise<boolean> {

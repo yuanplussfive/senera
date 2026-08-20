@@ -103,7 +103,7 @@ npm ci
 npm run dev
 ```
 
-`nano` 只保留开发服务器、前端、核心源码、MCP packages、Skills 和对应依赖，不包含 Compose 部署、Electron、安装包、测试、覆盖率和发布工具。它在 `main` 完整验证通过后自动重建，不接收直接提交或 Pull Request。Nano 与主发行版使用同一 Docker Worker；本机需要已启动 Linux containers 模式的 Docker Desktop / Docker Engine，首次运行按配置拉取并校验版本化沙箱镜像。
+`nano` 只保留开发服务器、前端、核心源码、MCP packages、Skills 和对应依赖，不包含 Compose 部署、Electron、安装包、测试、覆盖率和发布工具。它在 `main` 完整验证通过后自动重建，不接收直接提交或 Pull Request。Nano 和桌面端一样使用受治理的本机执行；只有 Compose 镜像部署会启用独立的 Docker Worker 沙箱。
 
 ### Docker
 
@@ -135,12 +135,19 @@ docker compose up -d --pull always
 
 `docker compose pull` 使用标准 Registry 协议分别获取应用镜像和版本化沙箱运行时，支持分层缓存、断点续传和平台校验；Worker 只使用 Compose 已准备好的镜像，缺失时明确失败，不会导入或猜测镜像身份。正式发布的应用与沙箱镜像都附带 SBOM，发布验证和生产部署使用 `name@sha256:...` 引用。gVisor 与受限 Docker Engine provider 共用只读根文件系统、非 root 用户、能力全移除、`no-new-privileges`、资源限制和统一网络策略。默认允许正常联网，只有工具显式声明 `Network: Deny` 时才断网。完整前提见 [部署与运维](docs/Operations.md#docker-启动)。
 
+### 更新
+
+桌面端的“设置 → 关于”支持检查更新、下载更新和重启安装。安装包使用 `electron-updater` 的 `latest.yml` 与 blockmap，已有文件会走差分下载；更新下载完成后由用户确认重启，不会在后台静默替换正在运行的程序。发布流水线会同时发布安装包、blockmap、`latest.yml` 和 `senera-update.json`，缺少任一产物会在发布前失败。
+
+桌面端首次安装时会让用户选择或新建工作区，例如 `E:\SeneraWorkspace`。工作区是唯一的可写项目根：配置、会话、artifact、Skills、MCP 包、日志、升级记录和桌面运行缓存都位于其中的 `.senera/`。安装包的 `resources` 目录只保存前端、官方扩展和运行时代码，不能作为可写数据目录。系统的应用数据目录只保留一个用于启动时定位工作区的轻量 `installation.json` 指针，不承载运行数据。
+
+网页端和 Docker 端只检查版本并打开发布说明，不会让正在运行的服务自行替换程序。Docker 更新仍由部署主机执行 `docker compose pull` 和 `docker compose up -d --pull always`；需要可回退的生产部署时固定应用镜像和沙箱镜像的 digest。自建发布源可通过 `SENERA_UPDATE_MANIFEST_URL` 覆盖默认的 GitHub 更新清单地址。
+
 ### 本地开发
 
 ```bash
 npm ci
 copy senera.config.example.json senera.config.json
-npm run sandbox.prepare
 npm run dev
 ```
 
@@ -150,7 +157,7 @@ macOS / Linux 创建配置文件：
 cp senera.config.example.json senera.config.json
 ```
 
-然后编辑 `senera.config.json`，填好模型服务的 `BaseUrl`、`ApiKey` 和 `Model`。首次读取后，`ApiKey` 和敏感请求头会以 AES-256-GCM 密文写回 JSON/SQLite；未设置 `SENERA_CONFIG_SECRET_KEY` 时，本地密钥保存在工作区 `.senera/data/config/config-secrets.key`。不要提交或丢失这个文件，生产环境建议改用独立注入的环境密钥。运行期间通过设置界面提交的配置由配置服务直接生效，并同步写回 JSON 镜像，不会触发开发服务器重启；直接编辑磁盘配置后需要显式重启开发服务。`sandbox.prepare` 使用 `Dockerfile.sandbox` 构建并逐项探测本地版本化镜像；Shell 工具链和 Linux PTY Sidecar 都由该镜像提供，不需要宿主侧运行时副本。后续启动按 `SandboxRuntime.Docker.PullPolicy` 复用或更新镜像。启动后打开 `http://127.0.0.1:5173`。
+然后编辑 `senera.config.json`，填好模型服务的 `BaseUrl`、`ApiKey` 和 `Model`。首次读取后，`ApiKey` 和敏感请求头会以 AES-256-GCM 密文写回 JSON/SQLite；未设置 `SENERA_CONFIG_SECRET_KEY` 时，本地密钥保存在工作区 `.senera/data/config/config-secrets.key`。不要提交或丢失这个文件，生产环境建议改用独立注入的环境密钥。运行期间通过设置界面提交的配置由配置服务直接生效，并同步写回 JSON 镜像，不会触发开发服务器重启；直接编辑磁盘配置后需要显式重启开发服务。本地工具使用受治理的宿主机 Node/进程边界，不要求安装或启动 Docker。启动后打开 `http://127.0.0.1:5173`。
 
 仓库使用 npm workspaces，只需要在根目录执行一次 `npm ci`。依赖版本由根目录 `package-lock.json` 锁定；只有主动增删依赖时才使用 `npm install <package>`，并同时提交 `package.json` 和 `package-lock.json`。
 
@@ -233,6 +240,7 @@ senera/
 ├─ .senera/mcp/             工作区标准 MCP packages
 ├─ .senera/context/PROJECT.md  注入 Pi system prompt 的受控项目上下文（每轮检测并热重载）
 ├─ .senera/data/            按 config、sessions、memory、tool-search 分流的运行时数据
+├─ .senera/desktop/         桌面日志、升级记录和本机运行缓存
 ├─ Packages/                内部运行时包
 ├─ baml_src/                BAML 定义
 ├─ Scripts/                 维护脚本

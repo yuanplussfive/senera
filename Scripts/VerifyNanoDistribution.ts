@@ -137,8 +137,6 @@ function verifyGeneratedFiles(outputRoot: string): void {
   assert.deepEqual(forbidden, [], `Nano generated forbidden files: ${forbidden.join(", ")}`);
   for (const required of [
     "Apps/DevServer.ts",
-    "Apps/SandboxWorker.ts",
-    "Apps/SandboxWorkerProcess.ts",
     "Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntime.ts",
     "Source/AgentSystem/Sandbox/Worker/AgentSandboxWorkerServer.ts",
     "Source/AgentSystem/Sandbox/Distribution/contract.json",
@@ -147,9 +145,9 @@ function verifyGeneratedFiles(outputRoot: string): void {
     assert.ok(files.includes(required), `Nano generated distribution is missing ${required}.`);
   }
   const devServer = fs.readFileSync(path.join(outputRoot, "Apps", "DevServer.ts"), "utf8");
-  assert.ok(devServer.includes("startSeneraSandboxWorkerProcess"));
-  assert.ok(devServer.includes("sandboxRuntimeAvailability: sandbox.availability"));
-  assert.ok(devServer.includes("dockerEngineWorker: sandbox.client"));
+  assert.ok(devServer.includes("SeneraServerDeployments.Local"));
+  assert.ok(devServer.includes("deployment: SeneraServerDeployments.Local"));
+  assert.ok(!devServer.includes("startSeneraSandboxWorkerProcess"));
 }
 
 function verifyRelativeImportClosure(outputRoot: string): void {

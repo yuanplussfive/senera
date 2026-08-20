@@ -5,14 +5,14 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "uploadUri": {
+      "resourceUri": {
         "type": "string",
-        "minLength": 1,
-        "description": "Exact senera-upload URI supplied by the runtime."
+        "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
+        "description": "Exact Senera resource URI supplied by the runtime."
       },
       "mode": { "default": "auto", "type": "string", "enum": ["auto", "probe", "extract"] }
     },
-    "required": ["uploadUri"],
+    "required": ["resourceUri"],
     "additionalProperties": false
   },
   "outputSchema": {
@@ -22,7 +22,7 @@
       "document": {
         "type": "object",
         "properties": {
-          "uploadUri": { "type": "string" },
+          "resourceUri": { "type": "string", "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$" },
           "name": { "type": "string" },
           "mime": { "type": "string" },
           "size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
@@ -94,7 +94,7 @@
             "additionalProperties": false
           }
         },
-        "required": ["uploadUri", "name", "mime", "size", "sha256", "status", "probe"],
+        "required": ["resourceUri", "name", "mime", "size", "sha256", "status", "probe"],
         "additionalProperties": false
       }
     },

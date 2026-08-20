@@ -4,7 +4,7 @@ export interface AgentDocumentProbeInput {
   declaredMime?: string;
   size: number;
   sha256?: string;
-  uploadUri?: string;
+  resourceUri?: string;
 }
 
 export interface AgentDocumentProbeSignal {
@@ -30,7 +30,7 @@ export interface AgentDocumentProbeResult {
     name: string;
     size: number;
     sha256?: string;
-    uploadUri?: string;
+    resourceUri?: string;
   };
 }
 

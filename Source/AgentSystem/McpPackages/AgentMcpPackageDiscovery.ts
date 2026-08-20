@@ -41,6 +41,7 @@ export interface AgentUnavailableMcpServer {
 export interface AgentMcpPackageDiscoveryResult {
   readonly servers: readonly AgentDiscoveredMcpServer[];
   readonly unavailableServers: readonly AgentUnavailableMcpServer[];
+  readonly failures: readonly AgentMcpPackageDiscoveryFailure[];
 }
 
 type AgentMcpPackageDiscoveryOutcome =
@@ -56,9 +57,12 @@ export interface AgentMcpPackageDiscoveryOptions {
 
 export class AgentMcpPackageDiscoveryError extends AgentBaseError {
   constructor(readonly failures: readonly AgentMcpPackageDiscoveryFailure[]) {
-    super(
-      `MCP discovery failed for ${failures.map((failure) => `${failure.packageName}/${failure.serverName}`).join(", ")}.`,
-    );
+    super(formatDiscoveryFailureMessage(failures), {
+      cause: new AggregateError(
+        failures.map((failure) => failure.error),
+        "MCP package discovery failed.",
+      ),
+    });
   }
 }
 
@@ -78,7 +82,6 @@ export class AgentMcpPackageDiscovery {
         ? [outcome.failure]
         : [],
     );
-    if (failures.length > 0) throw new AgentMcpPackageDiscoveryError(failures);
     return {
       servers: outcomes.flatMap((outcome) => (outcome.status === "fulfilled" ? [outcome.server] : [])),
       unavailableServers: outcomes.flatMap((outcome) => {
@@ -94,6 +97,7 @@ export class AgentMcpPackageDiscovery {
           },
         ];
       }),
+      failures,
     };
   }
 
@@ -117,7 +121,12 @@ export class AgentMcpPackageDiscovery {
   ): Promise<AgentDiscoveredMcpServer> {
     const execution = resolveToolExecutionConfig(this.config);
     const policy = resolveAgentMcpPackageExecutionPolicy(package_, server, this.executionEnv);
-    const endpoint = createAgentMcpPackageEndpoint(package_, server, this.options.inputs);
+    const endpoint = createAgentMcpPackageEndpoint(
+      package_,
+      server,
+      this.options.inputs,
+      this.executionEnv.workspaceRoot,
+    );
     const connection = {
       server: endpoint,
       requestTimeoutMs: execution.TimeoutMs,
@@ -141,6 +150,17 @@ export class AgentMcpPackageDiscovery {
     validateAgentMcpToolDeclarations(declarations, package_, server);
     return { package_, server, declarations, execution: policy, endpoint };
   }
+}
+
+function formatDiscoveryFailureMessage(failures: readonly AgentMcpPackageDiscoveryFailure[]): string {
+  const details = failures
+    .map((failure) => `${failure.packageName}/${failure.serverName}: ${failureMessage(failure.error)}`)
+    .join("; ");
+  return `MCP discovery failed for ${failures.map((failure) => `${failure.packageName}/${failure.serverName}`).join(", ")}.${details ? ` ${details}` : ""}`;
+}
+
+function failureMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function validateAgentMcpToolDeclarations(

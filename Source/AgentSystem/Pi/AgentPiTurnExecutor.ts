@@ -25,6 +25,7 @@ import { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 import { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
 import type { AgentPiTurnRequest, AgentPiTurnResult } from "./AgentPiTurnTypes.js";
 import { AgentPiTurnState } from "./AgentPiTurnState.js";
+import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 
 type AgentPiTurnRuntimeService = Pick<AgentPiRuntimeService, "model" | "leaseTurn">;
 
@@ -40,6 +41,7 @@ export interface AgentPiTurnRuntimePort {
     estimate(text: string): { tokenCount: number };
   };
   piDiagnostics?: AgentPiDiagnosticSink;
+  uploadStore?: Pick<AgentUploadStore, "resolve">;
 }
 
 export interface AgentPiTurnExecutorOptions {
@@ -78,11 +80,14 @@ export class AgentPiTurnExecutor {
       onEvent,
     });
     const projected = await activities.track(AgentRunActivities.PreparingContext, () =>
-      this.conversation.project({
+      this.conversation.projectWithImages({
         requestId: command.requestId,
         userInput: command.input,
         conversationEntries: command.conversationEntries,
         model,
+        currentAttachments: command.attachments,
+        uploadStore: this.options.runtime.uploadStore,
+        signal,
       }),
     );
     const usageLedger = activeAgentModelUsageLedger() ?? new AgentModelUsageLedger();
@@ -137,7 +142,7 @@ export class AgentPiTurnExecutor {
   private async runWithContext(
     command: AgentPiTurnRequest,
     collector: AgentPiRunCollector,
-    projected: ReturnType<AgentPiConversationProjector["project"]>,
+    projected: Awaited<ReturnType<AgentPiConversationProjector["projectWithImages"]>>,
     turnState: AgentPiTurnState,
     usageLedger: AgentModelUsageLedger,
     toolExposure: AgentToolExposureState,
@@ -233,6 +238,7 @@ export class AgentPiTurnExecutor {
             activeSession.prompt(projected.input, {
               expandPromptTemplates: false,
               source: "extension",
+              ...(projected.images.length > 0 ? { images: projected.images } : {}),
             }),
         }),
       );

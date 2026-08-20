@@ -4,11 +4,11 @@ import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilit
 export function requireSystemToolUpload(
   context: AgentHostToolContext,
   binding: string,
-  expectedUploadUri: string,
+  expectedResourceUri: string,
 ): AgentResolvedUploadResource {
   const upload = AgentResolvedUploadResourceSchema.parse(context.resources?.[binding]);
-  if (upload.uploadUri !== expectedUploadUri) {
-    throw new Error(`Resolved upload ${binding} does not match ${expectedUploadUri}.`);
+  if (upload.resourceUri !== expectedResourceUri) {
+    throw new Error(`Resolved resource ${binding} does not match ${expectedResourceUri}.`);
   }
   return upload;
 }

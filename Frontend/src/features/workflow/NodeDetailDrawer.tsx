@@ -13,6 +13,7 @@ import { DataView } from "./DataView";
 import { ChildRunOverview } from "./ChildRunOverview";
 import { readWorkflowStepDurationMs } from "./workflowPresentationProjection";
 import { ToolStepInspector } from "./ToolStepInspector";
+import { readToolResultValue } from "./toolResultProjection";
 
 export interface NodeDetailDrawerProps {
   step: TimelineStep | null;
@@ -273,6 +274,7 @@ function ToolResultSummary({
 function TechnicalDetails({ step }: { step: TimelineStep }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const contentId = useId();
+  const result = readToolResultValue(step);
 
   return (
     <section className="border-t border-line-subtle pt-2" data-workflow-technical-details>
@@ -292,10 +294,10 @@ function TechnicalDetails({ step }: { step: TimelineStep }): JSX.Element {
       {expanded ? (
         <div id={contentId} className="mt-3 flex flex-col gap-5 border-l border-line-subtle pl-3">
           {step.toolPresentation ? <ToolResultTechnicalDetails presentation={step.toolPresentation} /> : null}
-          {step.toolResult !== undefined ? (
-            <Section label={frontendMessage("workflow.node.section.rawToolResult")} copyValue={step.toolResult}>
+          {result !== undefined ? (
+            <Section label={frontendMessage("workflow.node.section.rawToolResult")} copyValue={result}>
               <DataCard>
-                <DataView value={step.toolResult} />
+                <DataView value={result} />
               </DataCard>
             </Section>
           ) : null}

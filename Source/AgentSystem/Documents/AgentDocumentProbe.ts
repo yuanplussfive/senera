@@ -93,7 +93,7 @@ export async function probeAgentDocument(
       name: input.name,
       size: input.size,
       sha256: input.sha256,
-      uploadUri: input.uploadUri,
+      resourceUri: input.resourceUri,
     },
   };
 }

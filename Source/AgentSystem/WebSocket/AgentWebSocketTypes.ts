@@ -17,6 +17,7 @@ import type { AgentPiDiagnosticSink } from "../PiShared/AgentPiDiagnosticsTypes.
 import type { AgentMcpManagementService } from "../McpPackages/AgentMcpManagementService.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import type { AgentInteractiveTerminalRuntime } from "../ExecutionResources/AgentInteractiveTerminalRuntime.js";
+import type { AgentRuntimeUpdateHttpApiOptions } from "../Runtime/AgentRuntimeUpdateHttpApi.js";
 
 export interface AgentWebSocketServerOptions {
   config: AgentSystemConfig;
@@ -38,6 +39,7 @@ export interface AgentWebSocketServerOptions {
   eventWriter: AgentRunEventWriter;
   mcpManagement?: AgentMcpManagementService;
   uploadStore?: AgentUploadStore;
+  runtimeUpdate?: AgentRuntimeUpdateHttpApiOptions;
 }
 
 export interface AgentWebSocketRequestContext {

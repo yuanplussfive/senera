@@ -358,8 +358,8 @@ test("dock execution view renders a vertical workflow graph with expandable comp
   expect(screen.getByText(frontendFeatureMessage("workflow.inspector.action"))).toBeVisible();
   expect(screen.getByText(frontendFeatureMessage("workflow.inspector.result"))).toBeVisible();
   expect(screen.queryByText(frontendFeatureMessage("workflow.inspector.scope"))).not.toBeInTheDocument();
-  expect(screen.getByText("Source/runtime.ts")).toBeVisible();
   expect(document.querySelector("[data-tool-inspector-section='action']")).toHaveTextContent("path");
+  expect(document.querySelector("[data-tool-inspector-section='action']")).toHaveTextContent("Source/runtime.ts");
   expect(document.querySelector("[data-tool-inspector-section='result']")).toHaveTextContent(
     "export const runtime = true;",
   );

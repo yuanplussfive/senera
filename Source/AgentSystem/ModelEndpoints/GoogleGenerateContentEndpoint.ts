@@ -8,7 +8,7 @@ import type {
 } from "./ModelEndpointTypes.js";
 import { rawPathSegment } from "./ModelHttpClient.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
-import { projectOpenAiCompatibleTextMessages } from "./OpenAiCompatibleMessageProjector.js";
+import { projectOpenAiCompatibleMessages } from "./OpenAiCompatibleMessageProjector.js";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
 import { ModelUsageNumberWireSchema, projectModelUsageNumber } from "./ModelUsageWireSchema.js";
 import { createAgentModelCompletionMetadata } from "./AgentModelCompletion.js";
@@ -93,12 +93,12 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
     if (shouldSendMaxOutputTokens(this.runtime.config)) {
       generationConfig.maxOutputTokens = this.runtime.config.MaxOutputTokens;
     }
-    const messages = projectOpenAiCompatibleTextMessages(request, {
+    const messages = projectOpenAiCompatibleMessages(request, {
       developerRole: "system",
     });
     const system = messages
       .filter((message) => message.role === "system" || message.role === "developer")
-      .map((message) => message.content)
+      .map((message) => readMessageText(message.content))
       .join("\n\n");
 
     return {
@@ -109,7 +109,7 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
         .filter((message) => message.role === "user" || message.role === "assistant")
         .map((message) => ({
           role: message.role === "assistant" ? "model" : "user",
-          parts: [{ text: message.content }],
+          parts: projectGoogleParts(message.content),
         })),
       generationConfig,
     };
@@ -125,6 +125,30 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
       ...this.runtime.config.Headers,
     };
   }
+}
+
+function projectGoogleParts(
+  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>,
+): unknown[] {
+  if (typeof content === "string") return [{ text: content }];
+  return content.map((part) => {
+    if (part.type === "text") return { text: part.text ?? "" };
+    const dataUri = part.image_url?.url ?? "";
+    const match = /^data:([^;]+);base64,(.*)$/su.exec(dataUri);
+    if (!match) return { text: "[image attachment unavailable]" };
+    return {
+      inlineData: {
+        mimeType: match[1],
+        data: match[2],
+      },
+    };
+  });
+}
+
+function readMessageText(content: string | Array<{ type: string; text?: string }>): string {
+  return typeof content === "string"
+    ? content
+    : content.flatMap((part) => (part.type === "text" ? [part.text ?? ""] : [])).join("");
 }
 
 function projectGoogleUsage(usage: z.infer<typeof GoogleUsageSchema>): AgentModelUsageValue | undefined {

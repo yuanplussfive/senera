@@ -94,6 +94,38 @@ describe("AgentActionPlannerPromptProjector", () => {
     expect(prompt.messages.at(-1)?.content).toContain("<planner_input>");
     expect(prompt.messages.at(-1)?.content).toContain("<extra_context>");
   });
+
+  test("attaches native visual inputs to the final structured planner message", async () => {
+    const prompt = await new AgentActionPlannerBamlPromptFactory().buildPrompt(
+      {
+        functionName: "LearnToolUse",
+        input: {
+          rawUserTurn: "review the attached screenshot",
+          standaloneRequest: "review the attached screenshot",
+          contextMode: "direct",
+          contextBasis: "current_turn",
+          selectedTools: [],
+          candidateSourceTerms: [],
+          toolTagCatalogByTool: [],
+          search: { query: "screenshot", plannerTags: [], candidates: [] },
+          episode: {
+            outcome: "success",
+            producedEvidence: false,
+            producedArtifact: false,
+            changedWorkspace: false,
+          },
+        },
+      },
+      {
+        attachments: [{ type: "image", mimeType: "image/png", data: "aW1hZ2U=" }],
+      },
+    );
+
+    expect(prompt.messages.at(-1)).toMatchObject({
+      role: "user",
+      attachments: [{ type: "image", mimeType: "image/png", data: "aW1hZ2U=" }],
+    });
+  });
 });
 
 function requestBody(envelope: Record<string, unknown>): Record<string, unknown> {

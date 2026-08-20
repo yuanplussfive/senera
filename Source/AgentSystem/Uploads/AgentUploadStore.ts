@@ -9,13 +9,15 @@ import type { ResolvedAgentUploadsConfig } from "../Types/AgentConfigTypes.js";
 import {
   AgentUploadFileNames,
   createAgentUploadId,
-  formatAgentUploadUri,
-  normalizeAgentUploadUri,
-  parseAgentUploadUri,
   resolveAgentUploadDir,
   resolveAgentUploadFile,
   resolveAgentUploadRoot,
 } from "./AgentUploadLocator.js";
+import {
+  createAgentResourceUri,
+  normalizeAgentResourceUri,
+  parseAgentResourceId,
+} from "../Resources/AgentResourceUri.js";
 import { detectAgentUploadMime } from "./AgentUploadMime.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
@@ -105,10 +107,10 @@ export class AgentUploadError extends AgentLocalizedError {
 
 export class AgentUploadIntegrityError extends AgentBaseError {
   constructor(
-    readonly uploadUri: string,
+    readonly resourceUri: string,
     readonly reason: "not_a_file" | "size_mismatch" | "sha256_mismatch",
   ) {
-    super(`Upload integrity verification failed for ${uploadUri}: ${reason}.`);
+    super(`Resource integrity verification failed for ${resourceUri}: ${reason}.`);
   }
 }
 
@@ -165,17 +167,17 @@ export class AgentUploadStore {
 
   async save(input: AgentUploadSaveInput): Promise<AgentUploadAttachment> {
     const config = this.config();
-    const uploadId = createAgentUploadId();
-    const uploadUri = formatAgentUploadUri(uploadId);
+    const resourceId = createAgentUploadId();
+    const resourceUri = createAgentResourceUri(resourceId);
     const uploadRoot = this.resolveRoot(config);
     const state = this.rootState(uploadRoot);
-    const uploadDir = resolveAgentUploadDir(uploadRoot, uploadId);
-    const filePath = resolveAgentUploadFile(uploadRoot, uploadId, AgentUploadFileNames.Original);
+    const uploadDir = resolveAgentUploadDir(uploadRoot, resourceId);
+    const filePath = resolveAgentUploadFile(uploadRoot, resourceId, AgentUploadFileNames.Original);
     const meter = new UploadByteMeter(config.MaxFileBytes);
     let capacityReserved = false;
 
     this.acquireUploadSlot(state, config);
-    state.activeUploadIds.add(uploadId);
+    state.activeUploadIds.add(resourceId);
 
     try {
       await this.withRootLock(state, async () => {
@@ -197,8 +199,8 @@ export class AgentUploadStore {
         declaredMime: input.declaredMime,
       });
       const manifest: AgentUploadManifest = {
-        uploadId,
-        uploadUri,
+        resourceId,
+        resourceUri,
         name: sanitizeUploadDisplayName(input.originalName),
         mime: mime.effective,
         declaredMime: mime.declared,
@@ -232,33 +234,33 @@ export class AgentUploadStore {
       }
       throw error;
     } finally {
-      state.activeUploadIds.delete(uploadId);
+      state.activeUploadIds.delete(resourceId);
       state.activeUploads = Math.max(0, state.activeUploads - 1);
     }
   }
 
-  async resolve(uploadUri: string): Promise<AgentResolvedUpload | undefined> {
-    const normalizedUri = normalizeAgentUploadUri(uploadUri);
+  async resolve(resourceUri: string): Promise<AgentResolvedUpload | undefined> {
+    const normalizedUri = normalizeAgentResourceUri(resourceUri);
     if (!normalizedUri) {
       return undefined;
     }
 
-    const uploadId = parseAgentUploadUri(normalizedUri);
-    if (!uploadId) {
+    const resourceId = parseAgentResourceId(normalizedUri);
+    if (!resourceId) {
       return undefined;
     }
 
     const uploadRoot = this.resolveRoot(this.config());
-    const uploadDir = resolveAgentUploadDir(uploadRoot, uploadId);
-    const manifestPath = resolveAgentUploadFile(uploadRoot, uploadId, AgentUploadFileNames.Manifest);
+    const uploadDir = resolveAgentUploadDir(uploadRoot, resourceId);
+    const manifestPath = resolveAgentUploadFile(uploadRoot, resourceId, AgentUploadFileNames.Manifest);
     const manifest = AgentUploadManifestSchema.parse(
       parseJsonText(await fsp.readFile(manifestPath, "utf8"), "Upload manifest"),
     );
-    if (manifest.uploadUri !== normalizedUri || manifest.uploadId !== uploadId) {
+    if (manifest.resourceUri !== normalizedUri || manifest.resourceId !== resourceId) {
       return undefined;
     }
 
-    const filePath = resolveAgentUploadFile(uploadRoot, uploadId, manifest.storage.fileName);
+    const filePath = resolveAgentUploadFile(uploadRoot, resourceId, manifest.storage.fileName);
     await verifyUploadFileIntegrity(filePath, manifest);
     return {
       manifest,
@@ -267,15 +269,15 @@ export class AgentUploadStore {
     };
   }
 
-  async delete(uploadUri: string): Promise<boolean> {
-    const uploadId = parseAgentUploadUri(normalizeAgentUploadUri(uploadUri) ?? "");
-    if (!uploadId) return false;
+  async delete(resourceUri: string): Promise<boolean> {
+    const resourceId = parseAgentResourceId(normalizeAgentResourceUri(resourceUri) ?? "");
+    if (!resourceId) return false;
 
     const config = this.config();
     const uploadRoot = this.resolveRoot(config);
     const state = this.rootState(uploadRoot);
     return this.withRootLock(state, async () => {
-      const uploadDir = resolveAgentUploadDir(uploadRoot, uploadId);
+      const uploadDir = resolveAgentUploadDir(uploadRoot, resourceId);
       const storedBytes = await directorySize(uploadDir).catch(() => 0);
       const removed = await fsp
         .rm(uploadDir, { recursive: true, force: true })
@@ -288,8 +290,8 @@ export class AgentUploadStore {
     });
   }
 
-  async deleteMany(uploadUris: readonly string[]): Promise<void> {
-    await Promise.all(uploadUris.map((uploadUri) => this.delete(uploadUri)));
+  async deleteMany(resourceUris: readonly string[]): Promise<void> {
+    await Promise.all(resourceUris.map((resourceUri) => this.delete(resourceUri)));
   }
 
   async maintain(): Promise<AgentUploadMaintenanceResult> {
@@ -376,12 +378,12 @@ export class AgentUploadStore {
 
 async function verifyUploadFileIntegrity(filePath: string, manifest: AgentUploadManifest): Promise<void> {
   const stat = await fsp.stat(filePath);
-  if (!stat.isFile()) throw new AgentUploadIntegrityError(manifest.uploadUri, "not_a_file");
-  if (stat.size !== manifest.size) throw new AgentUploadIntegrityError(manifest.uploadUri, "size_mismatch");
+  if (!stat.isFile()) throw new AgentUploadIntegrityError(manifest.resourceUri, "not_a_file");
+  if (stat.size !== manifest.size) throw new AgentUploadIntegrityError(manifest.resourceUri, "size_mismatch");
   const hash = crypto.createHash("sha256");
   for await (const chunk of fs.createReadStream(filePath)) hash.update(chunk);
   if (hash.digest("hex") !== manifest.sha256) {
-    throw new AgentUploadIntegrityError(manifest.uploadUri, "sha256_mismatch");
+    throw new AgentUploadIntegrityError(manifest.resourceUri, "sha256_mismatch");
   }
 }
 
@@ -450,7 +452,7 @@ function isFileSystemError(error: unknown, code: string): error is NodeJS.ErrnoE
 
 export function manifestToAttachment(manifest: AgentUploadManifest): AgentUploadAttachment {
   return {
-    uploadUri: manifest.uploadUri,
+    resourceUri: manifest.resourceUri,
     name: manifest.name,
     mime: manifest.mime,
     size: manifest.size,

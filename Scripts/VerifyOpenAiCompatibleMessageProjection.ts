@@ -27,10 +27,10 @@ assert.deepEqual(
   systemCompatible.map((message) => message.role),
   ["system", "user"],
 );
-assert.match(systemCompatible[0]?.content ?? "", /<system_instructions>/);
-assert.match(systemCompatible[0]?.content ?? "", /runtime system/);
-assert.match(systemCompatible[0]?.content ?? "", /<developer_instructions>/);
-assert.match(systemCompatible[0]?.content ?? "", /developer rule/);
+assert.match(readMessageText(systemCompatible[0]?.content), /<system_instructions>/);
+assert.match(readMessageText(systemCompatible[0]?.content), /runtime system/);
+assert.match(readMessageText(systemCompatible[0]?.content), /<developer_instructions>/);
+assert.match(readMessageText(systemCompatible[0]?.content), /developer rule/);
 
 const nativeDeveloper = buildOpenAiInput(request, {
   supportsDeveloperRole: true,
@@ -123,6 +123,17 @@ function readMessageRoles(value: unknown): string[] {
         return typeof role === "string" ? [role] : [];
       })
     : [];
+}
+
+function readMessageText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return "";
+  return value
+    .flatMap((part) => {
+      const record = readRecord(part);
+      return record?.type === "text" && typeof record.text === "string" ? [record.text] : [];
+    })
+    .join("");
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {

@@ -45,6 +45,20 @@ export class AgentMcpStdioStartupError extends AgentBaseError {
   }
 }
 
+export class AgentMcpStdioSpawnError extends AgentBaseError {
+  constructor(
+    readonly command: string,
+    readonly args: readonly string[],
+    readonly cwd: string,
+    cause: unknown,
+  ) {
+    const invocation = [command, ...args].join(" ");
+    super(`MCP stdio server could not start: ${invocation} (cwd=${cwd}). ${toError(cause).message}`, {
+      cause: toError(cause),
+    });
+  }
+}
+
 export class AgentMcpStdioConnectionClosedError extends AgentBaseError {
   constructor(
     readonly command: string,
@@ -166,7 +180,10 @@ export class AgentMcpStdioTransport implements Transport {
         })
         .catch((error: unknown) => {
           this.state = AgentMcpStdioTransportStates.Closed;
-          this.settleStart("reject", toError(error));
+          this.settleStart(
+            "reject",
+            new AgentMcpStdioSpawnError(this.options.command, [...(this.options.args ?? [])], this.options.cwd, error),
+          );
         });
     });
     return started.finally(() => {

@@ -3,6 +3,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test } from "vitest";
 import { NodeDetailDrawer } from "../../../Frontend/src/features/workflow/NodeDetailDrawer.tsx";
+import { DataView } from "../../../Frontend/src/features/workflow/DataView.tsx";
+import { AgentExecutionStageFeed } from "../../../Frontend/src/features/workflow/AgentExecutionFeed.tsx";
 import { deriveFeedModel } from "../../../Frontend/src/features/workflow/feedModel.ts";
 import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
 
@@ -42,6 +44,92 @@ test("tool detail uses the runtime name and keeps raw arguments and results sepa
   expect(screen.queryByText("变更")).toBeNull();
   expect(screen.queryByText("原始工具结果")).toBeNull();
   expect(screen.getAllByText("senera://artifact/weather").length).toBeGreaterThan(0);
+});
+
+test("long tool values stay compact until the full value is requested", async () => {
+  const user = userEvent.setup();
+  const longValue = "E:/workspace/" + "generated-output/".repeat(20) + "result.json";
+
+  render(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(DataView, { value: { path: longValue } }),
+    ),
+  );
+
+  expect(screen.queryByText(longValue)).toBeNull();
+  const preview = screen.getByRole("button", { name: "查看完整内容" });
+  expect(preview).toHaveAttribute("data-data-value-preview");
+  expect(preview.textContent).toContain("…");
+  expect(document.querySelector("[data-data-value-full]")).toBeNull();
+
+  await user.click(preview);
+
+  expect(document.querySelector("[data-data-value-full]")).toBeInTheDocument();
+  expect(screen.getByText(longValue)).toBeVisible();
+});
+
+test("compact tool activity keeps raw results in the workflow inspector", async () => {
+  const user = userEvent.setup();
+  const step = toolStep();
+  render(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(AgentExecutionStageFeed, {
+        run: {
+          requestId: "request-tool-result",
+          revision: 1,
+          startedAt: step.startedAt,
+          endedAt: step.endedAt,
+          status: "completed",
+          input: "查询天气",
+          steps: [step],
+          streamingRaw: "",
+          xmlPreview: "",
+          visibleText: "",
+          displayText: "",
+          visibleKind: "unknown",
+          expectedOutputMode: "unknown",
+          decisionMode: "none",
+        },
+      }),
+    ),
+  );
+
+  expect(document.querySelector("[data-tool-result-preview]")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Run · WeatherTool" }));
+  expect(document.querySelector("[data-tool-batch-activity-items]")).toHaveTextContent("Run · WeatherTool");
+  expect(document.querySelector("[data-tool-inspector-section='result']")).toBeNull();
+});
+
+test("tool activity does not project presentation metadata as a raw result", async () => {
+  const step = {
+    ...toolStep(),
+    toolResult: undefined,
+    toolPresentation: {
+      type: "senera.tool_result_presentation.v1",
+      version: 1,
+      status: "success",
+      headline: "天气读取完成",
+      summary: "北京当前为晴天。",
+      facts: [],
+      evidence: [],
+      changes: [],
+    },
+  };
+
+  render(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(NodeDetailDrawer, { step, onClose: () => undefined }),
+    ),
+  );
+
+  await screen.findByText("动作");
+  expect(document.querySelector("[data-tool-inspector-section='result']")).toBeNull();
 });
 
 test("execution feed uses the runtime tool identity without a presentation-derived subtitle", () => {

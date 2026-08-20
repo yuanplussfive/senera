@@ -20,7 +20,7 @@ Legacy MCP packages may declare `execution.targets`; MCPB and Registry stdio pac
 
 ## Sandbox runtime
 
-Desktop, source, Nano, and Compose deployments use one Docker Worker protocol. Provider selection chooses a registered `runsc` runtime when available and otherwise uses the hardened Docker Engine default; neither path falls back to host execution. The versioned runtime image owns the POSIX toolchain and Linux Terminal Sidecar, including its native PTY dependency, so opening a terminal does not require a host-prepared guest bundle or per-call Sidecar copy.
+Desktop, source, and Nano deployments use the governed host execution boundary. Compose deployments use one Docker Worker protocol; provider selection chooses a registered `runsc` runtime when available and otherwise uses the hardened Docker Engine default. The versioned runtime image owns the POSIX toolchain and Linux Terminal Sidecar, including its native PTY dependency, so opening a terminal does not require a host-prepared guest bundle or per-call Sidecar copy.
 
 The complete workspace is mounted at the contract's guest workspace root. Read-only tools receive a read-only mount and writable tools receive a writable mount; `.git`, `.senera`, and ordinary project paths follow the same mount mode. Extra writable mounts and declared rootfs copies remain source-whitelisted by the Worker.
 

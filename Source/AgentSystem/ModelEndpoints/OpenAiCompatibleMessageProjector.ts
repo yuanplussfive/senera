@@ -1,9 +1,12 @@
-import type { AgentLanguageModelRequest } from "./AgentLanguageModel.js";
+import type { AgentLanguageModelImageAttachment, AgentLanguageModelRequest } from "./AgentLanguageModel.js";
 
-export interface OpenAiCompatibleTextMessage {
+export interface OpenAiCompatibleMessage {
   role: "system" | "developer" | "user" | "assistant";
-  content: string;
+  content: string | OpenAiCompatibleContentPart[];
 }
+
+export type OpenAiCompatibleContentPart =
+  { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 
 export interface OpenAiCompatibleMessageProjectionOptions {
   developerRole: "native" | "system";
@@ -12,31 +15,33 @@ export interface OpenAiCompatibleMessageProjectionOptions {
 interface SystemInstructionBlock {
   kind: "system" | "developer";
   content: string;
+  attachments?: readonly AgentLanguageModelImageAttachment[];
 }
 
-export function projectOpenAiCompatibleTextMessages(
+export function projectOpenAiCompatibleMessages(
   request: AgentLanguageModelRequest,
   options: OpenAiCompatibleMessageProjectionOptions,
-): OpenAiCompatibleTextMessage[] {
+): OpenAiCompatibleMessage[] {
   const instructionBlocks: SystemInstructionBlock[] = [
     {
       kind: "system",
       content: request.systemPrompt,
     },
   ];
-  const conversation: OpenAiCompatibleTextMessage[] = [];
+  const conversation: OpenAiCompatibleMessage[] = [];
 
   for (const message of request.messages) {
     if (message.role === "system" || message.role === "developer") {
       instructionBlocks.push({
         kind: message.role,
         content: message.content,
+        attachments: message.attachments,
       });
       continue;
     }
     conversation.push({
       role: message.role,
-      content: message.content,
+      content: projectOpenAiCompatibleContent(message.content, message.attachments),
     });
   }
 
@@ -46,14 +51,14 @@ export function projectOpenAiCompatibleTextMessages(
 function projectInstructionBlocks(
   blocks: readonly SystemInstructionBlock[],
   options: OpenAiCompatibleMessageProjectionOptions,
-): OpenAiCompatibleTextMessage[] {
+): OpenAiCompatibleMessage[] {
   if (options.developerRole === "native") {
     return blocks.flatMap((block) =>
       block.content.trim().length > 0
         ? [
             {
               role: block.kind,
-              content: block.content,
+              content: projectOpenAiCompatibleContent(block.content, block.attachments),
             },
           ]
         : [],
@@ -72,6 +77,27 @@ function projectInstructionBlocks(
         },
       ]
     : [];
+}
+
+export function projectOpenAiCompatibleTextMessages(
+  request: AgentLanguageModelRequest,
+  options: OpenAiCompatibleMessageProjectionOptions,
+): OpenAiCompatibleMessage[] {
+  return projectOpenAiCompatibleMessages(request, options);
+}
+
+function projectOpenAiCompatibleContent(
+  text: string,
+  attachments: readonly AgentLanguageModelImageAttachment[] | undefined,
+): string | OpenAiCompatibleContentPart[] {
+  if (!attachments?.length) return text;
+  return [
+    ...(text ? [{ type: "text" as const, text }] : []),
+    ...attachments.map((attachment) => ({
+      type: "image_url" as const,
+      image_url: { url: `data:${attachment.mimeType};base64,${attachment.data}` },
+    })),
+  ];
 }
 
 function renderSystemCompatibleInstructionBlock(block: SystemInstructionBlock): string {

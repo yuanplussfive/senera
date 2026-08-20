@@ -1,5 +1,5 @@
 {
-  "ConfigVersion": 10,
+  "ConfigVersion": 12,
   "Defaults": {
     "AgentLoop": {
       "PiTurnLeaseTimeoutSeconds": 120,

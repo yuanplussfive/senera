@@ -223,6 +223,67 @@ describe("model endpoint protocol adapters", () => {
     protocol.assertJsonRequest(request as RecordedJsonRequest);
   });
 
+  test.each([
+    {
+      name: "OpenAI Chat Completions",
+      endpoint: "ChatCompletions" as const,
+      response: { choices: [{ message: { content: "ok" } }] },
+      readVisualContent: (payload: Record<string, unknown>) => readLastRecord(payload.messages).content,
+      expected: [
+        { type: "text", text: "Describe the attachment." },
+        { type: "image_url", image_url: { url: "data:image/png;base64,aW1hZ2U=" } },
+      ],
+    },
+    {
+      name: "OpenAI Responses",
+      endpoint: "Responses" as const,
+      response: { output_text: "ok" },
+      readVisualContent: (payload: Record<string, unknown>) => readLastRecord(payload.input).content,
+      expected: [
+        { type: "input_text", text: "Describe the attachment." },
+        { type: "input_image", image_url: "data:image/png;base64,aW1hZ2U=" },
+      ],
+    },
+    {
+      name: "Claude Messages",
+      endpoint: "ClaudeMessages" as const,
+      response: { content: [{ type: "text", text: "ok" }] },
+      readVisualContent: (payload: Record<string, unknown>) => readLastRecord(payload.messages).content,
+      expected: [
+        { type: "text", text: "Describe the attachment." },
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "aW1hZ2U=" } },
+      ],
+    },
+    {
+      name: "Google Generate Content",
+      endpoint: "GoogleGenerateContent" as const,
+      response: { candidates: [{ content: { parts: [{ text: "ok" }] } }] },
+      readVisualContent: (payload: Record<string, unknown>) => readLastRecord(payload.contents).parts,
+      expected: [{ text: "Describe the attachment." }, { inlineData: { mimeType: "image/png", data: "aW1hZ2U=" } }],
+    },
+  ])("projects native image input for $name", async (protocol) => {
+    const http = new RecordingModelHttp({ json: protocol.response });
+    const endpoint = createModelEndpoint(
+      protocol.endpoint,
+      createModelEndpointRuntime(http, { Endpoint: protocol.endpoint }),
+    );
+
+    await endpoint.complete(
+      createModelRequest({
+        messages: [
+          {
+            role: "user",
+            content: "Describe the attachment.",
+            attachments: [{ type: "image", mimeType: "image/png", data: "aW1hZ2U=" }],
+          },
+        ],
+      }),
+    );
+
+    const payload = readRecord(http.jsonRequests[0]?.payload);
+    expect(protocol.readVisualContent(payload)).toEqual(protocol.expected);
+  });
+
   test.each(endpointProtocols)("projects $name stream setup and event deltas", async (protocol) => {
     const http = new RecordingModelHttp({ stream: createStaticModelStream(["unused"]) });
     const endpoint = createModelEndpoint(
@@ -375,3 +436,8 @@ describe("model endpoint protocol adapters", () => {
     });
   });
 });
+
+function readLastRecord(value: unknown): Record<string, unknown> {
+  if (!Array.isArray(value)) throw new Error("Expected a request message array.");
+  return readRecord(value.at(-1));
+}

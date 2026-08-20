@@ -12,7 +12,7 @@ import type {
   AgentPiSessionExportResult,
   AgentPiSessionRuntimeStatus,
 } from "./AgentPiSessionManagement.js";
-import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { ImageContent, ModelThinkingLevel } from "@earendil-works/pi-ai";
 
 export type AgentPiSessionEventListener = (event: AgentSessionEvent) => void | Promise<void>;
 
@@ -32,9 +32,12 @@ export interface AgentPiSession {
   readonly state: AgentState;
   readonly model: AgentState["model"];
   setHistory(messages: readonly AgentMessage[]): Promise<void> | void;
-  prompt(text: string, options?: { expandPromptTemplates?: boolean; source?: string }): Promise<void>;
-  steer(text: string): Promise<void>;
-  followUp(text: string): Promise<void>;
+  prompt(
+    text: string,
+    options?: { expandPromptTemplates?: boolean; source?: string; images?: readonly ImageContent[] },
+  ): Promise<void>;
+  steer(text: string, images?: readonly ImageContent[]): Promise<void>;
+  followUp(text: string, images?: readonly ImageContent[]): Promise<void>;
   requestFinalAnswer(instruction: string): Promise<boolean>;
   markTurnBoundary(requestId: string): Promise<string>;
   subscribe(listener: AgentPiSessionEventListener): () => void;

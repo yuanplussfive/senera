@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import {
-  buildUploadContentUrl,
-  buildUploadUrl,
+  buildResourceContentUrl,
+  buildResourceUploadUrl,
   DEFAULT_UPLOAD_TIMEOUT_MS,
   uploadFile,
 } from "../../../Frontend/src/api/uploadClient.ts";
@@ -16,16 +16,16 @@ test("upload client projects secure WebSocket URLs and reports upload progress",
   vi.stubGlobal("XMLHttpRequest", TestXmlHttpRequest);
   const progress = vi.fn();
   const file = new File(["hello"], "hello.txt", { type: "text/plain" });
-  const uploadUrl = buildUploadUrl("https://agent.example.test");
+  const uploadUrl = buildResourceUploadUrl("https://agent.example.test");
 
   const resultPromise = uploadFile(uploadUrl, file, { onProgress: progress });
   const request = TestXmlHttpRequest.instances[0];
   request.reportProgress(2, 5);
   request.respond(201, {
     ok: true,
-    uploads: [
+    resources: [
       {
-        uploadUri: "senera://upload/hello",
+        resourceUri: "senera://resource/hello",
         name: "hello.txt",
         mime: "text/plain",
         size: 5,
@@ -35,11 +35,11 @@ test("upload client projects secure WebSocket URLs and reports upload progress",
   });
 
   await expect(resultPromise).resolves.toMatchObject({
-    uploadUri: "senera://upload/hello",
+    resourceUri: "senera://resource/hello",
     name: "hello.txt",
     size: 5,
   });
-  expect(uploadUrl).toBe("https://agent.example.test/api/uploads");
+  expect(uploadUrl).toBe("https://agent.example.test/api/resources");
   expect(request.method).toBe("POST");
   expect(request.url).toBe(uploadUrl);
   expect(request.withCredentials).toBe(true);
@@ -51,26 +51,28 @@ test("upload client projects secure WebSocket URLs and reports upload progress",
   ]);
 });
 
-test("upload client builds credential-free content URLs from opaque upload references", () => {
+test("resource client builds credential-free content URLs from opaque resource references", () => {
   expect(
-    buildUploadContentUrl(
-      "https://user:password@agent.example.test/api/uploads?token=secret#fragment",
-      "senera://upload/upl_fixture",
+    buildResourceContentUrl(
+      "https://user:password@agent.example.test/api/resources?token=secret#fragment",
+      "senera://resource/upl_fixture",
     ),
-  ).toBe("https://agent.example.test/api/uploads/upl_fixture/content");
-  expect(buildUploadContentUrl("wss://agent.example.test/socket", "senera://upload/a%20b")).toBe(
-    "https://agent.example.test/api/uploads/a%20b/content",
+  ).toBe("https://agent.example.test/api/resources/upl_fixture");
+  expect(buildResourceContentUrl("wss://agent.example.test/socket", "senera://resource/asset_b")).toBe(
+    "https://agent.example.test/api/resources/asset_b",
   );
 });
 
 test.each([
   "https://example.test/file",
+  "senera://upload/upl_fixture",
+  "senera://artifact-asset/image-1",
   "senera://other/upl_fixture",
-  "senera://upload/a/b",
-  "senera://upload/..%2Foutside",
-  "senera://upload/upl_fixture?token=secret",
-])("upload client rejects invalid upload reference %s", (uploadUri) => {
-  expect(buildUploadContentUrl("https://agent.example.test/api/uploads", uploadUri)).toBeUndefined();
+  "senera://resource/a/b",
+  "senera://resource/..%2Foutside",
+  "senera://resource/upl_fixture?token=secret",
+])("upload client rejects invalid upload reference %s", (resourceUri) => {
+  expect(buildResourceContentUrl("https://agent.example.test/api/resources", resourceUri)).toBeUndefined();
 });
 
 test.each([
@@ -88,7 +90,7 @@ test.each([
   },
 ])("upload client rejects $event transport failures", async ({ event, messageKey }) => {
   vi.stubGlobal("XMLHttpRequest", TestXmlHttpRequest);
-  const promise = uploadFile("http://agent.test/api/uploads", new File(["x"], "x.txt"));
+  const promise = uploadFile("http://agent.test/api/resources", new File(["x"], "x.txt"));
 
   TestXmlHttpRequest.instances[0].emit(event);
 
@@ -99,41 +101,41 @@ test("upload client rejects malformed, failed, and empty success responses", asy
   vi.stubGlobal("XMLHttpRequest", TestXmlHttpRequest);
   const file = new File(["x"], "x.txt");
 
-  const malformed = uploadFile("http://agent.test/api/uploads", file);
+  const malformed = uploadFile("http://agent.test/api/resources", file);
   TestXmlHttpRequest.instances.at(-1).respondRaw(502, "not-json");
   await expect(malformed).rejects.toThrow(frontendMessage("upload.invalidJsonResponse"));
 
-  const failed = uploadFile("http://agent.test/api/uploads", file);
+  const failed = uploadFile("http://agent.test/api/resources", file);
   TestXmlHttpRequest.instances.at(-1).respond(400, {
     ok: false,
     error: { message: "file too large" },
   });
   await expect(failed).rejects.toThrow("file too large");
 
-  const empty = uploadFile("http://agent.test/api/uploads", file);
-  TestXmlHttpRequest.instances.at(-1).respond(200, { ok: true, uploads: [] });
+  const empty = uploadFile("http://agent.test/api/resources", file);
+  TestXmlHttpRequest.instances.at(-1).respond(200, { ok: true, resources: [] });
   await expect(empty).rejects.toThrow(frontendMessage("upload.emptyResponse"));
 
-  const missingUploads = uploadFile("http://agent.test/api/uploads", file);
+  const missingUploads = uploadFile("http://agent.test/api/resources", file);
   TestXmlHttpRequest.instances.at(-1).respond(200, { ok: true });
   await expect(missingUploads).rejects.toThrow(frontendMessage("upload.failed"));
 
-  const invalidUpload = uploadFile("http://agent.test/api/uploads", file);
-  TestXmlHttpRequest.instances.at(-1).respond(200, { ok: true, uploads: [{}] });
+  const invalidUpload = uploadFile("http://agent.test/api/resources", file);
+  TestXmlHttpRequest.instances.at(-1).respond(200, { ok: true, resources: [{}] });
   await expect(invalidUpload).rejects.toThrow(frontendMessage("upload.emptyResponse"));
 });
 
 test("forwards caller-provided CSRF headers without exposing cookie values", async () => {
   vi.stubGlobal("XMLHttpRequest", TestXmlHttpRequest);
-  const promise = uploadFile("http://agent.test/api/uploads", new File(["x"], "x.txt"), {
+  const promise = uploadFile("http://agent.test/api/resources", new File(["x"], "x.txt"), {
     headers: { "X-Senera-Csrf": "csrf-token" },
   });
   const request = TestXmlHttpRequest.instances.at(-1);
   request.respond(200, {
     ok: true,
-    uploads: [
+    resources: [
       {
-        uploadUri: "senera://upload/x",
+        resourceUri: "senera://resource/x",
         name: "x.txt",
         mime: "text/plain",
         size: 1,

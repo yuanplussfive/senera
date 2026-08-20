@@ -104,6 +104,8 @@ export interface ToolCallResultDetailData {
   toolName: string;
   callId: string;
   batchId?: string;
+  presentation?: ToolResultPresentation;
+  /** Raw tool return value; lifecycle and presentation metadata are separate. */
   value: unknown;
   origin?: ToolEventOrigin;
 }

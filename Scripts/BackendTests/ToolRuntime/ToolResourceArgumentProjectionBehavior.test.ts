@@ -132,14 +132,14 @@ describe("tool resource argument projection", () => {
   it("projects a host-authorized upload through its registered capability", async () => {
     const registry = new AgentToolResourceCapabilityRegistry().register(
       new AgentToolUploadReadResourceCapability({
-        resolve: async (uploadUri) =>
-          uploadUri === "senera://upload/upl_test"
+        resolve: async (resourceUri) =>
+          resourceUri === "senera://resource/upl_test"
             ? {
                 filePath: "C:/isolated/uploads/upl_test/original",
                 uploadDir: "C:/isolated/uploads/upl_test",
                 manifest: {
-                  uploadId: "upl_test",
-                  uploadUri,
+                  resourceId: "upl_test",
+                  resourceUri,
                   name: "diagram.png",
                   mime: "image/png",
                   size: 42,
@@ -152,7 +152,7 @@ describe("tool resource argument projection", () => {
       }),
     );
     const args = {
-      uploadUri: "senera://upload/upl_test",
+      resourceUri: "senera://resource/upl_test",
       task: "inspect",
       resources: { image: { filePath: "untrusted-model-value" } },
     };
@@ -162,7 +162,7 @@ describe("tool resource argument projection", () => {
       [
         {
           Capability: "senera.upload.read",
-          Pointer: "/uploadUri",
+          Pointer: "/resourceUri",
           Binding: "image",
         },
       ],
@@ -170,16 +170,16 @@ describe("tool resource argument projection", () => {
     );
 
     expect(args).toEqual({
-      uploadUri: "senera://upload/upl_test",
+      resourceUri: "senera://resource/upl_test",
       task: "inspect",
       resources: { image: { filePath: "untrusted-model-value" } },
     });
     expect(projected).toEqual({
-      uploadUri: "senera://upload/upl_test",
+      resourceUri: "senera://resource/upl_test",
       task: "inspect",
       resources: {
         image: {
-          uploadUri: "senera://upload/upl_test",
+          resourceUri: "senera://resource/upl_test",
           filePath: "C:/isolated/uploads/upl_test/original",
           name: "diagram.png",
           mime: "image/png",

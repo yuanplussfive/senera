@@ -113,13 +113,13 @@ async function createHarness(): Promise<{ root: string; baseUrl: string }> {
 }
 
 function resourceUrl(baseUrl: string, resourcePath: string): string {
-  const url = new URL("/api/workspace-resources", baseUrl);
+  const url = new URL("/api/resources", baseUrl);
   url.searchParams.set("path", resourcePath);
   return url.toString();
 }
 
 function contentUrl(baseUrl: string, resourcePath: string): string {
-  const url = new URL("/api/workspace-resources/content", baseUrl);
+  const url = new URL("/api/resources/content", baseUrl);
   url.searchParams.set("path", resourcePath);
   return url.toString();
 }

@@ -1,4 +1,6 @@
 import { createRequestId } from "../Core/AgentIds.js";
+import { AgentCancellationError } from "../Core/AgentCancellation.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecutionArtifactRecorder.js";
 import type { AskUserControlResult, SuspendChildRunControlResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
@@ -10,15 +12,19 @@ import { AgentPiToolResultStatuses, type AgentPiToolExecutionInput, type AgentPi
 import type { AgentToolExecutionScheduler } from "../ToolRuntime/AgentToolExecutionScheduler.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import {
+  AgentToolFailureSources,
   AgentToolAssessmentStatuses,
   AgentToolExecutionStatuses,
   AgentToolOutputAvailabilities,
+  createAgentToolFailureOutcome,
   readAgentToolFailure,
   type AgentToolExecutionOutcome,
 } from "../ToolRuntime/AgentToolResultOutcome.js";
 import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolObservationProjectionTypes.js";
 import type { AgentToolTokenReservation } from "../Text/AgentTurnTokenBudget.js";
 import { resolveAgentToolRuntimeCapabilities } from "../ToolRuntime/AgentToolRuntimeCapabilities.js";
+import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 
 export interface AgentPiToolExecutionBridgeOptions {
   model: string;
@@ -38,10 +44,15 @@ export class AgentPiToolExecutionBridge {
     const operation = () => this.executeWithLease(input);
     const turnState = input.context.turnState;
     if (!turnState) throw new Error("Pi tool execution requires an active turn state.");
-    return this.options.executionScheduler &&
+    try {
+      return await (this.options.executionScheduler &&
       resolveAgentToolRuntimeCapabilities(input.tool).scheduling !== "self-managed"
-      ? this.options.executionScheduler.run(turnState, input.tool, input.params, operation, input.signal)
-      : operation();
+        ? this.options.executionScheduler.run(turnState, input.tool, input.params, operation, input.signal)
+        : operation());
+    } catch (error) {
+      if (isCancelledToolExecution(error, input.signal)) throw error;
+      return this.projectUncaughtFailure(input, error);
+    }
   }
 
   private async executeWithLease(input: AgentPiToolExecutionInput): Promise<AgentPiToolResult> {
@@ -109,9 +120,76 @@ export class AgentPiToolExecutionBridge {
       turnState.registerExecutedToolResult(input.toolCallId, result);
       return this.projectToolResult(input, result, batchId, projection, reservation);
     } catch (error) {
-      reservation.release();
+      if (isCancelledToolExecution(error, input.signal)) {
+        reservation.release();
+        throw error;
+      }
+      try {
+        return this.projectFailureResult(input, error, batchId, projection, reservation);
+      } catch {
+        reservation.release();
+        throw error;
+      }
+    }
+  }
+
+  private projectUncaughtFailure(input: AgentPiToolExecutionInput, error: unknown): AgentPiToolResult {
+    const turnState = input.context.turnState;
+    if (!turnState) throw error;
+    const projection = input.tool.observationProjection ?? StandardAgentToolObservationProjection;
+    const batchId = turnState.toolBatchId(input.toolCallId);
+    if (!batchId) throw error;
+    let reservation: AgentToolTokenReservation | undefined;
+    try {
+      reservation = turnState.claimToolObservationBudget(input.toolCallId, projection.maxTokens);
+      return this.projectFailureResult(input, error, batchId, projection, reservation);
+    } catch {
+      reservation?.release();
       throw error;
     }
+  }
+
+  private projectFailureResult(
+    input: AgentPiToolExecutionInput,
+    error: unknown,
+    batchId: string,
+    projection: AgentToolObservationProjectionManifest,
+    reservation: AgentToolTokenReservation,
+  ): AgentPiToolResult {
+    const turnState = input.context.turnState;
+    if (!turnState) throw error;
+    const failure = {
+      code: AgentExecutionErrorCodes.ToolExecutionError,
+      message: errorMessage(error),
+      details: {
+        phase: AgentToolProcessErrorPhases.RuntimeExecution,
+        toolName: input.tool.name,
+      },
+    };
+    const executedBase: ExecutedToolCallResult = {
+      callId: input.toolCallId,
+      name: input.tool.name,
+      arguments: input.params,
+      process: {
+        exitCode: null,
+        signal: null,
+        stdout: "",
+        stderr: "",
+      },
+      result: { error: failure },
+      outcome: createAgentToolFailureOutcome(
+        failure,
+        input.tool.handler.kind === "McpTool" ? AgentToolFailureSources.Mcp : AgentToolFailureSources.Host,
+        AgentToolOutputAvailabilities.None,
+      ),
+      artifactPolicy: input.tool.artifactPolicy,
+    };
+    const executed: ExecutedToolCallResult = {
+      ...executedBase,
+      presentation: projectAgentToolResultPresentation(executedBase),
+    };
+    turnState.registerExecutedToolResult(input.toolCallId, executed);
+    return this.projectToolResult(input, executed, batchId, projection, reservation);
   }
 
   private projectAskUser(
@@ -283,4 +361,8 @@ function projectToolDetails(
           }
         : { ...context, status: outcome.assessment.status },
   };
+}
+
+function isCancelledToolExecution(error: unknown, signal?: AbortSignal): boolean {
+  return signal?.aborted === true || error instanceof AgentCancellationError;
 }

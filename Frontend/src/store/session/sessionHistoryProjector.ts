@@ -10,8 +10,9 @@ import {
 import { mergeHistoryMessages, projectEntryToMessage, rebuildRunFromHistory } from "./historyRunProjection";
 import { ensureSession, syncSessionCountsFromLoadedMessages, upsertStep } from "./sessionProjectorCore";
 import { syncRunActiveFlags, touchRun } from "./sessionRunProjection";
+import { mergeToolResultPresentation } from "./toolResultPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import type { ChatMessage, SessionRecord, StoreState } from "./types";
+import type { ChatMessage, SessionRecord, StoreState, TimelineStep } from "./types";
 
 export type SessionHistoryProjectionContext = {
   state: StoreState;
@@ -218,16 +219,66 @@ function reconcileHistoryStepRuns(session: SessionRecord, snapshots: SessionHist
       existing.recoverySource = undefined;
     }
 
-    const existingStepIds = new Set(existing.steps.map((step) => step.id));
-    for (const step of recovered.steps) {
-      if (!existingStepIds.has(step.id)) {
-        existing.steps.push(step);
+    const existingSteps = new Map(existing.steps.map((step) => [step.id, step]));
+    for (const recoveredStep of recovered.steps) {
+      const existingStep = existingSteps.get(recoveredStep.id);
+      if (!existingStep) {
+        existing.steps.push(recoveredStep);
+        existingSteps.set(recoveredStep.id, recoveredStep);
+        continue;
       }
+      enrichStepFromHistory(existingStep, recoveredStep);
     }
     touchRun(existing);
   }
   session.runs.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
 }
+
+/**
+ * Run-event replay intentionally excludes raw result-detail payloads. The
+ * bounded step trace is their durable source, so enrich an event-built step
+ * instead of replacing it and losing live output, timing, or progress.
+ */
+function enrichStepFromHistory(existing: TimelineStep, recovered: TimelineStep): void {
+  if (existing.status === "pending" || existing.status === "running") {
+    existing.status = recovered.status;
+  }
+
+  const existingFields = existing as Record<HistoryStepFallbackField, unknown>;
+  const recoveredFields = recovered as Readonly<Record<HistoryStepFallbackField, unknown>>;
+  for (const field of HistoryStepFallbackFields) {
+    const recoveredValue = recoveredFields[field];
+    if (existingFields[field] === undefined && recoveredValue !== undefined) {
+      existingFields[field] = recoveredValue;
+    }
+  }
+
+  const presentation = mergeToolResultPresentation(recovered.toolPresentation, existing.toolPresentation);
+  if (presentation) existing.toolPresentation = presentation;
+  if (existing.toolPreview === undefined && presentation?.headline) {
+    existing.toolPreview = presentation.headline;
+  }
+}
+
+const HistoryStepFallbackFields = [
+  "description",
+  "endedAt",
+  "durationMs",
+  "toolName",
+  "toolOrigin",
+  "callId",
+  "toolBatch",
+  "purpose",
+  "toolArgs",
+  "toolPreview",
+  "toolResult",
+  "toolErrorMessage",
+  "retryCode",
+  "errorMessage",
+  "decisionKind",
+] as const satisfies readonly (keyof TimelineStep)[];
+
+type HistoryStepFallbackField = (typeof HistoryStepFallbackFields)[number];
 
 function clearHistoryLoadingState(state: StoreState, sessionId: string): void {
   state.historyLoadingIds[sessionId] = false;

@@ -19,6 +19,7 @@ import {
   createAgentMcpDefaultLocalExecution,
   type AgentMcpExecution,
 } from "./AgentMcpPackageSchema.js";
+import { AgentMcpServerRuntimes } from "./AgentMcpPackageTypes.js";
 
 const SeneraExecutionMetadataKey = "ai.senera/execution";
 
@@ -59,6 +60,7 @@ export const AgentMcpBundleDescriptorAdapter: AgentMcpDescriptorAdapter = {
           inputs: userConfig,
           configuration: {
             type: "stdio",
+            ...(server.type === "node" ? { runtime: AgentMcpServerRuntimes.Node } : {}),
             command: commandExpression,
             args: argExpressions,
             cwd: runtimeExpression("packageRoot"),

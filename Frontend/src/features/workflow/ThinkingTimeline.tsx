@@ -78,7 +78,7 @@ function ThinkingPanel({
     <>
       <aside
         className={cn(
-          "flex h-full w-full shrink-0 flex-col",
+          "flex h-full min-w-0 w-full shrink-0 flex-col",
           presentation === "dock" ? "bg-transparent" : "bg-surface-raised",
         )}
         data-ui-chrome

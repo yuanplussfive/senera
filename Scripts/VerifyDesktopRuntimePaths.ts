@@ -18,14 +18,16 @@ import {
   resolveDesktopWorkspaceSelectionPath,
   writeDesktopWorkspaceSelection,
 } from "../Apps/Desktop/DesktopWorkspaceSelection.js";
+import { resolveAgentWorkspaceLayout } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 
 const workspaceRoot = process.cwd();
 const packageManifest = JSON.parse(fs.readFileSync(path.join(workspaceRoot, "package.json"), "utf8")) as {
-  build?: { nsis?: { include?: unknown } };
+  build?: { nsis?: { include?: unknown; allowToChangeInstallationDirectory?: unknown } };
 };
 const installerScriptPath = path.join(workspaceRoot, "Build", "installer.nsh");
 const installerScript = fs.readFileSync(installerScriptPath, "utf8");
 assert.equal(packageManifest.build?.nsis?.include, "Build/installer.nsh");
+assert.equal(packageManifest.build?.nsis?.allowToChangeInstallationDirectory, true);
 for (const requiredInstallerContract of [
   "!macro customPageAfterChangeDir",
   "!macro customInstall",
@@ -50,6 +52,7 @@ fs.rmSync(temporaryRoot, { recursive: true, force: true });
 fs.mkdirSync(temporaryRoot, { recursive: true });
 
 const distDesktopRoot = path.join(workspaceRoot, "Dist", "Apps", "Desktop");
+const packagedResourceRoot = path.join(workspaceRoot, "resources");
 
 assert.equal(
   resolveDesktopResourceRoot({
@@ -74,8 +77,19 @@ assert.equal(
     appPath: distDesktopRoot,
     isPackaged: true,
     launchRoot: workspaceRoot,
+    resourcesPath: packagedResourceRoot,
   }),
-  distDesktopRoot,
+  packagedResourceRoot,
+);
+
+assert.throws(
+  () =>
+    resolveDesktopResourceRoot({
+      appPath: path.join(packagedResourceRoot, "app.asar"),
+      isPackaged: true,
+      launchRoot: workspaceRoot,
+    }),
+  DesktopRuntimePathResolutionError,
 );
 
 assert.equal(
@@ -107,6 +121,23 @@ assert.equal(
 );
 
 assert.equal(resolveDesktopWorkspaceRoot({ isPackaged: true, resourceRoot: workspaceRoot }), undefined);
+
+const workspaceLayout = resolveAgentWorkspaceLayout(workspaceRoot);
+assert.equal(workspaceLayout.desktopRuntimeRoot, path.join(workspaceRoot, ".senera", "desktop"));
+
+const desktopRuntimeSource = fs.readFileSync(path.join(workspaceRoot, "Apps", "Desktop", "DesktopRuntime.ts"), "utf8");
+assert.ok(
+  !desktopRuntimeSource.includes('const desktopDataRoot = path.join(userDataRoot, "runtime")'),
+  "Desktop runtime state must not be rooted in Electron userData.",
+);
+assert.ok(
+  desktopRuntimeSource.includes("workspaceLayout.desktopRuntimeRoot"),
+  "Desktop runtime state must use the selected workspace layout.",
+);
+assert.ok(
+  desktopRuntimeSource.includes('app.setPath("userData", desktopDataRoot)'),
+  "Electron userData must follow the selected workspace runtime root.",
+);
 
 assert.throws(
   () =>

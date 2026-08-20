@@ -1,6 +1,10 @@
 import { ClientRegistry } from "@boundaryml/baml";
 import { b as baml } from "../BamlClient/baml_client/index.js";
 import type { AgentBamlModelRequest } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
+import type {
+  AgentLanguageModelImageAttachment,
+  AgentLanguageModelMessage,
+} from "../ModelEndpoints/AgentLanguageModel.js";
 import {
   type AgentMemoryConsolidationPromptInput,
   type AgentMemoryLearningPromptInput,
@@ -108,14 +112,17 @@ export type AgentActionPlannerBamlFunctionArgs =
 export class AgentActionPlannerBamlPromptFactory {
   private readonly promptRegistry = createPromptRegistry();
 
-  async buildPrompt(args: AgentActionPlannerBamlFunctionArgs): Promise<AgentBamlModelRequest> {
+  async buildPrompt(
+    args: AgentActionPlannerBamlFunctionArgs,
+    options: { attachments?: readonly AgentLanguageModelImageAttachment[] } = {},
+  ): Promise<AgentBamlModelRequest> {
     const request = await this.buildBamlRequest(args);
     const prompt = projectPromptForBamlFunction(args.functionName, request.body.json() as Record<string, unknown>);
     return {
       requestId: `action-planner:${args.functionName}`,
       step: 0,
       systemPrompt: prompt.systemPrompt,
-      messages: prompt.messages,
+      messages: attachPlannerImages(prompt.messages, options.attachments),
     };
   }
 
@@ -248,6 +255,28 @@ export class AgentActionPlannerBamlPromptFactory {
         );
     }
   }
+}
+
+function attachPlannerImages(
+  messages: readonly AgentLanguageModelMessage[],
+  attachments: readonly AgentLanguageModelImageAttachment[] | undefined,
+): AgentLanguageModelMessage[] {
+  if (!attachments?.length) return [...messages];
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== "user") continue;
+    return messages.map((candidate, candidateIndex) =>
+      candidateIndex === index
+        ? {
+            ...candidate,
+            attachments: [...(candidate.attachments ?? []), ...attachments],
+          }
+        : candidate,
+    );
+  }
+
+  return [...messages];
 }
 
 function projectPromptForBamlFunction(

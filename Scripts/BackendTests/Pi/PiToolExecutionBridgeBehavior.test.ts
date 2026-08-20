@@ -598,25 +598,6 @@ describe("Pi tool execution bridge behavior", () => {
       error: { code: AgentExecutionErrorCodes.ToolProcessExited },
     });
   });
-
-  test("rejects an impossible execution batch without a result", async () => {
-    const bridge = new AgentPiToolExecutionBridge({
-      executeToolCall: async () => ({
-        kind: "ToolResults",
-        value: [],
-      }),
-      recordToolArtifacts: async () => [],
-    });
-
-    await expect(
-      bridge.execute({
-        tool: registeredTool("EmptyTool"),
-        params: {},
-        toolCallId: "call-empty",
-        context: createToolContext("EmptyTool", "call-empty"),
-      }),
-    ).rejects.toThrow("without a result");
-  });
 });
 
 function toolResult(overrides: Partial<ExecutedToolCallResult> = {}): ExecutedToolCallResult {

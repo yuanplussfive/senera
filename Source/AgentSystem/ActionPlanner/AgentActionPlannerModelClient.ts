@@ -33,9 +33,11 @@ import { AgentActionPlannerLearningModelCalls } from "./AgentActionPlannerLearni
 import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
 import type { AgentPiCompactionPromptInput } from "../PiShared/AgentPiCompactionPrompt.js";
+import type { AgentLanguageModelInvocationOptions } from "../ModelEndpoints/AgentLanguageModel.js";
 
 export class AgentActionPlannerModelClient {
   readonly providerConfig: ResolvedAgentModelProviderConfig;
+  readonly supportsVisualInput: boolean;
   private readonly core: AgentActionPlannerCoreModelCalls;
   private readonly learning: AgentActionPlannerLearningModelCalls;
 
@@ -50,6 +52,7 @@ export class AgentActionPlannerModelClient {
     } = {},
   ) {
     this.providerConfig = resolvePlannerProvider(model, overrides);
+    this.supportsVisualInput = this.providerConfig.Capabilities?.Vision === true;
     const caller = new AgentActionPlannerStructuredCaller(
       new AgentActionPlannerModelTransport(this.providerConfig, options.usageSink, options.timingSink),
       options,
@@ -60,7 +63,7 @@ export class AgentActionPlannerModelClient {
 
   evolveTurn(
     input: AgentPiControllerDecisionInput,
-    options?: { signal?: AbortSignal },
+    options?: AgentLanguageModelInvocationOptions,
   ): Promise<BamlControllerDecision> {
     return this.core.evolveTurn(input, options);
   }
@@ -71,28 +74,28 @@ export class AgentActionPlannerModelClient {
       invalidDecision: string;
       issues: string[];
     },
-    requestOptions?: { signal?: AbortSignal },
+    requestOptions?: AgentLanguageModelInvocationOptions,
   ): Promise<BamlControllerDecision> {
     return this.core.repairControllerDecision(options, requestOptions);
   }
 
   fillPiToolArguments(
     input: AgentPiToolArgumentsInput,
-    options?: { signal?: AbortSignal },
+    options?: AgentLanguageModelInvocationOptions,
   ): Promise<BamlPiToolArgumentsDraft> {
     return this.core.fillPiToolArguments(input, options);
   }
 
   repairPiToolArguments(
     input: AgentPiToolArgumentsRepairInput,
-    options?: { signal?: AbortSignal },
+    options?: AgentLanguageModelInvocationOptions,
   ): Promise<BamlPiToolArgumentsDraft> {
     return this.core.repairPiToolArguments(input, options);
   }
 
   auditToolRisk(
     input: AgentBamlToolRiskAuditPromptInput,
-    options?: { signal?: AbortSignal },
+    options?: AgentLanguageModelInvocationOptions,
   ): Promise<BamlToolRiskAudit> {
     return this.core.auditToolRisk(input, options);
   }
@@ -103,14 +106,14 @@ export class AgentActionPlannerModelClient {
       invalidAudit: string;
       issues: string[];
     },
-    requestOptions?: { signal?: AbortSignal },
+    requestOptions?: AgentLanguageModelInvocationOptions,
   ): Promise<BamlToolRiskAudit> {
     return this.core.repairToolRiskAudit(options, requestOptions);
   }
 
   summarizePiConversation(
     input: AgentPiCompactionPromptInput,
-    options?: { signal?: AbortSignal },
+    options?: AgentLanguageModelInvocationOptions,
   ): Promise<BamlPiConversationSummary> {
     return this.core.summarizePiConversation(input, options);
   }
@@ -121,7 +124,7 @@ export class AgentActionPlannerModelClient {
       invalidSummary: string;
       issues: string[];
     },
-    requestOptions?: { signal?: AbortSignal },
+    requestOptions?: AgentLanguageModelInvocationOptions,
   ): Promise<BamlPiConversationSummary> {
     return this.core.repairPiConversationSummary(options, requestOptions);
   }

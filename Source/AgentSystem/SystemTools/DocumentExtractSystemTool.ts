@@ -10,10 +10,11 @@ import {
 import { defineSystemTool } from "./AgentSystemToolDefinition.js";
 import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import { resolveAgentSystemUpload } from "./AgentSystemUpload.js";
+import { AgentResourceUriSchema } from "../Resources/AgentResourceSchema.js";
 
 const DocumentExtractInput = z
   .object({
-    uploadUri: z.string().trim().min(1).describe("Exact senera-upload URI supplied by the runtime."),
+    resourceUri: AgentResourceUriSchema.describe("Exact Senera resource URI supplied by the runtime."),
     mode: z.enum(["auto", "probe", "extract"]).default("auto"),
   })
   .strict();
@@ -56,7 +57,7 @@ const DocumentExtractOutput = z
   .object({
     document: z
       .object({
-        uploadUri: z.string(),
+        resourceUri: AgentResourceUriSchema,
         name: z.string(),
         mime: z.string(),
         size: z.number().int().nonnegative(),
@@ -258,14 +259,14 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
     input: DocumentExtractInput,
     output: DocumentExtractOutput,
     async execute(input, context) {
-      const upload = await resolveAgentSystemUpload(context, input.uploadUri);
+      const upload = await resolveAgentSystemUpload(context, input.resourceUri);
       const document = {
         filePath: upload.filePath,
         name: upload.manifest.name,
         declaredMime: upload.manifest.declaredMime,
         size: upload.manifest.size,
         sha256: upload.manifest.sha256,
-        uploadUri: upload.manifest.uploadUri,
+        resourceUri: upload.manifest.resourceUri,
       };
       const probe = await probeAgentDocument(document, {
         sampleBytes: configuration.probe.sampleBytes,
@@ -316,7 +317,7 @@ export const DocumentExtractSystemTool = createDocumentExtractSystemTool();
 
 function publicDocument(upload: Awaited<ReturnType<typeof resolveAgentSystemUpload>>) {
   return {
-    uploadUri: upload.manifest.uploadUri,
+    resourceUri: upload.manifest.resourceUri,
     name: upload.manifest.name,
     mime: upload.manifest.mime,
     size: upload.manifest.size,

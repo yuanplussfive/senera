@@ -87,7 +87,11 @@ export class AgentLoopEventFactory {
     toolName: string,
     callId: string,
     value: unknown,
-    metadata: { origin?: AgentToolEventOrigin; batchId?: string } = {},
+    metadata: {
+      origin?: AgentToolEventOrigin;
+      batchId?: string;
+      presentation?: AgentToolResultPresentation;
+    } = {},
   ): AgentDomainEvent {
     return this.toolEvents.toolCallResultDetail(requestId, step, index, toolName, callId, value, metadata);
   }

@@ -26,6 +26,7 @@ import { errorMessage } from "../Core/AgentErrors.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentWorkspaceResourceHttpApi } from "../WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
 import { AgentProviderCredentialHttpApi } from "../Config/AgentProviderCredentialHttpApi.js";
+import { AgentRuntimeUpdateHttpApi } from "../Runtime/AgentRuntimeUpdateHttpApi.js";
 
 export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 
@@ -103,6 +104,7 @@ export class AgentWebSocketServer {
         : undefined,
       authenticationApi: new AgentAuthenticationHttpApi(this.accessGuard),
       healthApi: new AgentHealthHttpApi(),
+      runtimeUpdateApi: options.runtimeUpdate ? new AgentRuntimeUpdateHttpApi(options.runtimeUpdate) : undefined,
       accessGuard: this.accessGuard,
     });
     this.messageRouter = new AgentWebSocketMessageRouter({

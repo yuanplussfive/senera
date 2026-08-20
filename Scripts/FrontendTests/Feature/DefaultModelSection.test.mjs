@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, screen, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DefaultModelSection } from "../../../Frontend/src/features/settings/sections/DefaultModelSection.tsx";
@@ -69,12 +69,17 @@ describe("DefaultModelSection", () => {
       }),
     );
 
-    expect(screen.getByText("子代理编排 · 子代理模型池")).toBeVisible();
-    expect(screen.getByText("父运行当前模型")).toBeVisible();
+    // 分组入场动画从 opacity 0 起播，等待动画完成后再断言可见性。
+    await waitFor(() => {
+      expect(screen.getByText("子代理编排 · 子代理模型池")).toBeVisible();
+      expect(screen.getByText("父运行当前模型")).toBeVisible();
+    });
     const modelPool = container.querySelector("[data-model-pool-assignment]");
     expect(modelPool).toBeInTheDocument();
-    expect(within(modelPool).getByText("Chat Beta")).toBeVisible();
-    expect(within(modelPool).getByText("provider-b")).toBeVisible();
+    await waitFor(() => {
+      expect(within(modelPool).getByText("Chat Beta")).toBeVisible();
+      expect(within(modelPool).getByText("provider-b")).toBeVisible();
+    });
 
     await user.click(screen.getByRole("switch", { name: "继承发起委派的模型" }));
     expect(updateDraft).toHaveBeenCalledWith(

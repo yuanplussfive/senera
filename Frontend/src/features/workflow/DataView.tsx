@@ -1,9 +1,12 @@
 import { memo, useMemo, useState } from "react";
-import { ChevronRight, ExternalLink, FileText } from "lucide-react";
+import { ChevronRight, ExternalLink, FileText, Maximize2 } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { readNonBlankString as readString } from "../../lib/unknownValue";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
+import { Popover, PopoverContent, PopoverTrigger } from "../../shared/ui/Popover";
+
+const LONG_VALUE_PREVIEW_LENGTH = 128;
 
 /**
  * 任意结构化数据的渲染——DevTools 风格的缩进树，**不用卡片框**。
@@ -17,7 +20,11 @@ import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
  * - 空集合 / 空字符串：muted 占位
  */
 export const DataView = memo(function DataView({ value }: { value: unknown }): JSX.Element {
-  return <Node value={value} depth={0} />;
+  return (
+    <div className="min-w-0 w-full" data-data-view>
+      <Node value={value} depth={0} />
+    </div>
+  );
 });
 
 function Node({ value, depth }: { value: unknown; depth: number }): JSX.Element {
@@ -30,7 +37,7 @@ function Node({ value, depth }: { value: unknown; depth: number }): JSX.Element 
     }
     return <ObjectBlock entries={Object.entries(value)} depth={depth} />;
   }
-  return <span className="text-ink-400">{String(value)}</span>;
+  return <span className="text-content-muted">{String(value)}</span>;
 }
 
 // ---------- 对象块 ----------
@@ -39,10 +46,10 @@ function ObjectBlock({ entries, depth }: { entries: Array<[string, unknown]>; de
   const items = useMemo(() => combineUnitPairs(entries), [entries]);
 
   if (entries.length === 0) {
-    return <span className="font-mono text-[11.5px] italic text-ink-400">{`{}`}</span>;
+    return <span className="font-mono text-[11.5px] italic text-content-muted">{`{}`}</span>;
   }
 
-  const wrapperClass = depth > 0 ? "ml-1 border-l border-ink-200/50 pl-3" : "";
+  const wrapperClass = depth > 0 ? "ml-1 min-w-0 border-l border-line-subtle pl-3" : "min-w-0";
 
   return (
     <div className={wrapperClass}>
@@ -57,7 +64,7 @@ function ObjectBlock({ entries, depth }: { entries: Array<[string, unknown]>; de
 
 function ArrayBlock({ items, depth }: { items: unknown[]; depth: number }): JSX.Element {
   if (items.length === 0) {
-    return <span className="font-mono text-[11.5px] italic text-ink-400">{`[]`}</span>;
+    return <span className="font-mono text-[11.5px] italic text-content-muted">{`[]`}</span>;
   }
 
   // 全是简单原始值 → chips 横排
@@ -68,9 +75,13 @@ function ArrayBlock({ items, depth }: { items: unknown[]; depth: number }): JSX.
         {items.map((it, i) => (
           <span
             key={i}
-            className="inline-flex items-center rounded-full border border-ink-200/70 bg-paper-100 px-2 py-0.5 text-[12px] text-ink-800"
+            className="inline-flex min-w-0 max-w-full items-center rounded-full border border-line-subtle bg-surface-subtle px-2 py-0.5 text-[12px] text-content-secondary"
           >
-            {String(it)}
+            {typeof it === "string" && it.length > LONG_VALUE_PREVIEW_LENGTH ? (
+              <FormattedString value={it} />
+            ) : (
+              <span className="min-w-0 max-w-full truncate">{String(it)}</span>
+            )}
           </span>
         ))}
       </div>
@@ -78,7 +89,7 @@ function ArrayBlock({ items, depth }: { items: unknown[]; depth: number }): JSX.
   }
 
   // 复杂或长数组 → 缩进 + 数字索引
-  const wrapperClass = depth > 0 ? "ml-1 border-l border-ink-200/50 pl-3" : "";
+  const wrapperClass = depth > 0 ? "ml-1 min-w-0 border-l border-line-subtle pl-3" : "min-w-0";
   return (
     <div className={wrapperClass}>
       {items.map((it, i) => (
@@ -111,9 +122,9 @@ function Row({
   // 没子节点（含空对象/空数组/原始值）：单行 key|value
   if (!hasChildren) {
     return (
-      <div className="grid grid-cols-[minmax(96px,max-content)_minmax(0,1fr)] items-baseline gap-x-4 py-1.5">
+      <div className="grid min-w-0 grid-cols-[minmax(3.75rem,7rem)_minmax(0,1fr)] items-baseline gap-x-3 py-1.5">
         <KeyText name={keyName} indexLike={indexLike} />
-        <div className="min-w-0 break-words text-[13px] leading-snug text-ink-900">
+        <div className="min-w-0 break-words text-[12.5px] leading-[1.55] text-content-primary">
           <FormattedValue value={value} unit={unit} />
         </div>
       </div>
@@ -126,9 +137,9 @@ function Row({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="-ml-3 flex items-center gap-1 rounded text-left transition hover:bg-ink-900/[0.03]"
+        className="-ml-3 flex items-center gap-1 rounded-md px-1 text-left transition hover:bg-surface-hover"
       >
-        <ChevronRight className={cn("h-3 w-3 shrink-0 text-ink-400 transition", open && "rotate-90")} />
+        <ChevronRight className={cn("h-3 w-3 shrink-0 text-content-muted transition", open && "rotate-90")} />
         <KeyText name={keyName} indexLike={indexLike} />
         <CountHint value={value} />
       </button>
@@ -145,9 +156,10 @@ function KeyText({ name, indexLike }: { name: string; indexLike: boolean }): JSX
   return (
     <span
       className={cn(
-        "shrink-0 self-start pt-px",
-        indexLike ? "font-mono text-[11px] text-ink-400" : "font-mono text-[11px] text-ink-500",
+        "min-w-0 max-w-full shrink-0 self-start truncate pt-px",
+        indexLike ? "font-mono text-[11px] text-content-muted" : "text-[11px] font-medium text-content-secondary",
       )}
+      title={name}
     >
       {humanizeAlgo(name)}
     </span>
@@ -156,11 +168,11 @@ function KeyText({ name, indexLike }: { name: string; indexLike: boolean }): JSX
 
 function CountHint({ value }: { value: unknown }): JSX.Element | null {
   if (Array.isArray(value)) {
-    return <span className="font-mono text-[10.5px] text-ink-400">[{value.length}]</span>;
+    return <span className="font-mono text-[10.5px] text-content-muted">[{value.length}]</span>;
   }
   if (isPlainObject(value)) {
     const n = Object.keys(value).length;
-    return <span className="font-mono text-[10.5px] text-ink-400">{`{${n}}`}</span>;
+    return <span className="font-mono text-[10.5px] text-content-muted">{`{${n}}`}</span>;
   }
   return null;
 }
@@ -179,15 +191,15 @@ export interface SourceFrame {
 function SourceFrameBlock({ frame, depth }: { frame: SourceFrame; depth: number }): JSX.Element {
   return (
     <div className="space-y-2 py-1">
-      <div className="overflow-hidden rounded-md border border-ink-200/80 bg-paper-50">
-        <div className="flex min-w-0 items-center gap-2 border-b border-ink-200/70 bg-paper-100 px-3 py-2">
-          <FileText className="h-3.5 w-3.5 shrink-0 text-ink-400" />
-          <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink-700">
+      <div className="overflow-hidden rounded-md border border-line-subtle bg-surface-subtle">
+        <div className="flex min-w-0 items-center gap-2 border-b border-line-subtle px-3 py-2">
+          <FileText className="h-3.5 w-3.5 shrink-0 text-content-muted" />
+          <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-content-secondary">
             {frame.path ?? frontendMessage("workflow.data.sourceFallback")}
           </span>
-          <span className="shrink-0 font-mono text-[10.5px] text-ink-400">{formatLineRange(frame)}</span>
+          <span className="shrink-0 font-mono text-[10.5px] text-content-muted">{formatLineRange(frame)}</span>
         </div>
-        <pre className="max-h-[360px] overflow-auto bg-paper-100 px-0 py-2 font-mono text-[12px] leading-5 text-ink-900 scrollbar-thin">
+        <pre className="scrollbar-thin max-h-[360px] overflow-auto bg-surface-canvas px-0 py-2 font-mono text-[12px] leading-5 text-content-primary">
           <code>
             {frame.code.split(/\r?\n/).map((line, index) => {
               const parsed = parseNumberedLine(line);
@@ -199,7 +211,7 @@ function SourceFrameBlock({ frame, depth }: { frame: SourceFrame; depth: number 
                   key={`${lineNumber}:${index}`}
                   className={cn("grid grid-cols-[4.25rem_minmax(0,1fr)] px-3", focused && "bg-accent-surface")}
                 >
-                  <span className="select-none border-r border-ink-200/70 pr-3 text-right text-ink-400">
+                  <span className="select-none border-r border-line-subtle pr-3 text-right text-content-muted">
                     {lineNumber}
                   </span>
                   <span className="min-w-0 whitespace-pre-wrap break-words pl-3">{code.length > 0 ? code : " "}</span>
@@ -222,10 +234,10 @@ function Primitive({ value }: { value: unknown }): JSX.Element {
 
 function FormattedValue({ value, unit }: { value: unknown; unit?: string }): JSX.Element {
   if (value === null) {
-    return <span className="font-mono text-[11.5px] italic text-ink-400">null</span>;
+    return <span className="font-mono text-[11.5px] italic text-content-muted">null</span>;
   }
   if (value === undefined) {
-    return <span className="font-mono text-[11.5px] italic text-ink-400">—</span>;
+    return <span className="font-mono text-[11.5px] italic text-content-muted">—</span>;
   }
 
   if (typeof value === "boolean") {
@@ -233,7 +245,7 @@ function FormattedValue({ value, unit }: { value: unknown; unit?: string }): JSX
       <span
         className={cn(
           "inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px]",
-          value ? "bg-moss-50 text-moss-600" : "bg-ink-100 text-ink-500",
+          value ? "bg-accent-surface text-accent-content" : "bg-surface-subtle text-content-secondary",
         )}
       >
         {value ? "true" : "false"}
@@ -243,9 +255,9 @@ function FormattedValue({ value, unit }: { value: unknown; unit?: string }): JSX
 
   if (typeof value === "number") {
     return (
-      <span className="tabular-nums text-ink-900">
+      <span className="tabular-nums text-content-primary">
         {formatNumber(value)}
-        {unit ? <span className="ml-1 text-ink-500">{unit}</span> : null}
+        {unit ? <span className="ml-1 text-content-secondary">{unit}</span> : null}
       </span>
     );
   }
@@ -264,53 +276,121 @@ function FormattedValue({ value, unit }: { value: unknown; unit?: string }): JSX
 
 function FormattedString({ value, unit }: { value: string; unit?: string }): JSX.Element {
   if (value.length === 0) {
-    return <span className="font-mono text-[11.5px] italic text-ink-400">—</span>;
+    return <span className="font-mono text-[11.5px] italic text-content-muted">—</span>;
   }
 
-  if (/^https?:\/\//.test(value)) {
-    return (
-      <a
-        href={value}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 break-all text-accent-content underline decoration-accent-border underline-offset-2 hover:text-accent-content-hover"
-      >
-        {value}
-        <ExternalLink className="h-3 w-3 shrink-0" />
-      </a>
-    );
-  }
+  const isUrl = /^https?:\/\//.test(value);
 
   // ISO 8601 时间戳 → 人话
   if (/^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(value)) {
     const formatted = formatIsoDate(value);
     if (formatted) {
       return (
-        <span className="text-ink-900">
+        <span className="text-content-primary">
           {formatted}
-          <span className="ml-2 font-mono text-[10.5px] text-ink-400">{value}</span>
+          <span className="ml-2 font-mono text-[10.5px] text-content-muted">{value}</span>
         </span>
       );
     }
   }
 
-  const isLong = value.length > 120;
+  const isLong = value.length > LONG_VALUE_PREVIEW_LENGTH;
   const hasNewline = value.includes("\n");
   const looksLikeMd = /(^#+\s)|(```)|(^\s*[-*]\s)|(\*\*.+\*\*)/m.test(value);
   if (isLong || hasNewline || looksLikeMd) {
+    return <LongValue value={value} unit={unit} isUrl={isUrl} markdown={!isUrl && looksLikeMd} />;
+  }
+
+  if (isUrl) {
     return (
-      <MarkdownRenderer contentClassName="text-[13px] leading-relaxed" compact lightweightCode>
-        {value}
-      </MarkdownRenderer>
+      <a
+        href={value}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex min-w-0 max-w-full items-center gap-1 text-accent-content underline decoration-accent-border underline-offset-2 hover:text-accent-content-hover"
+      >
+        <span className="min-w-0 truncate" title={value}>
+          {value}
+        </span>
+        <ExternalLink className="h-3 w-3 shrink-0" />
+      </a>
     );
   }
 
   return (
-    <span className="text-ink-900">
+    <span className="text-content-primary">
       {value}
-      {unit ? <span className="ml-1 text-ink-500">{unit}</span> : null}
+      {unit ? <span className="ml-1 text-content-secondary">{unit}</span> : null}
     </span>
   );
+}
+
+function LongValue({
+  value,
+  unit,
+  isUrl,
+  markdown,
+}: {
+  value: string;
+  unit?: string;
+  isUrl: boolean;
+  markdown: boolean;
+}): JSX.Element {
+  const preview = compactValuePreview(value);
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="group flex min-w-0 w-full max-w-full items-baseline gap-1 rounded-md px-1 py-0.5 text-left text-content-primary outline-none transition-colors hover:bg-surface-hover focus-visible:text-accent-content"
+          aria-label={frontendMessage("workflow.data.viewFull")}
+          title={frontendMessage("workflow.data.viewFull")}
+          data-data-value-preview
+        >
+          <span className="min-w-0 flex-1 truncate">{preview}</span>
+          {unit ? <span className="shrink-0 text-content-secondary">{unit}</span> : null}
+          <Maximize2
+            className="h-3 w-3 shrink-0 text-content-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+            aria-hidden="true"
+          />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        side="left"
+        className="data-value-popover w-[min(40rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] border-line bg-surface-raised p-0"
+        data-data-value-full
+      >
+        <div className="max-h-[min(28rem,calc(100dvh-8rem))] overflow-auto p-3">
+          {isUrl ? (
+            <a
+              href={value}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex min-w-0 items-start gap-1.5 break-all text-[12.5px] leading-5 text-accent-content underline decoration-accent-border underline-offset-2 hover:text-accent-content-hover"
+            >
+              <span className="min-w-0">{value}</span>
+              <ExternalLink className="mt-1 h-3 w-3 shrink-0" />
+            </a>
+          ) : markdown ? (
+            <MarkdownRenderer contentClassName="text-[13px] leading-relaxed" compact lightweightCode>
+              {value}
+            </MarkdownRenderer>
+          ) : (
+            <pre className="scrollbar-thin max-h-[min(26rem,calc(100dvh-10rem))] overflow-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-5 text-content-primary">
+              {value}
+            </pre>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function compactValuePreview(value: string): string {
+  const normalized = value.replace(/\s+/gu, " ").trim();
+  if (normalized.length <= LONG_VALUE_PREVIEW_LENGTH) return normalized;
+  return `${normalized.slice(0, LONG_VALUE_PREVIEW_LENGTH - 1)}…`;
 }
 
 // ---------- 工具函数 ----------

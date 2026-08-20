@@ -273,7 +273,7 @@
         "exactToolNames": ["DocumentExtract"]
       },
       "argumentPath": "mode",
-      "detailPaths": ["uploadUri", "mode"],
+      "detailPaths": ["resourceUri", "mode"],
       "action": "Read"
     },
     {
@@ -283,7 +283,7 @@
         "exactToolNames": ["ImageAnalyze"]
       },
       "argumentPath": "task",
-      "detailPaths": ["uploadUri", "task", "question"],
+      "detailPaths": ["resourceUri", "task", "question"],
       "action": "Analyze"
     },
     {

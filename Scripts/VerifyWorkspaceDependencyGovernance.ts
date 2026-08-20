@@ -51,7 +51,7 @@ interface PackageExportConditions {
 
 interface ElectronBuilderConfig {
   files?: Array<string | ElectronBuilderFileSet>;
-  extraResources?: ElectronBuilderFileSet[];
+  extraResources?: Array<string | ElectronBuilderFileSet>;
   asarUnpack?: string[];
   npmRebuild?: boolean;
   afterPack?: string;
@@ -213,19 +213,21 @@ function inspectRootScripts(): string[] {
     "policy.compile": "tsx Build/CompileOpaPolicy.ts",
     "policy.verify": "tsx Build/CompileOpaPolicy.ts --check",
     "generate.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts",
+    "generate.resource-contract": "tsx Build/GenerateResourceContract.ts",
     "generate.database-contracts": "tsx Build/GenerateDatabaseContracts.ts",
     "generate.system-extension-contracts": "tsx Build/GenerateSystemExtensionContracts.ts",
     "verify.database-contracts": "tsx Build/GenerateDatabaseContracts.ts --check",
     "verify.system-extension-contracts": "tsx Build/GenerateSystemExtensionContracts.ts --check",
     "verify.config-command-contracts": "tsx Build/GenerateConfigCommandContracts.ts --check",
     "verify.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts --check",
+    "verify.resource-contract": "tsx Build/GenerateResourceContract.ts --check",
     "verify.protocol-reference": "tsx Build/GenerateWebSocketProtocolReference.ts --check",
     "verify.i18n":
       "tsx Scripts/VerifyAgentErrorI18n.ts && tsx Scripts/VerifyFrontendErrorI18n.ts && tsx Scripts/VerifyAgentRuntimeI18n.ts && tsx Scripts/VerifyFrontendRuntimeI18n.ts",
     "sandbox.prepare": "tsx Build/PrepareSandboxRuntime.ts",
     "check.types": "tsc --noEmit",
     build:
-      "npm run verify.config-command-contracts && npm run verify.database-contracts && npm run verify.system-extension-contracts && npm run verify.frontend-events && npm run verify.protocol-reference && npm run verify.i18n && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
+      "npm run verify.config-command-contracts && npm run verify.database-contracts && npm run verify.system-extension-contracts && npm run verify.frontend-events && npm run verify.resource-contract && npm run verify.protocol-reference && npm run verify.i18n && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     dev: 'concurrently -k -n server,frontend -c blue,green "npm run dev.server" "npm run dev.frontend"',
     "docker.up": "docker compose pull && docker compose up -d",
     "docker.down": "docker compose down",
@@ -271,6 +273,7 @@ function inspectRootScripts(): string[] {
       "quality.lint",
       "quality.format",
       "build",
+      "desktop.prepare-mcp-runtime",
       "test.frontend.governance",
       "test.integration",
       "quality.coverage",
@@ -420,6 +423,16 @@ function inspectDesktopPackageConfig(): string[] {
       : ["package.json build.extraMetadata.main must point to Dist/Apps/Desktop/Main.js."]),
     ...inspectDesktopPackageScript(),
     ...inspectDesktopFileSet("Packages/TerminalSidecar", "node_modules/@senera/terminal-sidecar"),
+    ...inspectDesktopFileSet("package.json", "package.json"),
+    ...[
+      ["Frontend/dist", "Frontend/dist"],
+      ["Apps/Desktop/Assets", "Apps/Desktop/Assets"],
+      ["System/Prompts", "System/Prompts"],
+      ["System/Skills", "System/Skills"],
+      ["System/Extensions", "System/Extensions"],
+      [".cache/desktop-mcp-runtime/McpServers", "McpServers"],
+      ["senera.config.example.json", "senera.config.example.json"],
+    ].flatMap(([from, to]) => inspectDesktopExtraResource(from, to)),
     ...(rootPackage.build?.npmRebuild === false
       ? []
       : ["package.json build.npmRebuild must be false so Sidecar Node binaries are not rebuilt for Electron."]),
@@ -427,7 +440,6 @@ function inspectDesktopPackageConfig(): string[] {
       ? []
       : ["package.json build.afterPack must inject isolated Electron native module builds."]),
     ...inspectDesktopAsarUnpack([
-      "senera.config.example.json",
       "**/*.node",
       "**/*.dll",
       "**/*.so",
@@ -435,6 +447,9 @@ function inspectDesktopPackageConfig(): string[] {
       "**/ffi-rs/**",
       "**/@vscode/ripgrep*/bin/**",
     ]),
+    ...(fs.existsSync(path.join(workspaceRoot, "McpServers", "package.json"))
+      ? ["McpServers/package.json must not create a second npm dependency boundary."]
+      : []),
   ];
 }
 
@@ -443,15 +458,25 @@ function inspectDesktopPackageScript(): string[] {
   const source = fs.readFileSync(scriptPath, "utf8");
   return inspectTextIncludes(source, "Apps/Desktop/PackageDesktop.ts", [
     'command("npm", ["run", "desktop.prepare-native"])',
-    'command("electron-builder")',
+    'command("npm", ["run", "desktop.prepare-mcp-runtime"])',
+    'command("electron-builder", ["--publish", "never"])',
   ]);
 }
 
 function inspectDesktopFileSet(from: string, to: string): string[] {
-  const fileSets = rootPackage.build?.files?.filter(isElectronBuilderFileSet) ?? [];
-  return fileSets.some((fileSet) => fileSet.from === from && fileSet.to === to)
+  const fileSets = rootPackage.build?.files ?? [];
+  return fileSets.some((fileSet) =>
+    typeof fileSet === "string" ? from === to && fileSet === from : fileSet.from === from && fileSet.to === to,
+  )
     ? []
     : [`package.json build.files must package ${from} to ${to}.`];
+}
+
+function inspectDesktopExtraResource(from: string, to: string): string[] {
+  const fileSets = rootPackage.build?.extraResources?.filter(isElectronBuilderFileSet) ?? [];
+  return fileSets.some((fileSet) => fileSet.from === from && fileSet.to === to)
+    ? []
+    : [`package.json build.extraResources must package ${from} to ${to}.`];
 }
 
 function inspectDesktopAsarUnpack(expectedEntries: readonly string[]): string[] {

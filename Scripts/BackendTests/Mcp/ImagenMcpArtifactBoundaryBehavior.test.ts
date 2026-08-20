@@ -40,11 +40,11 @@ describe("Imagen MCP artifact boundary", () => {
       expect.objectContaining({
         ok: true,
         result: expect.objectContaining({
-          text: expect.stringContaining("senera://artifact-asset/mcp-content-2"),
+          text: expect.stringContaining("senera://resource/mcp-content-2"),
           content: expect.arrayContaining([
             expect.objectContaining({
               type: "image",
-              uri: "senera://artifact-asset/mcp-content-2",
+              uri: "senera://resource/mcp-content-2",
             }),
           ]),
         }),
@@ -183,12 +183,12 @@ describe("Imagen MCP artifact boundary", () => {
       model: "gpt-image-2",
       size: "1536x1024",
       text: "Image generated.",
-      markdown: "![Generated image](senera://artifact-asset/imagen-1)",
+      markdown: "![Generated image](senera://resource/imagen-1)",
       images: [
         {
           index: 0,
           alt: "Generated image",
-          markdown: "![Generated image](senera://artifact-asset/imagen-1)",
+          markdown: "![Generated image](senera://resource/imagen-1)",
           source: "artifact",
           mediaType: "image/png",
         },
@@ -333,7 +333,7 @@ describe("Imagen MCP artifact boundary", () => {
               },
             ],
           },
-          result: { attachment: "senera://artifact-asset/response" },
+          result: { attachment: "senera://resource/response" },
           outcome: AgentToolSuccessOutcome,
         },
       ],

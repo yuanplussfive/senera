@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { Toaster, toast } from "sonner";
 import { TooltipProvider, ErrorBoundary } from "./shared/ui";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
-import { buildUploadUrl } from "./api/uploadClient";
+import { buildResourceUploadUrl } from "./api/uploadClient";
 import { useStore } from "./store/sessionStore";
 import { ChatPanel } from "./features/chat/ChatPanel";
 import { SessionList } from "./features/session";
@@ -32,6 +32,7 @@ import { frontendMessage } from "./i18n/frontendMessageCatalog";
 import { AppMotionProvider } from "./shared/motion/MotionProvider";
 import { AppAppearanceProvider } from "./shared/theme/useAppearance";
 import { WorkspaceResourceProvider } from "./shared/workspace/WorkspaceResourceProvider";
+import { useRuntimeUpdate } from "./app/runtimeUpdate";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
@@ -95,8 +96,13 @@ export function App({
   const [workflowDockTool, setWorkflowDockTool] = useState<WorkflowDockTool>("execution");
   const [terminalPanelLoadState, setTerminalPanelLoadState] = useState<TerminalPanelLoadState>({ status: "idle" });
   const [terminalRuntimeRevision, setTerminalRuntimeRevision] = useState(0);
-  const uploadUrl = useMemo(() => buildUploadUrl(HTTP_BASE_URL), []);
+  const uploadUrl = useMemo(() => buildResourceUploadUrl(HTTP_BASE_URL), []);
   const appShellRenderPlan = readAppShellRenderPlan(responsiveMode);
+  const runtimeUpdate = useRuntimeUpdate({
+    httpBaseUrl: HTTP_BASE_URL,
+    currentVersion: __SENERA_APP_VERSION__,
+    surface: "web",
+  });
   const [SettingsOverlayComponent, setSettingsOverlayComponent] = useState<SettingsOverlayComponentType | null>(null);
   const prepareSettingsOverlay = useCallback(async (): Promise<void> => {
     const module = await loadWebSettingsOverlayComponent();
@@ -473,6 +479,7 @@ export function App({
                       frontendVersion: __SENERA_FRONTEND_VERSION__,
                       mode: import.meta.env.MODE,
                       surface: "web",
+                      runtimeUpdate,
                     },
                     values: { defaultSidebarCollapsed, defaultRightPanelCollapsed },
                     motionLevel,

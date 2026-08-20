@@ -45,7 +45,7 @@ test("scoped tool events attach to parent run with scoped step ids", () => {
         toolName: "WorkspaceReadFile",
         callId: "call_child_read",
         batchId: "batch_child",
-        value: { result: { text: "child file" } },
+        value: { text: "child file" },
       },
       {
         requestId: "child_request",
@@ -64,6 +64,6 @@ test("scoped tool events attach to parent run with scoped step ids", () => {
   expect(scopedToolStep.id).toBe("inspect:childAgent:job_frontend:child_request:2:tool:call_child_read");
   expect(scopedToolStep.scope).toEqual(scope);
   expect(scopedToolStep.toolArgs).toEqual({ path: "Source/child.ts" });
-  expect(scopedToolStep.toolResult).toEqual({ result: { text: "child file" } });
+  expect(scopedToolStep.toolResult).toEqual({ text: "child file" });
   expect(run.steps.some((step) => step.id === "tool-call_child_read")).toBe(false);
 });

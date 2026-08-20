@@ -17,14 +17,14 @@ afterEach(() => {
 test("sent images use authenticated content URLs and open the full-image dialog", async () => {
   const user = userEvent.setup();
   renderAttachments({
-    uploadUrl: "http://agent.test/api/uploads",
+    uploadUrl: "http://agent.test/api/resources",
     attachments: [imageAttachment("first"), imageAttachment("second")],
   });
 
   const gallery = document.querySelector("[data-message-image-gallery]");
   expect(gallery).toHaveClass("grid-cols-2", "w-[420px]");
   const firstImage = screen.getByRole("img", { name: "first.png" });
-  expect(firstImage).toHaveAttribute("src", "http://agent.test/api/uploads/first/content");
+  expect(firstImage).toHaveAttribute("src", "http://agent.test/api/resources/first");
   expect(firstImage).toHaveAttribute("loading", "lazy");
   expect(firstImage).toHaveAttribute("decoding", "async");
 
@@ -68,7 +68,7 @@ test("sent images use authenticated content URLs and open the full-image dialog"
 
 test("failed image rendering becomes an explicit file attachment state", () => {
   renderAttachments({
-    uploadUrl: "http://agent.test/api/uploads",
+    uploadUrl: "http://agent.test/api/resources",
     attachments: [imageAttachment("broken")],
   });
 
@@ -98,7 +98,7 @@ test("image download reads the authenticated original without navigating the wor
   const linkClick = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
   const user = userEvent.setup();
   renderAttachments({
-    uploadUrl: "http://agent.test/api/uploads",
+    uploadUrl: "http://agent.test/api/resources",
     attachments: [imageAttachment("download")],
   });
 
@@ -106,7 +106,7 @@ test("image download reads the authenticated original without navigating the wor
   await user.click(screen.getByRole("button", { name: "下载原图" }));
 
   await waitFor(() =>
-    expect(fetchMock).toHaveBeenCalledWith("http://agent.test/api/uploads/download/content", {
+    expect(fetchMock).toHaveBeenCalledWith("http://agent.test/api/resources/download", {
       credentials: "include",
     }),
   );
@@ -117,10 +117,10 @@ test("image download reads the authenticated original without navigating the wor
 
 test("non-image attachments retain the compact file presentation", () => {
   renderAttachments({
-    uploadUrl: "http://agent.test/api/uploads",
+    uploadUrl: "http://agent.test/api/resources",
     attachments: [
       {
-        uploadUri: "senera://upload/notes",
+        resourceUri: "senera://resource/notes",
         name: "notes.txt",
         mime: "text/plain",
         size: 4,
@@ -158,7 +158,7 @@ test("freshly sent images keep the local pixels visible until the canonical sour
   });
   const canonicalImage = document.querySelector('[data-message-image-source="canonical"]');
   expect(localImage).toHaveAttribute("src", "blob:senera-handoff");
-  expect(canonicalImage).toHaveAttribute("src", "http://agent.test/api/uploads/handoff/content");
+  expect(canonicalImage).toHaveAttribute("src", "http://agent.test/api/resources/handoff");
   expect(canonicalImage).toHaveAttribute("loading", "eager");
 
   fireEvent.load(canonicalImage);
@@ -170,7 +170,7 @@ test("freshly sent images keep the local pixels visible until the canonical sour
 
 function imageAttachment(id) {
   return {
-    uploadUri: `senera://upload/${id}`,
+    resourceUri: `senera://resource/${id}`,
     name: `${id}.png`,
     mime: "image/png",
     size: 68,
@@ -187,10 +187,10 @@ function renderAttachments(props) {
 function RegisteredPreviewAttachments({ attachment, previewUrl }) {
   const registry = useUploadPreviewRegistry();
   React.useLayoutEffect(() => {
-    registry.register(attachment.uploadUri, previewUrl);
-  }, [attachment.uploadUri, previewUrl, registry]);
+    registry.register(attachment.resourceUri, previewUrl);
+  }, [attachment.resourceUri, previewUrl, registry]);
   return React.createElement(MessageAttachments, {
-    uploadUrl: "http://agent.test/api/uploads",
+    uploadUrl: "http://agent.test/api/resources",
     attachments: [attachment],
   });
 }

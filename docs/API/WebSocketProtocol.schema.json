@@ -54,9 +54,9 @@
           "items": {
             "type": "object",
             "properties": {
-              "uploadUri": {
+              "resourceUri": {
                 "type": "string",
-                "minLength": 1
+                "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$"
               },
               "name": {
                 "type": "string",
@@ -81,7 +81,7 @@
               }
             },
             "required": [
-              "uploadUri",
+              "resourceUri",
               "name",
               "mime",
               "size",
@@ -212,9 +212,9 @@
           "items": {
             "type": "object",
             "properties": {
-              "uploadUri": {
+              "resourceUri": {
                 "type": "string",
-                "minLength": 1
+                "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$"
               },
               "name": {
                 "type": "string",
@@ -239,7 +239,7 @@
               }
             },
             "required": [
-              "uploadUri",
+              "resourceUri",
               "name",
               "mime",
               "size",
@@ -767,7 +767,7 @@
           "properties": {
             "ConfigVersion": {
               "type": "number",
-              "const": 10
+              "const": 12
             },
             "Defaults": {
               "type": "object",

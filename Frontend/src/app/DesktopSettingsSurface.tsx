@@ -14,6 +14,7 @@ import { AppAppearanceProvider } from "../shared/theme/useAppearance";
 import { TooltipProvider } from "../shared/ui";
 import { useStore } from "../store/sessionStore";
 import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "../config/runtimeConfig";
+import { useRuntimeUpdate } from "./runtimeUpdate";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
@@ -51,6 +52,11 @@ export function DesktopSettingsSurface({
   const runtime = useSettingsRuntime({ httpBaseUrl: HTTP_BASE_URL, sendRef, statusRef });
   settingsEventHandlerRef.current = runtime.ingestSettingsEvent;
   const bridge = readDesktopBridge();
+  const runtimeUpdate = useRuntimeUpdate({
+    httpBaseUrl: HTTP_BASE_URL,
+    currentVersion: __SENERA_APP_VERSION__,
+    surface: "desktop",
+  });
 
   useEffect(() => {
     if (status !== "open") return;
@@ -86,6 +92,7 @@ export function DesktopSettingsSurface({
               frontendVersion: __SENERA_FRONTEND_VERSION__,
               mode: import.meta.env.MODE,
               surface: "desktop",
+              runtimeUpdate,
             }}
             values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
             motionLevel={motionLevel}

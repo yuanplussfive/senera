@@ -231,8 +231,11 @@ export class AgentPiRunCollector {
       active.seq,
       event.toolName,
       event.toolCallId,
-      executed ?? event.result,
-      { batchId: this.batchIdFor(event.toolCallId) },
+      executed?.result ?? event.result,
+      {
+        batchId: this.batchIdFor(event.toolCallId),
+        presentation,
+      },
     );
     const executorStatus = this.options.turnState.executorLifecycleStatus(event.toolCallId);
     const piStatus = event.isError ? "failed" : "completed";
@@ -284,6 +287,7 @@ export class AgentPiRunCollector {
       kind: "tool",
       status: event.isError ? "failed" : "done",
       toolName: event.toolName,
+      toolOrigin: executed?.origin,
       callId: event.toolCallId,
       batchId: this.batchIdFor(event.toolCallId),
       purpose: this.options.turnState.toolCallPurpose(event.toolCallId),

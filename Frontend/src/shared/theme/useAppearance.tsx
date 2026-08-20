@@ -26,7 +26,13 @@ export function AppAppearanceProvider({
   motionLevel: MotionLevel;
 }): JSX.Element {
   const { prefersReducedMotion } = useMotionLevel();
-  useAppearance();
+  const snapshot = useAppearance();
+
+  useEffect(() => {
+    void import("./fontRuntime")
+      .then(({ ensureAppearanceFontLoaded }) => ensureAppearanceFontLoaded(snapshot.preference.fontFamily))
+      .catch(() => undefined);
+  }, [snapshot.preference.fontFamily]);
 
   useEffect(() => {
     appearanceStore.setMotionLevel(motionLevel, prefersReducedMotion);

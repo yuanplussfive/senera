@@ -54,7 +54,7 @@ export type {
   ToolResultPresentationFact,
 } from "./toolEventTypes";
 
-import type { ToolResultPresentation } from "./toolEventTypes";
+import type { ToolEventOrigin, ToolResultPresentation } from "./toolEventTypes";
 
 export type {
   ChildRunCancellingData,
@@ -318,6 +318,7 @@ export interface StepTraceDto {
   kind: "decision" | "tool" | "retry" | "answer";
   decisionKind?: string;
   toolName?: string;
+  toolOrigin?: ToolEventOrigin;
   callId?: string;
   batchId?: string;
   purpose?: string;
@@ -624,7 +625,7 @@ export interface ConversationEntryMetadata {
 }
 
 export interface UploadAttachmentData {
-  uploadUri: string;
+  resourceUri: string;
   name: string;
   mime: string;
   size: number;

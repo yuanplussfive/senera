@@ -39,7 +39,7 @@ const editorTheme = EditorView.theme({
     outline: "none",
   },
   ".cm-scroller": {
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    fontFamily: "var(--theme-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)",
     lineHeight: "1.65",
     scrollbarColor: "var(--scrollbar-thumb) var(--scrollbar-track)",
     scrollbarGutter: "stable",

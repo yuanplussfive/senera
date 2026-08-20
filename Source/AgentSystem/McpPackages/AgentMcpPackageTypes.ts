@@ -11,6 +11,12 @@ export const AgentMcpPackageSourceKinds = {
 
 export type AgentMcpPackageSourceKind = (typeof AgentMcpPackageSourceKinds)[keyof typeof AgentMcpPackageSourceKinds];
 
+export const AgentMcpServerRuntimes = {
+  Node: "node",
+} as const;
+
+export type AgentMcpServerRuntime = (typeof AgentMcpServerRuntimes)[keyof typeof AgentMcpServerRuntimes];
+
 export interface AgentMcpPackage {
   readonly rootPath: string;
   readonly configurationPath: string;
@@ -30,6 +36,8 @@ export interface AgentMcpPackageServer {
 
 export interface AgentMcpStdioServerConfiguration {
   readonly type: "stdio";
+  /** A host-managed runtime hint. The command remains the portable fallback. */
+  readonly runtime?: AgentMcpServerRuntime;
   readonly command: AgentExtensionValueExpression;
   readonly args: readonly AgentExtensionValueExpression[];
   readonly cwd: AgentExtensionValueExpression;
@@ -53,6 +61,7 @@ interface AgentMcpRuntimeEndpointBase {
 
 export interface AgentMcpStdioRuntimeEndpoint extends AgentMcpRuntimeEndpointBase {
   readonly transport?: "stdio";
+  readonly runtime?: AgentMcpServerRuntime;
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd: string;

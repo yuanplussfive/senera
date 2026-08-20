@@ -15,7 +15,7 @@ import {
   projectWorkflowActivities,
   projectWorkflowSteps,
 } from "./workflowPresentationProjection";
-import { projectToolActivity } from "./toolActivityPresentation";
+import { projectToolActivity, projectToolActivityInspection } from "./toolActivityPresentation";
 import { projectToolStagePresentation } from "./toolStagePresentation";
 import type { ToolStageIconName } from "./toolStageIconContract";
 
@@ -446,8 +446,9 @@ function mapToolItem(step: TimelineStep): FeedItem {
     kind: "tool",
     status: step.status,
     // The execution console is an inspection surface. Preserve the runtime identity here;
-    // semantic action text belongs to the conversation projection, not the diagnostic trace.
+    // the compact action preview is rendered as the secondary conversation line.
     title: step.toolName ?? step.title,
+    subtitle: summarizeToolActivityLabel(step),
     meta: toolItemMeta(step),
     step,
   };
@@ -577,6 +578,17 @@ function summarizeToolSubtitle(step: TimelineStep): string | undefined {
   if (args) return args;
 
   return step.description;
+}
+
+function summarizeToolActivityLabel(step: TimelineStep): string | undefined {
+  if (!step.toolName) return undefined;
+  const activity = projectToolActivityInspection({
+    toolName: step.toolName,
+    origin: step.toolOrigin,
+    arguments: step.toolArgs,
+    status: step.status === "failed" ? "failed" : step.status === "done" ? "completed" : "active",
+  });
+  return activity.argumentPreview ? activity.label : undefined;
 }
 
 function summarizeToolResult(value: unknown): string | undefined {

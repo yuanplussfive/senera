@@ -156,7 +156,7 @@ test("terminal controls follow the effective backend capabilities", async () => 
   expect(interruptButton).toBeEnabled();
   expect(screen.getByRole("menuitem", { name: "停止当前终端" })).not.toHaveAttribute("data-disabled");
   expect(terminal.options.disableStdin).toBe(false);
-  expect(terminal.operations).toContain("focus");
+  expect(terminal.operations).not.toContain("focus");
   act(() => {
     terminal.emitInput("allowed");
     terminal.emitResize(132, 42);
@@ -351,7 +351,7 @@ test("a newly created terminal becomes the active tab", async () => {
   );
 
   await waitFor(() => expect(screen.getByRole("tab", { name: "shell-two" })).toHaveAttribute("aria-selected", "true"));
-  expect(xterm.instances.at(-1)?.operations).toContain("focus");
+  expect(xterm.instances.at(-1)?.operations).not.toContain("focus");
 });
 
 test("closes only the terminal represented by the clicked tab", async () => {

@@ -18,6 +18,9 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
       ...inspectTextIncludes(desktopJob, `${ReleaseWorkflowLabel} job desktop`, [
         "- metadata",
         "npm run desktop.pack",
+        "Verify differential update assets",
+        "Release/latest.yml",
+        "senera-update.json",
         "actions/upload-artifact@v4",
       ]),
     );

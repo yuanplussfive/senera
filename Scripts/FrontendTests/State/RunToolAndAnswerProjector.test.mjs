@@ -209,19 +209,15 @@ test("tool.call.result.detail attaches structured result to the matching tool ca
         toolName: "WorkspaceReadFile",
         callId: "call_read",
         batchId: "batch_read",
-        value: {
-          callId: "call_read",
-          name: "WorkspaceReadFile",
-          result: { text: "file content" },
-          presentation: {
-            type: "senera.tool_result_presentation.v1",
-            version: 1,
-            status: "success",
-            headline: "README.md 已读取",
-            facts: [],
-            evidence: [],
-            changes: [],
-          },
+        value: { text: "file content" },
+        presentation: {
+          type: "senera.tool_result_presentation.v1",
+          version: 1,
+          status: "success",
+          headline: "README.md 已读取",
+          facts: [],
+          evidence: [],
+          changes: [],
         },
       },
       { step: 1, sequence: 4, phase: "tool" },
@@ -238,20 +234,7 @@ test("tool.call.result.detail attaches structured result to the matching tool ca
   expect(toolStep.toolBatch?.id).toBe("batch_read");
   expect(toolStep.toolBatch?.index).toBe(0);
   expect(toolStep.toolArgs).toEqual({ path: "README.md" });
-  expect(toolStep.toolResult).toEqual({
-    callId: "call_read",
-    name: "WorkspaceReadFile",
-    result: { text: "file content" },
-    presentation: {
-      type: "senera.tool_result_presentation.v1",
-      version: 1,
-      status: "success",
-      headline: "README.md 已读取",
-      facts: [],
-      evidence: [],
-      changes: [],
-    },
-  });
+  expect(toolStep.toolResult).toEqual({ text: "file content" });
 });
 
 test("tool output and progress are projected incrementally and deduplicated by sequence", () => {

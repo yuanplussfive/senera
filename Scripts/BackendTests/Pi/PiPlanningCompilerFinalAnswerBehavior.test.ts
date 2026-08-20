@@ -3,6 +3,7 @@ import {
   AgentPiPlanningCompiler,
   type AgentPiPlanningModelClient,
 } from "../../../Source/AgentSystem/Pi/AgentPiPlanningCompiler.js";
+import type { AgentLanguageModelInvocationOptions } from "../../../Source/AgentSystem/ModelEndpoints/AgentLanguageModel.js";
 import type {
   AgentPiControllerDecisionInput,
   AgentPiToolArgumentsInput,
@@ -197,11 +198,65 @@ describe("Pi assistant controller compilation", () => {
     expect(client.repairRequests).toHaveLength(1);
     expect(client.fillInputs).toHaveLength(0);
   });
+
+  test("keeps ImageAnalyze selectable when the planner receives a native image", async () => {
+    const client = new CompilerClient([
+      {
+        kind: "Execute",
+        fragment: {
+          preface: "Inspecting the screenshot with the image tool.",
+          calls: [{ toolName: "ImageAnalyze", purpose: "Extract the requested visible detail.", required: true }],
+        },
+      },
+    ]);
+    client.supportsVisualInput = true;
+    client.argumentResults.set("ImageAnalyze", {
+      arguments: { resourceUri: "senera://resource/upl_image", task: "question", question: "What error is shown?" },
+      missingInputs: [],
+      assumptions: [],
+    });
+    const request = planningRequest("What error is shown in this screenshot?", [
+      tool("ImageAnalyze", {
+        type: "object",
+        properties: {
+          resourceUri: { type: "string" },
+          task: { type: "string" },
+          question: { type: "string" },
+        },
+        required: ["resourceUri"],
+        additionalProperties: false,
+      }),
+    ]);
+    const image = { type: "image" as const, data: "aW1hZ2U=", mimeType: "image/png" };
+
+    const compilation = await createCompiler(client).compile({
+      ...request,
+      model: { ...request.model, input: ["text", "image"] },
+      context: {
+        ...request.context,
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "What error is shown in this screenshot?" }, image],
+            timestamp: 1,
+          },
+        ],
+      },
+      toolAccessGrant: toolAccessGrant(["ImageAnalyze"], ["ImageAnalyze"]),
+    });
+
+    expect(compilation).toMatchObject({ kind: "tool_calls", toolCalls: [{ name: "ImageAnalyze" }] });
+    expect(client.evolveOptions[0]?.attachments).toEqual([image]);
+    expect(client.fillOptions[0]?.attachments).toEqual([image]);
+  });
 });
 
 class CompilerClient implements AgentPiPlanningModelClient {
+  supportsVisualInput: boolean | undefined;
   readonly evolveInputs: AgentPiControllerDecisionInput[] = [];
+  readonly evolveOptions: AgentLanguageModelInvocationOptions[] = [];
   readonly fillInputs: AgentPiToolArgumentsInput[] = [];
+  readonly fillOptions: AgentLanguageModelInvocationOptions[] = [];
   readonly repairRequests: Array<{
     input: AgentPiControllerDecisionInput;
     invalidDecision: string;
@@ -214,8 +269,12 @@ class CompilerClient implements AgentPiPlanningModelClient {
     private readonly repairedDecision: unknown = decisions.at(-1),
   ) {}
 
-  async evolveTurn(input: AgentPiControllerDecisionInput): Promise<unknown> {
+  async evolveTurn(
+    input: AgentPiControllerDecisionInput,
+    options?: AgentLanguageModelInvocationOptions,
+  ): Promise<unknown> {
     this.evolveInputs.push(input);
+    this.evolveOptions.push(options ?? {});
     const decision = this.decisions.shift();
     if (decision === undefined) throw new Error("Unexpected turn evolution.");
     return decision;
@@ -230,8 +289,12 @@ class CompilerClient implements AgentPiPlanningModelClient {
     return this.repairedDecision;
   }
 
-  async fillPiToolArguments(input: AgentPiToolArgumentsInput): Promise<unknown> {
+  async fillPiToolArguments(
+    input: AgentPiToolArgumentsInput,
+    options?: AgentLanguageModelInvocationOptions,
+  ): Promise<unknown> {
     this.fillInputs.push(input);
+    this.fillOptions.push(options ?? {});
     return (
       this.argumentResults.get(input.call.toolName) ?? {
         arguments: {},

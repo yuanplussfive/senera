@@ -27,7 +27,7 @@ afterEach(() => {
 
 test("chat composer waits for an attachment upload and sends the uploaded reference", async () => {
   const attachment = {
-    uploadUri: "senera://upload/report",
+    resourceUri: "senera://resource/report",
     name: "report.txt",
     mime: "text/plain",
     size: 6,
@@ -44,7 +44,7 @@ test("chat composer waits for an attachment upload and sends the uploaded refere
       onSend,
       runtime: {
         socketStatus: "open",
-        uploadUrl: "http://127.0.0.1/api/uploads",
+        uploadUrl: "http://127.0.0.1/api/resources",
         uploadCsrfToken: "csrf-token",
       },
     }),
@@ -57,7 +57,7 @@ test("chat composer waits for an attachment upload and sends the uploaded refere
   await user.click(screen.getByRole("button", { name: "send" }));
 
   expect(uploadFileMock).toHaveBeenCalledWith(
-    "http://127.0.0.1/api/uploads",
+    "http://127.0.0.1/api/resources",
     expect.objectContaining({ name: "report.txt" }),
     expect.objectContaining({
       headers: { "X-Senera-Csrf": "csrf-token" },
@@ -105,7 +105,7 @@ test("chat composer prevents disabled and running file drops without uploading",
 
 test("chat composer keeps uploaded attachments when sending is rejected", async () => {
   const attachment = {
-    uploadUri: "senera://upload/retry",
+    resourceUri: "senera://resource/retry",
     name: "retry.txt",
     mime: "text/plain",
     size: 5,
@@ -130,7 +130,7 @@ test("chat composer keeps uploaded attachments when sending is rejected", async 
 test("chat composer previews an original image and transfers its ownership after send", async () => {
   const previewApi = installPreviewUrlApi();
   const attachment = {
-    uploadUri: "senera://upload/photo",
+    resourceUri: "senera://resource/photo",
     name: "photo.png",
     mime: "image/png",
     size: 5,
@@ -235,7 +235,7 @@ function createComposerProps(overrides = {}) {
     },
     runtime: {
       socketStatus: "open",
-      uploadUrl: "http://127.0.0.1/api/uploads",
+      uploadUrl: "http://127.0.0.1/api/resources",
     },
     onSend: vi.fn(),
     onCancel: vi.fn(),

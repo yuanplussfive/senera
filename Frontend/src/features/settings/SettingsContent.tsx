@@ -1,8 +1,10 @@
 import { lazy, Suspense, type ReactNode } from "react";
+import { AnimatePresence, motion, type Variants } from "framer-motion";
 import { RotateCcw } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { JsonConfigSettingsView } from "../../shared/config/JsonConfigForm";
+import { motionTimings, useMotionLevel } from "../../shared/motion";
 import { Button, ScrollArea, StateView, Tooltip } from "../../shared/ui";
 import type { SettingsSystemConfigHandle } from "./SettingsContracts";
 import type { SettingsContentProps } from "./SettingsWorkbenchContracts";
@@ -76,10 +78,31 @@ function SettingsSectionTransition({
   className: string;
   children: ReactNode;
 }): JSX.Element {
+  const { level, reduceMotion, disableMotion } = useMotionLevel();
+  const variants: Variants = disableMotion
+    ? { hidden: { opacity: 1 }, show: { opacity: 1 }, exit: { opacity: 1 } }
+    : reduceMotion || level === "reduced"
+      ? { hidden: { opacity: 0 }, show: { opacity: 1 }, exit: { opacity: 0 } }
+      : {
+          hidden: { opacity: 0, y: 10 },
+          show: { opacity: 1, y: 0, transition: motionTimings.slow },
+          exit: { opacity: 0, y: -6, transition: motionTimings.fast },
+        };
   return (
-    <div className={className} data-settings-section={sectionId}>
-      {children}
-    </div>
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={sectionId}
+        className={className}
+        data-settings-section={sectionId}
+        variants={variants}
+        initial="hidden"
+        animate="show"
+        exit="exit"
+        transition={motionTimings.slow}
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
   );
 }
 

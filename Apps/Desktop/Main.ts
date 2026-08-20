@@ -15,16 +15,18 @@ import {
   type DesktopFrontendSource,
 } from "./DesktopFrontendSource.js";
 import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
-import { AgentConfigService, loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
+import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
 import { isTrustedDesktopNavigation } from "./DesktopNavigationPolicy.js";
 import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolicy.js";
 import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
 import { desktopMessage } from "./DesktopMessageCatalog.js";
 import { resolveAgentExternalUrl } from "../../Source/AgentSystem/Interaction/AgentExternalUrlPolicy.js";
-import { startSeneraSandboxWorkerProcess, type SeneraSandboxWorkerBootstrap } from "../SandboxWorkerProcess.js";
+import { SeneraServerDeployments } from "../ServerRuntime.js";
+import { DesktopUpdateService } from "./DesktopUpdateService.js";
+import type { DesktopUpdateSnapshot } from "./DesktopUpdateProtocol.js";
+import { readAgentProductMetadata } from "../../Source/AgentSystem/Core/AgentProductMetadata.js";
 
 let serverHandle: SeneraServerHandle | undefined;
-let sandboxWorkerHandle: SeneraSandboxWorkerBootstrap | undefined;
 let mainWindow: BrowserWindow | undefined;
 let settingsWindow: BrowserWindow | undefined;
 let desktopTray: Tray | undefined;
@@ -34,6 +36,10 @@ let desktopRestartRequested = false;
 const settingsClosePolicy = new DesktopClosePolicy();
 let runtimePaths: DesktopRuntimePaths | undefined;
 let frontendSource: DesktopFrontendSource | undefined;
+let desktopUpdateService: DesktopUpdateService | undefined;
+let pendingUpdateInstall = false;
+let desktopStartupReady = false;
+let pendingDesktopActivation = false;
 const desktopModuleDir = path.dirname(fileURLToPath(import.meta.url));
 const remoteDebuggingPort = process.env.SENERA_DESKTOP_REMOTE_DEBUGGING_PORT?.trim();
 
@@ -57,73 +63,83 @@ if (remoteDebuggingPort) {
 }
 Menu.setApplicationMenu(null);
 
-app
-  .whenReady()
-  .then(async () => {
-    runtimePaths = await prepareDesktopRuntime();
-    appendDesktopLog(
-      runtimePaths.logPath,
-      `starting desktop runtime dataRoot=${runtimePaths.dataRoot} workspace=${runtimePaths.workspaceRoot} resources=${runtimePaths.resourceRoot} configDatabase=${runtimePaths.configDatabasePath}`,
-    );
-    const paths = runtimePaths;
-    desktopTray = createDesktopTray(paths.windowIconPath, () => {
-      void selectDesktopWorkspaceAndRestart();
-    });
-    frontendSource = createDesktopFrontendSource({
-      devServerUrl: process.env.SENERA_DESKTOP_FRONTEND_URL,
-      frontendIndexHtml: paths.frontendIndexHtml,
-    });
-    registerDesktopIpc();
-    const seedConfig = loadConfigFile(paths.configSeedPath);
-    const configSource = {
-      kind: "sqlite" as const,
-      databasePath: paths.configDatabasePath,
-      seedConfig,
-      label: paths.configDatabasePath,
-    };
-    const bootstrapConfigService = new AgentConfigService({
-      workspaceRoot: paths.workspaceRoot,
-      source: configSource,
-    });
-    const bootstrapConfig = (() => {
-      try {
-        return projectDesktopRuntimeConfig(paths, bootstrapConfigService.snapshot().value);
-      } finally {
-        bootstrapConfigService.close();
-      }
-    })();
-    sandboxWorkerHandle = await startSeneraSandboxWorkerProcess({
-      workspaceRoot: paths.workspaceRoot,
-      config: bootstrapConfig,
-      entrypoint: paths.sandboxWorkerEntrypoint,
-      resourcesPath: paths.resourceRoot,
-    });
-    serverHandle = await startSeneraServer({
-      workspaceRoot: paths.workspaceRoot,
-      resourcesPath: paths.resourceRoot,
-      upgradeStateRoot: path.join(paths.desktopDataRoot, ".senera"),
-      upgradeDataRoots: [paths.desktopDataRoot],
-      configSource,
-      runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config),
-      sandboxRuntimeAvailability: sandboxWorkerHandle.availability,
-      dockerEngineWorker: sandboxWorkerHandle.client,
-    });
-    mainWindow = createMainWindow();
-    await loadDesktopFrontend(mainWindow, frontendSource, desktopFrontendQuery());
+const ownsDesktopInstance = app.requestSingleInstanceLock();
 
-    app.on("activate", () => {
-      showAllDesktopWindows();
-    });
-  })
-  .catch(async (error) => {
-    await sandboxWorkerHandle?.close().catch(() => undefined);
-    sandboxWorkerHandle = undefined;
-    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-    const logPath = runtimePaths?.logPath ?? path.join(app.getPath("userData"), "desktop.log");
-    appendDesktopLog(logPath, `startup failed\n${message}`);
-    dialog.showErrorBox(desktopMessage("startup.failedTitle", {}, app.getLocale()), message);
-    app.exit(1);
+if (!ownsDesktopInstance) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!desktopStartupReady) {
+      pendingDesktopActivation = true;
+      return;
+    }
+    showAllDesktopWindows();
   });
+
+  app
+    .whenReady()
+    .then(async () => {
+      runtimePaths = await prepareDesktopRuntime();
+      appendDesktopLog(
+        runtimePaths.logPath,
+        `starting desktop runtime dataRoot=${runtimePaths.dataRoot} workspace=${runtimePaths.workspaceRoot} resources=${runtimePaths.resourceRoot} configDatabase=${runtimePaths.configDatabasePath}`,
+      );
+      const paths = runtimePaths;
+      desktopTray = createDesktopTray(paths.windowIconPath, () => {
+        void selectDesktopWorkspaceAndRestart();
+      });
+      frontendSource = createDesktopFrontendSource({
+        devServerUrl: process.env.SENERA_DESKTOP_FRONTEND_URL,
+        frontendIndexHtml: paths.frontendIndexHtml,
+      });
+      registerDesktopIpc();
+      const product = readAgentProductMetadata(paths.appRoot);
+      const seedConfig = loadConfigFile(paths.configSeedPath);
+      desktopUpdateService = new DesktopUpdateService({
+        isPackaged: app.isPackaged,
+        currentVersion: app.getVersion(),
+        updateOrigin: product.updateOrigin,
+        publishLog: (message) => appendDesktopLog(paths.logPath, message),
+        onStateChanged: publishDesktopUpdateState,
+      });
+      const configSource = {
+        kind: "sqlite" as const,
+        databasePath: paths.configDatabasePath,
+        seedConfig,
+        label: paths.configDatabasePath,
+      };
+      serverHandle = await startSeneraServer({
+        workspaceRoot: paths.workspaceRoot,
+        applicationRoot: paths.appRoot,
+        resourcesPath: paths.resourceRoot,
+        upgradeStateRoot: paths.upgradeStateRoot,
+        upgradeDataRoots: [paths.desktopDataRoot],
+        configSource,
+        deployment: SeneraServerDeployments.Local,
+        runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config),
+      });
+      mainWindow = createMainWindow();
+      await loadDesktopFrontend(mainWindow, frontendSource, desktopFrontendQuery());
+      desktopStartupReady = true;
+      void desktopUpdateService.start();
+
+      app.on("activate", () => {
+        showAllDesktopWindows();
+      });
+
+      if (pendingDesktopActivation) {
+        pendingDesktopActivation = false;
+        showAllDesktopWindows();
+      }
+    })
+    .catch(async (error) => {
+      const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+      const logPath = runtimePaths?.logPath ?? path.join(app.getPath("userData"), "desktop.log");
+      appendDesktopLog(logPath, `startup failed\n${message}`);
+      dialog.showErrorBox(desktopMessage("startup.failedTitle", {}, app.getLocale()), message);
+      app.exit(1);
+    });
+}
 
 app.on("before-quit", (event) => {
   if (!desktopQuitting && requestDirtySettingsConfirmation("quit")) {
@@ -135,12 +151,10 @@ app.on("before-quit", (event) => {
   desktopTray?.destroy();
   desktopTray = undefined;
   const handle = serverHandle;
-  const sandboxWorker = sandboxWorkerHandle;
   serverHandle = undefined;
-  sandboxWorkerHandle = undefined;
-  if (!handle && !sandboxWorker) return;
+  if (!handle) return;
   event.preventDefault();
-  void Promise.all([handle?.stop(), sandboxWorker?.close()]).finally(() => {
+  void handle.stop().finally(() => {
     if (desktopRestartRequested) app.relaunch();
     app.quit();
   });
@@ -158,18 +172,24 @@ function registerDesktopIpc(): void {
   ipcMain.handle("senera:settings.confirm-close", (event) => {
     if (!settingsWindow || event.sender !== settingsWindow.webContents) return;
     const closeIntent = settingsClosePolicy.confirm();
+    const installPendingUpdate = pendingUpdateInstall;
+    pendingUpdateInstall = false;
     forceSettingsWindowClose = true;
     settingsWindow.close();
+    if (installPendingUpdate) {
+      desktopUpdateService?.installUpdate();
+      return;
+    }
     if (closeIntent === "main") {
       mainWindow?.close();
     } else if (closeIntent === "quit") {
-      desktopQuitting = true;
       app.quit();
     }
   });
   ipcMain.handle("senera:settings.cancel-close", (event) => {
     if (!settingsWindow || event.sender !== settingsWindow.webContents) return;
     settingsClosePolicy.cancel();
+    pendingUpdateInstall = false;
   });
   ipcMain.handle("senera:window.minimize", (event) => {
     resolveManagedWindow(event)?.minimize();
@@ -200,6 +220,20 @@ function registerDesktopIpc(): void {
     const external = resolveAgentExternalUrl(input);
     await shell.openExternal(external.url, { activate: true });
   });
+  ipcMain.handle("senera:update.get-state", () => desktopUpdateService?.getSnapshot());
+  ipcMain.handle("senera:update.check", () => desktopUpdateService?.checkForUpdates());
+  ipcMain.handle("senera:update.download", () => desktopUpdateService?.downloadUpdate());
+  ipcMain.handle("senera:update.install", () => requestDesktopUpdateInstall());
+}
+
+function requestDesktopUpdateInstall(): DesktopUpdateSnapshot | undefined {
+  const service = desktopUpdateService;
+  if (!service) return undefined;
+  if (settingsClosePolicy.dirty && requestDirtySettingsConfirmation("quit")) {
+    pendingUpdateInstall = true;
+    return service.getSnapshot();
+  }
+  return service.installUpdate();
 }
 
 function resolveSettingsSection(section: string | undefined): string {
@@ -444,4 +478,11 @@ function startDesktopFrontendLoad(window: BrowserWindow, query: Record<string, s
       appendDesktopLog(runtimePaths.logPath, `frontend load failed ${message}`);
     }
   });
+}
+
+function publishDesktopUpdateState(snapshot: DesktopUpdateSnapshot): void {
+  for (const window of [mainWindow, settingsWindow]) {
+    if (!window || window.isDestroyed() || window.webContents.isDestroyed()) continue;
+    window.webContents.send("senera:update.state-changed", snapshot);
+  }
 }

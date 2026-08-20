@@ -19,7 +19,7 @@ import { bumpSessionMessageCount, currentRun, ensureSession, upsertStep } from "
 import { alignRunDisplayTarget, touchRun } from "./sessionRunProjection";
 import { summarizeToolPlan, toolPlanTitle, truncate } from "./sessionPresentation";
 import { toolBatchFromEvent } from "./timelineProjection";
-import { mergeToolResultPresentation, readToolResultPresentation } from "./toolResultPresentation";
+import { mergeToolResultPresentation } from "./toolResultPresentation";
 import { projectToolOutput, projectToolProgress } from "./toolRuntimeProjection";
 
 export const runToolAndAnswerEventHandlers = {
@@ -116,10 +116,10 @@ export const runToolAndAnswerEventHandlers = {
       status: "running",
       startedAt: env.timestamp,
       toolName: data.toolName,
-      toolOrigin: data.origin,
       callId: data.callId,
       toolBatch: toolBatchFromEvent(env, data),
-      toolArgs: data.arguments,
+      ...(data.origin ? { toolOrigin: data.origin } : {}),
+      ...(data.arguments === undefined ? {} : { toolArgs: data.arguments }),
     });
   },
 
@@ -232,10 +232,7 @@ export const runToolAndAnswerEventHandlers = {
     if (step) {
       step.toolResult = data.value;
       step.toolOrigin = data.origin ?? step.toolOrigin;
-      step.toolPresentation = mergeToolResultPresentation(
-        step.toolPresentation,
-        readToolResultPresentation(data.value),
-      );
+      step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
       step.toolPreview = step.toolPresentation?.headline ?? step.toolPreview;
       touchRun(run);
     }

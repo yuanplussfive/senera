@@ -76,6 +76,16 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
         migrateVersionNineToTen(working, migratedPaths, removedPaths);
         version = 10;
         break;
+      case 10:
+        version = 11;
+        break;
+      case 11: {
+        removeRetiredRuntimeUpdateConfiguration(working, "", removedPaths);
+        const defaults = working.Defaults;
+        if (isRecord(defaults)) removeRetiredRuntimeUpdateConfiguration(defaults, "Defaults.", removedPaths);
+        version = 12;
+        break;
+      }
       default:
         throw new AgentConfigMigrationError(`No migration is registered for configuration version ${version}.`);
     }
@@ -90,6 +100,14 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
     migratedPaths,
     removedPaths,
   };
+}
+
+function removeRetiredRuntimeUpdateConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  if (removeProperty(container, "Updates")) removedPaths.push(`${prefix}Updates`);
 }
 
 const RetiredToolSearchEmbeddingProperties = [

@@ -4,6 +4,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const httpOrigin = readLoopbackOrigin(process.env.SENERA_BROWSER_E2E_HTTP_ORIGIN);
 const userDataRoot = process.env.SENERA_BROWSER_E2E_USER_DATA_ROOT;
 if (!userDataRoot) throw new Error("SENERA_BROWSER_E2E_USER_DATA_ROOT is required.");
+const unsupportedUpdateState = Object.freeze({ state: "unsupported", currentVersion: "0.0.0" });
 
 app.disableHardwareAcceleration();
 app.setPath("userData", path.resolve(userDataRoot));
@@ -57,6 +58,10 @@ function registerDesktopIpc() {
     return window ? { isMaximized: window.isMaximized() } : undefined;
   });
   ipcMain.handle("senera:external-url.open", () => undefined);
+  ipcMain.handle("senera:update.get-state", () => unsupportedUpdateState);
+  ipcMain.handle("senera:update.check", () => unsupportedUpdateState);
+  ipcMain.handle("senera:update.download", () => unsupportedUpdateState);
+  ipcMain.handle("senera:update.install", () => unsupportedUpdateState);
 }
 
 function readLoopbackOrigin(value) {

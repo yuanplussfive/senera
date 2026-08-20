@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 import type { UploadAttachmentData } from "../../api/eventTypes";
-import { buildUploadContentUrl } from "../../api/uploadClient";
+import { buildResourceContentUrl } from "../../api/uploadClient";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { isImageFilePreview } from "../../lib/filePreview";
 import { cn, formatFileSize } from "../../lib/util";
@@ -23,17 +23,17 @@ interface ImageAttachmentSource {
 }
 
 export function MessageAttachments({ attachments, uploadUrl }: MessageAttachmentsProps): JSX.Element {
-  const [failedUploadUris, setFailedUploadUris] = useState<ReadonlySet<string>>(() => new Set());
-  const [selectedUploadUri, setSelectedUploadUri] = useState<string | null>(null);
+  const [failedResourceUris, setFailedResourceUris] = useState<ReadonlySet<string>>(() => new Set());
+  const [selectedResourceUri, setSelectedResourceUri] = useState<string | null>(null);
   const previewRegistry = useUploadPreviewRegistry();
   const projected = attachments.map((attachment) => ({
     attachment,
     imageCandidate: isImageFilePreview({ name: attachment.name, mime: attachment.mime }),
-    canonicalSource: buildUploadContentUrl(uploadUrl, attachment.uploadUri),
-    previewSource: previewRegistry.resolve(attachment.uploadUri),
+    canonicalSource: buildResourceContentUrl(uploadUrl, attachment.resourceUri),
+    previewSource: previewRegistry.resolve(attachment.resourceUri),
   }));
   const images = projected.flatMap((item) =>
-    item.imageCandidate && item.canonicalSource && !failedUploadUris.has(item.attachment.uploadUri)
+    item.imageCandidate && item.canonicalSource && !failedResourceUris.has(item.attachment.resourceUri)
       ? [
           {
             attachment: item.attachment,
@@ -44,13 +44,13 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
       : [],
   );
   const files = projected.filter(
-    (item) => !item.imageCandidate || !item.canonicalSource || failedUploadUris.has(item.attachment.uploadUri),
+    (item) => !item.imageCandidate || !item.canonicalSource || failedResourceUris.has(item.attachment.resourceUri),
   );
-  const selectedImage = images.find((image) => image.attachment.uploadUri === selectedUploadUri) ?? null;
+  const selectedImage = images.find((image) => image.attachment.resourceUri === selectedResourceUri) ?? null;
 
-  const markPreviewUnavailable = (uploadUri: string): void => {
-    setFailedUploadUris((current) => new Set(current).add(uploadUri));
-    setSelectedUploadUri((current) => (current === uploadUri ? null : current));
+  const markPreviewUnavailable = (resourceUri: string): void => {
+    setFailedResourceUris((current) => new Set(current).add(resourceUri));
+    setSelectedResourceUri((current) => (current === resourceUri ? null : current));
   };
 
   return (
@@ -65,28 +65,28 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
         >
           {images.map((image) => (
             <button
-              key={image.attachment.uploadUri}
+              key={image.attachment.resourceUri}
               type="button"
               className={cn(
                 "relative aspect-[4/3] min-w-0 overflow-hidden rounded-lg border border-line-subtle bg-surface-muted",
                 "cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
               )}
               aria-label={frontendMessage("chat.attachment.imagePreview", { name: image.attachment.name })}
-              onClick={() => setSelectedUploadUri(image.attachment.uploadUri)}
-              data-message-image={image.attachment.uploadUri}
+              onClick={() => setSelectedResourceUri(image.attachment.resourceUri)}
+              data-message-image={image.attachment.resourceUri}
             >
               <ProgressiveMessageImage
                 image={image}
                 onCanonicalLoad={() => {
                   if (image.previewSource) {
-                    previewRegistry.release(image.attachment.uploadUri, image.previewSource);
+                    previewRegistry.release(image.attachment.resourceUri, image.previewSource);
                   }
                 }}
                 onLoadError={() => {
                   if (image.previewSource) {
-                    previewRegistry.release(image.attachment.uploadUri, image.previewSource);
+                    previewRegistry.release(image.attachment.resourceUri, image.previewSource);
                   }
-                  markPreviewUnavailable(image.attachment.uploadUri);
+                  markPreviewUnavailable(image.attachment.resourceUri);
                 }}
               />
             </button>
@@ -97,17 +97,21 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
       {files.length > 0 ? (
         <div className="flex max-w-full flex-col items-end gap-1">
           {files.map(({ attachment, imageCandidate }) => (
-            <AttachmentFileRow key={attachment.uploadUri} attachment={attachment} previewUnavailable={imageCandidate} />
+            <AttachmentFileRow
+              key={attachment.resourceUri}
+              attachment={attachment}
+              previewUnavailable={imageCandidate}
+            />
           ))}
         </div>
       ) : null}
 
       {selectedImage ? (
         <AttachmentImagePreviewDialog
-          key={selectedImage.attachment.uploadUri}
+          key={selectedImage.attachment.resourceUri}
           image={selectedImage}
-          onClose={() => setSelectedUploadUri(null)}
-          onLoadError={() => markPreviewUnavailable(selectedImage.attachment.uploadUri)}
+          onClose={() => setSelectedResourceUri(null)}
+          onLoadError={() => markPreviewUnavailable(selectedImage.attachment.resourceUri)}
         />
       ) : null}
     </div>

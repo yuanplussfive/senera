@@ -13,13 +13,14 @@ import type {
 } from "../PiShared/AgentPiPlanningTypes.js";
 import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 import type { AgentPiCompactionPromptInput } from "../PiShared/AgentPiCompactionPrompt.js";
+import type { AgentLanguageModelInvocationOptions } from "../ModelEndpoints/AgentLanguageModel.js";
 
 export class AgentActionPlannerCoreModelCalls {
   constructor(private readonly caller: AgentActionPlannerStructuredCaller) {}
 
   async evolveTurn(
     input: AgentPiControllerDecisionInput,
-    options: { signal?: AbortSignal } = {},
+    options: AgentLanguageModelInvocationOptions = {},
   ): Promise<BamlControllerDecision> {
     return this.caller.run({
       functionName: "EvolveTurn",
@@ -28,6 +29,7 @@ export class AgentActionPlannerCoreModelCalls {
         input,
       },
       signal: options.signal,
+      attachments: options.attachments,
       parse: (rawOutput) => baml.parse.EvolveTurn(rawOutput),
       repair: (failure) => ({
         functionName: "RepairControllerDecision",
@@ -44,7 +46,7 @@ export class AgentActionPlannerCoreModelCalls {
       invalidDecision: string;
       issues: string[];
     },
-    requestOptions: { signal?: AbortSignal } = {},
+    requestOptions: AgentLanguageModelInvocationOptions = {},
   ): Promise<BamlControllerDecision> {
     return this.caller.repair({
       functionName: "RepairControllerDecision",
@@ -53,13 +55,14 @@ export class AgentActionPlannerCoreModelCalls {
         ...options,
       },
       signal: requestOptions.signal,
+      attachments: requestOptions.attachments,
       parse: (rawOutput) => baml.parse.RepairControllerDecision(rawOutput),
     });
   }
 
   async fillPiToolArguments(
     input: AgentPiToolArgumentsInput,
-    options: { signal?: AbortSignal } = {},
+    options: AgentLanguageModelInvocationOptions = {},
   ): Promise<BamlPiToolArgumentsDraft> {
     return this.caller.run({
       functionName: "FillPiToolArguments",
@@ -68,6 +71,7 @@ export class AgentActionPlannerCoreModelCalls {
         input,
       },
       signal: options.signal,
+      attachments: options.attachments,
       parse: (rawOutput) => baml.parse.FillPiToolArguments(rawOutput),
       repair: (failure) => ({
         functionName: "RepairPiToolArguments",
@@ -82,7 +86,7 @@ export class AgentActionPlannerCoreModelCalls {
 
   async repairPiToolArguments(
     input: AgentPiToolArgumentsRepairInput,
-    options: { signal?: AbortSignal } = {},
+    options: AgentLanguageModelInvocationOptions = {},
   ): Promise<BamlPiToolArgumentsDraft> {
     return this.caller.repair({
       functionName: "RepairPiToolArguments",
@@ -91,13 +95,14 @@ export class AgentActionPlannerCoreModelCalls {
         input,
       },
       signal: options.signal,
+      attachments: options.attachments,
       parse: (rawOutput) => baml.parse.RepairPiToolArguments(rawOutput),
     });
   }
 
   async auditToolRisk(
     input: AgentBamlToolRiskAuditPromptInput,
-    options: { signal?: AbortSignal } = {},
+    options: AgentLanguageModelInvocationOptions = {},
   ): Promise<BamlToolRiskAudit> {
     return this.caller.run({
       functionName: "AuditToolRisk",
@@ -106,6 +111,7 @@ export class AgentActionPlannerCoreModelCalls {
         input,
       },
       signal: options.signal,
+      attachments: options.attachments,
       parse: (rawOutput) => baml.parse.AuditToolRisk(rawOutput),
       repair: (failure) => ({
         functionName: "RepairToolRiskAudit",
@@ -122,7 +128,7 @@ export class AgentActionPlannerCoreModelCalls {
       invalidAudit: string;
       issues: string[];
     },
-    requestOptions: { signal?: AbortSignal } = {},
+    requestOptions: AgentLanguageModelInvocationOptions = {},
   ): Promise<BamlToolRiskAudit> {
     return this.caller.repair({
       functionName: "RepairToolRiskAudit",
@@ -131,18 +137,20 @@ export class AgentActionPlannerCoreModelCalls {
         ...options,
       },
       signal: requestOptions.signal,
+      attachments: requestOptions.attachments,
       parse: (rawOutput) => baml.parse.RepairToolRiskAudit(rawOutput),
     });
   }
 
   async summarizePiConversation(
     input: AgentPiCompactionPromptInput,
-    options: { signal?: AbortSignal } = {},
+    options: AgentLanguageModelInvocationOptions = {},
   ): Promise<BamlPiConversationSummary> {
     return this.caller.run({
       functionName: "SummarizePiConversation",
       args: { functionName: "SummarizePiConversation", input },
       signal: options.signal,
+      attachments: options.attachments,
       parse: (rawOutput) => baml.parse.SummarizePiConversation(rawOutput),
       repair: (failure) => ({
         functionName: "RepairPiConversationSummary",
@@ -159,12 +167,13 @@ export class AgentActionPlannerCoreModelCalls {
       invalidSummary: string;
       issues: string[];
     },
-    requestOptions: { signal?: AbortSignal } = {},
+    requestOptions: AgentLanguageModelInvocationOptions = {},
   ): Promise<BamlPiConversationSummary> {
     return this.caller.repair({
       functionName: "RepairPiConversationSummary",
       args: { functionName: "RepairPiConversationSummary", ...options },
       signal: requestOptions.signal,
+      attachments: requestOptions.attachments,
       parse: (rawOutput) => baml.parse.RepairPiConversationSummary(rawOutput),
     });
   }

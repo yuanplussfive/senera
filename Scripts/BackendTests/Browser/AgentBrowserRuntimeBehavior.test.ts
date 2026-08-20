@@ -228,7 +228,7 @@ describe("controlled browser runtime", () => {
 
       expect(output.result.screenshot).toMatchObject({
         mediaType: "image/png",
-        markdown: expect.stringMatching(/^!\[Browser screenshot\]\(senera:\/\/artifact-asset\//u),
+        markdown: expect.stringMatching(/^!\[Browser screenshot\]\(senera:\/\/resource\//u),
       });
       expect(output.artifactPayload.assets).toHaveLength(1);
       expect(Buffer.from(output.artifactPayload.assets![0]!.dataBase64, "base64")).toEqual(Buffer.from("senera-image"));

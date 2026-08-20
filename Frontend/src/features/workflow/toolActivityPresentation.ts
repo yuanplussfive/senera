@@ -51,30 +51,32 @@ export function projectToolActivityInspection(input: ToolActivityInput): ToolAct
   const toolName = displayToolName(input.toolName, input.origin);
   const subjects = uniqueStrings((rule?.detailPaths ?? []).flatMap((path) => readStringsAtPath(input.arguments, path)));
   const argumentPreview = readActivityArgumentPreview({
-    toolName,
-    isKnownTool: Boolean(rule),
     command,
     subjects,
     arguments: input.arguments,
   });
+  const actionLabel = [presentation.action, input.origin?.kind === "mcp" || !rule ? toolName : undefined]
+    .filter(Boolean)
+    .join(" · ");
   return {
     // Completion and failure are expressed by the row marker. Keep copy to one compact action.
-    label: appendArgumentPreview(presentation.action, argumentPreview),
+    label: appendArgumentPreview(actionLabel, argumentPreview),
     category: input.origin?.kind === "mcp" ? "mcp" : (rule?.id ?? "system"),
     subjects,
     argumentPreview,
   };
 }
 
-export function projectToolBatchAction(input: Pick<ToolActivityInput, "toolName" | "origin">): {
+export function projectToolBatchAction(
+  input: Pick<ToolActivityInput, "toolName" | "origin" | "arguments" | "status">,
+): {
   readonly category: string;
   readonly label: string;
 } {
-  const rule = resolveRule(input.toolName, input.origin?.capability);
-  const presentation = input.origin?.kind === "mcp" ? ToolActivityMap.mcp : (rule ?? ToolActivityMap.default);
+  const inspection = projectToolActivityInspection(input);
   return {
-    category: input.origin?.kind === "mcp" ? "mcp" : (rule?.id ?? "system"),
-    label: presentation.action,
+    category: inspection.category,
+    label: inspection.label,
   };
 }
 
@@ -133,21 +135,16 @@ function appendArgumentPreview(label: string, argumentPreview: string | undefine
 }
 
 function readActivityArgumentPreview({
-  toolName,
-  isKnownTool,
   command,
   subjects,
   arguments: value,
 }: {
-  readonly toolName: string;
-  readonly isKnownTool: boolean;
   readonly command?: string;
   readonly subjects: readonly string[];
   readonly arguments?: unknown;
 }): string | undefined {
   const supplemental = command ? subjects.filter((subject) => subject !== command) : subjects;
   const values = [
-    ...(isKnownTool ? [] : [toolName]),
     ...(command ? [command] : []),
     ...(supplemental.length > 0 ? supplemental : !command && subjects.length === 0 ? collectArgumentValues(value) : []),
   ];

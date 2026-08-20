@@ -162,7 +162,9 @@ export function SettingsNavigation({
         <nav className="space-y-3.5" aria-label={frontendMessage("settings.nav.sectionsLabel")}>
           {groupedResults.map(({ group, results }) => (
             <div key={group.id}>
-              <div className="px-2.5 pb-1 text-[10.5px] font-medium text-ink-400">{group.label}</div>
+              <div className="px-2.5 pb-1.5 text-[10.5px] font-medium tracking-[0.06em] text-ink-400">
+                {group.label}
+              </div>
               <div className="space-y-0.5">
                 {results.map(({ section, details }) => (
                   <SettingsNavItem

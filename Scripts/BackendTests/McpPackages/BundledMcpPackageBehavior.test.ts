@@ -107,7 +107,7 @@ describe("bundled MCP package behavior", () => {
       size: "1536x1024",
     });
     expect(execution.data).toMatchObject({ mode: "images", model: "gpt-image-2", size: "1536x1024" });
-    expect(execution.data.markdown).toContain("senera://artifact-asset/imagen-1");
+    expect(execution.data.markdown).toContain("senera://resource/imagen-1");
     expect(execution.artifactPayload?.rawResponse).toMatchObject({ data: [{ b64_json: imageBase64 }] });
     expect(execution.artifactPayload?.assets?.[0]).toMatchObject({
       id: "imagen-1",

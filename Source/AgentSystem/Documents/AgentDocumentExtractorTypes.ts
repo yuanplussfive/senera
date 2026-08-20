@@ -8,7 +8,7 @@ export interface AgentDocumentExtractInput {
   declaredMime?: string;
   size: number;
   sha256?: string;
-  uploadUri?: string;
+  resourceUri?: string;
   extractors: Record<string, AgentDocumentExtractorConfig>;
   probe: Parameters<typeof probeAgentDocument>[1];
   signal?: AbortSignal;

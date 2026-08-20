@@ -9,10 +9,11 @@ import { resolveAgentVisionProvider } from "../Vision/AgentVisionProviderResolve
 import { defineSystemTool } from "./AgentSystemToolDefinition.js";
 import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import { resolveAgentSystemUpload } from "./AgentSystemUpload.js";
+import { AgentResourceUriSchema } from "../Resources/AgentResourceSchema.js";
 
 const ImageAnalyzeInput = z
   .object({
-    uploadUri: z.string().trim().min(1).describe("Exact senera-upload URI supplied by the runtime."),
+    resourceUri: AgentResourceUriSchema.describe("Exact Senera resource URI supplied by the runtime."),
     task: z.enum(["describe", "ocr", "question"]).default("describe"),
     question: z.string().trim().min(1).optional(),
   })
@@ -25,7 +26,7 @@ const ImageAnalyzeInput = z
 
 const ImageAnalyzeOutput = z
   .object({
-    uploadUri: z.string(),
+    resourceUri: AgentResourceUriSchema,
     name: z.string(),
     mime: z.string(),
     size: z.number().int().nonnegative(),
@@ -200,7 +201,7 @@ export function createImageAnalyzeSystemTool(
     input: ImageAnalyzeInput,
     output: ImageAnalyzeOutput,
     async execute(input, context) {
-      const upload = await resolveAgentSystemUpload(context, input.uploadUri);
+      const upload = await resolveAgentSystemUpload(context, input.resourceUri);
       if (!upload.manifest.mime.toLowerCase().startsWith("image/")) {
         throw new AgentLocalizedError("vision.imageMimeRequired", { mime: upload.manifest.mime });
       }
@@ -228,7 +229,7 @@ export function createImageAnalyzeSystemTool(
         signal: context.signal,
       });
       return {
-        uploadUri: upload.manifest.uploadUri,
+        resourceUri: upload.manifest.resourceUri,
         name: upload.manifest.name,
         mime: upload.manifest.mime,
         size: upload.manifest.size,

@@ -12,6 +12,7 @@ describe("agent workspace layout", () => {
     const root = path.resolve("workspace");
     const layout = resolveAgentWorkspaceLayout(root);
 
+    expect(layout.desktopRuntimeRoot).toBe(path.join(root, ".senera", "desktop"));
     expect(layout.skillRoot).toBe(path.join(root, ".senera", "skills"));
     expect(layout.mcpRoot).toBe(path.join(root, ".senera", "mcp"));
     expect(layout.databases).toEqual({

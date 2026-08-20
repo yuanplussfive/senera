@@ -167,7 +167,7 @@ export function useComposerAttachments(options: ComposerAttachmentsOptions): Com
   const commitSentAttachments = (): void => {
     for (const entry of pendingAttachments) {
       if (entry.previewUrl && entry.status === "uploaded" && entry.attachment) {
-        uploadPreviewRegistry.register(entry.attachment.uploadUri, entry.previewUrl);
+        uploadPreviewRegistry.register(entry.attachment.resourceUri, entry.previewUrl);
         ownedPreviewUrlsRef.current.delete(entry.previewUrl);
       } else {
         revokePreviewUrl(entry.previewUrl);

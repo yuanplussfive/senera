@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   accentColors,
+  appearanceFontFamilies,
+  appearanceFontFamilyStacks,
   colorSchemes,
   createAppearanceSnapshot,
   createAppearanceTokens,
@@ -59,6 +61,14 @@ describe("themeModel", () => {
         fontScale: "huge",
       }),
     ).toEqual(defaultAppearancePreference);
+  });
+
+  it("keeps three interface font presets with platform emoji fallbacks", () => {
+    expect(appearanceFontFamilies).toEqual(["brand", "fresh", "system"]);
+    for (const fontFamily of appearanceFontFamilies) {
+      expect(appearanceFontFamilyStacks[fontFamily]).toContain("Segoe UI Emoji");
+      expect(appearanceFontFamilyStacks[fontFamily]).toContain("Noto Color Emoji");
+    }
   });
 
   it("pairs every stored color scheme with its designated accent", () => {

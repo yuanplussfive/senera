@@ -40,7 +40,7 @@
 /* ----- base ----- */
 :root {
   color-scheme: light;
-  font-family: var(--theme-ui-font-family, "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif);
+  font-family: var(--theme-ui-font-family, ui-sans-serif, system-ui, sans-serif);
   font-feature-settings:
     "tnum" on,
     "ss01" on;
@@ -189,11 +189,14 @@
   --shadow-soft: 0 8px 24px -12px rgb(43 40 32 / 0.16);
   --shadow-avatar-cropper: inset 0 0 0 1px rgb(255 255 255 / 0.18), 0 10px 30px rgb(43 40 32 / 0.14);
   --theme-font-scale: 1;
-  --theme-ui-font-family: "Geist", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-  --theme-reading-font-family:
-    "Geist", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Source Han Sans SC", "Segoe UI", ui-sans-serif,
-    system-ui, sans-serif;
-  --theme-display-font-family: "Fraunces", ui-serif, Georgia, serif;
+  --theme-emoji-font-family: "Segoe UI Emoji", "Noto Color Emoji", emoji;
+  --theme-ui-font-family:
+    "Geist", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Segoe UI Variable", "Segoe UI",
+    var(--theme-emoji-font-family), ui-sans-serif, system-ui, sans-serif;
+  --theme-reading-font-family: var(--theme-ui-font-family);
+  --theme-mono-font-family:
+    "JetBrains Mono", "Cascadia Mono", var(--theme-emoji-font-family), ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
   --scrollbar-size: 8px;
   --scrollbar-thumb: rgb(43 40 32 / 0.15);
   --scrollbar-thumb-hover: rgb(43 40 32 / 0.25);
@@ -694,6 +697,14 @@ textarea::-webkit-scrollbar-track {
 
 .thinking-tool-popover__body {
   background: color-mix(in srgb, var(--thinking-tool-surface) 98%, transparent);
+}
+
+/* Structured value previews keep the same material language as the execution rail. */
+.data-value-popover {
+  border-color: color-mix(in srgb, var(--line-default) 72%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 94%, var(--surface-sidebar));
+  box-shadow: 0 14px 34px -26px color-mix(in srgb, var(--content-primary) 42%, transparent);
+  backdrop-filter: blur(12px) saturate(1.03);
 }
 
 .chat-event-rail__preview-body {

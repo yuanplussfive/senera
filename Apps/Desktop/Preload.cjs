@@ -22,4 +22,13 @@ contextBridge.exposeInMainWorld("seneraDesktop", {
   confirmSettingsClose: () => ipcRenderer.invoke("senera:settings.confirm-close"),
   cancelSettingsClose: () => ipcRenderer.invoke("senera:settings.cancel-close"),
   openExternalUrl: (url) => ipcRenderer.invoke("senera:external-url.open", url),
+  getUpdateState: () => ipcRenderer.invoke("senera:update.get-state"),
+  checkForUpdates: () => ipcRenderer.invoke("senera:update.check"),
+  downloadUpdate: () => ipcRenderer.invoke("senera:update.download"),
+  installUpdate: () => ipcRenderer.invoke("senera:update.install"),
+  onUpdateStateChanged: (listener) => {
+    const handler = (_event, state) => listener(state);
+    ipcRenderer.on("senera:update.state-changed", handler);
+    return () => ipcRenderer.removeListener("senera:update.state-changed", handler);
+  },
 });

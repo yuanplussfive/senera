@@ -1,5 +1,6 @@
 import type { AgentLanguageModelRequest } from "./AgentLanguageModel.js";
 import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
+import { estimateAgentModelInputTokens } from "../Text/AgentMultimodalTokenBudget.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 export const AgentModelUsageSources = {
@@ -102,7 +103,10 @@ export class AgentModelUsageResolver {
     reported?: AgentModelUsageValue,
   ): AgentModelUsageValue {
     const estimates = {
-      inputTokens: this.estimator.estimate(serializeModelInput(request)).tokenCount,
+      inputTokens: estimateAgentModelInputTokens(this.estimator, {
+        systemPrompt: request.systemPrompt,
+        messages: request.messages,
+      }),
       outputTokens: this.estimator.estimate(outputText).tokenCount,
     };
     const estimatedTokenFields = (["inputTokens", "outputTokens"] as const).filter(
@@ -228,12 +232,6 @@ function cloneUsageValue(usage: AgentModelUsageValue): AgentModelUsageValue {
     ...usage,
     estimatedFields: usage.estimatedFields ? [...usage.estimatedFields] : undefined,
   };
-}
-
-function serializeModelInput(request: Pick<AgentLanguageModelRequest, "systemPrompt" | "messages">): string {
-  return [request.systemPrompt, ...request.messages.map((message) => `${message.role}:\n${message.content}`)].join(
-    "\n\n",
-  );
 }
 
 function usageTokenSum(usage: AgentProviderReportedUsage): number {

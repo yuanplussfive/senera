@@ -81,7 +81,7 @@ describe("Session regeneration WebSocket behavior", () => {
     const sendEvent = vi.fn();
     const attachments = [
       {
-        uploadUri: "senera://upload/source",
+        resourceUri: "senera://resource/source",
         name: "source.ts",
         mime: "text/plain",
         size: 10,
