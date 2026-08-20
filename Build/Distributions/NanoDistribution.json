@@ -68,6 +68,7 @@
         "@types/dockerode",
         "@types/react",
         "@types/react-dom",
+        "@types/semver",
         "@types/tar-fs",
         "@types/tar-stream",
         "@types/turndown",

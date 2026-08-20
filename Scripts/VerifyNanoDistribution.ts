@@ -240,6 +240,7 @@ function verifyRootPackage(outputRoot: string, value: NanoContract): void {
     Object.fromEntries(value.rootPackage.scripts.map((name) => [name, requireEntry(sourcePackage.scripts, name)])),
   );
   assert.ok(nanoPackage.dependencies?.dockerode);
+  assert.ok(nanoPackage.dependencies?.semver);
   assert.ok(nanoPackage.dependencies?.["tar-fs"]);
   assert.equal(nanoPackage.dependencies?.["fast-glob"], undefined);
   assert.deepEqual(Object.keys(nanoPackage.devDependencies ?? {}), value.rootPackage.devDependencies.names);
