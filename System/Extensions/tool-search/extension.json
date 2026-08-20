@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "tool-search",
+  "version": "1.0.0",
+  "displayName": {
+    "zh-CN": "工具检索",
+    "en-US": "Tool Search"
+  },
+  "description": {
+    "zh-CN": "检索已注册工具目录并按需加载匹配的工具卡片。",
+    "en-US": "Searches the registered tool catalog and loads matching tool cards."
+  },
+  "priority": 10,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/ToolSearchTool.tool.json",
+      "capability": "tool.search",
+      "recommendedForSkills": []
+    }
+  ]
+}

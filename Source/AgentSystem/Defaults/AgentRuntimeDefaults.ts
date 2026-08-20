@@ -1,0 +1,85 @@
+import type {
+  AgentSystemConfig,
+  ResolvedAgentSandboxRuntimeConfig,
+  ResolvedAgentToolExecutionConfig,
+} from "../Types/AgentConfigTypes.js";
+import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
+import { optionalSecondsToMilliseconds } from "./AgentTimeDefaults.js";
+
+export function resolveAgentLoopConfig(config: AgentSystemConfig) {
+  const defaults = resolveAgentDefaults(config);
+  const { PiTurnLeaseTimeoutSeconds, RunSettlementTimeoutSeconds, PiSessions, ...configuredAgentLoop } =
+    config.AgentLoop ?? {};
+  const resolvedCompaction = {
+    ...defaults.AgentLoop.PiSessions.Compaction,
+    ...PiSessions?.Compaction,
+  };
+  return {
+    ...defaults.AgentLoop,
+    ...configuredAgentLoop,
+    PiSessions: {
+      ...defaults.AgentLoop.PiSessions,
+      ...PiSessions,
+      Compaction: {
+        ...resolvedCompaction,
+      },
+    },
+    PiTurnLeaseTimeoutMs:
+      optionalSecondsToMilliseconds(PiTurnLeaseTimeoutSeconds) ?? defaults.AgentLoop.PiTurnLeaseTimeoutMs,
+    RunSettlementTimeoutMs:
+      optionalSecondsToMilliseconds(RunSettlementTimeoutSeconds) ?? defaults.AgentLoop.RunSettlementTimeoutMs,
+  };
+}
+
+export function resolveToolExecutionConfig(config: AgentSystemConfig): ResolvedAgentToolExecutionConfig {
+  const defaults = resolveAgentDefaults(config);
+  const { TimeoutSeconds, SemanticAudit, Environment, Resources, ...configuredToolExecution } =
+    config.ToolExecution ?? {};
+  const resolvedResources = {
+    ...defaults.ToolExecution.Resources,
+    ...Resources,
+  };
+  return {
+    ...defaults.ToolExecution,
+    ...configuredToolExecution,
+    TimeoutMs: optionalSecondsToMilliseconds(TimeoutSeconds) ?? defaults.ToolExecution.TimeoutMs,
+    SemanticAudit: {
+      ...defaults.ToolExecution.SemanticAudit,
+      ...SemanticAudit,
+    },
+    Environment: {
+      ...defaults.ToolExecution.Environment,
+      ...Environment,
+      IncludeOnly: [...(Environment?.IncludeOnly ?? defaults.ToolExecution.Environment.IncludeOnly)],
+      Exclude: [...(Environment?.Exclude ?? defaults.ToolExecution.Environment.Exclude)],
+      Set: {
+        ...defaults.ToolExecution.Environment.Set,
+        ...(Environment?.Set ?? {}),
+      },
+    },
+    Resources: {
+      ...resolvedResources,
+      InitialYieldMs: optionalSecondsToMilliseconds(Resources?.InitialYieldSeconds) ?? resolvedResources.InitialYieldMs,
+      MaxWaitMs: optionalSecondsToMilliseconds(Resources?.MaxWaitSeconds) ?? resolvedResources.MaxWaitMs,
+      IdleTtlMs: optionalSecondsToMilliseconds(Resources?.IdleTtlSeconds) ?? resolvedResources.IdleTtlMs,
+      TerminalTtlMs: optionalSecondsToMilliseconds(Resources?.TerminalTtlSeconds) ?? resolvedResources.TerminalTtlMs,
+      SweepIntervalMs:
+        optionalSecondsToMilliseconds(Resources?.SweepIntervalSeconds) ?? resolvedResources.SweepIntervalMs,
+      TerminationGraceMs:
+        optionalSecondsToMilliseconds(Resources?.TerminationGraceSeconds) ?? resolvedResources.TerminationGraceMs,
+    },
+  };
+}
+
+export function resolveSandboxRuntimeConfig(config: AgentSystemConfig): ResolvedAgentSandboxRuntimeConfig {
+  const defaults = resolveAgentDefaults(config);
+  const configured = config.SandboxRuntime ?? {};
+  return {
+    ...defaults.SandboxRuntime,
+    ...configured,
+    Docker: {
+      ...defaults.SandboxRuntime.Docker,
+      ...configured.Docker,
+    },
+  };
+}

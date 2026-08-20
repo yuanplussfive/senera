@@ -1,0 +1,84 @@
+{
+  "form": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "model",
+        "label": { "zh-CN": "模型选择", "en-US": "Model selection" },
+        "description": {
+          "zh-CN": "选择图像分析使用的视觉模型；留空时优先使用当前会话模型。",
+          "en-US": "Choose the vision model used for image analysis. When empty, the current conversation model is preferred."
+        },
+        "fields": [
+          {
+            "path": ["model", "modelProviderId"],
+            "label": { "zh-CN": "视觉模型", "en-US": "Vision model" },
+            "description": {
+              "zh-CN": "只显示已启用且声明 Vision 能力的模型。",
+              "en-US": "Only enabled models that declare the Vision capability are listed."
+            },
+            "placeholder": { "zh-CN": "自动（会话模型优先）", "en-US": "Automatic (prefer conversation model)" },
+            "type": "string",
+            "required": false,
+            "essential": true,
+            "modelSelection": {
+              "id": "agent-image-tools.vision-model",
+              "capability": "Vision",
+              "valueKind": "model-id",
+              "mutation": "config",
+              "required": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "input",
+        "label": { "zh-CN": "输入边界", "en-US": "Input limits" },
+        "description": {
+          "zh-CN": "限制单次图像分析读取到内存的文件大小。",
+          "en-US": "Limit the image size read into memory for one analysis."
+        },
+        "fields": [
+          {
+            "path": ["input", "maxImageBytes"],
+            "label": { "zh-CN": "最大图像字节", "en-US": "Maximum image bytes" },
+            "description": {
+              "zh-CN": "超过此上限的上传图像不会发送给视觉模型。",
+              "en-US": "Uploaded images above this limit are not sent to the vision model."
+            },
+            "type": "number",
+            "min": 1024,
+            "max": 104857600,
+            "step": 1,
+            "required": false,
+            "essential": true
+          }
+        ]
+      },
+      {
+        "id": "prompt",
+        "label": { "zh-CN": "分析策略", "en-US": "Analysis policy" },
+        "description": {
+          "zh-CN": "定义视觉模型分析图像时遵循的系统级约束。",
+          "en-US": "Define the system-level instructions followed while analyzing images."
+        },
+        "fields": [
+          {
+            "path": ["prompt", "systemPrompt"],
+            "label": { "zh-CN": "视觉系统提示词", "en-US": "Vision system prompt" },
+            "description": {
+              "zh-CN": "用于约束可见证据、推断边界和不确定性表达。",
+              "en-US": "Controls visible-evidence grounding, inference boundaries, and uncertainty reporting."
+            },
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000,
+            "multiline": true,
+            "required": false,
+            "essential": false
+          }
+        ]
+      }
+    ]
+  }
+}

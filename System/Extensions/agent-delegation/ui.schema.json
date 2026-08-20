@@ -1,0 +1,292 @@
+{
+  "form": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "model-pool",
+        "label": { "zh-CN": "子代理模型池", "en-US": "Child model pool" },
+        "description": {
+          "zh-CN": "按顺序声明子代理可使用的模型来源；默认继承发起委派的当前模型。",
+          "en-US": "Declare the ordered model sources available to child agents. By default, they inherit the delegating run's current model."
+        },
+        "fields": [
+          {
+            "path": ["modelPool", "inheritParent"],
+            "label": { "zh-CN": "继承父运行模型", "en-US": "Inherit parent model" },
+            "description": {
+              "zh-CN": "把发起委派的当前模型作为首选来源；父运行没有显式模型时使用系统默认模型。",
+              "en-US": "Use the delegating run's current model as the first source, falling back to the system default when the parent has no explicit model."
+            },
+            "type": "boolean",
+            "defaultValue": true,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["modelPool", "modelProviderIds"],
+            "label": { "zh-CN": "候选子代理模型", "en-US": "Child model candidates" },
+            "description": {
+              "zh-CN": "仅列出已启用且支持对话的模型。顺序用于角色未固定模型时的候选优先级。",
+              "en-US": "Only enabled chat-capable models are available. Their order defines candidate priority when a role does not pin a model."
+            },
+            "placeholder": { "zh-CN": "添加候选模型", "en-US": "Add a candidate model" },
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": true,
+            "modelSelection": {
+              "id": "agent-delegation-model-pool",
+              "capability": "Chat",
+              "valueKind": "model-id",
+              "mutation": "config",
+              "cardinality": "many",
+              "inheritance": {
+                "source": "parent-model",
+                "path": ["modelPool", "inheritParent"]
+              },
+              "required": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "defaults",
+        "label": { "zh-CN": "子代理默认能力", "en-US": "Child agent defaults" },
+        "description": {
+          "zh-CN": "固定 Skill 会在每个子任务开始前由 Senera 校验并激活；thinking 未固定时继承父运行。",
+          "en-US": "Pinned Skills are validated and activated by Senera before each child task; thinking inherits from the parent when not pinned."
+        },
+        "fields": [
+          {
+            "path": ["defaults", "skills"],
+            "label": { "zh-CN": "固定启用的 Skill", "en-US": "Pinned Skills" },
+            "description": {
+              "zh-CN": "这些 Skill 会与子任务自动匹配的 Skill 合并并去重。",
+              "en-US": "These Skills are merged with automatically selected child-task Skills and deduplicated."
+            },
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": true,
+            "optionSource": { "catalog": "skills" }
+          },
+          {
+            "path": ["defaults", "thinkingLevel"],
+            "label": { "zh-CN": "默认 thinking", "en-US": "Default thinking" },
+            "description": {
+              "zh-CN": "未指定时优先使用角色声明，其次继承父运行的 thinking。",
+              "en-US": "When unset, prefer the role declaration, then inherit the parent run's thinking level."
+            },
+            "type": "string",
+            "defaultValue": "inherit",
+            "options": ["inherit", "off", "minimal", "low", "medium", "high", "xhigh", "max"],
+            "optionLabels": {
+              "inherit": { "zh-CN": "继承父运行", "en-US": "Inherit parent" },
+              "off": { "zh-CN": "关闭", "en-US": "Off" },
+              "minimal": { "zh-CN": "最小", "en-US": "Minimal" },
+              "low": { "zh-CN": "低", "en-US": "Low" },
+              "medium": { "zh-CN": "中", "en-US": "Medium" },
+              "high": { "zh-CN": "高", "en-US": "High" },
+              "xhigh": { "zh-CN": "极高", "en-US": "Extra high" },
+              "max": { "zh-CN": "最高", "en-US": "Maximum" }
+            },
+            "required": false,
+            "essential": true
+          }
+        ]
+      },
+      {
+        "id": "coordination",
+        "label": { "zh-CN": "生命周期协调", "en-US": "Lifecycle coordination" },
+        "description": {
+          "zh-CN": "AgentWait 只等待状态变化；等待超时不会终止子代理。",
+          "en-US": "AgentWait only observes lifecycle changes. A wait timeout never terminates a child run."
+        },
+        "fields": [
+          {
+            "path": ["coordination", "defaultWaitTimeoutMs"],
+            "label": { "zh-CN": "默认等待时长（毫秒）", "en-US": "Default wait timeout (ms)" },
+            "type": "number",
+            "defaultValue": 30000,
+            "min": 0,
+            "max": 3600000,
+            "step": 1000,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["coordination", "maximumWaitTimeoutMs"],
+            "label": { "zh-CN": "最大等待时长（毫秒）", "en-US": "Maximum wait timeout (ms)" },
+            "type": "number",
+            "defaultValue": 3600000,
+            "min": 1000,
+            "max": 86400000,
+            "step": 1000,
+            "required": false,
+            "essential": false
+          }
+        ]
+      },
+      {
+        "id": "concurrency",
+        "label": { "zh-CN": "并发控制", "en-US": "Concurrency" },
+        "description": {
+          "zh-CN": "默认不设置编排级数量上限；需要资源治理时可显式填写管理员配额。",
+          "en-US": "No orchestration-level count limit is applied by default. Administrators may set explicit quotas for resource governance."
+        },
+        "fields": [
+          {
+            "path": ["concurrency", "maxRuns"],
+            "label": { "zh-CN": "最大并发运行", "en-US": "Maximum concurrent runs" },
+            "description": {
+              "zh-CN": "留空表示不限；实际吞吐仍受模型供应商和工具资源调度约束。",
+              "en-US": "Leave empty for unlimited. Provider and Tool resource backpressure still governs actual throughput."
+            },
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["concurrency", "maxWorkspaceWriters"],
+            "label": { "zh-CN": "最大并发写入", "en-US": "Maximum concurrent writers" },
+            "description": {
+              "zh-CN": "留空表示不额外串行化可写子代理；文件与工具声明的资源冲突仍会被调度器阻塞。",
+              "en-US": "Leave empty to avoid globally serializing writers. Declared file and Tool resource conflicts are still scheduled."
+            },
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": true
+          }
+        ]
+      },
+      {
+        "id": "execution",
+        "label": { "zh-CN": "运行边界", "en-US": "Execution limits" },
+        "description": {
+          "zh-CN": "软期限到达后，近期仍有模型或工具生命周期活动的子代理可在上限内续期；随后停止新调查并整理已有证据。",
+          "en-US": "At the soft deadline, a child agent with recent typed model or Tool lifecycle activity may receive bounded extensions before it stops new investigation and consolidates existing evidence."
+        },
+        "fields": [
+          {
+            "path": ["execution", "deadline", "softTimeoutMs"],
+            "label": { "zh-CN": "软期限（毫秒）", "en-US": "Soft deadline (ms)" },
+            "description": {
+              "zh-CN": "默认 25 分钟；排队时间不计入期限。",
+              "en-US": "Defaults to 25 minutes. Queue time does not count toward this deadline."
+            },
+            "type": "number",
+            "defaultValue": 1500000,
+            "min": 60000,
+            "max": 86400000,
+            "step": 60000,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["execution", "deadline", "activityExtension", "maximumMs"],
+            "label": { "zh-CN": "最大活动续期（毫秒）", "en-US": "Maximum activity extension (ms)" },
+            "description": {
+              "zh-CN": "仅近期存在正式模型或工具生命周期活动时续期；默认最多 2 分钟。",
+              "en-US": "Granted only when recent typed model or Tool lifecycle events prove progress. Defaults to a maximum of 2 minutes."
+            },
+            "type": "number",
+            "defaultValue": 120000,
+            "min": 0,
+            "max": 1800000,
+            "step": 60000,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["execution", "deadline", "wrapUpTimeoutMs"],
+            "label": { "zh-CN": "证据整理窗口（毫秒）", "en-US": "Evidence wrap-up window (ms)" },
+            "description": {
+              "zh-CN": "进入整理后禁止启动新工具或继续委派，默认最多 3 分钟。",
+              "en-US": "Once wrap-up starts, no new Tools or delegation may begin. Defaults to at most 3 minutes."
+            },
+            "type": "number",
+            "defaultValue": 180000,
+            "min": 10000,
+            "max": 1800000,
+            "step": 10000,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["execution", "deadline", "activityExtension", "stepMs"],
+            "label": { "zh-CN": "单次续期（毫秒）", "en-US": "Extension step (ms)" },
+            "type": "number",
+            "defaultValue": 60000,
+            "min": 1000,
+            "max": 300000,
+            "step": 1000,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["execution", "deadline", "activityExtension", "recentActivityWindowMs"],
+            "label": { "zh-CN": "实时输出判定窗口（毫秒）", "en-US": "Live-output window (ms)" },
+            "type": "number",
+            "defaultValue": 30000,
+            "min": 1000,
+            "max": 300000,
+            "step": 1000,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["execution", "deadline", "snapshotIntervalMs"],
+            "label": { "zh-CN": "活动快照间隔（毫秒）", "en-US": "Activity snapshot interval (ms)" },
+            "type": "number",
+            "defaultValue": 5000,
+            "min": 500,
+            "max": 60000,
+            "step": 500,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["execution", "maxDepth"],
+            "label": { "zh-CN": "最大嵌套层级", "en-US": "Maximum nesting depth" },
+            "description": {
+              "zh-CN": "留空表示不限；嵌套仍必须持有 AgentSpawn 权限，并受单调能力继承、所有权、取消和循环检测约束。",
+              "en-US": "Leave empty for unlimited. Nested delegation still requires AgentSpawn and remains constrained by monotonic capabilities, ownership, cancellation, and cycle detection."
+            },
+            "type": "number",
+            "min": 0,
+            "step": 1,
+            "required": false,
+            "essential": true
+          }
+        ]
+      },
+      {
+        "id": "workflows",
+        "label": { "zh-CN": "工作流边界", "en-US": "Workflow limits" },
+        "description": {
+          "zh-CN": "默认不限制单个持久化子代理 DAG 的节点数；可按部署资源设置管理员配额。",
+          "en-US": "Persisted child-agent DAGs have no default node-count limit. Administrators may set a deployment-specific quota."
+        },
+        "fields": [
+          {
+            "path": ["workflows", "maxNodes"],
+            "label": { "zh-CN": "单工作流最大节点数", "en-US": "Maximum nodes per workflow" },
+            "description": {
+              "zh-CN": "留空表示不限；循环、重复节点和无效依赖仍会在启动任何子运行前被拒绝。",
+              "en-US": "Leave empty for unlimited. Cycles, duplicate nodes, and invalid dependencies are still rejected before any child starts."
+            },
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": true
+          }
+        ]
+      }
+    ]
+  }
+}

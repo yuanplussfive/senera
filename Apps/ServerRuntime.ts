@@ -1,0 +1,767 @@
+import path from "node:path";
+import fs from "node:fs";
+import { AgentLoop } from "../Source/AgentSystem/Loop/AgentLoop.js";
+import { AgentSessionManager } from "../Source/AgentSystem/Session/AgentSessionManager.js";
+import { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
+import {
+  InMemorySessionRepository,
+  SqliteSessionRepository,
+  type AgentSessionRepository,
+} from "../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
+import { AgentWebSocketServer } from "../Source/AgentSystem/WebSocket/AgentWebSocketServer.js";
+import { AgentSqliteRunEventWriter } from "../Source/AgentSystem/WebSocket/AgentSqliteRunEventWriter.js";
+import { AgentCallbackRunEventWriter } from "../Source/AgentSystem/WebSocket/AgentCallbackRunEventWriter.js";
+import {
+  resolvePersistenceConfig,
+  resolveAgentLoopConfig,
+  resolveArtifactsConfig,
+  resolveSandboxRuntimeConfig,
+  resolveServerConfig,
+  resolveToolExecutionConfig,
+  resolveUploadsConfig,
+} from "../Source/AgentSystem/AgentDefaults.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { AgentUserProfileManager } from "../Source/AgentSystem/Session/AgentUserProfile.js";
+import { AgentSkillScanner } from "../Source/AgentSystem/Skills/AgentSkillScanner.js";
+import { AgentMcpPackageScanner } from "../Source/AgentSystem/McpPackages/AgentMcpPackageScanner.js";
+import { SqliteAgentMemorySourceRepository } from "../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
+import { AgentMemoryLearningRuntime } from "../Source/AgentSystem/Memory/AgentMemoryLearningRuntime.js";
+import { AgentMemoryService } from "../Source/AgentSystem/Memory/AgentMemoryService.js";
+import { AgentConfigService, type AgentConfigSourceOptions } from "../Source/AgentSystem/Config/AgentConfigService.js";
+import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent } from "../Source/AgentSystem/Events/AgentEvent.js";
+import { serializeError } from "../Source/AgentSystem/Diagnostics/AgentErrorSerializer.js";
+import { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
+import { AgentServerEventLogger } from "../Source/AgentSystem/Diagnostics/AgentServerEventLogger.js";
+import { AgentApprovalRuntime } from "../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
+import { AgentPiActiveSessionRegistry } from "../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
+import { AgentPiSessionMutationService } from "../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
+import { createAgentPiDiagnosticLoggerForDetail } from "../Source/AgentSystem/Diagnostics/AgentPiDiagnostics.js";
+import { AgentSystemRuntimeCache } from "../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
+import { AgentSessionApprovalLeaseStore } from "../Source/AgentSystem/Safety/AgentSessionApprovalLeaseStore.js";
+import { AgentSandboxRuntimeService } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeService.js";
+import { AgentExecutionResourceBroker } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceBroker.js";
+import { AgentInteractiveTerminalRuntime } from "../Source/AgentSystem/ExecutionResources/AgentInteractiveTerminalRuntime.js";
+import { createSeneraExecutionEnvironments } from "../Source/AgentSystem/Execution/SeneraExecutionEnvFactory.js";
+import { resolveAgentExecutionResourceLimits } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceConfig.js";
+import { AgentInteractionInputRuntime } from "../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
+import { createAgentRequestCancellationResource } from "../Source/AgentSystem/Session/AgentSessionRunResource.js";
+import { AgentArtifactRetentionService } from "../Source/AgentSystem/Artifacts/AgentArtifactRetentionService.js";
+import type { AgentSandboxRuntimeAvailability } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
+import type { SeneraSandboxWorkerClient } from "../Source/AgentSystem/Execution/SeneraSandboxWorkerTypes.js";
+import { readAgentProductMetadata } from "../Source/AgentSystem/Core/AgentProductMetadata.js";
+import { AgentUpgradeSession } from "../Source/AgentSystem/Upgrade/AgentUpgradeSession.js";
+import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
+import {
+  migrateLegacyAgentWorkspaceLayout,
+  resolveAgentWorkspaceLayout,
+} from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
+import { resolveServerConfigSource, resolveServerRuntimeConfigPath } from "./ServerRuntimeConfig.js";
+import { AgentMcpInputService } from "../Source/AgentSystem/Credentials/AgentMcpInputService.js";
+import { AgentMcpManagementService } from "../Source/AgentSystem/McpPackages/AgentMcpManagementService.js";
+import { AgentWorkspaceRuntime } from "../Source/AgentSystem/Runtime/AgentWorkspaceRuntime.js";
+import { AgentRunDispatchGateway } from "../Source/AgentSystem/Orchestration/AgentRunDispatchPort.js";
+import { AgentSessionRunDispatcher } from "../Source/AgentSystem/Session/AgentSessionRunDispatcher.js";
+import { AgentOrchestrationDatabase } from "../Source/AgentSystem/Orchestration/AgentOrchestrationDatabase.js";
+import { AgentSqliteChildRunRepository } from "../Source/AgentSystem/Orchestration/AgentSqliteChildRunRepository.js";
+import { AgentSqliteWorkflowRepository } from "../Source/AgentSystem/Orchestration/AgentSqliteWorkflowRepository.js";
+import { AgentSqliteScheduledTaskStore } from "../Source/AgentSystem/Orchestration/AgentSqliteScheduledTaskStore.js";
+import { AgentSqliteSchedulerLock } from "../Source/AgentSystem/Orchestration/AgentSqliteSchedulerLock.js";
+import { AgentOrchestrationEventRelay } from "../Source/AgentSystem/Orchestration/AgentOrchestrationEventRelay.js";
+import { AgentDelegationService } from "../Source/AgentSystem/Orchestration/AgentDelegationService.js";
+import { AgentWorkflowService } from "../Source/AgentSystem/Orchestration/AgentWorkflowService.js";
+import { AgentSubagentRoleCatalog } from "../Source/AgentSystem/Orchestration/AgentSubagentRoleCatalog.js";
+import { AgentScheduleRuntime } from "../Source/AgentSystem/Orchestration/AgentScheduleRuntime.js";
+import {
+  resolveAgentDelegationConfiguration,
+  resolveAgentSchedulerConfiguration,
+} from "../Source/AgentSystem/Orchestration/AgentOrchestrationConfig.js";
+import { AgentRuntimeUpdateDeployments } from "../Source/AgentSystem/Runtime/AgentRuntimeUpdateContract.js";
+import type { AgentRuntimeUpdateHttpApiOptions } from "../Source/AgentSystem/Runtime/AgentRuntimeUpdateHttpApi.js";
+import type { AgentRuntimeUpdateOrigin } from "../Source/AgentSystem/Runtime/AgentRuntimeUpdateOrigin.js";
+
+export interface SeneraServerOptions {
+  workspaceRoot?: string;
+  configPath?: string;
+  staticFrontendRoot?: string;
+  /**
+   * Root containing the application manifest. Electron keeps package.json in
+   * app.asar while extraResources are exposed from the physical resources root.
+   */
+  applicationRoot?: string;
+  resourcesPath?: string;
+  configSource?: AgentConfigSourceOptions;
+  runtimeConfigProjection?: (config: AgentSystemConfig) => AgentSystemConfig;
+  /** Selects the process boundary owned by this deployment entrypoint. */
+  deployment?: SeneraServerDeployment;
+  /**
+   * Set only by a deployment bootstrap that has already prepared and verified
+   * the configured Docker Engine runtime before opening the web server.
+   */
+  sandboxRuntimePrepared?: boolean;
+  sandboxRuntimeAvailability?: AgentSandboxRuntimeAvailability;
+  dockerEngineWorker?: SeneraSandboxWorkerClient;
+  upgradeStateRoot?: string;
+  upgradeDataRoots?: readonly string[];
+  runtimeImageReference?: string;
+  updateManifestUrl?: string;
+}
+
+export const SeneraServerDeployments = {
+  Local: "local",
+  Container: "container",
+} as const;
+
+export type SeneraServerDeployment = (typeof SeneraServerDeployments)[keyof typeof SeneraServerDeployments];
+
+export interface SeneraServerHandle {
+  workspaceRoot: string;
+  configPath: string;
+  websocketUrl: string;
+  healthUrl: string;
+  stop(): Promise<void>;
+}
+
+type ServerEventLogDetail = "compact" | "verbose";
+
+export async function startSeneraServer(options: SeneraServerOptions = {}): Promise<SeneraServerHandle> {
+  const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
+  const resourceRoot = path.resolve(options.resourcesPath ?? process.cwd());
+  const applicationRoot = path.resolve(options.applicationRoot ?? resourceRoot);
+  const product = readAgentProductMetadata(applicationRoot);
+  const upgradeSession = new AgentUpgradeSession({
+    workspaceRoot,
+    stateRoot: options.upgradeStateRoot,
+    allowedDataRoots: options.upgradeDataRoots,
+    appVersion: product.version,
+    imageReference: options.runtimeImageReference ?? process.env.SENERA_RUNTIME_IMAGE_REFERENCE,
+  });
+  const cleanup = new SeneraStartupCleanup();
+  let handle: SeneraServerHandle | undefined;
+  try {
+    upgradeSession.recoverInterruptedUpgrade();
+    migrateLegacyAgentWorkspaceLayout(workspaceRoot);
+    handle = await startSeneraServerRuntime(options, workspaceRoot, upgradeSession, cleanup, product);
+    await probeSeneraReadiness(handle.healthUrl);
+    upgradeSession.markHealthy();
+    cleanup.disarm();
+    return handle;
+  } catch (error) {
+    const failures: unknown[] = [error];
+    try {
+      if (handle) await handle.stop();
+      else await cleanup.run();
+    } catch (cleanupError) {
+      failures.push(cleanupError);
+    }
+    try {
+      upgradeSession.failAndRollback(error);
+    } catch (rollbackError) {
+      failures.push(rollbackError);
+    }
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "Senera startup and automatic upgrade rollback failed.", { cause: error });
+    }
+    throw error;
+  }
+}
+
+async function startSeneraServerRuntime(
+  options: SeneraServerOptions,
+  workspaceRoot: string,
+  upgradeSession: AgentUpgradeSession,
+  startupCleanup: SeneraStartupCleanup,
+  product: ReturnType<typeof readAgentProductMetadata>,
+): Promise<SeneraServerHandle> {
+  const resourceRoot = path.resolve(options.resourcesPath ?? process.cwd());
+  const workspaceLayout = resolveAgentWorkspaceLayout(workspaceRoot);
+  const startupResourceCleanups: Array<() => void> = [];
+  const deferResourceCleanup = (callback: () => void | Promise<void>): (() => void) => {
+    const cancel = startupCleanup.defer(callback);
+    startupResourceCleanups.push(cancel);
+    return cancel;
+  };
+  const configSource = resolveServerConfigSource(workspaceRoot, options);
+  const configPath = resolveServerRuntimeConfigPath(workspaceRoot, configSource);
+  let watchedConfigPath: string | undefined;
+  const eventLogDetail = resolveServerEventLogDetail(process.env.SENERA_LOG_EVENTS);
+  const logger = new AgentLogger({
+    verbose: eventLogDetail === "verbose",
+    eventDisplayMode: eventLogDetail,
+  });
+  const eventLogger = new AgentServerEventLogger({
+    logger,
+    detail: eventLogDetail,
+  });
+  const piDiagnostics = createAgentPiDiagnosticLoggerForDetail(logger, eventLogDetail);
+
+  const configService = new AgentConfigService({
+    workspaceRoot,
+    source: configSource,
+    upgradeSession,
+  });
+  deferResourceCleanup(() => configService.close());
+  const approvalRuntime = new AgentApprovalRuntime();
+  const interactionInput = new AgentInteractionInputRuntime();
+  deferResourceCleanup(() => interactionInput.close());
+  const piSessionRegistry = new AgentPiActiveSessionRegistry();
+  const deployment = options.deployment;
+  const projectRuntimeConfig = (config: AgentSystemConfig): AgentSystemConfig => {
+    const projected = options.runtimeConfigProjection?.(config) ?? config;
+    return deployment === SeneraServerDeployments.Local ? disableSandboxRuntime(projected) : projected;
+  };
+  const initialSnapshot = configService.snapshot();
+  const initialConfig = projectRuntimeConfig(initialSnapshot.value);
+  const configSnapshot = (): AgentSystemConfig => projectRuntimeConfig(configService.snapshot().value);
+  const mcpInputs = AgentMcpInputService.open(workspaceRoot);
+  deferResourceCleanup(() => mcpInputs.close());
+  const mcpManagement = new AgentMcpManagementService({
+    workspaceRoot,
+    resourcesRoot: resourceRoot,
+    inputs: mcpInputs,
+    config: configSnapshot,
+  });
+  const runtimeSnapshot = () => {
+    const snapshot = configService.snapshot();
+    const config = projectRuntimeConfig(snapshot.value);
+    return {
+      version: snapshot.version,
+      revision: snapshot.revision,
+      sourceRevisions: {
+        mcpPackages: AgentMcpPackageScanner.sourceRevision(path.join(resourceRoot, "McpServers")),
+        workspaceMcp: AgentMcpPackageScanner.sourceRevision(workspaceLayout.mcpRoot),
+        systemSkills: AgentSkillScanner.sourceRevision(path.join(resourceRoot, "System", "Skills")),
+        workspaceSkills: AgentSkillScanner.sourceRevision(workspaceLayout.skillRoot),
+        mcpInputs: mcpManagement.revision(),
+      },
+      config,
+    };
+  };
+  const sandboxRuntimeService = new AgentSandboxRuntimeService({
+    workspaceRoot,
+    configSnapshot,
+    availability: options.sandboxRuntimeAvailability,
+    dockerEngineWorker: options.dockerEngineWorker,
+  });
+  const executionResources = new AgentExecutionResourceBroker({
+    workspaceRoot,
+    limits: () => resolveAgentExecutionResourceLimits(configSnapshot()),
+    onCleanupFailure: (failure) => {
+      logger.error("后台执行资源清理失败", {
+        resourceId: failure.resourceId,
+        reason: failure.reason,
+        error: errorMessage(failure.error),
+      });
+    },
+  });
+  deferResourceCleanup(() => executionResources.close());
+  const workspaceRuntime = new AgentWorkspaceRuntime({
+    workspaceRoot,
+    uploads: () => resolveUploadsConfig(configSnapshot()),
+  });
+  deferResourceCleanup(() => workspaceRuntime.close());
+  const runDispatch = new AgentRunDispatchGateway();
+  const orchestrationEvents = new AgentOrchestrationEventRelay();
+  const orchestrationDatabase = new AgentOrchestrationDatabase(workspaceLayout.databases.orchestration, upgradeSession);
+  deferResourceCleanup(() => orchestrationDatabase.close());
+  const childRuns = new AgentSqliteChildRunRepository(orchestrationDatabase);
+  const workflowRepository = new AgentSqliteWorkflowRepository(orchestrationDatabase);
+  const subagentRoles = new AgentSubagentRoleCatalog({
+    builtinRoot: path.join(resourceRoot, "System", "Extensions", "agent-delegation", "agents"),
+  });
+  const scheduledTasks = new AgentSqliteScheduledTaskStore(orchestrationDatabase);
+  const schedulerConfiguration = resolveAgentSchedulerConfiguration(initialConfig);
+  const delegation = new AgentDelegationService({
+    workspaceRoot,
+    configuration: () => {
+      const snapshot = configService.snapshot();
+      return {
+        config: projectRuntimeConfig(snapshot.value),
+        revision: snapshot.revision,
+      };
+    },
+    repository: childRuns,
+    dispatcher: runDispatch,
+    events: orchestrationEvents,
+    roleCatalog: subagentRoles,
+  });
+  deferResourceCleanup(() => delegation.shutdown());
+  const workflows = new AgentWorkflowService({
+    repository: workflowRepository,
+    delegation,
+    events: orchestrationEvents,
+    maxNodes: () => resolveAgentDelegationConfiguration(configSnapshot()).workflows.maxNodes,
+  });
+  deferResourceCleanup(() => workflows.shutdown());
+  const schedulerLock = new AgentSqliteSchedulerLock(orchestrationDatabase, {
+    name: "agent-scheduler",
+    path: workspaceLayout.databases.orchestration,
+    leaseDurationMs: schedulerConfiguration.lease.durationMs,
+  });
+  const schedules = new AgentScheduleRuntime({
+    workspaceRoot,
+    config: configSnapshot,
+    store: scheduledTasks,
+    lock: schedulerLock,
+    dispatcher: runDispatch,
+    events: orchestrationEvents,
+    lockHeartbeatMs: schedulerConfiguration.lease.heartbeatMs,
+  });
+  deferResourceCleanup(() => schedules.stop());
+  const orchestration = { delegation, workflows, schedules };
+  const sessionApprovals = new AgentSessionApprovalLeaseStore();
+  const runtimeCache = new AgentSystemRuntimeCache({
+    workspaceRoot,
+    configPath,
+    snapshot: runtimeSnapshot,
+    logger,
+    piDiagnostics,
+    approvalRuntime,
+    sessionApprovals,
+    interactionInput,
+    piSessionRegistry,
+    resourcesPath: options.resourcesPath,
+    executionResources,
+    sandboxRuntimeReady: () => sandboxRuntimeService.snapshot().state === "ready",
+    sandboxAvailable: sandboxRuntimeService.sandboxBackendAvailable(),
+    sandboxProvider: sandboxRuntimeService.runtimeProvider(),
+    dockerEngineWorker: sandboxRuntimeService.dockerEngineWorkerClient(),
+    mcpInputs,
+    workspaceRuntime,
+    orchestration,
+  });
+  deferResourceCleanup(() => runtimeCache.clear());
+
+  const loopFactory = (modelProviderId?: string) => {
+    const lease = runtimeCache.acquire(modelProviderId);
+    try {
+      const loop = new AgentLoop({
+        runtime: lease.runtime,
+        preparationFingerprint: lease.preparationFingerprint,
+      });
+
+      return {
+        preparationFingerprint: lease.preparationFingerprint,
+        run: async (...args: Parameters<AgentLoop["run"]>) => {
+          try {
+            return await loop.run(...args);
+          } finally {
+            lease.release();
+          }
+        },
+      };
+    } catch (error) {
+      lease.release();
+      throw error;
+    }
+  };
+  const piSessionMutations = new AgentPiSessionMutationService({
+    acquireRuntime: (modelProviderId) => runtimeCache.acquire(modelProviderId),
+    diagnostics: piDiagnostics,
+  });
+  const interactiveTerminals = new AgentInteractiveTerminalRuntime({
+    workspaceRoot,
+    broker: executionResources,
+    acquireExecutionEnv: () => {
+      const config = configSnapshot();
+      const executionEnvironments = createSeneraExecutionEnvironments({
+        workspaceRoot,
+        resourcesPath: options.resourcesPath,
+        sandboxEnabled: resolveSandboxRuntimeConfig(config).Enabled,
+        sandboxAvailable: sandboxRuntimeService.sandboxBackendAvailable(),
+        sandboxRuntimeReady: () => sandboxRuntimeService.snapshot().state === "ready",
+        sandboxProvider: sandboxRuntimeService.runtimeProvider(),
+        dockerEngineWorker: sandboxRuntimeService.dockerEngineWorkerClient(),
+        environmentPolicy: resolveToolExecutionConfig(config).Environment,
+        terminationGraceMs: resolveAgentExecutionResourceLimits(config).terminationGraceMs,
+      });
+      return { executionEnv: executionEnvironments.system, release: () => undefined };
+    },
+  });
+
+  const persistence = resolvePersistenceConfig(initialConfig);
+  const repository = createRepository(workspaceRoot, initialConfig, upgradeSession, logger);
+  deferResourceCleanup(() => repository.close());
+  const memorySourceRepository = new SqliteAgentMemorySourceRepository(
+    workspaceLayout.databases.memory,
+    upgradeSession,
+  );
+  const cancelMemorySourceCleanup = deferResourceCleanup(() => memorySourceRepository.close());
+  const memoryLearning = new AgentMemoryLearningRuntime({
+    repository: memorySourceRepository,
+    configSnapshot,
+    logger,
+  });
+  const memoryService = new AgentMemoryService({
+    sourceRepository: memorySourceRepository,
+    learning: memoryLearning,
+  });
+  cancelMemorySourceCleanup();
+  deferResourceCleanup(() => memoryService.close());
+  const artifactRetention = new AgentArtifactRetentionService({
+    workspaceRoot,
+    config: () => resolveArtifactsConfig(configSnapshot()),
+    onError: (error) => logger.warn("artifact.retention.failed", { error: serializeError(error) }),
+  });
+  deferResourceCleanup(() => artifactRetention.close());
+  const sessionStore = new AgentSessionStore({ repository });
+
+  const sessionManager = new AgentSessionManager({
+    loopFactory,
+    store: sessionStore,
+    managedSessionIds: new Set(childRuns.listAll().map((run) => run.childSessionId)),
+    memoryService,
+    logger,
+    runResources: [
+      createAgentRequestCancellationResource("approval", approvalRuntime),
+      createAgentRequestCancellationResource("interaction_input", interactionInput),
+    ],
+    sessionResources: [
+      {
+        id: "approval_session_leases",
+        release: async ({ sessionId }) => sessionApprovals.revoke(sessionId),
+      },
+      {
+        id: "execution_resources",
+        release: ({ sessionId }) => executionResources.releaseAll({ workspaceRoot, sessionId }),
+      },
+    ],
+    piSessions: piSessionRegistry,
+    piDiagnostics,
+    uploadStore: workspaceRuntime.uploadStore,
+    piSessionMutations,
+    piSessionManagement: piSessionMutations,
+    runControl: {
+      get settlementTimeoutMs() {
+        return resolveAgentLoopConfig(configSnapshot()).RunSettlementTimeoutMs;
+      },
+    },
+    artifactSessionCleanup: artifactRetention,
+  });
+  const unbindRunDispatch = runDispatch.bind(new AgentSessionRunDispatcher(sessionManager));
+  deferResourceCleanup(unbindRunDispatch);
+  const eventWriter =
+    persistence.Kind === "sqlite"
+      ? new AgentSqliteRunEventWriter({ databasePath: workspaceLayout.databases.sessions })
+      : new AgentCallbackRunEventWriter((events) => sessionManager.recordRunEvents(events));
+  const cancelEventWriterCleanup = deferResourceCleanup(() => eventWriter.close());
+  const userProfileManager = new AgentUserProfileManager(repository);
+  const server = new AgentWebSocketServer({
+    config: initialConfig,
+    workspaceRoot,
+    staticFrontendRoot: options.staticFrontendRoot,
+    configService,
+    configSnapshot,
+    sessionManager,
+    userProfileManager,
+    approvalRuntime,
+    interactionInput,
+    sandboxRuntimeService,
+    executionResources,
+    interactiveTerminals,
+    logger,
+    eventLogger,
+    piDiagnostics,
+    eventWriter,
+    mcpManagement,
+    uploadStore: workspaceRuntime.uploadStore,
+    runtimeUpdate: createRuntimeUpdateOptions({
+      currentVersion: product.version,
+      deployment:
+        deployment === SeneraServerDeployments.Container
+          ? AgentRuntimeUpdateDeployments.Container
+          : AgentRuntimeUpdateDeployments.Local,
+      updateManifestUrl: options.updateManifestUrl ?? process.env.SENERA_UPDATE_MANIFEST_URL,
+      updateOrigin: product.updateOrigin,
+    }),
+  });
+  cancelEventWriterCleanup();
+  deferResourceCleanup(() => server.stop());
+  approvalRuntime.setEventSink((event) => server.broadcast(event));
+  interactionInput.setEventSink((event) => server.broadcast(event));
+  executionResources.setEventSink((event) => server.broadcast(event));
+  orchestrationEvents.setSink((event) => server.broadcast(event));
+  const unsubscribeSandboxStatus = sandboxRuntimeService.subscribe((snapshot) => {
+    void server
+      .broadcast({
+        kind: AgentEventKinds.SandboxStatusSnapshot,
+        context: {},
+        data: snapshot,
+      })
+      .catch((error) => {
+        logger.error("沙箱准备事件广播失败", {
+          error: errorMessage(error),
+        });
+      });
+  });
+
+  upgradeSession.markStarting();
+  await server.start();
+  await schedules.start();
+  memoryLearning.start();
+  artifactRetention.start();
+  startSandboxRuntimePreparation({
+    config: initialConfig,
+    sandboxRuntimeService,
+    logger,
+    prepared: options.sandboxRuntimePrepared ?? false,
+  });
+  if (configSource.kind === "json" && resolveServerConfig(initialConfig).HotReload) {
+    const jsonConfigPath = configSource.configPath;
+    watchedConfigPath = jsonConfigPath;
+    fs.watchFile(jsonConfigPath, { interval: 500 }, () => {
+      try {
+        const snapshot = configService.reloadFromSources();
+        void server
+          .broadcast({
+            kind: AgentEventKinds.ConfigReloaded,
+            context: {},
+            data: {
+              configPath: snapshot.path,
+              source: snapshot.source,
+              revision: snapshot.revision,
+              diagnostics: snapshot.diagnostics,
+            },
+          })
+          .catch((error) => {
+            logger.error("配置变更事件广播失败", {
+              error: errorMessage(error),
+            });
+          });
+      } catch (error) {
+        emitAgentEvent((event: AgentDomainEvent) => server.broadcast(event), {
+          kind: AgentEventKinds.ConfigFailed,
+          context: {},
+          data: {
+            configPath: jsonConfigPath,
+            message: errorMessage(error),
+            details: serializeError(error),
+          },
+        }).catch((broadcastError) => {
+          logger.error("配置失败事件广播失败", {
+            error: errorMessage(broadcastError),
+          });
+        });
+      }
+    });
+  }
+
+  const serverConfig = resolveServerConfig(initialConfig);
+  let stopPromise: Promise<void> | undefined;
+  const stop = (): Promise<void> =>
+    (stopPromise ??= (async () => {
+      if (watchedConfigPath) fs.unwatchFile(watchedConfigPath);
+      unsubscribeSandboxStatus();
+      sessionManager.beginShutdown();
+      const failures: unknown[] = [];
+      collectRejected(await Promise.allSettled([schedules.stop(), workflows.shutdown()]), failures);
+      collectRejected(await Promise.allSettled([delegation.shutdown()]), failures);
+      const boundaryOutcomes = await Promise.allSettled([server.stop(), sessionManager.shutdown()]);
+      collectRejected(boundaryOutcomes, failures);
+      orchestrationEvents.setSink(undefined);
+      unbindRunDispatch();
+      try {
+        collectRejected(
+          await Promise.allSettled([
+            closeRuntimeInfrastructure(runtimeCache, workspaceRuntime),
+            executionResources.close(),
+            interactionInput.close(),
+            artifactRetention.close(),
+            sandboxRuntimeService.close(),
+          ]),
+          failures,
+        );
+      } finally {
+        for (const close of [
+          () => configService.close(),
+          () => mcpInputs.close(),
+          () => memoryService.close(),
+          () => repository.close(),
+          () => orchestrationDatabase.close(),
+        ]) {
+          try {
+            close();
+          } catch (error) {
+            failures.push(error);
+          }
+        }
+      }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) {
+        throw new AggregateError(failures, "Senera server shutdown failed.");
+      }
+    })());
+
+  for (const cancel of startupResourceCleanups) cancel();
+  startupCleanup.defer(stop);
+
+  return {
+    workspaceRoot,
+    configPath,
+    websocketUrl: `ws://${serverConfig.Host}:${serverConfig.Port}`,
+    healthUrl: `http://${resolveHealthCheckHost(serverConfig.Host)}:${serverConfig.Port}/health/ready`,
+    stop,
+  };
+}
+
+function createRuntimeUpdateOptions({
+  currentVersion,
+  deployment,
+  updateManifestUrl,
+  updateOrigin,
+}: {
+  currentVersion: string;
+  deployment: (typeof AgentRuntimeUpdateDeployments)[keyof typeof AgentRuntimeUpdateDeployments];
+  updateManifestUrl: string | undefined;
+  updateOrigin: AgentRuntimeUpdateOrigin | undefined;
+}): AgentRuntimeUpdateHttpApiOptions {
+  if (updateManifestUrl?.trim()) {
+    return { currentVersion, deployment, manifestUrl: updateManifestUrl };
+  }
+  return { currentVersion, deployment, ...(updateOrigin ? { updateOrigin } : {}) };
+}
+
+function disableSandboxRuntime(config: AgentSystemConfig): AgentSystemConfig {
+  return {
+    ...config,
+    SandboxRuntime: {
+      ...config.SandboxRuntime,
+      Enabled: false,
+    },
+  };
+}
+
+function collectRejected(outcomes: readonly PromiseSettledResult<unknown>[], failures: unknown[]): void {
+  for (const outcome of outcomes) {
+    if (outcome.status === "rejected") failures.push(outcome.reason);
+  }
+}
+
+async function closeRuntimeInfrastructure(
+  runtimeCache: AgentSystemRuntimeCache,
+  workspaceRuntime: AgentWorkspaceRuntime,
+): Promise<void> {
+  const failures: unknown[] = [];
+  for (const close of [() => runtimeCache.clear(), () => workspaceRuntime.close()]) {
+    try {
+      await close();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "Runtime infrastructure shutdown failed.");
+}
+
+export async function probeSeneraReadiness(healthUrl: string): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(healthUrl, { signal: AbortSignal.timeout(5_000) });
+  } catch (error) {
+    throw new Error(`Senera readiness check failed for ${healthUrl}.`, { cause: error });
+  }
+  if (!response.ok) {
+    throw new Error(`Senera readiness check failed for ${healthUrl}: HTTP ${response.status}.`);
+  }
+}
+
+function resolveHealthCheckHost(host: string): string {
+  const normalized = host.trim().toLowerCase();
+  if (normalized === "0.0.0.0") return "127.0.0.1";
+  if (normalized === "::" || normalized === "[::]") return "[::1]";
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+}
+
+function startSandboxRuntimePreparation(input: {
+  config: AgentSystemConfig;
+  sandboxRuntimeService: AgentSandboxRuntimeService;
+  logger: AgentLogger;
+  prepared: boolean;
+}): void {
+  const sandboxRuntimeConfig = resolveSandboxRuntimeConfig(input.config);
+  if (
+    !sandboxRuntimeConfig.Enabled ||
+    (process.platform === "win32" && !input.sandboxRuntimeService.sandboxBackendAvailable())
+  ) {
+    input.sandboxRuntimeService.markDisabled();
+    input.logger.info("sandbox.runtime.disabled", {
+      provider: input.sandboxRuntimeService.runtimeProvider(),
+    });
+    return;
+  }
+  if (!input.sandboxRuntimeService.sandboxBackendAvailable()) {
+    const error = new Error("The configured sandbox execution boundary is unavailable.");
+    input.sandboxRuntimeService.markUnavailable(error);
+    input.logger.warn("sandbox.runtime.unavailable", {
+      provider: input.sandboxRuntimeService.runtimeProvider(),
+      message: error.message,
+    });
+    return;
+  }
+
+  if (input.prepared) {
+    input.sandboxRuntimeService.markReady();
+    input.logger.success("sandbox.runtime.ready", {
+      provider: input.sandboxRuntimeService.runtimeProvider(),
+    });
+    return;
+  }
+
+  void input.sandboxRuntimeService.prepare({ config: sandboxRuntimeConfig }).then(
+    () => {
+      input.logger.success("sandbox.runtime.ready", {
+        provider: input.sandboxRuntimeService.runtimeProvider(),
+      });
+    },
+    (error: unknown) => {
+      input.logger.warn("sandbox.runtime.unavailable", {
+        message: errorMessage(error),
+      });
+    },
+  );
+}
+
+function createRepository(
+  workspaceRoot: string,
+  config: AgentSystemConfig,
+  upgradeSession: AgentUpgradeSession,
+  logger: AgentLogger,
+): AgentSessionRepository {
+  const persistence = resolvePersistenceConfig(config);
+  if (persistence.Kind === "memory") {
+    return new InMemorySessionRepository();
+  }
+  const dbPath = resolveAgentWorkspaceLayout(workspaceRoot).databases.sessions;
+  return new SqliteSessionRepository(dbPath, upgradeSession, (sessionId, issue) =>
+    logger.warn("session.entry.decode_failed", { sessionId, ...issue }),
+  );
+}
+
+class SeneraStartupCleanup {
+  private readonly callbacks = new Set<() => void | Promise<void>>();
+
+  defer(callback: () => void | Promise<void>): () => void {
+    this.callbacks.add(callback);
+    return () => this.callbacks.delete(callback);
+  }
+
+  disarm(): void {
+    this.callbacks.clear();
+  }
+
+  async run(): Promise<void> {
+    const failures: unknown[] = [];
+    for (const callback of [...this.callbacks].reverse()) {
+      try {
+        await callback();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    this.callbacks.clear();
+    if (failures.length > 0) throw new AggregateError(failures, "Senera startup cleanup failed.");
+  }
+}
+
+function resolveServerEventLogDetail(value: string | undefined): ServerEventLogDetail {
+  return value?.trim().toLowerCase() === "verbose" ? "verbose" : "compact";
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Evidence-Based Code Review"
+  short_description: "Review code and contracts for actionable defects."
+  default_prompt: "Use $review-code-evidence to review this change for verified findings."

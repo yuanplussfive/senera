@@ -1,0 +1,153 @@
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import type { SeneraSandboxProcessHandle } from "./SeneraSandboxWorkerTypes.js";
+import type { SeneraTerminalDisposable, SeneraTerminalExitEvent, SeneraTerminalSignal } from "./SeneraTerminalTypes.js";
+
+export interface SeneraTerminalSidecarChannel {
+  readonly pid?: number;
+  write(data: Uint8Array): Promise<void>;
+  terminate(signal: SeneraTerminalSignal): Promise<void>;
+  onData(listener: (data: Buffer) => void): SeneraTerminalDisposable;
+  onError(listener: (error: Error) => void): SeneraTerminalDisposable;
+  onExit(listener: (event: SeneraTerminalExitEvent) => void): SeneraTerminalDisposable;
+}
+
+export class SeneraNodeTerminalSidecarChannel implements SeneraTerminalSidecarChannel {
+  constructor(private readonly child: ChildProcessWithoutNullStreams) {}
+
+  get pid(): number | undefined {
+    return this.child.pid;
+  }
+
+  async write(data: Uint8Array): Promise<void> {
+    if (this.child.stdin.write(Buffer.from(data))) return;
+    await new Promise<void>((resolve, reject) => {
+      const onDrain = (): void => finish();
+      const onError = (error: Error): void => finish(error);
+      const onClose = (): void => finish(new Error("Terminal sidecar closed before stdin drained."));
+      const finish = (error?: Error): void => {
+        this.child.stdin.off("drain", onDrain);
+        this.child.stdin.off("error", onError);
+        this.child.off("close", onClose);
+        if (error) reject(error);
+        else resolve();
+      };
+      this.child.stdin.once("drain", onDrain);
+      this.child.stdin.once("error", onError);
+      this.child.once("close", onClose);
+    });
+  }
+
+  async terminate(signal: SeneraTerminalSignal): Promise<void> {
+    const nativeSignal = {
+      interrupt: "SIGINT",
+      terminate: "SIGTERM",
+      kill: "SIGKILL",
+    } as const satisfies Record<SeneraTerminalSignal, NodeJS.Signals>;
+    this.child.kill(nativeSignal[signal]);
+  }
+
+  onData(listener: (data: Buffer) => void): SeneraTerminalDisposable {
+    const onData = (data: Buffer): void => listener(data);
+    this.child.stdout.on("data", onData);
+    return disposable(() => this.child.stdout.off("data", onData));
+  }
+
+  onError(listener: (error: Error) => void): SeneraTerminalDisposable {
+    const onError = (error: Error): void => listener(error);
+    const onStderr = (data: Buffer): void => listener(new Error(data.toString("utf8")));
+    this.child.on("error", onError);
+    this.child.stderr.on("data", onStderr);
+    return disposable(() => {
+      this.child.off("error", onError);
+      this.child.stderr.off("data", onStderr);
+    });
+  }
+
+  onExit(listener: (event: SeneraTerminalExitEvent) => void): SeneraTerminalDisposable {
+    const onExit = (exitCode: number | null, signal: NodeJS.Signals | null): void =>
+      listener({ exitCode: exitCode ?? 1, signal: signal ?? undefined });
+    this.child.on("exit", onExit);
+    return disposable(() => this.child.off("exit", onExit));
+  }
+}
+
+export class SeneraSandboxTerminalSidecarChannel implements SeneraTerminalSidecarChannel {
+  private readonly dataListeners = new Set<(data: Buffer) => void>();
+  private readonly errorListeners = new Set<(error: Error) => void>();
+  private readonly exitListeners = new Set<(event: SeneraTerminalExitEvent) => void>();
+  private error: Error | undefined;
+  private exitEvent: SeneraTerminalExitEvent | undefined;
+
+  constructor(private readonly handle: SeneraSandboxProcessHandle) {
+    void this.consume();
+  }
+
+  write(data: Uint8Array): Promise<void> {
+    return this.handle.write(data);
+  }
+
+  terminate(signal: SeneraTerminalSignal): Promise<void> {
+    return this.handle.terminate(signal);
+  }
+
+  onData(listener: (data: Buffer) => void): SeneraTerminalDisposable {
+    this.dataListeners.add(listener);
+    return disposable(() => this.dataListeners.delete(listener));
+  }
+
+  onError(listener: (error: Error) => void): SeneraTerminalDisposable {
+    this.errorListeners.add(listener);
+    if (this.error) queueMicrotask(() => listener(this.error as Error));
+    return disposable(() => this.errorListeners.delete(listener));
+  }
+
+  onExit(listener: (event: SeneraTerminalExitEvent) => void): SeneraTerminalDisposable {
+    this.exitListeners.add(listener);
+    if (this.exitEvent) queueMicrotask(() => listener(this.exitEvent as SeneraTerminalExitEvent));
+    return disposable(() => this.exitListeners.delete(listener));
+  }
+
+  private async consume(): Promise<void> {
+    try {
+      for await (const event of this.handle.events) {
+        if (event.kind === "output" && event.stream === "stdout") {
+          dispatchToListeners(this.dataListeners, event.data);
+        } else if (event.kind === "output") {
+          this.emitError(new Error(event.data.toString("utf8")));
+        } else {
+          this.emitExit({ exitCode: event.code ?? 1, signal: event.signal ?? undefined });
+        }
+      }
+    } catch (error) {
+      this.emitError(error instanceof Error ? error : new Error(String(error)));
+      this.emitExit({ exitCode: 1 });
+    }
+  }
+
+  private emitError(error: Error): void {
+    this.error = error;
+    dispatchToListeners(this.errorListeners, error);
+  }
+
+  private emitExit(event: SeneraTerminalExitEvent): void {
+    if (this.exitEvent) return;
+    this.exitEvent = event;
+    dispatchToListeners(this.exitListeners, event);
+  }
+}
+
+function disposable(dispose: () => void): SeneraTerminalDisposable {
+  return { dispose };
+}
+
+// 监听器异常不允许拖垮通道读取循环，也不允许从 fire-and-forget 的
+// consume() 中逃逸成未处理拒绝；消费方的错误由消费方自己负责。
+function dispatchToListeners<Value>(listeners: Iterable<(value: Value) => void>, value: Value): void {
+  for (const listener of listeners) {
+    try {
+      listener(value);
+    } catch {
+      // 有意吞掉。
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "agent-image-tools",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "图像理解", "en-US": "Image Understanding" },
+  "description": {
+    "zh-CN": "使用宿主选择的视觉模型分析用户上传的图像。",
+    "en-US": "Analyzes user-uploaded images with a host-selected vision model."
+  },
+  "priority": 8,
+  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" },
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/ImageAnalyze.tool.json",
+      "capability": "system.tool.agent-image-tools.ImageAnalyze",
+      "recommendedForSkills": ["image-understanding"]
+    }
+  ]
+}

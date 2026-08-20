@@ -1,0 +1,37 @@
+{
+  "form": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "lease",
+        "label": { "zh-CN": "调度器租约", "en-US": "Scheduler lease" },
+        "description": {
+          "zh-CN": "控制多实例环境中调度器主节点的租约和心跳。租约时长必须大于心跳间隔。",
+          "en-US": "Control scheduler leader lease and heartbeat in multi-instance deployments. Lease duration must exceed the heartbeat interval."
+        },
+        "fields": [
+          {
+            "path": ["lease", "durationMs"],
+            "label": { "zh-CN": "租约时长（毫秒）", "en-US": "Lease duration (ms)" },
+            "type": "number",
+            "min": 5000,
+            "max": 300000,
+            "step": 1000,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["lease", "heartbeatMs"],
+            "label": { "zh-CN": "心跳间隔（毫秒）", "en-US": "Heartbeat interval (ms)" },
+            "type": "number",
+            "min": 1000,
+            "max": 60000,
+            "step": 1000,
+            "required": false,
+            "essential": true
+          }
+        ]
+      }
+    ]
+  }
+}

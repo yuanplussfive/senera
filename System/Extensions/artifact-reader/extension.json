@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "artifact-reader",
+  "version": "1.0.0",
+  "displayName": {
+    "zh-CN": "产物读取",
+    "en-US": "Artifact Reader"
+  },
+  "description": {
+    "zh-CN": "通过规范的产物 URI 读取已持久化的产物资源。",
+    "en-US": "Reads persisted artifact resources by canonical artifact URI."
+  },
+  "priority": 8,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/ArtifactMemoryReadTool.tool.json",
+      "capability": "artifact.memory.read",
+      "recommendedForSkills": []
+    }
+  ]
+}

@@ -1,0 +1,203 @@
+{
+  "form": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "runtime",
+        "label": { "zh-CN": "浏览器运行时", "en-US": "Browser runtime" },
+        "description": {
+          "zh-CN": "Senera 启动独立的受控浏览器会话；模型不能读取或修改浏览器启动参数、用户资料或认证状态。",
+          "en-US": "Senera launches isolated controlled browser sessions. Models cannot read or change browser launch arguments, profiles, or authentication state."
+        },
+        "fields": [
+          {
+            "path": ["runtime", "headed"],
+            "label": { "zh-CN": "显示浏览器窗口", "en-US": "Show browser window" },
+            "type": "boolean",
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["runtime", "executablePath"],
+            "label": { "zh-CN": "浏览器可执行文件", "en-US": "Browser executable" },
+            "description": {
+              "zh-CN": "留空时自动查找 Chrome、Edge 或 Chromium；仅在自动发现失败或需要固定版本时填写。",
+              "en-US": "Leave empty to discover Chrome, Edge, or Chromium automatically. Set only when discovery fails or a fixed browser is required."
+            },
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "requestTimeoutMs"],
+            "label": { "zh-CN": "默认操作超时（毫秒）", "en-US": "Default operation timeout (ms)" },
+            "description": {
+              "zh-CN": "模型未提供 timeoutMs 时使用。",
+              "en-US": "Used when the model does not provide timeoutMs."
+            },
+            "type": "number",
+            "min": 5000,
+            "max": 3600000,
+            "step": 1000,
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["runtime", "maxOperationTimeoutMs"],
+            "label": { "zh-CN": "模型操作超时上限（毫秒）", "en-US": "Model operation timeout limit (ms)" },
+            "description": {
+              "zh-CN": "模型可在单次浏览器调用中使用 timeoutMs，但不能超过此值。",
+              "en-US": "The model may set timeoutMs per browser call, up to this value."
+            },
+            "type": "number",
+            "min": 5000,
+            "max": 3600000,
+            "step": 1000,
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["runtime", "idleTimeoutMs"],
+            "label": { "zh-CN": "空闲会话回收（毫秒）", "en-US": "Idle session cleanup (ms)" },
+            "type": "number",
+            "min": 10000,
+            "max": 86400000,
+            "step": 10000,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "outputMaxChars"],
+            "label": { "zh-CN": "页面输出字符上限", "en-US": "Page output character limit" },
+            "type": "number",
+            "min": 1024,
+            "max": 2000000,
+            "step": 1024,
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["runtime", "maxUrlLength"],
+            "label": { "zh-CN": "URL 长度上限", "en-US": "URL length limit" },
+            "type": "number",
+            "min": 256,
+            "max": 65536,
+            "step": 1,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "maxSelectorLength"],
+            "label": { "zh-CN": "元素定位符长度上限", "en-US": "Selector length limit" },
+            "type": "number",
+            "min": 64,
+            "max": 32768,
+            "step": 1,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "maxTextChars"],
+            "label": { "zh-CN": "单次文本输入上限", "en-US": "Text input character limit" },
+            "type": "number",
+            "min": 1024,
+            "max": 2000000,
+            "step": 1024,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "maxWaitMs"],
+            "label": { "zh-CN": "模型等待上限（毫秒）", "en-US": "Model wait limit (ms)" },
+            "type": "number",
+            "min": 1,
+            "max": 3600000,
+            "step": 1000,
+            "required": true,
+            "essential": false
+          }
+        ]
+      },
+      {
+        "id": "network",
+        "label": { "zh-CN": "网络边界", "en-US": "Network boundary" },
+        "description": {
+          "zh-CN": "默认允许公开互联网访问。固定白名单模式可将浏览器限制在指定域名；私有网络始终需要单独开启。",
+          "en-US": "Public internet access is allowed by default. Allowlist mode restricts the browser to configured domains; private networks always require a separate opt-in."
+        },
+        "fields": [
+          {
+            "path": ["network", "accessMode"],
+            "label": { "zh-CN": "公开网络访问", "en-US": "Public network access" },
+            "type": "string",
+            "options": ["public", "allowlist"],
+            "optionLabels": {
+              "public": { "zh-CN": "允许所有公开站点", "en-US": "Allow all public sites" },
+              "allowlist": { "zh-CN": "仅允许固定白名单", "en-US": "Restrict to allowlist" }
+            },
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["network", "allowedDomains"],
+            "label": { "zh-CN": "允许域名", "en-US": "Allowed domains" },
+            "description": {
+              "zh-CN": "仅在“仅允许固定白名单”模式下生效。使用 example.com 或 *.example.com；列表为空时拒绝访问所有网站。",
+              "en-US": "Only applies in allowlist mode. Use example.com or *.example.com; an empty list blocks all websites."
+            },
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["network", "allowPrivateNetworks"],
+            "label": { "zh-CN": "允许私有网络", "en-US": "Allow private networks" },
+            "description": {
+              "zh-CN": "仅用于受信任的内网测试环境；默认阻止本机、局域网和保留地址。",
+              "en-US": "Only for trusted internal test environments. Local, private, and reserved addresses are blocked by default."
+            },
+            "type": "boolean",
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["network", "allowSyntheticProxyAddresses"],
+            "label": { "zh-CN": "允许代理映射地址", "en-US": "Allow proxy-mapped addresses" },
+            "description": {
+              "zh-CN": "允许经本机代理映射到 198.18.0.0/15 的公开域名；不允许直接访问该网段，也不放开本机或局域网地址。",
+              "en-US": "Allows public hostnames mapped to 198.18.0.0/15 by a local proxy. Direct access to that range and local networks remain blocked."
+            },
+            "type": "boolean",
+            "required": true,
+            "essential": false
+          }
+        ]
+      },
+      {
+        "id": "capture",
+        "label": { "zh-CN": "截图", "en-US": "Screenshots" },
+        "fields": [
+          {
+            "path": ["capture", "defaultFormat"],
+            "label": { "zh-CN": "默认格式", "en-US": "Default format" },
+            "type": "string",
+            "options": ["png", "jpeg"],
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["capture", "maxScreenshotBytes"],
+            "label": { "zh-CN": "截图字节上限", "en-US": "Screenshot byte limit" },
+            "type": "number",
+            "min": 131072,
+            "max": 134217728,
+            "step": 1024,
+            "required": true,
+            "essential": false
+          }
+        ]
+      }
+    ]
+  }
+}

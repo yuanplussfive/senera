@@ -1,0 +1,182 @@
+import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import type { AgentEventContext, AgentEventEnvelope } from "../Events/AgentEventBase.js";
+import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
+import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
+import type { AgentPiSessionRuntimeStatus } from "../Pi/AgentPiSessionManagement.js";
+import type { AgentSessionOperation } from "./AgentSessionOperation.js";
+import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
+
+export type AgentSessionDomainEvent =
+  | {
+      kind: typeof AgentEventKinds.SessionCreated;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: AgentSessionSnapshotData;
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionSnapshot;
+      context: Required<Pick<AgentEventContext, "sessionId">> & Partial<Pick<AgentEventContext, "requestId">>;
+      data: AgentSessionSnapshotData;
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionClosed;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: AgentSessionSnapshotData;
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionBusy;
+      context: Required<Pick<AgentEventContext, "sessionId">> & Partial<Pick<AgentEventContext, "requestId">>;
+      data: {
+        sessionId: string;
+        activeRequestId: string;
+        rejectedRequestId?: string;
+        operation: "session.message" | "session.close";
+        message: string;
+        localizedMessage?: AgentLocalizedMessage;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionNotFound;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        operation: AgentSessionOperation;
+        message: string;
+        localizedMessage?: AgentLocalizedMessage;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionListSnapshot;
+      context: AgentEventContext;
+      data: {
+        sessions: Array<{
+          sessionId: string;
+          title: string;
+          status: string;
+          createdAt: string;
+          updatedAt: string;
+          entryCount: number;
+          messageCount: number;
+          activeRequestId?: string;
+        }>;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionHistoryStarted;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        totalEntries: number;
+        messageCount: number;
+        refresh?: boolean;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionHistoryChunk;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        entries: AgentSessionHistoryEntry[];
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionHistorySteps;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        runs: AgentHistoryStepRun[];
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionRunHistoryChunk;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        events: AgentEventEnvelope[];
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionHistoryCompleted;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        refresh?: boolean;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionTruncated;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        fromRequestId: string;
+        removedEntries: number;
+        replacementRequestId?: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionForked;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        sourceSessionId: string;
+        throughRequestId: string;
+        title: string;
+        createdAt: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionCompacted;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        tokensBefore: number;
+        estimatedTokensAfter?: number;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionRuntimeStatus;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        available: boolean;
+        runtime?: AgentPiSessionRuntimeStatus;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionExported;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        format: "jsonl" | "html";
+        path: string;
+      };
+    };
+
+interface AgentSessionSnapshotData {
+  sessionId: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  entryCount: number;
+  messageCount: number;
+  turnCount: number;
+  activeRequestId?: string;
+}
+
+interface AgentSessionHistoryEntry {
+  entry: AgentConversationEntry;
+  visible?: {
+    kind: string;
+    text: string;
+  };
+}
+
+export interface AgentHistoryStepRun {
+  requestId: string;
+  input: string;
+  startedAt: string;
+  endedAt?: string;
+  status: "running" | "completed" | "failed" | "cancelled";
+  modelProvider?: AgentModelProviderMetadata;
+  traces: StepTrace[];
+}

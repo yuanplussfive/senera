@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "lease": {
+      "default": { "durationMs": 30000, "heartbeatMs": 10000 },
+      "type": "object",
+      "properties": {
+        "durationMs": { "default": 30000, "type": "integer", "minimum": 5000, "maximum": 300000 },
+        "heartbeatMs": { "default": 10000, "type": "integer", "minimum": 1000, "maximum": 60000 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

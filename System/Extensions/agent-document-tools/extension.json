@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "agent-document-tools",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "文档理解", "en-US": "Document Understanding" },
+  "description": {
+    "zh-CN": "探测并提取用户上传文档的文本、结构和元数据。",
+    "en-US": "Probes and extracts text, structure, and metadata from user-uploaded documents."
+  },
+  "priority": 8,
+  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" },
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/DocumentExtract.tool.json",
+      "capability": "system.tool.agent-document-tools.DocumentExtract",
+      "recommendedForSkills": ["document-understanding"]
+    }
+  ]
+}

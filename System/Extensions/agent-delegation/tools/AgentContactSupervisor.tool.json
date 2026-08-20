@@ -1,0 +1,52 @@
+{
+  "name": "AgentContactSupervisor",
+  "description": "让受控子代理向其所属父运行发送进度或决策请求；仅对子运行内部开放。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "reason": { "type": "string", "enum": ["need_decision", "progress_update"] },
+      "message": { "type": "string", "minLength": 1 }
+    },
+    "required": ["reason", "message"],
+    "additionalProperties": false
+  },
+  "outputSchema": { "type": "object", "additionalProperties": true },
+  "observationProjection": "observations/AgentContactSupervisor.projection.json",
+  "permissions": [],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": { "Progress": true }
+  },
+  "resources": [],
+  "sources": [
+    { "Id": "orchestration", "Title": "Orchestration", "Description": "Child-agent runs managed by Senera." }
+  ],
+  "search": {
+    "Summary": "向当前子运行的父代理发送进度或决策请求。",
+    "Capabilities": [
+      {
+        "Id": "orchestration.agent-contact-supervisor",
+        "Title": "Scoped supervisor contact",
+        "Description": "Send a persisted message to the exact parent of the current child run.",
+        "Facets": {
+          "Actions": ["contact", "report", "request-decision"],
+          "Targets": ["supervisor", "parent-run"],
+          "Inputs": ["reason", "message"],
+          "Outputs": ["coordination-message"],
+          "Effects": ["persist-message", "may-pause-child-run"]
+        },
+        "Aliases": ["contact supervisor", "intercom", "联系父代理", "请求决策"],
+        "Risk": { "SideEffect": "write-state", "Permission": "orchestration" }
+      }
+    ],
+    "UseCases": ["子代理缺少父代理必须决定的信息时。", "子代理发现会改变执行方向的重要进展时。"],
+    "Avoid": ["不要发送例行完成通知；正常完成直接返回结果。"],
+    "Tags": ["子代理通信", "父代理", "决策请求"]
+  },
+  "evidenceCapabilities": []
+}

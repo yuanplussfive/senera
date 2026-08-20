@@ -1,0 +1,375 @@
+{
+  "version": 3,
+  "default": {
+    "action": "Run"
+  },
+  "origins": {
+    "mcp": {
+      "action": "Call"
+    }
+  },
+  "capabilityRules": [
+    {
+      "id": "shell",
+      "match": {
+        "exactCapabilities": ["host.shell-command", "shell.run"],
+        "exactToolNames": ["ShellCommandTool"]
+      },
+      "argumentPath": "command.script",
+      "detailPaths": ["command.script", "cwd"],
+      "action": "Run"
+    },
+    {
+      "id": "workspace-search",
+      "match": {
+        "exactCapabilities": ["workspace.content.search"],
+        "exactToolNames": ["WorkspaceGrep", "WorkspaceSearchFiles"]
+      },
+      "argumentPath": "pattern",
+      "detailPaths": ["pattern", "path", "glob"],
+      "action": "Search"
+    },
+    {
+      "id": "workspace-find",
+      "match": {
+        "exactCapabilities": ["workspace.file.find"],
+        "exactToolNames": ["WorkspaceFind", "WorkspaceFindFiles"]
+      },
+      "argumentPath": "pattern",
+      "detailPaths": ["pattern", "path"],
+      "action": "Find"
+    },
+    {
+      "id": "workspace-read",
+      "match": {
+        "exactCapabilities": ["workspace.file.read"],
+        "exactToolNames": ["WorkspaceRead", "WorkspaceReadFile"]
+      },
+      "argumentPath": "path",
+      "detailPaths": ["path"],
+      "action": "Read"
+    },
+    {
+      "id": "workspace-list",
+      "match": {
+        "exactCapabilities": ["workspace.directory.list"],
+        "exactToolNames": ["WorkspaceList", "WorkspaceListDirectory"]
+      },
+      "argumentPath": "path",
+      "detailPaths": ["path"],
+      "action": "List"
+    },
+    {
+      "id": "workspace-write",
+      "match": {
+        "exactCapabilities": ["workspace.apply-patch", "workspace.apply_patch"],
+        "exactToolNames": ["WorkspaceApplyPatch"]
+      },
+      "detailPaths": ["operations.*.path", "operations.*.source", "operations.*.destination"],
+      "action": "Edit"
+    },
+    {
+      "id": "git-inspect",
+      "match": {
+        "exactCapabilities": ["repository.git.inspect"],
+        "exactToolNames": ["GitInspect"]
+      },
+      "argumentPath": "operation",
+      "detailPaths": ["operation", "path", "paths.*"],
+      "action": "Inspect"
+    },
+    {
+      "id": "git-mutate",
+      "match": {
+        "exactCapabilities": ["repository.git.mutate"],
+        "exactToolNames": ["GitMutate"]
+      },
+      "argumentPath": "operation",
+      "detailPaths": ["operation", "path", "paths.*"],
+      "action": "Update"
+    },
+    {
+      "id": "tool-search",
+      "match": {
+        "exactCapabilities": ["tool.catalog-search", "tool.search"],
+        "exactToolNames": ["ToolSearchTool"]
+      },
+      "argumentPath": "query",
+      "detailPaths": ["query"],
+      "action": "Search"
+    },
+    {
+      "id": "skill-manage",
+      "match": {
+        "exactCapabilities": ["skill.manage", "extensions.skill.manage"],
+        "exactToolNames": ["SkillManage"]
+      },
+      "argumentPath": "action",
+      "detailPaths": ["action", "name"],
+      "action": "Manage"
+    },
+    {
+      "id": "ask-user",
+      "match": {
+        "exactCapabilities": ["conversation.ask-user", "conversation.ask_user"],
+        "exactToolNames": ["AskUserTool"]
+      },
+      "action": "Ask"
+    },
+    {
+      "id": "schedule-manage",
+      "match": {
+        "exactCapabilities": ["orchestration.schedule-manage", "orchestration.schedule.manage"],
+        "exactToolNames": ["AgentScheduleManage"]
+      },
+      "argumentPath": "action",
+      "detailPaths": ["action", "name", "taskId"],
+      "action": "Schedule"
+    },
+    {
+      "id": "learning-manage",
+      "match": {
+        "exactCapabilities": ["learning.inspect"],
+        "exactToolNames": ["LearningManage"]
+      },
+      "argumentPath": "action",
+      "action": "Learn"
+    },
+    {
+      "id": "agent-spawn",
+      "match": {
+        "exactCapabilities": ["orchestration.agent-spawn", "orchestration.agent.spawn"],
+        "exactToolNames": ["AgentSpawn"]
+      },
+      "argumentPath": "role",
+      "detailPaths": ["role", "task"],
+      "action": "Delegate"
+    },
+    {
+      "id": "agent-wait",
+      "match": {
+        "exactCapabilities": ["orchestration.agent-wait", "orchestration.agent.wait"],
+        "exactToolNames": ["AgentWait"]
+      },
+      "action": "Wait"
+    },
+    {
+      "id": "agent-input",
+      "match": {
+        "exactCapabilities": ["orchestration.agent-input", "orchestration.agent.input"],
+        "exactToolNames": ["AgentInput"]
+      },
+      "action": "Send"
+    },
+    {
+      "id": "agent-stop",
+      "match": {
+        "exactCapabilities": ["orchestration.agent-stop", "orchestration.agent.stop"],
+        "exactToolNames": ["AgentStop"]
+      },
+      "action": "Stop"
+    },
+    {
+      "id": "agent-resume",
+      "match": {
+        "exactCapabilities": ["orchestration.agent-resume", "orchestration.agent.resume"],
+        "exactToolNames": ["AgentResume"]
+      },
+      "action": "Resume"
+    },
+    {
+      "id": "agent-contact-supervisor",
+      "match": {
+        "exactCapabilities": ["orchestration.agent-contact-supervisor", "orchestration.agent.contact_supervisor"],
+        "exactToolNames": ["AgentContactSupervisor"]
+      },
+      "action": "Contact"
+    },
+    {
+      "id": "artifact-read",
+      "match": {
+        "exactCapabilities": ["artifact.read", "artifact.memory.read"],
+        "exactToolNames": ["ArtifactReadTool"]
+      },
+      "action": "Read"
+    },
+    {
+      "id": "memory-read",
+      "match": {
+        "exactCapabilities": ["memory.recall"],
+        "exactToolNames": ["MemoryRecallTool"]
+      },
+      "action": "Recall"
+    },
+    {
+      "id": "memory-write",
+      "match": {
+        "exactCapabilities": ["memory.write"],
+        "exactToolNames": ["MemoryWriteTool"]
+      },
+      "action": "Save"
+    },
+    {
+      "id": "terminal-start",
+      "match": {
+        "exactCapabilities": ["execution.terminal-start", "terminal.start"],
+        "exactToolNames": ["TerminalStartTool"]
+      },
+      "argumentPath": "command",
+      "detailPaths": ["command", "cwd"],
+      "action": "Start"
+    },
+    {
+      "id": "execution-inspect",
+      "match": {
+        "exactCapabilities": ["execution.resource-inspect", "execution.resource.inspect"],
+        "exactToolNames": ["ExecutionResourceInspect", "ExecutionResourceList"]
+      },
+      "action": "Inspect"
+    },
+    {
+      "id": "execution-wait",
+      "match": {
+        "exactCapabilities": ["execution.resource-wait", "execution.resource.wait"],
+        "exactToolNames": ["ExecutionResourceWait"]
+      },
+      "action": "Wait"
+    },
+    {
+      "id": "execution-input",
+      "match": {
+        "exactCapabilities": ["execution.resource-write", "execution.resource.write"],
+        "exactToolNames": ["ExecutionResourceWrite"]
+      },
+      "action": "Send"
+    },
+    {
+      "id": "execution-control",
+      "match": {
+        "exactCapabilities": [
+          "execution.resource-signal",
+          "execution.resource-resize",
+          "execution.resource-stop-all",
+          "execution.resource.signal",
+          "execution.resource.resize",
+          "execution.resource.stop_all"
+        ],
+        "exactToolNames": ["ExecutionResourceSignal", "ExecutionResourceResize", "ExecutionResourceStopAll"]
+      },
+      "action": "Control"
+    },
+    {
+      "id": "execution-resource",
+      "match": {
+        "capabilityPrefixes": ["execution."],
+        "toolNamePrefixes": ["ExecutionResource"]
+      },
+      "action": "Manage"
+    },
+    {
+      "id": "document-extract",
+      "match": {
+        "capabilityPrefixes": ["system.tool.agent-document-tools."],
+        "exactToolNames": ["DocumentExtract"]
+      },
+      "argumentPath": "mode",
+      "detailPaths": ["resourceUri", "mode"],
+      "action": "Read"
+    },
+    {
+      "id": "image-analysis",
+      "match": {
+        "capabilityPrefixes": ["system.tool.agent-image-tools."],
+        "exactToolNames": ["ImageAnalyze"]
+      },
+      "argumentPath": "task",
+      "detailPaths": ["resourceUri", "task", "question"],
+      "action": "Analyze"
+    },
+    {
+      "id": "web-search",
+      "match": {
+        "exactCapabilities": ["system.tool.web-tools.WebSearch"],
+        "exactToolNames": ["WebSearch"]
+      },
+      "argumentPath": "query",
+      "detailPaths": ["query", "allowedDomains.*", "blockedDomains.*"],
+      "action": "Search"
+    },
+    {
+      "id": "web-fetch",
+      "match": {
+        "exactCapabilities": ["system.tool.web-tools.WebFetch"],
+        "exactToolNames": ["WebFetch"]
+      },
+      "argumentPath": "url",
+      "detailPaths": ["url", "contentMode"],
+      "action": "Fetch"
+    },
+    {
+      "id": "browser-navigation",
+      "match": {
+        "exactToolNames": ["BrowserOpen", "BrowserBack", "BrowserForward", "BrowserReload"]
+      },
+      "action": "Navigate"
+    },
+    {
+      "id": "browser-read",
+      "match": {
+        "exactToolNames": [
+          "BrowserRead",
+          "BrowserSnapshot",
+          "BrowserGetText",
+          "BrowserGetUrl",
+          "BrowserGetTitle",
+          "BrowserTabList"
+        ]
+      },
+      "action": "Read"
+    },
+    {
+      "id": "browser-interaction",
+      "match": {
+        "exactToolNames": [
+          "BrowserClick",
+          "BrowserFill",
+          "BrowserType",
+          "BrowserPress",
+          "BrowserCheck",
+          "BrowserUncheck",
+          "BrowserSelect",
+          "BrowserScroll"
+        ]
+      },
+      "action": "Interact"
+    },
+    {
+      "id": "browser-wait",
+      "match": {
+        "exactToolNames": ["BrowserWait", "BrowserWaitForSelector", "BrowserWaitForText", "BrowserWaitForLoad"]
+      },
+      "action": "Wait"
+    },
+    {
+      "id": "browser-screenshot",
+      "match": {
+        "exactToolNames": ["BrowserScreenshot"]
+      },
+      "action": "Capture"
+    },
+    {
+      "id": "browser-tabs",
+      "match": {
+        "exactToolNames": ["BrowserTabNew", "BrowserTabSwitch", "BrowserTabClose"]
+      },
+      "action": "Manage"
+    },
+    {
+      "id": "browser-session",
+      "match": {
+        "exactToolNames": ["BrowserClose"]
+      },
+      "action": "Close"
+    }
+  ]
+}

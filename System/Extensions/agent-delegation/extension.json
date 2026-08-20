@@ -1,0 +1,89 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "agent-delegation",
+  "version": "1.1.0",
+  "displayName": { "zh-CN": "子代理编排", "en-US": "Subagent Orchestration" },
+  "description": {
+    "zh-CN": "通过简洁生命周期工具启动、协调、停止和恢复受控的 Senera 子会话。",
+    "en-US": "Starts, coordinates, stops, and resumes controlled Senera child sessions through a compact lifecycle API."
+  },
+  "priority": 3,
+  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" },
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/AgentSpawn.tool.json",
+      "capability": "orchestration.agent.spawn",
+      "childGrant": "delegation",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/AgentWait.tool.json",
+      "capability": "orchestration.agent.wait",
+      "childGrant": "delegation",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/AgentInput.tool.json",
+      "capability": "orchestration.agent.input",
+      "childGrant": "delegation",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/AgentStop.tool.json",
+      "capability": "orchestration.agent.stop",
+      "childGrant": "delegation",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/AgentResume.tool.json",
+      "capability": "orchestration.agent.resume",
+      "childGrant": "delegation",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/AgentContactSupervisor.tool.json",
+      "capability": "orchestration.agent.contact_supervisor",
+      "childGrant": "internal",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "skill",
+      "path": "skills/agent-orchestration"
+    },
+    {
+      "kind": "skill",
+      "path": "skills/execute-delegated-task"
+    },
+    {
+      "kind": "skill",
+      "path": "skills/evaluate-technical-decision"
+    },
+    {
+      "kind": "skill",
+      "path": "skills/implement-bounded-change"
+    },
+    {
+      "kind": "skill",
+      "path": "skills/investigate-repository"
+    },
+    {
+      "kind": "skill",
+      "path": "skills/plan-implementation"
+    },
+    {
+      "kind": "skill",
+      "path": "skills/research-primary-sources"
+    },
+    {
+      "kind": "skill",
+      "path": "skills/review-code-evidence"
+    }
+  ]
+}

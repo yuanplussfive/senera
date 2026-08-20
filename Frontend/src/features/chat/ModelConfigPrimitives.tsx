@@ -1,0 +1,403 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import type { ReactNode } from "react";
+import { AlertTriangle, Check, ChevronDown, RefreshCw, Search } from "lucide-react";
+import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
+import { cn, formatShortTime } from "../../lib/util";
+import { Spinner, StateView, Switch, Tooltip } from "../../shared/ui";
+import { ModelProviderIcon } from "./ModelProviderIcon";
+
+export function ListHeader({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle: string;
+  action?: ReactNode;
+}): JSX.Element {
+  return (
+    <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ink-200/70 bg-[var(--theme-config-header-bg)] px-3">
+      <div className="min-w-0">
+        <div className="truncate text-[13px] font-semibold text-ink-900">{title}</div>
+        <div className="mt-0.5 truncate text-[11px] text-ink-500">{subtitle}</div>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+export function DetailTitle({
+  icon,
+  title,
+  subtitle,
+  actions,
+}: {
+  icon: ReactNode;
+  title: string;
+  subtitle?: string;
+  actions: ReactNode;
+}): JSX.Element {
+  return (
+    <div className="mb-4 flex min-w-0 items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="grid h-7 w-7 shrink-0 place-items-center text-ink-650">{icon}</span>
+        <span className="min-w-0">
+          <span className="block truncate text-[13.5px] font-semibold leading-5 text-ink-900">{title}</span>
+          {subtitle ? <span className="block truncate text-[11px] leading-4 text-ink-500">{subtitle}</span> : null}
+        </span>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">{actions}</div>
+    </div>
+  );
+}
+
+export function SectionLabel({ icon, title }: { icon: ReactNode; title: string }): JSX.Element {
+  return (
+    <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-ink-900">
+      <span className="text-ink-500">{icon}</span>
+      {title}
+    </div>
+  );
+}
+
+export function SettingsTable({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <div className="overflow-hidden rounded-md border border-ink-200/65 bg-paper-100/65">
+      <div className="divide-y divide-ink-200/70">{children}</div>
+    </div>
+  );
+}
+
+export function TextRow({
+  icon,
+  label,
+  value,
+  disabled,
+  placeholder,
+  secret,
+  trailing,
+  onChange,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  disabled: boolean;
+  placeholder?: string;
+  secret?: boolean;
+  trailing?: ReactNode;
+  onChange?: (value: string) => void;
+}): JSX.Element {
+  return (
+    <SettingRow icon={icon} label={label}>
+      <div className="flex min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50">
+        <input
+          type={secret ? "password" : "text"}
+          value={value}
+          placeholder={placeholder}
+          disabled={disabled}
+          spellCheck={false}
+          className={inputClassName}
+          onChange={(event) => onChange?.(event.currentTarget.value)}
+        />
+        {trailing}
+      </div>
+    </SettingRow>
+  );
+}
+
+export function MenuRow({
+  icon,
+  label,
+  description,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  description?: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <SettingRow icon={icon} label={label} description={description}>
+      {children}
+    </SettingRow>
+  );
+}
+
+export function NumberRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  disabled,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value?: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  disabled: boolean;
+  placeholder?: string;
+  onChange: (value: number | undefined) => void;
+}): JSX.Element {
+  return (
+    <SettingRow icon={<ChevronDown className="h-3.5 w-3.5 rotate-[-90deg]" />} label={label}>
+      <input
+        type="number"
+        value={value ?? ""}
+        min={min}
+        max={max}
+        step={step}
+        placeholder={placeholder}
+        disabled={disabled}
+        className={cn(inputClassName, "rounded-md border border-ink-200 bg-paper-50")}
+        onChange={(event) => {
+          const next = event.currentTarget.value;
+          onChange(next === "" ? undefined : Number(next));
+        }}
+        onBlur={() => {
+          // HTML min/max do not constrain typed values; normalize on blur so the
+          // draft the save queue submits stays inside the backend schema bounds.
+          if (value === undefined || !Number.isFinite(value)) {
+            if (value !== undefined) onChange(undefined);
+            return;
+          }
+          let next = step === 1 ? Math.round(value) : value;
+          if (min !== undefined && next < min) next = min;
+          if (max !== undefined && next > max) next = max;
+          if (next !== value) onChange(next);
+        }}
+      />
+    </SettingRow>
+  );
+}
+
+export function ToggleRow({
+  label,
+  enabled,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  enabled?: boolean;
+  disabled: boolean;
+  onChange: (enabled: boolean) => void;
+}): JSX.Element {
+  return (
+    <SettingRow icon={<ChevronDown className="h-3.5 w-3.5 rotate-[-90deg]" />} label={label}>
+      <Switch
+        checked={Boolean(enabled)}
+        disabled={disabled}
+        ariaLabel={label}
+        className="h-8 w-10 justify-center"
+        onCheckedChange={onChange}
+      />
+    </SettingRow>
+  );
+}
+export function SettingRow({
+  icon,
+  label,
+  description,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  description?: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <div className="grid min-w-0 gap-3 bg-paper-50 px-3 py-3 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start">
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-medium text-ink-800">
+          <span className="text-ink-400">{icon}</span>
+          <span className="truncate">{label}</span>
+        </div>
+        {description ? <div className="mt-1 text-[11px] leading-4 text-ink-500">{description}</div> : null}
+      </div>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+export function SearchInput({
+  value,
+  disabled,
+  placeholder,
+  className,
+  onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  placeholder?: string;
+  className?: string;
+  onChange: (value: string) => void;
+}): JSX.Element {
+  const resolvedPlaceholder = placeholder ?? frontendMessage("config.model.searchPlaceholder");
+  return (
+    <div
+      className={cn(
+        "flex h-8 min-w-0 items-center gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5",
+        className,
+      )}
+    >
+      <Search className="h-3.5 w-3.5 shrink-0 text-ink-350" />
+      <input
+        value={value}
+        disabled={disabled}
+        placeholder={resolvedPlaceholder}
+        aria-label={resolvedPlaceholder}
+        className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-800 outline-none placeholder:text-ink-350 disabled:opacity-55"
+        onChange={(event) => onChange(event.currentTarget.value)}
+      />
+    </div>
+  );
+}
+
+export function ProviderStatusIcon({
+  loading,
+  catalog,
+  error,
+}: {
+  loading?: boolean;
+  catalog?: ProviderModelsSnapshotData;
+  error?: ProviderModelsFailedData;
+}): JSX.Element {
+  if (loading) {
+    return <Spinner size="sm" className="text-ink-500" />;
+  }
+  if (error) {
+    return <AlertTriangle className="h-3.5 w-3.5 text-brick-600" />;
+  }
+  if (catalog) {
+    return <Check className="h-3.5 w-3.5 text-moss-600" />;
+  }
+  return <RefreshCw className="h-3.5 w-3.5 text-ink-350" />;
+}
+
+export function ProviderCatalogStatus({
+  catalog,
+  error,
+  loading,
+  expanded,
+  disabled,
+}: {
+  catalog?: ProviderModelsSnapshotData;
+  error?: ProviderModelsFailedData & { updatedAt?: string };
+  loading?: boolean;
+  expanded?: boolean;
+  disabled?: boolean;
+}): JSX.Element {
+  const tone = disabled ? "neutral" : error ? "error" : catalog ? "success" : loading ? "info" : "neutral";
+  const icon = disabled ? (
+    <AlertTriangle className="h-3.5 w-3.5" />
+  ) : loading ? (
+    <Spinner size="sm" />
+  ) : error ? (
+    <AlertTriangle className="h-3.5 w-3.5" />
+  ) : catalog ? (
+    <Check className="h-3.5 w-3.5" />
+  ) : (
+    <RefreshCw className="h-3.5 w-3.5" />
+  );
+  const text = disabled
+    ? frontendMessage("config.model.statusProviderDisabled")
+    : (error?.message ??
+      (catalog
+        ? frontendMessage("config.model.statusSummary", {
+            count: catalog.models.length,
+            source: frontendMessage(
+              catalog.source === "cache" ? "config.model.sourceCache" : "config.model.sourceNetwork",
+            ),
+            time: formatShortTime(catalog.fetchedAt),
+          })
+        : frontendMessage("config.model.statusNotFetched")));
+
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-[12px]",
+        statusToneClassName[tone],
+        expanded && "rounded-lg px-3 py-2.5",
+      )}
+    >
+      <span className="mt-0.5 shrink-0">{icon}</span>
+      <span className="min-w-0">
+        <span className={cn("block", error ? "whitespace-pre-wrap break-words" : "truncate")}>{text}</span>
+        {expanded && catalog ? <span className="mt-1 block text-[11px] opacity-75">{catalog.baseUrl}</span> : null}
+      </span>
+    </div>
+  );
+}
+
+export function IconAction({
+  children,
+  label,
+  danger,
+  disabled,
+  onClick,
+}: {
+  children: ReactNode;
+  label: string;
+  danger?: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <Tooltip content={label} side="top">
+      <button
+        type="button"
+        disabled={disabled}
+        className={cn(iconButtonClassName, danger && "hover:border-brick-200 hover:bg-brick-50 hover:text-brick-600")}
+        aria-label={label}
+        onClick={onClick}
+      >
+        {children}
+      </button>
+    </Tooltip>
+  );
+}
+
+export function EmptyDetail({ icon, title, text }: { icon: ReactNode; title: string; text: string }): JSX.Element {
+  return (
+    <StateView
+      status="empty"
+      icon={<span className="text-content-muted">{icon}</span>}
+      title={title}
+      description={text}
+    />
+  );
+}
+
+export function EmptyList({ text }: { text: string }): JSX.Element {
+  return <StateView status="empty" description={text} className="min-h-40 px-5" />;
+}
+
+export const iconButtonClassName = cn(
+  "grid h-8 w-8 shrink-0 place-items-center rounded-md border border-ink-200 bg-paper-50 text-ink-600",
+  "transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover",
+  "disabled:pointer-events-none disabled:opacity-45",
+);
+
+export const inputClassName = cn(
+  "h-8 min-w-0 flex-1 bg-transparent px-2.5 text-[12.5px] text-ink-800",
+  "outline-none placeholder:text-ink-350 disabled:pointer-events-none disabled:opacity-55",
+);
+
+const statusToneClassName = {
+  neutral: "bg-ink-900/[0.04] text-ink-600",
+  info: "bg-ink-900/[0.04] text-ink-600",
+  success: "bg-moss-50 text-moss-600",
+  error: "bg-brick-50 text-brick-700",
+};
+
+export function IconOption({ value, label, size = 16 }: { value: string; label: string; size?: number }): JSX.Element {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <ModelProviderIcon icon={value} size={size} />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}

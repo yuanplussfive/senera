@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "runtime": {
+      "default": {
+        "headed": false,
+        "requestTimeoutMs": 180000,
+        "maxOperationTimeoutMs": 900000,
+        "idleTimeoutMs": 900000,
+        "outputMaxChars": 96000,
+        "maxUrlLength": 8192,
+        "maxSelectorLength": 4096,
+        "maxTextChars": 120000,
+        "maxWaitMs": 900000
+      },
+      "type": "object",
+      "properties": {
+        "headed": { "default": false, "type": "boolean" },
+        "executablePath": { "type": "string", "minLength": 1, "maxLength": 32768 },
+        "requestTimeoutMs": { "default": 180000, "type": "integer", "minimum": 5000, "maximum": 3600000 },
+        "maxOperationTimeoutMs": { "default": 900000, "type": "integer", "minimum": 5000, "maximum": 3600000 },
+        "idleTimeoutMs": { "default": 900000, "type": "integer", "minimum": 10000, "maximum": 86400000 },
+        "outputMaxChars": { "default": 96000, "type": "integer", "minimum": 1024, "maximum": 2000000 },
+        "maxUrlLength": { "default": 8192, "type": "integer", "minimum": 256, "maximum": 65536 },
+        "maxSelectorLength": { "default": 4096, "type": "integer", "minimum": 64, "maximum": 32768 },
+        "maxTextChars": { "default": 120000, "type": "integer", "minimum": 1024, "maximum": 2000000 },
+        "maxWaitMs": { "default": 900000, "type": "integer", "minimum": 1, "maximum": 3600000 }
+      },
+      "additionalProperties": false
+    },
+    "network": {
+      "type": "object",
+      "properties": {
+        "accessMode": { "default": "public", "type": "string", "enum": ["public", "allowlist"] },
+        "allowedDomains": {
+          "default": [],
+          "maxItems": 128,
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 253 }
+        },
+        "allowPrivateNetworks": { "default": false, "type": "boolean" },
+        "allowSyntheticProxyAddresses": { "default": true, "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "capture": {
+      "default": { "defaultFormat": "png", "maxScreenshotBytes": 25165824 },
+      "type": "object",
+      "properties": {
+        "defaultFormat": { "default": "png", "type": "string", "enum": ["png", "jpeg"] },
+        "maxScreenshotBytes": { "default": 25165824, "type": "integer", "minimum": 131072, "maximum": 134217728 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
