@@ -152,3 +152,35 @@ export const ProfileReference: Story = () => (
     </DropdownMenu>
   </div>
 );
+
+export const WithCheckboxItems: Story = () => {
+  const [showLineNumbers, setShowLineNumbers] = useState(true);
+  const [wordWrap, setWordWrap] = useState(false);
+  const [minimap, setMinimap] = useState(true);
+
+  return (
+    <div className="flex min-h-[400px] items-center justify-center p-8">
+      <DropdownMenu defaultOpen>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline">
+            视图选项
+            <ChevronDown className="h-3.5 w-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-52">
+          <DropdownMenuLabel>编辑器设置</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuCheckboxItem checked={showLineNumbers} onCheckedChange={setShowLineNumbers}>
+            显示行号
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={wordWrap} onCheckedChange={setWordWrap}>
+            自动换行
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={minimap} onCheckedChange={setMinimap}>
+            显示缩略图
+          </DropdownMenuCheckboxItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+};

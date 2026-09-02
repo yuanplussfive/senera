@@ -99,32 +99,40 @@ html[data-motion-level="none"] .dialog-presence[data-state="closed"] {
 }
 
 .menu-surface[data-state="open"] {
-  animation: menu-surface-in var(--menu-open-dur) var(--menu-ease-out) both;
+  animation:
+    menu-surface-in var(--menu-open-dur) var(--menu-open-ease) both,
+    menu-surface-presence-in var(--menu-open-dur) linear both;
 }
 
 .menu-surface[data-state="closed"] {
-  animation: menu-surface-out var(--menu-close-dur) var(--menu-exit-ease) both;
+  animation:
+    menu-surface-out var(--menu-close-dur) var(--menu-close-ease) both,
+    menu-surface-presence-out var(--menu-close-dur) linear both;
 }
 
 html[data-motion-level="reduced"] .menu-surface[data-state="open"] {
-  animation-name: menu-surface-fade-in;
-  animation-duration: var(--menu-reduced-open-dur);
+  animation-name: menu-surface-fade-in, menu-surface-presence-in;
+  animation-duration: var(--menu-reduced-open-dur), var(--menu-reduced-open-dur);
+  animation-timing-function: var(--menu-open-ease), linear;
 }
 
 html[data-motion-level="reduced"] .menu-surface[data-state="closed"] {
-  animation-name: menu-surface-fade-out;
-  animation-duration: var(--menu-close-dur);
+  animation-name: menu-surface-fade-out, menu-surface-presence-out;
+  animation-duration: var(--menu-close-dur), var(--menu-close-dur);
+  animation-timing-function: var(--menu-close-ease), linear;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .menu-surface[data-state="open"] {
-    animation-name: menu-surface-fade-in;
-    animation-duration: var(--menu-reduced-open-dur);
+    animation-name: menu-surface-fade-in, menu-surface-presence-in;
+    animation-duration: var(--menu-reduced-open-dur), var(--menu-reduced-open-dur);
+    animation-timing-function: var(--menu-open-ease), linear;
   }
 
   .menu-surface[data-state="closed"] {
-    animation-name: menu-surface-fade-out;
-    animation-duration: var(--menu-close-dur);
+    animation-name: menu-surface-fade-out, menu-surface-presence-out;
+    animation-duration: var(--menu-close-dur), var(--menu-close-dur);
+    animation-timing-function: var(--menu-close-ease), linear;
   }
 }
 
@@ -134,9 +142,9 @@ html[data-motion-level="none"] .menu-surface[data-state] {
 
 .menu-check {
   opacity: 0;
-  transform: scale(0.7);
+  transform: scale(0.5);
   transition:
-    opacity var(--menu-check-dur) linear,
+    opacity var(--menu-check-opacity-dur) var(--menu-item-ease),
     transform var(--menu-check-dur) var(--menu-check-ease);
 }
 
@@ -165,22 +173,22 @@ html[data-motion-level="none"] .menu-check {
 @keyframes menu-surface-in {
   from {
     opacity: 0;
-    transform: scale(0.985);
+    transform: translateY(-6px) scale(0.965);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: none;
   }
 }
 
 @keyframes menu-surface-out {
   from {
     opacity: 1;
-    transform: scale(1);
+    transform: none;
   }
   to {
     opacity: 0;
-    transform: scale(0.99);
+    transform: translateY(-3px) scale(0.985);
   }
 }
 
