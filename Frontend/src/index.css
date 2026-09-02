@@ -230,18 +230,23 @@
   --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --dialog-presence-exit-dur: 320ms;
   --overlay-radius: 10px;
-  --menu-surface-radius: 10px;
+  --menu-surface-radius: 16px;
   --menu-item-radius: 10px;
   --menu-open-dur: 220ms;
   --menu-close-dur: 190ms;
   --menu-reduced-open-dur: 120ms;
   --menu-item-dur: 150ms;
   --menu-check-dur: 220ms;
-  --menu-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --menu-exit-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --menu-open-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --menu-close-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --menu-check-opacity-dur: 160ms;
+  --menu-item-ease: linear;
+  --menu-ease-out: var(--menu-open-ease);
+  --menu-exit-ease: var(--menu-close-ease);
   --menu-check-ease: cubic-bezier(0.2, 0.9, 0.2, 1.25);
   --icon-rotate-dur: 200ms;
   --icon-rotate-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --menu-surface-shadow: 0 4px 16.4px rgb(var(--color-ink-950) / 0.1);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -1617,6 +1622,105 @@ html[data-motion-level="none"] *::after {
   }
   100% {
     background-position: 200% 0;
+  }
+}
+
+/* ----- 菜单动效 ----- */
+.menu-surface {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.965);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--menu-close-dur) var(--menu-close-ease),
+    transform var(--menu-open-dur) var(--menu-open-ease),
+    visibility 0s linear var(--menu-open-dur);
+  will-change: transform, opacity;
+}
+
+.menu-surface[data-state="open"] {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+  animation: menu-surface-presence-in var(--menu-open-dur) linear both;
+}
+
+.menu-surface[data-state="closed"] {
+  pointer-events: none !important;
+  animation: menu-surface-presence-out var(--menu-close-dur) linear both;
+}
+
+@starting-style {
+  .menu-surface[data-state="open"] {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.965);
+  }
+}
+
+.menu-check {
+  opacity: 0;
+  transform: scale(0.5);
+  transition:
+    opacity var(--menu-check-opacity-dur) var(--menu-item-ease),
+    transform var(--menu-check-dur) var(--menu-check-ease);
+}
+
+[data-state="checked"] .menu-check,
+[data-state="indeterminate"] .menu-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+html[data-motion-level="reduced"] .menu-surface,
+html[data-motion-level="none"] .menu-surface {
+  transition: none;
+}
+
+html[data-motion-level="reduced"] .menu-surface[data-state="open"] {
+  animation-duration: var(--menu-reduced-open-dur);
+}
+
+html[data-motion-level="reduced"] .menu-surface[data-state="closed"] {
+  animation-duration: var(--menu-close-dur);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-surface[data-state="open"] {
+    animation-duration: var(--menu-reduced-open-dur);
+  }
+
+  .menu-surface[data-state="closed"] {
+    animation-duration: var(--menu-close-dur);
+  }
+}
+
+html[data-motion-level="none"] .menu-surface[data-state] {
+  animation-duration: 0.001ms !important;
+}
+
+html[data-motion-level="reduced"] .menu-check,
+html[data-motion-level="none"] .menu-check {
+  transition: none;
+}
+
+/* Radix Presence waits for animationend; this no-op track keeps transition exits mounted. */
+@keyframes menu-surface-presence-in {
+  from {
+    outline-color: transparent;
+  }
+  to {
+    outline-color: transparent;
+  }
+}
+
+@keyframes menu-surface-presence-out {
+  from {
+    outline-color: transparent;
+  }
+  to {
+    outline-color: transparent;
   }
 }
 

@@ -33,6 +33,11 @@ export const motionTimings = {
   panelClose: { duration: 0.22, ease: easeOut } satisfies Transition,
   section: { duration: 0.16, ease: easeOut } satisfies Transition,
   feedback: { duration: 0.2, ease: easeOut } satisfies Transition,
+  menuOpen: { duration: 0.22, ease: [0.2, 0.8, 0.2, 1] } satisfies Transition,
+  menuClose: { duration: 0.19, ease: [0.4, 0, 0.2, 1] } satisfies Transition,
+  menuCheck: { duration: 0.22, ease: [0.2, 0.9, 0.2, 1.25] } satisfies Transition,
+  menuItem: { duration: 0.15, ease: "linear" } satisfies Transition,
+  iconRotate: { duration: 0.2, ease: [0.4, 0, 0.2, 1] } satisfies Transition,
 };
 
 export const motionDurations = {
