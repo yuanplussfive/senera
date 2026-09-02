@@ -1,5 +1,8 @@
 {
   "chat.composer.toolkit.tooltip": "工具",
   "chat.composer.toolkit.fileAndImage": "文件和图片",
-  "chat.composer.toolkit.preset": "角色预设"
+  "chat.composer.toolkit.preset": "角色预设",
+  "chat.composer.toolkit.plugins": "插件",
+  "chat.composer.toolkit.skills": "技能",
+  "chat.composer.toolkit.webSearch": "联网搜索"
 }

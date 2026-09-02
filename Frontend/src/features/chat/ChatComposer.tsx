@@ -5,11 +5,14 @@ import {
   BookUser,
   Check,
   ChevronDown,
+  Globe,
   Paperclip,
   Plus,
+  Puzzle,
   RotateCcw,
   Settings2,
   Square,
+  Wand2,
   X,
 } from "lucide-react";
 import { buildStyles, CircularProgressbar } from "react-circular-progressbar";
@@ -41,6 +44,7 @@ import { readChatModelProviders, readSelectedModelProvider } from "./modelProvid
 import { ThinkingSelector } from "./ThinkingSelector";
 import type { MessageQueueMode } from "../../app/useChatCommands";
 import type { ChatApprovalConfig, ChatModelConfig, ChatPresetConfig } from "./ChatPanelContracts";
+import type { SettingsSectionId } from "../settings/settingsSectionContract";
 import { useComposerAttachments, type PendingAttachment } from "./useComposerAttachments";
 import type { RuntimeContextUsage, RuntimeUsageSnapshot } from "../observability/runtimeDiagnosticProjection";
 import { useEventJournalStore } from "../observability/eventJournalStore";
@@ -71,6 +75,7 @@ export interface ChatComposerProps {
   runtimeUsage?: RuntimeUsageSnapshot;
   onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => boolean;
   onCancel: () => void;
+  onOpenSettings?: (section: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
 }
 
 export function ChatComposer({
@@ -88,6 +93,7 @@ export function ChatComposer({
   runtime,
   onSend,
   onCancel,
+  onOpenSettings,
 }: ChatComposerProps): JSX.Element {
   const locale = useFrontendLocale();
   const [internalValue, setInternalValue] = useState("");
@@ -96,6 +102,7 @@ export function ChatComposer({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const openPresetAfterToolkitCloseRef = useRef(false);
+  const pendingSettingsSectionRef = useRef<SettingsSectionId | null>(null);
   const [toolkitOpen, setToolkitOpen] = useState(false);
   const [presetOpen, setPresetOpen] = useState(false);
   const attachments = useComposerAttachments({
@@ -154,10 +161,17 @@ export function ChatComposer({
   }, [controlledValue]);
 
   useEffect(() => {
-    if (toolkitOpen || !openPresetAfterToolkitCloseRef.current) return;
-    openPresetAfterToolkitCloseRef.current = false;
-    setPresetOpen(true);
-  }, [toolkitOpen]);
+    if (toolkitOpen) return;
+    if (openPresetAfterToolkitCloseRef.current) {
+      openPresetAfterToolkitCloseRef.current = false;
+      setPresetOpen(true);
+      return;
+    }
+    const pendingSection = pendingSettingsSectionRef.current;
+    if (!pendingSection || !onOpenSettings) return;
+    pendingSettingsSectionRef.current = null;
+    onOpenSettings(pendingSection);
+  }, [onOpenSettings, toolkitOpen]);
 
   const submit = (queueMode?: MessageQueueMode): void => {
     const text = value.trim();
@@ -265,6 +279,34 @@ export function ChatComposer({
                   >
                     {frontendChatMessage("chat.composer.toolkit.preset")}
                   </DropdownMenuItem>
+                  {onOpenSettings ? (
+                    <>
+                      <DropdownMenuItem
+                        icon={<Puzzle className="h-4 w-4" />}
+                        onSelect={() => {
+                          pendingSettingsSectionRef.current = "mcp-servers";
+                        }}
+                      >
+                        {frontendChatMessage("chat.composer.toolkit.plugins")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        icon={<Wand2 className="h-4 w-4" />}
+                        onSelect={() => {
+                          pendingSettingsSectionRef.current = "system-tools";
+                        }}
+                      >
+                        {frontendChatMessage("chat.composer.toolkit.skills")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        icon={<Globe className="h-4 w-4" />}
+                        onSelect={() => {
+                          pendingSettingsSectionRef.current = "system-tools";
+                        }}
+                      >
+                        {frontendChatMessage("chat.composer.toolkit.webSearch")}
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
               <PresetControl

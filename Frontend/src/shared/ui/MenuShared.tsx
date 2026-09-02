@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { cn } from "../../lib/util";
 
 export const menuSurfaceClassName =
-  "menu-surface z-50 min-w-[200px] max-w-[calc(100vw-16px)] overflow-hidden rounded-lg border border-line bg-surface-panel p-1.5 shadow-soft";
+  "menu-surface z-50 min-w-[200px] max-w-[calc(100vw-16px)] overflow-hidden rounded-[var(--menu-surface-radius)] border border-line bg-surface-panel p-1.5 shadow-soft";
 
 export function menuItemClassName({
   className,
@@ -14,8 +14,8 @@ export function menuItemClassName({
   isCoarsePointer: boolean;
 }): string {
   return cn(
-    "group flex min-h-9 cursor-pointer select-none items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] leading-5 outline-none",
-    "transition-[background-color,color,transform] duration-100 active:scale-[0.985] motion-reduce:active:scale-100",
+    "group flex min-h-9 cursor-pointer select-none items-center gap-2.5 rounded-[var(--menu-item-radius)] px-2.5 py-1.5 text-[13px] leading-5 outline-none",
+    "transition-[background-color,color,transform] duration-[var(--menu-item-dur)] active:scale-[0.985] motion-reduce:active:scale-100",
     isCoarsePointer && "min-h-11",
     "text-content-primary data-[highlighted]:bg-accent-surface data-[highlighted]:text-accent-content",
     destructive && "text-content-secondary data-[highlighted]:bg-surface-hover data-[highlighted]:text-brick-600",
@@ -40,7 +40,7 @@ export function MenuItemContent({
       {icon ? (
         <span
           className={cn(
-            "grid h-[18px] w-[18px] shrink-0 place-items-center text-content-muted transition-colors duration-100",
+            "grid h-[18px] w-[18px] shrink-0 place-items-center text-content-muted transition-colors duration-[var(--menu-item-dur)]",
             "group-data-[highlighted]:text-accent-content",
             destructive && "text-content-muted group-data-[highlighted]:text-brick-600",
           )}

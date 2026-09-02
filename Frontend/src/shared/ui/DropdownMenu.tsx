@@ -87,7 +87,7 @@ export const DropdownMenuMeta = forwardRef<HTMLDivElement, MetaProps>(
     <div
       ref={ref}
       className={cn(
-        "flex min-h-10 items-center gap-2.5 rounded-md px-2.5 py-2 text-[12px] leading-5 text-ink-500",
+        "flex min-h-10 items-center gap-2.5 rounded-[var(--menu-item-radius)] px-2.5 py-2 text-[12px] leading-5 text-content-secondary",
         className,
       )}
       {...props}
@@ -111,8 +111,8 @@ export const DropdownMenuCheckboxItem = forwardRef<
       ref={ref}
       checked={checked}
       className={cn(
-        "relative flex min-h-9 cursor-pointer select-none items-center rounded-md px-2.5 py-1.5 pl-8 text-[13px] leading-5 outline-none",
-        "transition-[background-color,color,transform] duration-100 active:scale-[0.985] motion-reduce:active:scale-100",
+        "relative flex min-h-9 cursor-pointer select-none items-center rounded-[var(--menu-item-radius)] px-2.5 py-1.5 pl-8 text-[13px] leading-5 outline-none",
+        "transition-[background-color,color,transform] duration-[var(--menu-item-dur)] active:scale-[0.985] motion-reduce:active:scale-100",
         isCoarsePointer && "min-h-11",
         "text-content-primary data-[highlighted]:bg-accent-surface data-[highlighted]:text-accent-content",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-45",

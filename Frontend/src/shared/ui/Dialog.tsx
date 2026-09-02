@@ -127,13 +127,13 @@ const DialogContentFrame = forwardRef<
           transition={content.contentTransition}
         >
           {content.showHeader ? (
-            <div className="flex items-start gap-4 bg-surface-panel px-8 pb-4 pt-7">
+            <div className="flex select-none items-start gap-4 bg-surface-panel px-6 pb-3 pt-5">
               <div className="min-w-0 flex-1">
-                <DialogPrimitive.Title className="text-[20px] font-semibold leading-7 text-content-strong">
+                <DialogPrimitive.Title className="text-[16px] font-medium leading-6 text-content-strong">
                   {content.title ?? ""}
                 </DialogPrimitive.Title>
                 {content.description ? (
-                  <DialogPrimitive.Description className="mt-1.5 text-[13px] leading-5 text-content-secondary">
+                  <DialogPrimitive.Description className="mt-1 text-[13px] leading-5 text-content-secondary">
                     {content.description}
                   </DialogPrimitive.Description>
                 ) : null}
@@ -143,9 +143,9 @@ const DialogContentFrame = forwardRef<
                   <button
                     type="button"
                     className={cn(
-                      "grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg text-content-muted",
+                      "grid h-8 w-8 flex-shrink-0 place-items-center rounded-[var(--overlay-radius)] text-content-muted",
                       "cursor-pointer",
-                      "transition-colors duration-150 ease-out",
+                      "transition-colors duration-[var(--menu-item-dur)] ease-out",
                       "hover:bg-surface-hover hover:text-content-primary",
                       "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
                     )}
@@ -227,7 +227,7 @@ export const DialogContent = forwardRef<
             "flex flex-col overflow-hidden [will-change:opacity,transform]",
             placement === "inset" && "min-h-0 flex-1",
             className,
-            "rounded-[10px] border border-line bg-surface-panel",
+            "rounded-[var(--overlay-radius)] border border-line bg-surface-panel",
           )}
           title={title}
           description={description}
