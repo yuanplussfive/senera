@@ -186,8 +186,8 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
                 <button
                   type="button"
                   className={cn(
-                    "grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-ink-500 transition",
-                    "hover:bg-ink-900/[0.05] hover:text-ink-800",
+                    "grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-[var(--overlay-radius)] text-content-muted transition-colors duration-[var(--menu-item-dur)]",
+                    "hover:bg-surface-hover hover:text-content-primary",
                     "focus:outline-none",
                   )}
                   aria-label={frontendMessage("ui.close")}

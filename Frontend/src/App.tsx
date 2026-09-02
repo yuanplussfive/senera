@@ -460,6 +460,11 @@ export function App({
                           ? handleOpenWorkflowPanel
                           : undefined,
                       onRetryHistory: requestSessionHistory,
+                      onOpenSettings: (section, returnFocus) => {
+                        void settingsController
+                          .openSettings(section, returnFocus)
+                          .catch(() => toast.error(frontendMessage("settings.loadFailed")));
+                      },
                     }}
                   />
                 </ErrorBoundary>

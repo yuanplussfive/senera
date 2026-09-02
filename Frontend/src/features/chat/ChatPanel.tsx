@@ -125,6 +125,7 @@ export function ChatPanel({
           }}
           onSend={messageActions.onSend}
           onCancel={messageActions.onCancel}
+          onOpenSettings={navigationActions?.onOpenSettings}
         />
       </main>
     </UploadPreviewProvider>

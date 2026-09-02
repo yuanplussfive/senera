@@ -16,6 +16,7 @@ import type {
 import type { SocketStatus } from "../../api/useAgentSocket";
 import type { ApprovalBatchReference, ApprovalDecision } from "../../api/approvalEventTypes";
 import type { MessageQueueMode } from "../../app/useChatCommands";
+import type { SettingsSectionId } from "../settings/settingsSectionContract";
 import type { ChatMessage, UserProfile } from "../../store/sessionStore";
 import type { ExecutionApprovalMode } from "../../api/executionApprovalMode";
 
@@ -86,6 +87,7 @@ export interface ChatNavigationActions {
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
   onRetryHistory?: (sessionId: string) => void;
+  onOpenSettings?: (section: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
 }
 
 export interface ChatPanelProps {
