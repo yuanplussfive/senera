@@ -85,6 +85,8 @@ const GatewayDispatch = {
 } as const;
 
 const DirectMessageChannelType = 1;
+const MinGatewayHeartbeatIntervalMs = 1_000;
+const MaxGatewayHeartbeatIntervalMs = 120_000;
 const MaxGatewayWaitTimeoutMs = 120_000;
 
 /**
@@ -264,19 +266,22 @@ export class AgentDiscordChannelAdapter implements AgentChannelAdapter {
 
     const startHeartbeat = (): void => {
       if (!hello || heartbeatTimer) return;
-      heartbeatTimer = setInterval(() => {
-        socket.send(JSON.stringify({ op: 1, d: this.lastSequence ?? null }));
-        const notAckedThisBeat = acked === 0;
-        acked = 0;
-        if (notAckedThisBeat) {
-          missedAcks += 1;
-          if (missedAcks >= this.maxMissedAcks) {
-            // The gateway stopped acknowledging heartbeats; recycle the
-            // connection so the resume path (with sequence) can take over.
-            socket.terminate();
+      heartbeatTimer = setInterval(
+        () => {
+          socket.send(JSON.stringify({ op: 1, d: this.lastSequence ?? null }));
+          const notAckedThisBeat = acked === 0;
+          acked = 0;
+          if (notAckedThisBeat) {
+            missedAcks += 1;
+            if (missedAcks >= this.maxMissedAcks) {
+              // The gateway stopped acknowledging heartbeats; recycle the
+              // connection so the resume path (with sequence) can take over.
+              socket.terminate();
+            }
           }
-        }
-      }, hello.heartbeat_interval);
+        },
+        Math.min(Math.max(hello.heartbeat_interval, MinGatewayHeartbeatIntervalMs), MaxGatewayHeartbeatIntervalMs),
+      );
       heartbeatTimer.unref?.();
     };
 
