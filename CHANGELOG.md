@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.13.1](https://github.com/yuanplussfive/senera/compare/v1.13.0...v1.13.1) (2026-08-20)
+
+
+### 问题修复
+
+* **release:** 修复 Nano 与容器依赖投影 ([#117](https://github.com/yuanplussfive/senera/issues/117)) ([8b106e7](https://github.com/yuanplussfive/senera/commit/8b106e7dd7bc9cbacef59f57a2b6f7269f32b725))
+
 ## [1.13.0](https://github.com/yuanplussfive/senera/compare/v1.12.3...v1.13.0) (2026-08-20)
 
 
