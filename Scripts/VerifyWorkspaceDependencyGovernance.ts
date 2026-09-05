@@ -22,6 +22,7 @@ interface PackageJson {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
+  packageManager?: string;
   exports?: Record<string, PackageExportConditions>;
   build?: ElectronBuilderConfig;
 }
@@ -503,6 +504,11 @@ function inspectFrontendScripts(): string[] {
 
 function inspectRootNpmPolicy(): string[] {
   const violations: string[] = [];
+  if (rootPackage.packageManager !== undefined) {
+    violations.push(
+      "package.json must not declare packageManager; the workspace is installed with package-lock.json and npm ci.",
+    );
+  }
   const npmrcPath = path.join(workspaceRoot, ".npmrc");
   if (!fs.existsSync(npmrcPath)) {
     violations.push("Root .npmrc must enable package-lock generation for reproducible npm ci installs.");
