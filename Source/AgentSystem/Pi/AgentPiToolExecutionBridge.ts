@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import type { ImageContent } from "@earendil-works/pi-ai";
 import { createRequestId } from "../Core/AgentIds.js";
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import { errorMessage } from "../Core/AgentErrors.js";
@@ -25,12 +28,17 @@ import type { AgentToolTokenReservation } from "../Text/AgentTurnTokenBudget.js"
 import { resolveAgentToolRuntimeCapabilities } from "../ToolRuntime/AgentToolRuntimeCapabilities.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
+import { markAgentToolArtifactUnavailable } from "../Artifacts/AgentToolArtifactAvailability.js";
+import { escapeXml as escapeXmlText } from "../Prompt/AgentTurnRequestComposer.js";
 
 export interface AgentPiToolExecutionBridgeOptions {
   model: string;
+  modelSupportsImages?: boolean;
   executeToolCall: AgentToolCallExecutor["execute"];
   recordToolArtifacts: AgentToolExecutionArtifactRecorder["record"];
   executionScheduler?: Pick<AgentToolExecutionScheduler, "run">;
+  /** Enables attribution="tool" wrapping of BAML observation content. */
+  attributionEnabled?: () => boolean;
 }
 
 export class AgentPiToolExecutionBridge {
@@ -38,6 +46,15 @@ export class AgentPiToolExecutionBridge {
 
   constructor(private readonly options: AgentPiToolExecutionBridgeOptions) {
     this.observationCompiler = new AgentToolObservationContextCompiler({ model: options.model });
+  }
+
+  /**
+   * Marks a BAML observation as tool evidence at the wire boundary. The JSON
+   * payload is escaped so the envelope can never be broken by tool output.
+   */
+  private wrapObservationContent(content: string): string {
+    if (this.options.attributionEnabled?.() !== true) return content;
+    return `<observation attribution="tool">${escapeXmlText(content)}</observation>`;
   }
 
   async execute(input: AgentPiToolExecutionInput): Promise<AgentPiToolResult> {
@@ -51,7 +68,7 @@ export class AgentPiToolExecutionBridge {
         : operation());
     } catch (error) {
       if (isCancelledToolExecution(error, input.signal)) throw error;
-      return this.projectUncaughtFailure(input, error);
+      return await this.projectUncaughtFailure(input, error);
     }
   }
 
@@ -108,24 +125,33 @@ export class AgentPiToolExecutionBridge {
         return this.projectChildRunSuspension(input, batchId, execution.value, projection, reservation);
       }
 
-      const [recorded] = await this.options.recordToolArtifacts({
-        ...(artifactSessionId ? { sessionId: artifactSessionId } : {}),
-        requestId,
-        step,
-        results: execution.value,
-      });
-      const result = recorded ?? execution.value[0];
-      if (!result) throw new Error("Tool execution completed without a result.");
+      let recorded: ExecutedToolCallResult[];
+      try {
+        recorded = await this.options.recordToolArtifacts({
+          ...(artifactSessionId ? { sessionId: artifactSessionId } : {}),
+          requestId,
+          step,
+          results: execution.value,
+        });
+      } catch (error) {
+        if (isCancelledToolExecution(error, input.signal)) throw error;
+        recorded = execution.value.map(markAgentToolArtifactUnavailable);
+      }
+      const [persisted] = recorded;
+      const executed = execution.value[0];
+      if (!persisted && !executed) throw new Error("Tool execution completed without a result.");
+      const result = persisted ?? (executed ? markAgentToolArtifactUnavailable(executed) : undefined);
+      if (!result) throw new Error("Tool execution did not produce a persistable result.");
       assertExecutedToolIdentity(input, result);
       turnState.registerExecutedToolResult(input.toolCallId, result);
-      return this.projectToolResult(input, result, batchId, projection, reservation);
+      return await this.projectToolResult(input, result, batchId, projection, reservation);
     } catch (error) {
       if (isCancelledToolExecution(error, input.signal)) {
         reservation.release();
         throw error;
       }
       try {
-        return this.projectFailureResult(input, error, batchId, projection, reservation);
+        return await this.projectFailureResult(input, error, batchId, projection, reservation);
       } catch {
         reservation.release();
         throw error;
@@ -133,7 +159,7 @@ export class AgentPiToolExecutionBridge {
     }
   }
 
-  private projectUncaughtFailure(input: AgentPiToolExecutionInput, error: unknown): AgentPiToolResult {
+  private async projectUncaughtFailure(input: AgentPiToolExecutionInput, error: unknown): Promise<AgentPiToolResult> {
     const turnState = input.context.turnState;
     if (!turnState) throw error;
     const projection = input.tool.observationProjection ?? StandardAgentToolObservationProjection;
@@ -142,7 +168,7 @@ export class AgentPiToolExecutionBridge {
     let reservation: AgentToolTokenReservation | undefined;
     try {
       reservation = turnState.claimToolObservationBudget(input.toolCallId, projection.maxTokens);
-      return this.projectFailureResult(input, error, batchId, projection, reservation);
+      return await this.projectFailureResult(input, error, batchId, projection, reservation);
     } catch {
       reservation?.release();
       throw error;
@@ -155,7 +181,7 @@ export class AgentPiToolExecutionBridge {
     batchId: string,
     projection: AgentToolObservationProjectionManifest,
     reservation: AgentToolTokenReservation,
-  ): AgentPiToolResult {
+  ): Promise<AgentPiToolResult> {
     const turnState = input.context.turnState;
     if (!turnState) throw error;
     const failure = {
@@ -218,7 +244,7 @@ export class AgentPiToolExecutionBridge {
       projection,
       reservation.limit,
     );
-    const content = JSON.stringify(observation);
+    const content = this.wrapObservationContent(JSON.stringify(observation));
     reservation.commit(content);
     return {
       content: [
@@ -265,7 +291,7 @@ export class AgentPiToolExecutionBridge {
       projection,
       reservation.limit,
     );
-    const content = JSON.stringify(observation);
+    const content = this.wrapObservationContent(JSON.stringify(observation));
     reservation.commit(content);
     return {
       content: [{ type: "text", text: content }],
@@ -281,13 +307,13 @@ export class AgentPiToolExecutionBridge {
     };
   }
 
-  private projectToolResult(
+  private async projectToolResult(
     input: AgentPiToolExecutionInput,
     result: ExecutedToolCallResult,
     batchId: string,
     projection: AgentToolObservationProjectionManifest,
     reservation: AgentToolTokenReservation,
-  ): AgentPiToolResult {
+  ): Promise<AgentPiToolResult> {
     const tool = input.tool;
     const outcome = redactArtifactToolOutcome(result.outcome, result.artifactPolicy);
     const observation = this.observationCompiler.compile(
@@ -295,8 +321,9 @@ export class AgentPiToolExecutionBridge {
       projection,
       reservation.limit,
     );
-    const content = JSON.stringify(observation);
+    const content = this.wrapObservationContent(JSON.stringify(observation));
     reservation.commit(content);
+    const images = await projectArtifactImages(result, this.options.modelSupportsImages === true);
 
     return {
       content: [
@@ -304,10 +331,32 @@ export class AgentPiToolExecutionBridge {
           type: "text",
           text: content,
         },
+        ...images,
       ],
       details: projectToolDetails(tool.name, result, outcome),
     };
   }
+}
+
+async function projectArtifactImages(result: ExecutedToolCallResult, enabled: boolean): Promise<ImageContent[]> {
+  if (!enabled || !result.artifact?.assets) return [];
+  const artifactRoot = path.resolve(result.artifact.artifactPath);
+  const imageAssets = result.artifact.assets.filter((asset) => asset.mediaType.startsWith("image/"));
+  return Promise.all(
+    imageAssets.map(async (asset) => {
+      const filePath = path.resolve(artifactRoot, asset.relativePath);
+      const relativePath = path.relative(artifactRoot, filePath);
+      if (relativePath === ".." || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
+        throw new Error(`Tool artifact image path must remain inside its artifact: ${asset.relativePath}`);
+      }
+      const data = await readFile(filePath);
+      return {
+        type: "image",
+        data: data.toString("base64"),
+        mimeType: asset.mediaType,
+      } satisfies ImageContent;
+    }),
+  );
 }
 
 function assertExecutedToolIdentity(input: AgentPiToolExecutionInput, result: ExecutedToolCallResult): void {
@@ -335,6 +384,7 @@ function projectToolObservation(
     result: redactArtifactSecrets(result.result, result.artifactPolicy),
     error,
     artifact: result.artifact,
+    artifactAvailability: result.artifactAvailability,
     semanticProjection: result.semanticProjection,
   };
 }
@@ -347,6 +397,7 @@ function projectToolDetails(
   const context = {
     toolName,
     artifactUri: result.artifact?.artifactUri,
+    ...(result.artifactAvailability ? { artifactAvailability: result.artifactAvailability } : {}),
     callId: result.callId,
     executionStatus: outcome.execution.status,
     outputAvailability: outcome.output.availability,

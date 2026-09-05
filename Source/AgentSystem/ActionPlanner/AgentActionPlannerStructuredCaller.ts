@@ -9,7 +9,11 @@ import {
   AgentActionPlannerBamlPromptFactory,
 } from "./AgentActionPlannerBamlPromptFactory.js";
 import type { AgentActionPlannerModelTransport } from "./AgentActionPlannerModelTransport.js";
-import type { AgentLanguageModelImageAttachment } from "../ModelEndpoints/AgentLanguageModel.js";
+import type {
+  AgentLanguageModelCacheOptions,
+  AgentLanguageModelImageAttachment,
+} from "../ModelEndpoints/AgentLanguageModel.js";
+import { deriveAgentModelCacheOptions } from "../ModelEndpoints/AgentModelCacheScope.js";
 
 type BamlFunctionName = AgentActionPlannerBamlFunctionArgs["functionName"];
 type BamlFunctionArgs<TName extends BamlFunctionName> = Extract<
@@ -43,6 +47,7 @@ export class AgentActionPlannerStructuredCaller {
     args: BamlFunctionArgs<TName>;
     signal?: AbortSignal;
     attachments?: readonly AgentLanguageModelImageAttachment[];
+    cache?: AgentLanguageModelCacheOptions;
     parse: (rawOutput: string) => TValue;
     repair?: (failure: {
       invalidOutput: string;
@@ -50,9 +55,13 @@ export class AgentActionPlannerStructuredCaller {
       diagnostics: AgentSourceDiagnostic[];
     }) => BamlRepairArgs;
   }): Promise<TValue> {
+    const cache = deriveAgentModelCacheOptions(options.cache, options.functionName);
     const result = await this.structuredOutputRunner.run({
       functionName: options.functionName,
-      request: await this.promptFactory.buildPrompt(options.args, { attachments: options.attachments }),
+      request: await this.promptFactory.buildPrompt(options.args, {
+        attachments: options.attachments,
+        cache,
+      }),
       signal: options.signal,
       parse: options.parse,
       repair: options.repair
@@ -63,7 +72,7 @@ export class AgentActionPlannerStructuredCaller {
                 issues: failure.issues,
                 diagnostics: failure.diagnostics,
               }) ?? options.args,
-              { attachments: options.attachments },
+              { attachments: options.attachments, cache },
             )
         : undefined,
     });
@@ -75,6 +84,7 @@ export class AgentActionPlannerStructuredCaller {
     args: BamlFunctionArgs<TName>;
     signal?: AbortSignal;
     attachments?: readonly AgentLanguageModelImageAttachment[];
+    cache?: AgentLanguageModelCacheOptions;
     parse: (rawOutput: string) => TValue;
   }): Promise<TValue> {
     return this.run({
@@ -82,6 +92,7 @@ export class AgentActionPlannerStructuredCaller {
       args: options.args,
       signal: options.signal,
       attachments: options.attachments,
+      cache: options.cache,
       parse: options.parse,
     });
   }

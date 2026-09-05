@@ -54,6 +54,20 @@ export interface RegisteredTool {
   artifactPolicy?: ToolArtifactPolicyManifest;
 }
 
+/**
+ * A model-call schema owned by an extension but reserved for an internal
+ * runtime sidecar. Unlike RegisteredTool, it is never exposed to the main
+ * agent, tool search, approval flow, or normal tool execution runtime.
+ */
+export interface RegisteredSidecarTool {
+  readonly owner: AgentExtensionOwner;
+  readonly name: string;
+  readonly capability: string;
+  readonly description: string;
+  readonly instructions: string;
+  readonly inputSchema: Readonly<Record<string, unknown>>;
+}
+
 export interface RegisteredTemplate {
   name: string;
   path: string;

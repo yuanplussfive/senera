@@ -15,6 +15,7 @@ import {
   DefaultAgentPiCompactionProjectionPolicy,
   normalizeAgentPiCompactionLimit,
 } from "./AgentPiCompactionProjectionPolicy.js";
+import { projectAgentPiNativeToolCallDisplay } from "./AgentPiNativeToolBridge.js";
 
 export const AgentPiCompactionToolIndexProtocol = defineSeneraProtocol("compaction_tool_index", 1);
 export const AgentPiCompactionToolIndexCustomType = "senera.compaction_tool_index";
@@ -126,6 +127,7 @@ export function mergeAgentPiCompactionToolCallIndexes(
 
 interface PendingToolCall {
   callId: string;
+  transportToolName: string;
   toolName: string;
   argumentsPreview: string;
   observation?: AgentPiToolObservation;
@@ -158,10 +160,12 @@ function collectAssistantToolCalls(
 ): void {
   for (const block of message.content) {
     if (block.type !== "toolCall") continue;
+    const display = projectAgentPiNativeToolCallDisplay({ toolName: block.name, arguments: block.arguments });
     callsById.set(block.id, {
       callId: block.id,
-      toolName: block.name,
-      argumentsPreview: projectArgumentsPreview(block.arguments, limits.argumentsPreviewTokenBudget),
+      transportToolName: block.name,
+      toolName: display.toolName,
+      argumentsPreview: projectArgumentsPreview(display.arguments, limits.argumentsPreviewTokenBudget),
     });
   }
 }
@@ -174,13 +178,14 @@ function enrichWithToolResult(
   const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
   const pending = callsById.get(callId);
   if (pending) {
-    if (pending.toolName !== message.toolName) {
+    if (pending.transportToolName !== message.toolName) {
       throw new Error(`Pi tool call ${callId} changed tool identity before compaction.`);
     }
     if (observation) pending.observation = observation;
   } else {
     callsById.set(callId, {
       callId,
+      transportToolName: message.toolName,
       toolName: message.toolName,
       argumentsPreview: "",
       observation,

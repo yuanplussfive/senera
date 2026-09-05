@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Toaster } from "sonner";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "../api/useAgentSocket";
 import type { WsRequest } from "../api/eventTypes";
 import { buildSettingsSurfaceSyncRequests } from "./settingsSurfaceSync";
@@ -11,7 +10,7 @@ import type { SettingsSectionId } from "../features/settings/settingsSectionCont
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { AppMotionProvider } from "../shared/motion/MotionProvider";
 import { AppAppearanceProvider } from "../shared/theme/useAppearance";
-import { TooltipProvider } from "../shared/ui";
+import { SeneraToaster, TooltipProvider } from "../shared/ui";
 import { useStore } from "../store/sessionStore";
 import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "../config/runtimeConfig";
 import { useRuntimeUpdate } from "./runtimeUpdate";
@@ -120,12 +119,7 @@ export function DesktopSettingsSurface({
               void bridge?.confirmSettingsClose?.();
             }}
           />
-          <Toaster
-            position="bottom-right"
-            toastOptions={{
-              className: "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
-            }}
-          />
+          <SeneraToaster />
         </TooltipProvider>
       </AppAppearanceProvider>
     </AppMotionProvider>

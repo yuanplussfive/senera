@@ -14,7 +14,7 @@ import {
   IconButton,
   ScrollArea,
 } from "../../../shared/ui";
-import { inferModelProviderIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
+import { inferModelProviderEndpointIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
 import { EmptyList, ProviderStatusIcon, SearchInput } from "../../chat/ModelConfigPrimitives";
 import { providerEnabled, providerIdLabel, sortProviderRows } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
@@ -79,7 +79,7 @@ export function ProviderConnectionList({
             <div
               key={provider.Id}
               className={cn(
-                "relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-0.5 rounded-md px-1.5 py-1.5 transition-colors",
+                "relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-0.5 rounded-md px-1.5 py-1.5 transition-colors",
                 active ? "text-ink-900" : "text-ink-650 hover:bg-ink-900/[0.03] hover:text-ink-900",
                 !enabled && "opacity-65",
               )}
@@ -87,7 +87,7 @@ export function ProviderConnectionList({
               {active ? (
                 <motion.span
                   layoutId={animateSelection ? "settings-provider-selection" : undefined}
-                  className="absolute inset-0 rounded-md bg-ink-900/[0.055] shadow-[inset_0_0_0_1px_rgb(110_100_84/0.035)]"
+                  className="absolute inset-0 rounded-md bg-content-strong/[0.055] shadow-panel"
                   transition={animateSelection ? motionTimings.selection : { duration: 0 }}
                   aria-hidden="true"
                   data-provider-selection-indicator
@@ -96,7 +96,7 @@ export function ProviderConnectionList({
               <button
                 type="button"
                 disabled={disabled}
-                className="relative z-[1] grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-left disabled:pointer-events-none disabled:opacity-60"
+                className="relative z-[1] grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-left disabled:pointer-events-none disabled:opacity-60"
                 aria-label={frontendMessage("settings.provider.rowAria", {
                   provider: providerIdLabel(provider),
                   models: frontendMessage("settings.provider.modelsCount", { count: modelCount }),
@@ -106,8 +106,8 @@ export function ProviderConnectionList({
                 aria-pressed={active}
                 onClick={() => onSelect(provider)}
               >
-                <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-md bg-paper-50/75 shadow-[inset_0_0_0_1px_rgb(110_100_84/0.1)]">
-                  <ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={19} />
+                <span className="grid h-8 w-8 place-items-center overflow-hidden">
+                  <ModelProviderIcon icon={provider.Icon || inferModelProviderEndpointIcon(provider.Id)} size={19} />
                 </span>
                 <span className="min-w-0 self-center">
                   <span className="block truncate text-[12.5px] font-semibold" title={providerIdLabel(provider)}>
@@ -120,14 +120,18 @@ export function ProviderConnectionList({
                     </span>
                   ) : null}
                 </span>
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "h-2 w-2 shrink-0 rounded-full transition-colors duration-150",
-                    enabled ? "bg-accent-solid" : "bg-ink-300",
-                  )}
-                />
               </button>
+              <span
+                className={cn(
+                  "relative z-[1] inline-flex min-w-[30px] items-center justify-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]",
+                  enabled
+                    ? "border-accent-border/45 bg-accent-surface text-accent-content"
+                    : "border-ink-200/80 bg-ink-900/[0.025] text-ink-450",
+                )}
+                aria-label={frontendMessage(enabled ? "settings.provider.statusOn" : "settings.provider.statusOff")}
+              >
+                {frontendMessage(enabled ? "settings.provider.statusOn" : "settings.provider.statusOff")}
+              </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button

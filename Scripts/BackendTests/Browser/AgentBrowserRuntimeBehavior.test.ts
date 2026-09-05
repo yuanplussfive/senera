@@ -236,6 +236,75 @@ describe("controlled browser runtime", () => {
     });
   });
 
+  test("projects browser page state and downloads as Artifact-backed resources", async () => {
+    await withBrowserRuntime(
+      async ({ runtime, root }) => {
+        const output = await runtime.execute("download", { selector: "a.download" }, browserContext(root));
+
+        expect(output.result).toMatchObject({
+          page: { url: "https://example.com/files", title: "Files" },
+          download: {
+            fileName: "report.csv",
+            mediaType: "text/csv",
+            markdown: expect.stringMatching(/^\[report\.csv\]\(senera:\/\/resource\//u),
+          },
+        });
+        expect(output.artifactPayload.assets).toHaveLength(1);
+        expect(Buffer.from(output.artifactPayload.assets![0]!.dataBase64, "base64")).toEqual(
+          Buffer.from("name,value\nAda,1\n"),
+        );
+        expect(output.artifactPayload.evidence).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ kind: "browser_download", display: "report.csv", confidence: 1 }),
+          ]),
+        );
+      },
+      {
+        execute: async (operation) =>
+          operation === "download"
+            ? {
+                content: "Downloaded report.csv.",
+                page: { url: "https://example.com/files", title: "Files" },
+                download: {
+                  data: Buffer.from("name,value\nAda,1\n"),
+                  fileName: "report.csv",
+                  url: "https://example.com/report.csv",
+                },
+              }
+            : textResult(operation),
+      },
+    );
+  });
+
+  test("exposes ordered visual actions for pages without usable accessibility controls", () => {
+    const tools = createAgentBrowserSystemTools();
+    const computer = tools.find((tool) => tool.name === "BrowserComputer");
+
+    expect(
+      computer?.input.parse({
+        actions: [
+          { type: "scroll", x: 640, y: 360, scrollY: 720 },
+          { type: "click", x: 640, y: 360 },
+          { type: "keypress", keys: ["CTRL", "L"] },
+        ],
+      }),
+    ).toMatchObject({
+      actions: [
+        { type: "scroll", scrollY: 720 },
+        { type: "click", button: "left" },
+        { type: "keypress", keys: ["CTRL", "L"] },
+      ],
+    });
+    expect(computer?.input.safeParse({ actions: [{ type: "unknown" }] }).success).toBe(false);
+  });
+
+  test("uses the same key sequence shape for semantic browser key presses", () => {
+    const press = createAgentBrowserSystemTools().find((tool) => tool.name === "BrowserPress");
+
+    expect(press?.input.parse({ keys: ["CTRL", "L"] })).toEqual({ keys: ["CTRL", "L"] });
+    expect(press?.input.safeParse({ key: "Control+L" }).success).toBe(false);
+  });
+
   test("serializes operations within one Senera browser session", async () => {
     let releaseOpen!: () => void;
     const openStarted = deferred<void>();

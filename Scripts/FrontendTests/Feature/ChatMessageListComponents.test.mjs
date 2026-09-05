@@ -10,6 +10,7 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 }));
 
 const { MessageList } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
+const { ChatActivityDock } = await import("../../../Frontend/src/features/chat/ChatActivityDock.tsx");
 const { projectAssistantTurns } = await import("../../../Frontend/src/features/chat/assistantTurnProjection.ts");
 const { projectAssistantTurnStages } =
   await import("../../../Frontend/src/features/chat/assistantTurnStageProjection.ts");
@@ -471,19 +472,17 @@ test("completed assistant turns keep workflow details out of the final stage", a
   expect(onViewWorkflow).toHaveBeenCalledTimes(1);
 });
 
-test("streaming approvals refresh when their content changes at the same length", async () => {
+test("approvals in the activity dock refresh when their content changes at the same length", async () => {
   const initialRun = createRun({
     approvals: [createApproval({ subject: { kind: "tool_call", toolName: "Read config", arguments: {} } })],
     revision: 1,
   });
   const { rerender } = renderWithFrontendProviders(
-    React.createElement(
-      MessageList,
-      createMessageListProps({
-        currentRun: initialRun,
-        runs: [initialRun],
-      }),
-    ),
+    React.createElement(ChatActivityDock, {
+      sessionId: "session-1",
+      runs: [initialRun],
+      approvalDisabled: false,
+    }),
   );
 
   expect(await screen.findByText("Read config")).toBeInTheDocument();
@@ -493,13 +492,11 @@ test("streaming approvals refresh when their content changes at the same length"
     approvals: [createApproval({ subject: { kind: "tool_call", toolName: "Write config", arguments: {} } })],
   };
   rerender(
-    React.createElement(
-      MessageList,
-      createMessageListProps({
-        currentRun: updatedRun,
-        runs: [updatedRun],
-      }),
-    ),
+    React.createElement(ChatActivityDock, {
+      sessionId: "session-1",
+      runs: [updatedRun],
+      approvalDisabled: false,
+    }),
   );
 
   expect(await screen.findByText("Write config")).toBeInTheDocument();

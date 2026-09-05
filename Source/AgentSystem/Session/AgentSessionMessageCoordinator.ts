@@ -16,8 +16,10 @@ import type { AgentSessionStore } from "./AgentSessionStore.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
 import type { AgentSystemPromptLayer } from "../Orchestration/AgentRunDispatchPort.js";
-import type { AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
+import type { AgentConversationEntryMetadata, AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { AgentSession } from "./AgentSession.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export interface AgentSessionMessageRequest {
   readonly sessionId: string;
@@ -36,9 +38,18 @@ export interface AgentSessionMessageRequest {
   readonly thinkingLevel?: ModelThinkingLevel;
   readonly inheritProjectContext?: boolean;
   readonly sessionOwnership?: AgentSessionOwnership;
+  readonly metadata?: AgentConversationEntryMetadata;
+  /** Runtime surface/platform context visible only to the model wire prompt. */
+  readonly interaction?: AgentInteractionContext;
+  readonly admissionGuard?: () => boolean;
+  /** Internal recovery flag for a durable completion wake only. */
+  readonly reclaimRunningCommand?: boolean;
 }
 
+export type AgentSessionMessageAcceptanceKind = "accepted" | "queued" | "busy" | "missing" | "superseded";
+
 export interface AgentSessionMessageAcceptance {
+  readonly kind: AgentSessionMessageAcceptanceKind;
   readonly completion?: Promise<void>;
 }
 
@@ -54,9 +65,16 @@ export interface AgentSessionMessageCoordinatorOptions {
 export class AgentSessionMessageCoordinator {
   constructor(private readonly options: AgentSessionMessageCoordinatorOptions) {}
 
-  async submit(request: AgentSessionMessageRequest): Promise<void> {
-    const { completion } = await this.accept(request);
-    await completion;
+  /**
+   * Runs one message submission to its settled boundary and reports how it was
+   * admitted. `queued` means the message joined the active run's turn (no
+   * terminal event will reference the request); `busy` means the submission was
+   * dropped because the session stayed unavailable across the enqueue retry.
+   */
+  async submit(request: AgentSessionMessageRequest): Promise<AgentSessionMessageAcceptance> {
+    const acceptance = await this.accept(request);
+    await acceptance.completion;
+    return acceptance;
   }
 
   accept(request: AgentSessionMessageRequest): Promise<AgentSessionMessageAcceptance> {
@@ -65,11 +83,20 @@ export class AgentSessionMessageCoordinator {
 
   async acceptUnderAdmission(request: AgentSessionMessageRequest): Promise<AgentSessionMessageAcceptance> {
     let completion: Promise<void> | undefined;
+    let kind: AgentSessionMessageAcceptanceKind = "missing";
     await this.options.ready();
     let lookup = this.options.store.get(request.sessionId);
+    let opened: ReturnType<AgentSessionStore["open"]> | undefined;
     if (lookup.kind === "missing" && request.disposition === AgentSessionMessageDispositions.CreateIfMissing) {
-      const opened = this.options.store.open(request.sessionId, request.sessionOwnership);
+      opened = this.options.store.open(request.sessionId, request.sessionOwnership);
       lookup = { kind: "found", session: opened.session };
+    }
+
+    if (lookup.kind === "found") {
+      this.applyRequestChannelMetadata(lookup.session, request.metadata);
+    }
+
+    if (opened) {
       await emitAgentEvent(
         request.onEvent,
         matchByKind(opened, {
@@ -81,29 +108,42 @@ export class AgentSessionMessageCoordinator {
 
     await matchByKind(lookup, {
       missing: async ({ sessionId }) => {
+        kind = "missing";
         await emitAgentEvent(request.onEvent, this.options.events.notFound(sessionId, AgentSessionOperations.Message));
       },
       found: async ({ session }) => {
         await this.options.recoverHistory(session.id);
+        if (request.admissionGuard && !request.admissionGuard()) {
+          kind = "superseded";
+          return;
+        }
         const gate = this.options.runs.assertAvailable(session);
         await matchByKind(gate, {
           available: ({ current }) => {
+            kind = "accepted";
             completion = this.options.runs.runTurn(current, request);
           },
           busy: async ({ current }) => {
+            kind = "busy";
             if (request.queueMode) {
               const queued = await this.options.runs.enqueueActiveRunMessage({
                 session: current,
                 requestId: request.requestId,
                 input: request.input,
                 attachments: request.attachments,
+                metadata: request.metadata,
+                interaction: request.interaction,
                 queueMode: request.queueMode,
                 onEvent: request.onEvent,
               });
-              if (queued) return;
+              if (queued) {
+                kind = "queued";
+                return;
+              }
 
               const refreshed = this.options.runs.assertAvailable(current);
               if (refreshed.kind === "available") {
+                kind = "accepted";
                 completion = this.options.runs.runTurn(refreshed.current, request);
                 return;
               }
@@ -117,6 +157,16 @@ export class AgentSessionMessageCoordinator {
         });
       },
     });
-    return { completion };
+    return { kind, completion };
+  }
+
+  private applyRequestChannelMetadata(session: AgentSession, metadata?: AgentConversationEntryMetadata): void {
+    const channel = metadata?.channel;
+    if (!channel) return;
+    session.metadata = {
+      ...session.metadata,
+      channel: structuredClone(channel),
+    };
+    this.options.store.persistMetadata(session);
   }
 }

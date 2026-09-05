@@ -52,7 +52,7 @@ export function InlineMessageEditor({
             submit();
           }
         }}
-        className="block min-h-[88px] max-h-[320px] w-full resize-none overflow-y-auto bg-transparent px-3.5 py-3 text-[length:var(--theme-chat-user-font-size)] leading-[var(--theme-chat-user-line-height)] text-ink-900 outline-none"
+        className="scrollbar-thin block min-h-[88px] max-h-[320px] w-full resize-none overflow-y-auto bg-transparent px-3.5 py-3 text-[length:var(--theme-chat-user-font-size-scaled)] leading-[var(--theme-chat-user-line-height)] text-ink-900 outline-none"
         aria-label={frontendMessage("chat.editDialog.title")}
         placeholder={frontendMessage("chat.editDialog.placeholder")}
       />

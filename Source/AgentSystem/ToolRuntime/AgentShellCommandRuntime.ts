@@ -99,7 +99,7 @@ export function createShellCommandHostTool(
     }
 
     const timeoutMs = resolveAgentToolCallTimeoutMs(context.config, parsed.data.timeoutMs);
-    const executionProfile = createAgentShellExecutionProfile(context.tool, requireExecutionPlan(context));
+    const executionProfile = createAgentShellExecutionProfile(requireExecutionPlan(context));
     const owner = shellResourceOwner(context);
     let outputSpool: SeneraOutputSpool | undefined;
     let resourceStarted = false;
@@ -271,10 +271,7 @@ function shellResourceOwner(context: Parameters<AgentHostToolHandler>[1]): Agent
   };
 }
 
-export function createAgentShellExecutionProfile(
-  tool: Parameters<AgentHostToolHandler>[1]["tool"],
-  executionPlan: AgentToolExecutionPlan,
-): SeneraProcessExecutionProfile {
+export function createAgentShellExecutionProfile(executionPlan: AgentToolExecutionPlan): SeneraProcessExecutionProfile {
   const local = executionPlan.backend === "local";
   return {
     name: ShellExecutionProfileName,

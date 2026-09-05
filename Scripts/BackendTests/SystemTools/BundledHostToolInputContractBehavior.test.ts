@@ -56,20 +56,24 @@ describe("bundled Host Tool input contracts", () => {
       artifact.safeParse({ artifactUris: { item: ["senera://artifact/art_1234567890abcdef12345678"] } }).success,
     ).toBe(false);
     expect(recall.safeParse({ query: "preference", refs: ["memory://preference/coffee"] }).success).toBe(true);
+    expect(recall.safeParse({ refs: ["memory://preference/coffee"] }).success).toBe(true);
+    expect(recall.safeParse({}).success).toBe(false);
     expect(recall.safeParse({ query: "preference", refs: { item: ["memory://preference/coffee"] } }).success).toBe(
       false,
     );
     expect(
       write.safeParse({
+        summary: "Prefers coffee without sugar.",
+        until: "permanent",
+      }).success,
+    ).toBe(true);
+    expect(
+      write.safeParse({
         type: "preference",
         subject: "coffee",
         claim: "Prefers coffee without sugar.",
-        howToApply: "Do not recommend sweet coffee.",
-        tags: ["coffee"],
-        triggers: ["drink preference"],
-        confidence: 1,
       }).success,
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 
@@ -80,7 +84,7 @@ function discoverContributions(): Map<string, string> {
     if (!entry.isDirectory()) continue;
     const packageRoot = path.join(root, entry.name);
     const manifest = AgentSystemExtensionManifestSchema.parse(readJson(path.join(packageRoot, "extension.json")));
-    for (const contribution of manifest.contributions) {
+    for (const contribution of manifest.contributions ?? []) {
       if (contribution.kind === "hostTool") {
         contributions.set(contribution.capability, path.resolve(packageRoot, contribution.contract));
       }

@@ -45,6 +45,8 @@
     "Capabilities": [
       {
         "Id": "execution.resource-resize",
+        "Title": "Resize execution terminal",
+        "Description": "调整后台 PTY 终端的列数和行数，以适配交互式程序的显示区域。",
         "Facets": {
           "Actions": ["resize"],
           "Targets": ["terminal", "execution-resource"],
@@ -52,6 +54,7 @@
         }
       }
     ],
+    "UseCases": ["交互式终端输出换行异常，或程序需要新的终端尺寸时。"],
     "Tags": ["PTY", "终端尺寸", "交互终端"]
   },
   "evidenceCapabilities": [],

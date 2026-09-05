@@ -10,7 +10,7 @@ server.registerTool(
   {
     title: "Generate Image",
     description:
-      "Generate one or more images from a prompt. The configured request mode selects the OpenAI-compatible endpoint; model and image options may be supplied when needed.",
+      "Generate one or more images from a prompt. Use n for multiple variants of the same prompt; use separate calls in one turn only when prompts differ. Independent calls may run concurrently. The configured request mode selects the OpenAI-compatible endpoint; model and image options may be supplied when needed.",
     inputSchema: {
       prompt: z.string().trim().min(1).max(32_000).describe("The visual description or image-generation instruction."),
       model: z.string().trim().min(1).optional().describe("Image model. Defaults to gpt-image-2."),
@@ -32,6 +32,12 @@ server.registerTool(
       moderation: z.enum(["auto", "low"]).optional(),
     },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    _meta: {
+      "ai.senera/runtime": {
+        scheduling: "parallel",
+        maxConcurrency: 3,
+      },
+    },
   },
   async (input, extra) => {
     const execution = await generateImage(input, {

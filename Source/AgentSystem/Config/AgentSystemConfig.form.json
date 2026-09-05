@@ -49,7 +49,7 @@
         {
           "path": ["Extensions"],
           "recursive": true,
-          "reason": "系统扩展配置由扩展包内的 JSON Schema 与 UI Schema 驱动，并在扩展设置页编辑。"
+          "reason": "系统扩展配置由扩展自身的 JSON Schema 与 UI Schema 驱动；不在此表单编辑。"
         }
       ]
     },
@@ -621,6 +621,403 @@
             "type": "boolean",
             "required": false,
             "essential": true
+          },
+          {
+            "path": ["InferenceBudget", "Enabled"],
+            "label": "启用推理预算",
+            "description": "为前台对话、目标、自治和连续性任务共享请求、Token 与并发预算，避免后台任务挤占当前对话。",
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["InferenceBudget", "WindowSeconds"],
+            "label": "预算窗口（秒）",
+            "description": "共享推理预算的滚动统计窗口。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["InferenceBudget", "MaxRequests"],
+            "label": "窗口请求上限",
+            "description": "一个预算窗口内允许发起的模型请求总数。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["InferenceBudget", "MaxEstimatedInputTokens"],
+            "label": "输入 Token 预算",
+            "description": "一个预算窗口内允许估算的输入 Token 总量。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["InferenceBudget", "MaxEstimatedOutputTokens"],
+            "label": "输出 Token 预算",
+            "description": "一个预算窗口内允许估算的输出 Token 总量。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["InferenceBudget", "MaxConcurrent"],
+            "label": "推理并发上限",
+            "description": "同一工作区同时占用推理预算的模型请求数。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["InferenceBudget", "ForegroundReserveFraction"],
+            "label": "前台预留比例",
+            "description": "为当前对话预留的共享预算比例，范围为 0 到 1。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["InferenceBudget", "LaneWeights"],
+            "label": "任务通道权重",
+            "description": "按通道分配剩余预算；可配置 foreground、goal、autonomy、resident、continuity、embedding 等通道。",
+            "type": "record",
+            "itemType": "number",
+            "keyPlaceholder": "通道名称",
+            "valuePlaceholder": "权重",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Prompt", "UserMessageEnvelope"],
+            "label": "请求层用户消息信封",
+            "description": "请求模型时把用户消息包装为带归属标记的 XML 信封（含时区）；存储与历史保持洁净原文，请求结束即销毁。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Prompt", "TimeZone"],
+            "label": "请求时区",
+            "description": "用户消息信封内注入的时区（IANA，如 Asia/Shanghai），供时效判断。",
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Prompt", "PrefaceRewrite"],
+            "label": "预回复改写",
+            "description": "在工具执行前改写模型预回复；与预设启用状态独立，默认关闭。",
+            "type": "boolean",
+            "defaultValue": false,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "Name"],
+            "label": "世界名称",
+            "description": "Agenda 与世界树投影使用的世界名称。",
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "TimeZone"],
+            "label": "世界时区",
+            "description": "世界时钟、日程与离线演化使用的 IANA 时区；世界建立后修改时需要显式迁移已有世界。",
+            "type": "string",
+            "placeholder": "Asia/Shanghai",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["World", "DayPhases"],
+            "label": "日内阶段",
+            "description": "定义世界时钟的日内阶段；所有阶段必须无重叠、无空隙地覆盖全天。",
+            "type": "array",
+            "itemType": "table",
+            "addLabel": "添加阶段",
+            "itemLabelPath": ["Label"],
+            "defaultItem": {
+              "Id": "",
+              "Label": "",
+              "StartsAt": "00:00",
+              "EndsAt": "00:00"
+            },
+            "itemFields": [
+              {
+                "path": ["Id"],
+                "label": "标识",
+                "type": "string",
+                "required": true,
+                "essential": false
+              },
+              {
+                "path": ["Label"],
+                "label": "名称",
+                "type": "string",
+                "required": true,
+                "essential": true
+              },
+              {
+                "path": ["StartsAt"],
+                "label": "开始时间",
+                "type": "string",
+                "placeholder": "08:00",
+                "required": true,
+                "essential": true
+              },
+              {
+                "path": ["EndsAt"],
+                "label": "结束时间",
+                "type": "string",
+                "placeholder": "12:00",
+                "required": true,
+                "essential": true
+              }
+            ],
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "RecordLimit"],
+            "label": "世界节点上限",
+            "description": "世界树快照最多投影的 Agenda 记录数；活动、目标和未来日程优先。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "TimelineLimit"],
+            "label": "世界时间线上限",
+            "description": "世界快照保留的最近 Agenda 事件数。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "HabitCatchUpLimit"],
+            "label": "习惯离线补算上限",
+            "description": "单次世界推进最多物化的周期习惯发生次数；超过时明确失败，避免错误规则制造无界事件。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "GoalMicroLoop", "Enabled"],
+            "label": "Goal 小循环",
+            "description": "启用有界的 Goal 感知、决策与行动循环；实际工具仍受下方白名单和会话归属约束。",
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["World", "GoalMicroLoop", "MaxCandidates"],
+            "label": "Goal 单轮上限",
+            "description": "一次世界唤醒最多交给模型评估的 Goal 数量。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "GoalMicroLoop", "ReviewDelaySeconds"],
+            "label": "Goal 复查间隔（秒）",
+            "description": "自主执行后最短等待时间；用于避免重复派发和模型空转。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "GoalMicroLoop", "AllowedToolNames"],
+            "label": "Goal 工具白名单",
+            "description": "自主 Goal 子运行可以使用的工具名；空数组表示只允许无工具的受限推进。",
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "ResidentIdle", "Enabled"],
+            "label": "Resident 空闲认知",
+            "description": "在世界没有即时事件时，以稀疏、可恢复的决策 tick 维持 Resident 的连续性；不会直接授予工具调用权限。",
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["World", "ResidentIdle", "MinIntervalSeconds"],
+            "label": "空闲认知最短间隔（秒）",
+            "description": "空闲认知首次及变化后的最短检查间隔。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "ResidentIdle", "MaxIntervalSeconds"],
+            "label": "空闲认知最长间隔（秒）",
+            "description": "连续无变化时指数退避的上限，避免空转模型调用。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "ResidentIdle", "BackoffMultiplier"],
+            "label": "空闲认知退避倍数",
+            "description": "连续 Wait 决策后扩大下一次检查间隔的倍数。",
+            "type": "number",
+            "min": 1,
+            "step": 0.1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "ResidentIdle", "MaxPending"],
+            "label": "空闲认知待处理上限",
+            "description": "单次唤醒最多处理的持久空闲 tick 数。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "ActionBudget", "MaxActionsPerWake"],
+            "label": "世界单次动作预算",
+            "description": "一次世界唤醒最多准入的动作或决策候选数；用于统一限制 Goal、Autonomy 与其他已注册来源。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "ActionBudget", "MaxDecisionCandidatesPerWake"],
+            "label": "世界单次决策预算",
+            "description": "一次世界唤醒最多交给模型评估的决策候选数。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "ActionBudget", "RetryDelaySeconds"],
+            "label": "预算争用重试间隔（秒）",
+            "description": "候选因共享预算耗尽而延期时的下一次唤醒间隔。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "ActionBudget", "LeaseDurationSeconds"],
+            "label": "世界工作租约时长（秒）",
+            "description": "世界工作项进入执行后保留的 fencing lease 时长；过期执行不会被自动重放。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "ActionBudget", "FairShare"],
+            "label": "来源公平配额",
+            "description": "按当前活跃 wake source 自动分配共享动作预算，避免单一来源长期占满全部唤醒容量。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "ActionBudget", "SourceOrder"],
+            "label": "来源执行顺序",
+            "description": "按稳定 wake source id 指定同一唤醒中的来源顺序；未列出的来源按 id 排序。",
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["World", "ActionBudget", "SourceCaps"],
+            "label": "来源动作配额",
+            "description": "按 wake source id 配置来源上限；未配置的来源使用全局预算。",
+            "type": "record",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Prompt", "RoleCheck"],
+            "label": "角色尾锚",
+            "description": "开启预设时，在参考区末尾重申当前角色摘要，缓解工具调用后的角色漂移。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Prompt", "BamlToolAttribution"],
+            "label": "BAML 工具观察归属标记",
+            "description": "把 BAML 链路的工具观察包装为带 attribution=tool 的证据标签，避免被当作对话正文。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Todos", "MaxItems"],
+            "label": "Todo 最大条目数",
+            "description": "单个会话清单允许保存的最大条目数。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Todos", "MaxContentCharacters"],
+            "label": "Todo 单条内容上限",
+            "description": "单个 Todo 描述允许保存的最大字符数。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Todos", "MaxResultCharacters"],
+            "label": "Todo 结果上限",
+            "description": "Todo 工具一次返回的最大字符数。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["SandboxRuntime", "Enabled"],
@@ -1413,41 +1810,35 @@
             "essential": false
           },
           {
-            "path": ["MemoryLearning", "Enabled"],
-            "label": "启用记忆学习",
-            "description": "从对话中提取可持久化事实，形成可供后续任务检索的长期记忆。",
+            "path": ["ContinuityLearning", "Enabled"],
+            "label": "启用连续性提取",
+            "description": "从对话中提取带来源、时间和条件的连续性事实、信号与提醒规则。",
             "type": "boolean",
             "required": false,
             "essential": true
           },
           {
-            "path": ["MemoryLearning", "MaxRepairAttempts"],
-            "label": "记忆学习修复次数",
-            "type": "number",
-            "min": 0,
-            "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["MemoryLearning", "Client", "ModelProviderId"],
-            "label": "记忆学习模型",
-            "description": "提取可持久化事实并生成长期记忆候选。",
+            "path": ["ContinuityLearning", "Client", "ModelProviderId"],
+            "label": "连续性提取模型",
+            "description": "从对话提取事实、状态和未来提醒；留空时继承当前默认模型。",
             "type": "string",
             "placeholder": "选择已启用模型",
             "required": false,
             "essential": false,
             "modelSelection": {
-              "id": "memory-learning",
+              "id": "continuity-learning",
               "capability": "Chat",
               "valueKind": "model-id",
               "mutation": "config",
-              "required": true
+              "inheritance": {
+                "source": "default-model"
+              },
+              "required": false
             }
           },
           {
-            "path": ["MemoryLearning", "Client", "Temperature"],
-            "label": "记忆学习温度",
+            "path": ["ContinuityLearning", "Client", "Temperature"],
+            "label": "连续性提取温度",
             "type": "number",
             "min": 0,
             "max": 2,
@@ -1456,19 +1847,9 @@
             "essential": false
           },
           {
-            "path": ["MemoryLearning", "Client", "MaxTokens"],
-            "label": "记忆学习 MaxTokens",
-            "description": "-1 表示不向模型供应商发送输出 token 限制。",
-            "type": "number",
-            "min": -1,
-            "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["MemoryLearning", "Promotion", "MinSupport"],
-            "label": "记忆晋升最少支持",
-            "description": "至少多少条相似候选才晋升为长期记忆。",
+            "path": ["ContinuityLearning", "Runtime", "MaxAttempts"],
+            "label": "连续性失败重试次数",
+            "description": "同一已选协议失败后允许重新请求的次数；不会切换到另一种协议。",
             "type": "number",
             "min": 1,
             "step": 1,
@@ -1476,8 +1857,29 @@
             "essential": false
           },
           {
-            "path": ["MemoryLearning", "Promotion", "MaxClusterSize"],
-            "label": "记忆聚类上限",
+            "path": ["ContinuityLearning", "Runtime", "RetryBaseDelaySeconds"],
+            "label": "连续性重试基础等待",
+            "description": "同一协议重试的指数退避起始秒数。",
+            "type": "number",
+            "min": 0.001,
+            "step": 0.1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Runtime", "RetryMaxDelaySeconds"],
+            "label": "连续性重试最大等待",
+            "description": "同一协议重试的指数退避最大秒数。",
+            "type": "number",
+            "min": 0.001,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Runtime", "MaxJobsPerDrain"],
+            "label": "连续性单次处理任务数",
+            "description": "后台连续性队列每次 drain 最多处理的任务数；任务仍按数据库顺序串行执行。",
             "type": "number",
             "min": 1,
             "step": 1,
@@ -1485,12 +1887,616 @@
             "essential": false
           },
           {
-            "path": ["MemoryLearning", "Promotion", "MinSimilarity"],
-            "label": "记忆相似度阈值",
+            "path": ["ContinuityLearning", "LearningGate", "Enabled"],
+            "label": "按需启动连续性学习",
+            "description": "显式记忆和真实工具证据立即学习，普通回合延迟到空闲检查点，确认语句只保存原始记录。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "LearningGate", "DeferredDelaySeconds"],
+            "label": "普通回合学习延迟",
+            "description": "普通回合先保存物理记录，在空闲延迟结束后执行学习；显式记忆和真实工具证据仍会立即处理。",
             "type": "number",
-            "min": -1,
+            "min": 0,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "LearningContext", "ReferentBudgetCharacters"],
+            "label": "跨轮指代上下文预算",
+            "description": "学习器为理解“这个”“里面”“那家”等指代读取的近期对话字符预算；这些消息只用于消解指代，不能单独写成记忆证据。",
+            "type": "number",
+            "min": 1,
+            "step": 100,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "LearningContext", "VerifiedExampleBudgetCharacters"],
+            "label": "已验证学习样例预算",
+            "description": "进程启动后冻结到学习提示前缀中的宿主已验收样例字符预算；仅从成功编译并持久化的历史结果中选择。",
+            "type": "number",
+            "min": 1,
+            "step": 100,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "LearningContext", "CatalogBudgetCharacters"],
+            "label": "学习目录预算",
+            "description": "按当前证据和指代上下文选择相关画像与 Agenda 目录时共用的字符预算；不使用固定条数或词表。",
+            "type": "number",
+            "min": 1,
+            "step": 100,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "TemporalMemory", "Enabled"],
+            "label": "启用分层时间记忆",
+            "description": "将物理对话证据聚合为可追溯的对话片段、每日和每月摘要。",
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "TurnValueClassifier", "Enabled"],
+            "label": "启用回合价值分类",
+            "description": "使用已完成学习结果训练本地分类器；只有高置信度判断为无信息回合时才跳过文本召回。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "TurnValueClassifier", "ConfidenceThreshold"],
+            "label": "回合价值置信度",
+            "description": "分类器判断回合无信息并跳过文本召回所需的最低概率。",
+            "type": "number",
+            "min": 0,
             "max": 1,
             "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "TurnValueClassifier", "MinimumExamplesPerLabel"],
+            "label": "分类器最小样本数",
+            "description": "valuable 与 unproductive 两类各自需要积累的不同真实样本数量。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "TurnValueClassifier", "MaxTrainingEntries"],
+            "label": "分类器样本上限",
+            "description": "本地分类器保留的真实训练样本数量，超出后淘汰最久未使用的样本。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Prefetch", "Enabled"],
+            "label": "启用连续性索引预取",
+            "description": "回合完成后在后台预热事实和事件索引，减少下一轮首次召回延迟。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Prefetch", "CacheTtlSeconds"],
+            "label": "连续性索引缓存时间",
+            "description": "索引快照在没有数据变化时的最长复用时间。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "PromptBudget", "MaxProfileEntries"],
+            "label": "画像注入数量",
+            "description": "每轮最多保留的稳定画像条目；画像优先于普通事实使用上下文预算。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "PromptBudget", "MaxFactEntries"],
+            "label": "事实召回数量",
+            "description": "每轮最多直接注入的相关事实数量，按统一召回得分选择。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "PromptBudget", "MaxRelationEntries"],
+            "label": "关系召回数量",
+            "description": "每轮最多注入的实体关系数量；关系只作为背景线索，不直接触发规则。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "PromptBudget", "MaxEventEntries"],
+            "label": "历史事件召回数量",
+            "description": "每轮最多注入的相关历史事件摘要数量。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "PromptBudget", "MaxEvidenceEntries"],
+            "label": "待核验证据数量",
+            "description": "每轮最多投影的按需解引用证据数量。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "PromptBudget", "MaxCharacters"],
+            "label": "记忆上下文字符预算",
+            "description": "画像、事实、历史事件和证据引用共享的每轮字符预算。",
+            "type": "number",
+            "min": 1,
+            "step": 256,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "MinimumTextSimilarityScore"],
+            "label": "事实召回最低相似度",
+            "description": "候选至少需要达到该文本或词法相似度，才进入后续融合评分。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "CandidateScore"],
+            "label": "事实候选最低得分",
+            "description": "融合置信度、来源权威、作用域和时效后，低于该值的记录只会被过滤。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "DirectScore"],
+            "label": "事实直接注入得分",
+            "description": "达到该融合得分且文本相似度足够高时，才把事实摘要直接放入上下文；否则只给来源引用。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "DirectTextSimilarityScore"],
+            "label": "事实直接注入相似度",
+            "description": "直接注入事实还需要达到的文本相似度，避免只凭权威或新近程度误注入。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "FactIdentityFuzzyScore"],
+            "label": "事实身份归并模糊分数",
+            "description": "仅当新旧事实的模糊文本分数达到该值时复用同一事实头，避免改写产生重复事实。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "RecencyHalfLifeDays"],
+            "label": "事实时效半衰期",
+            "description": "旧事实的时效分数每经过该天数减半；有效期仍由事实本身的 until 决定。",
+            "type": "number",
+            "min": 0.001,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Weights", "TextSimilarity"],
+            "label": "召回文本相似权重",
+            "description": "控制字符与短语相似度在候选总分中的权重。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Weights", "Lexical"],
+            "label": "召回词法检索权重",
+            "description": "控制 BM25 词法检索在候选总分中的权重。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Weights", "Confidence"],
+            "label": "召回事实置信权重",
+            "description": "控制事实自身置信度在候选总分中的权重。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Weights", "Authority"],
+            "label": "召回来源权威权重",
+            "description": "控制来源权威度（用户显式、工具验证、系统观察、模型推断）在候选总分中的权重。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Weights", "Scope"],
+            "label": "召回会话范围权重",
+            "description": "控制会话内事实加成在候选总分中的权重。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Weights", "Recency"],
+            "label": "召回时间衰减权重",
+            "description": "控制时间衰减分数在候选总分中的权重。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Weights", "Semantic"],
+            "label": "召回语义向量权重",
+            "description": "控制向量语义相似度在候选总分中的权重；语义服务不可用时自动降级为纯词法排序。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Lexical", "SummaryBoost"],
+            "label": "召回摘要词法权重",
+            "description": "控制事实摘要在 BM25 词法检索中的权重；只影响候选排序。",
+            "type": "number",
+            "min": 0.001,
+            "step": 0.1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Lexical", "Prefix"],
+            "label": "召回启用前缀匹配",
+            "description": "允许输入词作为事实词的前缀参与词法召回。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Lexical", "Fuzzy"],
+            "label": "召回词法模糊程度",
+            "description": "控制 MiniSearch 的轻量模糊匹配范围；0 表示关闭。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Lexical", "CombineWith"],
+            "label": "召回词法组合方式",
+            "description": "多个检索词需要全部匹配还是任意匹配。",
+            "type": "string",
+            "options": ["AND", "OR"],
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Similarity", "PhraseFloor"],
+            "label": "短语相似度下限",
+            "description": "一段文本包含另一段文本时使用的最低短语分数。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Similarity", "CoverageWeight"],
+            "label": "词覆盖权重",
+            "description": "控制查询词覆盖率在文本相似度中的权重。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Similarity", "FuzzyWeight"],
+            "label": "相似词权重",
+            "description": "控制模糊词匹配在文本相似度中的权重。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Similarity", "CharacterWeight"],
+            "label": "中文字符覆盖权重",
+            "description": "控制中文字符覆盖在文本相似度中的权重。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Similarity", "StructuralMismatchWeight"],
+            "label": "结构差异惩罚权重",
+            "description": "控制未匹配的结构性词项对相似度的抑制程度，避免否定或不同谓词被误认为同一事实。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Anchor", "MinimumPhraseCharacters"],
+            "label": "锚点短语最小长度",
+            "description": "短语至少达到该长度且包含有效词项，才可形成直接锚点。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Anchor", "MinimumTokenLength"],
+            "label": "锚点词最小长度",
+            "description": "单个词项至少达到该长度，才参与直接锚点判定；过短词仍可作为普通候选证据。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Anchor", "MinimumQueryCoverage"],
+            "label": "查询词覆盖要求",
+            "description": "标签需要覆盖的查询有效词项比例，避免长句中偶然一个词建立锚点。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Anchor", "MinimumLabelCoverage"],
+            "label": "标签词覆盖要求",
+            "description": "查询需要覆盖的标签有效词项比例，确保命中的是标签主体而非附带词。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Anchor", "MinimumInformativeTerms"],
+            "label": "锚点最少有效词数",
+            "description": "直接锚点至少需要共享的有效词项数量。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Evidence", "MinimumRelatedScore"],
+            "label": "关联证据最低相似度",
+            "description": "历史来源至少达到该相似度才可作为当前事实的关联证据，避免挂接无关对话。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Evidence", "RelativeToBestScore"],
+            "label": "关联证据相对得分",
+            "description": "候选相似度相对本次最佳候选所需保留的比例，用于抑制低质量长尾来源。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Evidence", "MinimumLifetimeMatchScore"],
+            "label": "时效证据最低匹配度",
+            "description": "只有达到该匹配度的历史来源才参与事实有效期推断，防止无关时间表达改变事实寿命。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "NearMiss", "MaxEntries"],
+            "label": "近失记录上限",
+            "description": "每轮最多保留的近失记录数，仅用于召回漏斗观测；0 表示关闭近失记录。",
+            "type": "number",
+            "min": 0,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "NearMiss", "MinimumScore"],
+            "label": "近失记录最低分",
+            "description": "低于候选阈值但达到该分数的记录会被记为近失，用于调参和漏斗诊断。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Funnel", "MinimumObservations"],
+            "label": "规模漏斗启用阈值",
+            "description": "候选数超过该值时启用规模漏斗，只对词法头部执行字符相似度计算；精确引用不受限制。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Funnel", "MaxLexicalCandidates"],
+            "label": "规模漏斗词法上限",
+            "description": "规模漏斗保留的词法候选数量上限。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Graph", "MaxHops"],
+            "label": "图关系最大跳数",
+            "description": "实体锚点扩展关系时允许的最大图距离；0 表示只使用直接关系。",
+            "type": "number",
+            "min": 0,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Consolidation", "MinimumEquivalentEffectScore"],
+            "label": "归并等价效果最低分",
+            "description": "只有条件相同且效果摘要达到该相似度，才会合并为同一条规则；低于该值保留为独立规则。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Consolidation", "ActiveIndependentEvidence"],
+            "label": "活跃所需独立证据数",
+            "description": "模型推断的事实、画像、关系或规则至少需要多少个独立回合证据才能进入活跃状态。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Ranking", "Consolidation", "EstablishedIndependentEvidence"],
+            "label": "确立所需独立证据数",
+            "description": "事实、画像、关系或规则达到该独立证据数后进入确立状态；不能低于活跃阈值。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Semantic", "Enabled"],
+            "label": "启用语义召回",
+            "description": "显式启用向量语义证据通道；需要已配置并可用的向量模型，默认关闭。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Semantic", "TimeoutMs"],
+            "label": "语义召回超时（毫秒）",
+            "description": "向量查询允许占用的最长时间；超时后本轮继续使用本地词法与图谱证据。",
+            "type": "number",
+            "min": 100,
+            "step": 100,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Semantic", "ScoreFloor"],
+            "label": "语义分数下限",
+            "description": "余弦相似度低于该值的语义证据不计入总分。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ContinuityLearning", "Recall", "Semantic", "MinQueryCharacters"],
+            "label": "语义召回最短查询",
+            "description": "查询短于该字符数时跳过向量调用，直接使用词法排序。",
+            "type": "number",
+            "min": 0,
+            "step": 1,
             "required": false,
             "essential": false
           }
@@ -1503,15 +2509,44 @@
         "icon": "search",
         "fields": [
           {
+            "path": ["ToolSearch", "Fuzzy", "Enabled"],
+            "label": "工具检索使用模糊回退",
+            "description": "默认开启。仅匹配工具名、能力 ID、标题和工具声明的别名，不扫描长描述。",
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["ToolSearch", "Fuzzy", "MinScore"],
+            "label": "模糊匹配最低分数",
+            "description": "分数越高，越严格。用于拼写、缩写和工具标识符容错。",
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["ToolSearch", "Fuzzy", "CandidateLimit"],
+            "label": "模糊回退候选上限",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
             "path": ["ToolSearch", "Embedding", "Enabled"],
-            "label": "启用工具向量检索",
+            "label": "工具检索使用向量回退",
+            "description": "默认关闭。启用后仅在本地词法检索无结果时使用已启用且已配置的嵌入模型。",
             "type": "boolean",
             "required": false,
             "essential": true
           },
           {
             "path": ["ToolSearch", "Embedding", "ScoreThreshold"],
-            "label": "工具向量分数阈值",
+            "label": "向量回退分数阈值",
             "type": "number",
             "min": -1,
             "max": 1,
@@ -1631,7 +2666,8 @@
           },
           {
             "path": ["ToolSearch", "Rerank", "Enabled"],
-            "label": "工具重排序",
+            "label": "工具检索使用远程重排",
+            "description": "默认关闭。仅对有限候选调用已启用且已配置的重排模型。",
             "type": "boolean",
             "required": false,
             "essential": true
@@ -1667,7 +2703,8 @@
           },
           {
             "path": ["VectorModels", "Embedding", "Enabled"],
-            "label": "启用嵌入模型",
+            "label": "启用嵌入模型服务",
+            "description": "默认关闭。选择具备嵌入能力的已配置模型后才会允许请求。",
             "type": "boolean",
             "required": false,
             "essential": true
@@ -1746,7 +2783,8 @@
           },
           {
             "path": ["VectorModels", "Rerank", "Enabled"],
-            "label": "启用向量重排",
+            "label": "启用重排模型服务",
+            "description": "默认关闭。选择具备重排能力的已配置模型后才会允许请求。",
             "type": "boolean",
             "required": false,
             "essential": true
@@ -1850,6 +2888,36 @@
             "label": "预设状态文件",
             "type": "string",
             "placeholder": ".senera/presets-state.json",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Presets", "PromptBudget", "MaxExamples"],
+            "label": "人格示例上限",
+            "description": "每轮稳定人格上下文最多携带的示例数量。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Presets", "PromptBudget", "MaxLoreEntries"],
+            "label": "相关设定上限",
+            "description": "每轮按当前消息检索并携带的世界设定数量。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Presets", "PromptBudget", "MaxSupplementalCharacters"],
+            "label": "人格补充内容字符预算",
+            "description": "示例与按需世界设定合计可进入模型上下文的字符数。",
+            "type": "number",
+            "min": 1,
+            "step": 100,
             "required": false,
             "essential": false
           },

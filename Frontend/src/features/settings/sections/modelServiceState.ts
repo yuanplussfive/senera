@@ -16,6 +16,7 @@ import {
   readProviderModelRows,
   readProviderEndpoints,
   readString,
+  sortProviderRows,
   sortProviderModelRows,
 } from "../../chat/modelConfigData";
 import type {
@@ -410,10 +411,11 @@ function readSelectedProvider(
   providers: readonly ProviderEndpointDraft[],
   selectedProviderId?: string | null,
 ): ProviderEndpointDraft | null {
+  const firstProvider = sortProviderRows([...providers])[0]?.provider ?? null;
   if (selectedProviderId) {
-    return providers.find((provider) => provider.Id === selectedProviderId) ?? providers[0] ?? null;
+    return providers.find((provider) => provider.Id === selectedProviderId) ?? firstProvider;
   }
-  return providers[0] ?? null;
+  return firstProvider;
 }
 
 function readDefaultSlotStatus({

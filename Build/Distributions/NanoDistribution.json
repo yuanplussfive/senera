@@ -22,6 +22,7 @@
       "Apps/RuntimeConfigBootstrap.ts",
       "Apps/ServerRuntime.ts",
       "Apps/ServerRuntimeConfig.ts",
+      "Apps/ServerRuntimeSupport.ts",
       "Apps/ServerWatch.ts",
       "Apps/ServerWatchPolicy.ts",
       "Source",
@@ -95,6 +96,7 @@
     "include": [
       "Apps/DevServer.ts",
       "Apps/ServerRuntime.ts",
+      "Apps/ServerRuntimeSupport.ts",
       "Apps/ServerWatch.ts",
       "Apps/ServerWatchPolicy.ts",
       "Source/**/*.ts",

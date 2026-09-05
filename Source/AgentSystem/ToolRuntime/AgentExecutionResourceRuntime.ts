@@ -164,7 +164,7 @@ async function startTerminalResource(
 ) {
   const cwdResult = await context.executionEnv.canonicalPath(args.cwd ?? ".");
   if (!cwdResult.ok) throw cwdResult.error;
-  const profile = createAgentShellExecutionProfile(context.tool, requireExecutionPlan(context));
+  const profile = createAgentShellExecutionProfile(requireExecutionPlan(context));
   const request = {
     command: args.command.script,
     args: [],

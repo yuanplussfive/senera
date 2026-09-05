@@ -188,8 +188,11 @@ function assertConfigurationUiMatchesSchema(
       assertConfigurationField(extensionId, schema, field, [], declared);
     }
   }
+  const omissions = ui.form.coverage?.omissions ?? [];
   const missing = listConfigurationLeafPaths(schema).filter(
-    (pathParts) => !declared.has(configurationPathKey(pathParts)),
+    (pathParts) =>
+      !declared.has(configurationPathKey(pathParts)) &&
+      !omissions.some((omission) => configurationOmissionCoversPath(omission, pathParts)),
   );
   if (missing.length > 0) {
     throw new Error(
@@ -198,6 +201,32 @@ function assertConfigurationUiMatchesSchema(
         .join(", ")}.`,
     );
   }
+  const schemaPaths = listConfigurationLeafPaths(schema);
+  const unusedOmissions = omissions.filter(
+    (omission) => !schemaPaths.some((pathParts) => configurationOmissionCoversPath(omission, pathParts)),
+  );
+  if (unusedOmissions.length > 0) {
+    throw new Error(
+      `System extension ${extensionId} UI coverage omissions do not match schema fields: ${unusedOmissions
+        .map((omission) => omission.path.join("."))
+        .join(", ")}.`,
+    );
+  }
+}
+
+type ConfigurationUiCoverageOmission = {
+  readonly path: readonly string[];
+  readonly recursive?: boolean;
+  readonly reason: string;
+};
+
+function configurationOmissionCoversPath(
+  omission: ConfigurationUiCoverageOmission,
+  pathParts: readonly string[],
+): boolean {
+  if (omission.path.length > pathParts.length) return false;
+  if (!omission.path.every((part, index) => pathParts[index] === part)) return false;
+  return omission.recursive === true || omission.path.length === pathParts.length;
 }
 
 function assertConfigurationField(
@@ -253,7 +282,7 @@ function assertConfigurationModelSelection(
       "string",
     );
   }
-  if (selection.inheritance) {
+  if (selection.inheritance?.path) {
     assertConfigurationModelSelectionReference(
       extensionId,
       rootSchema,
@@ -323,6 +352,7 @@ function schemaFieldType(schema: Record<string, unknown>): {
     }
     return { type: "array", itemType: item.type };
   }
+  if (type === "object") return { type: "record" };
   throw new Error(`Unsupported System extension configuration field type: ${type}.`);
 }
 

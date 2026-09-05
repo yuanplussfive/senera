@@ -395,8 +395,10 @@ const statusToneClassName = {
 
 export function IconOption({ value, label, size = 16 }: { value: string; label: string; size?: number }): JSX.Element {
   return (
-    <span className="inline-flex min-w-0 items-center gap-2">
-      <ModelProviderIcon icon={value} size={size} />
+    <span className="inline-flex min-w-0 items-center gap-2 leading-5">
+      <span className="grid h-5 w-5 shrink-0 place-items-center leading-none">
+        <ModelProviderIcon icon={value} size={size} className="block object-contain" />
+      </span>
       <span className="truncate">{label}</span>
     </span>
   );

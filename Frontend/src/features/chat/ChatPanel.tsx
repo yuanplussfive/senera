@@ -1,12 +1,11 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useMemo, useState } from "react";
-import { useStore, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
+import { useState } from "react";
+import { readActiveRun, useStore, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
 import type { ChatMessage, RunRecord } from "../../store/sessionStore";
 import { useChatState } from "../../store/selectors/chatSelectors";
 import { ErrorBoundary } from "../../shared/ui";
-import { useEventJournalStore } from "../observability/eventJournalStore";
-import { projectRuntimeUsage } from "../observability/runtimeDiagnosticProjection";
 import { ChatComposer } from "./ChatComposer";
+import { ChatActivityDock } from "./ChatActivityDock";
 import { ChatHeader } from "./ChatHeader";
 import { EmptyChatState } from "./EmptyChatState";
 import { HistoryRecoveryState } from "./HistoryRecoveryState";
@@ -25,21 +24,15 @@ export function ChatPanel({
 }: ChatPanelProps): JSX.Element {
   const [composerValue, setComposerValue] = useState("");
   const activeId = useStore((s) => s.activeSessionId);
-  const eventRecords = useEventJournalStore((state) => state.records);
   const approvalMode = useStore((s) => s.executionApprovalMode);
   const setApprovalMode = useStore((s) => s.setExecutionApprovalMode);
   const { session, historyLoaded, historyLoading, historyFailed } = useChatState(activeId);
   const { level, reduceMotion, disableMotion } = useMotionLevel();
   const effectiveMotionLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
-  const runtimeUsage = useMemo(
-    () => projectRuntimeUsage(eventRecords, { activeSessionId: activeId }),
-    [activeId, eventRecords],
-  );
-
   const messages = session?.messages ?? [];
   const runs = session?.runs ?? [];
   const hasConversationContent = hasRenderableConversationContent(messages, runs);
-  const currentRun = session?.runs[session.runs.length - 1];
+  const currentRun = readActiveRun(session ?? undefined);
   const isRunning = currentRun?.status === "running";
   const isSettling = isRunning && (currentRun.outputState === "available" || currentRun.outputState === "committed");
   const isCancelling = currentRun?.status === "cancelling";
@@ -101,15 +94,19 @@ export function ChatPanel({
                   onEditUserMessage={messageActions.onEditUserMessage}
                   onDeleteFromMessage={messageActions.onDeleteFromMessage}
                   onViewWorkflow={messageActions.onViewWorkflow}
-                  onResolveApproval={messageActions.onResolveApproval}
-                  onResolveApprovalBatch={messageActions.onResolveApprovalBatch}
                   onResolveInteractionInput={messageActions.onResolveInteractionInput}
-                  approvalDisabled={runtime.socketStatus !== "open"}
                 />
               </ErrorBoundary>
             </ChatContentMotion>
           )}
         </AnimatePresence>
+        <ChatActivityDock
+          sessionId={activeId ?? undefined}
+          runs={runs}
+          approvalDisabled={runtime.socketStatus !== "open"}
+          onResolveApproval={messageActions.onResolveApproval}
+          onResolveApprovalBatch={messageActions.onResolveApprovalBatch}
+        />
         <ChatComposer
           disabled={composerDisabled}
           running={!!isRunning}
@@ -118,7 +115,7 @@ export function ChatPanel({
           value={composerValue}
           onValueChange={setComposerValue}
           modelConfig={modelConfig}
-          runtimeUsage={runtimeUsage}
+          activeSessionId={activeId}
           approvalConfig={{ mode: approvalMode, onSelectMode: setApprovalMode }}
           presetConfig={presetConfig}
           runtime={{

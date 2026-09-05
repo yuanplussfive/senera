@@ -2,6 +2,7 @@ import type { AgentEventContext } from "../Events/AgentEventBase.js";
 import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 
 type AgentRequestContext = Required<Pick<AgentEventContext, "requestId">>;
 type AgentVisibleAssistantContext = AgentRequestContext & Partial<Pick<AgentEventContext, "sessionId" | "step">>;
@@ -56,6 +57,11 @@ export type AgentRunDomainEvent =
       data: {
         input: string;
         approvalMode?: AgentExecutionApprovalMode;
+        /** Uploaded channel attachments are safe resource metadata, not file contents. */
+        attachments?: AgentUploadAttachment[];
+        /** Internal host wake-up input should not be rendered as a user request. */
+        internal?: boolean;
+        displayInput?: string;
       };
     }
   | {

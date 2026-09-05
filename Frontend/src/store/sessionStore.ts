@@ -19,394 +19,36 @@ import {
   selectModelForActiveSession,
   syncActiveSessionModelSelection,
 } from "./session/sessionModelSelection";
-import { DEFAULT_USER_PROFILE, normalizeUserProfile, type UserProfile } from "./session/userProfile";
-import type { MotionLevel } from "../shared/motion/types";
-import type { ApprovalBatchReference } from "../api/approvalEventTypes";
-import { ExecutionApprovalModes, type ExecutionApprovalMode } from "../api/executionApprovalMode";
-import {
-  type ConversationEntryDto,
-  type ConversationEntryMetadata,
-  type ConfigSnapshotData,
-  type EventEnvelope,
-  type ApprovalDecision,
-  type ApprovalRequestedData,
-  type ApprovalResolvedData,
-  type ApprovalSubjectData,
-  type InteractionInputAction,
-  type InteractionInputContent,
-  type InteractionInputRequestedData,
-  type InteractionInputResolvedData,
-  type InteractionInputSchema,
-  type ModelProviderMetadata,
-  type ModelProviderListItem,
-  type McpServerSettingsItem,
-  type PresetItem,
-  type ProviderModelsFailedData,
-  type ProviderModelsSnapshotData,
-  type SessionHistoryStepsData,
-  type RunCancellationProgressData,
-  type UploadAttachmentData,
-  type UserProfileData,
-  type SystemToolSettingsItem,
-  type SystemExtensionSettingsItem,
-} from "../api/eventTypes";
+import { DEFAULT_USER_PROFILE, normalizeUserProfile } from "./session/userProfile";
+import { ExecutionApprovalModes } from "../api/executionApprovalMode";
+import type { SessionRecord, StoreState } from "./session/types";
 
 export { DEFAULT_SESSION_TITLE } from "./session/defaults";
 export { DEFAULT_USER_PROFILE, normalizeUserProfile } from "./session/userProfile";
 export { applyEvent, friendlyDecisionKind } from "./session/sessionProjector";
-export type { UserProfile } from "./session/userProfile";
-
-// =========================
-// 状态模型
-// =========================
-
-export type MessageRole = "user" | "assistant" | "system";
-
-export interface ChatMessage {
-  id: string;
-  role: MessageRole;
-  content: string;
-  createdAt: string;
-  kind?: "AssistantFinal" | "AssistantAsk" | "AssistantToolPreface" | "Error";
-  /** 后端 conversation entry 的 requestId——用于 truncate_from（删除 / 重新回答） */
-  requestId?: string;
-  attachments?: UploadAttachmentData[];
-  metadata?: ConversationEntryMetadata;
-}
-
-export type TimelineStepKind =
-  "understand" | "prompt" | "model" | "decision" | "delegation" | "tool" | "retry" | "answer" | "error";
-
-export type TimelineStepStatus = "pending" | "running" | "cancelling" | "done" | "failed";
-
-export interface TimelineStepScope {
-  parentSessionId?: string;
-  parentRequestId?: string;
-  workflowName?: string;
-  jobId?: string;
-  childRunId?: string;
-  agentName?: string;
-  role?: "childAgent" | "merge";
-}
-
-export interface TimelineToolBatch {
-  id: string;
-  index?: number;
-  size?: number;
-  executionMode?: "parallel" | "sequential";
-}
-
-export interface TimelineToolOutput {
-  stdout: string;
-  stderr: string;
-  stdoutBytes: number;
-  stderrBytes: number;
-  lastSequence: number;
-  truncated: boolean;
-}
-
-export interface TimelineToolProgress {
-  sequence: number;
-  message?: string;
-  completed?: number;
-  total?: number;
-  unit?: string;
-  taskId?: string;
-  state?: string;
-  terminal?: boolean;
-  pollIntervalMs?: number;
-}
-
-export interface TimelineStep {
-  id: string;
-  kind: TimelineStepKind;
-  title: string;
-  description?: string;
-  status: TimelineStepStatus;
-  startedAt: string;
-  endedAt?: string;
-  durationMs?: number;
-  scope?: TimelineStepScope;
-  toolName?: string;
-  toolOrigin?: import("../api/eventTypes").ToolEventOrigin;
-  callId?: string;
-  toolBatch?: TimelineToolBatch;
-  purpose?: string;
-  toolArgs?: unknown;
-  toolPreview?: string;
-  toolPresentation?: import("../api/eventTypes").ToolResultPresentation;
-  toolResult?: unknown;
-  toolErrorMessage?: string;
-  toolOutput?: TimelineToolOutput;
-  toolProgress?: TimelineToolProgress;
-  detailJson?: unknown;
-  retryAttempt?: number;
-  retryCode?: string;
-  errorMessage?: string;
-  modelName?: string;
-  promptChars?: number;
-  promptLines?: number;
-  promptTokenCount?: number;
-  decisionKind?: string;
-  xmlRoot?: string;
-  childRun?: TimelineChildRunState;
-}
-
-export interface TimelineChildRunMessage {
-  id: string;
-  direction: "child_to_parent" | "parent_to_child";
-  kind: "decision" | "follow_up" | "progress" | "response" | "steering";
-  content: string;
-  createdAt: string;
-}
-
-export interface TimelineChildRunState {
-  id: string;
-  status:
-    | "queued"
-    | "running"
-    | "wrapping_up"
-    | "cancelling"
-    | "awaiting_supervisor"
-    | "completed"
-    | "partial_completed"
-    | "interrupted"
-    | "timed_out"
-    | "failed"
-    | "cancelled";
-  checkpointAvailable?: boolean;
-  lastActivityAt?: string;
-  lastModelOutputAt?: string;
-  modelOutputCharacters?: number;
-  assistantTurns?: number;
-  toolCalls?: {
-    planned: number;
-    started: number;
-    completed: number;
-    failed: number;
-  };
-  activeTools?: string[];
-  artifactCount?: number;
-  softDeadlineAt?: string;
-  hardDeadlineAt?: string;
-  grantedExtensionMs?: number;
-  cancellation?: RunCancellationProgressData & { updatedAt: string };
-  messages: TimelineChildRunMessage[];
-}
-
-export interface RunActivityRecord {
-  id: string;
-  parentId?: string;
-  activity: import("../api/eventTypes").RunActivity;
-  status: TimelineStepStatus;
-  step?: number;
-  startedAt: string;
-  endedAt?: string;
-  durationMs?: number;
-}
-
-export interface RunRecord {
-  requestId: string;
-  /** 单调递增的运行态版本；UI 用它感知 run 变化，不依赖具体字段 */
-  revision: number;
-  startedAt: string;
-  endedAt?: string;
-  status: "running" | "cancelling" | "completed" | "failed" | "cancelled";
-  /** Assistant output lifecycle is independent from Pi/session settlement. */
-  outputState: "pending" | "streaming" | "available" | "committed";
-  /** 左侧对话使用的瞬时运行阶段；不进入工作流步骤或历史图。 */
-  liveActivity?: import("../api/eventTypes").RunActivity;
-  /** 左侧对话使用的实时活动流；与右侧工作流步骤完全独立。 */
-  activities?: RunActivityRecord[];
-  activeFlags?: Array<"waiting_for_approval" | "waiting_for_input">;
-  input: string;
-  steps: TimelineStep[];
-  /** model.delta 累积（原始 token 流，可能含 XML 包装） */
-  streamingRaw: string;
-  /** 旧版 XML 预览字段；新链路仅用于历史兼容显示 */
-  xmlPreview: string;
-  /** 后端实时解析出的用户可见文本目标 */
-  visibleText: string;
-  /** 前端平滑消费 visibleText 后真正展示的文本，不影响 streamingRaw 准确性 */
-  displayText: string;
-  /** 当前 visibleText 对应的助手消息；切换模型阶段时清除 */
-  displayMessageId?: string;
-  visibleKind: "final_answer" | "ask_user" | "tool_calls" | "tool_preface" | "unknown";
-  expectedOutputMode: "unknown" | "final_text" | "open";
-  decisionMode: "none" | "tool_candidate" | "final_text";
-  /** Planner decision to apply to the next model stream, before that stream starts. */
-  plannedDecisionMode?: "tool_candidate" | "final_text";
-  approvals?: ApprovalRunRecord[];
-  interactionInputs?: InteractionInputRunRecord[];
-  modelProvider?: ModelProviderMetadata;
-  recoverySource?: "history";
-}
-
-interface InteractionInputRunRecordBase {
-  interactionId: string;
-  status: InteractionInputRequestedData["status"] | InteractionInputResolvedData["status"];
-  message: string;
-  toolName: string;
-  toolCallId: string;
-  batchId?: string;
-  createdAt: string;
-  action?: InteractionInputAction;
-  content?: InteractionInputContent;
-  resolutionMessage?: string;
-  resolvedAt?: string;
-  resolutionPending?: boolean;
-  pendingAction?: InteractionInputAction;
-}
-
-export type InteractionInputRunRecord = InteractionInputRunRecordBase &
-  (
-    | { mode: "form"; schema: InteractionInputSchema }
-    | { mode: "url"; externalId: string; url: string; hostname: string }
-  );
-
-export interface ApprovalRunRecord {
-  approvalId: string;
-  approvalKind: ApprovalRequestedData["approvalKind"];
-  status: ApprovalRequestedData["status"] | ApprovalResolvedData["status"];
-  title: string;
-  reason: string;
-  rule?: string;
-  riskSignals?: string[];
-  toolCallId?: string;
-  batchId?: string;
-  availableDecisions: ApprovalDecision[];
-  subject: ApprovalSubjectData;
-  createdAt: string;
-  resolvedAt?: string;
-  message?: string;
-  scope?: ApprovalResolvedData["scope"];
-  disposition?: ApprovalResolvedData["disposition"];
-  decision?: ApprovalResolvedData["decision"];
-  resolutionPending?: boolean;
-  pendingDecision?: ApprovalDecision;
-}
-
-export interface SessionRecord {
-  sessionId: string;
-  title: string;
-  status: "creating" | "ready" | "closed";
-  createdAt: string;
-  updatedAt: string;
-  entryCount: number;
-  messageCount: number;
-  messages: ChatMessage[];
-  runs: RunRecord[];
-  activeRequestId?: string;
-  forkOrigin?: {
-    sourceSessionId: string;
-    throughRequestId: string;
-  };
-}
-
-export type HistoryReplayEntry = {
-  entry: ConversationEntryDto;
-  visible?: { kind: string; text: string };
-};
-
-export interface StoreState {
-  sessions: Record<string, SessionRecord>;
-  sessionOrder: string[];
-  activeSessionId: string | null;
-  sidebarCollapsed: boolean;
-  rightPanelCollapsed: boolean;
-  defaultSidebarCollapsed: boolean;
-  defaultRightPanelCollapsed: boolean;
-  workflowDockWidth: number;
-  motionLevel: MotionLevel;
-  /** 每个 session 当前在右栏查看的 run requestId；不存在则用最新 run */
-  viewedRunIdBySession: Record<string, string>;
-  /** 已从后端拉取过历史的 sessionId 集合（避免重复拉） */
-  historyLoadedIds: Record<string, boolean>;
-  /** 正在拉取历史的 sessionId */
-  historyLoadingIds: Record<string, boolean>;
-  /** 历史回放失败的 sessionId，避免把失败会话伪装成新会话空态 */
-  historyFailedIds: Record<string, boolean>;
-  /** 正在回放但尚未 completed 的历史条目；completed 前不污染真实消息列表 */
-  historyReplayBuffers: Record<string, HistoryReplayEntry[]>;
-  /** 回放期间暂存的 step 轨迹 run，completed 时据此重建 session.runs */
-  historyStepBuffers: Record<string, SessionHistoryStepsData["runs"]>;
-  /** 回放期间已经由 run events 还原过的 requestId，避免再用精简 step traces 覆盖完整图 */
-  historyEventRunIds: Record<string, Record<string, boolean>>;
-  /** 历史事件可能改写 activeRequestId；这里保留服务端实时快照用于回放收尾。 */
-  historyActiveRequestIds: Record<string, string | null>;
-  /** 当前前端生命周期内已经投影的服务端事件，用于 live/replay 全局幂等。 */
-  processedEventIds: Record<string, string | null>;
-  processedEventIdOrder: string[];
-  /** 已确认不在后端存在、仅本地残留的 sessionId */
-  missingOnServerIds: Record<string, boolean>;
-  /** 本地刚创建、尚未被 session.list 快照确认的 sessionId */
-  pendingCreatedSessionIds: Record<string, boolean>;
-  /** 本地已请求删除、尚未被 session.list 快照确认消失的 sessionId */
-  pendingDeletedSessionIds: Record<string, boolean>;
-  /** 子代理事件声明的 childSessionId -> owning parent sessionId 关系。子会话不进入顶层聊天列表。 */
-  childSessionParentIds: Record<string, string>;
-  modelProviders: ModelProviderListItem[];
-  providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
-  providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
-  /** Current active conversation's model. Kept for existing command/UI contracts. */
-  selectedModelProviderId: string | null;
-  /** Authoritative default model from model.list; used when creating a new conversation. */
-  defaultModelProviderId: string | null;
-  /** Local per-conversation selections. The backend still receives the chosen id per request. */
-  selectedModelProviderIdsBySession: Record<string, string>;
-  executionApprovalMode: ExecutionApprovalMode;
-  presets: PresetItem[];
-  activePresetName: string | null;
-  presetsEnabled: boolean;
-  presetRootDir: string;
-  configSnapshot: ConfigSnapshotData | null;
-  systemTools: SystemToolSettingsItem[];
-  systemExtensions: SystemExtensionSettingsItem[];
-  mcpServers: McpServerSettingsItem[];
-  toolSettingsSynced: { systemTools: boolean; mcpServers: boolean };
-  userProfile: UserProfile;
-  /** 各目录快照是否已到达过一次；用于区分"尚未同步"与"确实为空"，避免空态闪现 */
-  catalogSynced: { sessions: boolean; presets: boolean };
-  /** 连接切换时清除目录同步屏障，直到新的权威快照到达。 */
-  resetCatalogSyncState: () => void;
-
-  selectSession: (id: string) => void;
-  toggleSidebar: () => void;
-  toggleRightPanel: () => void;
-  setSidebarCollapsed: (collapsed: boolean) => void;
-  setRightPanelCollapsed: (collapsed: boolean) => void;
-  setDefaultSidebarCollapsed: (collapsed: boolean) => void;
-  setDefaultRightPanelCollapsed: (collapsed: boolean) => void;
-  setWorkflowDockWidth: (width: number) => void;
-  setMotionLevel: (level: MotionLevel) => void;
-  setViewedRun: (sessionId: string, requestId: string | undefined) => void;
-  registerCreatingSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
-  renameSession: (sessionId: string, title: string) => void;
-  markApprovalResolutionPending: (approvalId: string, decision?: ApprovalDecision) => void;
-  markApprovalBatchResolutionPending: (batch: ApprovalBatchReference, decision?: ApprovalDecision) => void;
-  markInteractionInputResolutionPending: (interactionId: string, action?: InteractionInputAction) => void;
-  appendUserMessage: (
-    sessionId: string,
-    requestId: string,
-    input: string,
-    attachments?: UploadAttachmentData[],
-    options?: { createRun?: boolean },
-  ) => void;
-  truncateFromRequest: (sessionId: string, fromRequestId: string) => void;
-  advanceStreamingDisplay: (sessionId: string, requestId: string) => boolean;
-  ingest: (env: EventEnvelope) => void;
-  ingestMany: (events: readonly EventEnvelope[]) => void;
-  removeSession: (sessionId: string) => void;
-  clearAllSessions: (sessionIds?: string[]) => void;
-  markHistoryLoading: (sessionId: string) => void;
-  markHistoryLoadFailed: (sessionId: string) => void;
-  selectModelProvider: (id: string) => void;
-  applyDefaultModelToActiveSession: () => void;
-  setExecutionApprovalMode: (mode: ExecutionApprovalMode) => void;
-  setUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
-  markUserProfileSynced: (profile?: UserProfileData) => void;
-  replaceWithDevMockData: (sessions: SessionRecord[], activeSessionId?: string) => void;
-}
+export { readActiveRun } from "./session/sessionProjectorCore";
+export type {
+  ApprovalRunRecord,
+  ChatMessage,
+  HistoryReplayEntry,
+  InteractionInputRunRecord,
+  MessageRole,
+  RunActivityRecord,
+  RunRecord,
+  SessionRecord,
+  StoreState,
+  TimelineChildRunMessage,
+  TimelineChildRunState,
+  TimelineStep,
+  TimelineStepKind,
+  TimelineStepScope,
+  TimelineStepStatus,
+  TimelineToolBatch,
+  TimelineToolOutput,
+  TimelineToolProgress,
+  SessionOrderPlacement,
+  UserProfile,
+} from "./session/types";
 
 // =========================
 // 工具函数
@@ -424,6 +66,8 @@ export const useStore = create<StoreState>()(
       sessions: {},
       sessionOrder: [],
       activeSessionId: null,
+      agenda: undefined,
+      world: undefined,
       sidebarCollapsed: false,
       rightPanelCollapsed: true,
       defaultSidebarCollapsed: false,
@@ -452,6 +96,7 @@ export const useStore = create<StoreState>()(
       selectedModelProviderIdsBySession: {},
       executionApprovalMode: ExecutionApprovalModes.Agent,
       presets: [],
+      presetWorldPackages: [],
       activePresetName: null,
       presetsEnabled: true,
       presetRootDir: "",
@@ -460,6 +105,7 @@ export const useStore = create<StoreState>()(
       systemExtensions: [],
       mcpServers: [],
       toolSettingsSynced: { systemTools: false, mcpServers: false },
+      channelStatuses: [],
       userProfile: DEFAULT_USER_PROFILE,
       catalogSynced: { sessions: false, presets: false },
 
@@ -473,6 +119,26 @@ export const useStore = create<StoreState>()(
         set((state) => {
           state.activeSessionId = id;
           syncActiveSessionModelSelection(state);
+        }),
+
+      moveSession: (sessionId, targetSessionId, placement) =>
+        set((state) => {
+          if (sessionId === targetSessionId) return;
+          const sourceIndex = state.sessionOrder.indexOf(sessionId);
+          const targetIndex = state.sessionOrder.indexOf(targetSessionId);
+          if (sourceIndex < 0 || targetIndex < 0) return;
+          if (
+            (placement === "before" && sourceIndex + 1 === targetIndex) ||
+            (placement === "after" && sourceIndex === targetIndex + 1)
+          ) {
+            return;
+          }
+
+          state.sessionOrder.splice(sourceIndex, 1);
+          const nextTargetIndex = state.sessionOrder.indexOf(targetSessionId);
+          if (nextTargetIndex < 0) return;
+          const insertionIndex = placement === "after" ? nextTargetIndex + 1 : nextTargetIndex;
+          state.sessionOrder.splice(insertionIndex, 0, sessionId);
         }),
 
       toggleSidebar: () =>
@@ -515,6 +181,17 @@ export const useStore = create<StoreState>()(
       setMotionLevel: (level) =>
         set((state) => {
           state.motionLevel = level;
+        }),
+
+      markRunCancelling: (sessionId, requestId) =>
+        set((state) => {
+          const session = state.sessions[sessionId];
+          const run = session?.runs.find((entry) => entry.requestId === requestId);
+          if (!session || !run || run.status !== "running") return;
+          run.status = "cancelling";
+          run.revision += 1;
+          session.activeRequestId = requestId;
+          session.updatedAt = nowIso();
         }),
 
       setViewedRun: (sessionId, requestId) =>

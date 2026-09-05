@@ -147,7 +147,8 @@ describe("modelServiceState", () => {
     expect(list.catalog?.models.map((row) => row.id)).toEqual(["gpt-4.1", "text-embedding-3-small"]);
     expect(list.groups).toEqual([
       expect.objectContaining({
-        label: "其他模型",
+        id: "openai",
+        label: "OpenAI",
         rows: [{ id: "gpt-4.1", ownedBy: "openai" }],
       }),
     ]);

@@ -13,6 +13,13 @@ import type { ToolExecutionTarget } from "../Types/AgentToolContractTypes.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { orderToolNamesByPreference } from "../ToolRuntime/AgentToolAccessGrant.js";
 import { ensureObjectRootJsonSchema } from "../ToolContracts/AgentJsonSchemaObjectRoot.js";
+import { ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
+import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import { isAgentToolExposureMutationMetaToolName } from "../ToolSearch/AgentToolSearchRuntimeTypes.js";
+import { AgentPiNativeToolBridge } from "./AgentPiNativeToolBridge.js";
+import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
+import type { AgentPiToolCallPreflightInput } from "./AgentPiToolCallPreflight.js";
+import { projectAgentToolDescription } from "../ToolRuntime/AgentToolInteractionProjector.js";
 
 export interface AgentPiToolRuntimeContractProjector {
   projectToolInvocationSchema(tool: RegisteredTool, schema: Readonly<Record<string, unknown>>): Record<string, unknown>;
@@ -23,6 +30,7 @@ export interface AgentPiToolRegistryProjectorOptions {
   config: AgentSystemConfig;
   registry: AgentExtensionRegistry;
   execution: AgentPiToolExecutionBridge;
+  toolPlanningMode: AgentModelToolPlanningMode;
   runtimeContracts?: AgentPiToolRuntimeContractProjector;
   availableExecutionTargets?: () => readonly ToolExecutionTarget[];
 }
@@ -33,6 +41,11 @@ export interface AgentPiToolSet {
   materialize(context: () => AgentPiToolProjectionContext): AgentPiToolDefinition[];
 }
 
+export interface AgentPiToolPreflightProjection {
+  readonly event: AgentPiToolCallPreflightInput;
+  readonly bridged: boolean;
+}
+
 const EmptyObjectParameterSchema = {
   type: "object",
   properties: {},
@@ -41,16 +54,22 @@ const EmptyObjectParameterSchema = {
 
 export class AgentPiToolRegistryProjector {
   private readonly documentationReader: AgentPromptDocumentationReader;
+  private readonly nativeBridge: AgentPiNativeToolBridge;
 
   constructor(private readonly options: AgentPiToolRegistryProjectorOptions) {
     this.documentationReader = new AgentPromptDocumentationReader();
+    this.nativeBridge = new AgentPiNativeToolBridge(options.registry, options.execution);
   }
 
   project(context: AgentPiToolProjectionContext = {}): AgentPiToolDefinition[] {
     const toolAccessGrant = context.toolAccessGrant;
     const exposure = context.toolExposure?.snapshot();
+    const visibleToolNames =
+      this.options.toolPlanningMode === "native"
+        ? toolAccessGrant?.authorizedToolNames
+        : (exposure?.exposedToolNames ?? toolAccessGrant?.exposedToolNames);
     return this.createToolSet(
-      exposure?.exposedToolNames ?? toolAccessGrant?.exposedToolNames ?? context.visibleToolNames,
+      visibleToolNames ?? context.visibleToolNames,
       exposure?.preferredToolNames ?? toolAccessGrant?.preferredToolNames,
     ).materialize(() => context);
   }
@@ -64,17 +83,37 @@ export class AgentPiToolRegistryProjector {
     preferredToolNames: readonly string[] = [],
   ): AgentPiToolSet {
     const runtimeTargets = this.options.availableExecutionTargets?.() ?? ["Sandbox", "Local"];
-    const tools = this.visibleTools(visibleToolNames, preferredToolNames, runtimeTargets);
+    const tools = this.visibleTools(visibleToolNames, preferredToolNames, runtimeTargets).filter((tool) =>
+      this.options.toolPlanningMode === "native"
+        ? tool.loading === ToolLoadingModes.Bootstrap && !isAgentToolExposureMutationMetaToolName(tool.name)
+        : true,
+    );
     const projections = tools.map((tool) => ({ tool, descriptor: this.projectDescriptor(tool, runtimeTargets) }));
-    const descriptors = projections.map(({ descriptor }) => descriptor);
+    const bridgeEnabled = this.options.toolPlanningMode === "native";
+    const bridgeDescriptor = bridgeEnabled ? this.nativeBridge.definition(() => ({})) : undefined;
+    const descriptors = [
+      ...projections.map(({ descriptor }) => descriptor),
+      ...(bridgeDescriptor ? [stripToolExecutor(bridgeDescriptor)] : []),
+    ];
     const activeToolNames = descriptors.map((descriptor) => descriptor.name);
     const fingerprint = sha256HexOfCanonicalJson(descriptors);
     return {
       fingerprint,
       activeToolNames,
-      materialize: (context) =>
-        projections.map(({ tool, descriptor }) => this.materializeTool(tool, descriptor, context)),
+      materialize: (context) => [
+        ...projections.map(({ tool, descriptor }) => this.materializeTool(tool, descriptor, context)),
+        ...(bridgeEnabled ? [this.nativeBridge.definition(context)] : []),
+      ],
     };
+  }
+
+  projectPreflight(
+    event: AgentPiToolCallPreflightInput,
+    toolAccessGrant: AgentToolAccessGrant,
+  ): AgentPiToolPreflightProjection {
+    if (this.options.toolPlanningMode !== "native") return { event, bridged: false };
+    const projected = this.nativeBridge.projectPreflight(event, toolAccessGrant);
+    return { event: projected, bridged: projected !== event };
   }
 
   private visibleTools(
@@ -86,11 +125,16 @@ export class AgentPiToolRegistryProjector {
       .listTools()
       .filter((tool) => resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets).length > 0);
     if (!visibleToolNames) {
-      return registered;
+      return this.options.toolPlanningMode === "native"
+        ? registered.slice().sort((left, right) => left.name.localeCompare(right.name))
+        : registered;
     }
 
     const visible = new Set(visibleToolNames);
     const byName = new Map(registered.filter((tool) => visible.has(tool.name)).map((tool) => [tool.name, tool]));
+    if (this.options.toolPlanningMode === "native") {
+      return [...byName.values()].sort((left, right) => left.name.localeCompare(right.name));
+    }
     return orderToolNamesByPreference([...byName.keys()], preferredToolNames).flatMap((toolName) => {
       const tool = byName.get(toolName);
       return tool ? [tool] : [];
@@ -147,8 +191,14 @@ export class AgentPiToolRegistryProjector {
     ]
       .filter(Boolean)
       .join("\n\n");
-    return this.options.runtimeContracts?.projectToolDescription(tool, description) ?? description;
+    const semanticDescription = projectAgentToolDescription(tool, description);
+    return this.options.runtimeContracts?.projectToolDescription(tool, semanticDescription) ?? semanticDescription;
   }
+}
+
+function stripToolExecutor(tool: AgentPiToolDefinition): Omit<AgentPiToolDefinition, "execute"> {
+  const { execute: _execute, ...descriptor } = tool;
+  return descriptor;
 }
 
 function normalizeToolParams(value: unknown): Record<string, unknown> {

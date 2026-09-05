@@ -1,3 +1,5 @@
+import type { FrontendLocalizedText } from "../i18n/frontendLocaleModel";
+
 export type McpInputValue = string | number | boolean | string[] | number[] | boolean[];
 
 export interface McpInputStatus {
@@ -24,6 +26,8 @@ export interface McpInputStatus {
 export interface McpServerSettingsItem {
   id: string;
   packageName: string;
+  displayName: FrontendLocalizedText;
+  description: FrontendLocalizedText;
   source: "bundled" | "workspace";
   descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
   transport: "stdio" | "http";

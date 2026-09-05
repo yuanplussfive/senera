@@ -1,14 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import {
-  guardrailApproval,
-  parameterLengthGuardrail,
-  pathTraversalGuardrail,
-  sqlInjectionGuardrail,
-  type GuardrailApprovalFunction,
-  type GuardrailApprovalOptions,
-  type ToolValidationResult,
-} from "ai-sdk-guardrails";
+import type { GuardrailApprovalFunction, GuardrailApprovalOptions, ToolValidationResult } from "ai-sdk-guardrails";
 import { moduleDirPath } from "../Core/AgentPath.js";
 import { AgentPermissionActions, type AgentPermissionDecision } from "./AgentSafetyTypes.js";
 import type { AgentToolApprovalPolicyInput } from "./AgentToolApprovalPolicy.js";
@@ -18,10 +10,11 @@ import { parseJsonText } from "../Core/AgentJsonParsing.js";
 const ProfileFileName = "AgentAiSdkGuardrailAuditProfile.json";
 
 type AiSdkGuardrailAuditDecision = Exclude<AgentPermissionDecision["action"], "allow">;
+type AiSdkGuardrailsModuleType = typeof import("ai-sdk-guardrails");
 type AiSdkBuiltInToolGuardrail =
-  | ReturnType<typeof pathTraversalGuardrail>
-  | ReturnType<typeof sqlInjectionGuardrail>
-  | ReturnType<typeof parameterLengthGuardrail>;
+  | ReturnType<AiSdkGuardrailsModuleType["pathTraversalGuardrail"]>
+  | ReturnType<AiSdkGuardrailsModuleType["sqlInjectionGuardrail"]>
+  | ReturnType<AiSdkGuardrailsModuleType["parameterLengthGuardrail"]>;
 type AiSdkGuardrailApprovalStatus = Awaited<ReturnType<GuardrailApprovalFunction>>;
 type NormalizedAiSdkGuardrailApprovalStatus = {
   readonly type: "approved" | "denied" | "user-approval" | "not-applicable";
@@ -56,13 +49,27 @@ interface AgentGuardrailDecisionTrace {
   readonly result?: ToolValidationResult;
 }
 
-type BuiltInGuardrailFactory = (spec: AgentAiSdkBuiltInToolGuardrailSpec) => AiSdkBuiltInToolGuardrail;
+type BuiltInGuardrailFactory = (
+  module: AiSdkGuardrailsModuleType,
+  spec: AgentAiSdkBuiltInToolGuardrailSpec,
+) => AiSdkBuiltInToolGuardrail;
+
+type AiSdkGuardrailsModule = AiSdkGuardrailsModuleType;
+
+let guardrailsModulePromise: Promise<AiSdkGuardrailsModule> | undefined;
+
+function loadAiSdkGuardrails(): Promise<AiSdkGuardrailsModule> {
+  // ai-sdk-guardrails pulls in the full `ai` package (~1MB of retained module
+  // source); keep it out of the startup heap until the first tool audit.
+  guardrailsModulePromise ??= import("ai-sdk-guardrails");
+  return guardrailsModulePromise;
+}
 
 const BuiltInGuardrailFactories = {
-  PathTraversal: () => pathTraversalGuardrail(),
-  SqlInjection: () => sqlInjectionGuardrail(),
-  ParameterLength: (spec) =>
-    parameterLengthGuardrail({
+  PathTraversal: (m) => m.pathTraversalGuardrail(),
+  SqlInjection: (m) => m.sqlInjectionGuardrail(),
+  ParameterLength: (m, spec) =>
+    m.parameterLengthGuardrail({
       maxLength: spec.Kind === "ParameterLength" ? spec.MaxLength : undefined,
     }),
 } satisfies Record<AgentAiSdkBuiltInToolGuardrailSpec["Kind"], BuiltInGuardrailFactory>;
@@ -80,16 +87,16 @@ export interface AgentAiSdkGuardrailAuditorOptions {
 
 export class AgentAiSdkGuardrailAuditor implements AgentToolGuardrailAuditor {
   private readonly profile: AgentAiSdkGuardrailAuditProfile;
-  private readonly guardrails: AiSdkBuiltInToolGuardrail[];
+  private guardrailsPromise: Promise<AiSdkBuiltInToolGuardrail[]> | undefined;
 
   constructor(options: AgentAiSdkGuardrailAuditorOptions = {}) {
     this.profile = options.profile ?? readDefaultProfile();
-    this.guardrails = this.profile.BuiltInToolGuardrails.map((spec) => BuiltInGuardrailFactories[spec.Kind](spec));
   }
 
   async auditToolCall(input: AgentToolApprovalPolicyInput): Promise<AgentPermissionDecision | undefined> {
+    const [module, guardrails] = await Promise.all([loadAiSdkGuardrails(), this.ensureGuardrails()]);
     let trace: AgentGuardrailDecisionTrace | undefined;
-    const approval = guardrailApproval(this.guardrails, {
+    const approval = module.guardrailApproval(guardrails, {
       denyAtOrAbove: this.profile.ToolApproval.DenyAtOrAbove,
       onBlock: this.profile.ToolApproval.OnBlock,
       requestContext: projectRequestContext(input),
@@ -116,6 +123,13 @@ export class AgentAiSdkGuardrailAuditor implements AgentToolGuardrailAuditor {
           riskSignals: riskSignals(status, trace),
         }
       : undefined;
+  }
+
+  private ensureGuardrails(): Promise<AiSdkBuiltInToolGuardrail[]> {
+    this.guardrailsPromise ??= loadAiSdkGuardrails().then((module) =>
+      this.profile.BuiltInToolGuardrails.map((spec) => BuiltInGuardrailFactories[spec.Kind](module, spec)),
+    );
+    return this.guardrailsPromise;
   }
 }
 

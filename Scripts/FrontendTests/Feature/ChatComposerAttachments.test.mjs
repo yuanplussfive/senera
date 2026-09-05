@@ -224,6 +224,7 @@ function createComposerProps(overrides = {}) {
     },
     presetConfig: {
       presets: [],
+      worldPackages: [],
       activePresetName: null,
       presetsEnabled: true,
       presetRootDir: "",

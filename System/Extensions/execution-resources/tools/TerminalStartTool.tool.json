@@ -62,6 +62,7 @@
     "Capabilities": [
       {
         "Id": "execution.terminal-start",
+        "Title": "Start interactive terminal",
         "Description": "Start an interactive PTY-backed terminal.",
         "Facets": {
           "Actions": ["start", "interact", "monitor"],

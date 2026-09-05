@@ -4,6 +4,7 @@ Pi 负责会话树、流式文本、工具调用、多步循环、compaction 和
 
 ## 关键签名
 
+- Senera 是 Pi session system prompt 的唯一 owner。`AgentPiCodingAgentSessionFactory` 通过受管的 `PiSessionBaseSystemPrompt.liquid` 创建 `DefaultResourceLoader.systemPrompt`，使 Pi 将它作为 `customPrompt` 使用；Pi 自带的身份、内置工具目录和 Pi 文档导航不会进入模型上下文。Senera turn prompt、活动 Skills、受控项目上下文和选中的 prompt templates 再由 runtime extension 注入，且各自只注入一次。
 - `AgentSystemRuntimeCache.acquire(modelProviderId?)` 返回 `{ runtime, release() }`，不再暴露无生命周期的 `get()`。
 - `AgentPiSessionMutationServiceOptions.acquireRuntime(modelProviderId?)` 仅为已有 Pi 会话的 rewind、reset、fork、compact、status 与 export 获取运行时租约；创建空会话不会构建 Pi runtime。
 - Pi JSONL 与 Coding Agent session 只在首个实际 turn 的 `leaseTurn()` 中惰性建立，`PiTurnLeaseTimeoutSeconds` 约束该租约阶段，而不是 `session.create`。
@@ -29,6 +30,12 @@ Pi 负责会话树、流式文本、工具调用、多步循环、compaction 和
 
 - Native 的 system prompt 只包含稳定行为、预设和执行环境。RootCommand、用户任务副本、文本工具目录、JSON/XML 工具调用说明和输出哨兵都不会进入 prompt；Pi API adapter 把 `Context.tools`、assistant `toolCall` 与 `toolResult` 映射到供应商原生协议。
 - BAML 的 system prompt 只包含语义行为、预设和执行环境。`AgentPiPlanningCompiler` 将 RootCommand 放在 `seneraRuntime.rootCommand`，将历史放在 `planningContext.messages`，将曝光工具放在 `routingCards`；`EvolveTurn` 看不到完整参数 Schema，只有选定工具后的 `FillPiToolArguments` 收到该工具的权威合同。
+
+## 提示缓存
+
+主请求使用稳定 system prompt 和 append-only 会话历史。画像、世界、召回、工作流、活动 Skill 与模板不改写 system prompt，而是作为隐藏的 `senera.turn_context` 追加到所属用户消息之后；下一轮因此可以复用稳定内核和全部既有历史前缀。缓存路由键按逻辑会话、模型、调用阶段、稳定 system prompt 与工具合同内容寻址，Native、BAML planning、compaction 和 ResidentSpeech 不共用路由桶。
+
+Continuity 学习、对话片段边界、时间摘要等辅助调用也使用独立的身份域和静态合同 revision。当前 episode、摘要条目和工具结果只进入动态 user payload，不进入缓存身份。首个请求、模型切换、稳定预设或项目上下文变化、工具 Schema 集合变化仍会产生必要的冷写；缓存键不能用来掩盖协议变化。供应商 TTL 通过 Pi 的兼容层发送，不能根据模型名称在业务代码中猜测。
 
 Provider-neutral 的 Native 请求形状如下，具体 HTTP 字段由 Pi 的 OpenAI Responses、Chat Completions、Anthropic 或 Google adapter 负责：
 
@@ -119,7 +126,7 @@ Coding Agent 每回合持有 `toolAccessGrant.authorizedToolNames` 的宿主工�
 
 工具定义绑定 contract digest。MCP `tools/list_changed` 更新 registry 后，旧 Pi 回合若尝试调用同名但契约已变化的工具，会在执行器分派前失败；新目录只在后续回合以新的工具指纹和 Schema 进入 Coding Agent。
 
-真实并发由 ToolRuntime 的执行调度器决定。普通调用默认并行，但每次运行受 `ToolExecution.MaxConcurrentCallsPerRun` 的有界容量控制；插件还可以通过 `Runtime.MaxConcurrency` 声明更低的工具级上限。`ResourceClaims` 工具根据声明的资源参数生成 shared/exclusive claim，重叠资源中任意一方为 exclusive 时等待，不重叠资源可以并发；`SelfManaged` 工具由所属运行时自行调度。空资源声明不会再变成隐式全局独占租约，资源契约或投影无效会显式失败。权限检查、参数校验和实际工具执行仍是权威边界，模型的 `dependsOn` 不能绕过资源租约。
+真实并发由 ToolRuntime 的执行调度器决定。普通调用默认并行，但每次运行受 `ToolExecution.MaxConcurrentCallsPerRun` 的有界容量控制；插件还可以通过 `Runtime.MaxConcurrency` 声明更低的工具级上限。`ResourceClaims` 工具根据声明的资源参数生成 shared/exclusive claim，重叠资源中任意一方为 exclusive 时等待，不重叠资源可以并发；`SelfManaged` 工具由所属运行时自行调度。MCP 工具未声明策略时不添加 server 级别的隐式租约，直接走普通并行；只有 MCP 工具显式声明 `ResourceClaims` 才按资源互斥。空资源声明不会再变成隐式全局独占租约，资源契约或投影无效会显式失败。权限检查、参数校验和实际工具执行仍是权威边界，模型的 `dependsOn` 不能绕过资源租约。
 
 Native 与 BAML provider 都必须在 assistant 响应完成时登记完整的 call ID、工具名和参数批次。Pi Core 会逐项触发 `tool_call` hook，但 `AgentPiToolCallPreflightCoordinator` 在第一个 hook 上启动整批受控并行预检，后续 hook 只读取对应 Promise；同一 call 不会重复 OPA、语义审核或审批。确定性边界始终执行。只有 `toolPlanningMode=baml`、`SemanticAudit.Mode=approval_sensitive` 且审批模式为 `always_ask` 时，BAML 语义风险审核才可能把确定性 `allow` 提升为用户 `ask`；Native、`agent`、`full_access` 和 `disabled` 都不调用该审核器。`full_access` 只消除可审批的 `ask`，不能覆盖确定性 `deny`、Schema、grant、OPA、workspace 或 sandbox 拒绝。`tool.calls.planned` 一次发布全部 call 身份，执行器拿到调度租约后才发布 `tool.call.started`，因此前端可以区分待审核、等待资源和实际运行。
 

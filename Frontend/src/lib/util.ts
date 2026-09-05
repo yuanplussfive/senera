@@ -1,9 +1,12 @@
 import { twMerge } from "tailwind-merge";
 import { clsx, type ClassValue } from "clsx";
 import { getFrontendLocale } from "../i18n/frontendLocaleStore";
+import { resolveRuntimeTimeZone } from "../config/runtimeConfig";
 
 const integerFormatters = new Map<string, Intl.NumberFormat>();
 const shortTimeFormatters = new Map<string, Intl.DateTimeFormat>();
+const timeFormatters = new Map<string, Intl.DateTimeFormat>();
+const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 
 function getIntegerFormatter(locale: string): Intl.NumberFormat {
   const existing = integerFormatters.get(locale);
@@ -13,16 +16,50 @@ function getIntegerFormatter(locale: string): Intl.NumberFormat {
   return formatter;
 }
 
-function getShortTimeFormatter(locale: string): Intl.DateTimeFormat {
-  const existing = shortTimeFormatters.get(locale);
+function getShortTimeFormatter(locale: string, timeZone: string): Intl.DateTimeFormat {
+  const key = `${locale}:${timeZone}`;
+  const existing = shortTimeFormatters.get(key);
   if (existing) return existing;
   const formatter = new Intl.DateTimeFormat(locale, {
+    timeZone,
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    hourCycle: "h23",
   });
-  shortTimeFormatters.set(locale, formatter);
+  shortTimeFormatters.set(key, formatter);
+  return formatter;
+}
+
+function getTimeFormatter(timeZone: string): Intl.DateTimeFormat {
+  const existing = timeFormatters.get(timeZone);
+  if (existing) return existing;
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  timeFormatters.set(timeZone, formatter);
+  return formatter;
+}
+
+function getDateTimeFormatter(locale: string, timeZone: string): Intl.DateTimeFormat {
+  const key = `${locale}:${timeZone}`;
+  const existing = dateTimeFormatters.get(key);
+  if (existing) return existing;
+  const formatter = new Intl.DateTimeFormat(locale, {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  dateTimeFormatters.set(key, formatter);
   return formatter;
 }
 
@@ -35,15 +72,15 @@ export function errorMessage(error: unknown): string {
 }
 
 export function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
-    const ss = String(d.getSeconds()).padStart(2, "0");
-    return `${hh}:${mm}:${ss}`;
-  } catch {
-    return "";
-  }
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : getTimeFormatter(resolveRuntimeTimeZone()).format(date);
+}
+
+export function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? iso
+    : getDateTimeFormatter(getFrontendLocale(), resolveRuntimeTimeZone()).format(date);
 }
 
 export function formatDuration(startIso?: string, endIso?: string): string {
@@ -95,7 +132,7 @@ export function formatShortTime(iso: string): string {
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return getShortTimeFormatter(getFrontendLocale()).format(date);
+  return getShortTimeFormatter(getFrontendLocale(), resolveRuntimeTimeZone()).format(date);
 }
 
 export function generateId(): string {

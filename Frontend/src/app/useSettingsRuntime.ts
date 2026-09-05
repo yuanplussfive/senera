@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, type MutableRefObject } from "react";
 import {
   EventKinds,
+  type ChannelStatusItem,
   type EventEnvelope,
   type McpInputMutationState,
   type McpInputValue,
@@ -36,6 +37,7 @@ export function useSettingsRuntime({
   const systemExtensions = useStore((state) => state.systemExtensions);
   const mcpServers = useStore((state) => state.mcpServers);
   const toolSettingsSynced = useStore((state) => state.toolSettingsSynced);
+  const channelStatuses = useStore((state) => state.channelStatuses);
   const [mcpInputOperation, setMcpInputOperation] = useState<McpInputMutationState | null>(null);
   const controller = useConfigMutationController({ configSnapshot, sendRef, statusRef });
   const sendWhenConnected = useCallback(
@@ -70,6 +72,10 @@ export function useSettingsRuntime({
     (serverId: string): boolean => sendWhenConnected({ type: "mcpServer.restart", serverId }),
     [sendWhenConnected],
   );
+  const connectChannel = useCallback(
+    (kind: ChannelStatusItem["kind"]): boolean => sendWhenConnected({ type: "channel.connect", kind }),
+    [sendWhenConnected],
+  );
   const readProviderApiKey = useCallback(
     async (providerId: string): Promise<string> => {
       const url = new URL("/api/provider-credentials", `${httpBaseUrl}/`);
@@ -95,6 +101,7 @@ export function useSettingsRuntime({
       systemTools,
       systemExtensions,
       mcpServers,
+      channelStatuses,
       toolSettingsSynced,
       mcpInputOperation,
       providerModelCatalogs,
@@ -103,9 +110,12 @@ export function useSettingsRuntime({
       refreshToolSettings,
       updateMcpInputs,
       restartMcpServer,
+      connectChannel,
     }),
     [
       configSnapshot,
+      channelStatuses,
+      connectChannel,
       controller,
       mcpServers,
       mcpInputOperation,

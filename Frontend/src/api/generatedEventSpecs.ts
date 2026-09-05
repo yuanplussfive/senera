@@ -182,6 +182,151 @@ export const EventSpecs = {
       projectionPointers: ["/data/chars", "/data/lines", "/data/tokenCount"],
     },
   },
+  "prompt.harness.composed": {
+    layer: "progress",
+    phase: "prompt",
+    observation: {
+      retention: "projection",
+      projectionPointers: [
+        "/data/profile",
+        "/data/sections/frozen/bytes",
+        "/data/sections/frozen/tokens",
+        "/data/sections/stable/bytes",
+        "/data/sections/stable/tokens",
+        "/data/sections/volatile/bytes",
+        "/data/sections/volatile/tokens",
+        "/data/merged/bytes",
+        "/data/merged/tokens",
+      ],
+    },
+  },
+  "continuity.snapshot": {
+    layer: "snapshot",
+    phase: "prompt",
+    observation: {
+      retention: "projection",
+      projectionPointers: [
+        "/data/enabled",
+        "/data/concepts",
+        "/data/graph",
+        "/data/graphRelations",
+        "/data/residentProfile",
+        "/data/factCatalog",
+        "/data/selection",
+        "/data/preset/enabled",
+        "/data/preset/activePresetName",
+        "/data/preset/title",
+        "/data/preset/corePersona",
+        "/data/preset/languageStyle",
+        "/data/evidenceCandidates",
+        "/data/eventCandidates",
+        "/data/rejections",
+        "/data/nearMisses",
+        "/data/rules",
+        "/data/signals",
+      ],
+    },
+  },
+  "continuity.rules.snapshot": {
+    layer: "snapshot",
+    phase: "prompt",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/rules", "/data/signals"],
+    },
+  },
+  "continuity.recall.settled": {
+    layer: "progress",
+    phase: "prompt",
+    observation: {
+      retention: "projection",
+      projectionPointers: [
+        "/data/injectedCount",
+        "/data/eventCount",
+        "/data/matchedByCounts",
+        "/data/directCount",
+        "/data/referenceCount",
+        "/data/nearMissCount",
+        "/data/degraded",
+        "/data/semanticStatus",
+        "/data/semanticIndexedCount",
+        "/data/semanticCompatibleCount",
+        "/data/totalLatencyMs",
+      ],
+    },
+  },
+  "continuity.recall.query": {
+    layer: "progress",
+    phase: "prompt",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/original", "/data/local"],
+    },
+  },
+  "agenda.snapshot": {
+    layer: "snapshot",
+    phase: "prompt",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/snapshot"],
+    },
+  },
+  "world.snapshot": {
+    layer: "snapshot",
+    phase: "prompt",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/snapshot"],
+    },
+  },
+  "todo.list.written": {
+    layer: "snapshot",
+    phase: "tool",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/snapshot"],
+    },
+  },
+  "execution.created": {
+    layer: "snapshot",
+    phase: "run",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/snapshot/active", "/data/execution"],
+    },
+  },
+  "execution.step.started": {
+    layer: "progress",
+    phase: "run",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/snapshot/active", "/data/execution", "/data/step"],
+    },
+  },
+  "execution.step.completed": {
+    layer: "snapshot",
+    phase: "run",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/snapshot/active", "/data/execution", "/data/step"],
+    },
+  },
+  "execution.blocked": {
+    layer: "error",
+    phase: "run",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/snapshot/active", "/data/execution", "/data/step"],
+    },
+  },
+  "execution.completed": {
+    layer: "terminal",
+    phase: "run",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/snapshot/active", "/data/execution"],
+    },
+  },
   "model.started": {
     layer: "progress",
     phase: "model",
@@ -334,15 +479,15 @@ export const EventSpecs = {
   },
   "assistant.message.created": {
     layer: "progress",
-    phase: "run",
+    phase: "model",
     observation: {
       retention: "projection",
       projectionPointers: [
         "/data/messageId",
         "/data/kind",
+        "/data/content",
         "/data/terminal",
         "/data/toolCount",
-        "/data/batchId",
         "/data/reasonCode",
       ],
     },
@@ -844,7 +989,13 @@ export const EventSpecs = {
     phase: "orchestration",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/active", "/data/taskCount", "/data/runningTaskIds", "/data/leaseAcquired"],
+      projectionPointers: [
+        "/data/active",
+        "/data/taskCount",
+        "/data/runningTaskIds",
+        "/data/pendingDeliveryCount",
+        "/data/recoveryMode",
+      ],
     },
   },
   "request.invalid": {
@@ -941,6 +1092,14 @@ export const EventSpecs = {
     observation: {
       retention: "projection",
       projectionPointers: ["/data/serverCount", "/data/revision"],
+    },
+  },
+  "channel.status.snapshot": {
+    layer: "snapshot",
+    phase: "config",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/statuses"],
     },
   },
 } as const satisfies Record<

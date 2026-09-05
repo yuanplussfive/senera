@@ -1,6 +1,14 @@
 import type { ToolSearchCapabilityManifest } from "../Types/AgentToolContractTypes.js";
 import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
 import type { AgentToolSearchRerankDocument } from "./AgentToolSearchReranker.js";
+import type { AgentToolCapabilityCacheState } from "./AgentToolCapabilitySessionCache.js";
+
+export const AgentToolSearchResultModes = {
+  Ranked: "ranked",
+  Catalog: "catalog",
+} as const;
+
+export type AgentToolSearchResultMode = (typeof AgentToolSearchResultModes)[keyof typeof AgentToolSearchResultModes];
 
 export interface AgentToolSearchOptions {
   query: string;
@@ -8,8 +16,11 @@ export interface AgentToolSearchOptions {
   plannerTags?: readonly string[];
   includeLoaded?: boolean;
   loadedToolNames?: readonly string[];
+  authorizedToolNames?: readonly string[];
   memoryEvidence?: readonly AgentToolSearchMemoryEvidence[];
   semanticEvidence?: readonly AgentToolSearchSemanticEvidence[];
+  /** Explicit discovery keeps every eligible Dynamic tool visible. */
+  resultMode?: AgentToolSearchResultMode;
 }
 
 export interface AgentToolSearchSemanticEvidence {
@@ -31,6 +42,12 @@ export interface AgentToolSearchResult {
   matchedTerms: string[];
   matchedCapabilities: AgentToolSearchCapabilityMatch[];
   learningSignals: AgentToolSearchLearningSignal[];
+  /** Runtime state is explicit so a visible tool is never mistaken for an
+   * undiscovered tool, and confirmed arguments can be reused without another
+   * search. */
+  state?: AgentToolCapabilityCacheState & {
+    readonly exposure: "visible" | "discoverable";
+  };
 }
 
 export interface AgentToolSearchSource {
@@ -65,6 +82,6 @@ export interface ToolSearchDocument extends AgentToolSearchRerankDocument {
   capabilities: ToolSearchCapabilityManifest[];
 }
 
-export type AgentToolSearchRankerName = "bm25" | "exact" | "semantic" | "memory" | "priority" | "source";
+export type AgentToolSearchRankerName = "bm25" | "exact" | "fuzzy" | "semantic" | "memory" | "priority" | "source";
 export type AgentToolSearchRankMap = Map<string, number>;
 export type AgentToolSearchRankedEntry = { toolName: string; score: number };

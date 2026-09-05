@@ -19,6 +19,9 @@ export const stepKindLabels = {
   retry: "workflow.step.kind.retry",
   answer: "workflow.step.kind.answer",
   error: "workflow.step.kind.error",
+  training: "workflow.plan.memoryRecall",
+  recall: "workflow.plan.memoryRecall",
+  harness: "workflow.plan.harness",
 } as const satisfies Record<TimelineStepKind, Parameters<typeof frontendMessage>[0]>;
 
 export function readStepKindLabel(kind: TimelineStepKind): string {

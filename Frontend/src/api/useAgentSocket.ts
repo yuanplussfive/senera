@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod/mini";
-import { type EventEnvelope, type WsRequest } from "./eventTypes";
+import { EventKinds, type EventEnvelope, type WsRequest } from "./eventTypes";
 import { EventChannels, EventTransportSpecs, type EventKind } from "./generatedEventCatalog";
 import {
   coalesceStreamingEvents,
@@ -89,6 +89,7 @@ const AgentSocketEventEnvelopeSchema = z.looseObject({
   scope: z.optional(
     z.looseObject({
       parentRequestId: z.optional(AgentSocketNonBlankStringSchema),
+      channel: z.optional(z.enum(["console", "qq", "telegram", "discord"])),
       workflowName: z.optional(AgentSocketNonBlankStringSchema),
       jobId: z.optional(AgentSocketNonBlankStringSchema),
       agentName: z.optional(AgentSocketNonBlankStringSchema),
@@ -202,6 +203,38 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   const dispatch = useCallback(
     (env: EventEnvelope): void => {
       if (!eventIdsRef.current.accept(env)) return;
+      if (isImmediateAgentControlEvent(env.kind)) {
+        if (pendingRef.current.length > 0) flush();
+        const batchConsumer = onEventsRef.current;
+        if (batchConsumer) {
+          try {
+            publishAgentTransportObservation({
+              connectionId: connectionIdRef.current,
+              observedAt: new Date().toISOString(),
+              direction: "inbound",
+              stage: "projected",
+              envelope: env,
+            });
+            batchConsumer([env]);
+          } catch (error) {
+            reportMalformedEvent(onMalformedEventRef.current, error);
+          }
+          return;
+        }
+        try {
+          publishAgentTransportObservation({
+            connectionId: connectionIdRef.current,
+            observedAt: new Date().toISOString(),
+            direction: "inbound",
+            stage: "projected",
+            envelope: env,
+          });
+          onEventRef.current?.(env);
+        } catch (error) {
+          reportMalformedEvent(onMalformedEventRef.current, error);
+        }
+        return;
+      }
       if (onEventsRef.current) {
         pendingRef.current.push(env);
         scheduleFlush();
@@ -447,9 +480,20 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return false;
     const serialized = JSON.stringify(req);
-    ws.send(serialized);
-    publishAgentTransportObservation(observeOutboundAgentRequest(connectionIdRef.current, req, serialized));
-    return true;
+    try {
+      ws.send(serialized);
+      publishAgentTransportObservation(observeOutboundAgentRequest(connectionIdRef.current, req, serialized));
+      return true;
+    } catch (error) {
+      publishAgentTransportObservation({
+        connectionId: connectionIdRef.current,
+        observedAt: new Date().toISOString(),
+        direction: "system",
+        stage: "malformed",
+        message: describeTransportError(error),
+      });
+      return false;
+    }
   }, []);
 
   const reconnect = useCallback((): void => {
@@ -464,6 +508,12 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   }, [clearRetrySchedule, connect]);
 
   return { status, send, reconnect };
+}
+
+function isImmediateAgentControlEvent(kind: string): boolean {
+  return (
+    kind === EventKinds.RunCancellationProgress || kind === EventKinds.RunCancelled || kind === EventKinds.SessionBusy
+  );
 }
 
 function reportMalformedEvent(handler: ((error: unknown) => void) | undefined, error: unknown): void {

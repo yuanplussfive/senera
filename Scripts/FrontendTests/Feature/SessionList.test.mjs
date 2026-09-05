@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -45,6 +45,29 @@ test("session panel renders store sessions and selects a row", async () => {
   const rows = Array.from(document.querySelectorAll("[data-session-row]"));
   expect(rows).toHaveLength(2);
   expect(new Set(rows.map((row) => (row.classList.contains("h-11") ? "h-11" : "h-9"))).size).toBe(1);
+});
+
+test("session panel reorders conversations from the drag handle", () => {
+  resetSessionStore({
+    sessions: {
+      first: session("first", "First session"),
+      second: session("second", "Second session"),
+      third: session("third", "Third session"),
+    },
+    sessionOrder: ["first", "second", "third"],
+    activeSessionId: "first",
+  });
+  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
+
+  const dataTransfer = createDataTransfer();
+  const rows = () => Array.from(document.querySelectorAll("[data-session-row]"));
+  const handles = screen.getAllByRole("button", { name: frontendMessage("session.reorder") });
+  fireEvent.dragStart(handles[0], { dataTransfer });
+  fireEvent.dragOver(rows()[1], { dataTransfer, clientY: 20 });
+  fireEvent.drop(rows()[1], { dataTransfer });
+
+  expect(useStore.getState().sessionOrder).toEqual(["second", "first", "third"]);
+  expect(rows().map((row) => row.getAttribute("data-session-row"))).toEqual(["second", "first", "third"]);
 });
 
 test("hides a session after the backend confirms that its history is missing", () => {
@@ -134,7 +157,7 @@ test("persistent session sidebar collapses into the prototype tool rail", async 
 
   await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
   expect(sidebar).toHaveAttribute("data-collapsed", "false");
-  expect(sidebar).toHaveClass("w-[246px]");
+  expect(sidebar).toHaveClass("w-full");
   expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toBeVisible();
 });
 
@@ -191,5 +214,19 @@ function session(sessionId, title) {
     messageCount: 0,
     messages: [],
     runs: [],
+  };
+}
+
+function createDataTransfer() {
+  const values = new Map();
+  return {
+    effectAllowed: "none",
+    dropEffect: "none",
+    setData(type, value) {
+      values.set(type, value);
+    },
+    getData(type) {
+      return values.get(type) ?? "";
+    },
   };
 }

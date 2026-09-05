@@ -8,7 +8,7 @@ import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriver
 import { Trash2 } from "lucide-react";
 import { cn } from "../../lib/util";
 import { Button, Dialog, DialogContent, InlineError, MenuSelect, ScrollArea, Tooltip } from "../../shared/ui";
-import { ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
+import { ModelProviderIconNames } from "./ModelProviderIcon";
 import {
   readBooleanWithTemplate,
   readModelCapabilities,
@@ -17,7 +17,15 @@ import {
 } from "./modelConfigData";
 import type { ModelCapabilitiesDraft, ModelProviderDraft } from "./modelConfigTypes";
 import { CapabilityToggle, ModelCapabilityIconItems, ToolPlanningModeControl } from "./ModelCapabilityControls";
-import { MenuRow, NumberRow, SectionLabel, SettingsTable, TextRow, ToggleRow } from "./ModelConfigPrimitives";
+import {
+  IconOption,
+  MenuRow,
+  NumberRow,
+  SectionLabel,
+  SettingsTable,
+  TextRow,
+  ToggleRow,
+} from "./ModelConfigPrimitives";
 
 export function ModelOptionsDialog({
   model,
@@ -254,20 +262,8 @@ export function ModelOptionsDialog({
                     ariaLabel={frontendMessage("config.model.icon")}
                     options={iconOptions}
                     disabled={disabled}
-                    renderValue={(value) =>
-                      value ? (
-                        <span className="inline-flex min-w-0 items-center gap-2">
-                          <ModelProviderIcon icon={value} size={18} />
-                          <span className="truncate">{value}</span>
-                        </span>
-                      ) : null
-                    }
-                    renderOption={(option) => (
-                      <span className="inline-flex min-w-0 items-center gap-2">
-                        <ModelProviderIcon icon={option.value} size={16} />
-                        <span className="truncate">{option.label}</span>
-                      </span>
-                    )}
+                    renderValue={(value) => (value ? <IconOption value={value} label={value} size={18} /> : null)}
+                    renderOption={(option) => <IconOption value={option.value} label={option.label} size={16} />}
                     onChange={(Icon) => onChange({ Icon })}
                   />
                 </MenuRow>

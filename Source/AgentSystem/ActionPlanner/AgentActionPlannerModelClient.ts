@@ -1,8 +1,9 @@
 import type {
-  MemoryConsolidationResult as BamlMemoryConsolidationResult,
-  MemoryLearningResult as BamlMemoryLearningResult,
-  MemoryWriteResolutionResult as BamlMemoryWriteResolutionResult,
+  ContinuityCapture as BamlContinuityCapture,
+  ContinuityRuleExtractionResult as BamlContinuityRuleExtractionResult,
   ControllerDecision as BamlControllerDecision,
+  GoalMicroLoopDecision as BamlGoalMicroLoopDecision,
+  ResidentIdleDecision as BamlResidentIdleDecision,
   PiToolArgumentsDraft as BamlPiToolArgumentsDraft,
   ToolRiskAudit as BamlToolRiskAudit,
   ToolLearningResult as BamlToolLearningResult,
@@ -14,9 +15,8 @@ import type {
 } from "../Types/AgentConfigTypes.js";
 import type { AgentBamlStructuredOutputTraceSink } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
 import type {
-  AgentMemoryConsolidationPromptInput,
-  AgentMemoryLearningPromptInput,
-  AgentMemoryWriteResolutionPromptInput,
+  AgentContinuityFactPromptInput,
+  AgentContinuityRulePromptInput,
   AgentToolLearningPromptInput,
 } from "./AgentLearningPromptJson.js";
 import type {
@@ -24,6 +24,8 @@ import type {
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
 } from "../PiShared/AgentPiPlanningTypes.js";
+import type { AgentGoalMicroLoopDecisionInput } from "../Agenda/AgentGoalMicroLoopRuntime.js";
+import type { AgentWorldResidentIdleDecisionInput } from "../World/AgentWorldResidentIdleRuntime.js";
 import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 import { AgentActionPlannerModelTransport } from "./AgentActionPlannerModelTransport.js";
 import { resolvePlannerProvider } from "./AgentActionPlannerProviderResolver.js";
@@ -33,7 +35,10 @@ import { AgentActionPlannerLearningModelCalls } from "./AgentActionPlannerLearni
 import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
 import type { AgentPiCompactionPromptInput } from "../PiShared/AgentPiCompactionPrompt.js";
-import type { AgentLanguageModelInvocationOptions } from "../ModelEndpoints/AgentLanguageModel.js";
+import type {
+  AgentLanguageModelInvocationOptions,
+  AgentStablePromptInvocationOptions,
+} from "../ModelEndpoints/AgentLanguageModel.js";
 
 export class AgentActionPlannerModelClient {
   readonly providerConfig: ResolvedAgentModelProviderConfig;
@@ -42,19 +47,22 @@ export class AgentActionPlannerModelClient {
   private readonly learning: AgentActionPlannerLearningModelCalls;
 
   constructor(
-    model: ResolvedAgentModelProviderConfig,
+    _model: ResolvedAgentModelProviderConfig,
     overrides: ResolvedAgentActionPlannerClientConfig,
     options: {
       maxRepairAttempts?: number;
+      omitOutputTokenLimit?: boolean;
       traceSink?: AgentBamlStructuredOutputTraceSink;
       usageSink?: AgentModelUsageSink;
       timingSink?: AgentModelTimingSink;
     } = {},
   ) {
-    this.providerConfig = resolvePlannerProvider(model, overrides);
+    this.providerConfig = resolvePlannerProvider(overrides);
     this.supportsVisualInput = this.providerConfig.Capabilities?.Vision === true;
     const caller = new AgentActionPlannerStructuredCaller(
-      new AgentActionPlannerModelTransport(this.providerConfig, options.usageSink, options.timingSink),
+      new AgentActionPlannerModelTransport(this.providerConfig, options.usageSink, options.timingSink, {
+        omitOutputTokenLimit: options.omitOutputTokenLimit,
+      }),
       options,
     );
     this.core = new AgentActionPlannerCoreModelCalls(caller);
@@ -66,6 +74,20 @@ export class AgentActionPlannerModelClient {
     options?: AgentLanguageModelInvocationOptions,
   ): Promise<BamlControllerDecision> {
     return this.core.evolveTurn(input, options);
+  }
+
+  decideGoalMicroLoop(
+    input: AgentGoalMicroLoopDecisionInput,
+    options?: AgentLanguageModelInvocationOptions,
+  ): Promise<BamlGoalMicroLoopDecision[]> {
+    return this.core.decideGoalMicroLoop(input, options);
+  }
+
+  decideResidentIdle(
+    input: AgentWorldResidentIdleDecisionInput,
+    options?: AgentLanguageModelInvocationOptions,
+  ): Promise<BamlResidentIdleDecision> {
+    return this.core.decideResidentIdle(input, options);
   }
 
   repairControllerDecision(
@@ -147,57 +169,31 @@ export class AgentActionPlannerModelClient {
     return this.learning.repairToolLearning(options, requestOptions);
   }
 
-  learnMemory(
-    input: AgentMemoryLearningPromptInput,
-    options?: { signal?: AbortSignal },
-  ): Promise<BamlMemoryLearningResult> {
-    return this.learning.learnMemory(input, options);
+  extractContinuityFacts(
+    input: AgentContinuityFactPromptInput,
+    options: AgentStablePromptInvocationOptions,
+  ): Promise<BamlContinuityCapture> {
+    return this.learning.extractContinuityFacts(input, options);
   }
 
-  repairMemoryLearning(
-    options: {
-      input: AgentMemoryLearningPromptInput;
-      invalidLearning: string;
-      issues: string[];
-    },
-    requestOptions?: { signal?: AbortSignal },
-  ): Promise<BamlMemoryLearningResult> {
-    return this.learning.repairMemoryLearning(options, requestOptions);
+  repairContinuityFacts(
+    options: { input: AgentContinuityFactPromptInput; invalidExtraction: string; issues: string[] },
+    requestOptions: AgentStablePromptInvocationOptions,
+  ): Promise<BamlContinuityCapture> {
+    return this.learning.repairContinuityFacts(options, requestOptions);
   }
 
-  consolidateMemoryCandidates(
-    input: AgentMemoryConsolidationPromptInput,
-    options?: { signal?: AbortSignal },
-  ): Promise<BamlMemoryConsolidationResult> {
-    return this.learning.consolidateMemoryCandidates(input, options);
+  extractContinuityRules(
+    input: AgentContinuityRulePromptInput,
+    options: AgentStablePromptInvocationOptions,
+  ): Promise<BamlContinuityRuleExtractionResult> {
+    return this.learning.extractContinuityRules(input, options);
   }
 
-  repairMemoryConsolidation(
-    options: {
-      input: AgentMemoryConsolidationPromptInput;
-      invalidConsolidation: string;
-      issues: string[];
-    },
-    requestOptions?: { signal?: AbortSignal },
-  ): Promise<BamlMemoryConsolidationResult> {
-    return this.learning.repairMemoryConsolidation(options, requestOptions);
-  }
-
-  resolveMemoryWrite(
-    input: AgentMemoryWriteResolutionPromptInput,
-    options?: { signal?: AbortSignal },
-  ): Promise<BamlMemoryWriteResolutionResult> {
-    return this.learning.resolveMemoryWrite(input, options);
-  }
-
-  repairMemoryWriteResolution(
-    options: {
-      input: AgentMemoryWriteResolutionPromptInput;
-      invalidResolution: string;
-      issues: string[];
-    },
-    requestOptions?: { signal?: AbortSignal },
-  ): Promise<BamlMemoryWriteResolutionResult> {
-    return this.learning.repairMemoryWriteResolution(options, requestOptions);
+  repairContinuityRules(
+    options: { input: AgentContinuityRulePromptInput; invalidExtraction: string; issues: string[] },
+    requestOptions: AgentStablePromptInvocationOptions,
+  ): Promise<BamlContinuityRuleExtractionResult> {
+    return this.learning.repairContinuityRules(options, requestOptions);
   }
 }

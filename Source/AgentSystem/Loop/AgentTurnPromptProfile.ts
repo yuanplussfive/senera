@@ -2,17 +2,23 @@ import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEnd
 
 export interface AgentTurnPromptProfile {
   readonly mode: AgentModelToolPlanningMode;
-  readonly templateName: string;
+  readonly frozenTemplateName: string;
+  readonly stableTemplateName: string;
+  readonly volatileTemplateName: string;
 }
 
 const PromptProfiles = {
   native: {
     mode: "native",
-    templateName: "PiNativeSystemPrompt",
+    frozenTemplateName: "SeneraFrozenSystemPrompt",
+    stableTemplateName: "PiNativeStableSystemPrompt",
+    volatileTemplateName: "PiTurnVolatileContext",
   },
   baml: {
     mode: "baml",
-    templateName: "PiBamlSystemPrompt",
+    frozenTemplateName: "SeneraFrozenSystemPrompt",
+    stableTemplateName: "PiBamlStableSystemPrompt",
+    volatileTemplateName: "PiTurnVolatileContext",
   },
 } as const satisfies Record<AgentModelToolPlanningMode, AgentTurnPromptProfile>;
 

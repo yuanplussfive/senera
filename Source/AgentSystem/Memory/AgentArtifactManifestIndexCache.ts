@@ -17,13 +17,18 @@ export class AgentArtifactManifestIndexCache {
     artifactRoot: string;
     workspaceRoot: string;
     requiredArtifactIds: readonly string[];
+    refresh?: boolean;
   }): Promise<ReadonlyMap<string, ArtifactManifestRecord>> {
     const key = path.resolve(input.artifactRoot);
     const entry = this.entries.get(key) ?? { lastUsed: Date.now() };
     entry.lastUsed = Date.now();
     this.entries.set(key, entry);
 
-    if (entry.index && input.requiredArtifactIds.every((artifactId) => entry.index?.has(artifactId))) {
+    if (
+      !input.refresh &&
+      entry.index &&
+      input.requiredArtifactIds.every((artifactId) => entry.index?.has(artifactId))
+    ) {
       return entry.index;
     }
 

@@ -150,6 +150,7 @@ type ActiveStreamSnapshot = Pick<
   | "decisionMode"
   | "plannedDecisionMode"
   | "modelProvider"
+  | "continuity"
 >;
 
 function captureActiveStream(
@@ -163,7 +164,7 @@ function captureActiveStream(
   if (
     !run ||
     run.status !== "running" ||
-    !(run.streamingRaw || run.visibleText || run.displayText || run.displayMessageId)
+    !(run.streamingRaw || run.visibleText || run.displayText || run.displayMessageId || run.continuity)
   ) {
     return undefined;
   }
@@ -185,6 +186,7 @@ function captureActiveStream(
     decisionMode: run.decisionMode,
     plannedDecisionMode: run.plannedDecisionMode,
     modelProvider: run.modelProvider,
+    continuity: run.continuity,
   };
 }
 

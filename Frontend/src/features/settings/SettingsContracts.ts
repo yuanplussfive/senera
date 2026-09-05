@@ -1,4 +1,5 @@
 import type {
+  ChannelStatusItem,
   ConfigMutationState,
   ConfigSnapshotData,
   McpInputValue,
@@ -54,4 +55,6 @@ export interface SettingsSystemConfigHandle extends ConfigMutationController {
   refreshToolSettings: () => boolean;
   updateMcpInputs: (serverId: string, values: Record<string, McpInputValue>, deletes?: string[]) => string | null;
   restartMcpServer: (serverId: string) => boolean;
+  channelStatuses: readonly ChannelStatusItem[];
+  connectChannel: (kind: ChannelStatusItem["kind"]) => boolean;
 }

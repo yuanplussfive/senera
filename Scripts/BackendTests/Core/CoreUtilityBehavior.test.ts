@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { errorMessage, toError } from "../../../Source/AgentSystem/Core/AgentErrors.js";
 import {
+  removeAgentPathWithRetry,
   readRegularTextFileSnapshotSync,
   readRegularTextFileSync,
   writeFileAtomic,
@@ -120,6 +121,33 @@ describe("core utilities", () => {
 
     expect(fs.readFileSync(filePath, "utf8")).toBe("second\n");
     expect(fs.readdirSync(outputDirectory)).toEqual(["state.json"]);
+  });
+
+  test("retries transient path locks before removing a managed file", async () => {
+    const directory = createTemporaryDirectory();
+    const filePath = path.join(directory, "session.jsonl");
+    fs.writeFileSync(filePath, "session\n", "utf8");
+    const busy = Object.assign(new Error("file is busy"), { code: "EBUSY" });
+    const removeSpy = vi.spyOn(fs.promises, "rm").mockRejectedValueOnce(busy);
+
+    await expect(removeAgentPathWithRetry(filePath, { retryDelayMs: 0 })).resolves.toBe("removed");
+    expect(fs.existsSync(filePath)).toBe(false);
+    expect(removeSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test("moves a still-locked file out of the active namespace after retries", async () => {
+    const directory = createTemporaryDirectory();
+    const filePath = path.join(directory, "session.jsonl");
+    fs.writeFileSync(filePath, "session\n", "utf8");
+    const busy = Object.assign(new Error("file is busy"), { code: "EBUSY" });
+    vi.spyOn(fs.promises, "rm").mockRejectedValue(busy);
+
+    await expect(
+      removeAgentPathWithRetry(filePath, { maxAttempts: 2, retryDelayMs: 0, deferOnBusy: true }),
+    ).resolves.toBe("deferred");
+    expect(fs.existsSync(filePath)).toBe(false);
+    expect(fs.readdirSync(directory)).toHaveLength(1);
+    expect(fs.readdirSync(directory)[0]).toMatch(/session\.jsonl\.pending-delete-/u);
   });
 
   test("reads regular text files through a reusable metadata snapshot", () => {

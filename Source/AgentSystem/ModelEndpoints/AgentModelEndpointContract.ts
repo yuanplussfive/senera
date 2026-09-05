@@ -21,6 +21,12 @@ export const AgentNativeToolApiByEndpoint = {
 
 export type AgentNativeToolApi = (typeof AgentNativeToolApiByEndpoint)[AgentModelEndpointKind];
 
+export type AgentNativeRequiredToolChoice =
+  | { readonly type: "function"; readonly name: string }
+  | { readonly type: "function"; readonly function: { readonly name: string } }
+  | { readonly type: "tool"; readonly name: string }
+  | "any";
+
 const AgentNativeToolSdkOwnedBasePath = {
   Responses: [],
   ChatCompletions: [],
@@ -49,6 +55,23 @@ export function resolveAgentNativeToolRoute(
 
 export function supportsNativeToolCalling(endpoint: AgentModelEndpointKind): boolean {
   return Object.hasOwn(AgentNativeToolApiByEndpoint, endpoint);
+}
+
+/** Projects one required tool name into the selected provider protocol. */
+export function projectAgentNativeRequiredToolChoice(
+  api: AgentNativeToolApi,
+  toolName: string,
+): AgentNativeRequiredToolChoice {
+  switch (api) {
+    case "openai-responses":
+      return { type: "function", name: toolName };
+    case "openai-completions":
+      return { type: "function", function: { name: toolName } };
+    case "anthropic-messages":
+      return { type: "tool", name: toolName };
+    case "google-generative-ai":
+      return "any";
+  }
 }
 
 function removeSdkOwnedBasePath(configuredBaseUrl: string, sdkOwnedPath: readonly string[]): string {

@@ -146,7 +146,7 @@ const DefaultTimelineProjectors: readonly AgentPlannerTimelineProjector[] = Obje
   defineAgentPlannerTimelineProjector({
     kinds: ["xml_observation"],
     payloadSchema: OptionalUnknownPayloadSchema,
-    project: (turn, payload) => {
+    project: (_turn, payload) => {
       const record = readRecord(payload);
       const value = record && "value" in record ? record.value : payload;
       return [

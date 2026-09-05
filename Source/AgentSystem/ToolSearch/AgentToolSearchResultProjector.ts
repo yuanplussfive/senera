@@ -1,108 +1,98 @@
 import { z } from "zod";
-import { AgentToolDisclosureLevels, type AgentDisclosedToolSearchResult } from "./AgentToolDisclosurePlanner.js";
-import type { ToolSearchArguments } from "./AgentToolSearchToolProtocol.js";
+import type { ToolSearchArguments } from "./AgentToolMetaToolProtocol.js";
+import type { AgentToolSearchResult } from "./AgentToolSearchTypes.js";
 
-const ToolSearchResultDisclosureSchema = z.object({
+const ToolSearchResultSchema = z.object({
   tools: z.object({
     item: z.array(
       z.object({
         name: z.string().trim().min(1),
-        disclosure: z.enum([
-          AgentToolDisclosureLevels.Reference,
-          AgentToolDisclosureLevels.Preview,
-          AgentToolDisclosureLevels.Callable,
-        ]),
+        confidence: z.number().optional(),
+        state: z
+          .object({
+            exposure: z.enum(["visible", "discoverable"]),
+            contract: z.enum(["unconfirmed", "confirmed"]),
+            reuse: z.enum(["none", "arguments"]),
+            reusableArguments: z.record(z.string(), z.unknown()).optional(),
+          })
+          .optional(),
       }),
     ),
   }),
 });
 
-export function buildToolSearchResultProjection(
-  args: ToolSearchArguments,
-  results: readonly AgentDisclosedToolSearchResult[],
-) {
+export function buildToolSearchResultProjection(args: ToolSearchArguments, results: readonly AgentToolSearchResult[]) {
+  const matchedResults = results.filter(hasMatchEvidence);
+  const bestScore = matchedResults[0]?.score ?? 0;
+  const reusable = results.some((result) => result.state?.reuse === "arguments");
   return {
     query: args.query,
-    preferredSources: {
-      item: args.preferredSources ?? [],
-    },
+    catalogRevision: "",
+    preferredSources: { item: args.preferredSources ?? [] },
     tools: {
-      item: results.map((result) => ({
-        name: result.toolName,
-        title: result.title,
-        disclosure: result.disclosure,
-        sources: {
-          item: result.sources,
-        },
-        summary: result.summary,
-        score: result.score,
-        matchedTerms: {
-          item: result.matchedTerms,
-        },
-        permissions: {
-          item: result.permissions,
-        },
-        matchedCapabilities: {
-          item: result.matchedCapabilities.map((capability) => ({
-            id: capability.id,
-            title: capability.title,
-            score: capability.score,
-            matchedFacets: {
-              item: capability.matchedFacets,
-            },
-            risk: capability.risk,
-          })),
-        },
-        learningSignals: {
-          item: result.learningSignals.map((signal) => ({
-            term: signal.term,
-            source: signal.source,
-            support: signal.support,
-            confidence: signal.confidence,
-            score: signal.score,
-          })),
-        },
-        reason: renderSearchReason(result),
-        ...previewFields(result),
-      })),
+      item: results.map((result, index) => projectToolSearchEntry(result, index, bestScore)),
     },
     guidance:
-      results.length > 0
-        ? "仅 disclosure=callable 的工具已加载完整调用契约，可以直接调用。preview/reference 是候选信息；如需调用，请用准确工具名再次搜索以提升披露级别。"
-        : "没有找到匹配工具；换更具体的任务、对象、路径、错误文本或能力关键词重新搜索。",
+      matchedResults.length > 0
+        ? reusable
+          ? "候选仅用于发现。标记为 confirmed/arguments 的工具已经有可复用参数；保持参数不变时直接调用。其它工具先调用 ToolDescribe 读取准确契约与副作用，再按需加载。"
+          : "候选仅用于发现。先调用 ToolDescribe 读取准确参数契约与副作用，再使用当前运行时提供的工具调用入口；若入口要求加载，则先加载。"
+        : results.length > 0
+          ? "没有直接匹配候选；以下仍列出当前授权范围内可发现的动态工具目录，请选择后调用 ToolDescribe。"
+          : "没有可发现的动态工具。",
   };
 }
 
+export function withToolSearchCatalogRevision<T extends Record<string, unknown>>(
+  projection: T,
+  catalogRevision: string,
+): T & { catalogRevision: string } {
+  return { ...projection, catalogRevision };
+}
+
 export function readToolNamesFromSearchResult(result: unknown): string[] {
-  const parsed = ToolSearchResultDisclosureSchema.safeParse(result);
+  const parsed = ToolSearchResultSchema.safeParse(result);
   return parsed.success
-    ? parsed.data.tools.item
-        .filter((entry) => entry.disclosure === AgentToolDisclosureLevels.Callable)
-        .map((entry) => entry.name)
+    ? parsed.data.tools.item.filter((entry) => (entry.confidence ?? 0) > 0).map((entry) => entry.name)
     : [];
 }
 
-function previewFields(result: AgentDisclosedToolSearchResult) {
-  return result.disclosure === AgentToolDisclosureLevels.Reference
-    ? {}
-    : {
-        whenToUse: result.whenToUse,
-        parameters: result.parameterSummary,
-      };
+function projectToolSearchEntry(result: AgentToolSearchResult, index: number, bestScore: number) {
+  const confidence = hasMatchEvidence(result) ? normalizeConfidence(result.score, bestScore) : 0;
+  const base = {
+    name: result.toolName,
+    title: result.title,
+    summary: result.summary,
+    rank: index + 1,
+    confidence,
+    ...(result.state ? { state: result.state } : {}),
+  };
+
+  if (confidence <= 0) return base;
+
+  return {
+    ...base,
+    sources: {
+      item: result.sources.map((source) => ({ id: source.id, title: source.title })),
+    },
+    matches: {
+      terms: { item: result.matchedTerms },
+      capabilities: {
+        item: result.matchedCapabilities.map((capability) => ({
+          id: capability.id,
+          title: capability.title,
+          facets: { item: capability.matchedFacets },
+        })),
+      },
+    },
+  };
 }
 
-function renderSearchReason(result: AgentDisclosedToolSearchResult): string {
-  const capabilities = result.matchedCapabilities.map((capability) =>
-    capability.matchedFacets.length > 0 ? `${capability.id} (${capability.matchedFacets.join(", ")})` : capability.id,
-  );
-  const terms = result.matchedTerms.length > 0 ? `terms: ${result.matchedTerms.join(", ")}` : "";
-  return [
-    capabilities.length > 0 ? `capabilities: ${capabilities.join("; ")}` : "",
-    terms,
-    result.learningSignals.length > 0
-      ? `learning: ${result.learningSignals.map((signal) => signal.term).join(", ")}`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("; ");
+function hasMatchEvidence(result: AgentToolSearchResult): boolean {
+  return ["bm25", "exact", "fuzzy", "semantic", "memory"].some((ranker) => result.ranks[ranker] !== undefined);
+}
+
+function normalizeConfidence(score: number, bestScore: number): number {
+  if (bestScore <= 0 || score <= 0) return 0;
+  return Number(Math.min(1, score / bestScore).toFixed(3));
 }

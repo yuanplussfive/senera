@@ -114,6 +114,11 @@ export function createTool(options: {
 
 export function createToolSearchConfig(): ResolvedAgentToolSearchConfig {
   return {
+    Fuzzy: {
+      Enabled: true,
+      MinScore: 0.25,
+      CandidateLimit: 8,
+    },
     Embedding: {
       Enabled: false,
       ScoreThreshold: 0,

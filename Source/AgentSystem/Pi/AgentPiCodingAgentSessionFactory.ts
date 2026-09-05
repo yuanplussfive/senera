@@ -80,7 +80,7 @@ export class AgentPiCodingAgentSessionFactory {
       thinkingLevel: input.thinkingLevel,
       runtimeExtension,
     });
-    return this.pooledSession({
+    const pooled = this.pooledSession({
       session,
       sessionManager,
       frame,
@@ -91,6 +91,8 @@ export class AgentPiCodingAgentSessionFactory {
       inheritProjectContext: input.inheritProjectContext,
       lastAccess,
     });
+    this.bindToolExposure(pooled, input.frame.toolExposure, input.activeToolNames);
+    return pooled;
   }
 
   async createManagement(
@@ -101,7 +103,9 @@ export class AgentPiCodingAgentSessionFactory {
     const toolAccessGrant = emptyAgentToolAccessGrant();
     const frameValue: AgentPiCodingAgentSessionFrame = {
       sessionId,
+      roleplayPresetActive: false,
       skillCatalogFingerprint: "",
+      nativeProviderToolNames: [],
       toolAccessGrant,
       toolExposure: new AgentToolExposureState(toolAccessGrant),
       selectedPromptTemplates: [],
@@ -130,7 +134,7 @@ export class AgentPiCodingAgentSessionFactory {
       thinkingLevel: "off",
       runtimeExtension,
     });
-    return this.pooledSession({
+    const pooled = this.pooledSession({
       session,
       sessionManager,
       frame,
@@ -141,6 +145,8 @@ export class AgentPiCodingAgentSessionFactory {
       inheritProjectContext: true,
       lastAccess,
     });
+    this.bindToolExposure(pooled, frameValue.toolExposure, []);
+    return pooled;
   }
 
   async configure(pooled: AgentPiPooledCodingSession, input: AgentPiCodingAgentLeaseInput): Promise<void> {
@@ -164,21 +170,46 @@ export class AgentPiCodingAgentSessionFactory {
     }
     const skills = this.skillResolver.resolve(input.frame.activeSkills, pooled.resourceLoader.getSkills());
     pooled.frame.update(input.frame, skills);
-    pooled.session.setActiveToolsByName([...input.activeToolNames]);
+    this.bindToolExposure(pooled, input.frame.toolExposure, input.activeToolNames);
     pooled.session.setThinkingLevel(input.thinkingLevel ?? "off");
     throwIfAborted(input.signal);
   }
 
   private pooledSession(
-    input: Omit<AgentPiPooledCodingSession, "activeLeases" | "disposeDiagnostics">,
+    input: Omit<AgentPiPooledCodingSession, "activeLeases" | "disposeDiagnostics" | "disposeToolExposure">,
   ): AgentPiPooledCodingSession {
     return {
       ...input,
       disposeDiagnostics: input.session.subscribe((event) => {
         void this.emitSessionDiagnostic(input.frame.snapshot(), event).catch(() => undefined);
       }),
+      disposeToolExposure: () => undefined,
       activeLeases: 0,
     };
+  }
+
+  private bindToolExposure(
+    pooled: AgentPiPooledCodingSession,
+    exposure: AgentToolExposureState,
+    activeToolNames: readonly string[],
+  ): void {
+    if (this.options.provider.toolPlanningMode === "native") {
+      pooled.disposeToolExposure();
+      pooled.disposeToolExposure = () => undefined;
+      pooled.toolExposure = exposure;
+      pooled.session.setActiveToolsByName([...activeToolNames]);
+      return;
+    }
+    if (pooled.toolExposure === exposure) {
+      pooled.session.setActiveToolsByName([...exposure.snapshot().exposedToolNames]);
+      return;
+    }
+    pooled.disposeToolExposure();
+    pooled.toolExposure = exposure;
+    pooled.disposeToolExposure = exposure.subscribe((snapshot) => {
+      pooled.session.setActiveToolsByName([...snapshot.exposedToolNames]);
+    });
+    pooled.session.setActiveToolsByName([...exposure.snapshot().exposedToolNames]);
   }
 
   private createResourceLoader(
@@ -190,6 +221,7 @@ export class AgentPiCodingAgentSessionFactory {
       cwd: this.options.workspaceRoot,
       agentDir: this.workspaceLayout.stateRoot,
       settingsManager,
+      systemPrompt: this.options.systemPromptPath,
       additionalSkillPaths: [...new Set([this.options.systemSkillsRoot, ...(this.options.additionalSkillPaths ?? [])])],
       noExtensions: true,
       noPromptTemplates: true,
@@ -215,6 +247,7 @@ export class AgentPiCodingAgentSessionFactory {
         provider: this.options.provider,
         modelProvider: this.options.modelProvider,
         compilerFactory: this.options.planningCompilerFactory,
+        residentSpeech: this.options.residentSpeech,
       },
       input.frame,
     ).get();

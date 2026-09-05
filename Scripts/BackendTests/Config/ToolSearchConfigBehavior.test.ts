@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { resolveToolSearchConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
+import { resolveToolSearchConfig, resolveVectorModelsConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
 import {
   ToolSearchSchema,
   VectorModelsSchema,
@@ -47,7 +47,67 @@ describe("tool search configuration", () => {
         Embedding: { Model: "duplicate-model-setting" },
       }).success,
     ).toBe(false);
-    expect(resolveToolSearchConfig(config()).Embedding.Enabled).toBe(true);
+    expect(resolveToolSearchConfig(config()).Embedding.Enabled).toBe(false);
+    expect(resolveToolSearchConfig(config()).Rerank.Enabled).toBe(false);
+  });
+
+  test("resolves bounded local fuzzy recovery independently from model services", () => {
+    expect(ToolSearchSchema.safeParse({ Fuzzy: { Enabled: true, MinScore: 0.8, CandidateLimit: 4 } }).success).toBe(
+      true,
+    );
+    expect(ToolSearchSchema.safeParse({ Fuzzy: { MinScore: 1.1 } }).success).toBe(false);
+    expect(ToolSearchSchema.safeParse({ Fuzzy: { CandidateLimit: 0 } }).success).toBe(false);
+
+    expect(
+      resolveToolSearchConfig(
+        config({
+          Defaults: { ToolSearch: { Fuzzy: { Enabled: false, CandidateLimit: 3 } } },
+          ToolSearch: { Fuzzy: { MinScore: 0.8 } },
+        }),
+      ).Fuzzy,
+    ).toEqual({ Enabled: false, MinScore: 0.8, CandidateLimit: 3 });
+  });
+
+  test("activates vector transports only for an enabled, capability-matching configured model", () => {
+    const vectorSettings = {
+      Embedding: { Enabled: true, ProviderId: "openai", Model: "embedding-model" },
+      Rerank: { Enabled: true, ProviderId: "openai", Model: "rerank-model" },
+    };
+    const endpoint = { Id: "vector-provider", Enabled: true, BaseUrl: "https://vector.example.test/v1" };
+    const enabledVectorSettings = {
+      Embedding: { ...vectorSettings.Embedding, ProviderId: endpoint.Id },
+      Rerank: { ...vectorSettings.Rerank, ProviderId: endpoint.Id },
+    };
+    expect(resolveVectorModelsConfig({ ...config(), VectorModels: vectorSettings })).toMatchObject({
+      Embedding: { Enabled: false },
+      Rerank: { Enabled: false },
+    });
+
+    const resolved = resolveVectorModelsConfig({
+      ...config(),
+      VectorModels: enabledVectorSettings,
+      ModelProviderEndpoints: [endpoint],
+      ModelProviders: [
+        {
+          Id: "embedding",
+          ProviderId: endpoint.Id,
+          Endpoint: "ChatCompletions",
+          Model: "embedding-model",
+          Capabilities: { Embedding: true },
+        },
+        {
+          Id: "rerank",
+          ProviderId: endpoint.Id,
+          Endpoint: "ChatCompletions",
+          Model: "rerank-model",
+          Capabilities: { Rerank: true },
+        },
+      ],
+    });
+    expect(resolved).toMatchObject({
+      Embedding: { Enabled: true, Model: "embedding-model" },
+      Rerank: { Enabled: true, Model: "rerank-model" },
+    });
   });
 
   test.each([

@@ -3,8 +3,8 @@ import { AgentToolSearchMemory } from "../../../Source/AgentSystem/ToolSearch/Ag
 import { InMemoryToolSearchMemoryStore } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryStore.js";
 import { projectLearningProjection } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryProjection.js";
 import {
+  AgentToolMetaToolNames,
   AgentToolSearchRuntime,
-  ToolSearchToolName,
 } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
 import { AgentToolSearchTokenizer } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchTokenizer.js";
 import { AgentToolSearchUsageMemory } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchUsageMemory.js";
@@ -13,16 +13,9 @@ import {
   readToolNamesFromSearchResult,
 } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchResultProjector.js";
 import type { AgentToolSearchResult } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchIndex.js";
-import {
-  AgentToolDisclosurePlanner,
-  AgentToolDisclosureLevels,
-  type AgentDisclosedToolSearchResult,
-} from "../../../Source/AgentSystem/ToolSearch/AgentToolDisclosurePlanner.js";
 import type { AgentToolSearchEpisode } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryTypes.js";
 import type { ExecutedToolCallResult } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import type { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
-import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
-import type { SeneraExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
 import {
   AgentToolFailureSources,
@@ -30,8 +23,6 @@ import {
   createAgentToolFailureOutcome,
 } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
 import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
-import { createAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
-import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 import {
   createRegistry,
   createTool,
@@ -40,11 +31,11 @@ import {
 } from "./ToolSearchTestFixtures.js";
 
 describe("ToolSearch runtime behavior", () => {
-  test("separates system ownership from bootstrap loading", async () => {
+  test("loads bootstrap System Tools and discovers explicitly dynamic System Tools", async () => {
     const runtime = new AgentToolSearchRuntime(
       createRegistry([
         createTool({
-          name: ToolSearchToolName,
+          name: AgentToolMetaToolNames.Search,
           title: "Tool search",
           summary: "Find tools",
           tags: ["search"],
@@ -62,6 +53,17 @@ describe("ToolSearch runtime behavior", () => {
           actions: ["execute"],
           targets: ["process"],
           priority: 90,
+          rootKind: "System",
+          loading: "Bootstrap",
+        }),
+        createTool({
+          name: "DocumentExtract",
+          title: "Document extract",
+          summary: "Extract text and structure from a document",
+          tags: ["document", "extract"],
+          actions: ["extract"],
+          targets: ["document"],
+          priority: 80,
           rootKind: "System",
           loading: "Dynamic",
         }),
@@ -86,7 +88,7 @@ describe("ToolSearch runtime behavior", () => {
       createToolLearningConfig(),
       "E:/workspace",
       createModelProvider(),
-      { memoryStore: new InMemoryToolSearchMemoryStore() },
+      { memoryStore: new InMemoryToolSearchMemoryStore(), availableExecutionTargets: () => ["Local"] },
     );
 
     expect(
@@ -94,7 +96,7 @@ describe("ToolSearch runtime behavior", () => {
         input: "no matching capability",
         currentLoadedTools: [],
       }),
-    ).toEqual([ToolSearchToolName]);
+    ).toEqual([AgentToolMetaToolNames.Search, "ShellCommandTool"]);
     expect(
       await runtime.resolvePlannedLoadedTools({
         input: "run a shell command",
@@ -102,7 +104,7 @@ describe("ToolSearch runtime behavior", () => {
         currentSetPolicy: "replace",
         preferredTools: ["ShellCommandTool"],
       }),
-    ).toEqual([ToolSearchToolName, "ShellCommandTool"]);
+    ).toEqual([AgentToolMetaToolNames.Search, "ShellCommandTool"]);
     expect(
       await runtime.resolvePlannedLoadedTools({
         input: "run a shell command",
@@ -110,152 +112,23 @@ describe("ToolSearch runtime behavior", () => {
         currentSetPolicy: "retain",
         preferredTools: ["ShellCommandTool"],
       }),
-    ).toEqual([ToolSearchToolName, "WeatherTool", "ShellCommandTool"]);
+    ).toEqual([AgentToolMetaToolNames.Search, "ShellCommandTool", "WeatherTool"]);
     expect(await runtime.resolveInitialLoadedTools("forecast city", ["ShellCommandTool"])).toEqual([
-      ToolSearchToolName,
-      "WeatherTool",
+      AgentToolMetaToolNames.Search,
+      "ShellCommandTool",
     ]);
     expect(await runtime.resolveInitialLoadedTools("no matching capability", ["WeatherTool"])).toEqual([
-      ToolSearchToolName,
+      AgentToolMetaToolNames.Search,
+      "ShellCommandTool",
       "WeatherTool",
     ]);
-
-    runtime.close();
-  });
-
-  test("host handler validates arguments, searches visible tools, and remembers candidates", async () => {
-    const runtime = new AgentToolSearchRuntime(
-      createRegistry([
-        createTool({
-          name: "ToolSearchTool",
-          title: "Tool search",
-          summary: "Find tools",
-          tags: ["search"],
-          actions: ["search"],
-          targets: ["tools"],
-          priority: 100,
-          rootKind: "System",
-          loading: "Bootstrap",
-        }),
-        createTool({
-          name: "WorkspaceReadFile",
-          title: "Read file",
-          summary: "Read workspace files",
-          tags: ["workspace", "read"],
-          actions: ["read"],
-          targets: ["workspace", "file"],
-          priority: 10,
-          rootKind: "User",
-        }),
-      ]) as unknown as AgentExtensionRegistry,
-      createToolSearchConfig(),
-      createToolLearningConfig({ Enabled: true }),
-      "E:/workspace",
-      createModelProvider(),
-      { memoryStore: new InMemoryToolSearchMemoryStore() },
+    await expect(runtime.search({ query: "extract text from a document" })).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ toolName: "DocumentExtract" })]),
     );
-    const handler = runtime.createHostHandler();
-    const grant = createAgentToolAccessGrant({
-      authorizedToolNames: [ToolSearchToolName, "WorkspaceReadFile"],
-      exposedToolNames: [ToolSearchToolName],
-    });
-    const toolExposure = new AgentToolExposureState(grant);
-
-    const invalid = await handler({ query: "" }, hostToolContext({ visibleToolNames: [] }));
-    const valid = await handler(
-      { query: "read workspace file", includeLoaded: "false" },
-      hostToolContext({
-        requestId: "request-1",
-        visibleToolNames: ["ToolSearchTool"],
-        toolExposure,
-      }),
+    await expect(runtime.search({ query: "run one shell command" })).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ toolName: "ShellCommandTool" })]),
     );
 
-    expect(invalid.response.ok).toBe(false);
-    expect(valid.response.ok).toBe(true);
-    expect(readToolNamesFromSearchResult(valid.response.result)).toEqual(["WorkspaceReadFile"]);
-    expect(toolExposure.snapshot()).toMatchObject({
-      generation: 1,
-      exposedToolNames: [ToolSearchToolName, "WorkspaceReadFile"],
-      preferredToolNames: ["WorkspaceReadFile"],
-    });
-    expect(
-      runtime.afterToolResults({
-        requestId: "request-1",
-        userInput: "read workspace file",
-        loadedTools: ["ToolSearchTool"],
-        execution: {
-          value: [
-            toolResult({
-              name: ToolSearchToolName,
-              result: valid.response.result,
-            }),
-            toolResult({
-              name: "WorkspaceReadFile",
-              artifact: artifactWithEvidence(),
-            }),
-          ],
-        },
-      }),
-    ).toEqual(["ToolSearchTool", "WorkspaceReadFile"]);
-
-    runtime.close();
-  });
-
-  test("projects the loaded source catalog into the host contract and validates preferences", async () => {
-    const registry = createRegistry([
-      createTool({
-        name: "TavilySearchTool",
-        title: "Web search",
-        summary: "Search current public information",
-        tags: ["web", "search"],
-        actions: ["search"],
-        targets: ["web"],
-        priority: 10,
-        source: {
-          id: "web",
-          title: "Web",
-          description: "Public internet information.",
-        },
-      }),
-    ]) as unknown as AgentExtensionRegistry;
-    const runtime = new AgentToolSearchRuntime(
-      registry,
-      createToolSearchConfig(),
-      createToolLearningConfig(),
-      "E:/workspace",
-      createModelProvider(),
-      { memoryStore: new InMemoryToolSearchMemoryStore() },
-    );
-    const contract = runtime.createHostContractProjection();
-    const schema = contract.projectInvocationSchema?.({} as never, {
-      type: "object",
-      properties: {
-        query: { type: "string" },
-        preferredSources: { type: "array", items: { type: "string" } },
-      },
-    });
-    const handler = runtime.createHostHandler();
-    const invalid = await handler(
-      { query: "current information", preferredSources: ["unknown"] },
-      hostToolContext({ visibleToolNames: [] }),
-    );
-    const valid = await handler(
-      { query: "current information", preferredSources: ["web"] },
-      hostToolContext({ visibleToolNames: [] }),
-    );
-
-    expect(schema).toMatchObject({
-      properties: {
-        preferredSources: {
-          uniqueItems: true,
-          items: { enum: ["web"] },
-        },
-      },
-    });
-    expect(contract.projectDescription?.({} as never, "Search tools")).toContain("web: Web");
-    expect(invalid.response.ok).toBe(false);
-    expect(valid.response.ok).toBe(true);
     runtime.close();
   });
 
@@ -270,7 +143,7 @@ describe("ToolSearch runtime behavior", () => {
     const runtime = new AgentToolSearchRuntime(
       createRegistry([
         createTool({
-          name: ToolSearchToolName,
+          name: AgentToolMetaToolNames.Search,
           title: "Tool search",
           summary: "Find tools",
           tags: ["search"],
@@ -309,14 +182,17 @@ describe("ToolSearch runtime behavior", () => {
           model: "multilingual-test",
           client: { embed },
         },
+        availableExecutionTargets: () => ["Local"],
       },
     );
 
-    await expect(runtime.resolveInitialLoadedTools("这两天 AI 有什么发展")).resolves.toContain(
-      "mcp__web_research__search",
+    await expect(runtime.search({ query: "这两天 AI 有什么发展" })).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ toolName: "mcp__web_research__search" })]),
     );
     runtime.refresh();
-    await runtime.resolveInitialLoadedTools("这两天 AI 有什么发展");
+    await expect(runtime.search({ query: "这两天 AI 有什么发展" })).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ toolName: "mcp__web_research__search" })]),
+    );
 
     expect(embed.mock.calls.map(([request]) => request.input.length)).toEqual([2, 1, 1]);
     runtime.close();
@@ -359,6 +235,7 @@ describe("ToolSearch runtime behavior", () => {
       {
         memoryStore: new InMemoryToolSearchMemoryStore(),
         rerank: { client: { rerank } },
+        availableExecutionTargets: () => ["Local"],
       },
     );
 
@@ -370,7 +247,7 @@ describe("ToolSearch runtime behavior", () => {
     runtime.close();
   });
 
-  test("opens the embedding circuit after a provider failure while preserving lexical retrieval", async () => {
+  test("keeps vector retrieval dormant when lexical retrieval already has candidates", async () => {
     const config = createToolSearchConfig();
     config.Embedding.Enabled = true;
     const embed = vi.fn().mockRejectedValue(new Error("embedding endpoint unavailable"));
@@ -393,6 +270,7 @@ describe("ToolSearch runtime behavior", () => {
       {
         memoryStore: new InMemoryToolSearchMemoryStore(),
         embedding: { model: "embedding-test", client: { embed } },
+        availableExecutionTargets: () => ["Local"],
       },
     );
 
@@ -401,7 +279,7 @@ describe("ToolSearch runtime behavior", () => {
 
     expect(first.map((result) => result.toolName)).toEqual(["WorkspaceSearch"]);
     expect(second.map((result) => result.toolName)).toEqual(["WorkspaceSearch"]);
-    expect(embed).toHaveBeenCalledOnce();
+    expect(embed).not.toHaveBeenCalled();
     runtime.close();
   });
 
@@ -555,7 +433,7 @@ describe("ToolSearch runtime behavior", () => {
     });
     const projection = projectLearningProjection(episode, tokenizer);
     const result = buildToolSearchResultProjection({ query: "workspace", includeLoaded: false }, [
-      disclosedSearchResult({
+      searchResult({
         toolName: "WorkspaceReadFile",
         learningSignals: [
           {
@@ -575,14 +453,16 @@ describe("ToolSearch runtime behavior", () => {
     expect(result.tools.item[0]).toEqual(
       expect.objectContaining({
         name: "WorkspaceReadFile",
-        learningSignals: {
-          item: [expect.objectContaining({ term: "workspace" })],
-        },
+        matches: expect.objectContaining({
+          terms: expect.objectContaining({
+            item: ["workspace"],
+          }),
+        }),
       }),
     );
   });
 
-  test("discloses full contracts only for relevant candidates that fit the turn budget", () => {
+  test("projects compact candidates without auto-disclosing their contracts", () => {
     const first = createTool({
       name: "WorkspaceReadFile",
       title: "Read file",
@@ -601,31 +481,79 @@ describe("ToolSearch runtime behavior", () => {
       targets: ["file"],
       priority: 10,
     });
-    const planner = new AgentToolDisclosurePlanner(
-      createRegistry([first, second]) as unknown as AgentExtensionRegistry,
-      createToolSearchConfig(),
-      createModelProvider(),
-    );
-    const planned = planner.plan(
-      "workspace files",
-      [searchResult({ toolName: first.name, score: 1 }), searchResult({ toolName: second.name, score: 0.99 })],
-      { model: "test-model", availableTokens: () => 1 },
-    );
-    const projection = buildToolSearchResultProjection({ query: "workspace files" }, planned);
-
-    expect(planned.map((result) => result.disclosure)).toEqual([
-      AgentToolDisclosureLevels.Callable,
-      AgentToolDisclosureLevels.Preview,
+    const projection = buildToolSearchResultProjection({ query: "workspace files" }, [
+      searchResult({ toolName: first.name, score: 1 }),
+      searchResult({ toolName: second.name, score: 0.99 }),
     ]);
-    expect(readToolNamesFromSearchResult(projection)).toEqual([first.name]);
+
+    expect(readToolNamesFromSearchResult(projection)).toEqual([first.name, second.name]);
     expect(projection.tools.item[0]).toMatchObject({
-      disclosure: AgentToolDisclosureLevels.Callable,
-      parameters: "path: string",
+      name: first.name,
+      rank: 1,
+      confidence: 1,
     });
     expect(projection.tools.item[1]).toMatchObject({
-      disclosure: AgentToolDisclosureLevels.Preview,
-      parameters: "path: string",
+      name: second.name,
+      rank: 2,
     });
+  });
+
+  test("catalog discovery keeps every dynamic tool visible while learning only matched tools", async () => {
+    const runtime = new AgentToolSearchRuntime(
+      createRegistry([
+        createTool({
+          name: AgentToolMetaToolNames.Search,
+          title: "Tool search",
+          summary: "Find tools",
+          tags: ["search"],
+          actions: ["search"],
+          targets: ["tools"],
+          priority: 100,
+          rootKind: "System",
+          loading: "Bootstrap",
+        }),
+        createTool({
+          name: "WeatherTool",
+          title: "Weather",
+          summary: "Fetch a weather forecast",
+          tags: ["weather"],
+          actions: ["forecast"],
+          targets: ["city"],
+          priority: 40,
+          loading: "Dynamic",
+        }),
+        createTool({
+          name: "DocumentExtract",
+          title: "Document extract",
+          summary: "Extract text and structure from a document",
+          tags: ["document", "extract"],
+          actions: ["extract"],
+          targets: ["document"],
+          priority: 30,
+          loading: "Dynamic",
+        }),
+      ]) as unknown as AgentExtensionRegistry,
+      createToolSearchConfig(),
+      createToolLearningConfig(),
+      "E:/workspace",
+      createModelProvider(),
+      { memoryStore: new InMemoryToolSearchMemoryStore(), availableExecutionTargets: () => ["Local"] },
+    );
+
+    const results = await runtime.search({ query: "weather", resultMode: "catalog" });
+    const projection = buildToolSearchResultProjection({ query: "weather" }, results);
+
+    expect(results.map((result) => result.toolName)).toEqual(["WeatherTool", "DocumentExtract"]);
+    expect(projection.tools.item).toHaveLength(2);
+    expect(projection.tools.item[0]).toMatchObject({ name: "WeatherTool", confidence: 1 });
+    expect(projection.tools.item[1]).toMatchObject({
+      name: "DocumentExtract",
+      confidence: 0,
+    });
+    expect(projection.tools.item[1]).not.toHaveProperty("matches");
+    expect(readToolNamesFromSearchResult(projection)).toEqual(["WeatherTool"]);
+
+    runtime.close();
   });
 });
 
@@ -677,21 +605,12 @@ function searchResult(overrides: Partial<AgentToolSearchResult> = {}): AgentTool
     whenToUse: "Inspect files",
     parameterSummary: "path: string",
     score: 1,
-    ranks: {},
+    ranks: { bm25: 1 },
     matchedTerms: ["workspace"],
     permissions: [],
     matchedCapabilities: [],
     learningSignals: [],
     ...overrides,
-  };
-}
-
-function disclosedSearchResult(
-  overrides: Partial<AgentDisclosedToolSearchResult> = {},
-): AgentDisclosedToolSearchResult {
-  return {
-    ...searchResult(overrides),
-    disclosure: overrides.disclosure ?? AgentToolDisclosureLevels.Callable,
   };
 }
 
@@ -734,60 +653,6 @@ function artifactWithEvidence(): ExecutedToolCallResult["artifact"] {
   };
 }
 
-function hostToolContext(
-  overrides: Pick<AgentHostToolContext, "requestId" | "visibleToolNames"> &
-    Partial<Pick<AgentHostToolContext, "toolExposure">>,
-): AgentHostToolContext {
-  const tool = createTool({
-    name: ToolSearchToolName,
-    title: "Tool search",
-    summary: "Find tools",
-    tags: ["search"],
-    actions: ["search"],
-    targets: ["tools"],
-    priority: 100,
-  });
-  return {
-    tool,
-    config: toolSearchHostConfig,
-    workspaceRoot: "E:/workspace",
-    registry: createRegistry([tool]),
-    executionEnv: unusedExecutionEnv,
-    ...overrides,
-  };
-}
-
 function createInMemoryToolSearchMemory(): AgentToolSearchMemory {
   return new AgentToolSearchMemory(createToolSearchConfig(), "E:/workspace", new InMemoryToolSearchMemoryStore());
 }
-
-const toolSearchHostConfig: AgentHostToolContext["config"] = {
-  ModelProviderEndpoints: [
-    {
-      Id: "test-endpoint",
-      BaseUrl: "https://model.example/v1",
-      ApiKey: "test-key",
-    },
-  ],
-  ModelProviders: [
-    {
-      Id: "test-model",
-      ProviderId: "test-endpoint",
-      Endpoint: "ChatCompletions",
-      Model: "test-model",
-    },
-  ],
-};
-
-const unusedExecutionEnv = {
-  workspaceRoot: "E:/workspace",
-  async executeShell() {
-    throw new Error("executeShell is not used by ToolSearch tests.");
-  },
-  spawnProcess() {
-    throw new Error("spawnProcess is not used by ToolSearch tests.");
-  },
-  spawnPersistentProcess() {
-    throw new Error("spawnPersistentProcess is not used by ToolSearch tests.");
-  },
-} as unknown as SeneraExecutionEnv;

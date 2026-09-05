@@ -17,6 +17,7 @@ export interface RuntimeModelAssignmentCandidate {
 export interface RuntimeModelAssignmentSelection {
   value: string;
   unavailableLabel?: string;
+  inherited?: boolean;
 }
 
 export interface RuntimeModelPoolAssignmentSelection {
@@ -48,7 +49,7 @@ export function projectSectionConfigFields(
     if (field.modelSelection.providerPath) {
       hiddenPaths.add(pathKey(field.modelSelection.providerPath));
     }
-    if (field.modelSelection.inheritance) {
+    if (field.modelSelection.inheritance?.path) {
       hiddenPaths.add(pathKey(field.modelSelection.inheritance.path));
     }
   }
@@ -113,7 +114,11 @@ export function readRuntimeModelAssignmentSelection({
 }): RuntimeModelAssignmentSelection {
   assertSingleModelAssignment(field);
   if (field.modelSelection.valueKind === "model-id") {
-    const modelId = readString(readFieldValue(field, draft)) ?? defaultModelId;
+    const configuredModelId = readString(readPathValue(draft, field.path));
+    if (field.modelSelection.inheritance?.source === "default-model" && !configuredModelId) {
+      return { value: inheritedValue(field), inherited: true };
+    }
+    const modelId = configuredModelId ?? readString(readFieldValue(field, draft)) ?? defaultModelId;
     if (!modelId || candidates.some((candidate) => candidate.model.Id === modelId)) {
       return { value: modelId };
     }
@@ -147,12 +152,12 @@ export function readRuntimeModelPoolAssignmentSelection({
   draft: JsonConfigObject;
 }): RuntimeModelPoolAssignmentSelection {
   assertModelPoolAssignment(field);
-  const inheritance = field.modelSelection.inheritance;
-  const inheritanceField = inheritance
-    ? allFields.find((candidate) => pathKey(candidate.path) === pathKey(inheritance.path))
+  const inheritancePath = field.modelSelection.inheritance?.path;
+  const inheritanceField = inheritancePath
+    ? allFields.find((candidate) => pathKey(candidate.path) === pathKey(inheritancePath))
     : undefined;
-  const inheritanceValue = inheritance
-    ? (readPathValue(draft, inheritance.path) ?? inheritanceField?.effectiveValue)
+  const inheritanceValue = inheritancePath
+    ? (readPathValue(draft, inheritancePath) ?? inheritanceField?.effectiveValue)
     : false;
   return {
     inheritanceEnabled: inheritanceValue === true,
@@ -175,6 +180,21 @@ export function writeRuntimeModelAssignment(
     : withModel;
 }
 
+export function writeRuntimeModelAssignmentInheritance(
+  draft: JsonConfigObject,
+  field: RuntimeModelAssignmentField,
+): JsonConfigObject {
+  assertSingleModelAssignment(field);
+  if (field.modelSelection.inheritance?.source !== "default-model") {
+    throw new TypeError(`Model assignment ${field.modelSelection.id} cannot inherit the default model.`);
+  }
+  return writeJsonConfigFieldValue(draft, field.path, undefined);
+}
+
+export function isRuntimeModelAssignmentInheritanceValue(field: RuntimeModelAssignmentField, value: string): boolean {
+  return value === inheritedValue(field);
+}
+
 export function writeRuntimeModelPoolAssignment(
   draft: JsonConfigObject,
   field: RuntimeModelAssignmentField,
@@ -182,7 +202,7 @@ export function writeRuntimeModelPoolAssignment(
 ): JsonConfigObject {
   assertModelPoolAssignment(field);
   let next = writeJsonConfigFieldValue(draft, field.path, [...selection.modelIds]);
-  if (field.modelSelection.inheritance) {
+  if (field.modelSelection.inheritance?.path) {
     next = writeJsonConfigFieldValue(next, field.modelSelection.inheritance.path, selection.inheritanceEnabled);
   }
   return next;
@@ -209,6 +229,10 @@ function missingValue(field: RuntimeModelAssignmentField, value: string): string
   return `missing:${field.modelSelection.id}:${value}`;
 }
 
+function inheritedValue(field: RuntimeModelAssignmentField): string {
+  return `inherit:${field.modelSelection.id}`;
+}
+
 function namespaceField(
   field: ConfigFormFieldData,
   section: string,
@@ -220,7 +244,7 @@ function namespaceField(
         ...(field.modelSelection.providerPath
           ? { providerPath: [...pathPrefix, ...field.modelSelection.providerPath] }
           : {}),
-        ...(field.modelSelection.inheritance
+        ...(field.modelSelection.inheritance?.path
           ? {
               inheritance: {
                 ...field.modelSelection.inheritance,

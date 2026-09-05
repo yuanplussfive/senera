@@ -1,5 +1,3 @@
-import { Ajv } from "ajv";
-import type { ValidateFunction } from "ajv";
 import type { Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type {
@@ -26,7 +24,10 @@ import type {
 } from "../PiShared/AgentPiPlanningTypes.js";
 import { AgentPiPlanningContextCompiler } from "./AgentPiPlanningContextCompiler.js";
 import { errorMessage } from "../Core/AgentErrors.js";
-import { formatAjvIssue } from "../Diagnostics/AgentValidationIssue.js";
+import {
+  formatAgentToolContractValidationIssue,
+  validateToolContractValue,
+} from "../ToolRuntime/AgentToolSignatureArgumentValidator.js";
 import type { AgentPiReadyToolPlanNode, AgentPiToolPlanCoordinator } from "../PiShared/AgentPiToolPlanCoordinator.js";
 import { matchByKind } from "../Core/AgentMatch.js";
 import { orderToolNamesByPreference, type AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
@@ -36,12 +37,7 @@ import type { AgentPiTurnStateOptions } from "./AgentPiTurnState.js";
 import type { AgentPiModelApi } from "./AgentPiTypes.js";
 import type { AgentPiCompactionPromptInput } from "../PiShared/AgentPiCompactionPrompt.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
-
-const ajv = new Ajv({
-  allErrors: true,
-  strict: false,
-  allowUnionTypes: true,
-});
+import { createAgentPiPromptCacheOptions, projectAgentPiPromptCacheModel } from "./AgentPiPromptCache.js";
 
 const EmptyObjectParameterSchema = {
   type: "object",
@@ -70,7 +66,12 @@ export interface AgentPiPlanningCompileRequest {
 
 export interface AgentPiPlanningCompilerPort {
   compile(input: AgentPiPlanningCompileRequest): Promise<AgentPiAssistantCompilation>;
-  summarize(input: AgentPiCompactionPromptInput, signal?: AbortSignal): Promise<string>;
+  summarize(input: AgentPiCompactionPromptInput, options?: AgentPiPlanningSummaryOptions): Promise<string>;
+}
+
+export interface AgentPiPlanningSummaryOptions {
+  readonly signal?: AbortSignal;
+  readonly sessionId?: string;
 }
 
 export interface AgentPiPlanningCompilerFactory {
@@ -142,23 +143,49 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
       preferredToolNames: input.toolAccessGrant.preferredToolNames,
     };
     const toolChoice = resolveToolChoiceConstraint(input.context, input.toolAccessGrant, toolExposure.exposedToolNames);
-    const controller = this.buildControllerContext(input, toolChoice.allowedTools);
-    const promptInput = controller.input;
     const attachments =
       input.model.input.includes("image") && this.client.supportsVisualInput !== false
         ? projectContextImageAttachments(input.context)
         : [];
+    let controller = this.buildControllerContext(input, toolChoice.allowedTools, attachments);
+    const toolPlan = input.runtime?.toolPlan;
+    toolPlan?.reconcile(controller.input.planningContext.toolTranscript);
+    controller.input.seneraRuntime.planState = toolPlan?.state();
+
+    // Reconciliation can add terminal plan state after the first projection. Keep
+    // the final planner payload within the same canonical budget before invoking
+    // the model, rather than relying on the provider to reject it later.
+    const finalInspection = input.runtime?.tokenBudget?.inspectModelInput({
+      promptInput: controller.input,
+      ...(attachments.length > 0 ? { attachments } : {}),
+    });
+    if (finalInspection && !finalInspection.fits) {
+      controller = this.buildControllerContext(input, toolChoice.allowedTools, attachments);
+      controller.input.seneraRuntime.planState = toolPlan?.state();
+    }
+    const promptInput = controller.input;
+    const cache = input.runtime?.sessionId
+      ? createAgentPiPromptCacheOptions({
+          phase: "baml-planning",
+          sessionId: input.runtime.sessionId,
+          model: { provider: input.model.provider, api: input.model.api, model: input.model.id },
+          stablePrefix: {
+            systemPrompt: input.context.systemPrompt,
+            tools:
+              input.context.tools?.map(({ name, description, parameters }) => ({ name, description, parameters })) ??
+              [],
+          },
+        })
+      : undefined;
     const modelOptions: AgentLanguageModelInvocationOptions = {
       ...(input.signal ? { signal: input.signal } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
+      ...(cache ? { cache } : {}),
     };
     input.runtime?.tokenBudget?.validateModelInput({
       promptInput,
       attachments: modelOptions.attachments,
     });
-    const toolPlan = input.runtime?.toolPlan;
-    toolPlan?.reconcile(promptInput.planningContext.toolTranscript);
-    promptInput.seneraRuntime.planState = toolPlan?.state();
     const pendingCalls = toolPlan?.ready(promptInput.planningContext.toolExecution === "parallel") ?? [];
     if (pendingCalls.length > 0) {
       return this.projectToolCalls(pendingCalls, promptInput, controller.toolContracts, modelOptions, toolPlan);
@@ -168,8 +195,18 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
     return this.projectDecision(decision, promptInput, controller.toolContracts, modelOptions, toolPlan);
   }
 
-  async summarize(input: AgentPiCompactionPromptInput, signal?: AbortSignal): Promise<string> {
-    const result = await this.client.summarizePiConversation(input, { signal });
+  async summarize(input: AgentPiCompactionPromptInput, options: AgentPiPlanningSummaryOptions = {}): Promise<string> {
+    const cache = options.sessionId
+      ? createAgentPiPromptCacheOptions({
+          phase: "baml-compaction",
+          sessionId: options.sessionId,
+          model: projectAgentPiPromptCacheModel(this.options.modelProvider),
+        })
+      : undefined;
+    const result = await this.client.summarizePiConversation(input, {
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...(cache ? { cache } : {}),
+    });
     if (!result || typeof result !== "object" || Array.isArray(result)) {
       throw new Error("Pi compaction compiler returned an invalid summary object.");
     }
@@ -444,6 +481,7 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
   private buildControllerContext(
     input: AgentPiPlanningCompileRequest,
     allowedTools: string[],
+    attachments: readonly AgentLanguageModelImageAttachment[],
   ): AgentPiControllerContext {
     const tools = input.context.tools ?? [];
     const allowed = new Set(allowedTools);
@@ -473,21 +511,41 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
       planState: input.runtime?.toolPlan?.state(),
       ...(conversationSummaryText ? { conversationSummaryText } : {}),
     };
-    const compilation = this.contextCompiler.compile({
-      model: input.model.id,
-      context: { ...input.context, tools: selectedTools },
-      maxTokens: input.options?.maxTokens,
-      reservedTokens: this.tokenProjector.countJson({ seneraRuntime }),
-      toolExecution: "parallel",
-    });
-    return {
-      input: {
-        planningContext: compilation.planningContext,
-        routingCards: compilation.routingCards,
-        seneraRuntime,
-      },
-      toolContracts: compilation.toolContracts,
-    };
+    const context = { ...input.context, tools: selectedTools };
+    let reservedTokens = this.tokenProjector.countJson({ seneraRuntime });
+    const tokenBudget = input.runtime?.tokenBudget;
+    while (true) {
+      const compilation = this.contextCompiler.compile({
+        model: input.model.id,
+        context,
+        maxTokens: input.options?.maxTokens,
+        reservedTokens,
+        toolExecution: "parallel",
+      });
+      const controller: AgentPiControllerContext = {
+        input: {
+          planningContext: compilation.planningContext,
+          routingCards: compilation.routingCards,
+          seneraRuntime,
+        },
+        toolContracts: compilation.toolContracts,
+      };
+      if (!tokenBudget) return controller;
+
+      const inspection = tokenBudget.inspectModelInput({
+        promptInput: controller.input,
+        ...(attachments.length > 0 ? { attachments } : {}),
+      });
+      if (inspection.fits) return controller;
+
+      const excessTokens = inspection.tokenCount - inspection.capacityTokens;
+      const nextReservedTokens = reservedTokens + Math.max(1, Math.ceil(excessTokens));
+      const reservationCeiling = Math.max(1, Math.floor(tokenBudget.contextWindowTokens));
+      if (!Number.isFinite(excessTokens) || excessTokens <= 0 || nextReservedTokens >= reservationCeiling) {
+        return controller;
+      }
+      reservedTokens = nextReservedTokens;
+    }
   }
 }
 
@@ -508,28 +566,14 @@ function projectContextImageAttachments(context: Context): AgentLanguageModelIma
 }
 
 function validateJsonSchema(schema: unknown, value: Record<string, unknown>): string[] {
-  let validate: ValidateFunction;
+  const normalized = normalizeParameterSchema(schema);
   try {
-    validate = compileJsonSchema(schema);
+    return validateToolContractValue({ schema: normalized, value }).map((issue) =>
+      formatAgentToolContractValidationIssue(issue, "arguments"),
+    );
   } catch (error) {
     return [`tool schema is invalid: ${errorMessage(error)}`];
   }
-  return validate(value)
-    ? []
-    : (validate.errors ?? []).map((error) => formatAjvIssue(error, { rootLabel: "arguments" }));
-}
-
-const schemaValidatorCache = new WeakMap<object, ValidateFunction>();
-
-function compileJsonSchema(schema: unknown): ValidateFunction {
-  const normalized = normalizeParameterSchema(schema);
-  const cached = schemaValidatorCache.get(normalized);
-  if (cached) {
-    return cached;
-  }
-  const validate = ajv.compile(normalized);
-  schemaValidatorCache.set(normalized, validate);
-  return validate;
 }
 
 function normalizeParameterSchema(schema: unknown): Record<string, unknown> {

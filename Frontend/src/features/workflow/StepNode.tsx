@@ -22,6 +22,9 @@ const KindIcon: Record<TimelineStepKind, AppIconName> = {
   retry: "activity",
   answer: "message",
   error: "cancel",
+  training: "brain",
+  recall: "search",
+  harness: "activity",
 };
 
 type WorkflowStepNode = Node<StepNodeData>;

@@ -1,7 +1,7 @@
 import type { ResolvedAgentToolLearningConfig } from "../Types/AgentConfigTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolSearchEpisode, AgentToolSearchMemory } from "./AgentToolSearchMemory.js";
-import { type PendingToolSearch, ToolSearchToolName } from "./AgentToolSearchRuntimeTypes.js";
+import { AgentToolMetaToolNames, type PendingToolSearch } from "./AgentToolSearchRuntimeTypes.js";
 import { readToolNamesFromSearchResult } from "./AgentToolSearchResultProjector.js";
 import { assessToolSearchEpisode } from "./AgentToolSearchEpisodeScorer.js";
 import type { AgentToolLearningEpisodeDraft } from "./AgentToolLearningRuntime.js";
@@ -42,12 +42,16 @@ export class AgentToolSearchUsageMemory {
     activeSkills?: readonly AgentActivatedSkill[];
   }): void {
     const { requestId, results, userInput } = options;
-    const chosenTools = results.map((result) => result.name).filter((name) => name !== ToolSearchToolName);
+    const chosenTools = results
+      .map((result) => result.name)
+      .filter((name) => !Object.values(AgentToolMetaToolNames).includes(name as never));
     const pending = this.pendingSearches.get(requestId) ?? [];
     const relevant =
       [...pending].reverse().find((entry) => chosenTools.some((name) => entry.candidates.includes(name))) ??
       (chosenTools.length === 0 ? pending.at(-1) : undefined);
-    const assessment = assessToolSearchEpisode(results.filter((result) => result.name !== ToolSearchToolName));
+    const assessment = assessToolSearchEpisode(
+      results.filter((result) => !Object.values(AgentToolMetaToolNames).includes(result.name as never)),
+    );
     const episode = {
       query: relevant?.query ?? userInput,
       queryTokens: relevant?.queryTokens ?? [],
@@ -121,7 +125,7 @@ export class AgentToolSearchUsageMemory {
 
   extractSearchResultToolNames(results: ExecutedToolCallResult[]): string[] {
     return results
-      .filter((result) => result.name === ToolSearchToolName)
+      .filter((result) => result.name === AgentToolMetaToolNames.Search)
       .flatMap((result) => readToolNamesFromSearchResult(result.result));
   }
 }

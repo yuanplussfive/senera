@@ -43,7 +43,7 @@ export function readAgentToolEvidenceCandidates(value: unknown): AgentToolEviden
 /**
  * Resolves adapter-declared asset IDs after the Artifact transaction has
  * materialized their files. This keeps the result adapter independent from
- * filesystem layout while giving the model a usable, traceable locator.
+ * filesystem layout while giving the model a durable, traceable resource URI.
  */
 export function attachAgentToolEvidenceAssets(
   candidates: readonly AgentToolEvidenceCandidate[],
@@ -58,17 +58,17 @@ export function attachAgentToolEvidenceAssets(
 
     const facts = [
       ...(candidate.facts ?? []),
-      { name: "asset_uri", value: asset.workspacePath },
+      { name: "asset_uri", value: asset.resourceUri },
       { name: "content_locator", value: candidate.locator },
     ];
     return {
       ...candidate,
-      locator: asset.workspacePath,
+      locator: asset.resourceUri,
       facts: uniqueFacts(facts),
-      artifactRefs: [...new Set([...(candidate.artifactRefs ?? []), asset.workspacePath])],
+      artifactRefs: [...new Set([...(candidate.artifactRefs ?? []), asset.resourceUri])],
       metadata: {
         ...(candidate.metadata ?? {}),
-        assetPath: asset.workspacePath,
+        resourceUri: asset.resourceUri,
       },
     };
   });

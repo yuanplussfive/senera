@@ -1,4 +1,5 @@
 import MiniSearch from "minisearch";
+import fuzzysort, { type Prepared as FuzzyPrepared } from "fuzzysort";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { cosineSimilarity } from "../Vector/AgentVectorSimilarity.js";
 import type {
@@ -32,6 +33,8 @@ export interface AgentCapabilitySearchDocument {
   readonly capabilityText: string;
   readonly capabilityFacets: string;
   readonly parameters: string;
+  /** Short, explicitly declared identifiers and aliases only. Never long-form prose. */
+  readonly fuzzyText: string;
   readonly semanticText: string;
 }
 
@@ -46,6 +49,8 @@ export interface AgentCapabilitySemanticMatch {
   readonly name: string;
   readonly score: number;
 }
+
+export type AgentCapabilityFuzzyMatch = AgentCapabilitySemanticMatch;
 
 export interface AgentCapabilityRerankMatch extends AgentCapabilitySemanticMatch {
   readonly rank: number;
@@ -95,10 +100,9 @@ export class AgentCapabilitySearchIndex {
     ReadonlyMap<string, AgentCapabilitySearchDocument>
   >;
   private readonly lexicalIndex: MiniSearch<AgentCapabilitySearchDocument>;
+  private readonly fuzzyTermsByDocument = new Map<string, readonly FuzzyPrepared[]>();
   private readonly embeddingCache: Map<string, readonly number[]>;
   private embeddingPreparation: Promise<void> | undefined;
-  private embeddingFailure: unknown;
-  private embeddingUnavailable = false;
   private embeddingFailureReported = false;
 
   constructor(
@@ -120,6 +124,14 @@ export class AgentCapabilitySearchIndex {
       processTerm: (term) => term,
     });
     this.lexicalIndex.addAll(documents);
+    documents.forEach((document) => {
+      const terms = document.fuzzyText
+        .split("\n")
+        .map((term) => term.trim())
+        .filter(Boolean)
+        .map((term) => fuzzysort.prepare(term));
+      this.fuzzyTermsByDocument.set(document.id, terms);
+    });
   }
 
   lexical(query: string, kind: AgentCapabilityKind, allowedNames?: ReadonlySet<string>): AgentCapabilityLexicalMatch[] {
@@ -137,6 +149,37 @@ export class AgentCapabilitySearchIndex {
       }));
   }
 
+  fuzzy(
+    query: string,
+    kind: AgentCapabilityKind,
+    options: { minScore: number; limit: number; allowedNames?: ReadonlySet<string> },
+  ): AgentCapabilityFuzzyMatch[] {
+    const queryTerms = this.options.tokenizer.tokenize(query).filter((term) => term.length >= 2);
+    if (queryTerms.length === 0) return [];
+
+    return this.documents
+      .filter(
+        (document) => document.kind === kind && (!options.allowedNames || options.allowedNames.has(document.name)),
+      )
+      .flatMap((document) => {
+        const terms = this.fuzzyTermsByDocument.get(document.id) ?? [];
+        const matched = queryTerms.flatMap((queryTerm) => {
+          const score = bestFuzzyScore(queryTerm, terms);
+          return score >= options.minScore ? [score] : [];
+        });
+        if (matched.length === 0) return [];
+        return [
+          {
+            name: document.name,
+            // Prefer candidates that match more explicit intent terms; average score breaks ties.
+            score: matched.length + matched.reduce((total, score) => total + score, 0) / matched.length,
+          },
+        ];
+      })
+      .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
+      .slice(0, options.limit);
+  }
+
   async semantic(
     query: string,
     kind: AgentCapabilityKind,
@@ -149,16 +192,24 @@ export class AgentCapabilitySearchIndex {
 
     try {
       await this.ensureDocumentEmbeddings(signal);
+      this.embeddingFailureReported = false;
       throwIfAborted(signal);
       const queryVector = (await embedding.client.embed({ input: [query], signal })).vectors[0];
       throwIfAborted(signal);
-      if (!queryVector) return [];
+      if (!queryVector || queryVector.length === 0) {
+        throw new Error("Capability embedding response did not contain a query vector.");
+      }
 
       return this.documents
         .filter((document) => document.kind === kind && (!allowedNames || allowedNames.has(document.name)))
         .flatMap((document) => {
           const vector = this.embeddingCache.get(createAgentCapabilityEmbeddingIdentity(embedding.model, document));
-          if (!vector || vector.length !== queryVector.length) return [];
+          if (!vector) return [];
+          if (vector.length !== queryVector.length) {
+            throw new Error(
+              `Capability embedding dimension mismatch for ${document.name}: ${vector.length} != ${queryVector.length}.`,
+            );
+          }
           const score = cosineSimilarity(queryVector, vector);
           return score >= embedding.scoreThreshold ? [{ name: document.name, score }] : [];
         })
@@ -210,7 +261,6 @@ export class AgentCapabilitySearchIndex {
   }
 
   private ensureDocumentEmbeddings(signal?: AbortSignal): Promise<void> {
-    if (this.embeddingUnavailable) return Promise.reject(this.embeddingFailure);
     const current = this.embeddingPreparation;
     if (current) return current;
 
@@ -225,8 +275,6 @@ export class AgentCapabilitySearchIndex {
     const preparation = this.embedDocuments(missing, signal)
       .catch((error) => {
         throwIfAborted(signal);
-        this.embeddingFailure = error;
-        this.embeddingUnavailable = true;
         throw error;
       })
       .finally(() => {
@@ -246,13 +294,21 @@ export class AgentCapabilitySearchIndex {
       input: documents.map((document) => document.semanticText),
       signal,
     });
+    if (result.vectors.length !== documents.length) {
+      throw new Error(`Capability embedding response count mismatch: ${result.vectors.length} != ${documents.length}.`);
+    }
     documents.forEach((document, index) => {
       const vector = result.vectors[index];
-      if (vector) {
-        this.embeddingCache.set(createAgentCapabilityEmbeddingIdentity(embedding.model, document), vector);
+      if (!vector || vector.length === 0) {
+        throw new Error(`Capability embedding response did not contain a vector for ${document.name}.`);
       }
+      this.embeddingCache.set(createAgentCapabilityEmbeddingIdentity(embedding.model, document), vector);
     });
   }
+}
+
+function bestFuzzyScore(query: string, targets: readonly FuzzyPrepared[]): number {
+  return targets.reduce((best, target) => Math.max(best, fuzzysort.single(query, target)?.score ?? 0), 0);
 }
 
 export function createAgentCapabilityEmbeddingIdentity(

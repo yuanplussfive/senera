@@ -83,6 +83,7 @@ export class AgentSessionEventFactory {
       messageCount: this.conversationPolicy.materialize(session.conversation).length,
       turnCount: session.conversation.filter((entry) => entry.kind === "user.message").length,
       activeRequestId: session.activeRequest?.requestId,
+      ...(session.metadata?.channel ? { channel: session.metadata.channel } : {}),
     };
   }
 }

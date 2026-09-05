@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { lookup as lookupMimeType } from "mime-types";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { sha256Hex } from "../Core/AgentHash.js";
@@ -11,6 +12,7 @@ import { assertSafeWebUrl, type AgentWebAddressResolver } from "../Web/AgentWebU
 import { matchesAgentBrowserDomain, type AgentBrowserConfiguration } from "./AgentBrowserConfiguration.js";
 import type {
   AgentBrowserDriver,
+  AgentBrowserDriverDownload,
   AgentBrowserDriverOperationResult,
   AgentBrowserDriverSession,
   AgentBrowserNetworkRequestKind,
@@ -32,7 +34,7 @@ const PublicArgumentsByOperation = {
   click: ["selector", "newTab"],
   fill: ["selector", "text"],
   type: ["selector", "text", "clear", "delayMs"],
-  press: ["key"],
+  press: ["keys"],
   check: ["selector"],
   uncheck: ["selector"],
   select: ["selector", "values"],
@@ -53,6 +55,8 @@ const PublicArgumentsByOperation = {
   tab_list: [],
   tab_switch: ["tab"],
   tab_close: ["tab"],
+  download: ["selector"],
+  computer: ["actions"],
 } as const satisfies Record<AgentBrowserOperation, readonly string[]>;
 
 const OperationSummary = {
@@ -83,6 +87,8 @@ const OperationSummary = {
   tab_list: "Listed browser tabs.",
   tab_switch: "Switched browser tabs.",
   tab_close: "Closed a browser tab.",
+  download: "Downloaded a browser file.",
+  computer: "Operated the browser visually.",
 } as const satisfies Record<AgentBrowserOperation, string>;
 
 interface AgentBrowserSessionState {
@@ -334,6 +340,7 @@ export class AgentBrowserRuntime {
       state.opening ??
       this.driver.createSession({
         requestTimeoutMs: this.configuration.runtime.requestTimeoutMs,
+        maxDownloadBytes: this.configuration.capture.maxDownloadBytes,
         assertRequestPermitted: (url, kind) => this.assertRequestPermitted(url, kind),
       });
     state.opening = opening;
@@ -385,12 +392,14 @@ export class AgentBrowserRuntime {
     const screenshot = raw.screenshot
       ? this.createScreenshotAsset(raw.screenshot.data, raw.screenshot.mediaType)
       : undefined;
+    const download = raw.download ? this.createDownloadAsset(raw.download) : undefined;
     const result: AgentBrowserOperationResult = {
       status: "completed",
       summary: OperationSummary[operation],
       trust: BrowserContentTrust,
       truncated: content.truncated,
       ...(content.value ? { content: content.value } : {}),
+      ...(raw.page ? { page: raw.page } : {}),
       ...(screenshot
         ? {
             screenshot: {
@@ -400,10 +409,20 @@ export class AgentBrowserRuntime {
             },
           }
         : {}),
+      ...(download
+        ? {
+            download: {
+              assetId: download.asset.id,
+              fileName: download.asset.fileName,
+              mediaType: download.asset.mediaType,
+              markdown: `[${download.asset.fileName}](${createAgentResourceUri(createAgentResourceId(download.asset.id))})`,
+            },
+          }
+        : {}),
     };
     return {
       result,
-      artifactPayload: this.createArtifactPayload(operation, content.value, screenshot, arguments_),
+      artifactPayload: this.createArtifactPayload(operation, content.value, raw.page, screenshot, download, arguments_),
     };
   }
 
@@ -422,13 +441,37 @@ export class AgentBrowserRuntime {
     };
   }
 
+  private createDownloadAsset(download: AgentBrowserDriverDownload): BrowserDownloadProjection {
+    if (download.data.byteLength > this.configuration.capture.maxDownloadBytes) {
+      throw new AgentBrowserRuntimeError(
+        `Browser download exceeds the configured ${this.configuration.capture.maxDownloadBytes} byte limit.`,
+      );
+    }
+    const fileName = normalizeDownloadFileName(download.fileName);
+    const id = `browser-download-${randomUUID().replace(/-/gu, "")}`;
+    return {
+      asset: {
+        id,
+        fileName,
+        mediaType: lookupDownloadMimeType(fileName),
+        dataBase64: Buffer.from(download.data).toString("base64"),
+      },
+      sourceUrl: download.url,
+    };
+  }
+
   private createArtifactPayload(
     operation: AgentBrowserOperation,
     content: string,
+    page: AgentBrowserDriverOperationResult["page"],
     screenshot: AgentToolArtifactAsset | undefined,
+    download: BrowserDownloadProjection | undefined,
     arguments_: Readonly<Record<string, unknown>>,
   ): AgentToolArtifactPayload {
     const evidenceContent = truncateText(content, 1_024).value;
+    const assets = [screenshot, download?.asset].filter(
+      (asset): asset is AgentToolArtifactAsset => asset !== undefined,
+    );
     return {
       rawResponse: {
         source: "browser",
@@ -436,9 +479,20 @@ export class AgentBrowserRuntime {
         operation,
         input: sanitizeBrowserInput(arguments_),
         ...(content ? { content } : {}),
+        ...(page ? { page } : {}),
         ...(screenshot ? { screenshot: { assetId: screenshot.id, mediaType: screenshot.mediaType } } : {}),
+        ...(download
+          ? {
+              download: {
+                assetId: download.asset.id,
+                fileName: download.asset.fileName,
+                mediaType: download.asset.mediaType,
+                url: download.sourceUrl,
+              },
+            }
+          : {}),
       },
-      ...(screenshot ? { assets: [screenshot] } : {}),
+      ...(assets.length > 0 ? { assets } : {}),
       evidence: [
         ...(evidenceContent
           ? [
@@ -469,6 +523,26 @@ export class AgentBrowserRuntime {
               },
             ]
           : []),
+        ...(download
+          ? [
+              {
+                key: `browser-download:${download.asset.id}`,
+                kind: "browser_download",
+                locator: `asset:${download.asset.id}`,
+                display: download.asset.fileName,
+                label: "Browser download",
+                source: "browser",
+                confidence: 1,
+                artifactRefs: [download.asset.id],
+                metadata: {
+                  trust: BrowserContentTrust,
+                  mediaType: download.asset.mediaType,
+                  sourceUrl: download.sourceUrl,
+                  backend: "playwright",
+                },
+              },
+            ]
+          : []),
       ],
     };
   }
@@ -493,6 +567,11 @@ export class AgentBrowserRuntime {
 interface BrowserOperationProjection {
   readonly result: AgentBrowserOperationResult;
   readonly artifactPayload: AgentToolArtifactPayload;
+}
+
+interface BrowserDownloadProjection {
+  readonly asset: AgentToolArtifactAsset;
+  readonly sourceUrl: string;
 }
 
 interface PreparedBrowserArguments {
@@ -534,12 +613,36 @@ function pickBrowserArguments(
 }
 
 function sanitizeBrowserInput(input: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return sanitizeBrowserValue(input) as Record<string, unknown>;
+}
+
+function sanitizeBrowserValue(value: unknown, key?: string): unknown {
+  if (key === "text" && typeof value === "string") return `[${Array.from(value).length} characters]`;
+  if (Array.isArray(value)) return value.map((entry) => sanitizeBrowserValue(entry));
+  if (typeof value !== "object" || value === null) return value;
   return Object.fromEntries(
-    Object.entries(input).map(([key, value]) => [
-      key,
-      key === "text" ? `[${Array.from(String(value)).length} characters]` : value,
-    ]),
+    Object.entries(value).map(([entryKey, entryValue]) => [entryKey, sanitizeBrowserValue(entryValue, entryKey)]),
   );
+}
+
+function normalizeDownloadFileName(value: string): string {
+  const fileName = [...path.basename(value.replaceAll("\\", "/"))]
+    .map((character) => (isUnsafeDownloadFileNameCharacter(character) ? "_" : character))
+    .join("")
+    .trim();
+  if (!fileName || fileName === "." || fileName === "..") {
+    throw new AgentBrowserRuntimeError("Browser download did not provide a usable file name.");
+  }
+  return fileName;
+}
+
+function isUnsafeDownloadFileNameCharacter(value: string): boolean {
+  return (value.codePointAt(0) ?? 0) < 32 || '<>:"/\\|?*'.includes(value);
+}
+
+function lookupDownloadMimeType(fileName: string): string {
+  const mediaType = lookupMimeType(fileName);
+  return typeof mediaType === "string" ? mediaType : "application/octet-stream";
 }
 
 function truncateText(value: string, maxChars: number): { readonly value: string; readonly truncated: boolean } {

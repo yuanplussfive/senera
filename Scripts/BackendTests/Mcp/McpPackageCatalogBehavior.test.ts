@@ -3,7 +3,10 @@ import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/A
 import { AgentMcpPackageCatalog } from "../../../Source/AgentSystem/McpPackages/AgentMcpPackageCatalog.js";
 import { createAgentMcpPackageEndpoint } from "../../../Source/AgentSystem/McpPackages/AgentMcpPackageRuntime.js";
 import { AgentMcpPackageSourceKinds } from "../../../Source/AgentSystem/McpPackages/AgentMcpPackageTypes.js";
-import type { AgentDiscoveredMcpServer } from "../../../Source/AgentSystem/McpPackages/AgentMcpPackageDiscovery.js";
+import {
+  validateAgentMcpToolDeclarations,
+  type AgentDiscoveredMcpServer,
+} from "../../../Source/AgentSystem/McpPackages/AgentMcpPackageDiscovery.js";
 import type { AgentMcpToolDeclaration } from "../../../Source/AgentSystem/Mcp/AgentMcpToolCatalogChange.js";
 
 describe("MCP package catalog", () => {
@@ -39,6 +42,32 @@ describe("MCP package catalog", () => {
 
     expect(registry.listTools().map((tool) => tool.name)).toEqual(["mcp__catalog_fixture__stable"]);
     expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  test("accepts MCP tool declarations using JSON Schema draft 2020-12", () => {
+    const discovered = serverFixture([]);
+    const schema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: {
+        coordinate: {
+          type: "array",
+          prefixItems: [{ type: "number" }, { type: "number" }],
+          minItems: 2,
+          maxItems: 2,
+        },
+      },
+      required: ["coordinate"],
+      additionalProperties: false,
+    };
+
+    expect(() =>
+      validateAgentMcpToolDeclarations(
+        [toolDeclaration("draft-2020-12", schema)],
+        discovered.package_,
+        discovered.server,
+      ),
+    ).not.toThrow();
   });
 
   test("replays the latest list change received during initial discovery", async () => {

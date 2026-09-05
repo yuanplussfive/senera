@@ -6,6 +6,10 @@ import { AgentLoopToolEventFactory } from "./AgentLoopToolEventFactory.js";
 import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.js";
+import type { AgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
+import type { AgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
+import type { AgentPromptHarnessComposition } from "../Prompt/AgentPromptHarness.js";
+import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
 
 export class AgentLoopEventFactory {
   private readonly runEvents = new AgentLoopRunEventFactory();
@@ -25,8 +29,24 @@ export class AgentLoopEventFactory {
     return this.runEvents.finalAnswer(requestId, messageId, content, terminal);
   }
 
-  promptRendered(requestId: string, step: number, prompt: string, tokenCount: number): AgentDomainEvent[] {
-    return this.promptEvents.promptRendered(requestId, step, prompt, tokenCount);
+  promptRendered(
+    requestId: string,
+    step: number,
+    prompt: string,
+    tokenCount: number,
+    roleplayPreset: AgentRoleplayPresetContext,
+    continuityMemory: AgentContinuityMemoryPromptContext,
+  ): AgentDomainEvent[] {
+    return this.promptEvents.promptRendered(requestId, step, prompt, tokenCount, roleplayPreset, continuityMemory);
+  }
+
+  promptHarnessComposed(
+    requestId: string,
+    step: number,
+    harness: AgentPromptHarnessComposition,
+    mode: AgentModelToolPlanningMode,
+  ): AgentDomainEvent {
+    return this.promptEvents.promptHarnessComposed(requestId, step, harness, mode);
   }
 
   toolCallsPlanned(
@@ -50,7 +70,13 @@ export class AgentLoopEventFactory {
     index: number,
     toolName: string,
     callId: string,
-    metadata: { arguments?: unknown; origin?: AgentToolEventOrigin; batchId?: string; startedAt?: string } = {},
+    metadata: {
+      arguments?: unknown;
+      purpose?: string;
+      origin?: AgentToolEventOrigin;
+      batchId?: string;
+      startedAt?: string;
+    } = {},
   ): AgentDomainEvent {
     return this.toolEvents.toolCallStarted(requestId, step, index, toolName, callId, metadata);
   }
@@ -62,7 +88,13 @@ export class AgentLoopEventFactory {
     toolName: string,
     callId: string,
     presentation?: AgentToolResultPresentation,
-    metadata: { origin?: AgentToolEventOrigin; batchId?: string; startedAt?: string; durationMs?: number } = {},
+    metadata: {
+      purpose?: string;
+      origin?: AgentToolEventOrigin;
+      batchId?: string;
+      startedAt?: string;
+      durationMs?: number;
+    } = {},
   ): AgentDomainEvent {
     return this.toolEvents.toolCallCompleted(requestId, step, index, toolName, callId, presentation, metadata);
   }
@@ -75,7 +107,13 @@ export class AgentLoopEventFactory {
     callId: string,
     message: string,
     code?: string,
-    metadata: { origin?: AgentToolEventOrigin; batchId?: string; startedAt?: string; durationMs?: number } = {},
+    metadata: {
+      purpose?: string;
+      origin?: AgentToolEventOrigin;
+      batchId?: string;
+      startedAt?: string;
+      durationMs?: number;
+    } = {},
   ): AgentDomainEvent {
     return this.toolEvents.toolCallFailed(requestId, step, index, toolName, callId, message, code, metadata);
   }

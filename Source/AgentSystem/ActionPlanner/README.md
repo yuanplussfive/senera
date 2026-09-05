@@ -17,9 +17,11 @@ Pi Coding Agent provider call
      -> BAML request builder
      -> AgentActionPlannerPromptProjector
      -> AgentActionPlannerModelTransport
+        -> Pi declared API adapter
+        -> configured model provider
 ```
 
-当前核心 BAML 函数是 `EvolveTurn`、`RepairControllerDecision`、`FillPiToolArguments`、`RepairPiToolArguments`、`SummarizePiConversation` 和工具风险审计。Loop 的 turn preparation 只做确定性的 Skill/Tool/RootCommand 准备，不调用规划模型。
+当前核心 BAML 函数是 `EvolveTurn`、`RepairControllerDecision`、`FillPiToolArguments`、`RepairPiToolArguments`、`DecideGoalMicroLoop`、`DecideResidentIdle`、`SummarizePiConversation` 和工具风险审计。Loop 的 turn preparation 只做确定性的 Skill/Tool/RootCommand 准备，不调用规划模型。
 
 ## 阅读顺序
 
@@ -31,7 +33,7 @@ Pi Coding Agent provider call
 6. `AgentPlannerContextProjectorRegistry.ts`：按明确 context key 和 order 注册投影器。
 7. `AgentPlannerTimelineBlockRegistry.ts`：按 timeline `kind` 精确查找投影器，并验证每类 payload。
 8. `AgentPromptXml.ts`：唯一的 planner prompt XML 结构化序列化边界。
-9. `AgentActionPlannerModelTransport.ts` / `AgentActionPlannerProviderResolver.ts`：模型 endpoint、超时、usage 和 timing。
+9. `AgentActionPlannerModelTransport.ts` / `AgentActionPlannerProviderResolver.ts`：把 BAML prompt 投影为 Pi context，经声明的 Pi API adapter 请求模型，并统一超时、usage 和 timing；这里不维护第二套供应商协议解析。
 
 ## JSON 到 XML 投影
 

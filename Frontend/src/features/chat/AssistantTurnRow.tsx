@@ -1,8 +1,6 @@
-import { lazy, Suspense } from "react";
+import { lazy, memo, Suspense } from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
-import type { ApprovalBatchReference, ApprovalDecision } from "../../api/approvalEventTypes";
 import type { ChatMessage } from "../../store/sessionStore";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { ConversationFrame, Spinner } from "../../shared/ui";
 import { activeRunActivityLabel, runActivityPresentationPriority } from "../workflow/runActivityPresentation";
 import { AssistantMessageBody } from "./AssistantMessageBody";
@@ -18,7 +16,6 @@ import {
   type AssistantTurnListItem,
 } from "./assistantTurnProjection";
 
-const ApprovalRequestStrip = lazy(() => import("./ApprovalRequestStrip"));
 const AgentExecutionStageFeed = lazy(() =>
   import("../workflow/AgentExecutionFeed").then((module) => ({ default: module.AgentExecutionStageFeed })),
 );
@@ -30,13 +27,10 @@ export interface AssistantTurnRowProps {
   sessionId: string;
   turn: AssistantTurnListItem;
   showInlineActions: boolean;
-  approvalDisabled?: boolean;
   onForkFromMessage: (message: Pick<ChatMessage, "requestId">) => void;
   onRegenerate: (message: ChatMessage) => void;
   onDeleteFromMessage: (message: ChatMessage) => void;
   onViewWorkflow: (message: ChatMessage) => void;
-  onResolveApproval?: (approvalId: string, decision: ApprovalDecision) => void;
-  onResolveApprovalBatch?: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
   onResolveInteractionInput?: (
     interactionId: string,
     action: InteractionInputAction,
@@ -44,17 +38,13 @@ export interface AssistantTurnRowProps {
   ) => void;
 }
 
-export function AssistantTurnRow({
-  sessionId,
+export const AssistantTurnRow = memo(function AssistantTurnRow({
   turn,
   showInlineActions,
-  approvalDisabled = false,
   onForkFromMessage,
   onRegenerate,
   onDeleteFromMessage,
   onViewWorkflow,
-  onResolveApproval,
-  onResolveApprovalBatch,
   onResolveInteractionInput,
 }: AssistantTurnRowProps): JSX.Element {
   const { run } = turn;
@@ -91,10 +81,6 @@ export function AssistantTurnRow({
               <AssistantStage
                 key={stage.id}
                 stage={stage}
-                sessionId={sessionId}
-                approvalDisabled={approvalDisabled}
-                onResolveApproval={onResolveApproval}
-                onResolveApprovalBatch={onResolveApprovalBatch}
                 onResolveInteractionInput={onResolveInteractionInput}
                 showExecution={stage.id === liveExecutionStageId}
                 keepOpenWhileRunActive={showLiveExecution && stage.id === liveExecutionStageId}
@@ -125,25 +111,46 @@ export function AssistantTurnRow({
       </div>
     </ConversationFrame>
   );
+}, areAssistantTurnRowPropsEqual);
+
+function areAssistantTurnRowPropsEqual(previous: AssistantTurnRowProps, next: AssistantTurnRowProps): boolean {
+  if (
+    previous.sessionId !== next.sessionId ||
+    previous.showInlineActions !== next.showInlineActions ||
+    previous.onForkFromMessage !== next.onForkFromMessage ||
+    previous.onRegenerate !== next.onRegenerate ||
+    previous.onDeleteFromMessage !== next.onDeleteFromMessage ||
+    previous.onViewWorkflow !== next.onViewWorkflow ||
+    previous.onResolveInteractionInput !== next.onResolveInteractionInput
+  ) {
+    return false;
+  }
+
+  const previousTurn = previous.turn;
+  const nextTurn = next.turn;
+  if (
+    previousTurn.key !== nextTurn.key ||
+    previousTurn.requestId !== nextTurn.requestId ||
+    previousTurn.createdAt !== nextTurn.createdAt ||
+    previousTurn.streaming !== nextTurn.streaming ||
+    previousTurn.run !== nextTurn.run ||
+    previousTurn.messages.length !== nextTurn.messages.length
+  ) {
+    return false;
+  }
+
+  return previousTurn.messages.every((message, index) => message === nextTurn.messages[index]);
 }
 
 type RenderedAssistantStage = AssistantTurnStage;
 
 function AssistantStage({
   stage,
-  sessionId,
-  approvalDisabled,
-  onResolveApproval,
-  onResolveApprovalBatch,
   onResolveInteractionInput,
   showExecution,
   keepOpenWhileRunActive,
 }: {
   stage: RenderedAssistantStage;
-  sessionId: string;
-  approvalDisabled: boolean;
-  onResolveApproval?: (approvalId: string, decision: ApprovalDecision) => void;
-  onResolveApprovalBatch?: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
   onResolveInteractionInput?: (
     interactionId: string,
     action: InteractionInputAction,
@@ -177,14 +184,7 @@ function AssistantStage({
       ) : null}
       {stage.kind === "execution" ? execution : null}
       {stage.current ? (
-        <StageInteractionContent
-          sessionId={sessionId}
-          run={stage.run}
-          approvalDisabled={approvalDisabled}
-          onResolveApproval={onResolveApproval}
-          onResolveApprovalBatch={onResolveApprovalBatch}
-          onResolveInteractionInput={onResolveInteractionInput}
-        />
+        <StageInteractionContent run={stage.run} onResolveInteractionInput={onResolveInteractionInput} />
       ) : null}
     </section>
   );
@@ -219,18 +219,10 @@ function TurnMessageSegment({
 }
 
 function StageInteractionContent({
-  sessionId,
   run,
-  approvalDisabled,
-  onResolveApproval,
-  onResolveApprovalBatch,
   onResolveInteractionInput,
 }: {
-  sessionId: string;
   run?: AssistantTurnListItem["run"];
-  approvalDisabled: boolean;
-  onResolveApproval?: (approvalId: string, decision: ApprovalDecision) => void;
-  onResolveApprovalBatch?: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
   onResolveInteractionInput?: (
     interactionId: string,
     action: InteractionInputAction,
@@ -240,28 +232,9 @@ function StageInteractionContent({
   if (!run) return <></>;
   return (
     <div className="assistant-turn-stage-interactions" data-assistant-turn-execution>
-      {run.approvals?.some((approval) => approval.status === "pending") ? (
-        <Suspense
-          fallback={
-            <div className="mb-3 flex h-12 items-center gap-2 rounded-lg border border-line bg-surface-raised px-3 text-[12px] text-content-secondary">
-              <Spinner size="sm" />
-              {frontendMessage("approval.waiting")}
-            </div>
-          }
-        >
-          <ApprovalRequestStrip
-            sessionId={sessionId}
-            requestId={run.requestId}
-            approvals={run.approvals}
-            disabled={approvalDisabled || (!onResolveApproval && !onResolveApprovalBatch)}
-            onResolve={(approvalId, decision) => onResolveApproval?.(approvalId, decision)}
-            onResolveBatch={(batch, decision) => onResolveApprovalBatch?.(batch, decision)}
-          />
-        </Suspense>
-      ) : null}
       <InteractionInputStrip
         interactions={run.interactionInputs ?? []}
-        disabled={approvalDisabled || !onResolveInteractionInput}
+        disabled={!onResolveInteractionInput}
         onResolve={(interactionId, action, content) => onResolveInteractionInput?.(interactionId, action, content)}
       />
     </div>

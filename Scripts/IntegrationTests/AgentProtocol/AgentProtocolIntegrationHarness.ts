@@ -200,7 +200,9 @@ export class AgentProtocolIntegrationClient {
       }
       await this.waitForNextEvent(Math.max(1, deadline - Date.now()));
     }
-    throw new Error(`Timed out waiting for events: ${kinds.join(", ")}`);
+    throw new Error(
+      `Timed out waiting for events: ${kinds.join(", ")}. Recent events: ${this.describeRecentEvents(options.afterSequence)}`,
+    );
   }
 
   async waitForEvent(
@@ -217,7 +219,23 @@ export class AgentProtocolIntegrationClient {
       if (found) return found;
       await this.waitForNextEvent(Math.max(1, deadline - Date.now()));
     }
-    throw new Error(`Timed out waiting for event: ${kind}`);
+    throw new Error(
+      `Timed out waiting for event: ${kind}. Recent events: ${this.describeRecentEvents(options.afterSequence)}`,
+    );
+  }
+
+  private describeRecentEvents(afterSequence = 0): string {
+    const recent = this.events
+      .filter((event) => event.sequence > afterSequence)
+      .slice(-12)
+      .map((event) => {
+        const detail =
+          event.kind === AgentEventKinds.RunFailed || event.kind === AgentEventKinds.SessionBusy
+            ? `:${JSON.stringify(event.data)}`
+            : "";
+        return `${event.sequence}:${event.kind}:${event.requestId ?? "no-request"}${detail}`;
+      });
+    return recent.length > 0 ? recent.join(", ") : "none";
   }
 
   private async waitForNextEvent(timeoutMs: number): Promise<void> {

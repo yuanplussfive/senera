@@ -16,6 +16,12 @@ ModelEndpoints 模块负责把不同供应商协议适配成统一模型接口�
 10. `ClaudeMessagesEndpoint.ts` / `GoogleGenerateContentEndpoint.ts`：非 OpenAI wire protocol 实现。
 11. `OpenAiMessageProjection.ts`：OpenAI 消息形态投影。
 
+## 后台推理预算
+
+`AgentInferenceBudget.ts` 提供宿主级的滑动窗口 `reserve -> settle` 合同。ServerRuntime 将 Goal、Autonomy、Resident 和 Continuity 的模型调用按工作区 scope 统一仲裁；缓存命中不会创建 reservation，模型调用完成后以实际（或结构化输出估算）用量结算。策略来自 `Defaults.InferenceBudget`，可热重载，拒绝结果携带明确的 `retryAt` 与原因，调用方必须把它写回持久化工作队列，不能用固定 sleep 或静默降级。
+
+该预算只约束后台认知，不改变前台回合的模型调用；`ForegroundReserveFraction` 为前台保留窗口容量。进程内 reservation 用于并发防超卖，世界工作项本身仍由 SQLite lease/ack ledger 跨重启恢复。
+
 ## 扩展规则
 
 - 只有 wire protocol 不同时才新增 endpoint kind。

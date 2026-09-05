@@ -15,6 +15,8 @@ import {
 } from "../../../Frontend/src/shared/code/CodeHighlighter.ts";
 import { MarkdownRenderer } from "../../../Frontend/src/shared/code/MarkdownRenderer.tsx";
 import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
+import { WorkspaceMarkdownImage } from "../../../Frontend/src/shared/workspace/WorkspaceMarkdownImage.tsx";
+import { WorkspaceResourceProvider } from "../../../Frontend/src/shared/workspace/WorkspaceResourceProvider.tsx";
 
 afterEach(cleanup);
 
@@ -84,7 +86,15 @@ test("keeps markdown tables content-sized and long links line-breakable", () => 
   expect(css).not.toMatch(/\.markdown-renderer__table-wrap\s*{[^}]*border-radius:/s);
   expect(css).toMatch(/\.markdown-renderer__code-block\s*{[^}]*border-radius:\s*7px;/s);
   expect(css).toMatch(/\.markdown-renderer__code-block\s*{[^}]*width:\s*min\(100%,\s*46rem\);/s);
-  expect(css).toMatch(/\.markdown-renderer__image\s*{[^}]*max-inline-size:\s*min\(100%,\s*42rem\);/s);
+  expect(css).toMatch(/\.markdown-renderer__image\s*{[^}]*inline-size:\s*auto;/s);
+  expect(css).toMatch(/\.markdown-renderer__image\s*{[^}]*block-size:\s*auto;/s);
+  expect(css).toMatch(/\.markdown-renderer__image\s*{[^}]*max-inline-size:\s*100%;/s);
+  expect(css).toMatch(/\.markdown-renderer__image\s*{[^}]*max-block-size:\s*min\(68vh,\s*40rem\);/s);
+  expect(css).toMatch(/\.markdown-renderer__image-trigger\s*{[^}]*max-inline-size:\s*min\(100%,\s*42rem\);/s);
+  expect(css).toMatch(/\.markdown-renderer__image-trigger\s*{[^}]*min-block-size:\s*6rem;/s);
+  expect(css).not.toMatch(/\.markdown-renderer__image-trigger\s*{[^}]*max-block-size:/s);
+  expect(css).not.toMatch(/\.markdown-renderer__image-trigger\s*{[^}]*aspect-ratio:/s);
+  expect(css).not.toMatch(/\.markdown-renderer__image-trigger\s*{[^}]*content-visibility:/s);
   expect(css).toMatch(/\.markdown-renderer__image-trigger\s*{[^}]*cursor:\s*zoom-in;/s);
   expect(css).toMatch(/\.markdown-renderer :not\(pre\) > code\s*{[^}]*color:\s*var\(--content-primary\);/s);
   expect(css).toMatch(
@@ -117,6 +127,7 @@ test("bounds markdown images and opens the shared image preview", async () => {
   expect(image).toHaveAttribute("src", "https://example.test/architecture.png");
   expect(image).toHaveAttribute("loading", "lazy");
   expect(image).toHaveAttribute("decoding", "async");
+  expect(image).toHaveAttribute("fetchpriority", "low");
   expect(image).toHaveClass("markdown-renderer__image");
 
   await user.click(screen.getByRole("button", { name: "查看图片：Architecture" }));
@@ -131,6 +142,33 @@ test("bounds markdown images and opens the shared image preview", async () => {
 
   await user.click(within(dialog).getByRole("button", { name: "关闭" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "查看图片：Architecture" })).not.toBeInTheDocument());
+});
+
+test("maps senera resource images through the resource content route and keeps the shared preview", async () => {
+  const user = userEvent.setup();
+  render(
+    React.createElement(
+      WorkspaceResourceProvider,
+      { httpBaseUrl: "ws://agent.example.test/socket" },
+      React.createElement(
+        TooltipProvider,
+        { delayDuration: 0 },
+        React.createElement(MarkdownRenderer, null, "![Upload](senera://resource/photo_01)"),
+      ),
+    ),
+  );
+
+  const image = screen.getByRole("img", { name: "Upload" });
+  expect(image).toHaveAttribute("src", "http://agent.example.test/api/resources/photo_01");
+  expect(image).not.toHaveAttribute("src", "senera://resource/photo_01");
+  expect(image).toHaveAttribute("loading", "lazy");
+  expect(image).toHaveAttribute("decoding", "async");
+
+  await user.click(screen.getByRole("button", { name: "查看图片：Upload" }));
+
+  expect(
+    within(screen.getByRole("dialog", { name: "查看图片：Upload" })).getByRole("img", { name: "Upload" }),
+  ).toHaveAttribute("src", "http://agent.example.test/api/resources/photo_01");
 });
 
 test("keeps unsupported code visible as escaped plain text instead of failing the renderer", async () => {
@@ -179,4 +217,24 @@ test("normalizes language aliases and caches real highlighted output", async () 
   await expect(highlightCode({ language: "not-a-language", code: "value" })).rejects.toThrow(
     "Unsupported code language",
   );
+});
+
+test("renders workspace images from their content route without retaining a Blob object URL", () => {
+  render(
+    React.createElement(
+      WorkspaceResourceProvider,
+      { httpBaseUrl: "ws://agent.example.test/socket" },
+      React.createElement(WorkspaceMarkdownImage, {
+        alt: "Workspace diagram",
+        locator: { path: "Assets/diagram.png" },
+      }),
+    ),
+  );
+
+  const image = screen.getByRole("img", { name: "Workspace diagram" });
+  expect(image).toHaveAttribute("src", "http://agent.example.test/api/resources/content?path=Assets%2Fdiagram.png");
+  expect(image).toHaveAttribute("loading", "lazy");
+  expect(image).toHaveAttribute("decoding", "async");
+  expect(image).toHaveAttribute("fetchpriority", "low");
+  expect(image.src.startsWith("blob:")).toBe(false);
 });

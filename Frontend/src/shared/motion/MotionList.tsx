@@ -18,12 +18,14 @@ export function MotionListItem({
   index = 0,
   itemCount = 1,
   layout = false,
+  initial = "hidden",
 }: {
   children: ReactNode;
   className?: string;
   index?: number;
   itemCount?: number;
   layout?: false | "position";
+  initial?: false | "hidden";
 }): JSX.Element {
   const { level, reduceMotion, disableMotion } = useMotionLevel();
   const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
@@ -34,7 +36,7 @@ export function MotionListItem({
     <motion.div
       layout={reduceMotion || disableMotion ? false : layout}
       variants={readListItemVariants(effectiveLevel)}
-      initial="hidden"
+      initial={initial}
       animate="show"
       exit="exit"
       transition={readListTransition(effectiveLevel, delay)}

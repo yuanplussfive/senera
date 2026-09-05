@@ -45,6 +45,7 @@ export interface AgentSessionForkSnapshot {
   runEvents: readonly AgentEventEnvelope[];
 }
 
+/** Conversation/run history is the complete portable fork boundary. */
 export type AgentSessionForkHistory = Omit<AgentSessionForkSnapshot, "session">;
 
 export interface AgentSessionTurnCommit {

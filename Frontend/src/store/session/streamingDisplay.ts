@@ -47,6 +47,8 @@ type IntlSegmenterConstructor = new (
   options?: { granularity?: "grapheme" | "word" | "sentence" },
 ) => IntlSegmenter;
 
+let graphemeSegmenter: IntlSegmenter | undefined;
+
 export function readStreamingDisplayCadenceMs(level: MotionLevel): number {
   return StreamingDisplayPolicies[level].cadenceMs;
 }
@@ -108,8 +110,8 @@ function readGraphemesPerTick(backlog: number, policy: StreamingDisplayPolicy): 
 function segmentGraphemes(value: string): Iterable<string> {
   const Segmenter = readIntlSegmenter();
   if (!Segmenter) return Array.from(value);
-  const segmenter = new Segmenter(undefined, { granularity: "grapheme" });
-  return Array.from(segmenter.segment(value), (entry) => entry.segment);
+  graphemeSegmenter ??= new Segmenter(undefined, { granularity: "grapheme" });
+  return Array.from(graphemeSegmenter.segment(value), (entry) => entry.segment);
 }
 
 function readIntlSegmenter(): IntlSegmenterConstructor | undefined {

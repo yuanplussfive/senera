@@ -4,7 +4,6 @@ import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import { AgentToolSearchDocumentBuilder } from "./AgentToolSearchDocumentBuilder.js";
 import { AgentToolSearchRankPipeline } from "./AgentToolSearchRankPipeline.js";
 import { matchToolCapabilities } from "./AgentToolSearchCapabilities.js";
-import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
 import type {
   AgentToolSearchOptions,
   AgentToolSearchRankedEntry,
@@ -15,6 +14,8 @@ import type {
 } from "./AgentToolSearchTypes.js";
 import { AgentCapabilityKinds, AgentCapabilitySearchIndex } from "./AgentCapabilitySearchIndex.js";
 import { buildToolCapabilityDocument } from "./AgentCapabilityDocumentBuilder.js";
+import { isAgentToolMetaToolName } from "./AgentToolSearchRuntimeTypes.js";
+import { ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
 
 export type {
   AgentToolSearchCapabilityMatch,
@@ -42,7 +43,7 @@ export class AgentToolSearchIndex {
     const registeredTools = registry.listTools();
     const toolsByName = new Map(registeredTools.map((tool) => [tool.name, tool]));
     this.docs = registeredTools
-      .filter((tool) => resolveAgentToolOwner(tool).kind !== "system")
+      .filter((tool) => tool.loading === ToolLoadingModes.Dynamic && !isAgentToolMetaToolName(tool.name))
       .map((tool) => documentBuilder.build(tool));
     this.docs.forEach((doc) => this.docsByTool.set(doc.toolName, doc));
     this.capabilityIndex =
@@ -71,21 +72,27 @@ export class AgentToolSearchIndex {
   }
 
   async searchHybrid(options: AgentToolSearchOptions, signal?: AbortSignal): Promise<AgentToolSearchResult[]> {
-    const allowedNames = new Set(this.docs.map((document) => document.toolName));
-    const semanticEvidence = await this.capabilityIndex.semantic(
-      options.query,
-      AgentCapabilityKinds.Tool,
-      allowedNames,
-      signal,
+    const authorized = options.authorizedToolNames ? new Set(options.authorizedToolNames) : undefined;
+    const allowedNames = new Set(
+      this.docs.map((document) => document.toolName).filter((toolName) => !authorized || authorized.has(toolName)),
     );
-    const recalled = this.search({
-      ...options,
-      semanticEvidence: semanticEvidence.map((entry) => ({ toolName: entry.name, score: entry.score })),
-    });
+    let recalled = this.search(options);
+    if (!hasPrimaryLexicalRecall(recalled)) {
+      const semanticEvidence = await this.capabilityIndex.semantic(
+        options.query,
+        AgentCapabilityKinds.Tool,
+        allowedNames,
+        signal,
+      );
+      recalled = this.search({
+        ...options,
+        semanticEvidence: semanticEvidence.map((entry) => ({ toolName: entry.name, score: entry.score })),
+      });
+    }
     const reranked = await this.capabilityIndex.rerank(
       options.query,
       AgentCapabilityKinds.Tool,
-      recalled.map((result) => result.toolName),
+      recalled.slice(0, this.config.Rerank.CandidateLimit).map((result) => result.toolName),
       signal,
     );
     if (reranked.length === 0) return recalled;
@@ -154,4 +161,8 @@ export class AgentToolSearchIndex {
       })),
     };
   }
+}
+
+function hasPrimaryLexicalRecall(results: readonly AgentToolSearchResult[]): boolean {
+  return results.some((result) => result.ranks.bm25 !== undefined || result.ranks.exact !== undefined);
 }

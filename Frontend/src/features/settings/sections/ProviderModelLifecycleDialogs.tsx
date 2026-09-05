@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
-import { Dialog, DialogActionButton, DialogActions, DialogContent } from "../../../shared/ui";
+import { Dialog, DialogActionButton, DialogActions, DialogContent, MenuSelect } from "../../../shared/ui";
+import { IconOption } from "../../chat/ModelConfigPrimitives";
+import { inferModelProviderIcon } from "../../chat/ModelProviderIcon";
 import type { ModelProviderDraft, ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 
 export interface DefaultModelCandidate {
@@ -246,15 +248,47 @@ function ReplacementControl({
   onChange: (value: string) => void;
 }): JSX.Element {
   return (
-    <label className="block space-y-1.5">
+    <div className="block space-y-1.5">
       <span className="text-[12px] font-medium text-ink-800">
         {frontendMessage("settings.modelLifecycle.replacement.label")}
       </span>
+      <MenuSelect
+        value={value}
+        placeholder={frontendMessage("settings.modelLifecycle.replacement.placeholder")}
+        disabled={disabled || candidateModels.length === 0}
+        options={candidateModels.map(({ model, provider }) => ({
+          value: model.Id,
+          label: `${model.Model} · ${provider.Id}`,
+        }))}
+        renderValue={(selected, option) => {
+          const candidate = candidateModels.find(({ model }) => model.Id === selected);
+          return candidate ? (
+            <IconOption
+              value={candidate.model.Icon ?? inferModelProviderIcon(candidate.model.Model) ?? "openai"}
+              label={option?.label ?? selected}
+              size={16}
+            />
+          ) : null;
+        }}
+        renderOption={(option) => {
+          const candidate = candidateModels.find(({ model }) => model.Id === option.value);
+          return candidate ? (
+            <IconOption
+              value={candidate.model.Icon ?? inferModelProviderIcon(candidate.model.Model) ?? "openai"}
+              label={option.label}
+              size={16}
+            />
+          ) : (
+            option.label
+          );
+        }}
+        onChange={onChange}
+      />
       <select
+        className="sr-only"
         value={value}
         disabled={disabled || candidateModels.length === 0}
         aria-label={frontendMessage("settings.modelLifecycle.replacement.label")}
-        className="h-9 w-full rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12.5px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus disabled:cursor-not-allowed disabled:opacity-60"
         onChange={(event) => onChange(event.currentTarget.value)}
       >
         <option value="">{frontendMessage("settings.modelLifecycle.replacement.placeholder")}</option>
@@ -269,6 +303,6 @@ function ReplacementControl({
           {frontendMessage("settings.modelLifecycle.noReplacement")}
         </p>
       ) : null}
-    </label>
+    </div>
   );
 }

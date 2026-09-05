@@ -31,7 +31,7 @@ export interface AgentConfigFormModelSelection {
   providerPath?: string[];
   inheritance?: {
     source: "parent-model" | "default-model";
-    path: string[];
+    path?: string[];
   };
   required: boolean;
 }

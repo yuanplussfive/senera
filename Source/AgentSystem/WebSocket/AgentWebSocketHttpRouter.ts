@@ -8,6 +8,7 @@ import type { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
 import type { AgentWorkspaceResourceHttpApi } from "../WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
 import type { AgentProviderCredentialHttpApi } from "../Config/AgentProviderCredentialHttpApi.js";
 import type { AgentRuntimeUpdateHttpApi } from "../Runtime/AgentRuntimeUpdateHttpApi.js";
+import type { AgentChannelWebhookApi } from "../Channels/AgentChannelWebhookApi.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
@@ -19,11 +20,19 @@ export class AgentWebSocketHttpRouter {
       authenticationApi?: AgentAuthenticationHttpApi;
       healthApi?: AgentHealthHttpApi;
       runtimeUpdateApi?: AgentRuntimeUpdateHttpApi;
+      channelWebhookApi?: AgentChannelWebhookApi;
       accessGuard?: AgentServerAccessGuard;
     },
   ) {}
 
   async handle(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
+    // Channel webhooks are authenticated by platform secrets, not browser
+    // sessions. They must run outside the CSRF guard.
+    if (this.options.channelWebhookApi?.canHandle(request)) {
+      await this.options.channelWebhookApi.handle(request, response);
+      return;
+    }
+
     if (this.options.authenticationApi?.canHandle(request)) {
       await this.options.authenticationApi.handle(request, response);
       return;

@@ -88,7 +88,10 @@ export function SessionHeader({
               isCoarsePointer && "min-h-11",
             )}
           >
-            <LogoWordmark className="truncate" />
+            <span className="inline-flex min-w-0 items-center gap-2">
+              <LogoMark size={18} />
+              <LogoWordmark className="truncate" />
+            </span>
             <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-150 group-data-[state=open]:rotate-180" />
           </button>
         </DropdownMenuTrigger>

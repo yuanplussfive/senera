@@ -35,8 +35,18 @@ describe("Tool output contract validation", () => {
           details: {
             phase: AgentToolProcessErrorPhases.ResponseValidation,
             toolName: "OutputContractTool",
-            issues: expect.arrayContaining([expect.stringContaining("answer")]),
+            issues: expect.arrayContaining([
+              expect.objectContaining({
+                keyword: "type",
+                path: ["answer"],
+                pointer: "/answer",
+                schemaPointer: "#/properties/answer/type",
+              }),
+            ]),
           },
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({ code: "type", path: ["answer"], pointer: "/answer" }),
+          ]),
         },
       });
     } finally {

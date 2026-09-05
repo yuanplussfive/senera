@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "default": {
     "action": "Run"
   },
@@ -92,11 +92,38 @@
       "id": "tool-search",
       "match": {
         "exactCapabilities": ["tool.catalog-search", "tool.search"],
-        "exactToolNames": ["ToolSearchTool"]
+        "exactToolNames": ["ToolSearch"]
       },
       "argumentPath": "query",
       "detailPaths": ["query"],
       "action": "Search"
+    },
+    {
+      "id": "tool-describe",
+      "match": {
+        "exactCapabilities": ["tool.catalog-describe", "tool.describe"],
+        "exactToolNames": ["ToolDescribe"]
+      },
+      "detailPaths": ["tools.*"],
+      "action": "Inspect"
+    },
+    {
+      "id": "tool-load",
+      "match": {
+        "exactCapabilities": ["tool.catalog-load", "tool.load"],
+        "exactToolNames": ["ToolLoad"]
+      },
+      "detailPaths": ["tools.*"],
+      "action": "Load"
+    },
+    {
+      "id": "tool-unload",
+      "match": {
+        "exactCapabilities": ["tool.catalog-unload", "tool.unload"],
+        "exactToolNames": ["ToolUnload"]
+      },
+      "detailPaths": ["tools.*"],
+      "action": "Unload"
     },
     {
       "id": "skill-manage",
@@ -127,6 +154,15 @@
       "action": "Schedule"
     },
     {
+      "id": "todo-manage",
+      "match": {
+        "exactCapabilities": ["todo.manage"],
+        "exactToolNames": ["Todo"]
+      },
+      "detailPaths": ["todos.*.content", "todos.*.status"],
+      "action": "Plan"
+    },
+    {
       "id": "learning-manage",
       "match": {
         "exactCapabilities": ["learning.inspect"],
@@ -144,6 +180,14 @@
       "argumentPath": "role",
       "detailPaths": ["role", "task"],
       "action": "Delegate"
+    },
+    {
+      "id": "agent-list",
+      "match": {
+        "exactCapabilities": ["orchestration.agent-list", "orchestration.agent.list"],
+        "exactToolNames": ["AgentList"]
+      },
+      "action": "Inspect"
     },
     {
       "id": "agent-wait",
@@ -370,6 +414,24 @@
         "exactToolNames": ["BrowserClose"]
       },
       "action": "Close"
+    },
+    {
+      "id": "browser-computer",
+      "match": {
+        "exactToolNames": ["BrowserComputer"]
+      },
+      "detailPaths": ["actions.*.type"],
+      "invocationName": "BrowserComputer",
+      "action": "Interact"
+    },
+    {
+      "id": "browser-download",
+      "match": {
+        "exactToolNames": ["BrowserDownload"]
+      },
+      "argumentPath": "selector",
+      "detailPaths": ["selector"],
+      "action": "Download"
     }
   ]
 }

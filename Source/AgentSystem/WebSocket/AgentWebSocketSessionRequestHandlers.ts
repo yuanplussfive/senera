@@ -38,6 +38,7 @@ export class AgentWebSocketSessionRequestHandlers {
   ): Promise<void> {
     await this.context.sessionManager.requestActiveRunCancellation({
       sessionId: request.sessionId,
+      ...(request.requestId ? { requestId: request.requestId } : {}),
       onEvent: sendEvent,
     });
   }

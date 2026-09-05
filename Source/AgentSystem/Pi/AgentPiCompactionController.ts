@@ -61,7 +61,7 @@ export class AgentPiCompactionController {
         timingSink: (timing) =>
           this.emitDiagnostic(frame, "compaction.model_timing", timing, AgentPiDiagnosticSources.Provider),
       })
-      .summarize(input, signal);
+      .summarize(input, { signal, sessionId: snapshot.sessionId });
   }
 
   appendIndexes(sessionManager: SessionManager, indexes: AgentPiCompactionIndexes): void {

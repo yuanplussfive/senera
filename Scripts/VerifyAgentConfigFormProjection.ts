@@ -88,8 +88,8 @@ assert.equal(
   "从成功的工具调用中归纳可复用模式，改进后续工具选择与参数。",
 );
 assert.equal(
-  findField(form, ["MemoryLearning", "Enabled"]).description,
-  "从对话中提取可持久化事实，形成可供后续任务检索的长期记忆。",
+  findField(form, ["ContinuityLearning", "Enabled"]).description,
+  "从对话中提取带来源、时间和条件的连续性事实、信号与提醒规则。",
 );
 
 const plannerModel = findField(form, ["ActionPlanner", "Client", "ModelProviderId"]);
@@ -114,13 +114,20 @@ assert.deepEqual(
     "action-planner",
     "final-answer",
     "tool-learning",
-    "memory-learning",
+    "continuity-learning",
     "embedding",
     "rerank",
   ],
 );
 assert.equal(findField(form, ["ToolLearning", "Client", "MaxTokens"]).effectiveValue, -1);
-assert.equal(findField(form, ["MemoryLearning", "Client", "MaxTokens"]).effectiveValue, -1);
+assert.deepEqual(findField(form, ["ContinuityLearning", "Client", "ModelProviderId"]).modelSelection, {
+  id: "continuity-learning",
+  capability: "Chat",
+  valueKind: "model-id",
+  mutation: "config",
+  inheritance: { source: "default-model" },
+  required: false,
+});
 assert.deepEqual(findField(form, ["VectorModels", "Embedding", "Model"]).modelSelection?.providerPath, [
   "VectorModels",
   "Embedding",
@@ -133,6 +140,12 @@ const toolSearchMaxResults = findField(form, ["ToolSearch", "Ranking", "MaxResul
 assert.equal(toolSearchMaxResults.type, "number");
 assert.equal(toolSearchMaxResults.effectiveValue, 6);
 assert.equal(toolSearchMaxResults.valueSource, "default");
+
+const toolSearchFuzzy = findField(form, ["ToolSearch", "Fuzzy", "Enabled"]);
+assert.equal(toolSearchFuzzy.type, "boolean");
+assert.equal(toolSearchFuzzy.effectiveValue, true);
+assert.equal(findField(form, ["ToolSearch", "Fuzzy", "MinScore"]).effectiveValue, 0.25);
+assert.equal(findField(form, ["ToolSearch", "Fuzzy", "CandidateLimit"]).effectiveValue, 8);
 
 const memoryExpansionMode = findField(form, ["ToolSearch", "Ranking", "MemoryExpansion", "Mode"]);
 assert.deepEqual(memoryExpansionMode.options, ["disabled", "fallback", "augment"]);
@@ -150,6 +163,13 @@ assert.equal(findField(form, ["Server", "HotReload"]).required, false);
 assert.equal(findField(form, ["ConfigStore", "Enabled"]).required, false);
 assert.equal(findField(form, ["ConfigStore", "MirrorJson"]).required, false);
 assert.equal(findField(form, ["AgentLoop", "PiSessions", "Compaction", "Enabled"]).essential, true);
+
+const inferenceBudgetEnabled = findField(form, ["InferenceBudget", "Enabled"]);
+assert.equal(inferenceBudgetEnabled.type, "boolean");
+assert.equal(inferenceBudgetEnabled.effectiveValue, true);
+assert.equal(findField(form, ["InferenceBudget", "WindowSeconds"]).effectiveValue, 60);
+assert.equal(findField(form, ["InferenceBudget", "ForegroundReserveFraction"]).effectiveValue, 0.5);
+assert.equal(findField(form, ["InferenceBudget", "LaneWeights"]).type, "record");
 
 for (const section of form.sections) {
   for (const field of section.fields) {

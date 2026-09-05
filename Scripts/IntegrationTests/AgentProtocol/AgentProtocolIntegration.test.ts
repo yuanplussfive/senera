@@ -157,7 +157,7 @@ describe("agent protocol integration", () => {
         readDataRecord(event).content === "E2E response: 检查协议链路",
     );
     expect(finalAnswer.sessionId).toBe(sessionId);
-    expect(finalAnswer.phase).toBe("run");
+    expect(finalAnswer.phase).toBe("model");
 
     harness.client.send({ type: "session.history", sessionId, refresh: true });
     await harness.client.waitForKinds(

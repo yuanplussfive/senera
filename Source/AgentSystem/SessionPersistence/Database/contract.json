@@ -81,6 +81,22 @@
       "migrationSha256": "077b9bdb8247e5af822056ee583b384260aa3739602fa28bd802099368ae1703",
       "snapshot": "snapshots/0010.schema.sql",
       "snapshotSha256": "3d8f13b2c8794532914a052ec33cd803ba9f2166146db811302bfd4ce3585cb1"
+    },
+    {
+      "version": 11,
+      "name": "roleplay-state",
+      "migration": "migrations/0011-roleplay-state.sql",
+      "migrationSha256": "d2f47bfcbfb50d1101a24546d583598b6f46546890b2c13216025942db6e59ff",
+      "snapshot": "snapshots/0011.schema.sql",
+      "snapshotSha256": "b5e53b7eb403dbc36121fb2c584ca2148ad8e26df3fb8f07ee7c30cc75a4791a"
+    },
+    {
+      "version": 12,
+      "name": "remove-roleplay-state",
+      "migration": "migrations/0012-remove-roleplay-state.sql",
+      "migrationSha256": "cdd2ad4e28ffcca530ee98d8c368ef8de56391f1cee96c8fadd3bfaca3e73275",
+      "snapshot": "snapshots/0012.schema.sql",
+      "snapshotSha256": "3d8f13b2c8794532914a052ec33cd803ba9f2166146db811302bfd4ce3585cb1"
     }
   ]
 }

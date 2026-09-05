@@ -9,6 +9,7 @@ export { MotionPanel } from "./MotionPanel";
 export {
   type DialogMotionPreset,
   dialogPresenceExitMs,
+  motionDurations,
   motionRules,
   motionSprings,
   motionTimings,

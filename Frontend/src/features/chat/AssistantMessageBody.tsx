@@ -1,6 +1,7 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ChatMessage } from "../../store/sessionStore";
 import { LazyMarkdownRenderer } from "../../shared/code/LazyMarkdownRenderer";
+import { StreamingMarkdownRenderer } from "../../shared/code/StreamingMarkdownRenderer";
 
 export interface AssistantMessageBodyProps {
   message: Pick<ChatMessage, "content" | "kind">;
@@ -11,18 +12,17 @@ export function AssistantMessageBody({ message, streaming = false }: AssistantMe
   return (
     <div className="assistant-message-flow mt-1 min-w-0">
       {streaming ? (
-        <div
-          className="mt-1 min-w-0 text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
-          data-assistant-streaming-body
-          aria-live="polite"
+        <StreamingMarkdownRenderer
+          className="mt-1 min-w-0 text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
+          contentClassName="text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
+          externalLinkPresentation="citation"
         >
-          <span className="whitespace-pre-wrap break-words">{message.content}</span>
-          <span className="caret-blink" aria-hidden="true" />
-        </div>
+          {message.content}
+        </StreamingMarkdownRenderer>
       ) : (
         <LazyMarkdownRenderer
           className="mt-1 min-w-0"
-          contentClassName="text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
+          contentClassName="text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
           externalLinkPresentation="citation"
         >
           {message.content}

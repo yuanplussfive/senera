@@ -1,5 +1,6 @@
 import {
   EventKinds,
+  type EventEnvelope,
   type RunCancellationProgressData,
   type RunFailedData,
   type RunStartedData,
@@ -7,24 +8,34 @@ import {
 } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { resolveBackendMessage } from "../../i18n/backendMessage";
-import { bumpSessionMessageCount, currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
+import {
+  bumpSessionMessageCount,
+  currentRun,
+  ensureSession,
+  projectSessionChannel,
+  upsertStep,
+} from "./sessionProjectorCore";
 import { createRunRecord, touchRun } from "./sessionRunProjection";
 import { truncate } from "./sessionPresentation";
+import { upsertMessageByRequestId } from "./historyRunProjection";
+import { DEFAULT_SESSION_TITLE } from "./defaults";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
-import type { RunRecord, StoreState, TimelineStepStatus } from "./types";
+import type { RunRecord, SessionRecord, StoreState, TimelineStepStatus } from "./types";
 
 export const runLifecycleEventHandlers = {
   [EventKinds.RunStarted]: (state, env) => {
     const sessionId = env.sessionId;
     if (!sessionId) return;
     const session = ensureSession(state, sessionId);
+    projectSessionChannel(session, env.scope?.channel);
     const data = env.data as RunStartedData;
+    projectChannelUserMessage(session, env, data);
     let run = currentRun(session, env.requestId);
     if (!run) {
       run = createRunRecord({
         requestId: env.requestId ?? "unknown",
         startedAt: env.timestamp,
-        input: data.input,
+        input: data.displayInput ?? data.input,
       });
       session.runs.push(run);
     } else {
@@ -34,12 +45,13 @@ export const runLifecycleEventHandlers = {
       run.activities = [];
       run.displayMessageId = undefined;
       run.plannedDecisionMode = undefined;
+      run.continuity = undefined;
     }
     upsertStep(run, {
       id: `${run.requestId}-understand`,
       kind: "understand",
       title: frontendMessage("workflow.projection.understandUser"),
-      description: truncate(data.input, 60),
+      description: data.internal ? undefined : truncate(data.displayInput ?? data.input, 60),
       status: "done",
       startedAt: env.timestamp,
       endedAt: env.timestamp,
@@ -88,7 +100,7 @@ export const runLifecycleEventHandlers = {
     touchRun(run);
     const session = state.sessions[env.sessionId ?? ""];
     if (session) {
-      session.activeRequestId = undefined;
+      clearActiveRequestIfCurrent(session, run.requestId);
       session.updatedAt = env.timestamp;
     }
   },
@@ -141,7 +153,7 @@ export const runLifecycleEventHandlers = {
       requestId: env.requestId,
     });
     bumpSessionMessageCount(session);
-    session.activeRequestId = undefined;
+    clearActiveRequestIfCurrent(session, run.requestId);
   },
 
   [EventKinds.SessionBusy]: (state, env) => {
@@ -195,10 +207,32 @@ export const runLifecycleEventHandlers = {
       run.activeFlags = undefined;
       touchRun(run);
     }
-    session.activeRequestId = undefined;
+    if (run && session.activeRequestId === run.requestId) session.activeRequestId = undefined;
     session.updatedAt = env.timestamp;
   },
 } satisfies RunEventHandlerMap;
+
+function projectChannelUserMessage(session: SessionRecord, env: EventEnvelope, data: RunStartedData): void {
+  const channel = env.scope?.channel;
+  if (!channel || channel === "console" || data.internal || !env.requestId || typeof data.input !== "string") return;
+
+  const hadMessages = session.messages.length > 0;
+  const inserted = upsertMessageByRequestId(session, {
+    id: `${env.requestId}-user`,
+    role: "user",
+    content: data.input,
+    createdAt: env.timestamp,
+    requestId: env.requestId,
+    ...(data.attachments?.length ? { attachments: data.attachments } : {}),
+  });
+  if (!inserted) return;
+
+  if (!hadMessages && session.title === DEFAULT_SESSION_TITLE) {
+    session.title = truncate(data.input, 24);
+  }
+  session.messages.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  bumpSessionMessageCount(session);
+}
 
 function settleRunActivities(
   run: RunRecord,
@@ -221,4 +255,8 @@ const cancellationComponentMessages = {
 function hasHistoryTraceRun(state: StoreState, sessionId: string, requestId?: string): boolean {
   if (!requestId) return false;
   return (state.historyStepBuffers[sessionId] ?? []).some((run) => run.requestId === requestId);
+}
+
+function clearActiveRequestIfCurrent(session: { activeRequestId?: string }, requestId: string): void {
+  if (session.activeRequestId === requestId) session.activeRequestId = undefined;
 }

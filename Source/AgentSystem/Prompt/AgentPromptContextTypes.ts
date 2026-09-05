@@ -3,6 +3,13 @@ import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
 import type { AgentPromptContractView } from "./AgentPromptContractTypes.js";
 import type { AgentExecutionEnvironmentContext } from "./AgentExecutionEnvironmentContext.js";
+import type { AgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
+import type { AgentWorkflowPromptContext } from "./AgentWorkflowPromptContext.js";
+import type { AgentSceneContext } from "./AgentSceneContextCompiler.js";
+import type {
+  AgentPromptContextLayerManifestEntry,
+  AgentPromptContextRevisions,
+} from "./AgentPromptContextLayerTypes.js";
 
 export interface AgentPromptToolContext {
   name: string;
@@ -19,6 +26,11 @@ export interface AgentPromptContext {
   ToolDiscoveryToolName: string | null;
   RootCommand: AgentRootCommand | null;
   RoleplayPreset: AgentRoleplayPresetContext;
+  ContinuityMemory: AgentContinuityMemoryPromptContext;
+  Workflow: AgentWorkflowPromptContext;
+  Scene: AgentSceneContext;
+  ContextLayers: readonly AgentPromptContextLayerManifestEntry[];
+  ContextRevisions: AgentPromptContextRevisions;
 }
 
 export interface AgentPromptContextOptions {
@@ -29,6 +41,9 @@ export interface AgentPromptContextOptions {
   avoidSection?: string;
   rootCommand?: AgentRootCommand;
   roleplayPreset?: AgentRoleplayPresetContext;
+  continuityMemory?: AgentContinuityMemoryPromptContext;
+  workflow?: AgentWorkflowPromptContext;
+  scene?: AgentSceneContext;
 }
 
 export interface AgentPromptSectionOptions {

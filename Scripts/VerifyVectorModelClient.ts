@@ -89,19 +89,29 @@ async function main(): Promise<void> {
       ],
       ModelProviders: [
         {
-          Id: "main",
+          Id: "embedding",
           ProviderId: "vector-test",
           Endpoint: "Responses",
-          Model: "unused",
+          Model: "qwen3-embedding-0.6b",
+          Capabilities: { Embedding: true },
+        },
+        {
+          Id: "rerank",
+          ProviderId: "vector-test",
+          Endpoint: "Responses",
+          Model: "qwen3-reranker-0.6b",
+          Capabilities: { Rerank: true },
         },
       ],
       VectorModels: {
         Embedding: {
+          Enabled: true,
           ProviderId: "vector-test",
           Model: "qwen3-embedding-0.6b",
           BatchSize: 2,
         },
         Rerank: {
+          Enabled: true,
           ProviderId: "vector-test",
           Model: "qwen3-reranker-0.6b",
           EndpointPath: "/rerank",

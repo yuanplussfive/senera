@@ -167,6 +167,24 @@ test("register and append user message create a local run without persisting bac
   expect(session.activeRequestId).toBe("request_a");
 });
 
+test("moves sessions by placement and persists the custom sidebar order", () => {
+  useStore.setState({
+    sessions: {
+      first: { sessionId: "first" },
+      second: { sessionId: "second" },
+      third: { sessionId: "third" },
+    },
+    sessionOrder: ["first", "second", "third"],
+  });
+
+  useStore.getState().moveSession("third", "first", "before");
+  expect(useStore.getState().sessionOrder).toEqual(["third", "first", "second"]);
+
+  useStore.getState().moveSession("third", "second", "after");
+  expect(useStore.getState().sessionOrder).toEqual(["first", "second", "third"]);
+  expect(JSON.parse(localStorage.getItem(PERSIST_KEY)).state.sessionOrder).toEqual(["first", "second", "third"]);
+});
+
 test("history loading gates local message appends and failure state is explicit", () => {
   const store = useStore.getState();
 

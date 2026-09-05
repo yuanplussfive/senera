@@ -24,6 +24,10 @@ import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
 import { projectAgentErrorMessage, projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import { AgentWebSocketRequestScheduler } from "./AgentWebSocketRequestScheduler.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
+import { AgentWebSocketAgendaRequestHandlers } from "./AgentWebSocketAgendaRequestHandlers.js";
+import { AgentWebSocketWorldRequestHandlers } from "./AgentWebSocketWorldRequestHandlers.js";
+import { AgentWebSocketChannelRequestHandlers } from "./AgentWebSocketChannelRequestHandlers.js";
+import type { AgentChannelServiceControl } from "./AgentWebSocketTypes.js";
 
 export class AgentWebSocketMessageRouter {
   private readonly session: AgentWebSocketSessionRequestHandlers;
@@ -35,6 +39,9 @@ export class AgentWebSocketMessageRouter {
   private readonly sandbox: AgentWebSocketSandboxRequestHandlers;
   private readonly executionResources: AgentWebSocketExecutionResourceRequestHandlers;
   private readonly toolSettings: AgentWebSocketToolSettingsRequestHandlers;
+  private readonly agenda: AgentWebSocketAgendaRequestHandlers;
+  private readonly world: AgentWebSocketWorldRequestHandlers;
+  private readonly channel: AgentWebSocketChannelRequestHandlers;
   private readonly scheduler = new AgentWebSocketRequestScheduler();
 
   constructor(
@@ -43,6 +50,7 @@ export class AgentWebSocketMessageRouter {
       sendEnvelope: (socket: WebSocket, event: AgentDomainEvent) => void | Promise<void>;
       broadcast: (event: AgentDomainEvent) => void | Promise<void>;
       flushPersistence?: () => Promise<void>;
+      channelControl?: AgentChannelServiceControl;
     },
   ) {
     this.session = new AgentWebSocketSessionRequestHandlers(options.context);
@@ -54,6 +62,9 @@ export class AgentWebSocketMessageRouter {
     this.sandbox = new AgentWebSocketSandboxRequestHandlers(options.context);
     this.executionResources = new AgentWebSocketExecutionResourceRequestHandlers(options.context);
     this.toolSettings = new AgentWebSocketToolSettingsRequestHandlers(options.context);
+    this.agenda = new AgentWebSocketAgendaRequestHandlers(options.context, options.broadcast);
+    this.world = new AgentWebSocketWorldRequestHandlers(options.context);
+    this.channel = new AgentWebSocketChannelRequestHandlers(options.channelControl ?? unavailableChannelControl());
   }
 
   async handleMessage(socket: WebSocket, data: RawData): Promise<void> {
@@ -103,12 +114,17 @@ export class AgentWebSocketMessageRouter {
       "session.list": () => this.session.list(sendEvent),
       "session.history": (entry) => this.session.history(entry, sendEvent),
       "session.rename": (entry) => this.session.rename(entry, sendEvent),
+      "agenda.get": (entry) => this.agenda.get(entry, sendEvent),
+      "agenda.goal.command": (entry) => this.agenda.command(entry),
+      "world.resident.wake": (entry) => this.world.residentWake(entry, sendEvent),
+      "world.get": (entry) => this.world.get(entry, sendEvent),
       "model.list": () => this.config.listModels(sendEvent),
       "provider.models.fetch": (entry) => this.config.fetchProviderModels(entry, sendEvent),
       "config.get": () => this.config.getConfig(sendEvent),
       "systemTool.list": () => this.toolSettings.listSystemTools(sendEvent),
       "mcpServer.list": () => this.toolSettings.listMcpServers(sendEvent),
       "mcpServer.restart": (entry) => this.toolSettings.restart(entry, sendEvent),
+      "channel.connect": (entry) => this.channel.connect(entry, sendEvent),
       "mcpInput.set": (entry) => this.toolSettings.setInput(entry, sendEvent),
       "mcpInput.delete": (entry) => this.toolSettings.deleteInput(entry, sendEvent),
       "mcpInput.update": (entry) => this.toolSettings.updateInputs(entry, sendEvent),
@@ -193,5 +209,14 @@ function requestInvalidEvent(data: {
     kind: AgentEventKinds.RequestInvalid,
     context: {},
     data: { code: "request_parse_failed", ...data },
+  };
+}
+
+function unavailableChannelControl(): AgentChannelServiceControl {
+  return {
+    statuses: [],
+    connectChannel: async () => {
+      throw new Error("Channel control is unavailable in this runtime.");
+    },
   };
 }

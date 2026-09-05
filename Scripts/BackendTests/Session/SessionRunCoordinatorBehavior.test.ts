@@ -118,7 +118,7 @@ describe("Session run coordinator behavior", () => {
         loadedToolRequests.push(request.loadedToolNames);
         return {
           ...completedRun(request.requestId),
-          loadedToolNames: ["ToolSearchTool", "ShellCommandTool"],
+          loadedToolNames: ["ToolSearch", "ShellCommandTool"],
         };
       },
     };
@@ -135,10 +135,10 @@ describe("Session run coordinator behavior", () => {
       input: "Run another diagnostic command",
     });
 
-    expect(loadedToolRequests).toEqual([undefined, ["ToolSearchTool", "ShellCommandTool"]]);
+    expect(loadedToolRequests).toEqual([undefined, ["ToolSearch", "ShellCommandTool"]]);
     expect(fixture.session.metadata?.toolAvailability).toMatchObject({
       runtimeFingerprint: "runtime-tools-v1",
-      loadedToolNames: ["ToolSearchTool", "ShellCommandTool"],
+      loadedToolNames: ["ToolSearch", "ShellCommandTool"],
     });
   });
 
@@ -154,7 +154,7 @@ describe("Session run coordinator behavior", () => {
     fixture.session.metadata = {
       toolAvailability: {
         runtimeFingerprint: "runtime-tools-v1",
-        loadedToolNames: ["ToolSearchTool", "WeatherTool"],
+        loadedToolNames: ["ToolSearch", "WeatherTool"],
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
     };
@@ -165,7 +165,7 @@ describe("Session run coordinator behavior", () => {
       input: "Thanks",
     });
 
-    expect(fixture.session.metadata.toolAvailability?.loadedToolNames).toEqual(["ToolSearchTool", "WeatherTool"]);
+    expect(fixture.session.metadata.toolAvailability?.loadedToolNames).toEqual(["ToolSearch", "WeatherTool"]);
   });
 
   test("keeps a committed run completed when terminal publication fails", async () => {
@@ -208,6 +208,31 @@ describe("Session run coordinator behavior", () => {
       ]),
     );
     expect(fixture.session.status).toBe(AgentSessionStatuses.Idle);
+  });
+
+  test("acknowledges exactly the continuity rules projected into a committed turn", async () => {
+    const acknowledgeRuleDeliveries = vi.fn(() => 2);
+    const fixture = createCoordinatorFixture({
+      continuityDelivery: { acknowledgeRuleDeliveries },
+      loop: {
+        run: async (request) => ({
+          ...completedRun(request.requestId),
+          continuityRuleDeliveryUris: ["senera://continuity-rule/first", "senera://continuity-rule/second"],
+        }),
+      },
+    });
+
+    await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
+      requestId: "request-rule-delivery",
+      input: "Continue",
+    });
+
+    expect(acknowledgeRuleDeliveries).toHaveBeenCalledTimes(1);
+    expect(acknowledgeRuleDeliveries).toHaveBeenCalledWith(
+      ["senera://continuity-rule/first", "senera://continuity-rule/second"],
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/u),
+    );
   });
 
   test("replays a matching durable command without executing the loop twice", async () => {
@@ -272,8 +297,15 @@ describe("Session run coordinator behavior", () => {
   });
 
   test("does not expose uncommitted terminal entries when terminal persistence fails", async () => {
+    const acknowledgeRuleDeliveries = vi.fn(() => 1);
     const fixture = createCoordinatorFixture({
-      loop: { run: async (request) => completedRun(request.requestId) },
+      continuityDelivery: { acknowledgeRuleDeliveries },
+      loop: {
+        run: async (request) => ({
+          ...completedRun(request.requestId),
+          continuityRuleDeliveryUris: ["senera://continuity-rule/not-committed"],
+        }),
+      },
     });
     vi.spyOn(fixture.store, "persistTurnCommit").mockImplementation(() => {
       throw new Error("terminal storage unavailable");
@@ -293,6 +325,7 @@ describe("Session run coordinator behavior", () => {
     expect(fixture.store.loadRunSnapshots(fixture.session.id)).toEqual([
       expect.objectContaining({ requestId: "request-terminal-commit-failure", status: "running" }),
     ]);
+    expect(acknowledgeRuleDeliveries).not.toHaveBeenCalled();
   });
 
   test("quiesces active runs before shutdown completes and rejects future runs", async () => {

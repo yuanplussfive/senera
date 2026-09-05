@@ -124,6 +124,8 @@ export class AgentMcpPackageScanner {
       configurationPath: candidate.descriptorPath,
       revision: agentDirectoryRevision(rootPath),
       name: projection.name,
+      ...(projection.displayName ? { displayName: projection.displayName } : {}),
+      ...(projection.description ? { description: projection.description } : {}),
       source,
       descriptorKind: projection.descriptorKind,
       execution: projection.execution,

@@ -10,6 +10,7 @@ import { SessionHeader } from "./SessionChrome";
 import { SessionPanelBody } from "./SessionPanelBody";
 import type { ConfirmationIntent, SessionMenuSection } from "./types";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import type { EventSourceChannel } from "../../api/eventTypes";
 import type { SettingsSectionId } from "../settings/types";
 
 interface Props {
@@ -36,6 +37,8 @@ type RenameIntent = {
   title: string;
 };
 
+type SessionChannelFilter = "all" | EventSourceChannel;
+
 export function SessionList({
   onNewSession,
   onCloseSession,
@@ -57,6 +60,7 @@ export function SessionList({
   const sessions = useStore((s) => s.sessions);
   const order = useStore((s) => s.sessionOrder);
   const active = useStore((s) => s.activeSessionId);
+  const moveSession = useStore((s) => s.moveSession);
   const historyLoadingIds = useStore((s) => s.historyLoadingIds);
   const missingOnServerIds = useStore((s) => s.missingOnServerIds);
   const sessionCatalogSynced = useStore((s) => s.catalogSynced.sessions);
@@ -71,6 +75,7 @@ export function SessionList({
   const dialogReturnFocusRef = useRef<HTMLElement | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [channelFilter, setChannelFilter] = useState<SessionChannelFilter>("all");
 
   const sessionList = useMemo(
     () =>
@@ -81,9 +86,16 @@ export function SessionList({
   );
 
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();
-  const filteredSessions = normalizedSearchQuery
-    ? sessionList.filter((session) => session.title.toLocaleLowerCase().includes(normalizedSearchQuery))
-    : sessionList;
+  const filteredSessions = useMemo(
+    () =>
+      sessionList.filter((session) => {
+        const matchesChannel = channelFilter === "all" || (session.channel?.platform ?? "console") === channelFilter;
+        const matchesQuery =
+          !normalizedSearchQuery || session.title.toLocaleLowerCase().includes(normalizedSearchQuery);
+        return matchesChannel && matchesQuery;
+      }),
+    [channelFilter, normalizedSearchQuery, sessionList],
+  );
 
   const activeSession = active ? sessions[active] : undefined;
   const piSessionCommandDisabled = !activeSession || socketStatus !== "open" || Boolean(activeSession.activeRequestId);
@@ -210,15 +222,13 @@ export function SessionList({
   ] satisfies readonly SessionMenuSection[];
 
   const compactSidebar = presentation === "auto" && sidebarCollapsed;
-  const panelWidthClass = presentation === "panel" ? "w-full" : compactSidebar ? "w-[58px]" : "w-[246px]";
+  const panelWidthClass = compactSidebar ? "w-[58px]" : "w-full";
 
   const content = (
     <aside
       className={cn(
         "flex h-full shrink-0 flex-col bg-surface-sidebar transition-[width] duration-300 ease-[cubic-bezier(.32,.72,.35,1)]",
-        presentation === "auto"
-          ? "overflow-hidden rounded-2xl border border-line-subtle [box-shadow:var(--theme-surface-shadow)]"
-          : "border-r border-line-subtle",
+        presentation === "auto" ? "overflow-hidden border-r border-line-subtle" : "border-r border-line-subtle",
         panelWidthClass,
       )}
       data-session-sidebar
@@ -240,6 +250,8 @@ export function SessionList({
           catalogSynced={sessionCatalogSynced}
           query={searchQuery}
           onQueryChange={setSearchQuery}
+          channelFilter={channelFilter}
+          onChannelFilterChange={setChannelFilter}
           activeSessionId={active}
           historyLoadingIds={historyLoadingIds}
           showInlineRowActions={showInlineRowActions}
@@ -248,6 +260,7 @@ export function SessionList({
             select(sessionId);
             onSessionSelected?.();
           }}
+          onMoveSession={moveSession}
           onRenameSession={openRename}
           onDeleteSession={confirmDeleteSession}
         />

@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Undo2, X } from "lucide-react";
 import { Dialog, DialogActionButton, DialogActions, DialogContent } from "../../shared/ui";
 
 export function DiscardDraftDialog({
@@ -29,15 +29,19 @@ export function DiscardDraftDialog({
         className="w-[min(500px,calc(100vw_-_32px))]"
         bodyClassName="px-8 pb-7 pt-1"
       >
-        <div className="flex items-start gap-3 border-l-2 border-brick-300 py-1 pl-3 text-[12.5px] leading-5 text-ink-600">
-          <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-brick-600" />
+        <div className="flex items-start gap-2.5 py-1 text-[12.5px] leading-5 text-ink-600">
+          <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brick-50 text-brick-600">
+            <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />
+          </span>
           <span>{consequence}</span>
         </div>
         <DialogActions className="mt-6">
           <DialogActionButton close autoFocus>
+            <Undo2 aria-hidden="true" className="h-3.5 w-3.5" />
             {continueLabel}
           </DialogActionButton>
           <DialogActionButton variant="danger" onClick={onDiscard}>
+            <X aria-hidden="true" className="h-3.5 w-3.5" />
             {confirmLabel}
           </DialogActionButton>
         </DialogActions>

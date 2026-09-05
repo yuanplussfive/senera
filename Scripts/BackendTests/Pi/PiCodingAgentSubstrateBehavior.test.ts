@@ -145,6 +145,12 @@ describe("Pi Coding Agent production substrate", () => {
         await lease.session.setHistory([]);
         await lease.session.prompt(`Read ${externalFile}.`, { source: "extension" });
         expect(lease.session.getLastAssistantText()).toBe("The external file was read.");
+        const systemPrompt = compiler.requests[0]?.context.systemPrompt ?? "";
+        expect(systemPrompt).toContain("Senera owns the system instructions and capabilities for this session.");
+        expect(systemPrompt).toContain("Source/AgentSystem/**/README.md");
+        expect(systemPrompt).toContain("Use WorkspaceRead and report whether the file was read.");
+        expect(systemPrompt).not.toContain("You are an expert coding assistant operating inside pi");
+        expect(systemPrompt).not.toContain("Pi documentation (read only when the user asks about pi itself");
       } finally {
         lease.session.dispose();
       }
@@ -272,7 +278,7 @@ describe("Pi Coding Agent production substrate", () => {
       expect(compiler.requests[0]?.model.api).toBe("senera-planning");
       const toolResult = compiler.requests[1]?.context.messages.find((message) => message.role === "toolResult");
       expect(toolResult).toBeDefined();
-      expect(JSON.stringify(toolResult)).toContain("senera.tool_observation.v3");
+      expect(JSON.stringify(toolResult)).toContain("senera.tool_observation.v4");
       expect(JSON.stringify(toolResult)).toContain(artifactUris[0]);
     } finally {
       await substrate.close();
@@ -503,14 +509,22 @@ describe("Pi Coding Agent production substrate", () => {
       expect(compiler.requests).toHaveLength(2);
       const firstPrompt = compiler.requests[0]?.context.systemPrompt ?? "";
       const secondPrompt = compiler.requests[1]?.context.systemPrompt ?? "";
-      expect(textOccurrences(firstPrompt, "FIRST_SKILL_BODY")).toBe(1);
+      const firstRequest = JSON.stringify(compiler.requests[0]?.context ?? {});
+      const secondRequest = JSON.stringify(compiler.requests[1]?.context ?? {});
+      expect(firstPrompt).not.toContain("FIRST_SKILL_BODY");
+      expect(textOccurrences(firstRequest, "FIRST_SKILL_BODY")).toBe(1);
       expect(textOccurrences(firstPrompt, "FIRST_PROJECT_CONTEXT")).toBe(1);
-      expect(firstPrompt).not.toContain("UNSELECTED_SKILL_BODY");
-      expect(secondPrompt).not.toContain("FIRST_SKILL_BODY");
+      expect(firstRequest).not.toContain("UNSELECTED_SKILL_BODY");
+      expect(textOccurrences(secondRequest, "FIRST_SKILL_BODY")).toBe(1);
       expect(secondPrompt).not.toContain("FIRST_PROJECT_CONTEXT");
-      expect(textOccurrences(secondPrompt, "SECOND_SKILL_BODY")).toBe(1);
+      expect(secondPrompt).not.toContain("SECOND_SKILL_BODY");
+      expect(textOccurrences(secondRequest, "SECOND_SKILL_BODY")).toBe(1);
+      expect(secondRequest.lastIndexOf("SECOND_SKILL_BODY")).toBeGreaterThan(
+        secondRequest.lastIndexOf("FIRST_SKILL_BODY"),
+      );
+      expect(secondRequest).toContain("the latest senera_turn_context supersedes it");
       expect(textOccurrences(secondPrompt, "SECOND_PROJECT_CONTEXT")).toBe(1);
-      expect(secondPrompt).not.toContain("UNSELECTED_SKILL_BODY");
+      expect(secondRequest).not.toContain("UNSELECTED_SKILL_BODY");
     } finally {
       await substrate.close();
       await toolCallExecutor.close();
@@ -632,7 +646,12 @@ async function createTemporaryWorkspace(): Promise<string> {
   await Promise.all([
     fs.mkdir(path.join(root, ".senera"), { recursive: true }),
     fs.mkdir(path.join(root, "System", "Skills"), { recursive: true }),
+    fs.mkdir(path.join(root, "System", "Prompts", "Templates"), { recursive: true }),
   ]);
+  await fs.copyFile(
+    path.resolve("System", "Prompts", "Templates", "PiSessionBaseSystemPrompt.liquid"),
+    path.join(root, "System", "Prompts", "Templates", "PiSessionBaseSystemPrompt.liquid"),
+  );
   return root;
 }
 

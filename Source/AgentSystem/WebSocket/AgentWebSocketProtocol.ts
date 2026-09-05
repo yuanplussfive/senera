@@ -13,10 +13,9 @@ import { AgentInteractionInputActions } from "../Interaction/AgentInteractionInp
 import { AgentPiSessionExportFormats } from "../Pi/AgentPiSessionManagement.js";
 import { AgentExtensionInputValueSchema } from "../Extensions/AgentExtensionInput.js";
 import { AgentExecutionApprovalModeValues } from "../Safety/AgentExecutionApprovalMode.js";
+import { AgentPersonaPresetSchema } from "../Presets/AgentPresetParser.js";
 
 const AgentInteractionInputValueSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.array(z.string())]);
-
-const AgentPresetFormatSchema = z.enum(["json", "markdown", "text"]);
 
 const AgentConfigRevisionGuardRequestSchema = {
   commandId: z.string().min(1),
@@ -27,6 +26,14 @@ const AgentConfigRevisionGuardRequestSchema = {
 const AgentConfigCommandRequestSchema = {
   commandId: z.string().min(1),
 } as const;
+
+const AgentGoalCommandOperationSchema = z.discriminatedUnion("operation", [
+  z.object({ operation: z.literal("commit") }).strict(),
+  z.object({ operation: z.literal("pause"), reason: z.string().trim().min(1).optional() }).strict(),
+  z.object({ operation: z.literal("resume"), nextReviewAt: z.string().datetime({ offset: true }).optional() }).strict(),
+  z.object({ operation: z.literal("cancel"), reason: z.string().trim().min(1).optional() }).strict(),
+  z.object({ operation: z.literal("reparent"), parentGoalId: z.string().trim().min(1).nullable() }).strict(),
+]);
 
 const AgentProviderModelEndpointRequestSchema = z
   .object({
@@ -91,6 +98,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("session.cancel"),
       sessionId: z.string().min(1),
+      requestId: z.string().min(1).optional(),
     })
     .strict(),
   z
@@ -159,6 +167,26 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       title: z.string().min(1).max(120),
     })
     .strict(),
+  z.object({ type: z.literal("agenda.get") }).strict(),
+  z
+    .object({
+      type: z.literal("agenda.goal.command"),
+      commandId: z.string().trim().min(1),
+      goalId: z.string().trim().min(1),
+      expectedRevision: z.number().int().positive(),
+      command: AgentGoalCommandOperationSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("world.resident.wake"),
+      requestId: z.string().trim().min(1),
+      reason: z.string().trim().min(1),
+      priority: z.number().int().min(0).max(100),
+      payload: z.unknown().optional(),
+    })
+    .strict(),
+  z.object({ type: z.literal("world.get") }).strict(),
   z
     .object({
       type: z.literal("model.list"),
@@ -183,6 +211,12 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("mcpServer.restart"),
       serverId: z.string().trim().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("channel.connect"),
+      kind: z.enum(["telegram", "qq", "discord"]),
     })
     .strict(),
   z
@@ -308,8 +342,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       type: z.literal("preset.save"),
       requestId: z.string().min(1).optional(),
       name: z.string().min(1),
-      format: AgentPresetFormatSchema,
-      content: z.string(),
+      card: AgentPersonaPresetSchema,
       activate: z.boolean().optional(),
     })
     .strict(),

@@ -156,6 +156,8 @@ function createRuntime(pi: FakePiRuntime, diagnostics: AgentPiDiagnosticEvent[] 
     tokenEstimator: {
       estimate: (text: string) => ({ tokenCount: text.length }),
     },
+    promptConfig: () =>
+      ({ UserMessageEnvelope: false, TimeZone: "Asia/Shanghai", RoleCheck: true, BamlToolAttribution: true }) as const,
     piDiagnostics: (event) => {
       diagnostics.push(event);
     },

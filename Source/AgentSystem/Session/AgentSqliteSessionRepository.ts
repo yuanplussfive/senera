@@ -153,7 +153,7 @@ export class SqliteSessionRepository implements AgentSessionRepository {
         throw new Error(`Pending session history mutation does not match: ${session.id}`);
       }
 
-      const removed = this.history.deleteFromRequest(session.id, row.from_request_id);
+      const removed = this.deleteHistoryFromRequest(session.id, row.from_request_id);
       this.upsertSession(session);
       const deleted = this.stmts.deleteHistoryMutation.run(session.id, mutationId);
       if (deleted.changes !== 1) {
@@ -370,7 +370,8 @@ export class SqliteSessionRepository implements AgentSessionRepository {
 
   private deleteHistoryFromRequest(sessionId: string, requestId: string): number {
     this.stmts.deleteSessionCommandsFrom.run(sessionId, sessionId, sessionId, requestId);
-    return this.history.deleteFromRequest(sessionId, requestId);
+    const removed = this.history.deleteFromRequest(sessionId, requestId);
+    return removed;
   }
 
   private persistTurnCommitData(commit: AgentSessionTurnCommit): void {
@@ -441,7 +442,8 @@ export class SqliteSessionRepository implements AgentSessionRepository {
   }
 
   deleteEntriesFrom(sessionId: string, requestId: string): number {
-    return this.history.deleteEntriesFrom(sessionId, requestId);
+    const removed = this.history.deleteEntriesFrom(sessionId, requestId);
+    return removed;
   }
 
   appendRunEvent(sessionId: string, event: AgentEventEnvelope): void {

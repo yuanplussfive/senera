@@ -1,11 +1,17 @@
 {
   "name": "BrowserPress",
-  "description": "Send a keyboard key or shortcut to the active browser page.",
+  "description": "Send one key or one shortcut to the active browser page. Use a keys array such as [\"ENTER\"] or [\"CTRL\", \"L\"]; repeat presses require separate calls.",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "key": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "keys": {
+        "minItems": 1,
+        "maxItems": 8,
+        "type": "array",
+        "items": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "description": "一次按键或一次组合键；单键写 [\"ENTER\"]，组合键写 [\"ALT\", \"TAB\"]，最后一项是主键，不表示连续按键。"
+      },
       "timeoutMs": {
         "description": "Optional per-call operation timeout in milliseconds.",
         "type": "integer",
@@ -13,7 +19,7 @@
         "maximum": 900000
       }
     },
-    "required": ["key"],
+    "required": ["keys"],
     "additionalProperties": false
   },
   "outputSchema": {
@@ -25,6 +31,12 @@
       "trust": { "type": "string", "const": "untrusted_browser_content" },
       "truncated": { "type": "boolean" },
       "content": { "type": "string" },
+      "page": {
+        "type": "object",
+        "properties": { "url": { "type": "string", "minLength": 1 }, "title": { "type": "string" } },
+        "required": ["url", "title"],
+        "additionalProperties": false
+      },
       "screenshot": {
         "type": "object",
         "properties": {
@@ -33,6 +45,17 @@
           "markdown": { "type": "string", "minLength": 1 }
         },
         "required": ["assetId", "mediaType", "markdown"],
+        "additionalProperties": false
+      },
+      "download": {
+        "type": "object",
+        "properties": {
+          "assetId": { "type": "string", "minLength": 1 },
+          "fileName": { "type": "string", "minLength": 1 },
+          "mediaType": { "type": "string", "minLength": 1 },
+          "markdown": { "type": "string", "minLength": 1 }
+        },
+        "required": ["assetId", "fileName", "mediaType", "markdown"],
         "additionalProperties": false
       }
     },
@@ -58,21 +81,21 @@
     }
   ],
   "search": {
-    "Summary": "Press a browser key",
+    "Summary": "Press browser keys",
     "Tags": ["browser", "web", "automation"],
     "Capabilities": [
       {
         "Id": "browser.press",
-        "Title": "Press a browser key",
-        "Description": "Press a browser key",
+        "Title": "Press browser keys",
+        "Description": "Press browser keys",
         "Facets": {
           "Actions": ["press", "keyboard", "submit"],
           "Targets": ["browser-page", "controlled-browser-session"],
-          "Inputs": ["key"],
+          "Inputs": ["keys"],
           "Outputs": ["bounded-untrusted-content", "artifact"],
           "Effects": ["network-possible"]
         },
-        "Aliases": ["Press a browser key", "浏览器", "网页自动化", "browser automation"],
+        "Aliases": ["Press browser keys", "浏览器", "网页自动化", "browser automation"],
         "Risk": { "SideEffect": "network", "Permission": "network-web-browser" }
       }
     ],

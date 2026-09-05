@@ -1,6 +1,6 @@
 ---
 name: agent-orchestration
-description: Coordinate substantial work through native Senera child agents when independent investigation, specialized analysis, or parallel branches improve evidence quality. Use AgentSpawn for bounded assignments and AgentWait, AgentInput, AgentStop, and AgentResume for lifecycle control. Avoid delegation for simple, tightly coupled, or latency-sensitive work. 适用于独立板块并行调查、专门审查与职责隔离；简单任务不要委派。
+description: Coordinate substantial work through native Senera child agents when independent investigation, specialized analysis, or parallel branches improve evidence quality. Use AgentSpawn for bounded assignments, AgentList to recover background work, and AgentWait, AgentInput, AgentStop, and AgentResume for lifecycle control. Avoid delegation for simple, tightly coupled, or latency-sensitive work. 适用于独立板块并行调查、专门审查与职责隔离；简单任务不要委派。
 ---
 
 # Agent Orchestration

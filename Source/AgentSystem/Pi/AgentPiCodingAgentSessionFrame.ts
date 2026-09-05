@@ -18,9 +18,14 @@ export interface AgentPiCodingAgentSessionFrame {
   onEvent?: AgentEventSink;
   diagnostics?: AgentPiDiagnosticSink;
   systemPrompt?: string;
+  turnContext?: string;
   turnState?: AgentPiTurnState;
   activeSkills?: readonly AgentActivatedSkill[];
+  roleplayPresetActive?: boolean;
+  /** Explicit UI-controlled preface rewrite; independent from roleplay presets. */
+  prefaceRewriteEnabled?: boolean;
   skillCatalogFingerprint: string;
+  nativeProviderToolNames: readonly string[];
   rootCommand?: AgentRootCommand;
   toolAccessGrant: AgentToolAccessGrant;
   toolExposure: AgentToolExposureState;

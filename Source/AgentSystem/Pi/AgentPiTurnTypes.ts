@@ -8,6 +8,7 @@ import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export interface AgentPiTurnRequest {
   sessionId?: string;
@@ -15,14 +16,19 @@ export interface AgentPiTurnRequest {
   step: number;
   input: string;
   attachments?: AgentUploadAttachment[];
+  interaction?: AgentInteractionContext;
   prompt: string;
+  turnContext?: string;
   conversationEntries: AgentConversationEntry[];
   rootCommand: AgentRootCommand;
   approvalMode: AgentExecutionApprovalMode;
   toolAccessGrant: AgentToolAccessGrant;
   loadedToolNames: string[];
   activeSkills: AgentActivatedSkill[];
+  roleplayPresetActive?: boolean;
+  prefaceRewriteEnabled?: boolean;
   onPiBranchBoundary?: (entryId: string) => void | Promise<void>;
+  /** Full text of the final assistant message emitted by the Pi session. */
   onFinalResponseAvailable?: (content: string) => void | Promise<void>;
   thinkingLevel?: ModelThinkingLevel;
   inheritProjectContext?: boolean;
@@ -37,4 +43,5 @@ export interface AgentPiTurnResult {
   conversationEntries: AgentConversationEntry[];
   stepTraces: StepTrace[];
   executedTools: ExecutedToolCallResult[];
+  loadedToolNames: string[];
 }

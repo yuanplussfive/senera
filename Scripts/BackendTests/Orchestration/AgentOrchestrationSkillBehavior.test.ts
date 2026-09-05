@@ -18,7 +18,7 @@ describe("agent orchestration Skill", () => {
       expect.arrayContaining([
         expect.objectContaining({
           name: "agent-orchestration",
-          recommendedTools: ["AgentSpawn", "AgentWait", "AgentInput", "AgentStop", "AgentResume"],
+          recommendedTools: ["AgentSpawn", "AgentList", "AgentWait", "AgentInput", "AgentStop", "AgentResume"],
         }),
       ]),
     );

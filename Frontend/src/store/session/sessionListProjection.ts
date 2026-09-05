@@ -27,8 +27,12 @@ export function ingestSessionList(state: StoreState, items: readonly SessionList
   const pendingCreatedOrdered = state.sessionOrder.filter(
     (id) => state.pendingCreatedSessionIds[id] && state.sessions[id] && !visibleServerIds.has(id),
   );
+  const preferredVisibleOrder = state.sessionOrder.filter(
+    (id) => visibleServerIds.has(id) && !state.pendingDeletedSessionIds[id] && !state.childSessionParentIds[id],
+  );
   state.sessionOrder = mergeSessionOrder(
     pendingCreatedOrdered.filter((id) => !state.childSessionParentIds[id]),
+    preferredVisibleOrder,
     visibleItems.map((item) => item.sessionId),
   );
 
@@ -131,6 +135,7 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
     existing.entryCount = item.entryCount;
     existing.messageCount = item.messageCount;
     existing.activeRequestId = item.activeRequestId;
+    existing.channel = item.channel;
     if (state.historyLoadingIds[item.sessionId]) {
       state.historyActiveRequestIds[item.sessionId] = item.activeRequestId ?? null;
     }
@@ -149,6 +154,7 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
     messages: [],
     runs: [],
     activeRequestId: item.activeRequestId,
+    channel: item.channel,
   };
   state.sessions[item.sessionId] = session;
   settleStaleHistoryLoading(state, session);

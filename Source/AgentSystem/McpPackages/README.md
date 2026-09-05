@@ -14,13 +14,15 @@ Settings discovery uses shared revision-driven snapshots. The System extension s
 
 Standard MCP `readOnlyHint` annotations are preserved in the registry. A package may additionally project explicit Senera resource claims when it can identify workspace or host resources from arguments. Scheduling uses those declarations rather than package names or tool-name rules.
 
+MCP tools use the normal bounded parallel scheduler when no runtime metadata is declared. A tool may opt into resource claims or a lower tool-level limit with the namespaced `tools/list` metadata key `ai.senera/runtime`, for example `{ "scheduling": "parallel", "maxConcurrency": 3 }`. Only `parallel` and `resource-claims` are accepted for external MCP tools; host-owned orchestration tools retain the separate `SelfManaged` contract.
+
 `AgentMcpPackageCatalog` owns publication. Initial installation and later updates replace tools by server owner. Updates are serialized per server and transactional: reference validation failure restores the previous tools. Successful publication invalidates ToolSearch so the next retrieval observes the new catalog.
 
 Startup discovery and persistent execution share the runtime-owned MCP client pool, keyed by endpoint, execution profile, and negotiated host capabilities. The discovery connection therefore remains subscribed through the MCP SDK's `listChanged.tools` option before the first tool call. The SDK negotiates server support, debounces notifications, and refreshes `tools/list`; Senera does not parse custom stdout frames or implement a second notification protocol. A notification racing initial publication is retained per server and replayed after the first catalog snapshot is installed.
 
 An active Pi turn keeps its original tool Schemas. Calls carry the projected contract digest to the executor, which rejects a same-name tool if its registry contract changed mid-turn. Newly added tools are outside that turn's immutable authorization grant and become eligible on the next turn.
 
-MCP execution is resource-aware rather than globally serialized. Explicit resource claims take precedence. Without them, calls are isolated by MCP server identity: read-only calls to the same server may run concurrently, a write conflicts with reads and writes on that server, and calls to different servers do not block one another. Elicitation remains serialized per live connection because the MCP client owns one active user interaction at a time.
+MCP execution is resource-aware rather than globally serialized. Explicit resource claims take precedence. MCP tools without a scheduling declaration use the normal bounded parallel scheduler and do not receive an implicit server-level lease. Tools that declare `ResourceClaims` are coordinated by their projected resource identities. Elicitation remains serialized per live connection because the MCP client owns one active user interaction at a time.
 
 Bundled first-party Node MCP servers use the repository root as their only dependency source during development and build. The desktop packager discovers each `McpServers/*/manifest.json`, bundles the declared `server.entry_point`, and ships the generated server with its executable resources. It does not install or copy a second `node_modules` tree. Docker and development runtimes continue to resolve the same root lockfile normally.
 

@@ -4,6 +4,7 @@ import type { AgentMcpInputService, AgentMcpInputStatus } from "../Credentials/A
 import { deepFreeze } from "../Core/AgentDeepFreeze.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentMcpPackage, AgentMcpPackageServer } from "./AgentMcpPackageTypes.js";
+import { createAgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
 import type { AgentSystemExtensionSettingsItem } from "../SystemTools/AgentSystemToolSource.js";
 import {
   AgentMcpManagementCatalog,
@@ -16,6 +17,8 @@ export type { AgentSystemSettingsSnapshot, AgentSystemToolSettingsItem } from ".
 export interface AgentMcpServerSettingsItem {
   readonly id: string;
   readonly packageName: string;
+  readonly displayName: ReturnType<typeof createAgentExtensionLocalizedText>;
+  readonly description: ReturnType<typeof createAgentExtensionLocalizedText>;
   readonly source: AgentMcpPackage["source"];
   readonly transport: "stdio" | "http";
   readonly descriptorKind: AgentMcpPackage["descriptorKind"];
@@ -123,6 +126,8 @@ export class AgentMcpManagementService {
     return {
       id: server.name,
       packageName: package_.name,
+      displayName: package_.displayName ?? createAgentExtensionLocalizedText(package_.name),
+      description: package_.description ?? createAgentExtensionLocalizedText(package_.name),
       source: package_.source,
       descriptorKind: package_.descriptorKind,
       transport: server.configuration.type,

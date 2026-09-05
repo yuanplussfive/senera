@@ -25,12 +25,16 @@ describe("ToolSearch embedding cache behavior", () => {
       createToolLearningConfig(),
       "E:/workspace",
       createModelProvider(),
-      { memoryStore: new InMemoryToolSearchMemoryStore(), embedding: { model: "embedding-test", client: { embed } } },
+      {
+        memoryStore: new InMemoryToolSearchMemoryStore(),
+        embedding: { model: "embedding-test", client: { embed } },
+        availableExecutionTargets: () => ["Local"],
+      },
     );
 
-    await runtime.resolveInitialLoadedTools("search archive");
+    await runtime.search({ query: "查找归档能力" });
     tools[0] = createMutableTool("Find records using the updated semantic description.");
-    await runtime.resolveInitialLoadedTools("find updated records");
+    await runtime.search({ query: "查找更新能力" });
 
     expect(embed).toHaveBeenCalledTimes(4);
     expect(embed.mock.calls[0]?.[0].input[0]).toContain("original archive description");

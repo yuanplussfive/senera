@@ -48,6 +48,22 @@ test("streaming assistant content uses the same readable body and caret for pref
   expect(document.querySelector("[data-assistant-streaming-body] .caret-blink")).toBeInTheDocument();
 });
 
+test("streaming assistant content renders Markdown before the run completes", async () => {
+  renderWithFrontendProviders(
+    React.createElement(AssistantMessageBody, {
+      message: {
+        kind: "AssistantFinal",
+        content: "## 实时标题\n\n- 第一项\n- 第二项",
+      },
+      streaming: true,
+    }),
+  );
+
+  expect(await screen.findByRole("heading", { level: 2, name: "实时标题" }, { timeout: 5_000 })).toBeInTheDocument();
+  expect(screen.getByRole("list")).toHaveTextContent("第一项");
+  expect(document.querySelector("[data-streaming-markdown-renderer]")).toBeInTheDocument();
+});
+
 test("a live turn shows the quiet Thinking indicator before its first tool call", async () => {
   renderWithFrontendProviders(
     React.createElement(StreamingRow, {

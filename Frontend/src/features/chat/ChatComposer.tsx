@@ -42,6 +42,8 @@ import type { MessageQueueMode } from "../../app/useChatCommands";
 import type { ChatApprovalConfig, ChatModelConfig, ChatPresetConfig } from "./ChatPanelContracts";
 import { useComposerAttachments, type PendingAttachment } from "./useComposerAttachments";
 import type { RuntimeContextUsage, RuntimeUsageSnapshot } from "../observability/runtimeDiagnosticProjection";
+import { useEventJournalStore } from "../observability/eventJournalStore";
+import { projectRuntimeUsage, readLatestRuntimeStatusRecord } from "../observability/runtimeDiagnosticProjection";
 
 const ApprovalModeControl = lazy(() => import("./ApprovalModeControl"));
 
@@ -57,6 +59,7 @@ export interface ChatComposerProps {
   value?: string;
   onValueChange?: (value: string) => void;
   modelConfig: ChatModelConfig;
+  activeSessionId?: string | null;
   approvalConfig: ChatApprovalConfig;
   presetConfig: ChatPresetConfig;
   runtime: {
@@ -77,6 +80,7 @@ export function ChatComposer({
   value: controlledValue,
   onValueChange,
   modelConfig,
+  activeSessionId,
   runtimeUsage,
   approvalConfig,
   presetConfig,
@@ -269,6 +273,7 @@ export function ChatComposer({
                 enabled={presetConfig.presetsEnabled}
                 rootDir={presetConfig.presetRootDir}
                 presets={presetConfig.presets}
+                worldPackages={presetConfig.worldPackages}
                 activePresetName={presetConfig.activePresetName}
                 operations={presetConfig.presetOperations}
                 onRefresh={presetConfig.onRefreshPresets}
@@ -287,7 +292,7 @@ export function ChatComposer({
             </div>
 
             <div className="flex min-w-0 shrink-0 items-center gap-1" data-composer-trailing-controls>
-              <ContextUsageIndicator usage={runtimeUsage?.contextUsage} />
+              <RuntimeUsageIndicator activeSessionId={activeSessionId} runtimeUsage={runtimeUsage} />
               <ModelSelector
                 disabled={disabled || running}
                 models={modelConfig.modelProviders}
@@ -306,7 +311,7 @@ export function ChatComposer({
                       "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-muted text-content-muted",
                       prefersCompactControls && "min-h-11 min-w-11",
                     )}
-                    aria-label="cancelling"
+                    aria-label={frontendMessage("chat.composer.cancelling")}
                   >
                     <Spinner size="sm" />
                   </MotionButton>
@@ -344,7 +349,7 @@ export function ChatComposer({
                         "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200",
                         prefersCompactControls && "min-h-11 min-w-11",
                       )}
-                      aria-label="cancel"
+                      aria-label={frontendMessage("chat.composer.cancelRunning")}
                     >
                       <Square className="h-3.5 w-3.5 fill-current" />
                     </MotionButton>
@@ -447,6 +452,23 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
   );
 }
 
+function RuntimeUsageIndicator({
+  activeSessionId,
+  runtimeUsage,
+}: {
+  activeSessionId?: string | null;
+  runtimeUsage?: RuntimeUsageSnapshot;
+}): JSX.Element {
+  const latestRuntimeStatus = useEventJournalStore((state) =>
+    readLatestRuntimeStatusRecord(state.records, activeSessionId),
+  );
+  const projectedUsage = useMemo(
+    () => runtimeUsage ?? projectRuntimeUsage(latestRuntimeStatus ? [latestRuntimeStatus] : [], { activeSessionId }),
+    [activeSessionId, latestRuntimeStatus, runtimeUsage],
+  );
+  return <ContextUsageIndicator usage={projectedUsage.contextUsage} />;
+}
+
 function formatComposerTokenCount(tokens: number): string {
   if (tokens >= 1_000_000) return `${trimCompactNumber(tokens / 1_000_000)}m`;
   if (tokens >= 1_000) return `${trimCompactNumber(tokens / 1_000)}k`;
@@ -478,7 +500,7 @@ function AttachmentTray({
   return (
     <MotionList className="flex flex-wrap gap-1.5 px-0.5 pb-1">
       {attachments.map((entry) => (
-        <MotionListItem key={entry.id} layout="position" className={cn(entry.previewUrl && "shrink-0")}>
+        <MotionListItem key={entry.id} layout="position" initial={false} className={cn(entry.previewUrl && "shrink-0")}>
           {entry.previewUrl ? (
             <div
               className={cn(

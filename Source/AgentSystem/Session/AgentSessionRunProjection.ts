@@ -4,6 +4,7 @@ import { type AgentConversationProjector } from "../Conversation/AgentConversati
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import type { AgentSession } from "./AgentSession.js";
 import type { AgentSessionMessageQueueMode } from "./AgentSessionMessageQueueMode.js";
+import type { AgentConversationEntryMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 
 export function cloneAgentSessionState(session: AgentSession): AgentSession {
   return structuredClone(session);
@@ -31,6 +32,7 @@ export function projectSessionUserEntry(
       parentRequestId: string;
       mode: AgentSessionMessageQueueMode;
     };
+    metadata?: AgentConversationEntryMetadata;
   },
   timestamp: string,
 ): Extract<AgentConversationEntry, { kind: typeof AgentConversationEntryKinds.UserMessage }> {
@@ -38,7 +40,7 @@ export function projectSessionUserEntry(
     requestId,
     request.input,
     timestamp,
-    request.queue ? { queue: request.queue } : undefined,
+    request.queue ? { ...request.metadata, queue: request.queue } : request.metadata,
     request.attachments,
   );
 }

@@ -29,6 +29,7 @@ export function AppAppearanceProvider({
   const snapshot = useAppearance();
 
   useEffect(() => {
+    void import("../../styles/fontPresets/jetbrainsMono.css").catch(() => undefined);
     void import("./fontRuntime")
       .then(({ ensureAppearanceFontLoaded }) => ensureAppearanceFontLoaded(snapshot.preference.fontFamily))
       .catch(() => undefined);

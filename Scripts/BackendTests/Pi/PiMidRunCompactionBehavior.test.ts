@@ -91,6 +91,7 @@ describe("Pi mid-run context compaction", () => {
         diagnostics.push(event.name);
       },
       skillCatalogFingerprint: "test",
+      nativeProviderToolNames: [],
       toolAccessGrant: grant,
       toolExposure: turnState.context.toolExposure,
       selectedPromptTemplates: [],
@@ -174,6 +175,7 @@ describe("Pi mid-run context compaction", () => {
         diagnostics.push(event.name);
       },
       skillCatalogFingerprint: "test",
+      nativeProviderToolNames: [],
       toolAccessGrant: grant,
       toolExposure: new AgentToolExposureState(grant),
       selectedPromptTemplates: [],
@@ -262,6 +264,7 @@ describe("Pi mid-run context compaction", () => {
         diagnostics.push(event.name);
       },
       skillCatalogFingerprint: "test",
+      nativeProviderToolNames: [],
       toolAccessGrant: grant,
       toolExposure: new AgentToolExposureState(grant),
       selectedPromptTemplates: [],
@@ -337,6 +340,7 @@ describe("Pi mid-run context compaction", () => {
     const grant = createAgentToolAccessGrant({ authorizedToolNames: ["Search"], exposedToolNames: ["Search"] });
     const frame = new AgentPiMutableSessionFrame({
       skillCatalogFingerprint: "test",
+      nativeProviderToolNames: [],
       toolAccessGrant: grant,
       toolExposure: new AgentToolExposureState(grant),
       selectedPromptTemplates: [],

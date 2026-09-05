@@ -42,6 +42,7 @@ try {
   );
   assert.deepEqual(runtime.services.promptContext.recommendedSkillTools(workflowSkills), [
     "AgentSpawn",
+    "AgentList",
     "AgentWait",
     "AgentInput",
     "AgentStop",
@@ -79,6 +80,7 @@ try {
     const renderedPrompt = runtime.promptRenderer.renderFileSync(template.path, {
       ...baseContext,
       DelegatedRole: projectAgentDelegatedRolePromptContext(),
+      RoleCheck: runtime.promptConfig.RoleCheck,
     });
     assert.ok(renderedPrompt.includes("<execution_environment>"));
     assert.ok(renderedPrompt.includes("<logical_root>.</logical_root>"));
@@ -103,7 +105,7 @@ try {
   );
 
   const discoverySources = runtime.registry.listDiscoverySources();
-  const toolSearchDefinition = runtime.services.pi.toolDefinitions().find((tool) => tool.name === "ToolSearchTool");
+  const toolSearchDefinition = runtime.services.pi.toolDefinitions().find((tool) => tool.name === "ToolSearch");
   assert.ok(toolSearchDefinition);
   const toolSearchProperties = readRecord(toolSearchDefinition.parameters.properties);
   const preferredSourcesSchema = readRecord(toolSearchProperties.preferredSources);
@@ -121,7 +123,9 @@ try {
   const initialLoadedTools = await runtime.toolSearch.resolveInitialLoadedTools(
     "shell command terminal execute workspace inspection",
   );
-  assert.ok(initialLoadedTools.includes("ShellCommandTool"));
+  for (const toolName of ["ShellCommandTool", "ToolSearch", "ToolDescribe", "ToolLoad", "ToolUnload"]) {
+    assert.ok(initialLoadedTools.includes(toolName), `${toolName} must be loaded at session start.`);
+  }
 
   const answerRootCommand = runtime.services.promptContext.buildRootCommand({
     decision: { action: "answer" },
@@ -136,7 +140,7 @@ try {
     needs: [],
     discover: true,
   });
-  assert.ok(loadedTools.includes("ToolSearchTool"));
+  assert.ok(loadedTools.includes("ToolSearch"));
 
   let observedAutoSearch:
     | {

@@ -12,7 +12,16 @@
           "description": { "type": "string", "minLength": 1 },
           "prompt": { "type": "string", "minLength": 1 },
           "type": { "type": "string", "enum": ["cron", "once", "interval"] },
-          "schedule": { "type": "string", "minLength": 1 },
+          "schedule": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Schedule syntax by type. once: prefer a relative delay such as \"+30m\", \"+2h\", or \"+1d\"; use an ISO 8601 timestamp with an explicit offset only for a fixed calendar time. interval: \"30s\", \"5m\", or \"1h\". cron: a 5/6-field cron expression. Do not use natural-language dates."
+          },
+          "executionMode": {
+            "description": "Run at the scheduled time, or execute a one-time task now and deliver its result at the scheduled time.",
+            "type": "string",
+            "enum": ["at_due_time", "execute_now_deliver_at"]
+          },
           "enabled": { "default": true, "type": "boolean" },
           "modelProviderId": { "type": "string", "minLength": 1 },
           "allowedToolNames": { "minItems": 1, "type": "array", "items": { "type": "string", "minLength": 1 } },
@@ -30,7 +39,11 @@
           "description": { "type": "string", "minLength": 1 },
           "prompt": { "type": "string", "minLength": 1 },
           "type": { "type": "string", "enum": ["cron", "once", "interval"] },
-          "schedule": { "type": "string", "minLength": 1 },
+          "schedule": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Schedule syntax by type. once: prefer a relative delay such as \"+30m\", \"+2h\", or \"+1d\"; use an ISO 8601 timestamp with an explicit offset only for a fixed calendar time. interval: \"30s\", \"5m\", or \"1h\". cron: a 5/6-field cron expression. Do not use natural-language dates."
+          },
           "enabled": { "type": "boolean" },
           "modelProviderId": { "type": "string", "minLength": 1 },
           "allowedToolNames": { "minItems": 1, "type": "array", "items": { "type": "string", "minLength": 1 } },

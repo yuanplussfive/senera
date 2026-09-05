@@ -4,7 +4,7 @@ import { Menu, Search, X } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { motionTimings, useMotionLevel } from "../../shared/motion";
-import { IconButton, ScrollArea, Sheet, SheetContent } from "../../shared/ui";
+import { IconButton, LogoLockup, LogoMark, ScrollArea, Sheet, SheetContent } from "../../shared/ui";
 import { DiscardDraftDialog } from "./DiscardDraftDialog";
 import type { groupSettingsSectionResults } from "./settingsPresentation";
 import type { SettingsSectionDefinition, SettingsSectionId } from "./types";
@@ -37,14 +37,14 @@ export function SettingsWorkbenchLayout({
   return (
     <div
       ref={shellRef}
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-paper-50 text-ink-900 outline-none"
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-surface-canvas text-content-primary outline-none"
       data-settings-workbench
       data-settings-layout={layout}
       tabIndex={-1}
     >
       {layout === "compact" ? (
         <header
-          className="flex h-[52px] shrink-0 items-center gap-2 border-b border-ink-200/55 bg-paper-50 px-3"
+          className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line-subtle bg-surface-panel px-3"
           data-window-drag-region
           data-window-controls-inset
         >
@@ -58,7 +58,7 @@ export function SettingsWorkbenchLayout({
             <Menu className="h-4 w-4" />
           </IconButton>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-semibold text-ink-900">{activeSection.label}</div>
+            <div className="truncate text-[13px] font-semibold text-content-strong">{activeSection.label}</div>
           </div>
           {shellActions}
         </header>
@@ -66,12 +66,19 @@ export function SettingsWorkbenchLayout({
 
       <div className="flex min-h-0 flex-1">
         {layout === "persistent" ? (
-          <aside className="flex w-[240px] shrink-0 flex-col border-r border-ink-200/55 bg-paper-100/55">
-            <div className="flex h-[52px] shrink-0 items-center gap-2 px-4" data-window-drag-region>
+          <aside className="flex w-[224px] shrink-0 flex-col border-r border-line-subtle bg-surface-sidebar">
+            <div
+              className="flex h-[60px] shrink-0 items-center gap-3 border-b border-line-subtle px-4"
+              data-window-drag-region
+            >
               <div className="min-w-0 flex-1">
-                <h1 className="truncate text-[13px] font-semibold text-ink-900">
-                  {frontendMessage("settings.header.title")}
-                </h1>
+                <LogoLockup className="max-w-full" />
+                <div className="mt-1 flex items-center gap-1.5">
+                  <span className="h-1 w-1 rounded-full bg-accent-solid" aria-hidden="true" />
+                  <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-content-muted">
+                    {frontendMessage("settings.header.title")}
+                  </span>
+                </div>
               </div>
               {shellActions}
             </div>
@@ -79,7 +86,7 @@ export function SettingsWorkbenchLayout({
           </aside>
         ) : null}
 
-        <main className="flex min-w-0 flex-1 flex-col bg-paper-50">
+        <main className="flex min-w-0 flex-1 flex-col bg-surface-subtle">
           {showSectionHeader ? <SettingsSectionHeader section={activeSection} /> : null}
           {children}
         </main>
@@ -93,9 +100,10 @@ export function SettingsWorkbenchLayout({
           showHeader={false}
           focusContentOnOpen
         >
-          <div className="flex h-full min-h-0 flex-col bg-paper-50">
-            <div className="flex h-[52px] shrink-0 items-center gap-2 border-b border-ink-200/55 px-4">
-              <div className="min-w-0 flex-1 text-[14px] font-semibold text-ink-900">
+          <div className="flex h-full min-h-0 flex-col bg-surface-canvas">
+            <div className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line-subtle px-4">
+              <LogoMark size={18} />
+              <div className="min-w-0 flex-1 text-[14px] font-semibold text-content-strong">
                 {frontendMessage("settings.header.title")}
               </div>
               <IconButton
@@ -136,33 +144,33 @@ export function SettingsNavigation({
   const animateSelection = !reduceMotion && !disableMotion;
   return (
     <>
-      <div className="shrink-0 px-3 pb-2.5 pt-1.5">
-        <label className="flex h-8 items-center gap-2 rounded-md border border-transparent bg-ink-900/[0.03] px-2.5 text-content-muted transition-[background-color,border-color,box-shadow] focus-within:border-accent-border focus-within:bg-paper-50 focus-within:ring-2 focus-within:ring-accent-focus">
+      <div className="shrink-0 px-3 pb-2.5 pt-3">
+        <label className="flex h-8 items-center gap-2 rounded-md border border-transparent bg-surface-hover px-2.5 text-content-muted transition-[background-color,border-color,box-shadow] focus-within:border-accent-border focus-within:bg-surface-panel focus-within:ring-2 focus-within:ring-accent-focus">
           <Search className="h-3.5 w-3.5 shrink-0" />
           <input
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
             aria-label={frontendMessage("settings.nav.searchLabel")}
             placeholder={frontendMessage("settings.nav.searchPlaceholder")}
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-800 outline-none placeholder:text-ink-350"
+            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-content-primary outline-none placeholder:text-content-muted"
           />
           {search ? (
             <button
               type="button"
               aria-label={frontendMessage("settings.nav.clearSearch")}
               onClick={() => onSearchChange("")}
-              className="grid h-5 w-5 shrink-0 place-items-center rounded text-ink-350 transition hover:bg-ink-900/[0.06] hover:text-ink-700"
+              className="grid h-5 w-5 shrink-0 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           ) : null}
         </label>
       </div>
-      <ScrollArea className="min-h-0 flex-1" viewportClassName="px-2.5 pb-4 pt-1">
-        <nav className="space-y-3.5" aria-label={frontendMessage("settings.nav.sectionsLabel")}>
+      <ScrollArea className="min-h-0 flex-1" viewportClassName="px-2 pb-4 pt-1">
+        <nav className="space-y-4" aria-label={frontendMessage("settings.nav.sectionsLabel")}>
           {groupedResults.map(({ group, results }) => (
             <div key={group.id}>
-              <div className="px-2.5 pb-1.5 text-[10.5px] font-medium tracking-[0.06em] text-ink-400">
+              <div className="px-2.5 pb-1.5 text-[10px] font-medium tracking-[0.06em] text-content-muted">
                 {group.label}
               </div>
               <div className="space-y-0.5">
@@ -214,26 +222,26 @@ function SettingsNavItem({
       aria-current={active ? "page" : undefined}
       onClick={onSelect}
       className={cn(
-        "relative grid min-h-9 w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 rounded-md px-2.5 py-2 text-left text-[12.5px] transition-colors",
+        "relative grid min-h-9 w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 rounded-md px-2.5 py-2 text-left text-[12.5px] transition-colors",
         active ? "text-content-primary" : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
       )}
     >
       {active ? (
         <motion.span
           layoutId={animateSelection ? "settings-navigation-selection" : undefined}
-          className="absolute inset-0 rounded-md bg-ink-900/[0.055] shadow-[inset_0_0_0_1px_rgb(110_100_84/0.035)]"
+          className="absolute inset-0 rounded-md bg-surface-hover"
           transition={animateSelection ? motionTimings.selection : { duration: 0 }}
           aria-hidden="true"
           data-settings-navigation-indicator
         />
       ) : null}
-      <Icon className={cn("relative z-[1] mt-0.5 h-4 w-4 shrink-0", active ? "text-accent-content" : "text-ink-450")} />
+      <Icon className={cn("relative z-[1] h-4 w-4 shrink-0", active ? "text-accent-content" : "text-content-muted")} />
       <span className="relative z-[1] min-w-0">
         <span className="block truncate leading-5">{section.label}</span>
         {searchDetails.map((detail) => (
           <span
             key={`${detail.label}:${detail.value}`}
-            className="mt-0.5 block truncate text-[10.5px] leading-4 text-ink-500"
+            className="mt-0.5 block truncate text-[10.5px] leading-4 text-content-muted"
           >
             {detail.label}: {detail.value}
           </span>
@@ -247,15 +255,19 @@ function SettingsSectionHeader({ section }: { section: SettingsSectionDefinition
   const Icon = section.icon;
   return (
     <header
-      className="shrink-0 border-b border-ink-200/55 bg-paper-50/95 px-5 py-3.5 sm:px-6"
+      className="shrink-0 border-b border-line-subtle bg-surface-canvas px-5 py-4 sm:px-8 sm:py-5"
       data-window-drag-region
       data-window-controls-inset
     >
-      <div className="flex min-w-0 items-start gap-2.5">
-        <Icon className="mt-1 h-4 w-4 shrink-0 text-ink-400" />
+      <div className="flex min-w-0 items-start gap-3">
         <div className="min-w-0">
-          <h2 className="truncate text-[15px] font-semibold leading-6 text-ink-950">{section.label}</h2>
-          <p className="max-w-[760px] text-[12px] leading-5 text-ink-500">{section.description}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            <Icon className="h-4 w-4 shrink-0 text-accent-content" />
+            <h2 className="truncate text-[18px] font-semibold leading-6 tracking-[-0.01em] text-content-strong">
+              {section.label}
+            </h2>
+          </div>
+          <p className="mt-1 max-w-[760px] text-[12px] leading-5 text-content-secondary">{section.description}</p>
         </div>
       </div>
     </header>

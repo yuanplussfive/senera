@@ -52,6 +52,7 @@ async function synchronizeExtension(definitions: readonly AgentSystemToolDefinit
     displayName: first.extension.displayName,
     description: first.extension.description,
     priority: first.extension.priority,
+    ...(first.extension.platforms ? { platforms: [...first.extension.platforms] } : {}),
     ...(configuration ? { configuration: { schema: "config.schema.json", ui: "ui.schema.json" } } : {}),
     contributions,
   });
@@ -149,7 +150,8 @@ function verifyBundledObservationProjections(): void {
     const packageRoot = path.join(outputRoot, entry.name);
     const manifest = loader.load(path.join(packageRoot, "extension.json"), AgentSystemExtensionManifestSchema);
     const referenced = new Set<string>();
-    for (const contribution of manifest.contributions) {
+    const contributions = manifest.contributions ?? [];
+    for (const contribution of contributions) {
       if (contribution.kind !== "hostTool") continue;
       const contractPath = resolveSystemExtensionPackageFile(packageRoot, contribution.contract, "host Tool contract");
       const contract = loader.load(contractPath, AgentSystemToolContractSchema);
@@ -187,7 +189,7 @@ async function synchronizeBundledHostToolInputContracts(): Promise<void> {
     if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name.startsWith(".")) continue;
     const packageRoot = path.join(outputRoot, entry.name);
     const manifest = loader.load(path.join(packageRoot, "extension.json"), AgentSystemExtensionManifestSchema);
-    for (const contribution of manifest.contributions) {
+    for (const contribution of manifest.contributions ?? []) {
       if (contribution.kind !== "hostTool") continue;
       if (contributions.has(contribution.capability)) {
         throw new Error(`Bundled Host Tool capability ${contribution.capability} is declared more than once.`);

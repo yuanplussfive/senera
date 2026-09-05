@@ -8,10 +8,12 @@ import { resolveWorkspaceRoot } from "./TestGovernance.js";
 const workspaceRoot = resolveWorkspaceRoot();
 const frontendRoot = path.join(workspaceRoot, "Frontend");
 const sharedUiRoot = path.join(frontendRoot, "src", "shared", "ui");
+const chineseMessagesPath = path.join(frontendRoot, "src", "i18n", "messages", "zh-CN.json");
 const publicIndexPath = path.join(sharedUiRoot, "index.ts");
 const configPath = path.join(frontendRoot, ".ladle", "config.mjs");
 const providerPath = path.join(frontendRoot, ".ladle", "components.tsx");
 const nonVisualModuleExemptions = new Set(["./useClipboardCopy"]);
+const chineseMessages = readJsonRecord(chineseMessagesPath);
 
 verifyLadleConfig();
 verifyGlobalProvider();
@@ -101,10 +103,44 @@ function verifyPublicComponentStories(): void {
 function verifyChineseStoryCopy(): void {
   const storyFiles = walkFiles(path.join(frontendRoot, "src"), { extensions: [".stories.tsx", ".stories.ts"] });
   const withoutChinese = storyFiles
-    .filter((file) => !/[\u3400-\u9fff]/u.test(readFileSync(file, "utf8")))
+    .filter((file) => {
+      const source = readFileSync(file, "utf8");
+      if (/[\u3400-\u9fff]/u.test(source)) return false;
+      const sourceFile = parseSource(file, source, ts.ScriptKind.TSX);
+      return !collectLocalizedChineseKeys(sourceFile).some((key) => {
+        const message = chineseMessages[key];
+        return typeof message === "string" && /[\u3400-\u9fff]/u.test(message);
+      });
+    })
     .map((file) => toPosixRelative(workspaceRoot, file));
 
-  assert.deepEqual(withoutChinese, [], "Every Ladle Story must contain Chinese visible copy.");
+  assert.deepEqual(
+    withoutChinese,
+    [],
+    "Every Ladle Story must contain Chinese visible copy or a frontendMessage key with a Chinese catalog value.",
+  );
+}
+
+function collectLocalizedChineseKeys(sourceFile: ts.SourceFile): string[] {
+  const keys: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "frontendMessage" &&
+      node.arguments.length > 0 &&
+      ts.isStringLiteralLike(node.arguments[0])
+    ) {
+      keys.push(node.arguments[0].text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return keys;
+}
+
+function readJsonRecord(filePath: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
 }
 
 function verifySwitchCopy(): void {

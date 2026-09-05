@@ -6,7 +6,6 @@ import {
   capabilitySearchText,
   matchToolCapabilities,
 } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchCapabilities.js";
-import { buildPlannedToolSearchQueries } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchQueryPlanner.js";
 import { AgentToolSearchIndex } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchIndex.js";
 import type { ToolSearchDocument } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchTypes.js";
 import type { AgentToolSearchRegistryReader } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchIndex.js";
@@ -88,46 +87,6 @@ describe("ToolSearch core", () => {
         },
       },
     ]);
-  });
-
-  test("builds planned discovery queries from explicit queries and capability needs", () => {
-    const queries = buildPlannedToolSearchQueries(
-      {
-        input: "update docs",
-        discover: true,
-        queries: ["workspace write", "workspace write"],
-        needs: [
-          {
-            actions: ["write"],
-            targets: ["workspace"],
-            inputs: ["path"],
-            outputs: ["file"],
-            evidence: [],
-            effects: ["filesystem"],
-          },
-        ],
-      },
-      (text) => text.split(/\s+/),
-    );
-
-    expect(queries).toEqual([
-      {
-        text: "workspace write",
-        facets: ["write", "workspace", "path", "file", "filesystem"],
-      },
-      {
-        text: "write workspace path file filesystem",
-        facets: ["write", "workspace", "path", "file", "filesystem"],
-      },
-      {
-        text: "update docs",
-        facets: ["write", "workspace", "path", "file", "filesystem"],
-      },
-    ]);
-    expect(buildPlannedToolSearchQueries({ input: "hello" }, (text) => text.split(/\s+/))).toEqual([]);
-    expect(
-      buildPlannedToolSearchQueries({ input: "find weather", discover: true }, (text) => text.split(/\s+/)),
-    ).toEqual([{ text: "find weather", facets: [] }]);
   });
 
   test("indexes registered tools and ranks by capability without score coupling", () => {
@@ -224,6 +183,31 @@ describe("ToolSearch core", () => {
     expect(lexical.map((result) => result.toolName)).toEqual(["WorkspaceReadFile"]);
     expect(learnedFallback.map((result) => result.toolName)).toEqual(["WeatherTool"]);
     expect(weakFallback).toEqual([]);
+  });
+
+  test("uses explicit identifiers and aliases for bounded fuzzy recovery", () => {
+    const browserScreenshot = createTool({
+      name: "BrowserScreenshot",
+      title: "Capture browser screenshot",
+      summary: "Capture the current browser page as an image",
+      tags: ["browser", "screenshot"],
+      actions: ["capture", "screenshot"],
+      targets: ["browser-page"],
+      aliases: ["网页截图", "截图"],
+      priority: 10,
+    });
+    const index = new AgentToolSearchIndex(createRegistry([browserScreenshot]), createToolSearchConfig());
+
+    const recovered = index.search({ query: "browserscreeshot" });
+    const disabledConfig = createToolSearchConfig();
+    disabledConfig.Fuzzy.Enabled = false;
+    const disabled = new AgentToolSearchIndex(createRegistry([browserScreenshot]), disabledConfig).search({
+      query: "browserscreeshot",
+    });
+
+    expect(recovered.map((result) => result.toolName)).toEqual(["BrowserScreenshot"]);
+    expect(recovered[0]?.ranks.fuzzy).toBe(1);
+    expect(disabled).toEqual([]);
   });
 
   test("caps diversified search output with the configured result budget", () => {
@@ -331,6 +315,7 @@ function createTool(options: {
   targets: string[];
   priority: number;
   examples?: string[];
+  aliases?: string[];
   sideEffect?: string;
   sourceId?: string;
 }): RegisteredTool {
@@ -389,6 +374,7 @@ function createTool(options: {
             Targets: options.targets,
             Effects: options.sideEffect ? [options.sideEffect] : undefined,
           },
+          Aliases: options.aliases,
           Risk: options.sideEffect ? { SideEffect: options.sideEffect } : undefined,
         },
       ],
@@ -398,6 +384,11 @@ function createTool(options: {
 
 function createToolSearchConfig(): ResolvedAgentToolSearchConfig {
   return {
+    Fuzzy: {
+      Enabled: true,
+      MinScore: 0.25,
+      CandidateLimit: 8,
+    },
     Embedding: {
       Enabled: false,
       ScoreThreshold: 0,

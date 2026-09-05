@@ -1,7 +1,9 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { ConfigFormFieldData, ConfigFormFieldOptionValue } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
+import { MenuSelect } from "../ui";
 import { jsonConfigFormMessages } from "./jsonConfigFormMessages";
+import { sameOptionValue } from "./JsonConfigValue";
 
 export interface JsonConfigRecordFieldProps {
   field: ConfigFormFieldData;
@@ -104,25 +106,20 @@ function RecordValueControl({
 }): JSX.Element {
   const options = field.options ?? [];
   if (options.length > 0) {
+    const selectedIndex = options.findIndex((option) => sameOptionValue(value, option));
     return (
-      <select
-        value={String(value ?? "")}
+      <MenuSelect
+        value={selectedIndex >= 0 ? String(selectedIndex) : ""}
+        placeholder={jsonConfigFormMessages.selectPlaceholder()}
+        options={options.map((option, index) => ({ value: String(index), label: optionLabel(field, option) }))}
         disabled={disabled}
-        onChange={(event) => {
-          const next = options.find((option) => String(option) === event.currentTarget.value);
+        ariaLabel={field.label}
+        triggerClassName={inputClassName}
+        onChange={(index) => {
+          const next = options[Number(index)];
           if (next !== undefined) onChange(next);
         }}
-        className={inputClassName}
-      >
-        <option value="" disabled>
-          {jsonConfigFormMessages.selectPlaceholder()}
-        </option>
-        {options.map((option) => (
-          <option key={String(option)} value={String(option)}>
-            {optionLabel(field, option)}
-          </option>
-        ))}
-      </select>
+      />
     );
   }
 

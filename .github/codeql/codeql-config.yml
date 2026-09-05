@@ -1,0 +1,9 @@
+name: senera-codeql
+
+# BAML emits this client code from its own generator. It is consumed as a
+# generated boundary and is covered by the BAML generator's checks instead of
+# being treated as hand-authored application code by CodeQL quality queries.
+paths-ignore:
+  - Source/AgentSystem/BamlClient/baml_client/**
+  - Frontend/src/generated/**
+  - Dist/**

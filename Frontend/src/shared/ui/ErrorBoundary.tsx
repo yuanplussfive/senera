@@ -3,6 +3,7 @@ import { AlertCircle } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Button } from "./Button";
 import { cn } from "../../lib/util";
+import { ResonanceTrace } from "./LoadingSignal";
 
 export interface ErrorBoundaryProps {
   children: ReactNode;
@@ -83,32 +84,42 @@ function DefaultErrorFallback({ error, onReset, onReload, presentation }: Defaul
   return (
     <Container
       className={cn(
-        "flex w-full items-start justify-center bg-[var(--theme-bg)] px-4 py-6 sm:px-6",
-        appPresentation ? "min-h-dvh pt-[clamp(32px,12vh,120px)]" : "h-full",
+        "flex w-full items-start justify-center bg-[var(--theme-bg)] px-5 py-8 sm:px-8",
+        appPresentation ? "min-h-dvh pt-[clamp(48px,16vh,160px)]" : "h-full py-6",
       )}
       role="alert"
       aria-labelledby={titleId}
+      aria-live="polite"
+      data-error-boundary
+      data-error-boundary-kind={requiresPageReload ? "reload" : "retry"}
     >
       <div
         className={cn(
-          "w-full bg-paper-100",
+          "relative w-full",
           appPresentation
-            ? "max-w-[860px] border-y border-ink-200/70 px-5 py-6 sm:px-8 sm:py-7"
-            : "border-y border-ink-200/70 px-4 py-5",
+            ? "max-w-[720px] border-y border-line-subtle px-1 py-7 sm:px-2 sm:py-8"
+            : "border-y border-line-subtle px-1 py-5",
         )}
       >
-        <div className="flex items-start gap-4">
-          <AlertCircle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-brick-600" />
+        <span className="senera-error-boundary__pulse" aria-hidden="true" />
+        <div className="flex items-start gap-3.5 sm:gap-4">
+          <div className="relative mt-0.5 flex h-8 w-11 shrink-0 items-center justify-start">
+            <ResonanceTrace size="sm" state="settled" className="opacity-80" />
+            <AlertCircle aria-hidden="true" className="absolute left-0 h-3.5 w-3.5 text-accent-content" />
+          </div>
           <div className="min-w-0 flex-1">
-            <Heading id={titleId} className="text-[15px] font-semibold text-ink-950 sm:text-[16px]">
+            <Heading
+              id={titleId}
+              className="text-[15px] font-semibold tracking-[0.01em] text-content-primary sm:text-[16px]"
+            >
               {frontendMessage("app.errorBoundary.title")}
             </Heading>
-            <p className="mt-1.5 max-w-[64ch] text-[13px] leading-5 text-ink-600">
+            <p className="mt-1.5 max-w-[64ch] text-[13px] leading-5 text-content-secondary">
               {frontendMessage(
                 requiresPageReload ? "app.errorBoundary.dynamicImportDescription" : "app.errorBoundary.description",
               )}
             </p>
-            <div className="mt-5 flex flex-wrap items-center gap-2">
+            <div className="mt-5 flex flex-wrap items-center gap-2.5">
               {requiresPageReload ? (
                 <Button onClick={onReload ?? (() => globalThis.location?.reload())} size="sm">
                   {frontendMessage("app.errorBoundary.reload")}
@@ -132,5 +143,7 @@ function DefaultErrorFallback({ error, onReset, onReload, presentation }: Defaul
 }
 
 function isDynamicModuleLoadError(error: Error): boolean {
-  return /failed to fetch dynamically imported module|importing a module script failed/i.test(error.message);
+  return /failed to fetch dynamically imported module|importing a module script failed|dynamically imported module/i.test(
+    error.message,
+  );
 }

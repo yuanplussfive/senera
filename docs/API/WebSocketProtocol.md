@@ -35,8 +35,11 @@
 
 | `type` | 用途 |
 | --- | --- |
+| `agenda.get` | 获取当前持久世界的 Agenda 快照，包括时钟、活动、长期目标、当天时间线和未来计划。 |
+| `agenda.goal.command` | 以命令 ID 和预期 revision 提交 Goal 的确认、暂停、恢复、取消或父级调整操作。 |
 | `approval.resolve` | 提交审批决定：单次允许、会话允许、拒绝继续或拒绝并中断。 |
 | `approval.resolve_batch` | 按会话、请求和工具批次原子提交一组审批决定。 |
+| `channel.connect` | 按当前配置重新连接指定渠道（telegram、qq 或 discord），无需重启服务。 |
 | `config.get` | 获取当前有效系统配置及表单投影。 |
 | `config.update` | 保存完整系统配置，可选择同步 JSON 镜像。 |
 | `execution.resource.close` | 关闭并移除指定后台执行资源。 |
@@ -85,6 +88,8 @@
 | `session.runtime_status` | 获取指定 Pi 会话的上下文占用、消息、工具调用和 token 统计。 |
 | `session.truncate_from` | 从指定请求起截断会话历史。 |
 | `systemTool.list` | 获取常驻系统工具目录。 |
+| `world.get` | 获取模型当前使用的权威世界投影，包括时间阶段、日历、实体、关系、时间线和未来计划。 |
+| `world.resident.wake` | 向持久化世界队列提交一次显式 Resident 唤醒请求。 |
 
 ### 请求示例
 
@@ -185,6 +190,19 @@
 | `run.activity.changed` | `progress` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `run.cancellation.progress` | `progress` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `prompt.summary` | `progress` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
+| `prompt.harness.composed` | `progress` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
+| `continuity.snapshot` | `snapshot` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
+| `continuity.rules.snapshot` | `snapshot` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
+| `continuity.recall.settled` | `progress` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
+| `continuity.recall.query` | `progress` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
+| `agenda.snapshot` | `snapshot` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
+| `world.snapshot` | `snapshot` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
+| `todo.list.written` | `snapshot` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
+| `execution.created` | `snapshot` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
+| `execution.step.started` | `progress` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
+| `execution.step.completed` | `snapshot` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
+| `execution.blocked` | `error` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
+| `execution.completed` | `terminal` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `model.started` | `progress` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
 | `model.delta` | `progress` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
 | `model.completed` | `snapshot` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
@@ -195,7 +213,7 @@
 | `tool.call.completed` | `progress` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
 | `tool.call.failed` | `error` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
 | `tool.call.result.detail` | `snapshot` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
-| `assistant.message.created` | `progress` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
+| `assistant.message.created` | `progress` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
 | `approval.requested` | `progress` | `approval` | [审批事件类型](../../Source/AgentSystem/Approvals/AgentApprovalEventTypes.ts) |
 | `approval.resolved` | `progress` | `approval` | [审批事件类型](../../Source/AgentSystem/Approvals/AgentApprovalEventTypes.ts) |
 | `interaction.input.requested` | `progress` | `tool` | [交互输入事件类型](../../Source/AgentSystem/Interaction/AgentInteractionInputEventTypes.ts) |
@@ -250,6 +268,7 @@
 | `preset.failed` | `error` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `system_tool.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `mcp_server.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
+| `channel.status.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 
 ## 会话回放与恢复
 

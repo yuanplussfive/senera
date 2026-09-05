@@ -14,6 +14,7 @@ import {
   AgentToolSearchMemoryExpansionModes,
   type AgentToolSearchMemoryExpansionMode,
 } from "../Types/AgentToolAndMemoryConfigTypes.js";
+import { AgentToolSearchResultModes } from "./AgentToolSearchTypes.js";
 
 export interface AgentToolSearchRankPipelineResult {
   entries: AgentToolSearchRankedEntry[];
@@ -23,6 +24,7 @@ export interface AgentToolSearchRankPipelineResult {
 
 export class AgentToolSearchRankPipeline {
   private readonly documentFrequency = new Map<string, number>();
+  private readonly documentTokensByTool = new Map<string, ReadonlySet<string>>();
   private readonly reranker: AgentToolSearchReranker<AgentToolSearchRankerName>;
 
   constructor(
@@ -37,14 +39,19 @@ export class AgentToolSearchRankPipeline {
   }
 
   rank(options: AgentToolSearchOptions): AgentToolSearchRankPipelineResult {
-    const keywordTokens = this.tokenizer.keywords(options.query);
-    const queryTokens = keywordTokens.length > 0 ? keywordTokens : this.tokenizer.tokenize(options.query);
-    const visible = new Set(options.loadedToolNames ?? []);
-    const candidates = this.docs.filter((doc) => options.includeLoaded !== false || !visible.has(doc.toolName));
+    const queryTokens = this.tokenizer.tokenize(options.query);
+    const authorized = options.authorizedToolNames ? new Set(options.authorizedToolNames) : undefined;
+    // Visibility is presentation state, not an authorization boundary. A
+    // loaded tool must remain searchable so ToolSearch can report that its
+    // contract is already available instead of making the model search in a
+    // loop. `includeLoaded` is retained for protocol compatibility and is no
+    // longer used to hide candidates.
+    const candidates = this.docs.filter((doc) => !authorized || authorized.has(doc.toolName));
     const initialNames = new Set(candidates.map((doc) => doc.toolName));
     const rankers = this.rankers(options, queryTokens, initialNames);
-    const candidateNames = this.relevantCandidates(rankers, options.memoryEvidence ?? []);
-    const fused = this.fuse(rankers, candidateNames);
+    const catalogMode = options.resultMode === AgentToolSearchResultModes.Catalog;
+    const candidateNames = this.relevantCandidates(rankers, options.memoryEvidence ?? [], catalogMode, initialNames);
+    const fused = this.fuse(rankers, candidateNames, catalogMode);
     const reranked = this.reranker.rerank(fused, {
       queryTokens,
       plannerTagTokens: this.tokenizer.tokenize((options.plannerTags ?? []).join(" ")),
@@ -53,12 +60,12 @@ export class AgentToolSearchRankPipeline {
       memoryByTool: toMemoryEvidenceMap(options.memoryEvidence ?? []),
       inverseDocumentFrequency: (token) => this.inverseDocumentFrequency(token),
     });
-    const diversified = this.diversify(reranked, queryTokens);
+    const ordered = catalogMode ? reranked : this.diversify(reranked);
 
     return {
-      entries: diversified
-        .filter((entry) => entry.score >= this.config.Ranking.MinScore)
-        .slice(0, this.config.Ranking.MaxResults),
+      entries: ordered
+        .filter((entry) => catalogMode || entry.score >= this.config.Ranking.MinScore)
+        .slice(0, catalogMode ? undefined : this.config.Ranking.MaxResults),
       rankers,
       queryTokens,
     };
@@ -73,11 +80,22 @@ export class AgentToolSearchRankPipeline {
     return {
       bm25,
       exact: this.exactRank(queryTokens, candidateNames),
+      fuzzy: this.fuzzyRank(options.query, candidateNames),
       semantic: this.semanticRank(options.semanticEvidence ?? [], candidateNames),
       memory: this.memoryRank(options.memoryEvidence ?? [], candidateNames),
       priority: this.priorityRank(candidateNames),
       source: this.sourcePreferenceRank(options.preferredSourceIds ?? [], candidateNames),
     };
+  }
+
+  private fuzzyRank(query: string, candidateNames: Set<string>): AgentToolSearchRankMap {
+    if (!this.config.Fuzzy.Enabled) return new Map();
+    const matches = this.capabilityIndex.fuzzy(query, AgentCapabilityKinds.Tool, {
+      allowedNames: candidateNames,
+      minScore: this.config.Fuzzy.MinScore,
+      limit: this.config.Fuzzy.CandidateLimit,
+    });
+    return toRankMap(matches.map((match) => match.name));
   }
 
   private bm25Rank(query: string, candidateNames: Set<string>): AgentToolSearchRankMap {
@@ -117,7 +135,7 @@ export class AgentToolSearchRankPipeline {
       return 0;
     }
 
-    const documentTokens = new Set(this.tokenizer.tokenize(doc.coreText));
+    const documentTokens = this.documentTokens(doc);
     return [...queryTokens].reduce((total, token) => {
       return documentTokens.has(token) ? total + this.inverseDocumentFrequency(token) : total;
     }, 0);
@@ -159,6 +177,7 @@ export class AgentToolSearchRankPipeline {
   private fuse(
     rankers: Record<AgentToolSearchRankerName, AgentToolSearchRankMap>,
     candidateNames: Set<string>,
+    includeUnmatched: boolean,
   ): AgentToolSearchRankedEntry[] {
     const k = this.config.Ranking.RrfK;
 
@@ -170,22 +189,21 @@ export class AgentToolSearchRankPipeline {
           return rank === undefined ? total : total + 1 / (k + rank);
         }, 0),
       }))
-      .filter((entry) => entry.score > 0)
+      .filter((entry) => includeUnmatched || entry.score > 0)
       .sort((left, right) => right.score - left.score || left.toolName.localeCompare(right.toolName));
   }
 
-  private diversify(entries: AgentToolSearchRankedEntry[], queryTokens: string[]): AgentToolSearchRankedEntry[] {
+  private diversify(entries: AgentToolSearchRankedEntry[]): AgentToolSearchRankedEntry[] {
     const selected: AgentToolSearchRankedEntry[] = [];
     const remaining = [...entries];
-    const querySet = new Set(queryTokens);
 
-    while (remaining.length > 0) {
+    while (remaining.length > 0 && selected.length < this.config.Ranking.MaxResults) {
       const bestScore = Math.max(...remaining.map((entry) => entry.score));
       const pool = remaining.filter((entry) => entry.score >= bestScore * this.config.Ranking.MmrCandidateScoreRatio);
       const next = pool
         .map((entry) => ({
           entry,
-          score: this.diversifiedScore(entry, selected, querySet),
+          score: this.diversifiedScore(entry, selected),
         }))
         .sort((left, right) => right.score - left.score || left.entry.toolName.localeCompare(right.entry.toolName))[0];
 
@@ -203,18 +221,14 @@ export class AgentToolSearchRankPipeline {
     return selected;
   }
 
-  private diversifiedScore(
-    entry: AgentToolSearchRankedEntry,
-    selected: AgentToolSearchRankedEntry[],
-    queryTokens: Set<string>,
-  ): number {
+  private diversifiedScore(entry: AgentToolSearchRankedEntry, selected: AgentToolSearchRankedEntry[]): number {
     const doc = this.docsByTool.get(entry.toolName);
     if (!doc) {
       return entry.score;
     }
 
     const lambda = this.config.Ranking.MmrLambda;
-    const relevance = entry.score + this.queryCoverage(doc, queryTokens) * 0.01;
+    const relevance = entry.score;
     const redundancy =
       selected.length === 0
         ? 0
@@ -229,8 +243,11 @@ export class AgentToolSearchRankPipeline {
   private relevantCandidates(
     rankers: Record<AgentToolSearchRankerName, AgentToolSearchRankMap>,
     memoryEvidence: readonly AgentToolSearchMemoryEvidence[],
+    includeUnmatched: boolean,
+    initialNames: ReadonlySet<string>,
   ): Set<string> {
-    const lexical = new Set([...rankers.bm25.keys(), ...rankers.exact.keys()]);
+    if (includeUnmatched) return new Set(initialNames);
+    const lexical = new Set([...rankers.bm25.keys(), ...rankers.exact.keys(), ...rankers.fuzzy.keys()]);
     const semantic = new Set(rankers.semantic.keys());
     const memory = this.qualifiedMemoryCandidates(memoryEvidence, rankers.memory);
     const expand = MemoryExpansionPolicies[this.config.Ranking.MemoryExpansion.Mode];
@@ -250,18 +267,13 @@ export class AgentToolSearchRankPipeline {
       .map((entry) => entry.toolName);
   }
 
-  private queryCoverage(doc: ToolSearchDocument, queryTokens: Set<string>): number {
-    const tokens = new Set(this.tokenizer.tokenize(doc.coreText));
-    return [...queryTokens].filter((token) => tokens.has(token)).length;
-  }
-
   private documentSimilarity(left: ToolSearchDocument, right: ToolSearchDocument | undefined): number {
     if (!right) {
       return 0;
     }
 
-    const leftTokens = new Set(this.tokenizer.tokenize(left.coreText));
-    const rightTokens = new Set(this.tokenizer.tokenize(right.coreText));
+    const leftTokens = this.documentTokens(left);
+    const rightTokens = this.documentTokens(right);
     const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
     const union = new Set([...leftTokens, ...rightTokens]).size;
     return union === 0 ? 0 : intersection / union;
@@ -274,10 +286,18 @@ export class AgentToolSearchRankPipeline {
 
   private buildDocumentFrequency(): void {
     for (const doc of this.docs) {
-      for (const token of new Set(this.tokenizer.tokenize(doc.coreText))) {
+      for (const token of this.documentTokens(doc)) {
         this.documentFrequency.set(token, (this.documentFrequency.get(token) ?? 0) + 1);
       }
     }
+  }
+
+  private documentTokens(doc: ToolSearchDocument): ReadonlySet<string> {
+    const cached = this.documentTokensByTool.get(doc.toolName);
+    if (cached) return cached;
+    const tokens = new Set(this.tokenizer.tokenize(doc.coreText));
+    this.documentTokensByTool.set(doc.toolName, tokens);
+    return tokens;
   }
 }
 

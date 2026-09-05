@@ -1,6 +1,5 @@
 import { readArtifactMemoryHostTool } from "./Memory/AgentArtifactMemoryRuntime.js";
-import { recallMemoryHostTool } from "./Memory/AgentMemoryRecallRuntime.js";
-import { writeMemoryHostTool } from "./Memory/AgentMemoryWriteRuntime.js";
+import { recallContinuityHostTool, writeContinuityHostTool } from "./Continuity/AgentContinuityToolRuntime.js";
 import { createShellCommandHostTool } from "./ToolRuntime/AgentShellCommandRuntime.js";
 import { applyWorkspacePatchHostTool } from "./ToolRuntime/AgentWorkspaceApplyPatchRuntime.js";
 import { AgentToolHostCapabilityRegistry } from "./ToolRuntime/AgentToolHostCapabilityRegistry.js";
@@ -25,6 +24,9 @@ export const AgentHostCapabilityNames = {
   ExecutionResourceResize: "execution.resource.resize",
   ExecutionResourceStopAll: "execution.resource.stop_all",
   ToolSearch: "tool.search",
+  ToolDescribe: "tool.describe",
+  ToolLoad: "tool.load",
+  ToolUnload: "tool.unload",
   ArtifactMemoryRead: "artifact.memory.read",
   MemoryRecall: "memory.recall",
   MemoryWrite: "memory.write",
@@ -32,6 +34,7 @@ export const AgentHostCapabilityNames = {
   AskUser: "conversation.ask_user",
   SkillManage: "extensions.skill.manage",
   AgentSpawn: "orchestration.agent.spawn",
+  AgentList: "orchestration.agent.list",
   AgentWait: "orchestration.agent.wait",
   AgentInput: "orchestration.agent.input",
   AgentStop: "orchestration.agent.stop",
@@ -54,8 +57,8 @@ export function createDefaultHostCapabilityRegistry(
   const registry = new AgentToolHostCapabilityRegistry()
     .register(AgentHostCapabilityNames.ShellRun, createShellCommandHostTool(options.executionResources))
     .register(AgentHostCapabilityNames.ArtifactMemoryRead, readArtifactMemoryHostTool)
-    .register(AgentHostCapabilityNames.MemoryRecall, recallMemoryHostTool)
-    .register(AgentHostCapabilityNames.MemoryWrite, writeMemoryHostTool)
+    .register(AgentHostCapabilityNames.MemoryRecall, recallContinuityHostTool)
+    .register(AgentHostCapabilityNames.MemoryWrite, writeContinuityHostTool)
     .register(AgentHostCapabilityNames.WorkspaceApplyPatch, applyWorkspacePatchHostTool);
   registry.register(AgentHostCapabilityNames.AskUser, askUserHostTool);
 
@@ -80,6 +83,7 @@ export function createDefaultHostCapabilityRegistry(
     ).createProjection();
     registry
       .register(AgentHostCapabilityNames.AgentSpawn, handlers.spawn, spawnContract)
+      .register(AgentHostCapabilityNames.AgentList, handlers.list)
       .register(AgentHostCapabilityNames.AgentWait, handlers.wait)
       .register(AgentHostCapabilityNames.AgentInput, handlers.input)
       .register(AgentHostCapabilityNames.AgentStop, handlers.stop)
@@ -88,11 +92,17 @@ export function createDefaultHostCapabilityRegistry(
       .register(AgentHostCapabilityNames.ScheduleManage, handlers.scheduleManage);
   }
 
-  return options.toolSearch
-    ? registry.register(
+  if (options.toolSearch) {
+    registry
+      .register(
         AgentHostCapabilityNames.ToolSearch,
-        options.toolSearch.createHostHandler(),
+        options.toolSearch.createSearchHostHandler(),
         options.toolSearch.createHostContractProjection(),
       )
-    : registry;
+      .register(AgentHostCapabilityNames.ToolDescribe, options.toolSearch.createDescribeHostHandler())
+      .register(AgentHostCapabilityNames.ToolLoad, options.toolSearch.createLoadHostHandler())
+      .register(AgentHostCapabilityNames.ToolUnload, options.toolSearch.createUnloadHostHandler());
+  }
+
+  return registry;
 }

@@ -361,7 +361,7 @@ function LongValue({
         className="data-value-popover w-[min(40rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] border-line bg-surface-raised p-0"
         data-data-value-full
       >
-        <div className="max-h-[min(28rem,calc(100dvh-8rem))] overflow-auto p-3">
+        <div className="scrollbar-thin max-h-[min(28rem,calc(100dvh-8rem))] overflow-auto p-3">
           {isUrl ? (
             <a
               href={value}

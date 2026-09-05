@@ -12,6 +12,7 @@ import {
   type ToolActivityStatus,
 } from "./toolActivityPresentation";
 import { isToolStageIconName, type ToolStageIconName } from "./toolStageIconContract";
+import { isRecord, readStringArray } from "./presentationMapParsing";
 
 export type ToolStageStatus = TimelineStepStatus | "neutral";
 
@@ -346,7 +347,6 @@ function summarizeStageStatus(steps: readonly TimelineStep[]): ToolStageStatus {
   if (steps.some((step) => step.status === "pending")) return "pending";
   if (steps.length > 0 && steps.every((step) => step.status === "failed")) return "failed";
   if (steps.some((step) => step.status === "done")) return "done";
-  if (steps.every((step) => step.status === "done")) return "done";
   return "neutral";
 }
 
@@ -416,7 +416,7 @@ function parseToolStagePresentationMap(value: unknown): ToolStagePresentationMap
 
 function parseActivityGroupRule(value: unknown): ToolStageActivityGroupRule {
   if (!isRecord(value)) throw new Error("Tool stage activity group must be an object.");
-  const activityCategories = readStringArray(value.activityCategories);
+  const activityCategories = readStringArray(value.activityCategories, "Tool stage activityCategories");
   if (
     typeof value.id !== "string" ||
     !isToolStageIconName(value.icon) ||
@@ -445,16 +445,12 @@ function parseCategoryRule(value: unknown): ToolStageCategoryRule {
     id: record.id,
     icon: record.icon,
     match: {
-      exactToolNames: readStringArray(match.exactToolNames),
-      toolNamePrefixes: readStringArray(match.toolNamePrefixes),
+      exactToolNames: readStringArray(match.exactToolNames, "Tool stage match values"),
+      toolNamePrefixes: readStringArray(match.toolNamePrefixes, "Tool stage match values"),
       stepKinds: readTimelineStepKinds(match.stepKinds),
     },
     labels: parseLabels(labels, `category '${record.id}'`),
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseLabels(value: unknown, source: string): ToolStageLabels {
@@ -468,16 +464,8 @@ function parseLabels(value: unknown, source: string): ToolStageLabels {
   return { active: labels.active, completed: labels.completed };
 }
 
-function readStringArray(value: unknown): string[] | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw new Error("Tool stage match values must be string arrays.");
-  }
-  return value;
-}
-
 function readTimelineStepKinds(value: unknown): TimelineStepKind[] | undefined {
-  const values = readStringArray(value);
+  const values = readStringArray(value, "Tool stage stepKinds");
   if (!values) return undefined;
   const allowed = new Set<TimelineStepKind>([
     "understand",

@@ -1,5 +1,6 @@
 import type { MotionLevel } from "../motion/types";
 import type { AppearanceSnapshot } from "./themeModel";
+import { motionDurations } from "../motion/presets";
 
 type ViewTransitionHandle = {
   finished?: Promise<void>;
@@ -16,8 +17,7 @@ export interface AppearanceTransitionOptions {
 }
 
 const fallbackTransitionClassName = "theme-transition-fallback";
-const fallbackTransitionMs = 180;
-const reducedFallbackTransitionMs = 80;
+const fallbackTransitionMs = motionDurations.appearanceTransitionMs;
 
 export function applyAppearanceSnapshotToDocument(
   snapshot: AppearanceSnapshot,
@@ -61,11 +61,16 @@ export function runAppearanceTransition(
   const shouldUseViewTransition = options.viewTransition !== false && !reduced;
   const transitionDocument = documentRef as DocumentWithViewTransition;
   if (shouldUseViewTransition && typeof transitionDocument.startViewTransition === "function") {
-    transitionDocument.startViewTransition(apply);
+    root.style.setProperty("--theme-transition-duration", `${fallbackTransitionMs}ms`);
+    const viewTransition = transitionDocument.startViewTransition(apply);
+    void viewTransition.finished?.then(
+      () => root.style.removeProperty("--theme-transition-duration"),
+      () => root.style.removeProperty("--theme-transition-duration"),
+    );
     return;
   }
 
-  const duration = reduced ? reducedFallbackTransitionMs : fallbackTransitionMs;
+  const duration = reduced ? motionDurations.reducedAppearanceTransitionMs : fallbackTransitionMs;
   root.style.setProperty("--theme-transition-duration", `${duration}ms`);
   root.classList.add(fallbackTransitionClassName);
   apply();

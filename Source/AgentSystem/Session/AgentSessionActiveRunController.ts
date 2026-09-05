@@ -1,5 +1,6 @@
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { releaseAgentLifecycleResources } from "../Core/AgentLifecycleResource.js";
 import { createOpaqueId, createRequestId } from "../Core/AgentIds.js";
 import type { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
@@ -20,9 +21,15 @@ import type { ImageContent } from "@earendil-works/pi-ai";
 import { projectAgentPiImageAttachments } from "../Pi/AgentPiImageAttachmentProjector.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import { AgentSessionStatuses, type AgentSession } from "./AgentSession.js";
-import type { AgentSessionHistoryMutationCoordinator } from "./AgentSessionHistoryMutationCoordinator.js";
 import { clearAgentSessionCancellation, withAgentSessionCancellationPending } from "./AgentSessionLifecycleMetadata.js";
+import {
+  AgentPiSessionLifecycleStates,
+  resolveAgentPiSessionLifecycle,
+  withAgentPiSessionLifecycle,
+} from "../Pi/AgentPiSessionLifecycleMetadata.js";
+import type { AgentPiSessionMutationPort } from "../Pi/AgentPiSessionMutationService.js";
 import { AgentSessionMessageQueueModes, type AgentSessionMessageQueueMode } from "./AgentSessionMessageQueueMode.js";
 import {
   AgentSessionRunSettlementTimeoutError,
@@ -38,13 +45,14 @@ import {
 } from "./AgentSessionRunProjection.js";
 import { AgentSessionRunSnapshotWriter } from "./AgentSessionRunSnapshotWriter.js";
 import type { AgentSessionStore } from "./AgentSessionStore.js";
+import type { AgentConversationEntryMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 
 export interface AgentSessionActiveRunControllerOptions {
   readonly store: AgentSessionStore;
   readonly conversationProjector: AgentConversationProjector;
   readonly conversationPolicy: AgentConversationPolicy;
   readonly runControl: AgentSessionRunControlPolicy;
-  readonly historyMutations: Pick<AgentSessionHistoryMutationCoordinator, "truncate">;
+  readonly piSessionMutations?: Pick<AgentPiSessionMutationPort, "reset">;
   readonly runResources?: readonly AgentSessionRunResource[];
   readonly piSessions?: AgentPiActiveSessionRegistry;
   readonly piDiagnostics?: AgentPiDiagnosticSink;
@@ -58,12 +66,27 @@ export interface AgentSessionActiveRun {
   readonly onEvent?: AgentEventSink;
   readonly settled: Promise<void>;
   readonly resolveSettled: () => void;
+  readonly queuedMessages: Map<string, AgentSessionQueuedMessageAdmission>;
   stopPromise?: Promise<void>;
   cancellationPromise?: Promise<void>;
-  cancellationHistoryPromise?: Promise<void>;
+  cancellationCleanupPromise?: Promise<void>;
   cancellationEventSink?: AgentEventSink;
   suppressCancellationEvent?: boolean;
   terminalStatus?: "completed" | "failed" | "cancelled";
+}
+
+interface AgentSessionQueuedMessageAdmission {
+  readonly payloadHash: string;
+  readonly accepted: Promise<boolean>;
+}
+
+export class AgentSessionQueuedMessageConflictError extends AgentBaseError {
+  constructor(
+    readonly sessionId: string,
+    readonly requestId: string,
+  ) {
+    super(`Queued session message identity conflict: ${sessionId}/${requestId}`);
+  }
 }
 
 export type AgentSessionAvailability =
@@ -110,6 +133,7 @@ export class AgentSessionActiveRunController {
       onEvent,
       settled: settlement.promise,
       resolveSettled: settlement.resolve,
+      queuedMessages: new Map(),
     };
     this.activeRuns.set(sessionId, run);
     return run;
@@ -127,10 +151,11 @@ export class AgentSessionActiveRunController {
     terminalCommitFailed: boolean;
   }): Promise<void> {
     try {
-      if (!this.isCurrent(input.session.id, input.run)) return;
+      const current = this.isCurrent(input.session.id, input.run);
+      if (!current && input.run.terminalStatus === undefined) return;
       await this.cleanupRunOwnedResources(input.session.id, input.requestId);
-      this.activeRuns.delete(input.session.id);
-      if (!input.terminalSessionCommitted && !input.terminalCommitFailed) {
+      if (current) this.activeRuns.delete(input.session.id);
+      if (current && !input.terminalSessionCommitted && !input.terminalCommitFailed) {
         const releasedSession = cloneAgentSessionState(input.session);
         this.releaseSession(releasedSession);
         this.options.store.persistMetadata(releasedSession);
@@ -142,19 +167,29 @@ export class AgentSessionActiveRunController {
     }
   }
 
-  async cancelActiveRun(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<boolean> {
-    const run = this.activeRuns.get(request.sessionId) ?? this.cancellingRuns.get(request.sessionId);
+  async cancelActiveRun(request: {
+    sessionId: string;
+    requestId?: string;
+    onEvent?: AgentEventSink;
+  }): Promise<boolean> {
+    const run = this.readRequestedRun(request);
     if (!run) return false;
     this.startUserCancellation(request, run);
     await run.cancellationPromise;
     return true;
   }
 
-  acceptActiveRunCancellation(request: { sessionId: string; onEvent?: AgentEventSink }): boolean {
-    const run = this.activeRuns.get(request.sessionId) ?? this.cancellingRuns.get(request.sessionId);
+  acceptActiveRunCancellation(request: { sessionId: string; requestId?: string; onEvent?: AgentEventSink }): boolean {
+    const run = this.readRequestedRun(request);
     if (!run) return false;
     this.startUserCancellation(request, run);
     return true;
+  }
+
+  private readRequestedRun(request: { sessionId: string; requestId?: string }): AgentSessionActiveRun | undefined {
+    const run = this.activeRuns.get(request.sessionId) ?? this.cancellingRuns.get(request.sessionId);
+    if (!run || (request.requestId && request.requestId !== run.requestId)) return undefined;
+    return run;
   }
 
   async enqueueActiveRunMessage(request: {
@@ -162,6 +197,8 @@ export class AgentSessionActiveRunController {
     requestId?: string;
     input: string;
     attachments?: AgentUploadAttachment[];
+    metadata?: AgentConversationEntryMetadata;
+    interaction?: AgentInteractionContext;
     queueMode: AgentSessionMessageQueueMode;
     onEvent?: AgentEventSink;
   }): Promise<boolean> {
@@ -170,38 +207,63 @@ export class AgentSessionActiveRunController {
     if (!run || !handle || handle.requestId !== run.requestId) return false;
 
     const requestId = request.requestId?.trim() || createRequestId();
-    const timestamp = new Date().toISOString();
-    const userEntry = projectSessionUserEntry(
-      this.options.conversationProjector,
-      requestId,
-      { ...request, queue: { parentRequestId: run.requestId, mode: request.queueMode } },
-      timestamp,
-    );
-    const renderedInput = this.options.conversationPolicy.renderCurrentUserMessage(userEntry);
-    const images = await projectAgentPiImageAttachments({
-      attachments: request.attachments,
-      model: handle.session.model,
-      uploadStore: this.options.uploadStore,
+    const payloadHash = sha256HexOfCanonicalJson({
+      version: 1,
+      parentRequestId: run.requestId,
+      queueMode: request.queueMode,
+      input: request.input,
+      attachments: request.attachments ?? [],
+      metadata: request.metadata ?? null,
+      interaction: request.interaction ?? null,
     });
-    await ActiveRunQueueHandlers[request.queueMode](handle.session, renderedInput, images);
+    const existing = run.queuedMessages.get(requestId);
+    if (existing) {
+      if (existing.payloadHash !== payloadHash) {
+        throw new AgentSessionQueuedMessageConflictError(request.session.id, requestId);
+      }
+      return existing.accepted;
+    }
 
-    this.options.store.persistEntries(request.session.id, [userEntry]);
-    request.session.conversation = mergeSessionConversationEntries([...request.session.conversation, userEntry]);
-    request.session.updatedAt = timestamp;
-    this.options.store.persistMetadata(request.session);
+    const accepted = Promise.resolve().then(async () => {
+      const timestamp = new Date().toISOString();
+      const userEntry = projectSessionUserEntry(
+        this.options.conversationProjector,
+        requestId,
+        {
+          ...request,
+          metadata: request.metadata,
+          queue: { parentRequestId: run.requestId, mode: request.queueMode },
+        },
+        timestamp,
+      );
+      const renderedInput = this.options.conversationPolicy.renderCurrentUserMessage(userEntry, request.interaction);
+      const images = await projectAgentPiImageAttachments({
+        attachments: request.attachments,
+        model: handle.session.model,
+        uploadStore: this.options.uploadStore,
+      });
+      await ActiveRunQueueHandlers[request.queueMode](handle.session, renderedInput, images);
 
-    await emitAgentPiDiagnostic(this.options.piDiagnostics, {
-      context: { sessionId: request.session.id, requestId: run.requestId, step: handle.step },
-      source: AgentPiDiagnosticSources.Substrate,
-      name: `runtime_queue.${request.queueMode}.accepted`,
-      details: {
-        queueMode: request.queueMode,
-        steeringRequestId: requestId,
-        inputChars: request.input.length,
-        attachmentCount: request.attachments?.length ?? 0,
-      },
+      this.options.store.persistEntries(request.session.id, [userEntry]);
+      request.session.conversation = mergeSessionConversationEntries([...request.session.conversation, userEntry]);
+      request.session.updatedAt = timestamp;
+      this.options.store.persistMetadata(request.session);
+
+      await emitAgentPiDiagnostic(this.options.piDiagnostics, {
+        context: { sessionId: request.session.id, requestId: run.requestId, step: handle.step },
+        source: AgentPiDiagnosticSources.Substrate,
+        name: `runtime_queue.${request.queueMode}.accepted`,
+        details: {
+          queueMode: request.queueMode,
+          steeringRequestId: requestId,
+          inputChars: request.input.length,
+          attachmentCount: request.attachments?.length ?? 0,
+        },
+      });
+      return true;
     });
-    return true;
+    run.queuedMessages.set(requestId, { payloadHash, accepted });
+    return accepted;
   }
 
   async requestActiveRunFinalAnswer(request: { sessionId: string; instruction: string }): Promise<boolean> {
@@ -211,23 +273,37 @@ export class AgentSessionActiveRunController {
     return handle.session.requestFinalAnswer(request.instruction);
   }
 
-  async steerActiveRun(request: { sessionId: string; input: string; onEvent?: AgentEventSink }): Promise<boolean> {
+  async steerActiveRun(request: {
+    sessionId: string;
+    input: string;
+    interaction?: AgentInteractionContext;
+    onEvent?: AgentEventSink;
+  }): Promise<boolean> {
     const lookup = this.options.store.get(request.sessionId);
     if (lookup.kind === "missing") return false;
     return this.enqueueActiveRunMessage({
       session: lookup.session,
       input: request.input,
+      interaction: request.interaction,
       queueMode: AgentSessionMessageQueueModes.Steer,
       onEvent: request.onEvent,
     });
   }
 
-  async followUpActiveRun(request: { sessionId: string; input: string; onEvent?: AgentEventSink }): Promise<boolean> {
+  async followUpActiveRun(request: {
+    sessionId: string;
+    input: string;
+    onEvent?: AgentEventSink;
+    requestId?: string;
+    interaction?: AgentInteractionContext;
+  }): Promise<boolean> {
     const lookup = this.options.store.get(request.sessionId);
     if (lookup.kind === "missing") return false;
     return this.enqueueActiveRunMessage({
       session: lookup.session,
+      requestId: request.requestId,
       input: request.input,
+      interaction: request.interaction,
       queueMode: AgentSessionMessageQueueModes.FollowUp,
       onEvent: request.onEvent,
     });
@@ -252,6 +328,27 @@ export class AgentSessionActiveRunController {
 
   hasActiveRun(sessionId: string): boolean {
     return this.activeRuns.has(sessionId);
+  }
+
+  /** Includes the short cancellation-settlement window where new work is still blocked. */
+  hasRunInFlight(sessionId: string): boolean {
+    return this.activeRuns.has(sessionId) || this.cancellingRuns.has(sessionId);
+  }
+
+  /** Resolves at the next authoritative idle boundary for a session. */
+  waitForIdle(sessionId: string): Promise<void> {
+    const run = this.activeRuns.get(sessionId) ?? this.cancellingRuns.get(sessionId);
+    return run?.settled ?? Promise.resolve();
+  }
+
+  /**
+   * Makes a committed terminal run stop blocking new admissions before its
+   * asynchronous resource cleanup finishes. Finalization still owns cleanup.
+   */
+  detachTerminalRun(sessionId: string, run: AgentSessionActiveRun): void {
+    if (run.terminalStatus === undefined || !this.isCurrent(sessionId, run)) return;
+    this.activeRuns.delete(sessionId);
+    if (this.cancellingRuns.get(sessionId) === run) this.cancellingRuns.delete(sessionId);
   }
 
   requestActiveRunCancellation(sessionId: string): boolean {
@@ -375,8 +472,8 @@ export class AgentSessionActiveRunController {
       // The run may be non-cooperative (for example a provider stream or a
       // host process that does not observe abort immediately). The control
       // request must still settle after reporting the delayed cancellation;
-      // history cleanup remains tied to the real run settlement below.
-      run.cancellationHistoryPromise ??= settlement
+      // Pi cleanup remains tied to the real run settlement below.
+      run.cancellationCleanupPromise ??= settlement
         .then(() => this.finishUserCancellation(request, run))
         .catch((settlementError) => {
           this.options.logger?.warn("session.run_cancellation.background_settlement_failed", {
@@ -405,23 +502,37 @@ export class AgentSessionActiveRunController {
         createAgentSessionRunCancelledEvent(request.sessionId, run.requestId),
       );
     }
-    const mutation = await this.options.historyMutations.truncate({
-      session: lookup.session,
-      fromRequestId: run.requestId,
-      preparation: this.options.store.loadTurnPreparation(request.sessionId, run.requestId),
-    });
-    if (mutation.kind === "boundary_missing") {
-      throw new Error(`Active request disappeared during cancellation: ${request.sessionId}/${run.requestId}`);
+    await this.resetPiSessionAfterCancellation(lookup.session, run);
+  }
+
+  /**
+   * A cancellation leaves Pi with an incomplete assistant/tool sequence. Its
+   * runtime state must be discarded, while Senera's durable conversation and
+   * completed tool evidence remain visible and replayable.
+   */
+  private async resetPiSessionAfterCancellation(session: AgentSession, run: AgentSessionActiveRun): Promise<void> {
+    const lifecycle = resolveAgentPiSessionLifecycle(session.metadata);
+    const mutations = this.options.piSessionMutations;
+    if (!lifecycle.initialized || !mutations) return;
+
+    try {
+      await mutations.reset({
+        sessionId: session.id,
+        modelProviderId: lifecycle.modelProviderId,
+      });
+      session.metadata = withAgentPiSessionLifecycle(
+        session.metadata,
+        AgentPiSessionLifecycleStates.Absent,
+        lifecycle.modelProviderId,
+      );
+      this.options.store.persistMetadata(session);
+    } catch (error) {
+      this.options.logger?.warn("session.run_cancellation.pi_reset_failed", {
+        sessionId: session.id,
+        requestId: run.requestId,
+        error: serializeError(error),
+      });
     }
-    await emitAgentEvent(request.onEvent ?? run.onEvent, {
-      kind: AgentEventKinds.SessionTruncated,
-      context: { sessionId: request.sessionId },
-      data: {
-        sessionId: request.sessionId,
-        fromRequestId: run.requestId,
-        removedEntries: mutation.removedEntries,
-      },
-    });
   }
 
   private markCancellationPending(

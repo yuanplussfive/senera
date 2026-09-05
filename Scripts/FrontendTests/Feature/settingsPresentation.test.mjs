@@ -28,6 +28,7 @@ describe("settings presentation", () => {
       "retrieval",
       "system-tools",
       "mcp-servers",
+      "channels",
       "general",
       "appearance",
       "storage",
@@ -46,7 +47,7 @@ describe("settings presentation", () => {
         label: "能力与运行",
         sectionIds: ["runtime", "planning", "retrieval"],
       },
-      { id: "tools", label: "工具", sectionIds: ["system-tools", "mcp-servers"] },
+      { id: "tools", label: "工具", sectionIds: ["system-tools", "mcp-servers", "channels"] },
       { id: "personal", label: "个人", sectionIds: ["general", "appearance"] },
       { id: "system", label: "系统", sectionIds: ["storage", "about"] },
     ]);

@@ -1,5 +1,5 @@
 import type { ToolCallOutputData, ToolCallProgressData } from "../../api/eventTypes";
-import type { TimelineStep, TimelineToolOutput } from "../sessionStore";
+import type { TimelineStep, TimelineToolOutput } from "./types";
 
 const MaxStreamCharacters = 128 * 1024;
 const TruncationMarker = "... earlier tool output omitted ...\n";

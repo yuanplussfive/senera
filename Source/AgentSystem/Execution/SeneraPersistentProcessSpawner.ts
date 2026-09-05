@@ -88,11 +88,11 @@ class SeneraLocalPersistentProcessChild implements SeneraPersistentProcessChild 
     else this.subscribeToClose(listener as (exitCode: number | null, signal: NodeJS.Signals | null) => void);
   }
 
-  once(event: "close", listener: () => void): void {
+  once(_event: "close", listener: () => void): void {
     this.subscribeToClose(listener);
   }
 
-  off(event: "close", listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void): void {
+  off(_event: "close", listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void): void {
     this.closeSubscriptions.get(listener)?.forEach((subscription) => {
       subscription.active = false;
     });

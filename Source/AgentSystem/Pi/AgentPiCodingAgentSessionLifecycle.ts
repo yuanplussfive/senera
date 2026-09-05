@@ -1,5 +1,4 @@
 import { errorMessage } from "../Core/AgentErrors.js";
-import type { AgentKeyedLeaseQueue } from "../Core/AgentKeyedLeaseQueue.js";
 import { AgentPiBackgroundShutdownTracker } from "./AgentPiBackgroundShutdownTracker.js";
 import type {
   AgentPiCodingAgentSessionPoolOptions,
@@ -18,7 +17,6 @@ export class AgentPiCodingAgentSessionLifecycle {
 
   constructor(
     private readonly sessions: Map<string, AgentPiPooledCodingSession>,
-    private readonly leases: AgentKeyedLeaseQueue<string>,
     private readonly maxIdleSessions: number,
     private readonly diagnostics: AgentPiCodingAgentSessionPoolOptions["diagnostics"],
   ) {}
@@ -46,12 +44,7 @@ export class AgentPiCodingAgentSessionLifecycle {
     return this.accessSequence;
   }
 
-  release(
-    sessionId: string,
-    pooled: AgentPiPooledCodingSession,
-    releaseLease: () => void,
-    finishOperation: () => void,
-  ): void {
+  release(pooled: AgentPiPooledCodingSession, releaseLease: () => void, finishOperation: () => void): void {
     pooled.activeLeases = Math.max(0, pooled.activeLeases - 1);
     pooled.lastAccess = this.nextAccessSequence();
     releaseLease();
@@ -62,6 +55,7 @@ export class AgentPiCodingAgentSessionLifecycle {
   shutdown(pooled: AgentPiPooledCodingSession): Promise<void> {
     return (pooled.shutdownPromise ??= (async () => {
       pooled.disposeDiagnostics();
+      pooled.disposeToolExposure?.();
       await pooled.session.abort();
       await pooled.session.waitForIdle();
       pooled.session.dispose();

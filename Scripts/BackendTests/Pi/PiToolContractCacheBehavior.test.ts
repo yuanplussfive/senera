@@ -178,6 +178,7 @@ function toolProjector(
   return new AgentPiToolRegistryProjector({
     config: { ModelProviders: [] },
     registry,
+    toolPlanningMode: "baml",
     execution: {
       execute: async () => ({ content: [], details: { senera: { toolName: "test", result: {} } } }),
     } as unknown as AgentPiToolExecutionBridge,

@@ -53,8 +53,23 @@ describe("Pi tool execution bridge failures", () => {
     });
   });
 
-  test("keeps artifact persistence failures inside the tool loop for the model to recover from", async () => {
-    const executed = toolResult({ callId: "call-artifact", name: "ArtifactTool" });
+  test("preserves a successful tool result when Artifact persistence is unavailable", async () => {
+    const executed = toolResult({
+      callId: "call-artifact",
+      name: "ArtifactTool",
+      artifactPayload: { rawResponse: { private: "artifact-only" } },
+      artifact: {
+        artifactId: "artifact-stale",
+        artifactUri: "senera://artifact/stale",
+        artifactPath: "E:/workspace/.senera/artifacts/stale",
+        relativePath: ".senera/artifacts/stale",
+        manifestPath: "E:/workspace/.senera/artifacts/stale/manifest.json",
+        files: {},
+        summary: "stale",
+        evidence: [],
+        delta: [],
+      },
+    });
     const bridge = new AgentPiToolExecutionBridge({
       executeToolCall: async () => ({ kind: "ToolResults", value: [executed] }),
       recordToolArtifacts: async () => {
@@ -71,16 +86,31 @@ describe("Pi tool execution bridge failures", () => {
     });
 
     expect(parseObservation(result)).toMatchObject({
-      status: "failure",
-      error: {
-        code: AgentExecutionErrorCodes.ToolExecutionError,
-        message: "Artifact storage is temporarily unavailable.",
+      status: "success",
+      observation_view: {
+        artifact_availability: {
+          status: "unavailable",
+          reason: "recording_failed",
+        },
+      },
+      detail: { result: { ok: true } },
+    });
+    expect(result.details.senera).toMatchObject({
+      status: AgentPiToolResultStatuses.Success,
+      artifactAvailability: { status: "unavailable", reason: "recording_failed" },
+    });
+    const captured = context.turnState.takeExecutedToolResult("call-artifact");
+    expect(captured).toMatchObject({
+      arguments: { query: "answer" },
+      result: { ok: true },
+      outcome: { assessment: { status: "success" } },
+      artifactAvailability: { status: "unavailable", reason: "recording_failed" },
+      presentation: {
+        artifactAvailability: { status: "unavailable", reason: "recording_failed" },
       },
     });
-    expect(context.turnState.takeExecutedToolResult("call-artifact")).toMatchObject({
-      arguments: { path: "notes.md" },
-      outcome: { assessment: { status: "failure" } },
-    });
+    expect(captured).not.toHaveProperty("artifactPayload");
+    expect(captured).not.toHaveProperty("artifact");
   });
 
   test("does not turn user cancellation into a tool observation", async () => {
@@ -102,6 +132,24 @@ describe("Pi tool execution bridge failures", () => {
         context: createToolContext("CancelledTool", "call-cancelled"),
       }),
     ).rejects.toThrow("User stopped the run.");
+  });
+
+  test("propagates cancellation when Artifact persistence is interrupted", async () => {
+    const bridge = new AgentPiToolExecutionBridge({
+      executeToolCall: async () => ({ kind: "ToolResults", value: [toolResult()] }),
+      recordToolArtifacts: async () => {
+        throw new AgentCancellationError("User stopped while persisting the Artifact.");
+      },
+    });
+
+    await expect(
+      bridge.execute({
+        tool: registeredTool("SearchTool"),
+        params: {},
+        toolCallId: "call-artifact-cancelled",
+        context: createToolContext("SearchTool", "call-artifact-cancelled"),
+      }),
+    ).rejects.toThrow("User stopped while persisting the Artifact.");
   });
 });
 

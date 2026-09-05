@@ -46,6 +46,8 @@
     "Capabilities": [
       {
         "Id": "execution.resource-signal",
+        "Title": "Control execution resource",
+        "Description": "向后台进程树发送中断、终止或强制结束信号。",
         "Facets": {
           "Actions": ["interrupt", "terminate", "kill"],
           "Targets": ["execution-resource", "process-tree"],
@@ -53,6 +55,7 @@
         }
       }
     ],
+    "UseCases": ["后台命令需要停止、被卡住，或用户明确要求中断当前执行时。"],
     "Tags": ["后台进程", "进程信号", "取消"]
   },
   "evidenceCapabilities": [],

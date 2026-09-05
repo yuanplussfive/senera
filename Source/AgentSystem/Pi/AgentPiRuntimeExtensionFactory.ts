@@ -24,7 +24,7 @@ import {
 import { DefaultAgentPiCompactionSummaryFormatterOptions } from "./AgentPiCompactionSummaryFormatter.js";
 import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 import type { AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
-import { renderPiSystemPromptFrame } from "./AgentPiPromptFrameProjector.js";
+import { projectAgentPiTurnContextMessage } from "./AgentPiTurnContextMessage.js";
 import { projectAgentPiToolResultStatus } from "./AgentPiToolResultPolicy.js";
 import type { AgentPiProviderProjection } from "./AgentPiTypes.js";
 import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
@@ -37,6 +37,7 @@ export interface AgentPiRuntimeExtensionFactoryOptions {
   readonly provider: AgentPiProviderProjection;
   readonly planningCompilerFactory: AgentPiPlanningCompilerFactory;
   readonly diagnostics?: AgentPiDiagnosticSink;
+  readonly beforeCompaction?: (sessionId: string) => Promise<void>;
 }
 
 export interface AgentPiRuntimeExtensionRegistration {
@@ -118,17 +119,16 @@ export class AgentPiRuntimeExtensionFactory {
       factory: (pi) => {
         pi.on("before_agent_start", (event) => {
           const snapshot = frame.snapshot();
+          const message = projectAgentPiTurnContextMessage({
+            turnContext: snapshot.turnContext,
+            skills: frame.skillSnapshot(),
+            selectedPromptTemplates: snapshot.selectedPromptTemplates,
+          });
           return {
-            systemPrompt: [
-              renderPiSystemPromptFrame({
-                systemPrompt: snapshot.systemPrompt ?? "",
-                skills: frame.skillSnapshot(),
-                selectedPromptTemplates: snapshot.selectedPromptTemplates,
-              }),
-              event.systemPrompt,
-            ]
+            systemPrompt: [snapshot.systemPrompt ?? "", event.systemPrompt]
               .filter((value) => value.trim().length > 0)
               .join("\n\n"),
+            ...(message ? { message } : {}),
           };
         });
         pi.on("tool_call", (event) =>
@@ -147,6 +147,7 @@ export class AgentPiRuntimeExtensionFactory {
           return replacement ? { message: replacement } : undefined;
         });
         pi.on("session_before_compact", async (event) => {
+          await this.flushBeforeCompaction(frame.snapshot().sessionId);
           const summarizedMessages = [
             ...event.preparation.messagesToSummarize,
             ...event.preparation.turnPrefixMessages,
@@ -193,6 +194,7 @@ export class AgentPiRuntimeExtensionFactory {
           return { messages: await projectProviderMessages(event.messages) };
         });
         pi.on("session_before_tree", async (event) => {
+          await this.flushBeforeCompaction(frame.snapshot().sessionId);
           const prepared = prepareBranchEntries(
             event.preparation.entriesToSummarize,
             this.options.provider.model.contextWindow - this.options.provider.model.maxTokens,
@@ -230,5 +232,11 @@ export class AgentPiRuntimeExtensionFactory {
         };
       },
     };
+  }
+
+  private async flushBeforeCompaction(sessionId: string | undefined): Promise<void> {
+    if (!this.options.beforeCompaction) return;
+    if (!sessionId) throw new Error("Pi compaction requires a continuity session identity.");
+    await this.options.beforeCompaction(sessionId);
   }
 }

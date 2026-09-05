@@ -3,8 +3,9 @@ import type { ConfigMutationState, ConfigSnapshotData } from "../../../api/event
 import type { SocketStatus } from "../../../api/useAgentSocket";
 import { isConfigConflict } from "../../../app/configMutationFailure";
 import { validateJsonConfigDraft, type JsonConfigObject } from "../../../shared/config/JsonConfigForm";
-import { sameJsonValue } from "../../../shared/config/JsonConfigValue";
+import { sameJsonValue, sameJsonValueReconciled } from "../../../shared/config/JsonConfigValue";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
+import { motionDurations } from "../../../shared/motion";
 
 export type ConfigDraftSaveMode = "debounced" | "immediate";
 
@@ -108,10 +109,10 @@ export function useConfigSettingsDraftState({
       savedStatusTimerRef.current = window.setTimeout(() => {
         setSavedRecently(false);
         savedStatusTimerRef.current = null;
-      }, 1800);
-      if (snapshot) {
+      }, motionDurations.saveStatusMs);
+      if (snapshot && !hasNewerDraft) {
         baseSnapshotRef.current = snapshot.value;
-        const nextDirty = !sameJson(draftRef.current, snapshot.value);
+        const nextDirty = !sameJsonValueReconciled(draftRef.current, snapshot.value);
         dirtyRef.current = nextDirty;
         setDirty(nextDirty);
         if (!nextDirty) {

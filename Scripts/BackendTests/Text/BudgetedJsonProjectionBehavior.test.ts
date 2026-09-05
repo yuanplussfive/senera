@@ -209,7 +209,9 @@ describe("turn token budget", () => {
       outputReserveTokens: 64,
     });
 
-    expect(() => budget.validateModelInput({ content: "large ".repeat(1_000) })).toThrow("planning input uses");
+    expect(() => budget.validateModelInput({ content: "large ".repeat(1_000) })).toThrow(
+      "exceeds the model's maximum context length",
+    );
   });
 
   test("does not count inline image base64 as text tokens", () => {

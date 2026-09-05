@@ -1,11 +1,4 @@
-import type {
-  AgentMemoryCandidateStatus,
-  AgentMemoryEpisodeStatus,
-  AgentMemoryItemStatus,
-  AgentMemoryLearningOperation,
-  AgentMemorySourceKind,
-  AgentMemoryType,
-} from "./AgentMemorySourceRepository.js";
+import type { AgentMemoryEpisodeStatus, AgentMemorySourceKind } from "./AgentMemorySourceRepository.js";
 
 export interface EpisodeRow {
   id: string;
@@ -50,88 +43,6 @@ export interface SourceRow {
   updated_at: string;
   created_at_ms: number;
   updated_at_ms: number;
-  time_zone: string;
-  local_date: string;
-  local_hour: string;
-  metadata_json: string;
-}
-
-export interface MemoryItemRow {
-  id: string;
-  uri: string;
-  type: AgentMemoryType;
-  subject: string;
-  claim: string;
-  how_to_apply: string;
-  tags_json: string;
-  triggers_json: string;
-  source_refs_json: string;
-  status: AgentMemoryItemStatus;
-  confidence: number;
-  session_id: string;
-  source_episode_uri: string;
-  source_request_id: string;
-  created_at: string;
-  updated_at: string;
-  created_at_ms: number;
-  updated_at_ms: number;
-  time_zone: string;
-  local_date: string;
-  local_hour: string;
-  metadata_json: string;
-}
-
-export interface MemoryCandidateRow {
-  id: string;
-  uri: string;
-  type: AgentMemoryType;
-  subject: string;
-  claim: string;
-  how_to_apply: string;
-  tags_json: string;
-  triggers_json: string;
-  source_refs_json: string;
-  status: AgentMemoryCandidateStatus;
-  confidence: number;
-  embedding_json: string;
-  session_id: string;
-  source_episode_uri: string;
-  source_request_id: string;
-  promoted_memory_uri: string;
-  created_at: string;
-  updated_at: string;
-  created_at_ms: number;
-  updated_at_ms: number;
-  time_zone: string;
-  local_date: string;
-  local_hour: string;
-  metadata_json: string;
-}
-
-export interface MemoryItemVectorRow {
-  memory_uri: string;
-  model: string;
-  dimensions: number;
-  embedding_json: string;
-  updated_at: string;
-  updated_at_ms: number;
-}
-
-export interface MemoryObservationRow {
-  id: string;
-  uri: string;
-  memory_uri: string;
-  write_sequence: number;
-  operation: AgentMemoryLearningOperation;
-  candidate_uris_json: string;
-  source_refs_json: string;
-  reason: string;
-  confidence: number;
-  session_id: string;
-  source_episode_uri: string;
-  source_request_id: string;
-  created_at: string;
-  created_at_ms: number;
   time_zone: string;
   local_date: string;
   local_hour: string;

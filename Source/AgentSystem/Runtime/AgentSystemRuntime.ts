@@ -10,6 +10,7 @@ import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionReg
 import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 import { AgentSkillScanner } from "../Skills/AgentSkillScanner.js";
 import type { AgentSandboxRuntimeProvider } from "../Sandbox/AgentSandboxRuntimeTypes.js";
+import { resolveAgentPromptConfig } from "../Defaults/AgentRuntimeDefaults.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentToolSearchMemoryStore } from "../ToolSearch/AgentToolSearchMemoryTypes.js";
 import type { AgentRuntimeModule } from "./AgentRuntimeModule.js";
@@ -28,6 +29,16 @@ import {
 import type { AgentWorkspaceRuntimeServices } from "./AgentWorkspaceRuntime.js";
 import type { AgentSessionApprovalLeaseStore } from "../Safety/AgentSessionApprovalLeaseStore.js";
 import type { AgentOrchestrationHostRuntime } from "../Orchestration/AgentOrchestrationHostTools.js";
+import type { AgentContinuityMemoryService } from "../Continuity/AgentContinuityMemoryService.js";
+import { AgentPromptTierRenderCache } from "../Prompt/AgentPromptTierRenderCache.js";
+import type { AgentExecutionLedgerService } from "../Goals/AgentExecutionLedgerService.js";
+import type { AgentTodoService } from "../Todos/AgentTodoService.js";
+import type { AgentContinuityLifecyclePort } from "../Continuity/AgentContinuityLifecycle.js";
+import type { AgentWorldSnapshotProvider } from "../World/AgentWorldTypes.js";
+import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
+import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
+import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
+import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
 
 export interface AgentSystemRuntimeSharedOptions {
   modelProviderId?: string;
@@ -44,6 +55,15 @@ export interface AgentSystemRuntimeSharedOptions {
   mcpInputs?: AgentExtensionValueResolver;
   workspaceRuntime?: AgentWorkspaceRuntimeServices;
   orchestration?: AgentOrchestrationHostRuntime;
+  continuityMemory?: AgentContinuityMemoryService;
+  continuityIdentity?: AgentContinuityIdentityContext;
+  continuityLifecycle?: AgentContinuityLifecyclePort;
+  executionLedger?: AgentExecutionLedgerService;
+  todos?: AgentTodoService;
+  agenda?: AgentAgendaService;
+  worldRuntime?: AgentWorldSnapshotProvider;
+  inferenceBudget?: AgentInferenceBudgetPort;
+  identityTemplateValues?: () => AgentIdentityTemplateValues;
 }
 
 export interface AgentSystemRuntimeLoadOptions extends AgentSystemRuntimeSharedOptions {
@@ -72,6 +92,7 @@ export class AgentSystemRuntime {
   readonly resourcesPath: string | undefined;
   private readonly composition: AgentSystemRuntimeComposition;
   private readonly mcpPackageCatalog: AgentMcpPackageCatalog;
+  private readonly promptTierCache = new AgentPromptTierRenderCache();
   private closePromise: Promise<void> | undefined;
   private initialization: Promise<void> | undefined;
 
@@ -139,12 +160,20 @@ export class AgentSystemRuntime {
     return this.composition.infrastructure.uploadStore;
   }
 
+  get resourceResolver() {
+    return this.composition.infrastructure.resourceResolver;
+  }
+
   get modelProviderConfig() {
     return this.composition.infrastructure.modelProviderConfig;
   }
 
   get agentLoopConfig() {
     return this.composition.infrastructure.agentLoopConfig;
+  }
+
+  get promptConfig() {
+    return resolveAgentPromptConfig(this.config);
   }
 
   get toolSearchConfig() {
@@ -177,6 +206,10 @@ export class AgentSystemRuntime {
 
   get promptContextBuilder() {
     return this.composition.agents.promptContextBuilder;
+  }
+
+  get promptTierRenderCache(): AgentPromptTierRenderCache {
+    return this.promptTierCache;
   }
 
   get skillActivation() {

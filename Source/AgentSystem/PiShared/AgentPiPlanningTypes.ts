@@ -105,6 +105,7 @@ export interface AgentPiToolPlanStateNode {
   nodeId: string;
   planIndex: number;
   toolName: string;
+  purpose: string;
   dependencyNodeIds: string[];
   status: "planned" | "dispatched" | "completed" | "failed" | "blocked";
   assessment?: AgentPiToolObservationStatus;

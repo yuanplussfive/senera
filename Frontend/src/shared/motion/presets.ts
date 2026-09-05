@@ -14,6 +14,9 @@ export const motionSprings = {
   snappy: { type: "spring", stiffness: 520, damping: 42 } satisfies Transition,
   soft: { type: "spring", stiffness: 360, damping: 34 } satisfies Transition,
   drawer: { type: "spring", stiffness: 420, damping: 40, mass: 1 } satisfies Transition,
+  // Brand motion: a quick settle with almost no wobble. Used for feedback
+  // that should feel alive without making a settings surface feel playful.
+  signal: { type: "spring", stiffness: 420, damping: 36, mass: 0.8 } satisfies Transition,
 };
 
 export const motionTimings = {
@@ -28,7 +31,17 @@ export const motionTimings = {
   selection: { duration: 0.24, ease: easeInOut } satisfies Transition,
   panelOpen: { duration: 0.28, ease: easeOut } satisfies Transition,
   panelClose: { duration: 0.22, ease: easeOut } satisfies Transition,
+  section: { duration: 0.16, ease: easeOut } satisfies Transition,
+  feedback: { duration: 0.2, ease: easeOut } satisfies Transition,
 };
+
+export const motionDurations = {
+  appearanceTransitionMs: 160,
+  reducedAppearanceTransitionMs: 80,
+  saveStatusMs: 1400,
+  signalLoopMs: 1600,
+  loadingRailMs: 1200,
+} as const;
 
 export const motionRules = {
   maxStaggerItems: 20,

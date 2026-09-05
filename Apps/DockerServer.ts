@@ -21,6 +21,7 @@ import {
   installAgentProcessShutdownGuard,
 } from "../Source/AgentSystem/Diagnostics/AgentProcessGuard.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
+import { DefaultAgentTimeZone } from "../Source/AgentSystem/Time/AgentTime.js";
 
 const AppRoot = resolveAppRoot();
 const WorkspaceRoot = path.resolve(process.env.SENERA_WORKSPACE_ROOT?.trim() || "/data");
@@ -182,6 +183,7 @@ function writeFrontendRuntimeConfig(config: AgentSystemConfig): void {
     modelLabel: frontend.Client.ModelLabel,
     userName: frontend.Client.UserName,
     emptySuggestions: frontend.Client.EmptySuggestions,
+    timeZone: DefaultAgentTimeZone,
   };
 
   fs.mkdirSync(FrontendRoot, { recursive: true });

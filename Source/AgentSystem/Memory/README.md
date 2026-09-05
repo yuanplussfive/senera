@@ -1,39 +1,32 @@
 # Memory 模块导览
 
-Memory 模块负责长期记忆的来源记录、候选生成、合并晋升、主动写入和回忆检索。
-
-`MemoryLearning` 拥有独立的 `Enabled`、`Client` 和 repair 配置，不受 `ToolLearning.Enabled` 控制。空模型响应会按 provider 网络重试策略重试；最终失败进入 memory learning job 的 retry/failed 状态，不会伪装成“没有候选”。
+Memory 保存完成回合的物理历史，Temporal Memory 把物理历史增量概括为片段、日、月三级可追溯摘要，Continuity 负责建立语义记录，Resident Profile 保存少量稳定的人格/用户画像版本。它们共用一个数据库合同，但职责不同，不是重复记忆系统。Resident Profile 进入 stable prompt tier；当前事实、相关事件摘要和条件状态按当前回合进入 volatile tier。时间摘要只在按范围召回时进入工具结果。
 
 ## 阅读顺序
 
-1. `AgentMemoryService.ts`：会话完成后写入原始记忆来源，并把可学习回合送入学习队列。
-2. `AgentMemoryLearningRuntime.ts`：自动学习入口，编排候选记录、吸收已有记忆和晋升流程。
-3. `AgentMemoryLearningPromptProjector.ts`：把 recorded turn、source catalog、候选和现有记忆投影成 BAML 学习输入。
-4. `AgentMemoryLearningModelClient.ts`：封装 LearnMemory / ConsolidateMemoryCandidates 的结构化校验和 repair。
-5. `AgentMemoryLearningVectorRuntime.ts`：候选 embedding、相似候选聚类、rerank 和长期记忆向量写入。
-6. `AgentMemoryWriteRuntime.ts` / `AgentMemoryWriteResolver.ts`：主动写入入口，负责把工具写入请求解析成长期记忆变更。
-7. `AgentMemoryRecallRuntime.ts`：系统回忆工具入口，负责参数校验和召回流程编排。
-8. `AgentMemoryRecallTypes.ts` / `AgentMemoryRecallRanker.ts` / `AgentMemoryConversationRecall.ts` / `AgentMemoryRecallProjector.ts`：回忆工具的参数契约、长期记忆排序、普通对话降级检索和结果投影。
-9. `AgentArtifactMemoryRuntime.ts`：artifact 资源读取入口，只负责 host tool 参数校验、配置解析和错误封装，不承担长期记忆召回。
-10. `AgentArtifactMemoryTypes.ts` / `AgentArtifactManifestIndex.ts` / `AgentArtifactMemoryReader.ts` / `AgentArtifactMemoryProjection.ts` / `AgentArtifactJsonQuery.ts`：artifact 读取契约、capability 驱动的 manifest 索引、文本 ref 分页、JSON 结构索引续页、typed query 和模型安全投影。每个可读 ref 必须先通过 manifest 的 SHA-256 receipt 校验，文本、JSON、workspace patch 走同一验证路径。根 JSON index 从发布时生成的 NDJSON sidecar 按字节游标读取完整字段记录；`jsonView.index.sourcePath` 会流式重建指定嵌套对象的结构索引，游标同时绑定源、路径、明确标记的 sidecar 内容或派生路径索引身份与投影策略。query 使用受控 AST 流式读取原始 JSON，并按当前模型 token 预算返回完整元素。两类 cursor 不能混用，也不做整文件解析或字符串中段截断。
-11. `AgentMemorySourceRecords.ts`：从完成回合的用户消息、最终回答和 `executedTools[].artifact` 直接构造 source；不读取 Conversation 中的证据副本。
-12. `AgentMemorySourceRepository.ts`：记忆来源、候选和长期记忆的领域记录与仓储接口。
-13. `AgentMemorySqliteSourceRepository.ts`：SQLite 仓储实现和事务编排。
-14. `AgentMemorySqlStatements.ts`：SQL statements 兼容出口，按表族聚合 statement 模块。
-15. `AgentMemoryEpisodeSqlStatements.ts` / `AgentMemorySourceSqlStatements.ts` / `AgentMemoryCandidateSqlStatements.ts` / `AgentMemoryItemSqlStatements.ts` / `AgentMemoryObservationSqlStatements.ts` / `AgentMemoryVectorSqlStatements.ts`：按表族拆分的 SQL statements。
-16. `AgentMemoryVectorIndex.ts`：候选和记忆的向量相似度辅助。
-17. `AgentMemoryRecordFactory.ts`：领域记录构造兼容出口。
-18. `AgentMemoryEpisodeRecords.ts` / `AgentMemoryItemRecords.ts` / `AgentMemoryCandidateRecords.ts`：按 episode、item / observation、candidate / direct-write 拆分的领域记录构造。
-19. `AgentMemoryRowMapper.ts`：领域记录和数据库行之间转换的兼容出口。
-20. `AgentMemoryRowEncoders` / `AgentMemoryRowDecoders` / `AgentMemoryRowJson`：数据库写入投影、数据库读取投影和 JSON 边界解析。
+1. AgentMemoryService.ts：完成回合后保存来源，并将回合交给连续性学习队列。
+2. AgentMemorySourceRecords.ts：从用户消息、最终回答和成功工具证据构造可追溯 source；`AgentMemorySourceText.ts` 是跨连续性、时间摘要和语义索引读取真实正文的唯一入口，工具名和 source kind 只保留为元数据。
+3. AgentMemorySqliteSourceRepository.ts：持久化 episode/source，并按 URI 解引用。
+4. TemporalMemory/AgentTemporalMemoryRuntime.ts：用独立结构化模型判断相邻完成回合的语义边界，按语义或日历边界封存片段，并在周期闭合后生成日/月摘要。
+5. TemporalMemory/AgentTemporalMemoryRecall.ts：按时间范围选择最大完整摘要桶，并沿 source refs 逐层下钻。
+6. Continuity/AgentContinuityLearningRuntime.ts：按所选模型协议运行抽取；失败只记录当前阶段诊断，不跨协议切换。
+7. Continuity/AgentContinuityCandidateCompiler.ts：自动建立物理证据、状态和规则。
+8. Continuity/AgentContinuityMemoryService.ts：执行统一排名与条件投影。
+9. Continuity/AgentContinuityToolRuntime.ts：提供唯一的显式写入意图和召回入口。
+10. Profile/AgentResidentProfileService.ts：把稳定画像从普通回合记忆中分离，并作为小型稳定上下文注入。
 
-## 扩展规则
+## 数据边界
 
-- 新增记忆类型时先改 schema 和对应 record 构造模块，再改 runtime。
-- 记忆必须能追溯到 source refs，不直接依赖临时上下文字符串。
-- 工具来源以 Artifact URI、evidence URI 和 call ID 建索引；完整工具结果仍由 Artifact 服务读取，不复制到 Memory。
-- 自动学习先写候选，满足支持度和相似度后再晋升。
-- 主动写入可以直接生成长期记忆，但也要走统一记录格式。
-- 删除或截断会话只清理 episode、source、candidate、learning job 和由这些 episode 产生的 observation；已经晋升的长期 memory item 及其 vector 具有独立生命周期，不随来源会话级联删除。
-- 记忆领域新增运行时应放在本目录；`AgentSystem` 根目录只保留跨领域编排。
-- 新增记忆行为优先扩展 runtime services、artifact policy 或配置服务核心验证，只有出现新的独立边界时才新增专项脚本。
+- memory_episodes 与 memory_sources 保存物理历史，不自动进入提示词。episode 的 `assistantPreview` 只是最终回复预览，不是摘要。
+- memory_temporal_digests 与 memory_temporal_digest_members 构成 `segment -> day -> month` 摘要 DAG；每层只引用直接子层，原始 episode/source 始终可追溯。
+- memory_temporal_segment_decisions 是按会话有序执行的持久化边界队列；失败会按正式作业策略重试，前序未决时不会越序切分后续回合。
+- 开放片段只保留一条非事实性的 `working_focus` 供下一轮边界判断，并携带最近完整回合而不是反复发送整个片段；封存时该工作状态会被清空，最终摘要仍从全部物理成员生成。
+- 完整月份优先月摘要，不完整月边界使用日摘要，未闭合当天使用片段摘要；未被摘要覆盖的最新 episode 才直接读取物理来源。
+- World 只接收已封存片段作为当天对话事件；日/月摘要属于记忆索引，不重复写入世界状态。
+- continuity_observations(kind=learning.record) 保存唯一的归一化学习记录。
+- learning.record 的 session/截止时间来自 MemoryWriteTool 物理证据并由宿主关联；普通学习事实默认长期有效。
+- continuity_signals 和 continuity_rules 保存宿主编译的状态与条件。
+- resident_profile_records 保存画像键值的版本历史；同一作用域和键只有一个 active 版本，旧版本保留为 superseded。
+- 旧候选、向量、断言、晋升和 migration 辅助表已由 schema v7 删除。
+- 删除会话时清理 session scope 的来源、学习记录、signal 和 rule；workspace 等长期 scope 保留。
+- 记忆必须追溯到 source refs；模型不输出证据索引、权威、置信度、数据库 ID 或 AST。

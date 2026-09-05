@@ -8,8 +8,8 @@
     "en-US": "Long-Term Memory Recall"
   },
   "description": {
-    "zh-CN": "查询已经沉淀的长期记忆；未命中时降级召回普通历史对话。",
-    "en-US": "Recalls consolidated long-term memories and falls back to conversation history when needed."
+    "zh-CN": "查询已经沉淀的长期记忆；未命中时返回明确的未命中结果。",
+    "en-US": "Recalls consolidated long-term memories and reports a miss without reading ordinary conversation history."
   },
   "priority": 8,
   "contributions": [

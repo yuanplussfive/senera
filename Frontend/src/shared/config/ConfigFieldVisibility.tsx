@@ -60,7 +60,7 @@ export function ConfigFieldVisibilityControl({
           )}
           onClick={() => onChange(option.value)}
         >
-          {option.label}
+          <span aria-hidden="true" data-label={option.label} className="before:content-[attr(data-label)]" />
         </button>
       ))}
     </div>

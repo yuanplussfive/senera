@@ -113,6 +113,38 @@
       "snapshot": "snapshots/0013.schema.sql",
       "migrationSha256": "56e9778e579d78d503ed3e9ea2e5ccc8cd1ad59c711103aa192aeaa473ef3883",
       "snapshotSha256": "17c46a7ee4000b874dce6bf44e5dfb4995b051627cc46a3e492bf4afd480ba3f"
+    },
+    {
+      "version": 15,
+      "name": "durable-scheduled-task-runs",
+      "migration": "migrations/0015-durable-scheduled-task-runs.sql",
+      "snapshot": "snapshots/0015.schema.sql",
+      "migrationSha256": "056b1034690f1b6628bec2606c57f68d9d5d9ce1ceed3e3fcd3cf15702fc13c0",
+      "snapshotSha256": "1ac3c0de6ca2f97b82366f2fb00dd8aba714ed56b7f34565474c25b4a8eeee52"
+    },
+    {
+      "version": 16,
+      "name": "scheduled-task-source-context",
+      "migration": "migrations/0016-scheduled-task-source-context.sql",
+      "snapshot": "snapshots/0016.schema.sql",
+      "migrationSha256": "c3cbd41378c37d26bb9b40ace1c6978ac9b04f48478dfb7611182ac2e5bedaa0",
+      "snapshotSha256": "a2d90061a6ca5bf50a2a9123fdd65a219b34303a74bd198561d06703476c9393"
+    },
+    {
+      "version": 17,
+      "name": "scheduled-task-execution-timing",
+      "migration": "migrations/0017-scheduled-task-execution-timing.sql",
+      "snapshot": "snapshots/0017.schema.sql",
+      "migrationSha256": "671fa1502712f3ef2b4e86f37df642aa250b94238491d17af7430cfd943def9b",
+      "snapshotSha256": "fcebad68dcea70fe54ed1bd7296d151f3921bd1d1f74fc8abcbd09053e6526f8"
+    },
+    {
+      "version": 18,
+      "name": "child-run-completion-deliveries",
+      "migration": "migrations/0018-child-run-completion-deliveries.sql",
+      "snapshot": "snapshots/0018.schema.sql",
+      "migrationSha256": "56ae6a194cf7ad232a90680235d9898a79feb6eab104c1bc90ab5267c90ee8d5",
+      "snapshotSha256": "ac3f152f2c22c3a0b9866848722ecfb8f8a9e86e033afc4996fbe8948d8c12df"
     }
   ]
 }

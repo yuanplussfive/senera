@@ -4,6 +4,8 @@ import { AgentXmlCodec } from "../Xml/AgentXmlCodec.js";
 import { createXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
 import { AgentConversationEntryKinds, type AgentConversationEntry } from "./AgentConversation.js";
 import { authoritativeConversationSequence } from "./AgentConversationSequence.js";
+import { composeAgentTurnRequest } from "../Prompt/AgentTurnRequestComposer.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export class AgentConversationPolicy {
   private readonly protocol = createXmlProtocolSpec();
@@ -17,8 +19,20 @@ export class AgentConversationPolicy {
     );
   }
 
-  renderCurrentUserMessage(entry: Extract<AgentConversationEntry, { kind: "user.message" }>): string {
-    if (!entry.attachments || entry.attachments.length === 0) return entry.content;
+  renderCurrentUserMessage(
+    entry: Extract<AgentConversationEntry, { kind: "user.message" }>,
+    interaction?: AgentInteractionContext,
+  ): string {
+    if ((!entry.attachments || entry.attachments.length === 0) && !interaction) return entry.content;
+
+    if (interaction) {
+      return composeAgentTurnRequest({
+        userInput: entry.content,
+        attachments: entry.attachments,
+        interaction,
+        options: { enabled: false, timeZone: "UTC" },
+      });
+    }
 
     return this.codec.objectToXml(this.protocol.roots.currentUserMessage, {
       [this.protocol.context.requestId]: entry.requestId,

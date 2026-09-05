@@ -32,7 +32,7 @@ const editorTheme = EditorView.theme({
   "&": {
     backgroundColor: "var(--theme-code-editor-bg)",
     color: "var(--theme-code-editor-fg)",
-    fontSize: "13px",
+    fontSize: "var(--theme-code-editor-font-size)",
     height: "100%",
   },
   "&.cm-focused": {

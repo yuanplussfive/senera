@@ -12,11 +12,13 @@ import {
 import { describe, expect, test } from "vitest";
 import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
+import type { AgentNativeToolApiStreams } from "../../../Source/AgentSystem/ModelEndpoints/AgentNativeToolApiStreams.js";
 import { AgentPiMutableSessionFrame } from "../../../Source/AgentSystem/Pi/AgentPiCodingAgentSessionFrame.js";
+import { AgentPiNativeToolBridgeName } from "../../../Source/AgentSystem/Pi/AgentPiNativeToolBridge.js";
 import { projectSeneraModelProviderToPi } from "../../../Source/AgentSystem/Pi/AgentPiModelProjector.js";
 import {
   AgentPiNativeToolProvider,
-  type AgentPiNativeApiStreams,
+  type AgentPiNativeToolProviderOptions,
 } from "../../../Source/AgentSystem/Pi/AgentPiNativeToolProvider.js";
 import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnState.js";
 import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
@@ -45,6 +47,7 @@ describe("Pi native tool provider", () => {
         events.push(event);
       },
       skillCatalogFingerprint: "test",
+      nativeProviderToolNames: ["ToolSearch"],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
       selectedPromptTemplates: [],
@@ -52,9 +55,11 @@ describe("Pi native tool provider", () => {
       preflight: async () => undefined,
     });
     const requests: Context[] = [];
+    const requestOptions: Array<StreamOptions | SimpleStreamOptions | undefined> = [];
     let requestCount = 0;
-    const streams = nativeApiStreams((model, context) => {
+    const streams = nativeApiStreams((model, context, options) => {
       requests.push(context);
+      requestOptions.push(options);
       requestCount += 1;
       return completedStream(
         model,
@@ -83,10 +88,16 @@ describe("Pi native tool provider", () => {
     expect(model.api).toBe("openai-completions");
     expect(requests.map((request) => request.tools?.map((entry) => entry.name))).toEqual([
       ["ToolSearch"],
-      ["ArtifactRead", "ToolSearch"],
+      ["ToolSearch"],
     ]);
     expect(requests[0]?.systemPrompt).toBe("<agent_system><native_tool_calling /></agent_system>");
     expect(requests[0]?.messages).toEqual(context.messages);
+    expect(requestOptions.map((options) => options?.cacheRetention)).toEqual(["long", "long"]);
+    expect(requestOptions.map((options) => options?.sessionId)).toEqual([
+      expect.stringMatching(/^[a-f0-9]{64}$/u),
+      expect.stringMatching(/^[a-f0-9]{64}$/u),
+    ]);
+    expect(requestOptions[0]?.sessionId).toBe(requestOptions[1]?.sessionId);
     expect(turnState.toolBatchId("call-search")).toEqual(expect.stringMatching(/^toolbatch_/u));
     expect(events.map((event) => event.kind)).toEqual([
       AgentEventKinds.AssistantMessageCreated,
@@ -99,6 +110,215 @@ describe("Pi native tool provider", () => {
       expect.objectContaining({ stage: "pi.native.tool_calling" }),
       expect.objectContaining({ stage: "pi.native.tool_calling" }),
     ]);
+  });
+
+  test("replaces an active roleplay tool-preface before registering the native tool batch", async () => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: "native",
+      Capabilities: { ToolCalling: true },
+      Endpoint: "Responses",
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model);
+    const events: AgentDomainEvent[] = [];
+    const delegatedOptions: Array<StreamOptions | SimpleStreamOptions | undefined> = [];
+    const delegatedRoutes: string[] = [];
+    let delegatedRequests = 0;
+    const frame = new AgentPiMutableSessionFrame({
+      sessionId: "native-roleplay-session",
+      requestId: "native-roleplay-request",
+      step: 1,
+      turnState,
+      roleplayPresetActive: true,
+      prefaceRewriteEnabled: true,
+      onEvent: (event) => {
+        events.push(event);
+      },
+      skillCatalogFingerprint: "test",
+      nativeProviderToolNames: ["ToolSearch"],
+      toolAccessGrant: turnState.context.toolAccessGrant,
+      toolExposure: turnState.context.toolExposure,
+      selectedPromptTemplates: [],
+      tokenBudget: turnState.context.tokenBudget,
+      preflight: async () => undefined,
+    });
+    const provider = new AgentPiNativeToolProvider({
+      projection,
+      modelProvider,
+      frame,
+      residentSpeech: {
+        project: async (input) => {
+          const continuation = input.nativeContinuation;
+          if (!continuation) throw new Error("Expected the owning native continuation.");
+          const continuationResult = await continuation
+            .stream({
+              context: input.context,
+              requiredToolName: AgentPiNativeToolBridgeName,
+              signal: new AbortController().signal,
+            })
+            .result();
+          expect(continuationResult.content).toEqual([
+            {
+              type: "toolCall",
+              id: "call-resident-speech",
+              name: AgentPiNativeToolBridgeName,
+              arguments: { tool: "ResidentActionSpeak", arguments: { utterance: "我去翻一下呀。" } },
+            },
+          ]);
+          return {
+            ...input.message,
+            content: [
+              { type: "text", text: "我去翻一下呀。" },
+              ...input.message.content.filter((block) => block.type !== "text"),
+            ],
+          };
+        },
+      },
+      apiStreams: nativeApiStreams(
+        (model, _context, options) => {
+          delegatedOptions.push(options);
+          delegatedRequests += 1;
+          return completedStream(
+            model,
+            delegatedRequests === 1
+              ? [
+                  { type: "text", text: "Checking now." },
+                  { type: "toolCall", id: "call-search", name: "ToolSearch", arguments: { query: "artifact" } },
+                ]
+              : [
+                  {
+                    type: "toolCall",
+                    id: "call-resident-speech",
+                    name: AgentPiNativeToolBridgeName,
+                    arguments: { tool: "ResidentActionSpeak", arguments: { utterance: "我去翻一下呀。" } },
+                  },
+                ],
+          );
+        },
+        (route) => delegatedRoutes.push(route),
+      ),
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the native Pi model.");
+
+    const result = await provider
+      .streamSimple(
+        model,
+        {
+          systemPrompt: "<persona>resident</persona>",
+          messages: [{ role: "user", content: "找一下那个文件。", timestamp: 1 }],
+          tools: [tool("ToolSearch")],
+        },
+        { reasoning: "high", metadata: { trace: "resident-continuation" } },
+      )
+      .result();
+
+    expect(result.content).toEqual([
+      { type: "text", text: "我去翻一下呀。" },
+      { type: "toolCall", id: "call-search", name: "ToolSearch", arguments: { query: "artifact" } },
+    ]);
+    expect(events[0]).toMatchObject({
+      kind: AgentEventKinds.AssistantMessageCreated,
+      data: { kind: "tool_preface", content: "我去翻一下呀。" },
+    });
+    expect(turnState.toolBatchId("call-search")).toEqual(expect.stringMatching(/^toolbatch_/u));
+    expect(delegatedRoutes).toEqual(["simple", "simple"]);
+    expect(delegatedOptions).toHaveLength(2);
+    expect(delegatedOptions.map((options) => options?.cacheRetention)).toEqual(["long", "long"]);
+    expect(delegatedOptions.map((options) => options?.sessionId)).toEqual([
+      expect.stringMatching(/^[a-f0-9]{64}$/u),
+      expect.stringMatching(/^[a-f0-9]{64}$/u),
+    ]);
+    expect(delegatedOptions[1]?.sessionId).toBe(delegatedOptions[0]?.sessionId);
+    expect(
+      delegatedOptions.map((options) => (options && "reasoning" in options ? options.reasoning : undefined)),
+    ).toEqual(["high", "high"]);
+    expect(delegatedOptions.map((options) => options?.metadata)).toEqual([
+      { trace: "resident-continuation" },
+      { trace: "resident-continuation" },
+    ]);
+    expect((delegatedOptions[1] as StreamOptions & { toolChoice?: unknown }).toolChoice).toEqual({
+      type: "function",
+      name: AgentPiNativeToolBridgeName,
+    });
+  });
+
+  test("projects a roleplay final response only after this turn has registered tool work", async () => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: "native",
+      Capabilities: { ToolCalling: true },
+      Endpoint: "Responses",
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model);
+    const projectionInputs: Array<
+      Parameters<NonNullable<AgentPiNativeToolProviderOptions["residentSpeech"]>["project"]>[0]
+    > = [];
+    const frame = new AgentPiMutableSessionFrame({
+      sessionId: "native-roleplay-final-session",
+      requestId: "native-roleplay-final-request",
+      step: 1,
+      turnState,
+      roleplayPresetActive: true,
+      skillCatalogFingerprint: "test",
+      nativeProviderToolNames: ["ToolSearch"],
+      toolAccessGrant: turnState.context.toolAccessGrant,
+      toolExposure: turnState.context.toolExposure,
+      selectedPromptTemplates: [],
+      tokenBudget: turnState.context.tokenBudget,
+      preflight: async () => undefined,
+    });
+    const provider = new AgentPiNativeToolProvider({
+      projection,
+      modelProvider,
+      frame,
+      residentSpeech: {
+        project: async (input) => {
+          projectionInputs.push(input);
+          return {
+            ...input.message,
+            content: [{ type: "text", text: "画完啦，手都酸了TvT" }],
+          };
+        },
+      },
+      apiStreams: nativeApiStreams((model) =>
+        completedStream(model, [{ type: "text", text: "I finished the illustration today." }]),
+      ),
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the native Pi model.");
+
+    const context = {
+      systemPrompt: "<persona>resident</persona>",
+      messages: [{ role: "user" as const, content: "今天画完了吗？", timestamp: 1 }],
+      tools: [tool("ToolSearch")],
+    };
+    const directResult = await provider.streamSimple(model, context).result();
+    expect(directResult.content).toEqual([{ type: "text", text: "I finished the illustration today." }]);
+    expect(projectionInputs).toHaveLength(0);
+
+    turnState.registerToolBatch("prior-tool-batch", [
+      { toolCallId: "prior-tool-call", toolName: "ToolSearch", input: { query: "illustration" } },
+    ]);
+    turnState.settleToolObservationBudget("prior-tool-call", { status: "success" });
+    turnState.recordResidentSpeech({ mode: "action_preface", content: "我去看一眼呀。" });
+
+    const result = await provider
+      .streamSimple(model, {
+        ...context,
+        messages: [...context.messages, { role: "user", content: "结果呢？", timestamp: 2 }],
+      })
+      .result();
+
+    expect(result.errorMessage).toBeUndefined();
+    expect(result).toMatchObject({
+      stopReason: "stop",
+      content: [{ type: "text", text: "画完啦，手都酸了TvT" }],
+    });
+    expect(projectionInputs[0]).toMatchObject({
+      focus: { mode: "final_response" },
+      spokenUtterances: [{ mode: "action_preface", content: "我去看一眼呀。" }],
+    });
   });
 
   test("forwards a successful response when provider usage exceeds the planning capacity", async () => {
@@ -117,6 +337,7 @@ describe("Pi native tool provider", () => {
       step: 1,
       turnState,
       skillCatalogFingerprint: "test",
+      nativeProviderToolNames: ["ToolSearch"],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
       selectedPromptTemplates: [],
@@ -159,6 +380,7 @@ describe("Pi native tool provider", () => {
       step: 1,
       turnState,
       skillCatalogFingerprint: "test",
+      nativeProviderToolNames: ["ToolSearch"],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
       selectedPromptTemplates: [],
@@ -346,6 +568,7 @@ function createFrame(turnState: AgentPiTurnState, sessionId: string, requestId: 
     step: 1,
     turnState,
     skillCatalogFingerprint: "test",
+    nativeProviderToolNames: ["ToolSearch"],
     toolAccessGrant: turnState.context.toolAccessGrant,
     toolExposure: turnState.context.toolExposure,
     selectedPromptTemplates: [],
@@ -381,10 +604,17 @@ function nativeApiStreams(
     context: Context,
     options?: StreamOptions | SimpleStreamOptions,
   ) => AssistantMessageEventStream,
-): AgentPiNativeApiStreams {
+  onRoute?: (route: "stream" | "simple") => void,
+): AgentNativeToolApiStreams {
   const providerStreams: ProviderStreams = {
-    stream: (model, context, options) => stream(model, context, options),
-    streamSimple: (model, context, options) => stream(model, context, options),
+    stream: (model, context, options) => {
+      onRoute?.("stream");
+      return stream(model, context, options);
+    },
+    streamSimple: (model, context, options) => {
+      onRoute?.("simple");
+      return stream(model, context, options);
+    },
   };
   return {
     "openai-responses": providerStreams,

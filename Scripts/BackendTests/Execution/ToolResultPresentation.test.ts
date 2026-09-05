@@ -126,6 +126,17 @@ describe("Tool result presentation", () => {
     expect(presentation.headline).toBe("Created report.md");
     expect(presentation.headline).not.toContain("metadata");
   });
+
+  test("keeps suspicious inline media out of the model-facing headline", () => {
+    const encoded = "A".repeat(20_000);
+    const result = fixture({ result: `![image](data:image/png;base64,${encoded})` });
+
+    const presentation = projectAgentToolResultPresentation(result);
+
+    expect(presentation.headline).not.toContain(encoded);
+    expect(presentation.headline).toContain("inline media omitted");
+    expect(result.result).toContain(encoded);
+  });
 });
 
 function fixture(input: {

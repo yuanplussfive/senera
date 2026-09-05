@@ -31,7 +31,7 @@ export class AgentMcpElicitationController {
   private activeInteraction?: AgentMcpActiveInteraction;
 
   constructor(
-    private readonly client: Client,
+    client: Client,
     private readonly interactionInput?: AgentInteractionInputRuntime,
   ) {
     if (!interactionInput) return;

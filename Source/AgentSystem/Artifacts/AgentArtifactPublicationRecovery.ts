@@ -174,6 +174,7 @@ const ArtifactAssetReferenceSchema = z.array(
   z
     .object({
       id: z.string().min(1),
+      resourceUri: z.string().min(1),
       fileName: z.string().min(1),
       mediaType: z.string().min(1),
       relativePath: z.string().min(1),

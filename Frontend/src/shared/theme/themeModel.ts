@@ -8,12 +8,19 @@ export type AccentColor = "terra" | "sky" | "moss" | "violet" | "rose" | "aprico
 export type AppearanceFontFamily = "brand" | "fresh" | "system";
 export type FontScale = "compact" | "standard" | "comfortable" | "large";
 
+/** Continuous reading scale range. The named FontScale values remain the legacy anchors. */
+export const fontScaleRange = { min: 0.9, max: 1.12, step: 0.001 } as const;
+
 export interface AppearancePreference {
   themeMode: ThemeMode;
   colorScheme: ColorScheme;
   accentColor: AccentColor;
+  /** Optional user-selected accent. Presets continue to use accentColor. */
+  customAccentColor?: string;
   fontFamily: AppearanceFontFamily;
   fontScale: FontScale;
+  /** Optional continuous scale written by the slider; omitted for legacy presets. */
+  fontScaleValue?: number;
 }
 
 export type AppearancePreferenceUpdate = Partial<Omit<AppearancePreference, "accentColor">>;
@@ -82,11 +89,11 @@ export const appearanceFontFamilyStacks: Record<AppearanceFontFamily, string> = 
 
 const themeMonoFontFamily = `"JetBrains Mono", "Cascadia Mono", ${emojiFontFamilyStack}, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
 
-const fontScaleValues: Record<FontScale, string> = {
-  compact: "0.96",
-  standard: "1",
-  comfortable: "1.04",
-  large: "1.08",
+export const fontScaleValues: Record<FontScale, number> = {
+  compact: 0.96,
+  standard: 1,
+  comfortable: 1.04,
+  large: 1.08,
 };
 
 const semanticColorAliases = {
@@ -163,6 +170,13 @@ const sharedVisualRoleTokens = {
   "--theme-config-stage-bg": "rgb(var(--color-paper-100))",
   "--theme-config-panel-bg": "rgb(var(--color-paper-50))",
   "--theme-config-editor-loading-bg": "rgb(var(--color-paper-50))",
+  "--senera-signal-violet": "rgb(var(--color-accent-500))",
+  "--senera-signal-gold": "rgb(var(--color-umber-500))",
+  "--theme-code-output-bg": "rgb(var(--color-ink-950))",
+  "--theme-code-output-fg": "rgb(var(--color-paper-50))",
+  "--theme-code-output-border": "rgb(var(--color-ink-200) / 0.24)",
+  "--theme-code-output-muted": "rgb(var(--color-paper-300) / 0.72)",
+  "--theme-code-editor-font-size": "calc(13px * var(--theme-font-scale-safe))",
 } as const;
 
 const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
@@ -211,12 +225,16 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
 export function normalizeAppearancePreference(value: unknown): AppearancePreference {
   const source = value && typeof value === "object" ? (value as Partial<AppearancePreference>) : {};
   const colorScheme = isColorScheme(source.colorScheme) ? source.colorScheme : defaultAppearancePreference.colorScheme;
+  const customAccentColor = normalizeCustomAccentColor(source.customAccentColor);
+  const fontScaleValue = normalizeFontScaleValue(source.fontScaleValue);
   return {
     themeMode: isThemeMode(source.themeMode) ? source.themeMode : defaultAppearancePreference.themeMode,
     colorScheme,
     accentColor: recommendedAccentColors[colorScheme],
     fontFamily: isAppearanceFontFamily(source.fontFamily) ? source.fontFamily : defaultAppearancePreference.fontFamily,
     fontScale: isFontScale(source.fontScale) ? source.fontScale : defaultAppearancePreference.fontScale,
+    ...(fontScaleValue === undefined ? {} : { fontScaleValue }),
+    ...(customAccentColor ? { customAccentColor } : {}),
   };
 }
 
@@ -262,9 +280,10 @@ export function createAppearanceTokens(
     cssVariables: {
       ...paletteTokens[preference.colorScheme][resolvedTheme],
       ...accentTokens[preference.accentColor][resolvedTheme],
+      ...(preference.customAccentColor ? createCustomAccentTokens(preference.customAccentColor, resolvedTheme) : {}),
       ...visualRoleTokens[resolvedTheme],
       ...semanticColorRoleTokens[resolvedTheme],
-      "--theme-font-scale": fontScaleValues[preference.fontScale],
+      "--theme-font-scale": String(readFontScaleValue(preference)),
       "--theme-ui-font-family": appearanceFontFamilyStacks[preference.fontFamily],
       "--theme-reading-font-family": appearanceFontFamilyStacks[preference.fontFamily],
       "--theme-mono-font-family": themeMonoFontFamily,
@@ -283,8 +302,10 @@ export function areAppearanceSnapshotsEqual(left: AppearanceSnapshot, right: App
     left.preference.themeMode === right.preference.themeMode &&
     left.preference.colorScheme === right.preference.colorScheme &&
     left.preference.accentColor === right.preference.accentColor &&
+    left.preference.customAccentColor === right.preference.customAccentColor &&
     left.preference.fontFamily === right.preference.fontFamily &&
-    left.preference.fontScale === right.preference.fontScale
+    left.preference.fontScale === right.preference.fontScale &&
+    readFontScaleValue(left.preference) === readFontScaleValue(right.preference)
   );
 }
 
@@ -325,4 +346,104 @@ function isAppearanceFontFamily(value: unknown): value is AppearanceFontFamily {
 
 function isFontScale(value: unknown): value is FontScale {
   return value === "compact" || value === "standard" || value === "comfortable" || value === "large";
+}
+
+export function readFontScaleValue(preference: Pick<AppearancePreference, "fontScale" | "fontScaleValue">): number {
+  return preference.fontScaleValue ?? fontScaleValues[preference.fontScale];
+}
+
+export function readFontScaleAnchor(value: number): FontScale {
+  const nearest = (Object.entries(fontScaleValues) as Array<[FontScale, number]>).reduce(
+    (best, current) => (Math.abs(current[1] - value) < Math.abs(best[1] - value) ? current : best),
+    ["standard", fontScaleValues.standard] as [FontScale, number],
+  );
+  return nearest[0];
+}
+
+function normalizeFontScaleValue(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const clamped = Math.min(fontScaleRange.max, Math.max(fontScaleRange.min, value));
+  return Number((Math.round(clamped / fontScaleRange.step) * fontScaleRange.step).toFixed(3));
+}
+
+function normalizeCustomAccentColor(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const compact = value.trim().replace(/^#/, "");
+  if (/^[\da-f]{3}$/i.test(compact)) {
+    return `#${compact
+      .split("")
+      .map((channel) => `${channel}${channel}`)
+      .join("")
+      .toLowerCase()}`;
+  }
+  if (/^[\da-f]{6}$/i.test(compact)) return `#${compact.toLowerCase()}`;
+  return undefined;
+}
+
+function createCustomAccentTokens(value: string, resolvedTheme: ResolvedTheme): Record<string, string> {
+  const base = readHexRgb(value);
+  if (!base) return {};
+
+  const shades =
+    resolvedTheme === "dark"
+      ? {
+          50: blendRgb(base, [0, 0, 0], 0.58),
+          100: blendRgb(base, [0, 0, 0], 0.44),
+          200: blendRgb(base, [0, 0, 0], 0.26),
+          300: blendRgb(base, [255, 255, 255], 0.02),
+          400: blendRgb(base, [255, 255, 255], 0.1),
+          500: blendRgb(base, [255, 255, 255], 0.18),
+          600: blendRgb(base, [255, 255, 255], 0.3),
+          700: blendRgb(base, [255, 255, 255], 0.44),
+        }
+      : {
+          50: blendRgb(base, [255, 255, 255], 0.94),
+          100: blendRgb(base, [255, 255, 255], 0.84),
+          200: blendRgb(base, [255, 255, 255], 0.66),
+          300: blendRgb(base, [255, 255, 255], 0.42),
+          400: blendRgb(base, [255, 255, 255], 0.18),
+          500: base.join(" "),
+          600: blendRgb(base, [0, 0, 0], 0.12),
+          700: blendRgb(base, [0, 0, 0], 0.28),
+        };
+  const solid = readRgbTriplet(shades[500]) ?? base;
+  const contrast = relativeLuminance(solid) > 0.56 ? "24 25 28" : "255 255 255";
+  return {
+    ...Object.fromEntries(Object.entries(shades).map(([step, channels]) => [`--color-accent-${step}`, channels])),
+    "--color-accent-contrast": contrast,
+  };
+}
+
+function readHexRgb(value: string): [number, number, number] | undefined {
+  const normalized = normalizeCustomAccentColor(value);
+  if (!normalized) return undefined;
+  return [
+    Number.parseInt(normalized.slice(1, 3), 16),
+    Number.parseInt(normalized.slice(3, 5), 16),
+    Number.parseInt(normalized.slice(5, 7), 16),
+  ];
+}
+
+function blendRgb(
+  base: readonly [number, number, number],
+  target: readonly [number, number, number],
+  amount: number,
+): string {
+  return base.map((channel, index) => Math.round(channel + (target[index] - channel) * amount)).join(" ");
+}
+
+function readRgbTriplet(value: string | undefined): [number, number, number] | undefined {
+  if (!value) return undefined;
+  const channels = value.split(" ").map(Number);
+  return channels.length === 3 && channels.every(Number.isFinite)
+    ? [channels[0]!, channels[1]!, channels[2]!]
+    : undefined;
+}
+
+function relativeLuminance([red, green, blue]: readonly [number, number, number]): number {
+  const channel = (value: number): number => {
+    const normalized = value / 255;
+    return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue);
 }

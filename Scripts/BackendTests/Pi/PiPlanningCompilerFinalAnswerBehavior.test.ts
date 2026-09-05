@@ -13,6 +13,7 @@ import { createModelProvider, toolAccessGrant, toolRootCommand } from "../Suppor
 import { createAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 import { projectSeneraModelProviderToPi } from "../../../Source/AgentSystem/Pi/AgentPiModelProjector.js";
+import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 
 describe("Pi assistant controller compilation", () => {
   test("returns a complete Direct response from one controller model call", async () => {
@@ -133,8 +134,8 @@ describe("Pi assistant controller compilation", () => {
   test("projects tools discovered earlier in the same turn from the live exposure generation", async () => {
     const client = new CompilerClient([{ kind: "Direct", response: "Weather is available." }]);
     const grant = createAgentToolAccessGrant({
-      authorizedToolNames: ["ToolSearchTool", "WeatherTool"],
-      exposedToolNames: ["ToolSearchTool"],
+      authorizedToolNames: ["ToolSearch", "WeatherTool"],
+      exposedToolNames: ["ToolSearch"],
     });
     const toolExposure = new AgentToolExposureState(grant);
     toolExposure.expose(["WeatherTool"]);
@@ -142,14 +143,14 @@ describe("Pi assistant controller compilation", () => {
     await createCompiler(client).compile({
       toolAccessGrant: grant,
       ...planningRequest("Find the weather tool, then use it.", [
-        tool("ToolSearchTool", { type: "object", properties: {} }),
+        tool("ToolSearch", { type: "object", properties: {} }),
         tool("WeatherTool", { type: "object", properties: {} }),
       ]),
       runtime: { requestId: "request-live-exposure", toolExposure },
     });
 
     expect(client.evolveInputs[0]?.seneraRuntime.toolExposure.generation).toBe(1);
-    expect(client.evolveInputs[0]?.routingCards.map((card) => card.name)).toEqual(["WeatherTool", "ToolSearchTool"]);
+    expect(client.evolveInputs[0]?.routingCards.map((card) => card.name)).toEqual(["WeatherTool", "ToolSearch"]);
   });
 
   test("rejects request tools outside the authoritative access grant", async () => {
@@ -249,6 +250,42 @@ describe("Pi assistant controller compilation", () => {
     expect(client.evolveOptions[0]?.attachments).toEqual([image]);
     expect(client.fillOptions[0]?.attachments).toEqual([image]);
   });
+
+  test("rebases the planning projection when the final planner envelope needs extra capacity", async () => {
+    const modelProvider = createModelProvider({
+      ContextWindowTokens: 4_096,
+      MaxModelOutputTokens: 1_024,
+    });
+    const client = new CompilerClient([{ kind: "Direct", response: "Done." }]);
+    const context = {
+      messages: [
+        ...Array.from({ length: 32 }, (_, index) => ({
+          role: "user" as const,
+          content: `history-${index} ${"context ".repeat(120)}`,
+          timestamp: index + 1,
+        })),
+        { role: "user" as const, content: "latest request", timestamp: 100 },
+      ],
+      tools: [],
+    };
+    const tokenBudget = new AgentTurnTokenBudget({
+      model: modelProvider.Model,
+      contextWindowTokens: modelProvider.ContextWindowTokens,
+      outputReserveTokens: modelProvider.MaxModelOutputTokens ?? 0,
+    });
+
+    await expect(
+      new AgentPiPlanningCompiler({ modelProvider, client }).compile({
+        model: projectSeneraModelProviderToPi(modelProvider).model,
+        context,
+        toolAccessGrant: toolAccessGrant(),
+        runtime: { tokenBudget },
+      }),
+    ).resolves.toMatchObject({ kind: "final_text", content: "Done." });
+
+    expect(client.evolveInputs[0]?.planningContext.projection.omittedOlderMessages).toBeGreaterThan(0);
+    expect(tokenBudget.snapshot().occupiedTokens).toBeLessThanOrEqual(tokenBudget.snapshot().inputCapacityTokens);
+  });
 });
 
 class CompilerClient implements AgentPiPlanningModelClient {
@@ -345,8 +382,11 @@ class ConcurrentArgumentCompilerClient extends CompilerClient {
   }
 }
 
-function createCompiler(client: AgentPiPlanningModelClient): AgentPiPlanningCompiler {
-  return new AgentPiPlanningCompiler({ modelProvider: createModelProvider(), client });
+function createCompiler(
+  client: AgentPiPlanningModelClient,
+  modelProvider = createModelProvider(),
+): AgentPiPlanningCompiler {
+  return new AgentPiPlanningCompiler({ modelProvider, client });
 }
 
 function tool(name: string, parameters: Record<string, unknown>, description = `${name} description`) {

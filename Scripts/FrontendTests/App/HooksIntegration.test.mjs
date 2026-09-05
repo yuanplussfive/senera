@@ -343,8 +343,7 @@ test("useConfigMutationController routes preset and main config acknowledgements
   await act(async () => {
     presetRequestId = handleRef.current.savePreset({
       name: "Release notes",
-      format: "markdown",
-      content: "# Notes",
+      card: emptyPresetCard("Release notes"),
       activate: true,
     });
     configRequestId = handleRef.current.saveConfig({ AgentLoop: { Mode: "automatic" } });
@@ -640,6 +639,18 @@ function event(kind, phase, data, overrides = {}) {
     timestamp: "2026-07-09T00:00:00.000Z",
     data,
     ...overrides,
+  };
+}
+
+function emptyPresetCard(title) {
+  return {
+    schemaVersion: "senera.persona/v2",
+    title,
+    corePersona: "",
+    languageStyle: "",
+    worldPackageIds: [],
+    examples: [],
+    lore: [],
   };
 }
 

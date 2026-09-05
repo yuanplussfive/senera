@@ -65,6 +65,43 @@ test("event journal projection retains only declared fields and excludes sensiti
   expect(output.value.data).toMatchObject({ toolName: "shell_command", byteLength: 22, totalBytes: 22 });
 });
 
+test("event journal keeps continuity state separate from workflow ledgers and internal delivery handles", () => {
+  const projected = projectEventForJournal(
+    event(EventKinds.ContinuitySnapshot, {
+      enabled: true,
+      residentProfile: [{ key: "居住地点", claim: "上海" }],
+      factCatalog: [{ factKey: "user.location", claim: "上海" }],
+      selection: {
+        profiles: { available: 1, matched: 1, selected: 1 },
+        facts: { available: 3, matched: 1, selected: 1 },
+        events: { available: 2, matched: 0, selected: 0 },
+        evidence: { available: 0, matched: 0, selected: 0 },
+        usedCharacters: 96,
+        maxCharacters: 24_000,
+      },
+      preset: { enabled: false, activePresetName: null },
+      evidenceCandidates: [],
+      eventCandidates: [],
+      rules: [],
+      signals: [],
+      goals: { goals: [{ id: "goal-1", objective: "完成验证", status: "active" }] },
+      execution: { active: null, executions: [{ id: "execution-1", status: "active" }] },
+      todos: { items: [{ id: "todo-1", content: "运行校验", status: "in_progress" }], counts: { total: 1 } },
+      pendingRuleDeliveryUris: ["senera://continuity-rule/internal"],
+    }),
+  );
+
+  expect(projected.value?.data).toMatchObject({
+    residentProfile: [{ key: "居住地点", claim: "上海" }],
+    factCatalog: [{ factKey: "user.location" }],
+    selection: { facts: { available: 3, matched: 1, selected: 1 }, usedCharacters: 96 },
+  });
+  expect(projected.value?.data).not.toHaveProperty("pendingRuleDeliveryUris");
+  expect(projected.value?.data).not.toHaveProperty("goals");
+  expect(projected.value?.data).not.toHaveProperty("execution");
+  expect(projected.value?.data).not.toHaveProperty("todos");
+});
+
 test("event journal gives orchestration events contract-driven semantic summaries", () => {
   expect(
     projectEventForJournal(
@@ -105,10 +142,11 @@ test("event journal gives orchestration events contract-driven semantic summarie
         active: true,
         taskCount: 3,
         runningTaskIds: ["task-1"],
-        leaseAcquired: true,
+        pendingDeliveryCount: 1,
+        recoveryMode: "database_claim",
       }),
     ).summary,
-  ).toBe("active=true  tasks=3  lease=true");
+  ).toBe("active=true  tasks=3  mode=database_claim");
 });
 
 test("event journal correlation reads only the descriptor-declared resource pointer", () => {

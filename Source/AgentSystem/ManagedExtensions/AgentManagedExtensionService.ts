@@ -36,7 +36,7 @@ export class AgentManagedExtensionService {
   private readonly scanner = new AgentSkillScanner();
 
   constructor(
-    private readonly workspaceRoot: string,
+    workspaceRoot: string,
     private readonly registry: AgentExtensionRegistryLike,
   ) {
     this.skillRoot = resolveAgentManagedExtensionPaths(workspaceRoot).skillRoot;

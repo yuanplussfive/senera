@@ -29,6 +29,7 @@ describe("standard MCP package discovery", () => {
     ).toEqual([
       { name: "imagen", descriptorKind: "mcpb", servers: ["imagen"] },
       { name: "weather", descriptorKind: "mcpb", servers: ["weather"] },
+      { name: "zavora-computer-use", descriptorKind: "mcpb", servers: ["zavora-computer-use"] },
     ]);
     expect(packages.find((package_) => package_.name === "weather")?.configurationPath).toBe(
       path.resolve("McpServers", "weather", "manifest.json"),

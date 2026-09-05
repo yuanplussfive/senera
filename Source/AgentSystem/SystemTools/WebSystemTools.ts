@@ -127,7 +127,7 @@ const WebSearchSearch = {
     {
       Id: "web.search",
       Title: "Web search",
-      Description: "Search current public web information through the configured provider.",
+      Description: "查找当前公开网页中的信息，用来核实外部事实、最新动态或官方资料。",
       Facets: {
         Actions: ["search", "research", "verify"],
         Targets: ["public-web", "search-index"],
@@ -151,7 +151,7 @@ const WebFetchSearch = {
     {
       Id: "web.fetch",
       Title: "Web page fetch",
-      Description: "Fetch a public web page and extract bounded Markdown content with links.",
+      Description: "打开公开网页并提取正文、链接和可追溯引用，适合继续核对搜索到的资料。",
       Facets: {
         Actions: ["fetch", "read", "extract"],
         Targets: ["public-web", "web-page", "article"],
@@ -184,7 +184,7 @@ export function createWebSystemTools(
     defineSystemTool({
       extension: WebToolsExtension,
       metadata: webToolMetadata(
-        "Search current public web information through the configured provider.",
+        "查找当前公开网页中的信息，用来核实外部事实、最新动态或官方资料。",
         WebSearchSearch,
         WebSearchArtifacts,
         WebSearchObservation,
@@ -200,7 +200,7 @@ export function createWebSystemTools(
     defineSystemTool({
       extension: WebToolsExtension,
       metadata: webToolMetadata(
-        "Fetch a public web page and extract bounded Markdown content with traceable citations.",
+        "打开公开网页并提取正文、链接和可追溯引用，适合继续核对搜索到的资料。",
         WebFetchSearch,
         WebFetchArtifacts,
         WebFetchObservation,

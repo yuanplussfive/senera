@@ -216,6 +216,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         startedAt: env.timestamp,
         toolName: data.toolName,
         callId: data.callId,
+        ...(data.purpose ? { purpose: data.purpose } : {}),
         toolBatch: toolBatchFromEvent(env, data),
         ...(data.origin ? { toolOrigin: data.origin } : {}),
         ...(data.arguments === undefined ? {} : { toolArgs: data.arguments }),
@@ -288,6 +289,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         step.status = "done";
         step.toolOrigin = data.origin ?? step.toolOrigin;
         step.endedAt = env.timestamp;
+        if (data.purpose) step.purpose = data.purpose;
         step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
         step.toolPreview = step.toolPresentation?.headline;
         touchRun(run);
@@ -304,6 +306,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         step.status = "failed";
         step.toolOrigin = data.origin ?? step.toolOrigin;
         step.endedAt = env.timestamp;
+        if (data.purpose) step.purpose = data.purpose;
         step.toolErrorMessage = message;
         touchRun(run);
       } else {
@@ -320,6 +323,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
           toolName: data.toolName,
           toolOrigin: data.origin,
           callId: data.callId,
+          ...(data.purpose ? { purpose: data.purpose } : {}),
           toolBatch: toolBatchFromEvent(env, data),
           toolErrorMessage: message,
           scope,

@@ -11,6 +11,11 @@ export const AgentSystemToolDiscoverySources = {
     Title: "Browser",
     Description: "Controlled browser sessions for interactive public web pages.",
   },
+  Desktop: {
+    Id: "desktop",
+    Title: "Desktop",
+    Description: "The local desktop screen and input devices controlled by the host.",
+  },
   Uploads: {
     Id: "uploads",
     Title: "Uploads",

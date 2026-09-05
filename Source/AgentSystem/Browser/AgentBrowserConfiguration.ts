@@ -32,6 +32,7 @@ export const DefaultAgentBrowserConfiguration = {
   capture: {
     defaultFormat: "png" as const,
     maxScreenshotBytes: 24 * 1024 * 1024,
+    maxDownloadBytes: 64 * 1024 * 1024,
   },
 } as const;
 
@@ -150,6 +151,12 @@ export const AgentBrowserConfigurationSchema = z
           .min(128 * 1024)
           .max(128 * 1024 * 1024)
           .default(DefaultAgentBrowserConfiguration.capture.maxScreenshotBytes),
+        maxDownloadBytes: z
+          .number()
+          .int()
+          .min(128 * 1024)
+          .max(512 * 1024 * 1024)
+          .default(DefaultAgentBrowserConfiguration.capture.maxDownloadBytes),
       })
       .strict()
       .default(DefaultAgentBrowserConfiguration.capture),
@@ -361,6 +368,20 @@ export const AgentBrowserConfigurationUi = {
             min: 128 * 1024,
             max: 128 * 1024 * 1024,
             step: 1_024,
+            required: true,
+            essential: false,
+          },
+          {
+            path: ["capture", "maxDownloadBytes"],
+            label: { "zh-CN": "下载文件大小上限", "en-US": "Download file size limit" },
+            description: {
+              "zh-CN": "浏览器下载会作为 Artifact 保存，超过此大小的文件会被拒绝。",
+              "en-US": "Browser downloads are stored as Artifacts; files above this size are rejected.",
+            },
+            type: "number",
+            min: 128 * 1024,
+            max: 512 * 1024 * 1024,
+            step: 1_048_576,
             required: true,
             essential: false,
           },

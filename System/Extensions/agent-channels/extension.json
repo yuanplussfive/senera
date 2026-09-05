@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "agent-channels",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "消息渠道", "en-US": "Message Channels" },
+  "description": {
+    "zh-CN": "把 Senera 会话接入 Telegram、QQ 与 Discord 机器人网关：多渠道收发、群聊与会话映射、后台任务完成通知。",
+    "en-US": "Connects Senera sessions to Telegram, QQ and Discord bot gateways: multi-channel messaging, conversation mapping, and detached task completion notices."
+  },
+  "priority": 2,
+  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" }
+}

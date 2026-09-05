@@ -1,6 +1,7 @@
 import { useStore } from "../sessionStore";
 import type { RunRecord } from "../sessionStore";
 import { useShallow } from "zustand/react/shallow";
+import { readActiveRun } from "../session/sessionProjectorCore";
 
 /**
  * Optimized selector for chat state - prevents unnecessary re-renders
@@ -43,8 +44,7 @@ export function useActiveRun(sessionId: string | null): RunRecord | null {
     const session = sessionId ? s.sessions[sessionId] : null;
     if (!session?.runs || session.runs.length === 0) return null;
 
-    const lastRun = session.runs[session.runs.length - 1];
-    return lastRun?.status === "running" || lastRun?.status === "cancelling" ? lastRun : null;
+    return readActiveRun(session) ?? null;
   });
 }
 

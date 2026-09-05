@@ -15,9 +15,15 @@ import { AgentModelResponseBudgetDefaults } from "../ModelEndpoints/ModelRespons
 import { SeneraDefaultProcessEnvironmentIncludeOnly } from "../Execution/SeneraProcessEnvironment.js";
 import { AgentToolSemanticAuditModes } from "../Types/AgentRuntimeConfigTypes.js";
 import {
+  AgentContinuityPromptBudgetDefaults,
+  AgentContinuityRecallRankingDefaults,
+  AgentContinuitySemanticRecallDefaults,
+} from "../Continuity/AgentContinuityRecallDefaults.js";
+import {
   readAgentSandboxDistributionContract,
   resolveAgentSandboxDistributionTarget,
 } from "../Sandbox/AgentSandboxDistributionContract.js";
+import { AgentPresetPromptBudgetDefaults } from "../Presets/AgentPresetPromptBudget.js";
 
 const Mebibyte = 1024 * 1024;
 const DefaultLargePayloadBytes = 64 * Mebibyte;
@@ -62,6 +68,23 @@ export const AgentDefaults = {
     MaxResponseBytes: AgentModelResponseBudgetDefaults.maxResponseBytes,
     MaxSseEventBytes: AgentModelResponseBudgetDefaults.maxSseEventBytes,
     MaxSseEvents: AgentModelResponseBudgetDefaults.maxSseEvents,
+  },
+  InferenceBudget: {
+    Enabled: true,
+    WindowSeconds: 60,
+    MaxRequests: 12,
+    MaxEstimatedInputTokens: 120_000,
+    MaxEstimatedOutputTokens: 24_000,
+    MaxConcurrent: 2,
+    ForegroundReserveFraction: 0.5,
+    LaneWeights: {
+      foreground: 100,
+      goal: 4,
+      autonomy: 2,
+      resident: 1,
+      continuity: 1,
+      embedding: 1,
+    },
   },
   ToolExecution: {
     TimeoutSeconds: 120,
@@ -116,8 +139,13 @@ export const AgentDefaults = {
     },
   },
   ToolSearch: {
-    Embedding: {
+    Fuzzy: {
       Enabled: true,
+      MinScore: 0.25,
+      CandidateLimit: 8,
+    },
+    Embedding: {
+      Enabled: false,
       ScoreThreshold: 0,
     },
     Memory: {
@@ -138,7 +166,7 @@ export const AgentDefaults = {
       },
     },
     Rerank: {
-      Enabled: true,
+      Enabled: false,
       CandidateLimit: 24,
       ScoreScale: 0.018,
       FeatureWeights: {},
@@ -146,7 +174,7 @@ export const AgentDefaults = {
   },
   VectorModels: {
     Embedding: {
-      Enabled: true,
+      Enabled: false,
       ProviderId: "openai",
       Model: "qwen3-embedding-0.6b",
       TimeoutSeconds: 20,
@@ -156,7 +184,7 @@ export const AgentDefaults = {
       InputMaxChars: -1,
     },
     Rerank: {
-      Enabled: true,
+      Enabled: false,
       ProviderId: "openai",
       Model: "qwen3-reranker-0.6b",
       TimeoutSeconds: 20,
@@ -178,23 +206,55 @@ export const AgentDefaults = {
       MaxTokens: -1,
     },
   },
-  MemoryLearning: {
+  Todos: {
+    MaxItems: 256,
+    MaxContentCharacters: 4_000,
+    MaxResultCharacters: 512_000,
+  },
+  ContinuityLearning: {
     Enabled: true,
-    MaxRepairAttempts: 1,
     Client: {
       Temperature: 0.1,
-      MaxTokens: -1,
     },
-    Promotion: {
-      MinSupport: 2,
-      MaxClusterSize: 8,
-      MinSimilarity: 0.78,
+    Runtime: {
+      MaxAttempts: 3,
+      RetryBaseDelaySeconds: 1,
+      RetryMaxDelaySeconds: 60,
+      MaxJobsPerDrain: 8,
+    },
+    LearningGate: {
+      Enabled: true,
+      DeferredDelaySeconds: 30,
+    },
+    LearningContext: {
+      ReferentBudgetCharacters: 12_000,
+      CatalogBudgetCharacters: 12_000,
+      VerifiedExampleBudgetCharacters: 12_000,
+    },
+    TemporalMemory: {
+      Enabled: true,
+    },
+    Recall: {
+      TurnValueClassifier: {
+        Enabled: true,
+        ConfidenceThreshold: 0.82,
+        MinimumExamplesPerLabel: 3,
+        MaxTrainingEntries: 4096,
+      },
+      Prefetch: {
+        Enabled: true,
+        CacheTtlSeconds: 300,
+      },
+      PromptBudget: AgentContinuityPromptBudgetDefaults,
+      Ranking: AgentContinuityRecallRankingDefaults,
+      Semantic: AgentContinuitySemanticRecallDefaults,
     },
   },
   Presets: {
     Enabled: true,
     RootDir: ".senera/presets",
     StateFile: ".senera/presets-state.json",
+    PromptBudget: AgentPresetPromptBudgetDefaults,
   },
   ActionPlanner: {
     Enabled: true,
@@ -302,6 +362,49 @@ export const AgentDefaults = {
     RevisionRetentionCount: 256,
     CommandReceiptRetentionHours: 168,
     CommandReceiptMaxCount: 4_096,
+  },
+  Prompt: {
+    UserMessageEnvelope: true,
+    TimeZone: "Asia/Shanghai",
+    PrefaceRewrite: false,
+    RoleCheck: true,
+    BamlToolAttribution: true,
+  },
+  World: {
+    Name: "Senera",
+    TimeZone: "Asia/Shanghai",
+    DayPhases: [
+      { Id: "late_night", Label: "深夜", StartsAt: "00:00", EndsAt: "05:00" },
+      { Id: "early_morning", Label: "清晨", StartsAt: "05:00", EndsAt: "08:00" },
+      { Id: "morning", Label: "上午", StartsAt: "08:00", EndsAt: "12:00" },
+      { Id: "afternoon", Label: "下午", StartsAt: "12:00", EndsAt: "18:00" },
+      { Id: "evening", Label: "晚上", StartsAt: "18:00", EndsAt: "00:00" },
+    ],
+    RecordLimit: 128,
+    TimelineLimit: 64,
+    HabitCatchUpLimit: 256,
+    GoalMicroLoop: {
+      Enabled: true,
+      MaxCandidates: 8,
+      ReviewDelaySeconds: 900,
+      AllowedToolNames: [],
+    },
+    ResidentIdle: {
+      Enabled: true,
+      MinIntervalSeconds: 900,
+      MaxIntervalSeconds: 14_400,
+      BackoffMultiplier: 2,
+      MaxPending: 1,
+    },
+    ActionBudget: {
+      MaxActionsPerWake: 8,
+      MaxDecisionCandidatesPerWake: 8,
+      RetryDelaySeconds: 30,
+      LeaseDurationSeconds: 300,
+      FairShare: true,
+      SourceOrder: [],
+      SourceCaps: {},
+    },
   },
 } as const satisfies Omit<ResolvedAgentDefaultsConfig, "ModelRuntime" | "ToolExecution" | "VectorModels"> & {
   ModelRuntime: AgentModelRuntimeDefaultsConfig;

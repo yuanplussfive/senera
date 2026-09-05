@@ -12,6 +12,7 @@ import {
 import { compilePiToolObservation, piToolResultMessage } from "../Support/PiToolObservationFixtures.js";
 import { buildAgentPiCompactionPromptJson } from "../../../Source/AgentSystem/PiShared/AgentPiCompactionPrompt.js";
 import { AgentPiCompactionSummaryBridgeCustomType } from "../../../Source/AgentSystem/Pi/AgentPiCompactionSummaryBridge.js";
+import { AgentPiNativeToolBridgeName } from "../../../Source/AgentSystem/Pi/AgentPiNativeToolBridge.js";
 
 describe("Pi compaction projection policy", () => {
   test("bounds indexed calls and argument previews independently", () => {
@@ -51,6 +52,44 @@ describe("Pi compaction projection policy", () => {
     expect(formatted.text).toContain("call-2");
     expect(formatted.text).toContain("call-3");
     expect(formatted.text).not.toContain("call-1");
+  });
+
+  test("indexes a native dynamic bridge call under the real tool identity", () => {
+    const messages = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-weather",
+            name: AgentPiNativeToolBridgeName,
+            arguments: {
+              tool: "WeatherTool",
+              arguments: { city: "上海" },
+            },
+          },
+        ],
+      } as unknown as AgentMessage,
+      piToolResultMessage(
+        compilePiToolObservation({
+          callId: "call-weather",
+          toolName: "WeatherTool",
+          summary: "上海天气已查询",
+          result: {},
+        }),
+        { toolCallId: "call-weather", toolName: AgentPiNativeToolBridgeName },
+      ),
+    ];
+
+    const index = createAgentPiCompactionToolCallIndex(messages);
+
+    expect(index.calls).toEqual([
+      expect.objectContaining({
+        callId: "call-weather",
+        toolName: "WeatherTool",
+        argumentsPreview: expect.stringContaining("上海"),
+      }),
+    ]);
   });
 
   test("rejects invalid projection limits", () => {

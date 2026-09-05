@@ -42,6 +42,9 @@ const StepKindIcon: Record<TimelineStepKind, AppIconName> = {
   retry: "activity",
   answer: "message",
   error: "cancel",
+  training: "brain",
+  recall: "search",
+  harness: "activity",
 };
 
 export function WorkflowDockGraph({ run }: { run: RunRecord }): JSX.Element {

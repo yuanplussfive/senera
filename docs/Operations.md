@@ -13,19 +13,6 @@ npm run maintenance.artifacts.json
 
 确认报告后使用 `npm run maintenance.artifacts.apply` 执行清理。工作区、配置文件或 artifact 根目录不在默认位置时，可传 `--workspace`、`--config` 或 `--root`。
 
-## Pi Planner 延迟基准
-
-默认诊断只调用动作选择模型；所有模式都不会创建会话、执行工具或写入会话数据库：
-
-```powershell
-npm run benchmark.pi-planner
-npm run benchmark.pi-planner -- -- --planning-model-provider-id=gemini-3.5-flash --iterations=3
-npm run benchmark.pi-planner -- -- --stage=prepare-interaction --iterations=3
-npm run benchmark.pi-planner -- -- --stage=direct-flow --iterations=3
-```
-
-输出包含每次请求的首 token、总耗时、请求/响应字符数和动作类型。`--stage` 支持 `prepare-interaction`、`select-action`、`direct-flow` 或 `both`。`direct-flow` 会真实生成最终文本，但仍不创建会话、不执行工具，可用于衡量用户看到首段文本前的完整直答延迟。
-
 ## Docker 启动
 
 容器监听 `8787`，所有运行数据都放在容器内的 `/data`。`compose.yaml` 使用 Docker named volume，首次部署不需要先处理宿主机目录权限。Docker 部署不需要把 `/dev/kvm` 或 `NET_ADMIN` 传给 Senera 主服务；宿主已注册 `runsc` 时使用 gVisor，否则使用受限 Docker Engine 容器。

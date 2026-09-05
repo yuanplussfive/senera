@@ -42,6 +42,8 @@
     "Capabilities": [
       {
         "Id": "execution.resource-inspect",
+        "Title": "Inspect execution resource",
+        "Description": "查看后台进程的当前状态，并从游标位置继续读取保留事件。",
         "Facets": {
           "Actions": ["inspect", "resume"],
           "Targets": ["execution-resource"],
@@ -49,6 +51,7 @@
         }
       }
     ],
+    "UseCases": ["后台命令仍在运行、需要查看状态，或需要从上次位置继续读取输出时。"],
     "Tags": ["后台进程", "状态检查", "断线恢复"]
   },
   "evidenceCapabilities": [],

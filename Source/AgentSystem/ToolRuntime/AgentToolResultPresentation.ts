@@ -8,6 +8,7 @@ import {
 } from "../Types/ToolRuntimeTypes.js";
 import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
 import { projectAgentExecutedToolResultStatus, readAgentToolFailure } from "./AgentToolResultOutcome.js";
+import { projectAgentModelText } from "../Text/AgentModelPayloadProjection.js";
 
 /**
  * Separates the model's complete tool observation from the compact, human
@@ -18,7 +19,8 @@ export function projectAgentToolResultPresentation(result: ExecutedToolCallResul
   const evidence = projectEvidence(result);
   const changes = projectChanges(result);
   const facts = projectFacts(result);
-  const failure = readAgentToolFailure(result.outcome);
+  const rawFailure = readAgentToolFailure(result.outcome);
+  const failure = rawFailure ? { ...rawFailure, message: projectPresentationText(rawFailure.message) } : undefined;
   const fallback = readResultText(result.result);
   const headline = failure?.message ?? evidence[0]?.display ?? changes[0]?.summary ?? fallback ?? result.name;
   const summary = buildSummary(evidence, changes, fallback, headline);
@@ -33,6 +35,7 @@ export function projectAgentToolResultPresentation(result: ExecutedToolCallResul
     evidence,
     changes,
     artifactUri: result.artifact?.artifactUri,
+    ...(result.artifactAvailability ? { artifactAvailability: result.artifactAvailability } : {}),
     failure,
   };
 }
@@ -49,10 +52,10 @@ function projectEvidence(result: ExecutedToolCallResult): AgentToolResultPresent
       {
         evidenceUri: entry.evidenceUri,
         kind: entry.kind,
-        display: entry.display,
-        label: entry.label,
-        source: entry.source,
-        locator: entry.locator,
+        display: projectPresentationText(entry.display),
+        label: projectPresentationText(entry.label),
+        source: projectPresentationText(entry.source),
+        locator: projectPresentationText(entry.locator),
         confidence: entry.confidence,
       },
     ];
@@ -83,8 +86,8 @@ function projectFacts(result: ExecutedToolCallResult): AgentToolResultPresentati
       : fallbackFacts;
   const seen = new Set<string>();
   return facts.flatMap((fact) => {
-    const name = fact.name.trim();
-    const value = fact.value.trim();
+    const name = projectPresentationText(fact.name);
+    const value = projectPresentationText(fact.value);
     const key = `${name}\u0000${value}\u0000${fact.evidenceUri ?? ""}`;
     if (!name || !value || seen.has(key)) {
       return [];
@@ -109,8 +112,8 @@ function projectChanges(result: ExecutedToolCallResult): AgentToolResultPresenta
       {
         kind: change.kind,
         status: change.status,
-        key: change.key,
-        summary: change.summary,
+        key: projectPresentationText(change.key),
+        summary: projectPresentationText(change.summary),
         addedLines: workspaceChange?.addedLines,
         removedLines: workspaceChange?.removedLines,
       },
@@ -134,7 +137,7 @@ function buildSummary(
 
 function readResultText(value: unknown): string | undefined {
   if (typeof value === "string") {
-    return normalizeText(value);
+    return normalizeText(projectAgentModelText(value).text);
   }
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
     return String(value);
@@ -147,7 +150,7 @@ function readSemanticText(value: Record<string, unknown>): string | undefined {
   const candidates = [value.headline, value.summary, value.message, value.text, value.output];
   for (const candidate of candidates) {
     if (typeof candidate === "string") {
-      const text = normalizeText(candidate);
+      const text = normalizeText(projectAgentModelText(candidate).text);
       if (text) {
         return text;
       }
@@ -159,6 +162,10 @@ function readSemanticText(value: Record<string, unknown>): string | undefined {
 function normalizeText(value: string): string | undefined {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function projectPresentationText(value: string): string {
+  return normalizeText(projectAgentModelText(value).text) ?? "";
 }
 
 function uniqueText(values: readonly (string | undefined)[]): string[] {

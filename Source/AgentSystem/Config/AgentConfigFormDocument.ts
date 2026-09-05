@@ -29,7 +29,7 @@ const ConfigFormOptionSourceSchema = z
 const ConfigFormModelInheritanceSchema = z
   .object({
     source: z.enum(["parent-model", "default-model"]),
-    path: z.array(z.string().min(1)).min(1),
+    path: z.array(z.string().min(1)).min(1).optional(),
   })
   .strict();
 
@@ -90,11 +90,18 @@ const ConfigFormModelSelectionSchema = z
         path: ["mutation"],
       });
     }
-    if (selection.inheritance && selection.cardinality !== "many") {
+    if (selection.inheritance && selection.cardinality === "many" && !selection.inheritance.path) {
       context.addIssue({
         code: "custom",
-        message: "Model inheritance is only supported by multi-model selections.",
-        path: ["inheritance"],
+        message: "Multi-model inheritance requires an explicit boolean path.",
+        path: ["inheritance", "path"],
+      });
+    }
+    if (selection.inheritance && selection.cardinality !== "many" && selection.inheritance.source !== "default-model") {
+      context.addIssue({
+        code: "custom",
+        message: "Single-model inheritance must use the default model.",
+        path: ["inheritance", "source"],
       });
     }
   });

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "entrypoints": ["senera/tool/decision", "senera/resource/decision"],
   "compiler": {
     "name": "opa",

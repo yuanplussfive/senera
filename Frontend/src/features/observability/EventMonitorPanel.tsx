@@ -16,18 +16,29 @@ import { JsonView, defaultStyles } from "react-json-view-lite";
 import "react-json-view-lite/dist/index.css";
 import { Virtuoso } from "react-virtuoso";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import type { FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { useFrontendLocale } from "../../i18n/useFrontendLocale";
-import { cn } from "../../lib/util";
+import { cn, formatTime } from "../../lib/util";
 import { IconButton, MenuSelect, Sheet, SheetContent, Switch, useClipboardCopy } from "../../shared/ui";
 import { EventPhases } from "../../api/generatedEventCatalog";
+import type { EventSourceChannel } from "../../api/eventTypes";
 import { useEventJournalStore, type EventJournalRecord } from "./eventJournalStore";
 import { eventToneClasses, isTerminalEventLayer, readEventTitle, readEventTone } from "./eventPresentation";
 
 type DirectionFilter = "all" | EventJournalRecord["direction"];
 type PhaseFilter = "all" | NonNullable<EventJournalRecord["phase"]>;
+type ChannelFilter = "all" | EventSourceChannel;
 
 const DirectionFilters: readonly DirectionFilter[] = ["all", "inbound", "outbound", "system"];
 const PhaseFilters = ["all", ...Object.values(EventPhases)] as const satisfies readonly PhaseFilter[];
+const ChannelFilters: readonly ChannelFilter[] = ["all", "console", "qq", "telegram", "discord"];
+const ChannelMessageKeys = {
+  all: "observability.channel.all",
+  console: "observability.channel.console",
+  qq: "observability.channel.qq",
+  telegram: "observability.channel.telegram",
+  discord: "observability.channel.discord",
+} as const satisfies Record<ChannelFilter, FrontendMessageKey>;
 
 export function EventMonitorPanel(): JSX.Element {
   const locale = useFrontendLocale();
@@ -45,6 +56,7 @@ export function EventMonitorPanel(): JSX.Element {
   const [query, setQuery] = useState("");
   const [direction, setDirection] = useState<DirectionFilter>("all");
   const [phase, setPhase] = useState<PhaseFilter>("all");
+  const [channel, setChannel] = useState<ChannelFilter>("all");
 
   const visibleRecords = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase(locale);
@@ -52,12 +64,13 @@ export function EventMonitorPanel(): JSX.Element {
       if (viewPausedAt !== undefined && record.localSequence > viewPausedAt) return false;
       if (direction !== "all" && record.direction !== direction) return false;
       if (phase !== "all" && record.phase !== phase) return false;
+      if (channel !== "all" && record.channel !== channel) return false;
       if (!normalizedQuery) return true;
       return [record.kind, record.summary, record.requestId, record.sessionId, record.resourceId, record.connectionId]
         .filter(Boolean)
         .some((value) => String(value).toLocaleLowerCase(locale).includes(normalizedQuery));
     });
-  }, [direction, locale, phase, query, records, viewPausedAt]);
+  }, [channel, direction, locale, phase, query, records, viewPausedAt]);
   const selected = records.find((record) => record.id === selectedId);
 
   return (
@@ -146,6 +159,18 @@ export function EventMonitorPanel(): JSX.Element {
             contentClassName="min-w-[140px]"
             onChange={(value) => setPhase(value as PhaseFilter)}
           />
+          <MenuSelect
+            value={channel}
+            placeholder={frontendMessage("observability.channel.all")}
+            ariaLabel={frontendMessage("observability.channel.label")}
+            options={ChannelFilters.map((value) => ({
+              value,
+              label: frontendMessage(ChannelMessageKeys[value]),
+            }))}
+            triggerClassName="h-7 w-[82px] shrink-0 rounded-none border-0 border-b border-line-subtle bg-transparent px-1 text-[10px] shadow-none"
+            contentClassName="min-w-[140px]"
+            onChange={(value) => setChannel(value as ChannelFilter)}
+          />
         </div>
 
         <div className="mt-1.5 flex items-center justify-between gap-3 text-[9.5px] text-content-muted">
@@ -224,6 +249,7 @@ function EventRow({
           {title}
         </span>
         <span className="flex min-w-0 items-center gap-1.5 text-[9px] leading-3.5 text-content-muted">
+          <span className="shrink-0 text-content-disabled">{frontendMessage(ChannelMessageKeys[record.channel])}</span>
           {secondary ? <span className="min-w-0 truncate">{secondary}</span> : null}
           {showTechnicalKind ? (
             <span className="min-w-0 truncate font-mono text-content-disabled">{record.kind}</span>
@@ -286,7 +312,7 @@ function EventDetail({ record, onClose }: { record: EventJournalRecord; onClose:
           <X className="h-3.5 w-3.5" />
         </IconButton>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto px-3 py-3 text-[10px] leading-5">
+      <div className="scrollbar-thin min-h-0 flex-1 overflow-auto px-3 py-3 text-[10px] leading-5">
         <JsonView
           data={detail}
           shouldExpandNode={(level) => level < 3}
@@ -343,6 +369,7 @@ function projectRecordDetail(record: EventJournalRecord): Record<string, unknown
       kind: record.kind,
       layer: record.layer,
       phase: record.phase,
+      channel: record.channel,
       sequence: record.sequence,
       step: record.step,
     }),
@@ -356,10 +383,7 @@ function compactRecord(value: Record<string, unknown>): Record<string, unknown> 
 }
 
 function formatEventTime(timestamp: string): string {
-  const date = new Date(timestamp);
-  return Number.isNaN(date.valueOf())
-    ? timestamp
-    : date.toLocaleTimeString(undefined, { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return formatTime(timestamp) || timestamp;
 }
 
 function formatByteSize(bytes: number): string {

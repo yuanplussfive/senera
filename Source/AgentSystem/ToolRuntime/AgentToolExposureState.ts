@@ -14,7 +14,9 @@ export interface AgentToolExposureSnapshot {
 export interface AgentToolExposureDelta {
   readonly snapshot: AgentToolExposureSnapshot;
   readonly addedToolNames: readonly string[];
+  readonly removedToolNames: readonly string[];
   readonly rejectedToolNames: readonly string[];
+  readonly protectedToolNames: readonly string[];
 }
 
 export class AgentToolExposureState {
@@ -22,6 +24,7 @@ export class AgentToolExposureState {
   private exposedToolNames: string[];
   private preferredToolNames: string[];
   private generation = 0;
+  private readonly listeners = new Set<(snapshot: AgentToolExposureSnapshot) => void>();
 
   constructor(grant: AgentToolAccessGrant) {
     this.authorizedToolNames = new Set(grant.authorizedToolNames);
@@ -41,6 +44,11 @@ export class AgentToolExposureState {
     return this.exposedToolNames.includes(toolName);
   }
 
+  subscribe(listener: (snapshot: AgentToolExposureSnapshot) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
   expose(toolNames: readonly string[]): AgentToolExposureDelta {
     const requested = normalizeAgentToolNames(toolNames);
     const accepted = requested.filter((toolName) => this.authorizedToolNames.has(toolName));
@@ -56,13 +64,55 @@ export class AgentToolExposureState {
       this.exposedToolNames = nextExposedToolNames;
       this.preferredToolNames = nextPreferredToolNames;
       this.generation += 1;
+      this.publish();
     }
 
     return deepFreeze({
       snapshot: this.snapshot(),
       addedToolNames,
+      removedToolNames: [],
       rejectedToolNames,
+      protectedToolNames: [],
     });
+  }
+
+  revoke(
+    toolNames: readonly string[],
+    options: { protectedToolNames?: readonly string[] } = {},
+  ): AgentToolExposureDelta {
+    const requested = normalizeAgentToolNames(toolNames);
+    const protectedNames = new Set(normalizeAgentToolNames(options.protectedToolNames ?? []));
+    const exposed = new Set(this.exposedToolNames);
+    const protectedToolNames = requested.filter((toolName) => protectedNames.has(toolName));
+    const rejectedToolNames = requested.filter(
+      (toolName) => !this.authorizedToolNames.has(toolName) || !exposed.has(toolName),
+    );
+    const removedToolNames = requested.filter(
+      (toolName) => this.authorizedToolNames.has(toolName) && exposed.has(toolName) && !protectedNames.has(toolName),
+    );
+    const removed = new Set(removedToolNames);
+    const nextExposedToolNames = this.exposedToolNames.filter((toolName) => !removed.has(toolName));
+    const nextPreferredToolNames = this.preferredToolNames.filter((toolName) => !removed.has(toolName));
+
+    if (removedToolNames.length > 0) {
+      this.exposedToolNames = nextExposedToolNames;
+      this.preferredToolNames = nextPreferredToolNames;
+      this.generation += 1;
+      this.publish();
+    }
+
+    return deepFreeze({
+      snapshot: this.snapshot(),
+      addedToolNames: [],
+      removedToolNames,
+      rejectedToolNames,
+      protectedToolNames,
+    });
+  }
+
+  private publish(): void {
+    const snapshot = this.snapshot();
+    for (const listener of this.listeners) listener(snapshot);
   }
 }
 

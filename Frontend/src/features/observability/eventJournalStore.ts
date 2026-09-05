@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { AgentTransportObservation } from "../../api/agentTransportObserver";
+import type { EventSourceChannel } from "../../api/eventTypes";
 import { EventSpecs, type EventKind, type EventLayer, type EventPhase } from "../../api/generatedEventCatalog";
 import { projectEventForJournal, readJsonPointer } from "./eventJournalProjection";
 
@@ -14,6 +15,7 @@ export interface EventJournalRecord {
   readonly id: string;
   readonly localSequence: number;
   readonly connectionId: string;
+  readonly channel: EventSourceChannel;
   readonly observedAt: string;
   readonly observedAtEpoch: number;
   readonly direction: "inbound" | "outbound" | "system";
@@ -90,6 +92,7 @@ function createJournalRecord(observation: AgentTransportObservation): EventJourn
     id: `journal-${localSequence}`,
     localSequence,
     connectionId: observation.connectionId,
+    channel: readObservationChannel(observation),
     observedAt: observation.observedAt,
     observedAtEpoch: Date.parse(observation.observedAt),
     direction: observation.direction,
@@ -151,6 +154,10 @@ function createJournalRecord(observation: AgentTransportObservation): EventJourn
     projectionOmitted: false,
     summary: observation.byteLength === undefined ? undefined : `${observation.byteLength} B`,
   };
+}
+
+function readObservationChannel(observation: AgentTransportObservation): EventSourceChannel {
+  return observation.stage === "projected" ? (observation.envelope.scope?.channel ?? "console") : "console";
 }
 
 function readProjectedResourceId(kind: string, projection: Record<string, unknown> | undefined): string | undefined {

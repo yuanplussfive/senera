@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type {
   ResolvedAgentActionPlannerConfig,
+  ResolvedAgentModelProviderEndpointConfig,
   ResolvedAgentModelProviderConfig,
 } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {
@@ -115,6 +116,22 @@ export function createModelProvider(
     RetryBaseDelayMs: 250,
     RetryMaxDelayMs: 10_000,
     RetryAfterMaxDelayMs: 60_000,
+    Headers: {},
+    ...overrides,
+  };
+}
+
+export function createModelProviderEndpoint(
+  overrides: Partial<ResolvedAgentModelProviderEndpointConfig> = {},
+): ResolvedAgentModelProviderEndpointConfig {
+  return {
+    Id: "test-endpoint",
+    Icon: "",
+    Enabled: true,
+    Kind: "OpenAICompatible",
+    BaseUrl: "https://model.example/v1",
+    ApiKey: "test-key",
+    ApiVersion: "",
     Headers: {},
     ...overrides,
   };

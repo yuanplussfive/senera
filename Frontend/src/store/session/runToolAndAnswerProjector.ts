@@ -67,7 +67,7 @@ export const runToolAndAnswerEventHandlers = {
       touchRun(run);
     }
     session.updatedAt = env.timestamp;
-    state.sessionOrder = [sessionId, ...state.sessionOrder.filter((id) => id !== sessionId)];
+    // A completed run must not override the user's manually arranged sidebar order.
   },
 
   [EventKinds.ToolCallsPlanned]: (state, env) => {
@@ -117,6 +117,7 @@ export const runToolAndAnswerEventHandlers = {
       startedAt: env.timestamp,
       toolName: data.toolName,
       callId: data.callId,
+      ...(data.purpose ? { purpose: data.purpose } : {}),
       toolBatch: toolBatchFromEvent(env, data),
       ...(data.origin ? { toolOrigin: data.origin } : {}),
       ...(data.arguments === undefined ? {} : { toolArgs: data.arguments }),
@@ -189,6 +190,7 @@ export const runToolAndAnswerEventHandlers = {
       step.status = "done";
       step.toolOrigin = data.origin ?? step.toolOrigin;
       step.endedAt = env.timestamp;
+      if (data.purpose) step.purpose = data.purpose;
       step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
       step.toolPreview = step.toolPresentation?.headline;
       touchRun(run);
@@ -205,6 +207,7 @@ export const runToolAndAnswerEventHandlers = {
       step.status = "failed";
       step.toolOrigin = data.origin ?? step.toolOrigin;
       step.endedAt = env.timestamp;
+      if (data.purpose) step.purpose = data.purpose;
       step.toolErrorMessage = message;
       touchRun(run);
       return;
@@ -219,6 +222,7 @@ export const runToolAndAnswerEventHandlers = {
       toolName: data.toolName,
       toolOrigin: data.origin,
       callId: data.callId,
+      ...(data.purpose ? { purpose: data.purpose } : {}),
       toolBatch: toolBatchFromEvent(env, data),
       toolErrorMessage: message,
     });

@@ -14,6 +14,7 @@ import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolO
 import type { ConfigFormDocument } from "../Config/AgentConfigFormDocument.js";
 import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
 import type { AgentToolArtifactPayload } from "../Types/ToolRuntimeTypes.js";
+import type { AgentSystemExtensionPlatform } from "./AgentSystemExtensionPlatform.js";
 
 const SystemToolExecutionResultMarker = Symbol("senera.system-tool-execution-result");
 
@@ -63,6 +64,7 @@ export interface AgentSystemToolExtensionMetadata {
   readonly displayName: AgentExtensionLocalizedText;
   readonly description: AgentExtensionLocalizedText;
   readonly priority?: number;
+  readonly platforms?: readonly AgentSystemExtensionPlatform[];
   readonly skills?: readonly string[];
   readonly configuration?: AgentSystemToolExtensionConfiguration;
 }

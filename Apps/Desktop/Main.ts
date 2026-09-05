@@ -20,7 +20,10 @@ import { isTrustedDesktopNavigation } from "./DesktopNavigationPolicy.js";
 import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolicy.js";
 import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
 import { desktopMessage } from "./DesktopMessageCatalog.js";
-import { resolveAgentExternalUrl } from "../../Source/AgentSystem/Interaction/AgentExternalUrlPolicy.js";
+import {
+  DesktopExternalUrlPolicy,
+  resolveAgentExternalUrl,
+} from "../../Source/AgentSystem/Interaction/AgentExternalUrlPolicy.js";
 import { SeneraServerDeployments } from "../ServerRuntime.js";
 import { DesktopUpdateService } from "./DesktopUpdateService.js";
 import type { DesktopUpdateSnapshot } from "./DesktopUpdateProtocol.js";
@@ -217,7 +220,7 @@ function registerDesktopIpc(): void {
     return target ? readWindowState(target) : undefined;
   });
   ipcMain.handle("senera:external-url.open", async (_event, input: string) => {
-    const external = resolveAgentExternalUrl(input);
+    const external = resolveAgentExternalUrl(input, DesktopExternalUrlPolicy);
     await shell.openExternal(external.url, { activate: true });
   });
   ipcMain.handle("senera:update.get-state", () => desktopUpdateService?.getSnapshot());
@@ -352,10 +355,10 @@ function openSettingsWindow(options?: { section?: string }): void {
   }
 
   settingsWindow = new BrowserWindow({
-    width: 960,
-    height: 680,
-    minWidth: 820,
-    minHeight: 560,
+    width: 1280,
+    height: 800,
+    minWidth: 1080,
+    minHeight: 620,
     backgroundColor: "#f7f8f6",
     title: desktopMessage("settings.title", {}, app.getLocale()),
     show: false,
@@ -444,7 +447,7 @@ function registerNavigationPolicy(window: BrowserWindow, source: DesktopFrontend
 function openExternalHttpUrl(value: string): void {
   let externalUrl: string;
   try {
-    externalUrl = resolveAgentExternalUrl(value).url;
+    externalUrl = resolveAgentExternalUrl(value, DesktopExternalUrlPolicy).url;
   } catch (error) {
     if (runtimePaths) {
       appendDesktopLog(runtimePaths.logPath, "blocked external navigation: " + String(error));

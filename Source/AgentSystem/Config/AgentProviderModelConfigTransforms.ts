@@ -39,10 +39,10 @@ export function remapModelIdReferences(
       Client: remapPlannerClientModelId(config.ToolLearning.Client, remap),
     };
   }
-  if (config.MemoryLearning) {
-    nextConfig.MemoryLearning = {
-      ...config.MemoryLearning,
-      Client: remapPlannerClientModelId(config.MemoryLearning.Client, remap),
+  if (config.ContinuityLearning) {
+    nextConfig.ContinuityLearning = {
+      ...config.ContinuityLearning,
+      Client: remapPlannerClientModelId(config.ContinuityLearning.Client, remap),
     };
   }
   if (config.Defaults) {
@@ -56,10 +56,10 @@ export function remapModelIdReferences(
         Client: remapPlannerClientModelId(config.Defaults.ToolLearning.Client, remap),
       };
     }
-    if (config.Defaults.MemoryLearning) {
-      nextConfig.Defaults.MemoryLearning = {
-        ...config.Defaults.MemoryLearning,
-        Client: remapPlannerClientModelId(config.Defaults.MemoryLearning.Client, remap),
+    if (config.Defaults.ContinuityLearning) {
+      nextConfig.Defaults.ContinuityLearning = {
+        ...config.Defaults.ContinuityLearning,
+        Client: remapPlannerClientModelId(config.Defaults.ContinuityLearning.Client, remap),
       };
     }
   }

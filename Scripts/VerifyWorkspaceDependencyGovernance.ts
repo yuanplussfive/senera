@@ -219,6 +219,7 @@ function inspectRootScripts(): string[] {
     "verify.database-contracts": "tsx Build/GenerateDatabaseContracts.ts --check",
     "verify.system-extension-contracts": "tsx Build/GenerateSystemExtensionContracts.ts --check",
     "verify.config-command-contracts": "tsx Build/GenerateConfigCommandContracts.ts --check",
+    "verify.config-form": "tsx Scripts/VerifyAgentConfigFormProjection.ts",
     "verify.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts --check",
     "verify.resource-contract": "tsx Build/GenerateResourceContract.ts --check",
     "verify.protocol-reference": "tsx Build/GenerateWebSocketProtocolReference.ts --check",
@@ -227,7 +228,7 @@ function inspectRootScripts(): string[] {
     "sandbox.prepare": "tsx Build/PrepareSandboxRuntime.ts",
     "check.types": "tsc --noEmit",
     build:
-      "npm run verify.config-command-contracts && npm run verify.database-contracts && npm run verify.system-extension-contracts && npm run verify.frontend-events && npm run verify.resource-contract && npm run verify.protocol-reference && npm run verify.i18n && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
+      "npm run verify.config-command-contracts && npm run verify.config-form && npm run verify.database-contracts && npm run verify.system-extension-contracts && npm run verify.frontend-events && npm run verify.resource-contract && npm run verify.protocol-reference && npm run verify.i18n && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     dev: 'concurrently -k -n server,frontend -c blue,green "npm run dev.server" "npm run dev.frontend"',
     "docker.up": "docker compose pull && docker compose up -d",
     "docker.down": "docker compose down",

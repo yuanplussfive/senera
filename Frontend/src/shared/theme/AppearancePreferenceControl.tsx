@@ -1,21 +1,30 @@
-import { Check, Monitor, Moon, Palette, Pilcrow, Sun, Type } from "lucide-react";
-import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
+import { Check, Monitor, Moon, Palette, Sun } from "lucide-react";
+import { motion } from "framer-motion";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { cn } from "../../lib/util";
+import { SettingsControlRow } from "../ui/SettingsControlRow";
+import { MenuSelect } from "../ui/MenuSelect";
+import { motionSprings, useMotionLevel } from "../motion";
 import {
   appearanceFontFamilies,
   appearanceFontFamilyStacks,
-  fontScales,
+  colorSchemes,
+  fontScaleRange,
+  fontScaleValues,
+  readFontScaleAnchor,
+  readFontScaleValue,
   type AppearanceFontFamily,
   type ColorScheme,
+  type FontScale,
   type ThemeMode,
 } from "./themeModel";
-import { colorSchemeGroups } from "./themeData";
 import {
-  accentColorLabels,
   colorSchemeLabels,
   fontFamilyDescriptions,
   fontFamilyLabels,
   fontScaleLabels,
+  readAccentHex,
   readAccentSwatch,
   readColorSchemeStory,
   readRecommendedAccent,
@@ -24,233 +33,342 @@ import {
 } from "./appearancePresentation";
 import { useAppearance, useSetAppearancePreference } from "./useAppearance";
 
-const themeModeOptions = [
-  { value: "system", label: themeModeLabels.system, Icon: Monitor },
-  { value: "light", label: themeModeLabels.light, Icon: Sun },
-  { value: "dark", label: themeModeLabels.dark, Icon: Moon },
-] as const satisfies readonly {
-  value: ThemeMode;
-  label: string;
-  Icon: typeof Monitor;
-}[];
+const themeModeValues = [
+  { value: "system", Icon: Monitor },
+  { value: "light", Icon: Sun },
+  { value: "dark", Icon: Moon },
+] as const satisfies readonly { value: ThemeMode; Icon: typeof Monitor }[];
+
+// Keep the appearance controls aligned with the compact selector used for theme mode.
+const appearanceControlWidthClass = "w-full sm:max-w-[320px]";
 
 export function AppearancePreferenceControl({ className }: { className?: string }): JSX.Element {
+  useFrontendLocale();
   const { preference } = useAppearance();
   const setPreference = useSetAppearancePreference();
+  const { reduceMotion, disableMotion } = useMotionLevel();
+  const animateSelection = !reduceMotion && !disableMotion;
 
   return (
-    <div className={cn("space-y-4", className)}>
-      <SegmentedControl
-        label={frontendMessage("appearance.control.theme")}
-        icon={<Palette className="h-3.5 w-3.5" />}
-        options={themeModeOptions.map(({ value, label, Icon }) => ({
-          value,
-          label,
-          icon: <Icon className="h-3.5 w-3.5" aria-hidden="true" />,
-        }))}
-        value={preference.themeMode}
-        onChange={(themeMode) => setPreference({ themeMode })}
+    <div className={cn("min-w-0", className)}>
+      <SettingsControlRow
+        label={
+          <ControlLabel
+            icon={<Palette className="h-3.5 w-3.5" />}
+            label={frontendMessage("appearance.control.theme")}
+          />
+        }
+        description={frontendMessage("settings.appearance.themeDescription")}
+        control={
+          <ThemeModePicker value={preference.themeMode} onChange={(themeMode) => setPreference({ themeMode })} />
+        }
       />
 
-      <ColorSchemeControl value={preference.colorScheme} onChange={(colorScheme) => setPreference({ colorScheme })} />
+      <section className="border-b border-line-subtle py-4" aria-labelledby="appearance-palette-title">
+        <div className="mb-3 min-w-0">
+          <h4 id="appearance-palette-title" className="text-[13px] font-medium text-content-primary">
+            {frontendMessage("appearance.control.colorScheme")}
+          </h4>
+          <p className="mt-1 text-[11.5px] leading-5 text-content-secondary">
+            {frontendMessage("settings.appearance.paletteHint")}
+          </p>
+        </div>
+        <div className="grid grid-cols-1 divide-y divide-line-subtle border-y border-line-subtle sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-3">
+          {colorSchemes.map((scheme) => (
+            <ColorSchemeOption
+              key={scheme}
+              scheme={scheme}
+              selected={preference.colorScheme === scheme}
+              onSelect={() => setPreference({ colorScheme: scheme, customAccentColor: undefined })}
+            />
+          ))}
+        </div>
+        <CustomAccentControl
+          value={preference.customAccentColor ?? readAccentHex(preference.accentColor)}
+          hasCustomValue={Boolean(preference.customAccentColor)}
+          onChange={(customAccentColor) => setPreference({ customAccentColor })}
+          onClear={() => setPreference({ customAccentColor: undefined })}
+        />
+      </section>
 
-      <FontFamilyControl value={preference.fontFamily} onChange={(fontFamily) => setPreference({ fontFamily })} />
-      <SegmentedControl
-        label={frontendMessage("appearance.control.fontScale")}
-        icon={<Pilcrow className="h-3.5 w-3.5" />}
-        options={fontScales.map((value) => ({
-          value,
-          label: fontScaleLabels[value],
-        }))}
-        value={preference.fontScale}
-        onChange={(fontScale) => setPreference({ fontScale })}
-      />
-    </div>
-  );
-}
-
-function FontFamilyControl({
-  value,
-  onChange,
-}: {
-  value: AppearanceFontFamily;
-  onChange: (value: AppearanceFontFamily) => void;
-}): JSX.Element {
-  return (
-    <div>
-      <ControlLabel icon={<Type className="h-3.5 w-3.5" />} label={frontendMessage("appearance.control.font")} />
-      <div
-        className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3"
-        role="radiogroup"
-        aria-label={frontendMessage("appearance.control.font")}
-      >
-        {appearanceFontFamilies.map((fontFamily) => {
-          const selected = value === fontFamily;
-          return (
-            <button
-              key={fontFamily}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => onChange(fontFamily)}
-              className={cn(
-                "min-w-0 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow] duration-150",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-                selected
-                  ? "border-accent-border-strong bg-accent-surface shadow-panel"
-                  : "border-line-subtle bg-surface-panel hover:border-line-strong hover:bg-surface-subtle",
-              )}
-            >
-              <span className="flex items-start gap-2">
-                <span
-                  className="min-w-0 flex-1 truncate text-[14px] font-medium text-content-primary"
-                  style={{ fontFamily: appearanceFontFamilyStacks[fontFamily] }}
-                >
-                  {frontendMessage("appearance.fontFamilySample")}
-                </span>
-                {selected ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-content" /> : null}
-              </span>
-              <span className="mt-1 block truncate text-[12px] font-medium text-content-primary">
-                {fontFamilyLabels[fontFamily]}
-              </span>
-              <span className="mt-0.5 block truncate text-[11px] leading-4 text-content-secondary">
-                {fontFamilyDescriptions[fontFamily]}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ColorSchemeControl({
-  value,
-  onChange,
-}: {
-  value: ColorScheme;
-  onChange: (value: ColorScheme) => void;
-}): JSX.Element {
-  return (
-    <div>
-      <ControlLabel
-        icon={<Palette className="h-3.5 w-3.5" />}
-        label={frontendMessage("appearance.control.colorScheme")}
-      />
-      <div className="space-y-3" role="radiogroup" aria-label={frontendMessage("appearance.control.colorScheme")}>
-        {colorSchemeGroups.map((group) => (
-          <div key={group.label}>
-            <div className="mb-1.5 text-[11px] font-medium text-content-secondary">
-              {frontendMessage(group.label as FrontendMessageKey)}
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {group.items.map((scheme) => {
-                const selected = value === scheme;
-                const recommended = readRecommendedAccent(scheme);
-                return (
-                  <button
-                    key={scheme}
-                    type="button"
-                    role="radio"
-                    aria-label={`${frontendMessage("appearance.control.colorScheme")}: ${colorSchemeLabels[scheme]}`}
-                    aria-checked={selected}
-                    onClick={() => onChange(scheme)}
-                    className={cn(
-                      "min-w-0 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow] duration-150",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-                      selected
-                        ? "border-accent-border-strong bg-accent-surface shadow-panel"
-                        : "border-line-subtle bg-surface-panel hover:border-line-strong hover:bg-surface-subtle",
-                    )}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-content-primary">
-                        {colorSchemeLabels[scheme]}
-                      </span>
-                      <span className="inline-flex shrink-0 items-center gap-1 text-[10.5px] text-content-secondary">
-                        <span
-                          className="h-2.5 w-2.5 rounded-full border border-line-subtle"
-                          style={{ background: readAccentSwatch(recommended) }}
-                          aria-hidden="true"
-                        />
-                        {accentColorLabels[recommended]}
-                      </span>
-                      {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-accent-content" /> : null}
-                    </span>
-                    <span className="mt-2 flex gap-1" aria-hidden="true">
-                      {readSchemeSwatchStrip(scheme).map((color, index) => (
-                        <span
-                          key={`${scheme}-${index}`}
-                          className="h-3 flex-1 rounded-[4px] border border-black/[0.04]"
-                          style={{ background: color }}
-                        />
-                      ))}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+      <section className="py-4" aria-labelledby="appearance-font-title">
+        <div className="mb-3 min-w-0">
+          <h4 id="appearance-font-title" className="text-[13px] font-medium text-content-primary">
+            {frontendMessage("appearance.control.font")}
+          </h4>
+          <p className="mt-1 text-[11.5px] leading-5 text-content-secondary">
+            {frontendMessage("settings.appearance.fontHint")}
+          </p>
+        </div>
+        <FontFamilyPicker value={preference.fontFamily} onChange={(fontFamily) => setPreference({ fontFamily })} />
+        <div className="mt-5">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className="text-[13px] font-medium text-content-primary">
+              {frontendMessage("appearance.control.fontScale")}
+            </span>
+            <span className="text-[11.5px] font-medium text-content-secondary">
+              {formatFontScaleValue(readFontScaleValue(preference))}
+            </span>
           </div>
-        ))}
-      </div>
-      <p className="mt-2 text-[11.5px] leading-5 text-content-secondary">{readColorSchemeStory(value)}</p>
-    </div>
-  );
-}
-
-function SegmentedControl<TValue extends string>({
-  label,
-  icon,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  icon: JSX.Element;
-  options: Array<{ value: TValue; label: string; icon?: JSX.Element }>;
-  value: TValue;
-  onChange: (value: TValue) => void;
-}): JSX.Element {
-  return (
-    <div>
-      <ControlLabel icon={icon} label={label} />
-      <div
-        className="grid grid-flow-col auto-cols-fr rounded-lg border border-line-subtle bg-surface-panel p-1"
-        role="radiogroup"
-        aria-label={label}
-      >
-        {options.map((option) => {
-          const selected = value === option.value;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => onChange(option.value)}
-              className={cn(
-                "inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-                selected
-                  ? "bg-surface-subtle text-content-primary shadow-panel"
-                  : "text-content-secondary hover:bg-surface-subtle hover:text-content-primary",
-              )}
-            >
-              {option.icon}
-              <span className="truncate">{option.label}</span>
-            </button>
-          );
-        })}
-      </div>
+          <FontScalePicker
+            value={preference.fontScale}
+            scaleValue={readFontScaleValue(preference)}
+            animateSelection={animateSelection}
+            onChange={(scaleValue) =>
+              setPreference({ fontScaleValue: scaleValue, fontScale: readFontScaleAnchor(scaleValue) })
+            }
+          />
+        </div>
+      </section>
     </div>
   );
 }
 
 function ControlLabel({ icon, label }: { icon: JSX.Element; label: string }): JSX.Element {
   return (
-    <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-content-secondary">
-      {icon}
+    <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-content-primary">
+      <span className="text-content-muted" aria-hidden="true">
+        {icon}
+      </span>
       {label}
+    </span>
+  );
+}
+
+function ThemeModePicker({ value, onChange }: { value: ThemeMode; onChange: (value: ThemeMode) => void }): JSX.Element {
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-3 overflow-hidden rounded-md border border-line bg-surface-panel",
+        appearanceControlWidthClass,
+      )}
+    >
+      {themeModeValues.map(({ value: option, Icon }) => {
+        const selected = value === option;
+        return (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={selected}
+            aria-label={themeModeLabels[option]}
+            className={cn(
+              "flex h-9 min-w-0 items-center justify-center gap-1.5 px-2 text-[12px] text-content-secondary transition-colors",
+              selected
+                ? "bg-accent-surface font-medium text-accent-content"
+                : "hover:bg-surface-hover hover:text-content-primary",
+            )}
+            onClick={() => onChange(option)}
+          >
+            <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{themeModeLabels[option]}</span>
+          </button>
+        );
+      })}
     </div>
   );
+}
+
+function ColorSchemeOption({
+  scheme,
+  selected,
+  onSelect,
+}: {
+  scheme: ColorScheme;
+  selected: boolean;
+  onSelect: () => void;
+}): JSX.Element {
+  const recommendedAccent = readRecommendedAccent(scheme);
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      className={cn(
+        "group relative flex min-w-0 items-center gap-2.5 px-2.5 py-2.5 text-left transition-colors",
+        selected ? "bg-accent-surface/45" : "hover:bg-surface-hover",
+      )}
+      onClick={onSelect}
+    >
+      <span
+        className="flex h-5 w-14 shrink-0 overflow-hidden rounded-[3px] border border-line-subtle"
+        aria-hidden="true"
+      >
+        {readSchemeSwatchStrip(scheme).map((color, index) => (
+          <span key={`${scheme}-${index}`} className="min-w-0 flex-1" style={{ background: color }} />
+        ))}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12px] font-medium text-content-primary">{colorSchemeLabels[scheme]}</span>
+        <span className="mt-0.5 block truncate text-[10px] leading-4 text-content-muted">
+          {readColorSchemeStory(scheme)}
+        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1.5">
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{ background: readAccentSwatch(recommendedAccent) }}
+          aria-hidden="true"
+        />
+        {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-accent-content" aria-hidden="true" /> : null}
+      </span>
+    </button>
+  );
+}
+
+function CustomAccentControl({
+  value,
+  hasCustomValue,
+  onChange,
+  onClear,
+}: {
+  value: string;
+  hasCustomValue: boolean;
+  onChange: (value: string) => void;
+  onClear: () => void;
+}): JSX.Element {
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle pt-3">
+      <div className="flex min-w-0 items-start gap-2">
+        <div className="min-w-0">
+          <div className="text-[12px] font-medium text-content-primary">
+            {frontendMessage("settings.appearance.customAccent")}
+          </div>
+          <div className="mt-0.5 text-[11px] leading-4 text-content-secondary">
+            {frontendMessage("settings.appearance.customAccentDescription")}
+          </div>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <label className="flex h-8 items-center gap-2 rounded-md border border-line bg-surface-panel px-2 text-[11px] text-content-secondary">
+          <input
+            type="color"
+            value={value}
+            aria-label={frontendMessage("settings.appearance.customAccent")}
+            className="h-5 w-5 cursor-pointer rounded border-0 bg-transparent p-0"
+            onChange={(event) => onChange(event.target.value)}
+          />
+          <span className="font-mono uppercase">{value}</span>
+        </label>
+        {hasCustomValue ? (
+          <button
+            type="button"
+            className="h-8 rounded-md px-2.5 text-[11px] text-content-secondary transition-colors hover:bg-surface-hover hover:text-content-primary"
+            onClick={onClear}
+          >
+            {frontendMessage("settings.appearance.clearCustomAccent")}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function FontFamilyPicker({
+  value,
+  onChange,
+}: {
+  value: AppearanceFontFamily;
+  onChange: (value: AppearanceFontFamily) => void;
+}): JSX.Element {
+  const options = appearanceFontFamilies.map((fontFamily) => ({
+    value: fontFamily,
+    label: fontFamilyLabels[fontFamily],
+    description: fontFamilyDescriptions[fontFamily],
+  }));
+  return (
+    <MenuSelect
+      value={value}
+      options={options}
+      placeholder={frontendMessage("appearance.control.font")}
+      ariaLabel={frontendMessage("appearance.control.font")}
+      size="md"
+      triggerClassName={appearanceControlWidthClass}
+      renderValue={(_value, option) => (
+        <span className="inline-flex min-w-0 items-center gap-3">
+          <span
+            className="shrink-0 whitespace-nowrap text-[13px] font-medium text-content-primary"
+            style={{ fontFamily: appearanceFontFamilyStacks[value] }}
+          >
+            {frontendMessage("appearance.fontFamilySample")}
+          </span>
+          <span className="truncate text-[12px] text-content-secondary">{option?.label}</span>
+        </span>
+      )}
+      renderOption={(option) => (
+        <span className="flex min-w-0 items-center gap-3">
+          <span
+            className="w-[78px] shrink-0 whitespace-nowrap text-[13px] font-medium text-content-primary"
+            style={{ fontFamily: appearanceFontFamilyStacks[option.value as AppearanceFontFamily] }}
+          >
+            {frontendMessage("appearance.fontFamilySample")}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-[12px] font-medium text-content-primary">{option.label}</span>
+            {option.description ? (
+              <span className="mt-0.5 block truncate text-[10.5px] leading-4 text-content-muted">
+                {option.description}
+              </span>
+            ) : null}
+          </span>
+        </span>
+      )}
+      onChange={(next) => onChange(next as AppearanceFontFamily)}
+    />
+  );
+}
+
+function FontScalePicker({
+  value,
+  scaleValue,
+  animateSelection,
+  onChange,
+}: {
+  value: FontScale;
+  scaleValue: number;
+  animateSelection: boolean;
+  onChange: (value: number) => void;
+}): JSX.Element {
+  const scalePercent = ((scaleValue - fontScaleRange.min) / (fontScaleRange.max - fontScaleRange.min)) * 100;
+  return (
+    <div
+      aria-label={frontendMessage("appearance.control.fontScale")}
+      className={cn("relative min-w-0 border-y border-line-subtle px-1 py-3", appearanceControlWidthClass)}
+    >
+      <div
+        className="pointer-events-none absolute inset-x-5 top-[19px] h-1 rounded-full bg-line-strong/70"
+        aria-hidden="true"
+      >
+        <motion.span
+          className="absolute inset-y-0 left-0 rounded-full bg-accent-solid"
+          animate={{ width: `${scalePercent}%` }}
+          transition={animateSelection ? motionSprings.signal : { duration: 0 }}
+        />
+        <motion.span
+          className="absolute -top-[6px] h-4 w-4 -translate-x-1/2 rounded-full border-2 border-accent-solid bg-surface-panel shadow-soft"
+          animate={{ left: `${scalePercent}%` }}
+          transition={animateSelection ? motionSprings.signal : { duration: 0 }}
+        />
+      </div>
+      <input
+        type="range"
+        min={fontScaleRange.min}
+        max={fontScaleRange.max}
+        step={fontScaleRange.step}
+        value={scaleValue}
+        aria-label={frontendMessage("appearance.control.fontScale")}
+        className="appearance-font-range relative z-[1] h-8 w-full cursor-pointer bg-transparent opacity-100"
+        onInput={(event) => onChange(Number(event.currentTarget.value))}
+      />
+      <div className="mt-1 grid grid-cols-4 text-[11px] text-content-muted">
+        {Object.entries(fontScaleValues).map(([scale]) => (
+          <span key={scale} className={cn("text-center", value === scale && "font-medium text-accent-content")}>
+            {fontScaleLabels[scale as FontScale]}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatFontScaleValue(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }

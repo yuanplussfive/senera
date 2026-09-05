@@ -65,15 +65,11 @@ interface AgentPiContextArtifactItem {
   refs: string[];
 }
 
-const RetrievalCapabilities = new Set<string>([
-  AgentHostCapabilityNames.ArtifactMemoryRead,
-  AgentHostCapabilityNames.MemoryRecall,
-]);
+const RetrievalCapabilities = new Set<string>([AgentHostCapabilityNames.ArtifactMemoryRead]);
 
 const RuntimeInstruction = [
   "This message is a compact index of artifacts removed from the active Pi message history.",
   "Use an artifact retrieval tool with an exact artifactUri when archived content is required.",
-  "Use memory retrieval to locate older omitted artifacts.",
   "Current tool results remain authoritative and are not duplicated here.",
 ].join(" ");
 
@@ -81,7 +77,7 @@ export class AgentPiContextPolicy {
   private readonly tokenProjector: AgentTokenProjector;
   private readonly tokenOracle: AgentTokenBudgetOracle;
 
-  constructor(private readonly model: string) {
+  constructor(model: string) {
     this.tokenProjector = new AgentTokenProjector(model);
     this.tokenOracle = new AgentTokenBudgetOracle(model);
   }

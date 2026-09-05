@@ -16,6 +16,8 @@ import { AgentExecutionApprovalModes } from "../../../Source/AgentSystem/Safety/
 import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import type { AgentSubagentPreflightPort } from "../../../Source/AgentSystem/Orchestration/AgentSubagentPreflight.js";
 import { AgentSpawnArgumentsSchema } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationHostTools.js";
+import { AgentDelegationCompletionGateway } from "../../../Source/AgentSystem/Orchestration/AgentDelegationRuntimeContracts.js";
+import type { AgentChildRunRecord } from "../../../Source/AgentSystem/Orchestration/AgentChildRunTypes.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {
   cleanupDelegationTestRoots,
@@ -32,6 +34,38 @@ afterEach(() => {
 });
 
 describe("agent delegation", () => {
+  test("fans out detached completion wakes to every bound channel adapter", async () => {
+    const gateway = new AgentDelegationCompletionGateway();
+    const webSocketAdapter = vi.fn(async () => undefined);
+    const qqAdapter = vi.fn(async () => undefined);
+    const webSocketUnbind = gateway.bind({ id: "test.websocket", completed: webSocketAdapter });
+    const qqUnbind = gateway.bind({ id: "test.qq", completed: qqAdapter });
+
+    await gateway.completed({ id: "childrun_test" } as AgentChildRunRecord);
+
+    expect(webSocketAdapter).toHaveBeenCalledOnce();
+    expect(qqAdapter).toHaveBeenCalledOnce();
+    webSocketUnbind();
+    qqUnbind();
+    await gateway.completed({ id: "childrun_after_unbind" } as AgentChildRunRecord);
+    expect(webSocketAdapter).toHaveBeenCalledOnce();
+    expect(qqAdapter).toHaveBeenCalledOnce();
+  });
+
+  test("isolates completion adapter failures", async () => {
+    const gateway = new AgentDelegationCompletionGateway();
+    const failedAdapter = vi.fn(async () => {
+      throw new Error("channel_unavailable");
+    });
+    const healthyAdapter = vi.fn(async () => undefined);
+    gateway.bind({ id: "test.failed", completed: failedAdapter });
+    gateway.bind({ id: "test.healthy", completed: healthyAdapter });
+
+    await expect(gateway.completed({ id: "childrun_isolated" } as AgentChildRunRecord)).resolves.toBeUndefined();
+    expect(failedAdapter).toHaveBeenCalledOnce();
+    expect(healthyAdapter).toHaveBeenCalledOnce();
+  });
+
   test("returns an interrupted partial result when execution fails after producing checkpoint text", async () => {
     const database = openDatabase();
     const events: AgentDomainEvent[] = [];
@@ -256,6 +290,57 @@ describe("agent delegation", () => {
       AgentEventKinds.ChildRunSnapshotUpdated,
       AgentEventKinds.ChildRunCompleted,
     ]);
+    database.close();
+  });
+
+  test("notifies the completion port for a detached child after its terminal record is persisted", async () => {
+    const database = openDatabase();
+    const completion = vi.fn(async () => undefined);
+    const service = new AgentDelegationService({
+      workspaceRoot: process.cwd(),
+      configuration: () => ({ config: modelConfig() }),
+      repository: new AgentSqliteChildRunRepository(database),
+      dispatcher: {
+        dispatch: vi.fn(async (request: AgentRunDispatchRequest): Promise<AgentRunDispatchResult> => ({
+          sessionId: request.sessionId,
+          requestId: request.requestId,
+          finalAnswer: "background work complete",
+        })),
+        requestFinalAnswer: vi.fn(async () => true),
+        requestCancellation: vi.fn(async () => true),
+        cancel: vi.fn(async () => true),
+      },
+      events: new AgentOrchestrationEventRelay(),
+      completion: { id: "test.completion", completed: completion },
+      preflight: { resolve: vi.fn(async () => delegationPlan()) } as unknown as AgentSubagentPreflightPort,
+    });
+
+    const detached = await service.delegate(
+      {
+        agent: "worker",
+        task: "Run in the background.",
+        workspaceAccess: AgentChildWorkspaceAccessModes.ReadWrite,
+        executionMode: "detach",
+      },
+      {
+        parentSessionId: "parent-session",
+        parentRequestId: "parent-request",
+        approvalMode: AgentExecutionApprovalModes.Agent,
+        authorizedToolNames: [],
+        registry: { getTool: () => undefined },
+      },
+    );
+
+    expect(detached.status).toBe(AgentChildRunStatuses.Queued);
+    expect(detached.launchContract).toMatchObject({ executionMode: "detach" });
+    await expect(service.wait(detached.id, "parent-session")).resolves.toMatchObject({
+      status: AgentChildRunStatuses.Completed,
+      finalAnswer: "background work complete",
+    });
+    await vi.waitFor(() => expect(completion).toHaveBeenCalledOnce());
+    expect(completion).toHaveBeenCalledWith(
+      expect.objectContaining({ id: detached.id, status: AgentChildRunStatuses.Completed }),
+    );
     database.close();
   });
 

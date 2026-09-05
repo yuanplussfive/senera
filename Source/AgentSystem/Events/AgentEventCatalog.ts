@@ -44,6 +44,19 @@ export const AgentEventKinds = {
   RunActivityChanged: "run.activity.changed",
   RunCancellationProgress: "run.cancellation.progress",
   PromptSummary: "prompt.summary",
+  PromptHarnessComposed: "prompt.harness.composed",
+  ContinuitySnapshot: "continuity.snapshot",
+  ContinuityRulesSnapshot: "continuity.rules.snapshot",
+  ContinuityRecallSettled: "continuity.recall.settled",
+  ContinuityRecallQuery: "continuity.recall.query",
+  AgendaSnapshot: "agenda.snapshot",
+  WorldSnapshot: "world.snapshot",
+  TodoListWritten: "todo.list.written",
+  ExecutionCreated: "execution.created",
+  ExecutionStepStarted: "execution.step.started",
+  ExecutionStepCompleted: "execution.step.completed",
+  ExecutionBlocked: "execution.blocked",
+  ExecutionCompleted: "execution.completed",
   ModelStarted: "model.started",
   ModelDelta: "model.delta",
   ModelCompleted: "model.completed",
@@ -109,6 +122,7 @@ export const AgentEventKinds = {
   PresetFailed: "preset.failed",
   SystemToolSnapshot: "system_tool.snapshot",
   McpServerSnapshot: "mcp_server.snapshot",
+  ChannelStatusSnapshot: "channel.status.snapshot",
 } as const;
 
 export type AgentEventKind = (typeof AgentEventKinds)[keyof typeof AgentEventKinds];
@@ -205,6 +219,58 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Prompt,
   },
+  [AgentEventKinds.PromptHarnessComposed]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Prompt,
+  },
+  [AgentEventKinds.ContinuitySnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Prompt,
+  },
+  [AgentEventKinds.ContinuityRulesSnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Prompt,
+  },
+  [AgentEventKinds.ContinuityRecallSettled]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Prompt,
+  },
+  [AgentEventKinds.ContinuityRecallQuery]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Prompt,
+  },
+  [AgentEventKinds.AgendaSnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Prompt,
+  },
+  [AgentEventKinds.WorldSnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Prompt,
+  },
+  [AgentEventKinds.TodoListWritten]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Tool,
+  },
+  [AgentEventKinds.ExecutionCreated]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Run,
+  },
+  [AgentEventKinds.ExecutionStepStarted]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Run,
+  },
+  [AgentEventKinds.ExecutionStepCompleted]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Run,
+  },
+  [AgentEventKinds.ExecutionBlocked]: {
+    layer: AgentEventLayers.Error,
+    phase: AgentEventPhases.Run,
+  },
+  [AgentEventKinds.ExecutionCompleted]: {
+    layer: AgentEventLayers.Terminal,
+    phase: AgentEventPhases.Run,
+  },
   [AgentEventKinds.ModelStarted]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Model,
@@ -247,7 +313,7 @@ export const AgentEventSpecTable: {
   },
   [AgentEventKinds.AssistantMessageCreated]: {
     layer: AgentEventLayers.Progress,
-    phase: AgentEventPhases.Run,
+    phase: AgentEventPhases.Model,
   },
   [AgentEventKinds.ApprovalRequested]: {
     layer: AgentEventLayers.Progress,
@@ -462,6 +528,10 @@ export const AgentEventSpecTable: {
     phase: AgentEventPhases.Config,
   },
   [AgentEventKinds.McpServerSnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Config,
+  },
+  [AgentEventKinds.ChannelStatusSnapshot]: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Config,
   },

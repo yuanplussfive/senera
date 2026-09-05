@@ -4,11 +4,12 @@ import {
   EventKinds,
   type EventEnvelope,
   type PresetFailedData,
-  type PresetFormat,
   type PresetItem,
   type PresetMutationState,
   type PresetOperationKind,
+  type PersonaPresetCard,
   type PresetSnapshotData,
+  type PresetWorldPackageDescriptor,
   type WsRequest,
 } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
@@ -31,8 +32,7 @@ type PresetMutationRequest = Extract<
 
 export type PresetSaveInput = {
   name: string;
-  format: PresetFormat;
-  content: string;
+  card: PersonaPresetCard;
   activate?: boolean;
 };
 
@@ -53,6 +53,7 @@ export interface PresetCommandsHandle {
   presetOperations: Record<string, PresetMutationState>;
   presetRootDir: string;
   presets: PresetItem[];
+  presetWorldPackages: PresetWorldPackageDescriptor[];
   presetsEnabled: boolean;
   handlePresetEvent: (env: EventEnvelope) => boolean;
   refreshPresets: () => void;
@@ -100,6 +101,7 @@ export function resolvePresetEvent(
 
 export function usePresetCommands({ send, status }: UsePresetCommandsOptions): PresetCommandsHandle {
   const presets = useStore((s) => s.presets);
+  const presetWorldPackages = useStore((s) => s.presetWorldPackages);
   const activePresetName = useStore((s) => s.activePresetName);
   const presetsEnabled = useStore((s) => s.presetsEnabled);
   const presetRootDir = useStore((s) => s.presetRootDir);
@@ -171,8 +173,7 @@ export function usePresetCommands({ send, status }: UsePresetCommandsOptions): P
         request: {
           type: "preset.save",
           name: input.name,
-          format: input.format,
-          content: input.content,
+          card: input.card,
           activate: input.activate,
         },
       });
@@ -225,6 +226,7 @@ export function usePresetCommands({ send, status }: UsePresetCommandsOptions): P
     presetOperations,
     presetRootDir,
     presets,
+    presetWorldPackages,
     presetsEnabled,
     handlePresetEvent,
     refreshPresets,

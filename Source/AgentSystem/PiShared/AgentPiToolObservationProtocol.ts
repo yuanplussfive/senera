@@ -3,9 +3,13 @@ import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { AgentPiToolObservationStatuses } from "./AgentPiToolObservationStatus.js";
 import { AgentToolExecutionStatuses, AgentToolOutputAvailabilities } from "../ToolRuntime/AgentToolResultOutcome.js";
+import {
+  AgentToolArtifactAvailabilityStatuses,
+  AgentToolArtifactUnavailableReasons,
+} from "../Types/ToolRuntimeTypes.js";
 
-export const AgentPiToolObservationProtocol = defineSeneraProtocol("tool_observation", 3);
-export const AgentPiToolObservationSourceViewProtocol = defineSeneraProtocol("tool_observation_source_view", 3);
+export const AgentPiToolObservationProtocol = defineSeneraProtocol("tool_observation", 4);
+export const AgentPiToolObservationSourceViewProtocol = defineSeneraProtocol("tool_observation_source_view", 4);
 export const AgentPiToolObservationContractRevision = [
   AgentPiToolObservationProtocol.type,
   AgentPiToolObservationSourceViewProtocol.type,
@@ -74,6 +78,13 @@ const AgentPiToolObservationSourceViewSchema = z
       )
       .default([]),
     artifact_uri: z.string().optional(),
+    artifact_availability: z
+      .object({
+        status: z.literal(AgentToolArtifactAvailabilityStatuses.Unavailable),
+        reason: z.literal(AgentToolArtifactUnavailableReasons.RecordingFailed),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

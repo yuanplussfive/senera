@@ -95,11 +95,14 @@ describe("SettingsWorkbench", () => {
   });
 
   it("automatically syncs typed MCP inputs without retaining a Secret in the input", async () => {
+    const user = userEvent.setup();
     const systemConfig = createSystemConfig({
       mcpServers: [
         {
           id: "web-research",
           packageName: "web-research",
+          displayName: { "zh-CN": "网页研究", "en-US": "Web research" },
+          description: { "zh-CN": "检索网页资料。", "en-US": "Research the web." },
           source: "bundled",
           descriptorKind: "mcpb",
           transport: "stdio",
@@ -129,7 +132,8 @@ describe("SettingsWorkbench", () => {
       }),
     );
 
-    const input = await screen.findByLabelText("Tavily API key");
+    await user.click(await screen.findByText("网页研究", {}, { timeout: 5_000 }));
+    const input = await screen.findByLabelText("Tavily API key", {}, { timeout: 5_000 });
     fireEvent.change(input, { target: { value: "secret-value" } });
 
     await waitFor(() =>
@@ -144,6 +148,7 @@ describe("SettingsWorkbench", () => {
   });
 
   it("keeps a newer MCP value while the previous hot update is awaiting its receipt", async () => {
+    const user = userEvent.setup();
     let updateNumber = 0;
     const updateMcpInputs = vi.fn(() => `mcp-save-${++updateNumber}`);
     const systemConfig = createSystemConfig({
@@ -152,6 +157,8 @@ describe("SettingsWorkbench", () => {
         {
           id: "local-tool",
           packageName: "local-tool",
+          displayName: { "zh-CN": "本地工具", "en-US": "Local tool" },
+          description: { "zh-CN": "运行本地工具。", "en-US": "Run a local tool." },
           source: "workspace",
           descriptorKind: "mcpb",
           transport: "stdio",
@@ -181,6 +188,7 @@ describe("SettingsWorkbench", () => {
       }),
     );
 
+    await user.click(await screen.findByText("本地工具"));
     const input = await screen.findByLabelText("Endpoint");
     fireEvent.change(input, { target: { value: "first-value" } });
     await waitFor(() => expect(updateMcpInputs).toHaveBeenCalledWith("local-tool", { endpoint: "first-value" }, []));
@@ -209,6 +217,8 @@ describe("SettingsWorkbench", () => {
         {
           id: "regional-search",
           packageName: "regional-search",
+          displayName: { "zh-CN": "区域搜索", "en-US": "Regional search" },
+          description: { "zh-CN": "按区域筛选搜索。", "en-US": "Search by region." },
           source: "bundled",
           descriptorKind: "mcpb",
           transport: "stdio",
@@ -239,6 +249,7 @@ describe("SettingsWorkbench", () => {
       }),
     );
 
+    await user.click(await screen.findByText("区域搜索"));
     await user.click(await screen.findByRole("button", { name: /Regions/ }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "us" }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "eu" }));
@@ -250,6 +261,7 @@ describe("SettingsWorkbench", () => {
   });
 
   it("hot-updates System extension packages without a separate save flow", async () => {
+    const user = userEvent.setup();
     const systemConfig = createSystemConfig({
       systemExtensions: [
         {
@@ -283,10 +295,12 @@ describe("SettingsWorkbench", () => {
       }),
     );
 
-    expect(await screen.findAllByText("命令执行")).toHaveLength(2);
+    await userEvent.setup().click(await screen.findByText("命令执行"));
+    expect(await screen.findAllByText("命令执行")).toHaveLength(1);
     expect(await screen.findByText("在受控执行环境中运行命令。")).toBeInTheDocument();
     expect(screen.getByText("ShellCommandTool")).toBeInTheDocument();
     expect(screen.queryByText(/v1\.0\.0/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "返回系统扩展" }));
     fireEvent.click(screen.getByRole("switch", { name: "启用或停用 命令执行" }));
     expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "放弃更改" })).not.toBeInTheDocument();
@@ -394,6 +408,7 @@ describe("SettingsWorkbench", () => {
       }),
     );
 
+    await userEvent.setup().click(await screen.findByText("命令执行"));
     const field = (await screen.findByText("默认命令")).closest(".grid");
     const input = field?.querySelector("input");
     expect(input).toBeInTheDocument();
@@ -437,7 +452,8 @@ describe("SettingsWorkbench", () => {
       }),
     );
 
-    expect(await screen.findAllByText("Shell Commands")).toHaveLength(2);
+    await userEvent.setup().click(await screen.findByText("Shell Commands"));
+    expect(await screen.findAllByText("Shell Commands")).toHaveLength(1);
     expect(await screen.findByText("Runs commands in a controlled execution environment.")).toBeInTheDocument();
   });
 });

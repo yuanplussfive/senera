@@ -18,6 +18,8 @@ export interface AgentEventEnvelope<TKind extends string = AgentEventKind, TData
 }
 
 export interface AgentEventScope {
+  /** Origin channel for events emitted by a non-console adapter. */
+  channel?: "console" | "qq" | "telegram" | "discord";
   parentSessionId?: string;
   parentRequestId?: string;
   workflowName?: string;

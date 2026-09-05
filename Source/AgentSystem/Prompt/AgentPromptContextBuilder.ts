@@ -2,6 +2,8 @@ import { AgentHostCapabilityNames } from "../AgentDefaultHostCapabilities.js";
 import { buildAgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import { EmptyAgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
+import { EmptyAgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
+import { EmptyAgentWorkflowPromptContext } from "./AgentWorkflowPromptContext.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
 import { buildAgentExecutionEnvironmentContext } from "./AgentExecutionEnvironmentContext.js";
@@ -9,6 +11,7 @@ import type {
   AgentPromptContext,
   AgentPromptContextOptions,
   AgentPromptRootCommandOptions,
+  AgentPromptToolContext,
 } from "./AgentPromptContextTypes.js";
 import { AgentPromptDocumentationReader } from "./AgentPromptDocumentationReader.js";
 import { resolveAgentPromptSections } from "./AgentPromptSectionResolver.js";
@@ -21,6 +24,9 @@ import {
   projectSeneraProcessBackendsToToolTargets,
   resolveAvailableAgentToolExecutionTargets,
 } from "../ToolRuntime/AgentToolExecutionPlan.js";
+import { compileAgentPromptContext } from "./AgentPromptContextCompiler.js";
+import { EmptyAgentSceneContext } from "./AgentSceneContextCompiler.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 
 export type {
   AgentPromptContext,
@@ -32,6 +38,8 @@ export type {
 
 export class AgentPromptContextBuilder {
   private readonly toolContextProjector: AgentPromptToolContextProjector;
+  private staticProjectionRevision = -1;
+  private readonly staticProjectionCache = new Map<string, StaticPromptProjection>();
 
   constructor(
     private readonly registry: AgentExtensionRegistry,
@@ -44,7 +52,8 @@ export class AgentPromptContextBuilder {
   }
 
   buildBaseContext(options: AgentPromptContextOptions = {}): AgentPromptContext {
-    const tools = this.availableTools();
+    const capabilities = this.executionCapabilities();
+    const tools = this.availableTools(capabilities);
     const fallbackSections = resolveAgentPromptSections({
       summary: options.summarySection,
       trigger: options.triggerSection,
@@ -54,18 +63,25 @@ export class AgentPromptContextBuilder {
     const loadedTools = this.resolvePromptLoadedTools(tools, options.loadedToolNames);
     const rootCommand = options.rootCommand ?? null;
     const promptToolNameSet = new Set(this.resolvePromptToolNames(rootCommand, loadedTools));
-    const toolCards = tools
-      .filter((tool) => promptToolNameSet.has(tool.name))
-      .sort(comparePromptPriority)
-      .map((tool) => this.toolContextProjector.projectTool(tool, toolSections));
+    const staticProjection = this.resolveStaticProjection({
+      capabilities,
+      tools,
+      loadedTools,
+      rootCommand,
+      promptToolNameSet,
+      toolSections,
+    });
 
-    return {
-      ExecutionEnvironment: buildAgentExecutionEnvironmentContext(this.workspaceRoot, this.executionCapabilities()),
-      ToolCards: toolCards,
-      ToolDiscoveryToolName: this.resolveVisibleToolDiscoveryToolName(loadedTools, promptToolNameSet),
-      RootCommand: rootCommand,
-      RoleplayPreset: options.roleplayPreset ?? EmptyAgentRoleplayPresetContext,
-    };
+    return compileAgentPromptContext({
+      executionEnvironment: staticProjection.executionEnvironment,
+      toolCards: staticProjection.toolCards,
+      toolDiscoveryToolName: staticProjection.toolDiscoveryToolName,
+      rootCommand,
+      roleplayPreset: options.roleplayPreset ?? EmptyAgentRoleplayPresetContext,
+      continuityMemory: options.continuityMemory ?? EmptyAgentContinuityMemoryPromptContext,
+      workflow: options.workflow ?? EmptyAgentWorkflowPromptContext,
+      scene: options.scene ?? EmptyAgentSceneContext,
+    });
   }
 
   buildRootCommand(options: AgentPromptRootCommandOptions) {
@@ -93,11 +109,47 @@ export class AgentPromptContextBuilder {
     return tools.filter((tool) => loadedToolNameSet.has(tool.name));
   }
 
-  private availableTools(): RegisteredTool[] {
-    const runtimeTargets = projectSeneraProcessBackendsToToolTargets(this.executionCapabilities().processBackends);
+  private availableTools(capabilities = this.executionCapabilities()): RegisteredTool[] {
+    const runtimeTargets = projectSeneraProcessBackendsToToolTargets(capabilities.processBackends);
     return this.registry
       .listTools()
       .filter((tool) => resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets).length > 0);
+  }
+
+  private resolveStaticProjection(input: {
+    capabilities: SeneraExecutionRuntimeCapabilities;
+    tools: readonly RegisteredTool[];
+    loadedTools: readonly RegisteredTool[];
+    rootCommand: AgentPromptContext["RootCommand"];
+    promptToolNameSet: ReadonlySet<string>;
+    toolSections: ReturnType<typeof resolveAgentPromptSections>;
+  }): StaticPromptProjection {
+    if (this.staticProjectionRevision !== this.registry.revision) {
+      this.staticProjectionRevision = this.registry.revision;
+      this.staticProjectionCache.clear();
+    }
+
+    const key = sha256HexOfCanonicalJson({
+      workspaceRoot: this.workspaceRoot,
+      capabilities: input.capabilities,
+      loadedToolNames: input.loadedTools.map((tool) => tool.name),
+      promptToolNames: [...input.promptToolNameSet].sort(),
+      toolSections: input.toolSections,
+      includeToolCatalog: input.rootCommand?.includeToolCatalog ?? null,
+    });
+    const cached = this.staticProjectionCache.get(key);
+    if (cached) return cached;
+
+    const projection: StaticPromptProjection = {
+      executionEnvironment: buildAgentExecutionEnvironmentContext(this.workspaceRoot, input.capabilities),
+      toolCards: input.tools
+        .filter((tool) => input.promptToolNameSet.has(tool.name))
+        .sort(comparePromptPriority)
+        .map((tool) => this.toolContextProjector.projectTool(tool, input.toolSections)),
+      toolDiscoveryToolName: this.resolveVisibleToolDiscoveryToolName(input.loadedTools, input.promptToolNameSet),
+    };
+    this.staticProjectionCache.set(key, projection);
+    return projection;
   }
 
   private resolvePromptLoadedTools(
@@ -128,6 +180,12 @@ export class AgentPromptContextBuilder {
     )?.name;
     return toolDiscoveryToolName && promptToolNameSet.has(toolDiscoveryToolName) ? toolDiscoveryToolName : null;
   }
+}
+
+interface StaticPromptProjection {
+  readonly executionEnvironment: ReturnType<typeof buildAgentExecutionEnvironmentContext>;
+  readonly toolCards: readonly AgentPromptToolContext[];
+  readonly toolDiscoveryToolName: string | null;
 }
 
 function comparePromptPriority(left: RegisteredTool, right: RegisteredTool): number {

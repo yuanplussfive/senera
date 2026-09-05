@@ -40,11 +40,25 @@
         },
         "fields": [
           {
+            "path": ["input", "maxImageCount"],
+            "label": { "zh-CN": "单次最大图片数", "en-US": "Maximum image count" },
+            "description": {
+              "zh-CN": "限制一次图像分析可同时提交的图片数量。",
+              "en-US": "Limit how many images one analysis can submit together."
+            },
+            "type": "number",
+            "min": 1,
+            "max": 32,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
             "path": ["input", "maxImageBytes"],
             "label": { "zh-CN": "最大图像字节", "en-US": "Maximum image bytes" },
             "description": {
-              "zh-CN": "超过此上限的上传图像不会发送给视觉模型。",
-              "en-US": "Uploaded images above this limit are not sent to the vision model."
+              "zh-CN": "超过此上限的图像资源不会发送给视觉模型。",
+              "en-US": "Image resources above this limit are not sent to the vision model."
             },
             "type": "number",
             "min": 1024,
@@ -52,6 +66,91 @@
             "step": 1,
             "required": false,
             "essential": true
+          },
+          {
+            "path": ["input", "maxTotalImageBytes"],
+            "label": { "zh-CN": "单次图片总字节", "en-US": "Maximum total image bytes" },
+            "description": {
+              "zh-CN": "超过此总量的图片集合不会发送给视觉模型。",
+              "en-US": "Image sets above this total are not sent to the vision model."
+            },
+            "type": "number",
+            "min": 1024,
+            "max": 104857600,
+            "step": 1,
+            "required": false,
+            "essential": true
+          }
+        ]
+      },
+      {
+        "id": "remote",
+        "label": { "zh-CN": "远程图像", "en-US": "Remote images" },
+        "description": {
+          "zh-CN": "控制直接 URL 图像的下载时限、跳转和网络边界。",
+          "en-US": "Control download limits, redirects, and network boundaries for direct image URLs."
+        },
+        "fields": [
+          {
+            "path": ["remote", "maxRedirects"],
+            "label": { "zh-CN": "最大跳转次数", "en-US": "Maximum redirects" },
+            "type": "number",
+            "min": 0,
+            "max": 20,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["remote", "maxUrlLength"],
+            "label": { "zh-CN": "最大 URL 长度", "en-US": "Maximum URL length" },
+            "type": "number",
+            "min": 256,
+            "max": 16384,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["remote", "requestTimeoutMs"],
+            "label": { "zh-CN": "默认下载超时（毫秒）", "en-US": "Default download timeout (ms)" },
+            "type": "number",
+            "min": 1000,
+            "max": 900000,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["remote", "maxOperationTimeoutMs"],
+            "label": { "zh-CN": "最大下载超时（毫秒）", "en-US": "Maximum download timeout (ms)" },
+            "type": "number",
+            "min": 1000,
+            "max": 900000,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["remote", "allowPrivateNetworks"],
+            "label": { "zh-CN": "允许私有网络", "en-US": "Allow private networks" },
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["remote", "allowSyntheticProxyAddresses"],
+            "label": { "zh-CN": "允许代理映射地址", "en-US": "Allow synthetic proxy addresses" },
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["remote", "userAgent"],
+            "label": { "zh-CN": "下载 User-Agent", "en-US": "Download User-Agent" },
+            "type": "string",
+            "required": false,
+            "essential": false
           }
         ]
       },

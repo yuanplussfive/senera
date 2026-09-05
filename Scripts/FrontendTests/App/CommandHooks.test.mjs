@@ -106,7 +106,7 @@ test("useChatCommands preserves local state and retry context when message deliv
   );
 });
 
-test("useChatCommands waits for authoritative cancellation progress and permits retry before acknowledgement", () => {
+test("useChatCommands acknowledges cancellation locally and ignores duplicate clicks", () => {
   const sessionId = "session-cancel-control";
   registerTestSession(sessionId);
   useStore.getState().appendUserMessage(sessionId, "request-cancel-control", "Run until stopped.");
@@ -117,9 +117,13 @@ test("useChatCommands waits for authoritative cancellation progress and permits 
   act(() => handleRef.current.cancelActiveSession());
   act(() => handleRef.current.cancelActiveSession());
 
-  expect(send).toHaveBeenCalledTimes(2);
-  expect(send).toHaveBeenNthCalledWith(1, { type: "session.cancel", sessionId });
-  expect(useStore.getState().sessions[sessionId].runs.at(-1)?.status).toBe("running");
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(send).toHaveBeenNthCalledWith(1, {
+    type: "session.cancel",
+    sessionId,
+    requestId: "request-cancel-control",
+  });
+  expect(useStore.getState().sessions[sessionId].runs.at(-1)?.status).toBe("cancelling");
   expect(readTestToastCalls()).toContainEqual(
     expect.objectContaining({
       variant: "message",

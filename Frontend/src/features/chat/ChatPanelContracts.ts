@@ -2,9 +2,10 @@ import type {
   ConfigMutationState,
   ConfigSnapshotData,
   ModelProviderListItem,
-  PresetFormat,
+  PersonaPresetCard,
   PresetItem,
   PresetMutationState,
+  PresetWorldPackageDescriptor,
   ProviderModelEndpointInput,
   ProviderModelsFailedData,
   ProviderModelsSnapshotData,
@@ -47,12 +48,13 @@ export interface ChatSystemConfig {
 }
 export interface ChatPresetConfig {
   presets: PresetItem[];
+  worldPackages: PresetWorldPackageDescriptor[];
   activePresetName: string | null;
   presetsEnabled: boolean;
   presetRootDir: string;
   presetOperations: Record<string, PresetMutationState>;
   onRefreshPresets: () => void;
-  onSavePreset: (input: { name: string; format: PresetFormat; content: string; activate?: boolean }) => string | null;
+  onSavePreset: (input: { name: string; card: PersonaPresetCard; activate?: boolean }) => string | null;
   onDeletePreset: (name: string) => string | null;
   onSetActivePreset: (name: string | null) => string | null;
 }

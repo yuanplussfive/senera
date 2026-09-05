@@ -22,6 +22,27 @@ export const AgentLoopSchema = z
   })
   .strict();
 
+export const TodosSchema = z
+  .object({
+    MaxItems: z.number().int().positive().optional(),
+    MaxContentCharacters: z.number().int().positive().optional(),
+    MaxResultCharacters: z.number().int().positive().optional(),
+  })
+  .strict();
+
+export const InferenceBudgetSchema = z
+  .object({
+    Enabled: z.boolean().optional(),
+    WindowSeconds: z.number().finite().positive().optional(),
+    MaxRequests: z.number().int().positive().optional(),
+    MaxEstimatedInputTokens: z.number().int().positive().optional(),
+    MaxEstimatedOutputTokens: z.number().int().positive().optional(),
+    MaxConcurrent: z.number().int().positive().optional(),
+    ForegroundReserveFraction: z.number().finite().min(0).max(1).optional(),
+    LaneWeights: z.record(z.string().trim().min(1), z.number().finite().positive()).optional(),
+  })
+  .strict();
+
 export const ToolExecutionSchema = z
   .object({
     TimeoutSeconds: z.number().positive().optional(),
@@ -86,6 +107,14 @@ export const PresetsSchema = z
     Enabled: z.boolean().optional(),
     RootDir: z.string().min(1).optional(),
     StateFile: z.string().min(1).optional(),
+    PromptBudget: z
+      .object({
+        MaxExamples: z.number().int().positive().optional(),
+        MaxLoreEntries: z.number().int().positive().optional(),
+        MaxSupplementalCharacters: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -178,5 +207,76 @@ export const ServerSchema = z
 export const PersistenceSchema = z
   .object({
     Kind: z.union([z.literal("sqlite"), z.literal("memory")]).optional(),
+  })
+  .strict();
+
+export const PromptSchema = z
+  .object({
+    /** Wrap the user message in an attribution XML envelope at request time. */
+    UserMessageEnvelope: z.boolean().optional(),
+    /** Default request-local timezone; renders as <time> inside the envelope. */
+    TimeZone: z.string().min(1).optional(),
+    /** Rewrite the model-authored preface independently from roleplay presets. */
+    PrefaceRewrite: z.boolean().optional(),
+    /** Re-anchor the persona before the reference stage when a preset is active. */
+    RoleCheck: z.boolean().optional(),
+    /** Wrap BAML tool observations with attribution="tool" at the projection exit. */
+    BamlToolAttribution: z.boolean().optional(),
+  })
+  .strict();
+
+const AgentWorldLocalTimeSchema = z.string().regex(/^\d{2}:\d{2}$/u, "World phase time must use HH:mm.");
+
+export const WorldSchema = z
+  .object({
+    Name: z.string().trim().min(1).optional(),
+    TimeZone: z.string().trim().min(1).optional(),
+    DayPhases: z
+      .array(
+        z
+          .object({
+            Id: z.string().trim().min(1),
+            Label: z.string().trim().min(1),
+            StartsAt: AgentWorldLocalTimeSchema,
+            EndsAt: AgentWorldLocalTimeSchema,
+          })
+          .strict(),
+      )
+      .min(1)
+      .optional(),
+    RecordLimit: z.number().int().positive().optional(),
+    TimelineLimit: z.number().int().positive().optional(),
+    HabitCatchUpLimit: z.number().int().positive().optional(),
+    GoalMicroLoop: z
+      .object({
+        Enabled: z.boolean().optional(),
+        MaxCandidates: z.number().int().positive().optional(),
+        ReviewDelaySeconds: z.number().finite().min(1).optional(),
+        AllowedToolNames: z.array(z.string().trim().min(1)).optional(),
+      })
+      .strict()
+      .optional(),
+    ResidentIdle: z
+      .object({
+        Enabled: z.boolean().optional(),
+        MinIntervalSeconds: z.number().finite().min(1).optional(),
+        MaxIntervalSeconds: z.number().finite().min(1).optional(),
+        BackoffMultiplier: z.number().finite().min(1).optional(),
+        MaxPending: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
+    ActionBudget: z
+      .object({
+        MaxActionsPerWake: z.number().int().positive().optional(),
+        MaxDecisionCandidatesPerWake: z.number().int().positive().optional(),
+        RetryDelaySeconds: z.number().finite().min(1).optional(),
+        LeaseDurationSeconds: z.number().finite().min(1).optional(),
+        FairShare: z.boolean().optional(),
+        SourceOrder: z.array(z.string().trim().min(1)).optional(),
+        SourceCaps: z.record(z.string().trim().min(1), z.number().int().positive()).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();

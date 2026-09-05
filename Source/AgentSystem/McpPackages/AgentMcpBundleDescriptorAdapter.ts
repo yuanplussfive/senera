@@ -6,7 +6,11 @@ import {
 } from "../Extensions/AgentExtensionInput.js";
 import type { AgentExtensionValueExpression } from "../Extensions/AgentExtensionValueExpression.js";
 import { AgentExtensionNameSchema } from "../Extensions/AgentExtensionIdentity.js";
-import type { AgentMcpDescriptorAdapter, AgentMcpDescriptorContext } from "./AgentMcpDescriptorAdapter.js";
+import {
+  readMcpLocalizedText,
+  type AgentMcpDescriptorAdapter,
+  type AgentMcpDescriptorContext,
+} from "./AgentMcpDescriptorAdapter.js";
 import {
   AgentMcpDescriptorError,
   optionalMcpString,
@@ -52,6 +56,8 @@ export const AgentMcpBundleDescriptorAdapter: AgentMcpDescriptorAdapter = {
     );
     return {
       name: context.directoryName,
+      displayName: readMcpLocalizedText(manifest.display_name, "MCPB display_name", ["display_name"]),
+      description: readMcpLocalizedText(manifest.description, "MCPB description", ["description"]),
       descriptorKind: "mcpb",
       execution: projectExecution(manifest._meta),
       servers: [

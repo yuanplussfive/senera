@@ -1,4 +1,4 @@
-import { AlertTriangle, BadgeCheck, FileUp, X } from "lucide-react";
+import { AlertTriangle, BadgeCheck, X } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Button, IconButton } from "../../shared/ui";
@@ -44,22 +44,6 @@ export function ConfirmLayer({
           </Button>
         </div>
       </div>
-    </div>
-  );
-}
-
-export function DropOverlay({ rejected }: { rejected: boolean }): JSX.Element {
-  return (
-    <div
-      className={cn(
-        "pointer-events-none absolute inset-2 z-20 grid place-items-center rounded-lg border border-dashed bg-paper-50 text-[13px] font-medium shadow-soft",
-        rejected ? "border-brick-500 text-brick-700" : "border-accent-border text-accent-content",
-      )}
-    >
-      <span className="inline-flex items-center gap-2">
-        <FileUp className="h-4 w-4" />
-        {frontendMessage(rejected ? "preset.ui.dropRejected" : "preset.ui.dropImport")}
-      </span>
     </div>
   );
 }

@@ -155,7 +155,7 @@ export class AgentSessionHistoryReplay {
               entry,
               visible:
                 entry.kind === AgentConversationEntryKinds.AssistantDecision
-                  ? projectAssistantHistoryVisible(entry.xml)
+                  ? projectAssistantHistoryVisible(entry)
                   : undefined,
             })),
           },
@@ -362,10 +362,13 @@ function projectSnapshotStatus(snapshot: StoredRunSnapshot, hasTrace: boolean): 
   return hasTrace ? "completed" : "failed";
 }
 
-function projectAssistantHistoryVisible(text: string): { kind: "final_answer"; text: string } {
+function projectAssistantHistoryVisible(entry: Extract<AgentConversationEntry, { kind: "assistant.decision" }>): {
+  kind: "final_answer";
+  text: string;
+} {
   return {
     kind: "final_answer",
-    text: readAssistantAnswer(text) ?? text,
+    text: readAssistantAnswer(entry.xml) ?? entry.xml,
   };
 }
 

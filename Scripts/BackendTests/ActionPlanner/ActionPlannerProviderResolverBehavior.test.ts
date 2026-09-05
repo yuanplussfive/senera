@@ -3,14 +3,7 @@ import { resolvePlannerProvider } from "../../../Source/AgentSystem/ActionPlanne
 import { createModelProvider, createPlannerConfig } from "../Support/AgentTestFixtures.js";
 
 describe("action planner provider resolution", () => {
-  test("inherits the complete independently selected provider instead of the session provider", () => {
-    const sessionProvider = createModelProvider({
-      Id: "session-provider",
-      ProviderId: "session-endpoint",
-      Headers: { "x-session": "session" },
-      TimeoutMs: 10_000,
-      ContextWindowTokens: 32_000,
-    });
+  test("uses the complete independently selected provider", () => {
     const planningProvider = createModelProvider({
       Id: "planning-provider",
       ProviderId: "planning-endpoint",
@@ -27,7 +20,7 @@ describe("action planner provider resolution", () => {
     });
     const client = createPlannerConfig().PlanningClient;
 
-    const resolved = resolvePlannerProvider(sessionProvider, {
+    const resolved = resolvePlannerProvider({
       ...client,
       ModelProviderId: planningProvider.Id,
       ModelProvider: planningProvider,
@@ -49,7 +42,7 @@ describe("action planner provider resolution", () => {
       MaxNetworkRetries: 3,
       ContextWindowTokens: 1_000_000,
       MaxModelOutputTokens: 16_384,
-      Stream: false,
+      Stream: true,
     });
   });
 });

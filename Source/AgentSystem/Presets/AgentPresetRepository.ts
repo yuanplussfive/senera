@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import type { AgentPresetFileRecord, AgentPresetFormat, AgentPresetState } from "./AgentPresetTypes.js";
+import type { AgentPersonaPreset, AgentPresetFileRecord, AgentPresetState } from "./AgentPresetTypes.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 export interface AgentPresetRepositoryOptions {
@@ -12,8 +12,7 @@ export interface AgentPresetRepositoryOptions {
 
 export interface AgentPresetSaveInput {
   name: string;
-  format: AgentPresetFormat;
-  content: string;
+  card: AgentPersonaPreset;
 }
 
 export class AgentPresetRepository {
@@ -26,25 +25,12 @@ export class AgentPresetRepository {
   async list(): Promise<AgentPresetFileRecord[]> {
     await this.ensureRootDir();
     const rootDir = this.resolveRootDir();
-    const stateFile = this.resolveStateFile();
     const entries = await fsp.readdir(rootDir, { withFileTypes: true });
-    const records: AgentPresetFileRecord[] = [];
-
-    for (const entry of entries) {
-      if (!entry.isFile()) {
-        continue;
-      }
-      const filePath = path.resolve(rootDir, entry.name);
-      if (filePath === stateFile) {
-        continue;
-      }
-      const format = formatFromFileName(entry.name);
-      if (!format) {
-        continue;
-      }
-      records.push(await this.readFileRecord(entry.name));
-    }
-
+    const records = await Promise.all(
+      entries
+        .filter((entry) => entry.isFile() && entry.name.toLocaleLowerCase().endsWith(".json"))
+        .map((entry) => this.readFileRecord(entry.name)),
+    );
     return records.sort((left, right) => left.name.localeCompare(right.name));
   }
 
@@ -53,11 +39,21 @@ export class AgentPresetRepository {
     return this.readFileRecord(this.resolveExistingPresetFileName(name));
   }
 
+  async readOptional(name: string): Promise<AgentPresetFileRecord | null> {
+    await this.ensureRootDir();
+    try {
+      return await this.readFileRecord(this.resolveExistingPresetFileName(name));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+  }
+
   async save(input: AgentPresetSaveInput): Promise<AgentPresetFileRecord> {
     await this.ensureRootDir();
-    const fileName = this.resolveWritablePresetFileName(input.name, input.format);
+    const fileName = this.resolveWritablePresetFileName(input.name);
     const filePath = this.resolvePresetFilePath(fileName);
-    await fsp.writeFile(filePath, input.content, "utf8");
+    await fsp.writeFile(filePath, `${JSON.stringify(input.card, null, 2)}\n`, "utf8");
     return this.readFileRecord(fileName);
   }
 
@@ -86,15 +82,10 @@ export class AgentPresetRepository {
 
   private async readFileRecord(fileName: string): Promise<AgentPresetFileRecord> {
     const filePath = this.resolvePresetFilePath(fileName);
-    const format = formatFromFileName(fileName);
-    if (!format) {
-      throw new Error(`不支持的预设文件格式：${fileName}`);
-    }
     const [content, stat] = await Promise.all([fsp.readFile(filePath, "utf8"), fsp.stat(filePath)]);
     return {
       name: fileName,
       path: filePath,
-      format,
       content,
       sizeBytes: stat.size,
       updatedAt: stat.mtime.toISOString(),
@@ -105,26 +96,14 @@ export class AgentPresetRepository {
     await fsp.mkdir(this.resolveRootDir(), { recursive: true });
   }
 
-  private resolveWritablePresetFileName(name: string, format: AgentPresetFormat): string {
-    const trimmed = name.trim();
-    const withExtension = formatFromFileName(trimmed) ? trimmed : `${trimmed}${extensionForFormat(format)}`;
-    const fileName = normalizePlainFileName(withExtension);
-    const resolvedFormat = formatFromFileName(fileName);
-    if (!resolvedFormat) {
-      throw new Error("预设只支持 .json、.md、.txt 文件。");
-    }
-    if (resolvedFormat !== format) {
-      throw new Error(`预设文件扩展名与格式不一致：${fileName}`);
-    }
-    return fileName;
+  private resolveWritablePresetFileName(name: string): string {
+    const fileName = normalizePlainFileName(name);
+    return fileName.toLocaleLowerCase().endsWith(".json") ? fileName : `${fileName}.json`;
   }
 
   private resolveExistingPresetFileName(name: string): string {
     const fileName = normalizePlainFileName(name);
-    if (!formatFromFileName(fileName)) {
-      throw new Error("预设只支持 .json、.md、.txt 文件。");
-    }
-    return fileName;
+    return fileName.toLocaleLowerCase().endsWith(".json") ? fileName : `${fileName}.json`;
   }
 
   private resolvePresetFilePath(fileName: string): string {
@@ -146,14 +125,6 @@ export class AgentPresetRepository {
   }
 }
 
-export function formatFromFileName(fileName: string): AgentPresetFormat | undefined {
-  return PresetFormatByExtension.get(path.extname(fileName).toLowerCase());
-}
-
-function extensionForFormat(format: AgentPresetFormat): string {
-  return PresetExtensionByFormat[format];
-}
-
 function normalizePlainFileName(value: string): string {
   const trimmed = value.trim().normalize("NFC");
   const fileName = path.basename(path.posix.basename(path.win32.basename(trimmed)));
@@ -170,15 +141,3 @@ function assertInsideDirectory(directory: string, target: string): void {
     throw new Error(`预设路径必须位于工作区内：${target}`);
   }
 }
-
-const PresetFormatByExtension = new Map<string, AgentPresetFormat>([
-  [".json", "json"],
-  [".md", "markdown"],
-  [".txt", "text"],
-]);
-
-const PresetExtensionByFormat = {
-  json: ".json",
-  markdown: ".md",
-  text: ".txt",
-} as const satisfies Record<AgentPresetFormat, string>;

@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { motion } from "framer-motion";
 import { cn } from "../../lib/util";
 import { ListTree, Maximize2, PanelRightClose } from "lucide-react";
-import { useStore, type RunRecord } from "../../store/sessionStore";
+import { readActiveRun, useStore, type RunRecord } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Dialog, DialogContent, IconButton, Spinner } from "../../shared/ui";
 import { summarizeRun } from "./runSummary";
@@ -51,12 +51,14 @@ function ThinkingPanel({
 
   const runs = useMemo(() => session?.runs ?? [], [session?.runs]);
   const latestRun = runs[runs.length - 1];
+  const activeRun = readActiveRun(session ?? undefined);
+  const defaultRun = activeRun ?? latestRun;
   const selectedRun = useMemo(() => {
     if (!viewedRunId) return undefined;
     return runs.find((r) => r.requestId === viewedRunId);
   }, [runs, viewedRunId]);
-  const isPinnedToHistory = !!selectedRun && selectedRun.requestId !== latestRun?.requestId;
-  const run = isPinnedToHistory ? selectedRun : latestRun;
+  const isPinnedToHistory = !!selectedRun && selectedRun.requestId !== defaultRun?.requestId;
+  const run = isPinnedToHistory ? selectedRun : defaultRun;
 
   useEffect(() => {
     if (!activeId) return;
@@ -65,10 +67,10 @@ function ThinkingPanel({
       setViewedRun(activeId, undefined);
       return;
     }
-    if (selectedRun.requestId === latestRun?.requestId) {
+    if (selectedRun.requestId === defaultRun?.requestId) {
       setViewedRun(activeId, undefined);
     }
-  }, [activeId, viewedRunId, selectedRun, latestRun?.requestId, setViewedRun]);
+  }, [activeId, viewedRunId, selectedRun, defaultRun?.requestId, setViewedRun]);
 
   const toggleFocus = useCallback(() => {
     setFocusOpen((value) => !value);

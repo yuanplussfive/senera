@@ -10,6 +10,7 @@ import {
   Target,
   ServerCog,
   Package,
+  MessagesSquare,
   type LucideIcon,
 } from "lucide-react";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
@@ -61,6 +62,12 @@ export const settingsSections = [
     ServerCog,
     "settings.section.mcpServers.label",
     "settings.section.mcpServers.description",
+  ),
+  defineSettingsSection(
+    "channels",
+    MessagesSquare,
+    "settings.section.channels.label",
+    "settings.section.channels.description",
   ),
   defineSettingsSection(
     "general",

@@ -1,5 +1,6 @@
 import {
   defaultAppearancePreference,
+  readFontScaleValue,
   type AccentColor,
   type AppearanceFontFamily,
   type AppearancePreference,
@@ -10,7 +11,7 @@ import {
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { colorSchemeStories, colorSchemeSwatches, recommendedAccentColors } from "./themeData";
 
-export type AppearancePreferenceId = keyof AppearancePreference;
+export type AppearancePreferenceId = Exclude<keyof AppearancePreference, "fontScaleValue">;
 
 export interface AppearanceSummaryItem {
   id: AppearancePreferenceId;
@@ -147,7 +148,7 @@ const appearanceFieldLabels = {
   get fontScale() {
     return frontendMessage("appearance.control.fontScale");
   },
-} as const satisfies Record<AppearancePreferenceId, string>;
+} as const satisfies Record<Exclude<AppearancePreferenceId, "customAccentColor">, string>;
 
 export function createAppearanceSummary(preference: AppearancePreference): AppearanceSummaryItem[] {
   return [
@@ -164,7 +165,7 @@ export function createAppearanceSummary(preference: AppearancePreference): Appea
     {
       id: "accentColor",
       label: appearanceFieldLabels.accentColor,
-      value: accentColorLabels[preference.accentColor],
+      value: preference.customAccentColor ?? accentColorLabels[preference.accentColor],
     },
     {
       id: "fontFamily",
@@ -184,8 +185,9 @@ export function isDefaultAppearancePreference(preference: AppearancePreference):
     preference.themeMode === defaultAppearancePreference.themeMode &&
     preference.colorScheme === defaultAppearancePreference.colorScheme &&
     preference.accentColor === defaultAppearancePreference.accentColor &&
+    !preference.customAccentColor &&
     preference.fontFamily === defaultAppearancePreference.fontFamily &&
-    preference.fontScale === defaultAppearancePreference.fontScale
+    readFontScaleValue(preference) === readFontScaleValue(defaultAppearancePreference)
   );
 }
 
@@ -217,6 +219,16 @@ export function readRecommendedAccent(value: ColorScheme): AccentColor {
 }
 
 export function readAccentSwatch(value: AccentColor): string {
+  const hex = readAccentHex(value);
+  const channels = [
+    Number.parseInt(hex.slice(1, 3), 16),
+    Number.parseInt(hex.slice(3, 5), 16),
+    Number.parseInt(hex.slice(5, 7), 16),
+  ];
+  return toRgbColor(channels.join(" "));
+}
+
+export function readAccentHex(value: AccentColor): string {
   const values: Record<AccentColor, string> = {
     terra: "180 93 64",
     sky: "59 130 246",
@@ -226,7 +238,10 @@ export function readAccentSwatch(value: AccentColor): string {
     apricot: "167 103 62",
     jade: "47 128 124",
   };
-  return toRgbColor(values[value]);
+  return `#${values[value]
+    .split(" ")
+    .map((channel) => Number(channel).toString(16).padStart(2, "0"))
+    .join("")}`;
 }
 
 function toRgbColor(value: string): string {

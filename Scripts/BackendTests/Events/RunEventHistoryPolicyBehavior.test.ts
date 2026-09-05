@@ -124,4 +124,43 @@ describe("run event history policy", () => {
       data: { checkpointAvailable: true },
     });
   });
+
+  test("persists post-run continuity rule snapshots for refresh recovery", () => {
+    const projected = projectAgentRunEventForHistory({
+      eventId: "event-continuity-rules",
+      channel: AgentEventChannels.AgentEvent,
+      kind: AgentEventKinds.ContinuityRulesSnapshot,
+      layer: AgentEventLayers.Snapshot,
+      phase: AgentEventPhases.Prompt,
+      sequence: 4,
+      timestamp: "2026-08-23T01:00:03.000Z",
+      sessionId: "session-1",
+      requestId: "request-1",
+      data: {
+        rules: [{ title: "天气提醒", status: "partial" }],
+        signals: [
+          {
+            uri: "senera://continuity-state/state_aaaaaaaaaaaaaaaaaaaaaaaa",
+            summary: "用户已完成运动",
+            valueJson: "false",
+          },
+        ],
+      },
+    });
+
+    expect(projected).toMatchObject({
+      kind: AgentEventKinds.ContinuityRulesSnapshot,
+      sessionId: "session-1",
+      requestId: "request-1",
+      data: {
+        rules: [{ title: "天气提醒", status: "partial" }],
+        signals: [
+          {
+            uri: "senera://continuity-state/state_aaaaaaaaaaaaaaaaaaaaaaaa",
+            summary: "用户已完成运动",
+          },
+        ],
+      },
+    });
+  });
 });

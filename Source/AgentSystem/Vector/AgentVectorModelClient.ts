@@ -5,6 +5,14 @@ import type {
 } from "../Types/AgentConfigTypes.js";
 import { fetchModelHttpWithRetries } from "../ModelEndpoints/ModelHttpRetry.js";
 import { readAgentRecordOrThrow } from "../Core/AgentUnknownValue.js";
+import {
+  AgentInferenceBudgetExceededError,
+  AgentInferenceLaneIds,
+  estimateAgentInferenceTokens,
+  requireAgentInferenceScope,
+  type AgentInferenceBudgetPort,
+  type AgentInferenceBudgetReservation,
+} from "../ModelEndpoints/AgentInferenceBudget.js";
 
 export interface AgentEmbeddingRequest {
   input: readonly string[];
@@ -40,7 +48,13 @@ export interface AgentRerankResultItem {
 }
 
 export class AgentVectorModelClient {
-  constructor(private readonly config: ResolvedAgentVectorModelsConfig) {}
+  constructor(
+    private readonly config: ResolvedAgentVectorModelsConfig,
+    private readonly options: {
+      readonly inferenceBudget?: AgentInferenceBudgetPort;
+      readonly inferenceBudgetScope?: () => string;
+    } = {},
+  ) {}
 
   async embed(request: AgentEmbeddingRequest): Promise<AgentEmbeddingResult> {
     const config = this.config.Embedding;
@@ -54,18 +68,28 @@ export class AgentVectorModelClient {
     const inputs = request.input.map((value) => trimEmbeddingInput(value, config.InputMaxChars));
     const batches = chunk(inputs, config.BatchSize);
     const vectors: number[][] = [];
-    for (const batch of batches) {
-      const response = await postJson(
-        urlFor(config.BaseUrl, "/embeddings"),
-        {
-          model: config.Model,
-          input: batch,
-          ...optionalNumberField("dimensions", config.Dimensions),
-        },
-        config,
-        request.signal,
+    for (const [index, batch] of batches.entries()) {
+      const reservation = this.reserve(
+        AgentInferenceLaneIds.Embedding,
+        "vector.embedding",
+        `vector.embedding:${config.Model}:${index}`,
+        { model: config.Model, input: batch },
       );
-      vectors.push(...readEmbeddingVectors(response));
+      try {
+        const response = await postJson(
+          urlFor(config.BaseUrl, "/embeddings"),
+          {
+            model: config.Model,
+            input: batch,
+            ...optionalNumberField("dimensions", config.Dimensions),
+          },
+          config,
+          request.signal,
+        );
+        vectors.push(...readEmbeddingVectors(response));
+      } finally {
+        this.settle(reservation);
+      }
     }
 
     return {
@@ -85,22 +109,64 @@ export class AgentVectorModelClient {
 
     const limited = takeUpTo(request.documents, config.CandidateLimit);
     const topK = request.topK ?? config.TopK;
-    const response = await postJson(
-      urlFor(config.BaseUrl, config.EndpointPath),
-      {
-        model: config.Model,
-        query: request.query,
-        documents: limited.map((document) => document.text),
-        ...optionalNumberField("top_n", topK),
-      },
-      config,
-      request.signal,
+    const reservation = this.reserve(
+      AgentInferenceLaneIds.Embedding,
+      "vector.rerank",
+      `vector.rerank:${config.Model}`,
+      { model: config.Model, query: request.query, documents: limited },
     );
+    let response: unknown;
+    try {
+      response = await postJson(
+        urlFor(config.BaseUrl, config.EndpointPath),
+        {
+          model: config.Model,
+          query: request.query,
+          documents: limited.map((document) => document.text),
+          ...optionalNumberField("top_n", topK),
+        },
+        config,
+        request.signal,
+      );
+    } finally {
+      this.settle(reservation);
+    }
 
     return {
       model: config.Model,
       results: readRerankResults(response, limited),
     };
+  }
+
+  private reserve(
+    lane: string,
+    sourceId: string,
+    requestId: string,
+    input: unknown,
+  ): AgentInferenceBudgetReservation | undefined {
+    const budget = this.options.inferenceBudget;
+    if (!budget) return undefined;
+    const scope = requireAgentInferenceScope(this.options.inferenceBudgetScope?.());
+    const decision = budget.reserve({
+      scope,
+      lane,
+      sourceId,
+      requestId,
+      estimatedInputTokens: estimateAgentInferenceTokens(input),
+    });
+    if (!decision.allowed) {
+      if (decision.retryAtMs === undefined || decision.reason === undefined) {
+        throw new Error("Inference budget returned a denied decision without retry metadata.");
+      }
+      throw new AgentInferenceBudgetExceededError(decision.retryAtMs, decision.reason);
+    }
+    if (!decision.reservation) throw new Error("Inference budget allowed a request without a reservation.");
+    return decision.reservation;
+  }
+
+  private settle(reservation: AgentInferenceBudgetReservation | undefined): void {
+    if (!reservation) return;
+    this.options.inferenceBudget?.settle({ reservationId: reservation.id });
   }
 }
 

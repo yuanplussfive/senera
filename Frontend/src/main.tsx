@@ -2,12 +2,10 @@ import { lazy, StrictMode, Suspense, useCallback, useState } from "react";
 import { createRoot, type Root as ReactRoot } from "react-dom/client";
 import { resolveAppSurface, resolveSettingsSection } from "./app/appSurface";
 import { readDesktopBridge } from "./app/desktopBridge";
-import { ServerAuthenticationBoundary } from "./app/ServerAuthenticationGate";
 import { useServerAuthentication } from "./app/useServerAuthentication";
 import type { AgentSocketReconnectPolicy } from "./api/useAgentSocket";
 import { AuthenticationSessionStates } from "./api/generatedEventCatalog";
 import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
-import { installMotionDevTools } from "./dev/motionDevTools";
 import { FrontendI18nProvider, useFrontendLocale } from "./i18n/useFrontendLocale";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { AuthenticatedSurface } from "./app/AuthenticatedSurface";
@@ -20,11 +18,18 @@ import "./styles/transitions.css";
 const LazyDesktopWindowChrome = lazy(() =>
   import("./app/DesktopWindowChrome").then(({ DesktopWindowChrome }) => ({ default: DesktopWindowChrome })),
 );
+const LazyServerAuthenticationBoundary = lazy(() =>
+  import("./app/ServerAuthenticationGate").then(({ ServerAuthenticationBoundary }) => ({
+    default: ServerAuthenticationBoundary,
+  })),
+);
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
 const root = document.getElementById("root");
 
-if (import.meta.env.DEV) installMotionDevTools();
+if (import.meta.env.DEV) {
+  void import("./dev/motionDevTools").then(({ installMotionDevTools }) => installMotionDevTools());
+}
 if (!root) throw new Error("#root not found in index.html");
 installViteDynamicImportRecovery();
 
@@ -71,25 +76,27 @@ function ApplicationRoot(): JSX.Element {
   }, [revalidateAuthentication]);
 
   const authenticatedContent = (
-    <ServerAuthenticationBoundary
-      state={authentication.state}
-      onLogin={authentication.login}
-      onRetry={authentication.refresh}
-    >
-      {(resolvedAuthentication) => (
-        <AuthenticatedSurface
-          authentication={resolvedAuthentication}
-          surface={surface}
-          settingsSection={settingsSection}
-          socketReconnectPolicy={socketReconnectPolicy}
-          onLogout={
-            resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
-              ? authentication.logout
-              : undefined
-          }
-        />
-      )}
-    </ServerAuthenticationBoundary>
+    <Suspense fallback={<AuthenticationBoundaryLoading />}>
+      <LazyServerAuthenticationBoundary
+        state={authentication.state}
+        onLogin={authentication.login}
+        onRetry={authentication.refresh}
+      >
+        {(resolvedAuthentication) => (
+          <AuthenticatedSurface
+            authentication={resolvedAuthentication}
+            surface={surface}
+            settingsSection={settingsSection}
+            socketReconnectPolicy={socketReconnectPolicy}
+            onLogout={
+              resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
+                ? authentication.logout
+                : undefined
+            }
+          />
+        )}
+      </LazyServerAuthenticationBoundary>
+    </Suspense>
   );
 
   return (
@@ -103,4 +110,8 @@ function ApplicationRoot(): JSX.Element {
       )}
     </FrontendI18nProvider>
   );
+}
+
+function AuthenticationBoundaryLoading(): JSX.Element {
+  return <main className="min-h-screen bg-paper-100" aria-busy="true" />;
 }

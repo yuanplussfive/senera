@@ -1,3 +1,4 @@
+import { ConfigSecretContract } from "../../api/generatedEventCatalog";
 import type { ConfigFormFieldData, ConfigFormFieldOptionValue } from "../../api/eventTypes";
 
 export type JsonConfigObject = Record<string, unknown>;
@@ -99,6 +100,42 @@ export function sameJsonValue(left: unknown, right: unknown): boolean {
   return (
     leftKeys.length === rightKeys.length &&
     leftKeys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && sameJsonValue(left[key], right[key]))
+  );
+}
+
+export function isRedactedConfigSecretValue(value: unknown): boolean {
+  return value === ConfigSecretContract.RedactedPlaceholder;
+}
+
+/**
+ * Compares a local draft against a redacted config snapshot. A redacted
+ * placeholder on the snapshot side matches any non-empty draft string because
+ * the real secret is stored server-side and the draft's non-empty value is
+ * unchanged; an empty draft string is a real edit (clearing the secret).
+ * Used only to confirm a save landed, never to detect user edits.
+ */
+export function sameJsonValueReconciled(draft: unknown, snapshot: unknown): boolean {
+  if (Object.is(draft, snapshot)) return true;
+  if (isRedactedConfigSecretValue(snapshot)) {
+    return typeof draft === "string" && draft.length > 0;
+  }
+  if (Array.isArray(draft) || Array.isArray(snapshot)) {
+    return (
+      Array.isArray(draft) &&
+      Array.isArray(snapshot) &&
+      draft.length === snapshot.length &&
+      draft.every((item, index) => sameJsonValueReconciled(item, snapshot[index]))
+    );
+  }
+  if (!isJsonConfigObject(draft) || !isJsonConfigObject(snapshot)) return false;
+  const draftKeys = Object.keys(draft);
+  const snapshotKeys = Object.keys(snapshot);
+  return (
+    draftKeys.length === snapshotKeys.length &&
+    draftKeys.every(
+      (key) =>
+        Object.prototype.hasOwnProperty.call(snapshot, key) && sameJsonValueReconciled(draft[key], snapshot[key]),
+    )
   );
 }
 

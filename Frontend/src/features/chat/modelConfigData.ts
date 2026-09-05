@@ -7,6 +7,7 @@ import {
   readDefaultModelGroupRules,
   type ModelProviderRuleMatchKind,
 } from "./ModelProviderIcon";
+import { inferModelCatalogCapabilities, inferModelCatalogGroup } from "./modelCatalogRules";
 import type {
   ConfigFormFieldData,
   ConfigFormSectionData,
@@ -237,7 +238,7 @@ export function readModelCapabilities(
   template: Record<string, unknown>,
 ): Required<ModelCapabilitiesDraft> {
   return {
-    ...defaultModelCapabilities(template),
+    ...defaultModelCapabilities(template, model.Model, model.ProviderId),
     ...(model.Capabilities ?? {}),
   };
 }
@@ -250,18 +251,25 @@ export function readModelToolPlanningMode(
   return configured === "baml" ? "baml" : "native";
 }
 
-export function defaultModelCapabilities(template: Record<string, unknown>): Required<ModelCapabilitiesDraft> {
+export function defaultModelCapabilities(
+  template: Record<string, unknown>,
+  modelName?: string,
+  providerHint?: string,
+): Required<ModelCapabilitiesDraft> {
   const capabilities = isRecord(template.Capabilities) ? template.Capabilities : {};
+  const inferred = inferModelCatalogCapabilities(modelName, providerHint);
+  const defaultCapability = <T extends keyof ModelCapabilitiesDraft>(key: T, fallback: boolean): boolean =>
+    readBoolean(capabilities[key]) ?? inferred[key] ?? fallback;
   return {
-    Chat: readBoolean(capabilities.Chat) ?? true,
-    Embedding: readBoolean(capabilities.Embedding) ?? false,
-    Rerank: readBoolean(capabilities.Rerank) ?? false,
-    Vision: readBoolean(capabilities.Vision) ?? false,
-    ImageOutput: readBoolean(capabilities.ImageOutput) ?? false,
-    Reasoning: readBoolean(capabilities.Reasoning) ?? false,
-    DeveloperRole: readBoolean(capabilities.DeveloperRole) ?? false,
-    StreamingUsage: readBoolean(capabilities.StreamingUsage) ?? true,
-    ToolCalling: readBoolean(capabilities.ToolCalling) ?? true,
+    Chat: defaultCapability("Chat", true),
+    Embedding: defaultCapability("Embedding", false),
+    Rerank: defaultCapability("Rerank", false),
+    Vision: defaultCapability("Vision", false),
+    ImageOutput: defaultCapability("ImageOutput", false),
+    Reasoning: defaultCapability("Reasoning", false),
+    DeveloperRole: defaultCapability("DeveloperRole", false),
+    StreamingUsage: defaultCapability("StreamingUsage", true),
+    ToolCalling: defaultCapability("ToolCalling", true),
   };
 }
 
@@ -391,10 +399,11 @@ export function groupProviderModelRows(
   const groups = new Map<string, ProviderModelGroup>();
 
   for (const row of rows) {
-    const rule = findModelGroupRule(row.id, modelGroups);
-    const groupId = rule?.Id ?? defaultGroup.id;
-    const groupLabel = rule?.Label ?? defaultGroup.label;
-    const groupIcon = rule?.Icon ?? defaultGroup.icon;
+    const rule = findModelGroupRule(row.id, modelGroups, row.ownedBy);
+    const inferred = rule ? undefined : inferModelCatalogGroup(row.id, row.ownedBy);
+    const groupId = rule?.Id ?? inferred?.id ?? defaultGroup.id;
+    const groupLabel = rule?.Label || inferred?.label || defaultGroup.label;
+    const groupIcon = rule?.Icon || inferred?.icon || defaultGroup.icon;
     const group = groups.get(groupId) ?? {
       id: groupId,
       label: groupLabel,
@@ -411,10 +420,15 @@ export function groupProviderModelRows(
 export function findModelGroupRule(
   modelId: string,
   modelGroups: readonly ModelGroupDraft[],
+  providerHint?: string,
 ): ModelGroupDraft | undefined {
-  const normalized = modelId.toLowerCase();
+  const sources = [modelId, providerHint]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toLowerCase());
   return modelGroups.find((rule) =>
-    rule.Strategies.some((strategy) => modelGroupRuleMatches(strategy.Match, normalized, strategy.Values)),
+    sources.some((source) =>
+      rule.Strategies.some((strategy) => modelGroupRuleMatches(strategy.Match, source, strategy.Values)),
+    ),
   );
 }
 

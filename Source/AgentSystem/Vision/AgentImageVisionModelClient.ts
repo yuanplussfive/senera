@@ -122,10 +122,10 @@ export class AgentImageVisionModelClient {
               type: "input_text",
               text: request.prompt,
             },
-            {
+            ...request.images.map((image) => ({
               type: "input_image",
-              image_url: dataUri(request),
-            },
+              image_url: dataUri(image),
+            })),
           ],
         },
       ],
@@ -165,12 +165,12 @@ export class AgentImageVisionModelClient {
               type: "text",
               text: request.prompt,
             },
-            {
+            ...request.images.map((image) => ({
               type: "image_url",
               image_url: {
-                url: dataUri(request),
+                url: dataUri(image),
               },
-            },
+            })),
           ],
         },
       ],
@@ -200,14 +200,14 @@ export class AgentImageVisionModelClient {
               type: "text",
               text: request.prompt,
             },
-            {
+            ...request.images.map((image) => ({
               type: "image",
               source: {
                 type: "base64",
-                media_type: request.mime,
-                data: request.base64,
+                media_type: image.mime,
+                data: image.base64,
               },
-            },
+            })),
           ],
         },
       ],
@@ -259,12 +259,12 @@ export class AgentImageVisionModelClient {
               role: "user",
               parts: [
                 { text: request.prompt },
-                {
+                ...request.images.map((image) => ({
                   inlineData: {
-                    mimeType: request.mime,
-                    data: request.base64,
+                    mimeType: image.mime,
+                    data: image.base64,
                   },
-                },
+                })),
               ],
             },
           ],
@@ -295,8 +295,8 @@ function openAiHeaders(request: AgentImageVisionRequest): HeadersInit {
   };
 }
 
-function dataUri(request: AgentImageVisionRequest): string {
-  return `data:${request.mime};base64,${request.base64}`;
+function dataUri(image: AgentImageVisionRequest["images"][number]): string {
+  return `data:${image.mime};base64,${image.base64}`;
 }
 
 function readTextContent(value: string | Array<{ text?: string | null }> | null | undefined): string {

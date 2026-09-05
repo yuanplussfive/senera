@@ -4,6 +4,8 @@ import { AgentBaseError } from "../Core/AgentBaseError.js";
 export interface AgentExternalUrlPolicy {
   readonly allowHttps: boolean;
   readonly allowLoopbackHttp: boolean;
+  /** Plain HTTP (non-loopback) is rejected for agent interaction URLs but allowed for user-initiated desktop navigation. */
+  readonly allowHttp?: boolean;
   readonly allowCredentials: boolean;
 }
 
@@ -16,6 +18,14 @@ export interface AgentExternalUrl {
 
 export const DefaultAgentExternalUrlPolicy = {
   allowHttps: true,
+  allowLoopbackHttp: true,
+  allowCredentials: false,
+} as const satisfies AgentExternalUrlPolicy;
+
+/** User-initiated desktop navigation may open any HTTP(S) URL in the system browser. */
+export const DesktopExternalUrlPolicy = {
+  allowHttps: true,
+  allowHttp: true,
   allowLoopbackHttp: true,
   allowCredentials: false,
 } as const satisfies AgentExternalUrlPolicy;
@@ -44,7 +54,8 @@ export function resolveAgentExternalUrl(
   }
   const protocolAllowed =
     (parsed.protocol === "https:" && policy.allowHttps) ||
-    (parsed.protocol === "http:" && policy.allowLoopbackHttp && isLoopbackHostname(parsed.hostname));
+    (parsed.protocol === "http:" &&
+      ((policy.allowLoopbackHttp && isLoopbackHostname(parsed.hostname)) || policy.allowHttp === true));
   if (!protocolAllowed) {
     throw new AgentExternalUrlPolicyError(
       "External interaction URL must use HTTPS, except HTTP loopback callbacks.",

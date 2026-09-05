@@ -35,6 +35,8 @@
     "Capabilities": [
       {
         "Id": "execution.resource-list",
+        "Title": "List execution resources",
+        "Description": "列出当前会话拥有的后台终端、进程和可恢复执行资源。",
         "Facets": {
           "Actions": ["list", "inspect"],
           "Targets": ["execution-resource", "terminal", "process"],
@@ -42,6 +44,7 @@
         }
       }
     ],
+    "UseCases": ["需要确认当前会话有哪些后台命令、终端或进程仍在运行时。"],
     "Tags": ["后台终端", "资源列表", "会话控制"]
   },
   "evidenceCapabilities": [],

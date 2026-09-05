@@ -1,5 +1,5 @@
 {
-  "ConfigVersion": 12,
+  "ConfigVersion": 19,
   "Defaults": {
     "AgentLoop": {
       "PiTurnLeaseTimeoutSeconds": 120,
@@ -11,6 +11,11 @@
           "Enabled": true
         }
       }
+    },
+    "Todos": {
+      "MaxItems": 256,
+      "MaxContentCharacters": 4000,
+      "MaxResultCharacters": 512000
     },
     "ToolExecution": {
       "TimeoutSeconds": 120,
@@ -63,6 +68,11 @@
       "BaseDir": ".senera/sandbox-runtime"
     },
     "ToolSearch": {
+      "Fuzzy": {
+        "Enabled": true,
+        "MinScore": 0.25,
+        "CandidateLimit": 8
+      },
       "Memory": {
         "MaxEpisodes": 5000,
         "HalfLifeDays": 30
@@ -81,7 +91,7 @@
         }
       },
       "Rerank": {
-        "Enabled": true,
+        "Enabled": false,
         "CandidateLimit": 24,
         "ScoreScale": 0.018,
         "FeatureWeights": {}
@@ -89,7 +99,7 @@
     },
     "VectorModels": {
       "Embedding": {
-        "Enabled": true,
+        "Enabled": false,
         "ProviderId": "main",
         "Model": "qwen3-embedding-0.6b",
         "TimeoutSeconds": 20,
@@ -99,7 +109,7 @@
         "InputMaxChars": -1
       },
       "Rerank": {
-        "Enabled": true,
+        "Enabled": false,
         "ProviderId": "main",
         "Model": "qwen3-reranker-0.6b",
         "TimeoutSeconds": 20,
@@ -117,19 +127,64 @@
         "MaxPromptPatterns": 2
       }
     },
-    "MemoryLearning": {
+    "ContinuityLearning": {
       "Enabled": true,
-      "MaxRepairAttempts": 1,
-      "Promotion": {
-        "MinSupport": 2,
-        "MaxClusterSize": 8,
-        "MinSimilarity": 0.78
+      "Runtime": {
+        "MaxAttempts": 3,
+        "RetryBaseDelaySeconds": 1,
+        "RetryMaxDelaySeconds": 60,
+        "MaxJobsPerDrain": 8
+      },
+      "LearningGate": {
+        "Enabled": true,
+        "DeferredDelaySeconds": 30
+      },
+      "Recall": {
+        "TurnValueClassifier": {
+          "Enabled": true,
+          "ConfidenceThreshold": 0.82,
+          "MinimumExamplesPerLabel": 3,
+          "MaxTrainingEntries": 4096
+        },
+        "Prefetch": {
+          "Enabled": true,
+          "CacheTtlSeconds": 300
+        },
+        "PromptBudget": {
+          "MaxProfileEntries": 32,
+          "MaxFactEntries": 24,
+          "MaxRelationEntries": 24,
+          "MaxEventEntries": 8,
+          "MaxEvidenceEntries": 8,
+          "MaxCharacters": 24000
+        },
+        "Ranking": {
+          "MinimumTextSimilarityScore": 0.12,
+          "CandidateScore": 0.24,
+          "DirectScore": 0.74,
+          "DirectTextSimilarityScore": 0.58,
+          "FactIdentityFuzzyScore": 0.9,
+          "RecencyHalfLifeDays": 120,
+          "Consolidation": {
+            "MinimumEquivalentEffectScore": 0.9,
+            "ActiveIndependentEvidence": 2,
+            "EstablishedIndependentEvidence": 3
+          },
+          "Similarity": {
+            "StructuralMismatchWeight": 0.8
+          }
+        }
       }
     },
     "Presets": {
       "Enabled": true,
       "RootDir": ".senera/presets",
-      "StateFile": ".senera/presets-state.json"
+      "StateFile": ".senera/presets-state.json",
+      "PromptBudget": {
+        "MaxExamples": 4,
+        "MaxLoreEntries": 6,
+        "MaxSupplementalCharacters": 12000
+      }
     },
     "Artifacts": {
       "RootDir": ".senera/artifacts/runs",
@@ -225,6 +280,32 @@
       "RevisionRetentionCount": 256,
       "CommandReceiptRetentionHours": 168,
       "CommandReceiptMaxCount": 4096
+    },
+    "World": {
+      "Name": "Senera",
+      "TimeZone": "Asia/Shanghai",
+      "GoalMicroLoop": {
+        "Enabled": true,
+        "MaxCandidates": 8,
+        "ReviewDelaySeconds": 900,
+        "AllowedToolNames": []
+      },
+      "ResidentIdle": {
+        "Enabled": true,
+        "MinIntervalSeconds": 900,
+        "MaxIntervalSeconds": 14400,
+        "BackoffMultiplier": 2,
+        "MaxPending": 1
+      },
+      "ActionBudget": {
+        "MaxActionsPerWake": 8,
+        "MaxDecisionCandidatesPerWake": 8,
+        "RetryDelaySeconds": 30,
+        "LeaseDurationSeconds": 300,
+        "FairShare": true,
+        "SourceOrder": [],
+        "SourceCaps": {}
+      }
     }
   },
   "DefaultModelProviderId": "main",
@@ -254,5 +335,28 @@
       "RetryMaxDelaySeconds": 10,
       "RetryAfterMaxDelaySeconds": 60
     }
-  ]
+  ],
+  "Extensions": {
+    "agent-channels": {
+      "Enabled": true,
+      "Configuration": {
+        "enabled": true,
+        "qq": {
+          "enabled": false,
+          "appId": "your-qq-bot-app-id",
+          "appSecret": "your-qq-bot-app-secret",
+          "mode": "websocket",
+          "allowAllUsers": true
+        },
+        "telegram": {
+          "enabled": false,
+          "token": "your-telegram-bot-token"
+        },
+        "discord": {
+          "enabled": false,
+          "token": "your-discord-bot-token"
+        }
+      }
+    }
+  }
 }

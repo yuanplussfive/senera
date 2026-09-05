@@ -11,11 +11,17 @@ import {
   DialogContent,
   FormHint,
   Input,
+  MenuSelect,
   Switch,
 } from "../../../shared/ui";
-import { inferModelProviderIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
+import {
+  inferModelProviderEndpointIcon,
+  ModelProviderIcon,
+  ModelProviderIconNames,
+  readCustomModelProviderIconSource,
+} from "../../chat/ModelProviderIcon";
 import { DetailTitle, EmptyDetail, IconAction, inputClassName } from "../../chat/ModelConfigPrimitives";
-import { isRedactedConfigSecret, providerEnabled, providerIdLabel } from "../../chat/modelConfigData";
+import { providerIdLabel, isRedactedConfigSecret } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { ProviderFormError } from "./ProviderConnectionFeedback";
 import { isProtectedProvider } from "./ProviderConnectionIdentity";
@@ -118,7 +124,6 @@ export function ProviderConnectionEditor({
     );
   }
 
-  const enabled = providerEnabled(provider);
   const protectedProvider = isProtectedProvider(provider.Id);
   const displayedApiKey = apiKeyDraft ?? revealedApiKey ?? "";
   const pending = operation?.status === "pending";
@@ -130,23 +135,23 @@ export function ProviderConnectionEditor({
     <div className="bg-paper-50">
       <div className="mx-auto w-full max-w-[980px] px-5 py-4 lg:px-7">
         <DetailTitle
-          icon={<ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={22} />}
+          icon={<ModelProviderIcon icon={provider.Icon || inferModelProviderEndpointIcon(provider.Id)} size={22} />}
           title={providerIdLabel(provider)}
           actions={
             <>
+              <Switch
+                checked={provider.Enabled !== false}
+                size="sm"
+                disabled={disabled || pending}
+                ariaLabel={frontendMessage("settings.provider.connectionToggle")}
+                onCheckedChange={(next) => onConfirm({ Enabled: next })}
+              />
               {errorMessage && dirty ? (
                 <Button size="sm" variant="outline" disabled={disabled || pending} onClick={() => onConfirm()}>
                   <RotateCcw className="h-3.5 w-3.5" />
                   {frontendMessage("settings.action.retry")}
                 </Button>
               ) : null}
-              <Switch
-                checked={enabled}
-                disabled={disabled}
-                ariaLabel={providerIdLabel(provider)}
-                className="h-8 w-10 justify-center"
-                onCheckedChange={(Enabled) => onConfirm({ Enabled })}
-              />
               <IconAction
                 label={frontendMessage("settings.provider.apiConfig")}
                 disabled={disabled}
@@ -214,6 +219,7 @@ export function ProviderConnectionEditor({
               />
             </div>
           </ConnectionField>
+          <ProviderLogoField provider={provider} disabled={disabled} onChange={onChange} onConfirm={onConfirm} />
         </div>
 
         {errorMessage ? (
@@ -241,7 +247,7 @@ export function ProviderConnectionEditor({
           className="h-[min(680px,calc(100dvh_-_32px))] w-[min(600px,calc(100vw_-_32px))]"
           bodyClassName="flex min-h-0 flex-1 flex-col px-8 pb-7 pt-3"
         >
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
             <div className="mb-3 flex items-center gap-2">
               <span className="text-[12px] font-semibold text-ink-800">
                 {frontendMessage("settings.provider.customHeaders")}
@@ -278,6 +284,131 @@ export function ProviderConnectionEditor({
     </div>
   );
 }
+
+const CUSTOM_LOGO_OPTION = "__custom__";
+
+function ProviderLogoField({
+  provider,
+  disabled,
+  onChange,
+  onConfirm,
+}: {
+  provider: ProviderEndpointDraft;
+  disabled: boolean;
+  onChange: (patch: Partial<ProviderEndpointDraft>) => void;
+  onConfirm: (patch?: Partial<ProviderEndpointDraft>) => void;
+}): JSX.Element {
+  const iconValue = provider.Icon?.trim() ?? "";
+  const builtInCandidate = ModelProviderIconNames.find(
+    (name) => name === iconValue.toLowerCase().replace(/\.svg$/u, ""),
+  );
+  // Keep the raw value while the user types a URL. The renderer still applies
+  // the stricter image-source allow-list, but a controlled input must not erase
+  // the first character of a partially entered address.
+  const customLogoDraft = builtInCandidate ? "" : iconValue;
+  const customLogo = readCustomModelProviderIconSource(customLogoDraft) ?? "";
+  const builtInLogo = customLogo ? "" : (builtInCandidate ?? "");
+  const selectedValue = customLogo ? CUSTOM_LOGO_OPTION : builtInLogo;
+  const inferredLogo = inferModelProviderEndpointIcon(provider.Id);
+  const logoOptions = [
+    {
+      value: "",
+      label: frontendMessage("settings.provider.logoAuto"),
+      description: frontendMessage("settings.provider.logoAutoDescription"),
+    },
+    ...(customLogo
+      ? [
+          {
+            value: CUSTOM_LOGO_OPTION,
+            label: frontendMessage("settings.provider.logoCustom"),
+            description: customLogo,
+          },
+        ]
+      : []),
+    ...ModelProviderIconNames.map((name) => ({ value: name, label: formatLogoName(name) })),
+  ];
+
+  return (
+    <ConnectionField label={frontendMessage("settings.provider.logoLabel")}>
+      <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(180px,0.62fr)_minmax(0,1fr)]">
+        <MenuSelect
+          value={selectedValue}
+          placeholder={frontendMessage("settings.provider.logoAuto")}
+          ariaLabel={frontendMessage("settings.provider.logoLabel")}
+          options={logoOptions}
+          disabled={disabled}
+          size="md"
+          leading={<ModelProviderIcon icon={customLogo || builtInLogo || inferredLogo} size={16} />}
+          contentClassName="max-h-[280px] w-[280px]"
+          renderValue={(_value, option) => (
+            <span className="inline-flex min-w-0 items-center gap-2">
+              <span className="truncate">{option?.label ?? frontendMessage("settings.provider.logoAuto")}</span>
+            </span>
+          )}
+          renderOption={(option) => (
+            <span className="inline-flex min-w-0 items-center gap-2">
+              <ModelProviderIcon
+                icon={option.value === CUSTOM_LOGO_OPTION ? customLogo : option.value || inferredLogo}
+                size={16}
+              />
+              <span className="min-w-0 truncate">{option.label}</span>
+            </span>
+          )}
+          onChange={(value) =>
+            onChange({
+              Icon: value === CUSTOM_LOGO_OPTION ? customLogoDraft || undefined : value || undefined,
+            })
+          }
+        />
+        <Input
+          value={customLogoDraft}
+          disabled={disabled}
+          placeholder={frontendMessage("settings.provider.logoCustomPlaceholder")}
+          spellCheck={false}
+          aria-label={frontendMessage("settings.provider.logoCustom")}
+          onChange={(event) => onChange({ Icon: event.currentTarget.value || undefined })}
+          onBlur={() => onConfirm()}
+        />
+        <FormHint className="sm:col-span-2">{frontendMessage("settings.provider.logoHint")}</FormHint>
+      </div>
+    </ConnectionField>
+  );
+}
+
+function formatLogoName(value: string): string {
+  const brandedName = brandedLogoNames[value];
+  if (brandedName) return brandedName;
+  return value
+    .replace(/([a-z])([A-Z])/gu, "$1 $2")
+    .replace(/[-_]+/gu, " ")
+    .replace(/\b\w/gu, (character) => character.toUpperCase());
+}
+
+const brandedLogoNames: Readonly<Record<string, string>> = {
+  ai21: "AI21",
+  ai302: "AI302",
+  ai360: "AI360",
+  aihubmix: "AIHubMix",
+  anthropic: "Anthropic",
+  azureai: "Azure AI",
+  baai: "BAAI",
+  bfl: "Black Forest Labs",
+  cloudflare: "Cloudflare",
+  deepseek: "DeepSeek",
+  fireworks: "Fireworks",
+  gemini: "Gemini",
+  google: "Google",
+  lmstudio: "LM Studio",
+  newapi: "New API",
+  openai: "OpenAI",
+  openrouter: "OpenRouter",
+  ppio: "PPIO",
+  qwen: "Qwen",
+  siliconcloud: "SiliconFlow",
+  sensenova: "SenseNova",
+  xai: "xAI",
+  zhipu: "Zhipu",
+};
 
 function ConnectionField({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
   return (

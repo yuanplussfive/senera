@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
   AgentPiToolExecutionBridge as AgentPiToolExecutionBridgeBase,
   type AgentPiToolExecutionBridgeOptions,
@@ -20,6 +21,7 @@ import {
   createAgentToolFailureOutcome,
 } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
 import { StandardAgentToolObservationProjection } from "../../../Source/AgentSystem/ToolRuntime/AgentToolObservationProjectionPlan.js";
+import { readAgentPiMessageTextContent } from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
 
 class AgentPiToolExecutionBridge extends AgentPiToolExecutionBridgeBase {
   constructor(options: Omit<AgentPiToolExecutionBridgeOptions, "model">) {
@@ -51,6 +53,33 @@ describe("Pi tool execution bridge behavior", () => {
 
     expect(executeToolCall).toHaveBeenCalledOnce();
     expect(run).not.toHaveBeenCalled();
+  });
+
+  test("unwraps XML-attributed observations before Pi protocol parsing", async () => {
+    const executed = toolResult({ callId: "call-attributed", name: "SearchTool" });
+    const bridge = new AgentPiToolExecutionBridge({
+      executeToolCall: async () => ({ kind: "ToolResults", value: [executed] }),
+      recordToolArtifacts: async () => [executed],
+      attributionEnabled: () => true,
+    });
+
+    const result = await bridge.execute({
+      tool: registeredTool("SearchTool"),
+      params: { query: "attributed" },
+      toolCallId: "call-attributed",
+      context: createToolContext("SearchTool", "call-attributed"),
+    });
+    const message = {
+      role: "toolResult",
+      toolCallId: "call-attributed",
+      toolName: "SearchTool",
+      content: result.content,
+      isError: false,
+    } as Extract<AgentMessage, { role: "toolResult" }>;
+    const text = readAgentPiMessageTextContent(message);
+
+    expect(() => JSON.parse(text)).not.toThrow();
+    expect(JSON.parse(text)).toMatchObject({ type: "senera.tool_observation.v4" });
   });
 
   test("routes ordinary tools through the execution scheduler", async () => {
@@ -163,7 +192,7 @@ describe("Pi tool execution bridge behavior", () => {
       step: 3,
       results: [expect.objectContaining({ result: { unrecorded: true } })],
     });
-    expect(textContent(result.content[0])).toContain("senera.tool_observation.v3");
+    expect(textContent(result.content[0])).toContain("senera.tool_observation.v4");
     expect(parseObservation(result)).toMatchObject({
       observation_view: { complete: true, artifact_uri: "senera://artifact/1" },
       detail: { result: { answer: "42" } },
@@ -388,7 +417,7 @@ describe("Pi tool execution bridge behavior", () => {
     expect(parseObservation(result)).toMatchObject({
       status: "waiting",
       observation_view: {
-        type: "senera.tool_observation_source_view.v3",
+        type: "senera.tool_observation_source_view.v4",
         complete: true,
       },
       detail: {

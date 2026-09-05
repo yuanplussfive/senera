@@ -1,6 +1,10 @@
 import type {
   AgentActionPlannerConfig,
-  AgentMemoryLearningConfig,
+  AgentContinuityLearningConfig,
+  AgentContinuityLearningContextConfig,
+  AgentContinuityLearningGateConfig,
+  AgentContinuityLearningRuntimeConfig,
+  AgentContinuityLearningRecallConfig,
   AgentToolLearningConfig,
   AgentVectorEmbeddingConfig,
   AgentVectorRerankConfig,
@@ -11,11 +15,15 @@ import type {
   ResolvedAgentModelProviderEndpointConfig,
   ResolvedAgentPersistenceConfig,
   ResolvedAgentPresetsConfig,
+  ResolvedAgentPromptConfig,
   ResolvedAgentSandboxRuntimeConfig,
   ResolvedAgentServerConfig,
   ResolvedAgentToolExecutionConfig,
   ResolvedAgentToolSearchConfig,
+  ResolvedAgentTodosConfig,
   ResolvedAgentUploadsConfig,
+  ResolvedAgentWorldConfig,
+  ResolvedAgentInferenceBudgetConfig,
 } from "../Types/AgentConfigTypes.js";
 import type { AgentModelRuntimeDefaultsConfig } from "../Types/AgentModelConfigTypes.js";
 
@@ -53,9 +61,20 @@ export type AgentToolLearningDefaultsConfig = Required<Omit<AgentToolLearningCon
   Patterns: Required<NonNullable<AgentToolLearningConfig["Patterns"]>>;
 };
 
-export type AgentMemoryLearningDefaultsConfig = Required<Omit<AgentMemoryLearningConfig, "Client" | "Promotion">> & {
-  Client: AgentActionPlannerClientDefaultsConfig;
-  Promotion: Required<NonNullable<AgentMemoryLearningConfig["Promotion"]>>;
+export type AgentContinuityLearningClientDefaultsConfig = Required<
+  Omit<NonNullable<AgentContinuityLearningConfig["Client"]>, "ModelProviderId">
+> &
+  Pick<NonNullable<AgentContinuityLearningConfig["Client"]>, "ModelProviderId">;
+
+export type AgentContinuityLearningDefaultsConfig = Required<
+  Omit<AgentContinuityLearningConfig, "Client" | "Runtime" | "LearningGate" | "LearningContext" | "TemporalMemory">
+> & {
+  Client: AgentContinuityLearningClientDefaultsConfig;
+  Runtime: AgentContinuityLearningRuntimeConfig;
+  LearningGate: AgentContinuityLearningGateConfig;
+  LearningContext: AgentContinuityLearningContextConfig;
+  TemporalMemory: Required<NonNullable<AgentContinuityLearningConfig["TemporalMemory"]>>;
+  Recall: AgentContinuityLearningRecallConfig;
 };
 
 export type AgentActionPlannerDefaultsConfig = Required<
@@ -70,6 +89,7 @@ export type AgentActionPlannerDefaultsConfig = Required<
 export interface ResolvedAgentDefaultsConfig {
   ModelProviderEndpoints: ResolvedAgentModelProviderEndpointConfig[];
   ModelRuntime: ResolvedAgentModelRuntimeDefaultsConfig;
+  InferenceBudget: ResolvedAgentInferenceBudgetConfig;
   ToolExecution: ResolvedAgentToolExecutionConfig;
   SandboxRuntime: ResolvedAgentSandboxRuntimeConfig;
   AgentLoop: ResolvedAgentLoopConfig;
@@ -79,13 +99,16 @@ export interface ResolvedAgentDefaultsConfig {
     Rerank: ResolvedAgentVectorRerankDefaultsConfig;
   };
   ToolLearning: AgentToolLearningDefaultsConfig;
-  MemoryLearning: AgentMemoryLearningDefaultsConfig;
+  Todos: ResolvedAgentTodosConfig;
+  ContinuityLearning: AgentContinuityLearningDefaultsConfig;
   Presets: ResolvedAgentPresetsConfig;
   ActionPlanner: AgentActionPlannerDefaultsConfig;
   Artifacts: ResolvedAgentArtifactsConfig;
   Uploads: ResolvedAgentUploadsConfig;
   Frontend: ResolvedAgentFrontendConfig;
   Server: ResolvedAgentServerConfig;
+  Prompt: ResolvedAgentPromptConfig;
+  World: ResolvedAgentWorldConfig;
   Persistence: ResolvedAgentPersistenceConfig;
   ConfigStore: ResolvedAgentConfigStoreConfig;
 }

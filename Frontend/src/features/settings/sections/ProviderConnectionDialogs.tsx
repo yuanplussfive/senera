@@ -18,9 +18,8 @@ import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { ProviderFormError } from "./ProviderConnectionFeedback";
 import { isProtectedProvider, providerPresets } from "./ProviderConnectionIdentity";
 
-// TODO: providerPresets currently select compatible OpenAI-style connections.
-// Native OpenAI Responses, Gemini, Anthropic, and other protocol adapters need
-// dedicated backend endpoint behavior before they can be advertised as types.
+// Presets intentionally describe OpenAI-compatible endpoints. Native protocol
+// adapters require dedicated backend endpoint kinds before they can appear here.
 
 export function AddProviderDialog({
   open,

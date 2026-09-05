@@ -4,7 +4,7 @@ import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { cn } from "../../../lib/util";
 import { motionTimings, useMotionLevel } from "../../../shared/motion";
 import { IconButton, ScrollArea } from "../../../shared/ui";
-import { inferModelProviderIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
+import { inferModelProviderEndpointIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
 import type { ModelProviderDraft } from "../../chat/modelConfigTypes";
 import type { ModelServiceState } from "./modelServiceState";
 
@@ -71,8 +71,8 @@ export function ProviderModelProviderRail({
                   aria-hidden="true"
                 />
               ) : null}
-              <span className="relative z-[1] grid h-7 w-7 place-items-center rounded-md bg-paper-50/75 shadow-[inset_0_0_0_1px_rgb(110_100_84/0.1)]">
-                <ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={17} />
+              <span className="relative z-[1] grid h-7 w-7 place-items-center">
+                <ModelProviderIcon icon={provider.Icon || inferModelProviderEndpointIcon(provider.Id)} size={17} />
               </span>
               <span className="relative z-[1] min-w-0">
                 <span className="block truncate font-medium">

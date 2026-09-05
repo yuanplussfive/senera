@@ -151,21 +151,22 @@ export const AgentDelegationConfigurationSchema = z
 
 export const AgentSchedulerConfigurationSchema = z
   .object({
-    lease: z
+    polling: z
       .object({
-        durationMs: z.number().int().min(5_000).max(300_000).default(30_000),
-        heartbeatMs: z.number().int().min(1_000).max(60_000).default(10_000),
+        intervalMs: z.number().int().min(250).max(60_000).default(1_000),
+        claimDurationMs: z.number().int().min(5_000).max(3_600_000).default(300_000),
+        claimBatchSize: z.number().int().min(1).max(128).default(16),
       })
       .strict()
-      .default({ durationMs: 30_000, heartbeatMs: 10_000 }),
+      .default({ intervalMs: 1_000, claimDurationMs: 300_000, claimBatchSize: 16 }),
   })
   .strict()
   .superRefine((value, context) => {
-    if (value.lease.durationMs <= value.lease.heartbeatMs) {
+    if (value.polling.claimDurationMs <= value.polling.intervalMs) {
       context.addIssue({
         code: "custom",
-        path: ["lease", "durationMs"],
-        message: "Scheduler lease duration must exceed its heartbeat interval.",
+        path: ["polling", "claimDurationMs"],
+        message: "Scheduled-task claim duration must exceed the polling interval.",
       });
     }
   });

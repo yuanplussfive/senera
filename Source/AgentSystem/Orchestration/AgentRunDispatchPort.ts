@@ -46,6 +46,8 @@ export interface AgentRunDispatchResult {
   readonly finalAnswer: string;
   /** A child may have useful text before Pi publishes a terminal answer. */
   readonly completion?: "complete" | "partial";
+  /** Evidence and artifact references observed from completed tool calls. */
+  readonly evidenceRefs?: readonly string[];
   readonly usage?: AgentModelUsageValue;
 }
 
@@ -62,7 +64,7 @@ export interface AgentRunDispatchPort {
   /** Queue a supervisor steering message without taking a parent Tool resource lease. */
   steer?(sessionId: string, input: string, onEvent?: AgentEventSink): Promise<boolean>;
   /** Queue a follow-up that runs after the child's current assignment settles. */
-  followUp?(sessionId: string, input: string, onEvent?: AgentEventSink): Promise<boolean>;
+  followUp?(sessionId: string, input: string, onEvent?: AgentEventSink, requestId?: string): Promise<boolean>;
   /** Ask the active Pi turn to stop investigating and consolidate its current evidence. */
   interrupt?(sessionId: string, instruction: string): Promise<boolean>;
 }
@@ -98,8 +100,8 @@ export class AgentRunDispatchGateway implements AgentRunDispatchPort {
     return this.requireDelegate().steer?.(sessionId, input, onEvent) ?? Promise.resolve(false);
   }
 
-  followUp(sessionId: string, input: string, onEvent?: AgentEventSink): Promise<boolean> {
-    return this.requireDelegate().followUp?.(sessionId, input, onEvent) ?? Promise.resolve(false);
+  followUp(sessionId: string, input: string, onEvent?: AgentEventSink, requestId?: string): Promise<boolean> {
+    return this.requireDelegate().followUp?.(sessionId, input, onEvent, requestId) ?? Promise.resolve(false);
   }
 
   interrupt(sessionId: string, instruction: string): Promise<boolean> {

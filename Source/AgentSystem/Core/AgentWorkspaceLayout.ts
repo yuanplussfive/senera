@@ -6,6 +6,7 @@ const WorkspaceLayout = {
   stateDirectory: ".senera",
   skillsDirectory: "skills",
   mcpDirectory: "mcp",
+  worldPackagesDirectory: "worlds",
   contextDirectory: "context",
   projectContextFile: "PROJECT.md",
   exportsDirectory: "exports",
@@ -17,10 +18,12 @@ const WorkspaceLayout = {
     sessions: ["sessions", "sessions.sqlite"],
     memory: ["memory", "memory.sqlite"],
     orchestration: ["orchestration", "orchestration.sqlite"],
+    channels: ["channels", "channels.sqlite"],
     toolSearch: ["tool-search", "tool-search.sqlite"],
   },
   configSecretKey: ["config", "config-secrets.key"],
   credentialSecretKey: ["credentials", "credentials.key"],
+  continuityIdentity: "continuity-identity.json",
 } as const;
 
 const LegacyWorkspaceLayout = {
@@ -62,6 +65,8 @@ export interface AgentWorkspaceLayout {
   readonly desktopRuntimeRoot: string;
   readonly skillRoot: string;
   readonly mcpRoot: string;
+  /** Declarative world packages owned by this workspace. */
+  readonly worldPackagesRoot: string;
   readonly contextRoot: string;
   readonly projectContextFile: string;
   readonly exportsRoot: string;
@@ -73,10 +78,13 @@ export interface AgentWorkspaceLayout {
     readonly sessions: string;
     readonly memory: string;
     readonly orchestration: string;
+    readonly channels: string;
     readonly toolSearch: string;
   };
   readonly configSecretKey: string;
   readonly credentialSecretKey: string;
+  /** Stable logical identities used by continuity; never a filesystem path. */
+  readonly continuityIdentity: string;
 }
 
 export function resolveAgentWorkspaceLayout(workspaceRoot: string): AgentWorkspaceLayout {
@@ -89,6 +97,7 @@ export function resolveAgentWorkspaceLayout(workspaceRoot: string): AgentWorkspa
     desktopRuntimeRoot: path.join(stateRoot, "desktop"),
     skillRoot: path.join(stateRoot, WorkspaceLayout.skillsDirectory),
     mcpRoot: path.join(stateRoot, WorkspaceLayout.mcpDirectory),
+    worldPackagesRoot: path.join(stateRoot, WorkspaceLayout.worldPackagesDirectory),
     contextRoot: path.join(stateRoot, WorkspaceLayout.contextDirectory),
     projectContextFile: path.join(stateRoot, WorkspaceLayout.contextDirectory, WorkspaceLayout.projectContextFile),
     exportsRoot: path.join(stateRoot, WorkspaceLayout.exportsDirectory),
@@ -99,6 +108,7 @@ export function resolveAgentWorkspaceLayout(workspaceRoot: string): AgentWorkspa
     ) as AgentWorkspaceLayout["databases"],
     configSecretKey: path.join(dataRoot, ...WorkspaceLayout.configSecretKey),
     credentialSecretKey: path.join(dataRoot, ...WorkspaceLayout.credentialSecretKey),
+    continuityIdentity: path.join(dataRoot, WorkspaceLayout.continuityIdentity),
   };
 }
 

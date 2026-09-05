@@ -86,6 +86,69 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
         version = 12;
         break;
       }
+      case 12:
+        migrateMemoryLearningToContinuityLearning(working, "", migratedPaths, removedPaths);
+        if (isRecord(working.Defaults)) {
+          migrateMemoryLearningToContinuityLearning(working.Defaults, "Defaults.", migratedPaths, removedPaths);
+        }
+        version = 13;
+        break;
+      case 13:
+        removeRetiredContinuityLearningOptions(working, "", removedPaths);
+        if (isRecord(working.Defaults)) {
+          removeRetiredContinuityLearningOptions(working.Defaults, "Defaults.", removedPaths);
+        }
+        version = 14;
+        break;
+      case 14:
+        removeCharacterThresholdLearningGate(working, "", removedPaths);
+        if (isRecord(working.Defaults)) {
+          removeCharacterThresholdLearningGate(working.Defaults, "Defaults.", removedPaths);
+        }
+        version = 15;
+        break;
+      case 15:
+        removeRoleRewriteConfiguration(working, "", removedPaths);
+        if (isRecord(working.Defaults)) {
+          removeRoleRewriteConfiguration(working.Defaults, "Defaults.", removedPaths);
+        }
+        version = 16;
+        break;
+      case 16:
+        removePhraseBasedTurnValueConfiguration(working, "", migratedPaths, removedPaths);
+        if (isRecord(working.Defaults)) {
+          removePhraseBasedTurnValueConfiguration(working.Defaults, "Defaults.", migratedPaths, removedPaths);
+        }
+        version = 17;
+        break;
+      case 17:
+        removeRetiredGoalControllerConfiguration(working, "", removedPaths);
+        if (isRecord(working.Defaults)) {
+          removeRetiredGoalControllerConfiguration(working.Defaults, "Defaults.", removedPaths);
+        }
+        version = 18;
+        break;
+      case 18:
+        removeRetiredGoalConfiguration(working, "", removedPaths);
+        if (isRecord(working.Defaults)) {
+          removeRetiredGoalConfiguration(working.Defaults, "Defaults.", removedPaths);
+        }
+        version = 19;
+        break;
+      case 19:
+        removeRetiredContinuityRecallRewrite(working, "", migratedPaths, removedPaths);
+        if (isRecord(working.Defaults)) {
+          removeRetiredContinuityRecallRewrite(working.Defaults, "Defaults.", migratedPaths, removedPaths);
+        }
+        version = 20;
+        break;
+      case 20:
+        removeRetiredTemporalSegmentIdleBoundary(working, "", removedPaths);
+        if (isRecord(working.Defaults)) {
+          removeRetiredTemporalSegmentIdleBoundary(working.Defaults, "Defaults.", removedPaths);
+        }
+        version = 21;
+        break;
       default:
         throw new AgentConfigMigrationError(`No migration is registered for configuration version ${version}.`);
     }
@@ -102,12 +165,179 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
   };
 }
 
+function removeRetiredTemporalSegmentIdleBoundary(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const continuity = container.ContinuityLearning;
+  if (!isRecord(continuity) || !isRecord(continuity.TemporalMemory)) return;
+  if (removeProperty(continuity.TemporalMemory, "SegmentIdleSeconds")) {
+    removedPaths.push(`${prefix}ContinuityLearning.TemporalMemory.SegmentIdleSeconds`);
+  }
+}
+
+function removeRetiredContinuityRecallRewrite(
+  container: Record<string, unknown>,
+  prefix: string,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  const continuity = container.ContinuityLearning;
+  if (!isRecord(continuity) || !isRecord(continuity.Recall)) return;
+  const recall = continuity.Recall;
+  const auxiliary = recall.Auxiliary;
+  if (!isRecord(auxiliary)) return;
+
+  if (typeof auxiliary.TimeoutMs === "number") {
+    const semantic = isRecord(recall.Semantic) ? recall.Semantic : {};
+    if (semantic.TimeoutMs === undefined) {
+      semantic.TimeoutMs = auxiliary.TimeoutMs;
+      recall.Semantic = semantic;
+      migratedPaths.push(`${prefix}ContinuityLearning.Recall.Semantic.TimeoutMs`);
+    }
+  }
+  delete recall.Auxiliary;
+  removedPaths.push(`${prefix}ContinuityLearning.Recall.Auxiliary`);
+}
+
 function removeRetiredRuntimeUpdateConfiguration(
   container: Record<string, unknown>,
   prefix: string,
   removedPaths: string[],
 ): void {
   if (removeProperty(container, "Updates")) removedPaths.push(`${prefix}Updates`);
+}
+
+function migrateMemoryLearningToContinuityLearning(
+  container: Record<string, unknown>,
+  prefix: string,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  const legacy = container.MemoryLearning;
+  if (legacy !== undefined) {
+    if (!isRecord(legacy)) {
+      throw new AgentConfigMigrationError(
+        `${prefix}MemoryLearning must be an object to migrate to ContinuityLearning.`,
+      );
+    }
+    const current = container.ContinuityLearning;
+    if (current !== undefined && !isRecord(current)) {
+      throw new AgentConfigMigrationError(`${prefix}ContinuityLearning must be an object.`);
+    }
+    const merged = { ...legacy, ...(isRecord(current) ? current : {}) };
+    if (removeProperty(merged, "Promotion")) removedPaths.push(`${prefix}MemoryLearning.Promotion`);
+    container.ContinuityLearning = merged;
+    delete container.MemoryLearning;
+    migratedPaths.push(`${prefix}ContinuityLearning`);
+    removedPaths.push(`${prefix}MemoryLearning`);
+    return;
+  }
+
+  const continuity = container.ContinuityLearning;
+  if (isRecord(continuity) && removeProperty(continuity, "Promotion")) {
+    removedPaths.push(`${prefix}ContinuityLearning.Promotion`);
+  }
+}
+
+function removeRetiredContinuityLearningOptions(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const continuity = container.ContinuityLearning;
+  if (!isRecord(continuity)) return;
+  if (removeProperty(continuity, "MaxRepairAttempts")) {
+    removedPaths.push(`${prefix}ContinuityLearning.MaxRepairAttempts`);
+  }
+  if (isRecord(continuity.Client) && removeProperty(continuity.Client, "MaxTokens")) {
+    removedPaths.push(`${prefix}ContinuityLearning.Client.MaxTokens`);
+  }
+}
+
+function removeCharacterThresholdLearningGate(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const continuity = container.ContinuityLearning;
+  if (!isRecord(continuity) || !isRecord(continuity.LearningGate)) return;
+  if (removeProperty(continuity.LearningGate, "MinimumUserCharacters")) {
+    removedPaths.push(`${prefix}ContinuityLearning.LearningGate.MinimumUserCharacters`);
+  }
+}
+
+function removeRoleRewriteConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const prompt = container.Prompt;
+  if (isRecord(prompt) && removeProperty(prompt, "RoleRewrite")) {
+    removedPaths.push(`${prefix}Prompt.RoleRewrite`);
+  }
+
+  if (!Array.isArray(container.ModelProviders)) return;
+  for (const [index, provider] of container.ModelProviders.entries()) {
+    if (isRecord(provider) && removeProperty(provider, "RoleRewrite")) {
+      removedPaths.push(`${prefix}ModelProviders[${index}].RoleRewrite`);
+    }
+  }
+}
+
+function removePhraseBasedTurnValueConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  const continuity = container.ContinuityLearning;
+  if (!isRecord(continuity)) return;
+  const recall = continuity.Recall;
+  if (!isRecord(recall)) return;
+  const legacyGate = recall.TrivialPromptGate;
+  if (!isRecord(legacyGate)) return;
+  const currentGate = isRecord(recall.TurnValueClassifier) ? recall.TurnValueClassifier : {};
+  if (typeof legacyGate.Enabled === "boolean" && currentGate.Enabled === undefined) {
+    recall.TurnValueClassifier = { ...currentGate, Enabled: legacyGate.Enabled };
+    migratedPaths.push(`${prefix}ContinuityLearning.Recall.TurnValueClassifier.Enabled`);
+  }
+  if (removeProperty(recall, "TrivialPromptGate")) {
+    removedPaths.push(`${prefix}ContinuityLearning.Recall.TrivialPromptGate`);
+  }
+}
+
+function removeRetiredGoalControllerConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const goals = container.Goals;
+  if (!isRecord(goals)) return;
+  for (const key of ["TurnBudget", "JudgeFailureLimit", "QualityGates", "Wake"] as const) {
+    if (removeProperty(goals, key)) removedPaths.push(`${prefix}Goals.${key}`);
+  }
+  const automatic = goals.Automatic;
+  if (isRecord(automatic) && removeProperty(automatic, "MinimumObservedBatches")) {
+    removedPaths.push(`${prefix}Goals.Automatic.MinimumObservedBatches`);
+  }
+  if (isRecord(automatic) && Object.keys(automatic).length === 0) {
+    delete goals.Automatic;
+    removedPaths.push(`${prefix}Goals.Automatic`);
+  }
+  if (Object.keys(goals).length === 0) {
+    delete container.Goals;
+    removedPaths.push(`${prefix}Goals`);
+  }
+}
+
+function removeRetiredGoalConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  if (removeProperty(container, "Goals")) removedPaths.push(`${prefix}Goals`);
 }
 
 const RetiredToolSearchEmbeddingProperties = [

@@ -5,6 +5,10 @@ import { AgentPiActiveSessionRegistry } from "../../../Source/AgentSystem/Pi/Age
 import type { AgentPiSession } from "../../../Source/AgentSystem/Pi/AgentPiSubstrate.js";
 import { createDeferred, waitForAbort } from "../Support/AsyncTestFixtures.js";
 import { AgentSessionStatuses } from "../../../Source/AgentSystem/Session/AgentSession.js";
+import {
+  AgentPiSessionLifecycleStates,
+  withAgentPiSessionLifecycle,
+} from "../../../Source/AgentSystem/Pi/AgentPiSessionLifecycleMetadata.js";
 import { AgentSessionMessageQueueModes } from "../../../Source/AgentSystem/Session/AgentSessionMessageQueueMode.js";
 import {
   completedRun,
@@ -14,9 +18,18 @@ import {
 } from "./SessionRunCoordinatorTestFixtures.js";
 
 describe("Session run coordinator queue behavior", () => {
-  test("cancels and truncates an active turn exactly once", async () => {
+  test("cancels an active turn without erasing durable history", async () => {
     const pendingLoop = createPendingLoop();
-    const fixture = createCoordinatorFixture({ loop: pendingLoop.loop });
+    const reset = vi.fn(async () => true);
+    const fixture = createCoordinatorFixture({
+      loop: pendingLoop.loop,
+      piSessionMutations: { reset },
+    });
+    fixture.session.metadata = withAgentPiSessionLifecycle(
+      fixture.session.metadata,
+      AgentPiSessionLifecycleStates.Initialized,
+      "test-model",
+    );
     const events: AgentDomainEvent[] = [];
     const run = fixture.coordinator.runTurn(fixture.session, {
       approvalMode: "agent",
@@ -27,6 +40,21 @@ describe("Session run coordinator queue behavior", () => {
       },
     });
     await pendingLoop.started;
+    fixture.store.persistTurnArtifacts(
+      fixture.session.id,
+      "request-cancelled",
+      [],
+      [
+        {
+          step: 1,
+          seq: 0,
+          kind: "tool",
+          toolName: "WorkspaceReadFile",
+          callId: "call-read-config",
+          status: "done",
+        },
+      ],
+    );
 
     expect(fixture.coordinator.assertAvailable(fixture.session).kind).toBe("busy");
     await expect(
@@ -41,15 +69,27 @@ describe("Session run coordinator queue behavior", () => {
 
     expect(await fixture.coordinator.cancelActiveRun({ sessionId: fixture.session.id })).toBe(false);
     expect(fixture.session.status).toBe(AgentSessionStatuses.Idle);
-    expect(fixture.store.loadConversation(fixture.session.id)).toEqual([]);
-    expect(fixture.store.loadRunSnapshots(fixture.session.id)).toEqual([]);
+    expect(fixture.store.loadConversation(fixture.session.id)).toEqual([
+      expect.objectContaining({
+        requestId: "request-cancelled",
+        kind: "user.message",
+        content: "Long-running inspection",
+      }),
+    ]);
+    expect(fixture.store.loadRunSnapshots(fixture.session.id)).toEqual([
+      expect.objectContaining({ requestId: "request-cancelled", status: "cancelled" }),
+    ]);
+    expect(fixture.store.loadStepTraces(fixture.session.id)).toEqual([
+      expect.objectContaining({
+        requestId: "request-cancelled",
+        traces: [expect.objectContaining({ callId: "call-read-config", status: "done" })],
+      }),
+    ]);
+    expect(reset).toHaveBeenCalledWith({ sessionId: fixture.session.id, modelProviderId: "test-model" });
     expect(events.map((event) => event.kind)).toEqual(
-      expect.arrayContaining([
-        AgentEventKinds.RunCancellationProgress,
-        AgentEventKinds.RunCancelled,
-        AgentEventKinds.SessionTruncated,
-      ]),
+      expect.arrayContaining([AgentEventKinds.RunCancellationProgress, AgentEventKinds.RunCancelled]),
     );
+    expect(events.map((event) => event.kind)).not.toContain(AgentEventKinds.SessionTruncated);
     const cancellationStages = events
       .filter((event) => event.kind === AgentEventKinds.RunCancellationProgress)
       .map((event) => event.data);

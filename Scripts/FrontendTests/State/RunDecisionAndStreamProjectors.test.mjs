@@ -1,7 +1,13 @@
 import { expect, test } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
-import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
+import {
+  createEvent,
+  createTestState,
+  TestRequestId,
+  TestSessionId,
+  TestTimestamp,
+} from "./sessionProjectorTestUtils.mjs";
 
 test("regeneration truncation acknowledgement preserves the optimistic replacement request", () => {
   const state = createTestState();
@@ -63,6 +69,45 @@ test("regeneration truncation acknowledgement preserves the optimistic replaceme
   expect(state.sessions[TestSessionId].activeRequestId).toBe(replacementRequestId);
 });
 
+test("user cancellation keeps the current message and completed tool evidence", () => {
+  const state = createTestState();
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "检查当前配置" }, { sequence: 1 }));
+  state.sessions[TestSessionId].messages.push({
+    id: `${TestRequestId}-user`,
+    role: "user",
+    content: "检查当前配置",
+    createdAt: "2026-07-09T00:00:00.000Z",
+    requestId: TestRequestId,
+  });
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ToolCallStarted,
+      { index: 0, toolName: "WorkspaceReadFile", callId: "call-read", arguments: { path: "senera.config.json" } },
+      { sequence: 2, step: 1, phase: "tool" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ToolCallCompleted,
+      { index: 0, toolName: "WorkspaceReadFile", callId: "call-read" },
+      { sequence: 3, step: 1, phase: "tool" },
+    ),
+  );
+  applyEvent(state, createEvent(EventKinds.RunCancelled, {}, { sequence: 4 }));
+
+  const session = state.sessions[TestSessionId];
+  const run = readTestRun(state);
+  expect(session.messages).toEqual([expect.objectContaining({ id: `${TestRequestId}-user` })]);
+  expect(run.status).toBe("cancelled");
+  expect(run.steps).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: "tool-call-read", status: "done", toolName: "WorkspaceReadFile" }),
+    ]),
+  );
+});
+
 test("prompt summary projects deterministic preparation metrics", () => {
   const state = createTestState();
 
@@ -90,6 +135,166 @@ test("prompt summary projects deterministic preparation metrics", () => {
     promptLines: 42,
     promptTokenCount: 330,
   });
+});
+
+test("continuity snapshot stays attached to its run without becoming a workflow step", () => {
+  const state = createTestState();
+
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "继续雾港的故事" }, { sequence: 1 }));
+  const initialStepCount = readTestRun(state).steps.length;
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ContinuitySnapshot,
+      {
+        enabled: true,
+        concepts: [],
+        residentProfile: [],
+        preset: {
+          enabled: true,
+          activePresetName: "ciello.json",
+          title: "Ciello",
+          corePersona: "电子插画师",
+          languageStyle: "自然直接",
+        },
+        factCatalog: [
+          {
+            factKey: "user.response_style",
+            claim: "先给结论。",
+            sourceRefs: ["senera://memory-source/preference"],
+            confidence: 0.95,
+            authority: "user_explicit",
+            updatedAt: "2026-08-22T08:00:00.000Z",
+            score: 0.91,
+            matchedBy: ["exact_phrase"],
+          },
+        ],
+        selection: {
+          profiles: { available: 0, matched: 0, selected: 0 },
+          facts: { available: 1, matched: 1, selected: 1 },
+          events: { available: 0, matched: 0, selected: 0 },
+          evidence: { available: 1, matched: 1, selected: 1 },
+          usedCharacters: 96,
+          maxCharacters: 24_000,
+        },
+        evidenceCandidates: [
+          {
+            sourceRefs: ["senera://memory-source/preference"],
+            score: 0.48,
+            matchedBy: ["lexical"],
+          },
+        ],
+        eventCandidates: [],
+        rules: [],
+        signals: [],
+        goals: { goals: [] },
+        execution: { active: null, executions: [] },
+        todos: {
+          items: [],
+          counts: { total: 0, pending: 0, inProgress: 0, completed: 0, cancelled: 0 },
+        },
+      },
+      { step: 1, sequence: 2, phase: "prompt", layer: "snapshot" },
+    ),
+  );
+
+  const run = readTestRun(state);
+  expect(run.steps).toHaveLength(initialStepCount);
+  expect(run.continuity).toMatchObject({
+    preset: { title: "Ciello" },
+    factCatalog: [{ claim: "先给结论。" }],
+    evidenceCandidates: [{ sourceRefs: ["senera://memory-source/preference"] }],
+  });
+});
+
+test("malformed historical continuity snapshots are rejected at the projection boundary", () => {
+  const state = createTestState();
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "旧回合" }, { sequence: 1 }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ContinuitySnapshot,
+      {
+        enabled: true,
+        residentProfile: [{ subject: "system" }],
+        factCatalog: [],
+        selection: {
+          profiles: { available: 0, matched: 0, selected: 0 },
+          facts: { available: 0, matched: 0, selected: 0 },
+          events: { available: 0, matched: 0, selected: 0 },
+          evidence: { available: 0, matched: 0, selected: 0 },
+          usedCharacters: 0,
+          maxCharacters: 24_000,
+        },
+        preset: { enabled: false, activePresetName: null },
+        evidenceCandidates: [],
+        eventCandidates: [],
+        rules: [],
+        signals: [],
+      },
+      { step: 1, sequence: 2, phase: "prompt", layer: "snapshot" },
+    ),
+  );
+
+  expect(readTestRun(state).continuity).toBeUndefined();
+});
+
+test("Agenda snapshots stay global and are not derived from execution association", () => {
+  const state = createTestState();
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "整理数据并验证结果" }, { sequence: 1 }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ExecutionCreated,
+      {
+        snapshot: { active: null, executions: [] },
+        execution: {
+          id: "execution-1",
+          uri: "senera://execution/execution-1",
+          sessionId: TestSessionId,
+          requestId: TestRequestId,
+          objective: "整理数据并验证结果",
+          status: "active",
+          steps: [],
+          createdAt: TestTimestamp,
+          updatedAt: TestTimestamp,
+        },
+      },
+      { sequence: 2 },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.AgendaSnapshot,
+      {
+        snapshot: {
+          world: {
+            id: "world-1",
+            uri: "senera://world/world-1",
+            timeZone: "Asia/Shanghai",
+            createdAt: TestTimestamp,
+            updatedAt: TestTimestamp,
+          },
+          clock: {
+            instant: TestTimestamp,
+            timeZone: "Asia/Shanghai",
+            localDate: "2026-07-09",
+            localTime: "08:00:00",
+            weekdayLabel: "星期四",
+          },
+          records: [],
+          activeGoals: [],
+          currentActivities: [],
+          timeline: [],
+          upcoming: [],
+        },
+      },
+      { sequence: 3, phase: "prompt", layer: "snapshot" },
+    ),
+  );
+  expect(state.agenda?.activeGoals).toEqual([]);
+  expect(readTestRun(state).execution).toEqual({ active: null, executions: [] });
 });
 
 test("model stream events keep visible answer text while closing the model step", () => {
@@ -205,6 +410,27 @@ test("run activity updates the left-side live status without creating workflow s
 
   applyEvent(state, createEvent(EventKinds.RunCompleted, {}, { sequence: 4, phase: "run" }));
   expect(readTestRun(state).liveActivity).toBeUndefined();
+});
+
+test("late terminal events cannot clear a newer active run", () => {
+  const state = createTestState();
+  const olderRequestId = "request-older";
+  const newerRequestId = "request-newer";
+
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunStarted, { input: "旧任务" }, { requestId: olderRequestId, sequence: 1 }),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunStarted, { input: "新任务" }, { requestId: newerRequestId, sequence: 2 }),
+  );
+
+  applyEvent(state, createEvent(EventKinds.RunCompleted, {}, { requestId: olderRequestId, sequence: 3 }));
+  expect(state.sessions[TestSessionId].activeRequestId).toBe(newerRequestId);
+
+  applyEvent(state, createEvent(EventKinds.RunCancelled, {}, { requestId: olderRequestId, sequence: 4 }));
+  expect(state.sessions[TestSessionId].activeRequestId).toBe(newerRequestId);
 });
 
 test("run activity restores the parent phase after nested context compaction completes", () => {

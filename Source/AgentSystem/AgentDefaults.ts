@@ -1,7 +1,7 @@
 export { AgentDefaults } from "./Defaults/AgentDefaultValues.js";
 export type { ResolvedAgentDefaultsConfig } from "./Defaults/AgentDefaultValues.js";
 
-export { resolveAgentDefaults } from "./Defaults/AgentDefaultResolver.js";
+export { resolveAgentDefaults, resolveAgentInferenceBudgetConfig } from "./Defaults/AgentDefaultResolver.js";
 
 export {
   resolveArtifactsConfig,
@@ -21,15 +21,17 @@ export {
 } from "./Defaults/AgentModelProviderDefaults.js";
 
 export { resolveActionPlannerConfig } from "./Defaults/AgentPlannerDefaults.js";
-
 export {
   resolveAgentLoopConfig,
+  resolveAgentPromptConfig,
+  resolveAgentWorldConfig,
   resolveSandboxRuntimeConfig,
+  resolveAgentTodosConfig,
   resolveToolExecutionConfig,
 } from "./Defaults/AgentRuntimeDefaults.js";
 
 export {
-  resolveMemoryLearningConfig,
+  resolveContinuityLearningConfig,
   resolvePresetsConfig,
   resolveToolLearningConfig,
   resolveToolSearchConfig,
