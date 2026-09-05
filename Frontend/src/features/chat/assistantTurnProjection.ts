@@ -34,6 +34,7 @@ export function projectAssistantTurns(
     .filter(hasCancelledRunEvidence)
     .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
   const orphanRunsByRequestId = new Map(orphanCancelledRuns.map((run) => [run.requestId, run]));
+  const renderedRequestIds = new Set<string>();
   const items: ProjectedMessageListItem[] = [];
 
   for (const message of messages) {
@@ -41,7 +42,10 @@ export function projectAssistantTurns(
       items.push(message);
       if (message.requestId) {
         const orphanRun = orphanRunsByRequestId.get(message.requestId);
-        if (orphanRun) items.push(projectTerminalRunSlice(orphanRun));
+        if (orphanRun) {
+          items.push(projectTerminalRunSlice(orphanRun));
+          renderedRequestIds.add(orphanRun.requestId);
+        }
       }
       continue;
     }
@@ -68,11 +72,13 @@ export function projectAssistantTurns(
       run: message.requestId ? runsByRequestId.get(message.requestId) : undefined,
       streaming: false,
     });
+    if (message.requestId) renderedRequestIds.add(message.requestId);
   }
 
   for (const run of orphanCancelledRuns) {
-    if (items.some((item) => isAssistantTurnListItem(item) && item.requestId === run.requestId)) continue;
+    if (renderedRequestIds.has(run.requestId)) continue;
     items.push(projectTerminalRunSlice(run));
+    renderedRequestIds.add(run.requestId);
   }
 
   if (streamingRun) {

@@ -6,11 +6,13 @@ import { AgentPiBamlToolProvider } from "./AgentPiBamlToolProvider.js";
 import { AgentPiNativeToolProvider } from "./AgentPiNativeToolProvider.js";
 import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
 import type { AgentPiProviderProjection } from "./AgentPiTypes.js";
+import type { AgentResidentSpeechProjector } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 
 export interface AgentPiModelRuntimeOwnerOptions {
   readonly provider: AgentPiProviderProjection;
   readonly modelProvider: ResolvedAgentModelProviderConfig;
   readonly compilerFactory: AgentPiPlanningCompilerFactory;
+  readonly residentSpeech?: AgentResidentSpeechProjector;
   readonly createRuntime?: () => Promise<ModelRuntime>;
 }
 
@@ -46,11 +48,13 @@ export class AgentPiModelRuntimeOwner {
             projection: this.options.provider,
             modelProvider: this.options.modelProvider,
             frame: this.frame,
+            residentSpeech: this.options.residentSpeech,
           }).create()
         : new AgentPiBamlToolProvider({
             projection: this.options.provider,
             frame: this.frame,
             compilerFactory: this.options.compilerFactory,
+            residentSpeech: this.options.residentSpeech,
           }).create();
     runtime.registerNativeProvider(provider);
     const model = runtime.getModel(this.options.provider.providerId, this.options.provider.model.id);

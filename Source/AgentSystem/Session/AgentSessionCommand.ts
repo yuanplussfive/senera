@@ -46,6 +46,11 @@ export function createAgentSessionMessageCommand(input: {
   readonly text: string;
   readonly approvalMode: AgentExecutionApprovalMode;
   readonly attachments?: readonly unknown[];
+  readonly systemPromptLayer?: unknown;
+  readonly allowedToolNames?: readonly string[];
+  readonly pinnedSkills?: readonly unknown[];
+  readonly thinkingLevel?: string;
+  readonly inheritProjectContext?: boolean;
   readonly createdAt: string;
 }): AgentSessionCommandDescriptor {
   const operationKind = "session.message";
@@ -55,12 +60,17 @@ export function createAgentSessionMessageCommand(input: {
     requestId: input.requestId,
     createdAt: input.createdAt,
     payloadHash: sha256HexOfCanonicalJson({
-      version: 2,
+      version: 4,
       operationKind,
       approvalMode: input.approvalMode,
       modelProviderId: input.modelProviderId?.trim() || null,
       input: input.text,
       attachments: input.attachments ?? [],
+      systemPromptLayer: input.systemPromptLayer ?? null,
+      allowedToolNames: input.allowedToolNames ?? null,
+      pinnedSkills: input.pinnedSkills ?? null,
+      thinkingLevel: input.thinkingLevel ?? null,
+      inheritProjectContext: input.inheritProjectContext ?? null,
     }),
   };
 }

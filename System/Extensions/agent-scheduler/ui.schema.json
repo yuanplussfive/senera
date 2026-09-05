@@ -3,32 +3,42 @@
     "version": 1,
     "sections": [
       {
-        "id": "lease",
-        "label": { "zh-CN": "调度器租约", "en-US": "Scheduler lease" },
+        "id": "polling",
+        "label": { "zh-CN": "可靠调度", "en-US": "Reliable scheduling" },
         "description": {
-          "zh-CN": "控制多实例环境中调度器主节点的租约和心跳。租约时长必须大于心跳间隔。",
-          "en-US": "Control scheduler leader lease and heartbeat in multi-instance deployments. Lease duration must exceed the heartbeat interval."
+          "zh-CN": "所有进程都会扫描 SQLite 中到期的任务，并通过原子认领确保只执行一次。认领过期后可由其他进程恢复。",
+          "en-US": "Every process scans due SQLite tasks. Atomic claims prevent duplicate execution and expired claims are recoverable."
         },
         "fields": [
           {
-            "path": ["lease", "durationMs"],
-            "label": { "zh-CN": "租约时长（毫秒）", "en-US": "Lease duration (ms)" },
+            "path": ["polling", "intervalMs"],
+            "label": { "zh-CN": "扫描间隔（毫秒）", "en-US": "Polling interval (ms)" },
+            "type": "number",
+            "min": 250,
+            "max": 60000,
+            "step": 250,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["polling", "claimDurationMs"],
+            "label": { "zh-CN": "执行认领时长（毫秒）", "en-US": "Execution claim duration (ms)" },
             "type": "number",
             "min": 5000,
-            "max": 300000,
+            "max": 3600000,
             "step": 1000,
             "required": false,
             "essential": true
           },
           {
-            "path": ["lease", "heartbeatMs"],
-            "label": { "zh-CN": "心跳间隔（毫秒）", "en-US": "Heartbeat interval (ms)" },
+            "path": ["polling", "claimBatchSize"],
+            "label": { "zh-CN": "每次认领上限", "en-US": "Claim batch size" },
             "type": "number",
-            "min": 1000,
-            "max": 60000,
-            "step": 1000,
+            "min": 1,
+            "max": 128,
+            "step": 1,
             "required": false,
-            "essential": true
+            "essential": false
           }
         ]
       }

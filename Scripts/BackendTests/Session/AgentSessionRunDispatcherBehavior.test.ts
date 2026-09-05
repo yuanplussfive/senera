@@ -7,8 +7,8 @@ import { AgentSessionRunDispatcher } from "../../../Source/AgentSystem/Session/A
 describe("agent session run dispatcher", () => {
   test("keeps dispatch pending until a cancelled session turn really settles", async () => {
     let settleSubmission!: () => void;
-    const submission = new Promise<void>((resolve) => {
-      settleSubmission = resolve;
+    const submission = new Promise<{ kind: "accepted" }>((resolve) => {
+      settleSubmission = () => resolve({ kind: "accepted" });
     });
     const sessions = {
       forkSession: vi.fn(async () => undefined),

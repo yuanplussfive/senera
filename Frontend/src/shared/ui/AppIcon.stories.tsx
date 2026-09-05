@@ -1,5 +1,6 @@
 import type { Story } from "@ladle/react";
 import { AppIcon, type AppIconName } from "./AppIcon";
+import { Spinner } from "./Spinner";
 
 const activityIcons: readonly { icon: AppIconName; label: string }[] = [
   { icon: "brain", label: "推理" },
@@ -36,7 +37,7 @@ export const Status: Story = () => (
       <h1 className="text-[18px] font-semibold">状态图标</h1>
       <div className="mt-7 flex flex-wrap items-center gap-x-7 gap-y-4 border-y border-line-subtle py-5 text-[13px]">
         <span className="inline-flex items-center gap-2 text-content-muted">
-          <AppIcon icon="loading" size={17} className="motion-safe:animate-spin" /> 正在执行
+          <Spinner size="sm" /> 正在执行
         </span>
         <span className="inline-flex items-center gap-2 text-content-muted">
           <AppIcon icon="check" size={17} /> 已完成

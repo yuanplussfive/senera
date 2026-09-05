@@ -1,6 +1,6 @@
-import { Ban, CircleAlert, Clock3, LoaderCircle, ListTree, MessageSquareText, PanelLeftOpen } from "lucide-react";
+import { Ban, CircleAlert, Clock3, ListTree, MessageSquareText, PanelLeftOpen } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { IconButton } from "../../shared/ui";
+import { IconButton, Spinner } from "../../shared/ui";
 import { ToolDock } from "./ToolDock";
 
 export function ChatHeader({
@@ -51,7 +51,7 @@ export function ChatHeader({
         </span>
       ) : runStatus === "cancelling" ? (
         <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-umber-200 bg-umber-50 px-2 py-0.5 font-mono text-[10px] text-umber-700">
-          <LoaderCircle className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+          <Spinner size="xs" />
           {frontendMessage("workflow.run.status.cancelling")}
         </span>
       ) : runStatus === "failed" ? (

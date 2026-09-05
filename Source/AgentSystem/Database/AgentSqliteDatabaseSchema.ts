@@ -2,8 +2,13 @@ import type Database from "better-sqlite3";
 
 export const AgentSqliteContractMetadataTable = "__senera_database_contract";
 export const AgentSqliteMigrationLedgerTable = "__senera_schema_migrations";
+export const AgentSqliteTimeMetadataTable = "__senera_database_time_metadata";
 
-const ControlTableNames = new Set([AgentSqliteContractMetadataTable, AgentSqliteMigrationLedgerTable]);
+const ControlTableNames = new Set([
+  AgentSqliteContractMetadataTable,
+  AgentSqliteMigrationLedgerTable,
+  AgentSqliteTimeMetadataTable,
+]);
 
 interface SchemaObjectRow {
   readonly type: "index" | "table" | "trigger" | "view";

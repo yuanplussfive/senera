@@ -9,6 +9,7 @@ export const DesktopMcpRuntimeStageDirectory = path.join(".cache", "desktop-mcp-
 
 interface McpPackageManifest {
   readonly server?: unknown;
+  readonly _meta?: unknown;
 }
 
 interface RootPackageManifest {
@@ -21,6 +22,11 @@ interface McpNodeBundleEntry {
   readonly name: string;
   readonly sourceEntryPoint: string;
   readonly entryPoint: string;
+}
+
+interface McpRuntimeAsset {
+  readonly source: string;
+  readonly target: string;
 }
 
 export interface DesktopMcpRuntimePreparationResult {
@@ -39,14 +45,15 @@ if (isMainModule(import.meta.url)) {
 /**
  * Build the bundled MCP collection used by Electron. Dependencies remain owned
  * by the root project and are resolved by esbuild at build time; the staged
- * resource contains executable server bundles rather than a copied node_modules.
+ * resource contains executable server bundles plus manifest-declared native
+ * runtime assets rather than a copied node_modules.
  */
 export async function prepareDesktopMcpRuntime(workspaceRoot: string): Promise<DesktopMcpRuntimePreparationResult> {
   const root = path.resolve(workspaceRoot);
   const sourceRoot = path.join(root, "McpServers");
   const stageRoot = resolveDesktopMcpRuntimeStageRoot(root);
   const nodeTarget = readNodeBuildTarget(root);
-  const packages = discoverMcpPackages(sourceRoot);
+  const packages = discoverMcpPackages(root, sourceRoot);
   const stagingRoot = await mkdtemp(path.join(path.dirname(stageRoot), ".desktop-mcp-runtime-"));
 
   try {
@@ -62,6 +69,9 @@ export async function prepareDesktopMcpRuntime(workspaceRoot: string): Promise<D
         force: true,
         filter: (source) => !bundle || !containsNodeModules(packageRoot.root, source),
       });
+      for (const asset of packageRoot.runtimeAssets) {
+        await cp(asset.source, path.join(targetRoot, asset.target), { force: true });
+      }
 
       if (!bundle) continue;
       const targetEntryPoint = path.join(targetRoot, bundle.entryPoint);
@@ -87,10 +97,14 @@ export function resolveDesktopMcpRuntimeStageRoot(workspaceRoot: string): string
   return path.join(path.resolve(workspaceRoot), DesktopMcpRuntimeStageDirectory);
 }
 
-function discoverMcpPackages(sourceRoot: string): readonly {
+function discoverMcpPackages(
+  workspaceRoot: string,
+  sourceRoot: string,
+): readonly {
   readonly name: string;
   readonly root: string;
   readonly nodeBundle?: McpNodeBundleEntry;
+  readonly runtimeAssets: readonly McpRuntimeAsset[];
 }[] {
   if (!isDirectory(sourceRoot)) return [];
 
@@ -101,10 +115,12 @@ function discoverMcpPackages(sourceRoot: string): readonly {
     .map((entry) => {
       const root = path.join(sourceRoot, entry.name);
       const manifestPath = path.join(root, "manifest.json");
+      const manifest = fs.existsSync(manifestPath) ? readManifest(manifestPath) : undefined;
       return {
         name: entry.name,
         root,
-        nodeBundle: fs.existsSync(manifestPath) ? readNodeBundleEntry(root, entry.name, manifestPath) : undefined,
+        nodeBundle: manifest ? readNodeBundleEntry(root, entry.name, manifestPath, manifest) : undefined,
+        runtimeAssets: manifest ? readRuntimeAssets(workspaceRoot, entry.name, manifest) : [],
       };
     });
 }
@@ -113,8 +129,8 @@ function readNodeBundleEntry(
   packageRoot: string,
   packageName: string,
   manifestPath: string,
+  manifest: McpPackageManifest,
 ): McpNodeBundleEntry | undefined {
-  const manifest = readManifest(manifestPath);
   const server = record(manifest.server);
   if (!server || server.type !== "node") return undefined;
 
@@ -133,6 +149,41 @@ function readNodeBundleEntry(
     sourceEntryPoint,
     entryPoint: path.relative(packageRoot, sourceEntryPoint),
   };
+}
+
+function readRuntimeAssets(
+  workspaceRoot: string,
+  packageName: string,
+  manifest: McpPackageManifest,
+): readonly McpRuntimeAsset[] {
+  const metadata = record(manifest._meta);
+  const runtime = record(metadata?.["ai.senera/runtime-assets"]);
+  const declarations = runtime?.["node_modules"];
+  if (declarations === undefined) return [];
+  if (!Array.isArray(declarations)) {
+    throw new Error(`MCP package ${packageName} runtime assets must declare an array in manifest.json.`);
+  }
+  return declarations.flatMap((declaration) => {
+    const entry = record(declaration);
+    const dependency = text(entry?.package);
+    const files = entry?.files;
+    if (!dependency || !Array.isArray(files) || files.some((file) => typeof file !== "string" || !file.trim())) {
+      throw new Error(`MCP package ${packageName} has an invalid runtime asset declaration in manifest.json.`);
+    }
+    const dependencyRoot = path.resolve(workspaceRoot, "node_modules", ...dependency.split("/"));
+    const sourceRoot = path.resolve(dependencyRoot);
+    return files.map((file) => {
+      const relativeFile = file.trim().replaceAll("\\", "/");
+      const source = path.resolve(sourceRoot, relativeFile);
+      if (!isPathWithin(sourceRoot, source) || !isFile(source)) {
+        throw new Error(`MCP package ${packageName} runtime asset is missing: ${dependency}/${relativeFile}.`);
+      }
+      return {
+        source,
+        target: path.basename(relativeFile),
+      };
+    });
+  });
 }
 
 async function buildNodeMcpBundle(

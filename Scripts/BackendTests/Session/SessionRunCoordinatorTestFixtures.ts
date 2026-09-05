@@ -3,13 +3,16 @@ import { AgentConversationPolicy } from "../../../Source/AgentSystem/Conversatio
 import { AgentConversationProjector } from "../../../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import { AgentDefaults } from "../../../Source/AgentSystem/AgentDefaults.js";
 import { AgentInteractionInputRuntime } from "../../../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
-import { AgentMemoryService } from "../../../Source/AgentSystem/Memory/AgentMemoryService.js";
+import {
+  AgentMemoryService,
+  type AgentContinuityDeliverySink,
+} from "../../../Source/AgentSystem/Memory/AgentMemoryService.js";
 import { InMemoryAgentMemorySourceRepository } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import { AgentPiActiveSessionRegistry } from "../../../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import type { AgentLoopRunner } from "../../../Source/AgentSystem/Loop/AgentLoopRunner.js";
 import type { AgentCompletedRunResult } from "../../../Source/AgentSystem/Runtime/AgentExecutionProjector.js";
 import { InMemorySessionRepository } from "../../../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
-import { AgentSessionHistoryMutationCoordinator } from "../../../Source/AgentSystem/Session/AgentSessionHistoryMutationCoordinator.js";
+import type { AgentPiSessionMutationPort } from "../../../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
 import { AgentSessionRunCoordinator } from "../../../Source/AgentSystem/Session/AgentSessionRunCoordinator.js";
 import { createAgentRequestCancellationResource } from "../../../Source/AgentSystem/Session/AgentSessionRunResource.js";
 import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSessionStore.js";
@@ -17,21 +20,25 @@ import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSess
 export function createCoordinatorFixture(options: {
   loop: AgentLoopRunner;
   piSessions?: AgentPiActiveSessionRegistry;
+  piSessionMutations?: Pick<AgentPiSessionMutationPort, "reset">;
   interactionInput?: AgentInteractionInputRuntime;
+  continuityDelivery?: AgentContinuityDeliverySink;
   runResources?: ConstructorParameters<typeof AgentSessionRunCoordinator>[0]["runResources"];
 }) {
   const sessionRepository = new InMemorySessionRepository();
   const store = new AgentSessionStore({ repository: sessionRepository });
   const session = store.open("session-test").session;
   const memoryRepository = new InMemoryAgentMemorySourceRepository();
-  const memory = new AgentMemoryService({ sourceRepository: memoryRepository });
-  const historyMutations = new AgentSessionHistoryMutationCoordinator({ store, memory });
+  const memory = new AgentMemoryService({
+    sourceRepository: memoryRepository,
+    continuityDelivery: options.continuityDelivery,
+  });
   const coordinator = new AgentSessionRunCoordinator({
     store,
     conversationProjector: new AgentConversationProjector(),
     conversationPolicy: new AgentConversationPolicy(),
     memory,
-    historyMutations,
+    piSessionMutations: options.piSessionMutations,
     piSessions: options.piSessions,
     runResources: [
       ...(options.runResources ?? []),

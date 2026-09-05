@@ -245,9 +245,11 @@ function ChildRunMessages({ messages }: { messages: readonly TimelineChildRunMes
 
 function ToolOutputBlock({ stream, text }: { stream: "stdout" | "stderr"; text: string }): JSX.Element {
   return (
-    <div className="overflow-hidden rounded-md border border-ink-200/70 bg-ink-950 text-paper-100">
-      <div className="border-b border-white/10 px-3 py-1 font-mono text-[10px] uppercase text-paper-300">{stream}</div>
-      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11px] leading-relaxed">
+    <div className="overflow-hidden rounded-md border border-[var(--theme-code-output-border)] bg-[var(--theme-code-output-bg)] text-[var(--theme-code-output-fg)]">
+      <div className="border-b border-[var(--theme-code-output-border)] px-3 py-1 font-mono text-[10px] uppercase text-[var(--theme-code-output-muted)]">
+        {stream}
+      </div>
+      <pre className="scrollbar-thin max-h-72 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11px] leading-relaxed">
         {text}
       </pre>
     </div>

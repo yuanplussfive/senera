@@ -4,6 +4,7 @@ export interface SeneraRuntimeConfig {
   modelLabel?: string;
   userName?: string;
   emptySuggestions?: string[];
+  timeZone?: string;
 }
 
 export function readSeneraRuntimeConfig(): SeneraRuntimeConfig {
@@ -40,6 +41,15 @@ export function resolveRuntimeEmptySuggestions(buildTimeValue?: string): string[
     ?.split("|")
     .map((suggestion) => suggestion.trim())
     .filter(Boolean);
+}
+
+export function resolveRuntimeTimeZone(buildTimeValue = __SENERA_DEFAULT_TIME_ZONE__): string {
+  const configured = readSeneraRuntimeConfig().timeZone?.trim() || buildTimeValue;
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: configured }).resolvedOptions().timeZone;
+  } catch {
+    return new Intl.DateTimeFormat("en-US", { timeZone: buildTimeValue }).resolvedOptions().timeZone;
+  }
 }
 
 function normalizeWebSocketUrl(value: string): string {

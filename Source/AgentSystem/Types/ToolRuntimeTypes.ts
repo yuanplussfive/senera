@@ -59,8 +59,26 @@ export interface AgentToolArtifactPayload {
   readonly evidence?: readonly AgentToolEvidenceCandidate[];
 }
 
+/**
+ * Artifact persistence is an auxiliary durability concern. It must never
+ * change the execution outcome that was returned by the tool runtime.
+ */
+export const AgentToolArtifactAvailabilityStatuses = {
+  Unavailable: "unavailable",
+} as const;
+
+export const AgentToolArtifactUnavailableReasons = {
+  RecordingFailed: "recording_failed",
+} as const;
+
+export interface AgentToolArtifactAvailability {
+  readonly status: typeof AgentToolArtifactAvailabilityStatuses.Unavailable;
+  readonly reason: typeof AgentToolArtifactUnavailableReasons.RecordingFailed;
+}
+
 export interface AgentToolArtifactAssetReference {
   readonly id: string;
+  readonly resourceUri: string;
   readonly fileName: string;
   readonly mediaType: string;
   readonly relativePath: string;
@@ -82,6 +100,7 @@ export interface ExecutedToolCallResult {
     stderr: string;
   };
   artifactPayload?: AgentToolArtifactPayload;
+  artifactAvailability?: AgentToolArtifactAvailability;
   outputCapture?: SeneraOutputSpoolDescriptor;
   semanticProjectionRequest?: AgentToolSemanticProjectionRequest;
   semanticProjection?: AgentToolSemanticProjection;
@@ -111,6 +130,7 @@ export interface AgentToolResultPresentation {
   evidence: AgentToolResultPresentationEvidence[];
   changes: AgentToolResultPresentationChange[];
   artifactUri?: string;
+  artifactAvailability?: AgentToolArtifactAvailability;
   failure?: AgentToolFailure;
 }
 

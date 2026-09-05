@@ -93,7 +93,7 @@ export class AgentMcpPackageCatalog {
     const owner = createAgentMcpPackageOwner(discovered.package_, discovered.server);
     return {
       owner,
-      previousTools: this.ownerTools(owner.name),
+      previousTools: this.ownerTools(owner),
       nextTools: projectAgentMcpPackageTools(
         discovered.package_,
         discovered.server,
@@ -104,7 +104,7 @@ export class AgentMcpPackageCatalog {
     };
   }
 
-  private ownerTools(ownerName: string): RegisteredTool[] {
-    return this.registry.listTools().filter((tool) => tool.owner.name === ownerName);
+  private ownerTools(owner: Parameters<AgentExtensionRegistry["listToolsForOwner"]>[0]): RegisteredTool[] {
+    return this.registry.listToolsForOwner(owner);
   }
 }

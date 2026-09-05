@@ -71,6 +71,16 @@ describe("Imagen MCP artifact boundary", () => {
     );
   });
 
+  test("projects inline media in text content without knowing the producing tool", async () => {
+    const encoded = "A".repeat(20_000);
+    const execution = await runMcpTool({
+      content: [{ type: "text", text: `![generated](data:image/png;base64,${encoded})` }],
+    });
+
+    expect(JSON.stringify(execution.response)).not.toContain(encoded);
+    expect(JSON.stringify(execution.response)).toContain("inline media omitted");
+  });
+
   test("keeps standard content available as evidence beside opaque structured content", async () => {
     const audioBase64 = Buffer.from("standard-mcp-audio").toString("base64");
     const execution = await runMcpTool({
@@ -138,9 +148,9 @@ describe("Imagen MCP artifact boundary", () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: "mcp-content",
-          locator: expect.stringContaining("assets/mcp-content-2.wav"),
+          locator: expect.stringMatching(/^senera:\/\/resource\/res_[a-f0-9]{32}$/u),
           modelSlots: expect.arrayContaining([
-            expect.objectContaining({ name: "asset_uri", value: expect.stringContaining("mcp-content-2.wav") }),
+            expect.objectContaining({ name: "asset_uri", value: expect.stringMatching(/^senera:\/\/resource\/res_/u) }),
           ]),
         }),
       ]),
@@ -257,7 +267,7 @@ describe("Imagen MCP artifact boundary", () => {
     expect(JSON.stringify(recorded?.result)).not.toContain(imageBase64);
     expect(JSON.stringify(recorded?.result)).not.toContain("provider-secret");
     expect(recorded?.result).toMatchObject({
-      markdown: expect.stringContaining("assets/imagen-1.png"),
+      markdown: expect.stringMatching(/senera:\/\/resource\/res_[a-f0-9]{32}/u),
     });
     expect(recorded?.artifact?.assets).toEqual(
       expect.arrayContaining([
@@ -340,7 +350,7 @@ describe("Imagen MCP artifact boundary", () => {
     });
 
     expect(recorded?.result).toEqual({
-      attachment: expect.stringContaining("assets/response-2.json"),
+      attachment: expect.stringMatching(/^senera:\/\/resource\/res_[a-f0-9]{32}$/u),
     });
     expect(recorded?.artifact?.assets).toEqual(
       expect.arrayContaining([

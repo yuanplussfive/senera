@@ -20,11 +20,17 @@ import { AgentPiDiagnosticSources, emitAgentPiDiagnostic } from "./AgentPiDiagno
 import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
 import { registerAgentPiToolCallBatch } from "./AgentPiToolCallBatchProjector.js";
 import type { AgentPiModelApi, AgentPiProviderProjection } from "./AgentPiTypes.js";
+import type { AgentResidentSpeechProjector } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
+import { inspectAgentResidentSpeechFocus } from "../ResidentSpeech/AgentResidentSpeechPromptProjector.js";
+import { createAgentResidentSpeechUsageSink } from "../ResidentSpeech/AgentResidentSpeechUsage.js";
+import { emitAgentPiAssistantMessage } from "./AgentPiAssistantMessageStream.js";
+import { requireAgentPiPromptCacheSessionId } from "./AgentPiPromptCache.js";
 
 export interface AgentPiBamlToolProviderOptions {
   readonly projection: AgentPiProviderProjection;
   readonly frame: AgentPiMutableSessionFrame;
   readonly compilerFactory: AgentPiPlanningCompilerFactory;
+  readonly residentSpeech?: AgentResidentSpeechProjector;
 }
 
 /** Pi provider that compiles tool decisions through Senera's BAML planner. */
@@ -121,14 +127,21 @@ export class AgentPiBamlToolProvider {
         compilation.toolCalls.length > 0 ? "toolUse" : "stop",
         compilation,
       );
-      await registerAgentPiToolCallBatch(this.options.frame, message, {
-        purposesByCallId: new Map(
-          compilation.toolCalls.flatMap((call) =>
-            call.id && call.purpose?.trim() ? [[call.id, call.purpose.trim()] as const] : [],
-          ),
+      const purposesByCallId = new Map(
+        compilation.toolCalls.flatMap((call) =>
+          call.id && call.purpose?.trim() ? [[call.id, call.purpose.trim()] as const] : [],
         ),
-      });
-      emitAssistantMessage(stream, message);
+      );
+      const projectedMessage = await this.projectResidentSpeech(
+        context,
+        message,
+        options?.signal,
+        frame,
+        turnState,
+        purposesByCallId,
+      );
+      await registerAgentPiToolCallBatch(this.options.frame, projectedMessage, { purposesByCallId });
+      emitAgentPiAssistantMessage(stream, projectedMessage, { started: true });
     } catch (error) {
       const reason = options?.signal?.aborted ? "aborted" : "error";
       const failed = {
@@ -140,40 +153,47 @@ export class AgentPiBamlToolProvider {
       stream.end(failed);
     }
   }
-}
 
-function emitAssistantMessage(stream: AssistantMessageEventStream, message: AssistantMessage): void {
-  const partial: AssistantMessage = { ...message, content: [], stopReason: "pending" };
-  for (const block of message.content) {
-    const contentIndex = partial.content.length;
-    if (block.type === "text") {
-      partial.content = [...partial.content, { type: "text", text: "" }];
-      stream.push({ type: "text_start", contentIndex, partial: { ...partial } });
-      partial.content[contentIndex] = block;
-      if (block.text) {
-        stream.push({ type: "text_delta", contentIndex, delta: block.text, partial: { ...partial } });
-      }
-      stream.push({ type: "text_end", contentIndex, content: block.text, partial: { ...partial } });
-      continue;
+  private async projectResidentSpeech(
+    context: Context,
+    message: AssistantMessage,
+    signal: AbortSignal | undefined,
+    frame: ReturnType<AgentPiMutableSessionFrame["snapshot"]>,
+    turnState: NonNullable<ReturnType<AgentPiMutableSessionFrame["snapshot"]>["turnState"]>,
+    purposesByCallId: ReadonlyMap<string, string>,
+  ): Promise<AssistantMessage> {
+    const focus = inspectAgentResidentSpeechFocus(message, purposesByCallId);
+    const shouldProject =
+      focus?.mode === "action_preface" ? frame.prefaceRewriteEnabled === true : frame.roleplayPresetActive === true;
+    if (!shouldProject || !focus || (focus.mode === "final_response" && !turnState.hasRegisteredToolCalls())) {
+      return message;
     }
-    if (block.type !== "toolCall") continue;
-    partial.content = [...partial.content, { type: "toolCall", id: block.id, name: block.name, arguments: {} }];
-    stream.push({ type: "toolcall_start", contentIndex, partial: { ...partial } });
-    stream.push({
-      type: "toolcall_delta",
-      contentIndex,
-      delta: JSON.stringify(block.arguments),
-      partial: { ...partial },
+    if (!this.options.residentSpeech) {
+      throw new Error("Active roleplay speech projection requires the resident-speech sidecar.");
+    }
+    const projected = await this.options.residentSpeech.project({
+      context,
+      message,
+      focus,
+      spokenUtterances: turnState.residentSpeechHistory(),
+      enabled: true,
+      signal,
+      sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
+      usageSink: createAgentResidentSpeechUsageSink(turnState.context),
+      timingSink: (timing) =>
+        emitAgentPiDiagnostic(frame.diagnostics, {
+          context: { sessionId: frame.sessionId, requestId: frame.requestId, step: frame.step },
+          source: AgentPiDiagnosticSources.Provider,
+          name: "model_timing",
+          details: timing,
+        }),
+      inputBudget: turnState.context.tokenBudget,
     });
-    partial.content[contentIndex] = block;
-    stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial: { ...partial } });
+    const projectedFocus = inspectAgentResidentSpeechFocus(projected, purposesByCallId);
+    if (!projectedFocus) throw new Error("Resident speech projection returned no visible utterance.");
+    turnState.recordResidentSpeech({ mode: focus.mode, content: projectedFocus.draft });
+    return projected;
   }
-  stream.push({
-    type: "done",
-    reason: message.stopReason === "toolUse" ? "toolUse" : message.stopReason === "length" ? "length" : "stop",
-    message,
-  });
-  stream.end(message);
 }
 
 function createAssistantMessage<TApi extends Api>(

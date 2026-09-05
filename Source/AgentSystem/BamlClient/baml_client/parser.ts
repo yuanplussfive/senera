@@ -23,7 +23,7 @@ import { toBamlError } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
 import type { partial_types } from "./partial_types.js"
 import type * as types from "./types.js"
-import type {ActionPlanInput, ActionRunState, AskUserDecision, AskUserDecisionKind, DirectDecision, DirectDecisionKind, EvidenceSlot, ExecuteDecision, ExecuteDecisionKind, ExecutionDeltaOp, MemoryCandidate, MemoryConsolidationAction, MemoryConsolidationResult, MemoryLearningResult, MemoryWriteDecision, MemoryWriteResolutionResult, PiConversationSummary, PiToolArgumentsDraft, PlanFragment, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerRoleplayPreset, PlannerRoleplayPresetDocument, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolLearningRecord, ToolLearningResult, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel} from "./types.js"
+import type {ActionPlanInput, ActionRunState, AskUserDecision, AskUserDecisionKind, ContinuityAgendaDraft, ContinuityCapture, ContinuityCaptureItem, ContinuityRuleExtractionResult, ContinuityRuleItem, ConversationBoundary, DirectDecision, DirectDecisionKind, EvidenceSlot, ExecuteDecision, ExecuteDecisionKind, ExecutionDeltaOp, GoalMicroLoopCandidate, GoalMicroLoopDecision, GoalMicroLoopDecisionKind, PiConversationSummary, PiToolArgumentsDraft, PlanFragment, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ResidentIdleDecision, ResidentIdleDecisionKind, ResidentIdleGoalProposal, ResidentSpeechProjection, TemporalMemoryDigest, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolLearningRecord, ToolLearningResult, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 
 export class LlmResponseParser {
@@ -53,24 +53,70 @@ export class LlmResponseParser {
     }
   }
   
-  ConsolidateMemoryCandidates(
+  ClassifyConversationBoundary(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): types.MemoryConsolidationResult {
+  ): types.ConversationBoundary {
     try {
       const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
       const __env__: Record<string, string> = Object.fromEntries(
         Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
       );
       return this.runtime.parseLlmResponse(
-        "ConsolidateMemoryCandidates",
+        "ClassifyConversationBoundary",
         llmResponse,
         false,
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
         __baml_options__?.clientRegistry,
         __env__,
-      ) as types.MemoryConsolidationResult
+      ) as types.ConversationBoundary
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  DecideGoalMicroLoop(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.GoalMicroLoopDecision[] {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "DecideGoalMicroLoop",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.GoalMicroLoopDecision[]
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  DecideResidentIdle(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.ResidentIdleDecision {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "DecideResidentIdle",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.ResidentIdleDecision
     } catch (error) {
       throw toBamlError(error);
     }
@@ -99,6 +145,52 @@ export class LlmResponseParser {
     }
   }
   
+  ExtractContinuityFacts(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.ContinuityCapture {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "ExtractContinuityFacts",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.ContinuityCapture
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  ExtractContinuityRules(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.ContinuityRuleExtractionResult {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "ExtractContinuityRules",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.ContinuityRuleExtractionResult
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
   FillPiToolArguments(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -117,29 +209,6 @@ export class LlmResponseParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as types.PiToolArgumentsDraft
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  LearnMemory(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): types.MemoryLearningResult {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "LearnMemory",
-        llmResponse,
-        false,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as types.MemoryLearningResult
     } catch (error) {
       throw toBamlError(error);
     }
@@ -168,6 +237,75 @@ export class LlmResponseParser {
     }
   }
   
+  ProjectResidentSpeech(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.ResidentSpeechProjection {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "ProjectResidentSpeech",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.ResidentSpeechProjection
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  RepairContinuityFacts(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.ContinuityCapture {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "RepairContinuityFacts",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.ContinuityCapture
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  RepairContinuityRules(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.ContinuityRuleExtractionResult {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "RepairContinuityRules",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.ContinuityRuleExtractionResult
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
   RepairControllerDecision(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -186,75 +324,6 @@ export class LlmResponseParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as types.DirectDecision | types.AskUserDecision | types.ExecuteDecision
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairMemoryConsolidation(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): types.MemoryConsolidationResult {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "RepairMemoryConsolidation",
-        llmResponse,
-        false,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as types.MemoryConsolidationResult
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairMemoryLearning(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): types.MemoryLearningResult {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "RepairMemoryLearning",
-        llmResponse,
-        false,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as types.MemoryLearningResult
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairMemoryWriteResolution(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): types.MemoryWriteResolutionResult {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "RepairMemoryWriteResolution",
-        llmResponse,
-        false,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as types.MemoryWriteResolutionResult
     } catch (error) {
       throw toBamlError(error);
     }
@@ -352,29 +421,6 @@ export class LlmResponseParser {
     }
   }
   
-  ResolveMemoryWrite(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): types.MemoryWriteResolutionResult {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "ResolveMemoryWrite",
-        llmResponse,
-        false,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as types.MemoryWriteResolutionResult
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
   SummarizePiConversation(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -393,6 +439,29 @@ export class LlmResponseParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as types.PiConversationSummary
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  SummarizeTemporalMemory(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.TemporalMemoryDigest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "SummarizeTemporalMemory",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.TemporalMemoryDigest
     } catch (error) {
       throw toBamlError(error);
     }
@@ -427,24 +496,70 @@ export class LlmStreamParser {
     }
   }
   
-  ConsolidateMemoryCandidates(
+  ClassifyConversationBoundary(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): partial_types.MemoryConsolidationResult {
+  ): partial_types.ConversationBoundary {
     try {
       const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
       const __env__: Record<string, string> = Object.fromEntries(
         Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
       );
       return this.runtime.parseLlmResponse(
-        "ConsolidateMemoryCandidates",
+        "ClassifyConversationBoundary",
         llmResponse,
         true,
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
         __baml_options__?.clientRegistry,
         __env__,
-      ) as partial_types.MemoryConsolidationResult
+      ) as partial_types.ConversationBoundary
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  DecideGoalMicroLoop(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.GoalMicroLoopDecision[] {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "DecideGoalMicroLoop",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.GoalMicroLoopDecision[]
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  DecideResidentIdle(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.ResidentIdleDecision {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "DecideResidentIdle",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.ResidentIdleDecision
     } catch (error) {
       throw toBamlError(error);
     }
@@ -473,6 +588,52 @@ export class LlmStreamParser {
     }
   }
   
+  ExtractContinuityFacts(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.ContinuityCapture {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "ExtractContinuityFacts",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.ContinuityCapture
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  ExtractContinuityRules(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.ContinuityRuleExtractionResult {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "ExtractContinuityRules",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.ContinuityRuleExtractionResult
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
   FillPiToolArguments(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -491,29 +652,6 @@ export class LlmStreamParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as partial_types.PiToolArgumentsDraft
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  LearnMemory(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): partial_types.MemoryLearningResult {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "LearnMemory",
-        llmResponse,
-        true,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as partial_types.MemoryLearningResult
     } catch (error) {
       throw toBamlError(error);
     }
@@ -542,6 +680,75 @@ export class LlmStreamParser {
     }
   }
   
+  ProjectResidentSpeech(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.ResidentSpeechProjection {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "ProjectResidentSpeech",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.ResidentSpeechProjection
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  RepairContinuityFacts(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.ContinuityCapture {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "RepairContinuityFacts",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.ContinuityCapture
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  RepairContinuityRules(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.ContinuityRuleExtractionResult {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "RepairContinuityRules",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.ContinuityRuleExtractionResult
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
   RepairControllerDecision(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -560,75 +767,6 @@ export class LlmStreamParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as partial_types.DirectDecision | partial_types.AskUserDecision | partial_types.ExecuteDecision
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairMemoryConsolidation(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): partial_types.MemoryConsolidationResult {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "RepairMemoryConsolidation",
-        llmResponse,
-        true,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as partial_types.MemoryConsolidationResult
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairMemoryLearning(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): partial_types.MemoryLearningResult {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "RepairMemoryLearning",
-        llmResponse,
-        true,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as partial_types.MemoryLearningResult
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairMemoryWriteResolution(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): partial_types.MemoryWriteResolutionResult {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "RepairMemoryWriteResolution",
-        llmResponse,
-        true,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as partial_types.MemoryWriteResolutionResult
     } catch (error) {
       throw toBamlError(error);
     }
@@ -726,29 +864,6 @@ export class LlmStreamParser {
     }
   }
   
-  ResolveMemoryWrite(
-      llmResponse: string,
-      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
-  ): partial_types.MemoryWriteResolutionResult {
-    try {
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-      return this.runtime.parseLlmResponse(
-        "ResolveMemoryWrite",
-        llmResponse,
-        true,
-        this.ctxManager.cloneContext(),
-        __baml_options__?.tb?.__tb(),
-        __baml_options__?.clientRegistry,
-        __env__,
-      ) as partial_types.MemoryWriteResolutionResult
-    } catch (error) {
-      throw toBamlError(error);
-    }
-  }
-  
   SummarizePiConversation(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -767,6 +882,29 @@ export class LlmStreamParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as partial_types.PiConversationSummary
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  SummarizeTemporalMemory(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.TemporalMemoryDigest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "SummarizeTemporalMemory",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.TemporalMemoryDigest
     } catch (error) {
       throw toBamlError(error);
     }

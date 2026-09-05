@@ -318,8 +318,27 @@ export function projectRuntimeUsage(
   };
 }
 
+/**
+ * Returns the newest runtime status for a session without allocating a filtered
+ * journal snapshot. Zustand can then keep consumers stable for unrelated tool
+ * and transport observations.
+ */
+export function readLatestRuntimeStatusRecord(
+  records: readonly EventJournalRecord[],
+  activeSessionId?: string | null,
+): EventJournalRecord | undefined {
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index];
+    if (record.kind !== EventKinds.SessionRuntimeStatus) continue;
+    if (activeSessionId && record.sessionId !== activeSessionId) continue;
+    return record;
+  }
+  return undefined;
+}
+
 function readLatestSessionUsage(records: readonly EventJournalRecord[]): RuntimeSessionUsage | undefined {
-  for (const record of [...records].reverse()) {
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index];
     if (record.kind !== EventKinds.SessionRuntimeStatus) continue;
     const stats = readJsonPointer(record.projection, "/data/runtime/stats");
     if (!isRecord(stats)) continue;
@@ -345,7 +364,8 @@ function readLatestSessionUsage(records: readonly EventJournalRecord[]): Runtime
 }
 
 function readLatestContextUsage(records: readonly EventJournalRecord[]): RuntimeContextUsage | undefined {
-  for (const record of [...records].reverse()) {
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index];
     if (record.kind !== EventKinds.SessionRuntimeStatus) continue;
     const value = readJsonPointer(record.projection, "/data/runtime/contextUsage");
     if (!isRecord(value)) continue;

@@ -7,6 +7,7 @@ import {
   normalizeAppearancePreference,
   readStoredAppearancePreference,
   readSystemTheme,
+  readFontScaleValue,
   type AppearancePreference,
   type AppearancePreferenceUpdate,
   type AppearanceSnapshot,
@@ -167,13 +168,16 @@ export function createAppearanceStore({
         ...currentSnapshot.preference,
         ...preference,
       });
+      const fontScaleChanged = readFontScaleValue(currentSnapshot.preference) !== readFontScaleValue(nextPreference);
       updateSnapshot(
         createAppearanceSnapshot({
           preference: nextPreference,
           systemTheme: currentSnapshot.systemTheme,
         }),
         {
-          animate: true,
+          // The range control already supplies its own spring marker. Avoid
+          // starting a document-wide view transition for every drag event.
+          animate: !fontScaleChanged,
           persist: true,
         },
       );

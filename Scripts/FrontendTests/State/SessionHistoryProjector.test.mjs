@@ -30,6 +30,58 @@ test("history projection preserves a tool preface as a non-terminal assistant me
   });
 });
 
+test("history projection preserves ordinary user messages with metadata", () => {
+  const message = projectEntryToMessage({
+    id: "user-turn-2:user",
+    requestId: "user-turn-2",
+    timestamp: "2026-08-25T03:00:00.000Z",
+    kind: "user.message",
+    content: "继续这个任务",
+    metadata: {
+      queue: {
+        mode: "follow_up",
+        parentRequestId: TestRequestId,
+      },
+    },
+  });
+
+  expect(message).toMatchObject({ role: "user", content: "继续这个任务" });
+});
+
+test("history projection hides internal background-task wake inputs", () => {
+  const message = projectEntryToMessage({
+    id: "background-child-1:user",
+    requestId: "background-child-1-1",
+    timestamp: "2026-08-25T03:00:00.000Z",
+    kind: "user.message",
+    content: "Senera background task update.",
+    metadata: { backgroundTask: { taskId: "child-1", runId: "child-1" } },
+  });
+
+  expect(message).toBeNull();
+});
+
+test("history projection preserves a scheduled delivery after refresh", () => {
+  const message = projectEntryToMessage(
+    {
+      id: "scheduled-run-1:assistant",
+      requestId: "scheduled-run-1",
+      timestamp: "2026-08-05T00:02:00.000Z",
+      kind: "assistant.decision",
+      xml: "<response><answer>It is time to start work.</answer></response>",
+      metadata: { scheduledTask: { taskId: "task-1", runId: "scheduled-run-1" } },
+    },
+    { kind: "final_answer", text: "It is time to start work." },
+  );
+
+  expect(message).toMatchObject({
+    role: "assistant",
+    kind: "AssistantFinal",
+    requestId: "scheduled-run-1",
+    content: "It is time to start work.",
+  });
+});
+
 test("restores a pending deletion when the backend reports a structured close failure", () => {
   const state = createTestState({
     sessions: {

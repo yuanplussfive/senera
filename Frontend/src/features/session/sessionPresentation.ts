@@ -1,10 +1,11 @@
 import { formatDuration } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import type { SessionRecord } from "../../store/sessionStore";
+import { readActiveRun, type SessionRecord } from "../../store/sessionStore";
 
 export function formatSessionSubtitle(session: SessionRecord, isHistoryLoading: boolean): string {
+  const activeRun = readActiveRun(session);
   const lastRun = session.runs[session.runs.length - 1];
-  if (lastRun?.status === "running") return frontendMessage("session.subtitle.thinking");
+  if (activeRun) return frontendMessage("session.subtitle.thinking");
   if (lastRun?.status === "failed") return frontendMessage("session.subtitle.lastRunFailed");
   if (session.messageCount > 0) {
     if (lastRun)

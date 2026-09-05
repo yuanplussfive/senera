@@ -20,8 +20,31 @@ export interface AgentRunMetadata {
   usage?: AgentModelUsage;
 }
 
+/** Stable origin metadata shared by persisted sessions and conversation entries. */
+export interface AgentChannelMetadata {
+  platform: "qq" | "telegram" | "discord";
+  chatType?: "direct" | "group" | "channel" | "thread";
+  chatId?: string;
+  userId?: string;
+  messageId?: string;
+}
+
 export interface AgentConversationEntryMetadata {
   run?: AgentRunMetadata;
+  channel?: AgentChannelMetadata;
+  scheduledTask?: {
+    taskId: string;
+    runId: string;
+  };
+  proactive?: {
+    sourceId: string;
+    deliveryId: string;
+  };
+  /** Internal wake input for a detached task; adapters render the model reply, not this envelope. */
+  backgroundTask?: {
+    taskId: string;
+    runId: string;
+  };
   queue?: {
     parentRequestId: string;
     mode: AgentSessionMessageQueueMode;
@@ -47,6 +70,7 @@ export type AgentSessionOwnership =
 
 export interface AgentSessionMetadata {
   ownership?: AgentSessionOwnership;
+  channel?: AgentChannelMetadata;
   lastRun?: AgentRunMetadata;
   piSession?: AgentPiSessionLifecycleMetadata;
   toolAvailability?: AgentToolAvailabilitySnapshot;

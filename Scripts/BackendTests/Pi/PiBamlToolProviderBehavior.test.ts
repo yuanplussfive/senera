@@ -23,6 +23,7 @@ describe("Senera BAML tool provider", () => {
       step: 1,
       turnState,
       skillCatalogFingerprint: "test",
+      nativeProviderToolNames: [],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
       selectedPromptTemplates: [],
@@ -78,6 +79,148 @@ describe("Senera BAML tool provider", () => {
     });
     expect(turnState.toolBatchId("call-native")).toEqual(expect.stringMatching(/^toolbatch_/u));
     expect(turnState.toolCallPurpose("call-native")).toBe("Read the package metadata.");
+  });
+
+  test("projects the BAML preface atomically and fails closed when projection is unavailable", async () => {
+    const modelProvider = createModelProvider({ MaxModelOutputTokens: 1_024 });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model);
+    const frame = new AgentPiMutableSessionFrame({
+      sessionId: "baml-roleplay-session",
+      requestId: "baml-roleplay-request",
+      step: 1,
+      turnState,
+      roleplayPresetActive: true,
+      prefaceRewriteEnabled: true,
+      skillCatalogFingerprint: "test",
+      nativeProviderToolNames: [],
+      toolAccessGrant: turnState.context.toolAccessGrant,
+      toolExposure: turnState.context.toolExposure,
+      selectedPromptTemplates: [],
+      tokenBudget: turnState.context.tokenBudget,
+      preflight: async () => undefined,
+    });
+    const compilerFactory: AgentPiPlanningCompilerFactory = {
+      create: () => ({
+        compile: async () => ({
+          kind: "tool_calls",
+          content: "Inspecting the workspace.",
+          toolCalls: [
+            {
+              id: "call-roleplay",
+              name: "WorkspaceRead",
+              arguments: { path: "package.json" },
+              purpose: "Read the package metadata.",
+            },
+          ],
+        }),
+        summarize: async () => "unused",
+      }),
+    };
+    const provider = new AgentPiBamlToolProvider({
+      projection,
+      frame,
+      compilerFactory,
+      residentSpeech: {
+        project: async () => {
+          throw new Error("Resident speech model rejected the request.");
+        },
+      },
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the Senera BAML model.");
+
+    const result = await provider
+      .streamSimple(model, {
+        messages: [{ role: "user", content: "Inspect the workspace.", timestamp: 1 }],
+        tools: [],
+      })
+      .result();
+
+    expect(result).toMatchObject({
+      stopReason: "error",
+      errorMessage: "Resident speech model rejected the request.",
+    });
+    expect(turnState.toolBatchId("call-roleplay")).toBeUndefined();
+  });
+
+  test("projects a BAML final response only after this turn has registered tool work", async () => {
+    const modelProvider = createModelProvider({ MaxModelOutputTokens: 1_024 });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model);
+    const frame = new AgentPiMutableSessionFrame({
+      sessionId: "baml-roleplay-final-session",
+      requestId: "baml-roleplay-final-request",
+      step: 1,
+      turnState,
+      roleplayPresetActive: true,
+      skillCatalogFingerprint: "test",
+      nativeProviderToolNames: [],
+      toolAccessGrant: turnState.context.toolAccessGrant,
+      toolExposure: turnState.context.toolExposure,
+      selectedPromptTemplates: [],
+      tokenBudget: turnState.context.tokenBudget,
+      preflight: async () => undefined,
+    });
+    const compilerFactory: AgentPiPlanningCompilerFactory = {
+      create: () => ({
+        compile: async () => ({
+          kind: "final_text",
+          content: "I finished the illustration today.",
+          toolCalls: [],
+        }),
+        summarize: async () => "unused",
+      }),
+    };
+    const projectionInputs: unknown[] = [];
+    const provider = new AgentPiBamlToolProvider({
+      projection,
+      frame,
+      compilerFactory,
+      residentSpeech: {
+        project: async (input) => {
+          projectionInputs.push(input);
+          return {
+            ...input.message,
+            content: [{ type: "text", text: "画完啦，手都酸了TvT" }],
+          };
+        },
+      },
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the Senera BAML model.");
+
+    const directResult = await provider
+      .streamSimple(model, {
+        messages: [{ role: "user", content: "今天画完了吗？", timestamp: 1 }],
+        tools: [],
+      })
+      .result();
+    expect(directResult.content).toEqual([{ type: "text", text: "I finished the illustration today." }]);
+    expect(projectionInputs).toHaveLength(0);
+
+    turnState.registerToolBatch("prior-tool-batch", [
+      { toolCallId: "prior-tool-call", toolName: "WorkspaceRead", input: { path: "drawing.png" } },
+    ]);
+    turnState.recordResidentSpeech({ mode: "action_preface", content: "我去看一眼呀。" });
+
+    const result = await provider
+      .streamSimple(model, {
+        messages: [{ role: "user", content: "结果呢？", timestamp: 2 }],
+        tools: [],
+      })
+      .result();
+
+    expect(result).toMatchObject({
+      stopReason: "stop",
+      content: [{ type: "text", text: "画完啦，手都酸了TvT" }],
+    });
+    expect(projectionInputs).toEqual([
+      expect.objectContaining({
+        focus: expect.objectContaining({ mode: "final_response" }),
+        spokenUtterances: [{ mode: "action_preface", content: "我去看一眼呀。" }],
+      }),
+    ]);
   });
 });
 

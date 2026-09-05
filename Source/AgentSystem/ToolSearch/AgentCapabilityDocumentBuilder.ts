@@ -1,4 +1,5 @@
 import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
+import type { ToolSearchCapabilityManifest } from "../Types/AgentToolContractTypes.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
@@ -26,6 +27,7 @@ export function buildToolCapabilityDocument(
     capabilityText: document.capabilityText,
     capabilityFacets: document.capabilityFacets,
     parameters: document.params,
+    fuzzyText: fuzzyCapabilityText(tool.name, document.title, document.capabilities),
     semanticText: semanticCapabilityText({
       title: document.title,
       summary: document.summary,
@@ -68,6 +70,7 @@ export function buildSkillCapabilityDocument(skill: RegisteredSkill): AgentCapab
     capabilityText,
     capabilityFacets,
     parameters,
+    fuzzyText: fuzzyCapabilityText(skill.name, title, capabilities),
     semanticText: semanticCapabilityText({
       title,
       summary,
@@ -78,6 +81,20 @@ export function buildSkillCapabilityDocument(skill: RegisteredSkill): AgentCapab
       owner: skill.source.displayName,
     }),
   };
+}
+
+function fuzzyCapabilityText(
+  name: string,
+  title: string,
+  capabilities: readonly ToolSearchCapabilityManifest[],
+): string {
+  return [
+    name,
+    title,
+    ...capabilities.flatMap((capability) => [capability.Id, capability.Title, ...(capability.Aliases ?? [])]),
+  ]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join("\n");
 }
 
 function semanticCapabilityText(fields: Readonly<Record<string, string>>): string {

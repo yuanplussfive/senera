@@ -23,6 +23,15 @@ import {
 import { AgentPiCompactionActivityObserver } from "./AgentPiCompactionActivityObserver.js";
 import { isAgentPiCompactionLifecycleEvent, isAgentPiRunEvent, type AgentPiRunEvent } from "./AgentPiSessionEvents.js";
 
+export interface AgentPiToolExecutionObservation {
+  readonly toolName: string;
+  readonly callId: string;
+  readonly batchId?: string;
+  readonly purpose: string;
+  readonly status: "dispatched" | "completed" | "failed";
+  readonly failure?: string;
+}
+
 export interface AgentPiRunCollectorOptions {
   sessionId?: string;
   requestId: string;
@@ -33,6 +42,7 @@ export interface AgentPiRunCollectorOptions {
   turnState: AgentPiTurnState;
   activityReporter?: AgentRunActivityReporter;
   onFinalResponseAvailable?: (content: string) => void | Promise<void>;
+  onToolExecutionObserved?: (observation: AgentPiToolExecutionObservation) => void | Promise<void>;
   /** Clock used to stamp tool spans; tests may provide a deterministic implementation. */
   clock?: AgentRunActivityClock;
 }
@@ -130,12 +140,13 @@ export class AgentPiRunCollector {
         await this.messageEnded(event);
         break;
       case "tool_execution_start":
-        this.toolExecutionStarted(event);
+        await this.toolExecutionStarted(event);
         break;
       case "tool_execution_end":
         for (const projected of this.toolExecutionEnded(event)) {
           await this.emit(projected);
         }
+        await this.observeToolExecutionEnd(event);
         break;
     }
   }
@@ -154,14 +165,16 @@ export class AgentPiRunCollector {
     const activity = this.activeAssistantResponse;
     this.activeAssistantResponse = undefined;
     await activity?.complete();
-    if (this.finalResponsePublished || !isFinalAssistantResponse(event.message.stopReason)) return;
-    const content = extractText(event.message).trim();
-    if (!content) return;
-    this.finalResponsePublished = true;
-    await this.options.onFinalResponseAvailable?.(content);
+    if (isFinalAssistantResponse(event.message.stopReason)) {
+      if (this.finalResponsePublished) return;
+      const content = extractText(event.message).trim();
+      if (!content) return;
+      this.finalResponsePublished = true;
+      await this.options.onFinalResponseAvailable?.(content);
+    }
   }
 
-  private toolExecutionStarted(event: Extract<AgentPiRunEvent, { type: "tool_execution_start" }>): void {
+  private async toolExecutionStarted(event: Extract<AgentPiRunEvent, { type: "tool_execution_start" }>): Promise<void> {
     const seq = this.traces.length + this.activeToolTraces.size;
     const startedAtEpoch = this.clock.now();
     const startedAtMonotonic = this.clock.monotonicNow();
@@ -173,6 +186,26 @@ export class AgentPiRunCollector {
       args: event.args,
       startedAtMonotonic,
       startedAt,
+    });
+    await this.options.onToolExecutionObserved?.({
+      toolName: event.toolName,
+      callId: event.toolCallId,
+      ...(this.batchIdFor(event.toolCallId) ? { batchId: this.batchIdFor(event.toolCallId) } : {}),
+      purpose: this.options.turnState.toolCallPurpose(event.toolCallId) ?? event.toolName,
+      status: "dispatched",
+    });
+  }
+
+  private async observeToolExecutionEnd(
+    event: Extract<AgentPiRunEvent, { type: "tool_execution_end" }>,
+  ): Promise<void> {
+    await this.options.onToolExecutionObserved?.({
+      toolName: event.toolName,
+      callId: event.toolCallId,
+      ...(this.batchIdFor(event.toolCallId) ? { batchId: this.batchIdFor(event.toolCallId) } : {}),
+      purpose: this.options.turnState.toolCallPurpose(event.toolCallId) ?? event.toolName,
+      status: event.isError ? "failed" : "completed",
+      ...(event.isError ? { failure: readToolErrorMessage(event.result) } : {}),
     });
   }
 
@@ -238,12 +271,14 @@ export class AgentPiRunCollector {
       },
     );
     const executorStatus = this.options.turnState.executorLifecycleStatus(event.toolCallId);
-    const piStatus = event.isError ? "failed" : "completed";
     // The executor lifecycle is already published before Pi emits tool_execution_end.
     // A later Pi success must not overwrite a host-confirmed failure and create two
     // terminal events for the same call. Pi failures still supersede an earlier
     // executor success because post-execution finalization can discover new errors.
-    if (executorStatus === piStatus || (executorStatus === "failed" && piStatus === "completed")) {
+    if (
+      executorStatus === (event.isError ? "failed" : "completed") ||
+      (executorStatus === "failed" && !event.isError)
+    ) {
       return [resultDetail];
     }
     return [lifecycle, resultDetail];
@@ -251,6 +286,8 @@ export class AgentPiRunCollector {
 
   private messageUpdated(event: Extract<AgentPiRunEvent, { type: "message_update" }>): AgentDomainEvent | undefined {
     if (this.options.streamModelDeltas === false) {
+      const text = extractText(event.message);
+      this.textDelta = text;
       return undefined;
     }
 

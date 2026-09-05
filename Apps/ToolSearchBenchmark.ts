@@ -34,9 +34,13 @@ async function main(): Promise<void> {
   const runtime = AgentSystemRuntime.load({ workspaceRoot, configPath });
 
   try {
+    await runtime.initialize();
     const tools = runtime.registry.listTools();
     const bootstrapTools = tools.filter((tool) => tool.loading === ToolLoadingModes.Bootstrap).map((tool) => tool.name);
-    const results = await Promise.all(prompts.map((prompt) => benchmarkPrompt(runtime, prompt, bootstrapTools)));
+    const results = [];
+    for (const prompt of prompts) {
+      results.push(await benchmarkPrompt(runtime, prompt, bootstrapTools));
+    }
     process.stdout.write(
       `${JSON.stringify(
         {
@@ -55,18 +59,21 @@ async function main(): Promise<void> {
 }
 
 async function benchmarkPrompt(runtime: AgentSystemRuntime, prompt: string, bootstrapTools: readonly string[]) {
-  const startedAt = performance.now();
+  const loadStartedAt = performance.now();
   const loadedTools = await runtime.toolSearch.resolveInitialLoadedTools(prompt);
-  const durationMs = elapsedMilliseconds(startedAt);
+  const initialLoadDurationMs = elapsedMilliseconds(loadStartedAt);
+  const searchStartedAt = performance.now();
   const ranked = await runtime.toolSearch.search({
     query: prompt,
     includeLoaded: false,
     loadedToolNames: bootstrapTools,
   });
+  const searchDurationMs = elapsedMilliseconds(searchStartedAt);
 
   return {
     prompt,
-    durationMs,
+    initialLoadDurationMs,
+    searchDurationMs,
     loadedTools,
     loadedToolCount: loadedTools.length,
     ranked: ranked.map((result) => ({

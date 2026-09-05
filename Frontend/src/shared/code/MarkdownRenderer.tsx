@@ -17,6 +17,8 @@ import { Check, Copy, ExternalLink, Maximize2 } from "lucide-react";
 import Markdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../../lib/util";
+import { buildResourceContentUrl } from "../../api/uploadClient";
+import { parseResourceId } from "../../api/resourceUri";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { MotionIconSwap } from "../motion";
 import { ImagePreviewDialog } from "../media/ImagePreviewDialog";
@@ -161,7 +163,6 @@ function MarkdownImage({
   node: _node,
   ...props
 }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }): JSX.Element {
-  const [previewOpen, setPreviewOpen] = useState(false);
   const resource = parseWorkspaceResourceLocator(src);
   if (resource) {
     return (
@@ -175,6 +176,30 @@ function MarkdownImage({
   }
 
   const source = typeof src === "string" ? src : "";
+  if (parseResourceId(source)) {
+    return <SeneraResourceMarkdownImage {...props} source={source} alt={alt} className={className} />;
+  }
+
+  return <MarkdownImagePreview {...props} source={source} alt={alt} className={className} />;
+}
+
+function SeneraResourceMarkdownImage({
+  source,
+  ...props
+}: ImgHTMLAttributes<HTMLImageElement> & { source: string }): JSX.Element {
+  const controller = useWorkspaceResourceController();
+  const contentUrl = controller ? buildResourceContentUrl(controller.httpBaseUrl, source) : undefined;
+
+  return <MarkdownImagePreview {...props} source={contentUrl ?? source} />;
+}
+
+function MarkdownImagePreview({
+  source,
+  alt,
+  className,
+  ...props
+}: ImgHTMLAttributes<HTMLImageElement> & { source: string }): JSX.Element {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const imageLabel = alt?.trim() || frontendMessage("markdown.imagePreview");
 
   return (
@@ -187,11 +212,12 @@ function MarkdownImage({
       >
         <img
           {...props}
-          src={src}
+          src={source}
           alt={alt ?? ""}
           className={cn("markdown-renderer__image", className)}
           loading="lazy"
           decoding="async"
+          fetchPriority="low"
         />
       </button>
       {previewOpen && source ? (
@@ -215,7 +241,7 @@ function MarkdownImage({
 }
 
 function transformMarkdownUrl(value: string): string {
-  return parseWorkspaceResourceLocator(value) ? value : defaultUrlTransform(value);
+  return parseWorkspaceResourceLocator(value) || parseResourceId(value) ? value : defaultUrlTransform(value);
 }
 
 function MarkdownTable({ children, className, ...props }: TableHTMLAttributes<HTMLTableElement>): JSX.Element {

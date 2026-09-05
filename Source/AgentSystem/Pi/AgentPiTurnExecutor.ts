@@ -20,8 +20,14 @@ import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic, type AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 import { runAgentPiGuardedPhase } from "./AgentPiTurnGuard.js";
 import { AgentPiToolPlanCoordinator } from "../PiShared/AgentPiToolPlanCoordinator.js";
+import type { AgentPiToolPlanState } from "../PiShared/AgentPiPlanningTypes.js";
+import type {
+  AgentExecutionObservedToolInput,
+  AgentExecutionLedgerService,
+} from "../Goals/AgentExecutionLedgerService.js";
 import { projectAgentPiPlanningSkills } from "../PiShared/AgentPiPlanningTypes.js";
 import { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
+import { composeAgentTurnRequest } from "../Prompt/AgentTurnRequestComposer.js";
 import { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
 import type { AgentPiTurnRequest, AgentPiTurnResult } from "./AgentPiTurnTypes.js";
 import { AgentPiTurnState } from "./AgentPiTurnState.js";
@@ -34,6 +40,7 @@ export interface AgentPiTurnRuntimePort {
     pi: AgentPiTurnRuntimeService;
     piSessions: AgentPiActiveSessionRegistry;
     retrieval: Pick<AgentToolSearchRuntime, "afterToolResults">;
+    executionLedger?: AgentExecutionLedgerService;
   };
   modelProviderConfig: ResolvedAgentModelProviderConfig;
   agentLoopConfig: Pick<ResolvedAgentLoopConfig, "PiTurnLeaseTimeoutMs">;
@@ -42,6 +49,7 @@ export interface AgentPiTurnRuntimePort {
   };
   piDiagnostics?: AgentPiDiagnosticSink;
   uploadStore?: Pick<AgentUploadStore, "resolve">;
+  promptConfig: () => import("../Types/AgentConfigTypes.js").ResolvedAgentPromptConfig;
 }
 
 export interface AgentPiTurnExecutorOptions {
@@ -97,6 +105,26 @@ export class AgentPiTurnExecutor {
       contextWindowTokens: model.contextWindow,
       outputReserveTokens: model.maxTokens,
     });
+    const executionSync = { promise: Promise.resolve() };
+    const enqueueExecutionSync = (operation: () => Promise<void> | void): Promise<void> => {
+      executionSync.promise = executionSync.promise.then(operation).then(() => undefined);
+      return executionSync.promise;
+    };
+    const onToolPlanChanged = (planState: AgentPiToolPlanState): void => {
+      const executionLedger = this.options.runtime.services.executionLedger;
+      if (!executionLedger || !command.sessionId) return;
+      const sessionId = command.sessionId;
+      void enqueueExecutionSync(async () => {
+        const input = {
+          sessionId,
+          requestId: command.requestId,
+          objective: command.input,
+          planState,
+        } as const;
+        if (onEvent) return executionLedger.emitPlanSync(input, onEvent).then(() => undefined);
+        executionLedger.syncPlan(input);
+      });
+    };
     const turnState = new AgentPiTurnState({
       sessionId: command.sessionId,
       requestId: command.requestId,
@@ -109,7 +137,7 @@ export class AgentPiTurnExecutor {
       toolExposure,
       activeSkills: projectAgentPiPlanningSkills(command.activeSkills),
       usageLedger,
-      toolPlan: new AgentPiToolPlanCoordinator(),
+      toolPlan: new AgentPiToolPlanCoordinator({ onChanged: onToolPlanChanged }),
       tokenBudget,
       thinkingLevel: command.thinkingLevel,
       activityReporter: activities,
@@ -124,6 +152,20 @@ export class AgentPiTurnExecutor {
       turnState,
       activityReporter: activities,
       onFinalResponseAvailable: command.onFinalResponseAvailable,
+      onToolExecutionObserved: (observation) => {
+        const executionLedger = this.options.runtime.services.executionLedger;
+        if (!executionLedger || !command.sessionId) return;
+        const sessionId = command.sessionId;
+        return enqueueExecutionSync(async () => {
+          const input: AgentExecutionObservedToolInput = {
+            sessionId,
+            requestId: command.requestId,
+            objective: command.input,
+            ...observation,
+          };
+          return executionLedger.emitObservedTool(input, onEvent).then(() => undefined);
+        });
+      },
     });
     return this.runWithContext(
       command,
@@ -134,6 +176,8 @@ export class AgentPiTurnExecutor {
       toolExposure,
       tokenBudget,
       activities,
+      executionSync,
+      enqueueExecutionSync,
       signal,
       onEvent,
     );
@@ -148,6 +192,8 @@ export class AgentPiTurnExecutor {
     toolExposure: AgentToolExposureState,
     tokenBudget: AgentTurnTokenBudget,
     activities: AgentRunActivityReporter,
+    executionSync: { promise: Promise<void> },
+    enqueueExecutionSync: (operation: () => Promise<void> | void) => Promise<void>,
     signal?: AbortSignal,
     onEvent?: AgentEventSink,
   ): Promise<AgentPiTurnResult> {
@@ -181,6 +227,8 @@ export class AgentPiTurnExecutor {
               step: command.step,
               input: command.input,
               systemPrompt: command.prompt,
+              turnContext: command.turnContext,
+              interaction: command.interaction,
               visibleToolNames: command.loadedToolNames,
               toolAccessGrant: command.toolAccessGrant,
               toolExposure,
@@ -188,6 +236,8 @@ export class AgentPiTurnExecutor {
               signal,
               turnState,
               activeSkills: command.activeSkills,
+              roleplayPresetActive: command.roleplayPresetActive,
+              prefaceRewriteEnabled: command.prefaceRewriteEnabled,
               rootCommand: command.rootCommand,
               approvalMode: command.approvalMode,
               tokenBudget,
@@ -224,9 +274,19 @@ export class AgentPiTurnExecutor {
 
       const piBranchBoundaryId = await activeSession.markTurnBoundary(command.requestId);
       await command.onPiBranchBoundary?.(piBranchBoundaryId);
+      const promptConfig = this.options.runtime.promptConfig();
+      const wireInput = composeAgentTurnRequest({
+        userInput: projected.input,
+        attachments: command.attachments,
+        interaction: command.interaction,
+        options: {
+          enabled: promptConfig.UserMessageEnvelope,
+          timeZone: promptConfig.TimeZone,
+        },
+      });
 
       await this.emitDiagnostic(command, PiTurnTraceEvents.PromptStarted, {
-        inputChars: projected.input.length,
+        inputChars: wireInput.length,
       });
       await activities.track(AgentRunActivities.RunningAgentTurn, () =>
         runAgentPiGuardedPhase({
@@ -235,7 +295,7 @@ export class AgentPiTurnExecutor {
           signal,
           abort: () => activeSession.abort().catch(() => undefined),
           run: () =>
-            activeSession.prompt(projected.input, {
+            activeSession.prompt(wireInput, {
               expandPromptTemplates: false,
               source: "extension",
               ...(projected.images.length > 0 ? { images: projected.images } : {}),
@@ -255,22 +315,35 @@ export class AgentPiTurnExecutor {
         }),
       );
       await this.emitDiagnostic(command, PiTurnTraceEvents.CollectorDrainCompleted);
+      await executionSync.promise;
+      const executionLedger = this.options.runtime.services.executionLedger;
+      if (executionLedger && command.sessionId) {
+        const sessionId = command.sessionId;
+        await enqueueExecutionSync(async () => {
+          await executionLedger.finalizeExecution(sessionId, command.requestId, onEvent);
+        });
+      }
       throwIfAborted(signal);
 
       const responseText = activeSession.getLastAssistantText() ?? "";
       const runtimeProjection = collector.snapshot();
+      const loadedToolNames = toolExposure.snapshot().exposedToolNames.slice();
       this.options.runtime.services.retrieval.afterToolResults({
         requestId: command.requestId,
         userInput: command.input,
         sessionId: command.sessionId,
-        loadedTools: command.loadedToolNames,
+        loadedTools: loadedToolNames,
         execution: { value: [...runtimeProjection.executedTools] },
         activeSkills: command.activeSkills,
       });
       const modelProvider = createModelProviderMetadata(this.options.runtime.modelProviderConfig);
       const usage =
         usageLedger.aggregate() ??
-        createLocalTurnUsage(this.options.runtime.tokenEstimator, command.prompt, responseText);
+        createLocalTurnUsage(
+          this.options.runtime.tokenEstimator,
+          [command.prompt, command.turnContext].filter((value): value is string => Boolean(value)).join("\n\n"),
+          responseText,
+        );
       await this.emitDiagnostic(command, PiTurnTraceEvents.TurnCompleted, {
         responseChars: responseText.length,
         toolCalls: runtimeProjection.executedTools.length,
@@ -288,6 +361,7 @@ export class AgentPiTurnExecutor {
           buildAnswerTrace(command.step, runtimeProjection.traces.length, "final_answer"),
         ],
         executedTools: runtimeProjection.executedTools,
+        loadedToolNames,
       };
     } catch (error) {
       await this.emitDiagnostic(command, PiTurnTraceEvents.TurnFailed, errorPayload(error));

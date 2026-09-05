@@ -45,6 +45,8 @@
     "Capabilities": [
       {
         "Id": "execution.resource-write",
+        "Title": "Write to execution resource",
+        "Description": "向后台交互式进程的标准输入写入文本，并遵守流背压。",
         "Facets": {
           "Actions": ["write", "answer", "send-input"],
           "Targets": ["execution-resource", "stdin"],
@@ -52,6 +54,7 @@
         }
       }
     ],
+    "UseCases": ["交互式命令正在等待输入，或需要向后台终端发送下一段文本时。"],
     "Tags": ["后台进程", "交互输入", "stdin"]
   },
   "evidenceCapabilities": [],

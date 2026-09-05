@@ -5,18 +5,19 @@ import ChatBubbleBottomCenterTextIcon from "@heroicons/react/24/outline/ChatBubb
 import CircleStackIcon from "@heroicons/react/24/outline/CircleStackIcon";
 import CpuChipIcon from "@heroicons/react/24/outline/CpuChipIcon";
 import EyeIcon from "@heroicons/react/24/outline/EyeIcon";
-import MagnifyingGlassIcon from "@heroicons/react/24/outline/MagnifyingGlassIcon";
 import QueueListIcon from "@heroicons/react/24/outline/QueueListIcon";
-import ShareIcon from "@heroicons/react/24/outline/ShareIcon";
 import ViewfinderCircleIcon from "@heroicons/react/24/outline/ViewfinderCircleIcon";
 import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
 import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
-import { MotionListItem } from "../../../shared/motion";
 import { IconButton, MenuSelect, Spinner, StateView, Switch } from "../../../shared/ui";
 import { findTopField } from "../../chat/modelConfigData";
-import { ModelProviderIcon, inferModelProviderIcon } from "../../chat/ModelProviderIcon";
+import {
+  inferModelProviderEndpointIcon,
+  inferModelProviderIcon,
+  ModelProviderIcon,
+} from "../../chat/ModelProviderIcon";
 import { ConfigFieldRequirementLabel } from "../../../shared/config/ConfigFieldVisibility";
 import { cn } from "../../../lib/util";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
@@ -26,12 +27,14 @@ import { projectSystemExtensionRuntimeModelAssignmentSections } from "../systemE
 import type { ConfigSettingsDraftState } from "./configSettingsDraftState";
 import { readModelServiceState } from "./modelServiceState";
 import {
+  isRuntimeModelAssignmentInheritanceValue,
   isRuntimeModelPoolAssignment,
   readRuntimeModelAssignmentCandidates,
   readRuntimeModelAssignmentFields,
   readRuntimeModelAssignmentSelection,
   readRuntimeModelPoolAssignmentSelection,
   writeRuntimeModelAssignment,
+  writeRuntimeModelAssignmentInheritance,
   writeRuntimeModelPoolAssignment,
   type RuntimeModelAssignmentCandidate,
   type RuntimeModelAssignmentField,
@@ -88,7 +91,7 @@ export function DefaultModelSection({
     return (
       <StateView
         status="loading"
-        className="min-h-[360px] bg-paper-50"
+        className="min-h-[220px] bg-paper-50"
         description={frontendMessage("settings.state.loadingMain")}
       />
     );
@@ -97,80 +100,52 @@ export function DefaultModelSection({
     return (
       <StateView
         status="loading"
-        className="min-h-[360px] bg-paper-50"
+        className="min-h-[220px] bg-paper-50"
         description={frontendMessage("settings.state.loadingDefaultModel")}
       />
     );
   }
 
   return (
-    <div className="bg-paper-50 px-4 py-5 sm:px-7 sm:py-6">
-      <section className="mx-auto max-w-[980px]">
-        <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 border-b border-ink-200/80 pb-5">
+    <div className="bg-transparent px-0 py-3 sm:py-4">
+      <section className="mx-auto w-full max-w-[1120px]">
+        <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line-subtle pb-4">
           <div className="min-w-0">
-            <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink-900">
+            <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-content-strong">
               {frontendMessage("settings.model.assignmentsTitle")}
             </h2>
-            <p className="mt-1.5 max-w-[720px] text-[12.5px] leading-6 text-ink-500">
+            <p className="mt-1 max-w-[720px] text-[12px] leading-5 text-content-secondary">
               {frontendMessage("settings.model.assignmentsDescription")}
             </p>
           </div>
-          {state.defaultModel ? <DefaultModelOverview entry={state.defaultModel} /> : null}
         </header>
 
-        <div className="mt-6 space-y-8">
-          {assignmentGroups.map((group, groupIndex) => (
-            <MotionListItem key={group.id} index={groupIndex} itemCount={assignmentGroups.length}>
-              <section data-model-assignment-group>
-                <div className="flex items-center gap-2.5 border-b border-ink-200/80 pb-2.5">
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-accent-border/50 bg-accent-surface text-accent-content">
-                    <AssignmentGroupIcon groupId={group.id} fields={group.fields} />
-                  </span>
-                  <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-ink-900">{group.label}</h3>
-                </div>
-                <div className="divide-y divide-ink-200/70">
-                  {group.fields.map((field) => (
-                    <ModelAssignmentRow
-                      key={field.modelSelection.id}
-                      allFields={allFields}
-                      defaultModelId={defaultModelId}
-                      draftState={draftState}
-                      field={field}
-                      modelTemplate={modelTemplate}
-                      pendingModelId={pendingModelId}
-                      state={state}
-                      systemConfig={systemConfig}
-                      onDefaultModelPending={setPendingModelId}
-                    />
-                  ))}
-                </div>
-              </section>
-            </MotionListItem>
+        <div className="mt-4 space-y-5">
+          {assignmentGroups.map((group) => (
+            <section key={group.id} data-model-assignment-group>
+              <div className="flex items-center border-b border-line-subtle pb-2">
+                <h3 className="text-[12.5px] font-semibold text-content-primary">{group.label}</h3>
+              </div>
+              <div className="divide-y divide-line-subtle">
+                {group.fields.map((field) => (
+                  <ModelAssignmentRow
+                    key={field.modelSelection.id}
+                    allFields={allFields}
+                    defaultModelId={defaultModelId}
+                    draftState={draftState}
+                    field={field}
+                    modelTemplate={modelTemplate}
+                    pendingModelId={pendingModelId}
+                    state={state}
+                    systemConfig={systemConfig}
+                    onDefaultModelPending={setPendingModelId}
+                  />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       </section>
-    </div>
-  );
-}
-
-function DefaultModelOverview({
-  entry,
-}: {
-  entry: NonNullable<ReturnType<typeof readModelServiceState>>["defaultModel"];
-}): JSX.Element {
-  if (!entry) return <></>;
-  const icon = entry.model.Icon ?? inferModelProviderIcon(entry.model.Model);
-  return (
-    <div className="flex shrink-0 items-center gap-2.5 rounded-lg border border-line-subtle bg-surface-raised px-2.5 py-2 shadow-panel">
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-accent-surface text-accent-content">
-        <ModelProviderIcon icon={icon} size={18} />
-      </span>
-      <div className="min-w-0">
-        <div className="text-[10.5px] leading-4 text-ink-450">{frontendMessage("settings.model.defaultOverview")}</div>
-        <div className="truncate text-[12.5px] font-semibold leading-[18px] text-ink-900">
-          {entry.model.Model} · {entry.provider?.Id ?? entry.model.ProviderId}
-        </div>
-      </div>
     </div>
   );
 }
@@ -214,21 +189,40 @@ function ModelAssignmentRow({
     defaultModelId,
     draft: draftState.draft,
   });
+  const selectedCandidate = selection.inherited
+    ? candidates.find((candidate) => candidate.model.Id === defaultModelId)
+    : candidates.find((candidate) => candidate.model.Id === selection.value);
   const operation =
     field.modelSelection.mutation === "default-model" && pendingModelId
       ? systemConfig.providerModelOperations[pendingModelId]
       : undefined;
   const options = [
+    ...(field.modelSelection.inheritance?.source === "default-model"
+      ? [
+          {
+            value: `inherit:${field.modelSelection.id}`,
+            label: frontendMessage("settings.model.inheritDefault", {
+              model:
+                candidates.find((candidate) => candidate.model.Id === defaultModelId)?.model.Model ?? defaultModelId,
+            }),
+          },
+        ]
+      : []),
     ...(selection.unavailableLabel
       ? [{ value: selection.value, label: selection.unavailableLabel, disabled: true }]
       : []),
     ...candidates.map(({ model, provider }) => ({
       value: model.Id,
-      label: `${model.Model} · ${provider.Id}`,
+      label: model.Model,
+      description: provider.Id,
     })),
   ];
 
   const selectCandidate = (modelId: string): void => {
+    if (isRuntimeModelAssignmentInheritanceValue(field, modelId)) {
+      draftState.updateDraft(writeRuntimeModelAssignmentInheritance(draftState.draft, field), "immediate");
+      return;
+    }
     const candidate = candidates.find((entry) => entry.model.Id === modelId);
     if (!candidate) return;
     if (field.modelSelection.mutation === "default-model") {
@@ -241,7 +235,7 @@ function ModelAssignmentRow({
 
   return (
     <div
-      className="grid min-h-[72px] min-w-0 gap-3 py-4 md:grid-cols-[minmax(220px,0.85fr)_minmax(300px,1.15fr)] md:items-center"
+      className="grid min-h-[58px] min-w-0 gap-3 py-2.5 md:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] md:items-center"
       data-model-assignment-row
     >
       <AssignmentLabel field={field} />
@@ -263,15 +257,17 @@ function ModelAssignmentRow({
           }
           renderValue={(value, option) => (
             <AssignmentOption
-              candidate={candidates.find((candidate) => candidate.model.Id === value)}
               label={option?.label ?? value}
+              providerId={selectedCandidate?.provider.Id}
+              icon={readCandidateIcon(selectedCandidate)}
               unavailable={Boolean(selection.unavailableLabel)}
             />
           )}
           renderOption={(option) => (
             <AssignmentOption
-              candidate={candidates.find((candidate) => candidate.model.Id === option.value)}
               label={option.label}
+              providerId={option.description}
+              icon={readCandidateIcon(candidates.find((candidate) => candidate.model.Id === option.value))}
               unavailable={option.disabled}
             />
           )}
@@ -335,12 +331,12 @@ function ModelPoolAssignmentRow({
 
   return (
     <div className="min-w-0" data-model-pool-assignment>
-      <div className="py-3.5">
+      <div className="py-3">
         <AssignmentLabel field={field} />
       </div>
       <div className="divide-y divide-line-subtle border-t border-line-subtle">
         {hasInheritance ? (
-          <div className="flex min-h-[62px] min-w-0 items-center gap-4 py-2.5">
+          <div className="flex min-h-[58px] min-w-0 items-center gap-4 py-2.5">
             <div className="min-w-0 flex-1">
               <div className="text-[12.5px] font-medium text-ink-850">{inheritanceSourceLabel(field)}</div>
               <div className="mt-0.5 text-[11.5px] leading-5 text-ink-500">
@@ -361,7 +357,7 @@ function ModelPoolAssignmentRow({
           const unavailable = !candidate;
           const cannotRemove = sourceCount <= 1;
           return (
-            <div key={`${modelId}:${index}`} className="flex min-h-[58px] min-w-0 items-center gap-3 py-2">
+            <div key={`${modelId}:${index}`} className="flex min-h-[54px] min-w-0 items-center gap-3 py-2">
               <PoolCandidateLabel candidate={candidate} modelId={modelId} unavailable={unavailable} />
               <div className="flex shrink-0 items-center gap-0.5">
                 <IconButton
@@ -406,14 +402,19 @@ function ModelPoolAssignmentRow({
             ariaLabel={frontendMessage("settings.model.poolAdd")}
             options={availableCandidates.map(({ model, provider }) => ({
               value: model.Id,
-              label: `${model.Model} · ${provider.Id}`,
+              label: model.Model,
+              description: provider.Id,
             }))}
             disabled={availableCandidates.length === 0}
             emptyState={frontendMessage("settings.model.poolNoAdditionalCandidates")}
             leading={<Plus className="h-3.5 w-3.5" />}
             triggerClassName="border-0 bg-transparent px-0 hover:border-transparent focus-visible:border-transparent focus-visible:ring-0"
             renderOption={(option) => (
-              <AssignmentOption candidate={candidatesById.get(option.value)} label={option.label} />
+              <AssignmentOption
+                label={option.label}
+                providerId={option.description}
+                icon={readCandidateIcon(candidatesById.get(option.value))}
+              />
             )}
             onChange={addModel}
           />
@@ -437,10 +438,10 @@ function PoolCandidateLabel({
   modelId: string;
   unavailable: boolean;
 }): JSX.Element {
-  const icon = candidate?.model.Icon ?? inferModelProviderIcon(candidate?.model.Model ?? modelId);
+  const icon = readCandidateIcon(candidate);
   return (
     <div className={cn("flex min-w-0 flex-1 items-center gap-2.5", unavailable && "text-umber-600")}>
-      <ModelProviderIcon icon={icon} size={18} />
+      {icon ? <ModelProviderIcon icon={icon} size={15} /> : null}
       <div className="min-w-0">
         <div className="truncate text-[12.5px] font-medium text-ink-850">{candidate?.model.Model ?? modelId}</div>
         {candidate ? <div className="mt-0.5 truncate text-[10.5px] text-ink-450">{candidate.provider.Id}</div> : null}
@@ -451,16 +452,18 @@ function PoolCandidateLabel({
 
 function AssignmentLabel({ field }: { field: RuntimeModelAssignmentField }): JSX.Element {
   return (
-    <div className="flex min-w-0 items-start gap-3">
-      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border border-accent-border/50 bg-accent-surface text-accent-content">
+    <div className="min-w-0">
+      <span className="sr-only">
         <AssignmentRoleIcon field={field} />
       </span>
       <div className="min-w-0 pt-0.5">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className="text-[13px] font-medium text-ink-900">{field.label}</span>
+          <span className="text-[13px] font-medium text-content-primary">{field.label}</span>
           <ConfigFieldRequirementLabel required={field.modelSelection.required} />
         </div>
-        {field.description ? <p className="mt-0.5 text-[11.5px] leading-5 text-ink-500">{field.description}</p> : null}
+        {field.description ? (
+          <p className="mt-0.5 text-[11.5px] leading-5 text-content-secondary">{field.description}</p>
+        ) : null}
       </div>
     </div>
   );
@@ -475,47 +478,34 @@ function inheritanceSourceLabel(field: RuntimeModelAssignmentField): string {
 }
 
 function AssignmentOption({
-  candidate,
   label,
+  providerId,
+  icon,
   unavailable,
 }: {
-  candidate?: RuntimeModelAssignmentCandidate;
   label: string;
+  providerId?: string;
+  icon?: string;
   unavailable?: boolean;
 }): JSX.Element {
-  const icon = candidate?.model.Icon ?? inferModelProviderIcon(candidate?.model.Model ?? label);
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-2", unavailable && "text-umber-600")}>
-      <ModelProviderIcon icon={icon} size={16} />
-      <span className="truncate">{label}</span>
+    <span className={cn("flex min-w-0 items-center gap-2 leading-5", unavailable && "text-umber-600")}>
+      {icon ? <ModelProviderIcon icon={icon} size={14} /> : null}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {providerId ? <span className="shrink-0 text-[10.5px] text-content-muted">{providerId}</span> : null}
     </span>
   );
 }
 
-function AssignmentGroupIcon({
-  groupId,
-  fields,
-}: {
-  groupId: string;
-  fields: readonly RuntimeModelAssignmentField[];
-}): JSX.Element {
-  const capability = fields[0]?.modelSelection.capability;
-  const Icon: ElementType<{ className?: string }> = fields.some(isRuntimeModelPoolAssignment)
-    ? QueueListIcon
-    : groupId === "models"
-      ? CpuChipIcon
-      : groupId === "planning"
-        ? ShareIcon
-        : groupId === "retrieval"
-          ? MagnifyingGlassIcon
-          : capability === "Embedding"
-            ? ViewfinderCircleIcon
-            : capability === "Rerank"
-              ? BarsArrowUpIcon
-              : capability === "Vision"
-                ? EyeIcon
-                : CpuChipIcon;
-  return <Icon className="h-3.5 w-3.5" />;
+function readCandidateIcon(candidate?: RuntimeModelAssignmentCandidate): string | undefined {
+  if (!candidate) return undefined;
+  return (
+    candidate.model.Icon ??
+    inferModelProviderIcon(candidate.model.Model, false) ??
+    inferModelProviderEndpointIcon(candidate.provider.Id, false) ??
+    candidate.provider.Icon ??
+    inferModelProviderIcon(candidate.model.Model)
+  );
 }
 
 const assignmentRoleIcons: Readonly<Record<string, ElementType<{ className?: string }>>> = {
@@ -525,7 +515,7 @@ const assignmentRoleIcons: Readonly<Record<string, ElementType<{ className?: str
   "action-planner": ArrowsRightLeftIcon,
   "final-answer": ChatBubbleBottomCenterTextIcon,
   "tool-learning": WrenchScrewdriverIcon,
-  "memory-learning": CircleStackIcon,
+  "continuity-learning": CircleStackIcon,
   embedding: ViewfinderCircleIcon,
   rerank: BarsArrowUpIcon,
 };
@@ -543,5 +533,5 @@ function AssignmentRoleIcon({ field }: { field: RuntimeModelAssignmentField }): 
           : selection.capability === "Vision"
             ? EyeIcon
             : CpuChipIcon);
-  return <Icon className="h-4 w-4" data-model-assignment-icon={selection.id} />;
+  return <Icon className="h-3.5 w-3.5" data-model-assignment-icon={selection.id} />;
 }

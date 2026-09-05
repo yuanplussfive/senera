@@ -300,6 +300,13 @@ class PiTurnRuntimeFixture {
       },
       agentLoopConfig: { PiTurnLeaseTimeoutMs: 5_000 },
       tokenEstimator: { estimate: (text) => ({ tokenCount: text.length }) },
+      promptConfig: () =>
+        ({
+          UserMessageEnvelope: false,
+          TimeZone: "Asia/Shanghai",
+          RoleCheck: true,
+          BamlToolAttribution: true,
+        }) as const,
       piDiagnostics: (event) => {
         this.diagnostics.push(event);
       },

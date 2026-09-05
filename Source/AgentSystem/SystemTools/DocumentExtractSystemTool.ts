@@ -9,12 +9,14 @@ import {
 } from "../Documents/AgentDocumentToolConfiguration.js";
 import { defineSystemTool } from "./AgentSystemToolDefinition.js";
 import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
-import { resolveAgentSystemUpload } from "./AgentSystemUpload.js";
+import { resolveAgentSystemResource } from "./AgentSystemResource.js";
 import { AgentResourceUriSchema } from "../Resources/AgentResourceSchema.js";
 
 const DocumentExtractInput = z
   .object({
-    resourceUri: AgentResourceUriSchema.describe("Exact Senera resource URI supplied by the runtime."),
+    resourceUri: AgentResourceUriSchema.describe(
+      "Exact canonical Senera resource URI supplied by the runtime. Local paths must be resolved by the host first; do not derive a URI from a filename.",
+    ),
     mode: z.enum(["auto", "probe", "extract"]).default("auto"),
   })
   .strict();
@@ -239,8 +241,8 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
         "en-US": "Document Understanding",
       },
       description: {
-        "zh-CN": "探测并提取用户上传文档的文本、结构和元数据。",
-        "en-US": "Probes and extracts text, structure, and metadata from user-uploaded documents.",
+        "zh-CN": "探测并提取统一资源中文档的文本、结构和元数据。",
+        "en-US": "Probes and extracts text, structure, and metadata from canonical Senera document resources.",
       },
       priority: 8,
       skills: ["document-understanding"],
@@ -251,22 +253,45 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
     },
     metadata: {
       observation: StandardAgentToolObservationProjection,
-      description: "Probe or extract text, structure, metadata, and warnings from a user-uploaded document.",
-      permissions: ["uploads:read"],
+      description:
+        "Probe or extract text, structure, metadata, and warnings from a canonical Senera document resource. The host resolves local paths before invocation.",
+      permissions: ["resources:read"],
       execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
+      search: {
+        Summary: "读取文档的类型、结构、元数据和文本内容，必要时提取可检索的 Markdown。",
+        Tags: ["document", "extract", "text", "metadata"],
+        Capabilities: [
+          {
+            Id: "document.extract",
+            Title: "Document extraction",
+            Description: "检查文档并提取文本、结构、元数据和解析警告。",
+            Facets: {
+              Actions: ["probe", "extract", "inspect"],
+              Targets: ["document-resource"],
+              Inputs: ["resource-uri", "mode"],
+              Outputs: ["document-metadata", "text", "markdown", "structure", "warnings"],
+              Effects: ["none"],
+            },
+            Aliases: ["读取文档", "提取文本", "解析文件", "document extraction"],
+            Risk: { SideEffect: "read-only", Permission: "resources-read" },
+          },
+        ],
+        UseCases: ["用户提供文档资源，并希望查看内容、结构、元数据或解析警告。"],
+        Avoid: ["文档未被运行时登记为资源时不要猜测路径；需要修改文档时使用对应的工作区工具。"],
+      },
     },
     name: "DocumentExtract",
     input: DocumentExtractInput,
     output: DocumentExtractOutput,
     async execute(input, context) {
-      const upload = await resolveAgentSystemUpload(context, input.resourceUri);
+      const resource = await resolveAgentSystemResource(context, input.resourceUri);
       const document = {
-        filePath: upload.filePath,
-        name: upload.manifest.name,
-        declaredMime: upload.manifest.declaredMime,
-        size: upload.manifest.size,
-        sha256: upload.manifest.sha256,
-        resourceUri: upload.manifest.resourceUri,
+        filePath: resource.filePath,
+        name: resource.name,
+        declaredMime: resource.declaredMime,
+        size: resource.size,
+        sha256: resource.sha256,
+        resourceUri: resource.resourceUri,
       };
       const probe = await probeAgentDocument(document, {
         sampleBytes: configuration.probe.sampleBytes,
@@ -279,7 +304,7 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
       if (input.mode === "probe") {
         return DocumentExtractOutput.parse({
           document: {
-            ...publicDocument(upload),
+            ...publicDocument(resource),
             status: "probed" as const,
             probe,
           },
@@ -303,7 +328,7 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
       );
       return DocumentExtractOutput.parse({
         document: {
-          ...publicDocument(upload),
+          ...publicDocument(resource),
           status: "extracted" as const,
           probe,
           extraction,
@@ -315,13 +340,13 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
 
 export const DocumentExtractSystemTool = createDocumentExtractSystemTool();
 
-function publicDocument(upload: Awaited<ReturnType<typeof resolveAgentSystemUpload>>) {
+function publicDocument(resource: Awaited<ReturnType<typeof resolveAgentSystemResource>>) {
   return {
-    resourceUri: upload.manifest.resourceUri,
-    name: upload.manifest.name,
-    mime: upload.manifest.mime,
-    size: upload.manifest.size,
-    sha256: upload.manifest.sha256,
+    resourceUri: resource.resourceUri,
+    name: resource.name,
+    mime: resource.mime,
+    size: resource.size,
+    sha256: resource.sha256,
   };
 }
 

@@ -2,17 +2,16 @@ import { ClientRegistry } from "@boundaryml/baml";
 import { b as baml } from "../BamlClient/baml_client/index.js";
 import type { AgentBamlModelRequest } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
 import type {
+  AgentLanguageModelCacheOptions,
   AgentLanguageModelImageAttachment,
   AgentLanguageModelMessage,
 } from "../ModelEndpoints/AgentLanguageModel.js";
 import {
-  type AgentMemoryConsolidationPromptInput,
-  type AgentMemoryLearningPromptInput,
-  type AgentMemoryWriteResolutionPromptInput,
+  type AgentContinuityFactPromptInput,
+  type AgentContinuityRulePromptInput,
   type AgentToolLearningPromptInput,
-  buildMemoryConsolidationPromptJson,
-  buildMemoryLearningPromptJson,
-  buildMemoryWriteResolutionPromptJson,
+  buildAgentContinuityFactPromptJson,
+  buildAgentContinuityRulePromptJson,
   buildToolLearningPromptJson,
 } from "./AgentLearningPromptJson.js";
 import type {
@@ -20,6 +19,8 @@ import type {
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
 } from "../PiShared/AgentPiPlanningTypes.js";
+import type { AgentGoalMicroLoopDecisionInput } from "../Agenda/AgentGoalMicroLoopRuntime.js";
+import type { AgentWorldResidentIdleDecisionInput } from "../World/AgentWorldResidentIdleRuntime.js";
 import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 import { buildBamlToolRiskAuditPromptJson } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 import { projectActionPlannerBamlRequestBody } from "./AgentActionPlannerPromptProjector.js";
@@ -69,33 +70,27 @@ export type AgentActionPlannerBamlFunctionArgs =
       issues: string[];
     }
   | {
-      functionName: "LearnMemory";
-      input: AgentMemoryLearningPromptInput;
+      functionName: "ExtractContinuityFacts";
+      input: AgentContinuityFactPromptInput;
+      stablePrompt: string;
     }
   | {
-      functionName: "RepairMemoryLearning";
-      input: AgentMemoryLearningPromptInput;
-      invalidLearning: string;
+      functionName: "RepairContinuityFacts";
+      input: AgentContinuityFactPromptInput;
+      stablePrompt: string;
+      invalidExtraction: string;
       issues: string[];
     }
   | {
-      functionName: "ConsolidateMemoryCandidates";
-      input: AgentMemoryConsolidationPromptInput;
+      functionName: "ExtractContinuityRules";
+      input: AgentContinuityRulePromptInput;
+      stablePrompt: string;
     }
   | {
-      functionName: "RepairMemoryConsolidation";
-      input: AgentMemoryConsolidationPromptInput;
-      invalidConsolidation: string;
-      issues: string[];
-    }
-  | {
-      functionName: "ResolveMemoryWrite";
-      input: AgentMemoryWriteResolutionPromptInput;
-    }
-  | {
-      functionName: "RepairMemoryWriteResolution";
-      input: AgentMemoryWriteResolutionPromptInput;
-      invalidResolution: string;
+      functionName: "RepairContinuityRules";
+      input: AgentContinuityRulePromptInput;
+      stablePrompt: string;
+      invalidExtraction: string;
       issues: string[];
     }
   | {
@@ -107,14 +102,25 @@ export type AgentActionPlannerBamlFunctionArgs =
       input: AgentPiCompactionPromptInput;
       invalidSummary: string;
       issues: string[];
+    }
+  | {
+      functionName: "DecideGoalMicroLoop";
+      input: AgentGoalMicroLoopDecisionInput;
+    }
+  | {
+      functionName: "DecideResidentIdle";
+      input: AgentWorldResidentIdleDecisionInput;
     };
 
 export class AgentActionPlannerBamlPromptFactory {
-  private readonly promptRegistry = createPromptRegistry();
+  private readonly promptRegistry = createAgentBamlPromptBuilderRegistry();
 
   async buildPrompt(
     args: AgentActionPlannerBamlFunctionArgs,
-    options: { attachments?: readonly AgentLanguageModelImageAttachment[] } = {},
+    options: {
+      attachments?: readonly AgentLanguageModelImageAttachment[];
+      cache?: AgentLanguageModelCacheOptions;
+    } = {},
   ): Promise<AgentBamlModelRequest> {
     const request = await this.buildBamlRequest(args);
     const prompt = projectPromptForBamlFunction(args.functionName, request.body.json() as Record<string, unknown>);
@@ -123,6 +129,7 @@ export class AgentActionPlannerBamlPromptFactory {
       step: 0,
       systemPrompt: prompt.systemPrompt,
       messages: attachPlannerImages(prompt.messages, options.attachments),
+      cache: options.cache,
     };
   }
 
@@ -191,50 +198,34 @@ export class AgentActionPlannerBamlPromptFactory {
           }),
           options,
         );
-      case "LearnMemory":
-        return baml.request.LearnMemory(
-          buildMemoryLearningPromptJson(args.input, {
-            stage: "learnMemory",
-          }),
+      case "ExtractContinuityFacts":
+        return baml.request.ExtractContinuityFacts(
+          args.stablePrompt,
+          buildAgentContinuityFactPromptJson(args.input, { stage: "extractContinuityFacts" }),
           options,
         );
-      case "RepairMemoryLearning":
-        return baml.request.RepairMemoryLearning(
-          buildMemoryLearningPromptJson(args.input, {
-            stage: "repairMemoryLearning",
-            invalidLearning: args.invalidLearning,
+      case "RepairContinuityFacts":
+        return baml.request.RepairContinuityFacts(
+          args.stablePrompt,
+          buildAgentContinuityFactPromptJson(args.input, {
+            stage: "repairContinuityFacts",
+            invalidExtraction: args.invalidExtraction,
             issues: args.issues,
           }),
           options,
         );
-      case "ConsolidateMemoryCandidates":
-        return baml.request.ConsolidateMemoryCandidates(
-          buildMemoryConsolidationPromptJson(args.input, {
-            stage: "consolidateMemoryCandidates",
-          }),
+      case "ExtractContinuityRules":
+        return baml.request.ExtractContinuityRules(
+          args.stablePrompt,
+          buildAgentContinuityRulePromptJson(args.input, { stage: "extractContinuityRules" }),
           options,
         );
-      case "RepairMemoryConsolidation":
-        return baml.request.RepairMemoryConsolidation(
-          buildMemoryConsolidationPromptJson(args.input, {
-            stage: "repairMemoryConsolidation",
-            invalidConsolidation: args.invalidConsolidation,
-            issues: args.issues,
-          }),
-          options,
-        );
-      case "ResolveMemoryWrite":
-        return baml.request.ResolveMemoryWrite(
-          buildMemoryWriteResolutionPromptJson(args.input, {
-            stage: "resolveMemoryWrite",
-          }),
-          options,
-        );
-      case "RepairMemoryWriteResolution":
-        return baml.request.RepairMemoryWriteResolution(
-          buildMemoryWriteResolutionPromptJson(args.input, {
-            stage: "repairMemoryWriteResolution",
-            invalidResolution: args.invalidResolution,
+      case "RepairContinuityRules":
+        return baml.request.RepairContinuityRules(
+          args.stablePrompt,
+          buildAgentContinuityRulePromptJson(args.input, {
+            stage: "repairContinuityRules",
+            invalidExtraction: args.invalidExtraction,
             issues: args.issues,
           }),
           options,
@@ -253,6 +244,10 @@ export class AgentActionPlannerBamlPromptFactory {
           }),
           options,
         );
+      case "DecideGoalMicroLoop":
+        return baml.request.DecideGoalMicroLoop(buildGoalMicroLoopPromptJson(args.input), options);
+      case "DecideResidentIdle":
+        return baml.request.DecideResidentIdle(buildResidentIdlePromptJson(args.input), options);
     }
   }
 }
@@ -283,9 +278,20 @@ function projectPromptForBamlFunction(
   functionName: AgentActionPlannerBamlFunctionArgs["functionName"],
   body: Record<string, unknown>,
 ) {
-  return functionName === "SummarizePiConversation" || functionName === "RepairPiConversationSummary"
+  return isPlainBamlFunction(functionName)
     ? projectPlainBamlRequestBody(body)
     : projectActionPlannerBamlRequestBody(body);
+}
+
+function isPlainBamlFunction(functionName: AgentActionPlannerBamlFunctionArgs["functionName"]): boolean {
+  return (
+    functionName === "ExtractContinuityFacts" ||
+    functionName === "RepairContinuityFacts" ||
+    functionName === "ExtractContinuityRules" ||
+    functionName === "RepairContinuityRules" ||
+    functionName === "SummarizePiConversation" ||
+    functionName === "RepairPiConversationSummary"
+  );
 }
 
 function buildPiPromptJson(input: object, directive: Record<string, unknown>): string {
@@ -301,7 +307,69 @@ function buildPiPromptJson(input: object, directive: Record<string, unknown>): s
   );
 }
 
-function createPromptRegistry(): ClientRegistry {
+function buildGoalMicroLoopPromptJson(input: AgentGoalMicroLoopDecisionInput): string {
+  return JSON.stringify(
+    {
+      context: {
+        worldId: input.worldId,
+        from: input.from.toString(),
+        to: input.to.toString(),
+        ...(input.allowedToolNames ? { allowedToolNames: [...input.allowedToolNames] } : {}),
+        candidates: input.candidates,
+        world: {
+          id: input.snapshot.world.id,
+          name: input.snapshot.world.name,
+          time: {
+            instant: input.snapshot.time.instant.toString(),
+            localDate: input.snapshot.time.localDate,
+            localTime: input.snapshot.time.localTime,
+            phase: input.snapshot.time.phaseLabel,
+          },
+          calendar: input.snapshot.calendar,
+          resident: input.snapshot.resident,
+          commitments: input.snapshot.commitments,
+          changedNodeIds: input.snapshot.changedNodeIds,
+          timeline: input.snapshot.timeline.slice(0, 16),
+        },
+      },
+      directive: { stage: "decideGoalMicroLoop" },
+    },
+    null,
+    2,
+  );
+}
+
+function buildResidentIdlePromptJson(input: AgentWorldResidentIdleDecisionInput): string {
+  return JSON.stringify(
+    {
+      context: {
+        worldId: input.worldId,
+        now: input.now.toString(),
+        streak: input.streak,
+        world: {
+          id: input.snapshot.world.id,
+          name: input.snapshot.world.name,
+          time: {
+            instant: input.snapshot.time.instant.toString(),
+            localDate: input.snapshot.time.localDate,
+            localTime: input.snapshot.time.localTime,
+            phase: input.snapshot.time.phaseLabel,
+          },
+          calendar: input.snapshot.calendar,
+          resident: input.snapshot.resident,
+          commitments: input.snapshot.commitments,
+          changedNodeIds: input.snapshot.changedNodeIds,
+          timeline: input.snapshot.timeline.slice(0, 16),
+        },
+      },
+      directive: { stage: "decideResidentIdle" },
+    },
+    null,
+    2,
+  );
+}
+
+export function createAgentBamlPromptBuilderRegistry(): ClientRegistry {
   const registry = new ClientRegistry();
   registry.addLlmClient("SeneraActionPlannerPromptBuilder", "openai-generic", {
     base_url: "https://example.invalid/v1",

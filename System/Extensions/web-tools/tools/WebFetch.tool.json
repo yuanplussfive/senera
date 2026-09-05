@@ -1,6 +1,6 @@
 {
   "name": "WebFetch",
-  "description": "Fetch a public web page and extract bounded Markdown content with traceable citations.",
+  "description": "打开公开网页并提取正文、链接和可追溯引用，适合继续核对搜索到的资料。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
@@ -83,7 +83,7 @@
       {
         "Id": "web.fetch",
         "Title": "Web page fetch",
-        "Description": "Fetch a public web page and extract bounded Markdown content with links.",
+        "Description": "打开公开网页并提取正文、链接和可追溯引用，适合继续核对搜索到的资料。",
         "Facets": {
           "Actions": ["fetch", "read", "extract"],
           "Targets": ["public-web", "web-page", "article"],

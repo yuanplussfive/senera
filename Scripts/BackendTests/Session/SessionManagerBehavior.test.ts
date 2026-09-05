@@ -2,7 +2,11 @@ import { describe, expect, test, vi } from "vitest";
 import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentMemoryService } from "../../../Source/AgentSystem/Memory/AgentMemoryService.js";
 import { InMemoryAgentMemorySourceRepository } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
-import { SqliteSessionRepository } from "../../../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
+import {
+  InMemorySessionRepository,
+  SqliteSessionRepository,
+} from "../../../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
+import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSessionStore.js";
 import { AgentCancellationError } from "../../../Source/AgentSystem/Core/AgentCancellation.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 import path from "node:path";
@@ -13,6 +17,8 @@ import {
 import { AgentPiActiveSessionRegistry } from "../../../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import type { AgentPiSession } from "../../../Source/AgentSystem/Pi/AgentPiSubstrate.js";
 import { AgentSessionMessageQueueModes } from "../../../Source/AgentSystem/Session/AgentSessionMessageQueueMode.js";
+import { AgentSessionQueuedMessageConflictError } from "../../../Source/AgentSystem/Session/AgentSessionActiveRunController.js";
+import { createAgentSessionMessageCommand } from "../../../Source/AgentSystem/Session/AgentSessionCommand.js";
 import { createDeferred, waitForAbort } from "../Support/AsyncTestFixtures.js";
 import {
   assistantEntry,
@@ -25,7 +31,7 @@ import {
 } from "./SessionManagerTestFixtures.js";
 
 describe("Session manager behavior", () => {
-  test("does not expose child-owned sessions through the user session catalog", async () => {
+  test("does not expose internal-owned sessions through the user session catalog", async () => {
     const fixture = createManagerFixture({
       managedSessionIds: new Set(["legacy-child"]),
     });
@@ -37,6 +43,7 @@ describe("Session manager behavior", () => {
       agentName: "reviewer",
     });
     fixture.store.open("legacy-child");
+    fixture.store.open("scheduled-run", { type: "scheduled_run", taskId: "task-1" });
     fixture.store.open("user-session");
 
     expect(fixture.manager.listSessions().map((session) => session.sessionId)).toEqual(["user-session"]);
@@ -71,6 +78,177 @@ describe("Session manager behavior", () => {
         messageCount: 0,
       }),
     ]);
+  });
+
+  test("delivers a scheduled result into its owner conversation exactly once", async () => {
+    const fixture = createManagerFixture();
+    const events: AgentDomainEvent[] = [];
+    await fixture.manager.createSession({ sessionId: "scheduled-owner" });
+
+    const request = {
+      deliveryId: "scheduled-run-1",
+      taskId: "task-1",
+      sessionId: "scheduled-owner",
+      content: "It is time to start work.",
+      createdAt: "2026-08-05T00:02:00.000Z",
+      onEvent: collect(events),
+    };
+    await expect(fixture.manager.deliverScheduledTaskResult(request)).resolves.toBe("delivered");
+    await expect(fixture.manager.deliverScheduledTaskResult(request)).resolves.toBe("delivered");
+    await expect(fixture.manager.deliverScheduledTaskResult({ ...request, sessionId: "missing-owner" })).resolves.toBe(
+      "missing",
+    );
+
+    expect(fixture.store.loadConversation("scheduled-owner")).toEqual([
+      expect.objectContaining({
+        id: "scheduled-run-1:assistant",
+        requestId: "scheduled-run-1",
+        kind: "assistant.decision",
+        xml: expect.stringContaining("It is time to start work."),
+        metadata: {
+          scheduledTask: { taskId: "task-1", runId: "scheduled-run-1" },
+        },
+      }),
+    ]);
+    expect(events.filter((event) => event.kind === AgentEventKinds.AssistantMessageCreated)).toHaveLength(1);
+  });
+
+  test("shares the same idempotent boundary for proactive Resident delivery", async () => {
+    const fixture = createManagerFixture();
+    const events: AgentDomainEvent[] = [];
+    await fixture.manager.createSession({ sessionId: "resident-owner" });
+    const request = {
+      deliveryId: "resident-idle-work-1",
+      sessionId: "resident-owner",
+      content: "世界出现了新的变化。",
+      createdAt: "2026-08-05T00:03:00.000Z",
+      metadata: { proactive: { sourceId: "world.resident.idle", deliveryId: "resident-idle-work-1" } },
+      onEvent: collect(events),
+    };
+    await expect(fixture.manager.deliverProactiveMessage(request)).resolves.toBe("delivered");
+    await expect(fixture.manager.deliverProactiveMessage(request)).resolves.toBe("delivered");
+    expect(fixture.store.loadConversation("resident-owner")).toEqual([
+      expect.objectContaining({
+        requestId: "resident-idle-work-1",
+        metadata: request.metadata,
+        xml: expect.stringContaining("世界出现了新的变化。"),
+      }),
+    ]);
+    expect(events.filter((event) => event.kind === AgentEventKinds.AssistantMessageCreated)).toHaveLength(1);
+  });
+
+  test("re-enters an owner session for detached completion and remains idempotent", async () => {
+    const fixture = createManagerFixture();
+    const events: AgentDomainEvent[] = [];
+    await fixture.manager.createSession({ sessionId: "background-owner" });
+
+    const request = {
+      sessionId: "background-owner",
+      requestId: "background-child-1-rev-1",
+      input: JSON.stringify({ taskId: "background-child-1", status: "completed", result: "finished" }),
+      approvalMode: "agent" as const,
+      modelProviderId: "provider-background",
+      metadata: { backgroundTask: { taskId: "background-child-1", runId: "background-child-1" } },
+      onEvent: collect(events),
+    };
+
+    await expect(fixture.manager.wakeFromBackgroundTask(request)).resolves.toBe("accepted");
+    await expect(fixture.manager.wakeFromBackgroundTask(request)).resolves.toBe("accepted");
+
+    const conversation = fixture.store.loadConversation("background-owner");
+    expect(conversation.filter((entry) => entry.kind === "user.message")).toHaveLength(1);
+    expect(conversation[0]).toEqual(
+      expect.objectContaining({
+        requestId: request.requestId,
+        metadata: request.metadata,
+        content: request.input,
+      }),
+    );
+    // A replayed request re-emits its durable lifecycle to the caller, but it
+    // does not append a second conversation turn.
+    expect(events.filter((event) => event.kind === AgentEventKinds.RunStarted)).toHaveLength(2);
+  });
+
+  test("reclaims an interrupted completion wake after restart without duplicating its user entry", async () => {
+    const repository = new InMemorySessionRepository();
+    const seedStore = new AgentSessionStore({ repository });
+    const opened = seedStore.open("background-recovery-owner");
+    const request = {
+      sessionId: "background-recovery-owner",
+      requestId: "background-child-recovery-rev-1",
+      input: JSON.stringify({ taskId: "background-child-recovery", status: "completed", result: "finished" }),
+      approvalMode: "agent" as const,
+      modelProviderId: "provider-background",
+      metadata: { backgroundTask: { taskId: "background-child-recovery", runId: "background-child-recovery" } },
+    };
+    const startedAt = "2026-08-05T00:04:00.000Z";
+    const entry = userEntry(request.requestId, request.input);
+    const runningSession = {
+      ...opened.session,
+      status: "running" as const,
+      updatedAt: startedAt,
+      activeRequest: { requestId: request.requestId, input: request.input, startedAt },
+      conversation: [entry],
+    };
+    const command = createAgentSessionMessageCommand({
+      requestId: request.requestId,
+      modelProviderId: request.modelProviderId,
+      text: request.input,
+      approvalMode: request.approvalMode,
+      createdAt: startedAt,
+    });
+    seedStore.persistRunStart(
+      runningSession,
+      request.requestId,
+      entry,
+      {
+        sessionId: request.sessionId,
+        requestId: request.requestId,
+        input: request.input,
+        status: "running",
+        startedAt,
+        updatedAt: startedAt,
+      },
+      runEvent(request.sessionId, request.requestId, 1),
+      command,
+    );
+
+    const fixture = createManagerFixture({
+      repository,
+      loopFactory: () => ({ run: async () => completedRun(request.requestId) }),
+    });
+    await expect(fixture.manager.wakeFromBackgroundTask(request)).resolves.toBe("accepted");
+    await vi.waitFor(() => {
+      expect(fixture.store.loadConversation(request.sessionId)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ kind: "assistant.decision", requestId: request.requestId })]),
+      );
+    });
+
+    const conversation = fixture.store.loadConversation(request.sessionId);
+    expect(conversation.filter((item) => item.kind === "user.message")).toHaveLength(1);
+    expect(conversation.filter((item) => item.kind === "assistant.decision")).toHaveLength(1);
+  });
+
+  test("resolves the durable fork boundary and only disposes internal scheduled forks", async () => {
+    const fixture = createManagerFixture();
+    await fixture.manager.createSession({ sessionId: "scheduled-owner" });
+    fixture.store.persistEntries("scheduled-owner", [
+      userEntry("owner-request", "Set a reminder."),
+      assistantEntry("owner-answer", "<response><answer>Scheduled.</answer></response>"),
+    ]);
+    fixture.store.open("scheduled-execution", { type: "scheduled_run", taskId: "task-1" });
+    fixture.store.open("user-session");
+
+    await expect(fixture.manager.resolveScheduledTaskForkBoundary("scheduled-owner")).resolves.toBe("owner-answer");
+    await expect(fixture.manager.disposeScheduledTaskSession("scheduled-execution")).resolves.toBeUndefined();
+    await expect(fixture.manager.disposeScheduledTaskSession("user-session")).rejects.toThrow(
+      "Refusing to dispose non-scheduled session",
+    );
+
+    expect(fixture.store.get("scheduled-execution")).toEqual({ kind: "missing", sessionId: "scheduled-execution" });
+    expect(fixture.manager.listSessions().map((session) => session.sessionId)).toEqual(
+      expect.arrayContaining(["scheduled-owner", "user-session"]),
+    );
   });
 
   test("atomically creates a missing session with its first message", async () => {
@@ -331,7 +509,6 @@ describe("Session manager behavior", () => {
     ]);
     fixture.manager.recordRunEvent(runEvent("session-truncate", "request-a", 1));
     fixture.manager.recordRunEvent(runEvent("session-truncate", "request-b", 2));
-
     await fixture.manager.truncateFromRequest({
       sessionId: "session-truncate",
       requestId: "request-b",
@@ -345,12 +522,14 @@ describe("Session manager behavior", () => {
     expect(fixture.store.loadRunEvents("session-truncate").map((event) => event.requestId)).toEqual(["request-a"]);
     expect(deleteFromSessionRequest).toHaveBeenCalledWith("session-truncate", "request-b");
     expect(reset).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "session-truncate" }));
-    expect(events).toEqual([
-      expect.objectContaining({
-        kind: AgentEventKinds.SessionTruncated,
-        data: expect.objectContaining({ removedEntries: 2 }),
-      }),
-    ]);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: AgentEventKinds.SessionTruncated,
+          data: expect.objectContaining({ removedEntries: 2 }),
+        }),
+      ]),
+    );
   });
 
   test("routes submitMessage missing and busy paths through stable events", async () => {
@@ -361,7 +540,7 @@ describe("Session manager behavior", () => {
     const steer = vi.fn(async () => undefined);
     const followUp = vi.fn(async () => undefined);
 
-    await fixture.manager.submitMessage({
+    const missingOutcome = await fixture.manager.submitMessage({
       approvalMode: "agent",
       sessionId: "missing-session",
       input: "hello",
@@ -385,32 +564,44 @@ describe("Session manager behavior", () => {
         abort: async () => undefined,
       } as unknown as AgentPiSession,
     });
-    await fixture.manager.submitMessage({
+    const busyOutcome = await fixture.manager.submitMessage({
       approvalMode: "agent",
       sessionId: "session-busy",
       requestId: "request-busy",
       input: "second turn",
       onEvent: collect(events),
     });
-    await fixture.manager.submitMessage({
+    const steerOutcome = await fixture.manager.submitMessage({
       approvalMode: "agent",
       sessionId: "session-busy",
       requestId: "request-steer",
       input: "change direction",
       queueMode: AgentSessionMessageQueueModes.Steer,
     });
-    await fixture.manager.submitMessage({
+    const followUpOutcome = await fixture.manager.submitMessage({
       approvalMode: "agent",
       sessionId: "session-busy",
       requestId: "request-follow-up",
       input: "continue afterwards",
       queueMode: AgentSessionMessageQueueModes.FollowUp,
     });
+    const duplicateOutcome = fixture.manager.submitMessage({
+      approvalMode: "agent",
+      sessionId: "session-busy",
+      requestId: "request-follow-up",
+      input: "different follow-up",
+      queueMode: AgentSessionMessageQueueModes.FollowUp,
+    });
+    expect(missingOutcome.kind).toBe("missing");
+    expect(busyOutcome.kind).toBe("busy");
+    expect(steerOutcome.kind).toBe("queued");
+    expect(followUpOutcome.kind).toBe("queued");
     expect(fixture.store.loadConversation("session-busy").map((entry) => entry.requestId)).toEqual([
       "request-running",
       "request-steer",
       "request-follow-up",
     ]);
+    await expect(duplicateOutcome).rejects.toBeInstanceOf(AgentSessionQueuedMessageConflictError);
     unregister();
     await expect(fixture.manager.cancelActiveRun({ sessionId: "session-busy" })).resolves.toBe(true);
     await run;
@@ -418,7 +609,13 @@ describe("Session manager behavior", () => {
     expect(events.map((event) => event.kind)).toEqual([AgentEventKinds.SessionNotFound, AgentEventKinds.SessionBusy]);
     expect(steer).toHaveBeenCalledOnce();
     expect(followUp).toHaveBeenCalledOnce();
-    await vi.waitFor(() => expect(fixture.store.loadConversation("session-busy")).toEqual([]));
+    await vi.waitFor(() =>
+      expect(fixture.store.loadConversation("session-busy").map((entry) => entry.requestId)).toEqual([
+        "request-running",
+        "request-steer",
+        "request-follow-up",
+      ]),
+    );
   });
 
   test("accepts cancellation immediately while a non-cooperative run finishes in the background", async () => {
@@ -469,16 +666,18 @@ describe("Session manager behavior", () => {
 
     release.resolve();
     await run;
-    await vi.waitFor(() => expect(fixture.store.loadConversation("session-delayed-cancel")).toEqual([]));
-    expect(events).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: AgentEventKinds.RunCancelled }),
-        expect.objectContaining({ kind: AgentEventKinds.SessionTruncated }),
+    await vi.waitFor(() =>
+      expect(fixture.store.loadConversation("session-delayed-cancel")).toEqual([
+        expect.objectContaining({ requestId: "request-delayed-cancel", kind: "user.message", content: "long run" }),
       ]),
+    );
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ kind: AgentEventKinds.RunCancelled })]));
+    expect(events).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: AgentEventKinds.SessionTruncated })]),
     );
   });
 
-  test("settles cancellation after its deadline and truncates after the run eventually settles", async () => {
+  test("settles cancellation after its deadline and preserves history when the run eventually settles", async () => {
     const started = createDeferred<void>();
     const release = createDeferred<void>();
     const events: AgentDomainEvent[] = [];
@@ -520,7 +719,15 @@ describe("Session manager behavior", () => {
 
     release.resolve();
     await run;
-    await vi.waitFor(() => expect(fixture.store.loadConversation("session-background-cancel")).toEqual([]));
+    await vi.waitFor(() =>
+      expect(fixture.store.loadConversation("session-background-cancel")).toEqual([
+        expect.objectContaining({
+          requestId: "request-background-cancel",
+          kind: "user.message",
+          content: "Keep running until cancellation.",
+        }),
+      ]),
+    );
   });
 
   test("accepts cancellation without waiting for the active run to settle", async () => {

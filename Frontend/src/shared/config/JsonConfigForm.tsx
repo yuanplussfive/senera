@@ -44,14 +44,19 @@ export function JsonConfigSettingsView({
   const content = (
     <div
       onBlurCapture={onCommit}
-      className={cn("mx-auto w-full max-w-[960px] px-4 py-5 sm:px-6 sm:py-7", layoutMode === "panel" && "min-h-full")}
+      className={cn(
+        "mx-auto w-full px-0 py-3 sm:py-4",
+        layoutMode === "panel" ? "max-w-[960px] px-4 sm:px-6" : "max-w-[1120px]",
+        layoutMode === "panel" && "min-h-full",
+      )}
     >
       {visibleSections.length > 0 ? (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {visibleSections.map((section, index) => (
             <JsonSettingsSection
               key={section.name}
               section={section}
+              layoutMode={layoutMode}
               showHeading={showSectionHeading}
               headerAction={index === 0 ? visibilityControl : undefined}
               value={value}
@@ -85,7 +90,7 @@ export function JsonConfigSettingsView({
     </div>
   );
 
-  if (layoutMode === "embedded") return <div className="bg-paper-50">{content}</div>;
+  if (layoutMode === "embedded") return <div className="bg-transparent">{content}</div>;
   return (
     <ScrollArea className="h-full min-h-0 flex-1 bg-paper-50" viewportClassName="h-full">
       {content}
@@ -95,6 +100,7 @@ export function JsonConfigSettingsView({
 
 function JsonSettingsSection({
   section,
+  layoutMode,
   showHeading,
   headerAction,
   value,
@@ -102,6 +108,7 @@ function JsonSettingsSection({
   onUpdateField,
 }: {
   section: ConfigFormSectionData;
+  layoutMode: "panel" | "embedded";
   showHeading: boolean;
   headerAction?: ReactNode;
   value: JsonConfigObject;
@@ -116,7 +123,12 @@ function JsonSettingsSection({
         action={headerAction}
       />
       <div
-        className="divide-y divide-line-subtle overflow-hidden rounded-lg border border-line bg-paper-50"
+        className={cn(
+          "divide-y divide-line-subtle overflow-hidden",
+          layoutMode === "panel"
+            ? "rounded-lg border border-line bg-surface-panel"
+            : "border-y border-line-subtle bg-transparent",
+        )}
         data-json-config-section={section.name}
       >
         {section.fields.map((field) => (

@@ -142,7 +142,9 @@ export type AgentOrchestrationDomainEvent =
         active: boolean;
         taskCount: number;
         runningTaskIds: string[];
-        leaseAcquired: boolean;
+        pendingDeliveryCount?: number;
+        recoveryMode: "database_claim";
+        error?: string;
       };
     };
 

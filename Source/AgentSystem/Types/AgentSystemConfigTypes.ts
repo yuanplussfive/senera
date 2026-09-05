@@ -5,13 +5,17 @@ import type {
   AgentConfigStoreConfig,
   AgentLoopConfig,
   AgentPresetsConfig,
+  AgentPromptConfig,
   AgentSandboxRuntimeConfig,
   AgentServerConfig,
+  AgentTodosConfig,
   AgentToolExecutionConfig,
   AgentUploadsConfig,
+  AgentWorldConfig,
+  AgentInferenceBudgetConfig,
 } from "./AgentRuntimeConfigTypes.js";
 import type {
-  AgentMemoryLearningConfig,
+  AgentContinuityLearningConfig,
   AgentToolLearningConfig,
   AgentToolSearchConfig,
   AgentVectorModelsConfig,
@@ -32,10 +36,11 @@ export interface AgentDefaultsConfig {
   ToolExecution?: AgentToolExecutionConfig;
   SandboxRuntime?: AgentSandboxRuntimeConfig;
   AgentLoop?: AgentLoopConfig;
+  Todos?: AgentTodosConfig;
   ToolSearch?: AgentToolSearchConfig;
   VectorModels?: AgentVectorModelsConfig;
   ToolLearning?: AgentToolLearningConfig;
-  MemoryLearning?: AgentMemoryLearningConfig;
+  ContinuityLearning?: AgentContinuityLearningConfig;
   Presets?: AgentPresetsConfig;
   Artifacts?: AgentArtifactsConfig;
   Uploads?: AgentUploadsConfig;
@@ -46,6 +51,9 @@ export interface AgentDefaultsConfig {
     Kind?: "sqlite" | "memory";
   };
   ConfigStore?: AgentConfigStoreConfig;
+  Prompt?: AgentPromptConfig;
+  World?: AgentWorldConfig;
+  InferenceBudget?: AgentInferenceBudgetConfig;
 }
 
 export interface AgentSystemConfig {
@@ -80,10 +88,11 @@ export interface AgentSystemConfig {
   ModelProviders: AgentModelProviderConfig[];
   ModelGroups?: AgentModelGroupConfig[];
   AgentLoop?: AgentLoopConfig;
+  Todos?: AgentTodosConfig;
   ToolSearch?: AgentToolSearchConfig;
   VectorModels?: AgentVectorModelsConfig;
   ToolLearning?: AgentToolLearningConfig;
-  MemoryLearning?: AgentMemoryLearningConfig;
+  ContinuityLearning?: AgentContinuityLearningConfig;
   Presets?: AgentPresetsConfig;
   Artifacts?: AgentArtifactsConfig;
   Uploads?: AgentUploadsConfig;
@@ -94,5 +103,8 @@ export interface AgentSystemConfig {
     Kind?: "sqlite" | "memory";
   };
   ConfigStore?: AgentConfigStoreConfig;
+  Prompt?: AgentPromptConfig;
+  World?: AgentWorldConfig;
+  InferenceBudget?: AgentInferenceBudgetConfig;
   Extensions?: Record<string, AgentSystemExtensionConfig>;
 }

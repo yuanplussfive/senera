@@ -14,4 +14,4 @@ description: Execute multi-step code changes, bug fixes, refactors, architecture
 7. Revise the work items when evidence changes the plan.
 8. Finish only when every item is completed, blocked with evidence, or explicitly outside scope.
 
-Use ToolSearch to discover repository, patch, shell, and verification tools when they are not already visible.
+Use ToolSearch to discover repository, patch, shell, and verification tools when they are not already visible. After ToolDescribe, follow the active planning protocol exactly: Native calls the discovered contract through ToolCall, while BAML loads the tool before direct invocation.

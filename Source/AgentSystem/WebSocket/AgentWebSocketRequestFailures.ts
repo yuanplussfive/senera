@@ -193,7 +193,15 @@ function projectRequestExecutionFailure(request: AgentWebSocketRequest, error: u
 function readRequestFailureIdentity(request: AgentWebSocketRequest): Record<string, string> {
   const identity: Record<string, string> = {};
   const record = request as unknown as Record<string, unknown>;
-  for (const key of ["sessionId", "requestId", "approvalId", "interactionId", "resourceId"] as const) {
+  for (const key of [
+    "sessionId",
+    "requestId",
+    "approvalId",
+    "interactionId",
+    "resourceId",
+    "commandId",
+    "goalId",
+  ] as const) {
     const value = record[key];
     if (typeof value === "string" && value) {
       identity[key] = value;

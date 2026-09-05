@@ -195,6 +195,20 @@
             "step": 1024,
             "required": true,
             "essential": false
+          },
+          {
+            "path": ["capture", "maxDownloadBytes"],
+            "label": { "zh-CN": "下载文件大小上限", "en-US": "Download file size limit" },
+            "description": {
+              "zh-CN": "浏览器下载会作为 Artifact 保存，超过此大小的文件会被拒绝。",
+              "en-US": "Browser downloads are stored as Artifacts; files above this size are rejected."
+            },
+            "type": "number",
+            "min": 131072,
+            "max": 536870912,
+            "step": 1048576,
+            "required": true,
+            "essential": false
           }
         ]
       }

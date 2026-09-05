@@ -34,6 +34,7 @@ describe("session persistence migration", () => {
     expect(migrated).toEqual({
       defaultSidebarCollapsed: false,
       defaultRightPanelCollapsed: true,
+      sessionOrder: ["legacy-active"],
       motionLevel: "full",
       executionApprovalMode: "agent",
       selectedModelProviderId: "provider-1",
@@ -132,6 +133,17 @@ describe("readPersistedSessionPreferences", () => {
       userProfile: undefined,
       workflowDockWidth: 640,
     });
+  });
+  it("sanitizes a persisted session order without trusting stale or duplicate ids", () => {
+    expect(
+      readPersistedSessionPreferences(
+        JSON.stringify({
+          state: {
+            sessionOrder: ["second", "first", "second", "", 42, " third "],
+          },
+        }),
+      )?.sessionOrder,
+    ).toEqual(["second", "first", " third "]);
   });
   it("returns null for invalid persisted preference payloads", () => {
     expect(readPersistedSessionPreferences("{")).toBeNull();

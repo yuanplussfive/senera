@@ -38,6 +38,8 @@
     "Capabilities": [
       {
         "Id": "execution.resource-stop-all",
+        "Title": "Stop all execution resources",
+        "Description": "停止当前会话拥有的全部活动后台终端和进程。",
         "Facets": {
           "Actions": ["stop", "terminate"],
           "Targets": ["execution-resource", "terminal", "process"],
@@ -45,6 +47,7 @@
         }
       }
     ],
+    "UseCases": ["用户明确要求停止当前会话的全部后台执行时。"],
     "Tags": ["后台终端", "全部停止", "会话控制"]
   },
   "evidenceCapabilities": [],

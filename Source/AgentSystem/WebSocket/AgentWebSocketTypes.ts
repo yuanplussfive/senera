@@ -5,6 +5,7 @@ import type { AgentUserProfileManager } from "../Session/AgentUserProfile.js";
 import type { AgentConfigService } from "../Config/AgentConfigService.js";
 import type { AgentProviderModelDiscovery } from "../Config/AgentProviderModelDiscovery.js";
 import type { AgentPresetManager } from "../Presets/AgentPresetManager.js";
+import type { AgentPresetSnapshot } from "../Presets/AgentPresetTypes.js";
 import type { AgentSessionManager } from "../Session/AgentSessionManager.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
@@ -16,8 +17,22 @@ import type { AgentRunEventWriter } from "./AgentRunEventWriter.js";
 import type { AgentPiDiagnosticSink } from "../PiShared/AgentPiDiagnosticsTypes.js";
 import type { AgentMcpManagementService } from "../McpPackages/AgentMcpManagementService.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 import type { AgentInteractiveTerminalRuntime } from "../ExecutionResources/AgentInteractiveTerminalRuntime.js";
 import type { AgentRuntimeUpdateHttpApiOptions } from "../Runtime/AgentRuntimeUpdateHttpApi.js";
+import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
+import type { AgentGoalCommandService } from "../Agenda/AgentGoalCommandService.js";
+import type { AgentWorldSnapshotProvider } from "../World/AgentWorldTypes.js";
+import type { AgentWorldResidentWakeRuntime } from "../World/AgentWorldResidentWakeRuntime.js";
+import type { AgentPresetActivationRuntime } from "../Presets/AgentPresetActivationRuntime.js";
+import type { AgentChannelKind } from "../Channels/AgentChannelTypes.js";
+import type { AgentChannelStatus } from "../Channels/AgentChannelService.js";
+
+/** Narrow surface the WebSocket layer needs to drive channel connections. */
+export interface AgentChannelServiceControl {
+  connectChannel(kind: AgentChannelKind): Promise<void>;
+  statuses: readonly AgentChannelStatus[];
+}
 
 export interface AgentWebSocketServerOptions {
   config: AgentSystemConfig;
@@ -39,7 +54,17 @@ export interface AgentWebSocketServerOptions {
   eventWriter: AgentRunEventWriter;
   mcpManagement?: AgentMcpManagementService;
   uploadStore?: AgentUploadStore;
+  resourceResolver?: AgentResourceResolverLike;
   runtimeUpdate?: AgentRuntimeUpdateHttpApiOptions;
+  channelWebhookApi?: import("../Channels/AgentChannelWebhookApi.js").AgentChannelWebhookApi;
+  channelControl?: AgentChannelServiceControl;
+  agenda?: AgentAgendaService;
+  goalCommands?: AgentGoalCommandService;
+  worldRuntime?: AgentWorldSnapshotProvider;
+  residentWakeRuntime?: AgentWorldResidentWakeRuntime;
+  onWorldWake?: (reason: string) => void | Promise<void>;
+  presetActivation?: AgentPresetActivationRuntime;
+  onPresetSnapshot?: (snapshot: AgentPresetSnapshot) => void;
 }
 
 export interface AgentWebSocketRequestContext {
@@ -50,6 +75,7 @@ export interface AgentWebSocketRequestContext {
   userProfileManager: AgentUserProfileManager;
   providerModelDiscovery: AgentProviderModelDiscovery;
   presetManagerFactory: () => AgentPresetManager;
+  onPresetSnapshot?: (snapshot: AgentPresetSnapshot) => void;
   approvalRuntime?: AgentApprovalRuntime;
   interactionInput?: AgentInteractionInputRuntime;
   sandboxRuntimeService: AgentSandboxRuntimeService;
@@ -57,6 +83,11 @@ export interface AgentWebSocketRequestContext {
   interactiveTerminals?: AgentInteractiveTerminalRuntime;
   workspaceRoot: string;
   mcpManagement?: AgentMcpManagementService;
+  agenda?: AgentAgendaService;
+  goalCommands?: AgentGoalCommandService;
+  worldRuntime?: AgentWorldSnapshotProvider;
+  residentWakeRuntime?: AgentWorldResidentWakeRuntime;
+  onWorldWake?: (reason: string) => void | Promise<void>;
 }
 
 export type AgentWebSocketEventSender = (event: AgentDomainEvent) => void | Promise<void>;

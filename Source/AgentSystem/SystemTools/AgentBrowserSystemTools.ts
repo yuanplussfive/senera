@@ -46,9 +46,25 @@ const BrowserOperationOutput = z
     trust: z.literal("untrusted_browser_content"),
     truncated: z.boolean(),
     content: z.string().optional(),
+    page: z
+      .object({
+        url: z.string().trim().min(1),
+        title: z.string(),
+      })
+      .strict()
+      .optional(),
     screenshot: z
       .object({
         assetId: z.string().trim().min(1),
+        mediaType: z.string().trim().min(1),
+        markdown: z.string().trim().min(1),
+      })
+      .strict()
+      .optional(),
+    download: z
+      .object({
+        assetId: z.string().trim().min(1),
+        fileName: z.string().trim().min(1),
         mediaType: z.string().trim().min(1),
         markdown: z.string().trim().min(1),
       })
@@ -80,6 +96,81 @@ export function createAgentBrowserSystemTools(
     .max(Math.min(configuration.runtime.maxWaitMs, configuration.runtime.maxOperationTimeoutMs))
     .optional();
   const Empty = z.object({}).strict();
+  const Point = z
+    .object({
+      x: z.number().finite().min(0),
+      y: z.number().finite().min(0),
+    })
+    .strict();
+  const ModifierKeys = z
+    .array(z.string().trim().min(1).max(32))
+    .min(1)
+    .max(8)
+    .describe("可选修饰键，例如 Control、Alt 或 Shift。仅填写修饰键。\n");
+  const KeySequence = z
+    .array(z.string().trim().min(1).max(32))
+    .min(1)
+    .max(8)
+    .describe('一次按键或一次组合键；单键写 ["ENTER"]，组合键写 ["ALT", "TAB"]，最后一项是主键，不表示连续按键。');
+  const ComputerAction = z.union([
+    z
+      .object({
+        type: z.literal("click"),
+        x: z.number().finite().min(0),
+        y: z.number().finite().min(0),
+        button: z.enum(["left", "middle", "right"]).default("left"),
+        modifiers: ModifierKeys.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("double_click"),
+        x: z.number().finite().min(0),
+        y: z.number().finite().min(0),
+        button: z.enum(["left", "middle", "right"]).default("left"),
+        modifiers: ModifierKeys.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("move"),
+        x: z.number().finite().min(0),
+        y: z.number().finite().min(0),
+        modifiers: ModifierKeys.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("scroll"),
+        x: z.number().finite().min(0),
+        y: z.number().finite().min(0),
+        scrollX: z.number().finite().default(0),
+        scrollY: z.number().finite().default(0),
+        modifiers: ModifierKeys.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("drag"),
+        path: z.array(Point).min(2).max(128),
+        modifiers: ModifierKeys.optional(),
+      })
+      .strict(),
+    z.object({ type: z.literal("type"), text: Text }).strict(),
+    z
+      .object({
+        type: z.literal("keypress"),
+        keys: KeySequence,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("wait"),
+        ms: z.number().int().min(1).max(configuration.runtime.maxWaitMs),
+      })
+      .strict(),
+    z.object({ type: z.literal("screenshot") }).strict(),
+  ]);
 
   return [
     browserTool(browser, {
@@ -88,7 +179,13 @@ export function createAgentBrowserSystemTools(
       description:
         "Open a public URL in the current controlled browser session. Navigation invalidates earlier BrowserSnapshot references; capture a new snapshot before interacting.",
       input: z.object({ url: Url }).strict(),
-      search: browserSearch("browser.open", "Open a public web page", ["open", "navigate", "browse"], ["url"]),
+      search: browserSearch(
+        "browser.open",
+        "Open a public web page",
+        ["open", "navigate", "browse"],
+        ["url"],
+        ["打开网页", "打开链接", "浏览网页"],
+      ),
       approval: navigationApproval(),
     }),
     browserTool(browser, {
@@ -162,9 +259,10 @@ export function createAgentBrowserSystemTools(
     browserTool(browser, {
       name: "BrowserPress",
       operation: "press",
-      description: "Send a keyboard key or shortcut to the active browser page.",
-      input: z.object({ key: z.string().trim().min(1).max(128) }).strict(),
-      search: browserSearch("browser.press", "Press a browser key", ["press", "keyboard", "submit"], ["key"]),
+      description:
+        'Send one key or one shortcut to the active browser page. Use a keys array such as ["ENTER"] or ["CTRL", "L"]; repeat presses require separate calls.',
+      input: z.object({ keys: KeySequence }).strict(),
+      search: browserSearch("browser.press", "Press browser keys", ["press", "keyboard", "submit"], ["keys"]),
       approval: interactionApproval(),
     }),
     browserTool(browser, {
@@ -264,8 +362,43 @@ export function createAgentBrowserSystemTools(
         "Capture a browser screenshot",
         ["screenshot", "capture", "visual"],
         ["selector"],
+        ["网页截图", "浏览器截图", "截屏", "截图"],
       ),
       readOnly: true,
+    }),
+    browserTool(browser, {
+      name: "BrowserComputer",
+      operation: "computer",
+      description:
+        'Perform an ordered batch of visual browser actions using the latest screenshot coordinates. Use a fresh screenshot when needed; every call returns the updated page state and a fresh screenshot for the next visual decision. For keypress, use a keys array such as ["ENTER"] or ["ALT", "TAB"].',
+      input: z
+        .object({
+          actions: z.array(ComputerAction).min(1).max(32),
+        })
+        .strict(),
+      search: browserSearch(
+        "browser.computer",
+        "Operate browser visually",
+        ["click", "drag", "scroll", "type", "keypress", "wait", "visual"],
+        ["coordinates", "actions", "screenshot"],
+        ["computer use", "视觉操作", "坐标操作"],
+      ),
+      approval: interactionApproval(),
+    }),
+    browserTool(browser, {
+      name: "BrowserDownload",
+      operation: "download",
+      description:
+        "Activate a visible page control that starts a file download and return the downloaded file as an Artifact-backed resource. Use a fresh snapshot reference or CSS selector; arbitrary filesystem paths are not accepted.",
+      input: z.object({ selector: Selector }).strict(),
+      search: browserSearch(
+        "browser.download",
+        "Download a browser file",
+        ["download", "export", "save"],
+        ["selector", "file", "artifact"],
+        ["下载文件", "导出文件", "保存文件"],
+      ),
+      approval: interactionApproval(),
     }),
     browserTool(browser, {
       name: "BrowserGetText",
@@ -412,7 +545,13 @@ function browserTool<TShape extends z.ZodRawShape>(
   });
 }
 
-function browserSearch(id: string, title: string, actions: string[], inputs: string[]): ToolSearchManifest {
+function browserSearch(
+  id: string,
+  title: string,
+  actions: string[],
+  inputs: string[],
+  aliases: readonly string[] = [],
+): ToolSearchManifest {
   return {
     Summary: title,
     Tags: ["browser", "web", "automation"],
@@ -428,7 +567,7 @@ function browserSearch(id: string, title: string, actions: string[], inputs: str
           Outputs: ["bounded-untrusted-content", "artifact"],
           Effects: ["network-possible"],
         },
-        Aliases: [title, "浏览器", "网页自动化", "browser automation"],
+        Aliases: [title, ...aliases, "浏览器", "网页自动化", "browser automation"],
         Risk: { SideEffect: "network", Permission: "network-web-browser" },
       },
     ],

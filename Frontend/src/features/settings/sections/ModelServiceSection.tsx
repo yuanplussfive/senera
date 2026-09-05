@@ -11,6 +11,7 @@ import {
   findTopField,
   providerIdLabel,
   readFieldOptions,
+  sortProviderRows,
   toProviderEndpointInput,
 } from "../../chat/modelConfigData";
 import type { ModelProviderDraft, ProviderEndpointDraft } from "../../chat/modelConfigTypes";
@@ -125,7 +126,7 @@ export function ModelServiceSection({
     return (
       <StateView
         status="loading"
-        className="min-h-[360px] bg-paper-50"
+        className="min-h-[220px] bg-paper-50"
         description={frontendMessage("settings.state.loadingMain")}
       />
     );
@@ -133,13 +134,13 @@ export function ModelServiceSection({
     return (
       <StateView
         status="loading"
-        className="min-h-[360px] bg-paper-50"
+        className="min-h-[220px] bg-paper-50"
         description={frontendMessage("settings.state.loadingModelService")}
       />
     );
 
-  const selectedProvider =
-    state.providers.find((provider) => provider.Id === (selectedProviderId ?? state.providers[0]?.Id)) ?? null;
+  const firstProvider = sortProviderRows([...state.providers])[0]?.provider ?? null;
+  const selectedProvider = state.providers.find((provider) => provider.Id === selectedProviderId) ?? firstProvider;
   const endpointOptions = readFieldOptions(findItemField(modelField, "Endpoint"));
   const modelSurface = (
     <ProviderModelManagementSurface

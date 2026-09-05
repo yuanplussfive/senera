@@ -3,7 +3,7 @@ import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJs
 import type { AgentPromptContractProperty } from "../Prompt/AgentPromptContractTypes.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
-import { resolveAgentPiModelMaxTokens } from "./AgentPiModelProjector.js";
+import { resolveAgentModelMaxTokens } from "../ModelEndpoints/AgentNativeToolModelProjector.js";
 import type {
   AgentPiAssistantMessageCompileInput,
   AgentPiToolContract,
@@ -16,6 +16,7 @@ import { compactionSummaryOpen } from "../PiShared/AgentPiCompactionTags.js";
 import {
   assertAgentPiToolObservationBounded,
   AgentPiToolObservationProtocolError,
+  readAgentPiMessageTextContent,
   readAgentPiToolObservation,
   type AgentPiToolObservation,
   readAgentPiToolObservationArtifactUri,
@@ -70,7 +71,7 @@ export class AgentPiPlanningContextCompiler {
     this.tokenProjector = new AgentTokenProjector(options.modelProvider.Model);
     this.inputTokenCapacity = Math.max(
       1,
-      Math.floor(options.modelProvider.ContextWindowTokens) - resolveAgentPiModelMaxTokens(options.modelProvider),
+      Math.floor(options.modelProvider.ContextWindowTokens) - resolveAgentModelMaxTokens(options.modelProvider),
     );
   }
 
@@ -250,7 +251,7 @@ function projectUserContent(content: Extract<Message, { role: "user" }>["content
 }
 
 function readToolObservation(message: Extract<Message, { role: "toolResult" }>): AgentPiToolObservation {
-  const text = message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+  const text = readAgentPiMessageTextContent(message);
   const observation = readAgentPiToolObservation(text);
   if (!observation) throw new AgentPiToolObservationProtocolError();
   assertAgentPiToolObservationBounded(observation);

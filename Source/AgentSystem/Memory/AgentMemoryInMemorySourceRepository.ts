@@ -1,196 +1,97 @@
 import { uniqueTrimmed } from "./AgentMemoryCollections.js";
-import {
-  buildDirectMemoryAnchor,
-  buildEpisode,
-  buildMemoryCandidate,
-  buildMemoryObservation,
-  buildNewMemoryItem,
-  buildReinforcedMemoryItem,
-  buildSources,
-  buildUpdatedMemoryItem,
-  directWriteAction,
-} from "./AgentMemoryRecordFactory.js";
-import { buildMemoryItemVector, memoryItemVectorKey } from "./AgentMemoryRowMapper.js";
-import { projectMemoryTime as projectTime } from "./AgentMemoryTime.js";
-import {
-  AgentMemoryLearningJobStatuses,
-  failedAgentMemoryLearningJobStatus,
-  isRunnableAgentMemoryLearningJobStatus,
-} from "./AgentMemoryLearningJob.js";
+import { buildEpisode } from "./AgentMemoryEpisodeRecords.js";
+import { buildSources } from "./AgentMemorySourceRecords.js";
 import type {
-  AgentMemoryCandidateRecord,
-  AgentMemoryCandidateWriteInput,
   AgentMemoryCompletedTurnInput,
-  AgentMemoryDirectWriteInput,
+  AgentMemoryDeletionImpact,
   AgentMemoryEpisodeRecord,
-  AgentMemoryItemRecord,
-  AgentMemoryItemVectorRecord,
-  AgentMemoryItemVectorWrite,
-  AgentMemoryLearningActionRecord,
-  AgentMemoryLearningWriteInput,
-  AgentMemoryLearningJobRecord,
-  AgentMemoryObservationRecord,
   AgentMemoryRecordedTurn,
   AgentMemorySourceRecord,
   AgentMemorySourceRepository,
-  AgentMemoryType,
 } from "./AgentMemorySourceRepository.js";
 
 export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRepository {
   private readonly episodes = new Map<string, AgentMemoryEpisodeRecord>();
   private readonly sourcesByEpisode = new Map<string, AgentMemorySourceRecord[]>();
-  private readonly candidates = new Map<string, AgentMemoryCandidateRecord>();
-  private readonly vectors = new Map<string, AgentMemoryItemVectorRecord>();
-  private readonly items = new Map<string, AgentMemoryItemRecord>();
-  private readonly observations = new Map<string, AgentMemoryObservationRecord>();
-  private readonly observationWriteSequences = new Map<string, number>();
-  private readonly learningJobs = new Map<string, AgentMemoryLearningJobRecord>();
+  private catalogVersion = 0;
+
+  catalogRevision(): string {
+    return String(this.catalogVersion);
+  }
 
   recordCompletedTurn(input: AgentMemoryCompletedTurnInput): AgentMemoryRecordedTurn {
     const episode = buildEpisode(input);
     const sources = buildSources(input, episode);
     this.episodes.set(episode.uri, episode);
     this.sourcesByEpisode.set(episode.uri, sources);
+    this.catalogVersion += 1;
     return { episode, sources };
   }
 
-  recordMemoryCandidates(input: AgentMemoryCandidateWriteInput): AgentMemoryCandidateRecord[] {
-    const learnedAt = input.learnedAt ?? new Date().toISOString();
-    const records = input.candidates.map((candidate) => buildMemoryCandidate(input.episode, candidate, learnedAt));
-    for (const record of records) {
-      this.candidates.set(record.uri, record);
+  deleteSession(sessionId: string): AgentMemoryDeletionImpact {
+    const episodeUris = [...this.episodes.values()]
+      .filter((episode) => episode.sessionId === sessionId)
+      .map((episode) => episode.uri);
+    const sourceUris = episodeUris.flatMap((episodeUri) => this.listSources(episodeUri).map((source) => source.uri));
+    for (const episode of this.episodes.values()) {
+      if (episode.sessionId !== sessionId) continue;
+      this.episodes.delete(episode.uri);
+      this.sourcesByEpisode.delete(episode.uri);
     }
-    return records;
+    if (episodeUris.length > 0) this.catalogVersion += 1;
+    return { sessionId, scope: "session", episodeUris, sourceUris };
   }
 
-  applyMemoryLearning(input: AgentMemoryLearningWriteInput): AgentMemoryItemRecord[] {
-    const learnedAt = input.learnedAt ?? new Date().toISOString();
-    const written: AgentMemoryItemRecord[] = [];
-    for (const action of input.actions) {
-      if (action.operation === "reject") {
-        this.markCandidatesRejected(action.candidateUris, learnedAt);
-        continue;
-      }
-
-      if (action.operation === "reinforce") {
-        const current = this.readExistingMemory(action.targetMemoryUri);
-        const item = buildReinforcedMemoryItem(input.episode, current, action, learnedAt);
-        this.items.set(item.uri, item);
-        this.markCandidatesPromoted(action.candidateUris, item.uri, learnedAt);
-        this.recordObservation(this.createMemoryObservation(input.episode, item.uri, action, learnedAt));
-        written.push(item);
-        continue;
-      }
-
-      if (action.operation === "update") {
-        const current = this.readExistingMemory(action.targetMemoryUri);
-        const item = buildUpdatedMemoryItem(input.episode, current, action, learnedAt);
-        this.items.set(item.uri, item);
-        this.markCandidatesPromoted(action.candidateUris, item.uri, learnedAt);
-        this.recordObservation(this.createMemoryObservation(input.episode, item.uri, action, learnedAt));
-        written.push(item);
-        continue;
-      }
-
-      if (action.operation === "supersede") {
-        const current = this.readExistingMemory(action.targetMemoryUri);
-        const time = projectTime(learnedAt);
-        this.items.set(current.uri, {
-          ...current,
-          status: "superseded",
-          updatedAt: learnedAt,
-          updatedAtMs: time.epochMs,
-          timeZone: time.timeZone,
-          localDate: time.localDate,
-          localHour: time.localHour,
-        });
-      }
-
-      const item = buildNewMemoryItem(input.episode, action, learnedAt);
-      this.items.set(item.uri, item);
-      this.markCandidatesPromoted(action.candidateUris, item.uri, learnedAt);
-      this.recordObservation(this.createMemoryObservation(input.episode, item.uri, action, learnedAt));
-      written.push(item);
-    }
-    return written;
-  }
-
-  writeDirectMemory(input: AgentMemoryDirectWriteInput): AgentMemoryItemRecord {
-    const writtenAt = input.writtenAt ?? new Date().toISOString();
-    const anchor = buildDirectMemoryAnchor(input.requestId, writtenAt);
-    const action = directWriteAction(input);
-    this.episodes.set(anchor.uri, anchor);
-
-    if (action.operation === "reinforce") {
-      const current = this.readExistingMemory(action.targetMemoryUri);
-      const item = buildReinforcedMemoryItem(anchor, current, action, writtenAt);
-      this.items.set(item.uri, item);
-      this.recordObservation(this.createMemoryObservation(anchor, item.uri, action, writtenAt));
-      return item;
-    }
-
-    if (action.operation === "update") {
-      const current = this.readExistingMemory(action.targetMemoryUri);
-      const item = buildUpdatedMemoryItem(anchor, current, action, writtenAt);
-      this.items.set(item.uri, item);
-      this.recordObservation(this.createMemoryObservation(anchor, item.uri, action, writtenAt));
-      return item;
-    }
-
-    if (action.operation === "supersede") {
-      const current = this.readExistingMemory(action.targetMemoryUri);
-      const time = projectTime(writtenAt);
-      this.items.set(current.uri, {
-        ...current,
-        status: "superseded",
-        updatedAt: writtenAt,
-        updatedAtMs: time.epochMs,
-        timeZone: time.timeZone,
-        localDate: time.localDate,
-        localHour: time.localHour,
-      });
-    }
-
-    const item = buildNewMemoryItem(anchor, action, writtenAt);
-    this.items.set(item.uri, item);
-    this.recordObservation(this.createMemoryObservation(anchor, item.uri, action, writtenAt));
-    return item;
-  }
-
-  deleteSession(sessionId: string): void {
-    this.deleteEpisodes(
-      new Set(
-        [...this.episodes.values()].filter((episode) => episode.sessionId === sessionId).map((episode) => episode.uri),
-      ),
-    );
-  }
-
-  deleteFromSessionRequest(sessionId: string, requestId: string): void {
+  deleteFromSessionRequest(sessionId: string, requestId: string): AgentMemoryDeletionImpact {
     const target = [...this.episodes.values()].find(
       (episode) => episode.sessionId === sessionId && episode.requestId === requestId,
     );
-    if (!target) {
-      return;
+    const episodes = target
+      ? [...this.episodes.values()].filter(
+          (episode) => episode.sessionId === sessionId && episode.startedAtMs >= target.startedAtMs,
+        )
+      : [...this.episodes.values()].filter(
+          (episode) => episode.sessionId === sessionId && episode.requestId === requestId,
+        );
+    const episodeUris = episodes.map((episode) => episode.uri);
+    const sourceUris = episodes.flatMap((episode) => this.listSources(episode.uri).map((source) => source.uri));
+    for (const episode of episodes) {
+      this.episodes.delete(episode.uri);
+      this.sourcesByEpisode.delete(episode.uri);
     }
-    this.deleteEpisodes(
-      new Set(
-        [...this.episodes.values()]
-          .filter((episode) => episode.sessionId === sessionId && episode.startedAt >= target.startedAt)
-          .map((episode) => episode.uri),
-      ),
-    );
+    if (episodeUris.length > 0) this.catalogVersion += 1;
+    return {
+      sessionId,
+      scope: "from_request",
+      requestId,
+      requestIds: [...new Set(episodes.map((episode) => episode.requestId))],
+      episodeUris,
+      sourceUris,
+    };
   }
 
   listEpisodes(sessionId: string): AgentMemoryEpisodeRecord[] {
     return [...this.episodes.values()]
       .filter((episode) => episode.sessionId === sessionId)
-      .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+      .sort((left, right) => left.startedAtMs - right.startedAtMs || left.id.localeCompare(right.id));
   }
 
   listCompletedEpisodes(): AgentMemoryEpisodeRecord[] {
     return [...this.episodes.values()]
       .filter((episode) => episode.status === "completed")
       .sort((left, right) => right.completedAtMs - left.completedAtMs || left.id.localeCompare(right.id));
+  }
+
+  listCompletedEpisodesInRange(startMs: number, endMs: number): AgentMemoryEpisodeRecord[] {
+    if (!Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs) || endMs <= startMs) {
+      throw new Error("Memory episode range must contain increasing safe integer timestamps.");
+    }
+    return [...this.episodes.values()]
+      .filter(
+        (episode) =>
+          episode.status === "completed" && episode.completedAtMs >= startMs && episode.completedAtMs < endMs,
+      )
+      .sort((left, right) => left.completedAtMs - right.completedAtMs || left.id.localeCompare(right.id));
   }
 
   findEpisodesByUris(uris: readonly string[]): AgentMemoryEpisodeRecord[] {
@@ -204,248 +105,23 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
     return [...(this.sourcesByEpisode.get(episodeUri) ?? [])];
   }
 
+  listSourcesForEpisodes(episodeUris: readonly string[]): AgentMemorySourceRecord[] {
+    const requested = new Set(uniqueTrimmed(episodeUris));
+    return [...requested].flatMap((episodeUri) => this.listSources(episodeUri));
+  }
+
   findMemorySourcesByRefs(refs: readonly string[]): AgentMemorySourceRecord[] {
-    const refSet = new Set(uniqueTrimmed(refs));
+    const requested = new Set(uniqueTrimmed(refs));
     return [...this.sourcesByEpisode.values()]
       .flat()
       .filter(
         (source) =>
-          refSet.has(source.uri) ||
-          Boolean(source.evidenceUri && refSet.has(source.evidenceUri)) ||
-          Boolean(source.artifactUri && refSet.has(source.artifactUri)),
+          requested.has(source.uri) ||
+          (source.evidenceUri !== "" && requested.has(source.evidenceUri)) ||
+          (source.artifactUri !== "" && requested.has(source.artifactUri)),
       )
       .sort((left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id));
-  }
-
-  listPendingMemoryCandidates(sessionId: string, type?: AgentMemoryType): AgentMemoryCandidateRecord[] {
-    return [...this.candidates.values()]
-      .filter(
-        (candidate) =>
-          candidate.sessionId === sessionId && candidate.status === "pending" && (!type || candidate.type === type),
-      )
-      .sort((left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id));
-  }
-
-  listMemoryCandidatesForEpisode(episodeUri: string): AgentMemoryCandidateRecord[] {
-    return [...this.candidates.values()]
-      .filter((candidate) => candidate.sourceEpisodeUri === episodeUri)
-      .sort((left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id));
-  }
-
-  listActiveMemoryItems(): AgentMemoryItemRecord[] {
-    return [...this.items.values()]
-      .filter((item) => item.status === "active")
-      .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.id.localeCompare(right.id));
-  }
-
-  findMemoryItemsByUris(uris: readonly string[]): AgentMemoryItemRecord[] {
-    return uniqueTrimmed(uris).flatMap((uri) => {
-      const item = this.items.get(uri);
-      return item ? [item] : [];
-    });
-  }
-
-  listMemoryObservations(memoryUri: string): AgentMemoryObservationRecord[] {
-    return [...this.observations.values()]
-      .filter((observation) => observation.memoryUri === memoryUri)
-      .sort((left, right) => left.createdAtMs - right.createdAtMs || left.writeSequence - right.writeSequence);
-  }
-
-  upsertMemoryItemVectors(records: readonly AgentMemoryItemVectorWrite[]): void {
-    for (const record of records) {
-      const row = buildMemoryItemVector(record);
-      this.vectors.set(memoryItemVectorKey(row.memoryUri, row.model), row);
-    }
-  }
-
-  listMemoryItemVectors(model: string): AgentMemoryItemVectorRecord[] {
-    return [...this.vectors.values()]
-      .filter((record) => record.model === model)
-      .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.memoryUri.localeCompare(right.memoryUri));
-  }
-
-  enqueueMemoryLearningJob(episodeUri: string, nowMs: number): void {
-    const existing = this.learningJobs.get(episodeUri);
-    this.learningJobs.set(episodeUri, {
-      episodeUri,
-      status:
-        existing?.status === AgentMemoryLearningJobStatuses.Completed
-          ? AgentMemoryLearningJobStatuses.Completed
-          : AgentMemoryLearningJobStatuses.Pending,
-      attempts: existing?.attempts ?? 0,
-      nextAttemptAtMs: existing?.status === AgentMemoryLearningJobStatuses.Completed ? existing.nextAttemptAtMs : nowMs,
-      lastError: existing?.status === AgentMemoryLearningJobStatuses.Completed ? existing.lastError : "",
-      updatedAtMs: nowMs,
-    });
-  }
-
-  resetRunningMemoryLearningJobs(nowMs: number): void {
-    for (const job of this.learningJobs.values()) {
-      if (job.status === AgentMemoryLearningJobStatuses.Running) {
-        this.learningJobs.set(job.episodeUri, {
-          ...job,
-          status: AgentMemoryLearningJobStatuses.Retry,
-          nextAttemptAtMs: nowMs,
-          lastError: "interrupted by runtime restart",
-          updatedAtMs: nowMs,
-        });
-      }
-    }
-  }
-
-  listDueMemoryLearningJobs(nowMs: number, limit: number): AgentMemoryLearningJobRecord[] {
-    return this.listMemoryLearningJobs()
-      .filter((job) => isRunnableAgentMemoryLearningJobStatus(job.status) && job.nextAttemptAtMs <= nowMs)
-      .slice(0, limit);
-  }
-
-  nextMemoryLearningJobAtMs(): number | undefined {
-    const times = [...this.learningJobs.values()]
-      .filter((job) => isRunnableAgentMemoryLearningJobStatus(job.status))
-      .map((job) => job.nextAttemptAtMs);
-    return times.length > 0 ? Math.min(...times) : undefined;
-  }
-
-  markMemoryLearningJobRunning(episodeUri: string, nowMs: number): AgentMemoryLearningJobRecord | undefined {
-    const current = this.learningJobs.get(episodeUri);
-    if (!current || !isRunnableAgentMemoryLearningJobStatus(current.status)) return undefined;
-    const next: AgentMemoryLearningJobRecord = {
-      ...current,
-      status: AgentMemoryLearningJobStatuses.Running,
-      attempts: current.attempts + 1,
-      updatedAtMs: nowMs,
-    };
-    this.learningJobs.set(episodeUri, next);
-    return next;
-  }
-
-  markMemoryLearningJobCompleted(episodeUri: string, nowMs: number): void {
-    const current = this.learningJobs.get(episodeUri);
-    if (!current) return;
-    this.learningJobs.set(episodeUri, {
-      ...current,
-      status: AgentMemoryLearningJobStatuses.Completed,
-      nextAttemptAtMs: nowMs,
-      lastError: "",
-      updatedAtMs: nowMs,
-    });
-  }
-
-  markMemoryLearningJobFailed(
-    episodeUri: string,
-    input: { terminal: boolean; nextAttemptAtMs: number; lastError: string; updatedAtMs: number },
-  ): void {
-    const current = this.learningJobs.get(episodeUri);
-    if (!current) return;
-    this.learningJobs.set(episodeUri, {
-      ...current,
-      status: failedAgentMemoryLearningJobStatus(input.terminal),
-      nextAttemptAtMs: input.nextAttemptAtMs,
-      lastError: input.lastError,
-      updatedAtMs: input.updatedAtMs,
-    });
-  }
-
-  listMemoryLearningJobs(): AgentMemoryLearningJobRecord[] {
-    return [...this.learningJobs.values()]
-      .map((job) => ({ ...job }))
-      .sort((left, right) => left.updatedAtMs - right.updatedAtMs || left.episodeUri.localeCompare(right.episodeUri));
   }
 
   close(): void {}
-
-  private readExistingMemory(uri: string | undefined): AgentMemoryItemRecord {
-    const item = uri ? this.items.get(uri) : undefined;
-    if (!item) {
-      throw new Error(`Memory learning target does not exist: ${uri ?? ""}`);
-    }
-    return item;
-  }
-
-  private markCandidatesPromoted(candidateUris: readonly string[], memoryUri: string, updatedAt: string): void {
-    const time = projectTime(updatedAt);
-    for (const candidateUri of uniqueTrimmed(candidateUris)) {
-      const candidate = this.candidates.get(candidateUri);
-      if (candidate) {
-        this.candidates.set(candidateUri, {
-          ...candidate,
-          status: "promoted",
-          promotedMemoryUri: memoryUri,
-          updatedAt,
-          updatedAtMs: time.epochMs,
-          timeZone: time.timeZone,
-          localDate: time.localDate,
-          localHour: time.localHour,
-        });
-      }
-    }
-  }
-
-  private markCandidatesRejected(candidateUris: readonly string[], updatedAt: string): void {
-    const time = projectTime(updatedAt);
-    for (const candidateUri of uniqueTrimmed(candidateUris)) {
-      const candidate = this.candidates.get(candidateUri);
-      if (candidate) {
-        this.candidates.set(candidateUri, {
-          ...candidate,
-          status: "rejected",
-          updatedAt,
-          updatedAtMs: time.epochMs,
-          timeZone: time.timeZone,
-          localDate: time.localDate,
-          localHour: time.localHour,
-        });
-      }
-    }
-  }
-
-  private recordObservation(record: AgentMemoryObservationRecord): void {
-    this.observations.set(record.uri, record);
-  }
-
-  private createMemoryObservation(
-    episode: AgentMemoryEpisodeRecord,
-    memoryUri: string,
-    action: AgentMemoryLearningActionRecord,
-    observedAt: string,
-  ): AgentMemoryObservationRecord {
-    const writeSequence = (this.observationWriteSequences.get(memoryUri) ?? 0) + 1;
-    if (!Number.isSafeInteger(writeSequence)) {
-      throw new RangeError(`Memory observation write sequence exceeded the safe integer range for ${memoryUri}.`);
-    }
-    this.observationWriteSequences.set(memoryUri, writeSequence);
-    return buildMemoryObservation(episode, memoryUri, action, observedAt, writeSequence);
-  }
-
-  private deleteEpisodes(episodeUris: ReadonlySet<string>): void {
-    if (episodeUris.size === 0) return;
-
-    for (const episodeUri of episodeUris) {
-      this.episodes.delete(episodeUri);
-      this.sourcesByEpisode.delete(episodeUri);
-      this.learningJobs.delete(episodeUri);
-    }
-    for (const candidate of this.candidates.values()) {
-      if (episodeUris.has(candidate.sourceEpisodeUri)) this.candidates.delete(candidate.uri);
-    }
-
-    const affectedMemoryUris = new Set<string>();
-    for (const observation of this.observations.values()) {
-      if (!episodeUris.has(observation.sourceEpisodeUri)) continue;
-      this.observations.delete(observation.uri);
-      affectedMemoryUris.add(observation.memoryUri);
-    }
-    for (const memoryUri of affectedMemoryUris) this.refreshObservationWriteSequence(memoryUri);
-  }
-
-  private refreshObservationWriteSequence(memoryUri: string): void {
-    const writeSequence = [...this.observations.values()]
-      .filter((observation) => observation.memoryUri === memoryUri)
-      .reduce((maximum, observation) => Math.max(maximum, observation.writeSequence), 0);
-    if (writeSequence > 0) {
-      this.observationWriteSequences.set(memoryUri, writeSequence);
-    } else {
-      this.observationWriteSequences.delete(memoryUri);
-    }
-  }
 }

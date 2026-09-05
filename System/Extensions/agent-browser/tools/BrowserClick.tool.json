@@ -26,6 +26,12 @@
       "trust": { "type": "string", "const": "untrusted_browser_content" },
       "truncated": { "type": "boolean" },
       "content": { "type": "string" },
+      "page": {
+        "type": "object",
+        "properties": { "url": { "type": "string", "minLength": 1 }, "title": { "type": "string" } },
+        "required": ["url", "title"],
+        "additionalProperties": false
+      },
       "screenshot": {
         "type": "object",
         "properties": {
@@ -34,6 +40,17 @@
           "markdown": { "type": "string", "minLength": 1 }
         },
         "required": ["assetId", "mediaType", "markdown"],
+        "additionalProperties": false
+      },
+      "download": {
+        "type": "object",
+        "properties": {
+          "assetId": { "type": "string", "minLength": 1 },
+          "fileName": { "type": "string", "minLength": 1 },
+          "mediaType": { "type": "string", "minLength": 1 },
+          "markdown": { "type": "string", "minLength": 1 }
+        },
+        "required": ["assetId", "fileName", "mediaType", "markdown"],
         "additionalProperties": false
       }
     },

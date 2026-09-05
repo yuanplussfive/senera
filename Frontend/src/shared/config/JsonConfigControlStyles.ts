@@ -1,8 +1,8 @@
 import { cn } from "../../lib/util";
 
 export const jsonConfigInputClassName = cn(
-  "h-8 w-full min-w-0 border border-ink-200 bg-paper-100 px-2.5 text-[12.5px] text-ink-800",
-  "outline-none transition placeholder:text-ink-400",
+  "h-9 w-full min-w-0 rounded-md border border-line bg-surface-panel px-3 text-[12.5px] text-content-primary",
+  "outline-none transition-[background-color,border-color,box-shadow] placeholder:text-content-muted",
   "focus:border-accent-border focus:ring-2 focus:ring-accent-focus",
   "disabled:pointer-events-none disabled:opacity-55",
 );

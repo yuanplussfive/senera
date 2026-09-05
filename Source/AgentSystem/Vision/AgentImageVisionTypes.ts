@@ -1,11 +1,15 @@
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 
+export interface AgentImageVisionInput {
+  readonly mime: string;
+  readonly base64: string;
+}
+
 export interface AgentImageVisionRequest {
   provider: ResolvedAgentModelProviderConfig;
   systemPrompt: string;
   prompt: string;
-  mime: string;
-  base64: string;
+  images: readonly AgentImageVisionInput[];
   signal?: AbortSignal;
 }
 

@@ -6,6 +6,7 @@ export const settingsSectionIds = [
   "retrieval",
   "system-tools",
   "mcp-servers",
+  "channels",
   "general",
   "appearance",
   "storage",

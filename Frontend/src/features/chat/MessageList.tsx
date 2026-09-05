@@ -1,6 +1,5 @@
 import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
-import type { ApprovalBatchReference, ApprovalDecision } from "../../api/approvalEventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useMotionLevel } from "../../shared/motion";
@@ -39,14 +38,11 @@ interface MessageListProps {
   onEditUserMessage: (m: ChatMessage, nextContent: string) => void;
   onDeleteFromMessage: (m: ChatMessage) => void;
   onViewWorkflow: (m: ChatMessage) => void;
-  onResolveApproval?: (approvalId: string, decision: ApprovalDecision) => void;
-  onResolveApprovalBatch?: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
   onResolveInteractionInput?: (
     interactionId: string,
     action: InteractionInputAction,
     content?: InteractionInputContent,
   ) => void;
-  approvalDisabled?: boolean;
 }
 
 const MESSAGE_LIST_BOTTOM_THRESHOLD = 80;
@@ -87,10 +83,7 @@ export function MessageList({
   onEditUserMessage,
   onDeleteFromMessage,
   onViewWorkflow,
-  onResolveApproval,
-  onResolveApprovalBatch,
   onResolveInteractionInput,
-  approvalDisabled = false,
 }: MessageListProps): JSX.Element {
   const { reduceMotion, disableMotion } = useMotionLevel();
   const { prefersCompactControls, supportsHover } = useResponsiveMode();
@@ -368,13 +361,10 @@ export function MessageList({
                         sessionId={sessionId}
                         turn={item}
                         showInlineActions={showInlineMessageActions}
-                        approvalDisabled={approvalDisabled}
                         onForkFromMessage={onForkFromMessage}
                         onRegenerate={onRegenerate}
                         onDeleteFromMessage={setDeleting}
                         onViewWorkflow={onViewWorkflow}
-                        onResolveApproval={onResolveApproval}
-                        onResolveApprovalBatch={onResolveApprovalBatch}
                         onResolveInteractionInput={onResolveInteractionInput}
                       />
                     </MotionMessageItem>

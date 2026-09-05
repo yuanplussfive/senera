@@ -48,6 +48,35 @@ describe("Pi run collector tool lifecycle", () => {
 
     expect(events.map((event) => event.kind)).toEqual([AgentEventKinds.ToolCallResultDetail]);
   });
+
+  test("observes Native tool lifecycle in order", async () => {
+    const events: AgentDomainEvent[] = [];
+    const observations: Array<{ callId: string; status: string }> = [];
+    const turnState = createTurnState();
+    const collector = new AgentPiRunCollector({
+      requestId: "request-lifecycle",
+      step: 1,
+      turnState,
+      onEvent: (event) => {
+        events.push(event);
+      },
+      onToolExecutionObserved: (observation) => {
+        observations.push({ callId: observation.callId, status: observation.status });
+      },
+    });
+
+    await collector.collect(toolStarted());
+    await collector.collect(toolEnded(false));
+
+    expect(observations).toEqual([
+      { callId: "call-a", status: "dispatched" },
+      { callId: "call-a", status: "completed" },
+    ]);
+    expect(events.map((event) => event.kind)).toEqual([
+      AgentEventKinds.ToolCallCompleted,
+      AgentEventKinds.ToolCallResultDetail,
+    ]);
+  });
 });
 
 function createCollector(turnState: AgentPiTurnState, events: AgentDomainEvent[]): AgentPiRunCollector {

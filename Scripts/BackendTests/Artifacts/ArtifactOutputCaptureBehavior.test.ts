@@ -5,7 +5,7 @@ import {
   redactArtifactSecrets,
   redactArtifactToolOutcome,
 } from "../../../Source/AgentSystem/Artifacts/AgentArtifactRedaction.js";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { resolveArtifactsConfig } from "../../../Source/AgentSystem/Defaults/AgentAppDefaults.js";
 import { createSeneraOutputSpool } from "../../../Source/AgentSystem/Execution/SeneraOutputSpool.js";
 import { AgentToolExecutionArtifactRecorder } from "../../../Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.js";
@@ -351,7 +351,7 @@ describe("artifact output capture", () => {
     expect(await fs.readFile(first!.artifact!.files.manifest)).toEqual(manifestBefore);
   });
 
-  test("preserves the spool when artifact recording fails", async () => {
+  test("preserves the successful result and spool when Artifact recording fails", async () => {
     const workspaceRoot = createTemporaryDirectory("senera-artifact-redaction-failure");
     temporaryDirectories.push(workspaceRoot);
     const spool = await createSeneraOutputSpool(path.join(workspaceRoot, "spool"), "call");
@@ -362,32 +362,47 @@ describe("artifact output capture", () => {
       ModelProviders: [],
       Artifacts: { RootDir: ".senera/artifacts" },
     } satisfies AgentSystemConfig);
+    const warn = vi.fn();
     const recorder = new AgentToolExecutionArtifactRecorder({
       workspaceRoot,
       config,
       model: "test-model",
+      logger: { warn } as never,
     });
 
-    await expect(
-      recorder.record({
-        requestId: "request-redaction-failure",
-        step: 1,
-        results: [
-          {
-            callId: "call-redaction-failure",
-            name: "ShellCommandTool",
-            arguments: { command: "echo secret" },
-            process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
-            outputCapture: spool.descriptor,
-            result: { ok: true },
-            outcome: AgentToolSuccessOutcome,
-            artifactPolicy: {
-              Redact: { Transforms: [{ Pattern: "[", Streams: ["stdout"] }] },
-            },
+    const [recorded] = await recorder.record({
+      requestId: "request-redaction-failure",
+      step: 1,
+      results: [
+        {
+          callId: "call-redaction-failure",
+          name: "ShellCommandTool",
+          arguments: { command: "echo secret" },
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          outputCapture: spool.descriptor,
+          result: { ok: true },
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {
+            Redact: { Transforms: [{ Pattern: "[", Streams: ["stdout"] }] },
           },
-        ],
+        },
+      ],
+    });
+
+    expect(recorded).toMatchObject({
+      result: { ok: true },
+      outcome: { assessment: { status: "success" } },
+      artifactAvailability: { status: "unavailable", reason: "recording_failed" },
+    });
+    expect(recorded).not.toHaveProperty("artifact");
+    expect(warn).toHaveBeenCalledWith(
+      "tool.artifact.recording_failed",
+      expect.objectContaining({
+        toolName: "ShellCommandTool",
+        toolCallId: "call-redaction-failure",
+        requestId: "request-redaction-failure",
       }),
-    ).rejects.toThrow();
+    );
 
     expect(await fs.readFile(path.join(spool.descriptor.directory, ".output-spool.json"), "utf8")).toContain(
       '"state":"failed"',
@@ -395,7 +410,7 @@ describe("artifact output capture", () => {
     expect(await fs.readFile(spool.descriptor.files.stdout, "utf8")).toBe("output that must remain recoverable\n");
   });
 
-  test("marks the spool and reserved artifact as failed when workspace materialization fails", async () => {
+  test("marks the Artifact unavailable while preserving the spool after workspace materialization fails", async () => {
     const workspaceRoot = createTemporaryDirectory("senera-artifact-workspace-failure");
     temporaryDirectories.push(workspaceRoot);
     const spool = await createSeneraOutputSpool(path.join(workspaceRoot, "spool"), "call");
@@ -407,29 +422,33 @@ describe("artifact output capture", () => {
     } satisfies AgentSystemConfig);
     const recorder = new AgentToolExecutionArtifactRecorder({ workspaceRoot, config, model: "test-model" });
 
-    await expect(
-      recorder.record({
-        requestId: "request-workspace-failure",
-        step: 1,
-        results: [
-          {
-            callId: "call-workspace-failure",
-            name: "WorkspaceApplyPatch",
-            arguments: { patch: "*** Begin Patch" },
-            process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
-            outputCapture: spool.descriptor,
-            result: { applied: true },
-            outcome: AgentToolSuccessOutcome,
-            artifactPolicy: {},
-            workspaceCapture: {
-              before: { files: [], capturedAt: new Date().toISOString() },
-              after: { files: [], capturedAt: new Date().toISOString() },
-              changes: [],
-            },
+    const [recorded] = await recorder.record({
+      requestId: "request-workspace-failure",
+      step: 1,
+      results: [
+        {
+          callId: "call-workspace-failure",
+          name: "WorkspaceApplyPatch",
+          arguments: { patch: "*** Begin Patch" },
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          outputCapture: spool.descriptor,
+          result: { applied: true },
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {},
+          workspaceCapture: {
+            before: { files: [], capturedAt: new Date().toISOString() },
+            after: { files: [], capturedAt: new Date().toISOString() },
+            changes: [],
           },
-        ],
-      }),
-    ).rejects.toThrow(/未声明 Artifacts\.Workspace 策略/);
+        },
+      ],
+    });
+
+    expect(recorded).toMatchObject({
+      result: { applied: true },
+      outcome: { assessment: { status: "success" } },
+      artifactAvailability: { status: "unavailable", reason: "recording_failed" },
+    });
 
     expect(await fs.readFile(path.join(spool.descriptor.directory, ".output-spool.json"), "utf8")).toContain(
       '"state":"failed"',

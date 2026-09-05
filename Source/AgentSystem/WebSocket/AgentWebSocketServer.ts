@@ -1,7 +1,7 @@
 import http from "node:http";
 import type { Duplex } from "node:stream";
 import { type WebSocket, WebSocketServer } from "ws";
-import type { AgentDomainEvent } from "../Events/AgentEvent.js";
+import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { resolvePresetsConfig, resolveServerConfig, resolveUploadsConfig } from "../AgentDefaults.js";
 import { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { AgentPresetManager } from "../Presets/AgentPresetManager.js";
@@ -13,7 +13,11 @@ import { AgentWebSocketEventEnvelopeSender } from "./AgentWebSocketEventSender.j
 import { AgentWebSocketHttpRouter } from "./AgentWebSocketHttpRouter.js";
 import { AgentWebSocketMessageRouter } from "./AgentWebSocketMessageRouter.js";
 import { AgentStaticFrontendHttpApi } from "./AgentStaticFrontendHttpApi.js";
-import type { AgentWebSocketRequestContext, AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
+import type {
+  AgentChannelServiceControl,
+  AgentWebSocketRequestContext,
+  AgentWebSocketServerOptions,
+} from "./AgentWebSocketTypes.js";
 import { AgentAuthenticationHttpApi } from "../Auth/AgentAuthenticationHttpApi.js";
 import {
   AgentServerAccessGuard,
@@ -27,6 +31,7 @@ import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentWorkspaceResourceHttpApi } from "../WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
 import { AgentProviderCredentialHttpApi } from "../Config/AgentProviderCredentialHttpApi.js";
 import { AgentRuntimeUpdateHttpApi } from "../Runtime/AgentRuntimeUpdateHttpApi.js";
+import { AgentResourceResolver } from "../Resources/AgentResourceResolver.js";
 
 export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 
@@ -42,14 +47,16 @@ export class AgentWebSocketServer {
   private readonly workspaceResourceApi: AgentWorkspaceResourceHttpApi;
   private readonly messageRouter: AgentWebSocketMessageRouter;
   private readonly accessGuard: AgentServerAccessGuard;
+  private readonly channelControl?: AgentChannelServiceControl;
   private httpServer?: http.Server;
   private server?: WebSocketServer;
   private heartbeatTimer?: NodeJS.Timeout;
   private acceptingConnections = false;
   private stopPromise?: Promise<void>;
 
-  constructor(private readonly options: AgentWebSocketServerOptions) {
+  constructor(options: AgentWebSocketServerOptions) {
     this.logger = options.logger ?? new AgentLogger();
+    this.channelControl = options.channelControl;
     const configSnapshot = (): ReturnType<AgentWebSocketRequestContext["configSnapshot"]> =>
       options.configSnapshot?.() ?? options.config;
     const configRevision = (): number | undefined => {
@@ -74,8 +81,16 @@ export class AgentWebSocketServer {
       persistence: options.eventPersistence,
     });
     const uploadStore = options.uploadStore ?? createUploadStore(options, configSnapshot);
+    const resourceResolver =
+      options.resourceResolver ??
+      new AgentResourceResolver({
+        workspaceRoot: options.workspaceRoot ?? process.cwd(),
+        config: configSnapshot,
+        uploadStore,
+      });
     this.uploadApi = new AgentUploadHttpApi({
       store: uploadStore,
+      resourceResolver,
       isOriginAllowed: (origin) => this.accessGuard.allowsOrigin(origin),
       onMaintenanceError: ({ error, trigger, consecutiveFailures, retryInMs }) => {
         this.logger.error("上传存储维护失败", {
@@ -105,6 +120,7 @@ export class AgentWebSocketServer {
       authenticationApi: new AgentAuthenticationHttpApi(this.accessGuard),
       healthApi: new AgentHealthHttpApi(),
       runtimeUpdateApi: options.runtimeUpdate ? new AgentRuntimeUpdateHttpApi(options.runtimeUpdate) : undefined,
+      channelWebhookApi: options.channelWebhookApi,
       accessGuard: this.accessGuard,
     });
     this.messageRouter = new AgentWebSocketMessageRouter({
@@ -116,6 +132,7 @@ export class AgentWebSocketServer {
         userProfileManager: options.userProfileManager,
         providerModelDiscovery,
         presetManagerFactory: () => createPresetManager(options, configSnapshot()),
+        onPresetSnapshot: options.onPresetSnapshot,
         approvalRuntime: options.approvalRuntime,
         interactionInput: options.interactionInput,
         sandboxRuntimeService,
@@ -123,10 +140,16 @@ export class AgentWebSocketServer {
         interactiveTerminals: options.interactiveTerminals,
         workspaceRoot: options.workspaceRoot ?? process.cwd(),
         mcpManagement: options.mcpManagement,
+        agenda: options.agenda,
+        goalCommands: options.goalCommands,
+        worldRuntime: options.worldRuntime,
+        residentWakeRuntime: options.residentWakeRuntime,
+        onWorldWake: options.onWorldWake,
       },
       sendEnvelope: (socket, event) => this.eventSender.sendEnvelope(socket, event),
       broadcast: (event) => this.broadcast(event),
       flushPersistence: () => this.eventSender.flush(),
+      channelControl: options.channelControl,
     });
   }
 
@@ -278,6 +301,19 @@ export class AgentWebSocketServer {
     socket.on("error", () => {
       this.accessGuard.unregisterConnection(socket);
     });
+    this.sendInitialChannelStatus(socket);
+  }
+
+  private sendInitialChannelStatus(socket: WebSocket): void {
+    const statuses = this.channelControl?.statuses;
+    if (!statuses) return;
+    void this.eventSender
+      .sendEnvelope(socket, {
+        kind: AgentEventKinds.ChannelStatusSnapshot,
+        context: {},
+        data: { statuses: [...statuses] },
+      })
+      .catch((error) => this.logger.warn("消息渠道初始状态发送失败", { error: errorMessage(error) }));
   }
 
   private heartbeat(): void {
@@ -394,5 +430,6 @@ function createPresetManager(
   return new AgentPresetManager({
     workspaceRoot: options.workspaceRoot ?? process.cwd(),
     config: resolvePresetsConfig(config),
+    activation: options.presetActivation,
   });
 }

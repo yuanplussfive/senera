@@ -275,7 +275,6 @@ export class AgentSessionStore {
       eventId: createOpaqueId("event"),
       sessionId: session.id,
     }));
-
     const snapshot: AgentSessionForkSnapshot = {
       session,
       entries: entries.map((entry, sequence) => ({ entry, sequence })),
@@ -659,7 +658,7 @@ export class AgentSessionStore {
           context: {
             ...event.context,
             sessionId,
-            requestId,
+            requestId: resolveEventRequestId(event.context, requestId),
           },
         } as AgentDomainEvent,
         this.durableEventSequencer.next(),
@@ -668,6 +667,10 @@ export class AgentSessionStore {
       return projected ? [projected] : [];
     });
   }
+}
+
+function resolveEventRequestId(context: AgentDomainEvent["context"], requestId: string): string {
+  return "requestId" in context && context.requestId ? context.requestId : requestId;
 }
 
 function projectForkRunSnapshot(snapshot: StoredRunSnapshot, sessionId: string, forkedAt: string): StoredRunSnapshot {

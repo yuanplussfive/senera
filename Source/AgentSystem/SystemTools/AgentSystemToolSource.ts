@@ -8,6 +8,7 @@ import { agentDirectoryRevision } from "../Core/AgentDirectoryRevision.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import {
+  createAgentExtensionLocalizedText,
   resolveAgentExtensionLocalizedText,
   type AgentExtensionLocalizedText,
 } from "../Extensions/AgentExtensionLocalization.js";
@@ -15,8 +16,7 @@ import { AgentSkillScanner } from "../Skills/AgentSkillScanner.js";
 import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
 import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 import { ensureObjectRootJsonSchema } from "../ToolContracts/AgentJsonSchemaObjectRoot.js";
-import { ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
-import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import type { RegisteredSidecarTool, RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type { AgentSystemExtensionConfig } from "../Types/AgentSystemConfigTypes.js";
 import {
   AgentSystemExtensionConfigurationReader,
@@ -29,7 +29,10 @@ import {
   AgentToolObservationProjectionSchema,
   type AgentSystemExtensionManifest,
   type AgentSystemHostToolContribution,
+  type AgentSystemSidecarToolContribution,
+  type AgentSystemSidecarToolContract,
   type AgentSystemToolContract,
+  AgentSystemSidecarToolContractSchema,
 } from "./AgentSystemExtensionManifest.js";
 import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolObservationProjectionTypes.js";
 import {
@@ -38,12 +41,14 @@ import {
   resolveSystemExtensionPackageDirectory,
   resolveSystemExtensionPackageFile,
 } from "./AgentSystemExtensionPackagePath.js";
+import { isAgentSystemExtensionApplicable, type AgentSystemExtensionPlatform } from "./AgentSystemExtensionPlatform.js";
 
 export type { AgentSystemExtensionConfigurationSettings } from "./AgentSystemExtensionConfiguration.js";
 
 export interface AgentSystemExtensionCatalogOptions {
   readonly capabilities: ReadonlySet<string>;
   readonly configurations?: Readonly<Record<string, AgentSystemExtensionConfig>>;
+  readonly platform?: AgentSystemExtensionPlatform;
 }
 
 export interface AgentSystemMcpContribution {
@@ -53,7 +58,7 @@ export interface AgentSystemMcpContribution {
 
 export interface AgentSystemExtensionToolSettingsItem {
   readonly name: string;
-  readonly description: string;
+  readonly description: AgentExtensionLocalizedText;
   readonly loading: string;
   readonly capability: string;
 }
@@ -158,6 +163,7 @@ export class AgentSystemExtensionCatalog {
     if (manifest.id !== directoryName) {
       throw new Error(`System extension id ${manifest.id} must match its directory ${directoryName}.`);
     }
+    if (!isAgentSystemExtensionApplicable(manifest.platforms, options.platform)) return;
     if (this.extensions.some((extension) => extension.id === manifest.id)) {
       throw new Error(`Duplicate System extension id: ${manifest.id}.`);
     }
@@ -177,8 +183,12 @@ export class AgentSystemExtensionCatalog {
       trusted: true,
       requiresApproval: false,
     };
-    const toolContributions = manifest.contributions.filter(
+    const contributions = manifest.contributions ?? [];
+    const toolContributions = contributions.filter(
       (contribution): contribution is AgentSystemHostToolContribution => contribution.kind === "hostTool",
+    );
+    const sidecarToolContributions = contributions.filter(
+      (contribution): contribution is AgentSystemSidecarToolContribution => contribution.kind === "sidecarTool",
     );
     assertUnique(
       toolContributions.map((contribution) => contribution.contract),
@@ -205,8 +215,8 @@ export class AgentSystemExtensionCatalog {
         registered: this.project(owner, contract, contribution.capability, contribution.childGrant),
         settings: {
           name: contract.name,
-          description: contract.search?.Summary ?? contract.description,
-          loading: ToolLoadingModes.Bootstrap,
+          description: localizeSystemToolDescription(contract.search?.Summary ?? contract.description),
+          loading: contract.loading,
           capability: contribution.capability,
         },
       };
@@ -217,8 +227,18 @@ export class AgentSystemExtensionCatalog {
         projectedTools.map((tool) => tool.registered),
       );
     }
+    const sidecarTools = sidecarToolContributions.map((contribution) =>
+      this.projectSidecarTool(
+        owner,
+        this.readSidecarContract(
+          resolveSystemExtensionPackageFile(packageRoot, contribution.contract, "sidecar Tool contract"),
+        ),
+        contribution.capability,
+      ),
+    );
+    if (enabled && sidecarTools.length > 0) registry.registerSidecarToolExtension(owner, sidecarTools);
 
-    const skills = manifest.contributions
+    const skills = contributions
       .filter((contribution) => contribution.kind === "skill")
       .map((contribution) => {
         const skillRoot = resolveSystemExtensionPackageDirectory(packageRoot, contribution.path, "Skill contribution");
@@ -235,7 +255,7 @@ export class AgentSystemExtensionCatalog {
       });
     if (enabled && skills.length > 0) registry.replaceSkills(`system:${manifest.id}`, skills);
 
-    for (const contribution of enabled ? manifest.contributions.filter((entry) => entry.kind === "mcpServer") : []) {
+    for (const contribution of enabled ? contributions.filter((entry) => entry.kind === "mcpServer") : []) {
       this.mcpContributions.push({
         extensionId: manifest.id,
         descriptorPath: resolveSystemExtensionPackageFile(packageRoot, contribution.descriptor, "MCP descriptor"),
@@ -243,19 +263,25 @@ export class AgentSystemExtensionCatalog {
     }
 
     const configuration = this.configurations.read(packageRoot, manifest, configured?.Configuration);
-    this.extensions.push({
-      id: manifest.id,
-      version: manifest.version,
-      displayName: manifest.displayName,
-      description: manifest.description,
-      enabled,
-      configured: configured !== undefined,
-      priority: manifest.priority,
-      tools: projectedTools.map((tool) => tool.settings),
-      skillCount: skills.length,
-      mcpServerCount: manifest.contributions.filter((entry) => entry.kind === "mcpServer").length,
-      ...(configuration ? { configuration } : {}),
-    });
+    const mcpServerCount = contributions.filter((entry) => entry.kind === "mcpServer").length;
+    // Sidecar-only packages are runtime implementation details. They remain
+    // registered for their owning subsystem but do not create an empty entry
+    // in the user-facing system-tools settings surface.
+    if (projectedTools.length > 0 || skills.length > 0 || mcpServerCount > 0 || configuration) {
+      this.extensions.push({
+        id: manifest.id,
+        version: manifest.version,
+        displayName: manifest.displayName,
+        description: manifest.description,
+        enabled,
+        configured: configured !== undefined,
+        priority: manifest.priority,
+        tools: projectedTools.map((tool) => tool.settings),
+        skillCount: skills.length,
+        mcpServerCount,
+        ...(configuration ? { configuration } : {}),
+      });
+    }
   }
 
   private readContract(
@@ -284,16 +310,25 @@ export class AgentSystemExtensionCatalog {
     return { ...source, observation };
   }
 
+  private readSidecarContract(filePath: string): AgentSystemSidecarToolContract {
+    const source = deepFreeze(
+      this.json.load(filePath, AgentSystemSidecarToolContractSchema) as AgentSystemSidecarToolContract,
+    );
+    this.ajv.compile(source.inputSchema);
+    return source;
+  }
+
   private project(
     owner: RegisteredTool["owner"],
     source: AgentSystemToolContract & { observation: AgentToolObservationProjectionManifest },
     capability: string,
     childGrant: RegisteredTool["childGrant"],
   ): RegisteredTool {
+    const description = resolveSystemToolDescription(source.description);
     return {
       owner,
       name: source.name,
-      loading: ToolLoadingModes.Bootstrap,
+      loading: source.loading,
       contract: deepFreeze({
         digest: sha256HexOfCanonicalJson({
           inputSchema: source.inputSchema,
@@ -309,13 +344,36 @@ export class AgentSystemExtensionCatalog {
       runtime: source.runtime,
       observationProjection: source.observation,
       sources: source.sources,
-      search: source.search ?? { Summary: source.description },
+      search: source.search ?? { Summary: description },
       childGrant,
       evidenceCapabilities: source.evidenceCapabilities,
       approval: source.approval,
       artifactPolicy: source.artifacts,
     };
   }
+
+  private projectSidecarTool(
+    owner: RegisteredTool["owner"],
+    source: AgentSystemSidecarToolContract,
+    capability: string,
+  ): RegisteredSidecarTool {
+    return {
+      owner,
+      name: source.name,
+      capability,
+      description: source.description,
+      instructions: source.instructions,
+      inputSchema: ensureObjectRootJsonSchema(source.inputSchema, `System sidecar tool ${source.name} input`),
+    };
+  }
+}
+
+function localizeSystemToolDescription(value: string | AgentExtensionLocalizedText): AgentExtensionLocalizedText {
+  return typeof value === "string" ? createAgentExtensionLocalizedText(value) : value;
+}
+
+function resolveSystemToolDescription(value: string | AgentExtensionLocalizedText): string {
+  return typeof value === "string" ? value : resolveAgentExtensionLocalizedText(value);
 }
 
 function assertUnique(values: readonly string[], label: string): void {

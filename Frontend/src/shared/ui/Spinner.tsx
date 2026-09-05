@@ -1,27 +1,39 @@
-import { Loading03Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
+import type { SVGAttributes } from "react";
 import { cn } from "../../lib/util";
 
 export type SpinnerSize = "xs" | "sm" | "md";
 
 const sizeClasses: Record<SpinnerSize, string> = {
-  xs: "h-3 w-3",
-  sm: "h-3.5 w-3.5",
-  md: "h-4 w-4",
+  xs: "h-3 w-4",
+  sm: "h-3.5 w-5",
+  md: "h-4 w-6",
 };
 
+const spinnerTrace = "M1 8 C4 8 4 8 6 5 C8 2 9 2 11 8 C13 14 14 14 16 8 C18 2 19 2 21 5 C23 8 24 8 27 8";
+
 /**
- * 全站唯一的旋转加载图标。颜色继承 currentColor，由使用处的文字颜色决定；
- * 动画遵循全局减动效设置。
+ * Compact form of the Senera resonance trace for dense rows and buttons.
+ * The viewBox remains small and stable, while the stroke carries the
+ * current text color from its parent.
  */
-export function Spinner({ size = "sm", className }: { size?: SpinnerSize; className?: string }): JSX.Element {
+export function Spinner({
+  size = "sm",
+  className,
+  ...props
+}: {
+  size?: SpinnerSize;
+  className?: string;
+} & Omit<SVGAttributes<SVGSVGElement>, "className">): JSX.Element {
   return (
-    <HugeiconsIcon
-      icon={Loading03Icon}
-      size="100%"
-      strokeWidth={1.75}
+    <svg
+      viewBox="0 0 28 16"
+      fill="none"
+      focusable="false"
       aria-hidden="true"
-      className={cn("shrink-0 motion-safe:animate-spin", sizeClasses[size], className)}
-    />
+      className={cn("senera-spinner-trace motion-safe:animate-spin shrink-0", sizeClasses[size], className)}
+      {...props}
+    >
+      <path d={spinnerTrace} />
+    </svg>
   );
 }

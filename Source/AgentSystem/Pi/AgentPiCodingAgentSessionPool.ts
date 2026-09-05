@@ -5,6 +5,7 @@ import { resolveAgentWorkspaceLayout, type AgentWorkspaceLayout } from "../Core/
 import { createOpaqueId } from "../Core/AgentIds.js";
 import { AgentKeyedLeaseQueue } from "../Core/AgentKeyedLeaseQueue.js";
 import { relativePathWithin } from "../Core/AgentPath.js";
+import { removeAgentPathWithRetry } from "../Core/AgentFs.js";
 import { AgentPiCodingAgentSession } from "./AgentPiCodingAgentSession.js";
 import { AgentPiCodingAgentSessionFactory } from "./AgentPiCodingAgentSessionFactory.js";
 import { AgentPiCodingAgentSessionLifecycle } from "./AgentPiCodingAgentSessionLifecycle.js";
@@ -54,7 +55,6 @@ export class AgentPiCodingAgentSessionPool {
     this.factory = new AgentPiCodingAgentSessionFactory(options);
     this.lifecycle = new AgentPiCodingAgentSessionLifecycle(
       this.sessions,
-      this.leases,
       resolveAgentPiSessionCacheCapacity(options.maxIdleSessions),
       options.diagnostics,
     );
@@ -78,12 +78,12 @@ export class AgentPiCodingAgentSessionPool {
         storage: opened.storage,
         historyMigrationRequired: opened.historyMigrationRequired,
         session: new AgentPiCodingAgentSession(pooled.session, pooled.sessionManager, pooled.frame, () =>
-          this.lifecycle.release(input.sessionId, leasedSession, leasedRelease, finishOperation),
+          this.lifecycle.release(leasedSession, leasedRelease, finishOperation),
         ),
       };
     } catch (error) {
       if (pooled && releaseLease) {
-        this.lifecycle.release(input.sessionId, pooled, releaseLease, finishOperation);
+        this.lifecycle.release(pooled, releaseLease, finishOperation);
       } else {
         releaseLease?.();
         finishOperation();
@@ -142,7 +142,7 @@ export class AgentPiCodingAgentSessionPool {
       });
       targetFile = targetManager.getSessionFile();
       if (!targetManager.getEntry(entryId)) {
-        if (targetFile) await fs.rm(targetFile, { force: true });
+        if (targetFile) await removeAgentPathWithRetry(targetFile, { deferOnBusy: true });
         return false;
       }
       targetManager.branch(entryId);
@@ -152,7 +152,7 @@ export class AgentPiCodingAgentSessionPool {
       });
       return true;
     } catch (error) {
-      if (targetFile) await fs.rm(targetFile, { force: true });
+      if (targetFile) await removeAgentPathWithRetry(targetFile, { deferOnBusy: true });
       throw error;
     } finally {
       release?.();
@@ -173,7 +173,7 @@ export class AgentPiCodingAgentSessionPool {
       }
       const info = await this.findSession(sessionId);
       if (!info) return false;
-      await fs.rm(info.path, { force: true });
+      await removeAgentPathWithRetry(info.path, { deferOnBusy: true });
       return true;
     } finally {
       release?.();
@@ -338,7 +338,7 @@ export class AgentPiCodingAgentSessionPool {
       if (!sessionFile || relativePathWithin(this.sessionsRoot(), sessionFile) === undefined) {
         throw new Error("Incompatible Pi session escaped its managed storage root.");
       }
-      await fs.rm(sessionFile, { force: true });
+      await removeAgentPathWithRetry(sessionFile, { deferOnBusy: true });
       existing = undefined;
     }
     const sessionManager =

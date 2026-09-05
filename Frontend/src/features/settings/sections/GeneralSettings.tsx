@@ -1,10 +1,10 @@
-import { Check } from "lucide-react";
 import { FrontendLocales, frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { useFrontendLocale, useSetFrontendLocale } from "../../../i18n/useFrontendLocale";
-import { cn } from "../../../lib/util";
-import { Switch } from "../../../shared/ui";
+import { MenuSelect, SettingsControlRow, Switch } from "../../../shared/ui";
 import type { SettingsWorkbenchProps } from "../SettingsWorkbenchContracts";
 import { SettingsPanel } from "../SettingsPanel";
+
+type MotionLevelOption = { value: "full" | "reduced" | "none"; label: string; description: string };
 
 export function GeneralSettings({
   values,
@@ -14,155 +14,110 @@ export function GeneralSettings({
 }: Pick<SettingsWorkbenchProps, "values" | "motionLevel" | "onValueChange" | "onMotionLevelChange">): JSX.Element {
   const locale = useFrontendLocale();
   const setLocale = useSetFrontendLocale();
-  const preferenceSections = [
-    {
-      id: "layout",
-      title: frontendMessage("settings.general.interfaceTitle"),
-      items: [
-        {
-          id: "defaultSidebarCollapsed",
-          title: frontendMessage("settings.general.sidebarCollapsedLabel"),
-          description: frontendMessage("settings.general.sidebarCollapsedDescription"),
-        },
-        {
-          id: "defaultRightPanelCollapsed",
-          title: frontendMessage("settings.general.thinkingCollapsedLabel"),
-          description: frontendMessage("settings.general.thinkingCollapsedDescription"),
-        },
-      ],
-    },
-  ] as const;
   const motionLevelOptions = [
     {
-      id: "full",
-      title: frontendMessage("settings.general.motionFullLabel"),
+      value: "full",
+      label: frontendMessage("settings.general.motionFullLabel"),
       description: frontendMessage("settings.general.motionFullDescription"),
     },
     {
-      id: "reduced",
-      title: frontendMessage("settings.general.motionReducedLabel"),
+      value: "reduced",
+      label: frontendMessage("settings.general.motionReducedLabel"),
       description: frontendMessage("settings.general.motionReducedDescription"),
     },
     {
-      id: "none",
-      title: frontendMessage("settings.general.motionOffLabel"),
+      value: "none",
+      label: frontendMessage("settings.general.motionOffLabel"),
       description: frontendMessage("settings.general.motionOffDescription"),
+    },
+  ] as const satisfies readonly MotionLevelOption[];
+  const interfaceItems = [
+    {
+      id: "defaultSidebarCollapsed",
+      title: frontendMessage("settings.general.sidebarCollapsedLabel"),
+      description: frontendMessage("settings.general.sidebarCollapsedDescription"),
+    },
+    {
+      id: "defaultRightPanelCollapsed",
+      title: frontendMessage("settings.general.thinkingCollapsedLabel"),
+      description: frontendMessage("settings.general.thinkingCollapsedDescription"),
     },
   ] as const;
 
   return (
-    <div className="space-y-4">
-      {preferenceSections.map((preferenceSection) => (
-        <SettingsPanel
-          key={preferenceSection.id}
-          title={preferenceSection.title}
-          description={frontendMessage("settings.general.layoutDescription")}
-        >
-          <div className="border-y border-ink-200/70 bg-paper-50">
-            {preferenceSection.items.map((item, index) => (
-              <PreferenceToggle
-                key={item.id}
-                title={item.title}
-                description={item.description}
+    <div className="space-y-5">
+      <SettingsPanel
+        title={frontendMessage("settings.general.interfaceTitle")}
+        description={frontendMessage("settings.general.layoutDescription")}
+      >
+        {interfaceItems.map((item) => (
+          <SettingsControlRow
+            key={item.id}
+            label={item.title}
+            description={item.description}
+            control={
+              <Switch
                 checked={values[item.id]}
-                separated={index > 0}
+                ariaLabel={item.title}
                 onCheckedChange={(checked) => onValueChange(item.id, checked)}
               />
-            ))}
-          </div>
-        </SettingsPanel>
-      ))}
+            }
+          />
+        ))}
+      </SettingsPanel>
+
       <SettingsPanel
         title={frontendMessage("settings.general.languageLabel")}
         description={frontendMessage("settings.general.languageDescription")}
       >
-        <label className="flex items-center justify-between gap-3 border-y border-ink-200/70 py-3">
-          <span className="text-[12.5px] font-medium text-ink-850">
-            {frontendMessage("settings.general.languageLabel")}
-          </span>
-          <select
-            aria-label={frontendMessage("settings.general.languageLabel")}
-            value={locale}
-            onChange={(event) => setLocale(event.target.value as typeof locale)}
-            className="h-8 rounded-md border border-line bg-paper-50 px-2 text-[12px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus"
-          >
-            <option value={FrontendLocales.ZhCn}>{frontendMessage("settings.general.languageZhCn")}</option>
-            <option value={FrontendLocales.EnUs}>{frontendMessage("settings.general.languageEnUs")}</option>
-          </select>
-        </label>
+        <SettingsControlRow
+          label={frontendMessage("settings.general.languageFieldLabel")}
+          control={
+            <MenuSelect
+              value={locale}
+              size="md"
+              placeholder={frontendMessage("settings.general.languageFieldLabel")}
+              options={[
+                { value: FrontendLocales.ZhCn, label: frontendMessage("settings.general.languageZhCn") },
+                { value: FrontendLocales.EnUs, label: frontendMessage("settings.general.languageEnUs") },
+              ]}
+              ariaLabel={frontendMessage("settings.general.languageLabel")}
+              onChange={(value) => setLocale(value as typeof locale)}
+            />
+          }
+        />
       </SettingsPanel>
+
       <SettingsPanel
         title={frontendMessage("settings.general.animationTitle")}
         description={frontendMessage("settings.general.animationDescription")}
       >
-        <div className="divide-y divide-ink-200/70 border-y border-ink-200/70">
-          {motionLevelOptions.map((option) => (
-            <MotionLevelOption
-              key={option.id}
-              title={option.title}
-              description={option.description}
-              selected={motionLevel === option.id}
-              onSelect={() => onMotionLevelChange(option.id)}
+        <SettingsControlRow
+          label={frontendMessage("settings.general.motionFieldLabel")}
+          description={motionLevelOptions.find((option) => option.value === motionLevel)?.description}
+          control={
+            <MenuSelect
+              value={motionLevel}
+              size="md"
+              placeholder={frontendMessage("settings.general.motionFieldLabel")}
+              options={motionLevelOptions}
+              ariaLabel={frontendMessage("settings.general.animationTitle")}
+              onChange={(value) => onMotionLevelChange(value as typeof motionLevel)}
+              renderValue={(_value, option) => <span className="truncate">{option?.label}</span>}
+              renderOption={(option) => (
+                <span className="flex min-w-0 flex-col py-0.5">
+                  <span className="truncate">{option.label}</span>
+                  {option.description ? (
+                    <span className="mt-0.5 truncate text-[10.5px] leading-4 text-content-muted">
+                      {option.description}
+                    </span>
+                  ) : null}
+                </span>
+              )}
             />
-          ))}
-        </div>
+          }
+        />
       </SettingsPanel>
-    </div>
-  );
-}
-
-function MotionLevelOption({
-  title,
-  description,
-  selected,
-  onSelect,
-}: {
-  title: string;
-  description: string;
-  selected: boolean;
-  onSelect: () => void;
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onSelect}
-      className={cn(
-        "flex w-full items-start gap-4 px-3 py-3 text-left transition",
-        selected ? "bg-accent-surface text-accent-content" : "text-content-secondary hover:bg-surface-subtle",
-      )}
-    >
-      <span className="min-w-0 flex-1">
-        <span className="block text-[12.5px] font-semibold">{title}</span>
-        <span className="mt-1 block text-[11.5px] leading-5 text-ink-500">{description}</span>
-      </span>
-      <span className="grid h-5 w-5 shrink-0 place-items-center text-accent-content" aria-hidden="true">
-        {selected ? <Check className="h-3.5 w-3.5" /> : null}
-      </span>
-    </button>
-  );
-}
-
-function PreferenceToggle({
-  title,
-  description,
-  checked,
-  separated,
-  onCheckedChange,
-}: {
-  title: string;
-  description: string;
-  checked: boolean;
-  separated: boolean;
-  onCheckedChange: (checked: boolean) => void;
-}): JSX.Element {
-  return (
-    <div className={cn("flex items-center gap-4 px-4 py-3", separated && "border-t border-ink-200/70")}>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-medium text-ink-850">{title}</span>
-        <span className="mt-0.5 block text-[11.5px] leading-5 text-ink-500">{description}</span>
-      </span>
-      <Switch checked={checked} ariaLabel={title} onCheckedChange={onCheckedChange} />
     </div>
   );
 }

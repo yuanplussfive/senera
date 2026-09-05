@@ -1,39 +1,94 @@
 {
   "name": "ImageAnalyze",
-  "description": "Analyze an uploaded image or screenshot for visible evidence, OCR, or a specific question.",
+  "description": "Analyze one or more canonical Senera image resources, screenshots, or unchanged public HTTP(S) image URLs together for visible evidence, OCR, or a specific question. Resolve local Markdown paths to a host-provided Senera resource before calling.",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "resourceUri": {
-        "type": "string",
-        "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
-        "description": "Exact Senera resource URI supplied by the runtime."
+      "images": {
+        "minItems": 1,
+        "maxItems": 32,
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "resourceUri": {
+                  "type": "string",
+                  "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
+                  "description": "Canonical Senera resource URI to analyze. When a Markdown image uses a local path, use the host-provided resource mapping and never invent a URI from its filename."
+                }
+              },
+              "required": ["resourceUri"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "pattern": "^https?:\\/\\/\\S+$",
+                  "description": "Public HTTP(S) image URL. Preserve the URL exactly; Senera downloads it and sends the image as base64."
+                }
+              },
+              "required": ["url"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "description": "Images to analyze together, in the supplied order."
       },
       "task": { "default": "describe", "type": "string", "enum": ["describe", "ocr", "question"] },
-      "question": { "type": "string", "minLength": 1 }
+      "question": { "type": "string", "minLength": 1 },
+      "timeoutMs": {
+        "description": "Optional per-call image download timeout in milliseconds.",
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 900000
+      }
     },
-    "required": ["resourceUri"],
+    "required": ["images"],
     "additionalProperties": false
   },
   "outputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "resourceUri": { "type": "string", "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$" },
-      "name": { "type": "string" },
-      "mime": { "type": "string" },
-      "size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+      "images": {
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "enum": ["resource", "url"] },
+                "uri": { "type": "string", "minLength": 1 }
+              },
+              "required": ["kind", "uri"],
+              "additionalProperties": false
+            },
+            "name": { "type": "string" },
+            "mime": { "type": "string" },
+            "size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          },
+          "required": ["source", "name", "mime", "size", "sha256"],
+          "additionalProperties": false
+        }
+      },
       "task": { "type": "string", "enum": ["describe", "ocr", "question"] },
       "question": { "type": "string" },
       "answer": { "type": "string" },
       "model": { "type": "string" }
     },
-    "required": ["resourceUri", "name", "mime", "size", "task", "answer", "model"],
+    "required": ["images", "task", "answer", "model"],
     "additionalProperties": false
   },
   "observationProjection": "observations/ImageAnalyze.projection.json",
-  "permissions": ["uploads:read", "model:vision"],
+  "permissions": ["resources:read", "model:vision"],
   "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
@@ -43,5 +98,27 @@
   },
   "resources": [],
   "sources": [],
+  "search": {
+    "Summary": "一起分析一张或多张图片，读取画面、文字和与当前问题有关的可见证据。",
+    "Tags": ["image", "vision", "ocr", "screenshot"],
+    "Capabilities": [
+      {
+        "Id": "vision.image-analysis",
+        "Title": "Image analysis",
+        "Description": "分析图片内容、提取图片文字，或针对图片回答具体问题。",
+        "Facets": {
+          "Actions": ["describe", "ocr", "answer"],
+          "Targets": ["image-resource", "public-image-url"],
+          "Inputs": ["images", "task", "question"],
+          "Outputs": ["description", "ocr-text", "answer", "image-metadata"],
+          "Effects": ["none"]
+        },
+        "Aliases": ["看图", "识别图片", "分析截图", "图片文字", "image analysis"],
+        "Risk": { "SideEffect": "read-only", "Permission": "resources-read-vision" }
+      }
+    ],
+    "UseCases": ["用户提供截图、图片或公开图片链接，并希望了解画面、文字或具体细节。"],
+    "Avoid": ["没有图片证据时不要猜测画面内容；需要修改或生成图片时使用对应的图像工具。"]
+  },
   "evidenceCapabilities": []
 }

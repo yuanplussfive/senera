@@ -12,6 +12,7 @@ import { AgentUploadError, AgentUploadFailureKinds, type AgentUploadStore } from
 import type { AgentUploadAttachment } from "./AgentUploadTypes.js";
 import { isMissingFileError } from "../Core/AgentFs.js";
 import { toError } from "../Core/AgentErrors.js";
+import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 
 export const AgentUploadMaintenanceTriggers = {
   Startup: "startup",
@@ -35,6 +36,7 @@ type AgentUploadHttpRoute =
 
 export interface AgentUploadHttpApiOptions {
   store: AgentUploadStore;
+  resourceResolver?: AgentResourceResolverLike;
   isOriginAllowed?: (origin: string) => boolean;
   onMaintenanceError?: (failure: AgentUploadMaintenanceFailure) => void;
 }
@@ -44,8 +46,26 @@ export class AgentUploadHttpApi {
   private maintenanceTimer?: NodeJS.Timeout;
   private maintenanceRun?: Promise<void>;
   private consecutiveMaintenanceFailures = 0;
+  private readonly resourceResolver: AgentResourceResolverLike;
 
-  constructor(private readonly options: AgentUploadHttpApiOptions) {}
+  constructor(private readonly options: AgentUploadHttpApiOptions) {
+    this.resourceResolver = options.resourceResolver ?? {
+      resolve: (resourceUri) =>
+        options.store.resolve(resourceUri).then((upload) => {
+          if (!upload) return undefined;
+          return {
+            resourceUri: upload.manifest.resourceUri,
+            filePath: upload.filePath,
+            name: upload.manifest.name,
+            mime: upload.manifest.mime,
+            ...(upload.manifest.declaredMime ? { declaredMime: upload.manifest.declaredMime } : {}),
+            size: upload.manifest.size,
+            sha256: upload.manifest.sha256,
+            origin: "upload" as const,
+          };
+        }),
+    };
+  }
 
   startMaintenance(): void {
     if (this.maintenanceEnabled) return;
@@ -156,13 +176,13 @@ export class AgentUploadHttpApi {
       return;
     }
 
-    const resolved = await this.resolveContentUpload(resourceId);
+    const resolved = await this.resolveContentResource(resourceId);
     if (!resolved) {
       this.sendNotFound(response);
       return;
     }
 
-    const detectedMime = resolved.manifest.detectedMime ?? resolved.manifest.mime;
+    const detectedMime = resolved.mime;
     const inline = isAgentInlineImageMime(detectedMime);
 
     let contentLength: number;
@@ -181,13 +201,13 @@ export class AgentUploadHttpApi {
       throw error;
     }
 
-    const etag = formatUploadContentEtag(resolved.manifest.sha256);
+    const etag = formatUploadContentEtag(resolved.sha256);
     const headers = {
       "Cache-Control": "private, max-age=0, must-revalidate",
       "Content-Length": contentLength,
       "Content-Security-Policy": "default-src 'none'; sandbox",
       "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(
-        resolved.manifest.name,
+        resolved.name,
       )}`,
       "Content-Type": inline ? detectedMime : "application/octet-stream",
       ETag: etag,
@@ -211,9 +231,9 @@ export class AgentUploadHttpApi {
     });
   }
 
-  private async resolveContentUpload(resourceId: string) {
+  private async resolveContentResource(resourceId: string) {
     try {
-      return await this.options.store.resolve(createAgentResourceUri(resourceId));
+      return await this.resourceResolver.resolve(createAgentResourceUri(resourceId));
     } catch (error) {
       if (isMissingFileError(error)) return undefined;
       throw error;

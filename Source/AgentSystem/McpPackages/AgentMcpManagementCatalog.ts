@@ -181,7 +181,7 @@ export class AgentMcpManagementCatalog {
         extension.tools.map((tool) => ({
           name: tool.name,
           title: resolveAgentExtensionLocalizedText(extension.displayName),
-          description: tool.description,
+          description: resolveAgentExtensionLocalizedText(tool.description),
           extension: extension.id,
           loading: tool.loading,
         })),

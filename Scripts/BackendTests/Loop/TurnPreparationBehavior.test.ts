@@ -34,7 +34,7 @@ describe("Turn preparation behavior", () => {
   });
 
   test("prepares skills, tool exposure, and root authority without a model call", async () => {
-    const resolvePlannedLoadedTools = vi.fn(async () => ["ToolSearchTool", "WorkspaceListFiles"]);
+    const resolvePlannedLoadedTools = vi.fn(async () => ["ToolSearch", "WorkspaceListFiles"]);
     const rememberAutoSearch = vi.fn();
     const buildRootCommand = vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames));
     const service = new AgentTurnPreparationService({
@@ -51,12 +51,12 @@ describe("Turn preparation behavior", () => {
     const prepared = await service.prepare({
       requestId: "request-a",
       userInput: "Inspect the workspace",
-      loadedToolNames: ["ToolSearchTool"],
+      loadedToolNames: ["ToolSearch"],
     });
 
     expect(resolvePlannedLoadedTools).toHaveBeenCalledWith({
       input: "Inspect the workspace",
-      currentLoadedTools: ["ToolSearchTool"],
+      currentLoadedTools: ["ToolSearch"],
       currentSetPolicy: "retain",
       preferredTools: ["WorkspaceListFiles"],
       discover: true,
@@ -72,7 +72,7 @@ describe("Turn preparation behavior", () => {
           needs: [],
         },
       },
-      loadedToolNames: ["ToolSearchTool", "WorkspaceListFiles"],
+      loadedToolNames: ["ToolSearch", "WorkspaceListFiles"],
       allowedToolNames: undefined,
     });
     expect(rememberAutoSearch).toHaveBeenCalledWith("request-a", "Inspect the workspace", prepared.loadedToolNames);

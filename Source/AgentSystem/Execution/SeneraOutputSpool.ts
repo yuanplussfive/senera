@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { writeFileAtomic } from "../Core/AgentFs.js";
+import { removeAgentPathWithRetry, writeFileAtomic } from "../Core/AgentFs.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 export type SeneraOutputStream = "stdout" | "stderr";
@@ -162,7 +162,10 @@ class FileOutputSpool implements SeneraOutputSpool {
 
   async cleanup(): Promise<void> {
     await this.close().catch(() => undefined);
-    await fsp.rm(this.descriptor.directory, { recursive: true, force: true });
+    // Antivirus/indexer handles on Windows can briefly retain stdout/stderr
+    // after the streams finish. Move a still-locked spool out of the active
+    // namespace instead of turning an otherwise completed tool into run.failed.
+    await removeAgentPathWithRetry(this.descriptor.directory, { recursive: true, deferOnBusy: true });
   }
 }
 

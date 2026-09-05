@@ -24,6 +24,9 @@ export function projectEntryToMessage(
   completedRequestIds?: ReadonlySet<string>,
 ): ChatMessage | null {
   if (entry.kind === "user.message") {
+    // Background completion wake-ups are internal model input. They remain in
+    // the durable transcript for context, but must not appear as a user bubble.
+    if (entry.metadata?.backgroundTask) return null;
     return {
       id: `${entry.requestId}-user`,
       role: "user",
@@ -55,7 +58,9 @@ export function projectEntryToMessage(
 }
 
 function isTerminalAssistantEntry(entry: ConversationEntryDto, completedRequestIds?: ReadonlySet<string>): boolean {
-  return Boolean(entry.metadata?.run) || completedRequestIds?.has(entry.requestId) === true;
+  return (
+    Boolean(entry.metadata?.run || entry.metadata?.scheduledTask) || completedRequestIds?.has(entry.requestId) === true
+  );
 }
 
 export function upsertMessageByRequestId(session: SessionRecord, message: ChatMessage): boolean {

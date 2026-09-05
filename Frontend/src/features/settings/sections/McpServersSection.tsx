@@ -1,5 +1,6 @@
 import { useEffect, useState, type ElementType } from "react";
 import AdjustmentsHorizontalIcon from "@heroicons/react/24/outline/AdjustmentsHorizontalIcon";
+import ArrowLeftIcon from "@heroicons/react/24/outline/ArrowLeftIcon";
 import ArrowPathIcon from "@heroicons/react/24/outline/ArrowPathIcon";
 import ArrowPathRoundedSquareIcon from "@heroicons/react/24/outline/ArrowPathRoundedSquareIcon";
 import FolderIcon from "@heroicons/react/24/outline/FolderIcon";
@@ -8,6 +9,8 @@ import PauseCircleIcon from "@heroicons/react/24/outline/PauseCircleIcon";
 import ServerStackIcon from "@heroicons/react/24/outline/ServerStackIcon";
 import type { McpInputStatus, McpInputValue, McpServerSettingsItem } from "../../../api/eventTypes";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
+import { resolveFrontendLocalizedText } from "../../../i18n/frontendLocaleModel";
+import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
 import { cn } from "../../../lib/util";
 import {
   Button,
@@ -47,8 +50,11 @@ export function McpServersSection({
   const [drafts, setDrafts] = useState<Record<string, McpInputDraft>>({});
   const [syncRequest, setSyncRequest] = useState<McpSyncRequest | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const locale = useFrontendLocale();
   const servers = systemConfig?.mcpServers ?? EmptyMcpServers;
-  const selectedServer = servers.find((server) => server.id === selectedServerId) ?? servers[0];
+  const selectedServer = selectedServerId ? (servers.find((server) => server.id === selectedServerId) ?? null) : null;
+  const selectedDisplayName = selectedServer ? resolveFrontendLocalizedText(selectedServer.displayName, locale) : "";
+  const selectedDescription = selectedServer ? resolveFrontendLocalizedText(selectedServer.description, locale) : "";
   const pendingChanges = Object.keys(drafts).length > 0;
   const syncing = syncRequest !== null;
   const connected = systemConfig?.socketStatus === "open";
@@ -67,8 +73,8 @@ export function McpServersSection({
       setSyncRequest(null);
       return;
     }
-    if (!servers.some((server) => server.id === selectedServerId)) {
-      setSelectedServerId(servers[0]?.id ?? null);
+    if (selectedServerId && !servers.some((server) => server.id === selectedServerId)) {
+      setSelectedServerId(null);
       setDrafts({});
       setSyncRequest(null);
       setOperationError(null);
@@ -162,23 +168,32 @@ export function McpServersSection({
     setOperationError(frontendMessage("settings.mcp.commandUnavailable"));
   };
 
-  return (
-    <section className="grid h-full min-h-0 grid-cols-1 grid-rows-[minmax(180px,36%)_minmax(0,1fr)] overflow-hidden bg-paper-50 md:grid-cols-[248px_minmax(0,1fr)] md:grid-rows-1">
-      <div className="flex min-h-0 flex-col border-b border-ink-200/70 md:border-b-0 md:border-r">
-        <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-ink-200/70 px-3">
-          <div className="text-[12px] text-ink-500">
-            {frontendMessage("settings.mcp.count", { count: servers.length })}
+  const refreshButton = (
+    <IconButton
+      label={frontendMessage("settings.mcp.refresh")}
+      tooltip={frontendMessage("settings.mcp.refresh")}
+      size="sm"
+      tone="muted"
+      disabled={!connected || syncing}
+      onClick={systemConfig.refreshToolSettings}
+    >
+      <ArrowPathIcon className="h-4 w-4" />
+    </IconButton>
+  );
+
+  if (!selectedServer) {
+    return (
+      <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas" data-mcp-directory>
+        <div className="mx-auto flex w-full max-w-[980px] shrink-0 items-center justify-between gap-4 border-b border-line px-6 py-4 lg:px-8">
+          <div>
+            <div className="text-[13px] font-semibold text-content-primary">
+              {frontendMessage("settings.mcp.count", { count: servers.length })}
+            </div>
+            <p className="mt-1 text-[11px] text-content-muted">
+              {frontendMessage("settings.mcp.directoryDescription")}
+            </p>
           </div>
-          <IconButton
-            label={frontendMessage("settings.mcp.refresh")}
-            tooltip={frontendMessage("settings.mcp.refresh")}
-            size="sm"
-            tone="muted"
-            disabled={!connected || syncing}
-            onClick={systemConfig.refreshToolSettings}
-          >
-            <ArrowPathIcon className="h-4 w-4" />
-          </IconButton>
+          {refreshButton}
         </div>
         {servers.length === 0 ? (
           <StateView
@@ -187,105 +202,122 @@ export function McpServersSection({
             title={frontendMessage("settings.mcp.empty")}
           />
         ) : (
-          <ScrollArea className="min-h-0 flex-1" viewportClassName="p-2">
-            <div className="space-y-0.5">
+          <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
+            <div className="mx-auto w-full max-w-[980px] px-6 lg:px-8">
               {servers.map((server) => (
                 <McpServerRow
                   key={server.id}
                   server={server}
-                  selected={server.id === selectedServer?.id}
-                  disabled={(pendingChanges || syncing) && server.id !== selectedServer?.id}
+                  locale={locale}
+                  directory
+                  selected={false}
+                  disabled={pendingChanges || syncing}
                   onSelect={() => selectServer(server.id)}
                 />
               ))}
             </div>
           </ScrollArea>
         )}
-      </div>
-      {selectedServer ? (
-        <div className="flex min-h-0 flex-col overflow-hidden">
-          <div className="flex min-w-0 shrink-0 flex-wrap items-start justify-between gap-3 border-b border-ink-200/70 px-5 py-3.5 sm:px-6">
-            <div className="flex min-w-0 items-start gap-2.5">
-              <ServerStackIcon className="mt-0.5 h-4 w-4 shrink-0 text-ink-450" aria-hidden="true" />
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-2">
-                  <h3 className="truncate text-[14px] font-semibold text-ink-900">{selectedServer.id}</h3>
-                  <McpStatus status={selectedServer.status} />
-                </div>
-                <p className="mt-1 text-[11.5px] text-ink-500">
-                  {frontendMessage(`settings.mcp.source.${selectedServer.source}`)} ·{" "}
-                  {selectedServer.transport.toUpperCase()}
-                </p>
-              </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas" data-mcp-detail>
+      <div className="mx-auto flex w-full max-w-[980px] shrink-0 flex-wrap items-start justify-between gap-4 border-b border-line px-6 py-4 lg:px-8">
+        <div className="flex min-w-0 items-start gap-3">
+          <button
+            type="button"
+            className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md text-content-muted transition hover:bg-surface-hover hover:text-content-primary"
+            aria-label={frontendMessage("settings.mcp.backToServers")}
+            onClick={() => setSelectedServerId(null)}
+          >
+            <ArrowLeftIcon className="h-4 w-4" />
+          </button>
+          <ServerStackIcon className="mt-1 h-6 w-6 shrink-0 text-accent-content" aria-hidden="true" />
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+              <h3 className="truncate text-[17px] font-semibold tracking-[-0.01em] text-content-primary">
+                {selectedDisplayName}
+              </h3>
+              <McpStatus status={selectedServer.status} />
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {syncing ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-500" aria-live="polite">
-                  <Spinner size="xs" className="text-accent-content" />
-                  {frontendMessage("settings.mcp.saving")}
-                </span>
-              ) : null}
-              <Button variant="outline" size="sm" disabled={!connected || syncing} onClick={restartServer}>
-                <ArrowPathRoundedSquareIcon className="h-3.5 w-3.5" />
-                {frontendMessage("settings.mcp.restart")}
-              </Button>
-            </div>
+            <p className="mt-1 text-[12px] leading-5 text-content-secondary">{selectedDescription}</p>
+            <p className="mt-2 text-[10.5px] text-content-muted">
+              {frontendMessage(`settings.mcp.source.${selectedServer.source}`)} ·{" "}
+              {selectedServer.transport.toUpperCase()}
+            </p>
           </div>
-          <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
-            {operationError ? <InlineError className="mx-5 mt-3 sm:mx-6">{operationError}</InlineError> : null}
-            <div className="px-5 py-5 sm:px-6">
-              <div className="mb-2 text-[12px] font-semibold text-ink-800">
-                {frontendMessage("settings.mcp.inputs")}
-              </div>
-              {selectedServer.inputs.length === 0 ? (
-                <div className="border-y border-ink-200/70 py-8 text-center text-[12px] text-ink-500">
-                  {frontendMessage("settings.mcp.noInputs")}
-                </div>
-              ) : (
-                <div className="divide-y divide-ink-200/70 border-y border-ink-200/70">
-                  {selectedServer.inputs.map((input) => {
-                    const value = drafts[input.id] ?? input.value ?? input.defaultValue ?? "";
-                    return (
-                      <div
-                        key={input.id}
-                        className="grid gap-3 py-3.5 lg:grid-cols-[minmax(190px,0.5fr)_minmax(260px,1fr)] lg:gap-6"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="truncate text-[12px] font-semibold text-ink-800">{input.title}</span>
-                            {input.required ? (
-                              <span className="text-[10.5px] text-brick-600">
-                                {frontendMessage("settings.mcp.required")}
-                              </span>
-                            ) : null}
-                          </div>
-                          {shouldShowInputSource(input.source) ? (
-                            <div className="mt-1 text-[11px] leading-4 text-ink-500">
-                              {frontendMessage(`settings.mcp.inputSource.${input.source}`)}
-                            </div>
-                          ) : null}
-                        </div>
-                        <FormField className="min-w-0 gap-1.5">
-                          <FormLabel className="sr-only">{input.title}</FormLabel>
-                          <McpInputControl
-                            input={input}
-                            value={value}
-                            disabled={!connected}
-                            onChange={(next) => updateDraft(input, next)}
-                          />
-                          {input.description ? <FormHint>{input.description}</FormHint> : null}
-                        </FormField>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </ScrollArea>
         </div>
-      ) : (
-        <StateView status="empty" title={frontendMessage("settings.mcp.selectServer")} />
-      )}
+        <div className="flex shrink-0 items-center gap-2">
+          {syncing ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-500" aria-live="polite">
+              <Spinner size="xs" className="text-accent-content" />
+              {frontendMessage("settings.mcp.saving")}
+            </span>
+          ) : null}
+          <Button variant="outline" size="sm" disabled={!connected || syncing} onClick={restartServer}>
+            <ArrowPathRoundedSquareIcon className="h-3.5 w-3.5" />
+            {frontendMessage("settings.mcp.restart")}
+          </Button>
+        </div>
+      </div>
+      <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
+        {operationError ? (
+          <InlineError className="mx-auto mt-4 max-w-[980px] px-6 lg:px-8">{operationError}</InlineError>
+        ) : null}
+        <div className="mx-auto w-full max-w-[900px] px-6 py-6 lg:px-8">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <div className="text-[13px] font-semibold text-content-primary">
+              {frontendMessage("settings.mcp.inputs")}
+            </div>
+            <span className="text-[11px] text-content-muted">{selectedServer.inputs.length}</span>
+          </div>
+          {selectedServer.inputs.length === 0 ? (
+            <div className="border-y border-ink-200/70 py-8 text-center text-[12px] text-ink-500">
+              {frontendMessage("settings.mcp.noInputs")}
+            </div>
+          ) : (
+            <div className="divide-y divide-line border-y border-line">
+              {selectedServer.inputs.map((input) => {
+                const value = drafts[input.id] ?? input.value ?? input.defaultValue ?? "";
+                return (
+                  <div
+                    key={input.id}
+                    className="grid gap-3 py-3.5 lg:grid-cols-[minmax(190px,0.5fr)_minmax(260px,1fr)] lg:gap-6"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-[12px] font-semibold text-ink-800">{input.title}</span>
+                        {input.required ? (
+                          <span className="text-[10.5px] text-brick-600">
+                            {frontendMessage("settings.mcp.required")}
+                          </span>
+                        ) : null}
+                      </div>
+                      {shouldShowInputSource(input.source) ? (
+                        <div className="mt-1 text-[11px] leading-4 text-ink-500">
+                          {frontendMessage(`settings.mcp.inputSource.${input.source}`)}
+                        </div>
+                      ) : null}
+                    </div>
+                    <FormField className="min-w-0 gap-1.5">
+                      <FormLabel className="sr-only">{input.title}</FormLabel>
+                      <McpInputControl
+                        input={input}
+                        value={value}
+                        disabled={!connected}
+                        onChange={(next) => updateDraft(input, next)}
+                      />
+                      {input.description ? <FormHint>{input.description}</FormHint> : null}
+                    </FormField>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </ScrollArea>
     </section>
   );
 }
@@ -472,11 +504,15 @@ function sameDraft(left: McpInputDraft, right: McpInputDraft): boolean {
 
 function McpServerRow({
   server,
+  locale,
+  directory = false,
   selected,
   disabled,
   onSelect,
 }: {
   server: McpServerSettingsItem;
+  locale: import("../../../i18n/frontendLocaleModel").FrontendLocale;
+  directory?: boolean;
   selected: boolean;
   disabled: boolean;
   onSelect: () => void;
@@ -486,8 +522,10 @@ function McpServerRow({
       type="button"
       disabled={disabled}
       className={cn(
-        "flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors",
-        selected
+        directory
+          ? "flex min-h-[68px] w-full min-w-0 items-center gap-3 border-b border-line px-1 py-3 text-left transition-colors"
+          : "flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors",
+        !directory && selected
           ? "bg-accent-surface text-accent-content"
           : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
         disabled && "cursor-not-allowed opacity-50",
@@ -495,17 +533,46 @@ function McpServerRow({
       aria-pressed={selected}
       onClick={onSelect}
     >
-      <span className="min-w-0">
-        <span className="block truncate text-[13px] font-semibold">{server.id}</span>
+      <ServerStackIcon className="h-5 w-5 shrink-0 text-content-secondary" aria-hidden="true" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12.5px] font-semibold">
+          {resolveFrontendLocalizedText(server.displayName, locale)}
+        </span>
+        {directory ? (
+          <span className="mt-0.5 block truncate text-[10.5px] text-content-muted">
+            {shortenMcpDescription(resolveFrontendLocalizedText(server.description, locale))}
+          </span>
+        ) : null}
       </span>
-      {server.status === "needs_input" ? (
+      <span
+        className={cn(
+          "inline-flex shrink-0 items-center gap-1.5 text-[10.5px]",
+          server.status === "configured" ? "text-accent-content" : "text-umber-600",
+        )}
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            "h-1.5 w-1.5 rounded-full",
+            server.status === "configured" ? "bg-accent-solid" : "bg-umber-500",
+          )}
+        />
+        {frontendMessage(`settings.mcp.status.${server.status}`)}
+      </span>
+      {server.status === "needs_input" && !directory ? (
         <PauseCircleIcon
-          className="ml-auto h-4 w-4 shrink-0 text-umber-600"
+          className="h-4 w-4 shrink-0 text-umber-600"
           aria-label={frontendMessage(`settings.mcp.status.${server.status}`)}
         />
       ) : null}
     </button>
   );
+}
+
+function shortenMcpDescription(value: string): string {
+  const text = value.trim().replace(/[.!?。！？]+$/u, "");
+  if (!text) return "";
+  return `${text.length > 88 ? text.slice(0, 88).trimEnd() : text}…`;
 }
 
 function McpStatus({ status }: { status: McpServerSettingsItem["status"] }): JSX.Element {

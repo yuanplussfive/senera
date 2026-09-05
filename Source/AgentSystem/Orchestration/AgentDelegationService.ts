@@ -66,9 +66,10 @@ import {
 import { AgentChildRunWaitCoordinator } from "./AgentChildRunWaitCoordinator.js";
 import { latestParentMessage, readChildRunId } from "./AgentDelegationEventSupport.js";
 
-export { AgentDelegationExecutionModes } from "./AgentDelegationRuntimeContracts.js";
+export { AgentDelegationExecutionModes, AgentDelegationCompletionGateway } from "./AgentDelegationRuntimeContracts.js";
 export type {
   AgentDelegationContext,
+  AgentDelegationCompletionPort,
   AgentDelegationExecutionMode,
   AgentDelegationRequest,
   AgentDelegationServiceOptions,
@@ -236,7 +237,10 @@ export class AgentDelegationService {
         selectedSkills: plan.pinnedSkills,
         ...(configurationRevision !== undefined ? { configurationRevision } : {}),
         launchContractDigest: plan.launchContract.launchContractDigest,
-        launchContract: { ...plan.launchContract } as unknown as Record<string, unknown>,
+        launchContract: { ...plan.launchContract, executionMode: request.executionMode } as unknown as Record<
+          string,
+          unknown
+        >,
         allowedToolNames: plan.allowedToolNames,
         executionContract: {
           version: 5,
@@ -264,7 +268,15 @@ export class AgentDelegationService {
     }
     return {
       record,
-      completion: this.startExecution(record, plan, context, record.task, record.contextMode, "initial"),
+      completion: this.startExecution(
+        record,
+        plan,
+        context,
+        record.task,
+        record.contextMode,
+        "initial",
+        request.executionMode === AgentDelegationExecutionModes.Detach,
+      ),
     };
   }
 
@@ -364,6 +376,7 @@ export class AgentDelegationService {
       renderSupervisorResponsePrompt(message),
       AgentRunContextModes.Fresh,
       "resume",
+      executionMode === AgentDelegationExecutionModes.Detach,
     );
     return executionMode === AgentDelegationExecutionModes.Detach ? resumed : completion;
   }
@@ -528,6 +541,7 @@ export class AgentDelegationService {
     input: string,
     contextMode: AgentRunContextMode,
     lifecycle: "initial" | "resume",
+    notifyCompletion: boolean,
   ): Promise<AgentChildRunRecord> {
     throwIfAborted(context.signal);
     if (this.active.has(record.id)) throw new Error(`Child run ${record.id} is already active.`);
@@ -549,7 +563,16 @@ export class AgentDelegationService {
       );
     };
     context.signal?.addEventListener("abort", onParentAbort, { once: true });
-    active.promise = this.execute(record, plan, context, active, input, contextMode, lifecycle).finally(() => {
+    active.promise = this.execute(
+      record,
+      plan,
+      context,
+      active,
+      input,
+      contextMode,
+      lifecycle,
+      notifyCompletion,
+    ).finally(() => {
       active.deadline?.stop();
       context.signal?.removeEventListener("abort", onParentAbort);
       this.active.delete(record.id);
@@ -566,6 +589,7 @@ export class AgentDelegationService {
     input = record.task,
     contextMode = record.contextMode,
     lifecycle: "initial" | "resume" = "initial",
+    notifyCompletion = false,
   ): Promise<AgentChildRunRecord> {
     let permit: AgentRunPermit | undefined;
     let deadlineMonitor: Promise<unknown> | undefined;
@@ -697,6 +721,7 @@ export class AgentDelegationService {
           createAgentChildRunLifecycleEvent(AgentEventKinds.ChildRunPartialCompleted, completed),
         );
       }
+      if (notifyCompletion) this.notifyCompletion(completed);
       return completed;
     } catch (error) {
       let current = this.options.repository.get(record.id);
@@ -733,6 +758,7 @@ export class AgentDelegationService {
               ? AgentEventKinds.ChildRunInterrupted
               : AgentEventKinds.ChildRunFailed;
       await this.emit(context.onEvent, createAgentChildRunLifecycleEvent(kind, terminal));
+      if (notifyCompletion) this.notifyCompletion(terminal);
       return terminal;
     } finally {
       active.deadline?.stop();
@@ -788,5 +814,14 @@ export class AgentDelegationService {
       if (!childRunId) return;
       this.waits.notify(childRunId);
     });
+  }
+
+  /**
+   * Completion delivery is deliberately detached from the worker promise.
+   * A channel adapter or the owning session may be unavailable temporarily;
+   * the persisted child record remains the source of truth for recovery.
+   */
+  private notifyCompletion(record: AgentChildRunRecord): void {
+    void this.options.completion?.completed(record).catch(() => undefined);
   }
 }

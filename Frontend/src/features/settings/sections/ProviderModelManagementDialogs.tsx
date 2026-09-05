@@ -297,7 +297,7 @@ function CatalogModelRow({
         "transition-colors duration-150 hover:bg-ink-900/[0.03]",
       )}
     >
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-ink-200/70 bg-paper-100">
+      <span className="grid h-9 w-9 shrink-0 place-items-center">
         <ModelProviderIcon icon={inferModelProviderIcon(row.id)} size={18} className="rounded" />
       </span>
       <span className="min-w-0">

@@ -1,11 +1,4 @@
-import {
-  chromium,
-  type Browser,
-  type BrowserContext,
-  type ElementHandle,
-  type Locator,
-  type Page,
-} from "playwright-core";
+import type { Browser, BrowserContext, ElementHandle, Locator, Page } from "playwright-core";
 import type {
   AgentBrowserDriver,
   AgentBrowserDriverOperationOptions,
@@ -15,7 +8,11 @@ import type {
   AgentBrowserNetworkRequestKind,
 } from "./AgentBrowserDriver.js";
 import type { AgentBrowserConfiguration } from "./AgentBrowserConfiguration.js";
-import type { AgentBrowserOperation } from "./AgentBrowserTypes.js";
+import {
+  AgentBrowserComputerActionTypes,
+  type AgentBrowserComputerAction,
+  type AgentBrowserOperation,
+} from "./AgentBrowserTypes.js";
 import {
   assertAgentBrowserWindowModeSupported,
   resolveAgentBrowserExecutable,
@@ -78,7 +75,7 @@ export class AgentPlaywrightBrowserDriver implements AgentBrowserDriver {
     if (this.closed) throw new Error("The controlled browser driver is closed.");
     const browser = await this.browser();
     const context = await browser.newContext({
-      acceptDownloads: false,
+      acceptDownloads: true,
       ignoreHTTPSErrors: false,
       serviceWorkers: "block",
     });
@@ -100,6 +97,9 @@ export class AgentPlaywrightBrowserDriver implements AgentBrowserDriver {
     if (this.closed) throw new Error("The controlled browser driver is closed.");
     const environment = this.options.environment ?? process.env;
     assertAgentBrowserWindowModeSupported({ headed: this.options.configuration.runtime.headed, environment });
+    // playwright-core ships ~13MB of bundle source that V8 retains for the
+    // process lifetime once loaded, so defer it until the first launch.
+    const { chromium } = await import("playwright-core");
     this.browserPromise ??= chromium
       .launch({
         executablePath:
@@ -179,80 +179,95 @@ class AgentPlaywrightBrowserSession implements AgentBrowserDriverSession {
     if (this.closed) throw new Error("The controlled browser session is closed.");
     const timeoutMs = options.timeoutMs;
     return this.withAbort(options.signal, async () => {
-      switch (operation) {
-        case "open":
-          return this.open(requiredString(input, "url"), timeoutMs, options.signal);
-        case "read":
-          return this.read(optionalString(input, "url"), timeoutMs, options.signal);
-        case "snapshot":
-          return this.snapshot(input, timeoutMs, options.signal);
-        case "click":
-          return this.click(
-            requiredString(input, "selector"),
-            optionalBoolean(input, "newTab") ?? false,
-            timeoutMs,
-            options.signal,
-          );
-        case "fill":
-          return this.fill(requiredString(input, "selector"), requiredString(input, "text"), timeoutMs, options.signal);
-        case "type":
-          return this.type(
-            requiredString(input, "selector"),
-            requiredString(input, "text"),
-            optionalBoolean(input, "clear") ?? false,
-            optionalNumber(input, "delayMs"),
-            timeoutMs,
-            options.signal,
-          );
-        case "press":
-          return this.press(requiredString(input, "key"));
-        case "check":
-          return this.check(requiredString(input, "selector"), timeoutMs, options.signal);
-        case "uncheck":
-          return this.uncheck(requiredString(input, "selector"), timeoutMs, options.signal);
-        case "select":
-          return this.select(
-            requiredString(input, "selector"),
-            requiredStringArray(input, "values"),
-            timeoutMs,
-            options.signal,
-          );
-        case "scroll":
-          return this.scroll(input, timeoutMs, options.signal);
-        case "wait_ms":
-          return this.wait(optionalNumber(input, "ms") ?? 0, options.signal);
-        case "wait_for_selector":
-          return this.waitForSelector(requiredString(input, "selector"), timeoutMs, options.signal);
-        case "wait_for_text":
-          return this.waitForText(requiredString(input, "text"), timeoutMs, options.signal);
-        case "wait_for_load":
-          return this.waitForLoad(requiredString(input, "state"), timeoutMs, options.signal);
-        case "screenshot":
-          return this.screenshot(input, timeoutMs, options.signal);
-        case "get_text":
-          return this.getText(requiredString(input, "selector"), timeoutMs, options.signal);
-        case "get_url":
-          return { content: this.page().url() };
-        case "get_title":
-          return { content: await this.page().title() };
-        case "close":
-          await this.close();
-          return { content: "Controlled browser session closed." };
-        case "back":
-          return this.back(timeoutMs, options.signal);
-        case "forward":
-          return this.forward(timeoutMs, options.signal);
-        case "reload":
-          return this.reload(timeoutMs, options.signal);
-        case "tab_new":
-          return this.newTab(optionalString(input, "url"), optionalString(input, "label"), timeoutMs, options.signal);
-        case "tab_list":
-          return this.listTabs();
-        case "tab_switch":
-          return this.switchTab(requiredString(input, "tab"));
-        case "tab_close":
-          return this.closeTab(optionalString(input, "tab"));
-      }
+      const result = await (async (): Promise<AgentBrowserDriverOperationResult> => {
+        switch (operation) {
+          case "open":
+            return this.open(requiredString(input, "url"), timeoutMs, options.signal);
+          case "read":
+            return this.read(optionalString(input, "url"), timeoutMs, options.signal);
+          case "snapshot":
+            return this.snapshot(input, timeoutMs, options.signal);
+          case "click":
+            return this.click(
+              requiredString(input, "selector"),
+              optionalBoolean(input, "newTab") ?? false,
+              timeoutMs,
+              options.signal,
+            );
+          case "fill":
+            return this.fill(
+              requiredString(input, "selector"),
+              requiredString(input, "text"),
+              timeoutMs,
+              options.signal,
+            );
+          case "type":
+            return this.type(
+              requiredString(input, "selector"),
+              requiredString(input, "text"),
+              optionalBoolean(input, "clear") ?? false,
+              optionalNumber(input, "delayMs"),
+              timeoutMs,
+              options.signal,
+            );
+          case "press":
+            return this.press(requiredStringArray(input, "keys"));
+          case "check":
+            return this.check(requiredString(input, "selector"), timeoutMs, options.signal);
+          case "uncheck":
+            return this.uncheck(requiredString(input, "selector"), timeoutMs, options.signal);
+          case "select":
+            return this.select(
+              requiredString(input, "selector"),
+              requiredStringArray(input, "values"),
+              timeoutMs,
+              options.signal,
+            );
+          case "scroll":
+            return this.scroll(input, timeoutMs, options.signal);
+          case "wait_ms":
+            return this.wait(optionalNumber(input, "ms") ?? 0, options.signal);
+          case "wait_for_selector":
+            return this.waitForSelector(requiredString(input, "selector"), timeoutMs, options.signal);
+          case "wait_for_text":
+            return this.waitForText(requiredString(input, "text"), timeoutMs, options.signal);
+          case "wait_for_load":
+            return this.waitForLoad(requiredString(input, "state"), timeoutMs, options.signal);
+          case "screenshot":
+            return this.screenshot(input, timeoutMs, options.signal);
+          case "get_text":
+            return this.getText(requiredString(input, "selector"), timeoutMs, options.signal);
+          case "get_url":
+            return { content: this.page().url() };
+          case "get_title":
+            return { content: await this.page().title() };
+          case "close":
+            await this.close();
+            return { content: "Controlled browser session closed." };
+          case "back":
+            return this.back(timeoutMs, options.signal);
+          case "forward":
+            return this.forward(timeoutMs, options.signal);
+          case "reload":
+            return this.reload(timeoutMs, options.signal);
+          case "tab_new":
+            return this.newTab(optionalString(input, "url"), optionalString(input, "label"), timeoutMs, options.signal);
+          case "tab_list":
+            return this.listTabs();
+          case "tab_switch":
+            return this.switchTab(requiredString(input, "tab"));
+          case "tab_close":
+            return this.closeTab(optionalString(input, "tab"));
+          case "download":
+            return this.download(requiredString(input, "selector"), timeoutMs, options.signal);
+          case "computer":
+            return this.computer(input, timeoutMs, options.signal);
+        }
+      })();
+      if (invalidatesBrowserSnapshotReferences(operation, input)) await this.clearReferences();
+      if (operation === "close" || operation === "tab_list") return result;
+      if (operation === "tab_close" && this.livePages().length === 0) return result;
+      return { ...result, page: await this.pageState() };
     });
   }
 
@@ -349,6 +364,106 @@ class AgentPlaywrightBrowserSession implements AgentBrowserDriverSession {
     };
   }
 
+  private async download(
+    selector: string,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<AgentBrowserDriverOperationResult> {
+    const page = this.page();
+    const downloadPromise = page.waitForEvent("download", { timeout: timeoutMs });
+    void downloadPromise.catch(() => undefined);
+    await this.locator(selector).click({ timeout: timeoutMs, signal });
+    const download = await downloadPromise;
+    const failure = await download.failure();
+    if (failure) throw new Error(`Browser download failed: ${failure}`);
+    const stream = await download.createReadStream();
+    if (!stream) throw new Error("Browser download did not provide a readable stream.");
+    const data = await readDownloadStream(stream, this.options.maxDownloadBytes, signal);
+    return {
+      content: `Downloaded ${download.suggestedFilename()}.`,
+      download: {
+        data,
+        fileName: download.suggestedFilename(),
+        url: download.url(),
+      },
+    };
+  }
+
+  private async computer(
+    input: Readonly<Record<string, unknown>>,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<AgentBrowserDriverOperationResult> {
+    const actions = requiredComputerActions(input);
+    for (const action of actions) {
+      await this.executeComputerAction(action, signal);
+      if (action.type !== "screenshot") await this.clearReferences();
+    }
+    this.throwNavigationFailure();
+    return {
+      content: await pageDescriptor(this.page()),
+      ...(await this.capturePageScreenshot(timeoutMs, signal)),
+    };
+  }
+
+  private async executeComputerAction(action: AgentBrowserComputerAction, signal?: AbortSignal): Promise<void> {
+    const page = this.page();
+    switch (action.type) {
+      case "click":
+      case "double_click":
+        await withBrowserModifiers(page, action.modifiers, async () => {
+          if (action.type === "double_click") {
+            await page.mouse.dblclick(action.x, action.y, { button: action.button ?? "left", delay: 0 });
+          } else {
+            await page.mouse.click(action.x, action.y, { button: action.button ?? "left", clickCount: 1 });
+          }
+        });
+        return;
+      case "move":
+        await withBrowserModifiers(page, action.modifiers, () => page.mouse.move(action.x, action.y));
+        return;
+      case "scroll":
+        await withBrowserModifiers(page, action.modifiers, async () => {
+          await page.mouse.move(action.x, action.y);
+          await page.mouse.wheel(action.scrollX ?? 0, action.scrollY ?? 0);
+        });
+        return;
+      case "drag":
+        await withBrowserModifiers(page, action.modifiers, async () => {
+          const first = action.path[0];
+          if (!first) throw new Error("Browser drag requires at least one point.");
+          await page.mouse.move(first.x, first.y);
+          await page.mouse.down();
+          try {
+            for (const point of action.path.slice(1)) await page.mouse.move(point.x, point.y);
+          } finally {
+            await page.mouse.up();
+          }
+        });
+        return;
+      case "type":
+        await page.keyboard.type(action.text);
+        return;
+      case "keypress":
+        await page.keyboard.press(action.keys.map(normalizeBrowserKey).join("+"));
+        return;
+      case "wait":
+        await waitForDuration(action.ms, signal);
+        return;
+      case "screenshot":
+        return;
+    }
+  }
+
+  private async capturePageScreenshot(
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<Pick<AgentBrowserDriverOperationResult, "screenshot">> {
+    const data = await this.page().screenshot({ type: "png", timeout: timeoutMs, animations: "disabled" });
+    assertNotAborted(signal);
+    return { screenshot: { data, mediaType: "image/png" } };
+  }
+
   private async fill(
     selector: string,
     text: string,
@@ -381,7 +496,8 @@ class AgentPlaywrightBrowserSession implements AgentBrowserDriverSession {
     return { content: "Typed into browser element." };
   }
 
-  private async press(key: string): Promise<AgentBrowserDriverOperationResult> {
+  private async press(keys: readonly string[]): Promise<AgentBrowserDriverOperationResult> {
+    const key = keys.map(normalizeBrowserKey).join("+");
     await this.page().keyboard.press(key);
     this.throwNavigationFailure();
     return { content: `Pressed ${key}.` };
@@ -679,6 +795,11 @@ class AgentPlaywrightBrowserSession implements AgentBrowserDriverSession {
     await Promise.all(references.map((reference) => reference.dispose().catch(() => undefined)));
   }
 
+  private async pageState(): Promise<{ readonly url: string; readonly title: string }> {
+    const page = this.page();
+    return { url: page.url(), title: await page.title() };
+  }
+
   private async addReferenceAnnotations(page: Page): Promise<() => Promise<void>> {
     const annotations = await Promise.all(
       [...this.references.entries()].map(async ([reference, handle]) => {
@@ -730,4 +851,97 @@ class AgentPlaywrightBrowserSession implements AgentBrowserDriverSession {
       signal?.removeEventListener("abort", onAbort);
     }
   }
+}
+
+function requiredComputerActions(input: Readonly<Record<string, unknown>>): AgentBrowserComputerAction[] {
+  if (!Array.isArray(input.actions) || input.actions.length === 0) {
+    throw new Error("Browser computer operation requires at least one action.");
+  }
+  return input.actions.map((value, index) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error(`Browser computer action ${index + 1} must be an object.`);
+    }
+    const type = (value as { readonly type?: unknown }).type;
+    if (typeof type !== "string" || !AgentBrowserComputerActionTypes.includes(type as never)) {
+      throw new Error(`Browser computer action ${index + 1} has an unsupported type.`);
+    }
+    return value as AgentBrowserComputerAction;
+  });
+}
+
+function invalidatesBrowserSnapshotReferences(
+  operation: AgentBrowserOperation,
+  input: Readonly<Record<string, unknown>>,
+): boolean {
+  switch (operation) {
+    case "read":
+      return typeof input.url === "string";
+    case "get_url":
+    case "get_title":
+    case "tab_list":
+    case "screenshot":
+      return false;
+    default:
+      return true;
+  }
+}
+
+async function withBrowserModifiers<TValue>(
+  page: Page,
+  keys: readonly string[] | undefined,
+  operation: () => Promise<TValue>,
+): Promise<TValue> {
+  const modifiers = (keys ?? []).map(normalizeBrowserKey);
+  for (const modifier of modifiers) await page.keyboard.down(modifier);
+  try {
+    return await operation();
+  } finally {
+    for (const modifier of [...modifiers].reverse()) await page.keyboard.up(modifier);
+  }
+}
+
+function normalizeBrowserKey(key: string): string {
+  const normalized = key.trim().toUpperCase();
+  const aliases: Readonly<Record<string, string>> = {
+    ALT: "Alt",
+    ARROWDOWN: "ArrowDown",
+    ARROWLEFT: "ArrowLeft",
+    ARROWRIGHT: "ArrowRight",
+    ARROWUP: "ArrowUp",
+    CMD: "Meta",
+    COMMAND: "Meta",
+    CONTROL: "Control",
+    CTRL: "Control",
+    ESC: "Escape",
+    META: "Meta",
+    RETURN: "Enter",
+    SHIFT: "Shift",
+    SPACE: " ",
+    WINDOWS: "Meta",
+    WIN: "Meta",
+  };
+  return aliases[normalized] ?? key;
+}
+
+async function readDownloadStream(
+  stream: AsyncIterable<unknown> & { readonly destroy?: () => void },
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for await (const chunk of stream) {
+      assertNotAborted(signal);
+      const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk instanceof Uint8Array ? chunk : undefined;
+      if (!bytes) throw new Error("Browser download returned an unsupported stream chunk.");
+      size += bytes.byteLength;
+      if (size > maxBytes) throw new Error(`Browser download exceeds the configured ${maxBytes} byte limit.`);
+      chunks.push(bytes);
+    }
+  } catch (error) {
+    stream.destroy?.();
+    throw error;
+  }
+  return Buffer.concat(chunks);
 }

@@ -17,7 +17,7 @@ export const ValueSelection: Story = () => {
       <div className="mx-auto max-w-[560px]">
         <h1 className="text-[18px] font-semibold text-content-strong">值选择菜单</h1>
         <p className="mt-1 text-[12.5px] leading-5 text-content-muted">
-          用于从已有选项中选择一个值；删除、复制等操作应使用动作菜单。
+          用于从已有选项中选择一个值；打开菜单后当前值保持勾选，删除、复制等操作应使用动作菜单。
         </p>
 
         <div className="mt-6 grid gap-2">

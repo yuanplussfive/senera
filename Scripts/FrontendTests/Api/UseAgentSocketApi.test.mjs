@@ -195,6 +195,33 @@ test("agent socket delivers one ordered transaction for events received in the s
   ]);
 });
 
+test("agent socket delivers cancellation control events without waiting for the frame batch", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("WebSocket", TestWebSocket);
+  vi.stubGlobal("requestAnimationFrame", (callback) => window.setTimeout(() => callback(performance.now()), 16));
+  vi.stubGlobal("cancelAnimationFrame", (id) => window.clearTimeout(id));
+  const onEvents = vi.fn();
+  const handleRef = { current: null };
+  render(
+    React.createElement(SocketHarness, {
+      handleRef,
+      onEvents,
+      url: "ws://agent.test/runtime",
+    }),
+  );
+
+  const socket = TestWebSocket.instances[0];
+  act(() => socket.open());
+  act(() => socket.receive(event(EventKinds.RunCancellationProgress, 1, { stage: "started" })));
+
+  expect(onEvents).toHaveBeenCalledTimes(1);
+  expect(onEvents).toHaveBeenCalledWith([
+    expect.objectContaining({ kind: EventKinds.RunCancellationProgress, sequence: 1 }),
+  ]);
+  act(() => vi.advanceTimersByTime(16));
+  expect(onEvents).toHaveBeenCalledTimes(1);
+});
+
 test("agent socket reports batch consumer failures without throwing from the scheduled flush", () => {
   vi.useFakeTimers();
   vi.stubGlobal("WebSocket", TestWebSocket);

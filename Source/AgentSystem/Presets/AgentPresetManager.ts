@@ -1,9 +1,7 @@
 import type { ResolvedAgentPresetsConfig } from "../Types/AgentConfigTypes.js";
 import {
   EmptyAgentRoleplayPresetContext,
-  EmptyAgentPlannerRoleplayPresetContext,
-  type AgentPresetFormat,
-  type AgentPlannerRoleplayPresetContext,
+  type AgentPersonaPreset,
   type AgentPresetOperationResult,
   type AgentPresetSnapshot,
   type AgentPresetSnapshotItem,
@@ -11,26 +9,27 @@ import {
 } from "./AgentPresetTypes.js";
 import { AgentPresetParser } from "./AgentPresetParser.js";
 import { AgentPresetRepository } from "./AgentPresetRepository.js";
-import { AgentPresetXmlProjector } from "./AgentPresetXmlProjector.js";
+import { selectAgentPresetLore } from "./AgentPresetLoreRetriever.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { applyAgentPresetPromptBudget } from "./AgentPresetPromptBudget.js";
+import type { AgentPresetActivationRuntime } from "./AgentPresetActivationRuntime.js";
 
 export interface AgentPresetManagerOptions {
   workspaceRoot: string;
   config: ResolvedAgentPresetsConfig;
+  activation?: AgentPresetActivationRuntime;
 }
 
 export interface AgentPresetSaveRequest {
   requestId?: string;
   name: string;
-  format: AgentPresetFormat;
-  content: string;
+  card: AgentPersonaPreset;
   activate?: boolean;
 }
 
 export class AgentPresetManager {
   private readonly repository: AgentPresetRepository;
   private readonly parser = new AgentPresetParser();
-  private readonly projector = new AgentPresetXmlProjector();
 
   constructor(private readonly options: AgentPresetManagerOptions) {
     this.repository = new AgentPresetRepository({
@@ -41,8 +40,13 @@ export class AgentPresetManager {
   }
 
   async snapshot(operation?: AgentPresetOperationResult): Promise<AgentPresetSnapshot> {
-    const [records, state] = await Promise.all([this.repository.list(), this.repository.readState()]);
-    const activePresetName = records.some((record) => record.name === state.activePresetName)
+    const [records, state, worldPackages] = await Promise.all([
+      this.repository.list(),
+      this.repository.readState(),
+      this.options.activation?.catalog() ?? Promise.resolve([]),
+    ]);
+    const presets = records.map((record) => this.projectSnapshotItem(record));
+    const activePresetName = presets.some((preset) => preset.name === state.activePresetName && preset.card)
       ? state.activePresetName
       : null;
 
@@ -50,20 +54,38 @@ export class AgentPresetManager {
       enabled: this.options.config.Enabled,
       rootDir: this.options.config.RootDir,
       activePresetName,
-      presets: records.map((record) => this.projectSnapshotItem(record, activePresetName)),
+      presets: presets.map((preset) => ({ ...preset, active: preset.name === activePresetName })),
+      worldPackages: [...worldPackages],
       operation,
     };
   }
 
   async save(request: AgentPresetSaveRequest): Promise<AgentPresetSnapshot> {
-    this.parser.validateContent(request.format, request.content);
+    const card = this.parser.parseCard(request.card);
+    const priorState = await this.repository.readState();
+    const priorRecord = await this.repository.readOptional(request.name);
+    const priorActiveCard =
+      request.activate && priorState.activePresetName
+        ? this.parser.parse(await this.repository.read(priorState.activePresetName)).card
+        : null;
     const record = await this.repository.save({
       name: request.name,
-      format: request.format,
-      content: request.content,
+      card,
     });
-    if (request.activate) {
-      await this.repository.writeState({ activePresetName: record.name });
+    const activatesSavedCard = request.activate || priorState.activePresetName === record.name;
+    if (activatesSavedCard) {
+      try {
+        await this.options.activation?.synchronize(card);
+        if (request.activate) await this.repository.writeState({ activePresetName: record.name });
+      } catch (error) {
+        if (priorRecord) {
+          await this.repository.save({ name: priorRecord.name, card: this.parser.parse(priorRecord).card });
+        } else {
+          await this.repository.delete(record.name);
+        }
+        if (request.activate) await this.options.activation?.synchronize(priorActiveCard);
+        throw error;
+      }
     }
     return this.snapshot({
       requestId: request.requestId,
@@ -73,10 +95,22 @@ export class AgentPresetManager {
   }
 
   async delete(request: { requestId?: string; name: string }): Promise<AgentPresetSnapshot> {
-    await this.repository.delete(request.name);
     const state = await this.repository.readState();
-    if (state.activePresetName === request.name) {
-      await this.repository.writeState({ activePresetName: null });
+    const record = await this.repository.read(request.name);
+    const deletesActiveCard = state.activePresetName === record.name;
+    if (!deletesActiveCard) {
+      await this.repository.delete(record.name);
+    } else {
+      const card = this.parser.parse(record).card;
+      await this.options.activation?.synchronize(null);
+      try {
+        await this.repository.delete(record.name);
+        await this.repository.writeState({ activePresetName: null });
+      } catch (error) {
+        await this.repository.save({ name: record.name, card });
+        await this.options.activation?.synchronize(card);
+        throw error;
+      }
     }
     return this.snapshot({
       requestId: request.requestId,
@@ -87,10 +121,18 @@ export class AgentPresetManager {
 
   async setActive(request: { requestId?: string; name?: string | null }): Promise<AgentPresetSnapshot> {
     const activePresetName = request.name ?? null;
-    if (activePresetName) {
-      await this.repository.read(activePresetName);
+    const nextCard = activePresetName ? this.parser.parse(await this.repository.read(activePresetName)).card : null;
+    const priorState = await this.repository.readState();
+    const priorCard = priorState.activePresetName
+      ? this.parser.parse(await this.repository.read(priorState.activePresetName)).card
+      : null;
+    await this.options.activation?.synchronize(nextCard);
+    try {
+      await this.repository.writeState({ activePresetName });
+    } catch (error) {
+      await this.options.activation?.synchronize(priorCard);
+      throw error;
     }
-    await this.repository.writeState({ activePresetName });
     return this.snapshot({
       requestId: request.requestId,
       kind: "set_active",
@@ -98,7 +140,21 @@ export class AgentPresetManager {
     });
   }
 
-  async promptContext(): Promise<AgentRoleplayPresetContext> {
+  async synchronizeActivePreset(): Promise<AgentPersonaPreset | null> {
+    if (!this.options.activation) return null;
+    if (!this.options.config.Enabled) {
+      await this.options.activation.synchronize(null);
+      return null;
+    }
+    const state = await this.repository.readState();
+    const card = state.activePresetName
+      ? this.parser.parse(await this.repository.read(state.activePresetName)).card
+      : null;
+    await this.options.activation.synchronize(card);
+    return card;
+  }
+
+  async promptContext(userInput = ""): Promise<AgentRoleplayPresetContext> {
     if (!this.options.config.Enabled) {
       return EmptyAgentRoleplayPresetContext;
     }
@@ -108,75 +164,60 @@ export class AgentPresetManager {
       return {
         enabled: true,
         activePresetName: null,
-        documents: [],
       };
     }
 
     const record = await this.repository.read(state.activePresetName);
     const parsed = this.parser.parse(record);
+    const promptBudget = this.options.config.PromptBudget;
+    const selectedLore = selectAgentPresetLore(parsed.card.lore, userInput);
+    const supplemental = applyAgentPresetPromptBudget(
+      {
+        examples: parsed.card.examples.map((example) => ({
+          situation: example.situation.trim(),
+          reply: example.reply.trim(),
+        })),
+        lore: selectedLore.map((entry) => ({
+          title: entry.title.trim(),
+          content: entry.content.trim(),
+        })),
+      },
+      promptBudget,
+    );
     return {
       enabled: true,
       activePresetName: record.name,
-      documents: [this.projector.projectDocument(parsed)],
-    };
-  }
-
-  async plannerContext(): Promise<AgentPlannerRoleplayPresetContext> {
-    if (!this.options.config.Enabled) {
-      return EmptyAgentPlannerRoleplayPresetContext;
-    }
-
-    const state = await this.repository.readState();
-    if (!state.activePresetName) {
-      return {
-        enabled: true,
-        activePresetName: null,
-        documents: [],
-      };
-    }
-
-    const record = await this.repository.read(state.activePresetName);
-    const parsed = this.parser.parse(record);
-    return {
-      enabled: true,
-      activePresetName: record.name,
-      documents: [
-        {
-          name: record.name,
-          format: record.format,
-          title: parsed.title,
-          updatedAt: record.updatedAt,
-          content: this.projectPlannerContent(parsed),
-        },
-      ],
+      card: {
+        title: parsed.card.title,
+        corePersona: parsed.card.corePersona.trim(),
+        languageStyle: parsed.card.languageStyle.trim(),
+        examples: [...supplemental.examples],
+        lore: [...supplemental.lore],
+      },
     };
   }
 
   private projectSnapshotItem(
     record: Awaited<ReturnType<AgentPresetRepository["list"]>>[number],
-    activePresetName: string | null,
   ): AgentPresetSnapshotItem {
     try {
       const parsed = this.parser.parse(record);
       return {
         name: record.name,
-        format: record.format,
-        title: parsed.title,
+        title: parsed.card.title,
         sizeBytes: record.sizeBytes,
         updatedAt: record.updatedAt,
-        active: record.name === activePresetName,
-        content: record.content,
+        active: false,
+        card: parsed.card,
         diagnostics: [],
       };
     } catch (error) {
       return {
         name: record.name,
-        format: record.format,
-        title: record.name,
+        title: fileNameTitle(record.name),
         sizeBytes: record.sizeBytes,
         updatedAt: record.updatedAt,
-        active: record.name === activePresetName,
-        content: record.content,
+        active: false,
         diagnostics: [
           {
             severity: "error",
@@ -186,12 +227,8 @@ export class AgentPresetManager {
       };
     }
   }
+}
 
-  private projectPlannerContent(document: ReturnType<AgentPresetParser["parse"]>): string {
-    if (document.format !== "json") {
-      return document.content;
-    }
-
-    return JSON.stringify(document.parsedJson, null, 2);
-  }
+function fileNameTitle(name: string): string {
+  return name.replace(/\.json$/iu, "") || name;
 }

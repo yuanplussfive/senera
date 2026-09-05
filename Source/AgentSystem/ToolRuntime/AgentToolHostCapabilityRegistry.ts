@@ -11,18 +11,25 @@ import type { AgentToolExecutionPlan } from "./AgentToolExecutionPlan.js";
 import type { AgentToolTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 import type { AgentToolExposureState } from "./AgentToolExposureState.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { AgentTodoService } from "../Todos/AgentTodoService.js";
+import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
+import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
 
 export interface AgentHostToolContext {
   tool: RegisteredTool;
   config: AgentSystemConfig;
   configPath?: string;
   workspaceRoot: string;
+  continuityIdentity?: AgentContinuityIdentityContext;
+  identityTemplateValues?: () => AgentIdentityTemplateValues;
   registry: AgentExtensionRegistryLike;
   executionEnv: SeneraExecutionEnv;
   uploadStore?: Pick<AgentUploadStore, "resolve">;
+  resourceResolver?: AgentResourceResolverLike;
   sessionId?: string;
   requestId?: string;
   step?: number;
@@ -41,6 +48,7 @@ export interface AgentHostToolContext {
   modelProviderId?: string;
   activeSkills?: readonly AgentActivatedSkill[];
   thinkingLevel?: ModelThinkingLevel;
+  todoService?: AgentTodoService;
 }
 
 export interface AgentHostToolReportingScope {

@@ -49,7 +49,6 @@ describe("Memory executed tool sources", () => {
         userEntry,
         assistantEntry,
         terminal: { kind: "FinalAnswer", content: "Inspection complete." },
-        conversationEntries: [userEntry, assistantEntry],
         executedTools: [executedToolResult()],
       });
 

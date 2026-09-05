@@ -42,6 +42,7 @@ export class AgentTurnPreparationService {
       currentSetPolicy: AgentToolSearchCurrentSetPolicies.Retain,
       preferredTools: preferredToolNames,
       discover: true,
+      ...(input.signal ? { signal: input.signal } : {}),
     });
     const loadedToolNames = intersectAllowedToolNames(resolvedToolNames, input.allowedToolNames);
     this.runtime.services.retrieval.rememberAutoSearch(input.requestId, input.userInput, loadedToolNames);
@@ -73,6 +74,7 @@ export class AgentTurnPreparationService {
     currentSetPolicy: AgentToolSearchCurrentSetPolicy;
     preferredTools: readonly string[];
     discover: boolean;
+    signal?: AbortSignal;
   }): Promise<string[]> {
     return this.runtime.services.retrieval.resolvePlannedLoadedTools({
       ...options,

@@ -1,202 +1,55 @@
-import { useEffect, useRef, useState } from "react";
-import type { FileRejection } from "react-dropzone";
-import type { PresetFormat } from "../../api/eventTypes";
+import type { PersonaPresetCard } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { errorMessage, formatInteger } from "../../lib/util";
-import type { CodeTextEditorLanguage } from "../../shared/code/CodeTextEditor";
 
-export type PresetImportEntry = {
-  name: string;
-  format: PresetFormat;
-  content: string;
-};
-
-export type PresetEditorStats = {
-  lines: number;
-  characters: number;
-  bytes: number;
-};
-
-export type PresetTokenState = {
-  status: "idle" | "loading" | "ready" | "error";
-  count: number | null;
-};
-
-type TokenCounter = (content: string) => number;
-
-const PresetTokenCountDelayMs = 120;
-let tokenCounterPromise: Promise<TokenCounter> | null = null;
-
-export const PresetFormatOptions: Array<{
-  value: PresetFormat;
-  label: string;
-  extensions: string[];
-}> = [
-  { value: "markdown", label: ".md", extensions: [".md"] },
-  { value: "text", label: ".txt", extensions: [".txt"] },
-  { value: "json", label: ".json", extensions: [".json"] },
-];
-
-export const PresetEditorLanguages: Record<PresetFormat, CodeTextEditorLanguage> = {
-  json: "json",
-  markdown: "markdown",
-  text: "text",
-};
-
-export async function readPresetImportEntries(files: readonly File[]): Promise<{
-  entries: PresetImportEntry[];
-  rejected: string[];
-}> {
-  const entries: PresetImportEntry[] = [];
-  const rejected: string[] = [];
-
-  for (const file of files) {
-    const format = readPresetFileFormat(file);
-    if (!format) {
-      rejected.push(file.name);
-      continue;
-    }
-
-    entries.push({
-      name: file.name.trim(),
-      format,
-      content: await file.text(),
-    });
-  }
-
-  return { entries, rejected };
-}
-
-export function validateDraft(format: PresetFormat, content: string): string | null {
-  if (format !== "json") {
-    return null;
-  }
-
-  try {
-    JSON.parse(content);
-    return null;
-  } catch (error) {
-    return errorMessage(error);
-  }
-}
-
-export function describeRejectedImports(rejections: readonly FileRejection[]): string[] {
-  return rejections.map((rejection) =>
-    frontendMessage("preset.ui.unsupportedFile", {
-      name: rejection.file.name,
-    }),
-  );
-}
-
-export function usePresetTokenCount(content: string, enabled: boolean): PresetTokenState {
-  const requestId = useRef(0);
-  const [state, setState] = useState<PresetTokenState>({
-    status: enabled ? "loading" : "idle",
-    count: null,
-  });
-
-  useEffect(() => {
-    if (!enabled) {
-      setState({ status: "idle", count: null });
-      return;
-    }
-
-    const currentRequestId = requestId.current + 1;
-    requestId.current = currentRequestId;
-    const timer = window.setTimeout(() => {
-      setState((previous) => ({
-        status: "loading",
-        count: previous.count,
-      }));
-
-      void loadTokenCounter()
-        .then((countTokens) => {
-          if (requestId.current !== currentRequestId) return;
-          setState({
-            status: "ready",
-            count: countTokens(content),
-          });
-        })
-        .catch(() => {
-          if (requestId.current !== currentRequestId) return;
-          setState({ status: "error", count: null });
-        });
-    }, PresetTokenCountDelayMs);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [content, enabled]);
-
-  return state;
-}
-
-export function readEditorStats(content: string): PresetEditorStats {
+export function createPersonaPresetCard(title = ""): PersonaPresetCard {
   return {
-    lines: content.length === 0 ? 1 : content.split(/\r\n|\r|\n/).length,
-    characters: content.length,
-    bytes: new TextEncoder().encode(content).length,
+    schemaVersion: "senera.persona/v2",
+    title,
+    corePersona: "",
+    languageStyle: "",
+    worldPackageIds: [],
+    examples: [],
+    lore: [],
   };
 }
 
-export function readPresetStatusLabel({
-  active,
-  dirty,
-  jsonIssue,
-}: {
-  active: boolean;
-  dirty: boolean;
-  jsonIssue: string | null;
-}): string {
-  if (jsonIssue) return frontendMessage("preset.ui.jsonInvalid");
-  if (dirty) return frontendMessage("preset.ui.unsaved");
-  return frontendMessage(active ? "preset.ui.enabled" : "preset.ui.disabled");
+export function normalizePersonaPresetCard(card: PersonaPresetCard | undefined, title = ""): PersonaPresetCard {
+  if (!card) return createPersonaPresetCard(title);
+  return {
+    schemaVersion: "senera.persona/v2",
+    title: card.title,
+    corePersona: card.corePersona,
+    languageStyle: card.languageStyle,
+    worldPackageIds: [...card.worldPackageIds],
+    examples: card.examples.map((example) => ({ ...example })),
+    lore: card.lore.map((entry) => ({ ...entry, keywords: [...entry.keywords] })),
+  };
 }
 
-export function formatTokenState(state: PresetTokenState): string {
-  if (state.status === "ready" && state.count !== null) {
-    return frontendMessage("preset.ui.tokenCount", { count: formatInteger(state.count) });
+export function validatePersonaPresetCard(card: PersonaPresetCard): string | null {
+  if (!card.title.trim()) return frontendMessage("preset.ui.nameRequired");
+  if (card.examples.some((example) => !example.situation.trim() || !example.reply.trim())) {
+    return frontendMessage("preset.ui.exampleRequired");
   }
-  if (state.status === "error") {
-    return frontendMessage("preset.ui.tokenFailed");
+  if (
+    card.lore.some(
+      (entry) =>
+        !entry.title.trim() ||
+        !entry.content.trim() ||
+        entry.keywords.map((keyword) => keyword.trim()).filter(Boolean).length === 0,
+    )
+  ) {
+    return frontendMessage("preset.ui.loreRequired");
   }
-  return state.count !== null
-    ? frontendMessage("preset.ui.tokenCount", { count: formatInteger(state.count) })
-    : frontendMessage("preset.ui.calculating");
+  return null;
 }
 
-export function readPresetDisplayName(name: string): string {
-  return removePresetExtension(name.trim());
-}
-
-export function withPresetFormatExtension(name: string, format: PresetFormat): string {
-  const baseName = removePresetExtension(name.trim());
-  if (!baseName) {
-    return "";
-  }
-
-  return `${baseName}${readPresetFormatExtension(format)}`;
-}
-
-function readPresetFileFormat(file: File): PresetFormat | null {
-  const name = file.name.toLowerCase();
-  const option = PresetFormatOptions.find((item) => item.extensions.some((extension) => name.endsWith(extension)));
-  return option?.value ?? null;
-}
-
-function loadTokenCounter(): Promise<TokenCounter> {
-  tokenCounterPromise ??= import("gpt-tokenizer").then((module) => module.countTokens);
-  return tokenCounterPromise;
-}
-
-function removePresetExtension(name: string): string {
-  const lowerName = name.toLocaleLowerCase();
-  const extension = PresetFormatOptions.flatMap((option) => option.extensions).find((candidate) =>
-    lowerName.endsWith(candidate),
-  );
-  return extension ? name.slice(0, -extension.length) : name;
-}
-
-function readPresetFormatExtension(format: PresetFormat): string {
-  return PresetFormatOptions.find((option) => option.value === format)?.extensions[0] ?? "";
+export function presetCardText(card: PersonaPresetCard): string {
+  return [
+    card.title,
+    card.corePersona,
+    card.languageStyle,
+    ...card.examples.flatMap((example) => [example.situation, example.reply]),
+    ...card.lore.flatMap((entry) => [entry.title, ...entry.keywords, entry.content]),
+  ].join("\n");
 }

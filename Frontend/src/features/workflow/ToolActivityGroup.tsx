@@ -22,7 +22,7 @@ export function ToolActivityGroup({
       <ToolActivityIconStack activity={activity} />
       <span
         className={cn(
-          "tool-activity-group__title min-w-0 flex-1 break-words text-[length:var(--theme-chat-assistant-font-size)] font-normal leading-[var(--theme-chat-assistant-line-height)] text-content-secondary",
+          "tool-activity-group__title min-w-0 flex-1 break-words text-[length:var(--theme-chat-assistant-font-size-scaled)] font-normal leading-[var(--theme-chat-assistant-line-height)] text-content-secondary",
           live && "tool-activity-group__title--live",
         )}
       >

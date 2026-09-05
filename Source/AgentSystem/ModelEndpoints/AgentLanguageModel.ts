@@ -30,6 +30,21 @@ export interface AgentLanguageModelImageAttachment {
 export interface AgentLanguageModelInvocationOptions {
   readonly signal?: AbortSignal;
   readonly attachments?: readonly AgentLanguageModelImageAttachment[];
+  readonly cache?: AgentLanguageModelCacheOptions;
+}
+
+export type AgentModelCacheRetention = "none" | "short" | "long";
+
+/** Provider-neutral prompt-cache affinity passed through Pi. */
+export interface AgentLanguageModelCacheOptions {
+  readonly scope: string;
+  readonly retention: AgentModelCacheRetention;
+}
+
+/** Invocation contract for model calls whose immutable system prefix is owned by the caller. */
+export interface AgentStablePromptInvocationOptions extends AgentLanguageModelInvocationOptions {
+  readonly stableSystemPrompt: string;
+  readonly cache: AgentLanguageModelCacheOptions;
 }
 
 export interface AgentLanguageModelMessage {

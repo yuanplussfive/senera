@@ -118,6 +118,18 @@
         {
           "Source": "HostCapability",
           "Capability": "tool.search"
+        },
+        {
+          "Source": "HostCapability",
+          "Capability": "tool.describe"
+        },
+        {
+          "Source": "HostCapability",
+          "Capability": "tool.load"
+        },
+        {
+          "Source": "HostCapability",
+          "Capability": "tool.unload"
         }
       ],
       "ForbiddenOutputs": ["final_answer", "business_tool_calls", "unregistered_tools"],

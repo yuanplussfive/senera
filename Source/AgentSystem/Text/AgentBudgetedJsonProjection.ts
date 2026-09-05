@@ -4,6 +4,7 @@ import {
   AgentTokenizationPreflight,
   shouldProjectBeforeExactTokenization,
 } from "./AgentTextBudget.js";
+import { projectAgentModelText } from "./AgentModelPayloadProjection.js";
 
 const ProjectionEllipsis = "...";
 const MaximumLeafCount = 4_096;
@@ -149,7 +150,10 @@ export class AgentBudgetedJsonProjector {
     }
 
     if (typeof source === "string") {
-      const projected = this.previewLeafText(source, state.leafTokenLimit);
+      const projected = this.previewLeafText(
+        projectAgentModelText(source, { maxStringCharacters: Number.MAX_SAFE_INTEGER }).text,
+        state.leafTokenLimit,
+      );
       if (projected.truncated) this.recordOmission(state.omissions, path, "token_limit");
       return projected.text;
     }

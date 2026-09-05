@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
-import { Toaster, toast } from "sonner";
-import { TooltipProvider, ErrorBoundary } from "./shared/ui";
+import { toast } from "sonner";
+import { ErrorBoundary, SeneraToaster, TooltipProvider } from "./shared/ui";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
 import { buildResourceUploadUrl } from "./api/uploadClient";
 import { useStore } from "./store/sessionStore";
@@ -49,6 +49,11 @@ const LazyEventObservabilityPanel = lazy(() =>
     default: module.EventObservabilityPanel,
   })),
 );
+const LazyContinuityPanel = lazy(() =>
+  import("./features/continuity/ContinuityPanel").then((module) => ({
+    default: module.ContinuityPanel,
+  })),
+);
 type TerminalPanelLoadState =
   | { status: "idle" }
   | { status: "loading" }
@@ -80,6 +85,7 @@ export function App({
   const userProfile = useStore((s) => s.userProfile);
   const markUserProfileSynced = useStore((s) => s.markUserProfileSynced);
   const presets = useStore((s) => s.presets);
+  const presetWorldPackages = useStore((s) => s.presetWorldPackages);
   const activePresetName = useStore((s) => s.activePresetName);
   const presetsEnabled = useStore((s) => s.presetsEnabled);
   const presetRootDir = useStore((s) => s.presetRootDir);
@@ -255,6 +261,10 @@ export function App({
     send,
     status,
   });
+  const handleRefreshActiveSession = useCallback((): void => {
+    if (!activeId) return;
+    requestSessionHistory(activeId, { refresh: true });
+  }, [activeId, requestSessionHistory]);
   useSessionCatalogSync({
     send,
     status,
@@ -413,6 +423,7 @@ export function App({
                     }}
                     presetConfig={{
                       presets,
+                      worldPackages: presetWorldPackages,
                       activePresetName,
                       presetsEnabled,
                       presetRootDir,
@@ -461,6 +472,11 @@ export function App({
                   <LazyEventObservabilityPanel />
                 </Suspense>
               }
+              statePanel={
+                <Suspense fallback={<div className="h-full bg-surface-panel" />}>
+                  <LazyContinuityPanel send={send} connected={status === "open"} />
+                </Suspense>
+              }
               workflowDockTool={workflowDockTool}
               onWorkflowDockToolChange={handleWorkflowDockToolChange}
               sessionDrawerOpen={sessionDrawerOpen}
@@ -468,6 +484,10 @@ export function App({
               workflowDrawerOpen={workflowDrawerOpen}
               onWorkflowDrawerOpenChange={setWorkflowDrawerOpen}
               responsiveMode={responsiveMode}
+              onNewSession={handleNewSession}
+              onOpenSessionPanel={handleOpenSessionPanel}
+              onOpenWorkflowPanel={handleOpenWorkflowPanel}
+              onRefreshSession={activeId ? handleRefreshActiveSession : undefined}
             />
             {settingsController.section !== null || settingsController.closeConfirmationOpen ? (
               SettingsOverlayComponent ? (
@@ -495,12 +515,7 @@ export function App({
                 <SettingsSurfaceLoading presentation="overlay" />
               )
             ) : null}
-            <Toaster
-              position="bottom-right"
-              toastOptions={{
-                className: "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
-              }}
-            />
+            <SeneraToaster />
           </WorkspaceResourceProvider>
         </TooltipProvider>
       </AppAppearanceProvider>

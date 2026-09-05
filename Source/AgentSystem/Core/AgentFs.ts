@@ -16,6 +16,74 @@ export function isFileExistsError(error: unknown): boolean {
   return nodeErrorCode(error) === "EEXIST";
 }
 
+export const AgentPathRemovalDefaults = Object.freeze({
+  maxAttempts: 6,
+  retryDelayMs: 100,
+});
+
+const RetryablePathRemovalErrorCodes = new Set(["EBUSY", "EACCES", "EMFILE", "ENFILE", "ENOTEMPTY", "EPERM"]);
+const DeferrablePathRemovalErrorCodes = new Set(["EBUSY", "ENOTEMPTY", "EPERM"]);
+
+export interface AgentPathRemovalOptions {
+  /** Number of remove attempts before the operation is considered blocked. */
+  maxAttempts?: number;
+  /** Delay between attempts. A zero delay is useful for deterministic tests. */
+  retryDelayMs?: number;
+  /** Removes directories recursively when set. */
+  recursive?: boolean;
+  /** Renames a still-locked path out of the active namespace after retries. */
+  deferOnBusy?: boolean;
+}
+
+export type AgentPathRemovalResult = "removed" | "deferred";
+
+/**
+ * Removes a managed path without turning transient Windows locks into a
+ * request failure. A deferred path gets a non-semantic suffix so session
+ * enumerators and other namespace readers will ignore it until cleanup.
+ */
+export async function removeAgentPathWithRetry(
+  targetPath: string,
+  options: AgentPathRemovalOptions = {},
+): Promise<AgentPathRemovalResult> {
+  if (targetPath.trim().length === 0) throw new Error("Managed path must be non-empty.");
+  const maxAttempts = resolvePositiveInteger(
+    options.maxAttempts ?? AgentPathRemovalDefaults.maxAttempts,
+    "maxAttempts",
+  );
+  const retryDelayMs = resolveNonNegativeInteger(
+    options.retryDelayMs ?? AgentPathRemovalDefaults.retryDelayMs,
+    "retryDelayMs",
+  );
+  const recursive = options.recursive ?? false;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      await fs.promises.rm(targetPath, { force: true, recursive });
+      return "removed";
+    } catch (error) {
+      if (isMissingFileError(error)) return "removed";
+      lastError = error;
+      if (!isRetryablePathRemovalError(error) || attempt + 1 >= maxAttempts) break;
+      await waitForPathRemovalRetry(retryDelayMs * (attempt + 1));
+    }
+  }
+
+  if (options.deferOnBusy && isDeferrablePathRemovalError(lastError)) {
+    const deferredPath = `${targetPath}.pending-delete-${randomUUID()}`;
+    try {
+      await fs.promises.rename(targetPath, deferredPath);
+      return "deferred";
+    } catch (error) {
+      if (isMissingFileError(error)) return "removed";
+      throw error;
+    }
+  }
+
+  throw lastError ?? new Error(`Unable to remove managed path: ${targetPath}`);
+}
+
 export interface AgentRegularTextFileSnapshot {
   readonly content: string;
   readonly mtimeMs: number;
@@ -117,4 +185,26 @@ export async function writeFileAtomic(
 
 function temporaryPathFor(filePath: string): string {
   return `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+}
+
+function isRetryablePathRemovalError(error: unknown): boolean {
+  return RetryablePathRemovalErrorCodes.has(nodeErrorCode(error) ?? "");
+}
+
+function isDeferrablePathRemovalError(error: unknown): boolean {
+  return DeferrablePathRemovalErrorCodes.has(nodeErrorCode(error) ?? "");
+}
+
+function resolvePositiveInteger(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value < 1) throw new Error(`${label} must be a positive safe integer.`);
+  return value;
+}
+
+function resolveNonNegativeInteger(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${label} must be a non-negative safe integer.`);
+  return value;
+}
+
+function waitForPathRemovalRetry(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

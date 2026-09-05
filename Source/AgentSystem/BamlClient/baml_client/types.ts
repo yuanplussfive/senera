@@ -65,6 +65,23 @@ export enum ExecutionDeltaOp {
   AddWarning = "AddWarning",
 }
 
+export enum GoalMicroLoopDecisionKind {
+  Wait = "Wait",
+  Propose = "Propose",
+  AskUser = "AskUser",
+  Execute = "Execute",
+  Replan = "Replan",
+  Complete = "Complete",
+  Block = "Block",
+}
+
+export enum ResidentIdleDecisionKind {
+  Wait = "Wait",
+  Reflect = "Reflect",
+  CreateGoal = "CreateGoal",
+  Notify = "Notify",
+}
+
 export enum ToolCallStatus {
   Success = "Success",
   Failure = "Failure",
@@ -86,7 +103,6 @@ export enum ToolRiskLevel {
 
 export interface ActionPlanInput {
   currentUserTurn: PlannerCurrentUserTurn
-  roleplayPreset?: PlannerRoleplayPreset | null
   runState: ActionRunState
   timeline: PlannerTimelineTurn[]
   evidenceMemory: PlannerEvidenceMemoryItem[]
@@ -114,6 +130,61 @@ export interface AskUserDecision {
   
 }
 
+export interface ContinuityAgendaDraft {
+  kind: string
+  change: string
+  actor: string
+  summary: string
+  timeText?: string | null
+  relatesTo?: string | null
+  
+}
+
+export interface ContinuityCapture {
+  items: ContinuityCaptureItem[]
+  agenda: ContinuityAgendaDraft[]
+  needsRulePass: boolean
+  
+}
+
+export interface ContinuityCaptureItem {
+  kind: string
+  text?: string | null
+  key?: string | null
+  value?: string | number | boolean | null
+  from?: string | null
+  relation?: string | null
+  to?: string | null
+  
+}
+
+export interface ContinuityRuleExtractionResult {
+  items: ContinuityRuleItem[]
+  
+}
+
+export interface ContinuityRuleItem {
+  kind: string
+  title: string
+  target?: string | null
+  replace?: boolean | null
+  value?: string | number | boolean | null
+  when?: Record<string, string | number | boolean> | null
+  at?: string | null
+  match?: string | null
+  threshold?: number | null
+  effect?: string | null
+  until: string
+  
+}
+
+export interface ConversationBoundary {
+  relation: string
+  confidence: number
+  focus: string
+  
+}
+
 export interface DirectDecision {
   kind: DirectDecisionKind
   response: string
@@ -132,63 +203,30 @@ export interface ExecuteDecision {
   
 }
 
-export interface MemoryCandidate {
-  type: string
-  subject: string
-  claim: string
-  howToApply: string
-  tags: string[]
-  triggers: string[]
+export interface GoalMicroLoopCandidate {
+  goalId: string
+  summary: string
+  status: string
+  intentMode?: string | null
+  priority: number
+  progress: number
+  successCriteria: string[]
+  trigger: string
+  triggerKey: string
   sourceRefs: string[]
+  dueAt?: string | null
+  nextReviewAt?: string | null
+  
+}
+
+export interface GoalMicroLoopDecision {
+  goalId: string
+  triggerKey: string
+  kind: GoalMicroLoopDecisionKind
   reason: string
-  confidence: number
-  
-}
-
-export interface MemoryConsolidationAction {
-  operation: string
-  type: string
-  subject: string
-  claim: string
-  howToApply: string
-  tags: string[]
-  triggers: string[]
-  sourceRefs: string[]
-  candidateUris: string[]
-  targetMemoryUri?: string | null
-  reason: string
-  confidence: number
-  
-}
-
-export interface MemoryConsolidationResult {
-  actions: MemoryConsolidationAction[]
-  
-}
-
-export interface MemoryLearningResult {
-  candidates: MemoryCandidate[]
-  
-}
-
-export interface MemoryWriteDecision {
-  operation: string
-  type: string
-  subject: string
-  claim: string
-  howToApply: string
-  tags: string[]
-  triggers: string[]
-  sourceRefs: string[]
-  candidateUris: string[]
-  targetMemoryUri?: string | null
-  reason: string
-  confidence: number
-  
-}
-
-export interface MemoryWriteResolutionResult {
-  decision: MemoryWriteDecision
+  nextReviewAt?: string | null
+  progress?: number | null
+  blockedReason?: string | null
   
 }
 
@@ -283,22 +321,6 @@ export interface PlannerJournalItem {
   
 }
 
-export interface PlannerRoleplayPreset {
-  enabled: boolean
-  activePresetName?: string | null
-  documents: PlannerRoleplayPresetDocument[]
-  
-}
-
-export interface PlannerRoleplayPresetDocument {
-  name: string
-  format: string
-  title: string
-  updatedAt: string
-  content: string
-  
-}
-
 export interface PlannerTimelineTurn {
   index: number
   role: string
@@ -340,6 +362,34 @@ export interface RepeatedCallWarning {
   argsHash: string
   count: number
   lastStep: number
+  
+}
+
+export interface ResidentIdleDecision {
+  kind: ResidentIdleDecisionKind
+  reason: string
+  goal?: ResidentIdleGoalProposal | null
+  message?: string | null
+  
+}
+
+export interface ResidentIdleGoalProposal {
+  summary: string
+  detail?: string | null
+  priority?: number | null
+  successCriteria?: string[] | null
+  
+}
+
+export interface ResidentSpeechProjection {
+  utterance: string
+  
+}
+
+export interface TemporalMemoryDigest {
+  summary: string
+  topics: string[]
+  openLoops: string[]
   
 }
 
@@ -431,6 +481,8 @@ export interface ToolRiskAudit {
   safeAlternative?: string | null
   
 }
+
+export type ContinuityScalar = string | number | boolean
 
 export type ControllerDecision = DirectDecision | AskUserDecision | ExecuteDecision
 

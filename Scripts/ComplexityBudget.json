@@ -12,7 +12,44 @@
     "maxLines": 800,
     "legacyAllowance": 25
   },
-  "legacyLargeFiles": [],
+  "legacyLargeFiles": [
+    {
+      "path": "Apps/ServerRuntime.ts",
+      "baselineLines": 975,
+      "owner": "runtime-platform",
+      "splitTarget": "Extract world runtime assembly into a dedicated server world composition module."
+    },
+    {
+      "path": "Scripts/BackendTests/Pi/PiToolExecutionBridgeBehavior.test.ts",
+      "baselineLines": 806,
+      "owner": "pi-runtime",
+      "splitTarget": "Split bridge contract and failure scenarios into focused test files."
+    },
+    {
+      "path": "Source/AgentSystem/Browser/AgentPlaywrightBrowserDriver.ts",
+      "baselineLines": 952,
+      "owner": "browser-runtime",
+      "splitTarget": "Extract page lifecycle and locator interaction helpers into focused modules."
+    },
+    {
+      "path": "Source/AgentSystem/TemporalMemory/AgentTemporalMemorySqliteStore.ts",
+      "baselineLines": 863,
+      "owner": "temporal-memory",
+      "splitTarget": "Extract SQL row codecs and query projections into dedicated modules."
+    },
+    {
+      "path": "Source/AgentSystem/World/AgentHabitScheduler.ts",
+      "baselineLines": 994,
+      "owner": "world-runtime",
+      "splitTarget": "Extract habit definition persistence and recurrence calculation helpers."
+    },
+    {
+      "path": "Source/AgentSystem/World/AgentWorldPackageLoader.ts",
+      "baselineLines": 843,
+      "owner": "world-runtime",
+      "splitTarget": "Extract package schema and persistence reconciliation into dedicated modules."
+    }
+  ],
   "directoryBudgets": [
     {
       "path": "Source/AgentSystem",

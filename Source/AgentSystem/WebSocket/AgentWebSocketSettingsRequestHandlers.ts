@@ -1,6 +1,7 @@
 import { AgentEventKinds } from "../Events/AgentEvent.js";
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
+import { createAgentWorldSnapshotEvent } from "../World/AgentWorldEventTypes.js";
 
 export class AgentWebSocketToolSettingsRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
@@ -89,50 +90,64 @@ export class AgentWebSocketPresetRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
 
   async list(sendEvent: AgentWebSocketEventSender): Promise<void> {
+    const snapshot = await this.context.presetManagerFactory().snapshot({ kind: "list" });
+    this.context.onPresetSnapshot?.(snapshot);
     await sendEvent({
       kind: AgentEventKinds.PresetSnapshot,
       context: {},
-      data: await this.context.presetManagerFactory().snapshot({ kind: "list" }),
+      data: snapshot,
     });
   }
 
   async save(request: AgentWebSocketRequestOf<"preset.save">, sendEvent: AgentWebSocketEventSender): Promise<void> {
+    const snapshot = await this.context.presetManagerFactory().save({
+      requestId: request.requestId,
+      name: request.name,
+      card: request.card,
+      activate: request.activate,
+    });
+    this.context.onPresetSnapshot?.(snapshot);
     await sendEvent({
       kind: AgentEventKinds.PresetSnapshot,
       context: {},
-      data: await this.context.presetManagerFactory().save({
-        requestId: request.requestId,
-        name: request.name,
-        format: request.format,
-        content: request.content,
-        activate: request.activate,
-      }),
+      data: snapshot,
     });
+    await this.sendWorldSnapshot(sendEvent);
   }
 
   async delete(request: AgentWebSocketRequestOf<"preset.delete">, sendEvent: AgentWebSocketEventSender): Promise<void> {
+    const snapshot = await this.context.presetManagerFactory().delete({
+      requestId: request.requestId,
+      name: request.name,
+    });
+    this.context.onPresetSnapshot?.(snapshot);
     await sendEvent({
       kind: AgentEventKinds.PresetSnapshot,
       context: {},
-      data: await this.context.presetManagerFactory().delete({
-        requestId: request.requestId,
-        name: request.name,
-      }),
+      data: snapshot,
     });
+    await this.sendWorldSnapshot(sendEvent);
   }
 
   async setActive(
     request: AgentWebSocketRequestOf<"preset.set_active">,
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
+    const snapshot = await this.context.presetManagerFactory().setActive({
+      requestId: request.requestId,
+      name: request.name,
+    });
+    this.context.onPresetSnapshot?.(snapshot);
     await sendEvent({
       kind: AgentEventKinds.PresetSnapshot,
       context: {},
-      data: await this.context.presetManagerFactory().setActive({
-        requestId: request.requestId,
-        name: request.name,
-      }),
+      data: snapshot,
     });
+    await this.sendWorldSnapshot(sendEvent);
+  }
+
+  private async sendWorldSnapshot(sendEvent: AgentWebSocketEventSender): Promise<void> {
+    if (this.context.worldRuntime) await sendEvent(createAgentWorldSnapshotEvent(this.context.worldRuntime));
   }
 }
 

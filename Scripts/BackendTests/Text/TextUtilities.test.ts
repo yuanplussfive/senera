@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { previewAgentText, projectAgentTextPreview } from "../../../Source/AgentSystem/Text/AgentTextProjection.js";
+import {
+  projectAgentModelPayload,
+  projectAgentModelText,
+} from "../../../Source/AgentSystem/Text/AgentModelPayloadProjection.js";
 import { AgentTextLocator } from "../../../Source/AgentSystem/Text/AgentTextLocator.js";
 import {
   matchesEveryTextRule,
@@ -73,5 +77,23 @@ describe("Text utilities", () => {
         { kind: "includes", value: "write" },
       ]),
     ).toBe(true);
+  });
+
+  test("removes inline media and bounds nested model payload text without source-specific rules", () => {
+    const encoded = "A".repeat(2_048);
+    const text = `result ![image](data:image/png;base64,${encoded}) tail`;
+    const projectedText = projectAgentModelText(text, { maxStringCharacters: 512 });
+
+    expect(projectedText.text).not.toContain(encoded);
+    expect(projectedText.signals.map((signal) => signal.kind)).toContain("inline_media");
+    expect(projectedText.truncated).toBe(false);
+
+    const projected = projectAgentModelPayload(
+      { source: text, nested: { value: "B".repeat(2_000) } },
+      { maxStringCharacters: 256 },
+    );
+    expect(JSON.stringify(projected.value)).not.toContain(encoded);
+    expect(projected.changed).toBe(true);
+    expect(projected.signals.map((signal) => signal.kind)).toContain("string_limit");
   });
 });

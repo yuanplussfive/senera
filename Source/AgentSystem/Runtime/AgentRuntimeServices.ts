@@ -8,6 +8,17 @@ import type { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntim
 import type { AgentPiSubstrate } from "../Pi/AgentPiSubstrate.js";
 import type { AgentPiRuntimeService } from "../Pi/AgentPiRuntimeTypes.js";
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
+import {
+  EmptyAgentContinuityMemoryPromptContext,
+  type AgentContinuityMemoryPromptContext,
+} from "../Continuity/AgentContinuityMemoryTypes.js";
+import type { AgentContinuityMemoryService } from "../Continuity/AgentContinuityMemoryService.js";
+import type { AgentExecutionLedgerService } from "../Goals/AgentExecutionLedgerService.js";
+import {
+  EmptyAgentWorkflowPromptContext,
+  type AgentWorkflowPromptContext,
+} from "../Prompt/AgentWorkflowPromptContext.js";
+import type { AgentWorkflowPromptProjector } from "../Prompt/AgentWorkflowPromptProjector.js";
 
 export interface AgentRetrievalService {
   resolveInitialLoadedTools(
@@ -43,9 +54,14 @@ export interface AgentPromptContextService {
   buildRootCommand(
     options: Parameters<AgentPromptContextBuilder["buildRootCommand"]>[0],
   ): ReturnType<AgentPromptContextBuilder["buildRootCommand"]>;
-  plannerRoleplayPreset(): ReturnType<AgentPresetManager["plannerContext"]>;
-  promptRoleplayPreset(): ReturnType<AgentPresetManager["promptContext"]>;
+  promptRoleplayPreset(userInput?: string): ReturnType<AgentPresetManager["promptContext"]>;
   toolCatalog(): ReturnType<AgentToolCatalogProjector["list"]>;
+  promptContinuityMemory(input: {
+    userInput: string;
+    sessionId?: string;
+    requestId?: string;
+  }): Promise<AgentContinuityMemoryPromptContext>;
+  promptWorkflow(sessionId?: string): AgentWorkflowPromptContext;
 }
 
 export interface AgentExecutionService {
@@ -61,6 +77,7 @@ export interface AgentRuntimeServices {
   piSessions: AgentPiActiveSessionRegistry;
   retrieval: AgentRetrievalService;
   promptContext: AgentPromptContextService;
+  executionLedger?: AgentExecutionLedgerService;
 }
 
 export interface AgentRuntimeServiceDependencies {
@@ -73,6 +90,9 @@ export interface AgentRuntimeServiceDependencies {
   skillActivation: AgentSkillActivationService;
   toolCatalog: AgentToolCatalogProjector;
   toolSearch: AgentToolSearchRuntime;
+  continuityMemory?: AgentContinuityMemoryService;
+  workflow?: AgentWorkflowPromptProjector;
+  executionLedger?: AgentExecutionLedgerService;
 }
 
 export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServiceDependencies): AgentRuntimeServices {
@@ -96,9 +116,12 @@ export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServ
       recommendedSkillTools: (skills) => dependencies.skillActivation.recommendedToolNames(skills),
       buildBaseContext: (options) => dependencies.promptContextBuilder.buildBaseContext(options),
       buildRootCommand: (options) => dependencies.promptContextBuilder.buildRootCommand(options),
-      plannerRoleplayPreset: () => dependencies.presetManager.plannerContext(),
-      promptRoleplayPreset: () => dependencies.presetManager.promptContext(),
+      promptRoleplayPreset: (userInput) => dependencies.presetManager.promptContext(userInput),
       toolCatalog: () => dependencies.toolCatalog.list(),
+      promptContinuityMemory: (input) =>
+        dependencies.continuityMemory?.promptContext(input) ?? Promise.resolve(EmptyAgentContinuityMemoryPromptContext),
+      promptWorkflow: (sessionId) => dependencies.workflow?.promptContext(sessionId) ?? EmptyAgentWorkflowPromptContext,
     },
+    executionLedger: dependencies.executionLedger,
   };
 }

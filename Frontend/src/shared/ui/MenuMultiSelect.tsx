@@ -52,7 +52,7 @@ export function MenuMultiSelect({
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-350" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-[320px] min-w-[240px] overflow-y-auto">
+      <DropdownMenuContent align="start" className="scrollbar-thin max-h-[320px] min-w-[240px] overflow-y-auto">
         {options.map((option, index) => (
           <DropdownMenuCheckboxItem
             key={`${option.value || "empty"}-${index}`}

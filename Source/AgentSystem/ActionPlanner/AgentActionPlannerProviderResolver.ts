@@ -4,7 +4,6 @@ import type {
 } from "../Types/AgentConfigTypes.js";
 
 export function resolvePlannerProvider(
-  model: ResolvedAgentModelProviderConfig,
   overrides: ResolvedAgentActionPlannerClientConfig,
 ): ResolvedAgentModelProviderConfig {
   const selectedProvider = overrides.ModelProvider;
@@ -15,6 +14,5 @@ export function resolvePlannerProvider(
     Model: overrides.Model,
     Temperature: overrides.Temperature ?? 0.1,
     MaxOutputTokens: overrides.MaxTokens ?? -1,
-    Stream: false,
   };
 }

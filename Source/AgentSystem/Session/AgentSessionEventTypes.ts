@@ -1,7 +1,7 @@
 import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventContext, AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
+import type { AgentChannelMetadata, AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { StepTrace } from "../Core/AgentStepTrace.js";
 import type { AgentPiSessionRuntimeStatus } from "../Pi/AgentPiSessionManagement.js";
 import type { AgentSessionOperation } from "./AgentSessionOperation.js";
@@ -58,6 +58,7 @@ export type AgentSessionDomainEvent =
           entryCount: number;
           messageCount: number;
           activeRequestId?: string;
+          channel?: import("../ModelEndpoints/AgentModelMetadata.js").AgentChannelMetadata;
         }>;
       };
     }
@@ -161,6 +162,7 @@ interface AgentSessionSnapshotData {
   messageCount: number;
   turnCount: number;
   activeRequestId?: string;
+  channel?: AgentChannelMetadata;
 }
 
 interface AgentSessionHistoryEntry {

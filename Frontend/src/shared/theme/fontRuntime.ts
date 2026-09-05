@@ -2,7 +2,7 @@ import type { AppearanceFontFamily } from "./themeModel";
 
 const fontLoaders: Record<AppearanceFontFamily, () => Promise<unknown>> = {
   brand: () => Promise.resolve(),
-  fresh: () => import("../../styles/fontPresets/nunitoSans.css"),
+  fresh: () => Promise.resolve(),
   system: () => Promise.resolve(),
 };
 

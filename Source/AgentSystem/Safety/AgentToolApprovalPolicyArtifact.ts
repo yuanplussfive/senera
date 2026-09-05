@@ -7,7 +7,7 @@ import { parseJsonText } from "../Core/AgentJsonParsing.js";
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 
 export const AgentToolApprovalPolicyArtifactContract = Object.freeze({
-  schemaVersion: 4,
+  schemaVersion: 5,
   entrypoints: Object.freeze({
     toolDecision: "senera/tool/decision",
     resourceAccess: "senera/resource/decision",

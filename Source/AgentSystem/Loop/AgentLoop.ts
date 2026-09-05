@@ -12,7 +12,7 @@ import {
 } from "./AgentTurnPreparationSnapshot.js";
 import { AgentTurnPreparationService, type AgentPreparedTurn } from "./AgentTurnPreparationService.js";
 import { AgentTurnPromptRenderer } from "./AgentTurnPromptRenderer.js";
-import { AgentPiTurnExecutor } from "../Pi/AgentPiTurnExecutor.js";
+import { AgentPiTurnExecutor, type AgentPiTurnRuntimePort } from "../Pi/AgentPiTurnExecutor.js";
 import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import { resolveAgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelToolPlanning.js";
@@ -20,6 +20,10 @@ import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.j
 import type { AgentSystemPromptLayer } from "../Orchestration/AgentRunDispatchPort.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
+import {
+  normalizeAgentInteractionContext,
+  type AgentInteractionContext,
+} from "../Interaction/AgentInteractionContext.js";
 
 export interface AgentLoopOptions {
   runtime: AgentSystemRuntime;
@@ -29,8 +33,10 @@ export interface AgentLoopOptions {
 export interface AgentRunRequest {
   sessionId?: string;
   requestId: string;
+  step?: number;
   input: string;
   attachments?: AgentUploadAttachment[];
+  interaction?: AgentInteractionContext;
   approvalMode: AgentExecutionApprovalMode;
   conversationEntries?: AgentConversationEntry[];
   loadedToolNames?: string[];
@@ -58,7 +64,17 @@ export class AgentLoop {
   constructor(private readonly options: AgentLoopOptions) {
     this.preparation = new AgentTurnPreparationService(options.runtime);
     this.promptRenderer = new AgentTurnPromptRenderer(options.runtime);
-    this.piTurn = new AgentPiTurnExecutor({ runtime: options.runtime });
+    this.piTurn = new AgentPiTurnExecutor({
+      runtime: {
+        services: options.runtime.services,
+        modelProviderConfig: options.runtime.modelProviderConfig,
+        agentLoopConfig: options.runtime.agentLoopConfig,
+        tokenEstimator: options.runtime.tokenEstimator,
+        piDiagnostics: options.runtime.piDiagnostics,
+        uploadStore: options.runtime.uploadStore,
+        promptConfig: () => options.runtime.promptConfig,
+      } satisfies AgentPiTurnRuntimePort,
+    });
   }
 
   async run(request: AgentRunRequest): Promise<AgentCompletedRunResult> {
@@ -71,21 +87,37 @@ export class AgentLoop {
   }
 
   private async runTurn(request: AgentRunRequest): Promise<AgentCompletedRunResult> {
+    const step = request.step ?? 1;
     if (request.emitRunStarted !== false) {
       await this.emit(request.onEvent, this.events.runStarted(request.requestId, request.input, request.approvalMode));
     }
 
     const prepared = await this.prepareTurn(request);
     const prompt = await this.promptRenderer.render({
+      userInput: request.input,
+      sessionId: request.sessionId,
+      requestId: request.requestId,
       loadedToolNames: prepared.loadedToolNames,
       rootCommand: prepared.rootCommand,
       toolPlanningMode: resolveAgentModelToolPlanningMode(this.options.runtime.modelProviderConfig),
       systemPromptLayer: request.systemPromptLayer,
     });
-    await this.emitAll(
-      request.onEvent,
-      this.events.promptRendered(request.requestId, 1, prompt.text, prompt.tokenCount),
-    );
+    await this.emitAll(request.onEvent, [
+      ...this.events.promptRendered(
+        request.requestId,
+        step,
+        prompt.text,
+        prompt.tokenCount,
+        prompt.roleplayPreset,
+        prompt.continuityMemory,
+      ),
+      this.events.promptHarnessComposed(
+        request.requestId,
+        step,
+        prompt.harness,
+        resolveAgentModelToolPlanningMode(this.options.runtime.modelProviderConfig),
+      ),
+    ]);
 
     const assistantMessageId = createAssistantMessageId();
     let finalAnswerPublished = false;
@@ -93,16 +125,20 @@ export class AgentLoop {
       {
         sessionId: request.sessionId,
         requestId: request.requestId,
-        step: 1,
+        step,
         input: request.input,
         attachments: request.attachments,
-        prompt: prompt.text,
+        interaction: normalizeAgentInteractionContext(request.interaction ?? { surface: "console" }),
+        prompt: prompt.systemPrompt,
+        turnContext: prompt.turnContext,
         conversationEntries: [...(request.conversationEntries ?? [])],
         rootCommand: prepared.rootCommand,
         approvalMode: request.approvalMode,
         toolAccessGrant: prepared.toolAccessGrant,
         loadedToolNames: prepared.loadedToolNames,
         activeSkills: prepared.activeSkills,
+        roleplayPresetActive: prompt.roleplayPreset.card !== undefined,
+        prefaceRewriteEnabled: this.options.runtime.promptConfig.PrefaceRewrite === true,
         onPiBranchBoundary: request.onPiBranchBoundary,
         onFinalResponseAvailable: async (content) => {
           if (finalAnswerPublished) return;
@@ -126,8 +162,9 @@ export class AgentLoop {
       usage: result.usage,
       conversationEntries: result.conversationEntries,
       executedTools: result.executedTools,
-      loadedToolNames: [...prepared.loadedToolNames],
+      loadedToolNames: [...result.loadedToolNames],
       stepTraces: result.stepTraces,
+      continuityRuleDeliveryUris: [...prompt.continuityMemory.pendingRuleDeliveryUris],
     };
     const terminalEvents = this.events.terminal(
       {

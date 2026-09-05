@@ -3,7 +3,7 @@ import type {
   ConfigMutationState,
   ConfigSnapshotData,
   EventEnvelope,
-  PresetFormat,
+  PersonaPresetCard,
   PresetMutationState,
   ProviderModelEndpointInput,
   ProviderModelEndpointPatchInput,
@@ -39,7 +39,7 @@ export interface ConfigMutationController {
   refreshConfig: () => void;
   refreshPresets: () => void;
   saveConfig: (config: Record<string, unknown>) => string | null;
-  savePreset: (input: { name: string; format: PresetFormat; content: string; activate?: boolean }) => string | null;
+  savePreset: (input: { name: string; card: PersonaPresetCard; activate?: boolean }) => string | null;
   renameProviderEndpoint: (providerId: string, nextProviderId: string) => string | null;
   setActivePreset: (name: string | null) => string | null;
   deletePreset: (name: string) => string | null;

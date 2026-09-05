@@ -16,6 +16,7 @@ export type PersistedSessionState = Partial<
     StoreState,
     | "defaultSidebarCollapsed"
     | "defaultRightPanelCollapsed"
+    | "sessionOrder"
     | "motionLevel"
     | "executionApprovalMode"
     | "selectedModelProviderId"
@@ -27,13 +28,14 @@ export type PersistedSessionState = Partial<
 
 export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionState> = {
   name: PERSIST_KEY,
-  version: 7,
+  version: 8,
   storage: createJSONStorage(() => localStorage),
-  // 后端是 SSOT；前端只缓存 UI 偏好 + 会话元数据（标题/时间）。
+  // 后端是会话内容的 SSOT；前端另外缓存侧栏排序等 UI 偏好。
   // messages 不持久化 —— 后端 session.history 会权威回放。
   partialize: (state) => ({
     defaultSidebarCollapsed: state.defaultSidebarCollapsed,
     defaultRightPanelCollapsed: state.defaultRightPanelCollapsed,
+    sessionOrder: state.sessionOrder,
     motionLevel: state.motionLevel,
     executionApprovalMode: state.executionApprovalMode,
     selectedModelProviderId: state.selectedModelProviderId,
@@ -46,9 +48,11 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
     if (!persisted || typeof persisted !== "object") return {};
     const p = persisted as Partial<StoreState> & Record<string, unknown>;
     const motionLevel = fromVersion < 4 ? "full" : readPersistedMotionLevel(p.motionLevel);
+    const sessionOrder = readPersistedSessionOrder(p.sessionOrder);
     return {
       defaultSidebarCollapsed: readPersistedBoolean(p.defaultSidebarCollapsed, false),
       defaultRightPanelCollapsed: readPersistedBoolean(p.defaultRightPanelCollapsed, true),
+      ...(sessionOrder.length > 0 ? { sessionOrder } : {}),
       motionLevel,
       executionApprovalMode: readPersistedExecutionApprovalMode(p.executionApprovalMode),
       selectedModelProviderId: p.selectedModelProviderId,
@@ -62,12 +66,14 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
     const p = (persisted ?? {}) as Partial<StoreState>;
     const defaultSidebarCollapsed = p.defaultSidebarCollapsed ?? false;
     const defaultRightPanelCollapsed = p.defaultRightPanelCollapsed ?? true;
+    const sessionOrder = readPersistedSessionOrder(p.sessionOrder);
     return {
       ...current,
       sidebarCollapsed: defaultSidebarCollapsed,
       rightPanelCollapsed: defaultRightPanelCollapsed,
       defaultSidebarCollapsed,
       defaultRightPanelCollapsed,
+      sessionOrder,
       motionLevel: readPersistedMotionLevel(p.motionLevel),
       executionApprovalMode: readPersistedExecutionApprovalMode(p.executionApprovalMode),
       selectedModelProviderId: p.selectedModelProviderId ?? null,
@@ -78,7 +84,6 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       providerModelCatalogs: {},
       providerModelErrors: {},
       sessions: {},
-      sessionOrder: [],
       activeSessionId: null,
       viewedRunIdBySession: {},
       // 这两个是运行时态，rehydrate 一律重置
@@ -121,6 +126,11 @@ function readPersistedBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function readPersistedSessionOrder(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string => typeof item === "string" && item.trim().length > 0))];
+}
+
 function readPersistedWorkflowDockWidth(value: unknown): number {
   return clampWorkflowDockWidth(typeof value === "number" ? value : DEFAULT_WORKFLOW_DOCK_WIDTH);
 }
@@ -131,11 +141,13 @@ export function readPersistedSessionPreferences(rawValue: string | null): Persis
     const parsed = JSON.parse(rawValue) as { state?: unknown };
     if (!parsed.state || typeof parsed.state !== "object") return null;
     const state = parsed.state as Partial<StoreState>;
+    const sessionOrder = readPersistedSessionOrder(state.sessionOrder);
     return {
       defaultSidebarCollapsed:
         typeof state.defaultSidebarCollapsed === "boolean" ? state.defaultSidebarCollapsed : undefined,
       defaultRightPanelCollapsed:
         typeof state.defaultRightPanelCollapsed === "boolean" ? state.defaultRightPanelCollapsed : undefined,
+      ...(sessionOrder.length > 0 ? { sessionOrder } : {}),
       motionLevel: readPersistedMotionLevel(state.motionLevel),
       executionApprovalMode: readPersistedExecutionApprovalMode(state.executionApprovalMode),
       selectedModelProviderId:

@@ -145,9 +145,9 @@ describe("Pi projection behavior", () => {
       model: "test-model",
       registeredTools: [
         createRetrievalTool("ArtifactMemoryTool", AgentHostCapabilityNames.ArtifactMemoryRead),
-        createRetrievalTool("HiddenMemoryTool", AgentHostCapabilityNames.MemoryRecall),
+        createRetrievalTool("SemanticMemoryTool", AgentHostCapabilityNames.MemoryRecall),
       ],
-      visibleToolNames: ["ArtifactMemoryTool"],
+      visibleToolNames: ["ArtifactMemoryTool", "SemanticMemoryTool"],
       createdAt: "2026-01-01T00:00:00.000Z",
     });
     const messages = [

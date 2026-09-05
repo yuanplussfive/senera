@@ -66,7 +66,7 @@ export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; s
               <FeedMotionBlock
                 key="body"
                 motionLevel={effectiveLevel}
-                className="pt-2 text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
+                className="pt-2 text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
               >
                 <span className="whitespace-pre-wrap break-words">{model.bodyText}</span>
                 <span className="caret-blink" />
@@ -196,7 +196,7 @@ export function AgentExecutionStageFold({ run }: { run: RunRecord }): JSX.Elemen
         data-execution-stage-fold-trigger
       >
         <ToolActionIcon icon={presentation.icon} status={presentation.status} size="xs" showLiveIndicator={false} />
-        <span className="min-w-0 flex-1 truncate text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)]">
+        <span className="min-w-0 flex-1 truncate text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-[var(--theme-chat-assistant-line-height)]">
           {presentation.title}
         </span>
         <ChevronRight

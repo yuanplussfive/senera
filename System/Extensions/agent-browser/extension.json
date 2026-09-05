@@ -109,6 +109,18 @@
     },
     {
       "kind": "hostTool",
+      "contract": "tools/BrowserComputer.tool.json",
+      "capability": "system.tool.agent-browser.BrowserComputer",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserDownload.tool.json",
+      "capability": "system.tool.agent-browser.BrowserDownload",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
       "contract": "tools/BrowserGetText.tool.json",
       "capability": "system.tool.agent-browser.BrowserGetText",
       "recommendedForSkills": ["browser-automation"]

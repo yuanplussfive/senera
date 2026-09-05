@@ -4,7 +4,7 @@ import type { UploadAttachmentData, WsRequest } from "../api/eventTypes";
 import type { ApprovalBatchReference, ApprovalDecision } from "../api/approvalEventTypes";
 import type { InteractionInputAction, InteractionInputContent } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
-import { useStore, type ChatMessage } from "../store/sessionStore";
+import { readActiveRun, useStore, type ChatMessage } from "../store/sessionStore";
 import { generateId } from "../lib/util";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import type { ExecutionApprovalMode } from "../api/executionApprovalMode";
@@ -176,13 +176,14 @@ export function useChatCommands({
     }
     const state = useStore.getState();
     const session = state.sessions[activeSessionId];
-    const activeRun = session?.runs[session.runs.length - 1];
-    if (activeRun?.status !== "running") return;
-    const accepted = send({ type: "session.cancel", sessionId: activeSessionId });
+    const activeRun = readActiveRun(session);
+    if (!activeRun || activeRun.status !== "running") return;
+    const accepted = send({ type: "session.cancel", sessionId: activeSessionId, requestId: activeRun.requestId });
     if (!accepted) {
       toast.error(frontendMessage("chat.cancelDisconnected"));
       return;
     }
+    useStore.getState().markRunCancelling(activeSessionId, activeRun.requestId);
     toast.message(frontendMessage("chat.cancelRequested"));
   }, [activeSessionId, send, status]);
 

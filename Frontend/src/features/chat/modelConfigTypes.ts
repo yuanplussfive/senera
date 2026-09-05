@@ -10,8 +10,8 @@ import type { ModelProviderRuleMatchKind } from "./ModelProviderIcon";
 export interface ProviderEndpointDraft {
   Id: string;
   Icon?: string;
-  Enabled?: boolean;
   Kind?: string;
+  Enabled?: boolean;
   BaseUrl?: string;
   ApiKey?: string;
   ApiVersion?: string;

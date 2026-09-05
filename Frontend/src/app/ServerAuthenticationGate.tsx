@@ -1,7 +1,7 @@
 import { AlertCircle, KeyRound, LogIn } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
-import { Spinner } from "../shared/ui/Spinner";
+import { LoadingSignal, RefreshOrbit, Spinner } from "../shared/ui";
 import { InlineError, RetryButton } from "../shared/ui/StateView";
 import { LogoLockup } from "../shared/ui/Logo";
 import type { ServerAuthenticationState } from "./useServerAuthentication";
@@ -40,7 +40,7 @@ export function ServerAuthenticationGate({
     return (
       <AuthenticationStatus
         tone="loading"
-        icon={<Spinner size="md" />}
+        icon={<RefreshOrbit size="md" />}
         messageKey="auth.reconnecting"
         descriptionKey="auth.reconnectingDescription"
       />
@@ -61,7 +61,7 @@ export function ServerAuthenticationGate({
 }
 
 export function ServerAuthenticationLoading(): JSX.Element {
-  return <AuthenticationStatus tone="loading" icon={<Spinner size="md" />} messageKey="auth.loading" />;
+  return <AuthenticationStatus tone="loading" icon={<LoadingSignal size="lg" />} messageKey="auth.loading" />;
 }
 
 function LoginForm({
@@ -88,10 +88,7 @@ function LoginForm({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-paper-100 px-4 py-8 text-ink-900">
-      <form
-        className="w-full max-w-[360px] border border-ink-200 bg-paper-50 p-5 shadow-[0_18px_60px_rgba(24,27,31,0.12)]"
-        onSubmit={submit}
-      >
+      <form className="w-full max-w-[360px] border border-line bg-surface-panel p-5 shadow-soft" onSubmit={submit}>
         <LogoLockup className="mb-5" />
         <div className="flex items-center gap-3">
           <span className="grid h-9 w-9 place-items-center bg-accent-surface text-accent-content">
@@ -154,15 +151,16 @@ function AuthenticationStatus({
 }): JSX.Element {
   const failed = tone === "failed";
   return (
-    <main className="flex min-h-screen items-center justify-center bg-paper-100 px-4 py-8 text-ink-900">
+    <main className="flex min-h-screen items-center justify-center bg-[var(--theme-bg)] px-4 py-8 text-ink-900">
       <div
         role={failed ? "alert" : "status"}
         aria-busy={failed ? undefined : true}
-        className="w-full max-w-[440px] border-y border-ink-200 bg-paper-50 px-5 py-5"
+        className="senera-auth-status w-full max-w-[440px] px-5 py-6 text-center"
+        data-authentication-tone={tone}
       >
-        <LogoLockup />
-        <div className="mt-5 flex items-start gap-3">
-          <span className="mt-0.5 text-ink-500">{icon}</span>
+        {failed ? <LogoLockup className="mb-6" /> : null}
+        <div className="flex flex-col items-center gap-3">
+          <span className="senera-auth-status__signal text-ink-500">{icon}</span>
           <div className="min-w-0 flex-1">
             {message || messageKey ? (
               <p className="text-[13px] font-medium text-ink-800">{message ?? frontendMessage(messageKey!)}</p>
@@ -171,7 +169,7 @@ function AuthenticationStatus({
               <p className="mt-1 text-[12px] leading-5 text-ink-500">{frontendMessage(descriptionKey)}</p>
             ) : null}
           </div>
-          {actionLabel && onAction ? <RetryButton onRetry={onAction} label={actionLabel} /> : null}
+          {actionLabel && onAction ? <RetryButton onRetry={onAction} label={actionLabel} className="mt-1" /> : null}
         </div>
       </div>
     </main>

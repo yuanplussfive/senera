@@ -35,4 +35,6 @@ export interface AgentSessionSnapshot {
   messageCount: number;
   turnCount: number;
   activeRequestId?: string;
+  /** Origin channel for sessions created by a connector (QQ, Telegram, etc.). */
+  channel?: AgentSessionMetadata["channel"];
 }

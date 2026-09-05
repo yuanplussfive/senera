@@ -14,9 +14,8 @@ export class AgentJsonSchemaPromptContractProjector {
 
   project(jsonSchema: JsonSchema, rootName = "arguments"): AgentPromptContractView {
     const root = resolveSchema(jsonSchema, jsonSchema);
-    const required = stringSet(root.required);
-    const properties = schemaProperties(root).map(([name, schema]) =>
-      this.projectProperty(name, schema, required.has(name), `${rootName}.${name}`, 1, jsonSchema),
+    const properties = rootProperties(root, jsonSchema).map(({ name, schema, required }) =>
+      this.projectProperty(name, schema, required, `${rootName}.${name}`, 1, jsonSchema),
     );
     return {
       tsHintLines: this.renderer.renderTsHintLines(rootName, properties),
@@ -105,6 +104,95 @@ export class AgentJsonSchemaPromptContractProjector {
       children: [],
     });
   }
+}
+
+interface RootProperty {
+  readonly name: string;
+  readonly schema: JsonSchema;
+  readonly required: boolean;
+}
+
+interface ObjectSchemaVariant {
+  readonly properties: ReadonlyMap<string, JsonSchema>;
+  readonly required: ReadonlySet<string>;
+}
+
+function rootProperties(root: JsonSchema, rootSchema: JsonSchema): RootProperty[] {
+  const variants = objectSchemaVariants(root, rootSchema);
+  const propertyNames = new Set<string>();
+  for (const variant of variants) {
+    for (const name of variant.properties.keys()) propertyNames.add(name);
+  }
+
+  return [...propertyNames].map((name) => {
+    const candidates = variants.flatMap((variant) => {
+      const schema = variant.properties.get(name);
+      return schema ? [schema] : [];
+    });
+    return {
+      name,
+      schema: mergePropertySchemas(candidates),
+      required: candidates.length === variants.length && variants.every((variant) => variant.required.has(name)),
+    };
+  });
+}
+
+function objectSchemaVariants(root: JsonSchema, rootSchema: JsonSchema): readonly ObjectSchemaVariant[] {
+  const union = objectUnionBranches(root, rootSchema);
+  if (!union) return [toObjectSchemaVariant(root, rootSchema)];
+
+  const base = toObjectSchemaVariant(root, rootSchema);
+  return union.map((branch) => mergeObjectSchemaVariants(base, toObjectSchemaVariant(branch, rootSchema)));
+}
+
+function objectUnionBranches(root: JsonSchema, rootSchema: JsonSchema): readonly JsonSchema[] | undefined {
+  for (const keyword of ["oneOf", "anyOf"] as const) {
+    const branches = arrayValue(root[keyword]);
+    if (!branches?.length) continue;
+    const objects = branches.flatMap((branch) => {
+      const resolved = resolveSchema(recordValue(branch) ?? {}, rootSchema);
+      return isObjectSchema(resolved) ? [resolved] : [];
+    });
+    if (objects.length === branches.length) return objects;
+  }
+  return undefined;
+}
+
+function toObjectSchemaVariant(schema: JsonSchema, rootSchema: JsonSchema): ObjectSchemaVariant {
+  return {
+    properties: new Map(schemaProperties(resolveSchema(schema, rootSchema))),
+    required: stringSet(resolveSchema(schema, rootSchema).required),
+  };
+}
+
+function mergeObjectSchemaVariants(base: ObjectSchemaVariant, branch: ObjectSchemaVariant): ObjectSchemaVariant {
+  return {
+    properties: new Map([...base.properties, ...branch.properties]),
+    required: new Set([...base.required, ...branch.required]),
+  };
+}
+
+function mergePropertySchemas(candidates: readonly JsonSchema[]): JsonSchema {
+  if (candidates.length === 0) return {};
+  const unique = uniqueSchemas(candidates);
+  if (unique.length === 1) return unique[0]!;
+  const descriptions = unique
+    .map((schema) => schema.description)
+    .filter((description): description is string => typeof description === "string");
+  return {
+    anyOf: unique,
+    ...(descriptions.length > 0 ? { description: [...new Set(descriptions)].join(" ") } : {}),
+  };
+}
+
+function uniqueSchemas(candidates: readonly JsonSchema[]): JsonSchema[] {
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = JSON.stringify(candidate);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function contractNode(

@@ -231,7 +231,7 @@ export class AgentTurnTokenBudget implements AgentToolTokenBudget {
   private assertInputWithinCapacity(inspection: AgentModelInputInspection): void {
     if (inspection.fits) return;
     throw new Error(
-      `Senera planning input uses ${inspection.tokenCount} tokens but its capacity is ${inspection.capacityTokens}.`,
+      `Senera planning input uses ${inspection.tokenCount} tokens and exceeds the model's maximum context length of ${inspection.capacityTokens} tokens.`,
     );
   }
 

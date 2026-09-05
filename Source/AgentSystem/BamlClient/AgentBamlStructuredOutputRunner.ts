@@ -1,4 +1,7 @@
-import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
+import type {
+  AgentLanguageModelCacheOptions,
+  AgentLanguageModelMessage,
+} from "../ModelEndpoints/AgentLanguageModel.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
@@ -11,6 +14,7 @@ export interface AgentBamlModelRequest {
   systemPrompt: string;
   messages: AgentLanguageModelMessage[];
   signal?: AbortSignal;
+  cache?: AgentLanguageModelCacheOptions;
 }
 
 export interface AgentBamlStructuredOutputResult<T> {

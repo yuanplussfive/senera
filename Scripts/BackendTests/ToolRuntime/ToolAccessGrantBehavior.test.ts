@@ -103,25 +103,39 @@ describe("authoritative tool access grant behavior", () => {
   test("evolves exposure within the authorization boundary and versions only observable changes", () => {
     const state = new AgentToolExposureState(
       createAgentToolAccessGrant({
-        authorizedToolNames: ["ToolSearchTool", "ToolA", "ToolB"],
-        exposedToolNames: ["ToolSearchTool", "ToolA"],
-        preferredToolNames: ["ToolSearchTool"],
+        authorizedToolNames: ["ToolSearch", "ToolA", "ToolB"],
+        exposedToolNames: ["ToolSearch", "ToolA"],
+        preferredToolNames: ["ToolSearch"],
       }),
     );
+    const snapshots = vi.fn();
+    const unsubscribe = state.subscribe(snapshots);
 
     const promoted = state.expose(["ToolA", "ToolB", "UntrustedTool"]);
     const unchanged = state.expose(["ToolA", "ToolB"]);
+    const demoted = state.revoke(["ToolB", "ToolSearch"], { protectedToolNames: ["ToolSearch"] });
+    unsubscribe();
 
     expect(promoted).toMatchObject({
       addedToolNames: ["ToolB"],
       rejectedToolNames: ["UntrustedTool"],
       snapshot: {
         generation: 1,
-        exposedToolNames: ["ToolSearchTool", "ToolA", "ToolB"],
-        preferredToolNames: ["ToolA", "ToolB", "ToolSearchTool"],
+        exposedToolNames: ["ToolSearch", "ToolA", "ToolB"],
+        preferredToolNames: ["ToolA", "ToolB", "ToolSearch"],
       },
     });
     expect(unchanged.snapshot.generation).toBe(1);
+    expect(demoted).toMatchObject({
+      removedToolNames: ["ToolB"],
+      protectedToolNames: ["ToolSearch"],
+      snapshot: {
+        generation: 2,
+        exposedToolNames: ["ToolSearch", "ToolA"],
+      },
+    });
+    expect(snapshots).toHaveBeenCalledTimes(2);
+    expect(snapshots.mock.calls.map(([snapshot]) => snapshot.generation)).toEqual([1, 2]);
     expect(Object.isFrozen(promoted.snapshot.exposedToolNames)).toBe(true);
   });
 

@@ -11,6 +11,7 @@ import {
 } from "./AgentToolRuntimeCapabilities.js";
 import type { ToolExecutionTarget } from "../Types/AgentToolContractTypes.js";
 import { resolveAvailableAgentToolExecutionTargets } from "./AgentToolExecutionPlan.js";
+import { projectAgentToolInteraction } from "./AgentToolInteractionProjector.js";
 
 export interface AgentToolCatalogItem {
   name: string;
@@ -71,13 +72,13 @@ export class AgentToolCatalogProjector {
 
   private project(tool: RegisteredTool): AgentToolCatalogItem {
     const owner = resolveAgentToolOwner(tool);
-    const search = tool.search;
+    const interaction = projectAgentToolInteraction(tool);
     return {
       name: tool.name,
-      title: owner.title ?? tool.name,
-      summary: search?.Summary ?? owner.description ?? "",
+      title: interaction.title,
+      summary: interaction.purpose,
       rootKind: owner.kind === "system" ? "System" : "User",
-      capabilities: (search?.Capabilities ?? []).map((capability) => ({
+      capabilities: (tool.search?.Capabilities ?? []).map((capability) => ({
         id: capability.Id,
         title: capability.Title ?? capability.Id,
         description: capability.Description ?? "",
@@ -89,10 +90,10 @@ export class AgentToolCatalogProjector {
             }
           : undefined,
       })),
-      tags: search?.Tags ?? [],
-      useCases: search?.UseCases ?? [],
-      examples: search?.Examples ?? [],
-      avoid: search?.Avoid ?? [],
+      tags: tool.search?.Tags ?? [],
+      useCases: [...interaction.useCases],
+      examples: [...interaction.examples],
+      avoid: [...interaction.avoid],
       permissions: tool.permissions,
       runtime: resolveAgentToolRuntimeCapabilities(tool),
       evidenceCapabilities: [

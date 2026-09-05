@@ -27,7 +27,7 @@ export class AgentSessionRunDispatcher implements AgentRunDispatchPort {
 
   async dispatch(request: AgentRunDispatchRequest): Promise<AgentRunDispatchResult> {
     throwIfAborted(request.signal);
-    const observation: DispatchObservation = {};
+    const observation: DispatchObservation = { evidenceRefs: new Set<string>() };
     const onEvent = async (event: AgentDomainEvent): Promise<void> => {
       const contextual = request.scope ? withEventContext(event, { scope: request.scope }) : event;
       observeDispatchEvent(observation, contextual);
@@ -83,6 +83,7 @@ export class AgentSessionRunDispatcher implements AgentRunDispatchPort {
         requestId: request.requestId,
         finalAnswer: observation.finalAnswer,
         completion: "complete",
+        evidenceRefs: [...observation.evidenceRefs],
         usage: observation.usage,
       };
     }
@@ -92,6 +93,7 @@ export class AgentSessionRunDispatcher implements AgentRunDispatchPort {
         requestId: request.requestId,
         finalAnswer: observation.latestAssistantText ?? observation.latestModelText!,
         completion: "partial",
+        evidenceRefs: [...observation.evidenceRefs],
         usage: observation.usage,
       };
     }
@@ -116,8 +118,13 @@ export class AgentSessionRunDispatcher implements AgentRunDispatchPort {
     return this.sessions.steerActiveRun({ sessionId, input, onEvent });
   }
 
-  followUp(sessionId: string, input: string, onEvent?: AgentRunDispatchRequest["onEvent"]): Promise<boolean> {
-    return this.sessions.followUpActiveRun({ sessionId, input, onEvent });
+  followUp(
+    sessionId: string,
+    input: string,
+    onEvent?: AgentRunDispatchRequest["onEvent"],
+    requestId?: string,
+  ): Promise<boolean> {
+    return this.sessions.followUpActiveRun({ sessionId, input, onEvent, requestId });
   }
 
   interrupt(sessionId: string, instruction: string): Promise<boolean> {
@@ -126,15 +133,16 @@ export class AgentSessionRunDispatcher implements AgentRunDispatchPort {
 }
 
 function waitForAbortOrCompletion(
-  completion: Promise<void>,
+  completion: Promise<unknown>,
   signal: AbortSignal | undefined,
   onAbort: () => void,
 ): Promise<void> {
-  if (!signal) return completion;
+  const turn = completion.then(() => undefined);
+  if (!signal) return turn;
   const abort = (): void => onAbort();
   signal.addEventListener("abort", abort, { once: true });
   if (signal.aborted) abort();
-  return completion.finally(() => signal.removeEventListener("abort", abort));
+  return turn.finally(() => signal.removeEventListener("abort", abort));
 }
 
 interface DispatchObservation {
@@ -143,6 +151,7 @@ interface DispatchObservation {
   latestModelText?: string;
   failure?: string;
   cancelled?: boolean;
+  evidenceRefs: Set<string>;
   usage?: AgentModelUsageValue;
 }
 
@@ -156,6 +165,15 @@ function observeDispatchEvent(observation: DispatchObservation, event: AgentDoma
       if (event.data.text.trim()) observation.latestModelText = event.data.text;
       if (event.data.usage) observation.usage = event.data.usage;
       return;
+    case AgentEventKinds.ToolCallCompleted:
+    case AgentEventKinds.ToolCallResultDetail: {
+      const presentation = event.data.presentation;
+      if (presentation?.artifactUri) observation.evidenceRefs.add(presentation.artifactUri);
+      for (const evidence of presentation?.evidence ?? []) {
+        if (evidence.evidenceUri) observation.evidenceRefs.add(evidence.evidenceUri);
+      }
+      return;
+    }
     case AgentEventKinds.RunFailed:
       observation.failure = event.data.message;
       return;

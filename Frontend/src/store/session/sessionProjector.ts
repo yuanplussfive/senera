@@ -17,6 +17,7 @@ import {
   type RequestInvalidData,
   type SystemToolSnapshotData,
   type McpServerSnapshotData,
+  type ChannelStatusSnapshotData,
 } from "../../api/eventTypes";
 import { projectRunEvent } from "./runEventProjector";
 import { applyScopedRunEvent } from "./scopedRunProjector";
@@ -154,6 +155,11 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
       return;
     }
 
+    case EventKinds.ChannelStatusSnapshot: {
+      state.channelStatuses = (env.data as ChannelStatusSnapshotData).statuses;
+      return;
+    }
+
     case EventKinds.ProfileSnapshot: {
       if (state.userProfile.syncState === "pending") return;
       state.userProfile = normalizeUserProfile(env.data as UserProfileData);
@@ -163,6 +169,7 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
     case EventKinds.PresetSnapshot: {
       const data = env.data as PresetSnapshotData;
       state.presets = data.presets;
+      state.presetWorldPackages = data.worldPackages;
       state.activePresetName = data.activePresetName;
       state.presetsEnabled = data.enabled;
       state.presetRootDir = data.rootDir;
@@ -176,6 +183,9 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
       const data = env.data as SessionSnapshotData;
       delete state.pendingCreatedSessionIds[sessionId];
       if (state.pendingDeletedSessionIds[sessionId]) return;
+      const channel =
+        data.channel ??
+        (env.scope?.channel && env.scope.channel !== "console" ? { platform: env.scope.channel } : undefined);
       const existing = state.sessions[sessionId];
       if (existing) {
         existing.status = "ready";
@@ -183,6 +193,7 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
         existing.entryCount = data.entryCount;
         existing.messageCount = data.messageCount;
         existing.activeRequestId = data.activeRequestId;
+        if (channel) existing.channel = channel;
         if (state.historyLoadingIds[sessionId]) {
           state.historyActiveRequestIds[sessionId] = data.activeRequestId ?? null;
         }
@@ -198,6 +209,7 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
           messages: [],
           runs: [],
           activeRequestId: data.activeRequestId,
+          ...(channel ? { channel } : {}),
         };
         if (!state.sessionOrder.includes(sessionId)) {
           state.sessionOrder.unshift(sessionId);

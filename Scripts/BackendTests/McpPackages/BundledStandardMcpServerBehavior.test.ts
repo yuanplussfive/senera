@@ -21,6 +21,11 @@ describe("bundled standard MCP servers", () => {
       expect(listed.tools).toContainEqual(expect.objectContaining({ name: toolName }));
       const tool = listed.tools.find((candidate) => candidate.name === toolName);
       expect(tool?.inputSchema.properties).not.toHaveProperty("timeoutMs");
+      if (packageName === "imagen") {
+        expect(tool?._meta).toMatchObject({
+          "ai.senera/runtime": { scheduling: "parallel", maxConcurrency: 3 },
+        });
+      }
     } finally {
       await client.close();
     }

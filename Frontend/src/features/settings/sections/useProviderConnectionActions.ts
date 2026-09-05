@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import type { SocketStatus } from "../../../api/useAgentSocket";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
-import { normalizeProviderEndpointDraft } from "../../chat/modelConfigData";
+import { normalizeProviderEndpointDraft, sortProviderRows } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import type { ModelServiceState } from "./modelServiceState";
 import { buildProviderEndpointMutationInput, sameProviderEndpoint } from "./providerConnectionState";
@@ -74,6 +74,10 @@ export interface ProviderConnectionActions {
   fetchSelectedProvider: (force?: boolean) => void;
 }
 
+function firstConfiguredProvider(providers: readonly ProviderEndpointDraft[]): ProviderEndpointDraft | null {
+  return sortProviderRows([...providers])[0]?.provider ?? null;
+}
+
 /**
  * Shared provider-connection editing logic for the ModelServiceSection list/detail
  * layouts, keeping confirm/cancel/fetch/add/rename/delete behavior on one
@@ -94,7 +98,9 @@ export function useProviderConnectionActions({
   selectedProviderId,
   setSelectedProviderId,
 }: UseProviderConnectionActionsInput): ProviderConnectionActions {
-  const [draftProvider, setDraftProvider] = useState<ProviderEndpointDraft | null>(state.providers[0] ?? null);
+  const [draftProvider, setDraftProvider] = useState<ProviderEndpointDraft | null>(() =>
+    firstConfiguredProvider(state.providers),
+  );
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [renameTarget, setRenameTargetState] = useState<ProviderEndpointDraft | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -176,9 +182,10 @@ export function useProviderConnectionActions({
       }
     }
 
+    const firstProvider = firstConfiguredProvider(providers);
     const nextProviderId = providers.some((provider) => provider.Id === selectedProviderId)
       ? selectedProviderId
-      : (providers[0]?.Id ?? null);
+      : (firstProvider?.Id ?? null);
     if (nextProviderId !== selectedProviderId) {
       setSelectedProviderId(nextProviderId);
     }
@@ -196,7 +203,7 @@ export function useProviderConnectionActions({
   const acceptedProvider = selectedProviderId
     ? (state.providers.find((provider) => provider.Id === selectedProviderId) ??
       (pendingRenameProviderId === selectedProviderId ? draftProvider : null))
-    : (state.providers[0] ?? null);
+    : firstConfiguredProvider(state.providers);
   const selectedEntry = acceptedProvider ? draftQueue.read(acceptedProvider) : undefined;
   const selectedProviderIndex = acceptedProvider
     ? state.providers.findIndex((provider) => provider.Id === acceptedProvider.Id)

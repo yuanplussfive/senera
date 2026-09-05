@@ -1,4 +1,5 @@
 import { Ajv } from "ajv";
+import { Ajv2020 } from "ajv/dist/2020.js";
 import { resolveToolExecutionConfig } from "../Defaults/AgentRuntimeDefaults.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import { withAgentMcpToolClient, type AgentMcpToolClient } from "../Mcp/AgentMcpToolClient.js";
@@ -168,7 +169,9 @@ export function validateAgentMcpToolDeclarations(
   package_: AgentMcpPackage,
   server: AgentMcpPackageServer,
 ): void {
-  const schemas = new Ajv({ allErrors: true, strict: true, validateFormats: false });
+  const schemaOptions = { allErrors: true, strict: true, validateFormats: false } as const;
+  const draft07Schemas = new Ajv(schemaOptions);
+  const draft202012Schemas = new Ajv2020(schemaOptions);
   const names = new Set<string>();
   for (const declaration of declarations) {
     if (!declaration.name.trim()) throw new Error(`MCP server ${server.name} returned a tool without a name.`);
@@ -176,8 +179,10 @@ export function validateAgentMcpToolDeclarations(
       throw new Error(`MCP server ${server.name} returned duplicate tool ${declaration.name}.`);
     names.add(declaration.name);
     try {
-      schemas.compile(declaration.inputSchema);
-      if (declaration.outputSchema) schemas.compile(declaration.outputSchema);
+      compileMcpJsonSchema(declaration.inputSchema, draft07Schemas, draft202012Schemas);
+      if (declaration.outputSchema) {
+        compileMcpJsonSchema(declaration.outputSchema, draft07Schemas, draft202012Schemas);
+      }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(
@@ -186,4 +191,26 @@ export function validateAgentMcpToolDeclarations(
       );
     }
   }
+}
+
+function compileMcpJsonSchema(
+  schema: Readonly<Record<string, unknown>>,
+  draft07Schemas: Ajv,
+  draft202012Schemas: Ajv2020,
+): void {
+  const dialect = schema.$schema;
+  if (isDraft202012Schema(dialect)) {
+    draft202012Schemas.compile(schema);
+    return;
+  }
+  draft07Schemas.compile(schema);
+}
+
+function isDraft202012Schema(value: unknown): boolean {
+  return (
+    value === "https://json-schema.org/draft/2020-12/schema" ||
+    value === "https://json-schema.org/draft/2020-12/schema#" ||
+    value === "http://json-schema.org/draft/2020-12/schema" ||
+    value === "http://json-schema.org/draft/2020-12/schema#"
+  );
 }

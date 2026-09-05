@@ -163,7 +163,7 @@ function summarizeEvent(kind: EventKind, value: Record<string, unknown>): string
       return summarizeDeclaredFields(value, [
         ["active", "/data/active"],
         ["tasks", "/data/taskCount"],
-        ["lease", "/data/leaseAcquired"],
+        ["mode", "/data/recoveryMode"],
       ]);
     default:
       return summarizeProjection(value);

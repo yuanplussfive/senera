@@ -16,7 +16,12 @@ import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteracti
 import { projectAgentToolResourceArguments } from "./AgentToolResourceArgumentProjector.js";
 import { createAgentDefaultToolResourceCapabilities } from "./AgentToolResourceCapabilities.js";
 import { updateSeneraOutputSpoolState } from "../Execution/SeneraOutputSpool.js";
-import { validateToolContractValue, validateToolSignatureArguments } from "./AgentToolSignatureArgumentValidator.js";
+import {
+  projectAgentToolContractDiagnostics,
+  validateToolContractValue,
+  validateToolSignatureArguments,
+} from "./AgentToolSignatureArgumentValidator.js";
+import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import {
   AgentToolExecutionTargetError,
   bindAgentToolInvocationToExecutionPlan,
@@ -37,11 +42,15 @@ import type { AgentMcpToolsChangedHandler } from "../Mcp/AgentMcpToolCatalogChan
 import type { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
 import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { createAgentToolOutputSpool } from "./AgentToolOutputSpool.js";
 import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
+import type { AgentTodoService } from "../Todos/AgentTodoService.js";
+import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
+import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -86,6 +95,10 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     mcpClientPool?: AgentMcpToolClientPool,
     mcpSampling?: AgentMcpSamplingHandler,
     private readonly uploadStore?: AgentUploadStore,
+    private readonly resourceResolver?: AgentResourceResolverLike,
+    private readonly todoService?: AgentTodoService,
+    private readonly continuityIdentity?: AgentContinuityIdentityContext,
+    private readonly identityTemplateValues?: () => AgentIdentityTemplateValues,
   ) {
     this.mcpRunner = new AgentMcpToolRunner({
       config,
@@ -159,13 +172,14 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       const issues = validateToolSignatureArguments({
         contract: argumentContract,
         args: invocation.arguments,
-        path: [tool.name],
       });
       if (issues.length > 0) {
         return this.failure(
           `Invalid arguments for ${tool.name}.`,
           { toolName: tool.name, issues },
           AgentExecutionErrorCodes.InvalidToolArguments,
+          AgentToolProcessErrorPhases.SchemaValidation,
+          projectAgentToolContractDiagnostics(issues, argumentContract),
         );
       }
     }
@@ -305,8 +319,6 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     const issues = validateToolContractValue({
       schema: outputSchema,
       value: result.response.result,
-      path: [tool.name],
-      label: "result",
     });
     if (issues.length === 0) return result;
     const failure = this.failure(
@@ -314,6 +326,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       { toolName: tool.name, issues },
       AgentExecutionErrorCodes.ToolResultSchemaInvalid,
       AgentToolProcessErrorPhases.ResponseValidation,
+      projectAgentToolContractDiagnostics(issues),
     );
     return { ...result, response: failure.response };
   }
@@ -349,9 +362,12 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       config: this.config,
       configPath: context.configPath,
       workspaceRoot: this.workspaceRoot,
+      continuityIdentity: this.continuityIdentity,
+      identityTemplateValues: this.identityTemplateValues,
       registry: this.registry,
       executionEnv,
       uploadStore: this.uploadStore,
+      resourceResolver: this.resourceResolver,
       sessionId: context.sessionId,
       requestId: context.requestId,
       step: context.step,
@@ -369,6 +385,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       modelProviderId: this.modelProviderId,
       activeSkills: context.activeSkills,
       thinkingLevel: context.thinkingLevel,
+      todoService: this.todoService,
     });
   }
 
@@ -377,6 +394,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     details: Record<string, unknown>,
     code: (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes] = AgentExecutionErrorCodes.ToolProcessConfigurationInvalid,
     phase: (typeof AgentToolProcessErrorPhases)[keyof typeof AgentToolProcessErrorPhases] = AgentToolProcessErrorPhases.ConfigurationValidation,
+    diagnostics?: readonly AgentSourceDiagnostic[],
   ): AgentToolProcessRunResult {
     return toolProcessFailureResult({
       code,
@@ -385,6 +403,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
         phase,
         ...details,
       },
+      ...(diagnostics?.length ? { diagnostics: [...diagnostics] } : {}),
     });
   }
 }

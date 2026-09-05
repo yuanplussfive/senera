@@ -1,6 +1,6 @@
 {
   "name": "WebSearch",
-  "description": "Search current public web information through the configured provider.",
+  "description": "查找当前公开网页中的信息，用来核实外部事实、最新动态或官方资料。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
@@ -79,7 +79,7 @@
       {
         "Id": "web.search",
         "Title": "Web search",
-        "Description": "Search current public web information through the configured provider.",
+        "Description": "查找当前公开网页中的信息，用来核实外部事实、最新动态或官方资料。",
         "Facets": {
           "Actions": ["search", "research", "verify"],
           "Targets": ["public-web", "search-index"],

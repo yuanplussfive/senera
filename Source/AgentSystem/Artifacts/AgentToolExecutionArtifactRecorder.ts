@@ -24,6 +24,9 @@ import { writeToolWorkspaceArtifacts } from "./AgentToolWorkspaceArtifactRecorde
 import { toPosixPath } from "./AgentArtifactLocator.js";
 import type { AgentArtifactFileReceipt } from "./AgentArtifactIntegrity.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import { AgentCancellationError } from "../Core/AgentCancellation.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { markAgentToolArtifactUnavailable } from "./AgentToolArtifactAvailability.js";
 import {
   AgentDefaultToolSemanticProjector,
   type AgentToolSemanticProjection,
@@ -70,28 +73,40 @@ export class AgentToolExecutionArtifactRecorder {
     const previousEvidence = new Set<string>();
     const recorded: ExecutedToolCallResult[] = [];
     for (const [index, result] of input.results.entries()) {
-      const artifact = await this.recordOne({
-        sessionId: input.sessionId,
-        requestId: input.requestId,
-        step: input.step,
-        callIndex: index + 1,
-        result,
-        previousEvidence,
-      });
-      artifact.evidence.forEach((entry) => previousEvidence.add(entry.key));
-      const semanticProjection = await this.projectSemanticObservation(result);
-      const resultWithoutPayload = { ...result };
-      delete resultWithoutPayload.artifactPayload;
-      const recordedResult = {
-        ...resultWithoutPayload,
-        result: projectArtifactAssetLinks(result.result, artifact.assets),
-        artifact,
-        ...(semanticProjection ? { semanticProjection } : {}),
-      };
-      recorded.push({
-        ...recordedResult,
-        presentation: projectAgentToolResultPresentation(recordedResult),
-      });
+      try {
+        const artifact = await this.recordOne({
+          sessionId: input.sessionId,
+          requestId: input.requestId,
+          step: input.step,
+          callIndex: index + 1,
+          result,
+          previousEvidence,
+        });
+        artifact.evidence.forEach((entry) => previousEvidence.add(entry.key));
+        const semanticProjection = await this.projectSemanticObservation(result);
+        const resultWithoutPayload = { ...result };
+        delete resultWithoutPayload.artifactPayload;
+        const recordedResult = {
+          ...resultWithoutPayload,
+          result: projectArtifactAssetLinks(result.result, artifact.assets),
+          artifact,
+          ...(semanticProjection ? { semanticProjection } : {}),
+        };
+        recorded.push({
+          ...recordedResult,
+          presentation: projectAgentToolResultPresentation(recordedResult),
+        });
+      } catch (error) {
+        if (error instanceof AgentCancellationError) throw error;
+        this.options.logger?.warn("tool.artifact.recording_failed", {
+          toolName: result.name,
+          toolCallId: result.callId,
+          requestId: input.requestId,
+          step: input.step,
+          message: errorMessage(error),
+        });
+        recorded.push(markAgentToolArtifactUnavailable(result));
+      }
     }
     return recorded;
   }
@@ -101,21 +116,31 @@ export class AgentToolExecutionArtifactRecorder {
   ): Promise<AgentToolSemanticProjection | undefined> {
     const request = result.semanticProjectionRequest;
     if (!request) return undefined;
-    const projection = await this.semanticProjector.project({
-      request,
-      toolName: result.name,
-      toolCallId: result.callId,
-      stdout: result.process.stdout,
-      stderr: result.process.stderr,
-      exitCode: result.process.exitCode,
-    });
-    if (projection.kind === "projected") return projection.value;
-    this.options.logger?.warn("tool.semantic_projection.failed", {
-      toolName: result.name,
-      toolCallId: result.callId,
-      projectionKind: request.kind,
-      error: projection.message,
-    });
+    try {
+      const projection = await this.semanticProjector.project({
+        request,
+        toolName: result.name,
+        toolCallId: result.callId,
+        stdout: result.process.stdout,
+        stderr: result.process.stderr,
+        exitCode: result.process.exitCode,
+      });
+      if (projection.kind === "projected") return projection.value;
+      this.options.logger?.warn("tool.semantic_projection.failed", {
+        toolName: result.name,
+        toolCallId: result.callId,
+        projectionKind: request.kind,
+        error: projection.message,
+      });
+    } catch (error) {
+      if (error instanceof AgentCancellationError) throw error;
+      this.options.logger?.warn("tool.semantic_projection.failed", {
+        toolName: result.name,
+        toolCallId: result.callId,
+        projectionKind: request.kind,
+        error: errorMessage(error),
+      });
+    }
     return undefined;
   }
 
@@ -374,8 +399,10 @@ function createArtifactAssetReference(input: {
   locator: ReturnType<typeof createAgentArtifactLocator>;
 }): AgentToolArtifactAssetReference {
   const relative = toPosixPath(input.relativePath);
+  const resourceUri = createAgentResourceUri(createAgentResourceId(`${input.locator.artifactId}\u0000${input.id}`));
   return {
     id: input.id,
+    resourceUri,
     fileName: input.fileName,
     mediaType: input.mediaType,
     relativePath: relative,
@@ -391,7 +418,7 @@ function projectArtifactAssetLinks(
 ): unknown {
   if (!assets || assets.length === 0) return value;
   const links = new Map(
-    assets.map((asset) => [createAgentResourceUri(createAgentResourceId(asset.id)), asset.workspacePath]),
+    assets.map((asset) => [createAgentResourceUri(createAgentResourceId(asset.id)), asset.resourceUri]),
   );
   return replaceArtifactAssetLinks(value, links);
 }

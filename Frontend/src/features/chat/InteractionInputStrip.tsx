@@ -81,17 +81,17 @@ function FormInteractionInputItem({
   };
 
   return (
-    <section className="border-l-2 border-accent-border-strong bg-paper-50 px-3 py-2.5 shadow-[inset_0_-1px_0_rgba(24,24,27,0.05),0_1px_2px_rgba(24,24,27,0.04)]">
+    <section className="border-y border-line-subtle bg-surface-panel px-3 py-2.5 shadow-panel">
       <div className="flex items-start gap-2.5">
         <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-accent-content" />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="truncate text-[12.5px] font-medium text-ink-900">{interaction.toolName}</span>
+            <span className="truncate text-[12.5px] font-medium text-content-primary">{interaction.toolName}</span>
             <MetaLabel size="sm" className="text-accent-content">
               {frontendMessage("interaction.input.pending")}
             </MetaLabel>
           </div>
-          <p className="mt-0.5 text-[12px] leading-5 text-ink-600">{interaction.message}</p>
+          <p className="mt-0.5 text-[12px] leading-5 text-content-secondary">{interaction.message}</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
             {Object.entries(interaction.schema.properties).map(([name, property]) => (
               <InteractionField
@@ -166,22 +166,24 @@ function UrlInteractionInputItem({
   };
 
   return (
-    <section className="border-l-2 border-accent-border-strong bg-paper-50 px-3 py-2.5 shadow-[inset_0_-1px_0_rgba(24,24,27,0.05),0_1px_2px_rgba(24,24,27,0.04)]">
+    <section className="border-y border-line-subtle bg-surface-panel px-3 py-2.5 shadow-panel">
       <div className="flex items-start gap-2.5">
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-accent-content" />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="truncate text-[12.5px] font-medium text-ink-900">{interaction.toolName}</span>
+            <span className="truncate text-[12.5px] font-medium text-content-primary">{interaction.toolName}</span>
             <MetaLabel size="sm" className="text-accent-content">
               {frontendMessage(
                 waitingForCompletion ? "interaction.input.externalPending" : "interaction.input.externalRequired",
               )}
             </MetaLabel>
           </div>
-          <p className="mt-0.5 text-[12px] leading-5 text-ink-600">{interaction.message}</p>
-          <div className="mt-2 border border-ink-200 bg-white px-2.5 py-2">
-            <div className="text-[11px] font-medium text-ink-800">{interaction.hostname}</div>
-            <div className="mt-0.5 break-all font-mono text-[10px] leading-4 text-ink-500">{interaction.url}</div>
+          <p className="mt-0.5 text-[12px] leading-5 text-content-secondary">{interaction.message}</p>
+          <div className="mt-2 border border-line-subtle bg-surface-subtle px-2.5 py-2">
+            <div className="text-[11px] font-medium text-content-primary">{interaction.hostname}</div>
+            <div className="mt-0.5 break-all font-mono text-[10px] leading-4 text-content-secondary">
+              {interaction.url}
+            </div>
           </div>
           <p className="mt-1.5 text-[10.5px] leading-4 text-ink-500">
             {frontendMessage("interaction.input.externalWarning")}
@@ -269,7 +271,7 @@ function InteractionControl({
   onChange: (value: InteractionInputValue | undefined) => void;
 }): JSX.Element {
   const className =
-    "h-8 w-full border border-ink-200 bg-white px-2 text-[12px] text-ink-900 outline-none focus:border-accent-border disabled:bg-ink-50";
+    "h-8 w-full border border-line-subtle bg-surface-panel px-2 text-[12px] text-content-primary outline-none focus:border-accent-border disabled:bg-surface-muted";
   if (property.type === "boolean") {
     return (
       <input
@@ -284,7 +286,7 @@ function InteractionControl({
   if (property.type === "array") {
     const selected = Array.isArray(value) ? value : [];
     return (
-      <div className="flex min-h-8 flex-wrap gap-x-3 gap-y-1 border border-ink-200 bg-white px-2 py-1.5">
+      <div className="flex min-h-8 flex-wrap gap-x-3 gap-y-1 border border-line-subtle bg-surface-panel px-2 py-1.5">
         {multiSelectOptions(property).map((option) => (
           <span key={option.value} className="flex items-center gap-1.5 whitespace-nowrap text-[11px]">
             <input

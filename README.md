@@ -45,7 +45,7 @@ senera 把每一轮任务拆成清晰的动作：
 Pi 负责会话树、流式消息、工具调用、多步循环和 compaction。每个模型显式选择一种工具规划模式，运行中不会静默切换：
 
 1. `native` 由对应 Endpoint 的 Pi adapter 把真实 JSON Schema 直接交给供应商 Tool Calling API；模型返回的 tool calls 进入 Pi 原生工具循环，不经过 BAML 动作提示词或二次规划。
-2. `baml` 由 PlanningContextCompiler 验证 Observation v3 并生成规划 DTO，再由 PlanningCompiler 生成 `Direct`、`AskUser` 或 `Execute`；结构无效时才进入定向 repair。
+2. `baml` 由 PlanningContextCompiler 验证 Observation v3 并生成规划 DTO，再由 PlanningCompiler 生成 `Direct`、`AskUser` 或 `Execute`；BAML prompt 同样经对应的 Pi API adapter 请求当前供应商，返回文本再进行 BAML parse、宿主校验和定向 repair，不维护另一套供应商协议解析。
 3. 两条链路在类型化工具调用边界汇合，共享参数校验、授权、审批、资源租约和受控并发调度。
 4. 工具桥把完整结果发布为 Artifact，只把一次声明式、可恢复的 Observation v3 投影写回 Pi。
 5. Pi 继续下一步或生成最终回答；历史压缩、分支和工具消息生命周期始终由 Pi session 管理。
@@ -194,7 +194,7 @@ cp senera.config.example.json senera.config.json
 
 系统基础能力包括：
 
-- `ToolSearchTool`：动态工具发现。
+- `ToolSearch`：动态工具发现。
 - `ArtifactReadTool`：读取可追溯 artifact 资源，JSON 使用预计算结构 sidecar、独立 index/query cursor 和可续传 typed query；`MemoryRecallTool`、`MemoryWriteTool`：长期记忆。
 - `AskUserTool`：缺少必要信息时向用户提问。
 - `ShellCommandTool` 和 Execution Resource 工具：受控命令会按初始等待窗口自动转为可恢复后台资源；交互式任务使用终端资源。
@@ -222,7 +222,7 @@ cp senera.config.example.json senera.config.json
 
 senera 会把工具调用结果整理成 artifact pack，包括输入、原始结果、摘要、证据、投影和变更信息。模型上下文默认不直接塞大段 raw output，而是优先使用结构化摘要和证据 URI——上下文更短，不容易被历史工具结果拖爆；需要追查时可以回到原始 artifact；长期记忆也能基于新鲜证据沉淀，而不是反复学习旧历史。
 
-学习分成三个边界：`MemoryLearning` 提取跨会话耐久事实，Tool 路由学习改进工具检索，Skill 路由学习从可归因的成功执行中积累触发词。三者不共享一个大模型输出。Tool/Skill 路由会先写 observable episode，再标记 learned、skipped 或 failed；Skill 经验绑定发布 revision，内容更新后旧经验自动失效。可直接让 Agent“查看学习状态”调用 `LearningManage` 诊断。
+学习分成三个边界：连续性账本从完成的会话 episode 提取有来源、作用域和时间窗口的事实/信号/规则；Tool 路由学习改进工具检索；Skill 路由学习从可归因的成功执行中积累触发词。三者不共享一个大模型输出。连续性提取只由模型提出结构化事实，程序负责来源校验、去重、生命周期和条件触发；Tool/Skill 路由会先写 observable episode，再标记 learned、skipped 或 failed；Skill 经验绑定发布 revision，内容更新后旧经验自动失效。可直接让 Agent“查看学习状态”调用 `LearningManage` 诊断。
 
 ---
 

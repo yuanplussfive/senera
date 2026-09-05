@@ -21,7 +21,7 @@ export function ConfigDiagnosticsList({
     return null;
   }
   return (
-    <ul role="alert" className={cn("max-h-40 space-y-1 overflow-y-auto", className)}>
+    <ul role="alert" className={cn("scrollbar-thin max-h-40 space-y-1 overflow-y-auto", className)}>
       {items.map((item, index) => (
         <li
           key={`${item.severity}-${index}`}

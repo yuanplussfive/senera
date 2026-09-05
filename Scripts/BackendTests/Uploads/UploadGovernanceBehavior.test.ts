@@ -12,6 +12,10 @@ import {
 } from "../../../Source/AgentSystem/Uploads/AgentUploadHttpApi.js";
 import { AgentUploadStore } from "../../../Source/AgentSystem/Uploads/AgentUploadStore.js";
 import type { ResolvedAgentUploadsConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { AgentToolExecutionArtifactRecorder } from "../../../Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.js";
+import { resolveArtifactsConfig } from "../../../Source/AgentSystem/Defaults/AgentAppDefaults.js";
+import { AgentResourceResolver } from "../../../Source/AgentSystem/Resources/AgentResourceResolver.js";
+import { AgentToolSuccessOutcome } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
 
 const KIBIBYTE = 1_024;
 const HOUR_MS = 60 * 60 * 1_000;
@@ -76,6 +80,68 @@ describe("upload governance behavior", () => {
     expect(await fs.readFile(resolved!.filePath, "utf8")).toBe("hello uploads");
     await expect(harness.store.delete(attachment.resourceUri)).resolves.toBe(true);
     await expect(fs.stat(resolved!.uploadDir)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("serves an Artifact-backed canonical resource through the same content endpoint", async () => {
+    const harness = createStore();
+    const image = OnePixelPng;
+    const recorder = new AgentToolExecutionArtifactRecorder({
+      workspaceRoot: harness.root,
+      config: resolveArtifactsConfig({ ModelProviders: [], Artifacts: { RootDir: ".senera/artifacts" } }),
+      model: "test-model",
+    });
+    const [recorded] = await recorder.record({
+      requestId: "artifact-resource-http",
+      step: 1,
+      results: [
+        {
+          callId: "artifact-resource-http-call",
+          name: "BrowserScreenshot",
+          arguments: {},
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          artifactPayload: {
+            assets: [
+              {
+                id: "browser-screenshot-http-fixture",
+                fileName: "browser-screenshot-http-fixture.png",
+                mediaType: "image/png",
+                dataBase64: image.toString("base64"),
+              },
+            ],
+          },
+          result: {},
+          outcome: AgentToolSuccessOutcome,
+        },
+      ],
+    });
+    const resourceUri = recorded?.artifact?.assets?.find(
+      (asset) => asset.id === "browser-screenshot-http-fixture",
+    )?.resourceUri;
+    expect(resourceUri).toBeDefined();
+    const resolver = new AgentResourceResolver({
+      workspaceRoot: harness.root,
+      config: { ModelProviders: [], Artifacts: { RootDir: ".senera/artifacts" } },
+      uploadStore: harness.store,
+    });
+    const api = new AgentUploadHttpApi({ store: harness.store, resourceResolver: resolver });
+    const server = http.createServer((request, response) => {
+      void api.handle(request, response);
+    });
+    servers.push(server);
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Unable to start artifact resource HTTP test server.");
+
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/resources/${new URL(resourceUri!).pathname.slice(1)}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(image);
   });
 
   test("rejects same-size upload content whose digest no longer matches the manifest", async () => {

@@ -1,25 +1,5 @@
-import type {
-  AgentMemoryCandidateRecord,
-  AgentMemoryEpisodeRecord,
-  AgentMemoryItemRecord,
-  AgentMemoryItemVectorRecord,
-  AgentMemoryObservationRecord,
-  AgentMemorySourceRecord,
-} from "./AgentMemorySourceRepository.js";
-import type {
-  EpisodeRow,
-  MemoryCandidateRow,
-  MemoryItemRow,
-  MemoryItemVectorRow,
-  MemoryObservationRow,
-  SourceRow,
-} from "./AgentMemorySqlRows.js";
-import {
-  parseMemoryRowJsonObject,
-  parseMemoryRowNumberArray,
-  parseMemoryRowStringArray,
-  readMemoryRowMetadataString,
-} from "./AgentMemoryRowJson.js";
+import type { EpisodeRow, SourceRow } from "./AgentMemorySqlRows.js";
+import type { AgentMemoryEpisodeRecord, AgentMemorySourceRecord } from "./AgentMemorySourceRepository.js";
 
 export function rowToEpisode(row: EpisodeRow): AgentMemoryEpisodeRecord {
   return {
@@ -33,7 +13,7 @@ export function rowToEpisode(row: EpisodeRow): AgentMemoryEpisodeRecord {
     contextMode: row.context_mode,
     contextBasis: row.context_basis,
     topic: row.topic,
-    summary: row.summary,
+    assistantPreview: row.summary,
     startedAt: row.started_at,
     completedAt: row.completed_at,
     updatedAt: row.updated_at,
@@ -43,7 +23,7 @@ export function rowToEpisode(row: EpisodeRow): AgentMemoryEpisodeRecord {
     timeZone: row.time_zone,
     localDate: row.local_date,
     localHour: row.local_hour,
-    metadata: parseMemoryRowJsonObject(row.metadata_json),
+    metadata: parseObject(row.metadata_json),
   };
 }
 
@@ -70,97 +50,11 @@ export function rowToSource(row: SourceRow): AgentMemorySourceRecord {
     timeZone: row.time_zone,
     localDate: row.local_date,
     localHour: row.local_hour,
-    metadata: parseMemoryRowJsonObject(row.metadata_json),
+    metadata: parseObject(row.metadata_json),
   };
 }
 
-export function rowToMemoryCandidate(row: MemoryCandidateRow): AgentMemoryCandidateRecord {
-  return {
-    id: row.id,
-    uri: row.uri,
-    type: row.type,
-    subject: row.subject,
-    claim: row.claim,
-    howToApply: row.how_to_apply,
-    tags: parseMemoryRowStringArray(row.tags_json),
-    triggers: parseMemoryRowStringArray(row.triggers_json),
-    sourceRefs: parseMemoryRowStringArray(row.source_refs_json),
-    reason: readMemoryRowMetadataString(row.metadata_json, "learningReason"),
-    confidence: row.confidence,
-    embedding: parseMemoryRowNumberArray(row.embedding_json),
-    status: row.status,
-    sessionId: row.session_id,
-    sourceEpisodeUri: row.source_episode_uri,
-    sourceRequestId: row.source_request_id,
-    promotedMemoryUri: row.promoted_memory_uri,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    createdAtMs: row.created_at_ms,
-    updatedAtMs: row.updated_at_ms,
-    timeZone: row.time_zone,
-    localDate: row.local_date,
-    localHour: row.local_hour,
-    metadata: parseMemoryRowJsonObject(row.metadata_json),
-  };
-}
-
-export function rowToMemoryItem(row: MemoryItemRow): AgentMemoryItemRecord {
-  return {
-    id: row.id,
-    uri: row.uri,
-    type: row.type,
-    subject: row.subject,
-    claim: row.claim,
-    howToApply: row.how_to_apply,
-    tags: parseMemoryRowStringArray(row.tags_json),
-    triggers: parseMemoryRowStringArray(row.triggers_json),
-    sourceRefs: parseMemoryRowStringArray(row.source_refs_json),
-    status: row.status,
-    confidence: row.confidence,
-    sessionId: row.session_id,
-    sourceEpisodeUri: row.source_episode_uri,
-    sourceRequestId: row.source_request_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    createdAtMs: row.created_at_ms,
-    updatedAtMs: row.updated_at_ms,
-    timeZone: row.time_zone,
-    localDate: row.local_date,
-    localHour: row.local_hour,
-    metadata: parseMemoryRowJsonObject(row.metadata_json),
-  };
-}
-
-export function rowToMemoryItemVector(row: MemoryItemVectorRow): AgentMemoryItemVectorRecord {
-  return {
-    memoryUri: row.memory_uri,
-    model: row.model,
-    dimensions: row.dimensions,
-    embedding: parseMemoryRowNumberArray(row.embedding_json) ?? [],
-    updatedAt: row.updated_at,
-    updatedAtMs: row.updated_at_ms,
-  };
-}
-
-export function rowToMemoryObservation(row: MemoryObservationRow): AgentMemoryObservationRecord {
-  return {
-    id: row.id,
-    uri: row.uri,
-    memoryUri: row.memory_uri,
-    writeSequence: row.write_sequence,
-    operation: row.operation,
-    candidateUris: parseMemoryRowStringArray(row.candidate_uris_json),
-    sourceRefs: parseMemoryRowStringArray(row.source_refs_json),
-    reason: row.reason,
-    confidence: row.confidence,
-    sessionId: row.session_id,
-    sourceEpisodeUri: row.source_episode_uri,
-    sourceRequestId: row.source_request_id,
-    createdAt: row.created_at,
-    createdAtMs: row.created_at_ms,
-    timeZone: row.time_zone,
-    localDate: row.local_date,
-    localHour: row.local_hour,
-    metadata: parseMemoryRowJsonObject(row.metadata_json),
-  };
+function parseObject(value: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(value);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
 }

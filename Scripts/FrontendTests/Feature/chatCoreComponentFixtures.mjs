@@ -28,6 +28,7 @@ export function createComposerProps(overrides = {}) {
     },
     presetConfig: {
       presets: [],
+      worldPackages: [],
       activePresetName: null,
       presetsEnabled: false,
       presetRootDir: "",
@@ -71,6 +72,7 @@ export function createChatPanelProps(overrides = {}) {
     },
     presetConfig: {
       presets: [],
+      worldPackages: [],
       activePresetName: null,
       presetsEnabled: false,
       presetRootDir: "",

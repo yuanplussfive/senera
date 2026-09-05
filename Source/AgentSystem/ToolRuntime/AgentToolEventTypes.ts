@@ -29,6 +29,8 @@ export type AgentToolDomainEvent =
         index: number;
         toolName: string;
         callId: string;
+        /** Semantic purpose projected from the registered tool declaration. */
+        purpose?: string;
         /** Redacted, bounded arguments for live workflow inspection. */
         arguments?: unknown;
         origin?: AgentToolEventOrigin;
@@ -78,6 +80,8 @@ export type AgentToolDomainEvent =
         index: number;
         toolName: string;
         callId: string;
+        /** Semantic purpose projected from the registered tool declaration. */
+        purpose?: string;
         batchId?: string;
         /** Explicit lifecycle start; diagnostic projections reject records without it. */
         startedAt?: string;
@@ -94,6 +98,8 @@ export type AgentToolDomainEvent =
         index: number;
         toolName: string;
         callId: string;
+        /** Semantic purpose projected from the registered tool declaration. */
+        purpose?: string;
         batchId?: string;
         code?: string;
         message: string;

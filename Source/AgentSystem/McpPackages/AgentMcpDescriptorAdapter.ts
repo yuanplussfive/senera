@@ -1,6 +1,10 @@
 import type { AgentMcpExecution } from "./AgentMcpPackageSchema.js";
 import type { AgentMcpPackageServer, AgentMcpPackageSourceKind } from "./AgentMcpPackageTypes.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
+import {
+  createAgentExtensionLocalizedText,
+  type AgentExtensionLocalizedText,
+} from "../Extensions/AgentExtensionLocalization.js";
 
 export interface AgentMcpDescriptorContext {
   readonly packageRoot: string;
@@ -11,9 +15,25 @@ export interface AgentMcpDescriptorContext {
 
 export interface AgentMcpDescriptorProjection {
   readonly name: string;
+  readonly displayName?: AgentExtensionLocalizedText;
+  readonly description?: AgentExtensionLocalizedText;
   readonly descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
   readonly execution?: AgentMcpExecution;
   readonly servers: readonly AgentMcpPackageServer[];
+}
+
+export function readMcpLocalizedText(
+  value: unknown,
+  label: string,
+  path: readonly PropertyKey[] = [],
+): AgentExtensionLocalizedText | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "string") return createAgentExtensionLocalizedText(requireMcpString(value, label, path));
+  const record = requireMcpRecord(value, label, path);
+  return {
+    "zh-CN": requireMcpString(record["zh-CN"], `${label}.zh-CN`, [...path, "zh-CN"]),
+    "en-US": requireMcpString(record["en-US"], `${label}.en-US`, [...path, "en-US"]),
+  };
 }
 
 export interface AgentMcpDescriptorAdapter {

@@ -56,6 +56,20 @@ test("pending deletion remains hidden until the server confirms removal", () => 
   expect(state.viewedRunIdBySession.deleting).toBeUndefined();
 });
 
+test("server refresh keeps the user's session order and appends newly discovered sessions", () => {
+  const state = createState({
+    sessions: {
+      first: session("first"),
+      second: session("second"),
+    },
+    sessionOrder: ["second", "first"],
+  });
+
+  ingestSessionList(state, [listItem("first"), listItem("second"), listItem("new")]);
+
+  expect(state.sessionOrder).toEqual(["second", "first", "new"]);
+});
+
 test("deletion keeps runtime state available and restores it after a close failure", () => {
   const state = createState({
     sessions: {

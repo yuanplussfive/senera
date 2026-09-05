@@ -22,6 +22,7 @@ import { SeneraLocalExecutionEnv } from "../Execution/SeneraLocalExecutionEnv.js
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { projectAgentToolResultPresentation } from "./AgentToolResultPresentation.js";
+import { projectAgentToolInteraction } from "./AgentToolInteractionProjector.js";
 import {
   AgentToolFailureSources,
   createAgentToolExecutionOutcome,
@@ -43,7 +44,11 @@ import type { AgentMcpToolsChangedHandler } from "../Mcp/AgentMcpToolCatalogChan
 import type { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
 import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 import { resourceAccessGrantMatchesBinding } from "../Execution/SeneraResourceAccess.js";
+import type { AgentTodoService } from "../Todos/AgentTodoService.js";
+import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
+import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
 
 export interface AgentToolCallExecutorOptions {
   registry: AgentExtensionRegistry;
@@ -63,6 +68,10 @@ export interface AgentToolCallExecutorOptions {
   mcpClientPool?: AgentMcpToolClientPool;
   mcpSampling?: AgentMcpSamplingHandler;
   uploadStore?: AgentUploadStore;
+  resourceResolver?: AgentResourceResolverLike;
+  todoService?: AgentTodoService;
+  continuityIdentity?: AgentContinuityIdentityContext;
+  identityTemplateValues?: () => AgentIdentityTemplateValues;
   clock?: AgentLifecycleClock;
 }
 
@@ -122,6 +131,10 @@ export class AgentToolCallExecutor {
         options.mcpClientPool,
         options.mcpSampling,
         options.uploadStore,
+        options.resourceResolver,
+        options.todoService,
+        options.continuityIdentity,
+        options.identityTemplateValues,
       );
       this.ownedToolRunner = ownedToolRunner;
       this.toolRunner = ownedToolRunner;
@@ -199,6 +212,7 @@ export class AgentToolCallExecutor {
     );
     const args = invocation.arguments;
     const origin = projectAgentToolEventOrigin(tool);
+    const purpose = projectAgentToolInteraction(tool).purpose;
     if (
       context.resourceAccessGrant &&
       !resourceAccessGrantMatchesBinding(context.resourceAccessGrant, {
@@ -226,6 +240,7 @@ export class AgentToolCallExecutor {
     await this.emitLifecycle(context, ({ requestId, step }) =>
       this.events.toolCallStarted(requestId, step, index, tool.name, callId, {
         arguments: clampField(redactArtifactSecrets(args, tool.artifactPolicy)),
+        purpose,
         origin,
         batchId: context.batchId,
         startedAt,
@@ -304,6 +319,7 @@ export class AgentToolCallExecutor {
           durationMs: this.elapsedDuration(startedAtMonotonic),
         },
         origin,
+        purpose,
       );
       return executed;
     } catch (error) {
@@ -319,6 +335,7 @@ export class AgentToolCallExecutor {
             durationMs: this.elapsedDuration(startedAtMonotonic),
           },
           origin,
+          purpose,
         );
       }
       throw error;
@@ -331,17 +348,20 @@ export class AgentToolCallExecutor {
     result: ExecutedToolCallResult,
     timing: AgentToolLifecycleTiming,
     origin: ReturnType<typeof projectAgentToolEventOrigin>,
+    purpose: string,
   ): Promise<void> {
     const error = readAgentToolFailure(result.outcome);
     const presentation = result.presentation ?? projectAgentToolResultPresentation(result);
     const lifecycleEmitted = await this.emitLifecycle(context, ({ requestId, step }) =>
       error
         ? this.events.toolCallFailed(requestId, step, index, result.name, result.callId, error.message, error.code, {
+            purpose,
             origin,
             batchId: context.batchId,
             ...timing,
           })
         : this.events.toolCallCompleted(requestId, step, index, result.name, result.callId, presentation, {
+            purpose,
             origin,
             batchId: context.batchId,
             ...timing,
@@ -367,10 +387,12 @@ export class AgentToolCallExecutor {
     error: unknown,
     timing: AgentToolLifecycleTiming,
     origin: ReturnType<typeof projectAgentToolEventOrigin>,
+    purpose: string,
   ): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     const lifecycleEmitted = await this.emitLifecycle(context, ({ requestId, step }) =>
       this.events.toolCallFailed(requestId, step, index, toolName, callId, message, undefined, {
+        purpose,
         origin,
         batchId: context.batchId,
         ...timing,

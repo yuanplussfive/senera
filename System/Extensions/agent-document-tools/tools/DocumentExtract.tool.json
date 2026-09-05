@@ -1,6 +1,6 @@
 {
   "name": "DocumentExtract",
-  "description": "Probe or extract text, structure, metadata, and warnings from a user-uploaded document.",
+  "description": "Probe or extract text, structure, metadata, and warnings from a canonical Senera document resource. The host resolves local paths before invocation.",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
@@ -8,7 +8,7 @@
       "resourceUri": {
         "type": "string",
         "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
-        "description": "Exact Senera resource URI supplied by the runtime."
+        "description": "Exact canonical Senera resource URI supplied by the runtime. Local paths must be resolved by the host first; do not derive a URI from a filename."
       },
       "mode": { "default": "auto", "type": "string", "enum": ["auto", "probe", "extract"] }
     },
@@ -102,7 +102,7 @@
     "additionalProperties": false
   },
   "observationProjection": "observations/DocumentExtract.projection.json",
-  "permissions": ["uploads:read"],
+  "permissions": ["resources:read"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
@@ -112,5 +112,27 @@
   },
   "resources": [],
   "sources": [],
+  "search": {
+    "Summary": "读取文档的类型、结构、元数据和文本内容，必要时提取可检索的 Markdown。",
+    "Tags": ["document", "extract", "text", "metadata"],
+    "Capabilities": [
+      {
+        "Id": "document.extract",
+        "Title": "Document extraction",
+        "Description": "检查文档并提取文本、结构、元数据和解析警告。",
+        "Facets": {
+          "Actions": ["probe", "extract", "inspect"],
+          "Targets": ["document-resource"],
+          "Inputs": ["resource-uri", "mode"],
+          "Outputs": ["document-metadata", "text", "markdown", "structure", "warnings"],
+          "Effects": ["none"]
+        },
+        "Aliases": ["读取文档", "提取文本", "解析文件", "document extraction"],
+        "Risk": { "SideEffect": "read-only", "Permission": "resources-read" }
+      }
+    ],
+    "UseCases": ["用户提供文档资源，并希望查看内容、结构、元数据或解析警告。"],
+    "Avoid": ["文档未被运行时登记为资源时不要猜测路径；需要修改文档时使用对应的工作区工具。"]
+  },
   "evidenceCapabilities": []
 }

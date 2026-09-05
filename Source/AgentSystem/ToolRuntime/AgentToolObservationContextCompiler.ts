@@ -44,6 +44,7 @@ export interface AgentToolObservationContextCompilerInput {
   readonly result: unknown;
   readonly arguments: unknown;
   readonly artifact: unknown;
+  readonly artifactAvailability?: unknown;
   readonly semanticProjection?: unknown;
 }
 
@@ -136,10 +137,11 @@ export class AgentToolObservationContextCompiler {
       omissionCount: initialOmissionCount,
       omissions: initialOmissions.slice(0, manifest.maxOmissions),
       artifactUri,
+      artifactAvailability: input.artifactAvailability,
     });
     const initialProjection = this.projectDetail(envelope, initialView, detail, maxTokens);
     if (!initialProjection) {
-      return this.minimumObservation(envelope, artifactUri, initialOmissionCount);
+      return this.minimumObservation(envelope, artifactUri, input.artifactAvailability, initialOmissionCount);
     }
     const tokenOmission: AgentToolObservationProjectionOmission[] = initialProjection.complete
       ? []
@@ -153,11 +155,12 @@ export class AgentToolObservationContextCompiler {
       omissionCount: initialOmissionCount + tokenOmission.length,
       omissions: allOmissions.slice(0, manifest.maxOmissions),
       artifactUri,
+      artifactAvailability: input.artifactAvailability,
     });
     const finalProjection = this.projectDetail(envelope, view, detail, maxTokens);
     return finalProjection
       ? parseAgentPiToolObservation(finalProjection.value)
-      : this.minimumObservation(envelope, artifactUri, initialOmissionCount);
+      : this.minimumObservation(envelope, artifactUri, input.artifactAvailability, initialOmissionCount);
   }
 
   private projectDetail(
@@ -175,6 +178,7 @@ export class AgentToolObservationContextCompiler {
   private minimumObservation(
     envelope: Readonly<Record<string, unknown>>,
     artifactUri: string | undefined,
+    artifactAvailability: unknown,
     sourceOmissionCount: number,
   ): AgentPiToolObservation {
     const minimum = {
@@ -184,6 +188,7 @@ export class AgentToolObservationContextCompiler {
         omissionCount: Math.max(1, sourceOmissionCount + 1),
         omissions: [{ path: "/detail", reason: AgentToolObservationOmissionReasons.TokenLimit }],
         artifactUri,
+        artifactAvailability,
       }),
       detail: {},
     };
@@ -335,6 +340,7 @@ function sourceView(input: {
   omissionCount: number;
   omissions: readonly AgentToolObservationProjectionOmission[];
   artifactUri: string | undefined;
+  artifactAvailability: unknown;
 }): AgentUnknownRecord {
   return {
     type: AgentPiToolObservationSourceViewProtocol.type,
@@ -342,6 +348,7 @@ function sourceView(input: {
     omission_count: input.omissionCount,
     omissions: input.omissions,
     artifact_uri: input.artifactUri,
+    ...(input.artifactAvailability === undefined ? {} : { artifact_availability: input.artifactAvailability }),
   };
 }
 

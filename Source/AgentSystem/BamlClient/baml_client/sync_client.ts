@@ -22,7 +22,7 @@ import type { BamlRuntime, FunctionResult, BamlCtxManager, Image, Audio, Pdf, Vi
 import { toBamlError, BamlAbortError, ClientRegistry, type HTTPRequest } from "@boundaryml/baml"
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types.js"
 import type * as types from "./types.js"
-import type {ActionPlanInput, ActionRunState, AskUserDecision, AskUserDecisionKind, DirectDecision, DirectDecisionKind, EvidenceSlot, ExecuteDecision, ExecuteDecisionKind, ExecutionDeltaOp, MemoryCandidate, MemoryConsolidationAction, MemoryConsolidationResult, MemoryLearningResult, MemoryWriteDecision, MemoryWriteResolutionResult, PiConversationSummary, PiToolArgumentsDraft, PlanFragment, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerRoleplayPreset, PlannerRoleplayPresetDocument, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolLearningRecord, ToolLearningResult, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel} from "./types.js"
+import type {ActionPlanInput, ActionRunState, AskUserDecision, AskUserDecisionKind, ContinuityAgendaDraft, ContinuityCapture, ContinuityCaptureItem, ContinuityRuleExtractionResult, ContinuityRuleItem, ConversationBoundary, DirectDecision, DirectDecisionKind, EvidenceSlot, ExecuteDecision, ExecuteDecisionKind, ExecutionDeltaOp, GoalMicroLoopCandidate, GoalMicroLoopDecision, GoalMicroLoopDecisionKind, PiConversationSummary, PiToolArgumentsDraft, PlanFragment, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ResidentIdleDecision, ResidentIdleDecisionKind, ResidentIdleGoalProposal, ResidentSpeechProjection, TemporalMemoryDigest, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolLearningRecord, ToolLearningResult, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import { HttpRequest, HttpStreamRequest } from "./sync_request.js"
 import { LlmResponseParser, LlmStreamParser } from "./parser.js"
@@ -147,10 +147,10 @@ export class BamlSyncClient {
     }
   }
   
-  ConsolidateMemoryCandidates(
+  ClassifyConversationBoundary(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
-  ): types.MemoryConsolidationResult {
+  ): types.ConversationBoundary {
     try {
       const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
       const __signal__ = __options__.signal;
@@ -178,7 +178,7 @@ export class BamlSyncClient {
       }
 
       const __raw__ = this.runtime.callFunctionSync(
-        "ConsolidateMemoryCandidates",
+        "ClassifyConversationBoundary",
         {
           "promptJson": promptJson
         },
@@ -191,7 +191,107 @@ export class BamlSyncClient {
         __signal__,
         __options__.watchers,
       )
-      return __raw__.parsed(false) as types.MemoryConsolidationResult
+      return __raw__.parsed(false) as types.ConversationBoundary
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  DecideGoalMicroLoop(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.GoalMicroLoopDecision[] {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "DecideGoalMicroLoop",
+        {
+          "promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.GoalMicroLoopDecision[]
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  DecideResidentIdle(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.ResidentIdleDecision {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "DecideResidentIdle",
+        {
+          "promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.ResidentIdleDecision
     } catch (error: any) {
       throw toBamlError(error);
     }
@@ -247,6 +347,106 @@ export class BamlSyncClient {
     }
   }
   
+  ExtractContinuityFacts(
+      stablePrompt: string,promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.ContinuityCapture {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "ExtractContinuityFacts",
+        {
+          "stablePrompt": stablePrompt,"promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.ContinuityCapture
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  ExtractContinuityRules(
+      stablePrompt: string,promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.ContinuityRuleExtractionResult {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "ExtractContinuityRules",
+        {
+          "stablePrompt": stablePrompt,"promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.ContinuityRuleExtractionResult
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
   FillPiToolArguments(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -292,56 +492,6 @@ export class BamlSyncClient {
         __options__.watchers,
       )
       return __raw__.parsed(false) as types.PiToolArgumentsDraft
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
-  LearnMemory(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): types.MemoryLearningResult {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "LearnMemory",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as types.MemoryLearningResult
     } catch (error: any) {
       throw toBamlError(error);
     }
@@ -397,6 +547,156 @@ export class BamlSyncClient {
     }
   }
   
+  ProjectResidentSpeech(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.ResidentSpeechProjection {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "ProjectResidentSpeech",
+        {
+          "promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.ResidentSpeechProjection
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  RepairContinuityFacts(
+      stablePrompt: string,promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.ContinuityCapture {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "RepairContinuityFacts",
+        {
+          "stablePrompt": stablePrompt,"promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.ContinuityCapture
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  RepairContinuityRules(
+      stablePrompt: string,promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.ContinuityRuleExtractionResult {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "RepairContinuityRules",
+        {
+          "stablePrompt": stablePrompt,"promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.ContinuityRuleExtractionResult
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
   RepairControllerDecision(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -442,156 +742,6 @@ export class BamlSyncClient {
         __options__.watchers,
       )
       return __raw__.parsed(false) as types.DirectDecision | types.AskUserDecision | types.ExecuteDecision
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairMemoryConsolidation(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): types.MemoryConsolidationResult {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "RepairMemoryConsolidation",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as types.MemoryConsolidationResult
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairMemoryLearning(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): types.MemoryLearningResult {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "RepairMemoryLearning",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as types.MemoryLearningResult
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
-  RepairMemoryWriteResolution(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): types.MemoryWriteResolutionResult {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "RepairMemoryWriteResolution",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as types.MemoryWriteResolutionResult
     } catch (error: any) {
       throw toBamlError(error);
     }
@@ -797,56 +947,6 @@ export class BamlSyncClient {
     }
   }
   
-  ResolveMemoryWrite(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): types.MemoryWriteResolutionResult {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "ResolveMemoryWrite",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as types.MemoryWriteResolutionResult
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
   SummarizePiConversation(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -892,6 +992,56 @@ export class BamlSyncClient {
         __options__.watchers,
       )
       return __raw__.parsed(false) as types.PiConversationSummary
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  SummarizeTemporalMemory(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.TemporalMemoryDigest {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "SummarizeTemporalMemory",
+        {
+          "promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.TemporalMemoryDigest
     } catch (error: any) {
       throw toBamlError(error);
     }

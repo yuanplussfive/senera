@@ -10,6 +10,10 @@ export interface AgentPiToolCallProjection extends AgentPiToolCallPreflightInput
 
 export interface AgentPiToolCallBatchProjectionOptions {
   readonly purposesByCallId?: ReadonlyMap<string, string>;
+  readonly projectDisplayCall?: (input: { readonly toolName: string; readonly arguments: Record<string, unknown> }) => {
+    readonly toolName: string;
+    readonly arguments: Record<string, unknown>;
+  };
 }
 
 export async function registerAgentPiToolCallBatch(
@@ -19,6 +23,7 @@ export async function registerAgentPiToolCallBatch(
 ): Promise<void> {
   const toolCalls = projectToolCalls(message, options);
   if (toolCalls.length === 0) return;
+  const displayCalls = toolCalls.map((call) => displayCall(call, options));
   const snapshot = frame.snapshot();
   if (!snapshot.turnState) throw new Error("Pi tool calls require an active turn state.");
   const callIds = toolCalls.map((call) => requireToolCallId(call.id));
@@ -53,10 +58,10 @@ export async function registerAgentPiToolCallBatch(
     context,
     data: {
       toolCount: toolCalls.length,
-      tools: toolCalls.map((call) => call.toolName),
-      calls: toolCalls.map((call) => ({
+      tools: displayCalls.map((call) => call.toolName),
+      calls: toolCalls.map((call, index) => ({
         callId: call.toolCallId,
-        toolName: call.toolName,
+        toolName: displayCalls[index]?.toolName ?? call.toolName,
         purpose: call.purpose,
       })),
       status: "planned",
@@ -65,6 +70,18 @@ export async function registerAgentPiToolCallBatch(
       reason: trimmedContent || undefined,
     },
   });
+}
+
+function displayCall(
+  call: AgentPiToolCallProjection,
+  options: AgentPiToolCallBatchProjectionOptions,
+): { readonly toolName: string; readonly arguments: Record<string, unknown> } {
+  return (
+    options.projectDisplayCall?.({ toolName: call.toolName, arguments: call.input }) ?? {
+      toolName: call.toolName,
+      arguments: call.input,
+    }
+  );
 }
 
 function projectToolCalls(

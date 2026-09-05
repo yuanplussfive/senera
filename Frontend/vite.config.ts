@@ -6,6 +6,7 @@ import path from "node:path";
 import { appearanceBootstrapPlugin } from "./src/build/appearanceBootstrapPlugin";
 import { staticAssetCompressionPlugin } from "./src/build/viteStaticAssetCompression";
 import { resolveFrontendConfig } from "../Source/AgentSystem/AgentDefaults";
+import { DefaultAgentTimeZone } from "../Source/AgentSystem/Time/AgentTime";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes";
 
 const WorkspaceRoot = path.resolve(__dirname, "..");
@@ -28,6 +29,7 @@ export default defineConfig(({ command }) => ({
     __SENERA_DEFAULT_MODEL_LABEL__: JSON.stringify(frontendConfig.Client.ModelLabel),
     __SENERA_DEFAULT_USER_NAME__: JSON.stringify(frontendConfig.Client.UserName),
     __SENERA_EMPTY_SUGGESTIONS__: JSON.stringify(frontendConfig.Client.EmptySuggestions.join("|")),
+    __SENERA_DEFAULT_TIME_ZONE__: JSON.stringify(DefaultAgentTimeZone),
     __SENERA_APP_VERSION__: JSON.stringify(rootPackageJson.version ?? "0.0.0"),
     __SENERA_FRONTEND_VERSION__: JSON.stringify(frontendPackageJson.version ?? "0.0.0"),
   },

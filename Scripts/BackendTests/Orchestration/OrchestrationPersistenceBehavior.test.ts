@@ -2,12 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import type { ScheduledTask } from "@amaster.ai/pi-task-scheduler";
 import Database from "better-sqlite3";
 import { AgentOrchestrationDatabase } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationDatabase.js";
 import { AgentSqliteChildRunRepository } from "../../../Source/AgentSystem/Orchestration/AgentSqliteChildRunRepository.js";
-import { AgentSqliteScheduledTaskStore } from "../../../Source/AgentSystem/Orchestration/AgentSqliteScheduledTaskStore.js";
-import { AgentSqliteSchedulerLock } from "../../../Source/AgentSystem/Orchestration/AgentSqliteSchedulerLock.js";
 import { AgentSqliteWorkflowRepository } from "../../../Source/AgentSystem/Orchestration/AgentSqliteWorkflowRepository.js";
 import {
   AgentChildRunModelSelectionSources,
@@ -16,7 +13,6 @@ import {
   type AgentChildRunCreateInput,
 } from "../../../Source/AgentSystem/Orchestration/AgentChildRunTypes.js";
 import { AgentRunContextModes } from "../../../Source/AgentSystem/Orchestration/AgentRunDispatchPort.js";
-import { AgentScheduledTaskToolPolicyProtocol } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationProtocols.js";
 import {
   AgentWorkflowNodeStatuses,
   AgentWorkflowStatuses,
@@ -619,69 +615,6 @@ describe("orchestration SQLite persistence", () => {
       database.close();
     }
   });
-
-  test("round-trips scheduled tasks, full run history, and explicit tool ceilings", async () => {
-    const database = openDatabase();
-    const store = new AgentSqliteScheduledTaskStore(database);
-    const task = scheduledTask();
-    await store.create(task);
-    store.setAllowedToolNames(task.id, ["ShellCommandTool", "ShellCommandTool"]);
-
-    const updated = await store.update(task.id, {
-      ...task,
-      updatedAt: "2026-08-05T00:01:00.000Z",
-      lastStatus: "success",
-      runCount: 1,
-      runHistory: [
-        {
-          id: "task-run-1",
-          status: "success",
-          sessionId: "scheduled-session-1",
-          createdAt: "2026-08-05T00:00:30.000Z",
-          message: "Run completed",
-        },
-      ],
-    });
-
-    expect(updated).toMatchObject({ id: task.id, runCount: 1, lastStatus: "success" });
-    expect(updated?.runHistory).toEqual([
-      expect.objectContaining({ id: "task-run-1", status: "success", sessionId: "scheduled-session-1" }),
-    ]);
-    expect(store.allowedToolNames(task.id)).toEqual(["ShellCommandTool"]);
-    expect(await store.list({ tenantId: "tenant-a", userId: "user-a" })).toHaveLength(1);
-    expect(await store.list({ tenantId: "tenant-b" })).toHaveLength(0);
-    database.close();
-  });
-
-  test("allows only one live scheduler lease and supports expiry takeover", () => {
-    const database = openDatabase();
-    let now = 1_000;
-    const first = new AgentSqliteSchedulerLock(database, {
-      name: "scheduler",
-      path: "orchestration.sqlite",
-      holderId: "holder-a",
-      holderPid: 11,
-      leaseDurationMs: 100,
-      now: () => now,
-    });
-    const second = new AgentSqliteSchedulerLock(database, {
-      name: "scheduler",
-      path: "orchestration.sqlite",
-      holderId: "holder-b",
-      holderPid: 22,
-      leaseDurationMs: 100,
-      now: () => now,
-    });
-
-    expect(first.acquire()).toBe(true);
-    expect(second.acquire()).toBe(false);
-    expect(second.holderPid()).toBe(11);
-    now = 1_101;
-    expect(second.acquire()).toBe(true);
-    expect(second.holderPid()).toBe(22);
-    expect(first.isAcquired()).toBe(false);
-    database.close();
-  });
 });
 
 function openDatabase(): AgentOrchestrationDatabase {
@@ -719,30 +652,6 @@ function childRunInput(id: string): AgentChildRunCreateInput {
       inheritProjectContext: true,
       deadline: testDeadlinePolicy(),
     },
-  };
-}
-
-function scheduledTask(): ScheduledTask {
-  return {
-    id: "task-1",
-    tenantId: "tenant-a",
-    userId: "user-a",
-    workspaceId: "workspace-a",
-    sessionId: "owner-session",
-    name: "Daily review",
-    description: "Review the workspace each day.",
-    prompt: "Review the workspace.",
-    type: "cron",
-    schedule: "0 9 * * *",
-    intervalSeconds: 0,
-    enabled: true,
-    model: { provider: "main", model: "gpt-5", reasoning: true },
-    toolPolicyProfile: AgentScheduledTaskToolPolicyProtocol.type,
-    workspaceDir: "E:/workspace",
-    createdAt: "2026-08-05T00:00:00.000Z",
-    updatedAt: "2026-08-05T00:00:00.000Z",
-    runCount: 0,
-    runHistory: [],
   };
 }
 

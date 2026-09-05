@@ -1,17 +1,16 @@
 import { b as baml } from "../BamlClient/baml_client/index.js";
 import type {
-  MemoryConsolidationResult as BamlMemoryConsolidationResult,
-  MemoryLearningResult as BamlMemoryLearningResult,
-  MemoryWriteResolutionResult as BamlMemoryWriteResolutionResult,
+  ContinuityCapture as BamlContinuityCapture,
+  ContinuityRuleExtractionResult as BamlContinuityRuleExtractionResult,
   ToolLearningResult as BamlToolLearningResult,
 } from "../BamlClient/baml_client/types.js";
 import type {
-  AgentMemoryConsolidationPromptInput,
-  AgentMemoryLearningPromptInput,
-  AgentMemoryWriteResolutionPromptInput,
+  AgentContinuityFactPromptInput,
+  AgentContinuityRulePromptInput,
   AgentToolLearningPromptInput,
 } from "./AgentLearningPromptJson.js";
 import type { AgentActionPlannerStructuredCaller } from "./AgentActionPlannerStructuredCaller.js";
+import type { AgentStablePromptInvocationOptions } from "../ModelEndpoints/AgentLanguageModel.js";
 
 export class AgentActionPlannerLearningModelCalls {
   constructor(private readonly caller: AgentActionPlannerStructuredCaller) {}
@@ -22,10 +21,7 @@ export class AgentActionPlannerLearningModelCalls {
   ): Promise<BamlToolLearningResult> {
     return this.caller.run({
       functionName: "LearnToolUse",
-      args: {
-        functionName: "LearnToolUse",
-        input,
-      },
+      args: { functionName: "LearnToolUse", input },
       signal: options.signal,
       parse: (rawOutput) => baml.parse.LearnToolUse(rawOutput),
       repair: (failure) => ({
@@ -47,132 +43,83 @@ export class AgentActionPlannerLearningModelCalls {
   ): Promise<BamlToolLearningResult> {
     return this.caller.repair({
       functionName: "RepairToolLearning",
-      args: {
-        functionName: "RepairToolLearning",
-        ...options,
-      },
+      args: { functionName: "RepairToolLearning", ...options },
       signal: requestOptions.signal,
       parse: (rawOutput) => baml.parse.RepairToolLearning(rawOutput),
     });
   }
 
-  async learnMemory(
-    input: AgentMemoryLearningPromptInput,
-    options: { signal?: AbortSignal } = {},
-  ): Promise<BamlMemoryLearningResult> {
+  async extractContinuityFacts(
+    input: AgentContinuityFactPromptInput,
+    options: AgentStablePromptInvocationOptions,
+  ): Promise<BamlContinuityCapture> {
     return this.caller.run({
-      functionName: "LearnMemory",
-      args: {
-        functionName: "LearnMemory",
-        input,
-      },
+      functionName: "ExtractContinuityFacts",
+      args: { functionName: "ExtractContinuityFacts", input, stablePrompt: options.stableSystemPrompt },
       signal: options.signal,
-      parse: (rawOutput) => baml.parse.LearnMemory(rawOutput),
+      cache: options.cache,
+      parse: (rawOutput) => baml.parse.ExtractContinuityFacts(rawOutput),
       repair: (failure) => ({
-        functionName: "RepairMemoryLearning",
+        functionName: "RepairContinuityFacts",
         input,
-        invalidLearning: failure.invalidOutput,
+        stablePrompt: options.stableSystemPrompt,
+        invalidExtraction: failure.invalidOutput,
         issues: failure.issues,
       }),
     });
   }
 
-  async repairMemoryLearning(
+  async repairContinuityFacts(
     options: {
-      input: AgentMemoryLearningPromptInput;
-      invalidLearning: string;
+      input: AgentContinuityFactPromptInput;
+      invalidExtraction: string;
       issues: string[];
     },
-    requestOptions: { signal?: AbortSignal } = {},
-  ): Promise<BamlMemoryLearningResult> {
+    requestOptions: AgentStablePromptInvocationOptions,
+  ): Promise<BamlContinuityCapture> {
     return this.caller.repair({
-      functionName: "RepairMemoryLearning",
-      args: {
-        functionName: "RepairMemoryLearning",
-        ...options,
-      },
+      functionName: "RepairContinuityFacts",
+      args: { functionName: "RepairContinuityFacts", ...options, stablePrompt: requestOptions.stableSystemPrompt },
       signal: requestOptions.signal,
-      parse: (rawOutput) => baml.parse.RepairMemoryLearning(rawOutput),
+      cache: requestOptions.cache,
+      parse: (rawOutput) => baml.parse.RepairContinuityFacts(rawOutput),
     });
   }
 
-  async consolidateMemoryCandidates(
-    input: AgentMemoryConsolidationPromptInput,
-    options: { signal?: AbortSignal } = {},
-  ): Promise<BamlMemoryConsolidationResult> {
+  async extractContinuityRules(
+    input: AgentContinuityRulePromptInput,
+    options: AgentStablePromptInvocationOptions,
+  ): Promise<BamlContinuityRuleExtractionResult> {
     return this.caller.run({
-      functionName: "ConsolidateMemoryCandidates",
-      args: {
-        functionName: "ConsolidateMemoryCandidates",
-        input,
-      },
+      functionName: "ExtractContinuityRules",
+      args: { functionName: "ExtractContinuityRules", input, stablePrompt: options.stableSystemPrompt },
       signal: options.signal,
-      parse: (rawOutput) => baml.parse.ConsolidateMemoryCandidates(rawOutput),
+      cache: options.cache,
+      parse: (rawOutput) => baml.parse.ExtractContinuityRules(rawOutput),
       repair: (failure) => ({
-        functionName: "RepairMemoryConsolidation",
+        functionName: "RepairContinuityRules",
         input,
-        invalidConsolidation: failure.invalidOutput,
+        stablePrompt: options.stableSystemPrompt,
+        invalidExtraction: failure.invalidOutput,
         issues: failure.issues,
       }),
     });
   }
 
-  async repairMemoryConsolidation(
+  async repairContinuityRules(
     options: {
-      input: AgentMemoryConsolidationPromptInput;
-      invalidConsolidation: string;
+      input: AgentContinuityRulePromptInput;
+      invalidExtraction: string;
       issues: string[];
     },
-    requestOptions: { signal?: AbortSignal } = {},
-  ): Promise<BamlMemoryConsolidationResult> {
+    requestOptions: AgentStablePromptInvocationOptions,
+  ): Promise<BamlContinuityRuleExtractionResult> {
     return this.caller.repair({
-      functionName: "RepairMemoryConsolidation",
-      args: {
-        functionName: "RepairMemoryConsolidation",
-        ...options,
-      },
+      functionName: "RepairContinuityRules",
+      args: { functionName: "RepairContinuityRules", ...options, stablePrompt: requestOptions.stableSystemPrompt },
       signal: requestOptions.signal,
-      parse: (rawOutput) => baml.parse.RepairMemoryConsolidation(rawOutput),
-    });
-  }
-
-  async resolveMemoryWrite(
-    input: AgentMemoryWriteResolutionPromptInput,
-    options: { signal?: AbortSignal } = {},
-  ): Promise<BamlMemoryWriteResolutionResult> {
-    return this.caller.run({
-      functionName: "ResolveMemoryWrite",
-      args: {
-        functionName: "ResolveMemoryWrite",
-        input,
-      },
-      signal: options.signal,
-      parse: (rawOutput) => baml.parse.ResolveMemoryWrite(rawOutput),
-      repair: (failure) => ({
-        functionName: "RepairMemoryWriteResolution",
-        input,
-        invalidResolution: failure.invalidOutput,
-        issues: failure.issues,
-      }),
-    });
-  }
-
-  async repairMemoryWriteResolution(
-    options: {
-      input: AgentMemoryWriteResolutionPromptInput;
-      invalidResolution: string;
-      issues: string[];
-    },
-    requestOptions: { signal?: AbortSignal } = {},
-  ): Promise<BamlMemoryWriteResolutionResult> {
-    return this.caller.repair({
-      functionName: "RepairMemoryWriteResolution",
-      args: {
-        functionName: "RepairMemoryWriteResolution",
-        ...options,
-      },
-      signal: requestOptions.signal,
-      parse: (rawOutput) => baml.parse.RepairMemoryWriteResolution(rawOutput),
+      cache: requestOptions.cache,
+      parse: (rawOutput) => baml.parse.RepairContinuityRules(rawOutput),
     });
   }
 }

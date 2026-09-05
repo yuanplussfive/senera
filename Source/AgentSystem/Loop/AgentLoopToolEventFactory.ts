@@ -37,7 +37,13 @@ export class AgentLoopToolEventFactory {
     index: number,
     toolName: string,
     callId: string,
-    metadata: { arguments?: unknown; origin?: AgentToolEventOrigin; batchId?: string; startedAt?: string } = {},
+    metadata: {
+      arguments?: unknown;
+      purpose?: string;
+      origin?: AgentToolEventOrigin;
+      batchId?: string;
+      startedAt?: string;
+    } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallStarted,
@@ -46,6 +52,7 @@ export class AgentLoopToolEventFactory {
         index,
         toolName,
         callId,
+        purpose: metadata.purpose,
         ...(metadata.arguments === undefined ? {} : { arguments: metadata.arguments }),
         origin: metadata.origin,
         batchId: metadata.batchId,
@@ -61,7 +68,13 @@ export class AgentLoopToolEventFactory {
     toolName: string,
     callId: string,
     presentation?: AgentToolResultPresentation,
-    metadata: { origin?: AgentToolEventOrigin; batchId?: string; startedAt?: string; durationMs?: number } = {},
+    metadata: {
+      purpose?: string;
+      origin?: AgentToolEventOrigin;
+      batchId?: string;
+      startedAt?: string;
+      durationMs?: number;
+    } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallCompleted,
@@ -70,6 +83,7 @@ export class AgentLoopToolEventFactory {
         index,
         toolName,
         callId,
+        purpose: metadata.purpose,
         presentation,
         origin: metadata.origin,
         batchId: metadata.batchId,
@@ -87,7 +101,13 @@ export class AgentLoopToolEventFactory {
     callId: string,
     message: string,
     code?: string,
-    metadata: { origin?: AgentToolEventOrigin; batchId?: string; startedAt?: string; durationMs?: number } = {},
+    metadata: {
+      purpose?: string;
+      origin?: AgentToolEventOrigin;
+      batchId?: string;
+      startedAt?: string;
+      durationMs?: number;
+    } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallFailed,
@@ -96,6 +116,7 @@ export class AgentLoopToolEventFactory {
         index,
         toolName,
         callId,
+        purpose: metadata.purpose,
         ...projectAgentMessage("tool.callFailed"),
         message,
         code,

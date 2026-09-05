@@ -58,7 +58,6 @@ function completedTurnInput(): AgentMemoryCompletedTurnInput {
     userEntry,
     assistantEntry,
     terminal: { kind: "FinalAnswer", content: "Done." },
-    conversationEntries: [userEntry, assistantEntry],
     executedTools: [toolResult("call-a"), toolResult("call-b")],
   };
 }

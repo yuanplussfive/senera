@@ -267,11 +267,16 @@ function messageUpdate(text: string): AgentPiRunEvent {
   } as unknown as AgentPiRunEvent;
 }
 
-function assistantMessageEvent(type: "message_start" | "message_end", text: string): AgentPiRunEvent {
+function assistantMessageEvent(
+  type: "message_start" | "message_end",
+  text: string,
+  stopReason: string = "stop",
+): AgentPiRunEvent {
   return {
     type,
     message: {
       role: "assistant",
+      ...(type === "message_end" ? { stopReason } : {}),
       content: [{ type: "text", text }],
     },
   } as AgentPiRunEvent;
@@ -369,6 +374,12 @@ function createTurnRuntime(session: BackpressurePiSession): AgentPiTurnRuntimePo
     tokenEstimator: {
       estimate: (text: string) => ({ tokenCount: text.length }),
     },
+    promptConfig: () => ({
+      UserMessageEnvelope: true,
+      TimeZone: "Asia/Shanghai",
+      RoleCheck: true,
+      BamlToolAttribution: true,
+    }),
   };
 }
 

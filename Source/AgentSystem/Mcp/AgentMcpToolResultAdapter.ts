@@ -7,6 +7,7 @@ import type {
 import { extension as mimeExtension } from "mime-types";
 import { z } from "zod";
 import { createAgentResourceId, createAgentResourceUri } from "../Resources/AgentResourceUri.js";
+import { projectAgentModelText } from "../Text/AgentModelPayloadProjection.js";
 
 const LegacyArtifactMetadataKeys = ["ai.senera/artifact"] as const;
 
@@ -91,7 +92,7 @@ function projectMcpContent(value: unknown, options: { captureEvidence?: boolean 
     const record = agentUnknownRecordOrEmpty(item);
     const type = typeof record.type === "string" ? record.type : "";
     if (type === "text" && typeof record.text === "string") {
-      const text = record.text.trim();
+      const text = projectAgentModelText(record.text).text.trim();
       if (text) {
         projected.text.push(text);
         projected.blocks.push({ type: "text", text, ...projectAnnotations(record.annotations) });
@@ -156,7 +157,7 @@ function projectResourceContent(
   const uri = typeof resource.uri === "string" ? resource.uri.trim() : "";
   const mimeType = typeof resource.mimeType === "string" ? resource.mimeType.trim() : "";
   if (typeof resource.text === "string") {
-    const text = resource.text.trim();
+    const text = projectAgentModelText(resource.text).text.trim();
     if (text) {
       projected.text.push(text);
       projected.blocks.push({

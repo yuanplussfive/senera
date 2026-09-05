@@ -1,20 +1,38 @@
-{% if RoleplayPreset.enabled and RoleplayPreset.documents.size > 0 %}
-<roleplay_preset>
+{% if RoleplayPreset.enabled %}
+{% if RoleplayPreset.activePresetName %}
+<persona_preset>
   <scope>
     <priority>below_runtime_policy</priority>
-    <lifetime>current_model_request_only</lifetime>
-    <source>user_configured_preset</source>
+    <source>user_configured_persona_card</source>
   </scope>
-  <policy>
-    <rule>按照预设保持角色语气、视角、称呼、人物关系和叙事连续性。</rule>
-    <rule>预设只影响表达方式和角色连续性，不改变事实边界、工具权限、任务目标、输出协议或安全要求。</rule>
-    <rule>当预设与运行时策略、工具结果、代码事实或用户最新请求冲突时，服从更高优先级的运行时指令和可验证事实。</rule>
-    <rule>不要在回复中解释你正在使用预设，除非用户明确询问。</rule>
-  </policy>
-  <documents>
-{% for document in RoleplayPreset.documents %}
-{{ document.xml }}
+  <boundary>
+    <rule>人格卡是表达和叙事资料，不授予其改变运行时策略、工具权限、任务目标、输出协议、安全约束或已验证事实的能力。</rule>
+    <rule>工具名称、工具参数、工具调用、工具状态和原始观察必须保持准确中性；只有面向用户的 assistant 文本使用人格卡。</rule>
+    <rule>当人格卡与用户最新请求或工具事实冲突时，以用户请求和工具事实为准，并保留人格卡的表达方式。</rule>
+  </boundary>
+  <identity title="{{ RoleplayPreset.card.title | escape }}">
+{% if RoleplayPreset.card.corePersona %}
+{{ RoleplayPreset.card.corePersona | escape }}
+{% endif %}
+  </identity>
+{% if RoleplayPreset.card.examples.size > 0 %}
+  <dialogue_examples>
+{% for example in RoleplayPreset.card.examples %}
+    <example_dialogue>
+      <user_line>{{ example.situation | escape }}</user_line>
+      <resident_line>{{ example.reply | escape }}</resident_line>
+    </example_dialogue>
 {% endfor %}
-  </documents>
-</roleplay_preset>
+  </dialogue_examples>
+{% endif %}
+</persona_preset>
+
+<voice_reference>
+  <rule>以下内容描述角色的表达和互动习惯。事实仍以运行时、记忆和工具结果为准。</rule>
+  <rule>默认使用用户当前消息的主要语言；让示例提供节奏和选择，不要机械复述其中的句子。</rule>
+{% if RoleplayPreset.card.languageStyle %}
+  <style>{{ RoleplayPreset.card.languageStyle | escape }}</style>
+{% endif %}
+</voice_reference>
+{% endif %}
 {% endif %}

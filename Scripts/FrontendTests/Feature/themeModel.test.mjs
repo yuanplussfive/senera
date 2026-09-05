@@ -84,6 +84,22 @@ describe("themeModel", () => {
     ).toMatchObject({ colorScheme: "forest", accentColor: "moss" });
   });
 
+  it("normalizes and applies a persisted custom accent", () => {
+    const preference = normalizeAppearancePreference({ customAccentColor: "#2aB" });
+    expect(preference.customAccentColor).toBe("#22aabb");
+    const lightTokens = createAppearanceTokens(preference, "light").cssVariables;
+    const darkTokens = createAppearanceTokens(preference, "dark").cssVariables;
+    expect(lightTokens["--color-accent-500"]).toBe("34 170 187");
+    expect(darkTokens["--color-accent-500"]).toBe("74 185 199");
+    expect(lightTokens["--accent-solid"]).toBe("rgb(var(--color-accent-500))");
+  });
+
+  it("keeps a custom font scale continuous while preserving legacy anchors", () => {
+    const preference = normalizeAppearancePreference({ fontScale: "standard", fontScaleValue: 1.027 });
+    expect(preference).toMatchObject({ fontScale: "standard", fontScaleValue: 1.027 });
+    expect(createAppearanceTokens(preference, "light").cssVariables["--theme-font-scale"]).toBe("1.027");
+  });
+
   it("uses the Senera paper palette and terra accent as the default appearance", () => {
     expect(defaultAppearancePreference).toEqual({
       themeMode: "system",
@@ -128,6 +144,10 @@ describe("themeModel", () => {
         "--theme-chat-user-bg": expect.any(String),
         "--theme-chat-composer-bg": expect.any(String),
         "--theme-code-editor-bg": expect.any(String),
+        "--theme-code-editor-font-size": expect.any(String),
+        "--theme-code-output-bg": expect.any(String),
+        "--theme-code-output-fg": expect.any(String),
+        "--theme-code-output-border": expect.any(String),
         "--theme-config-panel-bg": "rgb(var(--color-paper-50))",
         "--surface-canvas": "var(--theme-bg)",
         "--content-primary": "rgb(var(--color-ink-900))",
@@ -148,6 +168,9 @@ describe("themeModel", () => {
           "--theme-border": expect.any(String),
           "--theme-code-editor-bg": expect.any(String),
           "--theme-code-editor-fg": expect.any(String),
+          "--theme-code-editor-font-size": expect.any(String),
+          "--theme-code-output-bg": expect.any(String),
+          "--theme-code-output-fg": expect.any(String),
           "--theme-code-preview-bg": expect.any(String),
           "--theme-canvas-grid": expect.any(String),
         });

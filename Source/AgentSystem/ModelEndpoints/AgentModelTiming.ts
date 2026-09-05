@@ -8,6 +8,8 @@ export interface AgentModelTimingRecord {
   durationMs: number;
   requestCharacters: number;
   responseCharacters: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   error?: string;
 }
 

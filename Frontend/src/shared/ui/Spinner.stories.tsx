@@ -11,7 +11,7 @@ const StoryFrame = ({ children }: { children: ReactNode }): JSX.Element => (
 
 export const Sizes: Story = () => (
   <StoryFrame>
-    <h3 className="text-[15px] font-semibold">尺寸</h3>
+    <h3 className="text-[15px] font-semibold">紧凑轨迹尺寸</h3>
     <div className="mt-5 flex items-end gap-10 border-y border-ink-200 py-6">
       {(
         [
@@ -27,7 +27,7 @@ export const Sizes: Story = () => (
       ))}
     </div>
     <p className="mt-4 text-[13px] leading-6 text-ink-500">
-      全站唯一的旋转加载图标，统一使用应用图标系统。动画遵循全局减动效设置，使用处无需单独处理。
+      行内等待使用压缩后的 Senera 共振轨迹，颜色继承所在文本，动画遵循全局减动效设置。
     </p>
   </StoryFrame>
 );
@@ -60,7 +60,7 @@ export const InContext: Story = () => (
     <h3 className="text-[15px] font-semibold">常见位置</h3>
     <div className="mt-5 grid gap-5 border-y border-ink-200 py-6">
       <div>
-        <div className="text-[13px] text-ink-500">提交中的按钮，图标位替换为 Spinner：</div>
+        <div className="text-[13px] text-ink-500">提交中的按钮，图标位替换为紧凑轨迹：</div>
         <Button disabled className="mt-2 gap-2">
           <Spinner size="sm" />
           正在保存

@@ -1,5 +1,6 @@
 import type { ToolEventOrigin } from "../../api/eventTypes";
 import RawToolActivityMap from "./toolActivityPresentation.map.json";
+import { isRecord, readStringArray } from "./presentationMapParsing";
 
 export type ToolActivityStatus = "active" | "completed" | "failed";
 
@@ -16,6 +17,7 @@ interface ToolActivityPresentation {
 
 interface ToolActivityRule extends ToolActivityPresentation {
   readonly id: string;
+  readonly invocationName?: string;
   readonly exactCapabilities?: readonly string[];
   readonly capabilityPrefixes?: readonly string[];
   readonly exactToolNames?: readonly string[];
@@ -25,7 +27,7 @@ interface ToolActivityRule extends ToolActivityPresentation {
 }
 
 interface ToolActivityMap {
-  readonly version: 3;
+  readonly version: 4;
   readonly default: ToolActivityPresentation;
   readonly mcp: ToolActivityPresentation;
   readonly rules: readonly ToolActivityRule[];
@@ -55,7 +57,11 @@ export function projectToolActivityInspection(input: ToolActivityInput): ToolAct
     subjects,
     arguments: input.arguments,
   });
-  const actionLabel = [presentation.action, input.origin?.kind === "mcp" || !rule ? toolName : undefined]
+  const actionLabel = [
+    presentation.action,
+    rule?.invocationName,
+    input.origin?.kind === "mcp" || !rule ? toolName : undefined,
+  ]
     .filter(Boolean)
     .join(" · ");
   return {
@@ -189,14 +195,14 @@ function compactPreview(value: string): string {
 }
 
 function parseToolActivityMap(value: unknown): ToolActivityMap {
-  if (!isRecord(value) || value.version !== 3 || !isRecord(value.default) || !isRecord(value.origins)) {
+  if (!isRecord(value) || value.version !== 4 || !isRecord(value.default) || !isRecord(value.origins)) {
     throw new Error("Tool activity presentation map has an unsupported structure.");
   }
   const defaultPresentation = parsePresentation(value.default, "default");
   const mcp = parsePresentation(value.origins.mcp, "MCP origin");
   const rules = Array.isArray(value.capabilityRules) ? value.capabilityRules.map(parseRule) : [];
   return {
-    version: 3,
+    version: 4,
     default: defaultPresentation,
     mcp,
     rules,
@@ -207,21 +213,22 @@ function parseRule(value: unknown): ToolActivityRule {
   if (!isRecord(value) || typeof value.id !== "string" || !isRecord(value.match)) {
     throw new Error("Tool activity rule is missing its identity or match.");
   }
-  const exactCapabilities = readStringArray(value.match.exactCapabilities);
-  const capabilityPrefixes = readStringArray(value.match.capabilityPrefixes);
-  const exactToolNames = readStringArray(value.match.exactToolNames);
-  const toolNamePrefixes = readStringArray(value.match.toolNamePrefixes);
+  const exactCapabilities = readStringArray(value.match.exactCapabilities, "Tool activity match values");
+  const capabilityPrefixes = readStringArray(value.match.capabilityPrefixes, "Tool activity match values");
+  const exactToolNames = readStringArray(value.match.exactToolNames, "Tool activity match values");
+  const toolNamePrefixes = readStringArray(value.match.toolNamePrefixes, "Tool activity match values");
   if (!exactCapabilities && !capabilityPrefixes && !exactToolNames && !toolNamePrefixes) {
     throw new Error(`Tool activity rule '${value.id}' has no match.`);
   }
   return {
     id: value.id,
+    invocationName: readOptionalString(value.invocationName, "invocationName"),
     exactCapabilities,
     capabilityPrefixes,
     exactToolNames,
     toolNamePrefixes,
-    argumentPath: typeof value.argumentPath === "string" ? value.argumentPath : undefined,
-    detailPaths: readStringArray(value.detailPaths),
+    argumentPath: readOptionalString(value.argumentPath, "argumentPath"),
+    detailPaths: readStringArray(value.detailPaths, "Tool activity detailPaths"),
     ...parsePresentation(value, `rule '${value.id}'`),
   };
 }
@@ -237,14 +244,10 @@ function parsePresentation(value: unknown, source: string): ToolActivityPresenta
   return { action: value.action.trim() };
 }
 
-function readStringArray(value: unknown): string[] | undefined {
+function readOptionalString(value: unknown, field: string): string | undefined {
   if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
-    throw new Error("Tool activity match values must be string arrays.");
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`Tool activity ${field} must be a non-empty string when provided.`);
   }
-  return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return value.trim();
 }

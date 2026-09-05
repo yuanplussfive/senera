@@ -40,6 +40,8 @@ export const AgentSubagentLaunchContractSchema = z
       })
       .strict(),
     context: z.enum(["fresh", "fork"]),
+    /** Persisted so restart recovery can distinguish detached work from waits. */
+    executionMode: z.enum(["wait", "detach"]).optional(),
     model: z.string().trim().min(1).optional(),
     modelCandidates: z.array(z.string().trim().min(1)),
     thinking: z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]).optional(),

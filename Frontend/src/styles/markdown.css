@@ -66,20 +66,24 @@
 .markdown-renderer__image {
   display: block;
   inline-size: auto;
-  max-inline-size: min(100%, 42rem);
   block-size: auto;
-  max-block-size: min(56dvh, 34rem);
+  max-inline-size: 100%;
+  max-block-size: min(68vh, 40rem);
   object-fit: contain;
 }
 .markdown-renderer__image-trigger {
-  display: block;
-  width: fit-content;
-  max-width: 100%;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: min(100%, 42rem);
+  min-block-size: 6rem;
   margin: 0.8rem 0;
   border: 0;
   border-radius: 7px;
-  background: transparent;
+  background: var(--surface-subtle);
+  overflow: hidden;
   padding: 0;
+  align-items: center;
+  justify-content: center;
   text-align: left;
   cursor: zoom-in;
 }
@@ -185,7 +189,7 @@
 .markdown-renderer pre,
 .markdown-renderer code[data-language] {
   font-family: var(--theme-mono-font-family, "JetBrains Mono", ui-monospace, monospace);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--theme-font-scale-safe));
   line-height: 1.7;
 }
 .markdown-renderer__code-block {
@@ -219,7 +223,7 @@
 }
 .markdown-renderer__code-language {
   font-family: var(--theme-mono-font-family, "JetBrains Mono", ui-monospace, monospace);
-  font-size: 11px;
+  font-size: calc(11px * var(--theme-font-scale-safe));
   text-transform: lowercase;
   color: var(--content-secondary);
 }
@@ -236,7 +240,7 @@
   justify-content: flex-end;
   min-width: var(--code-lines-width, 7ch);
   font-family: var(--theme-mono-font-family, "JetBrains Mono", ui-monospace, monospace);
-  font-size: 10px;
+  font-size: calc(10px * var(--theme-font-scale-safe));
   font-variant-numeric: tabular-nums;
   color: var(--content-muted);
 }
@@ -288,7 +292,7 @@
   padding: 0.6rem 0.85rem 0.45rem;
   color: var(--content-secondary);
   font-family: var(--theme-mono-font-family, "JetBrains Mono", ui-monospace, monospace);
-  font-size: 11px;
+  font-size: calc(11px * var(--theme-font-scale-safe));
 }
 .markdown-renderer__table-wrap {
   width: fit-content;
@@ -362,7 +366,7 @@
   gap: 0.4rem;
   border-radius: 8px;
   padding: 0 0.65rem;
-  font-size: 12px;
+  font-size: calc(12px * var(--theme-font-scale-safe));
 }
 .code-artifact-viewer__iconbtn {
   display: inline-grid;
@@ -433,7 +437,7 @@
   padding: 0.9rem 0 1rem;
   background: transparent;
   font-family: var(--theme-mono-font-family, "JetBrains Mono", ui-monospace, monospace);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--theme-font-scale-safe));
   line-height: 1.55;
 }
 .code-artifact-viewer__highlighted code {

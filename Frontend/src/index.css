@@ -115,9 +115,20 @@
   --theme-selection-fg: var(--content-primary);
   --theme-skeleton-a: rgb(43 40 32 / 0.035);
   --theme-skeleton-b: rgb(43 40 32 / 0.09);
+  --senera-motion-signal-loop: 1600ms;
+  --senera-motion-signal-bar: 1100ms;
+  --senera-motion-loading-rail: 1200ms;
+  --senera-motion-feedback: 200ms;
+  --senera-signal-violet: rgb(var(--color-accent-500));
+  --senera-signal-gold: rgb(var(--color-umber-500));
   --theme-complete-highlight: rgb(var(--color-accent-500) / 0.08);
   --theme-code-editor-bg: rgb(255 255 255);
   --theme-code-editor-fg: rgb(var(--color-ink-850));
+  --theme-code-editor-font-size: calc(13px * var(--theme-font-scale-safe));
+  --theme-code-output-bg: rgb(var(--color-ink-950));
+  --theme-code-output-fg: rgb(var(--color-paper-50));
+  --theme-code-output-border: rgb(var(--color-ink-200) / 0.24);
+  --theme-code-output-muted: rgb(var(--color-paper-300) / 0.72);
   --theme-code-editor-gutter-bg: rgb(var(--color-paper-200) / 0.72);
   --theme-code-editor-gutter-border: rgb(var(--color-ink-900) / 0.1);
   --theme-code-editor-gutter-fg: rgb(var(--color-ink-900) / 0.42);
@@ -148,6 +159,11 @@
   --theme-chat-user-line-height: 1.55;
   --theme-chat-assistant-font-size: 15px;
   --theme-chat-assistant-line-height: 1.75;
+  --theme-chat-user-font-size-scaled: calc(var(--theme-chat-user-font-size) * var(--theme-font-scale));
+  --theme-chat-assistant-font-size-scaled: calc(var(--theme-chat-assistant-font-size) * var(--theme-font-scale));
+  --theme-tool-font-size: calc(13px * var(--theme-font-scale-safe));
+  --theme-tool-meta-size: calc(11.5px * var(--theme-font-scale-safe));
+  --theme-tool-line-height: 1.5;
   --theme-chat-composer-bg: rgb(var(--color-paper-100) / 0.8);
   --theme-chat-composer-focus-bg: rgb(var(--color-paper-50));
   --theme-session-active-bg: var(--accent-surface);
@@ -189,6 +205,7 @@
   --shadow-soft: 0 8px 24px -12px rgb(43 40 32 / 0.16);
   --shadow-avatar-cropper: inset 0 0 0 1px rgb(255 255 255 / 0.18), 0 10px 30px rgb(43 40 32 / 0.14);
   --theme-font-scale: 1;
+  --theme-font-scale-safe: clamp(0.9, var(--theme-font-scale), 1.12);
   --theme-emoji-font-family: "Segoe UI Emoji", "Noto Color Emoji", emoji;
   --theme-ui-font-family:
     "Geist", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Segoe UI Variable", "Segoe UI",
@@ -239,12 +256,176 @@ body,
   height: 100%;
 }
 
+html {
+  font-size: 16px;
+}
+
 body {
   margin: 0;
   background: var(--theme-bg);
   color: var(--theme-fg);
   background-image: var(--theme-bg-image);
-  font-size: calc(16px * var(--theme-font-scale));
+  /* Scale text without changing layout geometry or control hit areas. */
+  font-size: calc(16px * var(--theme-font-scale-safe));
+}
+
+/* Tailwind's fixed-pixel text utilities need an explicit type scale because
+   changing body font-size alone cannot affect them. Keep this list limited to
+   typography utilities so spacing and icon dimensions stay stable. */
+.text-xs {
+  font-size: calc(0.75rem * var(--theme-font-scale-safe));
+}
+
+.text-sm {
+  font-size: calc(0.875rem * var(--theme-font-scale-safe));
+}
+
+.text-base {
+  font-size: calc(1rem * var(--theme-font-scale-safe));
+}
+
+.text-lg {
+  font-size: calc(1.125rem * var(--theme-font-scale-safe));
+}
+
+.text-xl {
+  font-size: calc(1.25rem * var(--theme-font-scale-safe));
+}
+
+.text-2xl {
+  font-size: calc(1.5rem * var(--theme-font-scale-safe));
+}
+
+.text-3xl {
+  font-size: calc(1.875rem * var(--theme-font-scale-safe));
+}
+
+.text-4xl {
+  font-size: calc(2.25rem * var(--theme-font-scale-safe));
+}
+
+[class~="text-[7px]"] {
+  font-size: calc(7px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[8px]"] {
+  font-size: calc(8px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[8.5px]"] {
+  font-size: calc(8.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[9px]"] {
+  font-size: calc(9px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[9.5px]"] {
+  font-size: calc(9.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[10px]"] {
+  font-size: calc(10px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[10.5px]"] {
+  font-size: calc(10.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[11px]"] {
+  font-size: calc(11px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[11.5px]"] {
+  font-size: calc(11.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[12px]"] {
+  font-size: calc(12px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[12.5px]"] {
+  font-size: calc(12.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[12.75px]"] {
+  font-size: calc(12.75px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[13px]"] {
+  font-size: calc(13px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[13.5px]"] {
+  font-size: calc(13.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[14px]"] {
+  font-size: calc(14px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[14.5px]"] {
+  font-size: calc(14.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[15px]"] {
+  font-size: calc(15px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[16px]"] {
+  font-size: calc(16px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[17px]"] {
+  font-size: calc(17px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[18px]"] {
+  font-size: calc(18px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[20px]"] {
+  font-size: calc(20px * var(--theme-font-scale-safe));
+}
+
+/* The appearance slider draws its own spring marker; keep the native thumb
+   transparent while retaining the input's keyboard and pointer semantics. */
+.appearance-font-range {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  margin: 0;
+  background: transparent;
+}
+
+.appearance-font-range::-webkit-slider-thumb {
+  width: 0;
+  height: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.appearance-font-range::-webkit-slider-runnable-track {
+  height: 4px;
+  background: transparent;
+  border: 0;
+}
+
+.appearance-font-range::-moz-range-thumb {
+  width: 0;
+  height: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.appearance-font-range::-moz-range-track {
+  height: 4px;
+  background: transparent;
+  border: 0;
 }
 
 .theme-tooltip {
@@ -405,6 +586,24 @@ textarea::-webkit-scrollbar-track {
   container-type: inline-size;
 }
 
+/* Recovery keeps the app's signal language without turning a render failure
+   into a blocking card or exposing implementation diagnostics. */
+[data-error-boundary] {
+  isolation: isolate;
+}
+
+.senera-error-boundary__pulse {
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 5rem;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent-solid);
+  transform-origin: left center;
+  animation: senera-error-boundary-pulse 2.4s cubic-bezier(0.22, 0.7, 0.2, 1) infinite;
+}
+
 .conversation-frame {
   box-sizing: border-box;
   display: flex;
@@ -426,6 +625,10 @@ textarea::-webkit-scrollbar-track {
 
 .conversation-frame--user {
   flex-direction: row;
+}
+
+.conversation-frame--user > div {
+  max-width: min(100%, 46rem);
 }
 
 .assistant-turn-content {
@@ -469,6 +672,57 @@ textarea::-webkit-scrollbar-track {
 
 .assistant-turn-stage[data-current-stage="true"] [data-execution-stage-feed] {
   position: relative;
+}
+
+/* Tool calls are supporting context. Keep them quiet until the reader
+   points at or expands them, and let live work rise just enough to remain
+   legible without competing with the response. */
+[data-tool-activity-group],
+[data-tool-batch-activity] {
+  opacity: 0.78;
+  transition: opacity var(--senera-motion-feedback) ease-out;
+}
+
+[data-tool-activity-group]:hover,
+[data-tool-activity-group]:focus-within,
+[data-tool-batch-activity]:hover,
+[data-tool-batch-activity]:focus-within,
+[data-tool-activity-group][data-tool-activity-status="running"],
+[data-tool-activity-group][data-tool-activity-status="cancelling"],
+[data-tool-activity-group][data-tool-activity-status="pending"],
+[data-tool-batch-activity][data-state="loading"] {
+  opacity: 0.94;
+}
+
+/* Keep tool feedback visually separate from the assistant's reading text.
+   The scale still follows Appearance, while the compact rhythm keeps long
+   commands and MCP labels scannable. */
+.tool-activity-group__title {
+  color: var(--content-secondary);
+  font-family: var(--theme-ui-font-family);
+  font-size: var(--theme-tool-font-size) !important;
+  font-variation-settings: "wght" 430;
+  font-weight: 450;
+  letter-spacing: 0.01em;
+  line-height: var(--theme-tool-line-height);
+}
+
+.tool-activity-group__content > div {
+  font-family: var(--theme-ui-font-family);
+  font-size: var(--theme-tool-meta-size);
+  line-height: var(--theme-tool-line-height);
+}
+
+.tool-batch-activity {
+  font-family: var(--theme-ui-font-family);
+  font-size: var(--theme-tool-font-size);
+  font-variation-settings: "wght" 430;
+  line-height: var(--theme-tool-line-height);
+}
+
+.tool-batch-activity [data-tool-batch-activity-item] {
+  font-size: var(--theme-tool-meta-size);
+  line-height: var(--theme-tool-line-height);
 }
 
 .tool-activity-stage-list--connected::before {
@@ -677,7 +931,7 @@ textarea::-webkit-scrollbar-track {
 .chat-event-rail__preview-meta {
   margin-bottom: 6px;
   color: var(--content-secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--theme-font-scale-safe));
   line-height: 1.35;
 }
 
@@ -709,7 +963,7 @@ textarea::-webkit-scrollbar-track {
 
 .chat-event-rail__preview-body {
   color: var(--content-primary);
-  font-size: 13.5px;
+  font-size: calc(13.5px * var(--theme-font-scale-safe));
   line-height: 1.5;
   -webkit-line-clamp: 3;
 }
@@ -796,6 +1050,550 @@ html[data-motion-level="none"] *::after {
   animation: shimmer 1.8s linear infinite;
 }
 
+/* ----- Senera resonance motion -------------------------------------------
+   A wordless, asymmetric double trace derived from the brand mark. It uses
+   a moving stroke rather than a logo or a generic spinner so loading can sit
+   inside any surface without becoming a second card. */
+.senera-resonance-trace {
+  display: block;
+  overflow: visible;
+  color: rgb(var(--color-accent-500));
+}
+
+.senera-resonance-trace-shadow,
+.senera-resonance-trace-wave {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.senera-resonance-trace-shadow {
+  stroke: currentColor;
+  stroke-width: 4.5;
+  opacity: 0.1;
+}
+
+.senera-resonance-trace-wave {
+  stroke-width: 2.2;
+  stroke-dashoffset: 0;
+  animation: senera-resonance-drift var(--senera-motion-signal-loop) linear infinite;
+}
+
+.senera-resonance-trace-wave-primary {
+  stroke: var(--senera-signal-violet);
+  stroke-dasharray: 54 142;
+}
+
+.senera-resonance-trace-wave-secondary {
+  stroke: var(--senera-signal-gold);
+  stroke-dasharray: 32 164;
+  animation-delay: -0.36s;
+  opacity: 0.9;
+}
+
+.senera-resonance-trace-node {
+  fill: var(--senera-signal-gold);
+  opacity: 0.92;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: senera-resonance-node var(--senera-motion-signal-loop) ease-in-out infinite;
+}
+
+.senera-resonance-trace-impact {
+  fill: none;
+  stroke: var(--senera-signal-gold);
+  stroke-width: 1.1;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: senera-resonance-impact var(--senera-motion-signal-loop) cubic-bezier(0.22, 0.7, 0.2, 1) infinite;
+}
+
+.senera-resonance-trace.is-settled .senera-resonance-trace-wave,
+.senera-resonance-trace.is-settled .senera-resonance-trace-node,
+.senera-resonance-trace.is-settled .senera-resonance-trace-impact {
+  animation: none;
+}
+
+.senera-resonance-trace.is-settled .senera-resonance-trace-wave {
+  stroke-dasharray: none;
+  opacity: 0.76;
+}
+
+.senera-resonance-trace.is-settled .senera-resonance-trace-node {
+  opacity: 0.72;
+}
+
+.senera-resonance-trace.is-settled .senera-resonance-trace-impact {
+  opacity: 0;
+}
+
+.senera-refresh-orbit {
+  display: block;
+  overflow: visible;
+  color: rgb(var(--color-accent-500));
+}
+
+.senera-refresh-orbit-track {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 0.85;
+  stroke-linecap: round;
+  stroke-dasharray: 1 4;
+  opacity: 0.28;
+}
+
+.senera-refresh-orbit-track-secondary {
+  opacity: 0.2;
+}
+
+.senera-refresh-orbit-particle {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.senera-refresh-orbit-particle-primary {
+  fill: var(--senera-signal-violet);
+}
+
+.senera-refresh-orbit-particle-secondary {
+  fill: var(--senera-signal-gold);
+}
+
+.senera-refresh-orbit-collision {
+  fill: none;
+  stroke: var(--senera-signal-gold);
+  stroke-width: 1.05;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: senera-refresh-collision 1.15s cubic-bezier(0.22, 0.7, 0.2, 1) infinite;
+}
+
+.senera-spinner-trace {
+  display: block;
+  overflow: visible;
+  color: currentColor;
+}
+
+/* Compatibility marker for existing state selectors. The trace itself owns
+   the motion; never rotate the whole SVG. */
+.senera-spinner-trace.motion-safe\:animate-spin {
+  animation: none !important;
+}
+
+.senera-spinner-trace path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 18 44;
+  animation: senera-spinner-drift var(--senera-motion-signal-bar) linear infinite;
+}
+
+.senera-loading-rail {
+  height: 2px;
+  overflow: hidden;
+  background: rgb(var(--color-accent-500) / 0.1);
+}
+
+.senera-loading-rail::after {
+  display: block;
+  width: 30%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--senera-signal-violet), var(--senera-signal-gold), transparent);
+  content: "";
+  animation: senera-loading-rail var(--senera-motion-loading-rail) ease-in-out infinite;
+}
+
+/* Authentication is a connection state, not a modal panel. The short baseline
+   below the signal gives the standalone page a quiet point of orientation. */
+.senera-auth-status {
+  position: relative;
+  isolation: isolate;
+}
+
+.senera-auth-status__signal {
+  position: relative;
+  display: grid;
+  min-height: 28px;
+  place-items: center;
+}
+
+.senera-auth-status[data-authentication-tone="loading"] .senera-auth-status__signal::after {
+  position: absolute;
+  bottom: -9px;
+  left: 50%;
+  width: 48px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--senera-signal-gold), var(--senera-signal-violet), transparent);
+  content: "";
+  opacity: 0.5;
+  transform: translateX(-50%) scaleX(0.62);
+  transform-origin: center;
+  animation: senera-auth-pulse 1.4s ease-in-out infinite;
+}
+
+.senera-save-status {
+  position: relative;
+  isolation: isolate;
+  transition: opacity var(--senera-motion-feedback) ease-out;
+}
+
+.senera-save-status::before,
+.senera-save-status::after {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 2px;
+  content: "";
+  pointer-events: none;
+}
+
+.senera-save-status::before {
+  background: rgb(var(--color-accent-500) / 0.08);
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+
+.senera-save-status::after {
+  width: 0;
+  background: linear-gradient(90deg, var(--senera-signal-violet), var(--senera-signal-gold));
+  opacity: 0;
+  transform-origin: left center;
+  transition:
+    width 420ms cubic-bezier(0.22, 0.7, 0.2, 1),
+    opacity 180ms ease-out;
+}
+
+.senera-save-status[data-save-phase="pending"]::before,
+.senera-save-status[data-save-phase="pending"]::after,
+.senera-save-status[data-save-phase="saving"]::before,
+.senera-save-status[data-save-phase="saving"]::after,
+.senera-save-status[data-save-phase="saved"]::before,
+.senera-save-status[data-save-phase="saved"]::after {
+  opacity: 1;
+}
+
+.senera-save-status[data-save-phase="pending"]::after {
+  width: 18%;
+  opacity: 0.68;
+}
+
+.senera-save-status[data-save-phase="saving"]::after {
+  width: 34%;
+  animation: senera-save-progress-sweep 1.25s ease-in-out infinite;
+}
+
+.senera-save-status[data-save-phase="saved"]::after {
+  width: 100%;
+  animation: none;
+}
+
+.resource-header::after {
+  position: absolute;
+  inset-inline: 0;
+  bottom: -1px;
+  height: 2px;
+  width: 0;
+  background: linear-gradient(90deg, var(--senera-signal-violet), var(--senera-signal-gold));
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: left center;
+  transition:
+    width 420ms cubic-bezier(0.22, 0.7, 0.2, 1),
+    opacity 180ms ease-out;
+}
+
+.resource-header[data-save-phase="saving"]::after {
+  width: 34%;
+  opacity: 1;
+  animation: senera-save-progress-sweep 1.25s ease-in-out infinite;
+}
+
+.resource-header[data-save-phase="saved"]::after {
+  width: 100%;
+  opacity: 1;
+  animation: none;
+}
+
+.senera-save-status[data-state="visible"] {
+  opacity: 1;
+}
+
+/* ----- Senera status strip -----------------------------------------------
+   A toast is a transient line of feedback, not a second content card. It
+   keeps a small footprint and uses the same resonance trace as loading. */
+.senera-toast {
+  --senera-toast-accent: rgb(var(--color-accent-500));
+  width: max-content !important;
+  max-width: min(360px, calc(100vw - 24px));
+  min-height: 40px;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: color-mix(in srgb, var(--surface-raised) 90%, transparent) !important;
+  color: var(--content-primary) !important;
+  padding: 8px 12px !important;
+  box-shadow: 0 12px 28px -20px rgb(var(--color-ink-950) / 0.34) !important;
+  backdrop-filter: blur(12px);
+}
+
+.senera-toast[data-type="info"] {
+  --senera-toast-accent: rgb(var(--color-ink-600));
+}
+
+.senera-toast[data-type="warning"] {
+  --senera-toast-accent: rgb(var(--color-umber-500));
+}
+
+.senera-toast[data-type="error"] {
+  --senera-toast-accent: rgb(var(--color-brick-600));
+}
+
+.senera-toast-icon {
+  display: inline-flex !important;
+  width: 38px !important;
+  height: 16px !important;
+  margin: 0 3px 0 0 !important;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.senera-toast-icon-glyph {
+  display: inline-flex;
+  width: 17px;
+  height: 17px;
+  align-items: center;
+  justify-content: center;
+  color: var(--senera-toast-accent);
+}
+
+.senera-toast-icon-glyph svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.9;
+}
+
+.senera-toast-content {
+  min-width: 0;
+  gap: 1px !important;
+}
+
+.senera-toast-title {
+  max-width: min(270px, calc(100vw - 100px));
+  overflow: hidden;
+  font-size: calc(12.5px * var(--theme-font-scale-safe));
+  font-weight: 600;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.senera-toast-description {
+  max-width: min(300px, calc(100vw - 80px));
+  overflow: hidden;
+  color: var(--content-secondary) !important;
+  font-size: calc(11.5px * var(--theme-font-scale-safe));
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.senera-toast-action,
+.senera-toast-cancel {
+  border-radius: 5px !important;
+  font-family: inherit;
+}
+
+.senera-toast-close {
+  color: var(--content-secondary) !important;
+}
+
+@keyframes senera-resonance-drift {
+  from {
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dashoffset: -196;
+  }
+}
+
+@keyframes senera-resonance-node {
+  0%,
+  100% {
+    opacity: 0.42;
+    transform: scale(0.78);
+  }
+
+  52% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+}
+
+@keyframes senera-resonance-impact {
+  0%,
+  48% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+
+  58% {
+    opacity: 0.62;
+    transform: scale(0.85);
+  }
+
+  73%,
+  100% {
+    opacity: 0;
+    transform: scale(1.85);
+  }
+}
+
+@keyframes senera-refresh-collision {
+  0%,
+  40% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+
+  48% {
+    opacity: 0.78;
+    transform: scale(0.86);
+  }
+
+  62%,
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+@keyframes senera-save-progress-sweep {
+  0% {
+    transform: translateX(-115%);
+  }
+
+  100% {
+    transform: translateX(315%);
+  }
+}
+
+@keyframes senera-spinner-drift {
+  from {
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dashoffset: -62;
+  }
+}
+
+@keyframes senera-loading-rail {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+@keyframes senera-error-boundary-pulse {
+  0%,
+  100% {
+    opacity: 0.48;
+    transform: scaleX(0.72);
+  }
+
+  42% {
+    opacity: 0.9;
+    transform: scaleX(1);
+  }
+
+  68% {
+    opacity: 0.58;
+    transform: scaleX(0.84);
+  }
+}
+
+@keyframes senera-auth-pulse {
+  0%,
+  100% {
+    opacity: 0.22;
+    transform: translateX(-50%) scaleX(0.62);
+  }
+
+  50% {
+    opacity: 0.72;
+    transform: translateX(-50%) scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .senera-resonance-trace-wave {
+    animation: none;
+    stroke-dasharray: none;
+    opacity: 0.72;
+  }
+
+  .senera-resonance-trace-node {
+    animation: none;
+    opacity: 0.72;
+  }
+
+  .senera-resonance-trace-impact {
+    animation: none;
+    opacity: 0;
+  }
+
+  .senera-refresh-orbit-collision {
+    animation: none;
+    opacity: 0;
+  }
+
+  .senera-save-status::after {
+    animation: none;
+    transform: none;
+  }
+
+  .resource-header[data-save-phase="saving"]::after {
+    animation: none;
+    transform: none;
+  }
+
+  .senera-spinner-trace path,
+  .senera-loading-rail::after {
+    animation: none;
+  }
+
+  .senera-spinner-trace path {
+    stroke-dasharray: none;
+    opacity: 0.72;
+  }
+
+  .senera-loading-rail::after {
+    transform: translateX(0);
+    opacity: 0.72;
+  }
+
+  .senera-auth-status[data-authentication-tone="loading"] .senera-auth-status__signal::after {
+    animation: none;
+    opacity: 0.42;
+    transform: translateX(-50%);
+  }
+
+  .senera-error-boundary__pulse {
+    animation: none;
+    opacity: 0.62;
+    transform: none;
+  }
+}
+
 @keyframes caret {
   0%,
   50% {
@@ -823,28 +1621,24 @@ html[data-motion-level="none"] *::after {
 }
 
 .theme-transition-fallback,
-.theme-transition-fallback *,
-.theme-transition-fallback *::before,
-.theme-transition-fallback *::after {
+.theme-transition-fallback body {
   transition:
-    background-color var(--theme-transition-duration, 180ms) ease,
-    border-color var(--theme-transition-duration, 180ms) ease,
-    box-shadow var(--theme-transition-duration, 180ms) ease,
-    color var(--theme-transition-duration, 180ms) ease,
-    fill var(--theme-transition-duration, 180ms) ease,
-    stroke var(--theme-transition-duration, 180ms) ease !important;
+    background-color var(--theme-transition-duration, 160ms) ease,
+    border-color var(--theme-transition-duration, 160ms) ease,
+    box-shadow var(--theme-transition-duration, 160ms) ease,
+    color var(--theme-transition-duration, 160ms) ease,
+    fill var(--theme-transition-duration, 160ms) ease,
+    stroke var(--theme-transition-duration, 160ms) ease !important;
 }
 
 html[data-motion-level="none"] .theme-transition-fallback,
-html[data-motion-level="none"] .theme-transition-fallback *,
-html[data-motion-level="none"] .theme-transition-fallback *::before,
-html[data-motion-level="none"] .theme-transition-fallback *::after {
+html[data-motion-level="none"] .theme-transition-fallback body {
   transition-duration: 0s !important;
 }
 
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 220ms;
+  animation-duration: var(--theme-transition-duration, 160ms);
   animation-timing-function: ease;
 }
 

@@ -34,6 +34,7 @@ export interface ToolCallStartedData {
   index: number;
   toolName: string;
   callId: string;
+  purpose?: string;
   /** Redacted, bounded arguments for live workflow inspection. */
   arguments?: unknown;
   origin?: ToolEventOrigin;
@@ -74,6 +75,7 @@ export interface ToolCallCompletedData {
   index: number;
   toolName: string;
   callId: string;
+  purpose?: string;
   batchId?: string;
   /** Explicit backend lifecycle start; diagnostic views reject spans without it. */
   startedAt?: string;
@@ -87,6 +89,7 @@ export interface ToolCallFailedData {
   index: number;
   toolName: string;
   callId: string;
+  purpose?: string;
   batchId?: string;
   code?: string;
   message: string;

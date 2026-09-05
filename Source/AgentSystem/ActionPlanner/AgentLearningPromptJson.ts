@@ -1,3 +1,5 @@
+import type { AgentAgendaActorRole, AgentAgendaDraft, AgentAgendaRecordKind } from "../Agenda/AgentAgendaTypes.js";
+
 export interface AgentToolLearningPromptInput {
   rawUserTurn: string;
   standaloneRequest: string;
@@ -22,105 +24,98 @@ export interface AgentToolLearningPromptInput {
   };
 }
 
-export interface AgentMemoryLearningPromptInput {
-  memoryTypes: string[];
-  episode: {
-    episodeUri: string;
-    requestId: string;
-    standaloneRequest: string;
-    contextMode: string;
-    contextBasis: string;
-    startedAt: string;
-    completedAt: string;
-    localDate: string;
-    localHour: string;
-  };
-  timeline: Array<{
-    index: number;
+export interface AgentContinuityEpisodePromptInput {
+  timeZone: string;
+  completedAt: string;
+  /** Sources that may ground a new persisted item. */
+  evidence: Array<{
+    kind: "user" | "tool";
+    text: string;
+    toolName?: string;
+    facts?: string[];
+    createdAt: string;
+  }>;
+  /** Current-turn assistant output is useful for interpretation, never as evidence. */
+  turnContext: Array<{
+    kind: "assistant_final";
+    text: string;
+    createdAt: string;
+  }>;
+  /** Earlier conversation turns used only to resolve references. */
+  referents: Array<{
     role: "user" | "assistant";
-    kind: string;
-    content: string;
-    payloadJson: string;
-    evidenceUris: string[];
-    artifactUris: string[];
-  }>;
-  sourceCatalog: Array<{
-    sourceRef: string;
-    sourceKind: string;
-    role: string;
-    memoryRole: "support" | "context";
-    evidenceUri: string;
-    artifactUri: string;
-    toolName: string;
+    text: string;
     createdAt: string;
-  }>;
-  supportingSourceRefs: string[];
-  contextSourceRefs: string[];
-}
-
-export interface AgentMemoryConsolidationPromptInput {
-  memoryTypes: string[];
-  episode: AgentMemoryLearningPromptInput["episode"];
-  candidates: Array<{
-    uri: string;
-    type: string;
-    subject: string;
-    claim: string;
-    howToApply: string;
-    tags: string[];
-    triggers: string[];
-    sourceRefs: string[];
-    reason: string;
-    confidence: number;
-    createdAt: string;
-  }>;
-  existingMemories: Array<{
-    uri: string;
-    type: string;
-    subject: string;
-    claim: string;
-    howToApply: string;
-    tags: string[];
-    triggers: string[];
-    confidence: number;
-    updatedAt: string;
   }>;
 }
 
-export interface AgentMemoryWriteResolutionPromptInput {
-  memoryTypes: string[];
-  allowedOperations: string[];
-  request: {
-    source: "automatic_learning" | "direct_tool";
-    requestId: string;
-    standaloneRequest: string;
-  };
-  proposed: {
-    operation: string;
-    type: string;
-    subject: string;
-    claim: string;
-    howToApply: string;
-    tags: string[];
-    triggers: string[];
-    sourceRefs: string[];
-    candidateUris: string[];
-    targetMemoryUri?: string;
-    reason: string;
-    confidence: number;
-  };
-  similarMemories: Array<{
-    uri: string;
-    type: string;
-    subject: string;
-    claim: string;
-    howToApply: string;
-    tags: string[];
-    triggers: string[];
-    confidence: number;
-    updatedAt: string;
-    similarity: number;
+export interface AgentContinuityFactPromptInput extends AgentContinuityEpisodePromptInput {
+  /** Current user-owned profile values; model may reuse exact keys for updates. */
+  profileCatalog: Record<string, string | number | boolean>;
+  /** Current Resident-owned profile values; model may reuse exact keys for self-updates. */
+  agentProfileCatalog: Record<string, string | number | boolean>;
+  /** Read-only world state. Models reference summaries; the host owns record identities. */
+  agendaCatalog: Array<{
+    kind: AgentAgendaRecordKind;
+    actor: AgentAgendaActorRole;
+    summary: string;
+    status: string;
+    dueAt?: string;
+    startsAt?: string;
+    endsAt?: string;
   }>;
+}
+
+export type AgentContinuityCaptureItemKind = "fact" | "profile" | "agent_profile" | "relation";
+
+/** Deliberately flat model-facing shape. Host code supplies identity and evidence. */
+export interface AgentContinuityCaptureItem {
+  kind: AgentContinuityCaptureItemKind;
+  text?: string;
+  key?: string;
+  value?: string | number | boolean;
+  from?: string;
+  relation?: string;
+  to?: string;
+}
+
+/** A model-facing world change. Host code resolves time, identity, evidence, and authority. */
+export type AgentContinuityAgendaDraft = AgentAgendaDraft;
+
+export interface AgentContinuityFactExtractionModel {
+  items: AgentContinuityCaptureItem[];
+  agenda: AgentContinuityAgendaDraft[];
+  needsRulePass: boolean;
+}
+
+export interface AgentContinuityRulePromptInput extends AgentContinuityEpisodePromptInput {
+  facts: string[];
+  stateCatalog: Record<
+    string,
+    {
+      summary: string;
+      scope: string;
+      currentValue?: string | number | boolean;
+      expiresAt?: string;
+    }
+  >;
+  ruleCatalog: Record<
+    string,
+    {
+      title: string;
+      effect: string;
+      status: string;
+      time?: string;
+      conditions: Record<
+        string,
+        {
+          summary: string;
+          operator: string;
+          expected?: string | number | boolean;
+        }
+      >;
+    }
+  >;
 }
 
 export type AgentToolLearningPromptStage =
@@ -147,19 +142,12 @@ export function buildToolLearningPromptJson(
   );
 }
 
-export type AgentMemoryLearningPromptStage =
-  | {
-      stage: "learnMemory";
-    }
-  | {
-      stage: "repairMemoryLearning";
-      invalidLearning: string;
-      issues: string[];
-    };
+export type AgentContinuityFactPromptStage =
+  { stage: "extractContinuityFacts" } | { stage: "repairContinuityFacts"; invalidExtraction: string; issues: string[] };
 
-export function buildMemoryLearningPromptJson(
-  input: AgentMemoryLearningPromptInput,
-  directive: AgentMemoryLearningPromptStage,
+export function buildAgentContinuityFactPromptJson(
+  input: AgentContinuityFactPromptInput,
+  directive: AgentContinuityFactPromptStage,
 ): string {
   return JSON.stringify(
     {
@@ -171,43 +159,12 @@ export function buildMemoryLearningPromptJson(
   );
 }
 
-export type AgentMemoryConsolidationPromptStage =
-  | {
-      stage: "consolidateMemoryCandidates";
-    }
-  | {
-      stage: "repairMemoryConsolidation";
-      invalidConsolidation: string;
-      issues: string[];
-    };
+export type AgentContinuityRulePromptStage =
+  { stage: "extractContinuityRules" } | { stage: "repairContinuityRules"; invalidExtraction: string; issues: string[] };
 
-export function buildMemoryConsolidationPromptJson(
-  input: AgentMemoryConsolidationPromptInput,
-  directive: AgentMemoryConsolidationPromptStage,
-): string {
-  return JSON.stringify(
-    {
-      context: input,
-      directive,
-    },
-    null,
-    2,
-  );
-}
-
-export type AgentMemoryWriteResolutionPromptStage =
-  | {
-      stage: "resolveMemoryWrite";
-    }
-  | {
-      stage: "repairMemoryWriteResolution";
-      invalidResolution: string;
-      issues: string[];
-    };
-
-export function buildMemoryWriteResolutionPromptJson(
-  input: AgentMemoryWriteResolutionPromptInput,
-  directive: AgentMemoryWriteResolutionPromptStage,
+export function buildAgentContinuityRulePromptJson(
+  input: AgentContinuityRulePromptInput,
+  directive: AgentContinuityRulePromptStage,
 ): string {
   return JSON.stringify(
     {

@@ -22,12 +22,12 @@ all optional model-visible content lives under `detail`:
 
 ```json
 {
-  "type": "senera.tool_observation.v3",
+  "type": "senera.tool_observation.v4",
   "status": "success",
   "execution_status": "completed",
   "output_availability": "complete",
   "observation_view": {
-    "type": "senera.tool_observation_source_view.v3",
+    "type": "senera.tool_observation_source_view.v4",
     "complete": false,
     "omission_count": 1,
     "omissions": [{ "path": "/detail/result/log", "reason": "token_limit" }],
@@ -49,8 +49,14 @@ continuation data at the top level.
 When it is false, `omissions` records bounded omissions and `artifact_uri` provides the recovery boundary when an
 Artifact was published. There is no second context-view envelope.
 
-Any tool result that is not a valid `senera.tool_observation.v3` with a v3 source-view marker is rejected before
+Any tool result that is not a valid `senera.tool_observation.v4` with a v4 source-view marker is rejected before
 planning. The runtime does not infer a projection from payload fields and does not reinterpret legacy envelopes.
+
+Artifact persistence is auxiliary to the actual tool execution. If storage or recovery fails, the execution result and
+its terminal outcome remain intact; the runtime removes the unpublished payload and sets
+`observation_view.artifact_availability` to `{ "status": "unavailable", "reason": "recording_failed" }`. No
+`artifact_uri` is emitted in that state, so a model never attempts an Artifact memory read against an unavailable
+publication. The recorder emits `tool.artifact.recording_failed` with the underlying error for operators.
 
 ## System Tool contract
 
@@ -125,7 +131,7 @@ Structural limits protect depth, array width, object width, and node count. They
 
 The JSON projector returns the projected value directly. It does not add a second diagnostic envelope or a legacy sentinel. Omission metadata stays with the owning observation view. Long leaves are reduced first while short control values such as continuation handles retain their exact content; only then are overflowing container prefixes removed. Every partial view remains valid JSON and reports why data was omitted.
 
-The observation compiler allocates the fixed protocol envelope and `detail` together with a binary search over the exact model token count. `prepare()` performs parsing, inspection, allocation, and projection once. Concurrent calls receive explicit reservations from the turn token budget before execution, so they do not race for an implicit batch-wide fallback after completion. Every terminal outcome settles its reservation, including Pi validation, unknown-tool, permission, and preflight failures that never enter the execution bridge. These Pi-owned failures are compiled into the same bounded v3 envelope before entering history. Token cost is represented as `exact` or `overBudget`; an unbounded Senera observation is rejected before token measurement instead of being inferred or silently repaired.
+The observation compiler allocates the fixed protocol envelope and `detail` together with a binary search over the exact model token count. `prepare()` performs parsing, inspection, allocation, and projection once. Concurrent calls receive explicit reservations from the turn token budget before execution, so they do not race for an implicit batch-wide fallback after completion. Every terminal outcome settles its reservation, including Pi validation, unknown-tool, permission, and preflight failures that never enter the execution bridge. These Pi-owned failures are compiled into the same bounded v4 envelope before entering history. Token cost is represented as `exact` or `overBudget`; an unbounded Senera observation is rejected before token measurement instead of being inferred or silently repaired.
 
 The planning context compiler never reprojects an accepted observation. It selects the largest recent suffix made of complete user turns and derives the tool transcript from exactly those retained messages. The current turn must fit as a whole; otherwise planning fails explicitly instead of dropping a tool result or hiding a protocol error.
 

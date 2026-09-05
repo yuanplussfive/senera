@@ -48,6 +48,8 @@
     "Capabilities": [
       {
         "Id": "execution.resource-wait",
+        "Title": "Wait for execution resource",
+        "Description": "等待后台资源的新输出或终态，并返回游标之后的增量事件。",
         "Facets": {
           "Actions": ["wait", "read-output"],
           "Targets": ["execution-resource"],
@@ -55,6 +57,7 @@
         }
       }
     ],
+    "UseCases": ["后台命令尚未结束，下一步需要依赖它的新输出或最终状态时。"],
     "Tags": ["后台进程", "增量输出", "长轮询"]
   },
   "evidenceCapabilities": [],

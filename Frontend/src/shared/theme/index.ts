@@ -9,6 +9,7 @@ export {
   fontScaleLabels,
   isDefaultAppearancePreference,
   readAccentSwatch,
+  readAccentHex,
   readAppearanceTokenRows,
   readSchemeSwatch,
   themeModeLabels,

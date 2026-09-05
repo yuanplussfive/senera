@@ -2,7 +2,7 @@ import type { AgentConversationPolicy } from "../Conversation/AgentConversationP
 import type { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentLoopRunner } from "../Loop/AgentLoopRunner.js";
-import type { AgentMemoryLearningSink, AgentMemoryService } from "../Memory/AgentMemoryService.js";
+import type { AgentContinuityLearningSink, AgentMemoryService } from "../Memory/AgentMemoryService.js";
 import type { AgentMemorySourceRepository } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
@@ -13,6 +13,7 @@ import type { AgentSessionRunControlPolicy } from "./AgentSessionRunControlPolic
 import type { AgentSessionRunResource } from "./AgentSessionRunResource.js";
 import type { AgentSessionStore } from "./AgentSessionStore.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
 
 export interface AgentSessionManagerOptions {
   loopFactory: (modelProviderId?: string) => AgentLoopRunner;
@@ -21,7 +22,8 @@ export interface AgentSessionManagerOptions {
   conversationProjector?: AgentConversationProjector;
   memoryService?: AgentMemoryService;
   memorySourceRepository?: AgentMemorySourceRepository;
-  memoryLearning?: AgentMemoryLearningSink;
+  continuityLearning?: AgentContinuityLearningSink;
+  eventObserver?: AgentEventSink;
   logger?: AgentLogger;
   runResources?: readonly AgentSessionRunResource[];
   sessionResources?: readonly AgentSessionResource[];
@@ -36,4 +38,4 @@ export interface AgentSessionManagerOptions {
   managedSessionIds?: ReadonlySet<string>;
 }
 
-export type { AgentMemoryLearningSink } from "../Memory/AgentMemoryService.js";
+export type { AgentContinuityLearningSink } from "../Memory/AgentMemoryService.js";

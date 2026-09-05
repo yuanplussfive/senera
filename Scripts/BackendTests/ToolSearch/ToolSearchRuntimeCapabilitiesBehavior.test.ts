@@ -2,8 +2,8 @@ import { expect, test } from "vitest";
 import type { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import { InMemoryToolSearchMemoryStore } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryStore.js";
 import {
+  AgentToolMetaToolNames,
   AgentToolSearchRuntime,
-  ToolSearchToolName,
 } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
 import {
@@ -18,7 +18,7 @@ test("ToolSearch rebuilds discovery from the execution targets currently availab
   const runtime = new AgentToolSearchRuntime(
     createRegistry([
       createTool({
-        name: ToolSearchToolName,
+        name: AgentToolMetaToolNames.Search,
         title: "Tool search",
         summary: "Find tools",
         tags: ["search"],

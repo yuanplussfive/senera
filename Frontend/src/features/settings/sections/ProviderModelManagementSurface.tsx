@@ -181,7 +181,7 @@ export function ProviderModelManagementSurface({
     return (
       <StateView
         status="empty"
-        className="min-h-[360px] bg-paper-50"
+        className="min-h-[220px] bg-paper-50"
         description={frontendMessage("settings.modelManagement.noProvider")}
       />
     );
@@ -321,7 +321,11 @@ export function ProviderModelManagementSurface({
         modelTemplate={modelTemplate}
         defaultModelId={state.defaultModel?.model.Id ?? ""}
         endpointOptions={endpointChoices}
-        disabled={disabled || Boolean(editingModel && operations[editingModel.Id]?.status === "pending")}
+        // The save queue keeps a newer local draft while a request is pending.
+        // Disabling the whole dialog on every auto-save made the form visibly
+        // flash and interrupted rapid edits, so only external lock state gates
+        // the controls here.
+        disabled={disabled}
         commitLabels={{
           existing: frontendMessage(
             editingModel &&

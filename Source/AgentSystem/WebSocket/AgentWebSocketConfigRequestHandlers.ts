@@ -13,6 +13,7 @@ import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { projectAgentErrorMessage } from "../I18n/AgentMessageProjection.js";
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
+import { createAgentWorldSnapshotEvent } from "../World/AgentWorldEventTypes.js";
 
 export class AgentWebSocketConfigRequestHandlers {
   constructor(
@@ -223,20 +224,21 @@ export class AgentWebSocketConfigRequestHandlers {
     })();
   }
 
-  private broadcastConfigReloaded(
+  private async broadcastConfigReloaded(
     snapshot: ReturnType<NonNullable<AgentWebSocketRequestContext["configService"]>["snapshot"]>,
   ): Promise<void> {
-    return Promise.resolve(
-      this.broadcast({
-        kind: AgentEventKinds.ConfigReloaded,
-        context: {},
-        data: {
-          configPath: snapshot.path,
-          source: snapshot.source,
-          revision: snapshot.revision,
-          diagnostics: snapshot.diagnostics,
-        },
-      }),
-    );
+    await this.broadcast({
+      kind: AgentEventKinds.ConfigReloaded,
+      context: {},
+      data: {
+        configPath: snapshot.path,
+        source: snapshot.source,
+        revision: snapshot.revision,
+        diagnostics: snapshot.diagnostics,
+      },
+    });
+    if (this.context.worldRuntime) {
+      await this.broadcast(createAgentWorldSnapshotEvent(this.context.worldRuntime));
+    }
   }
 }

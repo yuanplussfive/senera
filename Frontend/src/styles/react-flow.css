@@ -49,3 +49,45 @@
 .react-flow__attribution {
   display: none !important;
 }
+
+[data-continuity-graph-map] .react-flow__edge-textbg {
+  fill: var(--surface-raised);
+}
+
+[data-continuity-graph-map] .react-flow__edge-text {
+  fill: var(--content-secondary);
+}
+
+[data-continuity-graph-node] {
+  --continuity-graph-node-accent: var(--accent-solid);
+}
+
+[data-continuity-graph-node][data-continuity-graph-kind="person"],
+[data-continuity-graph-node][data-continuity-graph-kind="organization"] {
+  --continuity-graph-node-accent: rgb(var(--color-moss-500));
+}
+
+[data-continuity-graph-node][data-continuity-graph-kind="place"],
+[data-continuity-graph-node][data-continuity-graph-kind="artifact"] {
+  --continuity-graph-node-accent: rgb(var(--color-umber-500));
+}
+
+[data-continuity-graph-node][data-continuity-graph-kind="event"],
+[data-continuity-graph-node][data-continuity-graph-kind="time"],
+[data-continuity-graph-node][data-continuity-graph-kind="goal"],
+[data-continuity-graph-node][data-continuity-graph-kind="task"] {
+  --continuity-graph-node-accent: rgb(var(--color-brick-500));
+}
+
+[data-continuity-graph-node][data-continuity-graph-kind="preference"],
+[data-continuity-graph-node][data-continuity-graph-kind="state"] {
+  --continuity-graph-node-accent: rgb(var(--color-accent-500));
+}
+
+.continuity-graph-node__accent {
+  background: var(--continuity-graph-node-accent);
+}
+
+[data-continuity-graph-node][data-continuity-graph-selected="true"] .continuity-graph-node__accent {
+  height: 2px;
+}

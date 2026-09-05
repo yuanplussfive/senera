@@ -10,6 +10,7 @@ export interface AgentMemoryEpisodeSqlStatements {
   deleteExactEpisodeStmt: Database.Statement<[string, string]>;
   listEpisodesStmt: Database.Statement<[string], EpisodeRow>;
   listCompletedEpisodesStmt: Database.Statement<[], EpisodeRow>;
+  listCompletedEpisodesInRangeStmt: Database.Statement<[number, number], EpisodeRow>;
 }
 
 export function prepareAgentMemoryEpisodeSqlStatements(db: Database.Database): AgentMemoryEpisodeSqlStatements {
@@ -105,6 +106,11 @@ export function prepareAgentMemoryEpisodeSqlStatements(db: Database.Database): A
       SELECT * FROM memory_episodes
       WHERE status = 'completed'
       ORDER BY completed_at_ms DESC, id ASC
+    `),
+    listCompletedEpisodesInRangeStmt: db.prepare<[number, number], EpisodeRow>(`
+      SELECT * FROM memory_episodes
+      WHERE status = 'completed' AND completed_at_ms >= ? AND completed_at_ms < ?
+      ORDER BY completed_at_ms ASC, id ASC
     `),
   };
 }

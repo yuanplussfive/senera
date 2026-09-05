@@ -336,7 +336,7 @@ test("conversation tool batches use one semantic batch activity without duplicat
 });
 
 test("conversation tool stage mappings classify semantic and mixed tool batches", () => {
-  const toolSearch = createToolBatchRun(["ToolSearchTool"]);
+  const toolSearch = createToolBatchRun(["ToolSearch"]);
   toolSearch.steps.find((step) => step.toolName).status = "running";
   expect(projectToolStagePresentation(toolSearch)).toMatchObject({
     category: "tool-discovery",
@@ -344,6 +344,13 @@ test("conversation tool stage mappings classify semantic and mixed tool batches"
     mode: "single-tool",
     status: "running",
     title: "Search",
+  });
+
+  expect(projectToolStagePresentation(createToolBatchRun(["ToolDescribe"]))).toMatchObject({
+    category: "tool-management",
+    icon: "tools",
+    mode: "single-tool",
+    title: "Inspect",
   });
 
   expect(projectToolStagePresentation(createToolBatchRun(["WorkspaceFind", "WorkspaceGrep"]))).toMatchObject({
@@ -463,6 +470,29 @@ test("browser tools use the shared batch activity with semantic action labels", 
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
   expect(document.querySelector("[data-tool-batch-activity]")).toHaveTextContent("访问外部资源");
+});
+
+test("visual browser tools have concrete activity and stage semantics", () => {
+  expect(
+    projectToolActivityInspection({
+      toolName: "BrowserDownload",
+      status: "completed",
+      arguments: { selector: "a.download" },
+    }),
+  ).toMatchObject({
+    category: "browser-download",
+    label: "Download · a.download",
+  });
+  expect(
+    projectToolActivityInspection({
+      toolName: "BrowserComputer",
+      status: "completed",
+      arguments: { actions: [{ type: "click", x: 10, y: 20 }] },
+    }),
+  ).toMatchObject({
+    category: "browser-computer",
+    label: "Interact · BrowserComputer · click",
+  });
 });
 
 test("conversation activity rows show at most three tool icons and a quiet overflow mark", () => {
@@ -604,7 +634,12 @@ test("conversation tool stages use runtime provenance for shell and MCP wording"
 
 test("every bundled system tool has a concrete activity action", () => {
   const workspaceRoot = resolveWorkspaceRoot();
-  const toolFiles = globSync("System/Extensions/**/*.tool.json", { cwd: workspaceRoot });
+  const toolFiles = globSync("System/Extensions/*/extension.json", { cwd: workspaceRoot }).flatMap((manifestPath) => {
+    const manifest = JSON.parse(readFileSync(path.resolve(workspaceRoot, manifestPath), "utf8"));
+    return (manifest.contributions ?? [])
+      .filter((contribution) => contribution.kind === "hostTool")
+      .map((contribution) => path.join(path.dirname(manifestPath), contribution.contract));
+  });
   expect(toolFiles.length).toBeGreaterThan(0);
   const genericTools = toolFiles
     .map((filePath) => JSON.parse(readFileSync(path.resolve(workspaceRoot, filePath), "utf8")).name)

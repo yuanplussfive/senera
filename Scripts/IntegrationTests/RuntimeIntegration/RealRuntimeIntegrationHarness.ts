@@ -31,7 +31,7 @@ export const RealRuntimeIntegrationValues = {
   FinalAnswer: "真实运行时已完成工具检索。",
   ModelId: "senera-runtime-e2e",
   RequestInput: "请调用工具确认当前是否具备 shell 命令能力。",
-  ToolName: "ToolSearchTool",
+  ToolName: "ToolSearch",
 } as const;
 
 export const RealRuntimeIntegrationAdmin = {
@@ -270,6 +270,7 @@ export class FakeControllerModelServer {
     response.end(
       [
         `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`,
         `data: ${JSON.stringify({
           choices: [],
           usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },

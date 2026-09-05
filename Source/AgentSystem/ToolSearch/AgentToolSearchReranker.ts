@@ -60,6 +60,7 @@ export const AgentToolSearchRerankDefaultWeights = {
   "base.rrf": 0.42,
   "rank.bm25": 0.18,
   "rank.exact": 0.18,
+  "rank.fuzzy": 0.12,
   "rank.semantic": 0.18,
   "rank.memory": 0.14,
   "rank.priority": 0.06,

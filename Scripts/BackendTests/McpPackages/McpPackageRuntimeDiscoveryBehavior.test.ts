@@ -15,7 +15,7 @@ afterEach(() => {
 
 describe("MCP package runtime discovery", () => {
   test(
-    "registers tools declared by standard MCP tools/list",
+    "registers tools declared by standard MCP tools/list without auto-exposing them",
     { timeout: ProcessBackedDiscoveryTestTimeoutMs },
     async () => {
       const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-mcp-runtime-"));
@@ -53,6 +53,7 @@ describe("MCP package runtime discovery", () => {
           artifactFallback: { strategy: "reference" },
           sources: expect.arrayContaining([expect.objectContaining({ source: "result", mode: "auto" })]),
         });
+        expect(runtime.registry.getTool("mcp__zavora_computer_use__doctor")).toBeDefined();
         const input = "查询北京今天的天气";
         const activeSkills = await runtime.skillActivation.activate({ input });
         const recommendedTools = runtime.skillActivation.recommendedToolNames(activeSkills);
@@ -65,7 +66,7 @@ describe("MCP package runtime discovery", () => {
 
         expect(activeSkills.map((skill) => skill.name)).toContain("weather-forecast");
         expect(recommendedTools).toEqual(["mcp__weather__forecast"]);
-        expect(loadedTools).toContain("mcp__weather__forecast");
+        expect(loadedTools).not.toContain("mcp__weather__forecast");
       } finally {
         await runtime.close();
       }

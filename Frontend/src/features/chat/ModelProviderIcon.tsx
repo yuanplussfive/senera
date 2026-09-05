@@ -46,6 +46,66 @@ const DefaultModelProviderIconName =
     ? ModelProviderIconRuleConfig.defaultIcon
     : (ModelProviderIconNames[0] ?? "openai");
 
+const ModelProviderEndpointIconAliases: readonly (readonly [string, string])[] = [
+  ["siliconflow", "siliconcloud"],
+  ["openrouter", "openrouter"],
+  ["fireworksai", "fireworks"],
+  ["cloudflare", "cloudflare"],
+  ["huggingface", "huggingface"],
+  ["modelscope", "modelscope"],
+  ["tencentcloud", "tencentcloud"],
+  ["volcengine", "volcengine"],
+  ["xinference", "xinference"],
+  ["sambanova", "sambanova"],
+  ["search1api", "search1api"],
+  ["siliconcloud", "siliconcloud"],
+  ["togetherai", "together"],
+  ["vertexai", "vertexai"],
+  ["newapi", "newapi"],
+  ["aihubmix", "aihubmix"],
+  ["xai", "xai"],
+  ["grok", "grok"],
+  ["openai", "openai"],
+  ["anthropic", "anthropic"],
+  ["deepseek", "deepseek"],
+  ["azure", "azure"],
+  ["google", "google"],
+  ["mistral", "mistral"],
+  ["qwen", "qwen"],
+  ["llama", "meta"],
+  ["meta", "meta"],
+  ["moonshot", "moonshot"],
+  ["kimi", "kimi"],
+  ["zhipu", "zhipu"],
+  ["glm", "zhipu"],
+  ["minimax", "minimax"],
+  ["doubao", "doubao"],
+  ["baichuan", "baichuan"],
+  ["cohere", "cohere"],
+  ["ollama", "ollama"],
+  ["perplexity", "perplexity"],
+  ["groq", "groq"],
+  ["bedrock", "bedrock"],
+  ["aws", "bedrock"],
+  ["nvidia", "nvidia"],
+  ["lmstudio", "lmstudio"],
+  ["vllm", "vllm"],
+  ["jina", "jina"],
+  ["sensenova", "sensenova"],
+  ["stepfun", "stepfun"],
+  ["spark", "spark"],
+  ["upstage", "upstage"],
+  ["wenxin", "wenxin"],
+  ["ernie", "wenxin"],
+  ["qiniu", "qiniu"],
+  ["ppio", "ppio"],
+  ["sophnet", "sophnet"],
+  ["hunyuan", "hunyuan"],
+  ["internlm", "internlm"],
+  ["ai21", "ai21"],
+  ["jamba", "ai21"],
+];
+
 export type ModelProviderIconName = string;
 
 interface ModelProviderIconProps {
@@ -63,7 +123,7 @@ export function ModelProviderIcon({ icon, className, size = 16 }: ModelProviderI
       src={readModelProviderIconSrc(icon)}
       alt=""
       aria-hidden="true"
-      className={cn("shrink-0", className)}
+      className={cn("block shrink-0 object-contain align-middle", className)}
       decoding="async"
       draggable={false}
       loading="lazy"
@@ -73,14 +133,57 @@ export function ModelProviderIcon({ icon, className, size = 16 }: ModelProviderI
 }
 
 export function readModelProviderIconSrc(icon: string, baseUrl: string = import.meta.env.BASE_URL): string {
+  const customSource = readCustomModelProviderIconSource(icon);
+  if (customSource) return customSource;
+
   const assetName = normalizeModelProviderIconName(icon);
   return `${withTrailingSlash(baseUrl)}icons/model-providers/${encodeURIComponent(assetName)}.svg`;
 }
 
+/**
+ * Provider marks may point at a user-owned image. Keep this deliberately
+ * narrow: the value is ultimately assigned to an <img> src, so only image
+ * URLs, data images, and same-origin paths are accepted as custom sources.
+ */
+export function readCustomModelProviderIconSource(value: string | undefined): string | undefined {
+  const candidate = value?.trim();
+  if (!candidate) return undefined;
+  if ([...candidate].some((character) => isUnsafeCustomIconCharacter(character))) return undefined;
+  if (/^https?:\/\//iu.test(candidate) || /^data:image\//iu.test(candidate) || candidate.startsWith("/")) {
+    return candidate;
+  }
+  return undefined;
+}
+
+function isUnsafeCustomIconCharacter(character: string): boolean {
+  const codePoint = character.codePointAt(0);
+  return (
+    codePoint === undefined ||
+    (codePoint >= 0 && codePoint <= 0x1f) ||
+    codePoint === 0x22 ||
+    codePoint === 0x27 ||
+    codePoint === 0x3c ||
+    codePoint === 0x3e ||
+    codePoint === 0x60
+  );
+}
+
 export function inferModelProviderIcon(value: string, fallbackToDefault = true): ModelProviderIconName | undefined {
-  const normalized = value.toLowerCase();
+  const normalized = value.trim().toLowerCase();
   const match = ModelProviderIconRuleConfig.rules.find((rule) => iconRuleMatches(rule.match, normalized, rule.values));
-  return match?.icon ?? (fallbackToDefault ? ModelProviderIconRuleConfig.defaultIcon : undefined);
+  const aliased = ModelProviderEndpointIconAliases.find(([alias]) => normalized.includes(alias))?.[1];
+  return match?.icon ?? aliased ?? (fallbackToDefault ? ModelProviderIconRuleConfig.defaultIcon : undefined);
+}
+
+export function inferModelProviderEndpointIcon(
+  value: string,
+  fallbackToDefault = false,
+): ModelProviderIconName | undefined {
+  const normalized = value.trim().toLowerCase();
+  return (
+    ModelProviderEndpointIconAliases.find(([alias]) => normalized.includes(alias))?.[1] ??
+    inferModelProviderIcon(value, fallbackToDefault)
+  );
 }
 
 export function readDefaultModelGroupRules(): ModelProviderModelGroupRule[] {

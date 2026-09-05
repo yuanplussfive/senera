@@ -3,7 +3,7 @@ import { AlertCircle } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Button } from "./Button";
-import { Spinner } from "./Spinner";
+import { LoadingSignal } from "./LoadingSignal";
 
 /**
  * 面板级重试按钮：安静的 outline 形态，不带图标不带阴影。
@@ -36,7 +36,7 @@ export function RetryButton({
 export type StateViewStatus = "loading" | "error" | "empty";
 
 /**
- * 面板/列表的三态视图：loading（spinner + 文案）、error（图标 + 文案 + 重试）、
+ * 面板/列表的三态视图：loading（Senera signal + 文案）、error（图标 + 文案 + 重试）、
  * empty（文案，可选图标与 CTA）。容器默认在可用空间内垂直居中；
  * 调用处应保证外层有确定高度（h-full / min-h），以避免加载完成后的高度跳变。
  */
@@ -72,7 +72,7 @@ export function StateView({
     >
       <div className="flex max-w-sm flex-col items-center">
         {isLoading ? (
-          <Spinner size="md" className="text-content-muted" />
+          <LoadingSignal size="sm" />
         ) : isError ? (
           <AlertCircle aria-hidden="true" className="h-4 w-4 text-brick-600" />
         ) : (

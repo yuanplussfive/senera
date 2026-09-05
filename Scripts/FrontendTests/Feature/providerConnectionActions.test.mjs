@@ -41,6 +41,25 @@ test("connection actions do not reset a draft when provider objects are remateri
   expect(renderCount).toBeLessThan(5);
 });
 
+test("provider settings focus the first enabled provider when no selection exists", async () => {
+  const handleRef = { current: null };
+  const state = createMultiState();
+  const disabled = { ...state.providers[0], Id: "zeta", Enabled: false };
+  const enabled = { ...state.providers[1], Id: "alpha", Enabled: true };
+
+  render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      initialSelectedProviderId: null,
+      state: { ...state, providers: [disabled, enabled] },
+    }),
+  );
+
+  await act(async () => undefined);
+  expect(handleRef.current.selectedProviderId).toBe("alpha");
+  expect(handleRef.current.actions.connectionDraft?.Id).toBe("alpha");
+});
+
 test("selected provider changes to the renamed ID only after its snapshot arrives", async () => {
   const handleRef = { current: null };
   const onRenameProviderEndpoint = vi.fn(() => "rename-request");
@@ -445,10 +464,11 @@ function ActionsHarness({
   onRenameProviderEndpoint = () => "rename-request",
   onUpsertProviderEndpoint = () => "upsert-request",
   operations = {},
+  initialSelectedProviderId = "alpha",
   socketStatus = "open",
   state,
 }) {
-  const [selectedProviderId, setSelectedProviderId] = useState("alpha");
+  const [selectedProviderId, setSelectedProviderId] = useState(initialSelectedProviderId);
   const rematerializedState = {
     ...state,
     providers: state.providers.map((provider) => ({ ...provider })),

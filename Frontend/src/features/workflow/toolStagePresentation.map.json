@@ -68,7 +68,9 @@
         "browser-wait",
         "browser-screenshot",
         "browser-tabs",
-        "browser-session"
+        "browser-session",
+        "browser-computer",
+        "browser-download"
       ]
     },
     {
@@ -94,7 +96,7 @@
       "id": "tools",
       "icon": "tools",
       "title": "workflow.stage.activityGroup.tools",
-      "activityCategories": ["system", "skill-manage"]
+      "activityCategories": ["system", "tool-describe", "tool-load", "tool-unload", "skill-manage"]
     }
   ],
   "singleToolLabels": {
@@ -141,10 +143,19 @@
     {
       "id": "tool-discovery",
       "icon": "search",
-      "match": { "exactToolNames": ["ToolSearchTool"] },
+      "match": { "exactToolNames": ["ToolSearch"] },
       "labels": {
         "active": "workflow.stage.toolDiscovery.active",
         "completed": "workflow.stage.toolDiscovery.completed"
+      }
+    },
+    {
+      "id": "tool-management",
+      "icon": "tools",
+      "match": { "exactToolNames": ["ToolDescribe", "ToolLoad", "ToolUnload"] },
+      "labels": {
+        "active": "workflow.stage.tools.active",
+        "completed": "workflow.stage.tools.completed"
       }
     },
     {
@@ -235,7 +246,7 @@
       "icon": "users",
       "match": {
         "stepKinds": ["delegation"],
-        "toolNamePrefixes": ["AgentContact", "AgentInput", "AgentResume", "AgentSpawn", "AgentStop"]
+        "toolNamePrefixes": ["AgentContact", "AgentInput", "AgentList", "AgentResume", "AgentSpawn", "AgentStop"]
       },
       "labels": {
         "active": "workflow.stage.delegation.active",

@@ -31,6 +31,8 @@ export interface AgentCompletedRunResult {
   executedTools: ExecutedToolCallResult[];
   stepTraces: StepTrace[];
   loadedToolNames?: string[];
+  /** One-shot continuity rules projected into this run and awaiting durable-turn acknowledgement. */
+  continuityRuleDeliveryUris?: string[];
 }
 
 export class AgentExecutionProjector {

@@ -21,6 +21,9 @@ import type { AgentScheduleRuntime } from "./AgentScheduleRuntime.js";
 const NonEmptyString = z.string().trim().min(1);
 const RunIdSchema = NonEmptyString.describe("Child-run ID returned by AgentSpawn.");
 const ToolNamesSchema = z.array(NonEmptyString).min(1);
+const ScheduleExpressionSchema = NonEmptyString.describe(
+  'Schedule syntax by type. once: prefer a relative delay such as "+30m", "+2h", or "+1d"; use an ISO 8601 timestamp with an explicit offset only for a fixed calendar time. interval: "30s", "5m", or "1h". cron: a 5/6-field cron expression. Do not use natural-language dates.',
+);
 
 export const AgentSpawnArgumentsSchema = z
   .object({
@@ -45,6 +48,15 @@ export const AgentWaitArgumentsSchema = z
       .max(Number.MAX_SAFE_INTEGER)
       .optional()
       .describe("Optional wait timeout. Timing out never stops a child run."),
+  })
+  .strict();
+
+export const AgentListArgumentsSchema = z
+  .object({
+    includeCompleted: z
+      .boolean()
+      .default(true)
+      .describe("Include terminal runs so a follow-up can report the final result after a restart."),
   })
   .strict();
 
@@ -82,7 +94,13 @@ const ScheduleCreateSchema = z
     description: NonEmptyString.optional(),
     prompt: NonEmptyString,
     type: z.enum(["cron", "once", "interval"]),
-    schedule: NonEmptyString,
+    schedule: ScheduleExpressionSchema,
+    executionMode: z
+      .enum(["at_due_time", "execute_now_deliver_at"])
+      .optional()
+      .describe(
+        "Run at the scheduled time, or execute a one-time task now and deliver its result at the scheduled time.",
+      ),
     enabled: z.boolean().default(true),
     modelProviderId: NonEmptyString.optional(),
     allowedToolNames: ToolNamesSchema.optional(),
@@ -98,7 +116,7 @@ const ScheduleUpdateSchema = z
     description: NonEmptyString.optional(),
     prompt: NonEmptyString.optional(),
     type: z.enum(["cron", "once", "interval"]).optional(),
-    schedule: NonEmptyString.optional(),
+    schedule: ScheduleExpressionSchema.optional(),
     enabled: z.boolean().optional(),
     modelProviderId: NonEmptyString.optional(),
     allowedToolNames: ToolNamesSchema.optional(),
@@ -129,6 +147,7 @@ export interface AgentOrchestrationHostRuntime {
 
 export function createAgentOrchestrationHostHandlers(runtime: AgentOrchestrationHostRuntime): {
   readonly spawn: AgentHostToolHandler;
+  readonly list: AgentHostToolHandler;
   readonly wait: AgentHostToolHandler;
   readonly input: AgentHostToolHandler;
   readonly stop: AgentHostToolHandler;
@@ -143,6 +162,17 @@ export function createAgentOrchestrationHostHandlers(runtime: AgentOrchestration
       const parent = requireRunContext(context.sessionId, context.requestId);
       const record = await runtime.delegation.spawn(input, createDelegationContext(context, parent));
       return toolProcessSuccessResult({ run: projectAgentChildRunView(record, record.id) });
+    },
+    list: async (args, context) => {
+      throwIfAborted(context.signal);
+      const input = AgentListArgumentsSchema.parse(args);
+      const parent = requireRunContext(context.sessionId, context.requestId);
+      const runs = runtime.delegation
+        .list(parent.sessionId)
+        .filter((run) => input.includeCompleted || !isTerminalChildRunStatus(run.status));
+      return toolProcessSuccessResult({
+        runs: runs.map((run) => projectAgentChildRunView(run, run.id)),
+      });
     },
     wait: async (args, context) => {
       throwIfAborted(context.signal);
@@ -228,6 +258,7 @@ export function createAgentOrchestrationHostHandlers(runtime: AgentOrchestration
       const parent = requireRunContext(context.sessionId, context.requestId);
       const scheduleContext = {
         sessionId: parent.sessionId,
+        requestId: parent.requestId,
         modelProviderId: context.modelProviderId,
         authorizedToolNames: context.authorizedToolNames ?? [],
         registry: context.registry,

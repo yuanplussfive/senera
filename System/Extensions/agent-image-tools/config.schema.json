@@ -9,10 +9,34 @@
       "additionalProperties": false
     },
     "input": {
-      "default": { "maxImageBytes": 52428800 },
+      "default": { "maxImageCount": 8, "maxImageBytes": 52428800, "maxTotalImageBytes": 104857600 },
       "type": "object",
       "properties": {
-        "maxImageBytes": { "default": 52428800, "type": "integer", "minimum": 1024, "maximum": 104857600 }
+        "maxImageCount": { "default": 8, "type": "integer", "minimum": 1, "maximum": 32 },
+        "maxImageBytes": { "default": 52428800, "type": "integer", "minimum": 1024, "maximum": 104857600 },
+        "maxTotalImageBytes": { "default": 104857600, "type": "integer", "minimum": 1024, "maximum": 104857600 }
+      },
+      "additionalProperties": false
+    },
+    "remote": {
+      "default": {
+        "maxRedirects": 5,
+        "maxUrlLength": 4096,
+        "requestTimeoutMs": 180000,
+        "maxOperationTimeoutMs": 900000,
+        "allowPrivateNetworks": false,
+        "allowSyntheticProxyAddresses": true,
+        "userAgent": "Senera-ImageAnalyze/1.0"
+      },
+      "type": "object",
+      "properties": {
+        "maxRedirects": { "default": 5, "type": "integer", "minimum": 0, "maximum": 20 },
+        "maxUrlLength": { "default": 4096, "type": "integer", "minimum": 256, "maximum": 16384 },
+        "requestTimeoutMs": { "default": 180000, "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "maxOperationTimeoutMs": { "default": 900000, "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "allowPrivateNetworks": { "default": false, "type": "boolean" },
+        "allowSyntheticProxyAddresses": { "default": true, "type": "boolean" },
+        "userAgent": { "default": "Senera-ImageAnalyze/1.0", "type": "string", "minLength": 1, "maxLength": 512 }
       },
       "additionalProperties": false
     },

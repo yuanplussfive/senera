@@ -6,6 +6,8 @@ export interface AgentMcpToolDeclaration {
   readonly description?: string;
   readonly inputSchema: Readonly<Record<string, unknown>>;
   readonly outputSchema?: Readonly<Record<string, unknown>>;
+  /** Vendor metadata returned by MCP tools/list. Senera reads only its namespaced keys. */
+  readonly _meta?: Readonly<Record<string, unknown>>;
   readonly annotations?: {
     readonly title?: string;
     readonly readOnlyHint?: boolean;

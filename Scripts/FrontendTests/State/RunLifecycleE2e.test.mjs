@@ -3,6 +3,62 @@ import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
 
+test("projects a connector channel from the scoped run event", () => {
+  const state = createTestState();
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.RunStarted,
+      {
+        input: "QQ 消息",
+        attachments: [
+          {
+            resourceUri: "senera://resource/upload-1",
+            name: "截图.png",
+            mime: "image/png",
+            size: 12,
+            status: "uploaded",
+          },
+        ],
+      },
+      { scope: { channel: "qq" }, sequence: 1 },
+    ),
+  );
+
+  expect(state.sessions[TestSessionId].channel).toEqual({ platform: "qq" });
+  expect(state.sessions[TestSessionId].messages).toEqual([
+    expect.objectContaining({
+      id: `${TestRequestId}-user`,
+      role: "user",
+      content: "QQ 消息",
+      attachments: [expect.objectContaining({ name: "截图.png" })],
+    }),
+  ]);
+
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunStarted, { input: "QQ 消息" }, { scope: { channel: "qq" }, sequence: 2 }),
+  );
+  expect(state.sessions[TestSessionId].messages).toHaveLength(1);
+});
+
+test("does not project console or internal run starts as user messages", () => {
+  const state = createTestState();
+
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "主控台消息" }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.RunStarted,
+      { input: "后台唤醒", internal: true, displayInput: "后台任务完成通知" },
+      { requestId: "request_internal", scope: { channel: "qq" }, sequence: 2 },
+    ),
+  );
+
+  expect(state.sessions[TestSessionId].messages).toEqual([]);
+});
+
 test("orphan run failures stay out of the conversation projection", () => {
   const state = createTestState({
     sessions: {

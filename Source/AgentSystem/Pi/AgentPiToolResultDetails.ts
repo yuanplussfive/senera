@@ -4,6 +4,10 @@ import {
   AgentToolFailureSchema,
   AgentToolOutputAvailabilities,
 } from "../ToolRuntime/AgentToolResultOutcome.js";
+import {
+  AgentToolArtifactAvailabilityStatuses,
+  AgentToolArtifactUnavailableReasons,
+} from "../Types/ToolRuntimeTypes.js";
 
 export const AgentPiToolResultStatuses = {
   Success: "success",
@@ -14,6 +18,13 @@ export const AgentPiToolResultStatuses = {
 const AgentPiToolResultContextSchema = z.object({
   toolName: z.string().trim().min(1),
   artifactUri: z.string().trim().min(1).optional(),
+  artifactAvailability: z
+    .object({
+      status: z.literal(AgentToolArtifactAvailabilityStatuses.Unavailable),
+      reason: z.literal(AgentToolArtifactUnavailableReasons.RecordingFailed),
+    })
+    .strict()
+    .optional(),
   callId: z.string().trim().min(1).optional(),
   executionStatus: z.enum(AgentToolExecutionStatuses),
   outputAvailability: z.enum(AgentToolOutputAvailabilities),

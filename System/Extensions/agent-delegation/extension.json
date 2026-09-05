@@ -2,7 +2,7 @@
   "$schema": "https://schemas.senera.ai/extension/v1.json",
   "schemaVersion": 1,
   "id": "agent-delegation",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "displayName": { "zh-CN": "子代理编排", "en-US": "Subagent Orchestration" },
   "description": {
     "zh-CN": "通过简洁生命周期工具启动、协调、停止和恢复受控的 Senera 子会话。",
@@ -15,6 +15,13 @@
       "kind": "hostTool",
       "contract": "tools/AgentSpawn.tool.json",
       "capability": "orchestration.agent.spawn",
+      "childGrant": "delegation",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/AgentList.tool.json",
+      "capability": "orchestration.agent.list",
       "childGrant": "delegation",
       "recommendedForSkills": ["agent-orchestration"]
     },

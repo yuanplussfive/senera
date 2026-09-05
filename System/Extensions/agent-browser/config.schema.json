@@ -45,11 +45,12 @@
       "additionalProperties": false
     },
     "capture": {
-      "default": { "defaultFormat": "png", "maxScreenshotBytes": 25165824 },
+      "default": { "defaultFormat": "png", "maxScreenshotBytes": 25165824, "maxDownloadBytes": 67108864 },
       "type": "object",
       "properties": {
         "defaultFormat": { "default": "png", "type": "string", "enum": ["png", "jpeg"] },
-        "maxScreenshotBytes": { "default": 25165824, "type": "integer", "minimum": 131072, "maximum": 134217728 }
+        "maxScreenshotBytes": { "default": 25165824, "type": "integer", "minimum": 131072, "maximum": 134217728 },
+        "maxDownloadBytes": { "default": 67108864, "type": "integer", "minimum": 131072, "maximum": 536870912 }
       },
       "additionalProperties": false
     }

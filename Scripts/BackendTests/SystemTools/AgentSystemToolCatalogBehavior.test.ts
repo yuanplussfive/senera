@@ -24,6 +24,10 @@ import {
   listDefaultAgentHostCapabilityNames,
 } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import { StandardAgentToolObservationProjection } from "../../../Source/AgentSystem/ToolRuntime/AgentToolObservationProjectionPlan.js";
+import {
+  AgentResidentActionSpeechCapability,
+  AgentResidentFinalSpeechCapability,
+} from "../../../Source/AgentSystem/ResidentSpeech/AgentResidentSpeechTypes.js";
 
 describe("System Tool catalog", () => {
   test("registers code-defined host handlers while contracts remain package-owned", () => {
@@ -65,6 +69,20 @@ describe("System Tool catalog", () => {
       contract: { outputSchema: undefined },
     });
     expect(registry.getTool("WorkspaceInspectTool")).toBeUndefined();
+    expect(registry.getTool("ResidentActionSpeak")).toBeUndefined();
+    expect(registry.getTool("ResidentFinalSpeak")).toBeUndefined();
+    expect(registry.getSidecarTool(AgentResidentActionSpeechCapability)).toMatchObject({
+      name: "ResidentActionSpeak",
+      capability: AgentResidentActionSpeechCapability,
+      owner: { kind: "system", name: "resident-speech" },
+    });
+    expect(registry.getSidecarTool(AgentResidentFinalSpeechCapability)).toMatchObject({
+      name: "ResidentFinalSpeak",
+      capability: AgentResidentFinalSpeechCapability,
+      owner: { kind: "system", name: "resident-speech" },
+    });
+    expect(extensions.some((extension) => extension.id === "resident-speech")).toBe(false);
+    expect(registry.listTools().every((tool) => tool.loading === "Bootstrap")).toBe(true);
     for (const [name, commandAlias, capabilityId] of [
       ["WorkspaceRead", "read", "workspace.file.read"],
       ["WorkspaceGrep", "grep", "workspace.content.search"],
@@ -89,6 +107,10 @@ describe("System Tool catalog", () => {
       handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentSpawn },
       childGrant: "delegation",
     });
+    expect(registry.getTool("AgentList")).toMatchObject({
+      owner: { kind: "system", name: "agent-delegation" },
+      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentList },
+    });
     expect(registry.getTool("AgentWait")).toMatchObject({
       owner: { kind: "system", name: "agent-delegation" },
       handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentWait },
@@ -109,7 +131,7 @@ describe("System Tool catalog", () => {
     expect(registry.getTool("AgentContactSupervisor")).toMatchObject({ childGrant: "internal" });
     expect(registry.getSkill("agent-orchestration")).toMatchObject({
       source: { kind: "system", id: "agent-delegation" },
-      recommendedTools: ["AgentSpawn", "AgentWait", "AgentInput", "AgentStop", "AgentResume"],
+      recommendedTools: ["AgentSpawn", "AgentList", "AgentWait", "AgentInput", "AgentStop", "AgentResume"],
     });
     expect(registry.getTool("AgentSubmitStructuredResult")).toBeUndefined();
     expect(registry.getTool("AgentScheduleManage")).toMatchObject({
@@ -682,6 +704,11 @@ function minimalContract(name: string) {
     },
     resources: [],
     sources: [],
+    search: {
+      Summary: `${name} test tool`,
+      Capabilities: [{ Id: `test.${name.toLowerCase()}` }],
+      UseCases: [`Exercise the ${name} test contract.`],
+    },
     evidenceCapabilities: [],
   };
 }

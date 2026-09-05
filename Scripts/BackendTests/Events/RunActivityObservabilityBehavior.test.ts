@@ -110,6 +110,24 @@ describe("run activity observability", () => {
     expect(AgentEventObservationSpecTable[AgentEventKinds.ConfigSnapshot].projectionPointers).not.toContain(
       "/data/config",
     );
+    expect(AgentEventObservationSpecTable[AgentEventKinds.ContinuitySnapshot].projectionPointers).toEqual(
+      expect.arrayContaining([
+        "/data/residentProfile",
+        "/data/factCatalog",
+        "/data/eventCandidates",
+        "/data/rules",
+        "/data/signals",
+      ]),
+    );
+    expect(AgentEventObservationSpecTable[AgentEventKinds.ContinuitySnapshot].projectionPointers).not.toContain(
+      "/data/goals",
+    );
+    expect(AgentEventObservationSpecTable[AgentEventKinds.AgendaSnapshot].projectionPointers).toEqual([
+      "/data/snapshot",
+    ]);
+    expect(AgentEventObservationSpecTable[AgentEventKinds.TodoListWritten].projectionPointers).toEqual([
+      "/data/snapshot",
+    ]);
   });
 
   test("keeps tool lifecycle timing explicit for diagnostic consumers", () => {

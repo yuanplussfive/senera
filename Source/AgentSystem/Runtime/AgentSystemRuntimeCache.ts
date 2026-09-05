@@ -13,6 +13,15 @@ import type { AgentExtensionValueResolver } from "../Extensions/AgentExtensionVa
 import type { AgentWorkspaceRuntimeServices } from "./AgentWorkspaceRuntime.js";
 import type { AgentSessionApprovalLeaseStore } from "../Safety/AgentSessionApprovalLeaseStore.js";
 import type { AgentOrchestrationHostRuntime } from "../Orchestration/AgentOrchestrationHostTools.js";
+import type { AgentContinuityMemoryService } from "../Continuity/AgentContinuityMemoryService.js";
+import type { AgentExecutionLedgerService } from "../Goals/AgentExecutionLedgerService.js";
+import type { AgentTodoService } from "../Todos/AgentTodoService.js";
+import type { AgentContinuityLifecyclePort } from "../Continuity/AgentContinuityLifecycle.js";
+import type { AgentWorldSnapshotProvider } from "../World/AgentWorldTypes.js";
+import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
+import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
+import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
+import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
@@ -46,6 +55,15 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   mcpInputs?: AgentExtensionValueResolver;
   workspaceRuntime?: AgentWorkspaceRuntimeServices;
   orchestration?: AgentOrchestrationHostRuntime;
+  continuityMemory?: AgentContinuityMemoryService;
+  continuityIdentity?: AgentContinuityIdentityContext;
+  continuityLifecycle?: AgentContinuityLifecyclePort;
+  executionLedger?: AgentExecutionLedgerService;
+  todos?: AgentTodoService;
+  agenda?: AgentAgendaService;
+  worldRuntime?: AgentWorldSnapshotProvider;
+  inferenceBudget?: AgentInferenceBudgetPort;
+  identityTemplateValues?: () => AgentIdentityTemplateValues;
 }
 
 export interface AgentSystemRuntimeLease<TRuntime extends AgentSystemRuntimeCacheRuntime> {
@@ -74,6 +92,15 @@ export interface AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRunt
   mcpInputs?: AgentExtensionValueResolver;
   workspaceRuntime?: AgentWorkspaceRuntimeServices;
   orchestration?: AgentOrchestrationHostRuntime;
+  continuityMemory?: AgentContinuityMemoryService;
+  continuityIdentity?: AgentContinuityIdentityContext;
+  continuityLifecycle?: AgentContinuityLifecyclePort;
+  executionLedger?: AgentExecutionLedgerService;
+  todos?: AgentTodoService;
+  agenda?: AgentAgendaService;
+  worldRuntime?: AgentWorldSnapshotProvider;
+  inferenceBudget?: AgentInferenceBudgetPort;
+  identityTemplateValues?: () => AgentIdentityTemplateValues;
   maxIdleEntries?: number;
   runtimeFactory?: (input: AgentSystemRuntimeCacheRuntimeFactoryInput) => TRuntime;
 }
@@ -159,6 +186,15 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
         mcpInputs: this.options.mcpInputs,
         workspaceRuntime: this.options.workspaceRuntime,
         orchestration: this.options.orchestration,
+        continuityMemory: this.options.continuityMemory,
+        continuityIdentity: this.options.continuityIdentity,
+        continuityLifecycle: this.options.continuityLifecycle,
+        executionLedger: this.options.executionLedger,
+        todos: this.options.todos,
+        agenda: this.options.agenda,
+        worldRuntime: this.options.worldRuntime,
+        inferenceBudget: this.options.inferenceBudget,
+        identityTemplateValues: this.options.identityTemplateValues,
       });
     }
 
@@ -182,6 +218,15 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       mcpInputs: this.options.mcpInputs,
       workspaceRuntime: this.options.workspaceRuntime,
       orchestration: this.options.orchestration,
+      continuityMemory: this.options.continuityMemory,
+      continuityIdentity: this.options.continuityIdentity,
+      continuityLifecycle: this.options.continuityLifecycle,
+      executionLedger: this.options.executionLedger,
+      todos: this.options.todos,
+      agenda: this.options.agenda,
+      worldRuntime: this.options.worldRuntime,
+      inferenceBudget: this.options.inferenceBudget,
+      identityTemplateValues: this.options.identityTemplateValues,
     }) as unknown as TRuntime;
   }
 

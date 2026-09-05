@@ -13,14 +13,19 @@ import type {
   AgentPiSessionRuntimeStatus,
 } from "./AgentPiSessionManagement.js";
 import type { ImageContent, ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export type AgentPiSessionEventListener = (event: AgentSessionEvent) => void | Promise<void>;
 
 export interface AgentPiSessionOptions extends Omit<AgentPiToolProjectionContext, "tokenBudget"> {
   input?: string;
   systemPrompt?: string;
+  turnContext?: string;
+  interaction?: AgentInteractionContext;
   turnState?: AgentPiTurnState;
   activeSkills?: readonly AgentActivatedSkill[];
+  roleplayPresetActive?: boolean;
+  prefaceRewriteEnabled?: boolean;
   rootCommand?: AgentRootCommand;
   diagnostics?: AgentPiDiagnosticSink;
   tokenBudget?: AgentTurnTokenBudget;

@@ -93,7 +93,20 @@ describe("server authentication gate", () => {
   });
 
   test("shows revalidation as an in-progress connection state", () => {
-    render(
+    const { rerender } = render(
+      React.createElement(ServerAuthenticationGate, {
+        state: { status: "loading" },
+        onLogin: vi.fn(),
+        onRetry: vi.fn(),
+      }),
+    );
+
+    const loadingStatus = screen.getByRole("status");
+    expect(loadingStatus.querySelector(".senera-resonance-trace")).toBeTruthy();
+    expect(loadingStatus.querySelector(".senera-refresh-orbit")).toBeNull();
+    expect(screen.queryByText("Senera")).not.toBeInTheDocument();
+
+    rerender(
       React.createElement(ServerAuthenticationGate, {
         state: { status: "revalidating" },
         onLogin: vi.fn(),
@@ -103,6 +116,8 @@ describe("server authentication gate", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent(frontendMessage("auth.reconnecting"));
     expect(screen.getByRole("status")).toHaveTextContent(frontendMessage("auth.reconnectingDescription"));
+    expect(screen.getByRole("status").querySelector(".senera-refresh-orbit")).toBeTruthy();
+    expect(screen.getByRole("status").querySelector(".senera-resonance-trace")).toBeNull();
     expect(screen.queryByRole("button", { name: frontendMessage("auth.retry") })).not.toBeInTheDocument();
   });
 

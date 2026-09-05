@@ -4,16 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
-vi.mock("../../../Frontend/src/shared/code/CodeTextEditor.tsx", () => ({
-  CodeTextEditor: ({ ariaLabel, disabled, onChange, value }) =>
-    React.createElement("textarea", {
-      "aria-label": ariaLabel,
-      disabled,
-      onChange: (event) => onChange(event.currentTarget.value),
-      value,
-    }),
-}));
-
 const { PresetControl } = await import("../../../Frontend/src/features/chat/PresetPanel.tsx");
 
 afterEach(() => {
@@ -21,38 +11,35 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("preset control edits and saves a selected preset with activation", async () => {
+test("preset control saves a structured persona card with activation", async () => {
   const onSave = vi.fn(() => "save-request");
-  const onSetActive = vi.fn(() => "active-request");
   const user = userEvent.setup();
-  renderWithFrontendProviders(
-    React.createElement(
-      PresetControl,
-      createPresetControlProps({
-        onSave,
-        onSetActive,
-      }),
-    ),
-  );
+  renderWithFrontendProviders(React.createElement(PresetControl, createPresetControlProps({ onSave, presets: [] })));
 
   await user.click(screen.getByRole("button", { name: "角色预设" }));
   const nameInput = await screen.findByRole("textbox", { name: "预设名称" });
-  const contentInput = await screen.findByRole("textbox", { name: "角色预设内容" });
   await user.clear(nameInput);
   await user.type(nameInput, "reviewer");
-  await user.clear(contentInput);
-  await user.type(contentInput, "Review changes and report risks.");
+  const personaInput = screen.getByRole("textbox", { name: "核心人设" });
+  const styleInput = screen.getByRole("textbox", { name: "语言风格" });
+  await user.clear(personaInput);
+  await user.clear(styleInput);
+  await user.type(personaInput, "审阅代码时给出具体风险");
+  await user.type(styleInput, "直接、简洁");
   await user.click(screen.getByRole("button", { name: "保存并启用" }));
 
   expect(onSave).toHaveBeenCalledWith({
-    name: "reviewer.md",
-    format: "markdown",
-    content: "Review changes and report risks.",
+    name: "reviewer",
     activate: true,
+    card: expect.objectContaining({
+      schemaVersion: "senera.persona/v2",
+      title: "reviewer",
+      corePersona: "审阅代码时给出具体风险",
+      languageStyle: "直接、简洁",
+      examples: [],
+      lore: [],
+    }),
   });
-
-  await user.click(screen.getByRole("button", { name: "启用" }));
-  expect(onSetActive).toHaveBeenCalledWith("writer.md");
 }, 30_000);
 
 test("preset control requires confirmation before deleting the selected preset", async () => {
@@ -62,12 +49,61 @@ test("preset control requires confirmation before deleting the selected preset",
 
   await user.click(screen.getByRole("button", { name: "角色预设" }));
   await screen.findByRole("textbox", { name: "预设名称" });
-  await user.click(screen.getByRole("button", { name: "删除" }));
-  expect(screen.getByText("删除角色预设")).toBeVisible();
-  const deleteButtons = screen.getAllByRole("button", { name: "删除" });
-  await user.click(deleteButtons[0]);
+  await user.click(screen.getByRole("button", { name: "删除当前预设" }));
+  expect(screen.getByText("删除这个预设？")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "删除预设" }));
 
-  expect(onDelete).toHaveBeenCalledWith("writer.md");
+  expect(onDelete).toHaveBeenCalledWith("writer.json");
+});
+
+test("preset control keeps an existing card's storage identity when its title changes", async () => {
+  const onSave = vi.fn(() => "save-request");
+  const user = userEvent.setup();
+  renderWithFrontendProviders(React.createElement(PresetControl, createPresetControlProps({ onSave })));
+
+  await user.click(screen.getByRole("button", { name: "角色预设" }));
+  const nameInput = await screen.findByRole("textbox", { name: "预设名称" });
+  await user.clear(nameInput);
+  await user.type(nameInput, "Reviewer");
+  await user.click(screen.getByRole("button", { name: "保存" }));
+
+  expect(onSave).toHaveBeenCalledWith({
+    name: "writer.json",
+    activate: false,
+    card: expect.objectContaining({ title: "Reviewer" }),
+  });
+});
+
+test("preset control binds a declarative resident world without editing JSON", async () => {
+  const onSave = vi.fn(() => "save-request");
+  const user = userEvent.setup();
+  renderWithFrontendProviders(
+    React.createElement(
+      PresetControl,
+      createPresetControlProps({
+        onSave,
+        worldPackages: [
+          {
+            id: "night-life",
+            title: "夜间生活",
+            entityCount: 3,
+            relationCount: 0,
+            stateMachineCount: 1,
+            habitCount: 1,
+            autonomyCount: 0,
+          },
+        ],
+      }),
+    ),
+  );
+
+  await user.click(screen.getByRole("button", { name: "角色预设" }));
+  await user.click(await screen.findByRole("checkbox"));
+  await user.click(screen.getByRole("button", { name: "保存" }));
+
+  expect(onSave).toHaveBeenCalledWith(
+    expect.objectContaining({ card: expect.objectContaining({ worldPackageIds: ["night-life"] }) }),
+  );
 });
 
 function createPresetControlProps(overrides = {}) {
@@ -77,16 +113,24 @@ function createPresetControlProps(overrides = {}) {
     rootDir: ".senera/presets",
     presets: [
       {
-        name: "writer.md",
+        name: "writer.json",
         title: "Writer",
-        format: "markdown",
         sizeBytes: 32,
         updatedAt: "2026-07-11T00:00:00.000Z",
         active: false,
-        content: "Write clearly.",
+        card: {
+          schemaVersion: "senera.persona/v2",
+          title: "Writer",
+          corePersona: "清晰写作",
+          languageStyle: "简洁",
+          worldPackageIds: [],
+          examples: [],
+          lore: [],
+        },
         diagnostics: [],
       },
     ],
+    worldPackages: [],
     activePresetName: null,
     operations: {},
     onRefresh: vi.fn(),

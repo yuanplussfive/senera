@@ -8,4 +8,8 @@ test("model provider icon sources stay inside the bundled icon allow-list", () =
   expect(readModelProviderIconSrc('/evil.svg?x=" onerror="alert(1)', "/app/")).toBe(
     "/app/icons/model-providers/openai.svg",
   );
+  expect(readModelProviderIconSrc("https://cdn.example.test/provider.svg", "/app/")).toBe(
+    "https://cdn.example.test/provider.svg",
+  );
+  expect(readModelProviderIconSrc("javascript:alert(1)", "/app/")).toBe("/app/icons/model-providers/openai.svg");
 });

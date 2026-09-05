@@ -1,10 +1,11 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import { forwardRef, useRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
+import { forwardRef, useRef, type CSSProperties, type ReactNode } from "react";
 import type { Transition, VariantLabels, Variants } from "framer-motion";
 import { cn } from "../../lib/util";
 import { dialogPresenceExitMs, MotionDialogContent, MotionDialogOverlay, type DialogMotionPreset } from "../motion";
+import { Button, type ButtonProps } from "./Button";
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
@@ -253,34 +254,28 @@ export interface DialogActionsProps {
   className?: string;
 }
 
-export interface DialogActionButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface DialogActionButtonProps extends Omit<ButtonProps, "variant" | "size"> {
   close?: boolean;
   variant?: DialogActionVariant;
 }
 
-const dialogActionVariantClasses: Record<DialogActionVariant, string> = {
-  secondary:
-    "border border-line bg-surface-panel text-content-secondary shadow-[0_1px_2px_rgb(33_30_24/0.04)] hover:border-line-strong hover:bg-surface-hover hover:text-content-primary",
-  primary:
-    "bg-accent-solid font-medium text-accent-on-solid shadow-accent hover:bg-accent-solid-hover active:bg-accent-solid-pressed",
-  danger: "bg-brick-600 font-medium text-paper-50 shadow-[0_1px_2px_rgb(146_64_14/0.24)] hover:bg-brick-700",
-};
-
 export function DialogActions({ children, className }: DialogActionsProps): JSX.Element {
-  return <div className={cn("flex justify-end gap-2 border-t border-ink-200/70 pt-5", className)}>{children}</div>;
+  return (
+    <div className={cn("flex justify-end gap-2.5 pt-4", className)} data-dialog-actions>
+      {children}
+    </div>
+  );
 }
 
 export const DialogActionButton = forwardRef<HTMLButtonElement, DialogActionButtonProps>(
   ({ close = false, variant = "secondary", className, type = "button", ...props }, ref) => {
     const button = (
-      <button
+      <Button
         ref={ref}
         type={type}
-        className={cn(
-          "h-10 cursor-pointer rounded-lg px-4 text-[13px] transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:cursor-not-allowed disabled:opacity-45",
-          dialogActionVariantClasses[variant],
-          className,
-        )}
+        size="sm"
+        variant={variant === "primary" ? "default" : variant === "danger" ? "destructive" : "outline"}
+        className={cn("min-w-[96px]", className)}
         {...props}
       />
     );

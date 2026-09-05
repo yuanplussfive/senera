@@ -84,7 +84,6 @@ describe("Artifact evidence source projection", () => {
         xml: "Artifact loaded.",
       },
       terminal: { kind: "FinalAnswer", content: "Artifact loaded." },
-      conversationEntries: [],
       executedTools: [
         {
           callId: "call-1",

@@ -1,5 +1,10 @@
 import type { ApprovalDecision } from "./approvalEventTypes";
-import type { PresetFormat, ProviderModelEndpointInput, UploadAttachmentData, UserProfileData } from "./eventTypes";
+import type {
+  PersonaPresetCard,
+  ProviderModelEndpointInput,
+  UploadAttachmentData,
+  UserProfileData,
+} from "./eventTypes";
 import type { ProviderModelConfigRequest } from "./providerModelCommandTypes";
 import type { InteractionInputAction, InteractionInputContent } from "./interactionInputEventTypes";
 import type { ExecutionApprovalMode } from "./executionApprovalMode";
@@ -18,7 +23,7 @@ export type WsRequest =
       queueMode?: "steer" | "follow_up";
     }
   | { type: "session.close"; sessionId: string }
-  | { type: "session.cancel"; sessionId: string }
+  | { type: "session.cancel"; sessionId: string; requestId?: string }
   | { type: "session.truncate_from"; sessionId: string; requestId: string }
   | {
       type: "session.regenerate";
@@ -37,12 +42,28 @@ export type WsRequest =
   | { type: "session.list" }
   | { type: "session.history"; sessionId: string; refresh?: boolean }
   | { type: "session.rename"; sessionId: string; title: string }
+  | { type: "agenda.get" }
+  | {
+      type: "agenda.goal.command";
+      commandId: string;
+      goalId: string;
+      expectedRevision: number;
+      command:
+        | { operation: "commit" }
+        | { operation: "pause"; reason?: string }
+        | { operation: "resume"; nextReviewAt?: string }
+        | { operation: "cancel"; reason?: string }
+        | { operation: "reparent"; parentGoalId: string | null };
+    }
+  | { type: "world.get" }
+  | { type: "world.resident.wake"; requestId: string; reason: string; priority: number; payload?: unknown }
   | { type: "model.list" }
   | { type: "provider.models.fetch"; providerId: string; force?: boolean; endpoint?: ProviderModelEndpointInput }
   | { type: "config.get" }
   | { type: "systemTool.list" }
   | { type: "mcpServer.list" }
   | { type: "mcpServer.restart"; serverId: string }
+  | { type: "channel.connect"; kind: "telegram" | "qq" | "discord" }
   | {
       type: "mcpInput.set";
       serverId: string;
@@ -68,7 +89,7 @@ export type WsRequest =
     }
   | ProviderModelConfigRequest
   | { type: "preset.list" }
-  | { type: "preset.save"; requestId?: string; name: string; format: PresetFormat; content: string; activate?: boolean }
+  | { type: "preset.save"; requestId?: string; name: string; card: PersonaPresetCard; activate?: boolean }
   | { type: "preset.delete"; requestId?: string; name: string }
   | { type: "preset.set_active"; requestId?: string; name?: string | null }
   | { type: "profile.get" }

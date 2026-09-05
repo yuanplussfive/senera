@@ -7,11 +7,14 @@ import { AgentConfigDatabaseContract } from "../../../Source/AgentSystem/Config/
 import {
   AgentSqliteContractMetadataTable,
   AgentSqliteMigrationLedgerTable,
+  AgentSqliteTimeMetadataTable,
+  snapshotAgentSqliteSchema,
 } from "../../../Source/AgentSystem/Database/AgentSqliteDatabaseSchema.js";
 import { AgentSqliteDatabaseKernel } from "../../../Source/AgentSystem/Database/AgentSqliteDatabaseKernel.js";
 import type { AgentSqliteStoreContract } from "../../../Source/AgentSystem/Database/AgentSqliteStoreContract.js";
 import { AgentMemoryDatabaseContract } from "../../../Source/AgentSystem/Memory/AgentMemorySqlSchema.js";
 import { AgentSessionDatabaseContract } from "../../../Source/AgentSystem/SessionPersistence/AgentSessionSqlSchema.js";
+import { DefaultAgentTimeZone } from "../../../Source/AgentSystem/Time/AgentTime.js";
 import { AgentToolSearchLearningStoreContract } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemorySqlSchema.js";
 
 const temporaryDirectories: string[] = [];
@@ -23,6 +26,40 @@ afterEach(() => {
 });
 
 describe("SQLite database kernel", () => {
+  test("records the Shanghai business-time policy without changing the store contract schema", () => {
+    const databasePath = temporaryDatabasePath("time-policy.sqlite");
+    const initial = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
+
+    expect(initial.timeZone).toBe(DefaultAgentTimeZone);
+    expect(initial.connection.prepare(`SELECT time_zone FROM ${AgentSqliteTimeMetadataTable}`).all()).toEqual([
+      { time_zone: DefaultAgentTimeZone },
+    ]);
+    expect(snapshotAgentSqliteSchema(initial.connection)).toBe(AgentConfigDatabaseContract.migrations.at(-1)?.snapshot);
+    initial.close();
+
+    const reopened = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
+    expect(reopened.timeZone).toBe(DefaultAgentTimeZone);
+    expect(reopened.connection.prepare(`SELECT COUNT(*) AS count FROM ${AgentSqliteTimeMetadataTable}`).get()).toEqual({
+      count: 1,
+    });
+    reopened.close();
+  });
+
+  test("adds the time policy to a pre-existing authoritative database without rebuilding it", () => {
+    const databasePath = temporaryDatabasePath("legacy-time-policy.sqlite");
+    const legacy = new Database(databasePath);
+    legacy.exec(AgentConfigDatabaseContract.migrations[0].sql);
+    legacy.close();
+
+    const kernel = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
+    expect(kernel.recovery).toBeUndefined();
+    expect(kernel.timeZone).toBe(DefaultAgentTimeZone);
+    expect(kernel.connection.prepare(`SELECT time_zone FROM ${AgentSqliteTimeMetadataTable}`).all()).toEqual([
+      { time_zone: DefaultAgentTimeZone },
+    ]);
+    kernel.close();
+  });
+
   test("adopts the declared configuration baseline and migrates it without losing revisions", () => {
     const databasePath = temporaryDatabasePath("config.sqlite");
     const legacy = new Database(databasePath);
@@ -62,6 +99,39 @@ describe("SQLite database kernel", () => {
     });
   });
 
+  test("removes retired roleplay tables from an existing session database without losing sessions", () => {
+    const databasePath = temporaryDatabasePath("sessions-roleplay-retirement.sqlite");
+    const legacyContract = {
+      ...AgentSessionDatabaseContract,
+      migrations: AgentSessionDatabaseContract.migrations.slice(0, 11),
+    };
+    const legacy = new AgentSqliteDatabaseKernel({ databasePath, contract: legacyContract });
+    legacy.connection
+      .prepare(
+        "INSERT INTO sessions (id, title, status, created_at, updated_at, active_request_id, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "session-retained",
+        "Retained session",
+        "idle",
+        "2026-08-22T00:00:00.000Z",
+        "2026-08-22T00:00:00.000Z",
+        null,
+        "{}",
+      );
+    expect(userTable(legacy.connection, "roleplay_state_events")).toBe(true);
+    legacy.close();
+
+    withDatabaseKernel(databasePath, AgentSessionDatabaseContract, (current) => {
+      expect(current.connection.prepare("SELECT id, title FROM sessions").all()).toEqual([
+        { id: "session-retained", title: "Retained session" },
+      ]);
+      expect(userTable(current.connection, "roleplay_state_events")).toBe(false);
+      expect(userTable(current.connection, "roleplay_state_snapshots")).toBe(false);
+      expect(recordedVersions(current.connection)).toEqual(declaredVersions(AgentSessionDatabaseContract));
+    });
+  });
+
   test("adopts the declared memory baseline and applies subsequent migrations", () => {
     const databasePath = temporaryDatabasePath("memory.sqlite");
     const legacy = new Database(databasePath);
@@ -69,9 +139,120 @@ describe("SQLite database kernel", () => {
     legacy.close();
 
     withDatabaseKernel(databasePath, AgentMemoryDatabaseContract, (kernel) => {
-      expect(userTable(kernel.connection, "memory_learning_jobs")).toBe(true);
-      expect(columnNames(kernel.connection, "memory_observations")).toEqual(expect.arrayContaining(["write_sequence"]));
+      expect(userTable(kernel.connection, "continuity_learning_jobs")).toBe(true);
+      expect(userTable(kernel.connection, "continuity_observations")).toBe(true);
+      expect(userTable(kernel.connection, "continuity_assertions")).toBe(false);
+      expect(userTable(kernel.connection, "memory_items")).toBe(false);
+      expect(columnNames(kernel.connection, "continuity_rules")).toContain("source_refs_json");
       expect(recordedVersions(kernel.connection)).toEqual(declaredVersions(AgentMemoryDatabaseContract));
+    });
+  });
+
+  test("retires the execution goal ledger while preserving execution history", () => {
+    const databasePath = temporaryDatabasePath("memory-goal-ledger-retirement.sqlite");
+    const legacyContract: AgentSqliteStoreContract = {
+      ...AgentMemoryDatabaseContract,
+      migrations: AgentMemoryDatabaseContract.migrations.slice(0, 36),
+    };
+    const legacy = new AgentSqliteDatabaseKernel({ databasePath, contract: legacyContract });
+    legacy.connection
+      .prepare(
+        `INSERT INTO agent_goals (
+          id, uri, scope_kind, scope_id, objective, status, reason, created_at, updated_at,
+          completed_at, session_id, request_id, origin
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "legacy-goal",
+        "senera://goal/legacy-goal",
+        "session",
+        "session-1",
+        "Legacy execution objective",
+        "completed",
+        null,
+        "2026-08-22T00:00:00.000Z",
+        "2026-08-22T00:01:00.000Z",
+        "2026-08-22T00:01:00.000Z",
+        "session-1",
+        "request-1",
+        "automatic",
+      );
+    legacy.connection
+      .prepare(
+        `INSERT INTO agent_execution_runs (
+          id, uri, session_id, request_id, goal_id, objective, status, reason,
+          created_at, updated_at, completed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "execution-1",
+        "senera://execution/execution-1",
+        "session-1",
+        "request-1",
+        "legacy-goal",
+        "Legacy execution objective",
+        "completed",
+        "All planned steps completed.",
+        "2026-08-22T00:00:00.000Z",
+        "2026-08-22T00:01:00.000Z",
+        "2026-08-22T00:01:00.000Z",
+      );
+    legacy.connection
+      .prepare(
+        `INSERT INTO agent_execution_steps (
+          id, execution_id, node_id, plan_id, plan_revision, step_index, title, detail, status,
+          dependency_ids_json, call_id, failure, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "execution-step-1",
+        "execution-1",
+        "node-1",
+        "plan-1",
+        1,
+        0,
+        "Inspect",
+        "Inspect the workspace",
+        "completed",
+        "[]",
+        "call-1",
+        null,
+        "2026-08-22T00:00:00.000Z",
+        "2026-08-22T00:01:00.000Z",
+      );
+    legacy.connection
+      .prepare(
+        `INSERT INTO agent_execution_events (
+          id, execution_id, event_kind, step_id, session_id, request_id, payload_json, occurred_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "execution-event-1",
+        "execution-1",
+        "execution.completed",
+        "execution-step-1",
+        "session-1",
+        "request-1",
+        '{"execution":"preserved"}',
+        "2026-08-22T00:01:00.000Z",
+      );
+    legacy.close();
+
+    withDatabaseKernel(databasePath, AgentMemoryDatabaseContract, (current) => {
+      expect(userTable(current.connection, "agent_goals")).toBe(false);
+      expect(userTable(current.connection, "agent_goal_evidence")).toBe(false);
+      expect(columnNames(current.connection, "agent_execution_runs")).not.toContain("goal_id");
+      expect(current.connection.prepare("SELECT id, objective FROM agent_execution_runs").all()).toEqual([
+        { id: "execution-1", objective: "Legacy execution objective" },
+      ]);
+      expect(current.connection.prepare("SELECT id, execution_id FROM agent_execution_steps").all()).toEqual([
+        { id: "execution-step-1", execution_id: "execution-1" },
+      ]);
+      expect(current.connection.prepare("SELECT id, event_kind FROM agent_execution_events").all()).toEqual([
+        { id: "execution-event-1", event_kind: "execution.completed" },
+      ]);
+      expect(current.connection.pragma("foreign_key_check")).toEqual([]);
+      expect(recordedVersions(current.connection)).toEqual(declaredVersions(AgentMemoryDatabaseContract));
     });
   });
 
@@ -102,7 +283,7 @@ describe("SQLite database kernel", () => {
 
   test.each([
     { contract: AgentConfigDatabaseContract, currentTable: "config_revisions" },
-    { contract: AgentMemoryDatabaseContract, currentTable: "memory_items" },
+    { contract: AgentMemoryDatabaseContract, currentTable: "continuity_observations" },
     { contract: AgentSessionDatabaseContract, currentTable: "sessions" },
   ] as const)(
     "backs up and reinitializes an unrecognized $contract.id authoritative database",

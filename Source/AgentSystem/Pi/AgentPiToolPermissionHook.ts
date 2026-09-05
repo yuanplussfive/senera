@@ -32,6 +32,7 @@ export class AgentPiToolPermissionHook {
   async authorize(
     context: AgentPiToolProjectionContext,
     event: AgentPiToolCallHookEvent,
+    options: { readonly requireExposure?: boolean } = {},
   ): Promise<AgentPiToolCallHookResult | undefined> {
     const toolAccessGrant = context.toolAccessGrant;
     if (!toolAccessGrant) return { block: true, reason: agentErrorMessage("toolAccess.missingGrant") };
@@ -41,7 +42,7 @@ export class AgentPiToolPermissionHook {
         reason: agentErrorMessage("tool.notRegisteredOrAllowed", { toolName: event.toolName }),
       };
     }
-    if (context.toolExposure && !context.toolExposure.exposes(event.toolName)) {
+    if (options.requireExposure !== false && context.toolExposure && !context.toolExposure.exposes(event.toolName)) {
       return {
         block: true,
         reason: agentErrorMessage("tool.notRegisteredOrAllowed", { toolName: event.toolName }),

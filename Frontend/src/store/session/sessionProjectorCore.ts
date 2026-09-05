@@ -1,5 +1,6 @@
 import { DEFAULT_SESSION_TITLE } from "./defaults";
 import { touchRun } from "./sessionRunProjection";
+import type { EventSourceChannel } from "../../api/eventTypes";
 import type { RunRecord, SessionRecord, StoreState, TimelineStep } from "./types";
 
 export const nowIso = (): string => new Date().toISOString();
@@ -7,6 +8,21 @@ export const nowIso = (): string => new Date().toISOString();
 export function currentRun(session: SessionRecord, requestId?: string): RunRecord | undefined {
   if (!requestId) return session.runs[session.runs.length - 1];
   return session.runs.find((run) => run.requestId === requestId);
+}
+
+/** Resolve the run that owns the session's active request, with a defensive
+ * status-based fallback for older snapshots that predate activeRequestId. */
+export function readActiveRun(session: SessionRecord | undefined): RunRecord | undefined {
+  if (!session) return undefined;
+  if (session.activeRequestId) {
+    const active = session.runs.find((run) => run.requestId === session.activeRequestId);
+    if (active && isLiveRunStatus(active.status)) return active;
+  }
+  return [...session.runs].reverse().find((run) => isLiveRunStatus(run.status));
+}
+
+function isLiveRunStatus(status: RunRecord["status"]): boolean {
+  return status === "running" || status === "cancelling";
 }
 
 export function ensureSession(state: StoreState, sessionId: string): SessionRecord {
@@ -27,6 +43,16 @@ export function ensureSession(state: StoreState, sessionId: string): SessionReco
     }
   }
   return state.sessions[sessionId];
+}
+
+/** Keep connector ownership visible as soon as the first scoped event arrives. */
+export function projectSessionChannel(session: SessionRecord, channel?: EventSourceChannel): void {
+  if (!channel || channel === "console") return;
+  if (session.channel?.platform === channel) {
+    session.channel = { ...session.channel, platform: channel };
+    return;
+  }
+  session.channel = { platform: channel };
 }
 
 export function upsertStep(run: RunRecord, step: TimelineStep): void {

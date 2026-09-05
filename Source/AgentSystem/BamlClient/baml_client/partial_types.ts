@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ActionPlanInput,  ActionRunState,  AskUserDecision,  AskUserDecisionKind,  DirectDecision,  DirectDecisionKind,  EvidenceSlot,  ExecuteDecision,  ExecuteDecisionKind,  ExecutionDeltaOp,  MemoryCandidate,  MemoryConsolidationAction,  MemoryConsolidationResult,  MemoryLearningResult,  MemoryWriteDecision,  MemoryWriteResolutionResult,  PiConversationSummary,  PiToolArgumentsDraft,  PlanFragment,  PlannedToolCall,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerRoleplayPreset,  PlannerRoleplayPresetDocument,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolLearningRecord,  ToolLearningResult,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel } from "./types.js"
+import type {  ActionPlanInput,  ActionRunState,  AskUserDecision,  AskUserDecisionKind,  ContinuityAgendaDraft,  ContinuityCapture,  ContinuityCaptureItem,  ContinuityRuleExtractionResult,  ContinuityRuleItem,  ConversationBoundary,  DirectDecision,  DirectDecisionKind,  EvidenceSlot,  ExecuteDecision,  ExecuteDecisionKind,  ExecutionDeltaOp,  GoalMicroLoopCandidate,  GoalMicroLoopDecision,  GoalMicroLoopDecisionKind,  PiConversationSummary,  PiToolArgumentsDraft,  PlanFragment,  PlannedToolCall,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ResidentIdleDecision,  ResidentIdleDecisionKind,  ResidentIdleGoalProposal,  ResidentSpeechProjection,  TemporalMemoryDigest,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolLearningRecord,  ToolLearningResult,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -38,7 +38,6 @@ export interface StreamState<T> {
 export namespace partial_types {
     export interface ActionPlanInput {
       currentUserTurn?: PlannerCurrentUserTurn | null
-      roleplayPreset?: PlannerRoleplayPreset | null
       runState?: ActionRunState | null
       timeline: PlannerTimelineTurn[]
       evidenceMemory: PlannerEvidenceMemoryItem[]
@@ -60,6 +59,49 @@ export namespace partial_types {
       kind?: types.AskUserDecisionKind | null
       question?: string | null
     }
+    export interface ContinuityAgendaDraft {
+      kind?: string | null
+      change?: string | null
+      actor?: string | null
+      summary?: string | null
+      timeText?: string | null
+      relatesTo?: string | null
+    }
+    export interface ContinuityCapture {
+      items: ContinuityCaptureItem[]
+      agenda: ContinuityAgendaDraft[]
+      needsRulePass?: boolean | null
+    }
+    export interface ContinuityCaptureItem {
+      kind?: string | null
+      text?: string | null
+      key?: string | null
+      value?: string | number | boolean | null
+      from?: string | null
+      relation?: string | null
+      to?: string | null
+    }
+    export interface ContinuityRuleExtractionResult {
+      items: ContinuityRuleItem[]
+    }
+    export interface ContinuityRuleItem {
+      kind?: string | null
+      title?: string | null
+      target?: string | null
+      replace?: boolean | null
+      value?: string | number | boolean | null
+      when?: Record<string, string | number | boolean> | null
+      at?: string | null
+      match?: string | null
+      threshold?: number | null
+      effect?: string | null
+      until?: string | null
+    }
+    export interface ConversationBoundary {
+      relation?: string | null
+      confidence?: number | null
+      focus?: string | null
+    }
     export interface DirectDecision {
       kind?: types.DirectDecisionKind | null
       response?: string | null
@@ -72,53 +114,28 @@ export namespace partial_types {
       kind?: types.ExecuteDecisionKind | null
       fragment?: PlanFragment | null
     }
-    export interface MemoryCandidate {
-      type?: string | null
-      subject?: string | null
-      claim?: string | null
-      howToApply?: string | null
-      tags: string[]
-      triggers: string[]
+    export interface GoalMicroLoopCandidate {
+      goalId?: string | null
+      summary?: string | null
+      status?: string | null
+      intentMode?: string | null
+      priority?: number | null
+      progress?: number | null
+      successCriteria: string[]
+      trigger?: string | null
+      triggerKey?: string | null
       sourceRefs: string[]
+      dueAt?: string | null
+      nextReviewAt?: string | null
+    }
+    export interface GoalMicroLoopDecision {
+      goalId?: string | null
+      triggerKey?: string | null
+      kind?: types.GoalMicroLoopDecisionKind | null
       reason?: string | null
-      confidence?: number | null
-    }
-    export interface MemoryConsolidationAction {
-      operation?: string | null
-      type?: string | null
-      subject?: string | null
-      claim?: string | null
-      howToApply?: string | null
-      tags: string[]
-      triggers: string[]
-      sourceRefs: string[]
-      candidateUris: string[]
-      targetMemoryUri?: string | null
-      reason?: string | null
-      confidence?: number | null
-    }
-    export interface MemoryConsolidationResult {
-      actions: MemoryConsolidationAction[]
-    }
-    export interface MemoryLearningResult {
-      candidates: MemoryCandidate[]
-    }
-    export interface MemoryWriteDecision {
-      operation?: string | null
-      type?: string | null
-      subject?: string | null
-      claim?: string | null
-      howToApply?: string | null
-      tags: string[]
-      triggers: string[]
-      sourceRefs: string[]
-      candidateUris: string[]
-      targetMemoryUri?: string | null
-      reason?: string | null
-      confidence?: number | null
-    }
-    export interface MemoryWriteResolutionResult {
-      decision?: MemoryWriteDecision | null
+      nextReviewAt?: string | null
+      progress?: number | null
+      blockedReason?: string | null
     }
     export interface PiConversationSummary {
       summary?: string | null
@@ -191,18 +208,6 @@ export namespace partial_types {
       loadedTools: string[]
       outcome?: string | null
     }
-    export interface PlannerRoleplayPreset {
-      enabled?: boolean | null
-      activePresetName?: string | null
-      documents: PlannerRoleplayPresetDocument[]
-    }
-    export interface PlannerRoleplayPresetDocument {
-      name?: string | null
-      format?: string | null
-      title?: string | null
-      updatedAt?: string | null
-      content?: string | null
-    }
     export interface PlannerTimelineTurn {
       index?: number | null
       role?: string | null
@@ -238,6 +243,26 @@ export namespace partial_types {
       argsHash?: string | null
       count?: number | null
       lastStep?: number | null
+    }
+    export interface ResidentIdleDecision {
+      kind?: types.ResidentIdleDecisionKind | null
+      reason?: string | null
+      goal?: ResidentIdleGoalProposal | null
+      message?: string | null
+    }
+    export interface ResidentIdleGoalProposal {
+      summary?: string | null
+      detail?: string | null
+      priority?: number | null
+      successCriteria?: string[] | null
+    }
+    export interface ResidentSpeechProjection {
+      utterance?: string | null
+    }
+    export interface TemporalMemoryDigest {
+      summary?: string | null
+      topics: string[]
+      openLoops: string[]
     }
     export interface ToolCapabilityFacets {
       Actions?: string[] | null
@@ -310,6 +335,8 @@ export namespace partial_types {
       matchedConcerns: string[]
       safeAlternative?: string | null
     }
+export type ContinuityScalar = string | number | boolean | null
+
 export type ControllerDecision = DirectDecision | AskUserDecision | ExecuteDecision | null
 
 export interface ToolCallArgumentValue {

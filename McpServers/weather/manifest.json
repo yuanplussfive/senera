@@ -1,9 +1,12 @@
 {
   "manifest_version": "0.3",
   "name": "weather",
-  "display_name": "Weather",
+  "display_name": { "zh-CN": "天气", "en-US": "Weather" },
   "version": "1.0.0",
-  "description": "Current weather and forecast data from QWeather.",
+  "description": {
+    "zh-CN": "通过和风天气获取当前天气和预报。",
+    "en-US": "Current weather and forecast data from QWeather."
+  },
   "author": {
     "name": "Senera"
   },

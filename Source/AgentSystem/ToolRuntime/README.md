@@ -37,20 +37,22 @@ claim 由资源域、规范化身份和访问模式组成。资源域定义两�
 
 `Runtime.Scheduling` 缺省为 `Parallel`，普通调用只受 `ToolExecution.MaxConcurrentCallsPerRun` 的每次运行容量约束；`Runtime.MaxConcurrency` 可以再声明跨运行的工具级上限。System Tool 包必须显式写出 `Parallel`、`ResourceClaims` 或 `SelfManaged`，生成器和加载器共同校验声明。只有自身已经拥有等价并发闸门的宿主编排 Tool 才声明 `SelfManaged`；执行桥会跳过通用调度，由该服务对实际工作发放 permit。`SelfManaged` 不是“无需并发控制”，也不会传递给 child 内调用的工具。
 
+MCP 工具未声明运行时元数据时直接使用普通的有界并行调度；需要资源互斥或更低的工具级上限时，可通过 `tools/list` 的命名空间元数据 `ai.senera/runtime` 声明 `{"scheduling":"parallel","maxConcurrency":3}` 或 `{"scheduling":"resource-claims"}`。外部 MCP 不得通过该元数据绕过 `SelfManaged` 宿主编排合同。
+
 `WorkspaceRead`、`WorkspaceGrep`、`WorkspaceFind`、`WorkspaceList` 直接复用 Pi 的公开文件工具实现，并通过 Senera `ExecutionEnv` 完成路径规范化、工作区授权和取消；它们固定为本地、无网络、只读和 `Parallel`，不会为了普通文件检查创建 OS sandbox。`ShellCommandTool` 仍负责测试、构建和任意命令，并显式选择有界 `Parallel`。调度器不读取脚本文本猜测命令是否“看起来只读”；需要资源互斥的宿主工具必须使用结构化参数和声明式 claim。
 
-| 资源关系                  | 调度结果             |
-| ------------------------- | -------------------- |
-| 同一或父子资源，读 + 读   | 并发                 |
-| 同一或父子资源，读 + 写   | 串行                 |
-| 同一或父子资源，写 + 写   | 串行                 |
-| 不重叠资源                | 并发                 |
-| `Parallel` 且无工具上限   | 受每次运行容量控制   |
-| 工具达到 `MaxConcurrency` | 等待工具级容量       |
-| 同 MCP server 只读调用    | 并发                 |
-| 同 MCP server 涉及写入    | 串行                 |
-| 不同 MCP server           | 并发                 |
-| 自管理编排 Tool           | 由其领域并发闸门决定 |
+| 资源关系                  | 调度结果                       |
+| ------------------------- | ------------------------------ |
+| 同一或父子资源，读 + 读   | 并发                           |
+| 同一或父子资源，读 + 写   | 串行                           |
+| 同一或父子资源，写 + 写   | 串行                           |
+| 不重叠资源                | 并发                           |
+| `Parallel` 且无工具上限   | 受每次运行容量控制             |
+| 工具达到 `MaxConcurrency` | 等待工具级容量                 |
+| MCP 未声明策略            | 普通并行（受每次运行容量控制） |
+| MCP 显式 ResourceClaims   | 按声明的资源冲突串行/并发      |
+| 不同 MCP server           | 并发                           |
+| 自管理编排 Tool           | 由其领域并发闸门决定           |
 
 等待队列允许互不冲突的调用前进，但后来的读取不能绕过更早的冲突写入，避免写入饥饿。取消等待必须立即移除 waiter；执行结束、失败或取消都必须在 `finally` 中释放租约。
 

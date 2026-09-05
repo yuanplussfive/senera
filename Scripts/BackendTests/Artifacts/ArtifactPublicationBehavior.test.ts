@@ -103,23 +103,35 @@ describe("artifact publication", () => {
     });
   });
 
-  test("rejects retry restoration when published content no longer matches its manifest", async () => {
+  test("keeps the result and marks Artifact unavailable when published content no longer matches its manifest", async () => {
     const { recorder } = createRecorder();
     const input = recordInput("call-content-integrity");
     const artifact = requireArtifact((await recorder.record(input)).at(0)?.artifact);
     await fs.writeFile(artifact.files.summary, "tampered summary", "utf8");
 
-    await expect(recorder.record(input)).rejects.toMatchObject({ code: "ArtifactIntegrityMismatch" });
+    await expect(recorder.record(input)).resolves.toEqual([
+      expect.objectContaining({
+        result: { value: "same" },
+        outcome: AgentToolSuccessOutcome,
+        artifactAvailability: { status: "unavailable", reason: "recording_failed" },
+      }),
+    ]);
   });
 
-  test("rejects retry restoration when the published identity was changed", async () => {
+  test("keeps the result and marks Artifact unavailable when the published identity was changed", async () => {
     const { recorder } = createRecorder();
     const input = recordInput("call-identity-integrity");
     const artifact = requireArtifact((await recorder.record(input)).at(0)?.artifact);
     const manifest = JSON.parse(await fs.readFile(artifact.files.manifest, "utf8")) as Record<string, unknown>;
     await fs.writeFile(artifact.files.manifest, `${JSON.stringify({ ...manifest, toolName: "OtherTool" })}\n`, "utf8");
 
-    await expect(recorder.record(input)).rejects.toMatchObject({ code: "ArtifactPublicationConflict" });
+    await expect(recorder.record(input)).resolves.toEqual([
+      expect.objectContaining({
+        result: { value: "same" },
+        outcome: AgentToolSuccessOutcome,
+        artifactAvailability: { status: "unavailable", reason: "recording_failed" },
+      }),
+    ]);
   });
 });
 

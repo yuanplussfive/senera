@@ -2,14 +2,17 @@ import type { z } from "zod";
 import { AgentHostCapabilityNames } from "../AgentDefaultHostCapabilities.js";
 import { AskUserArgumentsSchema } from "../Conversation/AgentAskUserRuntime.js";
 import { ArtifactMemoryReadArgumentsSchema } from "../Memory/AgentArtifactMemoryTypes.js";
-import { MemoryRecallArgumentsSchema } from "../Memory/AgentMemoryRecallTypes.js";
-import { MemoryWriteArgumentsSchema } from "../Memory/AgentMemoryWriteRuntime.js";
+import {
+  ContinuityRecallArgumentsSchema,
+  ContinuityWriteArgumentsSchema,
+} from "../Continuity/AgentContinuityToolRuntime.js";
 import {
   AgentStopArgumentsSchema,
   AgentContactSupervisorArgumentsSchema,
   AgentInputArgumentsSchema,
   AgentResumeArgumentsSchema,
   AgentSpawnArgumentsSchema,
+  AgentListArgumentsSchema,
   AgentWaitArgumentsSchema,
   AgentScheduleManageArgumentsSchema,
 } from "../Orchestration/AgentOrchestrationHostTools.js";
@@ -36,11 +39,11 @@ export const AgentBundledHostToolInputContracts = Object.freeze([
   },
   {
     capability: AgentHostCapabilityNames.MemoryRecall,
-    input: MemoryRecallArgumentsSchema,
+    input: ContinuityRecallArgumentsSchema,
   },
   {
     capability: AgentHostCapabilityNames.MemoryWrite,
-    input: MemoryWriteArgumentsSchema,
+    input: ContinuityWriteArgumentsSchema,
   },
   {
     capability: AgentHostCapabilityNames.AskUser,
@@ -49,6 +52,10 @@ export const AgentBundledHostToolInputContracts = Object.freeze([
   {
     capability: AgentHostCapabilityNames.AgentSpawn,
     input: AgentSpawnArgumentsSchema,
+  },
+  {
+    capability: AgentHostCapabilityNames.AgentList,
+    input: AgentListArgumentsSchema,
   },
   {
     capability: AgentHostCapabilityNames.AgentWait,

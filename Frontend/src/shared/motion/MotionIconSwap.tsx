@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { ReactNode } from "react";
 import { cn } from "../../lib/util";
 import { useMotionLevel } from "./MotionProvider";
-import { motionTimings } from "./presets";
+import { motionSprings } from "./presets";
 
 export function MotionIconSwap({
   stateKey,
@@ -15,7 +15,7 @@ export function MotionIconSwap({
 }): JSX.Element {
   const { reduceMotion, disableMotion } = useMotionLevel();
   const hidden = reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 };
-  const transition = disableMotion ? { duration: 0 } : motionTimings.fast;
+  const transition = disableMotion ? { duration: 0 } : motionSprings.signal;
 
   return (
     <span className={cn("inline-grid shrink-0", className)}>

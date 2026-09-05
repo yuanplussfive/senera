@@ -17,8 +17,10 @@ export function createAgentMcpSamplingHandler(
     const content = params.messages.flatMap((message) =>
       Array.isArray(message.content) ? message.content : [message.content],
     );
-    const image = content.find((item) => item.type === "image");
-    if (!image || image.type !== "image") throw new Error("MCP vision sampling requires image content.");
+    const images = content.filter(
+      (item): item is Extract<(typeof content)[number], { type: "image" }> => item.type === "image",
+    );
+    if (images.length === 0) throw new Error("MCP vision sampling requires image content.");
     const prompt = content
       .filter((item): item is Extract<(typeof content)[number], { type: "text" }> => item.type === "text")
       .map((item) => item.text)
@@ -27,8 +29,7 @@ export function createAgentMcpSamplingHandler(
       provider,
       systemPrompt: params.systemPrompt ?? "Analyze only the supplied image evidence.",
       prompt,
-      mime: image.mimeType,
-      base64: image.data,
+      images: images.map((image) => ({ mime: image.mimeType, base64: image.data })),
       signal,
     });
     return {

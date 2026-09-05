@@ -34,6 +34,7 @@ export interface AgentPiToolPlanSnapshotNode {
   readonly nodeId: string;
   readonly planIndex: number;
   readonly toolName: string;
+  readonly purpose: string;
   readonly dependencyNodeIds: readonly string[];
   readonly status: AgentPiToolPlanNodeStatus;
   readonly callId?: string;
@@ -67,6 +68,8 @@ export class AgentPiToolPlanCoordinator {
   private readonly nodeIdsByCallId = new Map<string, string>();
   private nextRevision = 1;
 
+  constructor(private readonly options: { readonly onChanged?: (state: AgentPiToolPlanState) => void } = {}) {}
+
   accept(preface: string, calls: readonly AgentPiPlannedToolCall[]): string {
     const planId = createOpaqueId("toolplan");
     const nodes = calls.map<AgentPiToolPlanNode>((call, planIndex) => ({
@@ -91,6 +94,7 @@ export class AgentPiToolPlanCoordinator {
     this.nextRevision += 1;
     this.plans.set(planId, plan);
     for (const node of resolvedNodes) this.nodes.set(node.nodeId, node);
+    this.options.onChanged?.(this.state());
     return planId;
   }
 
@@ -112,6 +116,7 @@ export class AgentPiToolPlanCoordinator {
       }
     }
     this.propagateBlockedDependencies();
+    this.options.onChanged?.(this.state());
   }
 
   ready(parallelToolCalls = true): AgentPiReadyToolPlanNode[] {
@@ -144,11 +149,13 @@ export class AgentPiToolPlanCoordinator {
     this.nodeIdsByCallId.set(callId, nodeId);
     const plan = this.plans.get(node.planId);
     if (plan) plan.prefaceDispatched = true;
+    this.options.onChanged?.(this.state());
   }
 
   reject(nodeId: string, reason: string): void {
     this.failNode(this.requireNode(nodeId), reason);
     this.propagateBlockedDependencies();
+    this.options.onChanged?.(this.state());
   }
 
   hasUnreconciledCalls(): boolean {
@@ -162,6 +169,7 @@ export class AgentPiToolPlanCoordinator {
       nodeId: node.nodeId,
       planIndex: node.planIndex,
       toolName: node.call.toolName,
+      purpose: node.call.purpose,
       dependencyNodeIds: [...node.dependencyNodeIds],
       status: node.status,
       callId: node.callId,

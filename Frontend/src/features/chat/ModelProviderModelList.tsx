@@ -11,11 +11,12 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  RefreshOrbit,
   ScrollArea,
   Spinner,
   Tooltip,
 } from "../../shared/ui";
-import { inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
+import { inferModelProviderEndpointIcon, inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
 import { defaultModelCapabilities, modelConfigId, providerEnabled, readModelCapabilities } from "./modelConfigData";
 import type {
   ModelProviderDraft,
@@ -171,7 +172,7 @@ export function ProviderModelList({
                   className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[11.5px] font-medium text-ink-650 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-45"
                   onClick={() => onFetch(true)}
                 >
-                  {loading ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  {loading ? <RefreshOrbit size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
                   {frontendMessage("config.model.fetchList")}
                 </button>
               ) : null}
@@ -235,7 +236,7 @@ export function ProviderModelList({
                     onClick={() => onFetch(true)}
                     aria-label={frontendMessage("config.model.fetchList")}
                   >
-                    {loading ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    {loading ? <RefreshOrbit size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
                   </button>
                 </Tooltip>
               ) : null}
@@ -389,11 +390,20 @@ function ProviderModelRow({
   const isDefault = configured?.Id === defaultModelId;
   const capabilities = configured
     ? readModelCapabilities(configured, modelTemplate)
-    : defaultModelCapabilities(modelTemplate);
+    : defaultModelCapabilities(modelTemplate, model.id, providerId);
 
   return (
     <div className="group/model grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 transition hover:bg-paper-100/80 [content-visibility:auto] [contain-intrinsic-size:52px]">
-      <ModelProviderIcon icon={configured?.Icon ?? inferModelProviderIcon(model.id)} size={22} className="rounded" />
+      <ModelProviderIcon
+        icon={
+          configured?.Icon ??
+          inferModelProviderIcon(model.id, false) ??
+          inferModelProviderIcon(model.ownedBy ?? "", false) ??
+          inferModelProviderEndpointIcon(providerId, false)
+        }
+        size={22}
+        className="rounded"
+      />
       <span className="min-w-0">
         <Tooltip content={model.id} side="top">
           <span className="block truncate font-mono text-[12px] text-ink-850">{model.id}</span>
@@ -480,7 +490,14 @@ function ProviderModelRow({
 function ConfiguredModelBadge({ isDefault }: { isDefault: boolean }): JSX.Element | null {
   if (isDefault) {
     return (
-      <span className="text-[10.5px] font-medium text-accent-content">{frontendMessage("config.model.default")}</span>
+      <Tooltip content={frontendMessage("config.model.default")} side="top">
+        <span
+          aria-label={frontendMessage("config.model.default")}
+          className="shrink-0 text-[10.5px] font-medium text-accent-content"
+        >
+          {frontendMessage("config.model.default")}
+        </span>
+      </Tooltip>
     );
   }
   return null;

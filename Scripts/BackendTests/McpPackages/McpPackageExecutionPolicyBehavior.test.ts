@@ -125,6 +125,77 @@ describe("MCP package execution policy", () => {
     expect(workspaceTool?.childGrant).toBe(AgentToolChildGrantModes.Inherit);
     expect(bundledTool?.childGrant).toBe(AgentToolChildGrantModes.Inherit);
   });
+
+  test("defaults MCP tools to parallel and accepts an explicit resource-claims policy", () => {
+    const execution = {
+      targets: [ToolExecutionTargets.Local],
+      preferred: ToolExecutionTargets.Local,
+      preferredBackend: "local" as const,
+    };
+    const package_ = packageWith({ targets: ["local"], preferred: "local" });
+    const parallel = projectAgentMcpPackageTools(
+      package_,
+      stdioServer,
+      [
+        {
+          name: "generate",
+          inputSchema: { type: "object", properties: {} },
+          _meta: { "ai.senera/runtime": { scheduling: "parallel", maxConcurrency: 3 } },
+        },
+      ],
+      execution,
+      createAgentMcpPackageEndpoint(package_, stdioServer),
+    ).at(0);
+    const defaulted = projectAgentMcpPackageTools(
+      package_,
+      stdioServer,
+      [{ name: "write", inputSchema: { type: "object", properties: {} } }],
+      execution,
+      createAgentMcpPackageEndpoint(package_, stdioServer),
+    ).at(0);
+    const claimed = projectAgentMcpPackageTools(
+      package_,
+      stdioServer,
+      [
+        {
+          name: "exclusive",
+          inputSchema: { type: "object", properties: {} },
+          _meta: { "ai.senera/runtime": { scheduling: "resource-claims" } },
+        },
+      ],
+      execution,
+      createAgentMcpPackageEndpoint(package_, stdioServer),
+    ).at(0);
+
+    expect(parallel?.runtime).toMatchObject({ Scheduling: "Parallel", MaxConcurrency: 3 });
+    expect(defaulted?.runtime).toMatchObject({ Scheduling: "Parallel" });
+    expect(claimed?.runtime).toMatchObject({ Scheduling: "ResourceClaims" });
+  });
+
+  test("rejects an unsupported MCP scheduling policy", () => {
+    const execution = {
+      targets: [ToolExecutionTargets.Local],
+      preferred: ToolExecutionTargets.Local,
+      preferredBackend: "local" as const,
+    };
+    const package_ = packageWith({ targets: ["local"], preferred: "local" });
+
+    expect(() =>
+      projectAgentMcpPackageTools(
+        package_,
+        stdioServer,
+        [
+          {
+            name: "unsafe",
+            inputSchema: { type: "object", properties: {} },
+            _meta: { "ai.senera/runtime": { scheduling: "self-managed" } },
+          },
+        ],
+        execution,
+        createAgentMcpPackageEndpoint(package_, stdioServer),
+      ),
+    ).toThrow("must be parallel or resource-claims");
+  });
 });
 
 function packageWith(execution: AgentMcpPackage["execution"]): AgentMcpPackage {

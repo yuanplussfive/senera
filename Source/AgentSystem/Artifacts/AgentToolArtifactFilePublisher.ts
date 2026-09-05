@@ -211,6 +211,7 @@ function buildArtifactManifest(
     files: input.artifact.files,
     assets: input.artifact.assets?.map((asset) => ({
       id: asset.id,
+      resourceUri: asset.resourceUri,
       fileName: asset.fileName,
       mediaType: asset.mediaType,
       relativePath: asset.relativePath,

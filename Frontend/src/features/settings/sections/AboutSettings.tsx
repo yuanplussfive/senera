@@ -3,9 +3,8 @@ import { Check, Copy, Download, ExternalLink, RefreshCw, RotateCw } from "lucide
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { cn } from "../../../lib/util";
 import { MotionIconSwap } from "../../../shared/motion";
-import { Button, IconButton, LogoMark, Spinner, useClipboardCopy } from "../../../shared/ui";
+import { Button, IconButton, LogoMark, useClipboardCopy } from "../../../shared/ui";
 import type { SettingsEnvironment } from "../SettingsWorkbenchContracts";
-import { SettingsPanel } from "../SettingsPanel";
 
 export function AboutSettings({ environment }: { environment: SettingsEnvironment }): JSX.Element {
   const update = environment.runtimeUpdate;
@@ -14,25 +13,36 @@ export function AboutSettings({ environment }: { environment: SettingsEnvironmen
     void update.check();
   }, [update]);
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-4 border-b border-ink-200/60 pb-5 max-sm:flex-col max-sm:items-start">
-        <div className="flex min-w-0 items-center gap-4">
-          <LogoMark size={44} />
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline gap-x-2.5">
-              <span className="text-[19px] font-semibold tracking-[-0.02em] text-ink-950">Senera</span>
-              <span className="font-mono text-[12px] font-medium text-accent-content">v{environment.appVersion}</span>
+    <div className="space-y-7">
+      <section className="border-b border-line-subtle pb-6" data-about-brand>
+        <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-5">
+          <div className="flex min-w-0 items-start gap-3.5">
+            <LogoMark size={40} />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                <h2 className="text-[20px] font-semibold leading-6 tracking-[-0.025em] text-content-strong">Senera</h2>
+                <span className="font-mono text-[11px] font-medium tabular-nums text-accent-content">
+                  v{environment.appVersion}
+                </span>
+              </div>
+              <p className="mt-1.5 max-w-[52ch] text-[12px] leading-5 text-content-secondary">
+                {frontendMessage("settings.about.tagline")}
+              </p>
             </div>
-            <p className="mt-1 text-[12.5px] leading-5 text-ink-500">{frontendMessage("settings.about.tagline")}</p>
           </div>
+          {update ? <RuntimeUpdateControl update={update} /> : null}
         </div>
-        <div className="min-w-0 flex-1 max-sm:w-full">{update ? <RuntimeUpdateControl update={update} /> : null}</div>
-      </div>
-      <SettingsPanel
-        title={frontendMessage("settings.about.environment")}
-        description={frontendMessage("settings.about.environmentDescription")}
-      >
-        <dl className="grid gap-x-8 sm:grid-cols-2">
+      </section>
+      <section data-about-environment>
+        <div className="mb-4 min-w-0">
+          <h3 className="text-[14px] font-semibold leading-5 tracking-[-0.01em] text-content-strong">
+            {frontendMessage("settings.about.environment")}
+          </h3>
+          <p className="mt-1 max-w-[68ch] text-[12px] leading-5 text-content-secondary">
+            {frontendMessage("settings.about.environmentDescription")}
+          </p>
+        </div>
+        <dl className="grid border-y border-line-subtle sm:grid-cols-4">
           <AboutValue label={frontendMessage("settings.about.appVersion")} value={environment.appVersion} />
           <AboutValue label={frontendMessage("settings.about.frontendVersion")} value={environment.frontendVersion} />
           <AboutValue
@@ -41,13 +51,13 @@ export function AboutSettings({ environment }: { environment: SettingsEnvironmen
           />
           <AboutValue label={frontendMessage("settings.about.buildMode")} value={environment.mode} />
         </dl>
-      </SettingsPanel>
+      </section>
       {import.meta.env.DEV ? (
-        <details className="pb-1">
-          <summary className="cursor-pointer text-[12.5px] font-medium text-ink-700">
+        <details className="border-t border-line-subtle pt-4 pb-1">
+          <summary className="cursor-pointer text-[12.5px] font-medium text-content-primary">
             {frontendMessage("settings.about.devDiagnostics")}
           </summary>
-          <div className="mt-3 divide-y divide-ink-200/60 border-y border-ink-200/60">
+          <div className="mt-3 divide-y divide-line-subtle border-y border-line-subtle">
             <CommandRow command="npm run dev.frontend" label={frontendMessage("settings.about.command.frontend")} />
             <CommandRow command="npm run desktop.live" label={frontendMessage("settings.about.command.desktopLive")} />
             <CommandRow
@@ -80,11 +90,11 @@ function RuntimeUpdateControl({ update }: { update: NonNullable<SettingsEnvironm
       ? "text-moss-600"
       : snapshot.state === "available" || snapshot.state === "downloaded"
         ? "text-accent-content"
-        : "text-ink-500";
+        : "text-content-secondary";
   return (
     <div className="flex shrink-0 items-center gap-3.5 max-sm:w-full max-sm:justify-between">
       <div className="min-w-0 text-right max-sm:text-left">
-        <div className="text-[11px] leading-4 text-ink-450">{frontendMessage("settings.update.title")}</div>
+        <div className="text-[11px] leading-4 text-content-muted">{frontendMessage("settings.update.title")}</div>
         <div
           className={cn(
             "mt-0.5 flex items-center justify-end gap-1.5 text-[12px] font-medium max-sm:justify-start",
@@ -92,7 +102,6 @@ function RuntimeUpdateControl({ update }: { update: NonNullable<SettingsEnvironm
           )}
           aria-live="polite"
         >
-          {busy ? <Spinner size="xs" /> : null}
           <span>
             {status}
             {snapshot.percent !== undefined ? ` · ${Math.round(snapshot.percent)}%` : ""}
@@ -102,7 +111,7 @@ function RuntimeUpdateControl({ update }: { update: NonNullable<SettingsEnvironm
       <Button
         size="sm"
         variant="outline"
-        disabled={busy}
+        loading={busy}
         onClick={() => void (snapshot.action === "none" ? update.check() : update.apply())}
       >
         {snapshot.action === "download" ? (
@@ -163,11 +172,9 @@ function isUpdateErrorMessageKey(
 
 function AboutValue({ label, value }: { label: string; value: string }): JSX.Element {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,auto)] items-baseline gap-3 border-b border-ink-200/60 py-2.5">
-      <dt className="truncate text-[11px] text-ink-500">{label}</dt>
-      <dd className="max-w-full truncate text-right font-mono text-[12px] font-medium tabular-nums text-ink-850">
-        {value}
-      </dd>
+    <div className="min-w-0 border-b border-line-subtle py-3 sm:border-b-0 sm:border-r sm:px-4 sm:first:pl-0 sm:last:border-r-0 sm:last:pr-0">
+      <dt className="truncate text-[11px] text-content-muted">{label}</dt>
+      <dd className="mt-1 truncate font-mono text-[12px] font-medium tabular-nums text-content-primary">{value}</dd>
     </div>
   );
 }
@@ -177,8 +184,8 @@ function CommandRow({ label, command }: { label: string; command: string }): JSX
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2.5">
       <div className="min-w-0">
-        <div className="text-[12.5px] font-medium text-ink-850">{label}</div>
-        <code className="mt-0.5 block truncate font-mono text-[11.5px] text-ink-500">{command}</code>
+        <div className="text-[12.5px] font-medium text-content-primary">{label}</div>
+        <code className="mt-0.5 block truncate font-mono text-[11.5px] text-content-secondary">{command}</code>
       </div>
       <IconButton
         label={frontendMessage("settings.action.copyCommand")}

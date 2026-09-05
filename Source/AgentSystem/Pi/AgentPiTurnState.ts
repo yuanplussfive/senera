@@ -13,6 +13,7 @@ import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprova
 import type { AgentRunActivityReporter } from "../Events/AgentRunActivityReporter.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
+import type { AgentResidentSpeechUtterance } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import {
   AgentPiToolCallPreflightCoordinator,
   type AgentPiToolCallPreflight,
@@ -44,6 +45,8 @@ export class AgentPiTurnState {
   private readonly executedToolResultsByCallId = new Map<string, ExecutedToolCallResult>();
   private readonly executorLifecycleStatusByCallId = new Map<string, "completed" | "failed">();
   private readonly resourceAccessGrantsByCallId = new Map<string, AgentResourceAccessGrant>();
+  private readonly residentSpeech = new Array<AgentResidentSpeechUtterance>();
+  private registeredToolCalls = false;
   private wrapUpReason?: "child_deadline";
 
   constructor(readonly context: AgentPiTurnStateOptions) {}
@@ -70,10 +73,25 @@ export class AgentPiTurnState {
     this.toolPreflights.register(batchId, calls);
     try {
       this.context.tokenBudget.reserveToolBatch({ callIds, fixedPayload });
+      this.registeredToolCalls = true;
     } catch (error) {
       this.toolPreflights.unregister(batchId);
       throw error;
     }
+  }
+
+  hasRegisteredToolCalls(): boolean {
+    return this.registeredToolCalls;
+  }
+
+  recordResidentSpeech(utterance: AgentResidentSpeechUtterance): void {
+    const content = utterance.content.trim();
+    if (!content) throw new Error("Resident speech history cannot record an empty utterance.");
+    this.residentSpeech.push({ ...utterance, content });
+  }
+
+  residentSpeechHistory(): readonly AgentResidentSpeechUtterance[] {
+    return this.residentSpeech.map((utterance) => ({ ...utterance }));
   }
 
   preflightToolCall(

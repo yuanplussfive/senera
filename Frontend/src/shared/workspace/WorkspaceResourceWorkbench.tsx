@@ -9,9 +9,10 @@ import {
 } from "../../api/workspaceResourceClient";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn, formatFileSize } from "../../lib/util";
+import { motionDurations } from "../../shared/motion";
 import { CodeTextEditor } from "../code/CodeTextEditor";
 import { ImageCanvasViewer } from "../media/ImageCanvasViewer";
-import { Dialog, DialogContent, Tooltip } from "../ui";
+import { Dialog, DialogContent, Spinner, Tooltip } from "../ui";
 import { formatWorkspaceResourceLocation, type WorkspaceResourceLocator } from "./WorkspaceResourceLocator";
 import { resolveWorkspaceEditorLanguage } from "./WorkspaceResourceEditorLanguage";
 import type { WorkspaceResourceController } from "./WorkspaceResourceProvider";
@@ -107,6 +108,12 @@ export function WorkspaceResourceWorkbench({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, save]);
 
+  useEffect(() => {
+    if (saveState !== "saved") return;
+    const timer = window.setTimeout(() => setSaveState("idle"), motionDurations.saveStatusMs);
+    return () => window.clearTimeout(timer);
+  }, [saveState]);
+
   return (
     <Dialog
       open={open}
@@ -182,7 +189,10 @@ function ResourceHeader({
   const status = readSaveStatus(dirty, saveState, resource?.editable);
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-surface-panel px-3">
+    <header
+      className="resource-header relative flex h-12 shrink-0 items-center gap-3 border-b border-line bg-surface-panel px-3"
+      data-save-phase={saveState}
+    >
       <ResourceIcon className="h-4 w-4 shrink-0 text-content-muted" />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline gap-2">
@@ -331,7 +341,7 @@ function WorkspaceImageStage({
 function ResourceLoading(): JSX.Element {
   return (
     <div className="grid h-full place-items-center" role="status">
-      <RefreshCw className="h-5 w-5 animate-spin text-content-muted" />
+      <Spinner size="md" className="text-content-muted" />
     </div>
   );
 }

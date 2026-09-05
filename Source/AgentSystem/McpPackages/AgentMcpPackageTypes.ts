@@ -3,6 +3,7 @@ import type { AgentMcpExecution } from "./AgentMcpPackageSchema.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import type { AgentExtensionValueExpression } from "../Extensions/AgentExtensionValueExpression.js";
 import type { AgentMcpInputDefinition } from "./AgentMcpInputDefinition.js";
+import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
 
 export const AgentMcpPackageSourceKinds = {
   Bundled: "bundled",
@@ -22,6 +23,8 @@ export interface AgentMcpPackage {
   readonly configurationPath: string;
   readonly revision: string;
   readonly name: string;
+  readonly displayName?: AgentExtensionLocalizedText;
+  readonly description?: AgentExtensionLocalizedText;
   readonly source: AgentMcpPackageSourceKind;
   readonly descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
   readonly execution?: AgentMcpExecution;

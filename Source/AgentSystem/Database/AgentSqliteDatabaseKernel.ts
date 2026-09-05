@@ -14,6 +14,8 @@ import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { nodeErrorCode } from "../Core/AgentFs.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
+import { currentAgentTimeIso, DefaultAgentTimeZone, resolveAgentTimeZone } from "../Time/AgentTime.js";
+import { AgentSqliteTimeMetadataTable } from "./AgentSqliteDatabaseSchema.js";
 
 export const AgentSqliteJournalModes = {
   Wal: "WAL",
@@ -44,6 +46,8 @@ export interface AgentSqliteDatabaseOptions {
   readonly contract: AgentSqliteStoreContract;
   readonly profile?: AgentSqliteDatabaseProfile;
   readonly upgradeSession?: AgentUpgradeSession;
+  /** Used only when the database has no persisted business-time policy yet. */
+  readonly timeZone?: string;
 }
 
 export interface AgentSqliteDatabaseHealth {
@@ -74,6 +78,7 @@ export class AgentSqliteDatabaseKernel {
   readonly databasePath: string;
   readonly connection: Database.Database;
   readonly recovery?: AgentSqliteDatabaseRecovery;
+  readonly timeZone: string;
   private readonly checkpointOnClose: boolean;
   private closed = false;
 
@@ -85,6 +90,12 @@ export class AgentSqliteDatabaseKernel {
     const opened = openDatabase(this.databasePath, profile, options.contract, options.upgradeSession);
     this.connection = opened.connection;
     this.recovery = opened.recovery;
+    try {
+      this.timeZone = ensureDatabaseTimeMetadata(this.connection, options.timeZone ?? DefaultAgentTimeZone);
+    } catch (error) {
+      this.connection.close();
+      throw error;
+    }
   }
 
   inspectHealth(): AgentSqliteDatabaseHealth {
@@ -451,4 +462,36 @@ function configureConnection(database: Database.Database, profile: AgentSqliteDa
   database.pragma(`journal_mode = ${profile.journalMode}`);
   database.pragma(`synchronous = ${profile.synchronous}`);
   database.pragma("foreign_keys = ON");
+}
+
+interface DatabaseTimeMetadataRow {
+  readonly singleton: number;
+  readonly time_zone: string;
+}
+
+function ensureDatabaseTimeMetadata(database: Database.Database, defaultTimeZone: string): string {
+  const configuredTimeZone = resolveAgentTimeZone(defaultTimeZone);
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS ${AgentSqliteTimeMetadataTable} (
+      singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+      time_zone TEXT NOT NULL,
+      initialized_at TEXT NOT NULL
+    ) STRICT;
+  `);
+
+  const rows = database
+    .prepare<[], DatabaseTimeMetadataRow>(
+      `SELECT singleton, time_zone FROM ${AgentSqliteTimeMetadataTable} ORDER BY singleton`,
+    )
+    .all();
+  if (rows.length === 0) {
+    database
+      .prepare(`INSERT INTO ${AgentSqliteTimeMetadataTable} (singleton, time_zone, initialized_at) VALUES (1, ?, ?)`)
+      .run(configuredTimeZone, currentAgentTimeIso());
+    return configuredTimeZone;
+  }
+  if (rows.length !== 1 || rows[0]?.singleton !== 1) {
+    throw new Error(`SQLite database time metadata must contain exactly one singleton row.`);
+  }
+  return resolveAgentTimeZone(rows[0].time_zone);
 }

@@ -39,6 +39,34 @@ export type {
 export type { RequestInvalidData, RunCancellationProgressData } from "./runControlEventTypes";
 
 export type {
+  ContinuityRulesSnapshotData,
+  ContinuitySelectionCountData,
+  ContinuitySnapshotData,
+  PromptHarnessComposedData,
+  ContinuityRecallQueryData,
+  ContinuityRecallSettledData,
+  ContinuityRecallLocalMatchData,
+  ContinuityRecallLocalPlanData,
+  ContinuityRecallLocalRelationData,
+  AgendaActorData,
+  AgendaClockData,
+  AgendaRecordData,
+  AgendaSnapshotData,
+  AgendaSnapshotEventData,
+  AgendaTimelineEntryData,
+  AgendaWorldData,
+  WorldSnapshotData,
+  WorldSnapshotEventData,
+  ExecutionData,
+  ExecutionEventData,
+  ExecutionSnapshotData,
+  ExecutionStepData,
+  TodoCountsData,
+  TodoData,
+  TodoSnapshotData,
+} from "./goalContinuityEventTypes";
+
+export type {
   AssistantMessageCreatedData,
   ToolCallCompletedData,
   ToolCallFailedData,
@@ -104,7 +132,10 @@ export interface EventEnvelope<TKind extends string = EventKind, TData = unknown
   data: TData;
 }
 
+export type EventSourceChannel = "console" | "qq" | "telegram" | "discord";
+
 export interface EventScope {
+  channel?: EventSourceChannel;
   parentSessionId?: string;
   parentRequestId?: string;
   workflowName?: string;
@@ -112,6 +143,14 @@ export interface EventScope {
   childRunId?: string;
   agentName?: string;
   role?: "childAgent" | "merge";
+}
+
+export interface SessionChannelMetadata {
+  platform: Exclude<EventSourceChannel, "console">;
+  chatType?: "direct" | "group" | "channel" | "thread";
+  chatId?: string;
+  userId?: string;
+  messageId?: string;
 }
 
 export interface SystemToolSettingsItem {
@@ -124,7 +163,7 @@ export interface SystemToolSettingsItem {
 
 export interface SystemExtensionToolSettingsItem {
   name: string;
-  description: string;
+  description: FrontendLocalizedText;
   loading: string;
   capability: string;
 }
@@ -156,6 +195,18 @@ export interface SystemToolSnapshotData {
   tools: SystemToolSettingsItem[];
 }
 
+export type ChannelStatusItem = {
+  kind: "telegram" | "qq" | "discord";
+  enabled: boolean;
+  connected: boolean;
+  mode?: string;
+  error?: string;
+};
+
+export interface ChannelStatusSnapshotData {
+  statuses: ChannelStatusItem[];
+}
+
 // --- 各 kind 的 data 形状（只列前端会读的字段） ---
 
 export interface SessionSnapshotData {
@@ -167,6 +218,7 @@ export interface SessionSnapshotData {
   messageCount: number;
   turnCount: number;
   activeRequestId?: string;
+  channel?: SessionChannelMetadata;
 }
 
 export interface SessionListItem {
@@ -178,6 +230,7 @@ export interface SessionListItem {
   entryCount: number;
   messageCount: number;
   activeRequestId?: string;
+  channel?: SessionChannelMetadata;
 }
 
 export interface SessionListSnapshotData {
@@ -416,21 +469,52 @@ export type {
   SandboxStatusSnapshotData,
 } from "./sandboxRuntimeEventTypes";
 
-export type PresetFormat = "json" | "markdown" | "text";
-
 export interface PresetDiagnostic {
   severity: "error" | "warning";
   message: string;
 }
 
+export interface PersonaPresetExample {
+  id: string;
+  situation: string;
+  reply: string;
+}
+
+export interface PersonaPresetLoreEntry {
+  id: string;
+  title: string;
+  keywords: string[];
+  content: string;
+  enabled: boolean;
+}
+
+export interface PersonaPresetCard {
+  schemaVersion: "senera.persona/v2";
+  title: string;
+  corePersona: string;
+  languageStyle: string;
+  worldPackageIds: string[];
+  examples: PersonaPresetExample[];
+  lore: PersonaPresetLoreEntry[];
+}
+
+export interface PresetWorldPackageDescriptor {
+  id: string;
+  title: string;
+  entityCount: number;
+  relationCount: number;
+  stateMachineCount: number;
+  habitCount: number;
+  autonomyCount: number;
+}
+
 export interface PresetItem {
   name: string;
-  format: PresetFormat;
   title: string;
   sizeBytes: number;
   updatedAt: string;
   active: boolean;
-  content: string;
+  card?: PersonaPresetCard;
   diagnostics: PresetDiagnostic[];
 }
 
@@ -447,6 +531,7 @@ export interface PresetSnapshotData {
   rootDir: string;
   activePresetName: string | null;
   presets: PresetItem[];
+  worldPackages: PresetWorldPackageDescriptor[];
   operation?: PresetOperationResult;
 }
 
@@ -506,7 +591,7 @@ export interface ConfigFormModelSelectionData {
   providerPath?: string[];
   inheritance?: {
     source: "parent-model" | "default-model";
-    path: string[];
+    path?: string[];
   };
   required: boolean;
 }
@@ -618,9 +703,22 @@ export interface ModelUsageMetadata {
 }
 
 export interface ConversationEntryMetadata {
+  channel?: SessionChannelMetadata;
   run?: {
     modelProvider: ModelProviderMetadata;
     usage?: ModelUsageMetadata;
+  };
+  scheduledTask?: {
+    taskId: string;
+    runId: string;
+  };
+  backgroundTask?: {
+    taskId: string;
+    runId: string;
+  };
+  queue?: {
+    parentRequestId: string;
+    mode: "steer" | "follow_up";
   };
 }
 
@@ -643,6 +741,9 @@ export interface SessionTruncatedData {
 export interface RunStartedData {
   input: string;
   approvalMode?: import("./executionApprovalMode").ExecutionApprovalMode;
+  attachments?: UploadAttachmentData[];
+  internal?: boolean;
+  displayInput?: string;
 }
 
 export interface RunActivityChangedData {

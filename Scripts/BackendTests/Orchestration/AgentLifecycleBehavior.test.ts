@@ -275,8 +275,8 @@ describe("agent lifecycle", () => {
   test("keeps a child stopping until the submitted session turn really settles", async () => {
     const database = openDelegationTestDatabase();
     let settleSubmission!: () => void;
-    const submission = new Promise<void>((resolve) => {
-      settleSubmission = resolve;
+    const submission = new Promise<{ kind: "accepted" }>((resolve) => {
+      settleSubmission = () => resolve({ kind: "accepted" });
     });
     const sessions = {
       forkSession: vi.fn(async () => undefined),

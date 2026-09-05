@@ -42,7 +42,7 @@ test("useConfigMutationController handles offline commands and unmatched events 
         ApiKey: "secret",
       }),
     ).toBeUndefined();
-    expect(handleRef.current.savePreset({ name: "default", format: "toml", content: "x = 1" })).toBe(null);
+    expect(handleRef.current.savePreset({ name: "default", card: emptyPresetCard("default") })).toBe(null);
     expect(
       handleRef.current.ingestConfigMutationEvent(
         event(EventKinds.ConfigSnapshot, "config", { operation: { commandId: "unknown", kind: "config_update" } }),
@@ -128,7 +128,7 @@ test("useConfigMutationController sends refresh commands and cleans up failed se
 
   send.mockImplementation(() => false);
   await act(async () => {
-    expect(handleRef.current.savePreset({ name: "default", format: "toml", content: "x = 1" })).toBe(null);
+    expect(handleRef.current.savePreset({ name: "default", card: emptyPresetCard("default") })).toBe(null);
   });
   expect(handleRef.current.presetOperations).toEqual({});
 });
@@ -325,8 +325,7 @@ test("useConfigMutationController routes preset and main config acknowledgements
   await act(async () => {
     presetRequestId = handleRef.current.savePreset({
       name: "Release notes",
-      format: "markdown",
-      content: "# Notes",
+      card: emptyPresetCard("Release notes"),
       activate: true,
     });
     configRequestId = handleRef.current.saveConfig({ AgentLoop: { Mode: "automatic" } });
@@ -365,6 +364,18 @@ test("useConfigMutationController routes preset and main config acknowledgements
     expect.objectContaining({ variant: "success", title: frontendMessage("config.mainSaved") }),
   );
 });
+
+function emptyPresetCard(title) {
+  return {
+    schemaVersion: "senera.persona/v2",
+    title,
+    corePersona: "",
+    languageStyle: "",
+    worldPackageIds: [],
+    examples: [],
+    lore: [],
+  };
+}
 
 test("useConfigMutationController rolls back disconnected sends and records provider failures", async () => {
   const send = vi.fn(() => false);

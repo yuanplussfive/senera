@@ -1,9 +1,12 @@
 {
   "manifest_version": "0.3",
   "name": "imagen",
-  "display_name": "Imagen",
+  "display_name": { "zh-CN": "Imagen 图像", "en-US": "Imagen" },
   "version": "1.0.0",
-  "description": "Generate images through an OpenAI-compatible image or chat endpoint.",
+  "description": {
+    "zh-CN": "通过 OpenAI 兼容的图像或对话端点生成图片。",
+    "en-US": "Generate images through an OpenAI-compatible image or chat endpoint."
+  },
   "author": {
     "name": "Senera"
   },

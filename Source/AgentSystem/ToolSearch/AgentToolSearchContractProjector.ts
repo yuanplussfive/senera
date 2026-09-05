@@ -25,12 +25,12 @@ export class AgentToolSearchContractProjector {
     const cached = this.invocationSchemaCache.get(schema);
     if (cached?.catalogIdentity === catalogIdentity) return cached.schema;
 
-    const properties = requireSchemaRecord(schema.properties, "ToolSearchTool input schema properties");
+    const properties = requireSchemaRecord(schema.properties, "ToolSearch input schema properties");
     const preferredSources = requireSchemaRecord(
       properties.preferredSources,
-      "ToolSearchTool preferredSources property schema",
+      "ToolSearch preferredSources property schema",
     );
-    const items = requireSchemaRecord(preferredSources.items, "ToolSearchTool preferredSources item schema");
+    const items = requireSchemaRecord(preferredSources.items, "ToolSearch preferredSources item schema");
     const projected = deepFreeze({
       ...schema,
       properties: {

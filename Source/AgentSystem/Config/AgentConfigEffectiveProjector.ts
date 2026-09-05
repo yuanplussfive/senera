@@ -13,8 +13,12 @@ import {
   resolveSandboxRuntimeConfig,
   resolveServerConfig,
   resolveToolExecutionConfig,
+  resolveAgentTodosConfig,
   resolveToolSearchConfig,
   resolveUploadsConfig,
+  resolveAgentPromptConfig,
+  resolveAgentWorldConfig,
+  resolveAgentInferenceBudgetConfig,
   resolveVectorModelsConfig,
 } from "../AgentDefaults.js";
 import { mergeActionPlannerClientConfig } from "../Defaults/AgentPlannerDefaults.js";
@@ -23,12 +27,13 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
   return {
     ...config,
     AgentLoop: resolveAgentLoopConfig(config),
+    Todos: resolveAgentTodosConfig(config),
     SandboxRuntime: resolveSandboxRuntimeConfig(config),
     ToolExecution: projectResolvedToolExecution(config),
     ToolSearch: resolveToolSearchConfig(config),
     VectorModels: projectResolvedVectorModels(config),
     ToolLearning: projectResolvedToolLearning(config),
-    MemoryLearning: projectResolvedMemoryLearning(config),
+    ContinuityLearning: projectResolvedContinuityLearning(config),
     Presets: resolvePresetsConfig(config),
     Artifacts: resolveArtifactsConfig(config),
     Uploads: resolveUploadsConfig(config),
@@ -37,16 +42,20 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
     Server: resolveServerConfig(config),
     Persistence: resolvePersistenceConfig(config),
     ConfigStore: resolveConfigStoreConfig(config),
+    Prompt: resolveAgentPromptConfig(config),
+    World: resolveAgentWorldConfig(config),
+    InferenceBudget: resolveAgentInferenceBudgetConfig(config),
     Extensions: config.Extensions,
     Defaults: {
       ...config.Defaults,
       AgentLoop: resolveAgentLoopConfig(config),
+      Todos: resolveAgentTodosConfig(config),
       SandboxRuntime: resolveSandboxRuntimeConfig(config),
       ToolExecution: projectResolvedToolExecution(config),
       ToolSearch: resolveToolSearchConfig(config),
       VectorModels: projectResolvedVectorModels(config),
       ToolLearning: projectResolvedToolLearning(config),
-      MemoryLearning: projectResolvedMemoryLearning(config),
+      ContinuityLearning: projectResolvedContinuityLearning(config),
       Presets: resolvePresetsConfig(config),
       Artifacts: resolveArtifactsConfig(config),
       Uploads: resolveUploadsConfig(config),
@@ -55,6 +64,9 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
       Server: resolveServerConfig(config),
       Persistence: resolvePersistenceConfig(config),
       ConfigStore: resolveConfigStoreConfig(config),
+      Prompt: resolveAgentPromptConfig(config),
+      World: resolveAgentWorldConfig(config),
+      InferenceBudget: resolveAgentDefaults(config).InferenceBudget,
     },
     ModelProviderEndpoints: resolveModelProviderEndpointConfigs(config),
     ModelProviders: config.ModelProviders.map((provider) =>
@@ -101,14 +113,76 @@ function projectResolvedToolLearning(config: AgentSystemConfig): NonNullable<Age
   };
 }
 
-function projectResolvedMemoryLearning(config: AgentSystemConfig): NonNullable<AgentSystemConfig["MemoryLearning"]> {
-  const defaults = resolveAgentDefaults(config).MemoryLearning;
-  const configured = config.MemoryLearning;
+function projectResolvedContinuityLearning(
+  config: AgentSystemConfig,
+): NonNullable<AgentSystemConfig["ContinuityLearning"]> {
+  const defaults = resolveAgentDefaults(config).ContinuityLearning;
+  const configured = config.ContinuityLearning;
+  const configuredRecall = configured?.Recall;
   return {
     Enabled: configured?.Enabled ?? defaults.Enabled,
-    MaxRepairAttempts: configured?.MaxRepairAttempts ?? defaults.MaxRepairAttempts,
-    Promotion: { ...defaults.Promotion, ...configured?.Promotion },
-    Client: projectResolvedPlannerClient(mergeActionPlannerClientConfig(defaults.Client, configured?.Client)),
+    Runtime: {
+      ...defaults.Runtime,
+      ...configured?.Runtime,
+    },
+    LearningGate: {
+      ...defaults.LearningGate,
+      ...configured?.LearningGate,
+    },
+    LearningContext: {
+      ...defaults.LearningContext,
+      ...configured?.LearningContext,
+    },
+    Recall: {
+      ...defaults.Recall,
+      ...configuredRecall,
+      TurnValueClassifier: {
+        ...defaults.Recall.TurnValueClassifier,
+        ...configuredRecall?.TurnValueClassifier,
+      },
+      Prefetch: {
+        ...defaults.Recall.Prefetch,
+        ...configuredRecall?.Prefetch,
+      },
+      Semantic: {
+        ...defaults.Recall.Semantic,
+        ...configuredRecall?.Semantic,
+      },
+      Ranking: {
+        ...defaults.Recall.Ranking,
+        ...configuredRecall?.Ranking,
+        Lexical: {
+          ...defaults.Recall.Ranking.Lexical,
+          ...configuredRecall?.Ranking?.Lexical,
+        },
+        Similarity: {
+          ...defaults.Recall.Ranking.Similarity,
+          ...configuredRecall?.Ranking?.Similarity,
+        },
+        Evidence: {
+          ...defaults.Recall.Ranking.Evidence,
+          ...configuredRecall?.Ranking?.Evidence,
+        },
+        Consolidation: {
+          ...defaults.Recall.Ranking.Consolidation,
+          ...configuredRecall?.Ranking?.Consolidation,
+        },
+        Graph: {
+          ...defaults.Recall.Ranking.Graph,
+          ...configuredRecall?.Ranking?.Graph,
+        },
+      },
+    },
+    Client: projectResolvedContinuityClient({ ...defaults.Client, ...configured?.Client }),
+  };
+}
+
+function projectResolvedContinuityClient(
+  client: NonNullable<AgentSystemConfig["ContinuityLearning"]>["Client"] & Record<string, unknown>,
+) {
+  return {
+    ModelProviderId: client?.ModelProviderId,
+    Temperature: client?.Temperature ?? AgentDefaults.ContinuityLearning.Client.Temperature,
   };
 }
 
