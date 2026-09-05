@@ -154,7 +154,7 @@ export function App({
   const lastSendRef = useRef<LastSentMessage | null>(null);
   const settingsEventHandlerRef = useRef<(env: EventEnvelope) => boolean>(() => false);
   const executionResourceEventHandlerRef = useRef<(env: EventEnvelope) => boolean>(() => false);
-  const { ingestSandboxEvent } = useSandboxRuntimeStatus();
+  const { sandboxStatus, ingestSandboxEvent } = useSandboxRuntimeStatus();
 
   const handleOpenSessionPanel = useCallback((): void => {
     if (hasPersistentSessionPanel) {
@@ -437,6 +437,7 @@ export function App({
                       socketStatus: status,
                       uploadUrl,
                       uploadCsrfToken,
+                      sandboxStatus,
                     }}
                     messageActions={{
                       onSend: handleSend,

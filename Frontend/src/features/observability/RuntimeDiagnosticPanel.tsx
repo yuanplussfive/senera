@@ -347,10 +347,10 @@ function SessionUsageConsole({
       >
         <span
           className={cn(
-            "block h-full transition-[width,background-color] duration-300",
+            "block h-full w-full origin-left transition-[transform,background-color] duration-300",
             percent >= 90 ? "bg-brick-500" : percent >= 75 ? "bg-umber-500" : "bg-moss-500",
           )}
-          style={{ width: contextUsage && hasContextTokens ? `${percent}%` : "0%" }}
+          style={{ transform: `scaleX(${contextUsage && hasContextTokens ? percent / 100 : 0})` }}
         />
       </div>
       {usage ? (

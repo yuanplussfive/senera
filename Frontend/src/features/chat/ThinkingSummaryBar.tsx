@@ -68,7 +68,9 @@ export function ThinkingSummaryBar({
           data-thinking-tool-popover
         >
           <div className="thinking-tool-popover__body max-h-[min(19rem,calc(100dvh-10rem))] overflow-y-auto px-3 py-2.5 scrollbar-thin">
-            <Suspense fallback={<div className="h-20 animate-pulse rounded bg-surface-muted" aria-hidden="true" />}>
+            <Suspense
+              fallback={<div className="h-20 rounded bg-surface-muted motion-safe:animate-pulse" aria-hidden="true" />}
+            >
               <LazyThinkingToolChain run={run} />
             </Suspense>
           </div>

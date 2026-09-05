@@ -208,7 +208,7 @@ export function ChatComposer({
           onDragLeave={attachments.handleDragLeave}
           onDrop={attachments.handleDrop}
           className={cn(
-            "relative flex min-w-0 flex-col rounded-[18px] border border-line bg-surface-raised px-3.5 pb-2.5 pt-2.5 shadow-[var(--shadow-soft)] transition-[background-color,border-color,box-shadow] duration-150",
+            "relative flex min-w-0 flex-col rounded-[22px] border border-line-subtle bg-surface-raised px-3.5 pb-2.5 pt-2.5 shadow-[0_12px_32px_-16px_rgb(43_40_32_/_0.10)] transition-[background-color,border-color,box-shadow] duration-150",
             attachments.isDraggingFiles && "border-accent-border bg-accent-surface ring-2 ring-accent-focus",
           )}
           data-chat-composer
@@ -410,7 +410,7 @@ export function ChatComposer({
                       "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
                       prefersCompactControls && "min-h-11 min-w-11",
                       canSend
-                        ? "border-content-strong bg-content-strong text-content-inverse shadow-panel hover:border-accent-solid hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
+                        ? "border-transparent bg-content-strong text-content-inverse hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
                         : "border-line-subtle bg-surface-muted text-content-disabled",
                     )}
                     aria-label={settling ? "queue-follow-up" : "send"}
@@ -427,13 +427,12 @@ export function ChatComposer({
   );
 }
 
-function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.Element {
+function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.Element | null {
   const hasTokens = usage?.tokens !== null && usage?.tokens !== undefined;
-  const used = hasTokens ? Math.max(0, usage.tokens) : 0;
-  const percent = usage
-    ? Math.max(0, Math.min(100, usage.percent ?? (hasTokens ? (used / usage.contextWindow) * 100 : 0)))
-    : 0;
-  const value = usage && hasTokens ? percent : 0;
+  if (!usage || !hasTokens) return null;
+  const used = Math.max(0, usage.tokens);
+  const percent = Math.max(0, Math.min(100, usage.percent ?? (used / usage.contextWindow) * 100));
+  const value = percent;
   const roundedPercent = Math.round(percent);
   const remainingPercent = Math.max(0, 100 - roundedPercent);
 
@@ -442,20 +441,16 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
       content={
         <span className="grid gap-0.5 text-left leading-5">
           <span className="font-medium">
-            {usage && hasTokens
-              ? frontendMessage("chat.composer.contextUsageSummary", {
-                  used: roundedPercent,
-                  remaining: remainingPercent,
-                })
-              : frontendMessage("chat.composer.contextUsage")}
+            {frontendMessage("chat.composer.contextUsageSummary", {
+              used: roundedPercent,
+              remaining: remainingPercent,
+            })}
           </span>
           <span className="tabular-nums text-ink-300">
-            {usage && hasTokens
-              ? frontendMessage("chat.composer.contextUsageTokens", {
-                  used: formatComposerTokenCount(used),
-                  total: formatComposerTokenCount(usage.contextWindow),
-                })
-              : frontendMessage("chat.composer.contextUsagePending")}
+            {frontendMessage("chat.composer.contextUsageTokens", {
+              used: formatComposerTokenCount(used),
+              total: formatComposerTokenCount(usage.contextWindow),
+            })}
           </span>
         </span>
       }
@@ -469,9 +464,7 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={value}
-        aria-valuetext={
-          usage && hasTokens ? `${roundedPercent}%` : frontendMessage("chat.composer.contextUsagePending")
-        }
+        aria-valuetext={`${roundedPercent}%`}
         data-context-usage-indicator
         className={cn(
           "mx-0.5 inline-block h-4 w-4 shrink-0 rounded-full outline-none opacity-75 transition-[filter,opacity] hover:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-focus",
@@ -665,7 +658,7 @@ function UploadProgressBar({ progress, className }: { progress?: UploadProgress;
       <span
         className={cn(
           "block h-full origin-left rounded-full bg-accent-solid transition-transform duration-150",
-          ratio === undefined && "animate-pulse",
+          ratio === undefined && "motion-safe:animate-pulse",
         )}
         style={{ transform: `scaleX(${ratio ?? 1})` }}
       />
@@ -718,8 +711,8 @@ function ModelSelector({
       <DropdownMenuTrigger asChild disabled={selectorDisabled}>
         <MotionButton
           className={cn(
-            "group inline-flex h-8 min-w-0 max-w-[190px] items-center gap-1 rounded-md border-0 bg-transparent px-1.5 text-[11.5px] font-medium",
-            prefersCompactControls && "h-9 max-w-[122px] px-1",
+            "group inline-flex h-8 min-w-0 max-w-[280px] items-center gap-1 rounded-md border-0 bg-transparent px-1.5 text-[11.5px] font-medium",
+            prefersCompactControls && "h-9 max-w-[200px] px-1",
             "text-content-muted shadow-none transition-colors hover:bg-surface-hover hover:text-content-primary data-[state=open]:bg-surface-hover data-[state=open]:text-content-primary",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
             selectorDisabled && "pointer-events-none opacity-55",

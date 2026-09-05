@@ -112,26 +112,26 @@ html[data-motion-level="none"] .dialog-presence[data-state="closed"] {
 
 html[data-motion-level="reduced"] .menu-surface[data-state="open"] {
   animation-name: menu-surface-fade-in, menu-surface-presence-in;
-  animation-duration: var(--menu-reduced-open-dur), var(--menu-reduced-open-dur);
+  animation-duration: var(--menu-reduced-open-dur), var(--menu-reduced-open-dur) !important;
   animation-timing-function: var(--menu-open-ease), linear;
 }
 
 html[data-motion-level="reduced"] .menu-surface[data-state="closed"] {
   animation-name: menu-surface-fade-out, menu-surface-presence-out;
-  animation-duration: var(--menu-close-dur), var(--menu-close-dur);
+  animation-duration: var(--menu-close-dur), var(--menu-close-dur) !important;
   animation-timing-function: var(--menu-close-ease), linear;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .menu-surface[data-state="open"] {
     animation-name: menu-surface-fade-in, menu-surface-presence-in;
-    animation-duration: var(--menu-reduced-open-dur), var(--menu-reduced-open-dur);
+    animation-duration: var(--menu-reduced-open-dur), var(--menu-reduced-open-dur) !important;
     animation-timing-function: var(--menu-open-ease), linear;
   }
 
   .menu-surface[data-state="closed"] {
     animation-name: menu-surface-fade-out, menu-surface-presence-out;
-    animation-duration: var(--menu-close-dur), var(--menu-close-dur);
+    animation-duration: var(--menu-close-dur), var(--menu-close-dur) !important;
     animation-timing-function: var(--menu-close-ease), linear;
   }
 }

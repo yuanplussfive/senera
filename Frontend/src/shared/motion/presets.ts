@@ -21,6 +21,7 @@ export const motionSprings = {
 
 export const motionTimings = {
   fast: { duration: 0.12, ease: easeOut } satisfies Transition,
+  chatSwitch: { duration: 0.1, ease: easeOut } satisfies Transition,
   base: { duration: 0.16, ease: easeOut } satisfies Transition,
   dialog: { duration: 0.16, ease: easeOut } satisfies Transition,
   modalOpen: { duration: 0.16, ease: easeOut } satisfies Transition,
@@ -48,17 +49,6 @@ export const motionDurations = {
   loadingRailMs: 1200,
 } as const;
 
-export const motionRules = {
-  maxStaggerItems: 20,
-  defaultStagger: 0.02,
-  maxStagger: 0.03,
-};
-
-export function readStagger(count: number, requested = motionRules.defaultStagger): number {
-  if (count > motionRules.maxStaggerItems) return 0;
-  return Math.min(requested, motionRules.maxStagger);
-}
-
 export function readListItemVariants(level: MotionLevel): Variants {
   if (level === "none") {
     return {
@@ -81,11 +71,10 @@ export function readListItemVariants(level: MotionLevel): Variants {
   };
 }
 
-export function readListTransition(level: MotionLevel, delay = 0): Transition {
+export function readListTransition(level: MotionLevel): Transition {
   if (level === "none") return { duration: 0 };
   return {
     ...motionTimings.base,
-    delay,
     layout: motionSprings.snappy,
   };
 }

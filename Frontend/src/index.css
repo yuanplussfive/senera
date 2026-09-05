@@ -166,7 +166,7 @@
   --theme-tool-line-height: 1.5;
   --theme-chat-composer-bg: rgb(var(--color-paper-100) / 0.8);
   --theme-chat-composer-focus-bg: rgb(var(--color-paper-50));
-  --theme-session-active-bg: var(--accent-surface);
+  --theme-session-active-bg: rgb(var(--color-paper-300));
   --theme-tooltip-bg: rgb(var(--color-ink-900));
   --theme-tooltip-fg: rgb(var(--color-paper-50));
   --theme-tooltip-border: rgb(var(--color-paper-50) / 0.18);
@@ -233,12 +233,12 @@
   --menu-surface-radius: 16px;
   --menu-item-radius: 10px;
   --menu-open-dur: 220ms;
-  --menu-close-dur: 190ms;
+  --menu-close-dur: 130ms;
   --menu-reduced-open-dur: 120ms;
   --menu-item-dur: 150ms;
   --menu-check-dur: 220ms;
   --menu-open-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --menu-close-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --menu-close-ease: cubic-bezier(0.3, 0, 0.8, 0.15);
   --menu-check-opacity-dur: 160ms;
   --menu-item-ease: linear;
   --menu-ease-out: var(--menu-open-ease);
@@ -1007,7 +1007,7 @@ textarea::-webkit-scrollbar-track {
 }
 
 .streaming-complete-highlight {
-  animation: streaming-complete-highlight 640ms ease-out 1;
+  animation: streaming-complete-highlight 160ms ease-out 1;
   border-radius: 18px;
 }
 
@@ -1022,11 +1022,28 @@ html[data-motion-level="none"] *::after {
   scroll-behavior: auto !important;
 }
 
+/* reduced 级别只保留颜色/透明度类状态反馈，移除位移、缩放与布局类过渡 */
+html[data-motion-level="reduced"] *,
+html[data-motion-level="reduced"] *::before,
+html[data-motion-level="reduced"] *::after {
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color, opacity, box-shadow, fill, stroke !important;
+  transition-duration: 120ms !important;
+  transition-delay: 0s !important;
+}
+
 html[data-motion-level="none"] *,
 html[data-motion-level="none"] *::before,
 html[data-motion-level="none"] *::after {
   transition-duration: 0s !important;
   transition-delay: 0s !important;
+}
+
+html[data-motion-level="reduced"] .menu-surface [role^="menuitem"],
+html[data-motion-level="none"] .menu-surface [role^="menuitem"],
+html[data-motion-level="reduced"] button[role="switch"],
+html[data-motion-level="none"] button[role="switch"] {
+  transform: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1036,6 +1053,10 @@ html[data-motion-level="none"] *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
+    transition-property:
+      color, background-color, border-color, outline-color, text-decoration-color, opacity, box-shadow, fill, stroke !important;
+    transition-duration: 120ms !important;
+    transition-delay: 0s !important;
   }
 }
 
@@ -1826,5 +1847,9 @@ html[data-senera-window-controls="custom"] [data-workspace-main] {
 html[data-senera-window-controls="custom"] [data-settings-workbench] {
   box-sizing: border-box;
   height: 100%;
+  padding-top: var(--senera-titlebar-height);
+}
+
+html[data-senera-window-controls="custom"][data-senera-desktop-surface="settings"] [data-authentication-loading] {
   padding-top: var(--senera-titlebar-height);
 }

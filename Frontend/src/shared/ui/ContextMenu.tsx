@@ -19,7 +19,6 @@ export const ContextMenuContent = forwardRef<HTMLDivElement, ContentProps>(
       <ContextMenuPrimitive.Content
         ref={ref}
         collisionPadding={collisionPadding}
-        style={{ transformOrigin: "0% 0%" }}
         className={cn(menuSurfaceClassName, "context-menu-surface", className)}
         {...props}
       >

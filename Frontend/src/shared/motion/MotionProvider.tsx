@@ -48,7 +48,7 @@ export function AppMotionProvider({
   );
 
   return (
-    <MotionConfig reducedMotion={disableMotion ? "always" : "user"}>
+    <MotionConfig reducedMotion={reduceMotion ? "always" : "user"}>
       <MotionLevelContext.Provider value={value}>{children}</MotionLevelContext.Provider>
     </MotionConfig>
   );

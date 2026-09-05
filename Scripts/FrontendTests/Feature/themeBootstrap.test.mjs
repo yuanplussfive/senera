@@ -34,6 +34,6 @@ describe("themeBootstrap", () => {
     const script = createAppearanceBootstrapScript();
     expect(script).toContain(appearancePreferenceStorageKey);
     expect(script).toContain("document.documentElement");
-    expect(script).toContain('"colorScheme":"senera"');
+    expect(script).toContain('"colorScheme":"classic"');
   });
 });

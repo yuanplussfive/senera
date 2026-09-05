@@ -47,12 +47,13 @@ export function ChatPanel({
     (!historyLoaded || historyLoading || historyFailed);
   return (
     <UploadPreviewProvider>
-      <main className="flex h-full min-w-0 flex-1 flex-col bg-transparent" data-agent-workspace>
+      <main className="relative flex h-full min-w-0 flex-1 flex-col bg-transparent" data-agent-workspace>
         <ChatHeader
           title={session?.title ?? DEFAULT_SESSION_TITLE}
           runStatus={currentRun?.status}
           waitingForApproval={currentRun?.activeFlags?.includes("waiting_for_approval") === true}
           waitingForInput={currentRun?.activeFlags?.includes("waiting_for_input") === true}
+          sandboxStatus={runtime.sandboxStatus}
           onOpenSessionPanel={navigationActions?.onOpenSessionPanel}
           onOpenWorkflowPanel={navigationActions?.onOpenWorkflowPanel}
         />
@@ -153,7 +154,7 @@ function ChatContentMotion({
       animate="show"
       exit="exit"
       variants={readChatContentVariants(motionLevel)}
-      transition={motionLevel === "none" ? { duration: 0 } : motionTimings.base}
+      transition={motionLevel === "none" ? { duration: 0 } : motionTimings.chatSwitch}
     >
       {children}
     </motion.div>

@@ -1,5 +1,12 @@
 import { useCallback, useState } from "react";
-import { EventKinds, type EventEnvelope, type SandboxStatusSnapshotData } from "../api/eventTypes";
+import {
+  EventKinds,
+  type EventEnvelope,
+  type SandboxRuntimeState,
+  type SandboxStatusSnapshotData,
+} from "../api/eventTypes";
+
+const sandboxRuntimeStates = new Set<SandboxRuntimeState>(["disabled", "unknown", "preparing", "ready", "unavailable"]);
 
 export interface SandboxRuntimeStatusHandle {
   sandboxStatus: SandboxStatusSnapshotData | null;
@@ -14,7 +21,8 @@ export function useSandboxRuntimeStatus(): SandboxRuntimeStatusHandle {
       return false;
     }
 
-    setSandboxStatus(env.data as SandboxStatusSnapshotData);
+    if (!isSandboxStatusSnapshotData(env.data)) return true;
+    setSandboxStatus(env.data);
     return true;
   }, []);
 
@@ -22,4 +30,9 @@ export function useSandboxRuntimeStatus(): SandboxRuntimeStatusHandle {
     sandboxStatus,
     ingestSandboxEvent,
   };
+}
+
+function isSandboxStatusSnapshotData(value: unknown): value is SandboxStatusSnapshotData {
+  if (!value || typeof value !== "object") return false;
+  return sandboxRuntimeStates.has((value as { state?: unknown }).state as SandboxRuntimeState);
 }
