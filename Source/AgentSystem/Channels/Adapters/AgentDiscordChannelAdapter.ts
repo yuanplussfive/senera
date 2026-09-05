@@ -87,6 +87,7 @@ const GatewayDispatch = {
 const DirectMessageChannelType = 1;
 const MinGatewayHeartbeatIntervalMs = 1_000;
 const MaxGatewayHeartbeatIntervalMs = 120_000;
+const GatewayHeartbeatTickMs = MinGatewayHeartbeatIntervalMs;
 const MaxGatewayWaitTimeoutMs = 120_000;
 
 /**
@@ -266,8 +267,13 @@ export class AgentDiscordChannelAdapter implements AgentChannelAdapter {
 
     const startHeartbeat = (): void => {
       if (!hello || heartbeatTimer) return;
+      const heartbeatIntervalMs = normalizeGatewayHeartbeatInterval(hello.heartbeat_interval);
+      let nextHeartbeatAt = Date.now();
       heartbeatTimer = setInterval(
         () => {
+          const now = Date.now();
+          if (now < nextHeartbeatAt) return;
+          nextHeartbeatAt = now + heartbeatIntervalMs;
           socket.send(JSON.stringify({ op: 1, d: this.lastSequence ?? null }));
           const notAckedThisBeat = acked === 0;
           acked = 0;
@@ -280,7 +286,7 @@ export class AgentDiscordChannelAdapter implements AgentChannelAdapter {
             }
           }
         },
-        Math.min(Math.max(hello.heartbeat_interval, MinGatewayHeartbeatIntervalMs), MaxGatewayHeartbeatIntervalMs),
+        GatewayHeartbeatTickMs,
       );
       heartbeatTimer.unref?.();
     };
@@ -347,6 +353,11 @@ export class AgentDiscordChannelAdapter implements AgentChannelAdapter {
     });
     return response.body;
   }
+}
+
+function normalizeGatewayHeartbeatInterval(value: number): number {
+  if (!Number.isFinite(value)) return MaxGatewayHeartbeatIntervalMs;
+  return Math.min(Math.max(Math.floor(value), MinGatewayHeartbeatIntervalMs), MaxGatewayHeartbeatIntervalMs);
 }
 
 function discordSource(data: DiscordMessageCreateData): AgentChannelSource {
