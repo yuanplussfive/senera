@@ -48,8 +48,8 @@ export const appearancePreferenceStorageKey = "senera.appearancePreference";
 
 export const defaultAppearancePreference = {
   themeMode: "system",
-  colorScheme: "senera",
-  accentColor: "terra",
+  colorScheme: "classic",
+  accentColor: "sky",
   fontFamily: "brand",
   fontScale: "standard",
 } as const satisfies AppearancePreference;
@@ -191,7 +191,7 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-chat-assistant-line-height": "1.75",
     "--theme-chat-composer-bg": "rgb(var(--color-paper-100) / 0.80)",
     "--theme-chat-composer-focus-bg": "rgb(var(--color-paper-50))",
-    "--theme-session-active-bg": "var(--accent-surface)",
+    "--theme-session-active-bg": "rgb(var(--color-paper-300))",
     "--theme-tooltip-bg": "rgb(var(--color-ink-900))",
     "--theme-tooltip-fg": "rgb(var(--color-paper-50))",
     "--theme-tooltip-border": "rgb(var(--color-paper-50) / 0.18)",
@@ -211,7 +211,7 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-chat-assistant-line-height": "1.75",
     "--theme-chat-composer-bg": "rgb(var(--color-paper-50) / 0.76)",
     "--theme-chat-composer-focus-bg": "rgb(var(--color-paper-50) / 0.92)",
-    "--theme-session-active-bg": "var(--accent-surface)",
+    "--theme-session-active-bg": "rgb(var(--color-paper-200))",
     "--theme-tooltip-bg": "rgb(var(--color-paper-50))",
     "--theme-tooltip-fg": "rgb(var(--color-ink-950))",
     "--theme-tooltip-border": "rgb(var(--color-ink-950) / 0.16)",

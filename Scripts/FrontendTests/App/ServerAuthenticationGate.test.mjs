@@ -89,6 +89,7 @@ describe("server authentication gate", () => {
     await user.click(screen.getByRole("button", { name: frontendMessage("auth.signIn") }));
 
     expect(await screen.findByText(frontendMessage("auth.loginFailed"))).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(frontendMessage("auth.loginFailed"));
     expect(screen.queryByText("credential detail")).not.toBeInTheDocument();
   });
 

@@ -44,7 +44,6 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
     <section
       className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent"
       aria-label={frontendMessage("workflow.childRun.board.title")}
-      aria-live="polite"
       data-child-run-board
     >
       <header className="shrink-0 border-b border-line-subtle px-3 pb-3 pt-3">
@@ -53,7 +52,7 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
           <h2 className="truncate text-[13px] font-semibold text-content-primary">
             {frontendMessage("workflow.childRun.board.title")}
           </h2>
-          <span className="ml-auto shrink-0 text-[10.5px] tabular-nums text-content-muted">
+          <span aria-live="polite" className="ml-auto shrink-0 text-[10.5px] tabular-nums text-content-muted">
             {frontendMessage("workflow.feed.running")} {activeSteps.length}
           </span>
         </div>
@@ -63,11 +62,18 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
         {runProgress !== undefined ? (
           <div className="mt-2 flex items-center gap-2">
             <RunSummaryStrip run={run} summary={summary} />
-            <div className="ml-auto flex min-w-0 items-center gap-1.5" aria-label={`${runProgress}%`}>
-              <div className="h-1.5 w-16 overflow-hidden rounded-full bg-line-subtle">
+            <div className="ml-auto flex min-w-0 items-center gap-1.5">
+              <div
+                className="h-1.5 w-16 overflow-hidden rounded-full bg-line-subtle"
+                role="progressbar"
+                aria-label={`${frontendMessage("workflow.childRun.message.progress")} ${runProgress}%`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={runProgress}
+              >
                 <span
-                  className="block h-full rounded-full bg-moss-500 transition-[width] duration-300"
-                  style={{ width: `${runProgress}%` }}
+                  className="block h-full w-full origin-left rounded-full bg-moss-500 transition-transform duration-300"
+                  style={{ transform: `scaleX(${runProgress / 100})` }}
                 />
               </div>
               <span className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted">{runProgress}%</span>
@@ -165,7 +171,6 @@ function ChildRunTimelineItem({
       data-child-run-item
       data-child-run-card
       data-child-run-status={childRun.status}
-      aria-label={`${agentName}: ${frontendMessage(presentation.label)}`}
     >
       <span
         className={cn(
@@ -179,7 +184,7 @@ function ChildRunTimelineItem({
           className={cn(
             "h-1.5 w-1.5 rounded-full",
             accent.rail,
-            ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) && "animate-pulse",
+            ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) && "motion-safe:animate-pulse",
           )}
         />
       </span>
@@ -197,18 +202,26 @@ function ChildRunTimelineItem({
 
       {totalTools > 0 || !ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) ? (
         <div className="mt-2 flex items-center gap-2">
-          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-line-subtle">
+          <div
+            className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-line-subtle"
+            role="progressbar"
+            aria-label={`${frontendMessage("workflow.childRun.message.progress")} ${agentName} ${progress}%`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress}
+          >
             <span
               className={cn(
-                "block h-full rounded-full transition-[width] duration-300",
+                "block h-full w-full origin-left rounded-full transition-transform duration-300",
                 accent.progress,
-                totalTools === 0 && ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) && "w-1/2 animate-pulse",
+                totalTools === 0 && ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) && "motion-safe:animate-pulse",
               )}
-              style={
-                totalTools > 0 || !ACTIVE_CHILD_RUN_STATUSES.has(childRun.status)
-                  ? { width: `${progress}%` }
-                  : undefined
-              }
+              style={{
+                transform:
+                  totalTools > 0 || !ACTIVE_CHILD_RUN_STATUSES.has(childRun.status)
+                    ? `scaleX(${progress / 100})`
+                    : "scaleX(0.5)",
+              }}
             />
           </div>
           <span className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted">

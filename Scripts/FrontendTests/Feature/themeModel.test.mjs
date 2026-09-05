@@ -100,11 +100,11 @@ describe("themeModel", () => {
     expect(createAppearanceTokens(preference, "light").cssVariables["--theme-font-scale"]).toBe("1.027");
   });
 
-  it("uses the Senera paper palette and terra accent as the default appearance", () => {
+  it("uses the classic paper palette and sky accent as the default appearance", () => {
     expect(defaultAppearancePreference).toEqual({
       themeMode: "system",
-      colorScheme: "senera",
-      accentColor: "terra",
+      colorScheme: "classic",
+      accentColor: "sky",
       fontFamily: "brand",
       fontScale: "standard",
     });
@@ -190,7 +190,7 @@ describe("themeModel", () => {
           "--color-terra-500": "var(--color-accent-500)",
           "--accent-content": "rgb(var(--color-accent-700))",
           "--accent-on-solid": "rgb(var(--color-accent-contrast))",
-          "--theme-session-active-bg": "var(--accent-surface)",
+          "--theme-session-active-bg": `rgb(var(--color-paper-${themeMode === "light" ? 300 : 200}))`,
         });
       }
     }

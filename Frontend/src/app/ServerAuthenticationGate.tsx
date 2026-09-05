@@ -33,6 +33,7 @@ export function ServerAuthenticationGate({
   onLogin: (credentials: { loginName: string; password: string }) => Promise<void>;
   onRetry: () => Promise<void>;
 }): JSX.Element {
+  const [retrying, setRetrying] = useState(false);
   if (state.status === "loading") {
     return <ServerAuthenticationLoading />;
   }
@@ -52,8 +53,12 @@ export function ServerAuthenticationGate({
         tone="failed"
         icon={<AlertCircle className="h-4 w-4 text-brick-600" aria-hidden="true" />}
         message={readServerFailureMessage(state.error) ?? frontendMessage("auth.connectionFailed")}
-        actionLabel={frontendMessage("auth.retry")}
-        onAction={() => void onRetry()}
+        actionLabel={retrying ? frontendMessage("auth.reconnecting") : frontendMessage("auth.retry")}
+        actionPending={retrying}
+        onAction={() => {
+          setRetrying(true);
+          void onRetry().finally(() => setRetrying(false));
+        }}
       />
     );
   }
@@ -87,7 +92,7 @@ function LoginForm({
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-paper-100 px-4 py-8 text-ink-900">
+    <main className="flex min-h-dvh items-center justify-center bg-paper-100 px-4 py-8 text-ink-900">
       <form className="w-full max-w-[360px] border border-line bg-surface-panel p-5 shadow-soft" onSubmit={submit}>
         <LogoLockup className="mb-5" />
         <div className="flex items-center gap-3">
@@ -99,6 +104,7 @@ function LoginForm({
         <label className="mt-5 block">
           <span className="mb-1.5 block text-[12px] font-medium text-ink-600">{frontendMessage("auth.loginName")}</span>
           <input
+            name="username"
             autoComplete="username"
             autoFocus
             className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-accent-focus"
@@ -110,6 +116,7 @@ function LoginForm({
         <label className="mt-4 block">
           <span className="mb-1.5 block text-[12px] font-medium text-ink-600">{frontendMessage("auth.password")}</span>
           <input
+            name="password"
             type="password"
             autoComplete="current-password"
             className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-accent-focus"
@@ -118,7 +125,11 @@ function LoginForm({
             required
           />
         </label>
-        {failed ? <InlineError className="mt-3">{frontendMessage("auth.loginFailed")}</InlineError> : null}
+        {failed ? (
+          <InlineError announce="assertive" className="mt-3">
+            {frontendMessage("auth.loginFailed")}
+          </InlineError>
+        ) : null}
         <button
           type="submit"
           disabled={submitting}
@@ -139,6 +150,7 @@ function AuthenticationStatus({
   descriptionKey,
   message,
   actionLabel,
+  actionPending = false,
   onAction,
 }: {
   tone: "loading" | "failed";
@@ -147,11 +159,12 @@ function AuthenticationStatus({
   descriptionKey?: "auth.reconnectingDescription";
   message?: string;
   actionLabel?: string;
+  actionPending?: boolean;
   onAction?: () => void;
 }): JSX.Element {
   const failed = tone === "failed";
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--theme-bg)] px-4 py-8 text-ink-900">
+    <main className="flex min-h-dvh items-center justify-center bg-[var(--theme-bg)] px-4 py-8 text-ink-900">
       <div
         role={failed ? "alert" : "status"}
         aria-busy={failed ? undefined : true}
@@ -169,7 +182,22 @@ function AuthenticationStatus({
               <p className="mt-1 text-[12px] leading-5 text-ink-500">{frontendMessage(descriptionKey)}</p>
             ) : null}
           </div>
-          {actionLabel && onAction ? <RetryButton onRetry={onAction} label={actionLabel} className="mt-1" /> : null}
+          {actionLabel && onAction ? (
+            <RetryButton
+              onRetry={onAction}
+              disabled={actionPending}
+              label={
+                actionPending ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Spinner size="xs" />
+                    {actionLabel}
+                  </span>
+                ) : (
+                  actionLabel
+                )
+              }
+            />
+          ) : null}
         </div>
       </div>
     </main>

@@ -10,7 +10,6 @@ export {
   type DialogMotionPreset,
   dialogPresenceExitMs,
   motionDurations,
-  motionRules,
   motionSprings,
   motionTimings,
   readDialogPanelTransition,
@@ -26,6 +25,5 @@ export {
   readMessageItemVariants,
   readOverlayTransition,
   readOverlayVariants,
-  readStagger,
   readTapScale,
 } from "./presets";

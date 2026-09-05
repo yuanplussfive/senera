@@ -228,9 +228,12 @@ export function SessionList({
     <aside
       className={cn(
         "flex h-full shrink-0 flex-col bg-surface-sidebar transition-[width] duration-300 ease-[cubic-bezier(.32,.72,.35,1)]",
-        presentation === "auto" ? "overflow-hidden border-r border-line-subtle" : "border-r border-line-subtle",
+        presentation === "auto"
+          ? "overflow-hidden rounded-2xl border border-line-subtle [box-shadow:var(--theme-surface-shadow)]"
+          : "border-r border-line-subtle",
         panelWidthClass,
       )}
+      style={presentation === "auto" ? { width: "100%" } : undefined}
       data-session-sidebar
       data-session-surface={presentation}
       data-collapsed={compactSidebar}

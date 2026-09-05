@@ -87,8 +87,10 @@
   text-align: left;
   cursor: zoom-in;
 }
-.markdown-renderer__image-trigger:hover .markdown-renderer__image {
-  filter: brightness(0.985);
+@media (hover: hover) and (pointer: fine) {
+  .markdown-renderer__image-trigger:hover .markdown-renderer__image {
+    filter: brightness(0.985);
+  }
 }
 .markdown-renderer__image-trigger:focus-visible {
   outline: 2px solid var(--accent-focus-ring);

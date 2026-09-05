@@ -169,7 +169,7 @@ export function SessionPanelBody({
           ) : (
             <LayoutGroup id="session-list-selection">
               <MotionList className="flex flex-col gap-0.5 pt-1">
-                {sessions.map((session, index) => {
+                {sessions.map((session) => {
                   const isActive = session.sessionId === activeSessionId;
                   const activeRun = readActiveRun(session);
                   const lastRun = session.runs[session.runs.length - 1];
@@ -180,8 +180,6 @@ export function SessionPanelBody({
                   return (
                     <MotionListItem
                       key={session.sessionId}
-                      index={index}
-                      itemCount={sessions.length}
                       layout={draggedSessionId ? false : "position"}
                       initial={false}
                     >

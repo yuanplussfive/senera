@@ -11,6 +11,7 @@ import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriver
 import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
+import { MotionListItem } from "../../../shared/motion";
 import { IconButton, MenuSelect, Spinner, StateView, Switch } from "../../../shared/ui";
 import { findTopField } from "../../chat/modelConfigData";
 import {
@@ -122,27 +123,29 @@ export function DefaultModelSection({
 
         <div className="mt-4 space-y-5">
           {assignmentGroups.map((group) => (
-            <section key={group.id} data-model-assignment-group>
-              <div className="flex items-center border-b border-line-subtle pb-2">
-                <h3 className="text-[12.5px] font-semibold text-content-primary">{group.label}</h3>
-              </div>
-              <div className="divide-y divide-line-subtle">
-                {group.fields.map((field) => (
-                  <ModelAssignmentRow
-                    key={field.modelSelection.id}
-                    allFields={allFields}
-                    defaultModelId={defaultModelId}
-                    draftState={draftState}
-                    field={field}
-                    modelTemplate={modelTemplate}
-                    pendingModelId={pendingModelId}
-                    state={state}
-                    systemConfig={systemConfig}
-                    onDefaultModelPending={setPendingModelId}
-                  />
-                ))}
-              </div>
-            </section>
+            <MotionListItem key={group.id}>
+              <section data-model-assignment-group>
+                <div className="flex items-center border-b border-line-subtle pb-2">
+                  <h3 className="text-[12.5px] font-semibold text-content-primary">{group.label}</h3>
+                </div>
+                <div className="divide-y divide-line-subtle">
+                  {group.fields.map((field) => (
+                    <ModelAssignmentRow
+                      key={field.modelSelection.id}
+                      allFields={allFields}
+                      defaultModelId={defaultModelId}
+                      draftState={draftState}
+                      field={field}
+                      modelTemplate={modelTemplate}
+                      pendingModelId={pendingModelId}
+                      state={state}
+                      systemConfig={systemConfig}
+                      onDefaultModelPending={setPendingModelId}
+                    />
+                  ))}
+                </div>
+              </section>
+            </MotionListItem>
           ))}
         </div>
       </section>

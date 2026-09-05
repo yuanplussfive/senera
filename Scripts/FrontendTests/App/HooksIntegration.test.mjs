@@ -54,6 +54,16 @@ test("useSandboxRuntimeStatus ingests only sandbox status snapshots", async () =
 
   expect(handleRef.current.sandboxStatus.state).toBe("ready");
   expect(handleRef.current.sandboxStatus.effectiveMode).toBe("sandbox");
+
+  const acceptedStatus = handleRef.current.sandboxStatus;
+  act(() => {
+    expect(
+      handleRef.current.ingestSandboxEvent(
+        event(EventKinds.SandboxStatusSnapshot, "sandbox", { state: "future-state" }),
+      ),
+    ).toBe(true);
+  });
+  expect(handleRef.current.sandboxStatus).toBe(acceptedStatus);
 });
 
 test("useSessionCatalogSync sends open-connection and manual refresh requests", async () => {

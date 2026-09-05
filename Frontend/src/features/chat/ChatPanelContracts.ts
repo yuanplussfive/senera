@@ -10,6 +10,7 @@ import type {
   ProviderModelEndpointInput,
   ProviderModelsFailedData,
   ProviderModelsSnapshotData,
+  SandboxStatusSnapshotData,
   UploadAttachmentData,
   InteractionInputAction,
   InteractionInputContent,
@@ -67,6 +68,8 @@ export interface ChatRuntimeState {
   socketStatus: SocketStatus;
   uploadUrl: string;
   uploadCsrfToken?: string;
+  /** Latest sandbox runtime snapshot; null until the first sync arrives. */
+  sandboxStatus?: SandboxStatusSnapshotData | null;
 }
 
 export interface ChatMessageActions {

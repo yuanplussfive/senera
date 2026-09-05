@@ -11,17 +11,6 @@ export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
 
-function dropdownTransformOrigin(
-  side: "top" | "right" | "bottom" | "left" | undefined,
-  align: "start" | "center" | "end" | undefined,
-): string {
-  const horizontalOrigin =
-    side === "left" ? "100%" : side === "right" ? "0%" : align === "start" ? "0%" : align === "end" ? "100%" : "50%";
-  const verticalOrigin =
-    side === "top" ? "100%" : side === "bottom" ? "0%" : align === "start" ? "0%" : align === "end" ? "100%" : "50%";
-  return `${horizontalOrigin} ${verticalOrigin}`;
-}
-
 interface ContentProps extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content> {
   className?: string;
 }
@@ -35,7 +24,6 @@ export const DropdownMenuContent = forwardRef<HTMLDivElement, ContentProps>(
         align={align}
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
-        style={{ transformOrigin: dropdownTransformOrigin(side, align) }}
         className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
         {...props}
       >

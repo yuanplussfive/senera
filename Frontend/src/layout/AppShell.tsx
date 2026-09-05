@@ -441,12 +441,7 @@ export function AppShell({
             data-open={!sidebarCollapsed}
             data-collapsed={sidebarCollapsed}
           >
-            <div
-              className="h-full"
-              style={{ width: sidebarCollapsed ? SESSION_PANEL_COLLAPSED_WIDTH : sessionPanelWidth }}
-            >
-              {sessionPanel}
-            </div>
+            <div className="h-full w-full">{sessionPanel}</div>
             {!sidebarCollapsed ? (
               <div
                 role="separator"
