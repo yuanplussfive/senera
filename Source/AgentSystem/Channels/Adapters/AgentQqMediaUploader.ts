@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { open, readFile, stat } from "node:fs/promises";
+import { open, stat, type FileHandle } from "node:fs/promises";
 import { basename } from "node:path";
 import { AgentChannelHttpError, type AgentChannelHttpTransport } from "../AgentChannelHttpTransport.js";
 import {
@@ -133,16 +133,21 @@ export class QqMediaUploader {
     }
     if (!media.path) throw new Error("QQ media requires a URL, data payload, or local path.");
     const filePath = media.path;
-    const fileStats = await stat(filePath).catch((error) => {
+    const handle = await open(filePath, "r").catch((error) => {
       throw new Error(`QQ media file could not be read: ${describe(error)}`);
     });
-    if (!fileStats.isFile()) throw new Error(`QQ media path is not a file: ${filePath}`);
-    if (fileStats.size > this.maxMediaBytes)
-      throw new Error(`QQ media exceeds the configured ${this.maxMediaBytes} byte limit.`);
-    if (fileStats.size <= this.inlineMediaLimitBytes) {
-      return this.uploadBytes(target, new Uint8Array(await readFile(filePath)), fileType, fileName);
+    try {
+      const fileStats = await handle.stat();
+      if (!fileStats.isFile()) throw new Error(`QQ media path is not a file: ${filePath}`);
+      if (fileStats.size > this.maxMediaBytes)
+        throw new Error(`QQ media exceeds the configured ${this.maxMediaBytes} byte limit.`);
+      if (fileStats.size <= this.inlineMediaLimitBytes) {
+        return this.uploadBytes(target, new Uint8Array(await handle.readFile()), fileType, fileName);
+      }
+      return this.uploadLargeMediaFromHandle(target, handle, fileStats.size, fileType, fileName);
+    } finally {
+      await handle.close();
     }
-    return this.uploadLargeMediaFromPath(target, filePath, fileStats.size, fileType, fileName);
   }
 
   private async uploadBytes(target: string, bytes: Uint8Array, fileType: number, fileName: string): Promise<string> {
@@ -174,17 +179,17 @@ export class QqMediaUploader {
     return this.completeUpload(target, prepared.uploadId);
   }
 
-  private async uploadLargeMediaFromPath(
+  private async uploadLargeMediaFromHandle(
     target: string,
-    filePath: string,
+    handle: FileHandle,
     fileSize: number,
     fileType: number,
     fileName: string,
   ): Promise<string> {
-    const hashes = await hashFile(filePath, fileSize);
+    const hashes = await hashFile(handle, fileSize);
     const prepared = await this.prepareUpload(target, fileType, fileName, fileSize, hashes);
     await this.uploadPreparedParts(target, prepared, fileSize, (offset, length) =>
-      readFileRange(filePath, offset, length),
+      readFileRange(handle, offset, length),
     );
     return this.completeUpload(target, prepared.uploadId);
   }
@@ -424,49 +429,39 @@ function hashBytes(bytes: Uint8Array): { md5: string; sha1: string; md5_10m: str
 }
 
 async function hashFile(
-  filePath: string,
+  handle: FileHandle,
   expectedSize: number,
 ): Promise<{ md5: string; sha1: string; md5_10m: string }> {
   const md5 = createHash("md5");
   const sha1 = createHash("sha1");
   const md5_10m = createHash("md5");
-  const handle = await open(filePath, "r");
   const buffer = Buffer.allocUnsafe(Math.min(1024 * 1024, Math.max(64 * 1024, expectedSize)));
   let position = 0;
   let prefixBytes = 0;
-  try {
-    while (position < expectedSize) {
-      const result = await handle.read(buffer, 0, Math.min(buffer.byteLength, expectedSize - position), position);
-      if (result.bytesRead <= 0) break;
-      const chunk = buffer.subarray(0, result.bytesRead);
-      md5.update(chunk);
-      sha1.update(chunk);
-      if (prefixBytes < 10_002_432) {
-        md5_10m.update(chunk.subarray(0, 10_002_432 - prefixBytes));
-        prefixBytes += Math.min(chunk.byteLength, 10_002_432 - prefixBytes);
-      }
-      position += result.bytesRead;
+  while (position < expectedSize) {
+    const result = await handle.read(buffer, 0, Math.min(buffer.byteLength, expectedSize - position), position);
+    if (result.bytesRead <= 0) break;
+    const chunk = buffer.subarray(0, result.bytesRead);
+    md5.update(chunk);
+    sha1.update(chunk);
+    if (prefixBytes < 10_002_432) {
+      md5_10m.update(chunk.subarray(0, 10_002_432 - prefixBytes));
+      prefixBytes += Math.min(chunk.byteLength, 10_002_432 - prefixBytes);
     }
-  } finally {
-    await handle.close();
+    position += result.bytesRead;
   }
   if (position !== expectedSize)
     throw new Error(`QQ media file changed while hashing: expected ${expectedSize}, read ${position}.`);
   return { md5: md5.digest("hex"), sha1: sha1.digest("hex"), md5_10m: md5_10m.digest("hex") };
 }
 
-async function readFileRange(filePath: string, offset: number, length: number): Promise<Uint8Array> {
-  const handle = await open(filePath, "r");
+async function readFileRange(handle: FileHandle, offset: number, length: number): Promise<Uint8Array> {
   const buffer = Buffer.allocUnsafe(length);
   let position = 0;
-  try {
-    while (position < length) {
-      const result = await handle.read(buffer, position, length - position, offset + position);
-      if (result.bytesRead <= 0) break;
-      position += result.bytesRead;
-    }
-  } finally {
-    await handle.close();
+  while (position < length) {
+    const result = await handle.read(buffer, position, length - position, offset + position);
+    if (result.bytesRead <= 0) break;
+    position += result.bytesRead;
   }
   return new Uint8Array(buffer.subarray(0, position));
 }

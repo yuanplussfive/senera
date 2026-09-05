@@ -85,6 +85,7 @@ const GatewayDispatch = {
 } as const;
 
 const DirectMessageChannelType = 1;
+const MaxGatewayWaitTimeoutMs = 120_000;
 
 /**
  * Discord bot adapter over the gateway WebSocket. Owns the full protocol:
@@ -379,7 +380,8 @@ function waitForOperation(
   label: string,
 ): Promise<DiscordGatewayPayload> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Discord gateway ${label} timed out.`)), timeoutMs + 5_000);
+    const boundedTimeoutMs = Math.min(timeoutMs, MaxGatewayWaitTimeoutMs);
+    const timer = setTimeout(() => reject(new Error(`Discord gateway ${label} timed out.`)), boundedTimeoutMs + 5_000);
     const onMessage = (data: WebSocket.RawData): void => {
       const payload = parseGatewayPayload(data);
       if (payload?.op === op) {
@@ -410,10 +412,11 @@ function waitForOperation(
 
 function waitForDispatch(events: EventEmitter, name: string, timeoutMs: number): Promise<DiscordGatewayPayload> {
   return new Promise((resolve, reject) => {
+    const boundedTimeoutMs = Math.min(timeoutMs, MaxGatewayWaitTimeoutMs);
     const timer = setTimeout(() => {
       events.removeAllListeners();
       reject(new Error(`Discord gateway dispatch ${name} timed out.`));
-    }, timeoutMs + 5_000);
+    }, boundedTimeoutMs + 5_000);
     events.once("dispatch", (payload: DiscordGatewayPayload) => {
       clearTimeout(timer);
       events.removeAllListeners();

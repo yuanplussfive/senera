@@ -20,16 +20,64 @@
       "splitTarget": "Extract world runtime assembly into a dedicated server world composition module."
     },
     {
+      "path": "Frontend/src/api/eventTypes.ts",
+      "baselineLines": 810,
+      "owner": "frontend-platform",
+      "splitTarget": "Split event type declarations by runtime domain while keeping the public event catalog stable."
+    },
+    {
       "path": "Scripts/BackendTests/Pi/PiToolExecutionBridgeBehavior.test.ts",
       "baselineLines": 806,
       "owner": "pi-runtime",
       "splitTarget": "Split bridge contract and failure scenarios into focused test files."
     },
     {
+      "path": "Scripts/BackendTests/Channels/AgentChannelAdaptersBehavior.test.ts",
+      "baselineLines": 997,
+      "owner": "channel-runtime",
+      "splitTarget": "Split adapter lifecycle and protocol coverage into one focused test file per channel."
+    },
+    {
+      "path": "Scripts/BackendTests/Channels/AgentChannelCoreBehavior.test.ts",
+      "baselineLines": 1040,
+      "owner": "channel-runtime",
+      "splitTarget": "Split renderer, delivery, and session mapping coverage into focused test files."
+    },
+    {
+      "path": "Scripts/BackendTests/Session/SessionManagerBehavior.test.ts",
+      "baselineLines": 817,
+      "owner": "session-runtime",
+      "splitTarget": "Split session admission, cancellation, and persistence coverage into focused test files."
+    },
+    {
       "path": "Source/AgentSystem/Browser/AgentPlaywrightBrowserDriver.ts",
-      "baselineLines": 952,
+      "baselineLines": 948,
       "owner": "browser-runtime",
       "splitTarget": "Extract page lifecycle and locator interaction helpers into focused modules."
+    },
+    {
+      "path": "Source/AgentSystem/Channels/AgentChannelOutboundMedia.ts",
+      "baselineLines": 1046,
+      "owner": "channel-runtime",
+      "splitTarget": "Split media identity, resource projection, and ordered delivery into focused modules."
+    },
+    {
+      "path": "Source/AgentSystem/Channels/AgentChannelService.ts",
+      "baselineLines": 903,
+      "owner": "channel-runtime",
+      "splitTarget": "Extract command routing, lifecycle synchronization, and delivery orchestration into focused modules."
+    },
+    {
+      "path": "Source/AgentSystem/Continuity/AgentContinuityMemoryService.ts",
+      "baselineLines": 822,
+      "owner": "continuity-runtime",
+      "splitTarget": "Extract recall orchestration and prompt projection into focused continuity modules."
+    },
+    {
+      "path": "Source/AgentSystem/Orchestration/AgentDelegationService.ts",
+      "baselineLines": 828,
+      "owner": "orchestration-runtime",
+      "splitTarget": "Extract child-run lifecycle and wait coordination into focused orchestration modules."
     },
     {
       "path": "Source/AgentSystem/TemporalMemory/AgentTemporalMemorySqliteStore.ts",

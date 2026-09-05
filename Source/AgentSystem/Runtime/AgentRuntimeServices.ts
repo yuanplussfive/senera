@@ -118,8 +118,10 @@ export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServ
       buildRootCommand: (options) => dependencies.promptContextBuilder.buildRootCommand(options),
       promptRoleplayPreset: (userInput) => dependencies.presetManager.promptContext(userInput),
       toolCatalog: () => dependencies.toolCatalog.list(),
-      promptContinuityMemory: (input) =>
-        dependencies.continuityMemory?.promptContext(input) ?? Promise.resolve(EmptyAgentContinuityMemoryPromptContext),
+      promptContinuityMemory: async (input) => {
+        if (!dependencies.continuityMemory) return EmptyAgentContinuityMemoryPromptContext;
+        return await dependencies.continuityMemory.promptContext(input);
+      },
       promptWorkflow: (sessionId) => dependencies.workflow?.promptContext(sessionId) ?? EmptyAgentWorkflowPromptContext,
     },
     executionLedger: dependencies.executionLedger,

@@ -1,10 +1,8 @@
 import path from "node:path";
 import fs from "node:fs";
-import { Readable } from "node:stream";
 import { Temporal } from "@js-temporal/polyfill";
 import { AgentLoop } from "../Source/AgentSystem/Loop/AgentLoop.js";
 import { AgentSessionManager } from "../Source/AgentSystem/Session/AgentSessionManager.js";
-import { AgentSessionStatuses } from "../Source/AgentSystem/Session/AgentSession.js";
 import {
   AgentChildRunStatuses,
   type AgentChildRunRecord,
@@ -35,42 +33,20 @@ import { AgentSkillScanner } from "../Source/AgentSystem/Skills/AgentSkillScanne
 import { AgentMcpPackageScanner } from "../Source/AgentSystem/McpPackages/AgentMcpPackageScanner.js";
 import { createAgentContinuityRuntime } from "../Source/AgentSystem/Continuity/AgentContinuityRuntime.js";
 import { AgentVectorModelClient } from "../Source/AgentSystem/Vector/AgentVectorModelClient.js";
-import { AgentContinuityEventBridge } from "../Source/AgentSystem/Continuity/AgentContinuityEventBridge.js";
 import {
   createAgentWorldSnapshotEvent,
   createAgentWorldSnapshotEventFromProjection,
 } from "../Source/AgentSystem/World/AgentWorldEventTypes.js";
-import { AgentWorldEventLedger } from "../Source/AgentSystem/World/AgentWorldEventLedger.js";
-import { AgentWorldMaterializer } from "../Source/AgentSystem/World/AgentWorldMaterializer.js";
-import { AgentWorldClock } from "../Source/AgentSystem/World/AgentWorldClock.js";
-import { AgentHabitScheduler } from "../Source/AgentSystem/World/AgentHabitScheduler.js";
-import { AgentResidentStateMachine } from "../Source/AgentSystem/World/AgentResidentStateMachine.js";
-import { AgentWorldPackageLoader } from "../Source/AgentSystem/World/AgentWorldPackageLoader.js";
-import { AgentWorldAutonomyRuntime } from "../Source/AgentSystem/World/AgentWorldAutonomyRuntime.js";
-import { AgentWorldHabitRuntime } from "../Source/AgentSystem/World/AgentWorldHabitRuntime.js";
-import { AgentWorldWorkLedger } from "../Source/AgentSystem/World/AgentWorldWorkLedger.js";
-import { AgentPresetWorldActivationRuntime } from "../Source/AgentSystem/World/AgentPresetWorldActivationRuntime.js";
-import { AgentWorldRuntime } from "../Source/AgentSystem/World/AgentWorldRuntime.js";
-import { AgentTemporalMemoryWorldBridge } from "../Source/AgentSystem/World/AgentTemporalMemoryWorldBridge.js";
-import { AgentWorldConversationBridge } from "../Source/AgentSystem/World/AgentWorldConversationBridge.js";
-import { AgentWorldLifecycleEventBridge } from "../Source/AgentSystem/World/AgentWorldLifecycleEventBridge.js";
-import { AgentWorldResidentIdleRuntime } from "../Source/AgentSystem/World/AgentWorldResidentIdleRuntime.js";
-import { AgentWorldResidentIdleModelDecisionPort } from "../Source/AgentSystem/World/AgentWorldResidentIdleModelDecisionPort.js";
-import { AgentWorldResidentIdleAgendaActionPort } from "../Source/AgentSystem/World/AgentWorldResidentIdleActionPort.js";
-import { AgentWorldResidentWakeRuntime } from "../Source/AgentSystem/World/AgentWorldResidentWakeRuntime.js";
-import { AgentWorldResidentWakeEventActionPort } from "../Source/AgentSystem/World/AgentWorldResidentWakeEventActionPort.js";
 import type { AgentWorldResidentWakeActionPort } from "../Source/AgentSystem/World/AgentWorldResidentWakeRuntime.js";
-import { AgentWorldActionSourceIds } from "../Source/AgentSystem/World/AgentWorldActionBudget.js";
+import { composeAgentWorldRuntime } from "../Source/AgentSystem/World/AgentWorldRuntimeComposition.js";
 import { AgentSlidingWindowInferenceBudget } from "../Source/AgentSystem/ModelEndpoints/AgentInferenceBudget.js";
 import { secondsToMilliseconds } from "../Source/AgentSystem/Defaults/AgentTimeDefaults.js";
-import { listAgentContinuityAutomaticRecallScopes } from "../Source/AgentSystem/Continuity/AgentContinuityScopes.js";
 import { AgentConfigService, type AgentConfigSourceOptions } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent } from "../Source/AgentSystem/Events/AgentEvent.js";
 import { serializeError } from "../Source/AgentSystem/Diagnostics/AgentErrorSerializer.js";
 import { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
 import { AgentServerEventLogger } from "../Source/AgentSystem/Diagnostics/AgentServerEventLogger.js";
 import { AgentApprovalRuntime } from "../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
-import { AgentApprovalDecisions } from "../Source/AgentSystem/Approvals/AgentApprovalTypes.js";
 import { AgentPiActiveSessionRegistry } from "../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import { AgentPiSessionMutationService } from "../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
 import { createAgentPiDiagnosticLoggerForDetail } from "../Source/AgentSystem/Diagnostics/AgentPiDiagnostics.js";
@@ -88,9 +64,6 @@ import type { AgentSandboxRuntimeAvailability } from "../Source/AgentSystem/Sand
 import type { SeneraSandboxWorkerClient } from "../Source/AgentSystem/Execution/SeneraSandboxWorkerTypes.js";
 import { readAgentProductMetadata } from "../Source/AgentSystem/Core/AgentProductMetadata.js";
 import { AgentUpgradeSession } from "../Source/AgentSystem/Upgrade/AgentUpgradeSession.js";
-import type { AgentChannelAttachment } from "../Source/AgentSystem/Channels/AgentChannelTypes.js";
-import type { AgentUploadAttachment } from "../Source/AgentSystem/Uploads/AgentUploadTypes.js";
-import { assertSafeWebUrl } from "../Source/AgentSystem/Web/AgentWebUrlPolicy.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 import {
   migrateLegacyAgentWorkspaceLayout,
@@ -102,13 +75,7 @@ import { AgentMcpManagementService } from "../Source/AgentSystem/McpPackages/Age
 import { AgentWorkspaceRuntime } from "../Source/AgentSystem/Runtime/AgentWorkspaceRuntime.js";
 import { AgentRunDispatchGateway } from "../Source/AgentSystem/Orchestration/AgentRunDispatchPort.js";
 import { AgentActionPlannerModelClient } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerModelClient.js";
-import { AgentGoalMicroLoopRuntime } from "../Source/AgentSystem/Agenda/AgentGoalMicroLoopRuntime.js";
-import { AgentGoalCommandService } from "../Source/AgentSystem/Agenda/AgentGoalCommandService.js";
-import { AgentGoalMicroLoopModelDecisionPort } from "../Source/AgentSystem/Agenda/AgentGoalMicroLoopModelDecisionPort.js";
 import { AgentGoalMicroLoopDispatchActionPort } from "../Source/AgentSystem/Agenda/AgentGoalMicroLoopDispatchActionPort.js";
-import { createAgentGoalMicroLoopCacheOptions } from "../Source/AgentSystem/Agenda/AgentGoalMicroLoopPromptCache.js";
-import { createAgentResidentIdleCacheOptions } from "../Source/AgentSystem/World/AgentWorldResidentIdlePromptCache.js";
-import { AgentNativeToolApiByEndpoint } from "../Source/AgentSystem/ModelEndpoints/AgentModelEndpointContract.js";
 import { AgentSessionRunDispatcher } from "../Source/AgentSystem/Session/AgentSessionRunDispatcher.js";
 import { AgentOrchestrationDatabase } from "../Source/AgentSystem/Orchestration/AgentOrchestrationDatabase.js";
 import { AgentSqliteChildRunRepository } from "../Source/AgentSystem/Orchestration/AgentSqliteChildRunRepository.js";
@@ -135,6 +102,8 @@ import {
   AgentScheduledTaskSourceContextGateway,
 } from "../Source/AgentSystem/Orchestration/AgentScheduledTaskRunTypes.js";
 import { AgentChannelsDatabase } from "../Source/AgentSystem/Channels/AgentChannelsDatabase.js";
+import { ingestAgentChannelAttachment } from "../Source/AgentSystem/Channels/AgentChannelAttachmentIngestor.js";
+import { parseAgentQqApprovalInteraction } from "../Source/AgentSystem/Channels/AgentQqApprovalInteraction.js";
 import { AgentChannelSessionMappingStore } from "../Source/AgentSystem/Channels/AgentChannelSessionMappingStore.js";
 import { AgentChannelService, type AgentChannelStatus } from "../Source/AgentSystem/Channels/AgentChannelService.js";
 import { createAgentChannelFinalResponseRewriter } from "../Source/AgentSystem/Channels/AgentChannelFinalResponse.js";
@@ -509,11 +478,6 @@ async function startSeneraServerRuntime(
     todos,
     temporalMemory,
   } = continuityRuntime;
-  const goalCommands = new AgentGoalCommandService({
-    agenda,
-    timeZone: () => resolveAgentWorldConfig(configSnapshot()).TimeZone,
-    reviewDelayMs: () => Math.round(goalMicroLoopConfig().ReviewDelaySeconds * 1_000),
-  });
   const goalModelProvider = resolveModelProviderConfig(initialConfig);
   const goalPlannerConfig = resolveActionPlannerConfig(initialConfig, goalModelProvider.Id);
   const goalPlannerClientConfig = goalPlannerConfig.PlanningClient;
@@ -521,156 +485,43 @@ async function startSeneraServerRuntime(
   const goalPlannerModelClient = new AgentActionPlannerModelClient(goalPlannerModelProvider, goalPlannerClientConfig, {
     maxRepairAttempts: goalPlannerConfig.MaxRepairAttempts,
   });
-  const goalMicroLoopDecisionPort = new AgentGoalMicroLoopModelDecisionPort({
-    client: goalPlannerModelClient,
-    invocation: {
-      cache: createAgentGoalMicroLoopCacheOptions({
-        worldId: agenda.snapshot(resolveAgentWorldConfig(initialConfig).TimeZone).world.id,
-        provider: goalPlannerModelProvider.ProviderId,
-        api: AgentNativeToolApiByEndpoint[goalPlannerModelProvider.Endpoint],
-        model: goalPlannerModelProvider.Model,
-      }),
-    },
-  });
-  const residentIdleDecisionPort = new AgentWorldResidentIdleModelDecisionPort({
-    client: goalPlannerModelClient,
-    invocation: {
-      cache: createAgentResidentIdleCacheOptions({
-        worldId: agenda.snapshot(resolveAgentWorldConfig(initialConfig).TimeZone).world.id,
-        provider: goalPlannerModelProvider.ProviderId,
-        api: AgentNativeToolApiByEndpoint[goalPlannerModelProvider.Endpoint],
-        model: goalPlannerModelProvider.Model,
-      }),
-    },
-  });
-  const continuityEventBridge = new AgentContinuityEventBridge({
-    store: continuityRuntime.store,
-    identity: continuityRuntime.identity,
+  const worldComposition = await composeAgentWorldRuntime({
+    workspaceRoot,
+    worldPackagesRoot: workspaceLayout.worldPackagesRoot,
+    initialConfig,
+    configSnapshot,
     logger,
-  });
-  const worldLedger = new AgentWorldEventLedger(continuityRuntime.database, agenda);
-  const worldMaterializer = new AgentWorldMaterializer({
-    ledger: worldLedger,
-    graphSnapshot: () =>
-      continuityRuntime.store.graphSnapshot(listAgentContinuityAutomaticRecallScopes(continuityRuntime.identity)),
-    config: () => resolveAgentWorldConfig(configSnapshot()),
+    continuityRuntime,
+    runDispatch,
+    orchestrationEvents,
+    goalMicroLoopActionPort,
+    goalModelProvider,
+    goalPlannerModelClient,
+    inferenceBudget,
+    goalMicroLoopConfig,
+    residentIdleConfig,
+    residentInteractionTarget: options.residentInteractionTarget,
+    listResidentSessions: () => residentSessionManagerRef.current?.listSessions() ?? [],
+    residentWakeAction: options.residentWakeAction,
+    deliverResidentMessage: async (request) => {
+      if (!residentSessionManagerRef.current) throw new Error("Resident idle delivery is not ready.");
+      return residentSessionManagerRef.current.deliverProactiveMessage(request);
+    },
+    deliverProactiveResult: async (request) =>
+      (await channelServiceRef.current?.deliverProactiveResult(request)) ?? "missing",
     identityTemplateValues,
   });
-  const worldClock = new AgentWorldClock(continuityRuntime.database, worldLedger);
-  const worldResidentStates = new AgentResidentStateMachine(continuityRuntime.database, worldLedger);
-  const worldHabits = new AgentHabitScheduler(
-    continuityRuntime.database,
-    worldLedger,
-    {
-      read: (subjectId, attribute, at) => worldMaterializer.readAttribute(subjectId, attribute, at),
-    },
-    worldResidentStates,
-  );
-  const worldWorkLedger = new AgentWorldWorkLedger(continuityRuntime.database);
-  const worldAutonomy = new AgentWorldAutonomyRuntime({
-    habits: worldHabits,
-    config: () => resolveAgentWorldConfig(configSnapshot()),
-    workLedger: worldWorkLedger,
-    leaseDurationMs: secondsToMilliseconds(resolveAgentWorldConfig(configSnapshot()).ActionBudget.LeaseDurationSeconds),
-    retryDelayMs: secondsToMilliseconds(resolveAgentWorldConfig(configSnapshot()).ActionBudget.RetryDelaySeconds),
-  });
-  const worldHabitRuntime = new AgentWorldHabitRuntime({
-    habits: worldHabits,
-    workLedger: worldWorkLedger,
-    leaseDurationMs: secondsToMilliseconds(resolveAgentWorldConfig(configSnapshot()).ActionBudget.LeaseDurationSeconds),
-    retryDelayMs: secondsToMilliseconds(resolveAgentWorldConfig(configSnapshot()).ActionBudget.RetryDelaySeconds),
-  });
-  const goalMicroLoop = new AgentGoalMicroLoopRuntime({
-    agenda,
-    timeZone: () => resolveAgentWorldConfig(configSnapshot()).TimeZone,
-    decisionPort: goalMicroLoopDecisionPort,
-    actionPort: goalMicroLoopActionPort,
-    failureReviewDelayMs: () => Math.round(goalMicroLoopConfig().ReviewDelaySeconds * 1_000),
-    enabled: () =>
-      goalMicroLoopConfig().Enabled && resolveActionPlannerConfig(configSnapshot(), goalModelProvider.Id).Enabled,
-    maxCandidates: () => goalMicroLoopConfig().MaxCandidates,
-    allowedToolNames: () => goalMicroLoopConfig().AllowedToolNames,
-    workLedger: worldWorkLedger,
-    leaseDurationMs: secondsToMilliseconds(resolveAgentWorldConfig(configSnapshot()).ActionBudget.LeaseDurationSeconds),
-    retryDelayMs: secondsToMilliseconds(resolveAgentWorldConfig(configSnapshot()).ActionBudget.RetryDelaySeconds),
-  });
-  const residentIdle = new AgentWorldResidentIdleRuntime({
-    workLedger: worldWorkLedger,
-    decisionPort: residentIdleDecisionPort,
-    actionPort: new AgentWorldResidentIdleAgendaActionPort({
-      agenda,
-      timeZone: () => resolveAgentWorldConfig(configSnapshot()).TimeZone,
-      resolveTargetSession: async () => {
-        const sessions = residentSessionManagerRef.current?.listSessions() ?? [];
-        const selected = options.residentInteractionTarget
-          ? await options.residentInteractionTarget(sessions)
-          : sessions
-              .filter((session) => session.status === AgentSessionStatuses.Idle)
-              .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]?.sessionId;
-        return selected?.trim() || undefined;
-      },
-      delivery: {
-        deliver: async (request) => {
-          if (!residentSessionManagerRef.current) throw new Error("Resident idle delivery is not ready.");
-          const outcome = await residentSessionManagerRef.current.deliverProactiveMessage({
-            ...request,
-            metadata: {
-              proactive: {
-                sourceId: AgentWorldActionSourceIds.ResidentIdle,
-                deliveryId: request.deliveryId,
-              },
-            },
-            onEvent: (event) => orchestrationEvents.emit(event),
-          });
-          if (outcome !== "delivered") return outcome;
-          return channelServiceRef.current?.deliverProactiveResult(request) ?? "missing";
-        },
-      },
-    }),
-    config: () => {
-      const config = residentIdleConfig();
-      return {
-        enabled: config.Enabled && resolveActionPlannerConfig(configSnapshot(), goalModelProvider.Id).Enabled,
-        minIntervalMs: secondsToMilliseconds(config.MinIntervalSeconds),
-        maxIntervalMs: secondsToMilliseconds(config.MaxIntervalSeconds),
-        backoffMultiplier: config.BackoffMultiplier,
-        maxPending: config.MaxPending,
-      };
-    },
-    leaseDurationMs: () =>
-      secondsToMilliseconds(resolveAgentWorldConfig(configSnapshot()).ActionBudget.LeaseDurationSeconds),
-    retryDelayMs: () => secondsToMilliseconds(resolveAgentWorldConfig(configSnapshot()).ActionBudget.RetryDelaySeconds),
-  });
-  const worldPackageLoader = new AgentWorldPackageLoader({
-    workspaceRoot,
-    rootDir: workspaceLayout.worldPackagesRoot,
-    database: continuityRuntime.database,
-    agenda,
-    ledger: worldLedger,
-    residentStates: worldResidentStates,
-    habits: worldHabits,
-    autonomy: worldAutonomy,
-    config: () => resolveAgentWorldConfig(configSnapshot()),
-  });
-  const residentWake = new AgentWorldResidentWakeRuntime({
-    workLedger: worldWorkLedger,
-    actionPort:
-      options.residentWakeAction ??
-      new AgentWorldResidentWakeEventActionPort({
-        ledger: worldLedger,
-        timeZone: () => resolveAgentWorldConfig(configSnapshot()).TimeZone,
-      }),
-    maxPending: Math.max(1, resolveAgentWorldConfig(configSnapshot()).ActionBudget.MaxActionsPerWake),
-    leaseDurationMs: secondsToMilliseconds(resolveAgentWorldConfig(configSnapshot()).ActionBudget.LeaseDurationSeconds),
-    retryDelayMs: secondsToMilliseconds(resolveAgentWorldConfig(configSnapshot()).ActionBudget.RetryDelaySeconds),
-  });
-  const presetActivation = new AgentPresetWorldActivationRuntime(worldPackageLoader);
-  const startupPresetManager = new AgentPresetManager({
-    workspaceRoot,
-    config: resolvePresetsConfig(configSnapshot()),
-    activation: presetActivation,
-  });
-  const activePresetCard = await startupPresetManager.synchronizeActivePreset();
+  const {
+    goalCommands,
+    worldRuntime,
+    residentIdle,
+    residentWake,
+    presetActivation,
+    activePresetCard,
+    temporalMemoryWorldBridge,
+    requestWorldWake,
+    observeWorldAndContinuityEvent,
+  } = worldComposition;
   residentDisplayName = activePresetCard?.title ?? resolveAgentWorldConfig(configSnapshot()).Name;
   if (activePresetCard && activePresetCard.worldPackageIds.length > 0) {
     logger.info("世界包已加载", {
@@ -678,55 +529,6 @@ async function startSeneraServerRuntime(
       rootDir: workspaceLayout.worldPackagesRoot,
     });
   }
-  const worldRuntime = new AgentWorldRuntime({
-    agenda,
-    ledger: worldLedger,
-    clock: worldClock,
-    habits: worldHabits,
-    residentStates: worldResidentStates,
-    materializer: worldMaterializer,
-    config: () => resolveAgentWorldConfig(configSnapshot()),
-    errorSink: (error) => logger.error("世界运行时推进失败", { error: errorMessage(error) }),
-    wakeSources: [worldHabitRuntime, worldAutonomy, goalMicroLoop, residentWake, residentIdle],
-    workLedger: worldWorkLedger,
-    inferenceBudget,
-    inferenceBudgetScope: () => continuityRuntime.identity.workspaceId,
-  });
-  const requestWorldWake = (reason: string): void => {
-    void worldRuntime.wake().catch((error) =>
-      logger.warn("世界事件唤醒失败", {
-        reason,
-        error: errorMessage(error),
-      }),
-    );
-  };
-  const temporalMemoryWorldBridge = new AgentTemporalMemoryWorldBridge({
-    store: continuityRuntime.temporalMemoryStore,
-    ledger: worldLedger,
-    agenda,
-    timeZone: () => resolveAgentWorldConfig(configSnapshot()).TimeZone,
-  });
-  const worldConversationBridge = new AgentWorldConversationBridge({
-    ledger: worldLedger,
-    agenda,
-    timeZone: () => resolveAgentWorldConfig(configSnapshot()).TimeZone,
-    onChanged: () => requestWorldWake("conversation_turn"),
-  });
-  const worldLifecycleEventBridge = new AgentWorldLifecycleEventBridge({
-    ledger: worldLedger,
-    agenda,
-    timeZone: () => resolveAgentWorldConfig(configSnapshot()).TimeZone,
-    logger,
-    onChanged: () => requestWorldWake("lifecycle_event"),
-  });
-  const observeWorldAndContinuityEvent = (event: AgentDomainEvent): void => {
-    continuityEventBridge.observe(event);
-    worldLifecycleEventBridge.observe(event);
-  };
-  memoryService.registerDeletionSink(temporalMemoryWorldBridge);
-  memoryService.registerCompletedTurnSink(worldConversationBridge);
-  memoryService.registerDeletionSink(worldConversationBridge);
-  memoryService.registerDeletionSink(worldLifecycleEventBridge);
   deferResourceCleanup(() => worldRuntime.stop());
   const runtimeCache = new AgentSystemRuntimeCache({
     workspaceRoot,
@@ -858,8 +660,8 @@ async function startSeneraServerRuntime(
     registry: createDefaultAgentChannelRegistry(),
     sessionManager,
     mappingStore: channelSessionMappings,
-    attachmentResolver: (attachment, source, requestHeaders) =>
-      ingestChannelAttachment(workspaceRuntime.uploadStore, attachment, source.platform, requestHeaders),
+    attachmentResolver: (attachment, _source, requestHeaders) =>
+      ingestAgentChannelAttachment(workspaceRuntime.uploadStore, attachment, requestHeaders),
     resourceResolver: new AgentResourceResolver({
       workspaceRoot,
       config: configSnapshot,
@@ -868,7 +670,7 @@ async function startSeneraServerRuntime(
     finalResponseRewriter: channelFinalResponseRewriter,
     onInteraction: async (interaction) => {
       if (interaction.source.platform !== "qq") return;
-      const parsed = parseQqApprovalInteraction(interaction.buttonData);
+      const parsed = parseAgentQqApprovalInteraction(interaction.buttonData);
       if (!parsed) return;
       const pending = approvalRuntime.getPending(parsed.approvalId);
       const lane = channelSessionMappings.getByLane(interaction.source);
@@ -1185,79 +987,4 @@ async function startSeneraServerRuntime(
     healthUrl: `http://${resolveHealthCheckHost(serverConfig.Host)}:${serverConfig.Port}/health/ready`,
     stop,
   };
-}
-
-/**
- * Materializes a channel attachment into the same durable upload store used
- * by the browser composer. The session/model pipeline can then resolve the
- * resource URI instead of depending on a short-lived QQ CDN URL.
- */
-function parseQqApprovalInteraction(buttonData: string | undefined):
-  | {
-      readonly approvalId: string;
-      readonly decision: (typeof AgentApprovalDecisions)[keyof typeof AgentApprovalDecisions];
-    }
-  | undefined {
-  const match = /^approve:(.+):(allow-once|allow-always|deny)$/u.exec(buttonData?.trim() ?? "");
-  if (!match) return undefined;
-  const decision =
-    match[2] === "allow-once"
-      ? AgentApprovalDecisions.ApproveOnce
-      : match[2] === "allow-always"
-        ? AgentApprovalDecisions.ApproveSession
-        : AgentApprovalDecisions.Deny;
-  return { approvalId: match[1]!, decision };
-}
-
-async function ingestChannelAttachment(
-  store: {
-    readonly maxFileBytes: number;
-    save(input: { stream: Readable; originalName: string; declaredMime?: string }): Promise<AgentUploadAttachment>;
-  },
-  attachment: AgentChannelAttachment,
-  _platform: string,
-  requestHeaders?: Readonly<Record<string, string>>,
-): Promise<AgentUploadAttachment | undefined> {
-  const rawUrl = attachment.url?.trim().replace(/^\/\//u, "https://");
-  if (!rawUrl) return undefined;
-  let url: URL;
-  try {
-    url = await assertSafeWebUrl(rawUrl, {
-      maxUrlLength: 8_192,
-      allowPrivateNetworks: false,
-      allowSyntheticProxyAddresses: true,
-    });
-  } catch {
-    return undefined;
-  }
-
-  let response: Response | undefined;
-  for (let redirectCount = 0; redirectCount <= 3; redirectCount += 1) {
-    response = await fetch(url, {
-      method: "GET",
-      redirect: "manual",
-      headers: { ...(requestHeaders ?? {}) },
-      signal: AbortSignal.timeout(45_000),
-    });
-    if (![301, 302, 303, 307, 308].includes(response.status)) break;
-    const location = response.headers.get("location");
-    if (!location) break;
-    url = await assertSafeWebUrl(new URL(location, url), {
-      maxUrlLength: 8_192,
-      allowPrivateNetworks: false,
-      allowSyntheticProxyAddresses: true,
-    });
-  }
-  if (!response) return undefined;
-  if (!response.ok || !response.body) throw new Error(`attachment download failed with HTTP ${response.status}`);
-  const declaredLength = Number(response.headers.get("content-length") ?? "");
-  if (Number.isFinite(declaredLength) && declaredLength > store.maxFileBytes) {
-    throw new Error(`attachment exceeds the ${store.maxFileBytes} byte limit`);
-  }
-  const stream = Readable.fromWeb(response.body as never);
-  return store.save({
-    stream,
-    originalName: attachment.filename?.trim() || "channel-attachment",
-    declaredMime: attachment.contentType ?? response.headers.get("content-type") ?? undefined,
-  });
 }

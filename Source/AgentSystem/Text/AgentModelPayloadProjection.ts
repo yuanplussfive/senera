@@ -32,7 +32,6 @@ export const AgentModelPayloadProjectionDefaults = {
   maxNodes: 2_048,
 } as const satisfies AgentModelPayloadProjectionPolicy;
 
-const InlineDataUriPattern = /data:([^;,\s]+)(?:;[^,\s]*)*;base64,([A-Za-z0-9+/=\r\n]+)/gu;
 const EncodedRunPattern = /(^|[^A-Za-z0-9+/=])([A-Za-z0-9+/=]{1024,})(?![A-Za-z0-9+/=])/gu;
 
 export function projectAgentModelPayload(
@@ -56,17 +55,7 @@ export function projectAgentModelText(
   path = "$",
 ): AgentTextPreview & { signals: readonly AgentModelPayloadSignal[] } {
   const signals: AgentModelPayloadSignal[] = [];
-  const sanitized = value.replace(InlineDataUriPattern, (_match, mediaType: string, encoded: string) => {
-    const encodedCharacters = encoded.replace(/\s+/gu, "").length;
-    signals.push({
-      kind: "inline_media",
-      path,
-      originalCharacters: encodedCharacters,
-      mediaType,
-    });
-    const digest = crypto.createHash("sha256").update(encoded).digest("hex").slice(0, 16);
-    return `[inline media omitted mediaType=${mediaType} encodedCharacters=${encodedCharacters} sha256=${digest}]`;
-  });
+  const sanitized = projectInlineDataUris(value, path, signals);
   const encoded = sanitized.replace(EncodedRunPattern, (match, prefix: string, run: string) => {
     if (!looksLikeEncodedRun(run)) return match;
     signals.push({ kind: "encoded_run", path, originalCharacters: run.length });
@@ -78,6 +67,94 @@ export function projectAgentModelText(
     signals.push({ kind: "string_limit", path, originalCharacters: preview.originalChars });
   }
   return { ...preview, signals };
+}
+
+function projectInlineDataUris(value: string, path: string, signals: AgentModelPayloadSignal[]): string {
+  let searchStart = 0;
+  let copyStart = 0;
+  let projected = "";
+  while (searchStart < value.length) {
+    const start = value.indexOf("data:", searchStart);
+    if (start < 0) break;
+    const mediaTypeStart = start + "data:".length;
+    let mediaTypeEnd = mediaTypeStart;
+    while (mediaTypeEnd < value.length && isMediaTypeCharacter(value[mediaTypeEnd]!)) mediaTypeEnd += 1;
+    if (mediaTypeEnd === mediaTypeStart) {
+      searchStart = mediaTypeStart;
+      continue;
+    }
+    const encodedStart = findBase64PayloadStart(value, mediaTypeEnd);
+    if (encodedStart === undefined) {
+      searchStart = mediaTypeEnd;
+      continue;
+    }
+    let encodedEnd = encodedStart;
+    while (encodedEnd < value.length && isBase64Character(value[encodedEnd]!)) encodedEnd += 1;
+    if (encodedEnd === encodedStart) {
+      searchStart = encodedStart;
+      continue;
+    }
+    const mediaType = value.slice(mediaTypeStart, mediaTypeEnd);
+    const encoded = value.slice(encodedStart, encodedEnd);
+    const encodedCharacters = countNonWhitespace(encoded);
+    signals.push({
+      kind: "inline_media",
+      path,
+      originalCharacters: encodedCharacters,
+      mediaType,
+    });
+    const digest = crypto.createHash("sha256").update(encoded).digest("hex").slice(0, 16);
+    projected += value.slice(copyStart, start);
+    projected += `[inline media omitted mediaType=${mediaType} encodedCharacters=${encodedCharacters} sha256=${digest}]`;
+    copyStart = encodedEnd;
+    searchStart = encodedEnd;
+  }
+  return projected + value.slice(copyStart);
+}
+
+function findBase64PayloadStart(value: string, mediaTypeEnd: number): number | undefined {
+  let parameterStart = mediaTypeEnd;
+  while (value[parameterStart] === ";") {
+    const nextSemicolon = value.indexOf(";", parameterStart + 1);
+    const nextComma = value.indexOf(",", parameterStart + 1);
+    const parameterEnd =
+      nextSemicolon < 0 ? nextComma : nextComma < 0 ? nextSemicolon : Math.min(nextSemicolon, nextComma);
+    if (parameterEnd < 0) return undefined;
+    if (value.slice(parameterStart + 1, parameterEnd) === "base64" && value[parameterEnd] === ",") {
+      return parameterEnd + 1;
+    }
+    if (value[parameterEnd] === ",") return undefined;
+    parameterStart = parameterEnd;
+  }
+  return undefined;
+}
+
+function isMediaTypeCharacter(value: string): boolean {
+  return value !== ";" && value !== "," && !isWhitespace(value);
+}
+
+function isBase64Character(value: string): boolean {
+  const code = value.charCodeAt(0);
+  return (
+    (code >= 0x41 && code <= 0x5a) ||
+    (code >= 0x61 && code <= 0x7a) ||
+    (code >= 0x30 && code <= 0x39) ||
+    value === "+" ||
+    value === "/" ||
+    value === "=" ||
+    value === "\r" ||
+    value === "\n"
+  );
+}
+
+function countNonWhitespace(value: string): number {
+  let count = 0;
+  for (const character of value) if (!isWhitespace(character)) count += 1;
+  return count;
+}
+
+function isWhitespace(value: string): boolean {
+  return value === " " || value === "\t" || value === "\r" || value === "\n" || value === "\f";
 }
 
 function looksLikeEncodedRun(value: string): boolean {

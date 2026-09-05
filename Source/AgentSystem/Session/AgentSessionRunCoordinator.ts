@@ -205,7 +205,6 @@ export class AgentSessionRunCoordinator {
         terminalEvents: turnTerminalEvents,
         onEvent: onRunEvent,
       });
-      let completedAt = timestamp;
       const allFreshEntries: AgentConversationEntry[] = [];
       const pendingEntries: AgentConversationEntry[] = [];
       const pendingStepTraces = [] as typeof result.stepTraces;
@@ -213,7 +212,7 @@ export class AgentSessionRunCoordinator {
       const allContinuityRuleDeliveryUris: string[] = [];
 
       if (!this.activeRuns.isCurrent(session.id, run)) return;
-      completedAt = new Date().toISOString();
+      const completedAt = new Date().toISOString();
       const assistantEntry = this.options.conversationProjector.projectAssistantDecision(
         requestId,
         result.decisionXml,

@@ -68,11 +68,11 @@ function isProfileBackedFact(
   return profiles.some((profile) => {
     if (!profile.sourceRefs.some((sourceRef) => factSources.has(sourceRef))) return false;
     const value = profileValue(profile.valueJson);
-    return value !== undefined && isAgentContinuityExactProfileEcho(fact.claim, profile.key, value);
+    return isAgentContinuityExactProfileEcho(fact.claim, profile.key, value);
   });
 }
 
-function profileValue(valueJson: string): string | number | boolean | undefined {
+function profileValue(valueJson: string): string | number | boolean {
   const value: unknown = JSON.parse(valueJson);
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
   throw new Error("Resident profile prompt values must be scalar.");

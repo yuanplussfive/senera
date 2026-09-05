@@ -54,8 +54,8 @@ export function assertAgentGoalParent(
   }
 
   const visited = new Set<string>();
-  let cursor: AgentAgendaRecord | undefined = parent;
-  while (cursor) {
+  let cursor: AgentAgendaRecord = parent;
+  while (true) {
     if (cursor.id === input.goalId) {
       throw new AgentGoalParentError(input.goalId, parentId, "Goal parent relationship would create a cycle.");
     }
