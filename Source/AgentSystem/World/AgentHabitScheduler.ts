@@ -873,8 +873,9 @@ function recurrenceOccurrences(
 ): Temporal.Instant[] {
   const occurrences: Temporal.Instant[] = [];
   const limit = maximum === undefined ? Number.MAX_SAFE_INTEGER : maximum;
-  recurrence(definition).between(new Date(from.epochMilliseconds), new Date(to.epochMilliseconds), false, (date) => {
-    const instant = Temporal.Instant.fromEpochMilliseconds(date.getTime());
+  const timezone = definition.timeZone;
+  recurrence(definition).between(toFloatingDate(from, timezone), toFloatingDate(to, timezone), false, (date) => {
+    const instant = floatingDateToInstant(date, timezone);
     if (!isExcluded(definition, instant)) occurrences.push(instant);
     return occurrences.length < limit;
   });
@@ -882,9 +883,9 @@ function recurrenceOccurrences(
 }
 
 function nextOccurrence(definition: AgentHabitDefinition, after: Temporal.Instant): Temporal.Instant | undefined {
-  let cursor = recurrence(definition).after(new Date(after.epochMilliseconds), false);
+  let cursor = recurrence(definition).after(toFloatingDate(after, definition.timeZone), false);
   while (cursor) {
-    const instant = Temporal.Instant.fromEpochMilliseconds(cursor.getTime());
+    const instant = floatingDateToInstant(cursor, definition.timeZone);
     if (!isExcluded(definition, instant)) return instant;
     cursor = recurrence(definition).after(cursor, false);
   }
@@ -893,11 +894,35 @@ function nextOccurrence(definition: AgentHabitDefinition, after: Temporal.Instan
 
 function recurrence(definition: AgentHabitDefinition): RRuleInstance {
   const options = RRule.parseString(definition.rrule);
+  const localStart = Temporal.Instant.from(definition.startsAt).toZonedDateTimeISO(definition.timeZone);
   return new RRule({
     ...options,
-    dtstart: new Date(Temporal.Instant.from(definition.startsAt).epochMilliseconds),
-    tzid: definition.timeZone,
+    // RRule's TZID implementation interprets Date fields in the host
+    // timezone. Keep the rule floating and convert its wall-clock values
+    // through Temporal so the scheduler is independent of the OS timezone.
+    dtstart: toFloatingDate(localStart.toInstant(), definition.timeZone),
   });
+}
+
+function toFloatingDate(instant: Temporal.Instant, timeZone: string): Date {
+  const local = instant.toZonedDateTimeISO(timeZone);
+  const plain = local.toPlainDateTime();
+  return new Date(
+    Date.UTC(
+      plain.year,
+      plain.month - 1,
+      plain.day,
+      plain.hour,
+      plain.minute,
+      plain.second,
+      Math.trunc(plain.millisecond),
+    ),
+  );
+}
+
+function floatingDateToInstant(value: Date, timeZone: string): Temporal.Instant {
+  const utc = Temporal.Instant.fromEpochMilliseconds(value.getTime()).toZonedDateTimeISO("UTC");
+  return utc.toPlainDateTime().toZonedDateTime(timeZone).toInstant();
 }
 
 function isExcluded(definition: AgentHabitDefinition, instant: Temporal.Instant): boolean {

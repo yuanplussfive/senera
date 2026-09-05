@@ -852,8 +852,7 @@ function normalizeWorkspacePathReference(value: string): string | undefined {
   // Markdown parsers preserve a leading slash in Windows drive paths written
   // as `</E:/...>`. Convert that representation before the workspace boundary
   // performs its canonical containment check.
-  const pathReference =
-    process.platform === "win32" && isSlashPrefixedWindowsDrivePath(reference) ? reference.slice(1) : reference;
+  const pathReference = isSlashPrefixedWindowsDrivePath(reference) ? reference.slice(1) : reference;
 
   // URL references are handled by the remote-media route below. A protocol
   // relative URL is also not a workspace path, even though it starts with a

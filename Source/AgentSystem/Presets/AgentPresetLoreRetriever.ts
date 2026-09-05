@@ -11,9 +11,9 @@ export function selectAgentPresetLore(
 
   return entries
     .filter((entry) => entry.enabled)
-    .map((entry) => ({ entry, score: loreScore(entry, normalizedQuery) }))
+    .map((entry, order) => ({ entry, order, score: loreScore(entry, normalizedQuery) }))
     .filter((candidate) => candidate.score > 0)
-    .sort((left, right) => right.score - left.score || left.entry.title.localeCompare(right.entry.title))
+    .sort((left, right) => right.score - left.score || left.order - right.order)
     .map((candidate) => candidate.entry);
 }
 

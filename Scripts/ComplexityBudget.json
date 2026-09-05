@@ -57,7 +57,7 @@
     },
     {
       "path": "Source/AgentSystem/Channels/AgentChannelOutboundMedia.ts",
-      "baselineLines": 1046,
+      "baselineLines": 1045,
       "owner": "channel-runtime",
       "splitTarget": "Split media identity, resource projection, and ordered delivery into focused modules."
     },

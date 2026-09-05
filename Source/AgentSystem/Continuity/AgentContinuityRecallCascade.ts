@@ -293,7 +293,8 @@ export function buildAgentContinuityFeedbackVariant(input: {
     .slice(0, input.maxSeedRecords);
   if (seeds.length === 0) return undefined;
 
-  const termScores = new Map<string, number>();
+  const termScores = new Map<string, { score: number; order: number }>();
+  let termOrder = 0;
   for (const seed of seeds) {
     const seedTerms = new Set(normalizeTerms(input.similarity.contentTerms(seed.observation.summary)));
     for (const term of seedTerms) {
@@ -301,11 +302,15 @@ export function buildAgentContinuityFeedbackVariant(input: {
       const information =
         input.vocabulary?.informationScore?.(term) ?? corpusInformation(term, input.corpus, input.similarity);
       const contribution = Math.max(0, seed.score) * Math.max(0, seed.observation.confidence) * information;
-      termScores.set(term, (termScores.get(term) ?? 0) + contribution);
+      const previous = termScores.get(term);
+      termScores.set(term, {
+        score: (previous?.score ?? 0) + contribution,
+        order: previous?.order ?? termOrder++,
+      });
     }
   }
   const terms = [...termScores.entries()]
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .sort((left, right) => right[1].score - left[1].score || left[1].order - right[1].order)
     .slice(0, input.maxTerms)
     .map(([term]) => term);
   return createVariant(query, terms, "feedback", input.maxCharacters);
