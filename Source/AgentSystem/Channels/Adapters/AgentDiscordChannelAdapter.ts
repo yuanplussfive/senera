@@ -269,25 +269,22 @@ export class AgentDiscordChannelAdapter implements AgentChannelAdapter {
       if (!hello || heartbeatTimer) return;
       const heartbeatIntervalMs = normalizeGatewayHeartbeatInterval(hello.heartbeat_interval);
       let nextHeartbeatAt = Date.now();
-      heartbeatTimer = setInterval(
-        () => {
-          const now = Date.now();
-          if (now < nextHeartbeatAt) return;
-          nextHeartbeatAt = now + heartbeatIntervalMs;
-          socket.send(JSON.stringify({ op: 1, d: this.lastSequence ?? null }));
-          const notAckedThisBeat = acked === 0;
-          acked = 0;
-          if (notAckedThisBeat) {
-            missedAcks += 1;
-            if (missedAcks >= this.maxMissedAcks) {
-              // The gateway stopped acknowledging heartbeats; recycle the
-              // connection so the resume path (with sequence) can take over.
-              socket.terminate();
-            }
+      heartbeatTimer = setInterval(() => {
+        const now = Date.now();
+        if (now < nextHeartbeatAt) return;
+        nextHeartbeatAt = now + heartbeatIntervalMs;
+        socket.send(JSON.stringify({ op: 1, d: this.lastSequence ?? null }));
+        const notAckedThisBeat = acked === 0;
+        acked = 0;
+        if (notAckedThisBeat) {
+          missedAcks += 1;
+          if (missedAcks >= this.maxMissedAcks) {
+            // The gateway stopped acknowledging heartbeats; recycle the
+            // connection so the resume path (with sequence) can take over.
+            socket.terminate();
           }
-        },
-        GatewayHeartbeatTickMs,
-      );
+        }
+      }, GatewayHeartbeatTickMs);
       heartbeatTimer.unref?.();
     };
 
