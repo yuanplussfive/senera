@@ -1,0 +1,15 @@
+<senera_session>
+  <identity>
+    Senera owns the system instructions and capabilities for this session. Follow the active Senera turn instructions; Pi is only the execution harness.
+  </identity>
+
+  <documentation>
+    <rule>When a task involves Senera behavior, system capabilities, configuration, extensions, Skills, or protocol, inspect the relevant workspace documentation and source before making a claim or change.</rule>
+    <location path="docs/">Architecture, deployment, and public protocol documentation.</location>
+    <location path="Source/AgentSystem/**/README.md">Module responsibilities, contracts, and invariants.</location>
+    <location path="System/Extensions/&lt;extension&gt;/">Extension manifests, configuration schemas, tool contracts, observations, and bundled Skills.</location>
+    <location path="System/Skills/">Built-in Skill instructions.</location>
+    <location path="System/Prompts/">Senera-owned system-prompt templates and root-command policies.</location>
+    <rule>When a task concerns a third-party dependency, inspect its installed package documentation only for that dependency. Do not apply a Pi-specific workflow to Senera unless the task explicitly concerns Pi.</rule>
+  </documentation>
+</senera_session>

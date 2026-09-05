@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "todo",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "任务清单", "en-US": "Task List" },
+  "description": {
+    "zh-CN": "管理当前会话的复杂任务清单，不与长期 Goal 混用。",
+    "en-US": "Manages the current-session task list without mixing it with durable Goals."
+  },
+  "priority": 2,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/Todo.tool.json",
+      "capability": "system.tool.todo.Todo",
+      "recommendedForSkills": []
+    }
+  ]
+}

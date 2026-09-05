@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 5,
+  "entrypoints": ["senera/tool/decision", "senera/resource/decision"],
+  "compiler": {
+    "name": "opa",
+    "version": "1.18.2"
+  },
+  "assets": {
+    "policies": [
+      {
+        "file": "AgentToolApprovalPolicy.rego",
+        "sha256": "799d7d583215a88fbea8d7c4138263fcd85040335e2ed42b10c268c0f413d6a9"
+      },
+      {
+        "file": "AgentResourceAccessPolicy.rego",
+        "sha256": "889288126814ec42ff488bba59a9b5f99df45161225160405423b3e85cc73bcd"
+      }
+    ],
+    "data": {
+      "file": "AgentToolApprovalPolicy.data.json",
+      "sha256": "f99a47bc59833795c97d5a8d1f46dac9eb5c89a51cf9bfcc1d7c4d5d9cb567dd"
+    },
+    "wasm": {
+      "file": "AgentToolApprovalPolicy.wasm",
+      "sha256": "7caabe0737ac486c967dc3895a747e540050b3ae44872b5eaaa10502755d9ad1"
+    }
+  }
+}

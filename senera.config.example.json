@@ -1,0 +1,362 @@
+{
+  "ConfigVersion": 19,
+  "Defaults": {
+    "AgentLoop": {
+      "PiTurnLeaseTimeoutSeconds": 120,
+      "RunSettlementTimeoutSeconds": 15,
+      "PiSessions": {
+        "RootDir": ".senera/pi-sessions",
+        "MaxCachedSessions": 8,
+        "Compaction": {
+          "Enabled": true
+        }
+      }
+    },
+    "Todos": {
+      "MaxItems": 256,
+      "MaxContentCharacters": 4000,
+      "MaxResultCharacters": 512000
+    },
+    "ToolExecution": {
+      "TimeoutSeconds": 120,
+      "MaxConcurrentCallsPerRun": 10,
+      "MaxStdoutBytes": 67108864,
+      "MaxStderrBytes": 67108864,
+      "SemanticAudit": {
+        "Mode": "approval_sensitive"
+      },
+      "Environment": {
+        "Inherit": "allowlist",
+        "IncludeOnly": [
+          "PATH",
+          "HOME",
+          "USER",
+          "USERNAME",
+          "USERPROFILE",
+          "TMP",
+          "TEMP",
+          "TMPDIR",
+          "SystemRoot",
+          "ComSpec",
+          "PATHEXT",
+          "PWD",
+          "TERM",
+          "TERM_PROGRAM",
+          "LANG",
+          "LC_*",
+          "CI"
+        ],
+        "Exclude": [],
+        "Set": {}
+      },
+      "Resources": {
+        "MaxActive": 8,
+        "MaxBufferedBytes": 67108864,
+        "OutputBatchMaxBytes": 65536,
+        "OutputBatchMaxDelayMs": 50,
+        "MaxInputBytes": 1048576,
+        "InitialYieldSeconds": 1,
+        "MaxWaitSeconds": 30,
+        "IdleTtlSeconds": 1800,
+        "TerminalTtlSeconds": 300,
+        "SweepIntervalSeconds": 30,
+        "TerminationGraceSeconds": 2
+      }
+    },
+    "SandboxRuntime": {
+      "Enabled": true,
+      "BaseDir": ".senera/sandbox-runtime"
+    },
+    "ToolSearch": {
+      "Fuzzy": {
+        "Enabled": true,
+        "MinScore": 0.25,
+        "CandidateLimit": 8
+      },
+      "Memory": {
+        "MaxEpisodes": 5000,
+        "HalfLifeDays": 30
+      },
+      "Ranking": {
+        "RrfK": 60,
+        "MmrLambda": 0.72,
+        "MmrCandidateScoreRatio": 0.92,
+        "MinScore": 0,
+        "MaxResults": 6,
+        "MemoryExpansion": {
+          "Mode": "fallback",
+          "MinConfidence": 0.8,
+          "MinEvidence": 3,
+          "MaxResults": 2
+        }
+      },
+      "Rerank": {
+        "Enabled": false,
+        "CandidateLimit": 24,
+        "ScoreScale": 0.018,
+        "FeatureWeights": {}
+      }
+    },
+    "VectorModels": {
+      "Embedding": {
+        "Enabled": false,
+        "ProviderId": "main",
+        "Model": "qwen3-embedding-0.6b",
+        "TimeoutSeconds": 20,
+        "MaxNetworkRetries": 1,
+        "Dimensions": -1,
+        "BatchSize": 64,
+        "InputMaxChars": -1
+      },
+      "Rerank": {
+        "Enabled": false,
+        "ProviderId": "main",
+        "Model": "qwen3-reranker-0.6b",
+        "TimeoutSeconds": 20,
+        "MaxNetworkRetries": 1,
+        "EndpointPath": "/rerank",
+        "CandidateLimit": -1,
+        "TopK": -1
+      }
+    },
+    "ToolLearning": {
+      "Enabled": true,
+      "MaxRepairAttempts": 1,
+      "Patterns": {
+        "MinSupport": 2,
+        "MaxPromptPatterns": 2
+      }
+    },
+    "ContinuityLearning": {
+      "Enabled": true,
+      "Runtime": {
+        "MaxAttempts": 3,
+        "RetryBaseDelaySeconds": 1,
+        "RetryMaxDelaySeconds": 60,
+        "MaxJobsPerDrain": 8
+      },
+      "LearningGate": {
+        "Enabled": true,
+        "DeferredDelaySeconds": 30
+      },
+      "Recall": {
+        "TurnValueClassifier": {
+          "Enabled": true,
+          "ConfidenceThreshold": 0.82,
+          "MinimumExamplesPerLabel": 3,
+          "MaxTrainingEntries": 4096
+        },
+        "Prefetch": {
+          "Enabled": true,
+          "CacheTtlSeconds": 300
+        },
+        "PromptBudget": {
+          "MaxProfileEntries": 32,
+          "MaxFactEntries": 24,
+          "MaxRelationEntries": 24,
+          "MaxEventEntries": 8,
+          "MaxEvidenceEntries": 8,
+          "MaxCharacters": 24000
+        },
+        "Ranking": {
+          "MinimumTextSimilarityScore": 0.12,
+          "CandidateScore": 0.24,
+          "DirectScore": 0.74,
+          "DirectTextSimilarityScore": 0.58,
+          "FactIdentityFuzzyScore": 0.9,
+          "RecencyHalfLifeDays": 120,
+          "Consolidation": {
+            "MinimumEquivalentEffectScore": 0.9,
+            "ActiveIndependentEvidence": 2,
+            "EstablishedIndependentEvidence": 3
+          },
+          "Similarity": {
+            "StructuralMismatchWeight": 0.8
+          }
+        }
+      }
+    },
+    "Presets": {
+      "Enabled": true,
+      "RootDir": ".senera/presets",
+      "StateFile": ".senera/presets-state.json",
+      "PromptBudget": {
+        "MaxExamples": 4,
+        "MaxLoreEntries": 6,
+        "MaxSupplementalCharacters": 12000
+      }
+    },
+    "Artifacts": {
+      "RootDir": ".senera/artifacts/runs",
+      "SummaryMaxChars": 2400,
+      "RawJsonMaxBytes": 67108864,
+      "TextFileMaxBytes": 67108864,
+      "MemoryReadMaxArtifacts": 16,
+      "MemoryReadMaxRefs": 8,
+      "MemoryReadMaxConcurrency": 4,
+      "MaxStoredBytes": 10737418240,
+      "MaxArtifacts": 10000,
+      "RetentionHours": 720,
+      "IncompleteRetentionHours": 24,
+      "MaintenanceIntervalMinutes": 15,
+      "MaintenanceMaxConcurrency": 4
+    },
+    "Uploads": {
+      "RootDir": ".senera/uploads",
+      "MaxFileBytes": 52428800,
+      "MaxRequestBytes": 104857600,
+      "MaxFilesPerRequest": 8,
+      "MaxConcurrentUploads": 4,
+      "MaxStoredBytes": 2147483648,
+      "RetentionHours": 720,
+      "MaintenanceIntervalMinutes": 15
+    },
+    "Frontend": {
+      "DevServer": {
+        "Host": "127.0.0.1",
+        "Port": 5173,
+        "StrictPort": false
+      },
+      "PreviewServer": {
+        "Host": "127.0.0.1",
+        "Port": 4173,
+        "StrictPort": true
+      },
+      "Client": {
+        "WebSocketUrl": "ws://127.0.0.1:8787",
+        "ModelLabel": "senera",
+        "UserName": "you",
+        "EmptySuggestions": ["整理今天的工作优先级", "分析一段错误日志", "把需求拆成可执行步骤"]
+      }
+    },
+    "ActionPlanner": {
+      "Enabled": true,
+      "MaxRepairAttempts": 1,
+      "Client": {
+        "Temperature": 0.1,
+        "MaxTokens": -1
+      },
+      "FinalAnswerClient": {
+        "Temperature": 0.1,
+        "MaxTokens": -1
+      }
+    },
+    "Server": {
+      "Host": "127.0.0.1",
+      "Port": 8787,
+      "HotReload": true,
+      "RequestMaxBytes": 67108864,
+      "AccessControl": {
+        "Mode": "auto",
+        "AccountFile": ".senera/access/admin-account.json",
+        "AllowedOrigins": [],
+        "TrustedProxyAddresses": [],
+        "AllowInsecureLoopback": false,
+        "AllowInsecureHttp": false,
+        "Session": {
+          "AbsoluteTtlHours": 72,
+          "IdleTtlHours": 12,
+          "MaxSessions": 8
+        },
+        "Limits": {
+          "MaxConnections": 64,
+          "MaxConnectionsPerClient": 8,
+          "UpgradeRequestsPerMinute": 30,
+          "HttpRequestsPerMinute": 60,
+          "MessagesPerMinute": 100,
+          "LoginAttemptsPerMinute": 5,
+          "HeartbeatIntervalSeconds": 30,
+          "IdleSocketTimeoutSeconds": 90
+        }
+      }
+    },
+    "Persistence": {
+      "Kind": "sqlite"
+    },
+    "ConfigStore": {
+      "Enabled": true,
+      "Kind": "sqlite",
+      "MirrorJson": true,
+      "RevisionRetentionCount": 256,
+      "CommandReceiptRetentionHours": 168,
+      "CommandReceiptMaxCount": 4096
+    },
+    "World": {
+      "Name": "Senera",
+      "TimeZone": "Asia/Shanghai",
+      "GoalMicroLoop": {
+        "Enabled": true,
+        "MaxCandidates": 8,
+        "ReviewDelaySeconds": 900,
+        "AllowedToolNames": []
+      },
+      "ResidentIdle": {
+        "Enabled": true,
+        "MinIntervalSeconds": 900,
+        "MaxIntervalSeconds": 14400,
+        "BackoffMultiplier": 2,
+        "MaxPending": 1
+      },
+      "ActionBudget": {
+        "MaxActionsPerWake": 8,
+        "MaxDecisionCandidatesPerWake": 8,
+        "RetryDelaySeconds": 30,
+        "LeaseDurationSeconds": 300,
+        "FairShare": true,
+        "SourceOrder": [],
+        "SourceCaps": {}
+      }
+    }
+  },
+  "DefaultModelProviderId": "main",
+  "ModelProviderEndpoints": [
+    {
+      "Id": "main",
+      "BaseUrl": "http://localhost:3000/v1",
+      "ApiKey": "YOUR_API_KEY"
+    }
+  ],
+  "ModelProviders": [
+    {
+      "Id": "main",
+      "ProviderId": "main",
+      "Icon": "mistral",
+      "Capabilities": {
+        "ToolCalling": true,
+        "DeveloperRole": false,
+        "StreamingUsage": true
+      },
+      "ToolPlanningMode": "native",
+      "Endpoint": "ChatCompletions",
+      "Model": "mistral-large-latest",
+      "MaxOutputTokens": -1,
+      "MaxNetworkRetries": 1,
+      "RetryBaseDelaySeconds": 0.25,
+      "RetryMaxDelaySeconds": 10,
+      "RetryAfterMaxDelaySeconds": 60
+    }
+  ],
+  "Extensions": {
+    "agent-channels": {
+      "Enabled": true,
+      "Configuration": {
+        "enabled": true,
+        "qq": {
+          "enabled": false,
+          "appId": "your-qq-bot-app-id",
+          "appSecret": "your-qq-bot-app-secret",
+          "mode": "websocket",
+          "allowAllUsers": true
+        },
+        "telegram": {
+          "enabled": false,
+          "token": "your-telegram-bot-token"
+        },
+        "discord": {
+          "enabled": false,
+          "token": "your-discord-bot-token"
+        }
+      }
+    }
+  }
+}

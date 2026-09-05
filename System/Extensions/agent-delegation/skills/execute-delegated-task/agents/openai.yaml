@@ -1,0 +1,4 @@
+interface:
+  display_name: "Delegated Task Execution"
+  short_description: "Complete delegated work with explicit scope and evidence."
+  default_prompt: "Use $execute-delegated-task to complete this assignment."

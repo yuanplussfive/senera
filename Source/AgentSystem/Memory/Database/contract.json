@@ -1,0 +1,366 @@
+{
+  "id": "agent-memory",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "memory-schema-baseline",
+      "migration": "migrations/0001-memory-schema-baseline.sql",
+      "migrationSha256": "b46089f4826a59d769f07193d688a81b358cb4a4441c05aea2e04401229b8b3b",
+      "snapshot": "snapshots/0001.schema.sql",
+      "snapshotSha256": "6b73f4ca0bf588713b6522d104ab592fb507ecbce68ed0e1aa32211ef5ba23ba"
+    },
+    {
+      "version": 2,
+      "name": "memory-learning-jobs",
+      "migration": "migrations/0002-memory-learning-jobs.sql",
+      "migrationSha256": "1d8af06bf0598cf5fcf9516eee2eab05ec19ff0bd1870d85aab54a74a80726dc",
+      "snapshot": "snapshots/0002.schema.sql",
+      "snapshotSha256": "5167374c11e5be06082ec15318cb7fbf82b82295146740ed63d7dd298ba7c46e"
+    },
+    {
+      "version": 3,
+      "name": "memory-observation-write-sequence",
+      "migration": "migrations/0003-memory-observation-write-sequence.sql",
+      "migrationSha256": "e2080ed82dbad69e8d708aead739ff10d5537f7b4f48a21e70d72e8182eca68b",
+      "snapshot": "snapshots/0003.schema.sql",
+      "snapshotSha256": "4804da26c8dafa557a649238a171dd3538a3ea07eff4df289ea22f74bc0ef90e"
+    },
+    {
+      "version": 4,
+      "name": "memory-item-lifetime",
+      "migration": "migrations/0004-memory-item-lifetime.sql",
+      "migrationSha256": "e50142655d4c7573e39b15373bae7f628a774f639d84c2b574adb5b54d630669",
+      "snapshot": "snapshots/0004.schema.sql",
+      "snapshotSha256": "d62fb85c4e45295736c8ff8b191ccbf66fd63d33b686b05796b4101d2db110ee"
+    },
+    {
+      "version": 5,
+      "name": "continuity-event-ledger",
+      "migration": "migrations/0005-continuity-event-ledger.sql",
+      "migrationSha256": "2e60005ba3cb9c28cb89d8520c5d3e06aa01b9bf71b2663881111f6fefdc5a46",
+      "snapshot": "snapshots/0005.schema.sql",
+      "snapshotSha256": "4525a38ca6f77e94a2bf74cb32020a0934f6347bf630071b2336b5b8a111a479"
+    },
+    {
+      "version": 6,
+      "name": "continuity-rule-deduplication",
+      "migration": "migrations/0006-continuity-rule-deduplication.sql",
+      "migrationSha256": "ccd61e2507532b7fa931ae95aaf22eb562bde1ad2ac906977ab5ad19c906db7c",
+      "snapshot": "snapshots/0006.schema.sql",
+      "snapshotSha256": "2df1b4d75f8c081d33dd69414d33dae484dd3dac564aad1450a6d364311f0a14"
+    },
+    {
+      "version": 7,
+      "name": "learning-record-ledger",
+      "migration": "migrations/0007-learning-record-ledger.sql",
+      "migrationSha256": "395b0ad45fa237e2282996f403e443c88aeff955108f1f0e523fe0491cab093f",
+      "snapshot": "snapshots/0007.schema.sql",
+      "snapshotSha256": "3a4ac41d3aa415d0af2e189433e42ec2cf82de2ca9159a74ca20870266bb4101"
+    },
+    {
+      "version": 8,
+      "name": "staged-continuity-learning",
+      "migration": "migrations/0008-staged-continuity-learning.sql",
+      "snapshot": "snapshots/0008.schema.sql",
+      "migrationSha256": "60222b3e5c3dc8bfd0a9d51b87a35a810589263b12c2733fb7a05a23808bea10",
+      "snapshotSha256": "692be588f375753b355b5a012e1413d3b7347f462a41813fdebf390863d63ecd"
+    },
+    {
+      "version": 9,
+      "name": "goal-state-ledger",
+      "migration": "migrations/0009-goal-state-ledger.sql",
+      "snapshot": "snapshots/0009.schema.sql",
+      "migrationSha256": "cfc87b566f54b359e0c5fe8acda9b830f25f71544c9097711353981c588cca5f",
+      "snapshotSha256": "2deae51bf66ad8de7c38e86c760e07e6952c57dc1b9c75f5b08783fcd8fe3bce"
+    },
+    {
+      "version": 10,
+      "name": "resident-profile-ledger",
+      "migration": "migrations/0010-resident-profile-ledger.sql",
+      "snapshot": "snapshots/0010.schema.sql",
+      "migrationSha256": "cca229fd97b0fef3e552bd88f03bcce6d4a7c467dfe6e6e5dd0782e189aebad2",
+      "snapshotSha256": "aa244bea8b76ffe9a5f12c8fa21795292b68ff9c708d62300046b50566d74429"
+    },
+    {
+      "version": 11,
+      "name": "continuity-fact-heads",
+      "migration": "migrations/0011-continuity-fact-heads.sql",
+      "snapshot": "snapshots/0011.schema.sql",
+      "migrationSha256": "33447740e4bcb6be3a231e0d77d9a5917a9d7e529320febe8fa1e1fb447345c9",
+      "snapshotSha256": "9e381f1a7036903eb8158cddfd6dce048767d44a80686922571cbfb1861fa996"
+    },
+    {
+      "version": 12,
+      "name": "continuity-fact-recall-indexes",
+      "migration": "migrations/0012-continuity-fact-recall-indexes.sql",
+      "snapshot": "snapshots/0012.schema.sql",
+      "migrationSha256": "2bbf5efcd98c4a497829d850539f70178d780b7fa0039932065323b6eeff36a4",
+      "snapshotSha256": "0609120215d2c4acdd481b8d4151b44af7e5413d732cded6c5dc0a5cbc14dbb0"
+    },
+    {
+      "version": 13,
+      "name": "separate-goals-and-execution-ledger",
+      "migration": "migrations/0013-separate-goals-and-execution-ledger.sql",
+      "snapshot": "snapshots/0013.schema.sql",
+      "migrationSha256": "d0beac3e5807962da3356acd31185dcbf8cba0a36cd6abd47fe3a3c758b49893",
+      "snapshotSha256": "1a2cfb87dc20b2bb572b5cdf9d78b3a39b472c329ece94fbaaff302ce9568119"
+    },
+    {
+      "version": 14,
+      "name": "automatic-goal-association",
+      "migration": "migrations/0014-automatic-goal-association.sql",
+      "snapshot": "snapshots/0014.schema.sql",
+      "migrationSha256": "e9aaac21012dca7dd25d9b3c8ebd6a826f272f33a2fd97ace5d6e54a498ac5d0",
+      "snapshotSha256": "c5490ef87d89eb7910497c045bcc6f1c480113b6b05b5ee782dc2ba9f3b4697b"
+    },
+    {
+      "version": 15,
+      "name": "goal-state-and-todos",
+      "migration": "migrations/0015-goal-state-and-todos.sql",
+      "snapshot": "snapshots/0015.schema.sql",
+      "migrationSha256": "892f25de36d58ec1930788022f8972037bc5856e2badb8dc10836244eb402995",
+      "snapshotSha256": "6c642f72cb9620356d895d42ad0fc13ba2dad1b3b9c75d67d767aed781c1fda8"
+    },
+    {
+      "version": 16,
+      "name": "continuity-stable-prompt-snapshots",
+      "migration": "migrations/0016-continuity-stable-prompt-snapshots.sql",
+      "snapshot": "snapshots/0016.schema.sql",
+      "migrationSha256": "1ea0180533a905c73a9676c50a57fce3479ae36b403698fc5a7885ff39dad7e0",
+      "snapshotSha256": "15e7c7bbd68be8987858c0bf8385a3fcdbab95446c444cdac9340f3724ba897f"
+    },
+    {
+      "version": 17,
+      "name": "physical-history-catalog-revision",
+      "migration": "migrations/0017-physical-history-catalog-revision.sql",
+      "snapshot": "snapshots/0017.schema.sql",
+      "migrationSha256": "b78e156e82d2b89a12e74575d6e62e609c1ca83c2b26b4df7f11714aa0f581bb",
+      "snapshotSha256": "a9fbf0c7a4ba911790d73df631071d134d70d9653bd36ddf4aad4a74a78430ff"
+    },
+    {
+      "version": 18,
+      "name": "durable-goal-wake-leases",
+      "migration": "migrations/0018-durable-goal-wake-leases.sql",
+      "snapshot": "snapshots/0018.schema.sql",
+      "migrationSha256": "c44319eb29fac127781f01cb64a39c1c9b5e5c0749f90cc4d1a6c78d6986c71f",
+      "snapshotSha256": "88feafd3fa655f9c74fa060e8b113b3745922ac391bbaacf55901794fb8a072d"
+    },
+    {
+      "version": 19,
+      "name": "resident-profile-stable-snapshots",
+      "migration": "migrations/0019-resident-profile-stable-snapshots.sql",
+      "snapshot": "snapshots/0019.schema.sql",
+      "migrationSha256": "4933e64b79dfca7523a2a8f42076442aaabac432a341724addea9c29049215eb",
+      "snapshotSha256": "fc88788c6ae5bb6ff3e6b280c220dae8ed0bd221aa112c89f033fbf1ea0b1100"
+    },
+    {
+      "version": 20,
+      "name": "continuity-rule-consolidation",
+      "migration": "migrations/0020-continuity-rule-consolidation.sql",
+      "snapshot": "snapshots/0020.schema.sql",
+      "migrationSha256": "69d3a9beb491e9ecd6311d7efc2d333e9da1d3446fc0ba6fbe5000c4a71c1093",
+      "snapshotSha256": "73461aa617189fb2d84642a9243df1abb8282156a604f25a860e7ed5743995f7"
+    },
+    {
+      "version": 21,
+      "name": "continuity-signal-evidence",
+      "migration": "migrations/0021-continuity-signal-evidence.sql",
+      "snapshot": "snapshots/0021.schema.sql",
+      "migrationSha256": "9ec77fdacee6528f6b0ab74c40adb4d228c41b08ed7869634224f80e2a1e76c2",
+      "snapshotSha256": "d91f92b1c1da51b17ace5457fa2b019c7bc1a658f0e0c00a8ab07b470ae33be9"
+    },
+    {
+      "version": 22,
+      "name": "continuity-concepts",
+      "migration": "migrations/0022-continuity-concepts.sql",
+      "snapshot": "snapshots/0022.schema.sql",
+      "migrationSha256": "c67f9a823c0c532cb377f65d5b1d4fd62e44799f7418cbc6414bdf02644ad581",
+      "snapshotSha256": "6a76609a5bc9286a3b8404cc3982f53272000c0b54bc25c84e619308583db9f0"
+    },
+    {
+      "version": 23,
+      "name": "continuity-concept-lineage",
+      "migration": "migrations/0023-continuity-concept-lineage.sql",
+      "snapshot": "snapshots/0023.schema.sql",
+      "migrationSha256": "bf81461ad971a4d92d6a677ffa71257c670d67425e2830309bc515b6a09fefd6",
+      "snapshotSha256": "0634bcfffd35ef3a81d2b33fff9ce23c20ea8cee7a720f93345e6e037b59cf79"
+    },
+    {
+      "version": 24,
+      "name": "fact-head-timeline",
+      "migration": "migrations/0024-fact-head-timeline.sql",
+      "snapshot": "snapshots/0024.schema.sql",
+      "migrationSha256": "d74ed5b1864ff7d8eb4db4dd90b9f90b199f7e46580ce06471c4bd1af1a51415",
+      "snapshotSha256": "019a7042b7627af55b38981b8f3890f124acc8043d7bc944aa99f606d6515532"
+    },
+    {
+      "version": 25,
+      "name": "resident-profile-ledger",
+      "migration": "migrations/0025-resident-profile-ledger.sql",
+      "snapshot": "snapshots/0025.schema.sql",
+      "migrationSha256": "79bf9765402302637d335d6527d995fb1f3ddd6e5117ebbca5881a23121f0c4a",
+      "snapshotSha256": "f9e54f260e0e2d5c371501eb6f1041249e220e0b40b80c75ede4f574d3c6236b"
+    },
+    {
+      "version": 26,
+      "name": "resident-profile-history",
+      "migration": "migrations/0026-resident-profile-history.sql",
+      "snapshot": "snapshots/0026.schema.sql",
+      "migrationSha256": "6a8ddda5b449061e74cba4de2e910ef8dd1858bd3c45a198e380462c25364389",
+      "snapshotSha256": "9ff6bea37bca0d88539df8744f48a9775c64e8509c89e07a1c02ee2663bf8bfb"
+    },
+    {
+      "version": 27,
+      "name": "continuity-fact-evidence",
+      "migration": "migrations/0027-continuity-fact-evidence.sql",
+      "snapshot": "snapshots/0027.schema.sql",
+      "migrationSha256": "aa011afc14a94633bae21f924a2a93c8e9b633a4bfc91d638c4c4de101c72630",
+      "snapshotSha256": "1a99d48d915f4a87f7604d58a6c80ec836a6d50d3e014d2d67b331f05d698b61"
+    },
+    {
+      "version": 28,
+      "name": "observation-semantic-index",
+      "migration": "migrations/0028-observation-semantic-index.sql",
+      "snapshot": "snapshots/0028.schema.sql",
+      "migrationSha256": "b3f57a03e175cc9749bc1f56547086432073045af8b2b3449abbe111289fee3a",
+      "snapshotSha256": "039b31dbf8fa0d0d08415bd17f4a8978d56641ae287e96ab65b65b3999b764c5"
+    },
+    {
+      "version": 29,
+      "name": "trivial-prompt-cache",
+      "migration": "migrations/0029-trivial-prompt-cache.sql",
+      "snapshot": "snapshots/0029.schema.sql",
+      "migrationSha256": "8d596141cdefa7b626b9a7e1bd8212d7beeb41a9fe4a82034ec2127ab209fcde",
+      "snapshotSha256": "2c56ab4cbe8466b67a7e6e93dbea3c6c7cfc4b35364ff30ed6e84d96b98bca12"
+    },
+    {
+      "version": 30,
+      "name": "continuity-property-graph",
+      "migration": "migrations/0030-continuity-property-graph.sql",
+      "snapshot": "snapshots/0030.schema.sql",
+      "migrationSha256": "fd9da40f0c199bfce52bc3d41e0881865d832e044d1de77678c05c5d5f74d8fc",
+      "snapshotSha256": "b93b2ea1120b8ee6ca7e0d271d22a66079b2d5380e46f761a7031df3d6e77977"
+    },
+    {
+      "version": 31,
+      "name": "continuity-graph-consistency",
+      "migration": "migrations/0031-continuity-graph-consistency.sql",
+      "snapshot": "snapshots/0031.schema.sql",
+      "migrationSha256": "4414a1544e39f4740a671dbe9fecc038ca34702417a4bc2a901f31378f87d5cb",
+      "snapshotSha256": "831f740925dcd39106dd3263138851c07aa079cea27be8e090960beb60fde5d0"
+    },
+    {
+      "version": 32,
+      "name": "turn-value-training-examples",
+      "migration": "migrations/0032-turn-value-training-examples.sql",
+      "migrationSha256": "368736948fc9db2d80b6e491c0faca908274fed6349e1c7a27a540ef4cecb08a",
+      "snapshot": "snapshots/0032.schema.sql",
+      "snapshotSha256": "9ac78e8032a0500056dadb61571305619b21bb2f0294a03b5c048584b2ccd2b2"
+    },
+    {
+      "version": 33,
+      "name": "turn-value-example-labels",
+      "migration": "migrations/0033-turn-value-example-labels.sql",
+      "migrationSha256": "17ffa32394cf7a69e006681a665eceae95e62fcbfe1448c612c68f502c8c5d2b",
+      "snapshot": "snapshots/0033.schema.sql",
+      "snapshotSha256": "d97ea24e0d88aa77f9ff1ca2dd99d75c5e3a23e23bf8b766d0a264fd9fe09752"
+    },
+    {
+      "version": 34,
+      "name": "goal-evidence-ledger",
+      "migration": "migrations/0034-goal-evidence-ledger.sql",
+      "snapshot": "snapshots/0034.schema.sql",
+      "migrationSha256": "3f43448cc620f3abf2df3278bb78ae6cc45cdd0cb3cce6e8cdbef55a63b1d45d",
+      "snapshotSha256": "2ed9a5ed5c720dd67a06b082adabea0f18fb256cdf3b06c4844561b64f2859f3"
+    },
+    {
+      "version": 35,
+      "name": "passive-goal-ledger",
+      "migration": "migrations/0035-passive-goal-ledger.sql",
+      "snapshot": "snapshots/0035.schema.sql",
+      "migrationSha256": "08b18eb60cf6c76983e8883ba4b79aa3630a312395fda7ba0f9a65fbae13e343",
+      "snapshotSha256": "5fe3c18456f8a9a9c90511c0c4e55eb67bdab4a89832f9329fa6e848e3267fba"
+    },
+    {
+      "version": 36,
+      "name": "world-agenda-ledger",
+      "migration": "migrations/0036-world-agenda-ledger.sql",
+      "snapshot": "snapshots/0036.schema.sql",
+      "migrationSha256": "203e93f6ee75baadb18eb69b1033e5b1ce0dd01e7f83c7a7456a7abef000b85a",
+      "snapshotSha256": "06130bf0721caa6978f736d910aaaa39ae1130138265b82cfa9a1fec1bdd7304"
+    },
+    {
+      "version": 37,
+      "name": "retire-execution-goal-ledger",
+      "migration": "migrations/0037-retire-execution-goal-ledger.sql",
+      "snapshot": "snapshots/0037.schema.sql",
+      "migrationSha256": "7ffa56798824782c51c78de8ab6e69f823bbcaa2d2711943aa4bb822383adf83",
+      "snapshotSha256": "f390368ad478cc0f62b5d098c56ca09bd465eebbe16dc6d3926f41ab0b86d644"
+    },
+    {
+      "version": 38,
+      "name": "world-event-runtime",
+      "migration": "migrations/0038-world-event-runtime.sql",
+      "snapshot": "snapshots/0038.schema.sql",
+      "migrationSha256": "34b1bc57b56d76fd6c5181b89929eb50b9f8bcd51f4684fcb6c125878fc5348d",
+      "snapshotSha256": "d20de83ec344e1ad5c9dd8ee5700b3b8ab5cf68cb48b0557421f24393e903143"
+    },
+    {
+      "version": 39,
+      "name": "world-package-registry",
+      "migration": "migrations/0039-world-package-registry.sql",
+      "snapshot": "snapshots/0039.schema.sql",
+      "migrationSha256": "c57d3afad45bb4310856f4535a4dcf97f71f0405fd2f9792e6f2a3d31fac9be8",
+      "snapshotSha256": "d26be19e8576a4fbe71adffe7545054c550ba18354f3fa2d04d51a42f5fe0322"
+    },
+    {
+      "version": 40,
+      "name": "temporal-memory-rollups",
+      "migration": "migrations/0040-temporal-memory-rollups.sql",
+      "snapshot": "snapshots/0040.schema.sql",
+      "migrationSha256": "f5803ac9fd20575bbe9457af89f4f624b71394f05663a0d177cb9bb3c3500922",
+      "snapshotSha256": "a343e38fb643c526d1ad77a0740803af6900501da2313389a14b8770d361eda4"
+    },
+    {
+      "version": 41,
+      "name": "temporal-conversation-boundaries",
+      "migration": "migrations/0041-temporal-conversation-boundaries.sql",
+      "snapshot": "snapshots/0041.schema.sql",
+      "migrationSha256": "eafe00628e130122b47755751a86e5dba595fcc09c245e4f6b3ea260772c9c3d",
+      "snapshotSha256": "f37c1e3f0a97fe5c43f5896c824f934f81d9fa5f071e17567ecd97cac3244dd8"
+    },
+    {
+      "version": 42,
+      "name": "temporal-segment-working-focus",
+      "migration": "migrations/0042-temporal-segment-working-focus.sql",
+      "snapshot": "snapshots/0042.schema.sql",
+      "migrationSha256": "7e81940ece09a97b0d4ec6839c9ae79c14fc4f46861c0aa9e53cbe263342f6a1",
+      "snapshotSha256": "536ecfabd1c3aeaf8713f2c6dead41ce87227ea8d7ac81b55ee79324e2f74475"
+    },
+    {
+      "version": 43,
+      "name": "continuity-learning-inferences",
+      "migration": "migrations/0043-continuity-learning-inferences.sql",
+      "snapshot": "snapshots/0043.schema.sql",
+      "migrationSha256": "47a16005cf1e017afed1b286129c30a83e3d02b9038a02d05da921a2898fd8be",
+      "snapshotSha256": "edbaa6ad6821e9c26fac5223b9a68e39b1775eb6b19dfb014dafa8a615f7b7b3"
+    },
+    {
+      "version": 44,
+      "name": "agenda-goal-command-receipts",
+      "migration": "migrations/0044-agenda-goal-command-receipts.sql",
+      "snapshot": "snapshots/0044.schema.sql",
+      "migrationSha256": "ea4837caef150ba17fa7ae06d6cb866008159a90bdffdeeebddf165adc523911",
+      "snapshotSha256": "976a2efe0529d8714280950094f4e0e20fa015ca6f78c344dd24aa97cbefd17f"
+    },
+    {
+      "version": 45,
+      "name": "world-work-items",
+      "migration": "migrations/0045-world-work-items.sql",
+      "snapshot": "snapshots/0045.schema.sql",
+      "migrationSha256": "77549ebd1d3e0fe10392e55bb9004416af027b57b7fa363a47f2307b6459d9d0",
+      "snapshotSha256": "50776ec537fbd6c5bc5375a045da8fabb3f5a2a25c14a743febc9c93595bfe28"
+    }
+  ]
+}

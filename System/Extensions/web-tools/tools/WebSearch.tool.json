@@ -1,0 +1,131 @@
+{
+  "name": "WebSearch",
+  "description": "查找当前公开网页中的信息，用来核实外部事实、最新动态或官方资料。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "query": { "type": "string", "minLength": 1, "maxLength": 8000 },
+      "allowedDomains": {
+        "default": [],
+        "maxItems": 64,
+        "type": "array",
+        "items": { "type": "string", "minLength": 1, "maxLength": 253 }
+      },
+      "blockedDomains": {
+        "default": [],
+        "maxItems": 64,
+        "type": "array",
+        "items": { "type": "string", "minLength": 1, "maxLength": 253 }
+      },
+      "freshness": { "default": "any", "type": "string", "enum": ["any", "day", "week", "month", "year"] },
+      "maxResults": { "default": 8, "type": "integer", "minimum": 1, "maximum": 20 },
+      "timeoutMs": {
+        "description": "Optional per-call operation timeout in milliseconds.",
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 900000
+      }
+    },
+    "required": ["query"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "query": { "type": "string" },
+      "results": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string" },
+            "url": { "type": "string" },
+            "summary": { "type": "string" },
+            "publishTime": { "type": "string" },
+            "citationId": { "type": "string" }
+          },
+          "required": ["title", "url", "summary", "citationId"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["query", "results"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/WebSearch.projection.json",
+  "permissions": ["network:web"],
+  "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "web",
+      "Title": "Web",
+      "Description": "Public internet information, online services, and current external data."
+    }
+  ],
+  "search": {
+    "Summary": "搜索当前公开网页信息，返回标题、URL、摘要、时间和 citationId。",
+    "Tags": ["web", "search", "internet", "research"],
+    "Capabilities": [
+      {
+        "Id": "web.search",
+        "Title": "Web search",
+        "Description": "查找当前公开网页中的信息，用来核实外部事实、最新动态或官方资料。",
+        "Facets": {
+          "Actions": ["search", "research", "verify"],
+          "Targets": ["public-web", "search-index"],
+          "Inputs": ["query", "allowed-domains", "blocked-domains", "freshness", "max-results"],
+          "Outputs": ["titles", "urls", "summaries", "citations"],
+          "Effects": ["none"]
+        },
+        "Aliases": ["网页搜索", "搜索网页", "联网搜索", "web search", "search the web"],
+        "Risk": { "SideEffect": "none", "Permission": "network-web-search" }
+      }
+    ],
+    "UseCases": ["查找最新公开信息、官方文档、新闻、版本和外部事实。"],
+    "Avoid": ["不要把搜索结果摘要当作完整页面；需要原文时使用 WebFetch。"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Summary": {
+      "Template": "Found {{ result.results.size }} web result(s) for \"{{ result.query }}\".",
+      "ArtifactTemplate": "Search result set is stored in {{ artifact.artifactUri }}; use the artifact reader for the full result set."
+    },
+    "Evidence": [
+      {
+        "Kind": "web_search_result",
+        "Records": "$.results[*]",
+        "Slots": {
+          "title": "$.title",
+          "url": "$.url",
+          "summary": "$.summary",
+          "citationId": "$.citationId",
+          "publishTime": "$.publishTime"
+        },
+        "Identity": { "Parts": ["citationId"] },
+        "Presentation": {
+          "Locator": "{{ url }}",
+          "Display": "{{ title }}",
+          "Label": "{{ title }}",
+          "Source": "{{ summary }}"
+        },
+        "ModelProjection": { "Slots": ["title", "url", "summary", "citationId", "publishTime"] },
+        "PlannerMemory": { "Facts": ["title", "url", "summary", "citationId"], "ArtifactRefs": ["raw"] },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- {{ e.slots.title }} — {{ e.slots.url }} ({{ e.slots.citationId }})\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- {{ e.slots.title }}\n  url: {{ e.slots.url }}\n  citationId: {{ e.slots.citationId }}\n  summary: {{ e.slots.summary }}\n{% endfor %}"
+        },
+        "Confidence": 0.9
+      }
+    ]
+  }
+}

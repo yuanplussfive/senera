@@ -1,0 +1,109 @@
+{
+  "name": "Todo",
+  "description": "Manage the current session task list. Use for complex work with multiple concrete steps. Omit todos to read the list. Provide todos to write it. Replace mode creates a fresh plan; merge mode updates existing ids and appends new items. Keep exactly one item in_progress. Mark completed only after verification; cancel failed work and add a revised item.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "todos": {
+        "description": "Omit to read the current list. Provide items to replace or merge the current list.",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "description": "Stable identifier for this task." },
+            "content": {
+              "description": "Task description. Required when adding a new item.",
+              "type": "string",
+              "minLength": 1
+            },
+            "status": {
+              "description": "Current task status.",
+              "type": "string",
+              "enum": ["pending", "in_progress", "completed", "cancelled"]
+            }
+          },
+          "required": ["id"],
+          "additionalProperties": false
+        }
+      },
+      "merge": {
+        "description": "Required when todos is provided: false replaces the full list; true updates items by id and appends new items.",
+        "type": "boolean"
+      }
+    },
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "content": { "type": "string" },
+            "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "cancelled"] },
+            "order": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "createdAt": { "type": "string" },
+            "updatedAt": { "type": "string" }
+          },
+          "required": ["id", "content", "status", "order", "createdAt", "updatedAt"],
+          "additionalProperties": false
+        }
+      },
+      "counts": {
+        "type": "object",
+        "properties": {
+          "total": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "pending": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "inProgress": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "completed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "cancelled": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["total", "pending", "inProgress", "completed", "cancelled"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["items", "counts"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/Todo.projection.json",
+  "permissions": ["session:todo"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [],
+  "search": {
+    "Summary": "管理当前会话的多步骤任务清单并返回完整状态。",
+    "Tags": ["任务清单", "todo", "计划", "复杂任务", "进度"],
+    "Capabilities": [
+      {
+        "Id": "todo.manage",
+        "Title": "Task list management",
+        "Description": "Read, replace, or merge the current session task list.",
+        "Facets": {
+          "Actions": ["read", "replace", "merge", "complete", "cancel"],
+          "Targets": ["session-task-list"],
+          "Inputs": ["todos", "id", "content", "status", "merge"],
+          "Outputs": ["task-list", "task-counts"],
+          "Effects": ["session-state"]
+        },
+        "Aliases": ["列出待办", "创建任务清单", "更新任务进度", "todo"],
+        "Risk": { "SideEffect": "session-state", "Permission": "write" }
+      }
+    ],
+    "UseCases": ["复杂任务需要拆分步骤", "用户提出多个需要逐项完成的要求"],
+    "Examples": ["列出实现这个功能的步骤", "更新当前任务清单"],
+    "Avoid": ["不要把长期用户目标写入 Todo", "简单的一步任务不要创建清单"]
+  },
+  "evidenceCapabilities": []
+}

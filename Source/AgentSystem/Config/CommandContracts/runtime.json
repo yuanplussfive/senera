@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "agent-config-commands",
+  "version": 1,
+  "name": "provider-endpoint-merge-patch",
+  "definitionChecksum": "58e5d93f1903e74c278399080bf63121b427c99e7795ee7f49e3a60ca106cacd",
+  "definition": {
+    "formatVersion": 1,
+    "operations": {
+      "provider.endpoint.upsert": {
+        "schema": "model-provider-endpoint",
+        "semantics": "json-merge-patch",
+        "identityFields": [
+          "Id"
+        ]
+      }
+    }
+  }
+}

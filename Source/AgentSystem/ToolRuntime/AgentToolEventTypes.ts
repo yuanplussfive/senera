@@ -1,0 +1,128 @@
+import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import type { AgentEventContext } from "../Events/AgentEventBase.js";
+import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
+import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
+import type { AgentToolEventOrigin } from "./AgentToolEventOrigin.js";
+
+type AgentToolEventContext = Required<Pick<AgentEventContext, "requestId" | "step">> &
+  Partial<Pick<AgentEventContext, "sessionId">>;
+
+export type AgentToolDomainEvent =
+  | {
+      kind: typeof AgentEventKinds.ToolCallsPlanned;
+      context: AgentToolEventContext;
+      data: {
+        toolCount: number;
+        tools: string[];
+        calls?: Array<{ callId: string; toolName: string; purpose?: string }>;
+        status?: "planned" | "discovery_escalated" | "blocked";
+        executionMode?: "parallel" | "sequential";
+        batchId?: string;
+        reason?: string;
+        issues?: string[];
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.ToolCallStarted;
+      context: AgentToolEventContext;
+      data: {
+        index: number;
+        toolName: string;
+        callId: string;
+        /** Semantic purpose projected from the registered tool declaration. */
+        purpose?: string;
+        /** Redacted, bounded arguments for live workflow inspection. */
+        arguments?: unknown;
+        origin?: AgentToolEventOrigin;
+        batchId?: string;
+        /** Explicit lifecycle start; absent only when the producer never observed a start. */
+        startedAt?: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.ToolCallOutput;
+      context: AgentToolEventContext;
+      data: {
+        toolName: string;
+        callId: string;
+        stream: "stdout" | "stderr";
+        outputSequence: number;
+        text: string;
+        byteLength: number;
+        totalBytes: number;
+        batchId?: string;
+        resourceId?: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.ToolCallProgress;
+      context: AgentToolEventContext;
+      data: {
+        toolName: string;
+        callId: string;
+        progressSequence: number;
+        message?: string;
+        completed?: number;
+        total?: number;
+        unit?: string;
+        taskId?: string;
+        state?: string;
+        terminal?: boolean;
+        pollIntervalMs?: number;
+        batchId?: string;
+        resourceId?: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.ToolCallCompleted;
+      context: AgentToolEventContext;
+      data: {
+        index: number;
+        toolName: string;
+        callId: string;
+        /** Semantic purpose projected from the registered tool declaration. */
+        purpose?: string;
+        batchId?: string;
+        /** Explicit lifecycle start; diagnostic projections reject records without it. */
+        startedAt?: string;
+        /** Measured by the backend tool lifecycle, never inferred by the client. */
+        durationMs?: number;
+        presentation?: AgentToolResultPresentation;
+        origin?: AgentToolEventOrigin;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.ToolCallFailed;
+      context: AgentToolEventContext;
+      data: {
+        index: number;
+        toolName: string;
+        callId: string;
+        /** Semantic purpose projected from the registered tool declaration. */
+        purpose?: string;
+        batchId?: string;
+        code?: string;
+        message: string;
+        localizedMessage?: AgentLocalizedMessage;
+        /** Explicit lifecycle start; diagnostic projections reject records without it. */
+        startedAt?: string;
+        /** Measured by the backend tool lifecycle, never inferred by the client. */
+        durationMs?: number;
+        origin?: AgentToolEventOrigin;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.ToolCallResultDetail;
+      context: AgentToolEventContext;
+      data: {
+        detailId: string;
+        index: number;
+        toolName: string;
+        callId: string;
+        batchId?: string;
+        presentation?: AgentToolResultPresentation;
+        /** The tool's raw return value. Execution lifecycle metadata is carried separately. */
+        value: unknown;
+        origin?: AgentToolEventOrigin;
+      };
+    };

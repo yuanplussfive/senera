@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "workspace-tools",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "工作区工具", "en-US": "Workspace Tools" },
+  "description": {
+    "zh-CN": "使用 Pi 原生文件工具安全地读取、搜索和浏览当前工作区。",
+    "en-US": "Safely reads, searches, and browses the current workspace with Pi's native file tools."
+  },
+  "priority": 95,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/WorkspaceRead.tool.json",
+      "capability": "system.tool.workspace-tools.WorkspaceRead",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/WorkspaceGrep.tool.json",
+      "capability": "system.tool.workspace-tools.WorkspaceGrep",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/WorkspaceFind.tool.json",
+      "capability": "system.tool.workspace-tools.WorkspaceFind",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/WorkspaceList.tool.json",
+      "capability": "system.tool.workspace-tools.WorkspaceList",
+      "recommendedForSkills": []
+    }
+  ]
+}

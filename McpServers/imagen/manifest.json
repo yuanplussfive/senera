@@ -1,0 +1,56 @@
+{
+  "manifest_version": "0.3",
+  "name": "imagen",
+  "display_name": { "zh-CN": "Imagen 图像", "en-US": "Imagen" },
+  "version": "1.0.0",
+  "description": {
+    "zh-CN": "通过 OpenAI 兼容的图像或对话端点生成图片。",
+    "en-US": "Generate images through an OpenAI-compatible image or chat endpoint."
+  },
+  "author": {
+    "name": "Senera"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "mcp/server.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/mcp/server.mjs"],
+      "env": {
+        "IMAGEN_API_KEY": "${user_config.IMAGEN_API_KEY}",
+        "IMAGEN_API_URL": "${user_config.IMAGEN_API_URL}",
+        "IMAGEN_REQUEST_MODE": "${user_config.IMAGEN_REQUEST_MODE}"
+      }
+    }
+  },
+  "user_config": {
+    "IMAGEN_API_KEY": {
+      "type": "string",
+      "title": "Imagen API key",
+      "description": "API key for the configured OpenAI-compatible endpoint.",
+      "sensitive": true,
+      "required": true
+    },
+    "IMAGEN_API_URL": {
+      "type": "string",
+      "title": "Imagen API URL",
+      "description": "OpenAI-compatible base URL. Include the /v1 path, for example https://api.openai.com/v1.",
+      "default": "https://api.openai.com/v1",
+      "required": true
+    },
+    "IMAGEN_REQUEST_MODE": {
+      "type": "string",
+      "title": "Imagen request mode",
+      "description": "Select the image generations endpoint or the chat completions endpoint.",
+      "enum": ["images", "chat"],
+      "default": "images",
+      "required": true
+    }
+  },
+  "_meta": {
+    "ai.senera/execution": {
+      "targets": ["local"],
+      "preferred": "local"
+    }
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "name": "AgentList",
+  "description": "列出当前会话创建的后台子代理任务及其最新状态、进度和结果。可在新的跟进回合中恢复任务上下文。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "includeCompleted": {
+        "default": true,
+        "description": "Include terminal runs so a follow-up can report the final result after a restart.",
+        "type": "boolean"
+      }
+    },
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "runs": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "runId": { "type": "string" },
+            "state": {
+              "enum": ["not_found", "queued", "running", "needs_input", "stopping", "completed", "failed", "cancelled"],
+              "type": "string"
+            },
+            "agent": { "type": "string" },
+            "result": {
+              "type": "object",
+              "properties": { "content": { "type": "string" } },
+              "required": ["content"],
+              "additionalProperties": false
+            },
+            "error": { "type": "string" },
+            "request": {
+              "type": "object",
+              "properties": { "id": { "type": "string" }, "message": { "type": "string" } },
+              "required": ["id", "message"],
+              "additionalProperties": false
+            },
+            "progress": {
+              "type": "object",
+              "properties": {
+                "phase": {
+                  "enum": [
+                    "queued",
+                    "starting",
+                    "model_output",
+                    "tool_execution",
+                    "awaiting_supervisor",
+                    "wrapping_up",
+                    "cancelling",
+                    "completed",
+                    "failed",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                "lastActivityAt": { "type": "string", "format": "date-time" },
+                "activeTools": { "type": "array", "items": { "type": "string" } },
+                "toolCalls": {
+                  "type": "object",
+                  "properties": {
+                    "planned": { "type": "integer", "minimum": 0 },
+                    "started": { "type": "integer", "minimum": 0 },
+                    "completed": { "type": "integer", "minimum": 0 },
+                    "failed": { "type": "integer", "minimum": 0 }
+                  },
+                  "required": ["planned", "started", "completed", "failed"],
+                  "additionalProperties": false
+                },
+                "checkpointAvailable": { "type": "boolean" },
+                "artifactCount": { "type": "integer", "minimum": 0 }
+              },
+              "required": ["phase", "activeTools", "toolCalls", "checkpointAvailable", "artifactCount"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["runId", "state"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["runs"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/AgentLifecycle.projection.json",
+  "permissions": ["orchestration:inspect"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Progress": true, "Cancellation": true, "ResumableEvents": true }
+  },
+  "resources": [],
+  "sources": [
+    { "Id": "orchestration", "Title": "Orchestration", "Description": "Child-agent runs managed by Senera." }
+  ],
+  "search": {
+    "Summary": "查询当前会话的后台子代理任务，获取进度、结果或下一步控制所需的任务 ID。",
+    "Capabilities": [
+      {
+        "Id": "orchestration.agent-list",
+        "Title": "List child-agent runs",
+        "Description": "Inspect persisted child-run state so a later turn can report, steer, resume, or stop background work.",
+        "Facets": {
+          "Actions": ["list", "inspect"],
+          "Targets": ["child-run"],
+          "Inputs": ["completion-filter"],
+          "Outputs": ["child-run-state", "progress", "text-result"],
+          "Effects": ["read-state"]
+        },
+        "Aliases": ["查看后台任务", "list tasks", "task status"],
+        "Risk": { "SideEffect": "none", "Permission": "orchestration" }
+      }
+    ],
+    "UseCases": ["用户询问后台任务进度或任务结果时。", "需要在后续回合找到任务 ID 并继续、停止或恢复时。"],
+    "Avoid": ["不要把列出任务误当成等待；需要阻塞到结果时使用 AgentWait。"],
+    "Tags": ["子代理", "后台任务", "进度", "跟进"]
+  },
+  "evidenceCapabilities": []
+}

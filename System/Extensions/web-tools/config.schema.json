@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "search": {
+      "default": {
+        "provider": "exa",
+        "endpoint": "",
+        "exaApiKey": "",
+        "tavilyApiKey": "",
+        "braveApiKey": "",
+        "defaultMaxResults": 8,
+        "maxMaxResults": 20,
+        "responseMaxBytes": 2000000,
+        "cacheTtlSeconds": 60,
+        "cacheMaxEntries": 256,
+        "requestTimeoutMs": 180000,
+        "maxOperationTimeoutMs": 900000,
+        "allowPrivateNetworks": false,
+        "allowSyntheticProxyAddresses": true
+      },
+      "type": "object",
+      "properties": {
+        "provider": { "default": "exa", "type": "string", "enum": ["exa", "tavily", "brave", "searxng", "duckduckgo"] },
+        "endpoint": { "default": "", "type": "string" },
+        "exaApiKey": { "default": "", "type": "string", "maxLength": 4096 },
+        "tavilyApiKey": { "default": "", "type": "string", "maxLength": 4096 },
+        "braveApiKey": { "default": "", "type": "string", "maxLength": 4096 },
+        "defaultMaxResults": { "default": 8, "type": "integer", "minimum": 1, "maximum": 100 },
+        "maxMaxResults": { "default": 20, "type": "integer", "minimum": 1, "maximum": 100 },
+        "responseMaxBytes": { "default": 2000000, "type": "integer", "minimum": 1024, "maximum": 67108864 },
+        "cacheTtlSeconds": { "default": 60, "type": "integer", "minimum": 0, "maximum": 86400 },
+        "cacheMaxEntries": { "default": 256, "type": "integer", "minimum": 0, "maximum": 4096 },
+        "requestTimeoutMs": { "default": 180000, "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "maxOperationTimeoutMs": { "default": 900000, "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "allowPrivateNetworks": { "default": false, "type": "boolean" },
+        "allowSyntheticProxyAddresses": { "default": true, "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "fetch": {
+      "default": {
+        "responseMaxBytes": 5000000,
+        "markdownMaxChars": 120000,
+        "maxRedirects": 5,
+        "maxUrlLength": 4096,
+        "maxLinks": 128,
+        "maxExtractBlocks": 12,
+        "defaultContentMode": "auto",
+        "requestTimeoutMs": 180000,
+        "maxOperationTimeoutMs": 900000,
+        "allowPrivateNetworks": false,
+        "allowSyntheticProxyAddresses": true,
+        "userAgent": "Senera-WebTools/1.0"
+      },
+      "type": "object",
+      "properties": {
+        "responseMaxBytes": { "default": 5000000, "type": "integer", "minimum": 1024, "maximum": 268435456 },
+        "markdownMaxChars": { "default": 120000, "type": "integer", "minimum": 1024, "maximum": 10000000 },
+        "maxRedirects": { "default": 5, "type": "integer", "minimum": 0, "maximum": 20 },
+        "maxUrlLength": { "default": 4096, "type": "integer", "minimum": 256, "maximum": 32768 },
+        "maxLinks": { "default": 128, "type": "integer", "minimum": 0, "maximum": 2000 },
+        "maxExtractBlocks": { "default": 12, "type": "integer", "minimum": 1, "maximum": 256 },
+        "defaultContentMode": { "default": "auto", "type": "string", "enum": ["auto", "article", "page", "text"] },
+        "requestTimeoutMs": { "default": 180000, "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "maxOperationTimeoutMs": { "default": 900000, "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "allowPrivateNetworks": { "default": false, "type": "boolean" },
+        "allowSyntheticProxyAddresses": { "default": true, "type": "boolean" },
+        "userAgent": { "default": "Senera-WebTools/1.0", "type": "string", "minLength": 1, "maxLength": 256 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
