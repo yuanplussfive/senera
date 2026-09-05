@@ -152,7 +152,8 @@ test("workspace context menu exposes Senera actions without hijacking form contr
 
   const workspace = document.querySelector("[data-workspace-main]");
   expect(workspace).toBeInTheDocument();
-  fireEvent.contextMenu(workspace, { clientX: 160, clientY: 120 });
+  const user = userEvent.setup();
+  await user.pointer({ keys: "[MouseRight]", target: workspace, coords: { x: 160, y: 120 } });
 
   expect(await screen.findByRole("menu")).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "新建对话" })).toBeInTheDocument();
@@ -163,7 +164,11 @@ test("workspace context menu exposes Senera actions without hijacking form contr
   fireEvent.click(screen.getByRole("menuitem", { name: "打开工作流" }));
   expect(onOpenWorkflowPanel).toHaveBeenCalledTimes(1);
 
-  fireEvent.contextMenu(screen.getByRole("textbox", { name: "消息输入" }), { clientX: 160, clientY: 120 });
+  await user.pointer({
+    keys: "[MouseRight]",
+    target: screen.getByRole("textbox", { name: "消息输入" }),
+    coords: { x: 160, y: 120 },
+  });
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 });
 
