@@ -39,6 +39,12 @@ describe("owned process spawner behavior", () => {
     }
   });
 
+  test.runIf(process.platform === "win32")("launches Windows command shims such as npm", async () => {
+    const ownedProcess = await spawnSeneraInheritedProcess("npm", ["--version"], defaultSpawnOptions());
+
+    await expect(ownedProcess.closed).resolves.toMatchObject({ exitCode: 0, signal: null });
+  });
+
   test.runIf(process.platform === "win32")(
     "does not retry a target outside the Job Object when target startup fails",
     async () => {

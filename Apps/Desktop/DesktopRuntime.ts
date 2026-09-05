@@ -7,7 +7,11 @@ import {
   resolveDesktopInstallationSelectionPath,
   writeDesktopInstallationSelection,
 } from "./DesktopInstallationSelection.js";
-import { resolveDesktopResourceRoot, resolveDesktopWorkspaceRoot } from "./DesktopRuntimePathResolver.js";
+import {
+  resolveDesktopApplicationRoot,
+  resolveDesktopResourceRoot,
+  resolveDesktopWorkspaceRoot,
+} from "./DesktopRuntimePathResolver.js";
 import {
   isDesktopWorkspaceDirectory,
   readLegacyDesktopWorkspaceSelection,
@@ -43,12 +47,17 @@ const ConfigTemplateFileName = "senera.config.example.json";
 const DesktopIconFileName = "senera-icon.png";
 
 export async function prepareDesktopRuntime(): Promise<DesktopRuntimePaths> {
-  const appRoot = resolveAppRoot();
+  const electronAppPath = resolveAppRoot();
   const resourceRoot = resolveDesktopResourceRoot({
-    appPath: appRoot,
+    appPath: electronAppPath,
     isPackaged: app.isPackaged,
     launchRoot: process.cwd(),
     resourcesPath: process.resourcesPath,
+  });
+  const appRoot = resolveDesktopApplicationRoot({
+    appPath: electronAppPath,
+    isPackaged: app.isPackaged,
+    resourceRoot,
   });
   const bootstrapDataRoot = app.getPath("userData");
   const installationSelectionPath = resolveDesktopInstallationSelectionPath(bootstrapDataRoot);

@@ -41,6 +41,14 @@ export function resolveDesktopResourceRoot(input: DesktopResourceRootResolutionI
   });
 }
 
+export function resolveDesktopApplicationRoot(input: {
+  appPath: string;
+  isPackaged: boolean;
+  resourceRoot: string;
+}): string {
+  return path.resolve(input.isPackaged ? input.appPath : input.resourceRoot);
+}
+
 export function resolveDesktopWorkspaceRoot(input: {
   isPackaged: boolean;
   resourceRoot: string;
