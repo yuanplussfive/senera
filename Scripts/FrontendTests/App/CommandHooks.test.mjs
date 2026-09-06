@@ -20,7 +20,10 @@ afterEach(() => {
 });
 
 test("useChatCommands creates a missing session and sends its first message as one transaction", () => {
-  useStore.setState({ selectedModelProviderId: "model-primary" });
+  useStore.setState({
+    selectedModelProviderId: "model-primary",
+    catalogSynced: { sessions: true, presets: false },
+  });
   const send = vi.fn(() => true);
   const serverKnownSessionIdsRef = { current: new Set() };
   const lastSendRef = { current: null };
@@ -77,6 +80,18 @@ test("useChatCommands blocks sends while history is recovering without mutating 
       title: frontendMessage("chat.historyRecovering"),
     }),
   );
+});
+
+test("useChatCommands blocks sends until the startup session catalog arrives", () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: null, handleRef, send });
+
+  act(() => handleRef.current.sendMessage("Wait for the catalog"));
+
+  expect(send).not.toHaveBeenCalled();
+  expect(useStore.getState().sessionOrder).toEqual([]);
+  expect(readTestToastCalls()).toEqual([]);
 });
 
 test("useChatCommands preserves local state and retry context when message delivery fails", () => {
