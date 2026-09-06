@@ -55,6 +55,25 @@ const DESKTOP_TEXTAREA_MAX_HEIGHT = 240;
 const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
 const ACTIVE_LAYER_SELECTOR = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
 
+export type ComposerAction = "send" | "follow_up" | "steer" | "cancel" | "cancelling";
+
+export function readComposerAction({
+  running,
+  settling,
+  cancelling,
+  canSubmit,
+}: {
+  running: boolean;
+  settling: boolean;
+  cancelling: boolean;
+  canSubmit: boolean;
+}): ComposerAction {
+  if (cancelling) return "cancelling";
+  if (settling) return "follow_up";
+  if (!running) return "send";
+  return canSubmit ? "steer" : "cancel";
+}
+
 export interface ChatComposerProps {
   disabled: boolean;
   running: boolean;
@@ -129,6 +148,9 @@ export function ChatComposer({
     return frontendMessage("chat.composer.hintDisconnected", {}, locale);
   }, [cancelling, locale, prefersCompactControls, runtime.socketStatus, running, settling]);
 
+  const canSend = !disabled && !attachments.uploading && value.trim().length > 0;
+  const composerAction = readComposerAction({ running, settling, cancelling, canSubmit: canSend });
+
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -186,7 +208,14 @@ export function ChatComposer({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      submit(settling ? "follow_up" : running && e.altKey ? "follow_up" : running ? "steer" : undefined);
+      if (composerAction === "cancel" || composerAction === "cancelling") return;
+      submit(
+        composerAction === "follow_up" || (composerAction === "steer" && e.altKey)
+          ? "follow_up"
+          : composerAction === "steer"
+            ? "steer"
+            : undefined,
+      );
     }
   };
 
@@ -197,7 +226,24 @@ export function ChatComposer({
     el.style.height = `${Math.min(el.scrollHeight, textareaMaxHeight)}px`;
   };
 
-  const canSend = !disabled && !attachments.uploading && value.trim().length > 0;
+  const handleComposerAction = (): void => {
+    switch (composerAction) {
+      case "cancel":
+        onCancel();
+        return;
+      case "cancelling":
+        return;
+      case "follow_up":
+        submit("follow_up");
+        return;
+      case "steer":
+        submit("steer");
+        return;
+      case "send":
+        submit();
+        return;
+    }
+  };
 
   return (
     <div className="bg-transparent py-3 sm:py-4">
@@ -345,7 +391,7 @@ export function ChatComposer({
                 onAddModel={modelConfig.onAddModel}
                 prefersCompactControls={prefersCompactControls}
               />
-              {cancelling ? (
+              {composerAction === "cancelling" ? (
                 <Tooltip content={frontendMessage("chat.composer.cancelling")} side="top">
                   <MotionButton
                     disabled
@@ -354,66 +400,60 @@ export function ChatComposer({
                       prefersCompactControls && "min-h-11 min-w-11",
                     )}
                     aria-label={frontendMessage("chat.composer.cancelling")}
+                    data-composer-action="cancelling"
                   >
                     <Spinner size="sm" />
                   </MotionButton>
                 </Tooltip>
-              ) : running && !settling ? (
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <Tooltip
-                    content={frontendMessage("chat.composer.inject")}
-                    side="top"
-                    shortcut={prefersCompactControls ? undefined : "↵"}
+              ) : composerAction === "cancel" ? (
+                <Tooltip
+                  content={frontendMessage("chat.composer.cancelRunning")}
+                  side="top"
+                  shortcut={prefersCompactControls ? undefined : "Esc"}
+                >
+                  <MotionButton
+                    onClick={handleComposerAction}
+                    disabled={disabled}
+                    className={cn(
+                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200 disabled:pointer-events-none disabled:opacity-50",
+                      prefersCompactControls && "min-h-11 min-w-11",
+                    )}
+                    aria-label={frontendMessage("chat.composer.cancelRunning")}
+                    data-composer-action="cancel"
                   >
-                    <MotionButton
-                      onClick={() => submit("steer")}
-                      disabled={!canSend}
-                      className={cn(
-                        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
-                        prefersCompactControls && "min-h-11 min-w-11",
-                        canSend
-                          ? "border-content-strong bg-content-strong text-content-inverse shadow-panel hover:border-accent-solid hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
-                          : "border-line-subtle bg-surface-muted text-content-disabled",
-                      )}
-                      aria-label="inject-current-run"
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </MotionButton>
-                  </Tooltip>
-                  <Tooltip
-                    content={frontendMessage("chat.composer.cancelRunning")}
-                    side="top"
-                    shortcut={prefersCompactControls ? undefined : "Esc"}
-                  >
-                    <MotionButton
-                      onClick={onCancel}
-                      className={cn(
-                        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200",
-                        prefersCompactControls && "min-h-11 min-w-11",
-                      )}
-                      aria-label={frontendMessage("chat.composer.cancelRunning")}
-                    >
-                      <Square className="h-3.5 w-3.5 fill-current" />
-                    </MotionButton>
-                  </Tooltip>
-                </div>
+                    <Square className="h-3.5 w-3.5 fill-current" />
+                  </MotionButton>
+                </Tooltip>
               ) : (
                 <Tooltip
-                  content={frontendMessage(settling ? "chat.composer.followUp" : "chat.composer.send")}
+                  content={frontendMessage(
+                    composerAction === "steer"
+                      ? "chat.composer.inject"
+                      : composerAction === "follow_up"
+                        ? "chat.composer.followUp"
+                        : "chat.composer.send",
+                  )}
                   side="top"
                   shortcut={prefersCompactControls ? undefined : "↵"}
                 >
                   <MotionButton
-                    onClick={() => submit(settling ? "follow_up" : undefined)}
+                    onClick={handleComposerAction}
                     disabled={!canSend}
                     className={cn(
                       "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
                       prefersCompactControls && "min-h-11 min-w-11",
                       canSend
-                        ? "border-transparent bg-content-strong text-content-inverse hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
+                        ? "border-transparent bg-content-strong text-content-inverse shadow-panel hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
                         : "border-line-subtle bg-surface-muted text-content-disabled",
                     )}
-                    aria-label={settling ? "queue-follow-up" : "send"}
+                    aria-label={
+                      composerAction === "steer"
+                        ? "inject-current-run"
+                        : composerAction === "follow_up"
+                          ? "queue-follow-up"
+                          : "send"
+                    }
+                    data-composer-action={composerAction}
                   >
                     <ArrowUp className="h-4 w-4" />
                   </MotionButton>
@@ -427,12 +467,13 @@ export function ChatComposer({
   );
 }
 
-function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.Element | null {
+function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.Element {
   const hasTokens = usage?.tokens !== null && usage?.tokens !== undefined;
-  if (!usage || !hasTokens) return null;
-  const used = Math.max(0, usage.tokens);
-  const percent = Math.max(0, Math.min(100, usage.percent ?? (used / usage.contextWindow) * 100));
-  const value = percent;
+  const used = hasTokens ? Math.max(0, usage.tokens) : 0;
+  const percent = usage
+    ? Math.max(0, Math.min(100, usage.percent ?? (hasTokens ? (used / usage.contextWindow) * 100 : 0)))
+    : 0;
+  const value = usage && hasTokens ? percent : 0;
   const roundedPercent = Math.round(percent);
   const remainingPercent = Math.max(0, 100 - roundedPercent);
 
@@ -441,16 +482,20 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
       content={
         <span className="grid gap-0.5 text-left leading-5">
           <span className="font-medium">
-            {frontendMessage("chat.composer.contextUsageSummary", {
-              used: roundedPercent,
-              remaining: remainingPercent,
-            })}
+            {usage && hasTokens
+              ? frontendMessage("chat.composer.contextUsageSummary", {
+                  used: roundedPercent,
+                  remaining: remainingPercent,
+                })
+              : frontendMessage("chat.composer.contextUsage")}
           </span>
           <span className="tabular-nums text-ink-300">
-            {frontendMessage("chat.composer.contextUsageTokens", {
-              used: formatComposerTokenCount(used),
-              total: formatComposerTokenCount(usage.contextWindow),
-            })}
+            {usage && hasTokens
+              ? frontendMessage("chat.composer.contextUsageTokens", {
+                  used: formatComposerTokenCount(used),
+                  total: formatComposerTokenCount(usage.contextWindow),
+                })
+              : frontendMessage("chat.composer.contextUsagePending")}
           </span>
         </span>
       }
@@ -464,7 +509,9 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={value}
-        aria-valuetext={`${roundedPercent}%`}
+        aria-valuetext={
+          usage && hasTokens ? `${roundedPercent}%` : frontendMessage("chat.composer.contextUsagePending")
+        }
         data-context-usage-indicator
         className={cn(
           "mx-0.5 inline-block h-4 w-4 shrink-0 rounded-full outline-none opacity-75 transition-[filter,opacity] hover:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-focus",

@@ -4,7 +4,8 @@ import type { UploadAttachmentData, WsRequest } from "../api/eventTypes";
 import type { ApprovalBatchReference, ApprovalDecision } from "../api/approvalEventTypes";
 import type { InteractionInputAction, InteractionInputContent } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
-import { readActiveRun, useStore, type ChatMessage } from "../store/sessionStore";
+import { readActiveRun, useStore, type ChatMessage, type SessionRecord } from "../store/sessionStore";
+import { blocksSessionInput, readSessionHydrationState } from "../store/session/sessionHydration";
 import { generateId } from "../lib/util";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import type { ExecutionApprovalMode } from "../api/executionApprovalMode";
@@ -62,24 +63,51 @@ export interface LastSentMessage {
 }
 
 export type SendTargetResolution =
-  | { kind: "blocked_history_loading"; sessionId: string }
+  | { kind: "blocked_catalog_loading"; sessionId: string | null }
+  | { kind: "blocked_history_loading"; sessionId: string | null }
   | { kind: "ready"; sessionId: string; shouldCreateSession: boolean };
 
 export function resolveSendTargetSession({
   activeSessionId,
   createSessionId,
+  catalogSynced,
+  historyFailedIds,
+  historyLoadedIds,
   historyLoadingIds,
   missingOnServerIds,
+  sessions,
 }: {
   activeSessionId: string | null;
   createSessionId: () => string;
   historyLoadingIds: Record<string, boolean>;
+  historyLoadedIds: Record<string, boolean>;
+  historyFailedIds: Record<string, boolean>;
+  sessions: Record<string, SessionRecord>;
+  catalogSynced: boolean;
   missingOnServerIds: Record<string, boolean>;
 }): SendTargetResolution {
-  if (activeSessionId && historyLoadingIds[activeSessionId]) {
-    return { kind: "blocked_history_loading", sessionId: activeSessionId };
+  if (!catalogSynced && !activeSessionId) {
+    return { kind: "blocked_catalog_loading", sessionId: null };
   }
-  if (!activeSessionId || missingOnServerIds[activeSessionId]) {
+  if (activeSessionId) {
+    const session = sessions[activeSessionId];
+    const hydrationState = readSessionHydrationState({
+      catalogSynced,
+      session: session ?? null,
+      historyLoaded: Boolean(historyLoadedIds[activeSessionId]),
+      historyLoading: Boolean(historyLoadingIds[activeSessionId]),
+      historyFailed: Boolean(historyFailedIds[activeSessionId]),
+    });
+    if (blocksSessionInput(hydrationState)) {
+      return {
+        kind: hydrationState === "catalog_loading" ? "blocked_catalog_loading" : "blocked_history_loading",
+        sessionId: activeSessionId,
+      };
+    }
+  }
+  const activeSessionMissingFromCatalog =
+    activeSessionId && catalogSynced && !sessions[activeSessionId];
+  if (!activeSessionId || missingOnServerIds[activeSessionId] || activeSessionMissingFromCatalog) {
     return { kind: "ready", sessionId: createSessionId(), shouldCreateSession: true };
   }
   return { kind: "ready", sessionId: activeSessionId, shouldCreateSession: false };
@@ -286,10 +314,17 @@ export function useChatCommands({
       const target = resolveSendTargetSession({
         activeSessionId,
         createSessionId: generateId,
+        catalogSynced: state.catalogSynced.sessions,
+        historyFailedIds: state.historyFailedIds,
+        historyLoadedIds: state.historyLoadedIds,
         historyLoadingIds: state.historyLoadingIds,
         missingOnServerIds: state.missingOnServerIds,
+        sessions: state.sessions,
       });
 
+      if (target.kind === "blocked_catalog_loading") {
+        return false;
+      }
       if (target.kind === "blocked_history_loading") {
         toast.warning(frontendMessage("chat.historyRecovering"));
         return false;

@@ -11,7 +11,7 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 
 const { ChatPanel, hasRenderableConversationContent } =
   await import("../../../Frontend/src/features/chat/ChatPanel.tsx");
-const { ChatComposer } = await import("../../../Frontend/src/features/chat/ChatComposer.tsx");
+const { ChatComposer, readComposerAction } = await import("../../../Frontend/src/features/chat/ChatComposer.tsx");
 const { ScrollToBottomButton } = await import("../../../Frontend/src/features/chat/ScrollToBottomButton.tsx");
 const { MessageActions, readMessageActionIntents } =
   await import("../../../Frontend/src/features/chat/MessageActions.tsx");
@@ -146,6 +146,9 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
     ),
   );
 
+  expect(screen.getByRole("button", { name: frontendMessage("chat.composer.cancelRunning") })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "inject-current-run" })).not.toBeInTheDocument();
+
   await user.type(screen.getByRole("textbox", { name: "输入消息" }), "steer now");
   await user.keyboard("{Enter}");
   expect(onSend).toHaveBeenLastCalledWith("steer now", undefined, "steer");
@@ -156,6 +159,14 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
 
   await user.keyboard("{Escape}");
   expect(onCancel).toHaveBeenCalledTimes(1);
+});
+
+test("chat composer derives one trailing action for every run phase", () => {
+  expect(readComposerAction({ running: false, settling: false, cancelling: false, canSubmit: false })).toBe("send");
+  expect(readComposerAction({ running: true, settling: false, cancelling: false, canSubmit: false })).toBe("cancel");
+  expect(readComposerAction({ running: true, settling: false, cancelling: false, canSubmit: true })).toBe("steer");
+  expect(readComposerAction({ running: true, settling: true, cancelling: false, canSubmit: true })).toBe("follow_up");
+  expect(readComposerAction({ running: true, settling: true, cancelling: true, canSubmit: true })).toBe("cancelling");
 });
 
 test("scroll-to-bottom stays compact while retaining an accessible label", () => {
@@ -441,6 +452,23 @@ test("chat panel shows the conversation skeleton before history loading is marke
   expect(screen.getByRole("status", { name: "正在恢复 6 条历史消息" })).toBeVisible();
   expect(document.querySelector("[data-history-skeleton]")).not.toBeNull();
   expect(screen.queryByRole("button", { name: "整理日志" })).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "输入消息" })).toBeDisabled();
+});
+
+test("chat panel keeps the workspace behind one loading barrier until the session catalog arrives", () => {
+  resetChatStore({
+    activeSessionId: null,
+    sessionOrder: [],
+    sessions: {},
+    catalogSynced: { sessions: false, presets: false },
+  });
+
+  renderWithFrontendProviders(React.createElement(ChatPanel, createChatPanelProps()));
+
+  expect(document.querySelector("[data-session-catalog-loading]")).not.toBeNull();
+  expect(screen.queryByText("今天想做点什么？")).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "输入消息" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "send" })).toBeDisabled();
 });
 
 test("chat panel mounts and updates aggregate state without external-store warnings", async () => {

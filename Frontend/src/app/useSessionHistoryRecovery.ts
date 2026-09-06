@@ -115,6 +115,13 @@ export function useSessionHistoryRecovery({
     },
     [],
   );
+  useEffect(() => {
+    if (status === "open") return;
+    for (const [sessionId, loading] of Object.entries(useStore.getState().historyLoadingIds)) {
+      if (!loading) continue;
+      markHistoryLoadFailed(sessionId);
+    }
+  }, [markHistoryLoadFailed, status]);
   const recoveryPollingKey = useStore((state) =>
     readRecoveryPollingKey({
       historyLoadingIds: state.historyLoadingIds,

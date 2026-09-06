@@ -116,8 +116,12 @@ export const runLifecycleEventHandlers = {
     if (!run && state.historyLoadingIds[sessionId]) {
       if (
         (env.requestId && state.historyEventRunIds[sessionId]?.[env.requestId]) ||
-        hasHistoryTraceRun(state, sessionId, env.requestId)
+        hasHistoryTraceRun(state, sessionId, env.requestId) ||
+        isHistoryActiveRequest(state, sessionId, env.requestId)
       ) {
+        // A reconnect can deliver the terminal live event before the history
+        // replay reaches this run's `run.started` event. Keep the replay
+        // alive; its step snapshot will reconstruct the terminal run.
         return;
       }
       session.messages = [];
@@ -255,6 +259,10 @@ const cancellationComponentMessages = {
 function hasHistoryTraceRun(state: StoreState, sessionId: string, requestId?: string): boolean {
   if (!requestId) return false;
   return (state.historyStepBuffers[sessionId] ?? []).some((run) => run.requestId === requestId);
+}
+
+function isHistoryActiveRequest(state: StoreState, sessionId: string, requestId?: string): boolean {
+  return Boolean(requestId && state.historyActiveRequestIds[sessionId] === requestId);
 }
 
 function clearActiveRequestIfCurrent(session: { activeRequestId?: string }, requestId: string): void {

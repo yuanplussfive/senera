@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useRef } from "react";
-import { toast } from "sonner";
+import { useCallback, useEffect } from "react";
 import type { WsRequest } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { useStore, type UserProfile } from "../store/sessionStore";
-import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export interface UseSessionCatalogSyncOptions {
   status: SocketStatus;
@@ -54,7 +52,6 @@ export function useSessionCatalogSync({
   send,
   onServerSessionsReset,
 }: UseSessionCatalogSyncOptions): SessionCatalogSyncHandle {
-  const hydrationToastShownRef = useRef(false);
   const resetCatalogSyncState = useStore((state) => state.resetCatalogSyncState);
 
   const refreshSessionCatalog = useCallback((): void => {
@@ -79,17 +76,6 @@ export function useSessionCatalogSync({
       send(request);
     }
 
-    if (!hydrationToastShownRef.current && state.sessionOrder.length > 0) {
-      hydrationToastShownRef.current = true;
-      toast.success(
-        frontendMessage("session.hydrated", {
-          count: state.sessionOrder.length,
-        }),
-        {
-          description: frontendMessage("session.hydratingDescription"),
-        },
-      );
-    }
   }, [onServerSessionsReset, resetCatalogSyncState, send, status]);
 
   return { refreshSessionCatalog };

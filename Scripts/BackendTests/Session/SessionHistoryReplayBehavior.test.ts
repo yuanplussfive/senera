@@ -81,6 +81,34 @@ describe("Session history replay behavior", () => {
     );
   });
 
+  test("splits oversized run-event pages before sending them", async () => {
+    const fixture = createReplayFixture({ maxRunEventChunkBytes: 1_000 });
+    const sessionId = "byte-bounded-session";
+    fixture.store.open(sessionId);
+    for (let index = 0; index < 3; index += 1) {
+      fixture.store.persistRunEvent(sessionId, {
+        ...runEvent(sessionId, `request-${index}`, index),
+        data: { input: "x".repeat(500) },
+      });
+    }
+    const events: AgentDomainEvent[] = [];
+
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    const chunks = events.filter((event) => event.kind === AgentEventKinds.SessionRunHistoryChunk);
+    expect(chunks).toHaveLength(3);
+    expect(
+      chunks.every((event) =>
+        Buffer.byteLength(JSON.stringify({ sessionId, events: readRecord(event.data)?.events ?? [] })) <= 1_000,
+      ),
+    ).toBe(true);
+  });
+
   test("uses repository pages without calling the legacy full-history readers", async () => {
     const repository = new PageOnlyHistoryRepository();
     const fixture = createReplayFixture({
@@ -435,6 +463,7 @@ function createReplayFixture(
     entryPageSize?: number;
     stepRunPageSize?: number;
     runEventPageSize?: number;
+    maxRunEventChunkBytes?: number;
   } = {},
 ) {
   const store = new AgentSessionStore({ repository: options.repository ?? new InMemorySessionRepository() });
@@ -446,6 +475,7 @@ function createReplayFixture(
       stepRunPageSize: options.stepRunPageSize,
       runEventPageSize: options.runEventPageSize,
     },
+    maxRunEventChunkBytes: options.maxRunEventChunkBytes,
   });
   return { replay, store };
 }

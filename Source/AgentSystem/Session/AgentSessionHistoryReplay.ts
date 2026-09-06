@@ -22,11 +22,13 @@ import {
 } from "./AgentSessionHistoryPaging.js";
 
 const HistoryXmlParser = new AgentXmlParser();
+const DefaultRunEventChunkMaxBytes = 256 * 1024;
 
 export interface AgentSessionHistoryReplayOptions {
   store: AgentSessionHistoryReplayStore;
   eventFactory: AgentSessionEventFactory;
   paging?: Partial<AgentSessionHistoryReplayPaging>;
+  maxRunEventChunkBytes?: number;
 }
 
 export interface AgentSessionHistoryReplayStore {
@@ -62,9 +64,11 @@ export interface AgentSessionHistoryReplayStore {
 
 export class AgentSessionHistoryReplay {
   private readonly paging: AgentSessionHistoryReplayPaging;
+  private readonly maxRunEventChunkBytes: number;
 
   constructor(private readonly options: AgentSessionHistoryReplayOptions) {
     this.paging = resolveAgentSessionHistoryReplayPaging(options.paging);
+    this.maxRunEventChunkBytes = normalizeRunEventChunkMaxBytes(options.maxRunEventChunkBytes);
   }
 
   async replay(request: { sessionId: string; refresh?: boolean; onEvent?: AgentEventSink }): Promise<void> {
@@ -284,17 +288,36 @@ export class AgentSessionHistoryReplay {
     request: { sessionId: string; onEvent?: AgentEventSink },
     events: readonly AgentEventEnvelope[],
   ): Promise<void> {
-    for (let index = 0; index < events.length; index += this.paging.runEventPageSize) {
-      const chunk = events.slice(index, index + this.paging.runEventPageSize);
-      await emitAgentEvent(request.onEvent, {
-        kind: AgentEventKinds.SessionRunHistoryChunk,
-        context: { sessionId: request.sessionId },
-        data: {
-          sessionId: request.sessionId,
-          events: chunk,
-        },
-      });
+    let chunk: AgentEventEnvelope[] = [];
+    for (const event of events) {
+      const candidate = [...chunk, event];
+      const exceedsByteLimit =
+        chunk.length > 0 && serializedRunEventChunkBytes(request.sessionId, candidate) > this.maxRunEventChunkBytes;
+      if (chunk.length >= this.paging.runEventPageSize || exceedsByteLimit) {
+        await this.emitRunEventChunk(request, chunk);
+        chunk = [];
+        await yieldToEventLoop();
+      }
+      chunk.push(event);
     }
+    if (chunk.length > 0) {
+      await this.emitRunEventChunk(request, chunk);
+      await yieldToEventLoop();
+    }
+  }
+
+  private async emitRunEventChunk(
+    request: { sessionId: string; onEvent?: AgentEventSink },
+    events: readonly AgentEventEnvelope[],
+  ): Promise<void> {
+    await emitAgentEvent(request.onEvent, {
+      kind: AgentEventKinds.SessionRunHistoryChunk,
+      context: { sessionId: request.sessionId },
+      data: {
+        sessionId: request.sessionId,
+        events: [...events],
+      },
+    });
   }
 
   private async emitHistoryCompleted(request: {
@@ -336,6 +359,22 @@ export class AgentSessionHistoryReplay {
       traces: status === "running" ? [] : [createMissingRunDataTrace(snapshot)],
     });
   }
+}
+
+function normalizeRunEventChunkMaxBytes(value: number | undefined): number {
+  if (value === undefined) return DefaultRunEventChunkMaxBytes;
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError("maxRunEventChunkBytes must be a positive safe integer.");
+  }
+  return value;
+}
+
+function serializedRunEventChunkBytes(sessionId: string, events: readonly AgentEventEnvelope[]): number {
+  return Buffer.byteLength(JSON.stringify({ sessionId, events }));
+}
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 function inferTraceRunStatus(traces: readonly StepTrace[]): AgentHistoryStepRun["status"] {

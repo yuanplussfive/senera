@@ -48,6 +48,7 @@ export interface AgentWebSocketEventPersistenceHealth {
 export class AgentWebSocketEventEnvelopeSender {
   private readonly sequencer = new AgentEventSequencer();
   private readonly persistenceQueues = new Map<string, PersistenceQueue>();
+  private readonly socketSendQueues = new WeakMap<WebSocket, Promise<void>>();
   private readonly retiredQueueHealth = {
     pendingEvents: 0,
     failedEvents: 0,
@@ -99,8 +100,8 @@ export class AgentWebSocketEventEnvelopeSender {
     const envelope = toEventEnvelope(event, this.sequencer.next());
     this.logEvent(envelope);
     const persisted = this.persistRunEvent(envelope);
-    this.send(socket, this.serialize(envelope));
-    return persisted;
+    const sent = this.enqueueSocketSend(socket, this.serialize(envelope));
+    return Promise.all([persisted, sent]).then(() => undefined);
   }
 
   async flush(): Promise<void> {
@@ -161,6 +162,57 @@ export class AgentWebSocketEventEnvelopeSender {
     }
 
     socket.send(payload);
+  }
+
+  /**
+   * Request/History responses share one socket with live events. Awaiting the
+   * ws write callback keeps a large history replay from filling the client's
+   * outbound buffer while preserving the existing fire-and-forget broadcast
+   * path.
+   */
+  private enqueueSocketSend(socket: WebSocket, payload: string): Promise<void> {
+    const previous = this.socketSendQueues.get(socket) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => this.sendAndWait(socket, payload));
+    this.socketSendQueues.set(socket, next);
+    const clear = (): void => {
+      if (this.socketSendQueues.get(socket) === next) this.socketSendQueues.delete(socket);
+    };
+    void next.then(clear, clear);
+    return next;
+  }
+
+  private sendAndWait(socket: WebSocket, payload: string): Promise<void> {
+    if (socket.readyState !== socket.OPEN) return Promise.resolve();
+
+    const maxBufferedBytes = this.options.maxBufferedBytes;
+    const pendingBytes = socket.bufferedAmount + Buffer.byteLength(payload);
+    if (maxBufferedBytes !== undefined && pendingBytes > maxBufferedBytes) {
+      this.options.logger.warn("WebSocket client exceeded the outbound buffer limit.", {
+        bufferedBytes: socket.bufferedAmount,
+        pendingBytes,
+        maxBufferedBytes,
+      });
+      socket.close(1013, "outbound_buffer_exceeded");
+      return Promise.resolve();
+    }
+
+    // Lightweight socket fakes used by callers/tests do not expose a network
+    // transport or a send callback. Keep their delivery synchronous.
+    if (!(socket as WebSocket & { _socket?: unknown })._socket) {
+      socket.send(payload);
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      try {
+        socket.send(payload, (error?: Error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
 
   private serialize(payload: unknown): string {
