@@ -149,6 +149,13 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
         }
         version = 21;
         break;
+      case 21:
+        removeRetiredPluginConfiguration(working, "", migratedPaths, removedPaths);
+        if (isRecord(working.Defaults)) {
+          removeRetiredPluginConfiguration(working.Defaults, "Defaults.", migratedPaths, removedPaths);
+        }
+        version = 22;
+        break;
       default:
         throw new AgentConfigMigrationError(`No migration is registered for configuration version ${version}.`);
     }
@@ -175,6 +182,40 @@ function removeRetiredTemporalSegmentIdleBoundary(
   if (removeProperty(continuity.TemporalMemory, "SegmentIdleSeconds")) {
     removedPaths.push(`${prefix}ContinuityLearning.TemporalMemory.SegmentIdleSeconds`);
   }
+}
+
+function removeRetiredPluginConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  if (removeProperty(container, "PluginRoots")) removedPaths.push(`${prefix}PluginRoots`);
+  if (removeProperty(container, "PluginDiscovery")) removedPaths.push(`${prefix}PluginDiscovery`);
+
+  // PluginDocumentation was renamed when plugin configuration moved into system extensions.
+  if (prefix !== "") return;
+  const currentDocumentation = container.ToolDocumentation;
+  if (currentDocumentation !== undefined && !isRecord(currentDocumentation)) {
+    throw new AgentConfigMigrationError("ToolDocumentation must be an object.");
+  }
+  if (isRecord(currentDocumentation) && removeProperty(currentDocumentation, "PromptXml")) {
+    removedPaths.push("ToolDocumentation.PromptXml");
+  }
+  if (!Object.hasOwn(container, "PluginDocumentation")) return;
+  const legacyDocumentation = container.PluginDocumentation;
+  if (!isRecord(legacyDocumentation)) {
+    throw new AgentConfigMigrationError("PluginDocumentation must be an object to migrate to ToolDocumentation.");
+  }
+
+  const merged = { ...legacyDocumentation, ...(isRecord(currentDocumentation) ? currentDocumentation : {}) };
+  if (removeProperty(merged, "PromptXml")) {
+    removedPaths.push("PluginDocumentation.PromptXml");
+  }
+  container.ToolDocumentation = merged;
+  delete container.PluginDocumentation;
+  migratedPaths.push("ToolDocumentation");
+  removedPaths.push("PluginDocumentation");
 }
 
 function removeRetiredContinuityRecallRewrite(

@@ -973,7 +973,7 @@
           "properties": {
             "ConfigVersion": {
               "type": "number",
-              "const": 21
+              "const": 22
             },
             "Defaults": {
               "type": "object",
