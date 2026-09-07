@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.15.1](https://github.com/yuanplussfive/senera/compare/v1.15.0...v1.15.1) (2026-09-07)
+
+
+### 问题修复
+
+* **container:** align workspace skill permissions ([#125](https://github.com/yuanplussfive/senera/issues/125)) ([2945865](https://github.com/yuanplussfive/senera/commit/294586507aeb9d223890d4117314f64d9e6c498e))
+
 ## [1.15.0](https://github.com/yuanplussfive/senera/compare/v1.14.1...v1.15.0) (2026-09-07)
 
 
