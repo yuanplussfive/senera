@@ -7,12 +7,14 @@ import type {
 } from "../../../Source/AgentSystem/Execution/SeneraSandboxWorkerTypes.js";
 import type { AgentSandboxExecutionRequest } from "../../../Source/AgentSystem/Sandbox/Worker/AgentSandboxWorkerProtocol.js";
 import type { SeneraOutputSpool } from "../../../Source/AgentSystem/Execution/SeneraOutputSpool.js";
+import { resolveAgentDockerEngineGuestWorkspaceRoot } from "../../../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 
 describe("Docker Engine persistent process adapter", () => {
   test("projects the shell invocation and separates output before closing exactly once", async () => {
     const handle = new FakeSandboxProcessHandle();
     const worker = workerFor(handle);
     const backend = backendFor(worker);
+    const guestWorkspaceRoot = resolveAgentDockerEngineGuestWorkspaceRoot(process.cwd(), "docker-engine");
     const child = await backend.spawnPersistentProcess("host-shell", [], {
       ...spawnOptions(),
       shellCommand: { mode: "shell", dialect: "posix-sh", script: "printf ready" },
@@ -33,7 +35,7 @@ describe("Docker Engine persistent process adapter", () => {
       expect.objectContaining({
         command: "/bin/sh",
         arguments: ["-lc", "printf ready"],
-        cwd: "/workspace",
+        cwd: guestWorkspaceRoot,
         interactive: false,
         workspaceMount: "writable",
         network: "disabled",

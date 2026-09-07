@@ -303,8 +303,10 @@ async function startSeneraServerRuntime(
   });
   const sandboxProvider = sandboxRuntimeService.runtimeProvider();
   const sandboxGuestWorkspaceRoot =
-    options.sandboxGuestWorkspaceRoot ??
-    (sandboxProvider ? resolveAgentDockerEngineGuestWorkspaceRoot(workspaceRoot, sandboxProvider) : workspaceRoot);
+    sandboxRuntimeService.sandboxBackendAvailable() && sandboxProvider
+      ? (options.sandboxGuestWorkspaceRoot ??
+        resolveAgentDockerEngineGuestWorkspaceRoot(workspaceRoot, sandboxProvider))
+      : undefined;
   const createRuntimeExecutionEnvironments = () => {
     const config = configSnapshot();
     return createSeneraExecutionEnvironments({

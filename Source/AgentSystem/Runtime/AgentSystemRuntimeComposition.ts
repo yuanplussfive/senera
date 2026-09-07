@@ -146,10 +146,10 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
   const sandboxProvider = options.sandboxProvider;
   const dockerEngineWorker = options.dockerEngineWorker;
   const sandboxGuestWorkspaceRoot =
-    options.sandboxGuestWorkspaceRoot ??
-    (sandboxAvailable && sandboxProvider
-      ? resolveAgentDockerEngineGuestWorkspaceRoot(options.workspaceRoot, sandboxProvider)
-      : options.workspaceRoot);
+    sandboxAvailable && sandboxProvider
+      ? (options.sandboxGuestWorkspaceRoot ??
+        resolveAgentDockerEngineGuestWorkspaceRoot(options.workspaceRoot, sandboxProvider))
+      : undefined;
   if (sandboxAvailable && (!sandboxProvider || !dockerEngineWorker)) {
     throw new Error("An available sandbox runtime requires an explicit Docker provider and Worker client.");
   }
