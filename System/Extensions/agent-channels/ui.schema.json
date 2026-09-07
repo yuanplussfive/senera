@@ -1,0 +1,678 @@
+{
+  "form": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "general",
+        "label": { "zh-CN": "通用", "en-US": "General" },
+        "description": {
+          "zh-CN": "消息渠道网关主开关与会话审批模式。渠道消息默认排队处理，不会打断正在进行的回合。",
+          "en-US": "Master switch and session approval mode for the channel gateway. Channel messages queue behind an active turn instead of interrupting it."
+        },
+        "fields": [
+          {
+            "path": ["enabled"],
+            "label": { "zh-CN": "启用渠道网关", "en-US": "Enable channel gateway" },
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["defaultApprovalMode"],
+            "label": { "zh-CN": "会话审批模式", "en-US": "Session approval mode" },
+            "type": "string",
+            "options": ["agent", "always_ask", "full_access"],
+            "optionLabels": {
+              "agent": { "zh-CN": "Guardrail 自动", "en-US": "Guardrail auto" },
+              "always_ask": { "zh-CN": "每次询问", "en-US": "Always ask" },
+              "full_access": { "zh-CN": "完全自主", "en-US": "Full access" }
+            },
+            "required": false,
+            "essential": true
+          }
+        ]
+      },
+      {
+        "id": "telegram",
+        "label": { "zh-CN": "Telegram", "en-US": "Telegram" },
+        "description": {
+          "zh-CN": "默认使用长轮询，NAT/无公网 IP 也能直连。配置公开 HTTPS 地址后可切换 webhook 模式。",
+          "en-US": "Long polling is the default transport and works behind NAT. Switch to webhook mode with a public HTTPS URL."
+        },
+        "fields": [
+          {
+            "path": ["telegram", "enabled"],
+            "label": { "zh-CN": "启用", "en-US": "Enabled" },
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["telegram", "token"],
+            "label": { "zh-CN": "Bot Token", "en-US": "Bot Token" },
+            "type": "string",
+            "secret": true,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["telegram", "mode"],
+            "label": { "zh-CN": "接收模式", "en-US": "Receive mode" },
+            "type": "string",
+            "options": ["long_polling", "webhook"],
+            "optionLabels": {
+              "long_polling": { "zh-CN": "长轮询（默认）", "en-US": "Long polling (default)" },
+              "webhook": { "zh-CN": "Webhook", "en-US": "Webhook" }
+            },
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["telegram", "webhookUrl"],
+            "label": { "zh-CN": "Webhook 地址", "en-US": "Webhook URL" },
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["telegram", "webhookSecret"],
+            "label": { "zh-CN": "Webhook 密钥", "en-US": "Webhook secret" },
+            "type": "string",
+            "secret": true,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["telegram", "allowedUsers"],
+            "label": { "zh-CN": "允许的用户 ID", "en-US": "Allowed user IDs" },
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["telegram", "allowAllUsers"],
+            "label": { "zh-CN": "允许所有用户（慎用）", "en-US": "Allow all users (use with care)" },
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["telegram", "homeChannelId"],
+            "label": { "zh-CN": "默认投递频道 ID", "en-US": "Home channel ID" },
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["telegram", "allowedRoles"],
+            "label": { "zh-CN": "允许的角色（预留）", "en-US": "Allowed roles (reserved)" },
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["telegram", "requireMention"],
+            "label": { "zh-CN": "群聊需要提及", "en-US": "Require mention in groups" },
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["telegram", "groupSessionsPerUser"],
+            "label": { "zh-CN": "群聊按用户隔离会话", "en-US": "Group sessions per user" },
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["telegram", "streamProgress"],
+            "label": { "zh-CN": "发送工具进度提示", "en-US": "Send tool progress hints" },
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["telegram", "maxMessageLength"],
+            "label": { "zh-CN": "消息长度上限", "en-US": "Max message length" },
+            "type": "number",
+            "min": 1,
+            "required": false,
+            "essential": false
+          }
+        ]
+      },
+      {
+        "id": "qq",
+        "label": { "zh-CN": "QQ", "en-US": "QQ" },
+        "description": {
+          "zh-CN": "QQ 开放平台机器人：默认使用可恢复 WebSocket 网关，支持私聊、群聊、频道、Markdown、媒体上传和原生键盘交互。",
+          "en-US": "QQ open-platform bot: resumable WebSocket by default, with direct/group/guild messages, Markdown, media uploads and native keyboard interactions."
+        },
+        "fields": [
+          {
+            "path": ["qq", "enabled"],
+            "label": { "zh-CN": "启用", "en-US": "Enabled" },
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["qq", "mode"],
+            "label": { "zh-CN": "接收模式", "en-US": "Receive mode" },
+            "type": "string",
+            "options": ["websocket", "webhook"],
+            "optionLabels": {
+              "websocket": { "zh-CN": "WebSocket（默认，无需公网）", "en-US": "WebSocket (default, no public URL)" },
+              "webhook": { "zh-CN": "Webhook（需要签名密钥）", "en-US": "Webhook (requires signing secret)" }
+            },
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "appId"],
+            "label": { "zh-CN": "AppID", "en-US": "AppID" },
+            "type": "string",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["qq", "appSecret"],
+            "label": { "zh-CN": "AppSecret", "en-US": "AppSecret" },
+            "type": "string",
+            "secret": true,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["qq", "webhookSecret"],
+            "label": {
+              "zh-CN": "Webhook 签名密钥（仅 Webhook 模式）",
+              "en-US": "Webhook signing secret (webhook mode only)"
+            },
+            "type": "string",
+            "secret": true,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "webhookUrl"],
+            "label": { "zh-CN": "Webhook 地址", "en-US": "Webhook URL" },
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "allowedUsers"],
+            "label": { "zh-CN": "允许的 OpenID", "en-US": "Allowed OpenIDs" },
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "dmPolicy"],
+            "label": { "zh-CN": "私聊准入策略", "en-US": "DM admission policy" },
+            "type": "string",
+            "options": ["allowlist", "open", "pairing", "disabled"],
+            "optionLabels": {
+              "allowlist": { "zh-CN": "仅允许列表", "en-US": "Allowlist" },
+              "open": { "zh-CN": "开放", "en-US": "Open" },
+              "pairing": { "zh-CN": "配对（需接入配对流程）", "en-US": "Pairing (requires pairing flow)" },
+              "disabled": { "zh-CN": "关闭私聊", "en-US": "Disabled" }
+            },
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "groupPolicy"],
+            "label": { "zh-CN": "群聊准入策略", "en-US": "Group admission policy" },
+            "type": "string",
+            "options": ["allowlist", "open", "pairing", "disabled"],
+            "optionLabels": {
+              "allowlist": { "zh-CN": "仅允许列表", "en-US": "Allowlist" },
+              "open": { "zh-CN": "开放", "en-US": "Open" },
+              "pairing": { "zh-CN": "配对（需接入配对流程）", "en-US": "Pairing (requires pairing flow)" },
+              "disabled": { "zh-CN": "关闭群聊", "en-US": "Disabled" }
+            },
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "groupAllowedUsers"],
+            "label": { "zh-CN": "允许触发群聊的 OpenID", "en-US": "Allowed group OpenIDs" },
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "allowAllUsers"],
+            "label": { "zh-CN": "允许所有用户（慎用）", "en-US": "Allow all users (use with care)" },
+            "type": "boolean",
+            "defaultValue": true,
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["qq", "allowedRoles"],
+            "label": { "zh-CN": "允许的角色（预留）", "en-US": "Allowed roles (reserved)" },
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "streamProgress"],
+            "label": { "zh-CN": "发送工具进度提示", "en-US": "Send tool progress hints" },
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "markdownSupport"],
+            "label": { "zh-CN": "使用原生 Markdown", "en-US": "Use native Markdown" },
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "requireMention"],
+            "label": { "zh-CN": "群聊需要提及机器人", "en-US": "Require a mention in group chats" },
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "groupSessionsPerUser"],
+            "label": { "zh-CN": "群聊按用户隔离会话", "en-US": "Keep group sessions per user" },
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "homeChannelId"],
+            "label": { "zh-CN": "默认通知频道 ID", "en-US": "Home channel ID" },
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "stt", "enabled"],
+            "label": { "zh-CN": "启用语音转写回退", "en-US": "Enable voice transcription fallback" },
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "stt", "provider"],
+            "label": { "zh-CN": "语音转写服务", "en-US": "Transcription provider" },
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "stt", "baseUrl"],
+            "label": { "zh-CN": "语音转写 API 地址", "en-US": "Transcription API base URL" },
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "stt", "apiKey"],
+            "label": { "zh-CN": "语音转写 API 密钥", "en-US": "Transcription API key" },
+            "type": "string",
+            "secret": true,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "stt", "model"],
+            "label": { "zh-CN": "语音转写模型", "en-US": "Transcription model" },
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "stt", "timeoutMs"],
+            "label": { "zh-CN": "语音转写超时（毫秒）", "en-US": "Transcription timeout (ms)" },
+            "type": "number",
+            "min": 1000,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "stt", "maxBytes"],
+            "label": { "zh-CN": "语音文件大小上限（字节）", "en-US": "Maximum voice file size (bytes)" },
+            "type": "number",
+            "min": 1024,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "maxMessageLength"],
+            "label": { "zh-CN": "消息长度上限", "en-US": "Max message length" },
+            "type": "number",
+            "min": 1,
+            "max": 4000,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "dedupWindowMs"],
+            "label": { "zh-CN": "消息去重窗口（毫秒）", "en-US": "Deduplication window (ms)" },
+            "type": "number",
+            "min": 1000,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "dedupMaxSize"],
+            "label": { "zh-CN": "去重缓存上限", "en-US": "Deduplication cache size" },
+            "type": "number",
+            "min": 100,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "maxMediaBytes"],
+            "label": { "zh-CN": "单个媒体大小上限（字节）", "en-US": "Maximum media size (bytes)" },
+            "type": "number",
+            "min": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "inlineMediaLimitBytes"],
+            "label": { "zh-CN": "内联媒体大小上限（字节）", "en-US": "Inline media limit (bytes)" },
+            "type": "number",
+            "min": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "mediaUploadTimeoutMs"],
+            "label": { "zh-CN": "媒体上传超时（毫秒）", "en-US": "Media upload timeout (ms)" },
+            "type": "number",
+            "min": 1000,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "chunkUploadTimeoutMs"],
+            "label": { "zh-CN": "媒体分片超时（毫秒）", "en-US": "Media chunk timeout (ms)" },
+            "type": "number",
+            "min": 1000,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "intents"],
+            "label": { "zh-CN": "网关事件权限（Intents）", "en-US": "Gateway intents" },
+            "type": "number",
+            "min": 0,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "ackTimeoutMs"],
+            "label": { "zh-CN": "交互确认超时（毫秒）", "en-US": "Interaction acknowledgement timeout (ms)" },
+            "type": "number",
+            "min": 1000,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "maxReconnectAttempts"],
+            "label": { "zh-CN": "最大重连次数", "en-US": "Maximum reconnect attempts" },
+            "type": "number",
+            "min": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "quickDisconnectThresholdMs"],
+            "label": { "zh-CN": "快速断开判定时间（毫秒）", "en-US": "Quick-disconnect threshold (ms)" },
+            "type": "number",
+            "min": 1000,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "maxQuickDisconnects"],
+            "label": { "zh-CN": "连续快速断开上限", "en-US": "Maximum consecutive quick disconnects" },
+            "type": "number",
+            "min": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "uploadConcurrency"],
+            "label": { "zh-CN": "媒体分片并发数", "en-US": "Media part concurrency" },
+            "type": "number",
+            "min": 1,
+            "max": 10,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "mediaCacheTtlMs"],
+            "label": { "zh-CN": "媒体令牌缓存时长（毫秒）", "en-US": "Media token cache TTL (ms)" },
+            "type": "number",
+            "min": 1000,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["qq", "typingDebounceMs"],
+            "label": { "zh-CN": "输入提示刷新间隔（毫秒）", "en-US": "Typing refresh interval (ms)" },
+            "type": "number",
+            "min": 1000,
+            "required": false,
+            "essential": false
+          }
+        ]
+      },
+      {
+        "id": "discord",
+        "label": { "zh-CN": "Discord", "en-US": "Discord" },
+        "description": {
+          "zh-CN": "Gateway WebSocket 常驻连接：支持私信与频道消息，断线自动重连并恢复会话。",
+          "en-US": "Persistent gateway WebSocket: direct messages and guild channels, automatic reconnect with session resume."
+        },
+        "fields": [
+          {
+            "path": ["discord", "enabled"],
+            "label": { "zh-CN": "启用", "en-US": "Enabled" },
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["discord", "token"],
+            "label": { "zh-CN": "Bot Token", "en-US": "Bot Token" },
+            "type": "string",
+            "secret": true,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["discord", "allowedUsers"],
+            "label": { "zh-CN": "允许的用户 ID", "en-US": "Allowed user IDs" },
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["discord", "allowAllUsers"],
+            "label": { "zh-CN": "允许所有用户（慎用）", "en-US": "Allow all users (use with care)" },
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["discord", "intents"],
+            "label": { "zh-CN": "Gateway Intents（可选）", "en-US": "Gateway intents (optional)" },
+            "type": "number",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["discord", "allowedRoles"],
+            "label": { "zh-CN": "允许的角色 ID", "en-US": "Allowed role IDs" },
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": false
+          }
+        ]
+      }
+    ],
+    "coverage": {
+      "omissions": [
+        {
+          "path": ["qq", "transport"],
+          "reason": "Hermes compatibility alias for qq.mode; the canonical field is shown above."
+        },
+        {
+          "path": ["qq", "app_id"],
+          "reason": "Hermes compatibility alias for qq.appId."
+        },
+        {
+          "path": ["qq", "client_secret"],
+          "reason": "Hermes compatibility alias for qq.appSecret."
+        },
+        {
+          "path": ["qq", "webhook_url"],
+          "reason": "Hermes compatibility alias for qq.webhookUrl."
+        },
+        {
+          "path": ["qq", "webhook_secret"],
+          "reason": "Hermes compatibility alias for qq.webhookSecret."
+        },
+        {
+          "path": ["qq", "allow_from"],
+          "reason": "Hermes compatibility alias for qq.allowedUsers."
+        },
+        {
+          "path": ["qq", "allowFrom"],
+          "reason": "Compatibility alias for qq.allowedUsers."
+        },
+        {
+          "path": ["qq", "dm_policy"],
+          "reason": "Hermes compatibility alias for qq.dmPolicy."
+        },
+        {
+          "path": ["qq", "group_policy"],
+          "reason": "Hermes compatibility alias for qq.groupPolicy."
+        },
+        {
+          "path": ["qq", "group_allow_from"],
+          "reason": "Hermes compatibility alias for qq.groupAllowedUsers."
+        },
+        {
+          "path": ["qq", "groupAllowFrom"],
+          "reason": "Compatibility alias for qq.groupAllowedUsers."
+        },
+        {
+          "path": ["qq", "allowed_roles"],
+          "reason": "Hermes compatibility alias for qq.allowedRoles."
+        },
+        {
+          "path": ["qq", "require_mention"],
+          "reason": "Compatibility alias for qq.requireMention."
+        },
+        {
+          "path": ["qq", "group_sessions_per_user"],
+          "reason": "Compatibility alias for qq.groupSessionsPerUser."
+        },
+        {
+          "path": ["qq", "home_channel_id"],
+          "reason": "Compatibility alias for qq.homeChannelId."
+        },
+        {
+          "path": ["qq", "stream_progress"],
+          "reason": "Compatibility alias for qq.streamProgress."
+        },
+        {
+          "path": ["qq", "markdown_support"],
+          "reason": "Hermes compatibility alias for qq.markdownSupport."
+        },
+        {
+          "path": ["qq", "stt", "base_url"],
+          "reason": "Snake-case compatibility alias for qq.stt.baseUrl."
+        },
+        {
+          "path": ["qq", "stt", "api_key"],
+          "reason": "Snake-case compatibility alias for qq.stt.apiKey."
+        },
+        {
+          "path": ["qq", "stt", "timeout_ms"],
+          "reason": "Snake-case compatibility alias for qq.stt.timeoutMs."
+        },
+        {
+          "path": ["qq", "stt", "max_bytes"],
+          "reason": "Snake-case compatibility alias for qq.stt.maxBytes."
+        },
+        {
+          "path": ["qq", "max_message_length"],
+          "reason": "Hermes compatibility alias for qq.maxMessageLength."
+        },
+        {
+          "path": ["qq", "max_reconnect_attempts"],
+          "reason": "Hermes compatibility alias for qq.maxReconnectAttempts."
+        },
+        {
+          "path": ["qq", "quick_disconnect_threshold_ms"],
+          "reason": "Hermes compatibility alias for qq.quickDisconnectThresholdMs."
+        },
+        {
+          "path": ["qq", "max_quick_disconnects"],
+          "reason": "Hermes compatibility alias for qq.maxQuickDisconnects."
+        },
+        {
+          "path": ["qq", "upload_concurrency"],
+          "reason": "Hermes compatibility alias for qq.uploadConcurrency."
+        },
+        {
+          "path": ["qq", "media_cache_ttl_ms"],
+          "reason": "Hermes compatibility alias for qq.mediaCacheTtlMs."
+        },
+        {
+          "path": ["qq", "typing_debounce_ms"],
+          "reason": "Hermes compatibility alias for qq.typingDebounceMs."
+        },
+        {
+          "path": ["qq", "ack_timeout_ms"],
+          "reason": "Hermes compatibility alias for qq.ackTimeoutMs."
+        },
+        {
+          "path": ["qq", "max_media_bytes"],
+          "reason": "Hermes compatibility alias for qq.maxMediaBytes."
+        },
+        {
+          "path": ["qq", "inline_media_limit_bytes"],
+          "reason": "Hermes compatibility alias for qq.inlineMediaLimitBytes."
+        },
+        {
+          "path": ["qq", "media_upload_timeout_ms"],
+          "reason": "Hermes compatibility alias for qq.mediaUploadTimeoutMs."
+        },
+        {
+          "path": ["qq", "chunk_upload_timeout_ms"],
+          "reason": "Hermes compatibility alias for qq.chunkUploadTimeoutMs."
+        },
+        {
+          "path": ["qq", "dedup_window_ms"],
+          "reason": "Hermes compatibility alias for qq.dedupWindowMs."
+        },
+        {
+          "path": ["qq", "dedup_max_size"],
+          "reason": "Hermes compatibility alias for qq.dedupMaxSize."
+        }
+      ]
+    }
+  }
+}

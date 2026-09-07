@@ -1,0 +1,56 @@
+{
+  "name": "AgentStop",
+  "description": "请求停止不再需要的子代理及其活动后代。返回停止请求是否受理和当前真实状态；受理不等于已经停止。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "target": { "type": "string", "minLength": 1, "description": "Child-run ID returned by AgentSpawn." }
+    },
+    "required": ["target"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": { "accepted": { "type": "boolean" }, "run": { "type": "object" } },
+    "required": ["accepted", "run"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/AgentLifecycle.projection.json",
+  "permissions": ["orchestration:manage"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": { "Cancellation": true, "ResumableEvents": true }
+  },
+  "resources": [],
+  "sources": [
+    { "Id": "orchestration", "Title": "Orchestration", "Description": "Child-agent runs managed by Senera." }
+  ],
+  "search": {
+    "Summary": "非阻塞地请求停止不再需要的子代理树。",
+    "Capabilities": [
+      {
+        "Id": "orchestration.agent-stop",
+        "Title": "Stop child agent",
+        "Description": "Request cancellation for a child run and active descendants without claiming premature settlement.",
+        "Facets": {
+          "Actions": ["stop", "cancel"],
+          "Targets": ["child-run", "descendants"],
+          "Inputs": ["child-run-id"],
+          "Outputs": ["accepted", "child-run-state"],
+          "Effects": ["cancel-runs"]
+        },
+        "Aliases": ["停止子代理", "stop agent"],
+        "Risk": { "SideEffect": "cancel-run", "Permission": "orchestration" }
+      }
+    ],
+    "UseCases": ["子任务及其后代不再需要时。"],
+    "Avoid": ["仍需要结果时应使用 AgentWait，不要提前停止。"],
+    "Tags": ["子代理", "停止", "取消"]
+  },
+  "evidenceCapabilities": []
+}

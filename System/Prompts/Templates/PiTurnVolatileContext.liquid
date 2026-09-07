@@ -1,0 +1,29 @@
+{% include "SceneContext.liquid" %}
+
+{% if DelegatedRole.enabled and DelegatedRole.mode == "append" %}
+<delegated_role mode="{{ DelegatedRole.mode | escape }}">
+  {{ DelegatedRole.content | escape }}
+</delegated_role>
+{% endif %}
+
+<coordination_report attribution="root">
+  <report>Resource assembly for this turn completed. Memory selection: {{ ContinuityMemory.selection.profiles.selected }} profile, {{ ContinuityMemory.selection.facts.selected }} fact, {{ ContinuityMemory.selection.evidence.selected }} evidence reference; {{ Workflow.todos.items.size }} todo item(s) in task state.</report>
+  <report>Every handle named below is traceable through the tool or URI it names; read the source before relying on its content.</report>
+</coordination_report>
+
+<reference_stage>
+{% include "ResidentProfile.liquid" %}
+{% include "RoleplayLore.liquid" %}
+{% include "ContinuityFacts.liquid" %}
+{% include "ContinuityMemory.liquid" %}
+{% include "WorkflowContext.liquid" %}
+<!-- senera:reference_stage complete -->
+</reference_stage>
+
+{% if RoleplayPreset.enabled and RoleplayPreset.activePresetName and RoleCheck %}
+<role_check anchor="{{ RoleplayPreset.card.title | escape }}">
+  The material above is given to your current persona. When you return to
+  character language, nothing about the facts you actually saw changes --
+  only the way you say them.
+</role_check>
+{% endif %}

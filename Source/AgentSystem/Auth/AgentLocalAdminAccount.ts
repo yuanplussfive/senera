@@ -1,0 +1,305 @@
+import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { z } from "zod";
+import { writeFileAtomicSync } from "../Core/AgentFs.js";
+import { parseJsonText } from "../Core/AgentJsonParsing.js";
+import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
+
+const PasswordMinimumLength = 15;
+const PasswordMaximumLength = 1024;
+const PasswordKeyLength = 64;
+const PasswordScryptParameters = {
+  cost: 65_536,
+  blockSize: 8,
+  parallelization: 1,
+  maxmem: 96 * 1024 * 1024,
+} as const;
+
+const LoginNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$/;
+const AgentLocalAdminAccountDocumentVersion = 1 as const;
+
+const PasswordHashSchema = z
+  .object({
+    algorithm: z.literal("scrypt"),
+    salt: z.string().min(1),
+    hash: z.string().min(1),
+    keyLength: z.number().int().positive(),
+    cost: z.number().int().positive(),
+    blockSize: z.number().int().positive(),
+    parallelization: z.number().int().positive(),
+  })
+  .strict();
+
+const AccountDocumentSchema = z
+  .object({
+    version: z.literal(AgentLocalAdminAccountDocumentVersion),
+    id: z.string().min(1),
+    loginName: z.string().min(1),
+    displayName: z.string().min(1),
+    password: PasswordHashSchema,
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+
+export interface AgentLocalAdminAccount {
+  readonly id: string;
+  readonly loginName: string;
+  readonly displayName: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface AgentLocalAdminAccountInput {
+  readonly loginName: string;
+  readonly displayName: string;
+  readonly password: string;
+}
+
+export type AgentLocalAdminAccountSynchronization = {
+  readonly kind: "created" | "updated" | "unchanged";
+  readonly account: AgentLocalAdminAccount;
+};
+
+export function resolveAgentLocalAdminAccountPath(workspaceRoot: string, accountFile: string): string {
+  return path.isAbsolute(accountFile) ? path.normalize(accountFile) : path.resolve(workspaceRoot, accountFile);
+}
+
+type AccountDocument = z.infer<typeof AccountDocumentSchema>;
+
+export class AgentLocalAdminAccountStore {
+  constructor(readonly filePath: string) {}
+
+  exists(): boolean {
+    return fs.existsSync(this.filePath);
+  }
+
+  read(): AgentLocalAdminAccount | undefined {
+    const document = this.readDocument();
+    return document ? projectAccount(document) : undefined;
+  }
+
+  require(): AgentLocalAdminAccount {
+    const account = this.read();
+    if (!account) {
+      throw new AgentLocalizedError("auth.accountMissing", { path: this.filePath });
+    }
+    return account;
+  }
+
+  async initialize(input: AgentLocalAdminAccountInput): Promise<AgentLocalAdminAccount> {
+    if (this.exists()) {
+      throw new AgentLocalizedError("auth.accountExists", { path: this.filePath });
+    }
+
+    const account = await createAccountDocument(input);
+    this.writeDocument(account);
+    return projectAccount(account);
+  }
+
+  async synchronize(input: AgentLocalAdminAccountInput): Promise<AgentLocalAdminAccountSynchronization> {
+    const current = this.readDocument();
+    if (!current) {
+      const account = await createAccountDocument(input);
+      this.writeDocument(account);
+      return { kind: "created", account: projectAccount(account) };
+    }
+
+    const loginName = normalizeLoginName(input.loginName);
+    const displayName = normalizeDisplayName(input.displayName);
+    validateAdminPassword(input.password);
+    const passwordMatches = await verifyPassword(input.password, current.password);
+    if (loginName === current.loginName && displayName === current.displayName && passwordMatches) {
+      return { kind: "unchanged", account: projectAccount(current) };
+    }
+
+    const next: AccountDocument = {
+      ...current,
+      loginName,
+      displayName,
+      password: passwordMatches ? current.password : await hashPassword(input.password),
+      updatedAt: new Date().toISOString(),
+    };
+    this.writeDocument(next);
+    return { kind: "updated", account: projectAccount(next) };
+  }
+
+  async resetPassword(input: AgentLocalAdminAccountInput): Promise<AgentLocalAdminAccount> {
+    const current = this.readDocument();
+    if (!current) {
+      throw new AgentLocalizedError("auth.accountMissing", { path: this.filePath });
+    }
+
+    const loginName = normalizeLoginName(input.loginName);
+    if (loginName !== current.loginName) {
+      throw new AgentLocalizedError("auth.resetLoginNameMismatch");
+    }
+
+    const next: AccountDocument = {
+      ...current,
+      displayName: normalizeDisplayName(input.displayName),
+      password: await hashPassword(input.password),
+      updatedAt: new Date().toISOString(),
+    };
+    this.writeDocument(next);
+    return projectAccount(next);
+  }
+
+  async verify(loginName: string, password: string): Promise<AgentLocalAdminAccount | undefined> {
+    const account = this.readDocument();
+    if (!account) {
+      return undefined;
+    }
+
+    const normalizedLoginName = normalizeLoginNameSafely(loginName);
+    const passwordMatches = await verifyPassword(password, account.password);
+    return normalizedLoginName === account.loginName && passwordMatches ? projectAccount(account) : undefined;
+  }
+
+  private readDocument(): AccountDocument | undefined {
+    if (!this.exists()) {
+      return undefined;
+    }
+
+    const value = parseJsonText(fs.readFileSync(this.filePath, "utf8"), "Admin account document") as unknown;
+    const document = AccountDocumentSchema.parse(value);
+    const loginName = normalizeLoginName(document.loginName);
+    if (document.loginName !== loginName) {
+      throw new AgentLocalizedError("auth.loginNameNotNormalized", { path: this.filePath });
+    }
+    return document;
+  }
+
+  private writeDocument(document: AccountDocument): void {
+    writeFileAtomicSync(this.filePath, `${JSON.stringify(document, null, 2)}\n`, { mode: 0o600 });
+    try {
+      fs.chmodSync(this.filePath, 0o600);
+    } catch {
+      // Windows does not map POSIX file modes. The ACL remains the deployment owner's responsibility.
+    }
+  }
+}
+
+export function normalizeLoginName(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (!LoginNamePattern.test(normalized)) {
+    throw new AgentLocalizedError("auth.loginNameInvalid");
+  }
+  return normalized;
+}
+
+function normalizeLoginNameSafely(value: string): string | undefined {
+  try {
+    return normalizeLoginName(value);
+  } catch {
+    return undefined;
+  }
+}
+
+export function normalizeDisplayName(value: string): string {
+  const normalized = value.trim();
+  if (normalized.length < 1 || normalized.length > 64) {
+    throw new AgentLocalizedError("auth.displayNameInvalid");
+  }
+  return normalized;
+}
+
+export function validateAdminPassword(value: string): void {
+  if (value.length < PasswordMinimumLength || value.length > PasswordMaximumLength) {
+    throw new AgentLocalizedError("auth.passwordLengthInvalid", {
+      min: PasswordMinimumLength,
+      max: PasswordMaximumLength,
+    });
+  }
+}
+
+async function createAccountDocument(input: AgentLocalAdminAccountInput): Promise<AccountDocument> {
+  return {
+    version: AgentLocalAdminAccountDocumentVersion,
+    id: randomBytes(18).toString("base64url"),
+    loginName: normalizeLoginName(input.loginName),
+    displayName: normalizeDisplayName(input.displayName),
+    password: await hashPassword(input.password),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function hashPassword(password: string): Promise<z.infer<typeof PasswordHashSchema>> {
+  validateAdminPassword(password);
+  const salt = randomBytes(16);
+  const hash = await derivePassword(password, salt, PasswordScryptParameters, PasswordKeyLength);
+  return {
+    algorithm: "scrypt",
+    salt: salt.toString("base64url"),
+    hash: hash.toString("base64url"),
+    keyLength: PasswordKeyLength,
+    cost: PasswordScryptParameters.cost,
+    blockSize: PasswordScryptParameters.blockSize,
+    parallelization: PasswordScryptParameters.parallelization,
+  };
+}
+
+async function verifyPassword(password: string, stored: z.infer<typeof PasswordHashSchema>): Promise<boolean> {
+  if (password.length > PasswordMaximumLength) {
+    return false;
+  }
+  const salt = Buffer.from(stored.salt, "base64url");
+  const expected = Buffer.from(stored.hash, "base64url");
+  const actual = await derivePassword(
+    password,
+    salt,
+    {
+      cost: stored.cost,
+      blockSize: stored.blockSize,
+      parallelization: stored.parallelization,
+      maxmem: Math.max(96 * 1024 * 1024, stored.cost * stored.blockSize * 256),
+    },
+    stored.keyLength,
+  );
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+async function derivePassword(
+  password: string,
+  salt: Buffer,
+  parameters: {
+    readonly cost: number;
+    readonly blockSize: number;
+    readonly parallelization: number;
+    readonly maxmem: number;
+  },
+  keyLength: number,
+): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    scrypt(
+      password,
+      salt,
+      keyLength,
+      {
+        N: parameters.cost,
+        r: parameters.blockSize,
+        p: parameters.parallelization,
+        maxmem: parameters.maxmem,
+      },
+      (error, derivedKey) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(derivedKey);
+      },
+    );
+  });
+}
+
+function projectAccount(document: AccountDocument): AgentLocalAdminAccount {
+  return {
+    id: document.id,
+    loginName: document.loginName,
+    displayName: document.displayName,
+    createdAt: document.createdAt,
+    updatedAt: document.updatedAt,
+  };
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bounded Implementation"
+  short_description: "Implement and verify a scoped repository change."
+  default_prompt: "Use $implement-bounded-change to implement this change."

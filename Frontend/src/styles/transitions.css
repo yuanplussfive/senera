@@ -1,0 +1,203 @@
+.t-icon-swap {
+  position: relative;
+  display: inline-grid;
+}
+.t-icon-swap .t-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--icon-swap-dur) var(--icon-swap-ease),
+    filter var(--icon-swap-dur) var(--icon-swap-ease),
+    transform var(--icon-swap-dur) var(--icon-swap-ease);
+  will-change: opacity, filter, transform;
+}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="a"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="b"] {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="b"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="a"] {
+  opacity: 0;
+  filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
+}
+
+.t-modal {
+  transform-origin: center;
+  transform: scale(var(--modal-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--modal-open-dur) var(--modal-ease),
+    opacity var(--modal-open-dur) var(--modal-ease);
+  will-change: transform, opacity;
+}
+.t-modal[data-state="open"],
+.t-modal.is-open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.t-modal[data-state="closed"],
+.t-modal.is-closing {
+  transform: scale(var(--modal-scale-close));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--modal-close-dur) var(--modal-ease),
+    opacity var(--modal-close-dur) var(--modal-ease);
+}
+
+.dialog-presence[data-state="closed"] {
+  pointer-events: none !important;
+  animation: dialog-presence-exit var(--dialog-presence-exit-dur) linear both;
+}
+
+html[data-motion-level="reduced"] .dialog-presence[data-state="closed"] {
+  animation-duration: var(--dialog-presence-exit-dur) !important;
+  animation-iteration-count: 1 !important;
+}
+
+html[data-motion-level="none"] .dialog-presence[data-state="closed"] {
+  animation-duration: 0.001ms !important;
+}
+
+@keyframes dialog-presence-exit {
+  from {
+    visibility: visible;
+  }
+  to {
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-icon-swap .t-icon {
+    transition: none !important;
+  }
+  .t-modal {
+    transition: none !important;
+  }
+  .dialog-presence[data-state="closed"] {
+    animation-duration: var(--dialog-presence-exit-dur) !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+.menu-surface {
+  transform-origin: var(--menu-surface-transform-origin, center);
+  will-change: transform, opacity;
+}
+
+.dropdown-menu-surface {
+  --menu-surface-transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+}
+
+.context-menu-surface {
+  --menu-surface-transform-origin: var(--radix-context-menu-content-transform-origin);
+}
+
+.menu-surface[data-state="open"] {
+  animation: menu-surface-in var(--menu-open-dur) var(--menu-ease-out) both;
+}
+
+.menu-surface[data-state="closed"] {
+  animation: menu-surface-out var(--menu-close-dur) var(--menu-exit-ease) both;
+}
+
+html[data-motion-level="reduced"] .menu-surface[data-state="open"] {
+  animation-name: menu-surface-fade-in;
+  animation-duration: var(--menu-reduced-open-dur);
+}
+
+html[data-motion-level="reduced"] .menu-surface[data-state="closed"] {
+  animation-name: menu-surface-fade-out;
+  animation-duration: var(--menu-close-dur);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-surface[data-state="open"] {
+    animation-name: menu-surface-fade-in;
+    animation-duration: var(--menu-reduced-open-dur);
+  }
+
+  .menu-surface[data-state="closed"] {
+    animation-name: menu-surface-fade-out;
+    animation-duration: var(--menu-close-dur);
+  }
+}
+
+html[data-motion-level="none"] .menu-surface[data-state] {
+  animation-duration: 0.001ms !important;
+}
+
+.menu-check {
+  opacity: 0;
+  transform: scale(0.7);
+  transition:
+    opacity var(--menu-check-dur) linear,
+    transform var(--menu-check-dur) var(--menu-check-ease);
+}
+
+[data-state="checked"] .menu-check,
+[data-state="indeterminate"] .menu-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+html[data-motion-level="reduced"] .menu-check {
+  transform: none;
+  transition-property: opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-check {
+    transform: none;
+    transition-property: opacity;
+  }
+}
+
+html[data-motion-level="none"] .menu-check {
+  transition: none;
+}
+
+@keyframes menu-surface-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes menu-surface-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.99);
+  }
+}
+
+@keyframes menu-surface-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes menu-surface-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}

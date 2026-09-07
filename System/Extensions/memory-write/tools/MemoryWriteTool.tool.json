@@ -1,0 +1,100 @@
+{
+  "name": "MemoryWriteTool",
+  "description": "把用户明确要求记住的事实标记为物理证据，由统一 learning.record 流程持久化。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "summary": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The explicit fact the user asked Senera to remember."
+      },
+      "until": {
+        "description": "How long the fact remains valid. Defaults to permanent; timestamps must be RFC 3339 with an offset.",
+        "anyOf": [
+          { "type": "string", "enum": ["session", "permanent"] },
+          {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        ]
+      }
+    },
+    "required": ["summary"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/default.projection.json",
+  "permissions": ["memory:write"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "MaxConcurrency": 1,
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "continuity",
+      "Title": "Learning record ledger",
+      "Description": "Learned memory, hierarchical temporal digests, and their physical episode evidence."
+    }
+  ],
+  "search": {
+    "Summary": "把用户明确要求记住的事实标记为物理证据，由统一 learning.record 流程持久化。",
+    "Tags": ["连续性", "学习记录", "用户偏好", "长期上下文"],
+    "Capabilities": [
+      {
+        "Id": "memory.write",
+        "Title": "显式记忆意图",
+        "Description": "Create physical tool evidence for the completed-turn learner to persist.",
+        "Facets": {
+          "Actions": ["remember", "mark"],
+          "Targets": ["learning-record", "explicit-user-fact"],
+          "Inputs": ["fact-summary", "lifetime"],
+          "Outputs": ["continuity_write"],
+          "Evidence": ["continuity_write"],
+          "Effects": ["persistent-write"]
+        },
+        "Aliases": ["记住这个", "记录偏好", "以后都这样", "写入长期记忆"],
+        "Risk": { "SideEffect": "persistent-write", "Permission": "memory-write" }
+      }
+    ],
+    "UseCases": ["用户明确要求记住事实，并给出可选有效期。"],
+    "Examples": ["记住我喜欢无糖咖啡", "本次对话记住先给结论"],
+    "Avoid": ["没有用户明确要求时不要调用。", "不要自行生成证据索引、置信度或条件 AST。"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "continuity_write",
+        "Records": "$.records.item[*]",
+        "Slots": { "kind": "$.kind", "summary": "$.summary", "until": "$.until" },
+        "Identity": { "Parts": ["summary", "until"] },
+        "Presentation": {
+          "Locator": "{{ summary }}",
+          "Display": "memory intent: {{ summary }}",
+          "Label": "{{ summary }}",
+          "Source": "{{ until }}"
+        },
+        "ModelProjection": { "Slots": ["kind", "summary", "until"] },
+        "PlannerMemory": { "Facts": ["kind", "summary", "until"], "ArtifactRefs": ["projection", "evidence"] },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} remember {{ e.slots.summary }} until {{ e.slots.until }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} memory intent\n  summary: {{ e.slots.summary }}\n  until: {{ e.slots.until }}\n{% endfor %}"
+        },
+        "Confidence": 1,
+        "Metadata": { "until": "$.until" }
+      }
+    ],
+    "Summary": {
+      "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+      "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}"
+    }
+  }
+}

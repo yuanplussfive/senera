@@ -1,0 +1,42 @@
+{
+  "manifest_version": "0.3",
+  "name": "zavora-computer-use",
+  "display_name": { "zh-CN": "Zavora 桌面控制", "en-US": "Zavora Computer Use" },
+  "version": "7.1.0",
+  "description": {
+    "zh-CN": "完整接入 Zavora 的跨平台桌面控制能力，包括屏幕、输入、窗口、应用、界面自动化、文件、脚本和任务管理。",
+    "en-US": "Full Zavora cross-platform computer-use capabilities for screens, input, windows, apps, UI automation, files, scripts, and tasks."
+  },
+  "author": {
+    "name": "Senera"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "mcp/server.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/mcp/server.mjs"]
+    }
+  },
+  "_meta": {
+    "ai.senera/execution": {
+      "targets": ["local"],
+      "preferred": "local"
+    },
+    "ai.senera/runtime-assets": {
+      "node_modules": [
+        {
+          "package": "@zavora-ai/computer-use-mcp",
+          "files": [
+            "computer-use-napi.darwin-arm64.node",
+            "computer-use-napi.darwin-x64.node",
+            "computer-use-napi.linux-arm64.node",
+            "computer-use-napi.linux-x64.node",
+            "computer-use-napi.win32-arm64.node",
+            "computer-use-napi.win32-x64.node"
+          ]
+        }
+      ]
+    }
+  }
+}

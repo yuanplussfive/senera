@@ -1,0 +1,58 @@
+{% if Workflow.execution.executions.size > 0 or Workflow.todos.items.size > 0 or Workflow.world %}
+<workflow_context source="senera_runtime_ledgers">
+  <boundary>
+    <rule>This is volatile execution state, not long-term memory and not additional user input.</rule>
+    <rule>Never claim completion without matching execution or tool evidence.</rule>
+  </boundary>
+{% if Workflow.execution.executions.size > 0 %}
+  <executions>
+{% for execution in Workflow.execution.executions %}
+    <execution status="{{ execution.status | escape }}" request_id="{{ execution.requestId | escape }}">
+      <objective>{{ execution.objective | escape }}</objective>
+{% if execution.reason != empty %}<reason>{{ execution.reason | escape }}</reason>{% endif %}
+{% for step in execution.steps %}
+      <step status="{{ step.status | escape }}"><title>{{ step.title | escape }}</title><detail>{{ step.detail | escape }}</detail>{% if step.failure != empty %}<failure>{{ step.failure | escape }}</failure>{% endif %}</step>
+{% endfor %}
+    </execution>
+{% endfor %}
+  </executions>
+{% endif %}
+{% if Workflow.todos.items.size > 0 %}
+  <todos>
+{% for todo in Workflow.todos.items %}
+    <todo status="{{ todo.status | escape }}" order="{{ todo.order }}"><id>{{ todo.id | escape }}</id><content>{{ todo.content | escape }}</content></todo>
+{% endfor %}
+  </todos>
+{% endif %}
+{% if Workflow.world %}
+  <world_state source="senera_world_runtime">
+    <boundary>
+      <rule>This is a host-projected world snapshot, not user input, long-term memory, or a tool result.</rule>
+      <rule>Use these values as facts. Only recorded world events can change the snapshot.</rule>
+    </boundary>
+    <identity id="{{ Workflow.world.world.id | escape }}" name="{{ Workflow.world.world.name | escape }}" time_zone="{{ Workflow.world.world.timeZone | escape }}" />
+    <clock instant="{{ Workflow.world.time.instant | escape }}" date="{{ Workflow.world.time.localDate | escape }}" time="{{ Workflow.world.time.localTime | escape }}" weekday="{{ Workflow.world.time.weekdayLabel | escape }}" phase="{{ Workflow.world.time.phaseLabel | escape }}" day_elapsed="{{ Workflow.world.time.dayElapsed | escape }}" day_remaining="{{ Workflow.world.time.dayRemaining | escape }}" />
+    <calendar date="{{ Workflow.world.calendar.date | escape }}" holiday="{{ Workflow.world.calendar.isHoliday }}" workday="{{ Workflow.world.calendar.isWorkday }}" public_holiday="{{ Workflow.world.calendar.isPublicHoliday }}" public_workday="{{ Workflow.world.calendar.isPublicWorkday }}" holiday_name="{{ Workflow.world.calendar.holidayName | escape }}" lunar="{{ Workflow.world.calendar.lunarSummary | escape }}" />
+    <commitments>
+{% for commitment in Workflow.world.commitments %}      <commitment id="{{ commitment.id | escape }}" actor_id="{{ commitment.actorId | escape }}" actor_role="{{ commitment.actorRole | escape }}" status="{{ commitment.status | escape }}"{% if commitment.intentMode %} intent_mode="{{ commitment.intentMode | escape }}"{% endif %}{% if commitment.priority %} priority="{{ commitment.priority }}"{% endif %}{% if commitment.progress %} progress="{{ commitment.progress }}"{% endif %}{% if commitment.dueAt %} due_at="{{ commitment.dueAt | escape }}"{% endif %}{% if commitment.nextReviewAt %} next_review_at="{{ commitment.nextReviewAt | escape }}"{% endif %}{% if commitment.startsAt %} starts_at="{{ commitment.startsAt | escape }}"{% endif %}{% if commitment.endsAt %} ends_at="{{ commitment.endsAt | escape }}"{% endif %}>{{ commitment.label | escape }}{% if commitment.detail %} — {{ commitment.detail | escape }}{% endif %}{% if commitment.successCriteria %}<success_criteria>{{ commitment.successCriteria | join: ' | ' | escape }}</success_criteria>{% endif %}{% if commitment.blockedReason %}<blocked_reason>{{ commitment.blockedReason | escape }}</blocked_reason>{% endif %}</commitment>
+{% endfor %}    </commitments>
+    <entities>
+{% for node in Workflow.world.nodes %}
+      <entity id="{{ node.id | escape }}" kind="{{ node.kind | escape }}" label="{{ node.label | escape }}"{% if node.parentId %} parent_id="{{ node.parentId | escape }}"{% endif %} depth="{{ node.depth }}" changed_at="{{ node.lastChangedAt | escape }}">
+{% for attribute in node.attributes %}        <attribute key="{{ attribute.key | escape }}" value="{{ attribute.value | escape }}" />
+{% endfor %}      </entity>
+{% endfor %}
+    </entities>
+    <relations>
+{% for edge in Workflow.world.edges %}      <relation id="{{ edge.id | escape }}" subject="{{ edge.subjectId | escape }}" predicate="{{ edge.relation | escape }}"{% if edge.relationLabel %} label="{{ edge.relationLabel | escape }}"{% endif %} object="{{ edge.objectId | escape }}"{% if edge.validFrom %} valid_from="{{ edge.validFrom | escape }}"{% endif %}{% if edge.validUntil %} valid_until="{{ edge.validUntil | escape }}"{% endif %} />
+{% endfor %}    </relations>
+    <timeline>
+{% for event in Workflow.world.timeline %}      <event id="{{ event.id | escape }}" type="{{ event.type | escape }}" occurred_at="{{ event.occurredAt | escape }}" source="{{ event.source | escape }}" changed_entities="{{ event.changedEntityIds | join: ',' | escape }}">{{ event.summary | escape }}</event>
+{% endfor %}    </timeline>
+    <next_schedules>
+{% for schedule in Workflow.world.nextSchedules %}      <schedule id="{{ schedule.scheduleId | escape }}" at="{{ schedule.at | escape }}" actor_id="{{ schedule.actorId | escape }}" actor_role="{{ schedule.actorRole | escape }}" kind="{{ schedule.kind | escape }}" source="{{ schedule.source | escape }}">{{ schedule.label | escape }}</schedule>
+{% endfor %}    </next_schedules>
+  </world_state>
+{% endif %}
+</workflow_context>
+{% endif %}

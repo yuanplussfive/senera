@@ -1,0 +1,208 @@
+{
+  "name": "MemoryRecallTool",
+  "description": "按语义或时间范围检索连续性记录、分层时间摘要和物理 episode 证据，并沿来源引用逐层下钻。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "query": {
+        "description": "Natural-language description of the learned fact to recall.",
+        "type": "string",
+        "minLength": 1
+      },
+      "refs": {
+        "description": "Exact senera://continuity-learning, senera://memory-digest, senera://memory-episode, or senera://memory-source references to read.",
+        "minItems": 1,
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 }
+      },
+      "before": {
+        "description": "Completed turns to include before each matched physical episode.",
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "after": {
+        "description": "Completed turns to include after each matched physical episode.",
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "from": {
+        "description": "Start of a historical range as YYYY-MM-DD or RFC 3339. Date-only boundaries use the configured world time zone.",
+        "type": "string",
+        "minLength": 1
+      },
+      "to": {
+        "description": "Inclusive end date as YYYY-MM-DD, or exclusive RFC 3339 end instant, for a historical range.",
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/default.projection.json",
+  "permissions": ["memory:read"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "continuity",
+      "Title": "Learning record ledger",
+      "Description": "Learned memory, hierarchical temporal digests, and their physical episode evidence."
+    }
+  ],
+  "search": {
+    "Summary": "检索连续性学习记录；宽时间范围优先返回月/日/片段摘要，并可沿引用读取物理证据。",
+    "Tags": ["连续性", "时间摘要", "对话历史", "学习记录", "用户偏好", "用户画像", "条件记忆"],
+    "Capabilities": [
+      {
+        "Id": "memory.recall",
+        "Title": "分层记忆召回",
+        "Description": "Rank learned records and select the coarsest complete temporal digests before drilling into physical episodes.",
+        "Facets": {
+          "Actions": ["read", "recall", "inspect"],
+          "Targets": ["learning-record", "temporal-digest", "memory-source", "condition-state"],
+          "Inputs": [
+            "natural-language-query",
+            "time-range",
+            "learning-record-ref",
+            "memory-digest-ref",
+            "memory-episode-ref",
+            "memory-source-ref",
+            "episode-window"
+          ],
+          "Outputs": ["learning-record", "temporal-digest", "physical-source", "episode-context", "evidence"],
+          "Evidence": ["continuity_recall", "temporal_digest"],
+          "Effects": ["read-only"]
+        },
+        "Aliases": ["回忆长期记忆", "查询历史对话", "按时间回忆", "查询用户偏好", "用户画像", "条件记忆"],
+        "Risk": { "SideEffect": "read-only", "Permission": "memory-read" }
+      }
+    ],
+    "UseCases": ["按日期范围回忆时优先读取月、日和片段摘要；需要细节时沿摘要 sourceRefs 下钻到 episode 和物理来源。"],
+    "Examples": [
+      "总结最近三个月聊过的内容",
+      "根据这些记忆来源确认我的偏好",
+      "召回关于运动和天气的条件",
+      "读取命中事件前后两轮"
+    ],
+    "Avoid": ["宽时间范围不要直接展开全部历史正文；先用时间摘要，再按需解引用来源。"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "continuity_recall",
+        "Records": "$.records.item[*]",
+        "Slots": {
+          "recordUri": "$.recordUri",
+          "kind": "$.kind",
+          "summary": "$.summary",
+          "sourceRefs": "$.sourceRefs.item",
+          "matchedBy": "$.matchedBy.item",
+          "score": "$.score",
+          "confidence": "$.confidence",
+          "authority": "$.authority",
+          "observedAt": "$.observedAt"
+        },
+        "Identity": { "Parts": ["recordUri"] },
+        "Presentation": {
+          "Locator": "{{ recordUri }}",
+          "Display": "{{ kind }} learning record",
+          "Label": "{{ summary }}",
+          "Source": "{{ sourceRefs }}"
+        },
+        "ModelProjection": {
+          "Slots": [
+            "recordUri",
+            "kind",
+            "summary",
+            "sourceRefs",
+            "matchedBy",
+            "score",
+            "confidence",
+            "authority",
+            "observedAt"
+          ]
+        },
+        "PlannerMemory": {
+          "Facts": ["recordUri", "kind", "summary", "sourceRefs", "confidence", "authority"],
+          "ArtifactRefs": ["projection", "evidence"]
+        },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.kind }}: {{ e.slots.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} learning record\n  uri: {{ e.slots.recordUri }}\n  kind: {{ e.slots.kind }}\n  summary: {{ e.slots.summary }}\n  sourceRefs: {{ e.slots.sourceRefs }}\n  matchedBy: {{ e.slots.matchedBy }}\n{% endfor %}"
+        },
+        "Confidence": 0.9,
+        "Metadata": { "kind": "$.kind", "matchedBy": "$.matchedBy.item", "sourceRefs": "$.sourceRefs.item" }
+      },
+      {
+        "Kind": "temporal_digest",
+        "Records": "$.digests.item[*]",
+        "Slots": {
+          "digestRef": "$.digestRef",
+          "granularity": "$.granularity",
+          "status": "$.status",
+          "periodStart": "$.periodStart",
+          "periodEnd": "$.periodEnd",
+          "timeZone": "$.timeZone",
+          "summary": "$.summary",
+          "topics": "$.topics.item",
+          "openLoops": "$.openLoops.item",
+          "sourceRefs": "$.sourceRefs.item"
+        },
+        "Identity": { "Parts": ["digestRef"] },
+        "Presentation": {
+          "Locator": "{{ digestRef }}",
+          "Display": "{{ granularity }} temporal digest",
+          "Label": "{{ summary }}",
+          "Source": "{{ sourceRefs }}"
+        },
+        "ModelProjection": {
+          "Slots": [
+            "digestRef",
+            "granularity",
+            "periodStart",
+            "periodEnd",
+            "timeZone",
+            "summary",
+            "topics",
+            "openLoops",
+            "sourceRefs"
+          ]
+        },
+        "PlannerMemory": {
+          "Facts": [
+            "digestRef",
+            "granularity",
+            "periodStart",
+            "periodEnd",
+            "summary",
+            "topics",
+            "openLoops",
+            "sourceRefs"
+          ],
+          "ArtifactRefs": ["projection", "evidence"]
+        },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.granularity }} digest: {{ e.slots.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} temporal digest\n  uri: {{ e.slots.digestRef }}\n  granularity: {{ e.slots.granularity }}\n  period: {{ e.slots.periodStart }} / {{ e.slots.periodEnd }}\n  summary: {{ e.slots.summary }}\n  topics: {{ e.slots.topics }}\n  openLoops: {{ e.slots.openLoops }}\n  sourceRefs: {{ e.slots.sourceRefs }}\n{% endfor %}"
+        },
+        "Confidence": 0.95,
+        "Metadata": { "granularity": "$.granularity", "sourceRefs": "$.sourceRefs.item" }
+      }
+    ],
+    "Summary": {
+      "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+      "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}"
+    }
+  }
+}

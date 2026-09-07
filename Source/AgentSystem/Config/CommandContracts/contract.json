@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "id": "agent-config-commands",
+  "versions": [
+    {
+      "version": 1,
+      "name": "provider-endpoint-merge-patch",
+      "definition": "versions/0001-provider-endpoint-merge-patch.json",
+      "snapshot": "snapshots/0001.schema.json",
+      "definitionSha256": "58e5d93f1903e74c278399080bf63121b427c99e7795ee7f49e3a60ca106cacd",
+      "snapshotSha256": "b92a449b29106ba1c91044e573eab82dfe2ee0ea2934ea8447743b4b2c3ee11b"
+    }
+  ]
+}

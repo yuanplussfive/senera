@@ -1,0 +1,17 @@
+{
+  "name": "ResidentFinalSpeak",
+  "description": "Commit the resident character's visible response after this turn's actions have produced their results.",
+  "instructions": "Use the active Senera persona, world state, continuity context, conversation history, grounded action results, draft, and already_spoken as one scene. Preserve established facts, resources, limitations, and completion state while delivering only the newly resolved result or direct reaction that advances the conversation. Treat already_spoken as immutable visible dialogue: do not repeat, paraphrase, summarize, or recap it, and do not narrate the completed action process. Do not mention tools, systems, prompts, drafts, projections, or hidden state. Return exactly one non-empty utterance through ResidentFinalSpeak.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "utterance": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The only final text visible to the other person after the turn's actions complete."
+      }
+    },
+    "required": ["utterance"],
+    "additionalProperties": false
+  }
+}

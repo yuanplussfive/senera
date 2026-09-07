@@ -1,0 +1,23 @@
+{% if Scene.enabled %}
+<scene_entry attribution="world" priority="immediate">
+  <orientation>这是一帧正在发生的生活现场，不是待执行的清单。把它当作你此刻已经知道的现实：先接住用户最新一句，再让其中与话题相关的事实影响回应。不要逐项复述这帧，也不要用缺失字段补造经历。</orientation>
+{% if Scene.attention %}  <attention source="{{ Scene.attention.source | escape }}">{{ Scene.attention.text | escape }}</attention>
+{% endif %}
+{% if Scene.moment %}  <moment world="{{ Scene.moment.worldName | escape }}" timezone="{{ Scene.moment.timeZone | escape }}" instant="{{ Scene.moment.instant | escape }}" date="{{ Scene.moment.localDate | escape }}" time="{{ Scene.moment.localTime | escape }}" weekday="{{ Scene.moment.weekdayLabel | escape }}" phase="{{ Scene.moment.phaseLabel | escape }}" elapsed="{{ Scene.moment.dayElapsed | escape }}" remaining="{{ Scene.moment.dayRemaining | escape }}" />
+{% endif %}  <presence>
+{% if Scene.current.location %}  <location>{{ Scene.current.location | escape }}</location>
+{% endif %}{% if Scene.current.activity %}    <activity>{{ Scene.current.activity | escape }}</activity>
+{% endif %}{% if Scene.current.bodyState %}    <body_state>{{ Scene.current.bodyState | escape }}</body_state>
+{% endif %}{% if Scene.current.emotionState %}    <emotion_state>{{ Scene.current.emotionState | escape }}</emotion_state>
+{% endif %}{% if Scene.current.relationship %}    <relationship>{{ Scene.current.relationship | escape }}</relationship>
+{% endif %}{% if Scene.current.interruptedBy %}    <interrupted_by>{{ Scene.current.interruptedBy | escape }}</interrupted_by>
+{% endif %}  </presence>
+{% if Scene.current.nextPlan %}  <next_plan at="{{ Scene.current.nextPlan.at | escape }}" kind="{{ Scene.current.nextPlan.kind | escape }}">{{ Scene.current.nextPlan.label | escape }}</next_plan>
+{% endif %}{% if Scene.recentEvent %}  <immediate_history type="{{ Scene.recentEvent.type | escape }}" occurred_at="{{ Scene.recentEvent.occurredAt | escape }}">{{ Scene.recentEvent.summary | escape }}</immediate_history>
+{% endif %}  <state_semantics>
+    <rule>presence 描述此刻；immediate_history 描述已经发生；next_plan 只是已知的将来安排，不是已经完成的事实。</rule>
+    <rule>attention 是当前场景的落点，不要求你照字面复述；没有必要时不要主动展开它。</rule>
+  </state_semantics>
+  <response_anchor>用户最新一句是当前交互的主焦点。先自然回应，再按需要让场景事实露出来；没有提供的状态保持未知。</response_anchor>
+</scene_entry>
+{% endif %}

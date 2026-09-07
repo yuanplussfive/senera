@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "agent-learning-manager",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "学习诊断", "en-US": "Learning Diagnostics" },
+  "description": {
+    "zh-CN": "检查工具与技能路由学习的可观测状态。",
+    "en-US": "Inspects observable Tool and Skill routing-learning state."
+  },
+  "priority": 2,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/LearningManage.tool.json",
+      "capability": "system.tool.agent-learning-manager.LearningManage",
+      "recommendedForSkills": []
+    }
+  ]
+}

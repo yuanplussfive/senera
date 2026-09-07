@@ -1,0 +1,69 @@
+{
+  "name": "AgentSpawn",
+  "description": "后台启动一个由 Senera 宿主策略管理的子代理；立即返回 run ID，父代理可继续非重复工作。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "task": { "type": "string", "minLength": 1, "description": "Self-contained task assigned to the child agent." },
+      "agent": {
+        "description": "Optional role from the host role catalog. Omit it to use the catalog-declared default role.",
+        "type": "string",
+        "minLength": 1
+      },
+      "forkContext": {
+        "description": "True forks parent conversation context; false starts fresh; omission follows the role contract.",
+        "type": "boolean"
+      }
+    },
+    "required": ["task"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": { "run": { "type": "object" } },
+    "required": ["run"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/AgentLifecycle.projection.json",
+  "permissions": ["orchestration:delegate"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "RemoteJob",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": { "Progress": true, "Cancellation": true, "ResumableEvents": true }
+  },
+  "resources": [],
+  "sources": [
+    { "Id": "orchestration", "Title": "Orchestration", "Description": "Child-agent runs managed by Senera." }
+  ],
+  "search": {
+    "Summary": "后台启动一个独立子代理并立即返回运行 ID。",
+    "Capabilities": [
+      {
+        "Id": "orchestration.agent-spawn",
+        "Title": "Asynchronous child-agent spawn",
+        "Description": "Start one persisted Senera child session under host-managed policy.",
+        "Facets": {
+          "Actions": ["spawn", "delegate", "parallelize"],
+          "Targets": ["subagent", "child-run", "task"],
+          "Inputs": ["task", "role"],
+          "Outputs": ["child-run-id"],
+          "Effects": ["model-call", "may-run-tools"]
+        },
+        "Aliases": ["子代理", "委派任务", "spawn agent", "subagent"],
+        "Risk": { "SideEffect": "model-call", "Permission": "orchestration" }
+      }
+    ],
+    "UseCases": [
+      "把独立调查、审查或实现职责交给隔离上下文。",
+      "在同一原生 Tool 批次发出多个调用以并行启动互不依赖的任务。"
+    ],
+    "Avoid": ["简单或紧耦合任务不要委派。", "不要重复执行已经交给子代理的同一工作。"],
+    "Tags": ["子代理", "异步委派", "并行"]
+  },
+  "evidenceCapabilities": [],
+  "approval": { "Mode": "ask", "Reason": "启动会产生模型调用并可能执行工具的子代理。" }
+}

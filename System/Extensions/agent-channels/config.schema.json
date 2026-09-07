@@ -1,0 +1,339 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Message channel gateway configuration. Channels connect Senera sessions to Telegram, QQ and Discord bots.",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Master switch for the whole channel gateway."
+    },
+    "defaultApprovalMode": {
+      "type": "string",
+      "default": "agent",
+      "enum": ["agent", "always_ask", "full_access"],
+      "description": "Approval mode used for agent turns started from channels."
+    },
+    "telegram": {
+      "type": "object",
+      "default": { "enabled": false },
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "token": { "type": "string", "minLength": 1, "description": "Bot token from @BotFather." },
+        "mode": { "type": "string", "enum": ["long_polling", "webhook"], "default": "long_polling" },
+        "webhookUrl": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Public HTTPS URL for webhook mode (setWebhook target)."
+        },
+        "webhookSecret": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Secret token shared with Telegram webhook requests."
+        },
+        "allowedUsers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Telegram user IDs allowed to interact."
+        },
+        "allowedRoles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Reserved role allowlist for future use."
+        },
+        "allowAllUsers": { "type": "boolean", "default": false },
+        "homeChannelId": { "type": "string", "description": "Optional chat id used for detached completion notices." },
+        "requireMention": { "type": "boolean", "default": false },
+        "groupSessionsPerUser": { "type": "boolean", "default": true },
+        "streamProgress": {
+          "type": "boolean",
+          "default": true,
+          "description": "Send tool progress lines and the starting placeholder."
+        },
+        "maxMessageLength": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Overrides the platform default message length cap."
+        }
+      },
+      "additionalProperties": false
+    },
+    "qq": {
+      "type": "object",
+      "default": { "enabled": false, "allowAllUsers": true },
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "mode": {
+          "type": "string",
+          "enum": ["websocket", "webhook"],
+          "default": "websocket",
+          "description": "Receive transport. websocket (default) connects to the QQ gateway directly; webhook uses the AppSecret signature (or webhookSecret override) and a public HTTPS endpoint."
+        },
+        "transport": {
+          "type": "string",
+          "enum": ["websocket", "webhook"],
+          "description": "Compatibility alias for mode."
+        },
+        "appId": { "type": "string", "minLength": 1, "description": "QQ open platform AppID." },
+        "app_id": { "type": "string", "minLength": 1, "description": "Hermes-compatible alias for appId." },
+        "appSecret": { "type": "string", "minLength": 1, "description": "QQ open platform AppSecret." },
+        "client_secret": { "type": "string", "minLength": 1, "description": "Hermes-compatible alias for appSecret." },
+        "webhookUrl": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Public HTTPS callback URL used by QQ webhook mode."
+        },
+        "webhook_url": { "type": "string", "minLength": 1, "description": "Hermes-compatible alias for webhookUrl." },
+        "webhookSecret": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional HMAC signing secret override; AppSecret is used when omitted."
+        },
+        "webhook_secret": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Hermes-compatible alias for webhookSecret."
+        },
+        "allowedUsers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "OpenIDs allowed to interact."
+        },
+        "allow_from": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Hermes-compatible alias for allowedUsers."
+        },
+        "allowFrom": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Compatibility alias for allowedUsers."
+        },
+        "dmPolicy": {
+          "type": "string",
+          "enum": ["disabled", "allowlist", "pairing", "open"],
+          "default": "allowlist",
+          "description": "Direct-message admission policy. Pairing is fail-closed until an allowlist entry is added."
+        },
+        "dm_policy": {
+          "type": "string",
+          "enum": ["disabled", "allowlist", "pairing", "open"],
+          "description": "Hermes-compatible alias for dmPolicy."
+        },
+        "groupPolicy": {
+          "type": "string",
+          "enum": ["disabled", "allowlist", "pairing", "open"],
+          "default": "allowlist",
+          "description": "Group admission policy."
+        },
+        "group_policy": {
+          "type": "string",
+          "enum": ["disabled", "allowlist", "pairing", "open"],
+          "description": "Hermes-compatible alias for groupPolicy."
+        },
+        "groupAllowedUsers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "OpenIDs allowed to trigger group sessions."
+        },
+        "group_allow_from": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Hermes-compatible alias for groupAllowedUsers."
+        },
+        "groupAllowFrom": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Compatibility alias for groupAllowedUsers."
+        },
+        "allowedRoles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Reserved role allowlist for future use."
+        },
+        "allowed_roles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Hermes-compatible alias for allowedRoles."
+        },
+        "allowAllUsers": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow every user to interact with the bot. Disable and use allowedUsers for a closed allowlist."
+        },
+        "requireMention": { "type": "boolean", "default": false },
+        "require_mention": { "type": "boolean", "description": "Compatibility alias for requireMention." },
+        "groupSessionsPerUser": { "type": "boolean", "default": false },
+        "group_sessions_per_user": {
+          "type": "boolean",
+          "description": "Compatibility alias for groupSessionsPerUser."
+        },
+        "homeChannelId": { "type": "string", "description": "Optional channel used for detached completion notices." },
+        "home_channel_id": { "type": "string", "description": "Compatibility alias for homeChannelId." },
+        "streamProgress": { "type": "boolean", "default": true },
+        "stream_progress": { "type": "boolean", "description": "Compatibility alias for streamProgress." },
+        "markdownSupport": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use QQ native Markdown messages for direct and group replies."
+        },
+        "markdown_support": { "type": "boolean", "description": "Hermes-compatible alias for markdownSupport." },
+        "stt": {
+          "type": "object",
+          "description": "Optional OpenAI-compatible voice transcription fallback. QQ's built-in asr_refer_text is always preferred.",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "provider": { "type": "string", "description": "Provider preset, for example openai, zai, or glm." },
+            "baseUrl": { "type": "string", "description": "OpenAI-compatible API base URL." },
+            "base_url": { "type": "string", "description": "Snake_case alias for baseUrl." },
+            "apiKey": { "type": "string" },
+            "api_key": { "type": "string" },
+            "model": { "type": "string", "default": "whisper-1" },
+            "timeoutMs": { "type": "integer", "minimum": 1000, "default": 30000 },
+            "timeout_ms": { "type": "integer", "minimum": 1000 },
+            "maxBytes": { "type": "integer", "minimum": 1024, "default": 26214400 },
+            "max_bytes": { "type": "integer", "minimum": 1024 }
+          },
+          "additionalProperties": false
+        },
+        "maxMessageLength": { "type": "integer", "minimum": 1, "maximum": 4000, "default": 4000 },
+        "max_message_length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4000,
+          "description": "Hermes-compatible alias for maxMessageLength."
+        },
+        "dedupWindowMs": { "type": "integer", "minimum": 1000, "default": 300000 },
+        "dedupMaxSize": { "type": "integer", "minimum": 100, "default": 1000 },
+        "maxMediaBytes": { "type": "integer", "minimum": 1, "default": 100000000 },
+        "inlineMediaLimitBytes": { "type": "integer", "minimum": 1, "default": 10000000 },
+        "mediaUploadTimeoutMs": { "type": "integer", "minimum": 1000, "default": 120000 },
+        "chunkUploadTimeoutMs": { "type": "integer", "minimum": 1000, "default": 300000 },
+        "intents": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Raw QQ gateway intents bitmask; defaults to direct/group/guild/interaction events."
+        },
+        "ackTimeoutMs": { "type": "integer", "minimum": 1000, "default": 10000 },
+        "maxReconnectAttempts": { "type": "integer", "minimum": 1, "default": 100 },
+        "max_reconnect_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Hermes-compatible alias for maxReconnectAttempts."
+        },
+        "quickDisconnectThresholdMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 5000,
+          "description": "Treat a gateway session that closes within this window as a quick disconnect."
+        },
+        "quick_disconnect_threshold_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "description": "Hermes-compatible alias for quickDisconnectThresholdMs."
+        },
+        "maxQuickDisconnects": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "Stop after this many consecutive quick gateway disconnects."
+        },
+        "max_quick_disconnects": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Hermes-compatible alias for maxQuickDisconnects."
+        },
+        "uploadConcurrency": { "type": "integer", "minimum": 1, "maximum": 10, "default": 3 },
+        "upload_concurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Hermes-compatible alias for uploadConcurrency."
+        },
+        "mediaCacheTtlMs": { "type": "integer", "minimum": 1000, "default": 600000 },
+        "media_cache_ttl_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "description": "Hermes-compatible alias for mediaCacheTtlMs."
+        },
+        "typingDebounceMs": { "type": "integer", "minimum": 1000, "default": 45000 },
+        "typing_debounce_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "description": "Hermes-compatible alias for typingDebounceMs."
+        },
+        "ack_timeout_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "description": "Hermes-compatible alias for ackTimeoutMs."
+        },
+        "max_media_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Hermes-compatible alias for maxMediaBytes."
+        },
+        "inline_media_limit_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Hermes-compatible alias for inlineMediaLimitBytes."
+        },
+        "media_upload_timeout_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "description": "Hermes-compatible alias for mediaUploadTimeoutMs."
+        },
+        "chunk_upload_timeout_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "description": "Hermes-compatible alias for chunkUploadTimeoutMs."
+        },
+        "dedup_window_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "description": "Hermes-compatible alias for dedupWindowMs."
+        },
+        "dedup_max_size": {
+          "type": "integer",
+          "minimum": 100,
+          "description": "Hermes-compatible alias for dedupMaxSize."
+        }
+      },
+      "additionalProperties": false
+    },
+    "discord": {
+      "type": "object",
+      "default": { "enabled": false },
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "token": { "type": "string", "minLength": 1, "description": "Discord bot token." },
+        "allowedUsers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Discord user IDs allowed to interact."
+        },
+        "allowedRoles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Discord role IDs allowed to interact."
+        },
+        "allowAllUsers": { "type": "boolean", "default": false },
+        "intents": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Raw gateway intents bitmask; defaults to message intents."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

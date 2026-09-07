@@ -1,0 +1,61 @@
+{
+  "name": "ToolUnload",
+  "loading": "Bootstrap",
+  "observationProjection": "observations/default.projection.json",
+  "description": "在 BAML 工具规划模式中从当前会话移除已加载工具，保留核心工具管理能力。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "tools": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 1,
+        "maxItems": 12,
+        "description": "需要从当前会话移除的准确工具名。"
+      }
+    },
+    "required": ["tools"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": [],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "tools",
+      "Title": "Tools",
+      "Description": "Capabilities contributed by the currently loaded extension catalog."
+    }
+  ],
+  "search": {
+    "Summary": "从当前会话移除不再需要的已加载工具。",
+    "Capabilities": [
+      {
+        "Id": "tool.catalog-unload",
+        "Title": "Tool session unload",
+        "Description": "Remove loaded tools from the current session while retaining core tool management.",
+        "Facets": {
+          "Actions": ["unload", "disable", "remove"],
+          "Targets": ["session-tools"],
+          "Inputs": ["tool-name"],
+          "Outputs": ["unloaded-tool"],
+          "Effects": ["context-load"]
+        },
+        "Aliases": ["卸载工具", "disable tool", "unload tool"],
+        "Risk": { "SideEffect": "context-load", "Permission": "none" }
+      }
+    ],
+    "UseCases": ["长会话中清理不再需要的工具上下文。"],
+    "Tags": ["工具卸载", "会话工具", "上下文管理"]
+  },
+  "evidenceCapabilities": []
+}

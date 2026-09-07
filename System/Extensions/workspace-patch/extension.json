@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "workspace-patch",
+  "version": "1.0.0",
+  "displayName": {
+    "zh-CN": "工作区补丁",
+    "en-US": "Workspace Patch"
+  },
+  "description": {
+    "zh-CN": "以原子方式应用工作区补丁，并在提交前验证受影响的扩展。",
+    "en-US": "Applies workspace patches atomically after validating affected extensions."
+  },
+  "priority": 92,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/WorkspaceApplyPatch.tool.json",
+      "capability": "workspace.apply_patch",
+      "recommendedForSkills": []
+    }
+  ]
+}

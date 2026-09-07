@@ -1,0 +1,138 @@
+{
+  "name": "DocumentExtract",
+  "description": "Probe or extract text, structure, metadata, and warnings from a canonical Senera document resource. The host resolves local paths before invocation.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "resourceUri": {
+        "type": "string",
+        "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
+        "description": "Exact canonical Senera resource URI supplied by the runtime. Local paths must be resolved by the host first; do not derive a URI from a filename."
+      },
+      "mode": { "default": "auto", "type": "string", "enum": ["auto", "probe", "extract"] }
+    },
+    "required": ["resourceUri"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "document": {
+        "type": "object",
+        "properties": {
+          "resourceUri": { "type": "string", "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$" },
+          "name": { "type": "string" },
+          "mime": { "type": "string" },
+          "size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "sha256": { "type": "string" },
+          "status": { "type": "string", "enum": ["probed", "extracted"] },
+          "probe": { "type": "object", "properties": {}, "additionalProperties": {} },
+          "extraction": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "const": "extracted" },
+              "parser": { "type": "string" },
+              "fileType": { "type": "string" },
+              "textPreview": { "type": "string" },
+              "markdownPreview": { "type": "string" },
+              "textLength": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "markdownLength": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "metadata": { "type": "object", "propertyNames": { "type": "string" }, "additionalProperties": {} },
+              "structure": {
+                "type": "object",
+                "properties": {
+                  "topLevelNodeCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "attachmentCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "warningCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                },
+                "required": ["topLevelNodeCount", "attachmentCount", "warningCount"],
+                "additionalProperties": false
+              },
+              "chunks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "index": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                    "text": { "type": "string" },
+                    "length": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                    "metadata": { "type": "object", "propertyNames": { "type": "string" }, "additionalProperties": {} }
+                  },
+                  "required": ["index", "text", "length"],
+                  "additionalProperties": false
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string", "enum": ["warning", "info", "error"] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" }
+                  },
+                  "required": ["type", "code", "message"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "status",
+              "parser",
+              "fileType",
+              "textPreview",
+              "markdownPreview",
+              "textLength",
+              "markdownLength",
+              "metadata",
+              "structure",
+              "chunks",
+              "warnings"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": ["resourceUri", "name", "mime", "size", "sha256", "status", "probe"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["document"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/DocumentExtract.projection.json",
+  "permissions": ["resources:read"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel"
+  },
+  "resources": [],
+  "sources": [],
+  "search": {
+    "Summary": "读取文档的类型、结构、元数据和文本内容，必要时提取可检索的 Markdown。",
+    "Tags": ["document", "extract", "text", "metadata"],
+    "Capabilities": [
+      {
+        "Id": "document.extract",
+        "Title": "Document extraction",
+        "Description": "检查文档并提取文本、结构、元数据和解析警告。",
+        "Facets": {
+          "Actions": ["probe", "extract", "inspect"],
+          "Targets": ["document-resource"],
+          "Inputs": ["resource-uri", "mode"],
+          "Outputs": ["document-metadata", "text", "markdown", "structure", "warnings"],
+          "Effects": ["none"]
+        },
+        "Aliases": ["读取文档", "提取文本", "解析文件", "document extraction"],
+        "Risk": { "SideEffect": "read-only", "Permission": "resources-read" }
+      }
+    ],
+    "UseCases": ["用户提供文档资源，并希望查看内容、结构、元数据或解析警告。"],
+    "Avoid": ["文档未被运行时登记为资源时不要猜测路径；需要修改文档时使用对应的工作区工具。"]
+  },
+  "evidenceCapabilities": []
+}

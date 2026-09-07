@@ -1,0 +1,17 @@
+{
+  "name": "ResidentActionSpeak",
+  "description": "Commit the resident character's brief visible utterance immediately before the pending actions begin.",
+  "instructions": "Use the active Senera persona, world state, continuity context, conversation history, draft, and pending actions as one scene. Preserve the grounded intent and speak only the natural bridge into what is about to happen. Treat already_spoken as immutable visible dialogue: do not repeat, paraphrase, summarize, or answer it again. Never imply that pending work is complete. Do not mention tools, systems, prompts, drafts, projections, or hidden state. Return exactly one non-empty utterance through ResidentActionSpeak.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "utterance": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The only text visible to the other person before the pending action starts."
+      }
+    },
+    "required": ["utterance"],
+    "additionalProperties": false
+  }
+}

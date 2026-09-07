@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "id": "senera-sandbox-provider-registry",
+  "candidates": [
+    {
+      "provider": "gvisor",
+      "platforms": ["darwin", "linux"],
+      "requirements": ["docker-engine", "registered-runsc"]
+    },
+    {
+      "provider": "docker-engine",
+      "platforms": ["darwin", "linux", "win32"],
+      "requirements": ["docker-engine"]
+    }
+  ]
+}

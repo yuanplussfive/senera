@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "id": "agent-channels",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "channel-session-map",
+      "sql": "CREATE TABLE channel_sessions (\n  platform TEXT NOT NULL CHECK (length(trim(platform)) > 0),\n  chat_type TEXT NOT NULL CHECK (length(trim(chat_type)) > 0),\n  chat_id TEXT NOT NULL CHECK (length(trim(chat_id)) > 0),\n  user_id TEXT NOT NULL,\n  thread_id TEXT,\n  session_id TEXT NOT NULL CHECK (length(trim(session_id)) > 0),\n  epoch INTEGER NOT NULL DEFAULT 1 CHECK (epoch >= 1),\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  PRIMARY KEY (platform, chat_type, chat_id, user_id, thread_id)\n);\n\nCREATE INDEX channel_sessions_session_idx\n  ON channel_sessions (session_id);\n\nCREATE INDEX channel_sessions_updated_idx\n  ON channel_sessions (updated_at);",
+      "checksum": "6d06183183656de768db728f050958af007396206e997761b8d52446aa6350a7",
+      "snapshot": "-- table: channel_sessions\ncreate table channel_sessions ( platform text not null check ( length ( trim ( platform ) ) > 0 ) , chat_type text not null check ( length ( trim ( chat_type ) ) > 0 ) , chat_id text not null check ( length ( trim ( chat_id ) ) > 0 ) , user_id text not null , thread_id text , session_id text not null check ( length ( trim ( session_id ) ) > 0 ) , epoch integer not null default 1 check ( epoch >= 1 ) , created_at text not null , updated_at text not null , primary key ( platform , chat_type , chat_id , user_id , thread_id ) );\n\n-- index: channel_sessions_session_idx\ncreate index channel_sessions_session_idx on channel_sessions ( session_id );\n\n-- index: channel_sessions_updated_idx\ncreate index channel_sessions_updated_idx on channel_sessions ( updated_at );\n",
+      "snapshotChecksum": "3a3ffcecaef56c3a46dd839bc0dec04b14c3d121094bca980e373378a54065b0"
+    }
+  ]
+}

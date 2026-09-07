@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implementation Planning"
+  short_description: "Build an executable plan from verified constraints."
+  default_prompt: "Use $plan-implementation to produce an implementation plan."

@@ -1,0 +1,117 @@
+{
+  "name": "GitMutate",
+  "description": "执行明确列举的本地 Git 变更；不提供 fetch、push 或 remote 操作。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "const": "stage" },
+          "repository": { "type": "string", "minLength": 1 },
+          "paths": { "minItems": 1, "maxItems": 256, "type": "array", "items": { "type": "string", "minLength": 1 } }
+        },
+        "required": ["operation", "repository", "paths"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "const": "unstage" },
+          "repository": { "type": "string", "minLength": 1 },
+          "paths": { "minItems": 1, "maxItems": 256, "type": "array", "items": { "type": "string", "minLength": 1 } }
+        },
+        "required": ["operation", "repository", "paths"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "const": "commit" },
+          "repository": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1, "maxLength": 8192 }
+        },
+        "required": ["operation", "repository", "message"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "const": "create_branch" },
+          "repository": { "type": "string", "minLength": 1 },
+          "branch": { "type": "string", "minLength": 1 },
+          "startPoint": { "default": "HEAD", "type": "string", "minLength": 1 }
+        },
+        "required": ["operation", "repository", "branch"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "const": "switch_branch" },
+          "repository": { "type": "string", "minLength": 1 },
+          "branch": { "type": "string", "minLength": 1 }
+        },
+        "required": ["operation", "repository", "branch"],
+        "additionalProperties": false
+      }
+    ],
+    "type": "object"
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "operation": { "type": "string" },
+      "repository": { "type": "string" },
+      "exitCode": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+      "stdout": { "type": "string" },
+      "stderr": { "type": "string" },
+      "stdoutBytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+      "stderrBytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+      "stdoutTruncated": { "type": "boolean" },
+      "stderrTruncated": { "type": "boolean" }
+    },
+    "required": ["operation", "repository", "exitCode", "stdout", "stderr"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/GitMutate.projection.json",
+  "permissions": ["process:git", "filesystem:workspace:write"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
+  "runtime": {
+    "Lifecycle": "OneShot",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "ResourceClaims",
+    "Capabilities": { "OutputStreaming": true, "Cancellation": true }
+  },
+  "resources": [
+    { "Capability": "senera.workspace.path", "Pointer": "/repository", "Parameters": { "Intent": "replace" } },
+    { "Capability": "senera.workspace.path", "Pointer": "/repository", "Parameters": { "Intent": "execute" } }
+  ],
+  "sources": [],
+  "search": {
+    "Summary": "Stage, unstage, commit, create, or switch local branches without remote operations.",
+    "Tags": ["git", "repository", "version-control"],
+    "Capabilities": [
+      {
+        "Id": "repository.git.mutate",
+        "Title": "Git repository mutation",
+        "Description": "Stage, unstage, commit, create, or switch local branches without remote operations.",
+        "Facets": {
+          "Actions": ["stage", "unstage", "commit", "create-branch", "switch-branch"],
+          "Targets": ["git-repository", "working-tree", "index", "refs"],
+          "Inputs": ["operation", "repository"],
+          "Outputs": ["git-output", "exit-code"],
+          "Effects": ["repository-write", "workspace-possible"]
+        },
+        "Aliases": ["git stage", "git commit", "git branch", "暂存", "提交代码", "切换分支"],
+        "Risk": { "SideEffect": "repository-write", "Permission": "workspace-write" }
+      }
+    ],
+    "UseCases": ["Stage, unstage, commit, create, or switch local branches without remote operations."],
+    "Avoid": ["不支持 fetch、pull、push、remote 或任意 Git flags。"]
+  },
+  "evidenceCapabilities": [],
+  "approval": { "Mode": "ask", "Reason": "Git mutation changes the repository index, refs, or working tree." }
+}

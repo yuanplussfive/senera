@@ -1,0 +1,4 @@
+interface:
+  display_name: "Technical Decision Review"
+  short_description: "Evaluate engineering choices and their tradeoffs."
+  default_prompt: "Use $evaluate-technical-decision to assess these options."

@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "polling": {
+      "default": { "intervalMs": 1000, "claimDurationMs": 300000, "claimBatchSize": 16 },
+      "type": "object",
+      "properties": {
+        "intervalMs": { "default": 1000, "type": "integer", "minimum": 250, "maximum": 60000 },
+        "claimDurationMs": { "default": 300000, "type": "integer", "minimum": 5000, "maximum": 3600000 },
+        "claimBatchSize": { "default": 16, "type": "integer", "minimum": 1, "maximum": 128 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
