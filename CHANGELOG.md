@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.14.1](https://github.com/yuanplussfive/senera/compare/v1.14.0...v1.14.1) (2026-09-05)
+
+
+### 问题修复
+
+* **release:** align desktop packaging with npm ([#121](https://github.com/yuanplussfive/senera/issues/121)) ([29bf2f7](https://github.com/yuanplussfive/senera/commit/29bf2f718268b76fe6489e0a8a6c894a53aeb424))
+
 ## [1.14.0](https://github.com/yuanplussfive/senera/compare/v1.13.1...v1.14.0) (2026-09-05)
 
 
