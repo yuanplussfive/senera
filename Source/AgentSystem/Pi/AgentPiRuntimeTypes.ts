@@ -18,6 +18,8 @@ import type { AgentInteractionContext } from "../Interaction/AgentInteractionCon
 export type AgentPiSessionEventListener = (event: AgentSessionEvent) => void | Promise<void>;
 
 export interface AgentPiSessionOptions extends Omit<AgentPiToolProjectionContext, "tokenBudget"> {
+  /** Stable cache affinity that survives physical session rotation. */
+  logicalCacheScope?: string;
   input?: string;
   systemPrompt?: string;
   turnContext?: string;

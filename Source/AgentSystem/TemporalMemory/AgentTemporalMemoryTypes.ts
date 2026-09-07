@@ -1,4 +1,5 @@
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
+import type { AgentTextParts } from "../Text/AgentTextParts.js";
 
 export const AgentTemporalMemoryGranularities = ["segment", "day", "month"] as const;
 export type AgentTemporalMemoryGranularity = (typeof AgentTemporalMemoryGranularities)[number];
@@ -32,6 +33,10 @@ export interface AgentTemporalMemoryDigest {
   readonly summary: string;
   readonly topics: readonly string[];
   readonly openLoops: readonly string[];
+  /** Structured source retained for identity-aware presentation. */
+  readonly summaryParts?: AgentTextParts;
+  readonly topicParts?: readonly AgentTextParts[];
+  readonly openLoopParts?: readonly AgentTextParts[];
   readonly sourceRevision: string;
   readonly childCount: number;
   readonly createdAt: string;
@@ -75,6 +80,7 @@ export interface AgentTemporalMemorySummaryEntry {
   readonly occurredAt: string;
   readonly kind: string;
   readonly summary: string;
+  readonly summaryParts?: AgentTextParts;
   readonly text?: string;
   readonly toolName?: string;
 }
@@ -88,9 +94,9 @@ export interface AgentTemporalMemorySummaryPromptInput {
 }
 
 export interface AgentTemporalMemorySummaryResult {
-  readonly summary: string;
-  readonly topics: readonly string[];
-  readonly openLoops: readonly string[];
+  readonly summary: string | AgentTextParts;
+  readonly topics: readonly (string | AgentTextParts)[];
+  readonly openLoops: readonly (string | AgentTextParts)[];
 }
 
 export interface AgentTemporalMemoryRange {

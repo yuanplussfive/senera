@@ -47,6 +47,10 @@ const DefaultModelProviderIconName =
     : (ModelProviderIconNames[0] ?? "openai");
 
 const ModelProviderEndpointIconAliases: readonly (readonly [string, string])[] = [
+  ["openai-labs", "labs"],
+  ["google-labs", "labs"],
+  ["anthropic-labs", "labs"],
+  ["labs", "labs"],
   ["siliconflow", "siliconcloud"],
   ["openrouter", "openrouter"],
   ["fireworksai", "fireworks"],

@@ -79,6 +79,58 @@ describe("Turn preparation behavior", () => {
     expect(prepared.toolAccessGrant.exposedToolNames).toEqual(prepared.loadedToolNames);
   });
 
+  test("promotes a matching confirmed capability and skips duplicate discovery", async () => {
+    const resolvePlannedLoadedTools = vi.fn(async (options: { currentLoadedTools?: readonly string[] }) => [
+      ...(options.currentLoadedTools ?? []),
+    ]);
+    const reusableCapabilities = vi.fn(() => [
+      {
+        toolName: "WorkspaceListFiles",
+        catalogRevision: "catalog-a",
+        contractDigest: "contract-a",
+        query: "Inspect the workspace files",
+        arguments: { path: "workspace" },
+        confirmedAt: 1,
+        lastUsedAt: 1,
+      },
+    ]);
+    const buildRootCommand = vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames));
+    const service = new AgentTurnPreparationService({
+      services: {
+        retrieval: { resolvePlannedLoadedTools, rememberAutoSearch: vi.fn(), reusableCapabilities },
+        promptContext: {
+          activateSkills: async () => [],
+          recommendedSkillTools: () => [],
+          buildRootCommand,
+        },
+      },
+    });
+
+    const prepared = await service.prepare({
+      requestId: "request-reuse",
+      sessionId: "session-reuse",
+      userInput: "Inspect the workspace files",
+      loadedToolNames: ["ToolSearch"],
+    });
+
+    expect(reusableCapabilities).toHaveBeenCalledWith({
+      sessionId: "session-reuse",
+      query: "Inspect the workspace files",
+      authorizedToolNames: undefined,
+      limit: 6,
+    });
+    expect(resolvePlannedLoadedTools).toHaveBeenCalledWith({
+      input: "Inspect the workspace files",
+      currentLoadedTools: ["ToolSearch", "WorkspaceListFiles"],
+      currentSetPolicy: "retain",
+      preferredTools: [],
+      discover: false,
+      queries: [],
+      needs: [],
+    });
+    expect(prepared.loadedToolNames).toEqual(["ToolSearch", "WorkspaceListFiles"]);
+  });
+
   test("carries a delegated run Tool ceiling into the authoritative root grant", async () => {
     const resolvePlannedLoadedTools = vi.fn(async () => ["WorkspaceRead", "DocumentExtract", "SkillManage"]);
     const buildRootCommand = vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames));

@@ -65,8 +65,12 @@ describe("world lifecycle event bridge", () => {
       const events = ledger.snapshot("Asia/Shanghai").events.filter((event) => event.type.startsWith("tool."));
       expect(events).toHaveLength(2);
       expect(events.map((event) => event.summary)).toEqual([
-        "{{resident}}开始browser：查看页面",
-        "{{resident}}完成browser：页面已打开",
+        "resident开始browser：查看页面",
+        "resident完成browser：页面已打开",
+      ]);
+      expect(events[0].summaryParts).toEqual([
+        { kind: "identity", role: "resident" },
+        { kind: "text", text: "开始browser：查看页面" },
       ]);
       expect(events[1].evidenceRefs).toEqual(
         expect.arrayContaining([expect.stringContaining("senera://event/"), "senera://session/session-test"]),

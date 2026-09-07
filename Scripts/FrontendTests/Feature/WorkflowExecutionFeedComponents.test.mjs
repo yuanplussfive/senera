@@ -18,7 +18,8 @@ const { projectToolActivityInspection } =
   await import("../../../Frontend/src/features/workflow/toolActivityPresentation.ts");
 const { AppMotionProvider } = await import("../../../Frontend/src/shared/motion/MotionProvider.tsx");
 const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
-const { createStep, createToolBatchRun } = await import("./workflowComponentFixtures.mjs");
+const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
+const { createRun, createStep, createToolBatchRun } = await import("./workflowComponentFixtures.mjs");
 
 beforeEach(() => {
   removeRadixPortalResidue();
@@ -260,6 +261,7 @@ test("active tool batches keep settled rows while unfinished calls remain visibl
     "Search · React security guidance",
   );
   expect(document.querySelector("[data-tool-batch-activity-item][data-state='done']")).toHaveClass("items-center");
+  expect(document.querySelector("[data-tool-batch-activity-viewport]")).toHaveClass("tool-activity-viewport");
   expect(document.querySelector("[data-tool-batch-activity-item][data-state='done'] > span")).toHaveClass(
     "h-[18px]",
     "items-center",
@@ -645,4 +647,231 @@ test("every bundled system tool has a concrete activity action", () => {
     .map((filePath) => JSON.parse(readFileSync(path.resolve(workspaceRoot, filePath), "utf8")).name)
     .filter((name) => projectToolActivityInspection({ toolName: name, status: "completed" }).category === "system");
   expect(genericTools).toEqual([]);
+});
+
+test("delegated child runs render a flat todo activity before optional tool details", async () => {
+  const user = userEvent.setup();
+  const childScope = {
+    parentSessionId: "session-a",
+    parentRequestId: "run-delegation",
+    childRunId: "child-1",
+    agentName: "reviewer",
+    role: "childAgent",
+  };
+  const run = createRun({
+    requestId: "run-delegation",
+    status: "running",
+    endedAt: undefined,
+    steps: [
+      createStep({ id: "root-decision", kind: "decision", title: "Delegate review", status: "done" }),
+      createStep({
+        id: "child-run:child-1",
+        kind: "delegation",
+        title: "Running",
+        status: "running",
+        scope: childScope,
+        childRun: {
+          id: "child-1",
+          status: "running",
+          messages: [
+            {
+              id: "m1",
+              direction: "child_to_parent",
+              kind: "progress",
+              content: "正在检查配置入口。",
+              createdAt: "2026-07-11T00:00:01.000Z",
+            },
+          ],
+          toolCalls: { planned: 2, started: 2, completed: 1, failed: 0 },
+          activeTools: ["WorkspaceGrep"],
+          todo: {
+            planObserved: true,
+            counts: { total: 3, pending: 1, inProgress: 1, completed: 1, cancelled: 0 },
+            items: [
+              { content: "读取配置入口", status: "completed" },
+              { content: "检查配置", status: "in_progress" },
+              { content: "汇总结果", status: "pending" },
+            ],
+          },
+        },
+      }),
+      createStep({
+        id: "tool-0",
+        kind: "tool",
+        title: "Call WorkspaceRead",
+        status: "done",
+        toolName: "WorkspaceRead",
+        callId: "call-0",
+        scope: childScope,
+      }),
+      createStep({
+        id: "tool-1",
+        kind: "tool",
+        title: "Call WorkspaceGrep",
+        status: "running",
+        toolName: "WorkspaceGrep",
+        callId: "call-1",
+        scope: childScope,
+      }),
+    ],
+  });
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionFeed, { run }));
+
+  const card = document.querySelector("[data-child-run-card]");
+  expect(card).toBeInTheDocument();
+  expect(card).toHaveAttribute("data-child-run-status", "running");
+  expect(screen.getByText("reviewer")).toBeVisible();
+
+  // 清单是主视图，工具明细仍保持折叠，避免子代理把时间线撑成日志墙。
+  expect(card.querySelector("[data-child-run-glyph]")).toBeInTheDocument();
+  expect(card).not.toHaveTextContent(/1\/3/);
+  expect(screen.getByText(frontendMessage("chat.todoProgress.title"))).toBeVisible();
+  expect(screen.getByText("读取配置入口")).toBeVisible();
+  expect(screen.getByText("检查配置")).toBeVisible();
+  expect(screen.getByText("汇总结果")).toBeVisible();
+  expect(screen.queryByText("WorkspaceRead")).not.toBeInTheDocument();
+  expect(screen.queryByText("WorkspaceGrep")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-child-run-final-report]")).not.toBeInTheDocument();
+
+  await user.click(card.querySelector("[data-child-run-card-trigger]"));
+
+  await waitFor(() => expect(document.querySelector("[data-child-run-activity-details]")).toBeVisible());
+  expect(document.querySelector("[data-child-run-todo] [role='progressbar']")).not.toBeInTheDocument();
+  const body = document.querySelector("[data-child-run-activity-details]");
+  expect(body).toBeInTheDocument();
+  expect(body.className).not.toMatch(/max-h-/);
+  expect(body.className).not.toMatch(/overflow-y-auto/);
+  expect(body.querySelector("[data-tool-batch-activity-viewport]")).toHaveClass("tool-activity-viewport");
+  expect(document.querySelector("[data-tool-batch-activity]")).toBeInTheDocument();
+});
+
+test("stage feed isolates child-run tools into cards so the parent batch stays readable", () => {
+  const childScope = {
+    parentSessionId: "session-a",
+    parentRequestId: "run-stage",
+    childRunId: "child-stage",
+    agentName: "scout",
+    role: "childAgent",
+  };
+  const run = createRun({
+    requestId: "run-stage",
+    status: "running",
+    endedAt: undefined,
+    steps: [
+      createStep({
+        id: "root-plan",
+        kind: "tool",
+        title: "Call WorkspaceSearch",
+        status: "running",
+        toolName: "WorkspaceSearch",
+        callId: "call-root",
+      }),
+      createStep({
+        id: "child-run:child-stage",
+        kind: "delegation",
+        title: "Running",
+        status: "running",
+        scope: childScope,
+        childRun: {
+          id: "child-stage",
+          status: "running",
+          messages: [],
+          toolCalls: { planned: 2, started: 2, completed: 1, failed: 0 },
+          activeTools: [],
+          todo: { planObserved: true, counts: { total: 2, pending: 1, inProgress: 1, completed: 0, cancelled: 0 } },
+        },
+      }),
+      createStep({
+        id: "child-tool-0",
+        kind: "tool",
+        title: "Call WorkspaceRead",
+        status: "done",
+        toolName: "WorkspaceRead",
+        callId: "call-child-0",
+        scope: childScope,
+      }),
+      createStep({
+        id: "child-tool-1",
+        kind: "tool",
+        title: "Call WorkspaceGrep",
+        status: "running",
+        toolName: "WorkspaceGrep",
+        callId: "call-child-1",
+        scope: childScope,
+      }),
+    ],
+  });
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
+
+  // 子代理内部工具被收进卡片，不再平铺进父代理的工具批次。
+  expect(document.querySelector("[data-stage-child-run-cards]")).toBeInTheDocument();
+  expect(screen.getByText("scout")).toBeVisible();
+  const batchActivity = document.querySelector("[data-tool-batch-activity]");
+  expect(batchActivity).toBeInTheDocument();
+  expect(batchActivity).not.toHaveTextContent("WorkspaceRead");
+  expect(batchActivity).not.toHaveTextContent("WorkspaceGrep");
+});
+
+test("completed child run surfaces its final report inside the card", async () => {
+  const user = userEvent.setup();
+  const childScope = {
+    parentSessionId: "session-a",
+    parentRequestId: "run-done",
+    childRunId: "child-done",
+    agentName: "scout",
+    role: "childAgent",
+  };
+  const run = createRun({
+    requestId: "run-done",
+    status: "done",
+    endedAt: "2026-07-11T00:05:00.000Z",
+    steps: [
+      createStep({
+        id: "child-run:child-done",
+        kind: "delegation",
+        title: "Completed",
+        status: "done",
+        scope: childScope,
+        childRun: {
+          id: "child-done",
+          status: "completed",
+          messages: [
+            {
+              id: "final",
+              direction: "child_to_parent",
+              kind: "response",
+              content: "世界书入口共 3 处，已整理完毕。\n\n**已核对来源**。",
+              createdAt: "2026-07-11T00:04:00.000Z",
+            },
+          ],
+          toolCalls: { planned: 1, started: 1, completed: 1, failed: 0 },
+          activeTools: [],
+          todo: {
+            planObserved: true,
+            counts: { total: 2, pending: 0, inProgress: 0, completed: 2, cancelled: 0 },
+            items: [
+              { content: "定位入口", status: "completed" },
+              { content: "整理报告", status: "completed" },
+            ],
+          },
+        },
+      }),
+    ],
+  });
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionFeed, { run }));
+  const card = document.querySelector("[data-child-run-card]");
+  expect(card).toHaveAttribute("data-child-run-status", "completed");
+  expect(document.querySelector("[data-child-run-final-report]")).not.toBeInTheDocument();
+
+  await user.click(card.querySelector("[data-child-run-card-trigger]"));
+
+  // 完成后最终反馈写入卡片专属区域。
+  await waitFor(() => expect(document.querySelector("[data-child-run-final-report]")).toBeInTheDocument());
+  expect(document.querySelector("[data-child-run-final-report]")).toHaveTextContent(/世界书入口共 3 处/);
+  await waitFor(() =>
+    expect(document.querySelector("[data-child-run-final-report] strong")).toHaveTextContent("已核对来源"),
+  );
 });

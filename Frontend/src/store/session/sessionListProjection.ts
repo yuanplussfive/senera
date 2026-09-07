@@ -40,6 +40,27 @@ export function ingestSessionList(state: StoreState, items: readonly SessionList
   pruneLocalSessionsNotOnServer(state, visibleServerIds);
 }
 
+/**
+ * Drop client-side history freshness markers after a transport reconnect.
+ *
+ * A reconnect can follow a server restart, so a previously loaded transcript
+ * is not authoritative even when its session id is unchanged.  Keep the
+ * visible optimistic messages and run records in place; removing only the
+ * replay markers lets the normal history recovery request reconcile them with
+ * the next server snapshot without a blank-state flash.
+ */
+export function invalidateSessionHistoryCache(state: StoreState): void {
+  for (const sessionId of Object.keys(state.sessions)) {
+    delete state.historyLoadedIds[sessionId];
+    delete state.historyFailedIds[sessionId];
+    state.historyLoadingIds[sessionId] = false;
+    delete state.historyReplayBuffers[sessionId];
+    delete state.historyStepBuffers[sessionId];
+    delete state.historyEventRunIds[sessionId];
+    delete state.historyActiveRequestIds[sessionId];
+  }
+}
+
 export function readFirstAvailableSessionId(state: StoreState, excludedSessionId?: string): string | null {
   return (
     state.sessionOrder.find(

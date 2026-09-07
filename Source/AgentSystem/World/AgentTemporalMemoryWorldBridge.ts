@@ -4,6 +4,7 @@ import type { AgentTemporalMemoryDigest } from "../TemporalMemory/AgentTemporalM
 import type { AgentWorldEvent, AgentWorldEventLedger } from "./AgentWorldEventLedger.js";
 import type { AgentMemoryDeletionImpact } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentMemoryDeletionSink } from "../Memory/AgentMemoryService.js";
+import { projectLegacyIdentityText, renderAgentTextParts } from "../Text/AgentTextParts.js";
 
 const ConversationSegmentCompletedEvent = "conversation.segment.completed";
 
@@ -25,6 +26,7 @@ export class AgentTemporalMemoryWorldBridge implements AgentMemoryDeletionSink {
     const world = this.options.agenda.snapshot(timeZone).world;
     const evidenceRefs = this.options.store.members(digest.id).map((member) => member.memberUri);
     if (evidenceRefs.length === 0) throw new Error(`Temporal digest has no traceable evidence: ${digest.uri}`);
+    const summaryParts = digest.summaryParts?.length ? digest.summaryParts : projectLegacyIdentityText(digest.summary);
     this.options.ledger.deleteDerivedEvents({
       worldId: world.id,
       eventType: ConversationSegmentCompletedEvent,
@@ -35,7 +37,8 @@ export class AgentTemporalMemoryWorldBridge implements AgentMemoryDeletionSink {
       timeZone,
       subject: { id: digest.uri, kind: "conversation" },
       type: ConversationSegmentCompletedEvent,
-      summary: digest.summary,
+      summary: renderAgentTextParts(summaryParts),
+      summaryParts,
       changes: [],
       evidenceRefs,
       occurredAt: digest.periodEnd,

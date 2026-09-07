@@ -20,7 +20,7 @@ import { AgentResourceHttpRoutes } from "../Resources/AgentResourceContract.js";
 export interface AgentWorkspaceResourceHttpApiOptions {
   readonly workspaceRoot: string;
   readonly maxTextBytes: number;
-  readonly isOriginAllowed?: (origin: string) => boolean;
+  readonly isOriginAllowed?: (origin: string, request: IncomingMessage) => boolean;
 }
 
 type WorkspaceResourceRoute = "resource" | "content";
@@ -87,7 +87,7 @@ export class AgentWorkspaceResourceHttpApi {
       !applyCredentialedCors(request, response, {
         allowedMethods: ["GET", "HEAD", "PUT", "OPTIONS"],
         allowedHeaders: ["Content-Type", "If-Match", "X-Senera-Csrf"],
-        isOriginAllowed: (origin) => this.options.isOriginAllowed?.(origin) ?? false,
+        isOriginAllowed: (origin, corsRequest) => this.options.isOriginAllowed?.(origin, corsRequest) ?? false,
       })
     ) {
       this.sendError(response, 403, "forbidden_origin", "The request origin is not allowed.");

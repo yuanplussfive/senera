@@ -299,7 +299,13 @@ function closeRecoveredRunningRuns(
   activeRequestId: string | undefined,
 ): void {
   for (const run of session.runs) {
-    if (run.status !== "running" || !recoveredRunIds.has(run.requestId) || run.requestId === activeRequestId) {
+    const isOrphanedAfterReconnect = activeRequestId === undefined;
+    const isRecoveredRun = recoveredRunIds.has(run.requestId);
+    if (
+      run.status !== "running" ||
+      run.requestId === activeRequestId ||
+      (!isOrphanedAfterReconnect && !isRecoveredRun)
+    ) {
       continue;
     }
 

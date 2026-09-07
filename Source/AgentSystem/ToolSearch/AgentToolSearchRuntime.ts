@@ -289,7 +289,7 @@ export class AgentToolSearchRuntime {
     activeSkills?: readonly AgentActivatedSkill[];
   }): LoadedToolsState {
     const loadedTools = this.mergeVisibleTools(options.loadedTools);
-    this.rememberSuccessfulCapabilities(options.sessionId, options.execution.value);
+    this.rememberSuccessfulCapabilities(options.sessionId, options.userInput, options.execution.value);
     try {
       this.usageMemory.recordToolUsage({
         requestId: options.requestId,
@@ -348,6 +348,38 @@ export class AgentToolSearchRuntime {
       catalogRevision: options.catalogRevision ?? this.catalogRevision(),
       contractDigest: tool?.contract?.digest,
     });
+  }
+
+  /**
+   * Returns recently confirmed dynamic capabilities after re-validating them
+   * against the current catalog and contract digest. This is intentionally a
+   * local lookup: the model can reuse known arguments without paying for a
+   * duplicate ToolSearch request, while stale records disappear naturally.
+   */
+  reusableCapabilities(options: {
+    sessionId?: string;
+    query?: string;
+    authorizedToolNames?: readonly string[];
+    limit?: number;
+  }): readonly AgentToolCapabilityCacheEntry[] {
+    if (!options.sessionId) return [];
+    const authorized = options.authorizedToolNames ? new Set(options.authorizedToolNames) : undefined;
+    const limit = Number.isSafeInteger(options.limit) && (options.limit ?? 0) > 0 ? options.limit! : 6;
+    const catalogRevision = this.catalogRevision();
+    const queryTokens = options.query?.trim() ? this.tokenize(options.query) : [];
+    return this.capabilitySessionCache
+      .snapshot(options.sessionId)
+      .filter((entry) => !authorized || authorized.has(entry.toolName))
+      .filter((entry) => queryTokens.length === 0 || this.isReusableForQuery(entry, queryTokens))
+      .flatMap((entry) => {
+        const reusable = this.getReusableCapability({
+          sessionId: options.sessionId,
+          toolName: entry.toolName,
+          catalogRevision,
+        });
+        return reusable ? [reusable] : [];
+      })
+      .slice(0, limit);
   }
 
   tokenize(text: string): string[] {
@@ -485,6 +517,7 @@ export class AgentToolSearchRuntime {
 
   private rememberSuccessfulCapabilities(
     sessionId: string | undefined,
+    userInput: string,
     results: readonly ExecutedToolCallResult[],
   ): void {
     if (!sessionId) return;
@@ -499,9 +532,25 @@ export class AgentToolSearchRuntime {
         toolName: result.name,
         catalogRevision,
         contractDigest: tool.contract?.digest,
+        query: userInput,
         arguments: result.arguments,
       });
     }
+  }
+
+  private isReusableForQuery(entry: AgentToolCapabilityCacheEntry, queryTokens: readonly string[]): boolean {
+    if (!entry.query) return false;
+    const previousTokens = this.tokenize(entry.query);
+    if (previousTokens.length === 0 || queryTokens.length === 0) return false;
+    const previous = new Set(previousTokens);
+    const overlap = queryTokens.reduce((count, token) => count + (previous.has(token) ? 1 : 0), 0);
+    const smallerQuerySize = Math.min(previous.size, queryTokens.length);
+    const unionSize = new Set([...previous, ...queryTokens]).size;
+    return (
+      overlap >= ReusableCapabilityMatchPolicy.minimumOverlap &&
+      (overlap / smallerQuerySize >= ReusableCapabilityMatchPolicy.minimumCoverage ||
+        overlap / unionSize >= ReusableCapabilityMatchPolicy.minimumJaccard)
+    );
   }
 
   private catalogRevision(): string {
@@ -701,6 +750,12 @@ const AgentCapabilityEmbeddingCachePolicy = {
   MinimumEntries: 32,
   CatalogGenerations: 2,
 } as const;
+
+const ReusableCapabilityMatchPolicy = Object.freeze({
+  minimumOverlap: 1,
+  minimumCoverage: 0.5,
+  minimumJaccard: 0.25,
+});
 
 interface AgentToolCatalogSnapshot {
   readonly registryRevision: number | undefined;

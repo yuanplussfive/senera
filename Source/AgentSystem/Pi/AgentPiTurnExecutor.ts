@@ -224,6 +224,7 @@ export class AgentPiTurnExecutor {
             this.options.runtime.services.pi.leaseTurn({
               requestId: command.requestId,
               sessionId: command.sessionId,
+              logicalCacheScope: command.logicalCacheScope,
               step: command.step,
               input: command.input,
               systemPrompt: command.prompt,

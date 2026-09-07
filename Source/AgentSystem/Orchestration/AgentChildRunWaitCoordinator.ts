@@ -28,11 +28,34 @@ export class AgentChildRunWaitCoordinator {
     requestedTimeoutMs: number | undefined,
     signal?: AbortSignal,
   ): Promise<AgentChildRunWaitResult> {
+    return this.waitUntil(ids, parentSessionId, requestedTimeoutMs, signal, (runs) =>
+      runs.some((run) => !run || isSettled(run.status)),
+    );
+  }
+
+  async waitAll(
+    ids: readonly string[],
+    parentSessionId: string,
+    requestedTimeoutMs: number | undefined,
+    signal?: AbortSignal,
+  ): Promise<AgentChildRunWaitResult> {
+    return this.waitUntil(ids, parentSessionId, requestedTimeoutMs, signal, (runs) =>
+      runs.every((run) => !run || isSettled(run.status)),
+    );
+  }
+
+  private async waitUntil(
+    ids: readonly string[],
+    parentSessionId: string,
+    requestedTimeoutMs: number | undefined,
+    signal: AbortSignal | undefined,
+    isSatisfied: (runs: readonly (AgentChildRunRecord | undefined)[]) => boolean,
+  ): Promise<AgentChildRunWaitResult> {
     throwIfAborted(signal);
     const readRuns = (): (AgentChildRunRecord | undefined)[] =>
       ids.map((id) => this.options.getRun(id, parentSessionId));
     const initial = readRuns();
-    if (initial.some((run) => !run || isSettled(run.status))) return { runs: initial, timedOut: false };
+    if (isSatisfied(initial)) return { runs: initial, timedOut: false };
 
     const timeoutMs = this.options.resolveTimeout(requestedTimeoutMs);
     if (timeoutMs === 0) return { runs: initial, timedOut: true };
@@ -46,13 +69,10 @@ export class AgentChildRunWaitCoordinator {
         timer = setTimeout(() => resolve(true), timeoutMs);
         timer.unref();
       });
-      const completions = [...new Set(ids)].map((id) =>
-        this.wait(id, parentSessionId, waitController.signal).then(() => false as const),
-      );
-      const stateChange = this.waitForSettledState(ids, parentSessionId, waitController.signal).then(
+      const stateChange = this.waitForSettledState(ids, parentSessionId, waitController.signal, isSatisfied).then(
         () => false as const,
       );
-      const timedOut = await Promise.race([...completions, stateChange, timeout]);
+      const timedOut = await Promise.race([stateChange, timeout]);
       return { runs: readRuns(), timedOut };
     } finally {
       if (timer) clearTimeout(timer);
@@ -68,7 +88,12 @@ export class AgentChildRunWaitCoordinator {
     for (const waiter of [...(this.stateWaiters.get(childRunId) ?? [])]) waiter();
   }
 
-  private waitForSettledState(ids: readonly string[], parentSessionId: string, signal: AbortSignal): Promise<void> {
+  private waitForSettledState(
+    ids: readonly string[],
+    parentSessionId: string,
+    signal: AbortSignal,
+    isSatisfied: (runs: readonly (AgentChildRunRecord | undefined)[]) => boolean,
+  ): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       let settled = false;
       const cleanups: Array<() => void> = [];
@@ -81,12 +106,7 @@ export class AgentChildRunWaitCoordinator {
       };
       const onAbort = (): void => finish(() => reject(signal.reason));
       const onChange = (): void => {
-        if (
-          ids.some((id) => {
-            const run = this.options.getRun(id, parentSessionId);
-            return !run || isSettled(run.status);
-          })
-        ) {
+        if (isSatisfied(ids.map((id) => this.options.getRun(id, parentSessionId)))) {
           finish(resolve);
         }
       };

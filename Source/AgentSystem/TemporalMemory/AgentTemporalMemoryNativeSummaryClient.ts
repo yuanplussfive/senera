@@ -8,14 +8,26 @@ import {
 import { createAgentTemporalMemoryPromptCache } from "./AgentTemporalMemoryPromptCache.js";
 import type { AgentTemporalMemorySummaryPromptInput } from "./AgentTemporalMemoryTypes.js";
 
+const TextPart = Type.Union([
+  Type.Object({ kind: Type.Literal("text"), text: Type.String({ minLength: 1 }) }, { additionalProperties: false }),
+  Type.Object(
+    {
+      kind: Type.Literal("identity"),
+      role: Type.Union([Type.Literal("user"), Type.Literal("resident")]),
+    },
+    { additionalProperties: false },
+  ),
+]);
+const TextParts = Type.Array(TextPart, { minItems: 1 });
+
 const NativeSummaryTool = {
   name: AgentTemporalMemorySummaryToolName,
   description: "Commit one source-faithful conversation segment, day, or month memory digest.",
   parameters: Type.Object(
     {
-      summary: Type.String({ minLength: 1 }),
-      topics: Type.Array(Type.String({ minLength: 1 })),
-      openLoops: Type.Array(Type.String({ minLength: 1 })),
+      summary: TextParts,
+      topics: Type.Array(TextParts),
+      openLoops: Type.Array(TextParts),
     },
     { additionalProperties: false },
   ),

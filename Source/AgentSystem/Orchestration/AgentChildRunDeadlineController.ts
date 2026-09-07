@@ -26,11 +26,20 @@ export interface AgentChildRunDeadlineControllerOptions {
 /** Enforces a soft deadline, bounded activity extensions, and a final wrap-up window. */
 export class AgentChildRunDeadlineController {
   private readonly stopped = new AbortController();
+  private readonly wake = new AbortController();
   private readonly now: () => number;
+  private readonly absoluteHardDeadlineAt: number;
   private monitorPromise?: Promise<AgentChildRunDeadlineOutcome>;
+  private wrapUpStarted?: Promise<void>;
+  private hardDeadlineAt?: number;
 
   constructor(private readonly options: AgentChildRunDeadlineControllerOptions) {
     this.now = options.now ?? (() => Date.now());
+    this.absoluteHardDeadlineAt =
+      options.startedAt +
+      options.policy.softTimeoutMs +
+      options.policy.activityExtension.maximumMs +
+      options.policy.wrapUpTimeoutMs;
   }
 
   start(): Promise<AgentChildRunDeadlineOutcome> {
@@ -39,21 +48,30 @@ export class AgentChildRunDeadlineController {
 
   stop(): void {
     this.stopped.abort();
+    this.wake.abort();
+  }
+
+  /** Requests bounded evidence wrap-up immediately when a control budget fires. */
+  requestWrapUp(): Promise<void> {
+    if (this.stopped.signal.aborted) return Promise.resolve();
+    this.wake.abort();
+    return this.beginWrapUp();
   }
 
   private async monitor(): Promise<AgentChildRunDeadlineOutcome> {
     const extensionPolicy = this.options.policy.activityExtension;
-    const absoluteHardDeadlineAt =
-      this.options.startedAt +
-      this.options.policy.softTimeoutMs +
-      extensionPolicy.maximumMs +
-      this.options.policy.wrapUpTimeoutMs;
-    let grantedExtensionMs = 0;
-    let softDeadlineAt = this.options.startedAt + this.options.policy.softTimeoutMs;
+    const initialDeadline = this.options.activity.deadlineState();
+    let grantedExtensionMs = initialDeadline.grantedExtensionMs;
+    let softDeadlineAt = initialDeadline.softDeadlineAt;
 
-    while (await waitUntil(softDeadlineAt, this.stopped.signal, this.now)) {
+    while (true) {
+      const waitResult = await waitUntilOrSignal(softDeadlineAt, this.stopped.signal, this.wake.signal, this.now);
+      if (waitResult === "stopped") return AgentChildRunDeadlineOutcomes.Stopped;
+      if (waitResult === "woken") return this.finishWrapUp();
       const extensionRemainingMs = extensionPolicy.maximumMs - grantedExtensionMs;
-      if (!this.options.activity.hasRecentActivity(this.now()) || extensionRemainingMs <= 0) break;
+      if (!this.options.activity.hasRecentMeaningfulProgress(this.now()) || extensionRemainingMs <= 0) {
+        return this.finishWrapUp();
+      }
 
       const extensionMs = Math.min(extensionPolicy.stepMs, extensionRemainingMs);
       grantedExtensionMs += extensionMs;
@@ -65,19 +83,56 @@ export class AgentChildRunDeadlineController {
         softDeadlineAt: new Date(softDeadlineAt).toISOString(),
       });
     }
+  }
 
-    if (this.stopped.signal.aborted) return AgentChildRunDeadlineOutcomes.Stopped;
-
-    const hardDeadlineAt = Math.min(this.now() + this.options.policy.wrapUpTimeoutMs, absoluteHardDeadlineAt);
-    this.options.activity.enterWrapUp(hardDeadlineAt);
-    await this.options.onWrapUp({ hardDeadlineAt: new Date(hardDeadlineAt).toISOString() });
-    if (!(await waitUntil(hardDeadlineAt, this.stopped.signal, this.now))) {
+  private async finishWrapUp(): Promise<AgentChildRunDeadlineOutcome> {
+    await this.beginWrapUp();
+    if (this.hardDeadlineAt === undefined || !(await waitUntil(this.hardDeadlineAt, this.stopped.signal, this.now))) {
       return AgentChildRunDeadlineOutcomes.Stopped;
     }
 
     await this.options.onTimedOut();
     return AgentChildRunDeadlineOutcomes.TimedOut;
   }
+
+  private beginWrapUp(): Promise<void> {
+    if (this.wrapUpStarted) return this.wrapUpStarted;
+    this.hardDeadlineAt = Math.min(this.now() + this.options.policy.wrapUpTimeoutMs, this.absoluteHardDeadlineAt);
+    this.options.activity.enterWrapUp(this.hardDeadlineAt);
+    this.wrapUpStarted = Promise.resolve(
+      this.options.onWrapUp({ hardDeadlineAt: new Date(this.hardDeadlineAt).toISOString() }),
+    );
+    return this.wrapUpStarted;
+  }
+}
+
+type DeadlineWaitResult = "deadline" | "woken" | "stopped";
+
+function waitUntilOrSignal(
+  deadline: number,
+  stopped: AbortSignal,
+  wake: AbortSignal,
+  now: () => number,
+): Promise<DeadlineWaitResult> {
+  if (stopped.aborted) return Promise.resolve("stopped");
+  if (wake.aborted) return Promise.resolve("woken");
+  return new Promise<DeadlineWaitResult>((resolve) => {
+    const timer = setTimeout(() => finish("deadline"), Math.max(0, deadline - now()));
+    timer.unref();
+    const onStopped = (): void => finish("stopped");
+    const onWake = (): void => finish("woken");
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      stopped.removeEventListener("abort", onStopped);
+      wake.removeEventListener("abort", onWake);
+    };
+    const finish = (result: DeadlineWaitResult): void => {
+      cleanup();
+      resolve(result);
+    };
+    stopped.addEventListener("abort", onStopped, { once: true });
+    wake.addEventListener("abort", onWake, { once: true });
+  });
 }
 
 function waitUntil(deadline: number, signal: AbortSignal, now: () => number): Promise<boolean> {

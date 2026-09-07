@@ -61,6 +61,37 @@ describe("web host tools", () => {
     ).rejects.toMatchObject({ code: "private_network_blocked" });
   });
 
+  test("permits a proxy Fake-IP mapping mixed with public IPv4 or IPv6 addresses while still blocking real private networks", async () => {
+    await expect(
+      assertSafeWebUrl(
+        "https://search.example/query",
+        { maxUrlLength: 4_096, allowPrivateNetworks: false, allowSyntheticProxyAddresses: true },
+        async () => ["198.18.0.63", "93.184.216.34"],
+      ),
+    ).resolves.toMatchObject({ hostname: "search.example" });
+    await expect(
+      assertSafeWebUrl(
+        "https://search.example/query",
+        { maxUrlLength: 4_096, allowPrivateNetworks: false, allowSyntheticProxyAddresses: true },
+        async () => ["198.18.0.63", "2606:2800:220:1:248:1893:25c8:1946"],
+      ),
+    ).resolves.toMatchObject({ hostname: "search.example" });
+    await expect(
+      assertSafeWebUrl(
+        "https://search.example/query",
+        { maxUrlLength: 4_096, allowPrivateNetworks: false, allowSyntheticProxyAddresses: true },
+        async () => ["198.18.0.63", "192.168.1.10"],
+      ),
+    ).rejects.toMatchObject({ code: "private_network_blocked" });
+    await expect(
+      assertSafeWebUrl(
+        "https://search.example/query",
+        { maxUrlLength: 4_096, allowPrivateNetworks: false },
+        async () => ["198.18.0.63", "93.184.216.34"],
+      ),
+    ).rejects.toMatchObject({ code: "private_network_blocked" });
+  });
+
   test("truncates streamed responses at the configured byte budget", async () => {
     const fetchImpl = vi.fn(
       async () =>

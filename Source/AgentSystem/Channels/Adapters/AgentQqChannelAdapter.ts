@@ -289,6 +289,12 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
     return this.connectionState;
   }
 
+  private setConnectionState(state: AgentChannelConnectionState): void {
+    if (this.connectionState === state) return;
+    this.connectionState = state;
+    this.handlers?.onConnectionStateChanged?.(state);
+  }
+
   bind(handlers: AgentChannelAdapterHandlers): void {
     this.handlers = handlers;
   }
@@ -308,17 +314,24 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
   async connect(signal: AbortSignal): Promise<void> {
     if (this.internal && !this.internal.signal.aborted) return;
     if (signal.aborted) {
-      this.connectionState = "stopped";
+      this.setConnectionState("stopped");
       return;
     }
     const internal = new AbortController();
     this.internal = internal;
-    this.connectionState = "connecting";
-    signal.addEventListener("abort", () => internal.abort(), { once: true });
+    this.setConnectionState("connecting");
+    signal.addEventListener(
+      "abort",
+      () => {
+        internal.abort();
+        this.setConnectionState("stopped");
+      },
+      { once: true },
+    );
     try {
       await this.rest.getToken();
       if (this.mode === "webhook") {
-        this.connectionState = "connected";
+        this.setConnectionState("connected");
         return;
       }
       const gateway = await this.fetchGatewayUrl();
@@ -345,9 +358,7 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
           this.lastSequence = lastSequence;
         },
         invalidateToken: () => this.rest.invalidate(),
-        setConnectionState: (state) => {
-          this.connectionState = state;
-        },
+        setConnectionState: (state) => this.setConnectionState(state),
         onSocket: (socket) => {
           this.gatewaySocket = socket;
         },
@@ -356,18 +367,18 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
         onFatal: (error) => this.handlers?.onFatal?.(error, this.kind),
       }).catch((error) => {
         if (!internal.signal.aborted) {
-          this.connectionState = "degraded";
+          this.setConnectionState("degraded");
           this.handlers?.onFatal?.(error, this.kind);
         }
       });
     } catch (error) {
-      this.connectionState = "degraded";
+      this.setConnectionState(internal.signal.aborted ? "stopped" : "degraded");
       throw error;
     }
   }
 
   async disconnect(): Promise<void> {
-    this.connectionState = "stopped";
+    this.setConnectionState("stopped");
     this.internal?.abort();
     this.gatewaySocket?.close(1000);
     await this.gatewayPromise?.catch(() => undefined);

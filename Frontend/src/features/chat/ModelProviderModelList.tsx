@@ -17,7 +17,13 @@ import {
   Tooltip,
 } from "../../shared/ui";
 import { inferModelProviderEndpointIcon, inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
-import { defaultModelCapabilities, modelConfigId, providerEnabled, readModelCapabilities } from "./modelConfigData";
+import {
+  defaultModelCapabilities,
+  modelConfigId,
+  providerEnabled,
+  readModelCapabilities,
+  readProviderModelOwnedBy,
+} from "./modelConfigData";
 import type {
   ModelProviderDraft,
   ProviderEndpointDraft,
@@ -28,6 +34,7 @@ import { CapabilityIconStrip } from "./ModelCapabilityControls";
 import {
   EmptyList,
   ListHeader,
+  ModelsDevMetadataSummary,
   ProviderCatalogStatus,
   SearchInput,
   iconButtonClassName,
@@ -389,16 +396,16 @@ function ProviderModelRow({
 }): JSX.Element {
   const isDefault = configured?.Id === defaultModelId;
   const capabilities = configured
-    ? readModelCapabilities(configured, modelTemplate)
-    : defaultModelCapabilities(modelTemplate, model.id, providerId);
+    ? readModelCapabilities(configured, modelTemplate, model.modelsDev)
+    : defaultModelCapabilities(modelTemplate, model.id, providerId, model.modelsDev);
 
   return (
     <div className="group/model grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 transition hover:bg-paper-100/80 [content-visibility:auto] [contain-intrinsic-size:52px]">
       <ModelProviderIcon
         icon={
           configured?.Icon ??
+          inferModelProviderIcon(readProviderModelOwnedBy(model), false) ??
           inferModelProviderIcon(model.id, false) ??
-          inferModelProviderIcon(model.ownedBy ?? "", false) ??
           inferModelProviderEndpointIcon(providerId, false)
         }
         size={22}
@@ -410,9 +417,10 @@ function ProviderModelRow({
         </Tooltip>
         <span className="mt-1 flex min-w-0 items-center gap-1.5">
           <span className="truncate text-[10.5px] text-ink-400">
-            {model.ownedBy || frontendMessage("config.model.providerModel")}
+            {readProviderModelOwnedBy(model) || frontendMessage("config.model.providerModel")}
           </span>
           <CapabilityIconStrip capabilities={capabilities} />
+          <ModelsDevMetadataSummary metadata={model.modelsDev} />
         </span>
       </span>
       <span className="flex items-center justify-end gap-1">

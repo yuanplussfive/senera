@@ -11,6 +11,7 @@ import { createSeneraExecutionRuntimeCapabilities } from "../../../Source/AgentS
 import { AgentPromptTierRenderCache } from "../../../Source/AgentSystem/Prompt/AgentPromptTierRenderCache.js";
 import { EmptyAgentWorkflowPromptContext } from "../../../Source/AgentSystem/Prompt/AgentWorkflowPromptContext.js";
 import { EmptyAgentSceneContext } from "../../../Source/AgentSystem/Prompt/AgentSceneContextCompiler.js";
+import { resolveAgentDockerEngineGuestWorkspaceRoot } from "../../../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 
 describe("turn prompt projection", () => {
   test.each([
@@ -94,8 +95,10 @@ describe("turn prompt projection", () => {
   );
 
   test("adds Docker shell guidance only when the runtime exposes Sandbox", () => {
+    const workspaceRoot = path.resolve(process.cwd());
+    const guestWorkspaceRoot = resolveAgentDockerEngineGuestWorkspaceRoot(workspaceRoot, "docker-engine");
     const context = buildAgentExecutionEnvironmentContext(
-      process.cwd(),
+      workspaceRoot,
       createSeneraExecutionRuntimeCapabilities({
         platform: "linux",
         sandboxProvider: "docker-engine",
@@ -109,17 +112,26 @@ describe("turn prompt projection", () => {
       boundary: "sandbox",
       os: "Linux",
       shellDialect: "posix-sh",
-      workspaceRoot: "/workspace",
+      workspaceRoot: guestWorkspaceRoot,
       workspacePathStyle: "posix",
       workspaceSeparator: "/",
       workspaceMount: "bind",
     });
-    expect(context.guidance.shell).toContain(
-      "Sandbox shell tools run in an isolated Linux container with the posix-sh dialect; its workspace root is /workspace.",
-    );
-    expect(context.guidance.shell).toContain(
-      `The host workspace ${path.resolve(process.cwd())} is bind-mounted at /workspace; use workspace-relative paths instead of host paths in Sandbox commands.`,
-    );
+    if (guestWorkspaceRoot === workspaceRoot) {
+      expect(context.guidance.shell).toContain(
+        `Sandbox shell tools run in an isolated Linux container with the posix-sh dialect; its workspace root is ${guestWorkspaceRoot}, identical to the host workspace root.`,
+      );
+      expect(context.guidance.shell).toContain(
+        "Paths inside the sandbox are the same as on the host; prefer workspace-relative paths in tool arguments.",
+      );
+    } else {
+      expect(context.guidance.shell).toContain(
+        `Sandbox shell tools run in an isolated Linux container with the posix-sh dialect; its workspace root is ${guestWorkspaceRoot}.`,
+      );
+      expect(context.guidance.shell).toContain(
+        `The host workspace ${workspaceRoot} is bind-mounted at ${guestWorkspaceRoot}; use workspace-relative paths instead of host paths in Sandbox commands.`,
+      );
+    }
   });
 
   test.each(["native", "baml"] as const)(

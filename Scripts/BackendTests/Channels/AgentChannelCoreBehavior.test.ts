@@ -6,8 +6,11 @@ import {
   serializeAgentChannelLane,
 } from "../../../Source/AgentSystem/Channels/AgentChannelSessionIdentity.js";
 import {
+  analyzeChannelMarkdownStructure,
   convertAgentChannelMarkdown,
+  requiresChannelFinalRewrite,
   splitAgentChannelContent,
+  splitChannelTextByParagraphs,
   ensureClosedFences,
 } from "../../../Source/AgentSystem/Channels/AgentChannelText.js";
 import {
@@ -30,6 +33,10 @@ import {
   projectAgentChannelOutboundMedia,
 } from "../../../Source/AgentSystem/Channels/AgentChannelOutboundMedia.js";
 import { parseAgentChannelFinalDelivery } from "../../../Source/AgentSystem/Channels/AgentChannelFinalResponse.js";
+import {
+  appendAgentChannelFinalizationRecord,
+  readAgentChannelFinalizationHistory,
+} from "../../../Source/AgentSystem/Channels/AgentChannelFinalizationTypes.js";
 import { cleanupChannelsTestRoots, openChannelsTestDatabase, TestChannelSource } from "./AgentChannelTestSupport.js";
 
 afterEach(() => cleanupChannelsTestRoots());
@@ -81,6 +88,42 @@ describe("structured channel final delivery", () => {
   });
 });
 
+describe("channel finalization context", () => {
+  test("keeps a bounded, idempotent learning window", () => {
+    let metadata: Parameters<typeof appendAgentChannelFinalizationRecord>[0] | undefined;
+    const base = {
+      createdAt: "2026-09-03T00:00:00.000Z",
+      platform: "qq" as const,
+      chatType: "direct" as const,
+      content: "x".repeat(20_000),
+      parts: [
+        { kind: "text" as const, text: "x".repeat(20_000) },
+        { kind: "resource" as const, uri: "senera://resource/example", alt: "示例" },
+      ],
+    };
+    for (let index = 0; index < 10; index += 1) {
+      metadata = appendAgentChannelFinalizationRecord(metadata, { ...base, id: `request-${index}` });
+    }
+    metadata = appendAgentChannelFinalizationRecord(metadata, { ...base, id: "request-9", content: "latest" });
+
+    const history = readAgentChannelFinalizationHistory(metadata);
+    expect(history).toHaveLength(8);
+    expect(history.map((record) => record.id)).toEqual([
+      "request-2",
+      "request-3",
+      "request-4",
+      "request-5",
+      "request-6",
+      "request-7",
+      "request-8",
+      "request-9",
+    ]);
+    expect(history.at(-1)?.content).toBe("latest");
+    expect(history[0]?.content.length).toBeLessThanOrEqual(12_000);
+    expect(history[0]?.parts[0]?.kind === "text" && history[0].parts[0].text.length).toBeLessThanOrEqual(8_192);
+  });
+});
+
 describe("channel session mapping store", () => {
   test("upsert, reset and resume paths", () => {
     const database = openChannelsTestDatabase();
@@ -125,6 +168,58 @@ describe("channel text pipeline", () => {
     expect(converted).toContain("\\*bold\\*");
     expect(converted).toContain("const x = 1 * 2");
   });
+
+  test("requires a model rewrite for code fences and explicit resources", () => {
+    expect(requiresChannelFinalRewrite("")).toBe(false);
+    expect(requiresChannelFinalRewrite("纯文本回答，没有任何特殊内容。")).toBe(false);
+    expect(requiresChannelFinalRewrite("行内 `code` 和普通链接 https://example.com 不算")).toBe(false);
+    expect(requiresChannelFinalRewrite("普通链接 [官网](https://example.com) 不触发")).toBe(false);
+    expect(requiresChannelFinalRewrite("```ts\nconst x = 1;\n```")).toBe(true);
+    expect(requiresChannelFinalRewrite("前文\n~~~\ncode\n~~~")).toBe(true);
+    expect(requiresChannelFinalRewrite("看图 ![截图](https://cdn.example/a.png)")).toBe(true);
+    expect(requiresChannelFinalRewrite("见 senera://resource/r1")).toBe(true);
+    expect(requiresChannelFinalRewrite("[下载](E:/senera/archive.zip)")).toBe(true);
+  });
+
+  test("analyzes markdown structure for code, media, and resource evidence", () => {
+    expect(analyzeChannelMarkdownStructure("")).toEqual({
+      codeBlockCount: 0,
+      codeLanguages: [],
+      mediaReferenceCount: 0,
+      resourceLinkCount: 0,
+      plainLinkCount: 0,
+      inlineResourceUriCount: 0,
+    });
+    const fenced = analyzeChannelMarkdownStructure("```ts\nconst x = 1;\n```\n    indented block");
+    expect(fenced.codeBlockCount).toBe(2);
+    expect(fenced.codeLanguages).toEqual(["ts"]);
+    const media = analyzeChannelMarkdownStructure(
+      "看图 ![截图](https://cdn.example/a.png) 和 [下载](E:/senera/archive.zip)",
+    );
+    expect(media.mediaReferenceCount).toBe(1);
+    expect(media.resourceLinkCount).toBe(1);
+    expect(media.plainLinkCount).toBe(0);
+    const mixed = analyzeChannelMarkdownStructure("见 senera://resource/r1 和 [官网](https://example.com)");
+    expect(mixed.inlineResourceUriCount).toBe(1);
+    expect(mixed.plainLinkCount).toBe(1);
+    const oversized = analyzeChannelMarkdownStructure("x".repeat(600_000));
+    expect(oversized.codeBlockCount).toBeGreaterThan(0);
+  });
+
+  test("splits plain text into paragraph parts capped at four, balancing lengths", () => {
+    expect(splitChannelTextByParagraphs("   ")).toEqual([]);
+    expect(splitChannelTextByParagraphs("只有一段")).toEqual(["只有一段"]);
+    expect(splitChannelTextByParagraphs("一。\n\n二。\n\n三。")).toEqual(["一。", "二。", "三。"]);
+    const many = Array.from({ length: 8 }, (_, index) => `第${index + 1}段内容`).join("\n\n");
+    const parts = splitChannelTextByParagraphs(many, 4);
+    expect(parts.length).toBe(4);
+    const lengths = parts.map((part) => part.length);
+    expect(Math.max(...lengths) - Math.min(...lengths)).toBeLessThanOrEqual(2);
+  });
+
+  test("falls back to line blocks when text has breaks but no blank lines", () => {
+    expect(splitChannelTextByParagraphs("第一行\n第二行\n第三行")).toEqual(["第一行", "第二行", "第三行"]);
+  });
 });
 
 describe("channel delivery pump", () => {
@@ -149,6 +244,7 @@ describe("channel delivery pump", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_source, content) => {
         calls += 1;
         history.push({ source: _source, content, attempt: calls });
@@ -229,6 +325,7 @@ describe("channel run renderer", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_source, content) => {
         messages.push({ content });
         return { kind: "sent", messageId: `m${messages.length}` };
@@ -282,6 +379,7 @@ describe("channel run renderer", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_source, content) => {
         messages.push(content);
         return { kind: "sent", messageId: `m${messages.length}` };
@@ -332,6 +430,7 @@ describe("channel run renderer", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_source, content, options) => {
         sent.push({ content, options });
         return { kind: "sent", messageId: `m${sent.length}` };
@@ -406,7 +505,7 @@ describe("channel run renderer", () => {
     await delivery.stop();
   });
 
-  test("skips the host rewrite for plain text answers without resource references", async () => {
+  test("keeps plain-text answers on the local paragraph path", async () => {
     const source: AgentChannelSource = { ...TestChannelSource, platform: "qq" };
     const sent: Array<{ content: string }> = [];
     const adapter: AgentChannelAdapter = {
@@ -423,6 +522,7 @@ describe("channel run renderer", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_s, content) => {
         sent.push({ content });
         return { kind: "sent", messageId: `m${sent.length}` };
@@ -438,25 +538,32 @@ describe("channel run renderer", () => {
       finalResponseRewriter: {
         rewrite: async () => {
           rewrites += 1;
-          return { parts: [{ kind: "text", text: "重写" }] };
+          return {
+            parts: [
+              { kind: "text", text: "第一段纯文本。" },
+              { kind: "text", text: "第二段纯文本。" },
+              { kind: "text", text: "第三段纯文本。" },
+            ],
+          };
         },
       },
     });
+    const answer = "第一段纯文本。\n\n第二段纯文本。\n\n第三段纯文本。";
     await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-plain" }, data: {} } as never);
     await renderer.handleEvent({
       kind: "assistant.message.created",
       context: { requestId: "req-plain" },
-      data: { kind: "final_answer", content: "这是一个纯文本回答，没有资源引用。", terminal: true },
+      data: { kind: "final_answer", content: answer, terminal: true },
     } as never);
     await renderer.handleEvent({ kind: "run.completed", context: { requestId: "req-plain" }, data: {} } as never);
     await delivery.flush();
 
     expect(rewrites).toBe(0);
-    expect(sent.map(({ content }) => content)).toEqual(["这是一个纯文本回答，没有资源引用。"]);
+    expect(sent.map(({ content }) => content)).toEqual(["第一段纯文本。", "第二段纯文本。", "第三段纯文本。"]);
     await delivery.stop();
   });
 
-  test("runs the host rewrite for long plain-text answers above the token threshold", async () => {
+  test("runs the host rewrite for structured answers with code fences", async () => {
     const source: AgentChannelSource = { ...TestChannelSource, platform: "qq" };
     const sent: Array<{ content: string }> = [];
     const adapter: AgentChannelAdapter = {
@@ -473,6 +580,7 @@ describe("channel run renderer", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_s, content) => {
         sent.push({ content });
         return { kind: "sent", messageId: `m${sent.length}` };
@@ -497,12 +605,12 @@ describe("channel run renderer", () => {
         },
       },
     });
-    const longAnswer = "汉".repeat(250); // ~250 tokens, above the default threshold
+    const answer = "前文\n```ts\nconst x = 1;\n```\n后文";
     await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-long" }, data: {} } as never);
     await renderer.handleEvent({
       kind: "assistant.message.created",
       context: { requestId: "req-long" },
-      data: { kind: "final_answer", content: longAnswer, terminal: true },
+      data: { kind: "final_answer", content: answer, terminal: true },
     } as never);
     await renderer.handleEvent({ kind: "run.completed", context: { requestId: "req-long" }, data: {} } as never);
     await delivery.flush();
@@ -529,6 +637,7 @@ describe("channel run renderer", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_s, content) => {
         sent.push({ content });
         return { kind: "sent", messageId: `m${sent.length}` };
@@ -544,7 +653,7 @@ describe("channel run renderer", () => {
         rewrite: async () => ({ parts: [{ kind: "text", text: "   " }] }),
       },
     });
-    const answer = "汉".repeat(250); // above the token threshold so the rewrite runs, then falls back
+    const answer = "```ts\nconst x = 1;\n```";
     await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-empty" }, data: {} } as never);
     await renderer.handleEvent({
       kind: "assistant.message.created",
@@ -555,6 +664,74 @@ describe("channel run renderer", () => {
     await delivery.flush();
 
     expect(sent.map(({ content }) => content)).toEqual([answer]);
+    await delivery.stop();
+  });
+
+  test("drops a late rewrite result after the renderer is disposed", async () => {
+    const sent: string[] = [];
+    const adapter: AgentChannelAdapter = {
+      kind: "qq",
+      capabilities: {
+        splitsLongMessages: true,
+        maxMessageLength: 4096,
+        supportsEdit: false,
+        supportsDraft: false,
+        markdown: "plain",
+        commandPrefix: "/",
+        supportsMedia: true,
+      },
+      bind: () => undefined,
+      connect: async () => undefined,
+      disconnect: async () => undefined,
+      getConnectionState: () => "connected",
+      send: async (_source, content) => {
+        sent.push(content);
+        return { kind: "sent", messageId: `m${sent.length}` };
+      },
+      handleWebhookUpdate: async () => false,
+    };
+    const delivery = new AgentChannelDelivery({ adapter });
+    let resolveRewrite!: (value: { parts: [{ kind: "text"; text: string }] }) => void;
+    let markRewriteStarted!: () => void;
+    let rewriteSignal: AbortSignal | undefined;
+    const rewriteStarted = new Promise<void>((resolve) => {
+      markRewriteStarted = resolve;
+    });
+    const rewriteResult = new Promise<{ parts: [{ kind: "text"; text: string }] }>((resolve) => {
+      resolveRewrite = resolve;
+    });
+    const renderer = new AgentChannelRunRenderer({
+      adapter,
+      delivery,
+      source: TestChannelSource,
+      finalResponseRewriter: {
+        rewrite: async (input) => {
+          rewriteSignal = input.signal;
+          markRewriteStarted();
+          return rewriteResult;
+        },
+      },
+    });
+
+    await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-late" }, data: {} } as never);
+    await renderer.handleEvent({
+      kind: "assistant.message.created",
+      context: { requestId: "req-late" },
+      data: { kind: "final_answer", content: "原始答案\n![图](senera://resource/r1)", terminal: true },
+    } as never);
+    const completion = renderer.handleEvent({
+      kind: "run.completed",
+      context: { requestId: "req-late" },
+      data: {},
+    } as never);
+    await rewriteStarted;
+    renderer.dispose();
+    expect(rewriteSignal?.aborted).toBe(true);
+    resolveRewrite({ parts: [{ kind: "text", text: "迟到答案" }] });
+    await completion;
+    await delivery.flush();
+
+    expect(sent).toEqual([]);
     await delivery.stop();
   });
 
@@ -574,6 +751,7 @@ describe("channel run renderer", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_source, content, options) => {
         sent.push({ content, options });
         return { kind: "sent", messageId: `m${sent.length}` };
@@ -612,6 +790,7 @@ describe("channel run renderer", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_source, content, options) => {
         sent.push({ content, options });
         return { kind: "sent", messageId: `m${sent.length}` };
@@ -650,6 +829,7 @@ describe("channel run renderer", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_source, content, options) => {
         sent.push({ content, options });
         return { kind: "sent", messageId: `m${sent.length}` };
@@ -797,6 +977,7 @@ describe("channel run renderer", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_source, content, options) => {
         sent.push({ content, options });
         return { kind: "sent", messageId: `m${sent.length}` };
@@ -895,6 +1076,7 @@ describe("channel run renderer", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_source, content, options) => {
         sent.push({ content, options });
         return { kind: "sent", messageId: `m${sent.length}` };
@@ -964,6 +1146,7 @@ describe("channel run renderer", () => {
       bind: () => undefined,
       connect: async () => undefined,
       disconnect: async () => undefined,
+      getConnectionState: () => "connected",
       send: async (_source, content, options) => {
         sent.push({ content, options });
         return { kind: "sent", messageId: `m${sent.length}` };

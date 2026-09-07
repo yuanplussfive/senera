@@ -6,6 +6,7 @@ import type { AgentPresetOperationResult, AgentPresetSnapshot } from "../Presets
 import type { AgentConfigDiagnostic, AgentConfigSnapshot, AgentConfigSnapshotSource } from "./AgentConfigService.js";
 import type { AgentProviderModelSnapshot } from "./AgentProviderModelDiscovery.js";
 import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
+import type { AgentModelsDevCatalogStatus } from "../ModelEndpoints/AgentModelsDevCatalog.js";
 
 export type AgentSystemConfigOperationKind =
   | "config_update"
@@ -49,6 +50,7 @@ export type AgentConfigDomainEvent =
       context: AgentEventContext;
       data: {
         models: AgentModelProviderListItem[];
+        modelsDev: AgentModelsDevCatalogStatus;
         defaultModelProviderId: string;
       };
     }

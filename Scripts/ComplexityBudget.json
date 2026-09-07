@@ -21,9 +21,21 @@
     },
     {
       "path": "Frontend/src/api/eventTypes.ts",
-      "baselineLines": 810,
+      "baselineLines": 866,
       "owner": "frontend-platform",
       "splitTarget": "Split event type declarations by runtime domain while keeping the public event catalog stable."
+    },
+    {
+      "path": "Frontend/src/features/workflow/AgentExecutionFeed.tsx",
+      "baselineLines": 813,
+      "owner": "frontend-platform",
+      "splitTarget": "Extract child-run stage rendering into a focused workflow component."
+    },
+    {
+      "path": "Frontend/src/features/workflow/feedModel.ts",
+      "baselineLines": 854,
+      "owner": "frontend-platform",
+      "splitTarget": "Extract child-run and timeline projection helpers into focused workflow modules."
     },
     {
       "path": "Scripts/BackendTests/Pi/PiToolExecutionBridgeBehavior.test.ts",
@@ -39,9 +51,21 @@
     },
     {
       "path": "Scripts/BackendTests/Channels/AgentChannelCoreBehavior.test.ts",
-      "baselineLines": 1040,
+      "baselineLines": 1223,
       "owner": "channel-runtime",
       "splitTarget": "Split renderer, delivery, and session mapping coverage into focused test files."
+    },
+    {
+      "path": "Scripts/BackendTests/Orchestration/AgentDelegationBehavior.test.ts",
+      "baselineLines": 884,
+      "owner": "orchestration-runtime",
+      "splitTarget": "Split child-run lifecycle and wait scenarios into focused test files."
+    },
+    {
+      "path": "Scripts/FrontendTests/Feature/WorkflowExecutionFeedComponents.test.mjs",
+      "baselineLines": 878,
+      "owner": "frontend-platform",
+      "splitTarget": "Split workflow feed and child-run component scenarios into focused test files."
     },
     {
       "path": "Scripts/BackendTests/Session/SessionManagerBehavior.test.ts",
@@ -63,7 +87,7 @@
     },
     {
       "path": "Source/AgentSystem/Channels/AgentChannelService.ts",
-      "baselineLines": 903,
+      "baselineLines": 999,
       "owner": "channel-runtime",
       "splitTarget": "Extract command routing, lifecycle synchronization, and delivery orchestration into focused modules."
     },
@@ -75,13 +99,13 @@
     },
     {
       "path": "Source/AgentSystem/Orchestration/AgentDelegationService.ts",
-      "baselineLines": 828,
+      "baselineLines": 930,
       "owner": "orchestration-runtime",
       "splitTarget": "Extract child-run lifecycle and wait coordination into focused orchestration modules."
     },
     {
       "path": "Source/AgentSystem/TemporalMemory/AgentTemporalMemorySqliteStore.ts",
-      "baselineLines": 863,
+      "baselineLines": 901,
       "owner": "temporal-memory",
       "splitTarget": "Extract SQL row codecs and query projections into dedicated modules."
     },

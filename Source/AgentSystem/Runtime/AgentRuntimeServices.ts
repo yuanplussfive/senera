@@ -39,6 +39,9 @@ export interface AgentRetrievalService {
   toolUsePatterns(
     options: Parameters<AgentToolSearchRuntime["toolUsePatterns"]>[0],
   ): ReturnType<AgentToolSearchRuntime["toolUsePatterns"]>;
+  reusableCapabilities?(
+    options: Parameters<AgentToolSearchRuntime["reusableCapabilities"]>[0],
+  ): ReturnType<AgentToolSearchRuntime["reusableCapabilities"]>;
 }
 
 export interface AgentPromptContextService {
@@ -110,6 +113,7 @@ export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServ
       finishRequest: (...args) => dependencies.toolSearch.finishRequest(...args),
       afterToolResults: (options) => dependencies.toolSearch.afterToolResults(options),
       toolUsePatterns: (options) => dependencies.toolSearch.toolUsePatterns(options),
+      reusableCapabilities: (options) => dependencies.toolSearch.reusableCapabilities(options),
     },
     promptContext: {
       activateSkills: (options) => dependencies.skillActivation.activate(options),

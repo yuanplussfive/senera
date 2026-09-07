@@ -17,6 +17,7 @@ import {
 } from "../Continuity/AgentContinuityRelationCatalog.js";
 import { assertAgentContinuityRelationEndpoints } from "../Continuity/AgentContinuityRelationCatalog.js";
 import type { AgentWorldAttributes } from "./AgentWorldTypes.js";
+import { parseAgentTextParts, projectLegacyIdentityText, type AgentTextParts } from "../Text/AgentTextParts.js";
 
 export interface AgentWorldEventSubject {
   readonly id: string;
@@ -86,6 +87,7 @@ export interface AgentWorldEvent {
   readonly subject: AgentWorldEventSubject;
   readonly type: string;
   readonly summary: string;
+  readonly summaryParts?: AgentTextParts;
   readonly changes: readonly AgentWorldEventChange[];
   readonly evidenceRefs: readonly string[];
   readonly occurredAt: string;
@@ -100,6 +102,7 @@ export interface AgentWorldEventAppendInput {
   readonly subject: AgentWorldEventSubject;
   readonly type: string;
   readonly summary: string;
+  readonly summaryParts?: AgentTextParts;
   readonly changes: readonly AgentWorldEventChange[];
   readonly evidenceRefs: readonly string[];
   readonly occurredAt: string;
@@ -121,6 +124,7 @@ interface WorldEventRow {
   readonly subject_kind: AgentContinuityEntityKind;
   readonly event_type: string;
   readonly summary: string;
+  readonly summary_parts_json: string;
   readonly changes_json: string;
   readonly evidence_refs_json: string;
   readonly occurred_at: string;
@@ -166,6 +170,7 @@ export class AgentWorldEventLedger {
     const subject = normalizeSubject(input.subject);
     const type = requireText(input.type, "World event type");
     const summary = requireText(input.summary, "World event summary");
+    const summaryParts = input.summaryParts ? parseAgentTextParts(input.summaryParts, "World event summary parts") : [];
     const changes = validateChanges(input.changes);
     const evidenceRefs = normalizeEvidenceRefs(input.evidenceRefs);
     const occurredAt = normalizeInstant(input.occurredAt, "World event occurrence time");
@@ -184,10 +189,10 @@ export class AgentWorldEventLedger {
         .prepare(
           `INSERT INTO agent_world_events
             (id, uri, world_id, sequence, idempotency_key, subject_id, subject_kind, event_type, summary,
-             changes_json, evidence_refs_json, occurred_at, recorded_at, local_date)
+             summary_parts_json, changes_json, evidence_refs_json, occurred_at, recorded_at, local_date)
            VALUES
-            (@id, @uri, @worldId, @sequence, @idempotencyKey, @subjectId, @subjectKind, @eventType, @summary,
-             @changesJson, @evidenceRefsJson, @occurredAt, @recordedAt, @localDate)`,
+           (@id, @uri, @worldId, @sequence, @idempotencyKey, @subjectId, @subjectKind, @eventType, @summary,
+             @summaryPartsJson, @changesJson, @evidenceRefsJson, @occurredAt, @recordedAt, @localDate)`,
         )
         .run({
           id,
@@ -199,6 +204,7 @@ export class AgentWorldEventLedger {
           subjectKind: subject.kind,
           eventType: type,
           summary,
+          summaryPartsJson: JSON.stringify(summaryParts),
           changesJson: JSON.stringify(changes),
           evidenceRefsJson: JSON.stringify(evidenceRefs),
           occurredAt,
@@ -261,7 +267,7 @@ export class AgentWorldEventLedger {
   private listRecorded(worldId: string): AgentWorldEvent[] {
     return this.db
       .prepare<[string], WorldEventRow>(
-        `SELECT id, uri, world_id, sequence, subject_id, subject_kind, event_type, summary, changes_json,
+        `SELECT id, uri, world_id, sequence, subject_id, subject_kind, event_type, summary, summary_parts_json, changes_json,
                 evidence_refs_json, occurred_at, recorded_at, local_date
            FROM agent_world_events
           WHERE world_id = ?
@@ -274,7 +280,7 @@ export class AgentWorldEventLedger {
   private findByIdempotencyKey(idempotencyKey: string): AgentWorldEvent | undefined {
     const row = this.db
       .prepare<[string], WorldEventRow>(
-        `SELECT id, uri, world_id, sequence, subject_id, subject_kind, event_type, summary, changes_json,
+        `SELECT id, uri, world_id, sequence, subject_id, subject_kind, event_type, summary, summary_parts_json, changes_json,
                 evidence_refs_json, occurred_at, recorded_at, local_date
            FROM agent_world_events WHERE idempotency_key = ?`,
       )
@@ -463,6 +469,11 @@ function agendaEntityKind(identity: AgentAgendaRecordIdentity): AgentContinuityE
 
 function projectWorldEventRow(row: WorldEventRow): AgentWorldEvent {
   const subject = normalizeSubject({ id: row.subject_id, kind: row.subject_kind });
+  const storedParts = parseAgentTextParts(
+    parseJsonText(row.summary_parts_json, `World event ${row.id} summary parts`),
+    `World event ${row.id} summary parts`,
+  );
+  const summaryParts = storedParts.length > 0 ? storedParts : projectLegacyIdentityText(row.summary);
   return {
     id: row.id,
     uri: row.uri,
@@ -471,6 +482,7 @@ function projectWorldEventRow(row: WorldEventRow): AgentWorldEvent {
     subject,
     type: requireText(row.event_type, "Stored world event type"),
     summary: requireText(row.summary, "Stored world event summary"),
+    ...(summaryParts.length > 0 ? { summaryParts } : {}),
     changes: validateChanges(parseJsonText(row.changes_json, `World event ${row.id} changes`)),
     evidenceRefs: normalizeEvidenceRefs(
       parseJsonText(row.evidence_refs_json, `World event ${row.id} evidence references`),

@@ -730,6 +730,7 @@ export const EventSpecs = {
         "/data/snapshot/toolCalls",
         "/data/snapshot/activeTools",
         "/data/snapshot/artifactUris",
+        "/data/snapshot/control",
         "/data/snapshot/deadline",
       ],
     },

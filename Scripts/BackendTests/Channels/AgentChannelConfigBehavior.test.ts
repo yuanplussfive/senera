@@ -129,6 +129,19 @@ describe("qq adapter default wiring", () => {
     expect(adapter.capabilities.markdown).toBe("markdown");
   });
 
+  test("rejects adapters without an explicit lifecycle state contract", () => {
+    const registry = createDefaultAgentChannelRegistry({
+      factories: [
+        {
+          kind: "qq",
+          create: () => ({}) as never,
+        },
+      ],
+    });
+
+    expect(() => registry.create("qq", { enabled: true } as never)).toThrow("getConnectionState() is required");
+  });
+
   test("native Markdown is enabled by default and can be disabled", () => {
     const plain = new AgentQqChannelAdapter({ appId: "app", appSecret: "secret" });
     const disabled = new AgentQqChannelAdapter({ appId: "app", appSecret: "secret", markdownSupport: false });

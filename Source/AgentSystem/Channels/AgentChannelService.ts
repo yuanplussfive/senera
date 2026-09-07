@@ -16,6 +16,7 @@ import {
   type AgentChannelBusyMessageMode,
   type AgentChannelCommand,
   type AgentChannelConfig,
+  type AgentChannelConnectionState,
   type AgentChannelInboundMessage,
   type AgentChannelInteraction,
   type AgentChannelKind,
@@ -34,6 +35,8 @@ import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentChannelFinalResponseRewriter } from "./AgentChannelFinalResponse.js";
 import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
+import { createAgentPiLogicalCacheScope } from "../Pi/AgentPiPromptCache.js";
+import type { AgentChannelFinalizationRecord } from "./AgentChannelFinalizationTypes.js";
 
 export const AgentChannelServiceDefaults = Object.freeze({
   enabled: false,
@@ -73,6 +76,12 @@ export interface AgentChannelSessionPort {
     interaction?: AgentInteractionContext;
   }): Promise<boolean>;
   hasActiveRun(sessionId: string): boolean;
+  /** Optional on lightweight hosts; the production manager persists this in SQLite. */
+  loadChannelFinalizationContext?(
+    sessionId: string,
+    platform?: AgentChannelKind,
+  ): Promise<readonly AgentChannelFinalizationRecord[]>;
+  recordChannelFinalization?(sessionId: string, record: AgentChannelFinalizationRecord): Promise<void>;
 }
 
 export interface AgentEventSyncer {
@@ -108,6 +117,7 @@ export interface AgentChannelStatus {
   readonly kind: AgentChannelKind;
   readonly enabled: boolean;
   readonly connected: boolean;
+  readonly state: AgentChannelConnectionState;
   readonly mode?: string;
   readonly error?: string;
 }
@@ -183,13 +193,12 @@ export class AgentChannelService {
     return kinds.map((kind) => {
       const active = this.active.get(kind);
       const config = channelsConfig.channels[kind];
+      const state = active ? active.adapter.getConnectionState() : "stopped";
       return {
         kind,
         enabled: channelsConfig.enabled && (active !== undefined || config?.enabled === true),
-        connected:
-          active !== undefined &&
-          !active.abort.signal.aborted &&
-          (active.adapter.getConnectionState?.() ?? "connected") === "connected",
+        connected: state === "connected",
+        state,
         mode: active?.config.mode,
         error: active?.error,
       };
@@ -414,7 +423,20 @@ export class AgentChannelService {
     this.active.set(kind, channel);
     adapter.bind({
       onMessage: (message) => this.handleInbound(channel, message),
+      onConnectionStateChanged: (state) => {
+        // A replaced adapter may finish an old reconnect after a new one is
+        // active. Its state must never overwrite the current channel status.
+        if (this.active.get(kind) !== channel) return;
+        // Errors describe the previous failed attempt. A fresh attempt or a
+        // successful handshake gets a clean status; a degraded state keeps
+        // the latest diagnostic visible to the operator.
+        if (state === "connecting" || state === "reconnecting" || state === "connected") {
+          channel.error = undefined;
+        }
+        this.options.onStatusChanged?.(this.statuses);
+      },
       onFatal: (error) => {
+        if (this.active.get(kind) !== channel) return;
         this.log("error", "channels.adapter_fatal", { kind, message: describe(error) });
         channel.error = describe(error);
         this.options.onStatusChanged?.(this.statuses);
@@ -432,7 +454,12 @@ export class AgentChannelService {
           { kind },
         );
       }
-      this.log("info", "channels.connected", { kind, mode: config.mode ?? "long_polling" });
+      const connectionState = adapter.getConnectionState();
+      this.log("info", connectionState === "connected" ? "channels.connected" : "channels.connecting", {
+        kind,
+        mode: config.mode ?? "long_polling",
+        state: connectionState,
+      });
     } catch (error) {
       channel.error = describe(error);
       this.log("error", "channels.connect_failed", { kind, message: describe(error) });
@@ -638,6 +665,11 @@ export class AgentChannelService {
     attachments?: readonly AgentUploadAttachment[],
   ): Promise<void> {
     const requestId = `channel_${createShortId()}`;
+    const logicalCacheScope = createAgentPiLogicalCacheScope({
+      sessionId,
+      family: `channel-finalization:${source.platform}`,
+    });
+    const finalizationHistory = await this.loadFinalizationHistory(sessionId, channel.kind);
     const renderer = new AgentChannelRunRenderer({
       adapter: channel.adapter,
       delivery: channel.delivery,
@@ -645,12 +677,21 @@ export class AgentChannelService {
       streamProgress: channel.config.streamProgress !== false,
       resourceResolver: this.options.resourceResolver,
       finalResponseRewriter: this.options.finalResponseRewriter,
+      sessionId,
+      requestId,
+      logicalCacheScope,
+      finalizationHistory,
+      onFinalized: (record) => this.options.sessionManager.recordChannelFinalization?.(sessionId, record),
       onPreviewFailed: (error) =>
         this.log("warn", "channels.preview_failed", { kind: channel.kind, message: describe(error) }),
       onMediaFailed: (error) =>
         this.log("warn", "channels.media_projection_failed", { kind: channel.kind, message: describe(error) }),
       onFinalRewriteFailed: (error) =>
         this.log("warn", "channels.final_rewrite_failed", { kind: channel.kind, message: describe(error) }),
+      onFinalRewriteTiming: (timing) =>
+        this.log("info", "channels.final_rewrite_timing", { kind: channel.kind, ...timing }),
+      onFinalizationPersistFailed: (error) =>
+        this.log("warn", "channels.finalization_persist_failed", { kind: channel.kind, message: describe(error) }),
     });
     let finished: (() => void) | undefined;
     const terminal = new Promise<void>((resolve) => {
@@ -701,7 +742,7 @@ export class AgentChannelService {
         // timeout; only a dropped submission needs a sender-facing notice.
         this.releaseRenderer(requestId, renderer);
         if (submission.kind !== "queued") {
-          channel.delivery.enqueue(source, "⏳ 当前任务正在收尾，请稍后重新发送这条消息。");
+          channel.delivery.enqueue(source, this.renderBusyLaneNotice(channel));
         }
       }
     } catch (error) {
@@ -782,7 +823,8 @@ export class AgentChannelService {
       userId: lane.userId,
       threadId: lane.threadId,
     };
-    const renderer = this.createRenderer(channel, source);
+    const finalizationHistory = await this.loadFinalizationHistory(request.sessionId, lane.platform);
+    const renderer = this.createRenderer(channel, source, request.sessionId, request.deliveryId, finalizationHistory);
     try {
       const accepted = await renderer.deliverProactive(request.content);
       if (!accepted) {
@@ -824,11 +866,39 @@ export class AgentChannelService {
       userId: lane.userId,
       threadId: lane.threadId,
     };
-    const headline = summarizeCompletion(record);
-    channel.delivery.enqueue(source, agentErrorMessage("channels.taskCompleted", { summary: headline }));
+    const finalizationHistory = await this.loadFinalizationHistory(record.parentSessionId, lane.platform);
+    const renderer = this.createRenderer(channel, source, record.parentSessionId, record.id, finalizationHistory);
+    try {
+      const accepted = await renderer.deliverProactive(
+        agentErrorMessage("channels.taskCompleted", { summary: summarizeCompletion(record) }),
+      );
+      if (!accepted) {
+        this.log("warn", "channels.completion_delivery_backpressure", {
+          kind: lane.platform,
+          runId: record.id,
+        });
+      }
+    } catch (error) {
+      this.log("warn", "channels.completion_delivery_failed", {
+        kind: lane.platform,
+        runId: record.id,
+        message: describe(error),
+      });
+    } finally {
+      renderer.dispose();
+    }
   }
 
-  private createRenderer(channel: ActiveChannel, source: AgentChannelSource): AgentChannelRunRenderer {
+  private createRenderer(
+    channel: ActiveChannel,
+    source: AgentChannelSource,
+    sessionId?: string,
+    requestId?: string,
+    finalizationHistory: readonly AgentChannelFinalizationRecord[] = [],
+  ): AgentChannelRunRenderer {
+    const logicalCacheScope = sessionId
+      ? createAgentPiLogicalCacheScope({ sessionId, family: `channel-finalization:${source.platform}` })
+      : undefined;
     return new AgentChannelRunRenderer({
       adapter: channel.adapter,
       delivery: channel.delivery,
@@ -836,13 +906,39 @@ export class AgentChannelService {
       streamProgress: false,
       resourceResolver: this.options.resourceResolver,
       finalResponseRewriter: this.options.finalResponseRewriter,
+      sessionId,
+      requestId,
+      logicalCacheScope,
+      finalizationHistory,
+      onFinalized: (record) =>
+        sessionId ? this.options.sessionManager.recordChannelFinalization?.(sessionId, record) : undefined,
       onPreviewFailed: (error) =>
         this.log("warn", "channels.preview_failed", { kind: channel.kind, message: describe(error) }),
       onMediaFailed: (error) =>
         this.log("warn", "channels.media_projection_failed", { kind: channel.kind, message: describe(error) }),
       onFinalRewriteFailed: (error) =>
         this.log("warn", "channels.final_rewrite_failed", { kind: channel.kind, message: describe(error) }),
+      onFinalRewriteTiming: (timing) =>
+        this.log("info", "channels.final_rewrite_timing", { kind: channel.kind, ...timing }),
+      onFinalizationPersistFailed: (error) =>
+        this.log("warn", "channels.finalization_persist_failed", { kind: channel.kind, message: describe(error) }),
     });
+  }
+
+  private async loadFinalizationHistory(
+    sessionId: string,
+    kind: AgentChannelKind,
+  ): Promise<readonly AgentChannelFinalizationRecord[]> {
+    try {
+      return (await this.options.sessionManager.loadChannelFinalizationContext?.(sessionId, kind)) ?? [];
+    } catch (error) {
+      this.log("warn", "channels.finalization_context_load_failed", {
+        kind,
+        sessionId,
+        message: describe(error),
+      });
+      return [];
+    }
   }
 
   private log(level: "info" | "warn" | "error", message: string, details?: Record<string, unknown>): void {

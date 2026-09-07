@@ -1,5 +1,6 @@
 import type { JsonConfigObject } from "../../shared/config/JsonConfigForm";
 import { ConfigSecretContract } from "../../api/generatedEventCatalog";
+import type { ModelsDevModelMetadata } from "../../api/eventTypes";
 import { getFrontendLocale } from "../../i18n/frontendLocaleStore";
 import { isUnknownRecord as isRecord, readTrimmedString as readString } from "../../lib/unknownValue";
 import {
@@ -7,7 +8,8 @@ import {
   readDefaultModelGroupRules,
   type ModelProviderRuleMatchKind,
 } from "./ModelProviderIcon";
-import { inferModelCatalogCapabilities, inferModelCatalogGroup } from "./modelCatalogRules";
+import { inferModelCatalogCapabilities, inferModelCatalogGroup, type ModelCatalogGroup } from "./modelCatalogRules";
+import { readModelsDevCapabilities } from "./modelsDevCapabilities";
 import type {
   ConfigFormFieldData,
   ConfigFormSectionData,
@@ -57,16 +59,23 @@ export function createModelDraft({
   modelInfo,
   modelField,
   endpointOptions,
+  modelsDev,
 }: {
   provider: ProviderEndpointDraft;
   modelInfo: ProviderModelInfo;
   modelField: ConfigFormFieldData | undefined;
   endpointOptions: Array<{ value: string; label: string }>;
+  modelsDev?: ModelsDevModelMetadata;
 }): ModelProviderDraft {
   const template = cloneRecord(modelField?.defaultItem ?? {});
   const modelId = modelInfo.id.trim();
+  const templateCapabilities = isRecord(template.Capabilities) ? template.Capabilities : {};
+  const catalogCapabilities = readModelsDevCapabilities(modelsDev);
   return normalizeModelProviderDraft({
     ...copyModelRuntimeTemplate(template),
+    Capabilities: { ...templateCapabilities, ...catalogCapabilities },
+    ...(modelsDev?.contextLimit ? { ContextWindowTokens: modelsDev.contextLimit } : {}),
+    ...(modelsDev?.outputLimit ? { MaxModelOutputTokens: modelsDev.outputLimit } : {}),
     Id: modelConfigId(provider.Id, modelId),
     ProviderId: provider.Id,
     Endpoint: readString(template.Endpoint) ?? endpointOptions[0]?.value ?? "",
@@ -236,9 +245,10 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
 export function readModelCapabilities(
   model: ModelProviderDraft,
   template: Record<string, unknown>,
+  modelsDev?: ModelsDevModelMetadata,
 ): Required<ModelCapabilitiesDraft> {
   return {
-    ...defaultModelCapabilities(template, model.Model, model.ProviderId),
+    ...defaultModelCapabilities(template, model.Model, model.ProviderId, modelsDev),
     ...(model.Capabilities ?? {}),
   };
 }
@@ -255,11 +265,13 @@ export function defaultModelCapabilities(
   template: Record<string, unknown>,
   modelName?: string,
   providerHint?: string,
+  modelsDev?: ModelsDevModelMetadata,
 ): Required<ModelCapabilitiesDraft> {
   const capabilities = isRecord(template.Capabilities) ? template.Capabilities : {};
   const inferred = inferModelCatalogCapabilities(modelName, providerHint);
+  const catalog = readModelsDevCapabilities(modelsDev);
   const defaultCapability = <T extends keyof ModelCapabilitiesDraft>(key: T, fallback: boolean): boolean =>
-    readBoolean(capabilities[key]) ?? inferred[key] ?? fallback;
+    catalog[key] ?? readBoolean(capabilities[key]) ?? inferred[key] ?? fallback;
   return {
     Chat: defaultCapability("Chat", true),
     Embedding: defaultCapability("Embedding", false),
@@ -279,8 +291,17 @@ export function filterProviderModels(models: ProviderModelInfo[], search: string
     return models;
   }
   return models.filter(
-    (model) => model.id.toLowerCase().includes(query) || model.ownedBy?.toLowerCase().includes(query),
+    (model) => model.id.toLowerCase().includes(query) || readProviderModelOwnedBy(model).toLowerCase().includes(query),
   );
+}
+
+/**
+ * Resolves the owning-provider hint for a catalog row. The models.dev
+ * provider id is authoritative when present; the discovery endpoint's
+ * owned_by field (rarely populated) and local configuration follow.
+ */
+export function readProviderModelOwnedBy(model: Pick<ProviderModelInfo, "ownedBy" | "modelsDev">): string {
+  return model.modelsDev?.providerId?.trim() || model.ownedBy?.trim() || "";
 }
 
 export function readProviderModelRows({
@@ -399,8 +420,9 @@ export function groupProviderModelRows(
   const groups = new Map<string, ProviderModelGroup>();
 
   for (const row of rows) {
-    const rule = findModelGroupRule(row.id, modelGroups, row.ownedBy);
-    const inferred = rule ? undefined : inferModelCatalogGroup(row.id, row.ownedBy);
+    const catalogGroup = readModelsDevCatalogGroup(row);
+    const rule = catalogGroup ? undefined : findModelGroupRule(row.id, modelGroups, readProviderModelOwnedBy(row));
+    const inferred = rule ? undefined : (catalogGroup ?? inferModelGroupForRow(row));
     const groupId = rule?.Id ?? inferred?.id ?? defaultGroup.id;
     const groupLabel = rule?.Label || inferred?.label || defaultGroup.label;
     const groupIcon = rule?.Icon || inferred?.icon || defaultGroup.icon;
@@ -415,6 +437,20 @@ export function groupProviderModelRows(
   }
 
   return [...groups.values()];
+}
+
+/**
+ * Prefers the authoritative models.dev provider id when it resolves to a
+ * known provider (for example openai-labs -> Labs); only when the catalog
+ * cannot resolve the provider do the local model-name heuristics run.
+ */
+function readModelsDevCatalogGroup(row: ProviderModelInfo): ModelCatalogGroup | undefined {
+  const catalogProviderId = row.modelsDev?.providerId?.trim();
+  return catalogProviderId ? inferModelCatalogGroup(undefined, catalogProviderId) : undefined;
+}
+
+function inferModelGroupForRow(row: ProviderModelInfo): ModelCatalogGroup | undefined {
+  return inferModelCatalogGroup(row.id, row.ownedBy);
 }
 
 export function findModelGroupRule(

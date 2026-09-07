@@ -108,6 +108,7 @@ export class AgentPiToolExecutionBridge {
           resourceAccessGrant: turnState.takeResourceAccessGrant(input.toolCallId),
           toolExposure: input.context.toolExposure,
           batchId,
+          batchToolNames: turnState.toolBatchToolNames(input.toolCallId),
           signal: input.signal,
           tokenBudget: reservation,
           approvalMode: input.context.approvalMode,

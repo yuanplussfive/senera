@@ -2,7 +2,13 @@ import crypto from "node:crypto";
 import type Database from "better-sqlite3";
 import { stableMemoryId } from "../Memory/AgentMemoryIdentity.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
-import { normalizeAgentIdentityTemplate } from "../Prompt/AgentIdentityTemplate.js";
+import {
+  normalizeAgentTextValue,
+  parseAgentTextParts,
+  projectLegacyIdentityText,
+  renderAgentTextParts,
+  type AgentTextParts,
+} from "../Text/AgentTextParts.js";
 import type { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
 import type {
   AgentTemporalMemoryDigest,
@@ -38,6 +44,9 @@ interface DigestRow {
   readonly summary: string;
   readonly topics_json: string;
   readonly open_loops_json: string;
+  readonly summary_parts_json: string;
+  readonly topics_parts_json: string;
+  readonly open_loops_parts_json: string;
   readonly source_revision: string;
   readonly child_count: number;
   readonly created_at: string;
@@ -229,6 +238,7 @@ export class AgentTemporalMemorySqliteStore {
               SET period_start = @periodStart, period_end = @periodEnd,
                   period_start_ms = @periodStartMs, period_end_ms = @periodEndMs,
                   status = @status, summary = '', topics_json = '[]', open_loops_json = '[]',
+                  summary_parts_json = '[]', topics_parts_json = '[]', open_loops_parts_json = '[]',
                   source_revision = @revision, child_count = @childCount, updated_at = @now
             WHERE id = @digestId`,
         )
@@ -469,17 +479,26 @@ export class AgentTemporalMemorySqliteStore {
   }
 
   seal(digestId: string, summary: AgentTemporalMemorySummaryResult, now: string): AgentTemporalMemoryDigest {
+    const summaryParts = normalizeAgentTextValue(summary.summary, "temporal digest summary");
+    const topicParts = summary.topics.map((topic) => normalizeAgentTextValue(topic, "temporal digest topic"));
+    const openLoopParts = summary.openLoops.map((loop) => normalizeAgentTextValue(loop, "temporal digest open loop"));
+    const topicText = uniqueText(topicParts.map((parts) => renderAgentTextParts(parts)));
+    const openLoopText = uniqueText(openLoopParts.map((parts) => renderAgentTextParts(parts)));
     const seal = this.db.transaction(() => {
       this.db
         .prepare(
           `UPDATE memory_temporal_digests
-              SET status = 'sealed', working_focus = '', summary = ?, topics_json = ?, open_loops_json = ?, updated_at = ?
+              SET status = 'sealed', working_focus = '', summary = ?, topics_json = ?, open_loops_json = ?,
+                  summary_parts_json = ?, topics_parts_json = ?, open_loops_parts_json = ?, updated_at = ?
             WHERE id = ?`,
         )
         .run(
-          normalizeAgentIdentityTemplate(requireText(summary.summary, "temporal digest summary")),
-          JSON.stringify(uniqueText(summary.topics.map((topic) => normalizeAgentIdentityTemplate(topic)))),
-          JSON.stringify(uniqueText(summary.openLoops.map((loop) => normalizeAgentIdentityTemplate(loop)))),
+          renderAgentTextParts(summaryParts),
+          JSON.stringify(topicText),
+          JSON.stringify(openLoopText),
+          JSON.stringify(summaryParts),
+          JSON.stringify(topicParts),
+          JSON.stringify(openLoopParts),
           now,
           digestId,
         );
@@ -634,6 +653,7 @@ export class AgentTemporalMemorySqliteStore {
             `UPDATE memory_temporal_digests
                 SET period_start = ?, period_end = ?, period_start_ms = ?, period_end_ms = ?,
                     status = 'pending', summary = '', topics_json = '[]', open_loops_json = '[]',
+                    summary_parts_json = '[]', topics_parts_json = '[]', open_loops_parts_json = '[]',
                     source_revision = ?, child_count = ?, updated_at = ?
               WHERE id = ?`,
           )
@@ -721,6 +741,9 @@ export class AgentTemporalMemorySqliteStore {
 }
 
 function decodeDigest(row: DigestRow): AgentTemporalMemoryDigest {
+  const summaryParts = readStoredParts(row.summary_parts_json, row.summary, `${row.uri} summary`);
+  const topicParts = readStoredPartArray(row.topics_parts_json, row.topics_json, `${row.uri} topics`);
+  const openLoopParts = readStoredPartArray(row.open_loops_parts_json, row.open_loops_json, `${row.uri} open loops`);
   return {
     id: row.id,
     uri: row.uri,
@@ -741,9 +764,12 @@ function decodeDigest(row: DigestRow): AgentTemporalMemoryDigest {
     timeZone: row.time_zone,
     status: row.status,
     workingFocus: row.working_focus,
-    summary: row.summary,
-    topics: parseTextArray(row.topics_json, `${row.uri} topics`),
-    openLoops: parseTextArray(row.open_loops_json, `${row.uri} open loops`),
+    summary: renderAgentTextParts(summaryParts),
+    topics: uniqueText(topicParts.map((parts) => renderAgentTextParts(parts))),
+    openLoops: uniqueText(openLoopParts.map((parts) => renderAgentTextParts(parts))),
+    summaryParts,
+    topicParts,
+    openLoopParts,
     sourceRevision: row.source_revision,
     childCount: row.child_count,
     createdAt: row.created_at,
@@ -827,6 +853,18 @@ function parseTextArray(value: string, label: string): string[] {
     throw new Error(`${label} must contain a string array.`);
   }
   return uniqueText(parsed);
+}
+
+function readStoredParts(value: string, legacyValue: string, label: string): AgentTextParts {
+  const parsed = parseAgentTextParts(parseJsonText(value, `${label} parts`), `${label} parts`);
+  return parsed.length > 0 ? parsed : projectLegacyIdentityText(legacyValue);
+}
+
+function readStoredPartArray(value: string, legacyValue: string, label: string): AgentTextParts[] {
+  const parsed = parseJsonText(value, `${label} parts`);
+  if (!Array.isArray(parsed)) throw new Error(`${label} parts must contain an array.`);
+  if (parsed.length === 0) return parseTextArray(legacyValue, label).map((entry) => projectLegacyIdentityText(entry));
+  return parsed.map((entry, index) => parseAgentTextParts(entry, `${label} parts[${index}]`));
 }
 
 function appendInClause(

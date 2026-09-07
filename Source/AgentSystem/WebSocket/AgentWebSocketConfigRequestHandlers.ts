@@ -23,10 +23,18 @@ export class AgentWebSocketConfigRequestHandlers {
 
   async listModels(sendEvent: AgentWebSocketEventSender): Promise<void> {
     const catalog = resolveModelProviderCatalog(this.context.configSnapshot());
+    const modelsDev = await this.context.modelsDevCatalog.snapshot();
     await sendEvent({
       kind: AgentEventKinds.ModelListSnapshot,
       context: {},
-      data: { models: catalog.list(), defaultModelProviderId: catalog.defaultId },
+      data: {
+        models: catalog.list().map((model) => ({
+          ...model,
+          modelsDev: this.context.modelsDevCatalog.resolve(model.providerId, model.model),
+        })),
+        modelsDev,
+        defaultModelProviderId: catalog.defaultId,
+      },
     } satisfies AgentDomainEvent);
   }
 
@@ -35,19 +43,28 @@ export class AgentWebSocketConfigRequestHandlers {
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
     try {
+      const modelsDev = await this.context.modelsDevCatalog.snapshot();
+      const snapshot = await this.context.providerModelDiscovery.listProviderModels({
+        providerId: request.providerId,
+        force: request.force,
+        endpoint: request.endpoint
+          ? restoreAgentProviderEndpointSecrets(
+              request.endpoint,
+              this.currentConfigValue().ModelProviderEndpoints ?? [],
+            )
+          : undefined,
+      });
       await sendEvent({
         kind: AgentEventKinds.ProviderModelsSnapshot,
         context: {},
-        data: await this.context.providerModelDiscovery.listProviderModels({
-          providerId: request.providerId,
-          force: request.force,
-          endpoint: request.endpoint
-            ? restoreAgentProviderEndpointSecrets(
-                request.endpoint,
-                this.currentConfigValue().ModelProviderEndpoints ?? [],
-              )
-            : undefined,
-        }),
+        data: {
+          ...snapshot,
+          modelsDev,
+          models: snapshot.models.map((model) => ({
+            ...model,
+            modelsDev: this.context.modelsDevCatalog.resolve(request.providerId, model.id),
+          })),
+        },
       });
     } catch (error) {
       await sendEvent({

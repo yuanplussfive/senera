@@ -232,8 +232,8 @@ export interface AgentChannelAdapter {
   /** Called once after connect with the inbound pipeline bound. */
   bind(handlers: AgentChannelAdapterHandlers): void;
 
-  /** Optional live transport state used by status surfaces. */
-  getConnectionState?(): AgentChannelConnectionState;
+  /** Live transport state used by status surfaces and delivery guards. */
+  getConnectionState(): AgentChannelConnectionState;
 }
 
 export type AgentChannelConnectionState = "stopped" | "connecting" | "connected" | "reconnecting" | "degraded";
@@ -241,6 +241,8 @@ export type AgentChannelConnectionState = "stopped" | "connecting" | "connected"
 export interface AgentChannelAdapterHandlers {
   onMessage(message: AgentChannelInboundMessage): void | Promise<void>;
   onFatal(error: unknown, kind: AgentChannelKind): void;
+  /** Emits transport state transitions that happen after connect() returns. */
+  onConnectionStateChanged?(state: AgentChannelConnectionState): void;
   onInteraction?(interaction: AgentChannelInteraction): void | Promise<void>;
 }
 

@@ -16,8 +16,8 @@ import {
   StateView,
   Tooltip,
 } from "../../../shared/ui";
-import { groupProviderModelRows, modelConfigId } from "../../chat/modelConfigData";
-import { SearchInput } from "../../chat/ModelConfigPrimitives";
+import { groupProviderModelRows, modelConfigId, readProviderModelOwnedBy } from "../../chat/modelConfigData";
+import { ModelsDevMetadataSummary, SearchInput } from "../../chat/ModelConfigPrimitives";
 import { inferModelProviderIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
 import type { ModelProviderDraft, ProviderModelInfo } from "../../chat/modelConfigTypes";
 
@@ -298,15 +298,20 @@ function CatalogModelRow({
       )}
     >
       <span className="grid h-9 w-9 shrink-0 place-items-center">
-        <ModelProviderIcon icon={inferModelProviderIcon(row.id)} size={18} className="rounded" />
+        <ModelProviderIcon
+          icon={inferModelProviderIcon(readProviderModelOwnedBy(row), false) ?? inferModelProviderIcon(row.id, false)}
+          size={18}
+          className="rounded"
+        />
       </span>
       <span className="min-w-0">
         <Tooltip content={row.id} side="top">
           <span className="block truncate font-mono text-[12.5px] leading-5 text-ink-850">{row.id}</span>
         </Tooltip>
         <span className="mt-0.5 block truncate text-[11px] text-ink-500">
-          {row.ownedBy || frontendMessage("settings.modelManagement.providerModel")}
+          {readProviderModelOwnedBy(row) || frontendMessage("settings.modelManagement.providerModel")}
         </span>
+        <ModelsDevMetadataSummary metadata={row.modelsDev} />
       </span>
       {configured ? (
         <span className="inline-flex items-center gap-1 pr-1 text-[11px] font-medium text-moss-600">

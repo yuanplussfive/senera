@@ -168,24 +168,20 @@ describe("bounded rate limiting", () => {
 });
 
 describe("server access guard", () => {
-  test("fails closed when a remote server has no Origin allowlist", () => {
-    const root = createTemporaryRoot();
+  test("uses a same-origin fallback when a remote server has no Origin allowlist", async () => {
+    const { guard } = await createAutoOriginGuard();
     expect(
-      () =>
-        new AgentServerAccessGuard({
-          workspaceRoot: root,
-          server: resolveServerConfig({
-            ...minimalConfig(),
-            Server: {
-              Host: "0.0.0.0",
-              AccessControl: {
-                Mode: "required",
-                AccountFile: "admin-account.json",
-              },
-            },
-          }),
-        }),
-    ).toThrow(/AllowedOrigins/);
+      guard.allowsOrigin(
+        "https://senera.example",
+        request({ origin: "https://senera.example", host: "senera.example" }),
+      ),
+    ).toBe(true);
+    expect(
+      guard.allowsOrigin(
+        "https://attacker.example",
+        request({ origin: "https://attacker.example", host: "senera.example" }),
+      ),
+    ).toBe(false);
   });
 
   test("fails closed when remote access control is explicitly disabled", () => {
@@ -214,6 +210,47 @@ describe("server access guard", () => {
         password: "a long administrator password",
       }),
     ).resolves.toMatchObject({ ok: false, failure: { code: "forbidden_origin" } });
+  });
+
+  test("allows loopback HTTP automatically while the container binds an external host", async () => {
+    const { guard } = await createAutoOriginGuard();
+    const localRequest = request({ origin: "http://localhost:8787", host: "localhost:8787" });
+    const login = await guard.login(localRequest, {
+      loginName: "owner",
+      password: "a long administrator password",
+    });
+    expect(login).toMatchObject({ ok: true });
+    if (!login.ok) return;
+    expect(guard.issueCookie(login.token, localRequest)).toMatch(/^senera_local_session=/);
+  });
+
+  test("allows a loopback browser origin on a separate development port", async () => {
+    const { guard } = await createAutoOriginGuard();
+    const developmentOrigin = "http://127.0.0.1:5173";
+
+    expect(guard.allowsOrigin(developmentOrigin, request({ origin: developmentOrigin, host: "127.0.0.1:8787" }))).toBe(
+      true,
+    );
+    expect(
+      guard.allowsOrigin(
+        "http://192.168.1.20:5173",
+        request({ origin: "http://192.168.1.20:5173", host: "127.0.0.1:8787" }),
+      ),
+    ).toBe(false);
+  });
+
+  test("accepts an HTTPS same-origin request without an allowlist", async () => {
+    const { guard } = await createAutoOriginGuard();
+    const secureRequest = request({ origin: "https://senera.example", host: "senera.example" }, "192.168.1.30", {
+      encrypted: true,
+    });
+    const login = await guard.login(secureRequest, {
+      loginName: "owner",
+      password: "a long administrator password",
+    });
+    expect(login).toMatchObject({ ok: true });
+    if (!login.ok) return;
+    expect(guard.issueCookie(login.token, secureRequest)).toMatch(/^__Host-senera_session=.*; Secure/);
   });
 
   test("allows an exact allowlisted IP origin when insecure HTTP is explicitly enabled", async () => {
@@ -375,16 +412,46 @@ async function createRemoteGuard(allowInsecureHttp: boolean): Promise<{
   return { guard, store };
 }
 
+async function createAutoOriginGuard(): Promise<{
+  guard: AgentServerAccessGuard;
+  store: AgentLocalAdminAccountStore;
+}> {
+  const root = createTemporaryRoot();
+  const store = new AgentLocalAdminAccountStore(path.join(root, "admin-account.json"));
+  await store.initialize({
+    loginName: "owner",
+    displayName: "Owner",
+    password: "a long administrator password",
+  });
+  const guard = new AgentServerAccessGuard({
+    workspaceRoot: root,
+    server: resolveServerConfig({
+      ...minimalConfig(),
+      Server: {
+        Host: "0.0.0.0",
+        AccessControl: {
+          Mode: "required",
+          AccountFile: "admin-account.json",
+        },
+      },
+    }),
+    automaticLoopbackHttp: true,
+  });
+  return { guard, store };
+}
+
 function request(
   headers: Record<string, string> = {},
   remoteAddress = "127.0.0.1",
+  options: { encrypted?: boolean } = {},
 ): import("node:http").IncomingMessage {
   return {
     headers,
     socket: {
       remoteAddress,
+      encrypted: options.encrypted,
     },
-  } as import("node:http").IncomingMessage;
+  } as unknown as import("node:http").IncomingMessage;
 }
 
 function minimalConfig(): AgentSystemConfig {

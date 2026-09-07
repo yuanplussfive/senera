@@ -40,6 +40,12 @@ import { AgentSessionHistoryController } from "./AgentSessionHistoryController.j
 import type { AgentConversationEntryMetadata, AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
 import { mergeSessionConversationEntries } from "./AgentSessionRunProjection.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import type { AgentChannelFinalizationRecord } from "../Channels/AgentChannelFinalizationTypes.js";
+import type { AgentChannelKind } from "../Channels/AgentChannelTypes.js";
+import {
+  appendAgentChannelFinalizationRecord,
+  readAgentChannelFinalizationHistory,
+} from "../Channels/AgentChannelFinalizationTypes.js";
 
 export type { AgentContinuityLearningSink, AgentSessionManagerOptions } from "./AgentSessionManagerOptions.js";
 
@@ -369,6 +375,35 @@ export class AgentSessionManager {
     await this.ready();
     const entries = this.store.loadConversation(sessionId);
     return entries.at(-1)?.requestId;
+  }
+
+  /** Reads the bounded channel serializer context persisted with the session. */
+  async loadChannelFinalizationContext(
+    sessionId: string,
+    platform?: AgentChannelKind,
+  ): Promise<readonly AgentChannelFinalizationRecord[]> {
+    await this.ready();
+    const lookup = this.store.get(sessionId);
+    return lookup.kind === "found"
+      ? readAgentChannelFinalizationHistory(lookup.session.metadata?.channelFinalization).filter(
+          (record) => platform === undefined || record.platform === platform,
+        )
+      : [];
+  }
+
+  /** Persists one successful ordered channel projection without polluting the user transcript. */
+  async recordChannelFinalization(sessionId: string, record: AgentChannelFinalizationRecord): Promise<void> {
+    await this.ready();
+    await this.sessionAdmissions.run(sessionId, async () => {
+      const lookup = this.store.get(sessionId);
+      if (lookup.kind === "missing") return;
+      lookup.session.metadata = {
+        ...lookup.session.metadata,
+        channelFinalization: appendAgentChannelFinalizationRecord(lookup.session.metadata?.channelFinalization, record),
+      };
+      lookup.session.updatedAt = laterIsoTimestamp(lookup.session.updatedAt, record.createdAt);
+      this.store.persistMetadata(lookup.session);
+    });
   }
 
   async hasSession(sessionId: string): Promise<boolean> {
@@ -722,6 +757,10 @@ export class AgentSessionManager {
       },
     });
   }
+}
+
+function laterIsoTimestamp(current: string, candidate: string): string {
+  return candidate > current ? candidate : current;
 }
 
 function projectAssistantDeliveryXml(content: string): string {

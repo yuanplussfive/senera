@@ -35,6 +35,7 @@ import type {
 } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import { inspectAgentResidentSpeechFocus } from "../ResidentSpeech/AgentResidentSpeechPromptProjector.js";
 import { createAgentResidentSpeechUsageSink } from "../ResidentSpeech/AgentResidentSpeechUsage.js";
+import { shouldProjectResidentSpeech } from "../PiShared/AgentPiResidentSpeechProjection.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic } from "./AgentPiDiagnostics.js";
 import { emitAgentPiAssistantMessage } from "./AgentPiAssistantMessageStream.js";
 import { createAgentPiPromptCacheOptions, requireAgentPiPromptCacheSessionId } from "./AgentPiPromptCache.js";
@@ -130,7 +131,8 @@ export class AgentPiNativeToolProvider {
       turnState.context.tokenBudget.validateModelInput(request);
       const cache = createAgentPiPromptCacheOptions({
         phase: "native-conversation",
-        sessionId: options?.sessionId ?? frame.sessionId,
+        sessionId: frame.sessionId,
+        logicalCacheScope: frame.logicalCacheScope ?? options?.sessionId,
         model: { provider: model.provider, api: model.api, model: model.id },
         stablePrefix: {
           systemPrompt: request.systemPrompt,
@@ -243,9 +245,15 @@ export class AgentPiNativeToolProvider {
     simple: boolean,
   ): Promise<AssistantMessage> {
     const focus = inspectAgentResidentSpeechFocus(message);
-    const shouldProject =
-      focus?.mode === "action_preface" ? frame.prefaceRewriteEnabled === true : frame.roleplayPresetActive === true;
-    if (!shouldProject || !focus || (focus.mode === "final_response" && !turnState.hasRegisteredToolCalls())) {
+    if (!focus) return message;
+    if (
+      !shouldProjectResidentSpeech({
+        focus,
+        prefaceRewriteEnabled: frame.prefaceRewriteEnabled,
+        roleplayPresetActive: frame.roleplayPresetActive,
+        hasRegisteredToolCalls: turnState.hasRegisteredToolCalls(),
+      })
+    ) {
       return message;
     }
     if (!this.options.residentSpeech) {

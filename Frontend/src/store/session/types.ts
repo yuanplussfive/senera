@@ -154,6 +154,25 @@ export interface TimelineChildRunMessage {
   createdAt: string;
 }
 
+export type TimelineChildRunTodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
+
+export interface TimelineChildRunTodoItem {
+  content: string;
+  status: TimelineChildRunTodoStatus;
+}
+
+export interface TimelineChildRunTodo {
+  planObserved: boolean;
+  counts: {
+    total: number;
+    pending: number;
+    inProgress: number;
+    completed: number;
+    cancelled: number;
+  };
+  items?: TimelineChildRunTodoItem[];
+}
+
 export interface TimelineChildRunState {
   id: string;
   status:
@@ -186,6 +205,7 @@ export interface TimelineChildRunState {
   grantedExtensionMs?: number;
   cancellation?: RunCancellationProgressData & { updatedAt: string };
   messages: TimelineChildRunMessage[];
+  todo?: TimelineChildRunTodo;
 }
 
 export interface RunActivityRecord {
@@ -394,6 +414,8 @@ export interface StoreState {
   catalogSynced: { sessions: boolean; presets: boolean };
   /** 连接切换时清除目录同步屏障，直到新的权威快照到达。 */
   resetCatalogSyncState: () => void;
+  /** 丢弃断线前的历史新鲜度标记，等待重连后的权威回放。 */
+  invalidateSessionHistoryCache: () => void;
 
   selectSession: (id: string) => void;
   moveSession: (sessionId: string, targetSessionId: string, placement: SessionOrderPlacement) => void;

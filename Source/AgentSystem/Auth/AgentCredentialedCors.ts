@@ -6,14 +6,14 @@ export function applyCredentialedCors(
   options: {
     readonly allowedMethods: readonly string[];
     readonly allowedHeaders?: readonly string[];
-    readonly isOriginAllowed: (origin: string) => boolean;
+    readonly isOriginAllowed: (origin: string, request: IncomingMessage) => boolean;
   },
 ): boolean {
   const origin = request.headers.origin;
   if (typeof origin !== "string") {
     return true;
   }
-  if (!options.isOriginAllowed(origin)) {
+  if (!options.isOriginAllowed(origin, request)) {
     return false;
   }
 

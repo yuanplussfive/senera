@@ -21,6 +21,16 @@ import type { AgentScheduleRuntime } from "./AgentScheduleRuntime.js";
 const NonEmptyString = z.string().trim().min(1);
 const RunIdSchema = NonEmptyString.describe("Child-run ID returned by AgentSpawn.");
 const ToolNamesSchema = z.array(NonEmptyString).min(1);
+export const AgentOrchestrationToolNames = Object.freeze({
+  Spawn: "AgentSpawn",
+  Wait: "AgentWait",
+  List: "AgentList",
+  Input: "AgentInput",
+  Stop: "AgentStop",
+  Resume: "AgentResume",
+  ContactSupervisor: "AgentContactSupervisor",
+  ScheduleManage: "AgentScheduleManage",
+});
 const ScheduleExpressionSchema = NonEmptyString.describe(
   'Schedule syntax by type. once: prefer a relative delay such as "+30m", "+2h", or "+1d"; use an ISO 8601 timestamp with an explicit offset only for a fixed calendar time. interval: "30s", "5m", or "1h". cron: a 5/6-field cron expression. Do not use natural-language dates.',
 );
@@ -40,7 +50,11 @@ export const AgentSpawnArgumentsSchema = z
 
 export const AgentWaitArgumentsSchema = z
   .object({
-    targets: z.array(RunIdSchema).min(1).describe("Child runs to wait for; the wait ends when any target settles."),
+    targets: z.array(RunIdSchema).min(1).describe("Child runs to observe."),
+    mode: z
+      .enum(["any", "all"])
+      .default("any")
+      .describe("Resolve when any target settles, or only after all targets settle."),
     timeoutMs: z
       .number()
       .int()
@@ -178,7 +192,10 @@ export function createAgentOrchestrationHostHandlers(runtime: AgentOrchestration
       throwIfAborted(context.signal);
       const input = AgentWaitArgumentsSchema.parse(args);
       const parent = requireRunContext(context.sessionId, context.requestId);
-      const result = await runtime.delegation.waitAny(input.targets, parent.sessionId, input.timeoutMs, context.signal);
+      const result =
+        input.mode === "all"
+          ? await runtime.delegation.waitAll(input.targets, parent.sessionId, input.timeoutMs, context.signal)
+          : await runtime.delegation.waitAny(input.targets, parent.sessionId, input.timeoutMs, context.signal);
       return toolProcessSuccessResult({
         runs: input.targets.map((target, index) => projectAgentChildRunView(result.runs[index], target)),
         waitTimedOut: result.timedOut,
@@ -301,6 +318,7 @@ export interface AgentChildRunPublicView {
   readonly runId: string;
   readonly state: AgentChildRunPublicState;
   readonly agent?: string;
+  readonly joinGroup?: { readonly id: string; readonly mode: "any" | "all"; readonly expectedCount: number };
   readonly result?: { readonly content: string };
   readonly error?: string;
   readonly request?: { readonly id: string; readonly message: string };
@@ -324,6 +342,7 @@ export function projectAgentChildRunView(run: AgentChildRunRecord | undefined, r
     runId: run.id,
     state: projectChildRunPublicState(run.status),
     agent: run.agentName,
+    ...(run.joinGroup ? { joinGroup: run.joinGroup } : {}),
     ...(run.finalAnswer !== undefined ? { result: { content: run.finalAnswer } } : {}),
     ...(run.error !== undefined ? { error: run.error } : {}),
     ...(supervisorRequest ? { request: { id: supervisorRequest.id, message: supervisorRequest.content } } : {}),
@@ -435,11 +454,13 @@ function createDelegationContext(
   context: Parameters<AgentHostToolHandler>[1],
   parent: { readonly sessionId: string; readonly requestId: string },
 ) {
+  const parentToolBatch = projectParentToolBatch(context);
   return {
     parentSessionId: parent.sessionId,
     parentRequestId: parent.requestId,
     parentModelProviderId: context.modelProviderId,
     parentThinkingLevel: context.thinkingLevel,
+    ...(parentToolBatch ? { parentToolBatch } : {}),
     approvalMode: requireApprovalMode(context.approvalMode),
     authorizedToolNames: context.authorizedToolNames ?? [],
     activeSkills: context.activeSkills?.map((skill) => ({ name: skill.name, revision: skill.revision })),
@@ -447,6 +468,14 @@ function createDelegationContext(
     onEvent: context.onEvent,
     signal: context.signal,
   };
+}
+
+function projectParentToolBatch(
+  context: Parameters<AgentHostToolHandler>[1],
+): { readonly id: string; readonly spawnCount: number } | undefined {
+  const id = context.batchId?.trim();
+  const spawnCount = context.batchToolNames?.filter((name) => name === AgentOrchestrationToolNames.Spawn).length ?? 0;
+  return id && spawnCount > 0 ? { id, spawnCount } : undefined;
 }
 
 function requireRunContext(sessionId: string | undefined, requestId: string | undefined) {

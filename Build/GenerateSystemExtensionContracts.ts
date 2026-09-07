@@ -42,6 +42,7 @@ async function synchronizeExtension(definitions: readonly AgentSystemToolDefinit
     kind: "hostTool",
     contract: `tools/${definition.name}.tool.json`,
     capability: systemToolCapability(definition),
+    ...(definition.extension.childGrant ? { childGrant: definition.extension.childGrant } : {}),
     recommendedForSkills: [...(definition.extension.skills ?? [])],
   }));
   await synchronize(path.join(extensionRoot, "extension.json"), {

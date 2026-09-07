@@ -361,6 +361,14 @@
       "snapshot": "snapshots/0045.schema.sql",
       "migrationSha256": "77549ebd1d3e0fe10392e55bb9004416af027b57b7fa363a47f2307b6459d9d0",
       "snapshotSha256": "50776ec537fbd6c5bc5375a045da8fabb3f5a2a25c14a743febc9c93595bfe28"
+    },
+    {
+      "version": 46,
+      "name": "structured-text-parts",
+      "migration": "migrations/0046-structured-text-parts.sql",
+      "snapshot": "snapshots/0046.schema.sql",
+      "migrationSha256": "5d720e8daf4033d5f848c71c90137817a63b482b8519b1c930e4c348c669a2a6",
+      "snapshotSha256": "755c806d0376f8964d027cfb7f63242f40853788f1f2e612d2bf899b36b29b29"
     }
   ]
 }

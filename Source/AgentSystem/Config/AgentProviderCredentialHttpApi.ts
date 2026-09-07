@@ -6,7 +6,7 @@ export const AgentProviderCredentialHttpRoute = "/api/provider-credentials";
 
 export interface AgentProviderCredentialHttpApiOptions {
   readonly configSnapshot: () => AgentSystemConfig;
-  readonly isOriginAllowed?: (origin: string) => boolean;
+  readonly isOriginAllowed?: (origin: string, request: IncomingMessage) => boolean;
 }
 
 /**
@@ -29,7 +29,7 @@ export class AgentProviderCredentialHttpApi {
     if (
       !applyCredentialedCors(request, response, {
         allowedMethods: ["GET", "OPTIONS"],
-        isOriginAllowed: (origin) => this.options.isOriginAllowed?.(origin) ?? false,
+        isOriginAllowed: (origin, corsRequest) => this.options.isOriginAllowed?.(origin, corsRequest) ?? false,
       })
     ) {
       this.sendError(response, 403, "forbidden_origin", "The request origin is not allowed.");

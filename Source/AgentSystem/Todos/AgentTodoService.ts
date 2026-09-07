@@ -1,4 +1,5 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import { AgentTodoSqliteStore } from "./AgentTodoSqliteStore.js";
@@ -11,6 +12,8 @@ import {
   type AgentTodoPolicy,
   type AgentTodoPromptContext,
   type AgentTodoSnapshot,
+  AgentTodoWriteSources,
+  type AgentTodoWriteSource,
 } from "./AgentTodoTypes.js";
 
 export interface AgentTodoServiceOptions {
@@ -24,6 +27,7 @@ export interface AgentTodoWriteInput {
   readonly merge: boolean;
   readonly onEvent?: AgentEventSink;
   readonly requestId?: string;
+  readonly source?: AgentTodoWriteSource;
   readonly now?: Date;
 }
 
@@ -39,6 +43,11 @@ export class AgentTodoService {
     return this.snapshot(this.options.store.list(sessionId));
   }
 
+  /** Snapshot fingerprint used by orchestration to detect a model plan write. */
+  fingerprint(sessionId: string): string {
+    return sha256HexOfCanonicalJson(this.read(sessionId));
+  }
+
   write(input: AgentTodoWriteInput): AgentTodoSnapshot {
     const current = input.merge ? this.options.store.list(input.sessionId) : [];
     const next = input.merge ? mergeItems(current, input.items, input.now) : createItems(input.items, input.now);
@@ -50,7 +59,7 @@ export class AgentTodoService {
     void emitAgentEvent(input.onEvent, {
       kind: AgentEventKinds.TodoListWritten,
       context: { sessionId: input.sessionId, ...(input.requestId ? { requestId: input.requestId } : {}) },
-      data: { snapshot },
+      data: { snapshot, source: input.source ?? AgentTodoWriteSources.Model },
     });
     return snapshot;
   }

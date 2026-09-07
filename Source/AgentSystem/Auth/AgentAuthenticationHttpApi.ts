@@ -33,7 +33,7 @@ export class AgentAuthenticationHttpApi {
     if (
       !applyCredentialedCors(request, response, {
         allowedMethods: ["GET", "POST", "OPTIONS"],
-        isOriginAllowed: (origin) => this.access.allowsOrigin(origin),
+        isOriginAllowed: (origin, corsRequest) => this.access.allowsOrigin(origin, corsRequest),
       })
     ) {
       this.writeFailure(response, { status: 403, code: "forbidden_origin" });
@@ -128,7 +128,7 @@ export class AgentAuthenticationHttpApi {
       this.writeFailure(response, result.failure);
       return;
     }
-    response.setHeader("Set-Cookie", this.access.issueCookie(result.token));
+    response.setHeader("Set-Cookie", this.access.issueCookie(result.token, request));
     this.writeJson(response, 200, {
       ok: true,
       session: {
@@ -147,7 +147,7 @@ export class AgentAuthenticationHttpApi {
       return;
     }
     this.access.revoke(result.access.sessionToken);
-    response.setHeader("Set-Cookie", this.access.clearCookie());
+    response.setHeader("Set-Cookie", this.access.clearCookie(request));
     this.writeJson(response, 200, { ok: true });
   }
 

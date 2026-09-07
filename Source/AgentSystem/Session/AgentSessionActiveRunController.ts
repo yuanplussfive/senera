@@ -372,6 +372,16 @@ export class AgentSessionActiveRunController {
 
   cleanupOrphanedRunningSnapshots(): void {
     this.snapshots.reconcileOrphanedRunningSnapshots();
+    // A restart destroys the in-memory run maps.  Release any persisted
+    // running marker that no longer has a live controller so reconnecting
+    // clients can submit and cancel immediately instead of inheriting a
+    // permanently busy session.
+    for (const session of this.options.store.listSessionMetadata()) {
+      const activeRun = this.activeRuns.get(session.id) ?? this.cancellingRuns.get(session.id);
+      if (activeRun || (session.status !== AgentSessionStatuses.Running && !session.activeRequest)) continue;
+      this.releaseSession(session);
+      this.options.store.persistMetadata(session);
+    }
   }
 
   releaseSession(session: AgentSession): void {

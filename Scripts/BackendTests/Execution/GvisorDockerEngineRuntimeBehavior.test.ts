@@ -113,7 +113,7 @@ describe("Docker Engine sandbox runtime", () => {
     } as unknown as Docker;
     const runtime = new AgentDockerEngineRuntime({
       docker,
-      workspace: { kind: "volume", volumeName: "senera-data" },
+      workspace: { kind: "volume", volumeName: "senera-data", guestRoot: resolved.contract.guest.workspaceRoot },
       copySourceRoots: [path.resolve("workspace")],
       runtimeContract: resolved,
       imageReference,
@@ -143,7 +143,7 @@ describe("Docker Engine sandbox runtime", () => {
     } as unknown as Docker;
     const runtime = new AgentDockerEngineRuntime({
       docker,
-      workspace: { kind: "volume", volumeName: "senera-data" },
+      workspace: { kind: "volume", volumeName: "senera-data", guestRoot: resolved.contract.guest.workspaceRoot },
       copySourceRoots: [path.resolve("workspace")],
       runtimeContract: resolved,
       imageReference,
@@ -191,7 +191,7 @@ function createRuntimeFixture(provider: AgentDockerEngineSandboxProvider): {
   const imageReference = "ghcr.io/example/senera-sandbox-runtime:verified";
   const runtime = new AgentDockerEngineRuntime({
     docker,
-    workspace: { kind: "bind", sourcePath: workspaceRoot },
+    workspace: { kind: "bind", sourcePath: workspaceRoot, guestRoot: resolved.contract.guest.workspaceRoot },
     copySourceRoots: [workspaceRoot],
     runtimeContract: resolved,
     imageReference,

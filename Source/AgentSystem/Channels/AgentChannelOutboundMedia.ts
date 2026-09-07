@@ -249,7 +249,10 @@ function boundedOptionalManifestValue(value: string | undefined): string | undef
   return value;
 }
 
-/** Resolves structured final parts without inspecting Markdown syntax. */
+/** Resolves structured final parts while also normalizing media accidentally
+ * left inside a text part by a provider. The Markdown parser is shared with
+ * the legacy projection path, so a malformed serializer response cannot make
+ * an otherwise resolvable image degrade to literal Markdown in QQ. */
 export async function projectAgentChannelFinalParts(
   parts: readonly AgentChannelFinalPart[],
   options: AgentChannelOutboundMediaOptions = {},
@@ -258,10 +261,24 @@ export async function projectAgentChannelFinalParts(
   const segments: AgentChannelOutboundSegment[] = [];
   for (const part of parts) {
     if (part.kind === "text") {
-      // Structured parts are explicit delivery boundaries. Keeping each text
-      // part separate lets the adapter send paragraph-sized messages in the
-      // same order chosen by the final response rewriter.
-      pushTextSegment(segments, part.text);
+      // Structured parts are explicit delivery boundaries. Keep each text
+      // part separate, but still extract a Markdown image if a provider put
+      // one in a text part instead of returning a resource part.
+      const projectedImages: Array<{ span: MarkdownImageSpan; media: AgentChannelMedia }> = [];
+      for (const occurrence of readMarkdownImageOccurrences(part.text)) {
+        const target = getTokenAttribute(occurrence.token, "src");
+        if (!target) continue;
+        const media = await collector.addReference(target, {
+          imageHint: true,
+          altText: boundedAltText(occurrence.span.altText || occurrence.token.content),
+        });
+        if (media) projectedImages.push({ span: occurrence.span, media });
+      }
+      if (projectedImages.length > 0) {
+        segments.push(...projectOrderedSegments(part.text, projectedImages));
+      } else {
+        pushTextSegment(segments, part.text);
+      }
       continue;
     }
     if (part.kind === "resource") {

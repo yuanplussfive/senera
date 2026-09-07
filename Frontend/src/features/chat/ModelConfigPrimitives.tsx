@@ -1,9 +1,15 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, RefreshCw, Search } from "lucide-react";
-import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
+import type {
+  ModelsDevModelMetadata,
+  ProviderModelsFailedData,
+  ProviderModelsSnapshotData,
+} from "../../api/eventTypes";
 import { cn, formatShortTime } from "../../lib/util";
 import { Spinner, StateView, Switch, Tooltip } from "../../shared/ui";
+import { ModelsDevCapabilityStrip } from "./ModelsDevCapabilityIcons";
+import { readModelsDevCapabilityKeys } from "./modelsDevCapabilities";
 import { ModelProviderIcon } from "./ModelProviderIcon";
 
 export function ListHeader({
@@ -330,6 +336,71 @@ export function ProviderCatalogStatus({
       </span>
     </div>
   );
+}
+
+export function ModelsDevMetadataSummary({ metadata }: { metadata?: ModelsDevModelMetadata }): JSX.Element | null {
+  if (!metadata) return null;
+  const keys = readModelsDevCapabilityKeys(metadata);
+  if (keys.length === 0) {
+    return null;
+  }
+  const details = [
+    metadata.name,
+    metadata.description,
+    metadata.contextLimit
+      ? `${frontendMessage("config.model.catalog.context")}: ${formatCatalogTokens(metadata.contextLimit)}`
+      : null,
+    metadata.inputLimit
+      ? `${frontendMessage("config.model.catalog.input")}: ${formatCatalogTokens(metadata.inputLimit)}`
+      : null,
+    metadata.outputLimit
+      ? `${frontendMessage("config.model.catalog.output")}: ${formatCatalogTokens(metadata.outputLimit)}`
+      : null,
+    metadata.inputModalities.length > 0
+      ? `${frontendMessage("config.model.catalog.modalities")}: ${metadata.inputModalities.join(", ")}`
+      : null,
+    metadata.toolCall ? frontendMessage("config.model.catalog.tools") : null,
+    metadata.reasoning ? frontendMessage("config.model.catalog.reasoning") : null,
+    metadata.structuredOutput ? frontendMessage("config.model.catalog.structured") : null,
+    metadata.attachment ? frontendMessage("config.model.catalog.attachments") : null,
+    metadata.license ? `${frontendMessage("config.model.catalog.license")}: ${metadata.license}` : null,
+    metadata.lastUpdated ? `${frontendMessage("config.model.catalog.updated")}: ${metadata.lastUpdated}` : null,
+  ].filter((value): value is string => Boolean(value));
+  const content = (
+    <div className="max-w-xs space-y-1 text-[11px] leading-4">
+      {details.map((detail, index) => (
+        <div
+          key={`${detail}-${index}`}
+          className={
+            index === 0
+              ? "font-semibold text-content-strong"
+              : index === 1 && metadata.description
+                ? "text-content-muted"
+                : "text-content"
+          }
+        >
+          {detail}
+        </div>
+      ))}
+    </div>
+  );
+  return (
+    <Tooltip content={content} side="top">
+      <span className="inline-flex min-w-0 items-center" data-models-dev-metadata>
+        <ModelsDevCapabilityStrip metadata={metadata} />
+      </span>
+    </Tooltip>
+  );
+}
+
+function formatCatalogTokens(value: number): string {
+  if (value >= 1_000_000) return `${trimCatalogNumber(value / 1_000_000)}M`;
+  if (value >= 1_000) return `${trimCatalogNumber(value / 1_000)}K`;
+  return String(value);
+}
+
+function trimCatalogNumber(value: number): string {
+  return value.toFixed(value >= 100 ? 0 : 1).replace(/\.0$/, "");
 }
 
 export function IconAction({

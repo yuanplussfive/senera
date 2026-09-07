@@ -14,7 +14,9 @@ import { prepareAgentDockerEngineRuntime } from "../Source/AgentSystem/Sandbox/D
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { synchronizeDockerAdminAccount } from "./DockerAdminAccountSync.js";
 import type { AgentSandboxRuntimeProvider } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeTypes.js";
+import type { AgentDockerImagePullPolicy } from "../Source/AgentSystem/Types/AgentRuntimeConfigTypes.js";
 import type { SeneraSandboxWorkerClient } from "../Source/AgentSystem/Execution/SeneraSandboxWorkerTypes.js";
+import { startSeneraSandboxWorkerProcess } from "./SandboxWorkerProcess.js";
 import { ensureRuntimeConfigFile } from "./RuntimeConfigBootstrap.js";
 import {
   installAgentProcessFailureGuard,
@@ -30,7 +32,7 @@ const FrontendRoot = path.join(AppRoot, "Frontend", "dist");
 const ExampleConfigPath = path.join(AppRoot, "senera.config.example.json");
 const RuntimeConfigFileName = "senera-runtime-config.js";
 const DockerSandboxRuntime = {
-  BaseDir: "/data/.senera/sandbox-runtime",
+  BaseDir: path.join(WorkspaceRoot, ".senera", "sandbox-runtime"),
 } as const;
 const DockerComposeDeploymentHint =
   "Start Senera with the complete compose.yaml deployment; the application container requires sandbox-worker.";
@@ -51,7 +53,8 @@ async function main(): Promise<void> {
   ensureRuntimeConfigFile({ configPath: ConfigPath, templatePath: ExampleConfigPath });
 
   const config = loadConfigFile(ConfigPath);
-  const worker = new AgentSandboxWorkerClient({ endpoint: resolveDockerSandboxWorkerEndpoint() });
+  const workerBootstrap = await resolveDockerSandboxWorkerBootstrap(config);
+  const worker = workerBootstrap.client;
   const sandboxProvider = await resolveDockerSandboxProvider(config, worker);
   const runtimeProjection = createDockerRuntimeProjection(sandboxProvider);
   const projectedConfig = runtimeProjection(config);
@@ -75,10 +78,15 @@ async function main(): Promise<void> {
     sandboxRuntimePrepared: true,
     sandboxRuntimeAvailability: { kind: "available", provider: sandboxProvider },
     dockerEngineWorker: worker,
+    sandboxGuestWorkspaceRoot: WorkspaceRoot,
+    automaticLoopbackHttp: true,
   });
   installAgentProcessShutdownGuard({
     logger: dockerProcessLogger,
-    stop: () => server.stop(),
+    stop: async () => {
+      await server.stop();
+      await workerBootstrap.close();
+    },
   });
 
   writeJsonLine({
@@ -112,7 +120,7 @@ function createDockerRuntimeProjection(
       Provider: sandboxProvider,
       Docker: {
         ...config.SandboxRuntime?.Docker,
-        WorkerEndpoint: resolveDockerSandboxWorkerEndpoint(),
+        ...(usesExternalSandboxWorker() ? { WorkerEndpoint: resolveDockerSandboxWorkerEndpoint() } : {}),
       },
     },
     Server: {
@@ -121,11 +129,63 @@ function createDockerRuntimeProjection(
       Port: resolveDockerPort(),
       AccessControl: {
         ...config.Server?.AccessControl,
-        AllowedOrigins: resolveDockerAllowedOrigins(),
-        AllowInsecureHttp: resolveDockerAllowInsecureHttp(),
+        ...resolveDockerAccessControlOverrides(),
       },
     },
   });
+}
+
+function usesExternalSandboxWorker(): boolean {
+  return Boolean(process.env.SENERA_SANDBOX_WORKER_ENDPOINT?.trim());
+}
+
+async function resolveDockerSandboxWorkerBootstrap(config: AgentSystemConfig): Promise<{
+  client: SeneraSandboxWorkerClient;
+  close(): Promise<void>;
+}> {
+  if (usesExternalSandboxWorker()) {
+    return {
+      client: new AgentSandboxWorkerClient({ endpoint: resolveDockerSandboxWorkerEndpoint() }),
+      close: () => Promise.resolve(),
+    };
+  }
+  const singleServiceConfig: AgentSystemConfig = {
+    ...config,
+    SandboxRuntime: {
+      ...config.SandboxRuntime,
+      ...DockerSandboxRuntime,
+      Enabled: true,
+      Provider: "auto",
+      Docker: {
+        ...config.SandboxRuntime?.Docker,
+        ...(process.env.SENERA_DOCKER_SANDBOX_IMAGE?.trim()
+          ? { Image: process.env.SENERA_DOCKER_SANDBOX_IMAGE.trim() }
+          : {}),
+        ...(process.env.SENERA_DOCKER_SANDBOX_PULL_POLICY?.trim()
+          ? { PullPolicy: process.env.SENERA_DOCKER_SANDBOX_PULL_POLICY.trim() as AgentDockerImagePullPolicy }
+          : {}),
+      },
+    },
+  };
+  const bootstrap = await startSeneraSandboxWorkerProcess({
+    workspaceRoot: WorkspaceRoot,
+    config: singleServiceConfig,
+    entrypoint: path.join(AppRoot, "Dist", "Apps", "SandboxWorker.js"),
+    resourcesPath: AppRoot,
+    workspace: {
+      kind: "volume",
+      volumeName: process.env.SENERA_SANDBOX_WORKSPACE_SOURCE?.trim() || "senera-data",
+      guestRoot: WorkspaceRoot,
+    },
+    guestWorkspaceRoot: WorkspaceRoot,
+  });
+  if (!bootstrap.client) {
+    const detail = bootstrap.availability.kind === "disabled" ? bootstrap.availability.reason : "unknown";
+    throw new Error(
+      `Docker sandbox Worker could not start (${detail}). Verify Docker Engine is reachable and the sandbox runtime is enabled.`,
+    );
+  }
+  return { client: bootstrap.client, close: bootstrap.close };
 }
 
 async function prepareDockerSandboxRuntime(
@@ -203,22 +263,42 @@ function resolveDockerHost(): string {
   return process.env.SENERA_SERVER_HOST?.trim() || "0.0.0.0";
 }
 
-function resolveDockerAllowedOrigins(): string[] {
-  const configured = process.env.SENERA_ALLOWED_ORIGINS?.trim();
-  if (!configured) {
-    throw new Error("SENERA_ALLOWED_ORIGINS must declare at least one browser Origin.");
+function resolveDockerAccessControlOverrides(): {
+  AllowedOrigins?: string[];
+  AllowInsecureHttp?: boolean;
+} {
+  const overrides: {
+    AllowedOrigins?: string[];
+    AllowInsecureHttp?: boolean;
+  } = {};
+  const configuredOrigins = process.env.SENERA_ALLOWED_ORIGINS?.trim();
+  if (configuredOrigins) {
+    dockerProcessLogger.warn(
+      "SENERA_ALLOWED_ORIGINS is deprecated; same-origin browser access is automatic. " +
+        "Move cross-origin clients to Server.AccessControl.AllowedOrigins.",
+    );
+    overrides.AllowedOrigins = parseDockerAllowedOrigins(configuredOrigins);
   }
+
+  const configuredInsecureHttp = process.env.SENERA_ALLOW_INSECURE_HTTP?.trim().toLowerCase();
+  if (configuredInsecureHttp) {
+    if (configuredInsecureHttp !== "true" && configuredInsecureHttp !== "false") {
+      throw new Error("SENERA_ALLOW_INSECURE_HTTP must be true or false while the deprecated variable is in use.");
+    }
+    dockerProcessLogger.warn(
+      "SENERA_ALLOW_INSECURE_HTTP is deprecated; configure Server.AccessControl.AllowInsecureHttp instead. " +
+        "Unset it to keep automatic HTTPS-only remote access.",
+    );
+    overrides.AllowInsecureHttp = configuredInsecureHttp === "true";
+  }
+  return overrides;
+}
+
+function parseDockerAllowedOrigins(configured: string): string[] {
   return configured
     .split(",")
     .map((value) => new URL(value.trim()).origin)
     .filter((value, index, values) => values.indexOf(value) === index);
-}
-
-function resolveDockerAllowInsecureHttp(): boolean {
-  const configured = process.env.SENERA_ALLOW_INSECURE_HTTP?.trim().toLowerCase();
-  if (configured === "true") return true;
-  if (configured === "false") return false;
-  throw new Error("SENERA_ALLOW_INSECURE_HTTP must be either true or false.");
 }
 
 function resolveDockerPort(): number {

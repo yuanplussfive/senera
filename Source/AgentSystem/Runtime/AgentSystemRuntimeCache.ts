@@ -20,7 +20,7 @@ import type { AgentContinuityLifecyclePort } from "../Continuity/AgentContinuity
 import type { AgentWorldSnapshotProvider } from "../World/AgentWorldTypes.js";
 import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
-import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
@@ -52,6 +52,8 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   sandboxAvailable?: boolean;
   sandboxProvider?: AgentSandboxRuntimeProvider;
   dockerEngineWorker?: SeneraSandboxWorkerClient;
+  /** Derived sandbox guest workspace root. Linux paths follow workspaceRoot; other hosts use the contract default. */
+  sandboxGuestWorkspaceRoot?: string;
   mcpInputs?: AgentExtensionValueResolver;
   workspaceRuntime?: AgentWorkspaceRuntimeServices;
   orchestration?: AgentOrchestrationHostRuntime;
@@ -63,7 +65,7 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   agenda?: AgentAgendaService;
   worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
-  identityTemplateValues?: () => AgentIdentityTemplateValues;
+  identityDisplayValues?: () => AgentIdentityDisplayValues;
 }
 
 export interface AgentSystemRuntimeLease<TRuntime extends AgentSystemRuntimeCacheRuntime> {
@@ -89,6 +91,8 @@ export interface AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRunt
   sandboxAvailable?: boolean;
   sandboxProvider?: AgentSandboxRuntimeProvider;
   dockerEngineWorker?: SeneraSandboxWorkerClient;
+  /** Derived sandbox guest workspace root. Defaults to workspaceRoot when omitted (Linux image deployments). */
+  sandboxGuestWorkspaceRoot?: string;
   mcpInputs?: AgentExtensionValueResolver;
   workspaceRuntime?: AgentWorkspaceRuntimeServices;
   orchestration?: AgentOrchestrationHostRuntime;
@@ -100,7 +104,7 @@ export interface AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRunt
   agenda?: AgentAgendaService;
   worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
-  identityTemplateValues?: () => AgentIdentityTemplateValues;
+  identityDisplayValues?: () => AgentIdentityDisplayValues;
   maxIdleEntries?: number;
   runtimeFactory?: (input: AgentSystemRuntimeCacheRuntimeFactoryInput) => TRuntime;
 }
@@ -183,6 +187,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
         sandboxAvailable: this.options.sandboxAvailable,
         sandboxProvider: this.options.sandboxProvider,
         dockerEngineWorker: this.options.dockerEngineWorker,
+        sandboxGuestWorkspaceRoot: this.options.sandboxGuestWorkspaceRoot,
         mcpInputs: this.options.mcpInputs,
         workspaceRuntime: this.options.workspaceRuntime,
         orchestration: this.options.orchestration,
@@ -194,7 +199,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
         agenda: this.options.agenda,
         worldRuntime: this.options.worldRuntime,
         inferenceBudget: this.options.inferenceBudget,
-        identityTemplateValues: this.options.identityTemplateValues,
+        identityDisplayValues: this.options.identityDisplayValues,
       });
     }
 
@@ -215,6 +220,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       sandboxAvailable: this.options.sandboxAvailable,
       sandboxProvider: this.options.sandboxProvider,
       dockerEngineWorker: this.options.dockerEngineWorker,
+      sandboxGuestWorkspaceRoot: this.options.sandboxGuestWorkspaceRoot,
       mcpInputs: this.options.mcpInputs,
       workspaceRuntime: this.options.workspaceRuntime,
       orchestration: this.options.orchestration,
@@ -226,7 +232,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       agenda: this.options.agenda,
       worldRuntime: this.options.worldRuntime,
       inferenceBudget: this.options.inferenceBudget,
-      identityTemplateValues: this.options.identityTemplateValues,
+      identityDisplayValues: this.options.identityDisplayValues,
     }) as unknown as TRuntime;
   }
 

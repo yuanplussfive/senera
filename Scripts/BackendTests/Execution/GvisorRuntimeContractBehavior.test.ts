@@ -4,6 +4,7 @@ import {
   readAgentDockerEngineRuntimeContract,
   readAgentGvisorRuntimeContract,
   readAgentGvisorRuntimePolicyContract,
+  resolveAgentDockerEngineGuestWorkspaceRoot,
 } from "../../../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 
 describe("gVisor runtime contract", () => {
@@ -58,5 +59,13 @@ describe("gVisor runtime contract", () => {
     });
     expect(gvisor.defaults).toEqual(dockerEngine.defaults);
     expect({ ...gvisor.container, labels: undefined }).toEqual({ ...dockerEngine.container, labels: undefined });
+  });
+
+  test("derives the Linux guest namespace from the workspace and keeps a cross-platform default", () => {
+    expect(resolveAgentDockerEngineGuestWorkspaceRoot("/data", "docker-engine")).toBe("/data");
+    expect(resolveAgentDockerEngineGuestWorkspaceRoot("/srv/senera", "gvisor")).toBe("/srv/senera");
+    expect(resolveAgentDockerEngineGuestWorkspaceRoot("E:\\senera", "docker-engine")).toBe(
+      readAgentDockerEngineRuntimeContract("docker-engine").contract.guest.workspaceRoot,
+    );
   });
 });

@@ -5,7 +5,7 @@ import { AgentBaseError } from "../Core/AgentBaseError.js";
 export interface AgentWebUrlPolicyOptions {
   readonly maxUrlLength: number;
   readonly allowPrivateNetworks: boolean;
-  /** Permit a hostname resolved exclusively to the 198.18.0.0/15 Fake-IP range used by local proxies. */
+  /** Permit hostnames resolving into the 198.18.0.0/15 Fake-IP range used by local proxies, even when mixed with public addresses. */
   readonly allowSyntheticProxyAddresses?: boolean;
 }
 
@@ -82,12 +82,12 @@ export async function assertSafeWebUrl(
       { cause: error },
     );
   }
-  const syntheticProxyMapping =
-    options.allowSyntheticProxyAddresses === true &&
-    !isLiteralAddress &&
-    addresses.length > 0 &&
-    addresses.every(isSyntheticProxyAddress);
-  if ((addresses.length === 0 || addresses.some(isBlockedAddress)) && !syntheticProxyMapping) {
+  const hasSyntheticProxyAddress =
+    options.allowSyntheticProxyAddresses === true && !isLiteralAddress && addresses.some(isSyntheticProxyAddress);
+  const blocked = addresses.some(
+    (address) => isBlockedAddress(address) && !(hasSyntheticProxyAddress && isSyntheticProxyAddress(address)),
+  );
+  if (addresses.length === 0 || blocked) {
     throw privateNetworkError(url.hostname, addresses);
   }
   return url;

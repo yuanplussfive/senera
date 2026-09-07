@@ -114,7 +114,7 @@ function createFixture(options: {
     remove,
     runtime: new AgentDockerEngineRuntime({
       docker,
-      workspace: { kind: "bind", sourcePath: process.cwd() },
+      workspace: { kind: "bind", sourcePath: process.cwd(), guestRoot: resolved.contract.guest.workspaceRoot },
       copySourceRoots: [process.cwd()],
       runtimeContract: resolved,
       imageReference,

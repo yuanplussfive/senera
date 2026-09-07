@@ -145,6 +145,14 @@
       "snapshot": "snapshots/0018.schema.sql",
       "migrationSha256": "56ae6a194cf7ad232a90680235d9898a79feb6eab104c1bc90ab5267c90ee8d5",
       "snapshotSha256": "ac3f152f2c22c3a0b9866848722ecfb8f8a9e86e033afc4996fbe8948d8c12df"
+    },
+    {
+      "version": 19,
+      "name": "child-run-join-groups",
+      "migration": "migrations/0019-child-run-join-groups.sql",
+      "snapshot": "snapshots/0019.schema.sql",
+      "migrationSha256": "366e256b82ac7c694dfcfe9d72a9d0e081f5718e611178b142b9a878f49be5f3",
+      "snapshotSha256": "e57ba877d287cfc28c67603b10592ba2b0bf35146cf4388498bdc2d69b7a9927"
     }
   ]
 }

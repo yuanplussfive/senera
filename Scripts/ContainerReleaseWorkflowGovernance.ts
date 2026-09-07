@@ -95,7 +95,7 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         'docker pull "$IMAGE"',
         'docker pull "$SANDBOX_IMAGE"',
         'export SENERA_IMAGE="$IMAGE"',
-        'export SENERA_SANDBOX_IMAGE="$SANDBOX_IMAGE"',
+        'export SENERA_DOCKER_SANDBOX_IMAGE="$SANDBOX_IMAGE"',
         'docker compose up --detach --wait --wait-timeout "$CONTAINER_HEALTH_TIMEOUT_SECONDS" --pull never',
         'container_id="$(docker compose ps --quiet senera)"',
         'runtime_uid="$(docker exec "$container_id"',

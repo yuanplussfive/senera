@@ -1,4 +1,4 @@
-import { useCallback, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { toast } from "sonner";
 import type { UploadAttachmentData, WsRequest } from "../api/eventTypes";
 import type { ApprovalBatchReference, ApprovalDecision } from "../api/approvalEventTypes";
@@ -134,6 +134,29 @@ export function useChatCommands({
   serverKnownSessionIdsRef,
   status,
 }: UseChatCommandsOptions): ChatCommandsHandle {
+  const pendingCancellationRef = useRef<{ sessionId: string; requestId: string } | null>(null);
+
+  useEffect(() => {
+    if (status !== "open") return;
+    const pending = pendingCancellationRef.current;
+    if (!pending) return;
+    const activeRun = readActiveRun(useStore.getState().sessions[pending.sessionId]);
+    if (
+      !activeRun ||
+      activeRun.requestId !== pending.requestId ||
+      (activeRun.status !== "running" && activeRun.status !== "cancelling")
+    ) {
+      pendingCancellationRef.current = null;
+      return;
+    }
+    const accepted = send({
+      type: "session.cancel",
+      sessionId: pending.sessionId,
+      requestId: pending.requestId,
+    });
+    if (accepted) pendingCancellationRef.current = null;
+  }, [send, status]);
+
   const regenerateFromRequest = useCallback(
     (request: RegenerateFromRequest): boolean => {
       const requestId = generateId();
@@ -170,20 +193,17 @@ export function useChatCommands({
 
   const cancelActiveSession = useCallback((): void => {
     if (!activeSessionId) return;
-    if (status !== "open") {
-      toast.error(frontendMessage("chat.cancelDisconnected"));
-      return;
-    }
     const state = useStore.getState();
     const session = state.sessions[activeSessionId];
     const activeRun = readActiveRun(session);
     if (!activeRun || activeRun.status !== "running") return;
-    const accepted = send({ type: "session.cancel", sessionId: activeSessionId, requestId: activeRun.requestId });
-    if (!accepted) {
-      toast.error(frontendMessage("chat.cancelDisconnected"));
-      return;
-    }
+    pendingCancellationRef.current = { sessionId: activeSessionId, requestId: activeRun.requestId };
     useStore.getState().markRunCancelling(activeSessionId, activeRun.requestId);
+    const accepted =
+      status === "open"
+        ? send({ type: "session.cancel", sessionId: activeSessionId, requestId: activeRun.requestId })
+        : false;
+    if (accepted) pendingCancellationRef.current = null;
     toast.message(frontendMessage("chat.cancelRequested"));
   }, [activeSessionId, send, status]);
 

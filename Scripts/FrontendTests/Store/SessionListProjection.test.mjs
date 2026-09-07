@@ -3,6 +3,7 @@ import {
   deleteSessionRuntimeState,
   deleteSessionRuntimeStates,
   ingestSessionList,
+  invalidateSessionHistoryCache,
   markSessionDeletionRequested,
   readFirstAvailableSessionId,
   restorePendingSessionDeletion,
@@ -68,6 +69,32 @@ test("server refresh keeps the user's session order and appends newly discovered
   ingestSessionList(state, [listItem("first"), listItem("second"), listItem("new")]);
 
   expect(state.sessionOrder).toEqual(["second", "first", "new"]);
+});
+
+test("reconnect invalidates history freshness without blanking visible messages", () => {
+  const state = createState({
+    sessions: {
+      active: session("active", { messages: [message("message-1")], messageCount: 1 }),
+    },
+    historyLoadedIds: { active: true },
+    historyFailedIds: { active: true },
+    historyLoadingIds: { active: true },
+    historyReplayBuffers: { active: [{ entry: {} }] },
+    historyStepBuffers: { active: [{ requestId: "run-1", steps: [] }] },
+    historyEventRunIds: { active: { "run-1": true } },
+    historyActiveRequestIds: { active: "run-1" },
+  });
+
+  invalidateSessionHistoryCache(state);
+
+  expect(state.sessions.active.messages).toHaveLength(1);
+  expect(state.historyLoadedIds.active).toBeUndefined();
+  expect(state.historyFailedIds.active).toBeUndefined();
+  expect(state.historyLoadingIds.active).toBe(false);
+  expect(state.historyReplayBuffers.active).toBeUndefined();
+  expect(state.historyStepBuffers.active).toBeUndefined();
+  expect(state.historyEventRunIds.active).toBeUndefined();
+  expect(state.historyActiveRequestIds.active).toBeUndefined();
 });
 
 test("deletion keeps runtime state available and restores it after a close failure", () => {

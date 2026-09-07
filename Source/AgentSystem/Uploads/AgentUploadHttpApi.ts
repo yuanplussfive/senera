@@ -37,7 +37,7 @@ type AgentUploadHttpRoute =
 export interface AgentUploadHttpApiOptions {
   store: AgentUploadStore;
   resourceResolver?: AgentResourceResolverLike;
-  isOriginAllowed?: (origin: string) => boolean;
+  isOriginAllowed?: (origin: string, request: IncomingMessage) => boolean;
   onMaintenanceError?: (failure: AgentUploadMaintenanceFailure) => void;
 }
 
@@ -96,7 +96,7 @@ export class AgentUploadHttpApi {
     if (
       !applyCredentialedCors(request, response, {
         allowedMethods: ["GET", "HEAD", "POST", "OPTIONS"],
-        isOriginAllowed: (origin) => this.options.isOriginAllowed?.(origin) ?? false,
+        isOriginAllowed: (origin, corsRequest) => this.options.isOriginAllowed?.(origin, corsRequest) ?? false,
       })
     ) {
       this.sendJson(response, 403, {

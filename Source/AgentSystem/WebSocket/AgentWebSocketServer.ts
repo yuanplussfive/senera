@@ -2,7 +2,12 @@ import http from "node:http";
 import type { Duplex } from "node:stream";
 import { type WebSocket, WebSocketServer } from "ws";
 import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
-import { resolvePresetsConfig, resolveServerConfig, resolveUploadsConfig } from "../AgentDefaults.js";
+import {
+  resolveModelProviderCatalog,
+  resolvePresetsConfig,
+  resolveServerConfig,
+  resolveUploadsConfig,
+} from "../AgentDefaults.js";
 import { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { AgentPresetManager } from "../Presets/AgentPresetManager.js";
 import { AgentUploadHttpApi } from "../Uploads/AgentUploadHttpApi.js";
@@ -32,6 +37,7 @@ import { AgentWorkspaceResourceHttpApi } from "../WorkspaceResources/AgentWorksp
 import { AgentProviderCredentialHttpApi } from "../Config/AgentProviderCredentialHttpApi.js";
 import { AgentRuntimeUpdateHttpApi } from "../Runtime/AgentRuntimeUpdateHttpApi.js";
 import { AgentResourceResolver } from "../Resources/AgentResourceResolver.js";
+import { AgentModelsDevCatalog } from "../ModelEndpoints/AgentModelsDevCatalog.js";
 
 export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 
@@ -48,6 +54,8 @@ export class AgentWebSocketServer {
   private readonly messageRouter: AgentWebSocketMessageRouter;
   private readonly accessGuard: AgentServerAccessGuard;
   private readonly channelControl?: AgentChannelServiceControl;
+  private readonly modelsDevCatalog: AgentModelsDevCatalog;
+  private readonly configSnapshot: AgentWebSocketRequestContext["configSnapshot"];
   private httpServer?: http.Server;
   private server?: WebSocketServer;
   private heartbeatTimer?: NodeJS.Timeout;
@@ -59,6 +67,7 @@ export class AgentWebSocketServer {
     this.channelControl = options.channelControl;
     const configSnapshot = (): ReturnType<AgentWebSocketRequestContext["configSnapshot"]> =>
       options.configSnapshot?.() ?? options.config;
+    this.configSnapshot = configSnapshot;
     const configRevision = (): number | undefined => {
       const snapshot = options.configService?.snapshot();
       return snapshot?.revision ?? snapshot?.version;
@@ -67,11 +76,20 @@ export class AgentWebSocketServer {
       configSnapshot,
       configRevision,
     });
+    this.modelsDevCatalog = new AgentModelsDevCatalog({
+      workspaceRoot: options.workspaceRoot ?? process.cwd(),
+      onUpdated: () => this.broadcastModelListSnapshot(),
+      onError: (error) =>
+        this.logger.warn("models.dev 模型目录刷新失败", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+    });
     const sandboxRuntimeService = options.sandboxRuntimeService ?? new AgentSandboxRuntimeService();
     this.serverConfig = resolveServerConfig(options.config);
     this.accessGuard = new AgentServerAccessGuard({
       server: this.serverConfig,
       workspaceRoot: options.workspaceRoot ?? process.cwd(),
+      automaticLoopbackHttp: options.automaticLoopbackHttp,
     });
     this.eventSender = new AgentWebSocketEventEnvelopeSender({
       logger: this.logger,
@@ -91,7 +109,7 @@ export class AgentWebSocketServer {
     this.uploadApi = new AgentUploadHttpApi({
       store: uploadStore,
       resourceResolver,
-      isOriginAllowed: (origin) => this.accessGuard.allowsOrigin(origin),
+      isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
       onMaintenanceError: ({ error, trigger, consecutiveFailures, retryInMs }) => {
         this.logger.error("上传存储维护失败", {
           trigger,
@@ -103,12 +121,12 @@ export class AgentWebSocketServer {
     });
     this.providerCredentialApi = new AgentProviderCredentialHttpApi({
       configSnapshot,
-      isOriginAllowed: (origin) => this.accessGuard.allowsOrigin(origin),
+      isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
     });
     this.workspaceResourceApi = new AgentWorkspaceResourceHttpApi({
       workspaceRoot: options.workspaceRoot ?? process.cwd(),
       maxTextBytes: this.serverConfig.RequestMaxBytes,
-      isOriginAllowed: (origin) => this.accessGuard.allowsOrigin(origin),
+      isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
     });
     this.httpRouter = new AgentWebSocketHttpRouter({
       uploadApi: this.uploadApi,
@@ -131,6 +149,7 @@ export class AgentWebSocketServer {
         sessionManager: options.sessionManager,
         userProfileManager: options.userProfileManager,
         providerModelDiscovery,
+        modelsDevCatalog: this.modelsDevCatalog,
         presetManagerFactory: () => createPresetManager(options, configSnapshot()),
         onPresetSnapshot: options.onPresetSnapshot,
         approvalRuntime: options.approvalRuntime,
@@ -196,6 +215,7 @@ export class AgentWebSocketServer {
       throw error;
     });
     this.uploadApi.startMaintenance();
+    this.modelsDevCatalog.start();
     this.heartbeatTimer = setInterval(() => this.heartbeat(), this.accessGuard.heartbeatIntervalMs);
     this.heartbeatTimer.unref();
   }
@@ -210,6 +230,7 @@ export class AgentWebSocketServer {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = undefined;
     }
+    this.modelsDevCatalog.stop();
     const webSocketServer = this.server;
     const httpServer = this.httpServer;
     for (const socket of webSocketServer?.clients ?? []) {
@@ -236,6 +257,23 @@ export class AgentWebSocketServer {
 
   broadcast(event: AgentDomainEvent): Promise<void> {
     return this.eventSender.broadcast(this.server?.clients ?? [], event);
+  }
+
+  private async broadcastModelListSnapshot(): Promise<void> {
+    if (!this.server) return;
+    const modelCatalog = resolveModelProviderCatalog(this.configSnapshot());
+    const catalogStatus = await this.modelsDevCatalog.snapshot();
+    await this.broadcast({
+      kind: AgentEventKinds.ModelListSnapshot,
+      context: {},
+      data: {
+        models: modelCatalog
+          .list()
+          .map((model) => ({ ...model, modelsDev: this.modelsDevCatalog.resolve(model.providerId, model.model) })),
+        modelsDev: catalogStatus,
+        defaultModelProviderId: modelCatalog.defaultId,
+      },
+    });
   }
 
   private handleHttpFailure(response: http.ServerResponse, error: unknown): void {

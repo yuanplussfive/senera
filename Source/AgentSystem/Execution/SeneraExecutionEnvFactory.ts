@@ -13,6 +13,7 @@ import type { AgentSandboxRuntimeProvider } from "../Sandbox/AgentSandboxRuntime
 import type { SeneraProcessExecutionBackend } from "./SeneraProcessExecutionBackend.js";
 import type { SeneraTerminalBackend } from "./SeneraTerminalTypes.js";
 import { createSeneraExecutionRuntimeCapabilities } from "./SeneraExecutionRuntimeCapabilities.js";
+import { resolveAgentDockerEngineGuestWorkspaceRoot } from "../Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 
 export interface SeneraExecutionEnvFactoryOptions {
   workspaceRoot: string;
@@ -26,6 +27,8 @@ export interface SeneraExecutionEnvFactoryOptions {
   sandboxRuntimeReady?: () => boolean;
   sandboxProvider?: AgentSandboxRuntimeProvider;
   dockerEngineWorker?: SeneraSandboxWorkerClient;
+  /** Derived sandbox guest workspace root. Linux paths follow workspaceRoot; other hosts use the contract default. */
+  sandboxGuestWorkspaceRoot?: string;
 }
 
 export function createSeneraExecutionEnv(options: SeneraExecutionEnvFactoryOptions): SeneraExecutionEnv {
@@ -66,7 +69,13 @@ function createSharedExecutionDependencies(options: SeneraExecutionEnvFactoryOpt
     environmentPolicy,
     terminationGraceMs: options.terminationGraceMs,
   });
-  const sandboxBackend = sandboxAvailable ? createSandboxBackend(options) : undefined;
+  const sandboxProvider = requireDockerEngineProvider(options.sandboxProvider);
+  const sandboxGuestWorkspaceRoot =
+    options.sandboxGuestWorkspaceRoot ??
+    (sandboxAvailable && sandboxProvider
+      ? resolveAgentDockerEngineGuestWorkspaceRoot(options.workspaceRoot, sandboxProvider)
+      : options.workspaceRoot);
+  const sandboxBackend = sandboxAvailable ? createSandboxBackend(options, sandboxGuestWorkspaceRoot) : undefined;
   const processBackend = new SeneraRoutingProcessBackend({
     local: localBackend,
     sandbox: sandboxBackend,
@@ -103,7 +112,7 @@ function sandboxPersistentProcessSpawner(backend: SeneraDockerEngineBackend) {
   return Object.assign(backend.spawnPersistentProcess.bind(backend), { supportedBackends: ["sandbox"] as const });
 }
 
-function createSandboxBackend(options: SeneraExecutionEnvFactoryOptions) {
+function createSandboxBackend(options: SeneraExecutionEnvFactoryOptions, sandboxGuestWorkspaceRoot: string) {
   if (!options.dockerEngineWorker) {
     throw new Error(`The selected ${options.sandboxProvider ?? "Docker Engine"} provider requires a Worker client.`);
   }
@@ -112,6 +121,7 @@ function createSandboxBackend(options: SeneraExecutionEnvFactoryOptions) {
     worker: options.dockerEngineWorker,
     provider: requireDockerEngineProvider(options.sandboxProvider),
     runtimeReady: options.sandboxRuntimeReady,
+    guestWorkspaceRoot: sandboxGuestWorkspaceRoot,
   });
 }
 

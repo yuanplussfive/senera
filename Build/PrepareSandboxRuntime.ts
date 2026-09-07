@@ -12,7 +12,10 @@ import {
   AgentDockerEngineRuntime,
   resolveAgentDockerEngineSandboxProvider,
 } from "../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntime.js";
-import { readAgentDockerEngineRuntimeContract } from "../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
+import {
+  readAgentDockerEngineRuntimeContract,
+  resolveAgentDockerEngineGuestWorkspaceRoot,
+} from "../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 import {
   createAgentDockerEngineClient,
   resolveAgentDockerEngineEndpoint,
@@ -50,6 +53,7 @@ export async function prepareSandboxRuntime(
   const engineEndpoint = resolveAgentDockerEngineEndpoint({ configuredEndpoint: options.engineEndpoint });
   const docker = options.docker ?? createAgentDockerEngineClient(engineEndpoint);
   const resolution = await resolveAgentDockerEngineSandboxProvider({ docker, preference: "auto" });
+  const runtimeContract = readAgentDockerEngineRuntimeContract(resolution.provider, architecture);
   const imageReferences = [...new Set([target.runtimeImage, target.registryImage])];
 
   log(`Building ${imageReferences[0]} for linux/${dockerArchitecture(architecture)}...`);
@@ -78,10 +82,14 @@ export async function prepareSandboxRuntime(
 
   const runtime = new AgentDockerEngineRuntime({
     docker,
-    workspace: { kind: "bind", sourcePath: workspaceRoot },
+    workspace: {
+      kind: "bind",
+      sourcePath: workspaceRoot,
+      guestRoot: resolveAgentDockerEngineGuestWorkspaceRoot(workspaceRoot, resolution.provider),
+    },
     copySourceRoots: [workspaceRoot],
     provider: resolution.provider,
-    runtimeContract: readAgentDockerEngineRuntimeContract(resolution.provider, architecture),
+    runtimeContract,
     imageReference: imageReferences[0],
     pullPolicy: "never",
   });

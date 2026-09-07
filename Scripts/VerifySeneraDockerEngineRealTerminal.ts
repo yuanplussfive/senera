@@ -14,6 +14,7 @@ import {
   type SeneraTerminalChild,
 } from "../Source/AgentSystem/Execution/SeneraTerminalTypes.js";
 import { resolveAgentSandboxDistributionTarget } from "../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
+import { resolveAgentDockerEngineGuestWorkspaceRoot } from "../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const VerificationTimeoutMs = 30_000;
@@ -53,6 +54,8 @@ try {
     throw new Error("Docker sandbox Worker must be enabled for the real runtime verification.");
   }
   const provider = worker.availability.provider;
+  const guestWorkspaceRoot = resolveAgentDockerEngineGuestWorkspaceRoot(workspaceRoot, provider);
+  const guestWorkspacePattern = escapeRegExp(guestWorkspaceRoot);
   const client = worker.client;
   await client.prepare({ timeoutMs: 120_000 });
 
@@ -62,6 +65,7 @@ try {
     sandboxRuntimeReady: () => true,
     sandboxProvider: provider,
     dockerEngineWorker: client,
+    sandboxGuestWorkspaceRoot: guestWorkspaceRoot,
   });
   const readonlyProfile = sandboxProfile("readonly");
   const writableProfile = sandboxProfile("writable");
@@ -84,7 +88,10 @@ try {
   assert.equal(visible.stderr, "");
   assert.match(
     visible.stdout,
-    /^environment-visible\n\/workspace\nref: refs\/heads\/main\nruntime-visible\ncwd=\/workspace\n$/u,
+    new RegExp(
+      `^environment-visible\\n${guestWorkspacePattern}\\nref: refs/heads/main\\nruntime-visible\\ncwd=${guestWorkspacePattern}\\n$`,
+      "u",
+    ),
   );
 
   const denied = await environments.tool.executeShell({
@@ -115,6 +122,7 @@ try {
       maxDurationMs: VerificationTimeoutMs,
       profile: readonlyProfile,
     }),
+    guestWorkspacePattern,
   );
 
   process.stdout.write(`Real Docker Engine shell and PTY verification passed (${provider}).\n`);
@@ -142,7 +150,7 @@ async function prepareWorkspaceFixture(root: string): Promise<void> {
   await Promise.all([writeFile(path.join(root, ".senera", "runtime-state"), "runtime-visible\n", "utf8")]);
 }
 
-async function verifyTerminal(terminal: SeneraTerminalChild): Promise<void> {
+async function verifyTerminal(terminal: SeneraTerminalChild, guestWorkspacePattern: string): Promise<void> {
   const chunks: string[] = [];
   let terminalError: Error | undefined;
   let exited = false;
@@ -174,7 +182,11 @@ async function verifyTerminal(terminal: SeneraTerminalChild): Promise<void> {
     await terminal.write("stty size\n");
     await waitForOutput(chunks, /(?:^|\r?\n)40 132(?:\r?\n|$)/u, () => terminalError);
     await terminal.write(`printf 'senera-pty:%s:%s\\n' "$(id -u)" "$PWD"\n`);
-    await waitForOutput(chunks, /senera-pty:[1-9][0-9]*:\/workspace/u, () => terminalError);
+    await waitForOutput(
+      chunks,
+      new RegExp(`senera-pty:[1-9][0-9]*:${guestWorkspacePattern}`, "u"),
+      () => terminalError,
+    );
     await terminal.write("exit\n");
     const exitEvent = await withDeadline(exit, VerificationTimeoutMs, () => new Error("Docker terminal did not exit."));
     assert.equal(exitEvent.exitCode, 0);
@@ -199,4 +211,8 @@ async function waitForOutput(
     }
     await sleep(OutputPollIntervalMs);
   }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }

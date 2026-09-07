@@ -145,6 +145,14 @@ describe("ToolSearch meta-tool behavior", () => {
       loadedTools: [...toolExposure.snapshot().exposedToolNames],
       execution: { value: [toolResult({ name: "WorkspaceReadFile", arguments: { path: "package.json" } })] },
     });
+    expect(runtime.reusableCapabilities({ sessionId: "session-1", query: "read workspace file" })).toMatchObject([
+      expect.objectContaining({
+        toolName: "WorkspaceReadFile",
+        query: "read workspace file",
+        arguments: { path: "package.json" },
+      }),
+    ]);
+    expect(runtime.reusableCapabilities({ sessionId: "session-1", query: "weather forecast" })).toEqual([]);
     const reused = await handler(
       { query: "read workspace file" },
       hostToolContext({

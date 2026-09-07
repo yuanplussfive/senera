@@ -13,6 +13,7 @@ import {
 import type { AgentWorkflowPromptContext } from "../Prompt/AgentWorkflowPromptContext.js";
 import { composeAgentPromptHarness, type AgentPromptHarnessComposition } from "../Prompt/AgentPromptHarness.js";
 import { compileAgentSceneContext } from "../Prompt/AgentSceneContextCompiler.js";
+import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 
 export interface AgentRenderedTurnPrompt {
   text: string;
@@ -47,6 +48,7 @@ export class AgentTurnPromptRenderer {
     sessionId?: string;
     requestId?: string;
     loadedToolNames: string[];
+    authorizedToolNames?: readonly string[];
     rootCommand: AgentRootCommand;
     toolPlanningMode: AgentModelToolPlanningMode;
     systemPromptLayer?: AgentSystemPromptLayer;
@@ -91,6 +93,23 @@ export class AgentTurnPromptRenderer {
         avoid: toolDescription?.AvoidSection,
       },
     });
+    const reusableCapabilities = input.sessionId
+      ? (this.runtime.services.retrieval?.reusableCapabilities?.({
+          sessionId: input.sessionId,
+          query: input.userInput,
+          authorizedToolNames: input.authorizedToolNames,
+          limit: 6,
+        }) ?? [])
+      : [];
+    const reusableCapabilityPrompt = formatReusableCapabilities(reusableCapabilities);
+    const reusableCapabilityRevision = sha256HexOfCanonicalJson(
+      reusableCapabilities.map((entry) => ({
+        toolName: entry.toolName,
+        contractDigest: entry.contractDigest ?? null,
+        catalogRevision: entry.catalogRevision,
+        arguments: entry.arguments ?? null,
+      })),
+    );
     const delegatedRole = projectAgentDelegatedRolePromptContext(input.systemPromptLayer);
     const delegatedRoleRevision =
       delegatedRole.enabled && delegatedRole.mode === "replace"
@@ -101,11 +120,12 @@ export class AgentTurnPromptRenderer {
     const stablePrompt = await this.runtime.promptTierRenderCache.getOrRender(stableCacheKey, () =>
       this.runtime.promptRenderer.renderFile(stableTemplate.path, { ...baseContext, DelegatedRole: delegatedRole }),
     );
-    const volatilePrompt = await this.runtime.promptRenderer.renderFile(volatileTemplate.path, {
+    const renderedVolatilePrompt = await this.runtime.promptRenderer.renderFile(volatileTemplate.path, {
       ...baseContext,
       DelegatedRole: delegatedRole,
       RoleCheck: this.runtime.promptConfig.RoleCheck,
     });
+    const volatilePrompt = joinPromptSections(renderedVolatilePrompt, reusableCapabilityPrompt);
     const harness = composeAgentPromptHarness(
       {
         frozen: { text: frozenPrompt, revision: "static" },
@@ -122,6 +142,7 @@ export class AgentTurnPromptRenderer {
           revision: sha256HexOfCanonicalJson({
             template: volatileTemplate.path,
             contextRevisions: baseContext.ContextRevisions.volatile,
+            reusableCapabilityRevision,
           }),
         },
       },
@@ -139,6 +160,37 @@ export class AgentTurnPromptRenderer {
       harness,
     };
   }
+}
+
+const MaxReusableCapabilityPromptCharacters = 12_000;
+
+function formatReusableCapabilities(entries: readonly AgentToolCapabilityCacheEntry[]): string {
+  if (entries.length === 0) return "";
+  const selected: Array<{
+    tool: string;
+    contractDigest?: string;
+    catalogRevision: string;
+    arguments: Readonly<Record<string, unknown>>;
+  }> = [];
+  for (const entry of entries) {
+    if (!entry.arguments) continue;
+    const candidate = {
+      tool: entry.toolName,
+      ...(entry.contractDigest ? { contractDigest: entry.contractDigest } : {}),
+      catalogRevision: entry.catalogRevision,
+      arguments: entry.arguments,
+    };
+    const next = JSON.stringify({ capabilities: [...selected, candidate] });
+    if (next.length > MaxReusableCapabilityPromptCharacters) continue;
+    selected.push(candidate);
+  }
+  if (selected.length === 0) return "";
+  return [
+    "<reusable_capabilities>",
+    "Host-confirmed capability data. Reuse these arguments directly when the current task matches; do not search again unless the catalog or contract has changed.",
+    JSON.stringify({ capabilities: selected }),
+    "</reusable_capabilities>",
+  ].join("\n");
 }
 
 function joinPromptSections(...sections: readonly string[]): string {

@@ -12,6 +12,8 @@ import {
 import { AgentTokenBucket } from "./AgentTokenBucket.js";
 
 const MinuteMs = 60_000;
+const SecureSessionCookieName = "__Host-senera_session";
+const InsecureSessionCookieName = "senera_local_session";
 const DefaultLocalPrincipal: AgentServerPrincipal = {
   id: "local-runtime",
   loginName: "local",
@@ -65,6 +67,8 @@ export class AgentServerAccessGuard {
       server: ResolvedAgentServerConfig;
       workspaceRoot: string;
       now?: () => number;
+      /** Deployment-provided safe default for loopback HTTP (for example, a local container port). */
+      automaticLoopbackHttp?: boolean;
     },
   ) {
     this.required = resolveAuthenticationRequired(options.server);
@@ -107,7 +111,7 @@ export class AgentServerAccessGuard {
   }
 
   get cookieName(): string {
-    return this.usesSecureCookie ? "__Host-senera_session" : "senera_local_session";
+    return this.usesSecureCookie ? SecureSessionCookieName : InsecureSessionCookieName;
   }
 
   get sessionMaxAgeSeconds(): number {
@@ -126,16 +130,26 @@ export class AgentServerAccessGuard {
     return this.required ? this.accountStore.require() : undefined;
   }
 
-  allowsOrigin(origin: string | undefined): boolean {
+  allowsOrigin(origin: string | undefined, request?: http.IncomingMessage): boolean {
     if (!origin) {
       return false;
     }
     try {
-      const normalized = new URL(origin).origin;
-      return (
-        this.options.server.AccessControl.AllowedOrigins.includes(normalized) ||
-        (isLoopbackHost(this.options.server.Host) && isLoopbackOrigin(normalized))
-      );
+      const parsedOrigin = new URL(origin);
+      if (parsedOrigin.protocol !== "http:" && parsedOrigin.protocol !== "https:") return false;
+      const normalized = parsedOrigin.origin;
+      if (this.options.server.AccessControl.AllowedOrigins.includes(normalized)) return true;
+      // Development and container entrypoints may serve the UI from a separate
+      // loopback port. Keep the exception scoped to loopback origins rather
+      // than allowing arbitrary cross-origin browser requests.
+      if (this.options.automaticLoopbackHttp === true && isLoopbackOrigin(normalized)) {
+        return true;
+      }
+      if (this.options.server.AccessControl.AllowedOrigins.length > 0) {
+        return isLoopbackHost(this.options.server.Host) && isLoopbackOrigin(normalized);
+      }
+      if (request) return this.isSameOrigin(request, normalized);
+      return isLoopbackHost(this.options.server.Host) && isLoopbackOrigin(normalized);
     } catch {
       return false;
     }
@@ -193,7 +207,7 @@ export class AgentServerAccessGuard {
       return { ok: true, access: { principal: DefaultLocalPrincipal, clientAddress } };
     }
 
-    const sessionToken = readCookie(request, this.cookieName);
+    const sessionToken = this.readSessionToken(request);
     const session = this.sessions.read(sessionToken, true);
     if (!session) {
       return { ok: false, failure: { status: 401, code: "authentication_required" } };
@@ -241,7 +255,7 @@ export class AgentServerAccessGuard {
     if (!this.isAllowedBrowserOrigin(request)) {
       return { ok: false, failure: { status: 403, code: "forbidden_origin" } };
     }
-    const sessionToken = readCookie(request, this.cookieName);
+    const sessionToken = this.readSessionToken(request);
     const session = this.sessions.read(sessionToken, true);
     if (!session) {
       return { ok: false, failure: { status: 401, code: "authentication_required" } };
@@ -330,23 +344,27 @@ export class AgentServerAccessGuard {
     return this.required && !this.sessions.read(connection.sessionToken, false);
   }
 
-  issueCookie(token: string): string {
+  issueCookie(token: string, request?: http.IncomingMessage): string {
+    const secure = request ? this.isSecureTransport(request) : this.usesSecureCookie;
+    const cookieName = request ? this.cookieNameForRequest(request) : this.cookieName;
     const attributes = [
-      `${this.cookieName}=${encodeURIComponent(token)}`,
+      `${cookieName}=${encodeURIComponent(token)}`,
       "Path=/",
       "HttpOnly",
       "SameSite=Strict",
       `Max-Age=${this.sessionMaxAgeSeconds}`,
     ];
-    if (this.usesSecureCookie) {
+    if (secure) {
       attributes.push("Secure");
     }
     return attributes.join("; ");
   }
 
-  clearCookie(): string {
-    const attributes = [`${this.cookieName}=`, "Path=/", "HttpOnly", "SameSite=Strict", "Max-Age=0"];
-    if (this.usesSecureCookie) {
+  clearCookie(request?: http.IncomingMessage): string {
+    const secure = request ? this.isSecureTransport(request) : this.usesSecureCookie;
+    const cookieName = request ? this.cookieNameForRequest(request) : this.cookieName;
+    const attributes = [`${cookieName}=`, "Path=/", "HttpOnly", "SameSite=Strict", "Max-Age=0"];
+    if (secure) {
       attributes.push("Secure");
     }
     return attributes.join("; ");
@@ -364,32 +382,24 @@ export class AgentServerAccessGuard {
     if (!this.required) {
       return;
     }
-    if (externalHost && this.options.server.AccessControl.AllowedOrigins.length === 0) {
-      throw new AgentLocalizedError("auth.allowedOriginsRequired");
-    }
     this.accountStore.require();
   }
 
   private isAllowedBrowserOrigin(request: http.IncomingMessage): boolean {
-    return this.allowsOrigin(readHeader(request, "origin"));
+    return this.allowsOrigin(readHeader(request, "origin"), request);
   }
 
   private isSecureRequest(request: http.IncomingMessage): boolean {
-    if ((request.socket as { encrypted?: boolean }).encrypted === true) {
+    if (this.isSecureTransport(request)) {
       return true;
     }
-    const forwarded = readHeader(request, "x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
-    return (
-      (forwarded === "https" &&
-        this.options.server.AccessControl.TrustedProxyAddresses.includes(this.clientAddress(request))) ||
-      this.allowsInsecureHttp(request) ||
-      this.allowsInsecureLoopback(request)
-    );
+    return this.allowsInsecureHttp(request) || this.allowsInsecureLoopback(request);
   }
 
   private get usesSecureCookie(): boolean {
     return (
       !isLoopbackHost(this.options.server.Host) &&
+      !this.options.automaticLoopbackHttp &&
       !this.options.server.AccessControl.AllowInsecureLoopback &&
       !this.options.server.AccessControl.AllowInsecureHttp
     );
@@ -401,8 +411,46 @@ export class AgentServerAccessGuard {
 
   private allowsInsecureLoopback(request: http.IncomingMessage): boolean {
     return (
-      this.options.server.AccessControl.AllowInsecureLoopback && isLoopbackOrigin(readHeader(request, "origin") ?? "")
+      isLoopbackOrigin(readHeader(request, "origin") ?? "") &&
+      (this.options.server.AccessControl.AllowInsecureLoopback || this.options.automaticLoopbackHttp === true)
     );
+  }
+
+  private isSecureTransport(request: http.IncomingMessage): boolean {
+    if ((request.socket as { encrypted?: boolean }).encrypted === true) {
+      return true;
+    }
+    const forwarded = readHeader(request, "x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+    return (
+      forwarded === "https" &&
+      this.options.server.AccessControl.TrustedProxyAddresses.includes(this.clientAddress(request))
+    );
+  }
+
+  private cookieNameForRequest(request: http.IncomingMessage): string {
+    return this.isSecureTransport(request) ? SecureSessionCookieName : InsecureSessionCookieName;
+  }
+
+  private readSessionToken(request: http.IncomingMessage): string | undefined {
+    const preferred = this.cookieNameForRequest(request);
+    for (const name of [preferred, SecureSessionCookieName, InsecureSessionCookieName]) {
+      const token = readCookie(request, name);
+      if (token) return token;
+    }
+    return undefined;
+  }
+
+  private isSameOrigin(request: http.IncomingMessage, origin = readHeader(request, "origin")): boolean {
+    if (!origin) return false;
+    const host = readHeader(request, "host");
+    if (!host) return false;
+    try {
+      const originUrl = new URL(origin);
+      const requestUrl = new URL(`${originUrl.protocol}//${host}`);
+      return originUrl.host.toLowerCase() === requestUrl.host.toLowerCase();
+    } catch {
+      return false;
+    }
   }
 
   private clientAddress(request: http.IncomingMessage): string {

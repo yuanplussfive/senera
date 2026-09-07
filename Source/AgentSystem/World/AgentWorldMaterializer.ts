@@ -27,9 +27,10 @@ import type {
   AgentWorldTreeProjection,
 } from "./AgentWorldTypes.js";
 import {
-  renderAgentIdentityTemplateIfPresent,
-  type AgentIdentityTemplateValues,
-} from "../Prompt/AgentIdentityTemplate.js";
+  projectLegacyIdentityText,
+  renderAgentTextParts,
+  type AgentIdentityDisplayValues,
+} from "../Text/AgentTextParts.js";
 
 export const AgentWorldSemanticAttributes = Object.freeze({
   Activity: "activity",
@@ -43,7 +44,7 @@ export interface AgentWorldMaterializerOptions {
   readonly graphSnapshot: () => AgentContinuityGraphSnapshot;
   readonly config: () => ResolvedAgentWorldConfig;
   /** Resolves display names only when derived timeline prose is presented. */
-  readonly identityTemplateValues?: () => AgentIdentityTemplateValues;
+  readonly identityDisplayValues?: () => AgentIdentityDisplayValues;
   readonly timelineProjectionPolicy?: AgentWorldTimelineProjectionPolicy;
 }
 
@@ -86,9 +87,10 @@ export class AgentWorldMaterializer {
       id: event.id,
       type: event.type,
       occurredAt: event.occurredAt,
-      summary: this.options.identityTemplateValues
-        ? renderAgentIdentityTemplateIfPresent(event.summary, this.options.identityTemplateValues())
-        : event.summary,
+      summary: renderAgentTextParts(
+        event.summaryParts?.length ? event.summaryParts : projectLegacyIdentityText(event.summary),
+        this.options.identityDisplayValues?.(),
+      ),
       source: event.uri,
       changedEntityIds: changedEntityIds(event.changes),
     }));

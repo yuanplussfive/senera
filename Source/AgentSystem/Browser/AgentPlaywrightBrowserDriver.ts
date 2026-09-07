@@ -110,9 +110,13 @@ export class AgentPlaywrightBrowserDriver implements AgentBrowserDriver {
           }),
         headless: !this.options.configuration.runtime.headed,
         timeout: this.options.configuration.runtime.requestTimeoutMs,
-        // Docker's default shared-memory mount is intentionally small. This
-        // keeps complex pages stable without weakening Chromium's sandbox.
-        ...(environment.SENERA_CONTAINER === "1" ? { args: ["--disable-dev-shm-usage"] } : {}),
+        // Docker's default shared-memory mount is intentionally small, and the
+        // single-service root mode must disable Chromium's sandbox to launch at
+        // all. The multi-service deployment keeps both flags absent so the
+        // browser runs fully sandboxed as the node user.
+        ...(environment.SENERA_CONTAINER === "1"
+          ? { args: ["--disable-dev-shm-usage", ...(isContainerRoot() ? ["--no-sandbox"] : [])] }
+          : {}),
       })
       .then(async (browser) => {
         if (this.closed) {
@@ -851,6 +855,10 @@ class AgentPlaywrightBrowserSession implements AgentBrowserDriverSession {
       signal?.removeEventListener("abort", onAbort);
     }
   }
+}
+
+function isContainerRoot(): boolean {
+  return typeof process.getuid === "function" && process.getuid() === 0;
 }
 
 function requiredComputerActions(input: Readonly<Record<string, unknown>>): AgentBrowserComputerAction[] {

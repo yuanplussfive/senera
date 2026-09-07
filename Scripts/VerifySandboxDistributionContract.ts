@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { parse as parseYaml } from "yaml";
 import {
   AgentSandboxDistributionContractSchema,
   AgentSandboxRuntimeImageLabels,
@@ -76,11 +77,27 @@ for (const fragment of [
 ]) {
   assert.ok(releaseWorkflow.includes(fragment), `Docker sandbox runtime release is missing: ${fragment}`);
 }
+// The single-service compose.yaml does not pin a sandbox image: the deployed
+// default resolves at runtime from the distribution contract's registry image
+// (AgentDefaultCatalog), so the released contract version is what actually runs.
+// An operator may forward an override through the empty-default interpolation.
+const composeRecord = parseYaml(compose) as {
+  services?: { senera?: { environment?: Record<string, unknown> } };
+};
+const seneraEnvironment = composeRecord.services?.senera?.environment ?? {};
+const sandboxImageOverride = seneraEnvironment.SENERA_DOCKER_SANDBOX_IMAGE;
 assert.ok(
-  Object.values(contract.targets).some((target) => {
-    const registryRepository = target.registryImage.slice(0, target.registryImage.lastIndexOf(":"));
-    return compose.includes(`${registryRepository}:sandbox-runtime-latest`);
-  }),
-  "Compose must use the contract registry's sandbox-runtime-latest image by default.",
+  sandboxImageOverride === undefined || String(sandboxImageOverride) === "${SENERA_DOCKER_SANDBOX_IMAGE:-}",
+  "Compose must not actively pin a sandbox image; it may only forward an operator override that defaults to the contract version.",
+);
+const defaultsCatalog = fs.readFileSync(
+  path.join(workspaceRoot, "Source", "AgentSystem", "Defaults", "AgentDefaultCatalog.ts"),
+  "utf8",
+);
+assert.ok(
+  defaultsCatalog.includes("resolveAgentSandboxDistributionTarget") &&
+    defaultsCatalog.includes("readAgentSandboxDistributionContract()") &&
+    defaultsCatalog.includes("registryImage"),
+  "The deployed default sandbox image must resolve from the distribution contract's registry image.",
 );
 console.log("Sandbox distribution contract verified.");

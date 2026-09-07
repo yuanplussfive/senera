@@ -199,6 +199,7 @@ export type ChannelStatusItem = {
   kind: "telegram" | "qq" | "discord";
   enabled: boolean;
   connected: boolean;
+  state: "stopped" | "connecting" | "connected" | "reconnecting" | "degraded";
   mode?: string;
   error?: string;
 };
@@ -411,6 +412,7 @@ export interface ModelProviderMetadata {
 
 export interface ModelProviderListItem {
   id: string;
+  providerId?: string;
   icon?: string;
   capabilities: ModelCapabilitiesData;
   kind: string;
@@ -418,6 +420,7 @@ export interface ModelProviderListItem {
   baseUrl: string;
   model: string;
   isDefault: boolean;
+  modelsDev?: ModelsDevModelMetadata;
 }
 
 export type ModelToolPlanningMode = "native" | "baml";
@@ -436,12 +439,64 @@ export interface ModelCapabilitiesData {
 
 export interface ModelListSnapshotData {
   models: ModelProviderListItem[];
+  modelsDev?: ModelsDevCatalogStatus;
   defaultModelProviderId: string;
 }
 
 export interface ProviderModelInfo {
   id: string;
   ownedBy?: string;
+  modelsDev?: ModelsDevModelMetadata;
+}
+
+export interface ModelsDevPricing {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
+export interface ModelsDevLink {
+  label: string;
+  url: string;
+  type?: string;
+}
+
+export interface ModelsDevModelMetadata {
+  id: string;
+  sourceModelId: string;
+  providerId?: string;
+  name?: string;
+  description?: string;
+  family?: string;
+  knowledge?: string;
+  releaseDate?: string;
+  lastUpdated?: string;
+  attachment?: boolean;
+  reasoning?: boolean;
+  toolCall?: boolean;
+  structuredOutput?: boolean;
+  temperature?: boolean;
+  contextLimit?: number;
+  inputLimit?: number;
+  outputLimit?: number;
+  inputModalities: string[];
+  outputModalities: string[];
+  openWeights?: boolean;
+  license?: string;
+  pricing?: ModelsDevPricing;
+  links?: ModelsDevLink[];
+}
+
+export interface ModelsDevCatalogStatus {
+  source: "models.dev";
+  state: "ready" | "stale" | "unavailable";
+  sourceKind: "cache" | "network";
+  fetchedAt?: string;
+  checkedAt?: string;
+  modelCount: number;
+  providerCount: number;
+  error?: string;
 }
 
 export interface ProviderModelsSnapshotData {
@@ -449,6 +504,7 @@ export interface ProviderModelsSnapshotData {
   baseUrl: string;
   fetchedAt: string;
   source: "cache" | "network";
+  modelsDev?: ModelsDevCatalogStatus;
   models: ProviderModelInfo[];
 }
 

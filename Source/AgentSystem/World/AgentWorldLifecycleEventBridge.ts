@@ -14,14 +14,20 @@ import type { AgentMemoryDeletionImpact } from "../Memory/AgentMemorySourceRepos
 import type { AgentWorldEventLedger } from "./AgentWorldEventLedger.js";
 import type { AgentWorldAttributes } from "./AgentWorldTypes.js";
 import { projectAgentModelPayload, projectAgentModelText } from "../Text/AgentModelPayloadProjection.js";
+import {
+  createAgentTextParts,
+  identityPart,
+  textPart,
+  renderAgentTextParts,
+  type AgentTextParts,
+} from "../Text/AgentTextParts.js";
 
-const ResidentTemplate = "{{resident}}";
 const WorldLifecycleEventTypePrefixes = ["tool.", "run.", "scheduled.", "child."] as const;
 
 type WorldLifecycleProjection = {
   readonly subjectId: string;
   readonly type: string;
-  readonly summary: string;
+  readonly summaryParts: AgentTextParts;
   readonly attributes: AgentWorldAttributes;
   readonly occurredAt: string;
   readonly idempotencyKey: string;
@@ -53,7 +59,7 @@ export class AgentWorldLifecycleEventBridge implements AgentMemoryDeletionSink {
       const timeZone = this.options.timeZone();
       const world = this.options.agenda.snapshot(timeZone, new Date(Date.parse(observedAt))).world;
       const existing = this.options.ledger.eventByIdempotencyKey(projection.idempotencyKey);
-      const summary = projectAgentModelText(projection.summary).text;
+      const summary = projectAgentModelText(renderAgentTextParts(projection.summaryParts)).text;
       const attributes = projectAgentModelPayload(projection.attributes).value as AgentWorldAttributes;
       this.options.ledger.append({
         worldId: world.id,
@@ -61,6 +67,7 @@ export class AgentWorldLifecycleEventBridge implements AgentMemoryDeletionSink {
         subject: { id: projection.subjectId, kind: "event" },
         type: projection.type,
         summary,
+        summaryParts: projection.summaryParts,
         changes: [
           {
             kind: "entity_upsert",
@@ -168,12 +175,12 @@ function projectToolLifecycle(
   const headline = presentation?.headline?.trim();
   const purpose = "purpose" in event.data ? event.data.purpose?.trim() : undefined;
   const failure = status === "failed" && "message" in event.data ? event.data.message.trim() : undefined;
-  const summary =
+  const summaryParts =
     status === "started"
-      ? `${ResidentTemplate}开始${toolName}${purpose ? `：${purpose}` : ""}`
+      ? residentSummary(`开始${toolName}${purpose ? `：${purpose}` : ""}`)
       : status === "completed"
-        ? `${ResidentTemplate}完成${toolName}${headline ? `：${headline}` : ""}`
-        : `${ResidentTemplate}执行${toolName}失败：${requireText(failure, "tool failure message")}`;
+        ? residentSummary(`完成${toolName}${headline ? `：${headline}` : ""}`)
+        : residentSummary(`执行${toolName}失败：${requireText(failure, "tool failure message")}`);
   const references = [
     evidenceRef,
     ...(presentation?.evidence?.flatMap((entry) => (entry.evidenceUri ? [entry.evidenceUri] : [])) ?? []),
@@ -182,7 +189,7 @@ function projectToolLifecycle(
   return {
     subjectId,
     type: `tool.${status}`,
-    summary,
+    summaryParts,
     attributes: {
       lifecycle: status,
       toolName,
@@ -208,7 +215,7 @@ function projectRunFailure(event: RunFailureEvent, evidenceRef: string, observed
   return {
     subjectId,
     type: "run.failed",
-    summary: `${ResidentTemplate}未能完成这次处理：${message}`,
+    summaryParts: residentSummary(`未能完成这次处理：${message}`),
     attributes: { lifecycle: "failed", ...(event.data.code ? { code: event.data.code } : {}) },
     occurredAt: observedAt,
     idempotencyKey: `world-lifecycle:${eventIdentity(event)}:failed`,
@@ -225,7 +232,7 @@ function projectRunCancellation(
   return {
     subjectId,
     type: "run.cancelled",
-    summary: `${ResidentTemplate}停止了这次处理。`,
+    summaryParts: residentSummary("停止了这次处理。"),
     attributes: { lifecycle: "cancelled", reason: event.data.reason },
     occurredAt: observedAt,
     idempotencyKey: `world-lifecycle:${eventIdentity(event)}:cancelled`,
@@ -243,16 +250,16 @@ function projectScheduledLifecycle(
   const runId = requireText(event.data.runId, "scheduled run id");
   const subjectId = scopedEntityId("scheduled-run", undefined, taskId, runId);
   const label = event.context.scope?.workflowName?.trim() || taskId;
-  const summary =
+  const summaryParts =
     status === "started"
-      ? `${ResidentTemplate}开始执行计划“${label}”`
+      ? residentSummary(`开始执行计划“${label}”`)
       : status === "completed"
-        ? `${ResidentTemplate}完成计划“${label}”`
-        : `${ResidentTemplate}执行计划“${label}”失败${event.data.error ? `：${event.data.error}` : ""}`;
+        ? residentSummary(`完成计划“${label}”`)
+        : residentSummary(`执行计划“${label}”失败${event.data.error ? `：${event.data.error}` : ""}`);
   return {
     subjectId,
     type: `scheduled.${status}`,
-    summary,
+    summaryParts,
     attributes: {
       lifecycle: status,
       taskId,
@@ -275,22 +282,22 @@ function projectChildLifecycle(
   const agentName = requireText(event.data.agentName, "child agent name");
   const error = "error" in event.data && typeof event.data.error === "string" ? event.data.error.trim() : undefined;
   const subjectId = scopedEntityId("child-run", undefined, childRunId);
-  const summary =
+  const summaryParts =
     status === "started"
-      ? `${ResidentTemplate}派遣${agentName}开始处理一件事`
+      ? residentSummary(`派遣${agentName}开始处理一件事`)
       : status === "completed"
-        ? `${agentName}完成了派遣任务`
+        ? textSummary(`${agentName}完成了派遣任务`)
         : status === "partial_completed"
-          ? `${agentName}完成了部分派遣任务`
+          ? textSummary(`${agentName}完成了部分派遣任务`)
           : status === "cancelled"
-            ? `${agentName}的派遣任务已停止`
+            ? textSummary(`${agentName}的派遣任务已停止`)
             : status === "timed_out"
-              ? `${agentName}的派遣任务超时`
-              : `${agentName}的派遣任务失败${error ? `：${error}` : ""}`;
+              ? textSummary(`${agentName}的派遣任务超时`)
+              : textSummary(`${agentName}的派遣任务失败${error ? `：${error}` : ""}`);
   return {
     subjectId,
     type: `child.${status}`,
-    summary,
+    summaryParts,
     attributes: {
       lifecycle: status,
       childRunId,
@@ -362,6 +369,14 @@ function requireText(value: string | undefined, label: string): string {
 
 function readNonEmptyText(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function residentSummary(text: string): AgentTextParts {
+  return createAgentTextParts([identityPart("resident"), textPart(text)]);
+}
+
+function textSummary(text: string): AgentTextParts {
+  return createAgentTextParts([textPart(text)]);
 }
 
 type ToolLifecycleEvent =

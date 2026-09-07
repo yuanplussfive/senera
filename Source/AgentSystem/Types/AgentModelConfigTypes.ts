@@ -2,6 +2,7 @@ import type {
   AgentModelEndpointKind,
   AgentModelToolPlanningMode,
 } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import type { AgentModelsDevModelMetadata } from "../ModelEndpoints/AgentModelsDevCatalog.js";
 
 export interface AgentModelProviderConfig {
   Id: string;
@@ -133,6 +134,7 @@ export interface ResolvedAgentModelProviderConfig {
 
 export interface AgentModelProviderListItem {
   id: string;
+  providerId: string;
   icon?: string;
   capabilities: Required<AgentModelCapabilitiesConfig>;
   kind: ResolvedAgentModelProviderConfig["Kind"];
@@ -140,4 +142,5 @@ export interface AgentModelProviderListItem {
   baseUrl: string;
   model: string;
   isDefault: boolean;
+  modelsDev?: AgentModelsDevModelMetadata;
 }

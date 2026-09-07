@@ -1,7 +1,13 @@
+class TemporalMemoryTextPart {
+  kind string
+  text string?
+  role string?
+}
+
 class TemporalMemoryDigest {
-  summary string
-  topics string[]
-  openLoops string[]
+  summary TemporalMemoryTextPart[]
+  topics TemporalMemoryTextPart[][]
+  openLoops TemporalMemoryTextPart[][]
 }
 
 class ConversationBoundary {
@@ -43,13 +49,13 @@ function SummarizeTemporalMemory(promptJson: string) -> TemporalMemoryDigest {
     Requirements:
     - Return only TemporalMemoryDigest.
     - Follow every requirement in context embedded in the JSON user message.
+    - summary, topics, and openLoops are ordered structured text. Use TemporalMemoryTextPart(kind=text, text=...) for prose and TemporalMemoryTextPart(kind=identity, role=user|resident) for conversation participants. Each topic and open loop is one inner parts array.
     - summary is concise, source-faithful, and written in the primary language of the entries.
     - topics contains concise retrieval labels.
     - openLoops contains only unresolved intentions, questions, or promised follow-up grounded in the entries.
     - Preserve concrete entities, dates, negation, uncertainty, modality, and outcomes.
-    - Use the literal user placeholder (two curly braces around user) and resident placeholder (two curly braces around resident) for conversation participants instead of display names, and preserve them when consolidating child summaries.
-    - The user placeholder means the user and the resident placeholder means the resident persona. Do not use a bot placeholder, Liquid tags, filters, or other variables.
-    - Do not invent events or output source references, explanations, markdown, XML, or chain-of-thought.
+    - Keep participant references as identity parts when consolidating child summaries. Do not encode identities as interpolation syntax, Liquid tags, filters, markdown, or other variables.
+    - Do not invent events or output source references, explanations, markdown, XML, interpolation syntax, or chain-of-thought.
 
     {{ ctx.output_format }}
 

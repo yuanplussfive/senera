@@ -32,6 +32,7 @@ import { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js
 import { AgentPiCodingAgentSessionPool } from "./AgentPiCodingAgentSessionPool.js";
 import { resolveAgentPiSessionSystemPrompt } from "./AgentPiSessionSystemPrompt.js";
 import { sha256Hex } from "../Core/AgentHash.js";
+import { createAgentPiLogicalCacheScope } from "./AgentPiPromptCache.js";
 import type {
   AgentPiSessionCompactionResult,
   AgentPiSessionExportFormat,
@@ -224,8 +225,12 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
     });
     throwIfAborted(options.signal);
 
-    const sessionId = options.sessionId?.trim() || options.requestId?.trim();
-    if (!sessionId) throw new Error("Pi Coding Agent requires a session or request identifier.");
+    const sessionId = options.sessionId?.trim();
+    if (!sessionId) {
+      throw new Error("Pi Coding Agent requires a durable session identifier; requestId cannot be used as a session.");
+    }
+    const logicalCacheScope =
+      options.logicalCacheScope?.trim() || createAgentPiLogicalCacheScope({ sessionId, family: "conversation" });
     const sessionLeaseStartedAt = performance.now();
     const sessionLease = await this.sessionPool.lease({
       sessionId,
@@ -236,6 +241,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       inheritProjectContext: options.inheritProjectContext ?? true,
       frame: {
         sessionId,
+        logicalCacheScope,
         requestId: options.requestId,
         step: options.step,
         onEvent: options.onEvent,

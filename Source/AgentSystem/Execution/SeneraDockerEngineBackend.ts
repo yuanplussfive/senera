@@ -25,6 +25,7 @@ import {
 } from "./SeneraTerminalTypes.js";
 import {
   readAgentDockerEngineRuntimeContract,
+  resolveAgentDockerEngineGuestWorkspaceRoot,
   type AgentDockerEngineSandboxProvider,
   type ResolvedAgentDockerEngineRuntimeContract,
 } from "../Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
@@ -45,6 +46,8 @@ export interface SeneraDockerEngineBackendOptions {
   runtimeContract?: ResolvedAgentDockerEngineRuntimeContract;
   runtimeReady?: () => boolean;
   requestIdFactory?: () => string;
+  /** Override for the sandbox guest workspace root. Defaults to the runtime contract value when omitted. */
+  guestWorkspaceRoot?: string;
 }
 
 export class SeneraDockerEngineBackend implements SeneraProcessExecutionBackend, SeneraTerminalBackend {
@@ -54,6 +57,7 @@ export class SeneraDockerEngineBackend implements SeneraProcessExecutionBackend,
   private readonly resolvedContract: ResolvedAgentDockerEngineRuntimeContract;
   private readonly runtimeReady: () => boolean;
   private readonly requestIdFactory: () => string;
+  private readonly guestWorkspaceRoot: string;
 
   constructor(private readonly options: SeneraDockerEngineBackendOptions) {
     this.resolvedContract =
@@ -70,6 +74,8 @@ export class SeneraDockerEngineBackend implements SeneraProcessExecutionBackend,
     );
     this.runtimeReady = options.runtimeReady ?? (() => true);
     this.requestIdFactory = options.requestIdFactory ?? randomUUID;
+    this.guestWorkspaceRoot =
+      options.guestWorkspaceRoot ?? resolveAgentDockerEngineGuestWorkspaceRoot(this.options.workspaceRoot, this.kind);
   }
 
   resolveShellInvocation(command: string): SeneraShellInvocation {
@@ -83,7 +89,7 @@ export class SeneraDockerEngineBackend implements SeneraProcessExecutionBackend,
     const context = await prepareSeneraSandboxExecutionContext({
       workspaceRoot: this.options.workspaceRoot,
       cwd: request.cwd,
-      guestWorkspaceRoot: contract.guest.workspaceRoot,
+      guestWorkspaceRoot: this.guestWorkspaceRoot,
       guestWorkdir: request.profile?.sandbox?.guestWorkdir,
       environment: request.env,
       profile: request.profile,
@@ -159,7 +165,7 @@ export class SeneraDockerEngineBackend implements SeneraProcessExecutionBackend,
     const context = await prepareSeneraSandboxExecutionContext({
       workspaceRoot: this.options.workspaceRoot,
       cwd: options.cwd,
-      guestWorkspaceRoot: contract.guest.workspaceRoot,
+      guestWorkspaceRoot: this.guestWorkspaceRoot,
       guestWorkdir: options.profile?.sandbox?.guestWorkdir,
       environment: options.env,
       profile: options.profile,
@@ -216,7 +222,7 @@ export class SeneraDockerEngineBackend implements SeneraProcessExecutionBackend,
     const context = await prepareSeneraSandboxExecutionContext({
       workspaceRoot: this.options.workspaceRoot,
       cwd: options.cwd,
-      guestWorkspaceRoot: contract.guest.workspaceRoot,
+      guestWorkspaceRoot: this.guestWorkspaceRoot,
       guestWorkdir: options.profile?.sandbox?.guestWorkdir,
       environment: options.env,
       profile: options.profile,

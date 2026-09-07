@@ -98,6 +98,187 @@ test("child-run lifecycle and snapshots project back to the owning parent run", 
   });
 });
 
+test("child-run snapshot projects todo control counts onto the child-run state", () => {
+  const state = createTestState();
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "Review the workspace" }));
+  const scope = childScope("child-run-todo");
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ChildRunStarted,
+      {
+        childRunId: "child-run-todo",
+        childSessionId: "child-session-todo",
+        agentName: "reviewer",
+        status: "running",
+        contextMode: "fresh",
+      },
+      { sessionId: TestSessionId, requestId: TestRequestId, phase: "orchestration", scope },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ChildRunSnapshotUpdated,
+      {
+        childRunId: "child-run-todo",
+        childSessionId: "child-session-todo",
+        agentName: "reviewer",
+        status: "running",
+        checkpointAvailable: false,
+        snapshot: {
+          version: 1,
+          capturedAt: "2026-07-09T00:01:00.000Z",
+          lastActivityAt: "2026-07-09T00:01:00.000Z",
+          modelOutputCharacters: 0,
+          assistantTurns: 0,
+          toolCalls: { planned: 3, started: 1, completed: 0, failed: 0 },
+          activeTools: [],
+          artifactUris: [],
+          deadline: { softDeadlineAt: "2026-07-09T00:25:00.000Z", grantedExtensionMs: 0 },
+          control: {
+            todo: {
+              planObserved: true,
+              counts: { total: 3, pending: 1, inProgress: 1, completed: 1, cancelled: 0 },
+              items: [
+                { content: "梳理入口", status: "completed" },
+                { content: "对照数据流", status: "in_progress" },
+                { content: "输出报告", status: "pending" },
+              ],
+            },
+          },
+        },
+      },
+      {
+        sessionId: "child-session-todo",
+        requestId: "child-request-todo",
+        phase: "orchestration",
+        sequence: 2,
+        scope,
+      },
+    ),
+  );
+
+  const step = state.sessions[TestSessionId].runs[0].steps.find((entry) => entry.id === "child-run:child-run-todo");
+  expect(step?.childRun?.todo).toEqual({
+    planObserved: true,
+    counts: { total: 3, pending: 1, inProgress: 1, completed: 1, cancelled: 0 },
+    items: [
+      { content: "梳理入口", status: "completed" },
+      { content: "对照数据流", status: "in_progress" },
+      { content: "输出报告", status: "pending" },
+    ],
+  });
+});
+
+test("scoped todo writes update the child-run checklist without waiting for a snapshot", () => {
+  const state = createTestState();
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "Review the workspace" }));
+  const scope = childScope("child-run-direct-todo");
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ChildRunStarted,
+      {
+        childRunId: "child-run-direct-todo",
+        childSessionId: "child-session-direct-todo",
+        agentName: "reviewer",
+        status: "running",
+        contextMode: "fresh",
+      },
+      { sessionId: TestSessionId, requestId: TestRequestId, phase: "orchestration", scope },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.TodoListWritten,
+      {
+        source: "model",
+        snapshot: {
+          items: [
+            {
+              id: "todo-direct-1",
+              content: "读取配置入口",
+              status: "completed",
+              order: 0,
+              createdAt: "2026-07-09T00:01:00.000Z",
+              updatedAt: "2026-07-09T00:01:01.000Z",
+            },
+            {
+              id: "todo-direct-2",
+              content: "整理结果",
+              status: "in_progress",
+              order: 1,
+              createdAt: "2026-07-09T00:01:00.000Z",
+              updatedAt: "2026-07-09T00:01:01.000Z",
+            },
+          ],
+          counts: { total: 2, pending: 0, inProgress: 1, completed: 1, cancelled: 0 },
+        },
+      },
+      {
+        sessionId: "child-session-direct-todo",
+        requestId: "child-request-direct-todo",
+        phase: "tool",
+        sequence: 2,
+        scope,
+      },
+    ),
+  );
+
+  const step = state.sessions[TestSessionId].runs[0].steps.find(
+    (entry) => entry.id === "child-run:child-run-direct-todo",
+  );
+  expect(step?.childRun?.todo).toEqual({
+    planObserved: true,
+    counts: { total: 2, pending: 0, inProgress: 1, completed: 1, cancelled: 0 },
+    items: [
+      { content: "读取配置入口", status: "completed" },
+      { content: "整理结果", status: "in_progress" },
+    ],
+  });
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ChildRunSnapshotUpdated,
+      {
+        childRunId: "child-run-direct-todo",
+        childSessionId: "child-session-direct-todo",
+        agentName: "reviewer",
+        status: "running",
+        checkpointAvailable: false,
+        snapshot: {
+          version: 1,
+          capturedAt: "2026-07-09T00:02:00.000Z",
+          lastActivityAt: "2026-07-09T00:02:00.000Z",
+          modelOutputCharacters: 0,
+          assistantTurns: 0,
+          toolCalls: { planned: 0, started: 0, completed: 0, failed: 0 },
+          activeTools: [],
+          artifactUris: [],
+          deadline: { softDeadlineAt: "2026-07-09T00:25:00.000Z", grantedExtensionMs: 0 },
+        },
+      },
+      {
+        sessionId: "child-session-direct-todo",
+        requestId: "child-request-direct-todo",
+        phase: "orchestration",
+        sequence: 3,
+        scope,
+      },
+    ),
+  );
+
+  expect(step?.childRun?.todo?.items).toEqual([
+    { content: "读取配置入口", status: "completed" },
+    { content: "整理结果", status: "in_progress" },
+  ]);
+});
+
 test("child-run messages remain in the delegation step and deduplicate by message id", () => {
   const state = createTestState();
   applyEvent(state, createEvent(EventKinds.RunStarted, { input: "Review the workspace" }));

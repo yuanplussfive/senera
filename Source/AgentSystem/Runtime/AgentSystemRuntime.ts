@@ -37,7 +37,7 @@ import type { AgentContinuityLifecyclePort } from "../Continuity/AgentContinuity
 import type { AgentWorldSnapshotProvider } from "../World/AgentWorldTypes.js";
 import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
-import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
 
 export interface AgentSystemRuntimeSharedOptions {
@@ -63,7 +63,7 @@ export interface AgentSystemRuntimeSharedOptions {
   agenda?: AgentAgendaService;
   worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
-  identityTemplateValues?: () => AgentIdentityTemplateValues;
+  identityDisplayValues?: () => AgentIdentityDisplayValues;
 }
 
 export interface AgentSystemRuntimeLoadOptions extends AgentSystemRuntimeSharedOptions {
@@ -79,6 +79,7 @@ export interface AgentSystemRuntimeFromConfigOptions extends AgentSystemRuntimeS
   sandboxAvailable?: boolean;
   sandboxProvider?: AgentSandboxRuntimeProvider;
   dockerEngineWorker?: SeneraSandboxWorkerClient;
+  sandboxGuestWorkspaceRoot?: string;
 }
 
 export class AgentSystemRuntime {

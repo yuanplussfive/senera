@@ -11,6 +11,14 @@ fail() {
 [ "$#" -gt 0 ] || fail "no application command was provided."
 [ "$(id -u)" = "0" ] || fail "the privilege bootstrap must start as root."
 
+# Single-service mode: the operator explicitly opts into running the whole
+# container as root so the embedded sandbox Worker can reach the Docker Engine
+# socket. Other container launches keep the default privilege-drop path.
+if [ "${SENERA_CONTAINER_RUNTIME_USER:-}" = "root" ]; then
+  printf '%s\n' "Senera container runtime: user=root (single-service mode, embedded sandbox Worker)"
+  exec "$@"
+fi
+
 runtime_uid="$(id -u "$runtime_user")" || fail "runtime user $runtime_user does not exist."
 runtime_gid="$(id -g "$runtime_user")" || fail "runtime group for $runtime_user does not exist."
 [ "$runtime_uid" != "0" ] || fail "runtime user $runtime_user must not be root."

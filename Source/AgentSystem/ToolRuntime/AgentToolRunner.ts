@@ -50,7 +50,7 @@ import { createAgentToolOutputSpool } from "./AgentToolOutputSpool.js";
 import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
 import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
-import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -66,6 +66,7 @@ export interface AgentToolRunnerContext {
   step?: number;
   toolCallId?: string;
   batchId?: string;
+  batchToolNames?: readonly string[];
   configPath?: string;
   onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
@@ -98,7 +99,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     private readonly resourceResolver?: AgentResourceResolverLike,
     private readonly todoService?: AgentTodoService,
     private readonly continuityIdentity?: AgentContinuityIdentityContext,
-    private readonly identityTemplateValues?: () => AgentIdentityTemplateValues,
+    private readonly identityDisplayValues?: () => AgentIdentityDisplayValues,
   ) {
     this.mcpRunner = new AgentMcpToolRunner({
       config,
@@ -363,7 +364,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       configPath: context.configPath,
       workspaceRoot: this.workspaceRoot,
       continuityIdentity: this.continuityIdentity,
-      identityTemplateValues: this.identityTemplateValues,
+      identityDisplayValues: this.identityDisplayValues,
       registry: this.registry,
       executionEnv,
       uploadStore: this.uploadStore,
@@ -373,6 +374,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       step: context.step,
       toolCallId: context.toolCallId,
       batchId: context.batchId,
+      batchToolNames: context.batchToolNames,
       onEvent: context.onEvent,
       visibleToolNames: context.visibleToolNames,
       authorizedToolNames: context.authorizedToolNames,

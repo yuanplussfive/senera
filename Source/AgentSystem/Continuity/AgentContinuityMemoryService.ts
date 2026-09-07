@@ -65,7 +65,7 @@ import type { AgentContinuityIdentityContext } from "./AgentContinuityIdentitySt
 import type { AgentTemporalMemorySqliteStore } from "../TemporalMemory/AgentTemporalMemorySqliteStore.js";
 import { projectAgentTemporalMemoryScope } from "../TemporalMemory/AgentTemporalMemoryIdentity.js";
 import { renderAgentTemporalMemoryOverview } from "../TemporalMemory/AgentTemporalMemoryPresentation.js";
-import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import {
   assessAgentContinuityRecallQuality,
   buildAgentContinuityContextVariant,
@@ -85,7 +85,7 @@ export interface AgentContinuityMemoryServiceOptions {
   readonly sourceRepository?: AgentMemorySourceRepository;
   readonly temporalMemoryStore?: AgentTemporalMemorySqliteStore;
   /** Resolves display names only when a derived temporal summary is presented. */
-  readonly identityTemplateValues?: () => AgentIdentityTemplateValues;
+  readonly identityDisplayValues?: () => AgentIdentityDisplayValues;
   readonly stableSnapshotStore?: AgentContinuityStableSnapshotStore;
   readonly recallConfig?: () => AgentContinuityLearningRecallConfig;
   /** Optional semantic channel; absent or failing leaves pure lexical ranking. */
@@ -402,8 +402,8 @@ export class AgentContinuityMemoryService {
       segmentDecisions: [],
       latestSealed: [],
     };
-    const temporalMemory = this.options.identityTemplateValues
-      ? renderAgentTemporalMemoryOverview(temporalOverview, this.options.identityTemplateValues())
+    const temporalMemory = this.options.identityDisplayValues
+      ? renderAgentTemporalMemoryOverview(temporalOverview, this.options.identityDisplayValues())
       : temporalOverview;
     return {
       enabled: true,

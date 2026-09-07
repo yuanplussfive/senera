@@ -12,10 +12,12 @@ import {
   AgentChildRunMessageDirections,
   AgentChildRunMessageKinds,
   AgentChildRunStatuses,
+  AgentChildRunJoinModes,
   AgentChildWorkspaceAccessModes,
   type AgentChildRunRecord,
   type AgentChildRunStatus,
   type AgentChildWorkspaceAccessMode,
+  type AgentChildRunJoinGroup,
 } from "./AgentChildRunTypes.js";
 import { AgentRunContextModes, type AgentRunContextMode } from "./AgentRunDispatchPort.js";
 import { AgentRunConcurrencyGate, AgentRunPermitKinds, type AgentRunPermit } from "./AgentRunConcurrencyGate.js";
@@ -24,7 +26,11 @@ import {
   type AgentSubagentLaunchPlan,
   type AgentSubagentPreflightPort,
 } from "./AgentSubagentPreflight.js";
-import { resolveAgentChildRunWaitTimeoutMs, resolveAgentDelegationConfiguration } from "./AgentOrchestrationConfig.js";
+import {
+  projectAgentChildRunControlPolicy,
+  resolveAgentChildRunWaitTimeoutMs,
+  resolveAgentDelegationConfiguration,
+} from "./AgentOrchestrationConfig.js";
 import {
   AgentSubagentRoleCatalog,
   type AgentSubagentRoleCatalogPort,
@@ -65,6 +71,8 @@ import {
 } from "./AgentDelegationRuntimeSupport.js";
 import { AgentChildRunWaitCoordinator } from "./AgentChildRunWaitCoordinator.js";
 import { latestParentMessage, readChildRunId } from "./AgentDelegationEventSupport.js";
+import type { AgentTodoService } from "../Todos/AgentTodoService.js";
+import { AgentTodoStatuses, AgentTodoWriteSources } from "../Todos/AgentTodoTypes.js";
 
 export { AgentDelegationExecutionModes, AgentDelegationCompletionGateway } from "./AgentDelegationRuntimeContracts.js";
 export type {
@@ -91,6 +99,18 @@ interface InitializedChildRun {
   readonly completion: Promise<AgentChildRunRecord>;
 }
 
+function createSpawnJoinGroup(context: AgentDelegationContext): AgentChildRunJoinGroup | undefined {
+  const batch = context.parentToolBatch;
+  if (!batch || batch.spawnCount < 2) return undefined;
+  return {
+    id: ["agent-spawn", context.parentSessionId, context.parentRequestId, batch.id]
+      .map((value) => encodeURIComponent(value))
+      .join(":"),
+    mode: AgentChildRunJoinModes.All,
+    expectedCount: batch.spawnCount,
+  };
+}
+
 export class AgentDelegationService {
   private readonly preflight: AgentSubagentPreflightPort;
   private readonly roleCatalog: AgentSubagentRoleCatalogPort;
@@ -98,10 +118,12 @@ export class AgentDelegationService {
   private readonly active = new Map<string, ActiveChildRun>();
   private readonly waits: AgentChildRunWaitCoordinator;
   private readonly starting = new Set<Promise<InitializedChildRun>>();
+  private todoService?: AgentTodoService;
   private acceptingWork = true;
   private shutdownPromise?: Promise<void>;
 
   constructor(private readonly options: AgentDelegationServiceOptions) {
+    this.todoService = options.todoService;
     this.roleCatalog = options.roleCatalog ?? new AgentSubagentRoleCatalog();
     this.preflight = options.preflight ?? new AgentSubagentPreflight({ roleCatalog: this.roleCatalog });
     this.gate = new AgentRunConcurrencyGate(
@@ -116,6 +138,17 @@ export class AgentDelegationService {
     this.options.repository.recoverInterrupted("Senera restarted before the child run completed.");
   }
 
+  /** Binds the durable Todo service after continuity startup has completed. */
+  bindTodoService(todoService: AgentTodoService): () => void {
+    if (this.todoService && this.todoService !== todoService) {
+      throw new Error("A different Todo service is already bound to agent delegation.");
+    }
+    this.todoService = todoService;
+    return () => {
+      if (this.todoService === todoService) this.todoService = undefined;
+    };
+  }
+
   async spawn(request: AgentSpawnRequest, context: AgentDelegationContext): Promise<AgentChildRunRecord> {
     const role = request.agent
       ? this.roleCatalog.resolve(this.options.workspaceRoot, request.agent)
@@ -126,10 +159,12 @@ export class AgentDelegationService {
         : request.forkContext
           ? AgentRunContextModes.Fork
           : AgentRunContextModes.Fresh;
+    const joinGroup = createSpawnJoinGroup(context);
     return this.delegate(
       {
         agent: role.id,
         task: request.task,
+        ...(joinGroup ? { joinGroup } : {}),
         workspaceAccess: role.workspaceAccess,
         context: contextMode,
         executionMode: AgentDelegationExecutionModes.Detach,
@@ -192,6 +227,7 @@ export class AgentDelegationService {
     const modelSelection = resolveAgentSubagentRequestedModel(modelPool, request.modelProviderId);
     const configurationRevision = configuration.revision;
     const deadline = projectAgentChildRunDeadlinePolicy(delegationConfiguration.execution.deadline);
+    const control = projectAgentChildRunControlPolicy(delegationConfiguration.execution.control);
     const plan = await this.preflight.resolve({
       runId: id,
       agent: request.agent,
@@ -224,6 +260,7 @@ export class AgentDelegationService {
         id,
         ownerRunId,
         nodeId,
+        ...(request.joinGroup ? { joinGroup: request.joinGroup } : {}),
         parentSessionId: context.parentSessionId,
         parentRequestId: context.parentRequestId,
         childSessionId: createSessionId(),
@@ -251,6 +288,7 @@ export class AgentDelegationService {
           inheritProjectContext: plan.inheritProjectContext,
           ...(plan.capabilityCeiling ? { capabilityCeiling: plan.capabilityCeiling } : {}),
           deadline,
+          control,
         },
       });
     } catch (error) {
@@ -392,6 +430,15 @@ export class AgentDelegationService {
     signal?: AbortSignal,
   ): Promise<AgentChildRunWaitResult> {
     return this.waits.waitAny(ids, parentSessionId, requestedTimeoutMs, signal);
+  }
+
+  waitAll(
+    ids: readonly string[],
+    parentSessionId: string,
+    requestedTimeoutMs: number | undefined,
+    signal?: AbortSignal,
+  ): Promise<AgentChildRunWaitResult> {
+    return this.waits.waitAll(ids, parentSessionId, requestedTimeoutMs, signal);
   }
 
   async contactSupervisor(
@@ -617,12 +664,37 @@ export class AgentDelegationService {
         running.startedAt ?? running.updatedAt,
         `child run ${running.id} start`,
       );
+      const control = running.executionContract.control;
+      const todoRequired = Boolean(control?.todo.required && this.todoService);
+      let todoSeedFingerprint: string | undefined;
+      if (lifecycle === "initial" && todoRequired) {
+        this.todoService!.write({
+          sessionId: running.childSessionId,
+          items: [{ id: running.id, content: running.task, status: AgentTodoStatuses.Pending }],
+          merge: false,
+          source: AgentTodoWriteSources.Host,
+        });
+        todoSeedFingerprint = this.todoService!.fingerprint(running.childSessionId);
+      }
       activity = new AgentChildRunActivityTracker({
         startedAt,
         policy: running.executionContract.deadline,
+        ...(control ? { control } : {}),
+        ...(running.snapshot ? { initialSnapshot: running.snapshot } : {}),
       });
+      if (todoRequired) {
+        const currentTodo = this.todoService!.read(running.childSessionId);
+        activity.setTodoState({
+          planObserved: running.snapshot?.control?.todo.planObserved ?? false,
+          counts: currentTodo.counts,
+          items: currentTodo.items.map((item) => ({ content: item.content, status: item.status })),
+        });
+      }
       const childEventSink: AgentEventSink = async (event) => {
         activity?.observe(event);
+        if (activity?.shouldRequestWrapUp()) {
+          void active.deadline?.requestWrapUp().catch(() => undefined);
+        }
         await this.emit(context.onEvent, event);
         if (activity?.shouldPersistSnapshot()) {
           await this.persistActivitySnapshot(running.id, activity, context.onEvent);
@@ -646,9 +718,16 @@ export class AgentDelegationService {
           if (!wrapping || wrapping.status !== AgentChildRunStatuses.WrappingUp) return;
           await this.persistActivitySnapshot(running.id, activity!, context.onEvent, true);
           await this.emit(context.onEvent, createAgentChildRunWrappingUpEvent(wrapping, hardDeadlineAt));
+          const todoSnapshot = todoRequired ? this.todoService?.read(running.childSessionId) : undefined;
+          const remainingTodo = todoSnapshot?.items
+            .filter((item) => item.status === AgentTodoStatuses.Pending || item.status === AgentTodoStatuses.InProgress)
+            .map((item) => ({ id: item.id, content: item.content, status: item.status }));
           await this.options.dispatcher.requestFinalAnswer(
             running.childSessionId,
-            renderAgentChildRunWrapUpInstruction(),
+            renderAgentChildRunWrapUpInstruction({
+              reason: activity?.snapshot().control?.budget.limitReason ?? "deadline",
+              ...(remainingTodo ? { remainingTodo } : {}),
+            }),
           );
         },
         onTimedOut: async () => {
@@ -701,12 +780,35 @@ export class AgentDelegationService {
         signal: active.controller.signal,
       });
       throwIfAborted(active.controller.signal);
+      if (todoRequired) {
+        const todoSnapshot = this.todoService!.read(running.childSessionId);
+        const fingerprintChanged =
+          todoSeedFingerprint !== undefined &&
+          this.todoService!.fingerprint(running.childSessionId) !== todoSeedFingerprint;
+        activity.setTodoState({
+          planObserved:
+            activity.todoPlanObserved() || fingerprintChanged || running.snapshot?.control?.todo.planObserved === true,
+          counts: todoSnapshot.counts,
+          items: todoSnapshot.items.map((item) => ({ content: item.content, status: item.status })),
+        });
+      }
       await this.persistActivitySnapshot(running.id, activity, context.onEvent, true);
       const current = this.options.repository.get(record.id);
+      const todoControl = current?.executionContract.control?.todo;
+      const todoSnapshot = todoRequired ? this.todoService!.read(running.childSessionId) : undefined;
+      const planObserved = activity.todoPlanObserved() || current?.snapshot?.control?.todo.planObserved === true;
+      const todoComplete =
+        !todoRequired ||
+        (planObserved &&
+          todoSnapshot !== undefined &&
+          todoSnapshot.counts.total >= (todoControl?.minimumItems ?? 1) &&
+          todoSnapshot.counts.pending === 0 &&
+          todoSnapshot.counts.inProgress === 0 &&
+          todoSnapshot.counts.cancelled === 0);
       const completed =
         current?.status === AgentChildRunStatuses.AwaitingSupervisor
           ? this.options.repository.recordSupervisorCheckpoint(record.id, result)
-          : result.completion === "partial"
+          : result.completion === "partial" || !todoComplete
             ? this.options.repository.markPartialCompleted(record.id, result)
             : this.options.repository.markCompleted(record.id, result);
       if (!completed) throw new Error(`Child run disappeared during completion: ${record.id}`);

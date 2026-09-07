@@ -5,7 +5,7 @@ import type {
   AgentTemporalMemoryRange,
 } from "./AgentTemporalMemoryTypes.js";
 import { renderAgentTemporalMemoryDigest } from "./AgentTemporalMemoryPresentation.js";
-import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 
 export interface AgentTemporalMemoryRecallDigest {
   readonly digestRef: string;
@@ -31,7 +31,7 @@ const GranularityOrder: readonly AgentTemporalMemoryGranularity[] = ["month", "d
 export class AgentTemporalMemoryRecall {
   constructor(
     private readonly store: AgentTemporalMemorySqliteStore,
-    private readonly identityTemplateValues?: () => AgentIdentityTemplateValues,
+    private readonly identityDisplayValues?: () => AgentIdentityDisplayValues,
   ) {}
 
   read(input: {
@@ -73,8 +73,8 @@ export class AgentTemporalMemoryRecall {
   }
 
   private project(digest: AgentTemporalMemoryDigest): AgentTemporalMemoryRecallDigest {
-    const presented = this.identityTemplateValues
-      ? renderAgentTemporalMemoryDigest(digest, this.identityTemplateValues())
+    const presented = this.identityDisplayValues
+      ? renderAgentTemporalMemoryDigest(digest, this.identityDisplayValues())
       : digest;
     return {
       digestRef: presented.uri,

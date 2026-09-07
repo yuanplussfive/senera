@@ -85,7 +85,7 @@ export interface AgentWorldRuntimeCompositionOptions {
     readonly metadata?: AgentConversationEntryMetadata;
     readonly onEvent?: AgentEventSink;
   }) => Promise<"delivered" | "busy" | "missing">;
-  readonly identityTemplateValues: () => import("../Prompt/AgentIdentityTemplate.js").AgentIdentityTemplateValues;
+  readonly identityDisplayValues: () => import("../Text/AgentTextParts.js").AgentIdentityDisplayValues;
 }
 
 export interface AgentWorldRuntimeComposition {
@@ -112,7 +112,7 @@ export async function composeAgentWorldRuntime(
     graphSnapshot: () =>
       continuityRuntime.store.graphSnapshot(listAgentContinuityAutomaticRecallScopes(continuityRuntime.identity)),
     config: () => resolveAgentWorldConfig(options.configSnapshot()),
-    identityTemplateValues: options.identityTemplateValues,
+    identityDisplayValues: options.identityDisplayValues,
   });
   const worldClock = new AgentWorldClock(continuityRuntime.database, worldLedger);
   const worldResidentStates = new AgentResidentStateMachine(continuityRuntime.database, worldLedger);

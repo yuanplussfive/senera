@@ -6,7 +6,7 @@ import {
   ToolResultAssessmentPolicies,
   ToolSchedulingModes,
 } from "../Types/AgentToolContractTypes.js";
-import { AgentTodoStatuses } from "../Todos/AgentTodoTypes.js";
+import { AgentTodoOperations, AgentTodoStatuses } from "../Todos/AgentTodoTypes.js";
 
 const NonEmptyText = z.string().trim().min(1);
 const TodoItemInput = z
@@ -17,20 +17,22 @@ const TodoItemInput = z
   })
   .strict();
 
-const TodoInput = z
+const TodoReadInput = z
   .object({
-    todos: z
-      .array(TodoItemInput)
-      .optional()
-      .describe("Omit to read the current list. Provide items to replace or merge the current list."),
-    merge: z
-      .boolean()
-      .optional()
-      .describe(
-        "Required when todos is provided: false replaces the full list; true updates items by id and appends new items.",
-      ),
+    operation: z.literal(AgentTodoOperations.Read).describe("Read the current task list without changing it."),
   })
   .strict();
+
+const TodoWriteInput = z
+  .object({
+    operation: z
+      .enum([AgentTodoOperations.Replace, AgentTodoOperations.Merge])
+      .describe("Replace the full list or merge updates by stable item id."),
+    todos: z.array(TodoItemInput).describe("Task items to write. Use stable ids for later updates."),
+  })
+  .strict();
+
+const TodoInput = z.discriminatedUnion("operation", [TodoReadInput, TodoWriteInput]);
 
 const TodoItem = z
   .object({
@@ -68,17 +70,18 @@ export const AgentTodoSystemTool = defineSystemTool({
       "en-US": "Task List",
     },
     description: {
-      "zh-CN": "管理当前会话的复杂任务清单，不与长期 Goal 混用。",
-      "en-US": "Manages the current-session task list without mixing it with durable Goals.",
+      "zh-CN": "维护本轮任务清单。",
+      "en-US": "Maintains the task list for this turn.",
     },
     priority: 2,
+    childGrant: "internal",
   },
   metadata: {
     observation: StandardAgentToolObservationProjection,
     description:
-      "Manage the current session task list. Use for complex work with multiple concrete steps. Omit todos to read the list. Provide todos to write it. Replace mode creates a fresh plan; merge mode updates existing ids and appends new items. Keep exactly one item in_progress. Mark completed only after verification; cancel failed work and add a revised item.",
+      "Manage the current session task list. Choose operation=read to inspect it, operation=replace to create a plan, or operation=merge to update stable item ids. Keep exactly one item in_progress. Mark completed only after verification; cancel failed work and add a revised item.",
     permissions: ["session:todo"],
-    execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadWrite" },
+    execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: {
       Lifecycle: "Immediate",
       ProtocolVersion: AgentHostToolProtocolVersion,
@@ -87,7 +90,7 @@ export const AgentTodoSystemTool = defineSystemTool({
       Capabilities: { Cancellation: true },
     },
     search: {
-      Summary: "管理当前会话的多步骤任务清单并返回完整状态。",
+      Summary: "任务清单。",
       Tags: ["任务清单", "todo", "计划", "复杂任务", "进度"],
       Capabilities: [
         {
@@ -97,7 +100,7 @@ export const AgentTodoSystemTool = defineSystemTool({
           Facets: {
             Actions: ["read", "replace", "merge", "complete", "cancel"],
             Targets: ["session-task-list"],
-            Inputs: ["todos", "id", "content", "status", "merge"],
+            Inputs: ["operation", "todos", "id", "content", "status"],
             Outputs: ["task-list", "task-counts"],
             Effects: ["session-state"],
           },
@@ -116,15 +119,13 @@ export const AgentTodoSystemTool = defineSystemTool({
   execute(input, context) {
     if (!context.sessionId) throw new Error("Todo requires an active session.");
     if (!context.todoService) throw new Error("Todo service is not connected to the runtime.");
-    if (input.todos === undefined) {
-      if (input.merge !== undefined) throw new Error("Todo read does not accept merge.");
+    if (input.operation === AgentTodoOperations.Read) {
       return TodoOutput.parse(context.todoService.read(context.sessionId));
     }
-    if (input.merge === undefined) throw new Error("Todo write requires an explicit merge value.");
     const snapshot = context.todoService.write({
       sessionId: context.sessionId,
       items: input.todos,
-      merge: input.merge,
+      merge: input.operation === AgentTodoOperations.Merge,
       onEvent: context.onEvent,
       requestId: context.requestId,
     });

@@ -44,6 +44,7 @@ export interface AgentToolCallExecutionContext {
   resourceAccessGrant?: AgentResourceAccessGrant;
   toolExposure?: AgentToolExposureState;
   batchId?: string;
+  batchToolNames?: readonly string[];
   signal?: AbortSignal;
   tokenBudget?: AgentToolTokenBudget;
   approvalMode?: AgentExecutionApprovalMode;

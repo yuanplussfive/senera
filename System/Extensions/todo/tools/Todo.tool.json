@@ -1,38 +1,57 @@
 {
   "name": "Todo",
-  "description": "Manage the current session task list. Use for complex work with multiple concrete steps. Omit todos to read the list. Provide todos to write it. Replace mode creates a fresh plan; merge mode updates existing ids and appends new items. Keep exactly one item in_progress. Mark completed only after verification; cancel failed work and add a revised item.",
+  "description": "Manage the current session task list. Choose operation=read to inspect it, operation=replace to create a plan, or operation=merge to update stable item ids. Keep exactly one item in_progress. Mark completed only after verification; cancel failed work and add a revised item.",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "type": "object",
-    "properties": {
-      "todos": {
-        "description": "Omit to read the current list. Provide items to replace or merge the current list.",
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "id": { "type": "string", "minLength": 1, "description": "Stable identifier for this task." },
-            "content": {
-              "description": "Task description. Required when adding a new item.",
-              "type": "string",
-              "minLength": 1
-            },
-            "status": {
-              "description": "Current task status.",
-              "type": "string",
-              "enum": ["pending", "in_progress", "completed", "cancelled"]
-            }
-          },
-          "required": ["id"],
-          "additionalProperties": false
-        }
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "const": "read",
+            "description": "Read the current task list without changing it."
+          }
+        },
+        "required": ["operation"],
+        "additionalProperties": false
       },
-      "merge": {
-        "description": "Required when todos is provided: false replaces the full list; true updates items by id and appends new items.",
-        "type": "boolean"
+      {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": ["replace", "merge"],
+            "description": "Replace the full list or merge updates by stable item id."
+          },
+          "todos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "minLength": 1, "description": "Stable identifier for this task." },
+                "content": {
+                  "description": "Task description. Required when adding a new item.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "description": "Current task status.",
+                  "type": "string",
+                  "enum": ["pending", "in_progress", "completed", "cancelled"]
+                }
+              },
+              "required": ["id"],
+              "additionalProperties": false
+            },
+            "description": "Task items to write. Use stable ids for later updates."
+          }
+        },
+        "required": ["operation", "todos"],
+        "additionalProperties": false
       }
-    },
-    "additionalProperties": false
+    ],
+    "type": "object"
   },
   "outputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -72,7 +91,7 @@
   },
   "observationProjection": "observations/Todo.projection.json",
   "permissions": ["session:todo"],
-  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
     "ProtocolVersion": 2,
@@ -83,7 +102,7 @@
   "resources": [],
   "sources": [],
   "search": {
-    "Summary": "管理当前会话的多步骤任务清单并返回完整状态。",
+    "Summary": "任务清单。",
     "Tags": ["任务清单", "todo", "计划", "复杂任务", "进度"],
     "Capabilities": [
       {
@@ -93,7 +112,7 @@
         "Facets": {
           "Actions": ["read", "replace", "merge", "complete", "cancel"],
           "Targets": ["session-task-list"],
-          "Inputs": ["todos", "id", "content", "status", "merge"],
+          "Inputs": ["operation", "todos", "id", "content", "status"],
           "Outputs": ["task-list", "task-counts"],
           "Effects": ["session-state"]
         },

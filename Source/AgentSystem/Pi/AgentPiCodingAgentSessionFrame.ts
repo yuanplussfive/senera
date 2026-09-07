@@ -13,6 +13,8 @@ import type { AgentPiTurnState } from "./AgentPiTurnState.js";
 
 export interface AgentPiCodingAgentSessionFrame {
   sessionId?: string;
+  /** Stable logical cache affinity; independent from the physical Pi file. */
+  logicalCacheScope?: string;
   requestId?: string;
   step?: number;
   onEvent?: AgentEventSink;

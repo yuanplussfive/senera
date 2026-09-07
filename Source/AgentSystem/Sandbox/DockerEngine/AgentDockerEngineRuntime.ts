@@ -23,7 +23,19 @@ import type {
   AgentSandboxProviderPreference,
 } from "../../Types/AgentRuntimeConfigTypes.js";
 
-export type AgentDockerWorkspaceSource = { kind: "bind"; sourcePath: string } | { kind: "volume"; volumeName: string };
+export interface AgentDockerBindWorkspaceSource {
+  readonly kind: "bind";
+  readonly sourcePath: string;
+  readonly guestRoot?: string;
+}
+
+export interface AgentDockerVolumeWorkspaceSource {
+  readonly kind: "volume";
+  readonly volumeName: string;
+  readonly guestRoot?: string;
+}
+
+export type AgentDockerWorkspaceSource = AgentDockerBindWorkspaceSource | AgentDockerVolumeWorkspaceSource;
 
 export interface AgentDockerEngineRuntimeOptions {
   docker: Docker;
@@ -100,11 +112,16 @@ export class AgentDockerEngineRuntime implements AgentDockerRuntime {
   private readonly copySourceRoots: readonly string[];
   private readonly containerNameFactory: () => string;
   private readonly imageReference: string;
+  private readonly workspace: AgentDockerWorkspaceSource & { readonly guestRoot: string };
   private prepared = false;
 
   constructor(private readonly options: AgentDockerEngineRuntimeOptions) {
     this.resolvedContract =
       options.runtimeContract ?? readAgentDockerEngineRuntimeContract(options.provider ?? "docker-engine");
+    this.workspace = {
+      ...options.workspace,
+      guestRoot: options.workspace.guestRoot ?? this.resolvedContract.contract.guest.workspaceRoot,
+    };
     this.runtimeName = resolveRuntimeName(this.resolvedContract, options.runtimeName);
     this.copySourceRoots = options.copySourceRoots.map((root) => path.resolve(root));
     this.imageReference = requireImageReference(options.imageReference);
@@ -213,14 +230,12 @@ export class AgentDockerEngineRuntime implements AgentDockerRuntime {
 
   private createContainerOptions(request: AgentSandboxExecutionRequest): Docker.ContainerCreateOptions {
     const contract = this.resolvedContract.contract;
+    const guestWorkspaceRoot = normalizeGuestPath(this.workspace.guestRoot);
     const mounts: Docker.MountSettings[] = [
       {
-        Type: this.options.workspace.kind,
-        Source:
-          this.options.workspace.kind === "bind"
-            ? path.resolve(this.options.workspace.sourcePath)
-            : this.options.workspace.volumeName,
-        Target: contract.guest.workspaceRoot,
+        Type: this.workspace.kind,
+        Source: this.workspace.kind === "bind" ? path.resolve(this.workspace.sourcePath) : this.workspace.volumeName,
+        Target: guestWorkspaceRoot,
         ReadOnly: request.workspaceMount === "readonly",
       },
       ...request.writableMounts.map((mount): Docker.MountSettings => {
@@ -244,7 +259,7 @@ export class AgentDockerEngineRuntime implements AgentDockerRuntime {
       Cmd: [...request.arguments],
       WorkingDir: normalizeGuestPath(request.cwd),
       User: contract.guest.user,
-      Env: Object.entries(projectSandboxContainerEnvironment(request.environment, contract.guest.workspaceRoot)).map(
+      Env: Object.entries(projectSandboxContainerEnvironment(request.environment, guestWorkspaceRoot)).map(
         ([name, value]) => `${name}=${value}`,
       ),
       AttachStdin: true,

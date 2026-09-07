@@ -1,6 +1,9 @@
 import path from "node:path";
 import { resolveSeneraShellPlatform } from "../Execution/SeneraShellPlatform.js";
-import { readAgentDockerEngineRuntimeContract } from "../Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
+import {
+  readAgentDockerEngineRuntimeContract,
+  resolveAgentDockerEngineGuestWorkspaceRoot,
+} from "../Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 import {
   createSeneraExecutionRuntimeCapabilities,
   type SeneraExecutionRuntimeCapabilities,
@@ -47,12 +50,30 @@ export function buildAgentExecutionEnvironmentContext(
   workspaceRoot: string,
   capabilities: SeneraExecutionRuntimeCapabilities = createSeneraExecutionRuntimeCapabilities(),
   platform: NodeJS.Platform = process.platform,
+  sandboxGuestWorkspaceRoot?: string,
 ): AgentExecutionEnvironmentContext {
   const windows = platform === "win32";
   const shell = resolveSeneraShellPlatform(platform);
   const sandbox = capabilities.sandbox
     ? readAgentDockerEngineRuntimeContract(capabilities.sandbox.provider)
     : undefined;
+  const resolvedSandboxWorkspaceRoot =
+    sandboxGuestWorkspaceRoot ??
+    (sandbox ? resolveAgentDockerEngineGuestWorkspaceRoot(workspaceRoot, capabilities.sandbox!.provider) : undefined);
+  const sandboxTarget =
+    sandbox && resolvedSandboxWorkspaceRoot
+      ? {
+          os: "Linux",
+          boundary: "sandbox" as const,
+          shellDialect: "posix-sh" as const,
+          shellCommand: sandbox.contract.guest.shell.command,
+          workspaceRoot: resolvedSandboxWorkspaceRoot,
+          workspacePathStyle: "posix" as const,
+          workspaceSeparator: "/" as const,
+          workspaceMount: "bind" as const,
+          image: sandbox.image.runtimeImage,
+        }
+      : null;
   return {
     os: osName(platform),
     platform,
@@ -78,19 +99,7 @@ export function buildAgentExecutionEnvironmentContext(
         workspaceSeparator: windows ? "\\" : "/",
         workspaceMount: "host",
       },
-      sandbox: sandbox
-        ? {
-            os: "Linux",
-            boundary: "sandbox",
-            shellDialect: "posix-sh",
-            shellCommand: sandbox.contract.guest.shell.command,
-            workspaceRoot: sandbox.contract.guest.workspaceRoot,
-            workspacePathStyle: "posix",
-            workspaceSeparator: "/",
-            workspaceMount: "bind",
-            image: sandbox.image.runtimeImage,
-          }
-        : null,
+      sandbox: sandboxTarget,
     },
     workspace: {
       root: path.resolve(workspaceRoot),
@@ -100,7 +109,7 @@ export function buildAgentExecutionEnvironmentContext(
       preferredPathForm: "workspace-relative",
     },
     guidance: {
-      shell: shellGuidance(windows, shell.command, path.resolve(workspaceRoot), sandbox?.contract.guest.workspaceRoot),
+      shell: shellGuidance(windows, shell.command, path.resolve(workspaceRoot), resolvedSandboxWorkspaceRoot),
       paths: [
         "Prefer workspace-relative paths in tool arguments.",
         "Do not assume Windows paths work on POSIX or POSIX paths work on Windows unless the environment block says so.",
@@ -131,12 +140,18 @@ function shellGuidance(
       "Do not use Bash-only commands such as which, test, grep pipelines, or POSIX path syntax for Local execution.",
     ];
   }
+  const unified = sandboxWorkspaceRoot === localWorkspaceRoot;
   return [
     ...(sandboxWorkspaceRoot
-      ? [
-          `Sandbox shell tools run in an isolated Linux container with the posix-sh dialect; its workspace root is ${sandboxWorkspaceRoot}.`,
-          `The host workspace ${localWorkspaceRoot} is bind-mounted at ${sandboxWorkspaceRoot}; use workspace-relative paths instead of host paths in Sandbox commands.`,
-        ]
+      ? unified
+        ? [
+            `Sandbox shell tools run in an isolated Linux container with the posix-sh dialect; its workspace root is ${sandboxWorkspaceRoot}, identical to the host workspace root.`,
+            "Paths inside the sandbox are the same as on the host; prefer workspace-relative paths in tool arguments.",
+          ]
+        : [
+            `Sandbox shell tools run in an isolated Linux container with the posix-sh dialect; its workspace root is ${sandboxWorkspaceRoot}.`,
+            `The host workspace ${localWorkspaceRoot} is bind-mounted at ${sandboxWorkspaceRoot}; use workspace-relative paths instead of host paths in Sandbox commands.`,
+          ]
       : []),
     `Local shell tools run on the host through governed process execution using POSIX sh; its workspace root is ${localWorkspaceRoot}.`,
     "Set command.mode, command.dialect, and command.script explicitly.",

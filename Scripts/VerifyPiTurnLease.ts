@@ -132,6 +132,7 @@ const substrate = new AgentPiSubstrate({
 
 const result = await withTimeout(
   substrate.leaseTurn({
+    sessionId: "verify-pi-turn-lease-session",
     requestId: "verify-pi-turn-lease",
     step: 1,
     input: "请继续全面优化拓展代码并运行测试验证直到完成",

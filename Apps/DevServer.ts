@@ -15,6 +15,8 @@ async function main(): Promise<void> {
   const handle = await startSeneraServer({
     configPath,
     deployment: SeneraServerDeployments.Local,
+    // Vite serves the development UI from a separate loopback port.
+    automaticLoopbackHttp: true,
   });
   installAgentProcessShutdownGuard({
     logger: processLogger,

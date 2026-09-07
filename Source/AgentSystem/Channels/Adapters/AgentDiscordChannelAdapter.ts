@@ -6,6 +6,7 @@ import {
   type AgentChannelAdapter,
   type AgentChannelAdapterHandlers,
   type AgentChannelCapabilities,
+  type AgentChannelConnectionState,
   type AgentChannelInboundMessage,
   type AgentChannelSendReplyOptions,
   type AgentChannelSendResult,
@@ -122,6 +123,7 @@ export class AgentDiscordChannelAdapter implements AgentChannelAdapter {
   private sessionId?: string;
   private lastSequence?: number;
   private gatewayPromise?: Promise<void>;
+  private connectionState: AgentChannelConnectionState = "stopped";
 
   constructor(options: AgentDiscordChannelAdapterOptions) {
     this.token = options.token.trim();
@@ -149,17 +151,53 @@ export class AgentDiscordChannelAdapter implements AgentChannelAdapter {
     this.handlers = handlers;
   }
 
+  getConnectionState(): AgentChannelConnectionState {
+    return this.connectionState;
+  }
+
+  private setConnectionState(state: AgentChannelConnectionState): void {
+    if (this.connectionState === state) return;
+    this.connectionState = state;
+    this.handlers?.onConnectionStateChanged?.(state);
+  }
+
   async connect(signal: AbortSignal): Promise<void> {
-    this.internal = new AbortController();
-    signal.addEventListener("abort", () => this.internal?.abort(), { once: true });
-    const gateway = await this.discoverGateway();
-    this.gatewayHost = sanitizeGatewayUrl(gateway.url);
-    this.gatewayPromise = this.gatewayLoop(this.internal.signal).catch((error) => {
-      this.handlers?.onFatal?.(error, this.kind);
-    });
+    if (signal.aborted) {
+      this.setConnectionState("stopped");
+      return;
+    }
+    const internal = new AbortController();
+    this.internal = internal;
+    signal.addEventListener(
+      "abort",
+      () => {
+        internal.abort();
+        this.setConnectionState("stopped");
+      },
+      { once: true },
+    );
+    this.setConnectionState("connecting");
+    try {
+      const gateway = await this.discoverGateway();
+      if (internal.signal.aborted) {
+        this.setConnectionState("stopped");
+        return;
+      }
+      this.gatewayHost = sanitizeGatewayUrl(gateway.url);
+      this.gatewayPromise = this.gatewayLoop(internal.signal).catch((error) => {
+        if (!internal.signal.aborted) {
+          this.setConnectionState("degraded");
+          this.handlers?.onFatal?.(error, this.kind);
+        }
+      });
+    } catch (error) {
+      this.setConnectionState(internal.signal.aborted ? "stopped" : "degraded");
+      throw error;
+    }
   }
 
   async disconnect(): Promise<void> {
+    this.setConnectionState("stopped");
     this.internal?.abort();
     if (this.gatewayPromise) {
       try {
@@ -202,12 +240,16 @@ export class AgentDiscordChannelAdapter implements AgentChannelAdapter {
 
   private async gatewayLoop(signal: AbortSignal): Promise<void> {
     let backoffMs = this.reconnectBackoffBaseMs;
+    let established = false;
     while (!signal.aborted) {
       try {
+        this.setConnectionState(established ? "reconnecting" : "connecting");
         await this.openGatewaySession(signal);
+        established = true;
         backoffMs = this.reconnectBackoffBaseMs;
       } catch (error) {
         if (signal.aborted) return;
+        this.setConnectionState("reconnecting");
         this.handlers?.onFatal?.(new Error(`Discord gateway session failed: ${describe(error)}`), this.kind);
         await sleepWithAbort(backoffMs, signal);
         backoffMs = Math.min(backoffMs * 2, this.reconnectBackoffMaxMs);
@@ -311,6 +353,7 @@ export class AgentDiscordChannelAdapter implements AgentChannelAdapter {
 
       const ready = await waitForDispatch(events, GatewayDispatch.Ready, this.ackTimeoutMs);
       this.sessionId = ((ready.d ?? {}) as DiscordReadyData).session_id;
+      this.setConnectionState("connected");
       startHeartbeat();
 
       await waitForClosed(events, signal);

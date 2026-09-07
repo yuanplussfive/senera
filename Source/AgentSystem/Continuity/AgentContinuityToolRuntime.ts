@@ -27,7 +27,7 @@ import { AgentTemporalMemorySqliteStore } from "../TemporalMemory/AgentTemporalM
 import { AgentTemporalMemoryRecall } from "../TemporalMemory/AgentTemporalMemoryRecall.js";
 import { projectAgentTemporalMemoryScope } from "../TemporalMemory/AgentTemporalMemoryIdentity.js";
 import { agentTemporalMemoryRange } from "../TemporalMemory/AgentTemporalMemoryPeriod.js";
-import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 
 const NonEmptyText = z.string().trim().min(1);
 const Lifetime = z.union([z.enum(["session", "permanent"]), z.string().datetime({ offset: true })]);
@@ -191,7 +191,7 @@ export const recallContinuityHostTool: AgentHostToolHandler = async (args, conte
         store,
         sourceRepository: sources,
         temporalMemoryStore,
-        identityTemplateValues: context.identityTemplateValues,
+        identityDisplayValues: context.identityDisplayValues,
         identity: requireToolContinuityIdentity(context.continuityIdentity, context.sessionId),
         sessionId: context.sessionId,
         ranking: resolveContinuityLearningConfig(context.config).Recall.Ranking,
@@ -211,7 +211,7 @@ export function recallContinuity(
     readonly store: AgentContinuitySqliteStore;
     readonly sourceRepository: AgentMemorySourceRepository;
     readonly temporalMemoryStore: AgentTemporalMemorySqliteStore;
-    readonly identityTemplateValues?: () => AgentIdentityTemplateValues;
+    readonly identityDisplayValues?: () => AgentIdentityDisplayValues;
     readonly identity: AgentContinuityIdentityContext;
     readonly sessionId?: string;
     readonly ranking: ResolvedAgentContinuityRecallRankingConfig;
@@ -220,7 +220,7 @@ export function recallContinuity(
 ): ContinuityRecallResult {
   const refs = uniqueStrings(args.refs ?? []);
   const range = args.from && args.to ? agentTemporalMemoryRange(args.from, args.to, options.timeZone) : undefined;
-  const temporal = new AgentTemporalMemoryRecall(options.temporalMemoryStore, options.identityTemplateValues).read({
+  const temporal = new AgentTemporalMemoryRecall(options.temporalMemoryStore, options.identityDisplayValues).read({
     scopeKey: projectAgentTemporalMemoryScope(options.identity).key,
     range,
     refs,

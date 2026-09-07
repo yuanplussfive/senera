@@ -9,11 +9,13 @@ import type {
   AgentChildRunRecord,
   AgentChildRunRepository,
   AgentChildWorkspaceAccessMode,
+  AgentChildRunJoinGroup,
 } from "./AgentChildRunTypes.js";
 import type { AgentOrchestrationEventRelay } from "./AgentOrchestrationEventRelay.js";
 import type { AgentRunContextMode, AgentRunDispatchPort } from "./AgentRunDispatchPort.js";
 import type { AgentSubagentPreflightPort } from "./AgentSubagentPreflight.js";
 import type { AgentSubagentRoleCatalogPort } from "./AgentSubagentRoleCatalog.js";
+import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 
 export const AgentDelegationExecutionModes = {
   Wait: "wait",
@@ -22,6 +24,8 @@ export const AgentDelegationExecutionModes = {
 
 export type AgentDelegationExecutionMode =
   (typeof AgentDelegationExecutionModes)[keyof typeof AgentDelegationExecutionModes];
+
+export type { AgentChildRunJoinGroup } from "./AgentChildRunTypes.js";
 
 export interface AgentSpawnRequest {
   readonly task: string;
@@ -35,6 +39,7 @@ export interface AgentDelegationRequest {
   /** Optional v2 graph identity. The host generates both values when omitted. */
   readonly ownerRunId?: string;
   readonly nodeId?: string;
+  readonly joinGroup?: AgentChildRunJoinGroup;
   readonly workspaceAccess: AgentChildWorkspaceAccessMode;
   readonly context?: AgentRunContextMode;
   readonly executionMode: AgentDelegationExecutionMode;
@@ -48,6 +53,11 @@ export interface AgentDelegationContext {
   readonly parentRequestId: string;
   readonly parentModelProviderId?: string;
   readonly parentThinkingLevel?: ModelThinkingLevel;
+  /** Host-derived identity of the current Pi tool batch. */
+  readonly parentToolBatch?: {
+    readonly id: string;
+    readonly spawnCount: number;
+  };
   readonly approvalMode: AgentExecutionApprovalMode;
   readonly authorizedToolNames: readonly string[];
   readonly activeSkills?: readonly AgentPinnedSkillReference[];
@@ -69,6 +79,8 @@ export interface AgentDelegationServiceOptions {
   readonly completion?: AgentDelegationCompletionPort;
   readonly preflight?: AgentSubagentPreflightPort;
   readonly roleCatalog?: AgentSubagentRoleCatalogPort;
+  /** Bound after continuity startup; children receive the same durable Todo store. */
+  readonly todoService?: AgentTodoService;
 }
 
 /**

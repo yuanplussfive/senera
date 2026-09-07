@@ -387,9 +387,16 @@ export interface ResidentSpeechProjection {
 }
 
 export interface TemporalMemoryDigest {
-  summary: string
-  topics: string[]
-  openLoops: string[]
+  summary: TemporalMemoryTextPart[]
+  topics: TemporalMemoryTextPart[][]
+  openLoops: TemporalMemoryTextPart[][]
+  
+}
+
+export interface TemporalMemoryTextPart {
+  kind: string
+  text?: string | null
+  role?: string | null
   
 }
 
