@@ -41,6 +41,7 @@ export { bumpSessionMessageCount } from "./sessionProjectorCore";
 export { deleteSessionRuntimeState } from "./sessionListProjection";
 export { deleteSessionRuntimeStates } from "./sessionListProjection";
 export { markSessionDeletionRequested, restorePendingSessionDeletion } from "./sessionListProjection";
+export { invalidateSessionHistoryCache } from "./sessionListProjection";
 
 // =========================
 // reducer：把 36 种事件投影到状态

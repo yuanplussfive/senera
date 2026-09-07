@@ -166,6 +166,22 @@ export function readAgentDockerEngineRuntimeContract(
   };
 }
 
+/**
+ * Derive the guest workspace namespace from the process workspace whenever it
+ * is already a valid Linux path. Desktop hosts use the contract namespace as
+ * the compatibility default because a Windows path cannot be a container mount
+ * target. This keeps Linux image deployments on one path without duplicating
+ * deployment-specific literals.
+ */
+export function resolveAgentDockerEngineGuestWorkspaceRoot(
+  workspaceRoot: string,
+  provider: AgentDockerEngineSandboxProvider = "docker-engine",
+): string {
+  const candidate = workspaceRoot.trim();
+  if (isNormalizedAbsolutePosixPath(candidate)) return candidate;
+  return readAgentDockerEngineRuntimePolicyContract(provider).guest.workspaceRoot;
+}
+
 export function readAgentGvisorRuntimeContract(
   architecture: string = process.arch,
 ): ResolvedAgentGvisorRuntimeContract {

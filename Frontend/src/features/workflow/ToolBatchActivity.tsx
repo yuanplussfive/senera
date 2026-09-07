@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "../../lib/util";
-import { type TimelineStep, type RunRecord } from "../../store/sessionStore";
+import { type TimelineStep } from "../../store/sessionStore";
 import { MotionDisclosure } from "../../shared/motion";
 import { AppIcon } from "../../shared/ui/AppIcon";
 import { Spinner } from "../../shared/ui/Spinner";
@@ -79,7 +79,11 @@ export function ToolBatchActivity({
         />
       </button>
       <MotionDisclosure id={contentId} open={open} className="tool-batch-activity__disclosure">
-        <div className="flex min-w-0 gap-2" data-tool-batch-activity-items>
+        <div
+          className="tool-activity-viewport scrollbar-thin flex min-w-0 gap-2 pr-1"
+          data-tool-batch-activity-items
+          data-tool-batch-activity-viewport
+        >
           <span className="ml-[6.5px] w-px shrink-0 bg-line-subtle" aria-hidden="true" />
           <ul className="flex min-w-0 flex-1 flex-col gap-1 py-1 pl-1" role="list">
             {activity.items.map((item) => (
@@ -135,7 +139,9 @@ function ToolBatchActivityStatus({ status }: { status: TimelineStep["status"] })
   );
 }
 
-export function projectToolBatchActivity(run: RunRecord): ToolBatchActivityModel | undefined {
+export function projectToolBatchActivity(run: {
+  readonly steps: readonly TimelineStep[];
+}): ToolBatchActivityModel | undefined {
   const toolSteps = run.steps.filter(
     (step): step is TimelineStep & { toolName: string } => step.kind === "tool" && Boolean(step.toolName?.trim()),
   );

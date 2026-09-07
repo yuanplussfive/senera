@@ -433,6 +433,7 @@ export const AgentEventObservationSpecTable = {
     "/data/snapshot/toolCalls",
     "/data/snapshot/activeTools",
     "/data/snapshot/artifactUris",
+    "/data/snapshot/control",
     "/data/snapshot/deadline",
   ),
   [AgentEventKinds.ChildRunDeadlineExtended]: projection(

@@ -9,6 +9,7 @@ export const AgentPiInteractiveCacheRetention = AgentLongLivedCacheRetention;
 
 export type AgentPiPromptCachePhase =
   | "native-conversation"
+  | "native-channel-rewrite"
   | "baml-planning"
   | "baml-compaction"
   | "goal-decision"
@@ -33,6 +34,24 @@ export interface AgentPiPromptCacheStablePrefix {
 }
 
 /**
+ * A logical cache scope survives physical session rotation (for example a
+ * Pi history compression) while remaining isolated between conversations.
+ * The provider receives the opaque digest, so channel identifiers and other
+ * routing metadata never become part of the prompt-cache key verbatim.
+ */
+export function createAgentPiLogicalCacheScope(input: {
+  readonly sessionId: string;
+  readonly family?: string;
+}): string {
+  const sessionId = requireAgentPiPromptCacheSessionId(input.sessionId);
+  return sha256HexOfCanonicalJson({
+    namespace: "senera.pi.logical-cache",
+    family: input.family?.trim() || "conversation",
+    sessionId,
+  });
+}
+
+/**
  * Keeps unrelated Pi call families out of the same provider routing bucket.
  *
  * The scope is a logical conversation affinity, not a content fingerprint.
@@ -45,15 +64,17 @@ export interface AgentPiPromptCacheStablePrefix {
  */
 export function createAgentPiPromptCacheOptions(input: {
   readonly phase: AgentPiPromptCachePhase;
-  readonly sessionId: string | undefined;
+  readonly sessionId?: string;
+  readonly logicalCacheScope?: string;
   readonly model: AgentPiPromptCacheModelIdentity;
   readonly stablePrefix?: AgentPiPromptCacheStablePrefix;
 }): AgentLanguageModelCacheOptions {
+  const logicalCacheScope = requireAgentPiPromptCacheScope(input.logicalCacheScope ?? input.sessionId);
   return createAgentModelCacheOptions({
     namespace: "senera.pi",
     identity: {
       phase: input.phase,
-      sessionId: requireAgentPiPromptCacheSessionId(input.sessionId),
+      logicalCacheScope,
       model: {
         provider: requireText(input.model.provider, "provider"),
         api: requireText(input.model.api, "API"),
@@ -84,6 +105,10 @@ export function projectAgentPiPromptCacheModel(
 
 export function requireAgentPiPromptCacheSessionId(sessionId: string | undefined): string {
   return requireText(sessionId ?? "", "session ID");
+}
+
+export function requireAgentPiPromptCacheScope(scope: string | undefined): string {
+  return requireText(scope ?? "", "logical cache scope");
 }
 
 function requireText(value: string, name: string): string {

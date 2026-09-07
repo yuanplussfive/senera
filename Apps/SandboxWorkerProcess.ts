@@ -13,7 +13,11 @@ import {
   resolveAgentDockerEngineEndpoint,
   resolveAgentSandboxWorkerEndpoint,
 } from "../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineEndpoint.js";
-import { resolveAgentDockerEngineSandboxProvider } from "../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntime.js";
+import {
+  resolveAgentDockerEngineSandboxProvider,
+  type AgentDockerWorkspaceSource,
+} from "../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntime.js";
+import { resolveAgentDockerEngineGuestWorkspaceRoot } from "../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 import { AgentSandboxWorkerClient } from "../Source/AgentSystem/Sandbox/Worker/AgentSandboxWorkerClient.js";
 
 export interface SeneraSandboxWorkerProcessOptions {
@@ -25,6 +29,10 @@ export interface SeneraSandboxWorkerProcessOptions {
   resourcesPath?: string;
   startupTimeoutMs?: number;
   platform?: NodeJS.Platform;
+  /** Container deployments mount a named volume into the guest; desktop uses a host bind path. */
+  workspace?: AgentDockerWorkspaceSource;
+  /** Guest-side workspace root. Defaults to the derived workspace namespace. */
+  guestWorkspaceRoot?: string;
 }
 
 export interface SeneraSandboxWorkerBootstrap {
@@ -59,14 +67,29 @@ export async function startSeneraSandboxWorkerProcess(
   const copySourceRoots = [options.workspaceRoot, options.resourcesPath, os.tmpdir()].filter((value): value is string =>
     Boolean(value),
   );
+  if (
+    options.workspace?.guestRoot &&
+    options.guestWorkspaceRoot &&
+    options.workspace.guestRoot !== options.guestWorkspaceRoot
+  ) {
+    throw new Error("Sandbox Worker workspace guestRoot and guestWorkspaceRoot must agree.");
+  }
+  const guestWorkspaceRoot =
+    options.workspace?.guestRoot ??
+    options.guestWorkspaceRoot ??
+    resolveAgentDockerEngineGuestWorkspaceRoot(options.workspaceRoot, resolution.provider);
+  const workspace: AgentDockerWorkspaceSource & { readonly guestRoot: string } = options.workspace
+    ? { ...options.workspace, guestRoot: guestWorkspaceRoot }
+    : { kind: "bind", sourcePath: options.workspaceRoot, guestRoot: guestWorkspaceRoot };
   const child = spawn(process.execPath, [...(options.nodeArguments ?? []), options.entrypoint], {
     cwd: options.workspaceRoot,
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "1",
       SENERA_SANDBOX_WORKER_ENDPOINT: endpoint,
-      SENERA_SANDBOX_WORKSPACE_KIND: "bind",
-      SENERA_SANDBOX_WORKSPACE_SOURCE: options.workspaceRoot,
+      SENERA_SANDBOX_WORKSPACE_KIND: workspace.kind,
+      SENERA_SANDBOX_WORKSPACE_SOURCE: workspace.kind === "bind" ? workspace.sourcePath : workspace.volumeName,
+      SENERA_SANDBOX_WORKSPACE_GUEST_ROOT: guestWorkspaceRoot,
       SENERA_SANDBOX_COPY_SOURCE_ROOTS: JSON.stringify(copySourceRoots),
       SENERA_DOCKER_SANDBOX_PROVIDER: resolution.provider,
       SENERA_DOCKER_SANDBOX_IMAGE: config.Docker.Image,

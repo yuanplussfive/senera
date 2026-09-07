@@ -725,6 +725,15 @@ textarea::-webkit-scrollbar-track {
   line-height: var(--theme-tool-line-height);
 }
 
+/* Tool traces share one bounded viewport. It keeps long runs readable while
+   preserving a quiet, theme-aware surface for the surrounding conversation. */
+.tool-activity-viewport {
+  min-height: 0;
+  max-height: min(20rem, 42dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .tool-activity-stage-list--connected::before {
   position: absolute;
   top: 18px;

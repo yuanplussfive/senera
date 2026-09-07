@@ -6,6 +6,7 @@ import CpuChipIcon from "@heroicons/react/24/outline/CpuChipIcon";
 import SwatchIcon from "@heroicons/react/24/outline/SwatchIcon";
 import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
 import { Trash2 } from "lucide-react";
+import type { ModelsDevModelMetadata } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { Button, Dialog, DialogContent, InlineError, MenuSelect, ScrollArea, Tooltip } from "../../shared/ui";
 import { ModelProviderIconNames } from "./ModelProviderIcon";
@@ -20,6 +21,7 @@ import { CapabilityToggle, ModelCapabilityIconItems, ToolPlanningModeControl } f
 import {
   IconOption,
   MenuRow,
+  ModelsDevMetadataSummary,
   NumberRow,
   SectionLabel,
   SettingsTable,
@@ -43,6 +45,7 @@ export function ModelOptionsDialog({
   removeDisabledReason,
   errorMessage,
   discardAction,
+  catalogMetadata,
   commitLabels = {
     existing: frontendMessage("config.model.applyToDraft"),
     new: frontendMessage("config.model.addToDraft"),
@@ -65,6 +68,8 @@ export function ModelOptionsDialog({
   errorMessage?: string | null;
   /** Escape hatch when the save-on-close cycle cannot complete. */
   discardAction?: { label: string; onDiscard: () => void };
+  /** Read-only public model facts from models.dev. */
+  catalogMetadata?: ModelsDevModelMetadata;
   commitLabels?: { existing: string; new: string };
 }): JSX.Element {
   const open = model !== null;
@@ -111,6 +116,8 @@ export function ModelOptionsDialog({
     modelTemplate,
     "MaxModelOutputTokens",
   );
+  const catalogOutputLimit = catalogMetadata?.outputLimit ? String(catalogMetadata.outputLimit) : undefined;
+  const catalogContextLimit = catalogMetadata?.contextLimit ? String(catalogMetadata.contextLimit) : undefined;
   const streamEnabled =
     typeof model.Stream === "boolean" ? model.Stream : (readBooleanWithTemplate(modelTemplate, "Stream") ?? true);
 
@@ -216,6 +223,7 @@ export function ModelOptionsDialog({
                   icon={<CommandLineIcon className="h-3.5 w-3.5" />}
                 />
               </SettingsTable>
+              <ModelsDevMetadataSummary metadata={catalogMetadata} />
             </section>
 
             <section>
@@ -230,7 +238,7 @@ export function ModelOptionsDialog({
                   min={1}
                   step={1}
                   disabled={disabled}
-                  placeholder="128000"
+                  placeholder={catalogContextLimit ?? "128000"}
                   onChange={(ContextWindowTokens) => onChange({ ContextWindowTokens })}
                 />
                 <NumberRow
@@ -239,7 +247,7 @@ export function ModelOptionsDialog({
                   min={-1}
                   step={1}
                   disabled={disabled}
-                  placeholder="-1"
+                  placeholder={catalogOutputLimit ?? "-1"}
                   onChange={(MaxModelOutputTokens) => onChange({ MaxModelOutputTokens })}
                 />
                 <MenuRow
@@ -292,7 +300,7 @@ export function ModelOptionsDialog({
                   min={-1}
                   step={1}
                   disabled={disabled}
-                  placeholder="-1"
+                  placeholder={catalogOutputLimit ?? "-1"}
                   onChange={(MaxOutputTokens) => onChange({ MaxOutputTokens })}
                 />
                 <ToggleRow

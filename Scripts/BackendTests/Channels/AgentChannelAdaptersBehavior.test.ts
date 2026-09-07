@@ -154,6 +154,7 @@ describe("qq adapter", () => {
     ]);
     const { socket, emit, sent } = fakeGatewaySocket();
     const received: AgentChannelInboundMessage[] = [];
+    const states: string[] = [];
     const adapter = new AgentQqChannelAdapter({
       appId: "app",
       appSecret: "sec",
@@ -165,6 +166,7 @@ describe("qq adapter", () => {
         received.push(message);
       },
       onFatal: vi.fn(),
+      onConnectionStateChanged: (state) => states.push(state),
     });
     const controller = new AbortController();
     await adapter.connect(controller.signal);
@@ -176,6 +178,11 @@ describe("qq adapter", () => {
     expect(identify).toBeDefined();
     expect((identify?.d as { token?: string })?.token).toBe("QQBot tok");
     expect(transport.calls.some((call) => call.includes("/gateway"))).toBe(true);
+    expect(states).toContain("connecting");
+
+    emit({ op: 0, t: "READY", s: 1, d: { session_id: "session-1" } });
+    await delay(30);
+    expect(states).toContain("connected");
 
     emit({
       op: 0,

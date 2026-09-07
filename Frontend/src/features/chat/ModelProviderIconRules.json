@@ -35,6 +35,7 @@
     "jina",
     "llava",
     "kimi",
+    "labs",
     "lmstudio",
     "lobehub",
     "longcat",
@@ -66,6 +67,7 @@
     "tencentcloud",
     "together",
     "upstage",
+    "unknown",
     "v0",
     "vertexai",
     "vllm",
@@ -114,5 +116,5 @@
     { "id": "llama", "label": "Llama", "icon": "meta", "match": "includes", "values": ["llama"] },
     { "id": "moonshot", "label": "Moonshot", "icon": "moonshot", "match": "includes", "values": ["moonshot"] }
   ],
-  "defaultModelGroup": { "id": "other", "labelKey": "config.modelGroups.other", "icon": "openai" }
+  "defaultModelGroup": { "id": "other", "labelKey": "config.modelGroups.other", "icon": "unknown" }
 }

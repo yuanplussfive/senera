@@ -91,6 +91,8 @@ export default class TypeBuilder {
     
     TemporalMemoryDigest: ClassViewer<'TemporalMemoryDigest', "summary" | "topics" | "openLoops">;
     
+    TemporalMemoryTextPart: ClassViewer<'TemporalMemoryTextPart', "kind" | "text" | "role">;
+    
     ToolCapabilityFacets: ClassViewer<'ToolCapabilityFacets', "Actions" | "Targets" | "Inputs" | "Outputs" | "Evidence" | "Effects">;
     
     ToolCapabilityItem: ClassViewer<'ToolCapabilityItem', "id" | "title" | "description" | "facets" | "risk">;
@@ -132,7 +134,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ActionPlanInput","ActionRunState","AskUserDecision","ContinuityAgendaDraft","ContinuityCapture","ContinuityCaptureItem","ContinuityRuleExtractionResult","ContinuityRuleItem","ConversationBoundary","DirectDecision","EvidenceSlot","ExecuteDecision","GoalMicroLoopCandidate","GoalMicroLoopDecision","PiConversationSummary","PiToolArgumentsDraft","PlanFragment","PlannedToolCall","PlannerActiveSkill","PlannerCurrentUserTurn","PlannerEvidenceMemoryItem","PlannerEvidenceRequirement","PlannerEvidenceStateItem","PlannerJournalItem","PlannerTimelineTurn","PlannerToolCallStateItem","ProgressSignals","RepeatedCallWarning","ResidentIdleDecision","ResidentIdleGoalProposal","ResidentSpeechProjection","TemporalMemoryDigest","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","ToolCatalogSummaryItem","ToolEvidenceCapabilityItem","ToolLearningRecord","ToolLearningResult","ToolRiskAudit",
+            "ActionPlanInput","ActionRunState","AskUserDecision","ContinuityAgendaDraft","ContinuityCapture","ContinuityCaptureItem","ContinuityRuleExtractionResult","ContinuityRuleItem","ConversationBoundary","DirectDecision","EvidenceSlot","ExecuteDecision","GoalMicroLoopCandidate","GoalMicroLoopDecision","PiConversationSummary","PiToolArgumentsDraft","PlanFragment","PlannedToolCall","PlannerActiveSkill","PlannerCurrentUserTurn","PlannerEvidenceMemoryItem","PlannerEvidenceRequirement","PlannerEvidenceStateItem","PlannerJournalItem","PlannerTimelineTurn","PlannerToolCallStateItem","ProgressSignals","RepeatedCallWarning","ResidentIdleDecision","ResidentIdleGoalProposal","ResidentSpeechProjection","TemporalMemoryDigest","TemporalMemoryTextPart","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","ToolCatalogSummaryItem","ToolEvidenceCapabilityItem","ToolLearningRecord","ToolLearningResult","ToolRiskAudit",
           ]),
           enums: new Set([
             "AskUserDecisionKind","DirectDecisionKind","ExecuteDecisionKind","ExecutionDeltaOp","GoalMicroLoopDecisionKind","ResidentIdleDecisionKind","ToolCallStatus","ToolRiskAuditDecision","ToolRiskLevel",
@@ -266,6 +268,10 @@ export default class TypeBuilder {
         
         this.TemporalMemoryDigest = this.tb.classViewer("TemporalMemoryDigest", [
           "summary","topics","openLoops",
+        ]);
+        
+        this.TemporalMemoryTextPart = this.tb.classViewer("TemporalMemoryTextPart", [
+          "kind","text","role",
         ]);
         
         this.ToolCapabilityFacets = this.tb.classViewer("ToolCapabilityFacets", [

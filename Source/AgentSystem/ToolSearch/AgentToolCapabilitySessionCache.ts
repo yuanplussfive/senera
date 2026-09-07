@@ -11,6 +11,8 @@ export interface AgentToolCapabilityCacheEntry {
   readonly toolName: string;
   readonly catalogRevision: string;
   readonly contractDigest?: string;
+  /** The user-turn intent that produced the successful invocation. */
+  readonly query?: string;
   readonly arguments?: Readonly<Record<string, unknown>>;
   readonly confirmedAt: number;
   readonly lastUsedAt: number;
@@ -26,6 +28,7 @@ interface MutableEntry {
   toolName: string;
   catalogRevision: string;
   contractDigest?: string;
+  query?: string;
   arguments?: Readonly<Record<string, unknown>>;
   confirmedAt: number;
   lastUsedAt: number;
@@ -61,6 +64,7 @@ export class AgentToolCapabilitySessionCache {
       toolName: input.toolName,
       catalogRevision: input.catalogRevision,
       contractDigest: input.contractDigest,
+      query: previous && sameContract(previous, input) ? previous.query : undefined,
       arguments: previous && sameContract(previous, input) ? previous.arguments : undefined,
       confirmedAt: previous && sameContract(previous, input) ? previous.confirmedAt : now,
       lastUsedAt: now,
@@ -73,6 +77,7 @@ export class AgentToolCapabilitySessionCache {
     toolName: string;
     catalogRevision: string;
     contractDigest?: string;
+    query?: string;
     arguments: Record<string, unknown>;
     now?: number;
   }): void {
@@ -80,10 +85,13 @@ export class AgentToolCapabilitySessionCache {
     const now = input.now ?? Date.now();
     const entries = this.session(input.sessionId);
     const previous = entries.get(input.toolName);
+    const query =
+      normalizeQuery(input.query) ?? (previous && sameContract(previous, input) ? previous.query : undefined);
     entries.set(input.toolName, {
       toolName: input.toolName,
       catalogRevision: input.catalogRevision,
       contractDigest: input.contractDigest,
+      ...(query ? { query } : {}),
       arguments: cloneArguments(input.arguments),
       confirmedAt: previous && sameContract(previous, input) ? previous.confirmedAt : now,
       lastUsedAt: now,
@@ -195,6 +203,7 @@ function freezeEntry(entry: MutableEntry): AgentToolCapabilityCacheEntry {
     toolName: entry.toolName,
     catalogRevision: entry.catalogRevision,
     contractDigest: entry.contractDigest,
+    ...(entry.query ? { query: entry.query } : {}),
     arguments: entry.arguments,
     confirmedAt: entry.confirmedAt,
     lastUsedAt: entry.lastUsedAt,
@@ -207,6 +216,13 @@ function oldestEntry(entries: Map<string, MutableEntry>): number {
 
 function positiveLimit(value: number | undefined, fallback: number): number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+const MaxCapabilityQueryCharacters = 2_000;
+
+function normalizeQuery(query: string | undefined): string | undefined {
+  const normalized = query?.normalize("NFKC").trim();
+  return normalized ? normalized.slice(0, MaxCapabilityQueryCharacters) : undefined;
 }
 
 export function capabilityArgumentsDigest(arguments_: Readonly<Record<string, unknown>>): string {

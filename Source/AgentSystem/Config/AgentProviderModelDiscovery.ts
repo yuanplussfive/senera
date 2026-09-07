@@ -10,10 +10,15 @@ import {
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { isAgentUnknownRecord, readAgentTrimmedString } from "../Core/AgentUnknownValue.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import type {
+  AgentModelsDevCatalogStatus,
+  AgentModelsDevModelMetadata,
+} from "../ModelEndpoints/AgentModelsDevCatalog.js";
 
 export interface AgentProviderModelInfo {
   id: string;
   ownedBy?: string;
+  modelsDev?: AgentModelsDevModelMetadata;
 }
 
 export interface AgentProviderModelSnapshot {
@@ -21,6 +26,7 @@ export interface AgentProviderModelSnapshot {
   baseUrl: string;
   fetchedAt: string;
   source: "cache" | "network";
+  modelsDev?: AgentModelsDevCatalogStatus;
   models: AgentProviderModelInfo[];
 }
 

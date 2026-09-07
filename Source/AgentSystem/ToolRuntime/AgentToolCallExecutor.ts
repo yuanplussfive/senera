@@ -48,7 +48,7 @@ import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolv
 import { resourceAccessGrantMatchesBinding } from "../Execution/SeneraResourceAccess.js";
 import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
-import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 
 export interface AgentToolCallExecutorOptions {
   registry: AgentExtensionRegistry;
@@ -71,7 +71,7 @@ export interface AgentToolCallExecutorOptions {
   resourceResolver?: AgentResourceResolverLike;
   todoService?: AgentTodoService;
   continuityIdentity?: AgentContinuityIdentityContext;
-  identityTemplateValues?: () => AgentIdentityTemplateValues;
+  identityDisplayValues?: () => AgentIdentityDisplayValues;
   clock?: AgentLifecycleClock;
 }
 
@@ -134,7 +134,7 @@ export class AgentToolCallExecutor {
         options.resourceResolver,
         options.todoService,
         options.continuityIdentity,
-        options.identityTemplateValues,
+        options.identityDisplayValues,
       );
       this.ownedToolRunner = ownedToolRunner;
       this.toolRunner = ownedToolRunner;
@@ -257,6 +257,7 @@ export class AgentToolCallExecutor {
           step: context.step,
           toolCallId: callId,
           batchId: context.batchId,
+          batchToolNames: context.batchToolNames,
           configPath: this.options.configPath,
           onEvent: context.onEvent,
           visibleToolNames:

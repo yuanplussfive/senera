@@ -557,14 +557,13 @@ jobs:
           docker pull "$IMAGE"
           docker pull "$SANDBOX_IMAGE"
           export SENERA_IMAGE="$IMAGE"
-          export SENERA_SANDBOX_IMAGE="$SANDBOX_IMAGE"
+          export SENERA_DOCKER_SANDBOX_IMAGE="$SANDBOX_IMAGE"
           docker compose up --detach --wait --wait-timeout "$CONTAINER_HEALTH_TIMEOUT_SECONDS" --pull never
           container_id="$(docker compose ps --quiet senera)"
           test -n "$container_id"
           runtime_uid="$(docker exec "$container_id" sh -c "sed -n 's/^Uid:[[:space:]]*\\([0-9]*\\).*/\\1/p' /proc/1/status")"
-          node_uid="$(docker exec "$container_id" id -u node)"
-          if [ "$runtime_uid" = "0" ] || [ "$runtime_uid" != "$node_uid" ]; then
-            echo "Container PID 1 must run as node (runtime_uid=$runtime_uid, node_uid=$node_uid)." >&2
+          if [ "$runtime_uid" != "0" ]; then
+            echo "Single-service compose must run container PID 1 as root (runtime_uid=$runtime_uid)." >&2
             exit 1
           fi
 

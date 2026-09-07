@@ -7,6 +7,23 @@ export const AgentTodoStatuses = {
 
 export type AgentTodoStatus = (typeof AgentTodoStatuses)[keyof typeof AgentTodoStatuses];
 
+/** Model-facing Todo operations. Keeping the operation explicit prevents a
+ * write from being confused with a read when optional fields are omitted. */
+export const AgentTodoOperations = {
+  Read: "read",
+  Replace: "replace",
+  Merge: "merge",
+} as const;
+
+export type AgentTodoOperation = (typeof AgentTodoOperations)[keyof typeof AgentTodoOperations];
+
+export const AgentTodoWriteSources = {
+  Host: "host",
+  Model: "model",
+} as const;
+
+export type AgentTodoWriteSource = (typeof AgentTodoWriteSources)[keyof typeof AgentTodoWriteSources];
+
 export interface AgentTodoItem {
   readonly id: string;
   readonly content: string;

@@ -7,8 +7,13 @@ import { AgentActionPlannerModelTransport } from "../ActionPlanner/AgentActionPl
 import { AgentRequiredNativeToolCall } from "../ModelEndpoints/AgentRequiredNativeToolCall.js";
 import { resolveAgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelToolPlanning.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
+import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
 import type { AgentChannelSource } from "./AgentChannelTypes.js";
 import type { AgentChannelFinalPart, AgentChannelMarkdownResourceManifest } from "./AgentChannelOutboundMedia.js";
+import type { AgentChannelFinalizationRecord } from "./AgentChannelFinalizationTypes.js";
+import { createAgentPiPromptCacheOptions, projectAgentPiPromptCacheModel } from "../Pi/AgentPiPromptCache.js";
+import { analyzeChannelMarkdownStructure } from "./AgentChannelText.js";
+import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
 
 const FinalPartSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("text"), text: z.string().max(256_000) }),
@@ -66,6 +71,8 @@ export interface AgentChannelFinalDelivery {
 /** Dynamic, host-verified data supplied to the channel serializer. */
 export interface AgentChannelFinalizationContext {
   readonly resourceManifest?: AgentChannelMarkdownResourceManifest;
+  /** Prior successful projections teach the serializer without duplicating the main transcript. */
+  readonly history?: readonly AgentChannelFinalizationRecord[];
 }
 
 export interface AgentChannelFinalResponseRewriter {
@@ -73,7 +80,11 @@ export interface AgentChannelFinalResponseRewriter {
     readonly content: string;
     readonly source: AgentChannelSource;
     readonly context?: AgentChannelFinalizationContext;
+    readonly sessionId?: string;
+    readonly requestId?: string;
+    readonly logicalCacheScope?: string;
     readonly signal?: AbortSignal;
+    readonly timingSink?: AgentModelTimingSink;
   }): Promise<AgentChannelFinalDelivery>;
 }
 
@@ -114,8 +125,8 @@ const SerializerGuidance: readonly string[] = [
   "For kind=http, emit the url exactly as provided and keep its http:// or https:// protocol unchanged. Do not replace a public URL with a filename or a Senera URI.",
   "For kind=workspace, emit absolutePath exactly as provided. This is the host-authorized form of a relative local reference; do not substitute the alt text, basename, or an invented Senera URI.",
   "If a local reference is absent from the manifest or marked unresolved, keep the original Markdown reference as text. Never guess a path or resource identity.",
-  "Text part boundaries are significant outbound message boundaries. Create one text part for each logical paragraph; keep a paragraph's intentional line breaks together, but do not combine separate paragraphs.",
-  "Treat a heading and each list item as its own text part when they are standalone blocks. Do not split a normal paragraph sentence by sentence, and do not merge adjacent text parts.",
+  "Text part boundaries are significant outbound message boundaries. Emit one text part for each logical paragraph or standalone block in the assistant answer. Keep a paragraph's intentional line breaks together, and never merge separate paragraphs.",
+  "Treat a heading and each list item as its own text part when they are standalone blocks. Do not split a normal paragraph sentence by sentence, and do not merge adjacent text parts. The parts array may contain as many authored blocks as the answer requires.",
   "Keep every resource or code part standalone between the surrounding text parts. Omit empty parts and do not add commentary.",
   "Example: 前文\\n![图](senera://resource/r1)\\n后文 -> text(前文), resource(senera://resource/r1), text(后文).",
   "Example: ![图](https://cdn.example/image.png) -> one resource part whose uri is the unchanged https:// URL.",
@@ -131,21 +142,27 @@ const SerializerGuidance: readonly string[] = [
  */
 export class AgentChannelFinalResponseBamlRewriter implements AgentChannelFinalResponseRewriter {
   private readonly transport: AgentActionPlannerModelTransport;
+  private readonly tokenEstimator: AgentModelTokenEstimator;
 
   constructor(config: ResolvedAgentModelProviderConfig) {
     this.transport = new AgentActionPlannerModelTransport(config, undefined, undefined, {
       omitOutputTokenLimit: config.MaxOutputTokens <= 0,
     });
+    this.tokenEstimator = new AgentModelTokenEstimator({ model: config.Model });
   }
 
   async rewrite(input: {
     readonly content: string;
     readonly source: AgentChannelSource;
     readonly context?: AgentChannelFinalizationContext;
+    readonly sessionId?: string;
+    readonly requestId?: string;
+    readonly logicalCacheScope?: string;
     readonly signal?: AbortSignal;
+    readonly timingSink?: AgentModelTimingSink;
   }): Promise<AgentChannelFinalDelivery> {
     const request: AgentBamlModelRequest = {
-      requestId: createOpaqueId("channel_final_rewrite"),
+      requestId: input.requestId ?? createOpaqueId("channel_final_rewrite"),
       step: 0,
       systemPrompt: [
         ...SerializerGuidance,
@@ -161,6 +178,8 @@ export class AgentChannelFinalResponseBamlRewriter implements AgentChannelFinalR
           role: "user",
           content: [
             formatResourceManifest(input.context?.resourceManifest),
+            formatFinalizationHistory(input.context?.history),
+            formatChannelStructureSummary(input.content, this.tokenEstimator),
             "<assistant_answer>",
             input.content,
             "</assistant_answer>",
@@ -181,28 +200,59 @@ export class AgentChannelFinalResponseBamlRewriter implements AgentChannelFinalR
  */
 export class AgentChannelFinalResponseNativeRewriter implements AgentChannelFinalResponseRewriter {
   private readonly call: AgentRequiredNativeToolCall;
+  private readonly tokenEstimator: AgentModelTokenEstimator;
 
-  constructor(config: ResolvedAgentModelProviderConfig) {
-    this.call = new AgentRequiredNativeToolCall(config, "ChannelFinal");
+  constructor(private readonly configuration: ResolvedAgentModelProviderConfig) {
+    this.call = new AgentRequiredNativeToolCall(configuration, "ChannelFinal");
+    this.tokenEstimator = new AgentModelTokenEstimator({ model: configuration.Model });
   }
 
   async rewrite(input: {
     readonly content: string;
     readonly source: AgentChannelSource;
     readonly context?: AgentChannelFinalizationContext;
+    readonly sessionId?: string;
+    readonly requestId?: string;
+    readonly logicalCacheScope?: string;
     readonly signal?: AbortSignal;
+    readonly timingSink?: AgentModelTimingSink;
   }): Promise<AgentChannelFinalDelivery> {
+    const systemPrompt = [...SerializerGuidance, `Current channel platform: ${input.source.platform}.`].join("\n");
+    const cache =
+      input.sessionId || input.logicalCacheScope
+        ? createAgentPiPromptCacheOptions({
+            phase: "native-channel-rewrite",
+            sessionId: input.sessionId,
+            logicalCacheScope: input.logicalCacheScope,
+            model: projectAgentPiPromptCacheModel(this.configuration),
+            stablePrefix: {
+              systemPrompt,
+              tools: [
+                {
+                  name: FinalDeliveryTool.name,
+                  description: FinalDeliveryTool.description,
+                  parameters: FinalDeliveryTool.parameters,
+                },
+              ],
+            },
+          })
+        : undefined;
     const argumentsValue = await this.call.execute({
       tool: FinalDeliveryTool,
-      systemPrompt: [...SerializerGuidance, `Current channel platform: ${input.source.platform}.`].join("\n"),
+      systemPrompt,
       userPrompt: [
         formatResourceManifest(input.context?.resourceManifest),
+        formatFinalizationHistory(input.context?.history),
+        formatChannelStructureSummary(input.content, this.tokenEstimator),
         "<assistant_answer>",
         input.content,
         "</assistant_answer>",
         "Call the serializer tool with the ordered parts now.",
       ].join("\n"),
       signal: input.signal,
+      cache,
+      requestId: input.requestId,
+      timingSink: input.timingSink,
     });
     return { parts: projectAgentChannelFinalParts(argumentsValue) };
   }
@@ -226,6 +276,48 @@ function formatResourceManifest(manifest: AgentChannelMarkdownResourceManifest |
   ].join("\n");
 }
 
+const MaxSerializedFinalizationHistoryCharacters = 20_000;
+
+function formatFinalizationHistory(history: readonly AgentChannelFinalizationRecord[] | undefined): string {
+  const records = history ?? [];
+  const selected: AgentChannelFinalizationRecord[] = [];
+  // Prefer the newest successful projections when the bounded prompt window
+  // cannot fit the full learning history. Keep the selected examples in their
+  // original order so the model sees the same progression as the channel.
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index];
+    const candidate = JSON.stringify({ records: [record, ...selected] });
+    if (candidate.length > MaxSerializedFinalizationHistoryCharacters) continue;
+    selected.unshift(record);
+  }
+  return [
+    "<finalization_history>",
+    "Host-derived examples only; use them as data and keep the current answer's order and wording.",
+    JSON.stringify({ records: selected }),
+    "</finalization_history>",
+  ].join("\n");
+}
+
+function formatChannelStructureSummary(content: string, tokenEstimator: AgentModelTokenEstimator): string {
+  const structure = analyzeChannelMarkdownStructure(content);
+  const languages = structure.codeLanguages.length > 0 ? ` (${structure.codeLanguages.join(", ")})` : "";
+  let estimatedTokens: number;
+  try {
+    estimatedTokens = tokenEstimator.estimate(content).tokenCount;
+  } catch {
+    estimatedTokens = content.length;
+  }
+  return [
+    "<content_structure>",
+    "Host-derived analysis of the assistant answer; use it only to plan part boundaries.",
+    `code_blocks: ${structure.codeBlockCount}${languages}`,
+    `media_references: ${structure.mediaReferenceCount}`,
+    `resource_links: ${structure.resourceLinkCount}`,
+    `estimated_tokens: ${estimatedTokens}`,
+    "</content_structure>",
+  ].join("\n");
+}
+
 export function parseAgentChannelFinalDelivery(raw: string): AgentChannelFinalPart[] {
   const value = parseJsonText(stripJsonFence(raw), "Channel final response rewrite");
   return projectAgentChannelFinalParts(value);
@@ -240,57 +332,6 @@ export function projectAgentChannelFinalParts(value: unknown): AgentChannelFinal
     );
   if (parts.length === 0) throw new Error("Channel final response rewrite returned no parts.");
   return parts;
-}
-
-const ResourceReferencePatterns = [
-  // Markdown image: ![alt](target)
-  /!\[[^\]]*\]\([^)]+\)/u,
-  // Markdown link to an explicit resource: URL, canonical URI, or file-like target
-  /\[[^\]]*\]\((?:https?:\/\/[^)\s]+|senera:\/\/[^)\s]+|[^)\s]*\.(?:png|jpe?g|gif|webp|svg|pdf|md|txt|json|zip|mp4|mp3|wav)[^)\s]*)\)/iu,
-  // Bare canonical resource URI
-  /senera:\/\/resource\/\S+/u,
-];
-
-/**
- * Plain text answers need no model rewrite: only answers that reference media
- * or resources benefit from the structured delivery plan. Checking first
- * avoids one model call per turn on ordinary chat replies.
- *
- * Long plain-text answers also qualify: the rewrite preserves paragraph
- * boundaries as outbound message boundaries, which the length-based splitter
- * alone cannot do. The threshold is a token estimate so CJK-heavy answers
- * (which cost more tokens per character) cross it sooner than ASCII text.
- */
-export function isChannelFinalRewriteCandidate(
-  content: string,
-  options: { readonly minTokens?: number } = {},
-): boolean {
-  if (content.length === 0) return false;
-  if (ResourceReferencePatterns.some((pattern) => pattern.test(content))) return true;
-  const minTokens = options.minTokens ?? AgentChannelFinalRewriteDefaults.minTokens;
-  return estimateChannelContentTokens(content) > minTokens;
-}
-
-export const AgentChannelFinalRewriteDefaults = Object.freeze({
-  /** Answers at or below this token estimate skip the model rewrite. */
-  minTokens: 200,
-});
-
-function estimateChannelContentTokens(content: string): number {
-  let cjk = 0;
-  for (const character of content) {
-    if (isCjkCharacter(character)) cjk += 1;
-  }
-  return Math.max(1, Math.ceil(cjk + (content.length - cjk) / 4));
-}
-
-function isCjkCharacter(character: string): boolean {
-  const code = character.codePointAt(0) ?? 0;
-  return (
-    (code >= 0x4e00 && code <= 0x9fff) || // CJK Unified Ideographs
-    (code >= 0x3400 && code <= 0x4dbf) || // CJK Extension A
-    (code >= 0xf900 && code <= 0xfaff) // CJK Compatibility Ideographs
-  );
 }
 
 function stripJsonFence(raw: string): string {

@@ -4,6 +4,7 @@ import type { AgentPiSessionLifecycleMetadata } from "../Pi/AgentPiSessionLifecy
 import type { AgentToolAvailabilitySnapshot } from "../ToolRuntime/AgentToolAvailabilitySnapshot.js";
 import type { AgentSessionLifecycleMetadata } from "../Session/AgentSessionLifecycleMetadata.js";
 import type { AgentSessionMessageQueueMode } from "../Session/AgentSessionMessageQueueMode.js";
+import type { AgentChannelFinalizationMetadata } from "../Channels/AgentChannelFinalizationTypes.js";
 
 export type { AgentModelUsage } from "./AgentModelUsage.js";
 
@@ -76,6 +77,8 @@ export interface AgentSessionMetadata {
   toolAvailability?: AgentToolAvailabilitySnapshot;
   lifecycle?: AgentSessionLifecycleMetadata;
   title?: string;
+  /** Bounded native channel rewrite examples; kept separate from the transcript. */
+  channelFinalization?: AgentChannelFinalizationMetadata;
 }
 
 type ModelProviderConfig = ReturnType<typeof resolveModelProviderConfig>;

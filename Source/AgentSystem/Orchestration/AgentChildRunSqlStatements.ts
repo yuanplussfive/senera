@@ -5,6 +5,7 @@ export interface AgentChildRunRow {
   readonly id: string;
   readonly owner_run_id: string;
   readonly node_id: string;
+  readonly join_group_json: string | null;
   readonly parent_session_id: string;
   readonly parent_request_id: string;
   readonly child_session_id: string;
@@ -50,6 +51,7 @@ export interface AgentChildRunSqlStatements {
   readonly selectByChildSession: Database.Statement<[string], AgentChildRunRow>;
   readonly selectByOwnerNode: Database.Statement<[string, string], AgentChildRunRow>;
   readonly listForOwner: Database.Statement<[string], AgentChildRunRow>;
+  readonly listForJoinGroup: Database.Statement<[string], AgentChildRunRow>;
   readonly listForParent: Database.Statement<[string], AgentChildRunRow>;
   readonly listForParentRequest: Database.Statement<[string, string], AgentChildRunRow>;
   readonly listActive: Database.Statement<[], AgentChildRunRow>;
@@ -76,13 +78,13 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
   return {
     insert: database.prepare(
       agentSql`INSERT INTO child_runs (
-                 id, owner_run_id, node_id, parent_session_id, parent_request_id, child_session_id, child_request_id,
+                 id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                  agent_name, task, context_mode, approval_mode, model_provider_id,
                  model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                  launch_contract_digest, launch_contract_json, allowed_tool_names_json,
                  created_at, updated_at
                ) VALUES (
-                 @id, @owner_run_id, @node_id, @parent_session_id, @parent_request_id, @child_session_id, @child_request_id,
+                 @id, @owner_run_id, @node_id, @join_group_json, @parent_session_id, @parent_request_id, @child_session_id, @child_request_id,
                  @agent_name, @task, @context_mode, @approval_mode, @model_provider_id,
                  @model_selection_source, @selected_skills_json, @configuration_revision, @execution_contract_json, @status,
                  @launch_contract_digest, @launch_contract_json, @allowed_tool_names_json,
@@ -90,7 +92,7 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
                )`,
     ),
     select: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
@@ -100,7 +102,7 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
                WHERE id = ?`,
     ),
     selectByChildSession: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
@@ -110,7 +112,7 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
                WHERE child_session_id = ?`,
     ),
     selectByOwnerNode: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
@@ -120,7 +122,7 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
                WHERE owner_run_id = ? AND node_id = ?`,
     ),
     listForOwner: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
@@ -130,8 +132,19 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
                WHERE owner_run_id = ?
                ORDER BY created_at, id`,
     ),
+    listForJoinGroup: database.prepare(
+      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
+                      agent_name, task, context_mode, approval_mode, model_provider_id,
+                      model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
+                      launch_contract_digest, launch_contract_json, allowed_tool_names_json,
+                      snapshot_json, checkpoint_json, final_answer, usage_json, error,
+                      created_at, started_at, completed_at, updated_at, revision
+               FROM child_runs
+               WHERE json_extract(join_group_json, '$.id') = ?
+               ORDER BY created_at, id`,
+    ),
     listForParent: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
@@ -142,7 +155,7 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
                ORDER BY created_at DESC, id`,
     ),
     listForParentRequest: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
@@ -153,7 +166,7 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
                ORDER BY created_at DESC, id`,
     ),
     listActive: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
@@ -164,7 +177,7 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
                ORDER BY created_at, id`,
     ),
     listAll: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,

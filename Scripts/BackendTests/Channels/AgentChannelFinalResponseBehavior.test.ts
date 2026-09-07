@@ -1,10 +1,12 @@
 import { describe, expect, test } from "vitest";
 import {
-  isChannelFinalRewriteCandidate,
   parseAgentChannelFinalDelivery,
   projectAgentChannelFinalParts,
 } from "../../../Source/AgentSystem/Channels/AgentChannelFinalResponse.js";
-import { collectAgentChannelMarkdownResourceManifest } from "../../../Source/AgentSystem/Channels/AgentChannelOutboundMedia.js";
+import {
+  collectAgentChannelMarkdownResourceManifest,
+  projectAgentChannelFinalParts as projectOutboundFinalParts,
+} from "../../../Source/AgentSystem/Channels/AgentChannelOutboundMedia.js";
 
 describe("channel final response rewriter", () => {
   test("projects native tool-call arguments into a structured final delivery", () => {
@@ -31,31 +33,6 @@ describe("channel final response rewriter", () => {
       { kind: "text", text: "hi" },
       { kind: "code", language: "ts", code: "const x = 1;" },
     ]);
-  });
-
-  test("detects resource references for rewrite candidates", () => {
-    expect(isChannelFinalRewriteCandidate("看图 ![截图](data:image/png;base64,AA==)")).toBe(true);
-    expect(isChannelFinalRewriteCandidate("见 senera://resource/r1")).toBe(true);
-    expect(isChannelFinalRewriteCandidate("[下载](https://example.com/a/b.zip)")).toBe(true);
-    expect(isChannelFinalRewriteCandidate("普通聊天回答，没有任何引用。")).toBe(false);
-    expect(isChannelFinalRewriteCandidate("")).toBe(false);
-  });
-
-  test("qualifies long plain-text answers by token estimate", () => {
-    const shortAscii = "a".repeat(600); // ~150 tokens, at or below the default threshold
-    expect(isChannelFinalRewriteCandidate(shortAscii)).toBe(false);
-    const longAscii = "a".repeat(900); // ~225 tokens, above the default threshold
-    expect(isChannelFinalRewriteCandidate(longAscii)).toBe(true);
-    const shortCjk = "汉".repeat(150); // ~150 tokens
-    expect(isChannelFinalRewriteCandidate(shortCjk)).toBe(false);
-    const longCjk = "汉".repeat(250); // ~250 tokens
-    expect(isChannelFinalRewriteCandidate(longCjk)).toBe(true);
-  });
-
-  test("honors a custom token threshold", () => {
-    const content = "a".repeat(800); // ~200 tokens
-    expect(isChannelFinalRewriteCandidate(content, { minTokens: 200 })).toBe(false);
-    expect(isChannelFinalRewriteCandidate(content, { minTokens: 100 })).toBe(true);
   });
 
   test("builds a bounded manifest with canonical, HTTP, and workspace mappings", async () => {
@@ -123,5 +100,19 @@ describe("channel final response rewriter", () => {
     );
 
     expect(manifest.references).toEqual([{ source: "missing.svg", kind: "unresolved" }]);
+  });
+
+  test("normalizes a Markdown image left inside a text part", async () => {
+    const projection = await projectOutboundFinalParts([
+      { kind: "text", text: "前文\n![截图](https://cdn.example/screenshot.png)\n后文" },
+    ]);
+
+    expect(projection.segments.map((segment) => segment.kind)).toEqual(["text", "media", "text"]);
+    expect(projection.segments[1]).toMatchObject({
+      kind: "media",
+      media: { kind: "image", url: "https://cdn.example/screenshot.png" },
+    });
+    expect(projection.segments[0]).toEqual({ kind: "text", content: "前文" });
+    expect(projection.segments[2]).toEqual({ kind: "text", content: "后文" });
   });
 });

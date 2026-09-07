@@ -120,6 +120,7 @@ if (!ownsDesktopInstance) {
         configSource,
         deployment: SeneraServerDeployments.Local,
         runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config),
+        automaticLoopbackHttp: true,
       });
       mainWindow = createMainWindow();
       await loadDesktopFrontend(mainWindow, frontendSource, desktopFrontendQuery());

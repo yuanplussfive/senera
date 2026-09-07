@@ -35,7 +35,7 @@ import { AgentTemporalMemoryRuntime } from "../TemporalMemory/AgentTemporalMemor
 import { AgentTemporalMemorySummaryModelClient } from "../TemporalMemory/AgentTemporalMemorySummaryModelClient.js";
 import { AgentConversationBoundaryModelClient } from "../TemporalMemory/AgentConversationBoundaryModelClient.js";
 import { projectAgentTemporalMemoryScope } from "../TemporalMemory/AgentTemporalMemoryIdentity.js";
-import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
 
 export interface AgentContinuityRuntime {
@@ -66,7 +66,7 @@ export function createAgentContinuityRuntime(input: {
   /** Optional shared embedding client; semantic recall stays off without one. */
   readonly embeddingClient?: AgentContinuitySemanticEmbeddingClient;
   readonly embeddingModel?: () => string;
-  readonly identityTemplateValues?: () => AgentIdentityTemplateValues;
+  readonly identityDisplayValues?: () => AgentIdentityDisplayValues;
   /** Optional stream of continuity domain events (recall observability). */
   readonly eventSink?: AgentEventSink;
   readonly logger?: AgentLogger;
@@ -163,7 +163,7 @@ export function createAgentContinuityRuntime(input: {
       store,
       sourceRepository,
       temporalMemoryStore,
-      identityTemplateValues: input.identityTemplateValues,
+      identityDisplayValues: input.identityDisplayValues,
       residentProfile,
       stableSnapshotStore,
       recallConfig: () => resolveContinuityLearningConfig(input.configSnapshot()).Recall,

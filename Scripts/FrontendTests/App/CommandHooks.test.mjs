@@ -132,6 +132,40 @@ test("useChatCommands acknowledges cancellation locally and ignores duplicate cl
   );
 });
 
+test("useChatCommands queues cancellation through a reconnect", async () => {
+  const sessionId = "session-cancel-reconnect";
+  registerTestSession(sessionId);
+  useStore.getState().appendUserMessage(sessionId, "request-cancel-reconnect", "Run until stopped.");
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  const view = renderChatCommands({ activeSessionId: sessionId, handleRef, send, status: "closed" });
+
+  act(() => handleRef.current.cancelActiveSession());
+  expect(send).not.toHaveBeenCalled();
+  expect(useStore.getState().sessions[sessionId].runs.at(-1)?.status).toBe("cancelling");
+
+  view.rerender(
+    React.createElement(ChatCommandsHarness, {
+      activeSessionId: sessionId,
+      appendUserMessage: useStore.getState().appendUserMessage,
+      handleRef,
+      lastSendRef: { current: null },
+      registerSession: useStore.getState().registerCreatingSession,
+      send,
+      serverKnownSessionIdsRef: { current: new Set([sessionId]) },
+      status: "open",
+    }),
+  );
+  await act(async () => undefined);
+
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(send).toHaveBeenCalledWith({
+    type: "session.cancel",
+    sessionId,
+    requestId: "request-cancel-reconnect",
+  });
+});
+
 test("useChatCommands leaves local history unchanged when regenerate delivery fails", () => {
   const sessionId = "session-a";
   const requestId = "request-a";
@@ -401,6 +435,7 @@ function renderChatCommands({
   lastSendRef = { current: null },
   send,
   serverKnownSessionIdsRef = { current: new Set([activeSessionId].filter(Boolean)) },
+  status = "open",
 }) {
   return render(
     React.createElement(ChatCommandsHarness, {
@@ -411,7 +446,7 @@ function renderChatCommands({
       registerSession: useStore.getState().registerCreatingSession,
       send,
       serverKnownSessionIdsRef,
-      status: "open",
+      status,
     }),
   );
 }

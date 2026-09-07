@@ -23,6 +23,7 @@ import type { AgentPiModelApi, AgentPiProviderProjection } from "./AgentPiTypes.
 import type { AgentResidentSpeechProjector } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import { inspectAgentResidentSpeechFocus } from "../ResidentSpeech/AgentResidentSpeechPromptProjector.js";
 import { createAgentResidentSpeechUsageSink } from "../ResidentSpeech/AgentResidentSpeechUsage.js";
+import { shouldProjectResidentSpeech } from "../PiShared/AgentPiResidentSpeechProjection.js";
 import { emitAgentPiAssistantMessage } from "./AgentPiAssistantMessageStream.js";
 import { requireAgentPiPromptCacheSessionId } from "./AgentPiPromptCache.js";
 
@@ -163,9 +164,15 @@ export class AgentPiBamlToolProvider {
     purposesByCallId: ReadonlyMap<string, string>,
   ): Promise<AssistantMessage> {
     const focus = inspectAgentResidentSpeechFocus(message, purposesByCallId);
-    const shouldProject =
-      focus?.mode === "action_preface" ? frame.prefaceRewriteEnabled === true : frame.roleplayPresetActive === true;
-    if (!shouldProject || !focus || (focus.mode === "final_response" && !turnState.hasRegisteredToolCalls())) {
+    if (!focus) return message;
+    if (
+      !shouldProjectResidentSpeech({
+        focus,
+        prefaceRewriteEnabled: frame.prefaceRewriteEnabled,
+        roleplayPresetActive: frame.roleplayPresetActive,
+        hasRegisteredToolCalls: turnState.hasRegisteredToolCalls(),
+      })
+    ) {
       return message;
     }
     if (!this.options.residentSpeech) {

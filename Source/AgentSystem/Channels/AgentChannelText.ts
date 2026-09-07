@@ -6,9 +6,215 @@
  * official bots receive plain markdown via their markdown message API.
  */
 
+import MarkdownIt from "markdown-it";
+import { createRequire } from "node:module";
+import { Jieba } from "@node-rs/jieba";
+
 const CodeFenceBlockPattern = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g;
 
 export type AgentChannelMarkdownMode = "markdown_v2" | "markdown" | "plain";
+
+/** Canonical resource URIs appearing as bare text inside inline content. */
+const InlineResourceUriPattern = /senera:\/\/resource\/\S+/u;
+/** File-like link targets that must survive as standalone resource parts. */
+const FileLikeTargetPattern = /\.(?:png|jpe?g|gif|webp|svg|pdf|md|txt|json|zip|mp4|mp3|wav)(?:[?#].*)?$/iu;
+
+const ChannelMarkdownParser = new MarkdownIt({
+  html: false,
+  linkify: false,
+  typographer: false,
+});
+
+export interface AgentChannelMarkdownStructure {
+  readonly codeBlockCount: number;
+  readonly codeLanguages: readonly string[];
+  readonly mediaReferenceCount: number;
+  readonly resourceLinkCount: number;
+  readonly plainLinkCount: number;
+  readonly inlineResourceUriCount: number;
+}
+
+const EmptyMarkdownStructure: AgentChannelMarkdownStructure = Object.freeze({
+  codeBlockCount: 0,
+  codeLanguages: [],
+  mediaReferenceCount: 0,
+  resourceLinkCount: 0,
+  plainLinkCount: 0,
+  inlineResourceUriCount: 0,
+});
+
+/** Guard against pathological inputs; the platform message limit is far smaller. */
+const MaxStructureScanCharacters = 512_000;
+
+/**
+ * Parses the answer once and reports the structural evidence the channel
+ * serializer needs: code fences, explicit media, and resource-like links.
+ * Plain http(s) links are counted separately because they stay inline text.
+ */
+export function analyzeChannelMarkdownStructure(content: string): AgentChannelMarkdownStructure {
+  if (content.length === 0) return EmptyMarkdownStructure;
+  if (content.length > MaxStructureScanCharacters) {
+    // Conservatively require the rewrite for oversized inputs.
+    return { ...EmptyMarkdownStructure, codeBlockCount: 1, mediaReferenceCount: 1, resourceLinkCount: 1 };
+  }
+  const structure = {
+    codeBlockCount: 0,
+    codeLanguages: [] as string[],
+    mediaReferenceCount: 0,
+    resourceLinkCount: 0,
+    plainLinkCount: 0,
+    inlineResourceUriCount: 0,
+  };
+  for (const token of ChannelMarkdownParser.parse(content, {})) {
+    if (token.type === "fence") {
+      structure.codeBlockCount += 1;
+      const language = token.info.trim();
+      if (language) structure.codeLanguages.push(language);
+      continue;
+    }
+    if (token.type === "code_block") {
+      structure.codeBlockCount += 1;
+      continue;
+    }
+    if (token.type !== "inline") continue;
+    for (const child of token.children ?? []) {
+      if (child.type === "image") {
+        structure.mediaReferenceCount += 1;
+        continue;
+      }
+      if (child.type === "link_open") {
+        const href = child.attrGet("href") ?? "";
+        if (isResourceLikeTarget(href)) structure.resourceLinkCount += 1;
+        else if (/^https?:\/\//iu.test(href)) structure.plainLinkCount += 1;
+        continue;
+      }
+      if (child.type === "text" && InlineResourceUriPattern.test(child.content)) {
+        structure.inlineResourceUriCount += 1;
+      }
+    }
+  }
+  return structure;
+}
+
+/**
+ * Decides whether the model-based final response serializer is required.
+ * Code fences and explicit resource references cannot be re-flowed reliably
+ * by the local splitter, so they keep the model rewrite; ordinary prose
+ * falls through to {@link splitChannelTextByParagraphs}.
+ */
+export function requiresChannelFinalRewrite(content: string): boolean {
+  if (content.length === 0) return false;
+  const structure = analyzeChannelMarkdownStructure(content);
+  return (
+    structure.codeBlockCount > 0 ||
+    structure.mediaReferenceCount > 0 ||
+    structure.resourceLinkCount > 0 ||
+    structure.inlineResourceUriCount > 0
+  );
+}
+
+function isResourceLikeTarget(href: string): boolean {
+  return href.startsWith("senera://") || FileLikeTargetPattern.test(href);
+}
+
+/**
+ * Splits plain text into paragraph-aware parts, at most {@link maxParts} by
+ * default. Blank-line blocks are kept intact when there are few of them; an
+ * over-long answer is re-balanced at sentence granularity so each part starts
+ * and ends on a sentence boundary. Falls back to single-line blocks when the
+ * text has line breaks but no blank lines.
+ */
+export function splitChannelTextByParagraphs(content: string, maxParts = 4): string[] {
+  const normalized = content.replace(/\r\n?/gu, "\n").trim();
+  if (!normalized) return [];
+  let paragraphs = normalized
+    .split(/\n{2,}/u)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (paragraphs.length === 1 && normalized.includes("\n")) {
+    paragraphs = normalized
+      .split("\n")
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+  if (paragraphs.length <= maxParts) return paragraphs;
+  const units: SentenceUnit[] = [];
+  paragraphs.forEach((paragraph, paragraphIndex) => {
+    for (const unit of splitSentences(paragraph)) {
+      units.push({ ...unit, paragraph: paragraphIndex });
+    }
+  });
+  return balanceSentenceUnits(units, maxParts);
+}
+
+interface SentenceUnit {
+  readonly text: string;
+  /** Original gap between this sentence and the previous one. */
+  readonly separator: string;
+  readonly paragraph: number;
+}
+
+/** Splits on Chinese sentence-final punctuation, keeping closing quotes with the sentence. */
+const SentenceBreakPattern = /(?<=[。！？；…])["'”』」）)]?(?=\s*\S|$)/gu;
+
+function splitSentences(paragraph: string): Array<{ text: string; separator: string }> {
+  const breaks: number[] = [];
+  for (const match of paragraph.matchAll(SentenceBreakPattern)) {
+    breaks.push(match.index + match[0].length);
+  }
+  if (breaks.length === 0) return [{ text: paragraph, separator: "" }];
+  const units: Array<{ text: string; separator: string }> = [];
+  let cursor = 0;
+  for (const breakAt of breaks) {
+    const raw = paragraph.slice(cursor, breakAt).trim();
+    const after = paragraph.slice(breakAt);
+    const gap = /^\s*/u.exec(after)?.[0] ?? "";
+    units.push({ text: raw, separator: gap });
+    cursor = breakAt + gap.length;
+  }
+  const tail = paragraph.slice(cursor).trim();
+  if (tail) units.push({ text: tail, separator: "" });
+  return units;
+}
+
+function balanceSentenceUnits(units: readonly SentenceUnit[], target: number): string[] {
+  if (units.length <= target) return units.map((unit) => unit.text);
+  // Cumulative lengths including each unit's leading separator.
+  const prefix: number[] = [0];
+  for (const unit of units) prefix.push(prefix[prefix.length - 1] + unit.text.length + unit.separator.length);
+  const total = prefix[prefix.length - 1];
+  // Place each cut point at the sentence boundary closest to the ideal share.
+  const boundaries: number[] = [0];
+  for (let group = 1; group < target; group += 1) {
+    const ideal = (total * group) / target;
+    let best = boundaries[group - 1] + 1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let index = best; index < units.length; index += 1) {
+      const distance = Math.abs(prefix[index] - ideal);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = index;
+      }
+    }
+    boundaries.push(best);
+  }
+  boundaries.push(units.length);
+  const parts: string[] = [];
+  for (let group = 0; group < target; group += 1) {
+    const start = boundaries[group]!;
+    const end = boundaries[group + 1]!;
+    const slice = units.slice(start, end);
+    let text = slice[0]!.text;
+    for (let index = 1; index < slice.length; index += 1) {
+      const unit = slice[index]!;
+      const previous = slice[index - 1]!;
+      text += previous.paragraph === unit.paragraph ? unit.separator : "\n\n";
+      text += unit.text;
+    }
+    parts.push(text);
+  }
+  return parts;
+}
 
 export function convertAgentChannelMarkdown(content: string, mode: AgentChannelMarkdownMode): string {
   switch (mode) {
@@ -89,12 +295,52 @@ export function ensureClosedFences(content: string): string {
   return `${content}\n\`\`\``;
 }
 
+const nodeRequire = createRequire(import.meta.url);
+const { dict } = nodeRequire("@node-rs/jieba/dict") as { dict: Uint8Array };
+
+let Segmenter: ReturnType<typeof Jieba.withDict> | undefined;
+
+function getSegmenter(): ReturnType<typeof Jieba.withDict> {
+  Segmenter ??= Jieba.withDict(dict);
+  return Segmenter;
+}
+
 function findSplitPoint(candidate: string): number {
-  for (const separator of ["\n", " "]) {
-    const at = candidate.lastIndexOf(separator);
-    if (at > Math.floor(candidate.length / 2)) return at + 1;
-  }
+  const mid = Math.floor(candidate.length / 2);
+  const newline = candidate.lastIndexOf("\n");
+  if (newline > mid) return newline + 1;
+  const sentence = lastSentenceBreak(candidate, mid);
+  if (sentence > mid) return sentence;
+  const space = candidate.lastIndexOf(" ");
+  if (space > mid) return space + 1;
+  const word = lastJiebaBoundary(candidate, mid);
+  if (word > mid) return word;
   return candidate.length;
+}
+
+/** Last Chinese sentence-final punctuation at or after the midpoint. */
+function lastSentenceBreak(candidate: string, mid: number): number {
+  let last = -1;
+  for (const match of candidate.matchAll(/[。！？；…]/gu)) {
+    if ((match.index ?? 0) >= mid) last = (match.index ?? 0) + 1;
+  }
+  return last;
+}
+
+/** Last complete word boundary at or after the midpoint, via the Rust jieba segmenter. */
+function lastJiebaBoundary(candidate: string, mid: number): number {
+  try {
+    const words = getSegmenter().cutForSearch(candidate, true);
+    let position = 0;
+    let last = -1;
+    for (const word of words) {
+      position += word.length;
+      if (position > mid && position <= candidate.length) last = position;
+    }
+    return last;
+  } catch {
+    return -1;
+  }
 }
 
 interface FenceState {

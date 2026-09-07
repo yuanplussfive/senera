@@ -56,6 +56,7 @@ export function useSessionCatalogSync({
 }: UseSessionCatalogSyncOptions): SessionCatalogSyncHandle {
   const hydrationToastShownRef = useRef(false);
   const resetCatalogSyncState = useStore((state) => state.resetCatalogSyncState);
+  const invalidateSessionHistoryCache = useStore((state) => state.invalidateSessionHistoryCache);
 
   const refreshSessionCatalog = useCallback((): void => {
     if (status !== "open") return;
@@ -67,6 +68,7 @@ export function useSessionCatalogSync({
 
   useEffect(() => {
     if (status !== "open") {
+      invalidateSessionHistoryCache();
       resetCatalogSyncState();
       onServerSessionsReset();
       return;
@@ -90,7 +92,7 @@ export function useSessionCatalogSync({
         },
       );
     }
-  }, [onServerSessionsReset, resetCatalogSyncState, send, status]);
+  }, [invalidateSessionHistoryCache, onServerSessionsReset, resetCatalogSyncState, send, status]);
 
   return { refreshSessionCatalog };
 }

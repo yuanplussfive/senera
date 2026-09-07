@@ -46,6 +46,7 @@ export class AgentPromptContextBuilder {
     private readonly workspaceRoot: string = process.cwd(),
     private readonly executionCapabilities: () => SeneraExecutionRuntimeCapabilities = () =>
       createSeneraExecutionRuntimeCapabilities(),
+    private readonly sandboxGuestWorkspaceRoot?: string,
   ) {
     const documentationReader = new AgentPromptDocumentationReader();
     this.toolContextProjector = new AgentPromptToolContextProjector(documentationReader);
@@ -141,7 +142,12 @@ export class AgentPromptContextBuilder {
     if (cached) return cached;
 
     const projection: StaticPromptProjection = {
-      executionEnvironment: buildAgentExecutionEnvironmentContext(this.workspaceRoot, input.capabilities),
+      executionEnvironment: buildAgentExecutionEnvironmentContext(
+        this.workspaceRoot,
+        input.capabilities,
+        undefined,
+        this.sandboxGuestWorkspaceRoot,
+      ),
       toolCards: input.tools
         .filter((tool) => input.promptToolNameSet.has(tool.name))
         .sort(comparePromptPriority)

@@ -13,6 +13,7 @@ import {
   truncateSessionFromRequest,
   truncate,
   markSessionDeletionRequested,
+  invalidateSessionHistoryCache,
 } from "./session/sessionProjector";
 import {
   applyDefaultModelToActiveSession,
@@ -39,6 +40,9 @@ export type {
   StoreState,
   TimelineChildRunMessage,
   TimelineChildRunState,
+  TimelineChildRunTodo,
+  TimelineChildRunTodoItem,
+  TimelineChildRunTodoStatus,
   TimelineStep,
   TimelineStepKind,
   TimelineStepScope,
@@ -113,6 +117,11 @@ export const useStore = create<StoreState>()(
         set((state) => {
           state.catalogSynced.sessions = false;
           state.catalogSynced.presets = false;
+        }),
+
+      invalidateSessionHistoryCache: () =>
+        set((state) => {
+          invalidateSessionHistoryCache(state);
         }),
 
       selectSession: (id) =>

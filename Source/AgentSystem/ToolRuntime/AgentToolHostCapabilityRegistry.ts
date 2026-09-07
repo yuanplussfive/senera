@@ -17,7 +17,7 @@ import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
-import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 
 export interface AgentHostToolContext {
   tool: RegisteredTool;
@@ -25,7 +25,7 @@ export interface AgentHostToolContext {
   configPath?: string;
   workspaceRoot: string;
   continuityIdentity?: AgentContinuityIdentityContext;
-  identityTemplateValues?: () => AgentIdentityTemplateValues;
+  identityDisplayValues?: () => AgentIdentityDisplayValues;
   registry: AgentExtensionRegistryLike;
   executionEnv: SeneraExecutionEnv;
   uploadStore?: Pick<AgentUploadStore, "resolve">;
@@ -35,6 +35,7 @@ export interface AgentHostToolContext {
   step?: number;
   toolCallId?: string;
   batchId?: string;
+  batchToolNames?: readonly string[];
   onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
   authorizedToolNames?: readonly string[];

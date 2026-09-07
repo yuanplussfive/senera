@@ -24,6 +24,8 @@ export type ChildRunMessageDirection = "child_to_parent" | "parent_to_child";
 
 export type ChildRunMessageKind = "decision" | "follow_up" | "progress" | "response" | "steering";
 
+export type ChildRunTodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
+
 export interface ChildRunMessageCreatedData extends ChildRunEventIdentityData {
   messageId: string;
   direction: ChildRunMessageDirection;
@@ -58,6 +60,19 @@ export interface ChildRunSnapshotData extends ChildRunEventIdentityData {
       softDeadlineAt: string;
       grantedExtensionMs: number;
       hardDeadlineAt?: string;
+    };
+    control?: {
+      todo?: {
+        planObserved: boolean;
+        counts: {
+          total: number;
+          pending: number;
+          inProgress: number;
+          completed: number;
+          cancelled: number;
+        };
+        items?: readonly { content: string; status: ChildRunTodoStatus }[];
+      };
     };
   };
 }

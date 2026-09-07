@@ -410,6 +410,12 @@ export function inferModelCatalogRule(modelName: string | undefined): ModelCatal
 export function inferModelCatalogProvider(providerHint: string | undefined): ProviderCatalogRule | undefined {
   const source = normalizeModelCatalogValue(providerHint);
   if (!source) return undefined;
+  // models.dev labels experimental labs as <brand>-labs (openai-labs,
+  // google-labs, ...). These must resolve to their own Labs group instead of
+  // matching the parent provider's alias via substring containment.
+  if (/-labs$/u.test(source)) {
+    return { id: "labs", label: "Labs", icon: "labs", aliases: [] };
+  }
   return SORTED_PROVIDER_CATALOG.find((rule) =>
     rule.aliases.some(
       (alias) =>

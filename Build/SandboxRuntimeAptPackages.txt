@@ -1,6 +1,8 @@
 bash
 ca-certificates
 curl
+fontconfig
+fonts-noto-cjk
 git
 jq
 openssh-client

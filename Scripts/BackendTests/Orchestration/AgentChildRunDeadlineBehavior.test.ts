@@ -5,6 +5,7 @@ import {
   AgentChildRunDeadlineController,
   AgentChildRunDeadlineOutcomes,
 } from "../../../Source/AgentSystem/Orchestration/AgentChildRunDeadlineController.js";
+import { renderAgentChildRunWrapUpInstruction } from "../../../Source/AgentSystem/Orchestration/AgentChildRunWrapUpPrompt.js";
 import type { AgentChildRunDeadlinePolicy } from "../../../Source/AgentSystem/Orchestration/AgentChildRunTypes.js";
 
 const StartedAt = Date.parse("2026-08-08T00:00:00.000Z");
@@ -63,7 +64,7 @@ describe("child-run activity-aware deadlines", () => {
     expect(timedOut).toHaveBeenCalledOnce();
   });
 
-  test("extends for recent tool activity without model prose", async () => {
+  test("does not extend for a progress heartbeat without new evidence", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(StartedAt);
     const activity = tracker();
@@ -92,8 +93,8 @@ describe("child-run activity-aware deadlines", () => {
     });
     await vi.advanceTimersByTimeAsync(10);
 
-    expect(extended).toHaveBeenCalledOnce();
-    expect(wrappingUp).not.toHaveBeenCalled();
+    expect(extended).not.toHaveBeenCalled();
+    expect(wrappingUp).toHaveBeenCalledWith({ hardDeadlineAt: new Date(StartedAt + 140).toISOString() });
     controller.stop();
     await expect(outcome).resolves.toBe(AgentChildRunDeadlineOutcomes.Stopped);
   });
@@ -134,6 +135,132 @@ describe("child-run activity-aware deadlines", () => {
       modelOutputCharacters: 19,
       lastModelOutputAt: new Date(StartedAt + 5).toISOString(),
     });
+  });
+
+  test("tracks model budgets and treats a model Todo write as meaningful progress", () => {
+    let now = StartedAt;
+    const activity = new AgentChildRunActivityTracker({
+      startedAt: StartedAt,
+      policy: deadlinePolicy(),
+      control: {
+        todo: { required: true, minimumItems: 1 },
+        budget: { maxModelTurns: 3, maxToolCalls: 8, noProgressTurns: 2, noProgressTimeoutMs: 1_000 },
+      },
+      clock: {
+        now: () => now,
+        timestamp: (value) => new Date(value).toISOString(),
+      },
+    });
+
+    activity.observe({
+      kind: AgentEventKinds.ModelStarted,
+      context: { requestId: "child-request", step: 1 },
+      data: { model: "test-model" },
+    });
+    activity.observe({
+      kind: AgentEventKinds.ModelCompleted,
+      context: { requestId: "child-request", step: 1 },
+      data: { text: "" },
+    });
+    expect(activity.shouldRequestWrapUp()).toBe(false);
+
+    now += 5;
+    activity.observe({
+      kind: AgentEventKinds.ModelStarted,
+      context: { requestId: "child-request", step: 2 },
+      data: { model: "test-model" },
+    });
+    activity.observe({
+      kind: AgentEventKinds.TodoListWritten,
+      context: { sessionId: "child-session", requestId: "child-request" },
+      data: {
+        source: "model",
+        snapshot: {
+          items: [],
+          counts: { total: 1, pending: 0, inProgress: 0, completed: 1, cancelled: 0 },
+        },
+      },
+    });
+    activity.observe({
+      kind: AgentEventKinds.ModelCompleted,
+      context: { requestId: "child-request", step: 2 },
+      data: { text: "" },
+    });
+
+    expect(activity.todoPlanObserved()).toBe(true);
+    expect(activity.shouldRequestWrapUp()).toBe(false);
+    expect(activity.snapshot()).toMatchObject({
+      control: {
+        todo: { planObserved: true },
+        budget: { modelTurns: 2, noProgressTurns: 0 },
+      },
+    });
+  });
+
+  test("restores persisted control counters and deadline extensions", () => {
+    const activity = new AgentChildRunActivityTracker({
+      startedAt: StartedAt,
+      policy: deadlinePolicy(),
+      control: {
+        todo: { required: true, minimumItems: 1 },
+        budget: { maxModelTurns: 3, maxToolCalls: 8, noProgressTurns: 2, noProgressTimeoutMs: 1_000 },
+      },
+      initialSnapshot: {
+        version: 1,
+        capturedAt: new Date(StartedAt + 80).toISOString(),
+        lastActivityAt: new Date(StartedAt + 75).toISOString(),
+        lastModelOutputAt: new Date(StartedAt + 70).toISOString(),
+        modelOutputCharacters: 12,
+        assistantTurns: 2,
+        toolCalls: { planned: 4, started: 3, completed: 2, failed: 1 },
+        activeTools: [],
+        artifactUris: ["senera://artifact/one"],
+        control: {
+          todo: {
+            planObserved: true,
+            counts: { total: 2, pending: 1, inProgress: 0, completed: 1, cancelled: 0 },
+          },
+          budget: {
+            modelTurns: 2,
+            toolCalls: 3,
+            noProgressTurns: 1,
+            lastMeaningfulProgressAt: new Date(StartedAt + 70).toISOString(),
+          },
+        },
+        deadline: {
+          softDeadlineAt: new Date(StartedAt + 120).toISOString(),
+          grantedExtensionMs: 20,
+        },
+      },
+      clock: {
+        now: () => StartedAt + 80,
+        timestamp: (value) => new Date(value).toISOString(),
+      },
+    });
+
+    expect(activity.snapshot()).toMatchObject({
+      modelOutputCharacters: 12,
+      assistantTurns: 2,
+      toolCalls: { planned: 4, started: 3, completed: 2, failed: 1 },
+      artifactUris: ["senera://artifact/one"],
+      control: {
+        todo: { planObserved: true, counts: { total: 2, pending: 1 } },
+        budget: { modelTurns: 2, toolCalls: 3, noProgressTurns: 1 },
+      },
+      deadline: { softDeadlineAt: new Date(StartedAt + 120).toISOString(), grantedExtensionMs: 20 },
+    });
+    expect(activity.deadlineState()).toEqual({ softDeadlineAt: StartedAt + 120, grantedExtensionMs: 20 });
+  });
+
+  test("includes the wrap-up reason and remaining plan items in the final instruction", () => {
+    const instruction = renderAgentChildRunWrapUpInstruction({
+      reason: "no_progress",
+      remainingTodo: [{ id: "verify", content: "Verify the change", status: "in_progress" }],
+    });
+
+    expect(instruction).toContain("no_progress");
+    expect(instruction).toContain('"id":"verify"');
+    expect(instruction).toContain('"status":"in_progress"');
   });
 });
 

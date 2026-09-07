@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ActionPlanInput,  ActionRunState,  AskUserDecision,  AskUserDecisionKind,  ContinuityAgendaDraft,  ContinuityCapture,  ContinuityCaptureItem,  ContinuityRuleExtractionResult,  ContinuityRuleItem,  ConversationBoundary,  DirectDecision,  DirectDecisionKind,  EvidenceSlot,  ExecuteDecision,  ExecuteDecisionKind,  ExecutionDeltaOp,  GoalMicroLoopCandidate,  GoalMicroLoopDecision,  GoalMicroLoopDecisionKind,  PiConversationSummary,  PiToolArgumentsDraft,  PlanFragment,  PlannedToolCall,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ResidentIdleDecision,  ResidentIdleDecisionKind,  ResidentIdleGoalProposal,  ResidentSpeechProjection,  TemporalMemoryDigest,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolLearningRecord,  ToolLearningResult,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel } from "./types.js"
+import type {  ActionPlanInput,  ActionRunState,  AskUserDecision,  AskUserDecisionKind,  ContinuityAgendaDraft,  ContinuityCapture,  ContinuityCaptureItem,  ContinuityRuleExtractionResult,  ContinuityRuleItem,  ConversationBoundary,  DirectDecision,  DirectDecisionKind,  EvidenceSlot,  ExecuteDecision,  ExecuteDecisionKind,  ExecutionDeltaOp,  GoalMicroLoopCandidate,  GoalMicroLoopDecision,  GoalMicroLoopDecisionKind,  PiConversationSummary,  PiToolArgumentsDraft,  PlanFragment,  PlannedToolCall,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ResidentIdleDecision,  ResidentIdleDecisionKind,  ResidentIdleGoalProposal,  ResidentSpeechProjection,  TemporalMemoryDigest,  TemporalMemoryTextPart,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolLearningRecord,  ToolLearningResult,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -260,9 +260,14 @@ export namespace partial_types {
       utterance?: string | null
     }
     export interface TemporalMemoryDigest {
-      summary?: string | null
-      topics: string[]
-      openLoops: string[]
+      summary: TemporalMemoryTextPart[]
+      topics: TemporalMemoryTextPart[][]
+      openLoops: TemporalMemoryTextPart[][]
+    }
+    export interface TemporalMemoryTextPart {
+      kind?: string | null
+      text?: string | null
+      role?: string | null
     }
     export interface ToolCapabilityFacets {
       Actions?: string[] | null

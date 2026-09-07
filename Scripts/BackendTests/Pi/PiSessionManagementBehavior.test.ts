@@ -27,6 +27,11 @@ import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurn
 
 const temporaryDirectories: string[] = [];
 
+type AgentPooledCodingSessionLike = {
+  readonly sessionManager: unknown;
+  readonly toolFingerprint: string;
+};
+
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) removeDirectory(directory);
 });
@@ -99,6 +104,41 @@ describe("Pi session management", () => {
     await expect(owner.get()).rejects.toThrow("runtime initialization failed");
     await expect(owner.get()).resolves.toEqual({ runtime, model: provider.model });
     expect(createRuntime).toHaveBeenCalledTimes(2);
+  });
+
+  test("defers runtime contract changes while preserving the durable session manager", async () => {
+    const workspaceRoot = temporaryWorkspace();
+    const pool = createPool(workspaceRoot, "deferred-runtime-rebuild");
+    const sessions = (pool as unknown as { sessions: Map<string, AgentPooledCodingSessionLike> }).sessions;
+    const sessionId = "deferred-runtime-session";
+    const first = await pool.lease({
+      sessionId,
+      allTools: { fingerprint: "tools-v1", activeToolNames: [], materialize: () => [] },
+      activeToolNames: [],
+      frame: createSessionFrame(16_384, 1_024).snapshot(),
+      inheritProjectContext: true,
+    });
+    const firstPooled = sessions.get(sessionId);
+    expect(firstPooled).toBeDefined();
+    first.session.dispose();
+
+    try {
+      const second = await pool.lease({
+        sessionId,
+        allTools: { fingerprint: "tools-v2", activeToolNames: [], materialize: () => [] },
+        activeToolNames: [],
+        frame: createSessionFrame(16_384, 1_024).snapshot(),
+        inheritProjectContext: true,
+      });
+      const secondPooled = sessions.get(sessionId);
+      expect(secondPooled).toBeDefined();
+      expect(secondPooled).not.toBe(firstPooled);
+      expect(secondPooled?.sessionManager).toBe(firstPooled?.sessionManager);
+      expect(secondPooled?.toolFingerprint).toBe("tools-v2");
+      second.session.dispose();
+    } finally {
+      await pool.close();
+    }
   });
 
   test.each([

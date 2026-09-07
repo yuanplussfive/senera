@@ -243,6 +243,7 @@ function toModelProviderListItem(
 ) {
   return {
     id: provider.Id,
+    providerId: provider.ProviderId,
     icon: provider.Icon,
     capabilities: resolveModelCapabilities(runtimeDefaults, provider.Capabilities),
     kind: provider.Kind,

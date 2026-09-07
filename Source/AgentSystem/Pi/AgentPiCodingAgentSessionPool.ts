@@ -30,6 +30,7 @@ import {
   type AgentPiSessionExportResult,
   type AgentPiSessionRuntimeStatus,
 } from "./AgentPiSessionManagement.js";
+import { AgentPiDiagnosticSources, emitAgentPiDiagnostic } from "./AgentPiDiagnostics.js";
 
 export type { AgentPiCodingAgentSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 export type {
@@ -67,7 +68,13 @@ export class AgentPiCodingAgentSessionPool {
     try {
       releaseLease = await this.leases.acquire(input.sessionId, input.signal);
       this.lifecycle.assertOpen();
-      const opened = await this.openOrCreate(input);
+      let opened = await this.openOrCreate(input);
+      if (this.requiresDeferredRuntimeRebuild(opened.value, input)) {
+        opened = {
+          ...opened,
+          value: await this.rebuildRuntimeForNextLease(opened.value, input),
+        };
+      }
       pooled = opened.value;
       const leasedSession = pooled;
       const leasedRelease = releaseLease;
@@ -356,6 +363,75 @@ export class AgentPiCodingAgentSessionPool {
       storage: existing ? "existing" : "created",
       historyMigrationRequired: isAgentPiConversationHistoryEmpty(sessionManager),
     };
+  }
+
+  /**
+   * Runtime contracts are immutable for an active coding session. A changed
+   * tool registry or project-context mode is therefore applied at the next
+   * lease boundary, while the durable SessionManager and logical cache scope
+   * stay intact. This is the same deferred-invalidation shape used by the
+   * surrounding runtime cache: no active turn is interrupted and no history
+   * cold-start is manufactured just because the host reloaded configuration.
+   */
+  private requiresDeferredRuntimeRebuild(
+    pooled: AgentPiPooledCodingSession,
+    input: AgentPiCodingAgentLeaseInput,
+  ): boolean {
+    return (
+      pooled.toolFingerprint !== input.allTools.fingerprint ||
+      pooled.inheritProjectContext !== input.inheritProjectContext
+    );
+  }
+
+  private async rebuildRuntimeForNextLease(
+    current: AgentPiPooledCodingSession,
+    input: AgentPiCodingAgentLeaseInput,
+  ): Promise<AgentPiPooledCodingSession> {
+    if (current.activeLeases !== 0) {
+      throw new Error("Pi runtime invalidation reached an active lease.");
+    }
+    const previousFrame = current.frame.snapshot();
+    const replacement = await this.factory.create(input, current.sessionManager, this.lifecycle.nextAccessSequence());
+    this.sessions.set(input.sessionId, replacement);
+    try {
+      await this.lifecycle.shutdown(current);
+    } catch (error) {
+      await emitAgentPiDiagnostic(this.options.diagnostics, {
+        context: {
+          sessionId: input.sessionId,
+          requestId: input.frame.requestId,
+          step: input.frame.step,
+        },
+        source: AgentPiDiagnosticSources.Substrate,
+        name: "session.deferred_invalidation_cleanup.failed",
+        details: { error: error instanceof Error ? error.message : String(error) },
+      });
+    }
+    await emitAgentPiDiagnostic(this.options.diagnostics, {
+      context: {
+        sessionId: input.sessionId,
+        requestId: input.frame.requestId,
+        step: input.frame.step,
+      },
+      source: AgentPiDiagnosticSources.Substrate,
+      name: "session.deferred_invalidation.applied",
+      details: {
+        reason:
+          current.toolFingerprint !== input.allTools.fingerprint &&
+          current.inheritProjectContext !== input.inheritProjectContext
+            ? "tool_registry_and_project_context"
+            : current.toolFingerprint !== input.allTools.fingerprint
+              ? "tool_registry"
+              : "project_context",
+        previousToolFingerprint: current.toolFingerprint,
+        nextToolFingerprint: input.allTools.fingerprint,
+        previousInheritProjectContext: current.inheritProjectContext,
+        nextInheritProjectContext: input.inheritProjectContext,
+        logicalCacheScope: input.frame.logicalCacheScope,
+        preservedSessionId: previousFrame.sessionId,
+      },
+    });
+    return replacement;
   }
 
   private async openExistingSession(sessionId: string): Promise<SessionManager | undefined> {

@@ -3,10 +3,6 @@ import fs from "node:fs";
 import { Temporal } from "@js-temporal/polyfill";
 import { AgentLoop } from "../Source/AgentSystem/Loop/AgentLoop.js";
 import { AgentSessionManager } from "../Source/AgentSystem/Session/AgentSessionManager.js";
-import {
-  AgentChildRunStatuses,
-  type AgentChildRunRecord,
-} from "../Source/AgentSystem/Orchestration/AgentChildRunTypes.js";
 import { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
 import { AgentWebSocketServer } from "../Source/AgentSystem/WebSocket/AgentWebSocketServer.js";
 import { AgentSqliteRunEventWriter } from "../Source/AgentSystem/WebSocket/AgentSqliteRunEventWriter.js";
@@ -56,6 +52,7 @@ import { AgentSandboxRuntimeService } from "../Source/AgentSystem/Sandbox/AgentS
 import { AgentExecutionResourceBroker } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceBroker.js";
 import { AgentInteractiveTerminalRuntime } from "../Source/AgentSystem/ExecutionResources/AgentInteractiveTerminalRuntime.js";
 import { createSeneraExecutionEnvironments } from "../Source/AgentSystem/Execution/SeneraExecutionEnvFactory.js";
+import { resolveAgentDockerEngineGuestWorkspaceRoot } from "../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 import { resolveAgentExecutionResourceLimits } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceConfig.js";
 import { AgentInteractionInputRuntime } from "../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
 import { createAgentRequestCancellationResource } from "../Source/AgentSystem/Session/AgentSessionRunResource.js";
@@ -88,14 +85,14 @@ import {
 } from "../Source/AgentSystem/Orchestration/AgentDelegationService.js";
 import { AgentDelegationCompletionDelivery } from "../Source/AgentSystem/Orchestration/AgentDelegationCompletionDelivery.js";
 import {
-  createAgentBackgroundTaskCompletionRequestId,
-  renderAgentBackgroundTaskCompletionInput,
-} from "../Source/AgentSystem/Orchestration/AgentBackgroundTaskWake.js";
+  createAgentDelegationSessionWakeHandler,
+  isTerminalDetachedChildRun,
+} from "../Source/AgentSystem/Orchestration/AgentDelegationSessionWake.js";
 import { AgentWorkflowService } from "../Source/AgentSystem/Orchestration/AgentWorkflowService.js";
 import { AgentSubagentRoleCatalog } from "../Source/AgentSystem/Orchestration/AgentSubagentRoleCatalog.js";
 import { AgentScheduleRuntime } from "../Source/AgentSystem/Orchestration/AgentScheduleRuntime.js";
 import { AgentPresetManager } from "../Source/AgentSystem/Presets/AgentPresetManager.js";
-import type { AgentIdentityTemplateValues } from "../Source/AgentSystem/Prompt/AgentIdentityTemplate.js";
+import type { AgentIdentityDisplayValues } from "../Source/AgentSystem/Text/AgentTextParts.js";
 import {
   AgentScheduledTaskDeliveryGateway,
   AgentScheduledTaskExecutionSessionGateway,
@@ -131,19 +128,6 @@ import {
 
 export { probeSeneraReadiness } from "./ServerRuntimeSupport.js";
 
-function isTerminalDetachedChildRun(status: AgentChildRunRecord["status"], record?: AgentChildRunRecord): boolean {
-  if (record && record.launchContract.executionMode !== "detach") return false;
-  const terminalStatuses: readonly AgentChildRunRecord["status"][] = [
-    AgentChildRunStatuses.Completed,
-    AgentChildRunStatuses.PartialCompleted,
-    AgentChildRunStatuses.Interrupted,
-    AgentChildRunStatuses.TimedOut,
-    AgentChildRunStatuses.Failed,
-    AgentChildRunStatuses.Cancelled,
-  ];
-  return terminalStatuses.includes(status);
-}
-
 export interface SeneraServerOptions {
   workspaceRoot?: string;
   configPath?: string;
@@ -165,6 +149,10 @@ export interface SeneraServerOptions {
   sandboxRuntimePrepared?: boolean;
   sandboxRuntimeAvailability?: AgentSandboxRuntimeAvailability;
   dockerEngineWorker?: SeneraSandboxWorkerClient;
+  /** Guest-side workspace root shared by the application and sandbox mounts. */
+  sandboxGuestWorkspaceRoot?: string;
+  /** Enables automatic loopback HTTP for container-local browser access. */
+  automaticLoopbackHttp?: boolean;
   upgradeStateRoot?: string;
   upgradeDataRoots?: readonly string[];
   runtimeImageReference?: string;
@@ -313,6 +301,10 @@ async function startSeneraServerRuntime(
     availability: options.sandboxRuntimeAvailability,
     dockerEngineWorker: options.dockerEngineWorker,
   });
+  const sandboxProvider = sandboxRuntimeService.runtimeProvider();
+  const sandboxGuestWorkspaceRoot =
+    options.sandboxGuestWorkspaceRoot ??
+    (sandboxProvider ? resolveAgentDockerEngineGuestWorkspaceRoot(workspaceRoot, sandboxProvider) : workspaceRoot);
   const createRuntimeExecutionEnvironments = () => {
     const config = configSnapshot();
     return createSeneraExecutionEnvironments({
@@ -325,6 +317,7 @@ async function startSeneraServerRuntime(
       dockerEngineWorker: sandboxRuntimeService.dockerEngineWorkerClient(),
       environmentPolicy: resolveToolExecutionConfig(config).Environment,
       terminationGraceMs: resolveAgentExecutionResourceLimits(config).terminationGraceMs,
+      sandboxGuestWorkspaceRoot,
     });
   };
   const executionResources = new AgentExecutionResourceBroker({
@@ -420,7 +413,7 @@ async function startSeneraServerRuntime(
   const repository = createRepository(workspaceRoot, initialConfig, upgradeSession, logger);
   deferResourceCleanup(() => repository.close());
   let residentDisplayName = resolveAgentWorldConfig(initialConfig).Name;
-  const identityTemplateValues = (): AgentIdentityTemplateValues => ({
+  const identityDisplayValues = (): AgentIdentityDisplayValues => ({
     user: repository.loadUserProfile().name,
     resident: residentDisplayName,
   });
@@ -463,7 +456,7 @@ async function startSeneraServerRuntime(
     embeddingClient: vectorModelsConfig.Embedding.Enabled ? vectorClient : undefined,
     embeddingModel: () => resolveVectorModelsConfig(configSnapshot()).Embedding.Model,
     inferenceBudget,
-    identityTemplateValues,
+    identityDisplayValues,
     logger,
   });
   inferenceBudgetScope = () => continuityRuntime.identity.workspaceId;
@@ -478,6 +471,7 @@ async function startSeneraServerRuntime(
     todos,
     temporalMemory,
   } = continuityRuntime;
+  delegation.bindTodoService(todos);
   const goalModelProvider = resolveModelProviderConfig(initialConfig);
   const goalPlannerConfig = resolveActionPlannerConfig(initialConfig, goalModelProvider.Id);
   const goalPlannerClientConfig = goalPlannerConfig.PlanningClient;
@@ -509,7 +503,7 @@ async function startSeneraServerRuntime(
     },
     deliverProactiveResult: async (request) =>
       (await channelServiceRef.current?.deliverProactiveResult(request)) ?? "missing",
-    identityTemplateValues,
+    identityDisplayValues,
   });
   const {
     goalCommands,
@@ -546,12 +540,13 @@ async function startSeneraServerRuntime(
     sandboxAvailable: sandboxRuntimeService.sandboxBackendAvailable(),
     sandboxProvider: sandboxRuntimeService.runtimeProvider(),
     dockerEngineWorker: sandboxRuntimeService.dockerEngineWorkerClient(),
+    sandboxGuestWorkspaceRoot,
     mcpInputs,
     workspaceRuntime,
     orchestration,
     continuityMemory,
     continuityIdentity: continuityRuntime.identity,
-    identityTemplateValues,
+    identityDisplayValues,
     continuityLifecycle,
     executionLedger,
     todos,
@@ -646,7 +641,10 @@ async function startSeneraServerRuntime(
   const channelFinalResponseRewriter = createAgentChannelFinalResponseRewriter(
     () => resolveActionPlannerConfig(configSnapshot()).FinalAnswerClient.ModelProvider,
   );
+  const publishChannelServer: { current?: AgentWebSocketServer } = {};
   const publishChannelStatuses = (statuses: readonly AgentChannelStatus[]): void => {
+    const server = publishChannelServer.current;
+    if (!server) return;
     void server
       .broadcast({
         kind: AgentEventKinds.ChannelStatusSnapshot,
@@ -722,24 +720,14 @@ async function startSeneraServerRuntime(
   deferResourceCleanup(unbindScheduledTaskExecutionSessions);
   const unbindDelegationCompletion = delegationCompletion.bind({
     id: "senera.session-wake",
-    completed: async (record) => {
-      const outcome = await sessionManager.wakeFromBackgroundTask({
-        sessionId: record.parentSessionId,
-        requestId: createAgentBackgroundTaskCompletionRequestId(record),
-        input: renderAgentBackgroundTaskCompletionInput(record),
-        approvalMode: record.approvalMode,
-        modelProviderId: record.modelProviderId,
-        metadata: {
-          backgroundTask: {
-            taskId: record.id,
-            runId: record.id,
-          },
-        },
-        onEvent: (event) => orchestrationEvents.emit(event),
-      });
-      if (outcome === "missing") throw new Error(`Parent session is missing: ${record.parentSessionId}`);
-      if (outcome === "busy") throw new Error(`Parent session remained busy: ${record.parentSessionId}`);
-    },
+    // One parent wake is enough for a parallel AgentSpawn batch. The durable
+    // completion rows still remain per child so channel adapters can project
+    // each result independently.
+    completed: createAgentDelegationSessionWakeHandler({
+      childRuns,
+      sessionManager,
+      onEvent: (event) => orchestrationEvents.emit(event),
+    }),
   });
   deferResourceCleanup(unbindDelegationCompletion);
   const unbindDelegationCompletionPorts = [
@@ -764,6 +752,7 @@ async function startSeneraServerRuntime(
   const server = new AgentWebSocketServer({
     config: initialConfig,
     workspaceRoot,
+    automaticLoopbackHttp: options.automaticLoopbackHttp,
     staticFrontendRoot: options.staticFrontendRoot,
     configService,
     configSnapshot,
@@ -805,6 +794,7 @@ async function startSeneraServerRuntime(
       updateOrigin: product.updateOrigin,
     }),
   });
+  publishChannelServer.current = server;
   const unsubscribePresetActivation = configService.subscribe((snapshot) => {
     const manager = new AgentPresetManager({
       workspaceRoot,
