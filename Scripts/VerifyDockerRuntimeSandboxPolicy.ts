@@ -53,6 +53,15 @@ assert.ok(
     dockerEntrypoint.includes('exec "$@"'),
   "The container entrypoint must gate the single-service root path behind an explicit environment variable.",
 );
+assert.ok(
+  dockerEntrypoint.includes("SENERA_WORKSPACE_ROOT:-/data") &&
+    dockerEntrypoint.includes('state_root="${workspace_root%/}/.senera"') &&
+    dockerEntrypoint.includes('skill_root="${state_root}/skills"') &&
+    dockerEntrypoint.includes("install -d -o node -g node") &&
+    dockerEntrypoint.includes("chown node:node") &&
+    !dockerEntrypoint.includes("/data/.senera"),
+  "The container entrypoint must derive and provision the writable workspace Skill root without hardcoding the guest path.",
+);
 
 for (const label of Object.values(AgentSandboxRuntimeImageLabels)) {
   assert.ok(sandboxDockerfile.includes(label), `Sandbox image must declare identity label ${label}.`);
