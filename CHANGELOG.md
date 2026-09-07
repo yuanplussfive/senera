@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.15.0](https://github.com/yuanplussfive/senera/compare/v1.14.1...v1.15.0) (2026-09-07)
+
+
+### 新增功能
+
+* **runtime:** 完善渠道、编排与沙箱运行时 ([#123](https://github.com/yuanplussfive/senera/issues/123)) ([e971951](https://github.com/yuanplussfive/senera/commit/e9719512e09791efe1483302a1c3fd60a9a45b0e))
+
 ## [1.14.1](https://github.com/yuanplussfive/senera/compare/v1.14.0...v1.14.1) (2026-09-05)
 
 
