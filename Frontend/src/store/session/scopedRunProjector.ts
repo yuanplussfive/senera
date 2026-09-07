@@ -24,6 +24,7 @@ import {
   type ToolCallStartedData,
   type ToolCallsPlannedData,
 } from "../../api/eventTypes";
+import { readTodoSnapshotEventData } from "../../api/goalContinuityEventValidation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { resolveBackendMessage } from "../../i18n/backendMessage";
 import { summarizeToolPlan, toolPlanTitle, truncate } from "./sessionPresentation";
@@ -32,7 +33,23 @@ import { touchRun } from "./sessionRunProjection";
 import { timelineScopeFromEvent, toolBatchFromEvent } from "./timelineProjection";
 import { mergeToolResultPresentation } from "./toolResultPresentation";
 import { projectToolOutput, projectToolProgress } from "./toolRuntimeProjection";
-import type { RunRecord, StoreState, TimelineChildRunMessage, TimelineChildRunState, TimelineStep } from "./types";
+import type {
+  RunRecord,
+  StoreState,
+  TimelineChildRunMessage,
+  TimelineChildRunState,
+  TimelineChildRunTodo,
+  TimelineChildRunTodoItem,
+  TimelineChildRunTodoStatus,
+  TimelineStep,
+} from "./types";
+
+const TimelineChildRunTodoStatusLookup: Readonly<Record<string, TimelineChildRunTodoStatus>> = {
+  pending: "pending",
+  in_progress: "in_progress",
+  completed: "completed",
+  cancelled: "cancelled",
+};
 
 export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): boolean {
   registerChildSessionRelation(state, env);
@@ -49,6 +66,35 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
   const scope = timelineScopeFromEvent(env);
 
   switch (env.kind) {
+    case EventKinds.TodoListWritten: {
+      const data = readTodoSnapshotEventData(env.data);
+      const childRunId = env.scope?.childRunId;
+      if (!data || !childRunId) return true;
+      const current = run.steps.find((entry) => entry.id === childRunStepId(childRunId));
+      const previousTodo = current?.childRun?.todo;
+      const source = (env.data as { source?: unknown }).source;
+      updateChildRunStep(
+        run,
+        env,
+        {
+          childRunId,
+          agentName: env.scope?.agentName ?? "",
+          status: current?.childRun?.status ?? "running",
+        },
+        scope,
+        {
+          todo: projectTodoState(
+            {
+              planObserved: previousTodo?.planObserved === true || source === "model",
+              counts: { ...data.snapshot.counts },
+            },
+            data.snapshot.items,
+          ),
+        },
+      );
+      return true;
+    }
+
     case EventKinds.ChildRunQueued:
     case EventKinds.ChildRunStarted:
     case EventKinds.ChildRunAwaitingSupervisor:
@@ -65,6 +111,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
 
     case EventKinds.ChildRunSnapshotUpdated: {
       const data = env.data as ChildRunSnapshotData;
+      const todo = data.snapshot.control?.todo;
       updateChildRunStep(run, env, data, scope, {
         checkpointAvailable: data.checkpointAvailable,
         lastActivityAt: data.snapshot.lastActivityAt,
@@ -77,6 +124,15 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         softDeadlineAt: data.snapshot.deadline.softDeadlineAt,
         hardDeadlineAt: data.snapshot.deadline.hardDeadlineAt,
         grantedExtensionMs: data.snapshot.deadline.grantedExtensionMs,
+        ...(todo
+          ? {
+              todo: projectTodoState(
+                { planObserved: todo.planObserved, counts: { ...todo.counts } },
+                todo.items,
+                run.steps.find((entry) => entry.id === childRunStepId(data.childRunId))?.childRun?.todo?.items,
+              ),
+            }
+          : {}),
       });
       return true;
     }
@@ -415,6 +471,30 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
     default:
       return true;
   }
+}
+
+function projectTodoState(
+  state: Pick<TimelineChildRunTodo, "planObserved" | "counts">,
+  items: readonly { content: string; status: string }[] | undefined,
+  previousItems?: readonly TimelineChildRunTodoItem[],
+): TimelineChildRunTodo {
+  const projectedItems = items === undefined ? previousItems && [...previousItems] : (projectTodoItems(items) ?? []);
+  return {
+    ...state,
+    ...(projectedItems ? { items: projectedItems } : {}),
+  };
+}
+
+function projectTodoItems(
+  items: readonly { content: string; status: string }[] | undefined,
+): TimelineChildRunTodoItem[] | undefined {
+  if (!items) return undefined;
+  const projected = items.flatMap((item) => {
+    const status = TimelineChildRunTodoStatusLookup[item.status];
+    const content = item.content.trim();
+    return status && content ? [{ content, status }] : [];
+  });
+  return projected.length > 0 ? projected : undefined;
 }
 
 function scopedStepId(env: EventEnvelope, slot: string, detail?: string | number): string {

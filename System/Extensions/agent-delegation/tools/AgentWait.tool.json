@@ -1,6 +1,6 @@
 {
   "name": "AgentWait",
-  "description": "等待任一子代理完成、失败、取消或请求父代理输入。超时只结束本次等待，子代理继续运行。",
+  "description": "观察一个或多个子代理的生命周期；默认等待任一目标结束，使用 mode=all 等待全部目标结束。超时只结束本次等待，子代理继续运行。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
@@ -9,7 +9,13 @@
         "minItems": 1,
         "type": "array",
         "items": { "type": "string", "minLength": 1, "description": "Child-run ID returned by AgentSpawn." },
-        "description": "Child runs to wait for; the wait ends when any target settles."
+        "description": "Child runs to observe."
+      },
+      "mode": {
+        "default": "any",
+        "description": "Resolve when any target settles, or only after all targets settle.",
+        "type": "string",
+        "enum": ["any", "all"]
       },
       "timeoutMs": {
         "description": "Optional wait timeout. Timing out never stops a child run.",
@@ -35,6 +41,16 @@
               "type": "string"
             },
             "agent": { "type": "string" },
+            "joinGroup": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "mode": { "type": "string", "enum": ["any", "all"] },
+                "expectedCount": { "type": "integer", "minimum": 1 }
+              },
+              "required": ["id", "mode", "expectedCount"],
+              "additionalProperties": false
+            },
             "result": {
               "type": "object",
               "properties": { "content": { "type": "string" } },

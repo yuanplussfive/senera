@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type {
+  AgentToolChildGrantMode,
   AgentToolDiscoverySource,
   ToolArtifactPolicyManifest,
   ToolEvidenceCapabilityManifest,
@@ -66,6 +67,8 @@ export interface AgentSystemToolExtensionMetadata {
   readonly priority?: number;
   readonly platforms?: readonly AgentSystemExtensionPlatform[];
   readonly skills?: readonly string[];
+  /** Optional host projection rule for tools injected into child runs. */
+  readonly childGrant?: AgentToolChildGrantMode;
   readonly configuration?: AgentSystemToolExtensionConfiguration;
 }
 

@@ -69,6 +69,11 @@ export class AgentPiToolCallPreflightCoordinator {
     return index >= 0 ? index : undefined;
   }
 
+  batchToolNames(callId: string | undefined): readonly string[] | undefined {
+    const names = callId ? this.batchesByCallId.get(callId)?.calls.map((call) => call.toolName) : undefined;
+    return names ? [...names] : undefined;
+  }
+
   purpose(callId: string): string | undefined {
     return this.batchesByCallId.get(callId)?.calls.find((call) => call.toolCallId === callId)?.purpose;
   }

@@ -60,7 +60,7 @@ describe("world conversation bridge", () => {
         .events.filter((event) => event.type === "conversation.turn.completed");
       expect(recorded).toHaveLength(1);
       expect(recorded[0]).toMatchObject({
-        summary: "{{user}}：我今天想整理房间。\n{{resident}}：好呀，我先陪你列一下。",
+        summary: "user：我今天想整理房间。\nresident：好呀，我先陪你列一下。",
         evidenceRefs: expect.arrayContaining([expect.stringContaining("senera://memory-episode/")]),
       });
 

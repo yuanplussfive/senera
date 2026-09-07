@@ -21,6 +21,19 @@ export const AgentChildRunStatuses = {
 
 export type AgentChildRunStatus = (typeof AgentChildRunStatuses)[keyof typeof AgentChildRunStatuses];
 
+export const AgentChildRunJoinModes = {
+  Any: "any",
+  All: "all",
+} as const;
+
+export type AgentChildRunJoinMode = (typeof AgentChildRunJoinModes)[keyof typeof AgentChildRunJoinModes];
+
+export interface AgentChildRunJoinGroup {
+  readonly id: string;
+  readonly mode: AgentChildRunJoinMode;
+  readonly expectedCount: number;
+}
+
 export const AgentChildRunResultKinds = {
   Text: "text",
 } as const;
@@ -64,6 +77,27 @@ export interface AgentChildRunDeadlinePolicy {
   readonly snapshotIntervalMs: number;
 }
 
+/**
+ * Host-owned execution guardrails for delegated work. These are intentionally
+ * capability- and lifecycle-based rather than tied to concrete Tool names.
+ */
+export interface AgentChildRunTodoControlPolicy {
+  readonly required: boolean;
+  readonly minimumItems: number;
+}
+
+export interface AgentChildRunBudgetPolicy {
+  readonly maxModelTurns: number;
+  readonly maxToolCalls: number;
+  readonly noProgressTurns: number;
+  readonly noProgressTimeoutMs: number;
+}
+
+export interface AgentChildRunControlPolicy {
+  readonly todo: AgentChildRunTodoControlPolicy;
+  readonly budget: AgentChildRunBudgetPolicy;
+}
+
 export interface AgentChildRunExecutionContract {
   readonly version: 5;
   readonly workspaceAccess: AgentChildWorkspaceAccessMode;
@@ -73,6 +107,30 @@ export interface AgentChildRunExecutionContract {
   readonly inheritProjectContext: boolean;
   readonly capabilityCeiling?: AgentSubagentCapabilityCeiling;
   readonly deadline: AgentChildRunDeadlinePolicy;
+  /** Optional for records created before the control contract was introduced. */
+  readonly control?: AgentChildRunControlPolicy;
+}
+
+export interface AgentChildRunControlSnapshot {
+  readonly todo: {
+    readonly planObserved: boolean;
+    readonly counts: {
+      readonly total: number;
+      readonly pending: number;
+      readonly inProgress: number;
+      readonly completed: number;
+      readonly cancelled: number;
+    };
+    /** Latest todo task contents and statuses, when observed, for the task-flow display. */
+    readonly items?: readonly { readonly content: string; readonly status: string }[];
+  };
+  readonly budget: {
+    readonly modelTurns: number;
+    readonly toolCalls: number;
+    readonly noProgressTurns: number;
+    readonly lastMeaningfulProgressAt?: string;
+    readonly limitReason?: "model_turn_budget" | "tool_call_budget" | "no_progress";
+  };
 }
 
 export interface AgentChildRunSnapshot {
@@ -90,6 +148,7 @@ export interface AgentChildRunSnapshot {
   };
   readonly activeTools: readonly string[];
   readonly artifactUris: readonly string[];
+  readonly control?: AgentChildRunControlSnapshot;
   readonly deadline: {
     readonly softDeadlineAt: string;
     readonly grantedExtensionMs: number;
@@ -177,6 +236,8 @@ export interface AgentChildRunRecord {
   readonly ownerRunId: string;
   /** Stable logical node identity across retries. */
   readonly nodeId: string;
+  /** Host-derived barrier for children launched in one Pi tool batch. */
+  readonly joinGroup?: AgentChildRunJoinGroup;
   readonly parentSessionId: string;
   readonly parentRequestId: string;
   readonly childSessionId: string;
@@ -239,6 +300,7 @@ export interface AgentChildRunRepository {
   getByChildSession(childSessionId: string): AgentChildRunRecord | undefined;
   listForParent(parentSessionId: string, parentRequestId?: string): AgentChildRunRecord[];
   listForOwner(ownerRunId: string): AgentChildRunRecord[];
+  listForJoinGroup(joinGroupId: string): AgentChildRunRecord[];
   getByOwnerNode(ownerRunId: string, nodeId: string): AgentChildRunRecord | undefined;
   listActive(): AgentChildRunRecord[];
   listAll(): AgentChildRunRecord[];

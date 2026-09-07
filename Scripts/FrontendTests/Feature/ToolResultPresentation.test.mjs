@@ -407,9 +407,10 @@ test("workflow feed distinguishes a child run that is cancelling from active exe
     status: "cancelling",
     title: "正在停止",
   });
-  expect(feed.groups.find((group) => group.variant === "delegation")?.items).toEqual([
-    expect.objectContaining({ status: "cancelling" }),
-  ]);
+  // 子代理容器改为卡片承载：状态挂在 group.childRun 上，内部工具不再平铺进 items。
+  const delegationGroup = feed.groups.find((group) => group.variant === "delegation");
+  expect(delegationGroup?.childRun).toMatchObject({ id: "reviewer", status: "cancelling" });
+  expect(delegationGroup?.items).toEqual([]);
 });
 
 function toolStep() {

@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { deriveAgentModelCacheOptions } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelCacheScope.js";
-import { createAgentPiPromptCacheOptions } from "../../../Source/AgentSystem/Pi/AgentPiPromptCache.js";
+import {
+  createAgentPiLogicalCacheScope,
+  createAgentPiPromptCacheOptions,
+} from "../../../Source/AgentSystem/Pi/AgentPiPromptCache.js";
 import { createAgentGoalMicroLoopCacheOptions } from "../../../Source/AgentSystem/Agenda/AgentGoalMicroLoopPromptCache.js";
 
 const model = { provider: "provider-a", api: "openai-responses", model: "model-a" } as const;
@@ -101,6 +104,35 @@ describe("Pi prompt cache identity", () => {
     });
 
     expect(changedPrefix.scope).not.toBe(baseline.scope);
+  });
+
+  test("keeps a logical cache scope warm when the physical session rotates", () => {
+    const logicalCacheScope = createAgentPiLogicalCacheScope({ sessionId: "session-a", family: "conversation" });
+    const beforeRotation = createAgentPiPromptCacheOptions({
+      phase: "native-conversation",
+      sessionId: "physical-session-a",
+      logicalCacheScope,
+      model,
+      stablePrefix,
+    });
+    const afterRotation = createAgentPiPromptCacheOptions({
+      phase: "native-conversation",
+      sessionId: "physical-session-b",
+      logicalCacheScope,
+      model,
+      stablePrefix,
+    });
+
+    expect(afterRotation.scope).toBe(beforeRotation.scope);
+    expect(
+      createAgentPiPromptCacheOptions({
+        phase: "native-conversation",
+        sessionId: "physical-session-b",
+        logicalCacheScope: createAgentPiLogicalCacheScope({ sessionId: "session-b", family: "conversation" }),
+        model,
+        stablePrefix,
+      }).scope,
+    ).not.toBe(beforeRotation.scope);
   });
 
   test("isolates identical model names across providers and APIs", () => {

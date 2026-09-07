@@ -31,6 +31,14 @@ const ChannelEntryMarks: Record<ChannelSectionId, string> = {
   discord: "Discord",
 };
 
+const ChannelStatusPresentation = {
+  stopped: { label: "settings.channels.disconnected", text: "text-content-muted", dot: "bg-ink-300" },
+  connecting: { label: "settings.channels.connecting", text: "text-amber-600", dot: "bg-amber-500" },
+  connected: { label: "settings.channels.connected", text: "text-emerald-600", dot: "bg-emerald-500" },
+  reconnecting: { label: "settings.channels.reconnecting", text: "text-amber-600", dot: "bg-amber-500" },
+  degraded: { label: "settings.channels.degraded", text: "text-brick-600", dot: "bg-brick-500" },
+} as const;
+
 function channelEntryIcon(entryId: ChannelEntryId): typeof CubeTransparentIcon {
   switch (entryId) {
     case "general":
@@ -102,7 +110,7 @@ export function ChannelsSection({
   useEffect(() => {
     if (!connectingId) return;
     const status = systemConfig?.channelStatuses.find((item) => item.kind === connectingId);
-    if (status?.connected || status?.error) setConnectingId(null);
+    if (status && status.state !== "connecting" && status.state !== "reconnecting") setConnectingId(null);
   }, [connectingId, systemConfig?.channelStatuses]);
 
   const sections = useMemo(() => {
@@ -301,7 +309,9 @@ export function ChannelsSection({
               }}
             >
               <ArrowPathIcon className="h-3.5 w-3.5" />
-              {frontendMessage(channelStatus?.connected ? "settings.channels.reconnect" : "settings.channels.connect")}
+              {frontendMessage(
+                channelStatus?.state === "connected" ? "settings.channels.reconnect" : "settings.channels.connect",
+              )}
             </Button>
           ) : null}
           <span className="grid place-items-center">
@@ -412,14 +422,13 @@ function ChannelStatusBadge({
   status,
 }: {
   status?: SettingsSystemConfigHandle["channelStatuses"][number];
-}): JSX.Element {
-  const connected = status?.connected === true;
+}): JSX.Element | null {
+  if (!status) return null;
+  const presentation = ChannelStatusPresentation[status.state];
   return (
-    <span
-      className={`inline-flex shrink-0 items-center gap-1.5 text-[10.5px] ${connected ? "text-emerald-600" : "text-content-muted"}`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-ink-300"}`} />
-      {frontendMessage(connected ? "settings.channels.connected" : "settings.channels.disconnected")}
+    <span className={`inline-flex shrink-0 items-center gap-1.5 text-[10.5px] ${presentation.text}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${presentation.dot}`} />
+      {frontendMessage(presentation.label)}
     </span>
   );
 }
@@ -428,11 +437,12 @@ function ChannelConnectionStatus({
   status,
 }: {
   status?: SettingsSystemConfigHandle["channelStatuses"][number];
-}): JSX.Element {
+}): JSX.Element | null {
+  if (!status) return null;
   return (
     <div className="mb-5 rounded-lg border border-line bg-surface-subtle px-3 py-2.5">
       <ChannelStatusBadge status={status} />
-      {status?.error ? <p className="mt-1.5 text-[11px] leading-4 text-brick-600">{status.error}</p> : null}
+      {status.error ? <p className="mt-1.5 text-[11px] leading-4 text-brick-600">{status.error}</p> : null}
     </div>
   );
 }

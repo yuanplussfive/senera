@@ -2,6 +2,13 @@ import type { AgentMemoryCompletedTurnSink, AgentMemoryDeletionSink } from "../M
 import type { AgentMemoryDeletionImpact, AgentMemoryRecordedTurn } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
 import type { AgentWorldEvent, AgentWorldEventLedger } from "./AgentWorldEventLedger.js";
+import {
+  createAgentTextParts,
+  identityPart,
+  renderAgentTextParts,
+  textPart,
+  type AgentTextParts,
+} from "../Text/AgentTextParts.js";
 
 const ConversationTurnCompletedEvent = "conversation.turn.completed";
 
@@ -23,12 +30,14 @@ export class AgentWorldConversationBridge implements AgentMemoryCompletedTurnSin
     const timeZone = this.options.timeZone();
     const world = this.options.agenda.snapshot(timeZone, new Date(recordedTurn.episode.completedAtMs)).world;
     const evidenceRefs = [recordedTurn.episode.uri, ...recordedTurn.sources.map((source) => source.uri)];
+    const summaryParts = projectConversationSummary(recordedTurn);
     const event = this.options.ledger.append({
       worldId: world.id,
       timeZone,
       subject: { id: recordedTurn.episode.uri, kind: "conversation" },
       type: ConversationTurnCompletedEvent,
-      summary: projectConversationSummary(recordedTurn),
+      summary: renderAgentTextParts(summaryParts),
+      summaryParts,
       changes: [],
       evidenceRefs,
       occurredAt: recordedTurn.episode.completedAt,
@@ -53,10 +62,15 @@ export class AgentWorldConversationBridge implements AgentMemoryCompletedTurnSin
   }
 }
 
-function projectConversationSummary(recordedTurn: AgentMemoryRecordedTurn): string {
+function projectConversationSummary(recordedTurn: AgentMemoryRecordedTurn): AgentTextParts {
   const user = requireSourceSummary(recordedTurn, "user_message");
   const resident = requireSourceSummary(recordedTurn, "assistant_final");
-  return `{{user}}：${user}\n{{resident}}：${resident}`;
+  return createAgentTextParts([
+    identityPart("user"),
+    textPart(`：${user}\n`),
+    identityPart("resident"),
+    textPart(`：${resident}`),
+  ]);
 }
 
 function requireSourceSummary(

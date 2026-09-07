@@ -19,6 +19,8 @@ import { AgentSpawnArgumentsSchema } from "../../../Source/AgentSystem/Orchestra
 import { AgentDelegationCompletionGateway } from "../../../Source/AgentSystem/Orchestration/AgentDelegationRuntimeContracts.js";
 import type { AgentChildRunRecord } from "../../../Source/AgentSystem/Orchestration/AgentChildRunTypes.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { AgentTodoService, AgentTodoWriteInput } from "../../../Source/AgentSystem/Todos/AgentTodoService.js";
+import { AgentTodoStatuses, type AgentTodoSnapshot } from "../../../Source/AgentSystem/Todos/AgentTodoTypes.js";
 import {
   cleanupDelegationTestRoots,
   Deferred,
@@ -32,6 +34,43 @@ afterEach(() => {
   vi.useRealTimers();
   cleanupDelegationTestRoots();
 });
+
+function createTodoDouble(): AgentTodoService {
+  const states = new Map<string, AgentTodoSnapshot>();
+  const empty = (): AgentTodoSnapshot => ({
+    items: [],
+    counts: { total: 0, pending: 0, inProgress: 0, completed: 0, cancelled: 0 },
+  });
+  const read = (sessionId: string): AgentTodoSnapshot => states.get(sessionId) ?? empty();
+  const write = (input: AgentTodoWriteInput): AgentTodoSnapshot => {
+    const timestamp = new Date(0).toISOString();
+    const items = input.items.map((item, order) => ({
+      id: item.id,
+      content: item.content ?? item.id,
+      status: item.status ?? AgentTodoStatuses.Pending,
+      order,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }));
+    const snapshot: AgentTodoSnapshot = {
+      items,
+      counts: {
+        total: items.length,
+        pending: items.filter((item) => item.status === AgentTodoStatuses.Pending).length,
+        inProgress: items.filter((item) => item.status === AgentTodoStatuses.InProgress).length,
+        completed: items.filter((item) => item.status === AgentTodoStatuses.Completed).length,
+        cancelled: items.filter((item) => item.status === AgentTodoStatuses.Cancelled).length,
+      },
+    };
+    states.set(input.sessionId, snapshot);
+    return snapshot;
+  };
+  return {
+    read,
+    write,
+    fingerprint: (sessionId: string) => JSON.stringify(read(sessionId)),
+  } as unknown as AgentTodoService;
+}
 
 describe("agent delegation", () => {
   test("fans out detached completion wakes to every bound channel adapter", async () => {
@@ -50,6 +89,57 @@ describe("agent delegation", () => {
     await gateway.completed({ id: "childrun_after_unbind" } as AgentChildRunRecord);
     expect(webSocketAdapter).toHaveBeenCalledOnce();
     expect(qqAdapter).toHaveBeenCalledOnce();
+  });
+
+  test("marks a child partial when the required model Todo plan is missing", async () => {
+    const database = openDatabase();
+    const todo = createTodoDouble();
+    const service = new AgentDelegationService({
+      workspaceRoot: process.cwd(),
+      configuration: () => ({ config: modelConfig() }),
+      repository: new AgentSqliteChildRunRepository(database),
+      dispatcher: {
+        dispatch: vi.fn(async (request: AgentRunDispatchRequest) => ({
+          sessionId: request.sessionId,
+          requestId: request.requestId,
+          finalAnswer: "returned without a plan",
+          completion: "complete" as const,
+        })),
+        requestFinalAnswer: vi.fn(async () => true),
+        requestCancellation: vi.fn(async () => true),
+        cancel: vi.fn(async () => true),
+      },
+      events: new AgentOrchestrationEventRelay(),
+      preflight: {
+        resolve: vi.fn(async (input) =>
+          delegationPlan("main", [], AgentChildRunModelSelectionSources.Parent, input.workspaceAccess),
+        ),
+      } as unknown as AgentSubagentPreflightPort,
+    });
+    service.bindTodoService(todo);
+
+    const result = await service.delegate(
+      {
+        agent: "reviewer",
+        task: "Complete a planned review.",
+        workspaceAccess: AgentChildWorkspaceAccessModes.ReadOnly,
+        executionMode: "wait",
+      },
+      {
+        parentSessionId: "parent-session",
+        parentRequestId: "parent-request",
+        approvalMode: AgentExecutionApprovalModes.Agent,
+        authorizedToolNames: ["WorkspaceRead"],
+        registry: { getTool: () => undefined },
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: AgentChildRunStatuses.PartialCompleted,
+      finalAnswer: "returned without a plan",
+    });
+    expect(result.snapshot?.control?.todo.planObserved).toBe(false);
+    database.close();
   });
 
   test("isolates completion adapter failures", async () => {

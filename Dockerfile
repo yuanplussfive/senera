@@ -32,14 +32,15 @@ WORKDIR /app
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
   apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates chromium fonts-liberation util-linux
+  && apt-get install -y --no-install-recommends ca-certificates chromium fonts-liberation fonts-noto-cjk util-linux
 
 ENV NODE_ENV=production
 ENV SENERA_CONTAINER=1
 ENV SENERA_WORKSPACE_ROOT=/data
-ENV AGENT_CONFIG_PATH=/data/senera.config.json
 ENV SENERA_SERVER_HOST=0.0.0.0
 ENV SENERA_SERVER_PORT=8787
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules

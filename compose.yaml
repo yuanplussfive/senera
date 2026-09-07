@@ -1,105 +1,34 @@
-# Compose follows the last fully verified stable release. Production deployments
-# should override both values with immutable registry digests for controlled rollout.
-x-senera-image: &senera-image ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:latest}
-x-senera-sandbox-image: &senera-sandbox-image ${SENERA_SANDBOX_IMAGE:-ghcr.io/yuanplussfive/senera:sandbox-runtime-latest}
-
-x-senera-runtime: &senera-runtime
-  image: *senera-image
-  pull_policy: always
-  environment:
-    SENERA_WORKSPACE_ROOT: /data
-    AGENT_CONFIG_PATH: /data/senera.config.json
-    SENERA_SERVER_HOST: 0.0.0.0
-    SENERA_SERVER_PORT: 8787
-    # Add the exact browser Origin used to access Senera, including its port.
-    SENERA_ALLOWED_ORIGINS: "http://localhost:8787,http://127.0.0.1:8787"
-    SENERA_ALLOW_INSECURE_HTTP: "true"
-    SENERA_PUBLIC_WS_URL: ""
-    # Set this once in the host environment or the gitignored .env file.
-    # When empty, Senera persists a local key in /data/.senera instead.
-    SENERA_CONFIG_SECRET_KEY: "${SENERA_CONFIG_SECRET_KEY:-}"
-    SENERA_SANDBOX_WORKER_ENDPOINT: /run/senera-sandbox/worker.sock
-    SENERA_RUNTIME_IMAGE_REFERENCE: *senera-image
-    # Change these three values before the first start. They remain
-    # authoritative when the container is restarted.
-    SENERA_ADMIN_LOGIN_NAME: "admin"
-    SENERA_ADMIN_DISPLAY_NAME: "Senera Administrator"
-    SENERA_ADMIN_PASSWORD: "replace-with-a-strong-password"
-  volumes:
-    - senera-data:/data
-    - senera-sandbox-control:/run/senera-sandbox
-    - senera-sandbox-staging:/tmp
-
+# 单服务模式：一个容器跑完 Senera + 沙箱 Worker，编排直观，适合内网单机部署。
+# 注意：此模式需要 root 运行并直挂 Docker socket，安全边界弱于多容器拆分方案
+# （主进程以 root 运行，嵌入的沙箱 Worker 才能访问 Docker Engine）。
+# 浏览器同源访问自动放行；公网/多租户环境请前置 HTTPS 反向代理。
 services:
-  sandbox-runtime:
-    image: *senera-sandbox-image
-    pull_policy: always
-    entrypoint: ["node", "--version"]
-    command: []
-    network_mode: none
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    restart: "no"
-
   senera:
-    <<: *senera-runtime
+    image: ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:latest}
+    container_name: senera
+    restart: unless-stopped
     ports:
       - "8787:8787"
-    depends_on:
-      sandbox-worker:
-        condition: service_healthy
-    restart: unless-stopped
-
-  sandbox-worker:
-    image: *senera-image
-    pull_policy: always
-    entrypoint: ["node", "Dist/Apps/SandboxWorker.js"]
-    command: []
-    user: "0:0"
     environment:
-      SENERA_SANDBOX_WORKER_ENDPOINT: /run/senera-sandbox/worker.sock
-      # Docker controls access through this dedicated named volume. The main
-      # service runs as node, while the Worker remains root for Docker Engine.
-      SENERA_SANDBOX_WORKER_ENDPOINT_MODE: "0666"
-      SENERA_DOCKER_ENGINE_ENDPOINT: /run/docker-engine.sock
-      SENERA_DOCKER_SANDBOX_PROVIDER: auto
-      SENERA_DOCKER_SANDBOX_IMAGE: *senera-sandbox-image
-      SENERA_DOCKER_SANDBOX_PULL_POLICY: never
-      SENERA_SANDBOX_WORKSPACE_KIND: volume
-      SENERA_SANDBOX_WORKSPACE_SOURCE: senera-data
-      SENERA_SANDBOX_COPY_SOURCE_ROOTS: '["/app","/data","/tmp"]'
+      # 浏览器同源 Origin 与 Host 自动匹配；跨域客户端请在配置文件中声明 AllowedOrigins
+      # 单服务模式显式门控：主进程以 root 运行，嵌入的沙箱 Worker 才能访问 Docker Engine
+      SENERA_CONTAINER_RUNTIME_USER: "root"
+      # 主进程与沙箱挂载共享同一个可配置的 Linux 工作区命名空间
+      SENERA_WORKSPACE_ROOT: "${SENERA_WORKSPACE_ROOT:-/data}"
+      # 首次启动必填，之后重启仍以此为准
+      SENERA_ADMIN_LOGIN_NAME: "yuan"
+      SENERA_ADMIN_DISPLAY_NAME: "Senera Administrator"
+      SENERA_ADMIN_PASSWORD: "114514114514114514"
+      # 建议固定密钥；留空则在工作区/.senera 持久化本地 key
+      SENERA_CONFIG_SECRET_KEY: "${SENERA_CONFIG_SECRET_KEY:-}"
+      # 可选：覆盖沙箱运行时镜像与拉取策略；留空则使用内置分发契约版本
+      SENERA_DOCKER_SANDBOX_IMAGE: "${SENERA_DOCKER_SANDBOX_IMAGE:-}"
+      SENERA_DOCKER_SANDBOX_PULL_POLICY: "${SENERA_DOCKER_SANDBOX_PULL_POLICY:-}"
     volumes:
-      - /var/run/docker.sock:/run/docker-engine.sock
-      - senera-data:/data:ro
-      - senera-sandbox-control:/run/senera-sandbox
-      - senera-sandbox-staging:/tmp
-    network_mode: none
-    depends_on:
-      sandbox-runtime:
-        condition: service_completed_successfully
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "const fs=require('node:fs');process.exit(fs.statSync(process.env.SENERA_SANDBOX_WORKER_ENDPOINT).isSocket()?0:1)",
-        ]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-      start_period: 5s
-    restart: unless-stopped
+      - senera-data:${SENERA_WORKSPACE_ROOT:-/data}
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
+  # 显式固定卷名：嵌入的沙箱 Worker 默认挂载同名卷（SENERA_SANDBOX_WORKSPACE_SOURCE）
   senera-data:
-  senera-sandbox-control:
-  senera-sandbox-staging:
+    name: senera-data

@@ -261,6 +261,81 @@
             "step": 1,
             "required": false,
             "essential": true
+          },
+          {
+            "path": ["execution", "control", "todo", "required"],
+            "label": { "zh-CN": "子代理必须先建立 Todo 计划", "en-US": "Require a Todo plan before work" },
+            "description": {
+              "zh-CN": "宿主会检查子代理是否写入计划，并在仍有未完成事项时将结果标记为部分完成。",
+              "en-US": "The host verifies that the child wrote a plan and marks runs partial while work remains unfinished."
+            },
+            "type": "boolean",
+            "defaultValue": true,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["execution", "control", "todo", "minimumItems"],
+            "label": { "zh-CN": "最少计划项", "en-US": "Minimum plan items" },
+            "type": "number",
+            "defaultValue": 1,
+            "min": 1,
+            "max": 256,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["execution", "control", "budget", "maxModelTurns"],
+            "label": { "zh-CN": "最大模型轮次", "en-US": "Maximum model turns" },
+            "description": {
+              "zh-CN": "达到上限后进入证据整理，不再开始新的调查。",
+              "en-US": "Entering the limit starts evidence wrap-up and prevents new investigation."
+            },
+            "type": "number",
+            "defaultValue": 32,
+            "min": 1,
+            "max": 4096,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["execution", "control", "budget", "maxToolCalls"],
+            "label": { "zh-CN": "最大工具调用数", "en-US": "Maximum tool calls" },
+            "type": "number",
+            "defaultValue": 128,
+            "min": 1,
+            "max": 16384,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["execution", "control", "budget", "noProgressTurns"],
+            "label": { "zh-CN": "无进展轮次", "en-US": "No-progress turns" },
+            "description": {
+              "zh-CN": "连续模型轮次没有新证据或计划变化时，自动请求收束。",
+              "en-US": "Automatically requests wrap-up after consecutive turns without new evidence or plan changes."
+            },
+            "type": "number",
+            "defaultValue": 3,
+            "min": 1,
+            "max": 256,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["execution", "control", "budget", "noProgressTimeoutMs"],
+            "label": { "zh-CN": "无进展超时（毫秒）", "en-US": "No-progress timeout (ms)" },
+            "type": "number",
+            "defaultValue": 180000,
+            "min": 10000,
+            "max": 3600000,
+            "step": 10000,
+            "required": false,
+            "essential": false
           }
         ]
       },

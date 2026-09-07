@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 ARG SENERA_SANDBOX_SOURCE_IMAGE
 FROM ${SENERA_SANDBOX_SOURCE_IMAGE}
 

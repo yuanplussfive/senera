@@ -29,7 +29,11 @@ export class AgentChannelAdapterRegistry {
   create(kind: AgentChannelKind, config: AgentChannelConfig): AgentChannelAdapter {
     const factory = this.factories.get(kind);
     if (!factory) throw new Error(`No channel adapter registered for: ${kind}`);
-    return factory.create(config);
+    const adapter = factory.create(config);
+    if (typeof adapter.getConnectionState !== "function") {
+      throw new Error(`Channel adapter ${kind} violates the lifecycle contract: getConnectionState() is required.`);
+    }
+    return adapter;
   }
 
   kinds(): AgentChannelKind[] {

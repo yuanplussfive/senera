@@ -9,7 +9,9 @@ import {
 } from "../../../Source/AgentSystem/Channels/AgentChannelService.js";
 import type {
   AgentChannelAdapter,
+  AgentChannelAdapterHandlers,
   AgentChannelConfig,
+  AgentChannelConnectionState,
   AgentChannelInboundMessage,
   AgentChannelKind,
   AgentChannelsConfig,
@@ -103,6 +105,7 @@ function fakeAdapter(channel: { sends: string[] }): AgentChannelAdapter {
     bind: () => undefined,
     connect: async () => undefined,
     disconnect: async () => undefined,
+    getConnectionState: () => "connected",
     send: async (source, content) => {
       channel.sends.push(`${source.chatId} :: ${content}`);
       return { kind: "sent", messageId: `m${channel.sends.length}` };
@@ -264,7 +267,7 @@ describe("channel service", () => {
 
     expect(memory.submissions).toHaveLength(1);
     await delay(30);
-    expect(sends.some((entry) => entry.includes("请稍后重新发送"))).toBe(true);
+    expect(sends.some((entry) => entry.includes("新消息会即时注入当前任务"))).toBe(true);
     await service.stop();
   });
 
@@ -486,6 +489,70 @@ describe("channel service", () => {
     expect(secondAdapter).toBeDefined();
     expect(secondAdapter).not.toBe(firstAdapter);
     expect(statuses.at(-1)?.find((status) => status.kind === "telegram")?.connected).toBe(true);
+    await service.stop();
+  });
+
+  test("publishes live adapter state and clears stale errors after reconnect", async () => {
+    const statuses: AgentChannelStatus[][] = [];
+    const memory = createMemory();
+    const sends: string[] = [];
+    let state: AgentChannelConnectionState = "connecting";
+    let handlers: AgentChannelAdapterHandlers | undefined;
+    const adapter: AgentChannelAdapter = {
+      kind: "telegram",
+      capabilities: {
+        splitsLongMessages: true,
+        maxMessageLength: 4096,
+        supportsEdit: false,
+        supportsDraft: false,
+        markdown: "plain",
+        commandPrefix: "/",
+      },
+      bind: (next) => {
+        handlers = next;
+      },
+      connect: async () => undefined,
+      disconnect: async () => undefined,
+      getConnectionState: () => state,
+      send: async (_source, content) => {
+        sends.push(content);
+        return { kind: "sent", messageId: `m${sends.length}` };
+      },
+    };
+    const service = new AgentChannelService({
+      config: channelsConfig,
+      registry: {
+        kinds: () => ["telegram" as AgentChannelKind],
+        create: () => adapter,
+      } as never,
+      sessionManager: fakeSessionPort(memory),
+      mappingStore: undefined,
+      onLog: () => undefined,
+      onStatusChanged: (next) => statuses.push(next),
+    });
+
+    await service.start();
+    expect(statuses.at(-1)?.find((status) => status.kind === "telegram")).toMatchObject({
+      connected: false,
+      state: "connecting",
+    });
+
+    state = "reconnecting";
+    handlers?.onConnectionStateChanged?.(state);
+    handlers?.onFatal?.(new Error("gateway timed out"), "telegram");
+    expect(statuses.at(-1)?.find((status) => status.kind === "telegram")).toMatchObject({
+      connected: false,
+      state: "reconnecting",
+      error: "gateway timed out",
+    });
+
+    state = "connected";
+    handlers?.onConnectionStateChanged?.(state);
+    expect(statuses.at(-1)?.find((status) => status.kind === "telegram")).toMatchObject({
+      connected: true,
+      state: "connected",
+    });
+    expect(statuses.at(-1)?.find((status) => status.kind === "telegram")?.error).toBeUndefined();
     await service.stop();
   });
 

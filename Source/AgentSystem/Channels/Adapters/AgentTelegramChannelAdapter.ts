@@ -4,6 +4,7 @@ import {
   type AgentChannelAdapter,
   type AgentChannelAdapterHandlers,
   type AgentChannelCapabilities,
+  type AgentChannelConnectionState,
   type AgentChannelInboundMessage,
   type AgentChannelSendReplyOptions,
   type AgentChannelSendResult,
@@ -98,6 +99,7 @@ export class AgentTelegramChannelAdapter implements AgentChannelAdapter {
   private pollOffset = 0;
   private internal?: AbortController;
   private connected = false;
+  private connectionState: AgentChannelConnectionState = "stopped";
   private readonly now: () => Date;
 
   constructor(options: AgentTelegramChannelAdapterOptions) {
@@ -138,21 +140,60 @@ export class AgentTelegramChannelAdapter implements AgentChannelAdapter {
     this.handlers = handlers;
   }
 
+  getConnectionState(): AgentChannelConnectionState {
+    return this.connectionState;
+  }
+
+  private setConnectionState(state: AgentChannelConnectionState): void {
+    if (this.connectionState === state) return;
+    this.connectionState = state;
+    this.handlers?.onConnectionStateChanged?.(state);
+  }
+
   async connect(signal: AbortSignal): Promise<void> {
-    this.internal = new AbortController();
-    signal.addEventListener("abort", () => this.internal?.abort(), { once: true });
-    const me = await this.call("getMe", {});
-    if (!me || me.ok !== true) {
-      throw new Error("Telegram token validation failed (getMe rejected).");
+    if (signal.aborted) {
+      this.setConnectionState("stopped");
+      return;
     }
-    this.connected = true;
-    if (!this.internal.signal.aborted) {
-      void this.pollLoop(this.internal.signal).catch((error) => this.handlers?.onFatal(error, this.kind));
+    const internal = new AbortController();
+    this.internal = internal;
+    signal.addEventListener(
+      "abort",
+      () => {
+        internal.abort();
+        this.connected = false;
+        this.setConnectionState("stopped");
+      },
+      { once: true },
+    );
+    this.setConnectionState("connecting");
+    try {
+      const me = await this.call("getMe", {});
+      if (!me || me.ok !== true) {
+        throw new Error("Telegram token validation failed (getMe rejected).");
+      }
+      if (internal.signal.aborted) {
+        this.setConnectionState("stopped");
+        return;
+      }
+      this.connected = true;
+      this.setConnectionState("connected");
+      void this.pollLoop(internal.signal).catch((error) => {
+        if (!internal.signal.aborted) {
+          this.setConnectionState("degraded");
+          this.handlers?.onFatal(error, this.kind);
+        }
+      });
+    } catch (error) {
+      this.connected = false;
+      this.setConnectionState(internal.signal.aborted ? "stopped" : "degraded");
+      throw error;
     }
   }
 
   async disconnect(): Promise<void> {
     this.connected = false;
+    this.setConnectionState("stopped");
     this.internal?.abort();
   }
 
@@ -261,6 +302,7 @@ export class AgentTelegramChannelAdapter implements AgentChannelAdapter {
           await sleep(this.pollIntervalMs);
           continue;
         }
+        this.setConnectionState("connected");
         ongoingConflicts = 0;
         networkBackoffMs = this.networkBackoffBaseMs;
         for (const update of response.result as TelegramUpdate[]) {
@@ -272,9 +314,11 @@ export class AgentTelegramChannelAdapter implements AgentChannelAdapter {
         await sleep(this.pollIntervalMs);
       } catch (error) {
         if (signal.aborted) return;
+        this.setConnectionState("reconnecting");
         if (error instanceof AgentChannelHttpError && error.status === 409) {
           ongoingConflicts += 1;
           if (ongoingConflicts >= this.maxOngoingConflicts) {
+            this.setConnectionState("degraded");
             this.handlers?.onFatal?.(
               new Error(
                 `Telegram long-polling keeps conflicting after ${this.maxOngoingConflicts} attempts (another bot instance is likely active).`,

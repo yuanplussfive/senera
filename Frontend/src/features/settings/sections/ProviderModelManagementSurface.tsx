@@ -11,6 +11,7 @@ import {
   providerEnabled,
   readDraftOrEffectiveValue,
   readModelGroups,
+  readProviderModelOwnedBy,
   toProviderEndpointInput,
 } from "../../chat/modelConfigData";
 import { readProviderModelListState, type ReadProviderModelListStateInput } from "./modelServiceState";
@@ -164,7 +165,7 @@ export function ProviderModelManagementSurface({
   const catalogRows = selectedList?.catalog?.models ?? [];
   const catalogVisibleRows = catalogRows.filter((row) => {
     const query = catalogSearch.trim().toLowerCase();
-    return !query || `${row.id} ${row.ownedBy ?? ""}`.toLowerCase().includes(query);
+    return !query || `${row.id} ${readProviderModelOwnedBy(row)}`.toLowerCase().includes(query);
   });
   const catalogGroups = groupProviderModelRows(catalogVisibleRows, modelGroups);
   const pendingModelIds = useMemo(
@@ -176,6 +177,10 @@ export function ProviderModelManagementSurface({
       ),
     [operations],
   );
+  const editingModelMetadata = editingModel
+    ? (selectedList?.rows.find((row) => row.id === editingModel.Model)?.modelsDev ??
+      selectedList?.catalog?.models.find((row) => row.id === editingModel.Model)?.modelsDev)
+    : undefined;
 
   if (!selectedProvider || !selectedList) {
     return (
@@ -201,6 +206,7 @@ export function ProviderModelManagementSurface({
         modelInfo,
         modelField,
         endpointOptions: endpointChoices,
+        modelsDev: modelInfo.modelsDev,
       });
     setEditingModel(draft);
     setEditingExisting(Boolean(configured));
@@ -255,6 +261,7 @@ export function ProviderModelManagementSurface({
       modelInfo,
       modelField,
       endpointOptions: endpointChoices,
+      modelsDev: modelInfo.modelsDev,
     });
     if (pendingModelIds.has(model.Id)) return;
     onUpsertProviderModel({
@@ -378,6 +385,7 @@ export function ProviderModelManagementSurface({
               }
             : undefined
         }
+        catalogMetadata={editingModelMetadata}
         onChange={(patch) => {
           if (!editingModel) return;
           const nextModel = { ...editingModel, ...patch };

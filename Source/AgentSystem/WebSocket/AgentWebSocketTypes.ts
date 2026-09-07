@@ -27,6 +27,7 @@ import type { AgentWorldResidentWakeRuntime } from "../World/AgentWorldResidentW
 import type { AgentPresetActivationRuntime } from "../Presets/AgentPresetActivationRuntime.js";
 import type { AgentChannelKind } from "../Channels/AgentChannelTypes.js";
 import type { AgentChannelStatus } from "../Channels/AgentChannelService.js";
+import type { AgentModelsDevCatalog } from "../ModelEndpoints/AgentModelsDevCatalog.js";
 
 /** Narrow surface the WebSocket layer needs to drive channel connections. */
 export interface AgentChannelServiceControl {
@@ -37,6 +38,8 @@ export interface AgentChannelServiceControl {
 export interface AgentWebSocketServerOptions {
   config: AgentSystemConfig;
   workspaceRoot?: string;
+  /** Deployment-provided safe default for loopback HTTP (for example, a local container port). */
+  automaticLoopbackHttp?: boolean;
   staticFrontendRoot?: string;
   configSnapshot?: () => AgentSystemConfig;
   configService?: AgentConfigService;
@@ -74,6 +77,7 @@ export interface AgentWebSocketRequestContext {
   sessionManager: AgentSessionManager;
   userProfileManager: AgentUserProfileManager;
   providerModelDiscovery: AgentProviderModelDiscovery;
+  modelsDevCatalog: AgentModelsDevCatalog;
   presetManagerFactory: () => AgentPresetManager;
   onPresetSnapshot?: (snapshot: AgentPresetSnapshot) => void;
   approvalRuntime?: AgentApprovalRuntime;

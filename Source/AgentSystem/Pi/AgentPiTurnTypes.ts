@@ -12,6 +12,7 @@ import type { AgentInteractionContext } from "../Interaction/AgentInteractionCon
 
 export interface AgentPiTurnRequest {
   sessionId?: string;
+  logicalCacheScope?: string;
   requestId: string;
   step: number;
   input: string;

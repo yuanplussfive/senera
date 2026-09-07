@@ -8,6 +8,7 @@ import {
   AgentChildRunMessageKinds,
   AgentChildRunCheckpointSources,
   AgentChildRunStatuses,
+  AgentChildRunJoinModes,
   AgentChildWorkspaceAccessModes,
   type AgentChildRunModelSelectionSource,
   type AgentChildRunCreateInput,
@@ -21,6 +22,7 @@ import {
   type AgentChildRunMessage,
   type AgentChildRunMessageDirection,
   type AgentChildRunMessageKind,
+  type AgentChildRunJoinGroup,
 } from "./AgentChildRunTypes.js";
 import {
   prepareAgentChildRunSqlStatements,
@@ -48,6 +50,7 @@ export class AgentSqliteChildRunRepository implements AgentChildRunRepository {
       id: input.id,
       owner_run_id: input.ownerRunId ?? input.parentRequestId,
       node_id: input.nodeId ?? input.id,
+      join_group_json: input.joinGroup ? JSON.stringify(input.joinGroup) : null,
       parent_session_id: input.parentSessionId,
       parent_request_id: input.parentRequestId,
       child_session_id: input.childSessionId,
@@ -95,6 +98,12 @@ export class AgentSqliteChildRunRepository implements AgentChildRunRepository {
 
   listForOwner(ownerRunId: string): AgentChildRunRecord[] {
     return this.statements.listForOwner.all(ownerRunId).map((row) => this.fromRow(row));
+  }
+
+  listForJoinGroup(joinGroupId: string): AgentChildRunRecord[] {
+    const normalized = joinGroupId.trim();
+    if (!normalized) throw new Error("Join group id must be a non-empty string.");
+    return this.statements.listForJoinGroup.all(normalized).map((row) => this.fromRow(row));
   }
 
   listActive(): AgentChildRunRecord[] {
@@ -291,6 +300,9 @@ function childRunFromRow(row: AgentChildRunRow, messages: readonly AgentChildRun
     id: row.id,
     ownerRunId: row.owner_run_id,
     nodeId: row.node_id,
+    ...(row.join_group_json !== null
+      ? { joinGroup: readJoinGroup(row.join_group_json, `child run ${row.id} join group`) }
+      : {}),
     parentSessionId: row.parent_session_id,
     parentRequestId: row.parent_request_id,
     childSessionId: row.child_session_id,
@@ -328,6 +340,22 @@ function childRunFromRow(row: AgentChildRunRow, messages: readonly AgentChildRun
   };
 }
 
+const AgentChildRunJoinGroupSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    mode: z.enum([AgentChildRunJoinModes.Any, AgentChildRunJoinModes.All]),
+    expectedCount: z.number().int().positive(),
+  })
+  .strict();
+
+function readJoinGroup(value: string, label: string): AgentChildRunJoinGroup {
+  try {
+    return AgentChildRunJoinGroupSchema.parse(JSON.parse(value));
+  } catch (error) {
+    throw new Error(`Invalid ${label}.`, { cause: error });
+  }
+}
+
 const AgentChildRunExecutionContractSchema = z
   .object({
     version: z.literal(5),
@@ -360,6 +388,25 @@ const AgentChildRunExecutionContractSchema = z
           .strict(),
       })
       .strict(),
+    control: z
+      .object({
+        todo: z
+          .object({
+            required: z.boolean(),
+            minimumItems: z.number().int().min(1),
+          })
+          .strict(),
+        budget: z
+          .object({
+            maxModelTurns: z.number().int().min(1),
+            maxToolCalls: z.number().int().min(1),
+            noProgressTurns: z.number().int().min(1),
+            noProgressTimeoutMs: z.number().int().min(1),
+          })
+          .strict(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -381,6 +428,44 @@ const AgentChildRunSnapshotSchema = z
       .strict(),
     activeTools: z.array(z.string().min(1)),
     artifactUris: z.array(z.string().min(1)),
+    control: z
+      .object({
+        todo: z
+          .object({
+            planObserved: z.boolean(),
+            counts: z
+              .object({
+                total: z.number().int().min(0),
+                pending: z.number().int().min(0),
+                inProgress: z.number().int().min(0),
+                completed: z.number().int().min(0),
+                cancelled: z.number().int().min(0),
+              })
+              .strict(),
+            items: z
+              .array(
+                z
+                  .object({
+                    content: z.string().min(1),
+                    status: z.string().min(1),
+                  })
+                  .strict(),
+              )
+              .optional(),
+          })
+          .strict(),
+        budget: z
+          .object({
+            modelTurns: z.number().int().min(0),
+            toolCalls: z.number().int().min(0),
+            noProgressTurns: z.number().int().min(0),
+            lastMeaningfulProgressAt: z.iso.datetime().optional(),
+            limitReason: z.enum(["model_turn_budget", "tool_call_budget", "no_progress"]).optional(),
+          })
+          .strict(),
+      })
+      .strict()
+      .optional(),
     deadline: z
       .object({
         softDeadlineAt: z.iso.datetime(),

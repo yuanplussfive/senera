@@ -16,6 +16,13 @@ import type { AgentSubagentResolvedModelPool } from "./AgentSubagentModelPool.js
 import type { AgentSubagentRoleDefinition } from "./AgentSubagentRoleCatalog.js";
 
 const TextCompletionInstruction = [
+  "## Delegated execution contract",
+  "Before investigating, browsing, editing, or calling any other Tool, use the Todo system Tool with operation=replace and a concrete plan for this delegated task.",
+  "Use operation=read to inspect the current plan and operation=merge to update stable item ids; never infer the write mode from omitted fields.",
+  "Keep the plan current at milestones, keep at most one item in_progress, and do not claim completion while pending or in_progress work remains.",
+  "When several child runs are launched in one batch, wait for all of their run ids with AgentWait mode=all before synthesizing a supervisor response.",
+  "Do not use AgentResume for a run that is still active; use AgentWait or AgentList to observe it.",
+  "If work cannot be completed, leave unfinished items visible and explain the evidence and blocker in your final response.",
   "## Completion contract",
   "Finish the delegated run with a terminal assistant response addressed to your supervisor.",
   "Senera persists that text as the child result; do not construct a host-specific result envelope.",

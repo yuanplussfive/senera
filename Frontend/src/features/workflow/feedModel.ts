@@ -40,6 +40,10 @@ export interface FeedGroup {
   collapsible?: boolean;
   toolIcons?: readonly ToolStageIconName[];
   toolAccessibleLabel?: string;
+  /** Present for delegated child runs: the run container plus its internal steps. */
+  childRun?: TimelineChildRunState;
+  agentName?: string;
+  childToolSteps?: TimelineStep[];
 }
 
 export interface FeedModel {
@@ -101,7 +105,9 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
     [...steps].reverse().find((step) => isActiveTimelineStatus(step.status)),
     latestDecision,
   );
-  const rootSteps = steps.filter((step) => !step.scope?.parentRequestId);
+  const rootSteps = steps.filter(
+    (step) => !step.scope?.parentRequestId && !step.scope?.childRunId && !(step.kind === "delegation" && step.childRun),
+  );
   const scopedGroups = collectScopedGroups(steps);
   const rootToolGroups = collectRootToolGroups(rootSteps);
   const traceItems = rootSteps
@@ -222,52 +228,152 @@ function isGroupedToolPlan(step: TimelineStep, groupedBatchIds: ReadonlySet<stri
 }
 
 function collectScopedGroups(steps: TimelineStep[]): FeedGroup[] {
-  const groups = new Map<string, { label: string; workflowName?: string; items: FeedItem[]; firstIndex: number }>();
+  const childRuns = new Map<
+    string,
+    { agentName: string; childRun: TimelineChildRunState; childSteps: TimelineStep[]; firstIndex: number }
+  >();
+  const orphanItems: FeedItem[] = [];
+  let orphanFirstIndex = Number.POSITIVE_INFINITY;
+  let orphanWorkflowName: string | undefined;
+
+  // Register containers first because a replay can deliver a child step before
+  // the lifecycle snapshot that identifies its child run.
   steps.forEach((step, index) => {
-    if (!step.scope?.parentRequestId) return;
-    const key = scopedGroupKey(step);
-    const existing = groups.get(key);
-    const group = existing ?? {
-      label: scopedGroupLabel(step),
-      workflowName: step.scope.workflowName,
-      items: [],
+    if (step.kind !== "delegation" || !step.childRun) return;
+    const childRunId = step.childRun.id;
+    const existing = childRuns.get(childRunId);
+    if (existing) {
+      existing.childRun = step.childRun;
+      existing.agentName = step.scope?.agentName ?? existing.agentName;
+      existing.firstIndex = Math.min(existing.firstIndex, index);
+      return;
+    }
+    childRuns.set(childRunId, {
+      agentName: step.scope?.agentName ?? "",
+      childRun: step.childRun,
+      childSteps: [],
       firstIndex: index,
-    };
-    group.items.push(mapTraceItem(step));
-    groups.set(key, group);
+    });
   });
 
-  return [...groups.entries()]
+  steps.forEach((step, index) => {
+    if (step.kind === "delegation" && step.childRun) return;
+    if (!step.scope?.parentRequestId && !step.scope?.childRunId) return;
+
+    const childRunId = step.scope?.childRunId;
+    const existing = childRunId ? childRuns.get(childRunId) : undefined;
+    if (existing) {
+      existing.childSteps.push(step);
+      existing.firstIndex = Math.min(existing.firstIndex, index);
+      return;
+    }
+
+    // Scoped steps that don't resolve to a known child run (e.g. merge steps)
+    // keep the legacy flat presentation so they aren't silently dropped.
+    orphanItems.push(mapTraceItem(step));
+    orphanFirstIndex = Math.min(orphanFirstIndex, index);
+    orphanWorkflowName = orphanWorkflowName ?? step.scope?.workflowName;
+  });
+
+  const groups: FeedGroup[] = [...childRuns.entries()]
     .sort((a, b) => a[1].firstIndex - b[1].firstIndex)
-    .map(([id, group]) => ({
-      id,
-      label: group.label,
+    .map(([childRunId, entry]) => ({
+      id: `delegation:${childRunId}`,
+      label: entry.agentName || frontendMessage("workflow.scope.agent"),
       variant: "delegation",
-      meta: scopedGroupMeta(group.items, group.workflowName),
-      items: group.items,
+      meta: childRunCardMeta(entry.childRun),
+      items: [],
       collapsible: true,
+      childRun: entry.childRun,
+      agentName: entry.agentName,
+      childToolSteps: entry.childSteps,
     }));
+
+  if (orphanItems.length > 0) {
+    groups.push({
+      id: `scoped-activity:${orphanFirstIndex}`,
+      label: frontendMessage("workflow.scope.agent"),
+      variant: "delegation",
+      meta: scopedGroupMeta(orphanItems, orphanWorkflowName),
+      items: orphanItems,
+      collapsible: true,
+    });
+  }
+
+  return groups;
 }
 
-function scopedGroupKey(step: TimelineStep): string {
-  return [
-    "delegation",
-    step.scope?.parentSessionId,
-    step.scope?.workflowName,
-    step.scope?.role,
-    step.scope?.jobId,
-    step.scope?.childRunId,
-    step.scope?.agentName,
-  ]
-    .filter((value) => value !== undefined && value !== "")
-    .join(":");
+function childRunCardMeta(childRun: TimelineChildRunState): string | undefined {
+  const toolCalls = childRun.toolCalls;
+  if (!toolCalls) return undefined;
+  return frontendMessage("workflow.childRun.board.toolCompletion", {
+    completed: toolCalls.completed,
+    total: toolCalls.started,
+  });
 }
 
-function scopedGroupLabel(step: TimelineStep): string {
-  if (step.scope?.role === "merge") return frontendMessage("workflow.scope.merge");
-  return step.scope?.agentName
-    ? frontendMessage("workflow.scope.agentNamed", { name: step.scope.agentName })
-    : frontendMessage("workflow.scope.agent");
+export interface StageChildRunEntry {
+  childRun: TimelineChildRunState;
+  agentName?: string;
+  childToolSteps: TimelineStep[];
+}
+
+export interface StageChildRunSplit {
+  childRuns: StageChildRunEntry[];
+  rootToolSteps: TimelineStep[];
+}
+
+/**
+ * Splits a stage's steps into delegated child-run cards and the parent's own tool
+ * steps, so stage feeds render child runs as collapsed cards instead of letting
+ * their internal tools flood the parent's tool batch.
+ */
+export function splitStageChildRuns(steps: readonly TimelineStep[]): StageChildRunSplit {
+  const childRuns = new Map<string, StageChildRunEntry & { firstIndex: number }>();
+  const rootToolSteps: TimelineStep[] = [];
+
+  // Pass 1: collect the delegation containers (they may trail their scoped steps).
+  steps.forEach((step, index) => {
+    if (step.kind === "delegation" && step.childRun) {
+      const existing = childRuns.get(step.childRun.id);
+      if (existing) {
+        existing.childRun = step.childRun;
+        existing.agentName = step.scope?.agentName ?? existing.agentName;
+      } else {
+        childRuns.set(step.childRun.id, {
+          childRun: step.childRun,
+          agentName: step.scope?.agentName,
+          childToolSteps: [],
+          firstIndex: index,
+        });
+      }
+    }
+  });
+
+  // Pass 2: route scoped tool steps into their run; the rest belong to the parent.
+  steps.forEach((step) => {
+    if (step.kind === "delegation") return;
+    const childRunId = step.scope?.childRunId;
+    if (childRunId) {
+      const entry = childRuns.get(childRunId);
+      if (entry) {
+        if (step.kind === "tool" && step.toolName?.trim()) entry.childToolSteps.push(step);
+        return;
+      }
+    }
+    if (step.kind === "tool" && step.toolName?.trim()) rootToolSteps.push(step);
+  });
+
+  return {
+    childRuns: [...childRuns.entries()]
+      .sort((a, b) => a[1].firstIndex - b[1].firstIndex)
+      .map(([, entry]) => ({
+        childRun: entry.childRun,
+        agentName: entry.agentName,
+        childToolSteps: entry.childToolSteps,
+      })),
+    rootToolSteps,
+  };
 }
 
 function scopedGroupMeta(items: FeedItem[], workflowName?: string): string | undefined {

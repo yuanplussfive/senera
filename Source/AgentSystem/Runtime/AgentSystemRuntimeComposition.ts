@@ -21,6 +21,7 @@ import { AgentConversationProjector } from "../Conversation/AgentConversationPro
 import { AgentSchemaValidator } from "../Core/AgentSchemaValidator.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { createSeneraExecutionEnvironments } from "../Execution/SeneraExecutionEnvFactory.js";
+import { resolveAgentDockerEngineGuestWorkspaceRoot } from "../Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 import type { SeneraSandboxWorkerClient } from "../Execution/SeneraSandboxWorkerTypes.js";
 import { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import { resolveAgentExecutionResourceLimits } from "../ExecutionResources/AgentExecutionResourceConfig.js";
@@ -78,7 +79,7 @@ import type { AgentContinuityLifecyclePort } from "../Continuity/AgentContinuity
 import { AgentWorkflowPromptProjector } from "../Prompt/AgentWorkflowPromptProjector.js";
 import type { AgentWorldSnapshotProvider } from "../World/AgentWorldTypes.js";
 import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
-import type { AgentIdentityTemplateValues } from "../Prompt/AgentIdentityTemplate.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
 import { AgentResidentSpeechRuntime } from "../ResidentSpeech/AgentResidentSpeechRuntime.js";
@@ -102,6 +103,8 @@ export interface AgentSystemRuntimeCompositionOptions {
   sandboxAvailable?: boolean;
   sandboxProvider?: AgentSandboxRuntimeProvider;
   dockerEngineWorker?: SeneraSandboxWorkerClient;
+  /** Derived sandbox guest workspace root. Linux paths follow workspaceRoot; other hosts use the contract default. */
+  sandboxGuestWorkspaceRoot?: string;
   toolSearchMemoryStore?: AgentToolSearchMemoryStore;
   onMcpToolsChanged?: AgentMcpToolsChangedHandler;
   mcpInputs?: AgentExtensionValueResolver;
@@ -116,7 +119,7 @@ export interface AgentSystemRuntimeCompositionOptions {
   agenda?: AgentAgendaService;
   worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
-  identityTemplateValues?: () => AgentIdentityTemplateValues;
+  identityDisplayValues?: () => AgentIdentityDisplayValues;
 }
 
 export function composeAgentSystemRuntime(options: AgentSystemRuntimeCompositionOptions) {
@@ -142,6 +145,11 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
   const sandboxAvailable = sandboxEnabled && options.sandboxAvailable === true;
   const sandboxProvider = options.sandboxProvider;
   const dockerEngineWorker = options.dockerEngineWorker;
+  const sandboxGuestWorkspaceRoot =
+    options.sandboxGuestWorkspaceRoot ??
+    (sandboxAvailable && sandboxProvider
+      ? resolveAgentDockerEngineGuestWorkspaceRoot(options.workspaceRoot, sandboxProvider)
+      : options.workspaceRoot);
   if (sandboxAvailable && (!sandboxProvider || !dockerEngineWorker)) {
     throw new Error("An available sandbox runtime requires an explicit Docker provider and Worker client.");
   }
@@ -167,6 +175,7 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
     environmentPolicy: resolveToolExecutionConfig(options.config).Environment,
     terminationGraceMs: executionResourceLimits.terminationGraceMs,
     resourceAccessPolicy: new AgentResourceAccessPolicy(authorizationPolicyClient),
+    sandboxGuestWorkspaceRoot,
   });
   const browserRuntime = new AgentBrowserRuntime({
     workspaceRoot: options.workspaceRoot,
@@ -199,6 +208,7 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
     authorizationPolicyClient,
     executionEnv: executionEnvironments.system,
     toolExecutionEnv: executionEnvironments.tool,
+    sandboxGuestWorkspaceRoot,
     executionResources:
       options.executionResources ??
       new AgentExecutionResourceBroker({
@@ -268,6 +278,7 @@ export function createAgentRuntimeAgentServices(
     infrastructure.registry,
     options.workspaceRoot,
     () => infrastructure.toolExecutionEnv.capabilities,
+    infrastructure.sandboxGuestWorkspaceRoot,
   );
   const toolCatalog = new AgentToolCatalogProjector(infrastructure.registry, availableExecutionTargets);
   const artifactRecorder = new AgentToolExecutionArtifactRecorder({
@@ -331,7 +342,7 @@ export function createAgentRuntimeAgentServices(
     resourceResolver: infrastructure.resourceResolver,
     todoService: options.todos,
     continuityIdentity: options.continuityIdentity,
-    identityTemplateValues: options.identityTemplateValues,
+    identityDisplayValues: options.identityDisplayValues,
   });
   const piSubstrate = new AgentPiSubstrate({
     workspaceRoot: options.workspaceRoot,

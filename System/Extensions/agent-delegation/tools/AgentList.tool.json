@@ -27,6 +27,16 @@
               "type": "string"
             },
             "agent": { "type": "string" },
+            "joinGroup": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "mode": { "type": "string", "enum": ["any", "all"] },
+                "expectedCount": { "type": "integer", "minimum": 1 }
+              },
+              "required": ["id", "mode", "expectedCount"],
+              "additionalProperties": false
+            },
             "result": {
               "type": "object",
               "properties": { "content": { "type": "string" } },

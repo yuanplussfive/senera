@@ -14,7 +14,7 @@ export interface AgentPreparedTurn {
 
 export interface AgentTurnPreparationRuntime {
   services: {
-    retrieval: Pick<AgentRetrievalService, "resolvePlannedLoadedTools" | "rememberAutoSearch">;
+    retrieval: Pick<AgentRetrievalService, "resolvePlannedLoadedTools" | "rememberAutoSearch" | "reusableCapabilities">;
     promptContext: Pick<AgentPromptContextService, "activateSkills" | "recommendedSkillTools" | "buildRootCommand">;
   };
 }
@@ -25,6 +25,7 @@ export class AgentTurnPreparationService {
   async prepare(input: {
     requestId: string;
     userInput: string;
+    sessionId?: string;
     loadedToolNames: readonly string[];
     allowedToolNames?: readonly string[];
     pinnedSkills?: readonly AgentPinnedSkillReference[];
@@ -36,12 +37,24 @@ export class AgentTurnPreparationService {
       signal: input.signal,
     });
     const preferredToolNames = this.runtime.services.promptContext.recommendedSkillTools(activeSkills);
+    const reusableCapabilities = input.sessionId
+      ? (this.runtime.services.retrieval.reusableCapabilities?.({
+          sessionId: input.sessionId,
+          query: input.userInput,
+          authorizedToolNames: input.allowedToolNames,
+          limit: 6,
+        }) ?? [])
+      : [];
+    const reusableToolNames = reusableCapabilities.map((entry) => entry.toolName);
+    const currentLoadedTools = uniqueToolNames([...input.loadedToolNames, ...reusableToolNames]);
+    const discover =
+      reusableCapabilities.length === 0 || preferredToolNames.some((toolName) => !reusableToolNames.includes(toolName));
     const resolvedToolNames = await this.resolveLoadedTools({
       input: input.userInput,
-      currentLoadedTools: [...input.loadedToolNames],
+      currentLoadedTools,
       currentSetPolicy: AgentToolSearchCurrentSetPolicies.Retain,
       preferredTools: preferredToolNames,
-      discover: true,
+      discover,
       ...(input.signal ? { signal: input.signal } : {}),
     });
     const loadedToolNames = intersectAllowedToolNames(resolvedToolNames, input.allowedToolNames);
@@ -82,6 +95,10 @@ export class AgentTurnPreparationService {
       needs: [],
     });
   }
+}
+
+function uniqueToolNames(toolNames: readonly string[]): string[] {
+  return [...new Set(toolNames.map((toolName) => toolName.trim()).filter(Boolean))];
 }
 
 function intersectAllowedToolNames(

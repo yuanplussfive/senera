@@ -122,6 +122,10 @@ export class AgentPiTurnState {
     return this.toolPreflights.batchIndex(callId);
   }
 
+  toolBatchToolNames(callId: string | undefined): readonly string[] | undefined {
+    return this.toolPreflights.batchToolNames(callId);
+  }
+
   toolCallPurpose(callId: string): string | undefined {
     return this.toolPreflights.purpose(callId);
   }

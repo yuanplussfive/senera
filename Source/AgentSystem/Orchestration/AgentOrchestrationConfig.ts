@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import type { AgentChildRunControlPolicy } from "./AgentChildRunTypes.js";
 
 const ThinkingLevelConfigurationSchema = z.enum(["inherit", "off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 const NonEmptyConfigurationStringSchema = z.string().trim().min(1);
@@ -87,6 +88,31 @@ const AgentDelegationCoordinationConfigurationSchema = z
   })
   .default({ defaultWaitTimeoutMs: 30_000, maximumWaitTimeoutMs: 3_600_000 });
 
+const AgentDelegationControlConfigurationSchema = z
+  .object({
+    todo: z
+      .object({
+        required: z.boolean().default(true),
+        minimumItems: z.number().int().min(1).max(256).default(1),
+      })
+      .strict()
+      .default({ required: true, minimumItems: 1 }),
+    budget: z
+      .object({
+        maxModelTurns: z.number().int().min(1).max(4096).default(32),
+        maxToolCalls: z.number().int().min(1).max(16_384).default(128),
+        noProgressTurns: z.number().int().min(1).max(256).default(3),
+        noProgressTimeoutMs: z.number().int().min(10_000).max(3_600_000).default(180_000),
+      })
+      .strict()
+      .default({ maxModelTurns: 32, maxToolCalls: 128, noProgressTurns: 3, noProgressTimeoutMs: 180_000 }),
+  })
+  .strict()
+  .default({
+    todo: { required: true, minimumItems: 1 },
+    budget: { maxModelTurns: 32, maxToolCalls: 128, noProgressTurns: 3, noProgressTimeoutMs: 180_000 },
+  });
+
 export const AgentDelegationConfigurationSchema = z
   .object({
     modelPool: AgentDelegationModelPoolConfigurationSchema,
@@ -115,6 +141,7 @@ export const AgentDelegationConfigurationSchema = z
       .object({
         deadline: AgentChildRunDeadlineConfigurationSchema,
         maxDepth: OptionalNonNegativeQuotaSchema,
+        control: AgentDelegationControlConfigurationSchema,
       })
       .strict()
       .default({
@@ -123,6 +150,10 @@ export const AgentDelegationConfigurationSchema = z
           wrapUpTimeoutMs: 180_000,
           snapshotIntervalMs: 5_000,
           activityExtension: { recentActivityWindowMs: 30_000, stepMs: 60_000, maximumMs: 120_000 },
+        },
+        control: {
+          todo: { required: true, minimumItems: 1 },
+          budget: { maxModelTurns: 32, maxToolCalls: 128, noProgressTurns: 3, noProgressTimeoutMs: 180_000 },
         },
       }),
   })
@@ -176,6 +207,15 @@ export type AgentSchedulerConfiguration = z.infer<typeof AgentSchedulerConfigura
 
 export function resolveAgentDelegationConfiguration(config: AgentSystemConfig): AgentDelegationConfiguration {
   return AgentDelegationConfigurationSchema.parse(config.Extensions?.["agent-delegation"]?.Configuration ?? {});
+}
+
+export function projectAgentChildRunControlPolicy(
+  configured: AgentDelegationConfiguration["execution"]["control"],
+): AgentChildRunControlPolicy {
+  return {
+    todo: { ...configured.todo },
+    budget: { ...configured.budget },
+  };
 }
 
 export function resolveAgentChildRunWaitTimeoutMs(config: AgentSystemConfig, requested?: number): number {

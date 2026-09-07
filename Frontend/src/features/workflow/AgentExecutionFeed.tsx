@@ -4,8 +4,15 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
-import { type RunRecord } from "../../store/sessionStore";
-import { deriveFeedModel, statusTextClass, type FeedGroup, type FeedItem } from "./feedModel";
+import { type RunRecord, type TimelineChildRunState, type TimelineStep } from "../../store/sessionStore";
+import {
+  deriveFeedModel,
+  splitStageChildRuns,
+  statusTextClass,
+  type FeedGroup,
+  type FeedItem,
+  type StageChildRunEntry,
+} from "./feedModel";
 import { FeedGroupIconCatalog, FeedItemIconCatalog } from "./feedPresentation";
 import {
   MotionDisclosure,
@@ -21,6 +28,7 @@ import { runActivityPresentationPriority } from "./runActivityPresentation";
 import { ToolActionIcon } from "./ToolActionIcon";
 import { ToolActivityGroup } from "./ToolActivityGroup";
 import { projectToolBatchActivity, ToolBatchActivity } from "./ToolBatchActivity";
+import { ChildRunActivity } from "./ChildRunCard";
 
 type FeedStatus = FeedItem["status"];
 
@@ -31,7 +39,10 @@ export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; s
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(() => new Set());
   const { level, reduceMotion, disableMotion } = useMotionLevel();
   const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
-  const hasTimeline = model.groups.some((group) => group.items.length > 0);
+  // Delegation groups intentionally keep their internal tool rows out of the
+  // parent timeline. Their child-run projection is still a visible timeline
+  // item, even though `items` is empty.
+  const hasTimeline = model.groups.some((group) => group.items.length > 0 || Boolean(group.childRun));
 
   return (
     <div className="flex min-w-0 flex-col gap-3" data-execution-feed>
@@ -97,9 +108,22 @@ export function AgentExecutionStageFeed({
   keepOpenWhileRunActive?: boolean;
 }): JSX.Element | null {
   const model = useMemo(() => deriveFeedModel(run), [run]);
-  const presentation = useMemo(() => projectToolStagePresentation(run), [run]);
-  const toolBatchActivity = useMemo(() => projectToolBatchActivity(run), [run]);
-  if (!presentation || shouldShowWaitingHeadline(run, presentation.status, Boolean(toolBatchActivity))) {
+  const split = useMemo(() => splitStageChildRuns(run.steps), [run.steps]);
+  const presentation = useMemo(() => projectToolStagePresentation({ steps: split.rootToolSteps }), [split]);
+  const toolBatchActivity = useMemo(
+    () => (split.rootToolSteps.length > 0 ? projectToolBatchActivity({ steps: split.rootToolSteps }) : undefined),
+    [split],
+  );
+  const hasChildRuns = split.childRuns.length > 0;
+  if (!presentation && !hasChildRuns) {
+    const headline = projectWaitingHeadline(run, model.headline);
+    return run.status === "running" || run.status === "cancelling" || model.headline.kind === "activity" ? (
+      <div className="relative min-w-0" data-execution-stage-feed>
+        <FeedHeadline item={headline} />
+      </div>
+    ) : null;
+  }
+  if (presentation && shouldShowWaitingHeadline(run, presentation.status, Boolean(toolBatchActivity) || hasChildRuns)) {
     const headline = projectWaitingHeadline(run, model.headline);
     return run.status === "running" || run.status === "cancelling" || model.headline.kind === "activity" ? (
       <div className="relative min-w-0" data-execution-stage-feed>
@@ -108,48 +132,64 @@ export function AgentExecutionStageFeed({
     ) : null;
   }
 
+  const childRunActivities = hasChildRuns ? <ChildRunActivityList entries={split.childRuns} /> : null;
+
   if (toolBatchActivity) {
     return (
+      <>
+        {childRunActivities}
+        <div
+          className="relative w-full min-w-0"
+          role="status"
+          aria-label={toolBatchActivity.label}
+          data-execution-stage-feed
+          data-tool-stage-category={presentation?.category}
+          data-tool-stage-mode={presentation?.mode}
+          data-tool-stage-status={presentation?.status}
+        >
+          <ToolBatchActivity
+            activity={toolBatchActivity}
+            defaultOpen={toolBatchActivity.live}
+            keepOpenWhileRunActive={keepOpenWhileRunActive}
+          />
+        </div>
+      </>
+    );
+  }
+
+  if (!presentation) {
+    return hasChildRuns ? (
+      <div className="relative w-full min-w-0" data-execution-stage-feed>
+        {childRunActivities}
+      </div>
+    ) : null;
+  }
+
+  return (
+    <>
+      {childRunActivities}
       <div
         className="relative w-full min-w-0"
-        role="status"
-        aria-label={toolBatchActivity.label}
         data-execution-stage-feed
         data-tool-stage-category={presentation.category}
         data-tool-stage-mode={presentation.mode}
         data-tool-stage-status={presentation.status}
       >
-        <ToolBatchActivity
-          activity={toolBatchActivity}
-          defaultOpen={toolBatchActivity.live}
-          keepOpenWhileRunActive={keepOpenWhileRunActive}
-        />
+        <div
+          className={cn(
+            "tool-activity-stage-list relative min-w-0 px-0.5 text-left",
+            presentation.activities.length > 1 && "tool-activity-stage-list--connected pl-5",
+          )}
+          role="status"
+          aria-label={presentation.accessibleTitle}
+          data-tool-stage-summary
+        >
+          {presentation.activities.map((activity) => (
+            <ToolActivityGroup key={activity.id} activity={activity} defaultOpen={false} />
+          ))}
+        </div>
       </div>
-    );
-  }
-
-  return (
-    <div
-      className="relative w-full min-w-0"
-      data-execution-stage-feed
-      data-tool-stage-category={presentation.category}
-      data-tool-stage-mode={presentation.mode}
-      data-tool-stage-status={presentation.status}
-    >
-      <div
-        className={cn(
-          "tool-activity-stage-list relative min-w-0 px-0.5 text-left",
-          presentation.activities.length > 1 && "tool-activity-stage-list--connected pl-5",
-        )}
-        role="status"
-        aria-label={presentation.accessibleTitle}
-        data-tool-stage-summary
-      >
-        {presentation.activities.map((activity) => (
-          <ToolActivityGroup key={activity.id} activity={activity} defaultOpen={false} />
-        ))}
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -157,23 +197,27 @@ export function AgentExecutionStageFeed({
 export function AgentExecutionStageFold({ run }: { run: RunRecord }): JSX.Element | null {
   const contentId = useId();
   const [open, setOpen] = useState(false);
-  const presentation = useMemo(() => projectToolStagePresentation(run), [run]);
-  const toolBatchActivity = useMemo(() => projectToolBatchActivity(run), [run]);
-  const hasToolSteps = useMemo(
-    () => run.steps.some((step) => step.kind === "tool" && Boolean(step.toolName?.trim())),
-    [run.steps],
+  const split = useMemo(() => splitStageChildRuns(run.steps), [run.steps]);
+  const presentation = useMemo(() => projectToolStagePresentation({ steps: split.rootToolSteps }), [split]);
+  const toolBatchActivity = useMemo(
+    () => (split.rootToolSteps.length > 0 ? projectToolBatchActivity({ steps: split.rootToolSteps }) : undefined),
+    [split],
   );
+  const hasExecutionContent = split.rootToolSteps.length > 0 || split.childRuns.length > 0;
 
-  if (!presentation || !hasToolSteps) return <AgentExecutionStageFeed run={run} />;
+  if (!presentation || !hasExecutionContent) return <AgentExecutionStageFeed run={run} />;
+
+  const childRunActivities = <ChildRunActivityList entries={split.childRuns} />;
 
   if (toolBatchActivity) {
     return (
       <div
-        className="tool-batch-activity-stage min-w-0"
+        className="tool-batch-activity-stage flex min-w-0 flex-col gap-1"
         data-execution-stage-fold
         data-tool-stage-category={presentation.category}
         data-tool-stage-status={presentation.status}
       >
+        {childRunActivities}
         <ToolBatchActivity activity={toolBatchActivity} defaultOpen={false} />
       </div>
     );
@@ -208,22 +252,55 @@ export function AgentExecutionStageFold({ run }: { run: RunRecord }): JSX.Elemen
         />
       </button>
       <MotionDisclosure id={contentId} open={open} className="execution-stage-fold__details">
-        <div className="pt-1" data-execution-stage-fold-details>
-          <ThinkingToolChain run={run} />
+        <div className="flex flex-col gap-1 pt-1" data-execution-stage-fold-details>
+          {childRunActivities}
+          <ThinkingToolChain steps={split.rootToolSteps} />
         </div>
       </MotionDisclosure>
     </div>
   );
 }
 
-export function ThinkingToolChain({ run }: { run: RunRecord }): JSX.Element {
-  const toolBatchActivity = projectToolBatchActivity(run);
+export function ThinkingToolChain({ run, steps }: { run?: RunRecord; steps?: readonly TimelineStep[] }): JSX.Element {
+  const sourceSteps = steps ?? run?.steps ?? [];
+  const split = splitStageChildRuns(sourceSteps);
+  const toolBatchActivity =
+    split.rootToolSteps.length > 0 ? projectToolBatchActivity({ steps: split.rootToolSteps }) : undefined;
 
-  if (toolBatchActivity) return <ToolBatchActivity activity={toolBatchActivity} defaultOpen={false} />;
+  if (!toolBatchActivity && split.childRuns.length === 0) {
+    return (
+      <div className="relative min-w-0 pl-5 text-[12.5px] leading-5 text-content-primary" data-thinking-tool-chain>
+        <span className="text-content-muted">{frontendMessage("workflow.summary.noToolCalls")}</span>
+      </div>
+    );
+  }
+
+  // Preserve the legacy single-batch DOM when no child runs participate, so hosts
+  // that style around [data-tool-batch-activity] keep their structure.
+  if (split.childRuns.length === 0 && toolBatchActivity) {
+    return <ToolBatchActivity activity={toolBatchActivity} defaultOpen={false} />;
+  }
 
   return (
-    <div className="relative min-w-0 pl-5 text-[12.5px] leading-5 text-content-primary" data-thinking-tool-chain>
-      <span className="text-content-muted">{frontendMessage("workflow.summary.noToolCalls")}</span>
+    <div className="flex min-w-0 flex-col gap-1" data-thinking-tool-chain>
+      <ChildRunActivityList entries={split.childRuns} />
+      {toolBatchActivity ? <ToolBatchActivity activity={toolBatchActivity} defaultOpen={false} /> : null}
+    </div>
+  );
+}
+
+function ChildRunActivityList({ entries }: { entries: readonly StageChildRunEntry[] }): JSX.Element | null {
+  if (entries.length === 0) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-1" data-stage-child-run-activities data-stage-child-run-cards>
+      {entries.map((entry) => (
+        <ChildRunActivity
+          key={entry.childRun.id}
+          childRun={entry.childRun}
+          agentName={entry.agentName}
+          childToolSteps={entry.childToolSteps}
+        />
+      ))}
     </div>
   );
 }
@@ -241,6 +318,23 @@ function FeedTimelineGroup({
   motionLevel: MotionLevel;
   nowEpoch: number;
 }): JSX.Element {
+  if (group.variant === "delegation" && group.childRun) {
+    return (
+      <div className="relative flex min-w-0 items-start gap-2.5" role="listitem" data-feed-group-variant="delegation">
+        <TimelineMarker status={summarizeChildRunStatus(group.childRun)}>
+          <AppIcon icon="delegation" size={14} aria-hidden="true" />
+        </TimelineMarker>
+        <div className="min-w-0 flex-1 pb-1">
+          <ChildRunActivity
+            childRun={group.childRun}
+            agentName={group.agentName}
+            childToolSteps={group.childToolSteps}
+          />
+        </div>
+      </div>
+    );
+  }
+
   if (group.variant === "trace" && !group.collapsible) {
     return (
       <>
@@ -547,6 +641,27 @@ function FeedRowStatus({ item }: { item: FeedItem }): JSX.Element {
       aria-hidden="true"
     />
   );
+}
+
+function summarizeChildRunStatus(childRun: TimelineChildRunState): FeedStatus {
+  switch (childRun.status) {
+    case "queued":
+    case "awaiting_supervisor":
+      return "pending";
+    case "running":
+    case "wrapping_up":
+      return "running";
+    case "cancelling":
+      return "cancelling";
+    case "failed":
+    case "timed_out":
+      return "failed";
+    case "completed":
+    case "partial_completed":
+    case "interrupted":
+    case "cancelled":
+      return "done";
+  }
 }
 
 function summarizeGroupStatus(group: FeedGroup): FeedStatus {

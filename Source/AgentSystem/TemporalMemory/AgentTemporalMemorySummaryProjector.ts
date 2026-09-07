@@ -74,5 +74,6 @@ function projectDigestEntries(
       occurredAt: digest.periodStart,
       kind: `${digest.granularity}_digest`,
       summary: digest.summary,
+      ...(digest.summaryParts?.length ? { summaryParts: digest.summaryParts } : {}),
     }));
 }

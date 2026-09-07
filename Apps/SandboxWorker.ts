@@ -16,6 +16,7 @@ const WorkerEnvironmentSchema = z
     SENERA_SANDBOX_WORKER_ENDPOINT: z.string().trim().min(1),
     SENERA_SANDBOX_WORKSPACE_KIND: z.enum(["bind", "volume"]),
     SENERA_SANDBOX_WORKSPACE_SOURCE: z.string().trim().min(1),
+    SENERA_SANDBOX_WORKSPACE_GUEST_ROOT: z.string().trim().min(1),
     SENERA_SANDBOX_COPY_SOURCE_ROOTS: z.string().transform((value, context) => {
       try {
         return z.array(z.string().trim().min(1)).min(1).parse(JSON.parse(value));
@@ -46,8 +47,16 @@ async function main(): Promise<void> {
   const docker = createAgentDockerEngineClient(engineEndpoint);
   const workspace =
     environment.SENERA_SANDBOX_WORKSPACE_KIND === "bind"
-      ? { kind: "bind" as const, sourcePath: environment.SENERA_SANDBOX_WORKSPACE_SOURCE }
-      : { kind: "volume" as const, volumeName: environment.SENERA_SANDBOX_WORKSPACE_SOURCE };
+      ? {
+          kind: "bind" as const,
+          sourcePath: environment.SENERA_SANDBOX_WORKSPACE_SOURCE,
+          guestRoot: environment.SENERA_SANDBOX_WORKSPACE_GUEST_ROOT,
+        }
+      : {
+          kind: "volume" as const,
+          volumeName: environment.SENERA_SANDBOX_WORKSPACE_SOURCE,
+          guestRoot: environment.SENERA_SANDBOX_WORKSPACE_GUEST_ROOT,
+        };
   const resolution = await resolveAgentDockerEngineSandboxProvider({
     docker,
     preference: environment.SENERA_DOCKER_SANDBOX_PROVIDER,

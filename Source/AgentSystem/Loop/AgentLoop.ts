@@ -24,6 +24,7 @@ import {
   normalizeAgentInteractionContext,
   type AgentInteractionContext,
 } from "../Interaction/AgentInteractionContext.js";
+import { createAgentPiLogicalCacheScope } from "../Pi/AgentPiPromptCache.js";
 
 export interface AgentLoopOptions {
   runtime: AgentSystemRuntime;
@@ -32,6 +33,8 @@ export interface AgentLoopOptions {
 
 export interface AgentRunRequest {
   sessionId?: string;
+  /** Stable cache affinity; defaults to the durable conversation session. */
+  logicalCacheScope?: string;
   requestId: string;
   step?: number;
   input: string;
@@ -98,6 +101,7 @@ export class AgentLoop {
       sessionId: request.sessionId,
       requestId: request.requestId,
       loadedToolNames: prepared.loadedToolNames,
+      authorizedToolNames: prepared.toolAccessGrant.authorizedToolNames,
       rootCommand: prepared.rootCommand,
       toolPlanningMode: resolveAgentModelToolPlanningMode(this.options.runtime.modelProviderConfig),
       systemPromptLayer: request.systemPromptLayer,
@@ -124,6 +128,11 @@ export class AgentLoop {
     const result = await this.piTurn.run(
       {
         sessionId: request.sessionId,
+        logicalCacheScope:
+          request.logicalCacheScope ??
+          (request.sessionId
+            ? createAgentPiLogicalCacheScope({ sessionId: request.sessionId, family: "conversation" })
+            : undefined),
         requestId: request.requestId,
         step,
         input: request.input,
@@ -203,6 +212,7 @@ export class AgentLoop {
       : await this.preparation.prepare({
           requestId: request.requestId,
           userInput: request.input,
+          sessionId: request.sessionId,
           loadedToolNames: initialLoadedToolNames,
           allowedToolNames: request.allowedToolNames,
           pinnedSkills: request.pinnedSkills,
