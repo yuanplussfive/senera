@@ -1,6 +1,7 @@
 import type { AgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
 import type { AgentExecutionLedger, AgentExecutionPromptContext } from "../Goals/AgentExecutionLedgerTypes.js";
 import type { AgentWorkflowPromptContext } from "./AgentWorkflowPromptContext.js";
+import { EmptyAgentDelegationPromptContext } from "../Orchestration/AgentDelegationPromptContext.js";
 
 /**
  * Converts optional domain fields into stable values before Liquid rendering.
@@ -55,6 +56,7 @@ export function normalizeAgentWorkflowTemplateContext(input: AgentWorkflowPrompt
     execution: normalizeExecution(input.execution),
     todos: input.todos,
     world: input.world ?? null,
+    delegation: input.delegation ?? EmptyAgentDelegationPromptContext,
   };
 }
 

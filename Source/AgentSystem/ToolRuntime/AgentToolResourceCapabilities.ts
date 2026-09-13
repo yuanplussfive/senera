@@ -5,6 +5,7 @@ import { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import { AgentToolResourceCapabilityRegistry } from "./AgentToolResourceCapabilityRegistry.js";
 import { AgentToolUploadReadResourceCapability } from "./AgentToolUploadReadResourceCapability.js";
 import { AgentToolWorkspacePathResourceCapability } from "./AgentToolWorkspacePathResourceCapability.js";
+import { AgentToolWorkspaceRootResourceCapability } from "./AgentToolWorkspaceRootResourceCapability.js";
 import type { AgentResourceAccessRequest } from "../Execution/SeneraResourceAccess.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import { readAgentJsonPointer } from "../Core/AgentJsonPointerOperations.js";
@@ -35,7 +36,7 @@ export async function inspectAgentToolResourceAccess(
 export function createAgentDefaultToolResourceCapabilities(input: {
   config: AgentSystemConfig;
   workspaceRoot: string;
-  executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath" | "inspectResourcePath">;
+  executionEnv: Pick<SeneraExecutionEnv, "workspaceRoot" | "resolveResourcePath" | "inspectResourcePath">;
   uploadStore?: AgentUploadStore;
 }): AgentToolResourceCapabilityRegistry {
   const uploads =
@@ -46,5 +47,6 @@ export function createAgentDefaultToolResourceCapabilities(input: {
     });
   return new AgentToolResourceCapabilityRegistry()
     .register(new AgentToolWorkspacePathResourceCapability(input.executionEnv))
+    .register(new AgentToolWorkspaceRootResourceCapability(input.executionEnv))
     .register(new AgentToolUploadReadResourceCapability(uploads));
 }

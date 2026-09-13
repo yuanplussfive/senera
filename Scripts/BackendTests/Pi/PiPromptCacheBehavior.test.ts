@@ -181,5 +181,8 @@ describe("Pi prompt cache identity", () => {
     expect(changedProtocol.scope).not.toBe(baseline.scope);
     expect(otherWorld.scope).not.toBe(baseline.scope);
     expect(baseline.retention).toBe("long");
+    expect(createAgentGoalMicroLoopCacheOptions({ worldId: "world-a", ...otherModel }).logicalCacheScope).toBe(
+      baseline.logicalCacheScope,
+    );
   });
 });

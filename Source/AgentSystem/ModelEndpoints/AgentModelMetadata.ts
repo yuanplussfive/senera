@@ -16,9 +16,31 @@ export interface AgentModelProviderMetadata {
   model: string;
 }
 
+/**
+ * Authoritative identity of the provider selected for one model turn.  This
+ * is deliberately separate from the durable session preference: a preference
+ * describes a future selection, while this receipt describes what actually
+ * ran and can therefore be projected to the model, UI, and self-service tool.
+ */
+export type AgentModelSelectionSource = "request" | "session_preference" | "default" | "channel";
+
+export interface AgentEffectiveModelReceipt {
+  readonly sessionId: string;
+  readonly requestId: string;
+  readonly providerId: string;
+  readonly model: string;
+  readonly endpoint: string;
+  readonly baseUrl: string;
+  readonly source: AgentModelSelectionSource;
+  readonly effectiveAt: string;
+  readonly logicalCacheScope?: string;
+  readonly physicalPiSessionId?: string;
+}
+
 export interface AgentRunMetadata {
   modelProvider: AgentModelProviderMetadata;
   usage?: AgentModelUsage;
+  receipt?: AgentEffectiveModelReceipt;
 }
 
 /** Stable origin metadata shared by persisted sessions and conversation entries. */
@@ -28,6 +50,8 @@ export interface AgentChannelMetadata {
   chatId?: string;
   userId?: string;
   messageId?: string;
+  /** Opaque host-owned conversation space identity used for cache affinity. */
+  spaceId?: string;
 }
 
 export interface AgentConversationEntryMetadata {
@@ -73,12 +97,52 @@ export interface AgentSessionMetadata {
   ownership?: AgentSessionOwnership;
   channel?: AgentChannelMetadata;
   lastRun?: AgentRunMetadata;
+  /** Durable in-flight receipt, cleared when the turn reaches a terminal state. */
+  activeRun?: AgentRunMetadata;
   piSession?: AgentPiSessionLifecycleMetadata;
+  /**
+   * Durable model preference owned by this conversation. This is deliberately
+   * separate from `piSession`: the latter describes the last Pi runtime
+   * lifecycle, while this value is the next-turn selection contract.
+   */
+  sessionModel?: AgentSessionModelPreference;
   toolAvailability?: AgentToolAvailabilitySnapshot;
   lifecycle?: AgentSessionLifecycleMetadata;
   title?: string;
   /** Bounded native channel rewrite examples; kept separate from the transcript. */
   channelFinalization?: AgentChannelFinalizationMetadata;
+}
+
+export type AgentSessionModelPreferenceSource = "user" | "agent" | "channel";
+
+export interface AgentSessionModelPreference {
+  readonly modelProviderId: string;
+  readonly revision: number;
+  readonly updatedAt: string;
+  readonly source: AgentSessionModelPreferenceSource;
+}
+
+export type AgentSessionModelPreferenceMutationResult =
+  | ({ readonly status: "updated" } & AgentSessionModelPreference & {
+        readonly sessionId: string;
+        readonly effectiveAt: "next_turn";
+      })
+  | ({ readonly status: "unchanged" } & AgentSessionModelPreference & {
+        readonly sessionId: string;
+        readonly effectiveAt: "next_turn";
+      })
+  | { readonly status: "missing"; readonly sessionId: string };
+
+/** Projects the model that should be shown for a session. A durable
+ * next-turn preference wins; Pi/last-run metadata is display-only history. */
+export function resolveAgentSessionModelProviderId(metadata: AgentSessionMetadata | undefined): string | undefined {
+  return (
+    metadata?.sessionModel?.modelProviderId ??
+    metadata?.activeRun?.receipt?.providerId ??
+    metadata?.lastRun?.receipt?.providerId ??
+    metadata?.lastRun?.modelProvider.id ??
+    metadata?.piSession?.modelProviderId
+  );
 }
 
 type ModelProviderConfig = ReturnType<typeof resolveModelProviderConfig>;

@@ -21,7 +21,7 @@ import {
 } from "../../api/eventTypes";
 import { projectRunEvent } from "./runEventProjector";
 import { applyScopedRunEvent } from "./scopedRunProjector";
-import { projectSessionHistoryEvent } from "./sessionHistoryProjector";
+import { advanceSessionHistoryHydration, projectSessionHistoryEvent } from "./sessionHistoryProjector";
 import {
   deleteSessionRuntimeState,
   ingestSessionList,
@@ -49,6 +49,10 @@ export { invalidateSessionHistoryCache } from "./sessionListProjection";
 
 export function applyEvent(state: StoreState, env: EventEnvelope): boolean {
   return projectAgentEventOnce(state, env, (event) => applyEventProjection(state, event));
+}
+
+export function advanceHistoryHydration(state: StoreState, sessionId: string): boolean {
+  return advanceSessionHistoryHydration(state, sessionId, applyEvent);
 }
 
 function applyEventProjection(state: StoreState, env: EventEnvelope): void {
@@ -182,6 +186,9 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
     case EventKinds.SessionSnapshot: {
       if (!sessionId) return;
       const data = env.data as SessionSnapshotData;
+      if (data.modelProviderId) {
+        state.selectedModelProviderIdsBySession[sessionId] = data.modelProviderId;
+      }
       delete state.pendingCreatedSessionIds[sessionId];
       if (state.pendingDeletedSessionIds[sessionId]) return;
       const channel =
@@ -195,6 +202,8 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
         existing.messageCount = data.messageCount;
         existing.activeRequestId = data.activeRequestId;
         if (channel) existing.channel = channel;
+        if (data.effectiveModel) existing.effectiveModel = data.effectiveModel;
+        if (data.modelPreference) existing.modelPreference = data.modelPreference;
         if (state.historyLoadingIds[sessionId]) {
           state.historyActiveRequestIds[sessionId] = data.activeRequestId ?? null;
         }
@@ -211,6 +220,8 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
           runs: [],
           activeRequestId: data.activeRequestId,
           ...(channel ? { channel } : {}),
+          ...(data.effectiveModel ? { effectiveModel: data.effectiveModel } : {}),
+          ...(data.modelPreference ? { modelPreference: data.modelPreference } : {}),
         };
         if (!state.sessionOrder.includes(sessionId)) {
           state.sessionOrder.unshift(sessionId);
@@ -218,6 +229,7 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
       }
       delete state.missingOnServerIds[sessionId];
       if (!state.activeSessionId) state.activeSessionId = sessionId;
+      syncActiveSessionModelSelection(state);
       return;
     }
 
@@ -240,6 +252,7 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
     case EventKinds.SessionListSnapshot: {
       const data = env.data as SessionListSnapshotData;
       ingestSessionList(state, data.sessions);
+      syncActiveSessionModelSelection(state);
       state.catalogSynced.sessions = true;
       return;
     }
@@ -259,6 +272,10 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
       const sourceModelProviderId = state.selectedModelProviderIdsBySession[data.sourceSessionId];
       if (sourceModelProviderId) {
         state.selectedModelProviderIdsBySession[sessionId] = sourceModelProviderId;
+      }
+      const sourceThinkingLevel = state.selectedThinkingLevelsBySession?.[data.sourceSessionId];
+      if (sourceThinkingLevel) {
+        (state.selectedThinkingLevelsBySession ??= {})[sessionId] = sourceThinkingLevel;
       }
       state.activeSessionId = sessionId;
       syncActiveSessionModelSelection(state);
@@ -326,6 +343,9 @@ function clearSessionRecoveryState(state: StoreState, sessionId: string): void {
   delete state.historyStepBuffers[sessionId];
   delete state.historyEventRunIds[sessionId];
   delete state.historyActiveRequestIds[sessionId];
+  if (state.historyRunEventBuffers) delete state.historyRunEventBuffers[sessionId];
+  if (state.historyPreviewedIds) delete state.historyPreviewedIds[sessionId];
+  if (state.historyHydration) delete state.historyHydration[sessionId];
   delete state.historyFailedIds[sessionId];
 }
 

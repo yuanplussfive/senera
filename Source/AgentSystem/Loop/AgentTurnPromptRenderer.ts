@@ -13,7 +13,15 @@ import {
 import type { AgentWorkflowPromptContext } from "../Prompt/AgentWorkflowPromptContext.js";
 import { composeAgentPromptHarness, type AgentPromptHarnessComposition } from "../Prompt/AgentPromptHarness.js";
 import { compileAgentSceneContext } from "../Prompt/AgentSceneContextCompiler.js";
+import {
+  AgentPromptWireEncodings,
+  renderAgentPromptWireBlocks,
+  renderAgentPromptContextWires,
+} from "../Prompt/AgentPromptContextWireRenderer.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
+import type { AgentEffectiveModelReceipt } from "../ModelEndpoints/AgentModelMetadata.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import { renderAgentWorkbenchContractIndex } from "../SelfService/AgentWorkbenchContract.js";
 
 export interface AgentRenderedTurnPrompt {
   text: string;
@@ -47,7 +55,12 @@ export class AgentTurnPromptRenderer {
     userInput: string;
     sessionId?: string;
     requestId?: string;
+    logicalCacheScope?: string;
+    effectiveModel?: AgentEffectiveModelReceipt;
+    turnNumber?: number;
+    interaction?: AgentInteractionContext;
     loadedToolNames: string[];
+    reusableCapabilities: readonly AgentToolCapabilityCacheEntry[];
     authorizedToolNames?: readonly string[];
     rootCommand: AgentRootCommand;
     toolPlanningMode: AgentModelToolPlanningMode;
@@ -80,6 +93,21 @@ export class AgentTurnPromptRenderer {
       this.runtime.services.promptContext.promptWorkflow(input.sessionId),
     );
     const scene = compileAgentSceneContext({ world: workflow.world });
+    const wireRenderOptions = {
+      estimateTokens: (text: string) => this.runtime.tokenEstimator.estimate(text).tokenCount,
+    };
+    const contextWires = renderAgentPromptContextWires(
+      {
+        scene,
+        continuity: continuityMemory,
+        workflow,
+      },
+      wireRenderOptions,
+    );
+    // Keep the named template adapters on the same canonical projection as
+    // the merged volatile block. Some integrations render these templates
+    // independently, so leaving their wire variables unset would silently
+    // reintroduce the old field-by-field path.
     const baseContext = this.runtime.services.promptContext.buildBaseContext({
       loadedToolNames: input.loadedToolNames,
       rootCommand: input.rootCommand,
@@ -93,15 +121,11 @@ export class AgentTurnPromptRenderer {
         avoid: toolDescription?.AvoidSection,
       },
     });
-    const reusableCapabilities = input.sessionId
-      ? (this.runtime.services.retrieval?.reusableCapabilities?.({
-          sessionId: input.sessionId,
-          query: input.userInput,
-          authorizedToolNames: input.authorizedToolNames,
-          limit: 6,
-        }) ?? [])
-      : [];
-    const reusableCapabilityPrompt = formatReusableCapabilities(reusableCapabilities);
+    const reusableCapabilities = input.reusableCapabilities;
+    const reusableCapabilityPrompt = formatReusableCapabilities(reusableCapabilities, {
+      estimateTokens: (text) => this.runtime.tokenEstimator.estimate(text).tokenCount,
+      contextWindowTokens: this.runtime.modelProviderConfig?.ContextWindowTokens,
+    });
     const reusableCapabilityRevision = sha256HexOfCanonicalJson(
       reusableCapabilities.map((entry) => ({
         toolName: entry.toolName,
@@ -116,7 +140,10 @@ export class AgentTurnPromptRenderer {
         ? sha256HexOfCanonicalJson(delegatedRole.content)
         : "append";
     const stableCacheKey = `${profile.stableTemplateName}:${baseContext.ContextRevisions.stable}:${delegatedRoleRevision}`;
-    const frozenPrompt = await this.runtime.promptRenderer.renderFile(frozenTemplate.path, {});
+    const frozenPrompt = joinPromptSections(
+      await this.runtime.promptRenderer.renderFile(frozenTemplate.path, {}),
+      renderAgentWorkbenchContractIndex(),
+    );
     const stablePrompt = await this.runtime.promptTierRenderCache.getOrRender(stableCacheKey, () =>
       this.runtime.promptRenderer.renderFile(stableTemplate.path, { ...baseContext, DelegatedRole: delegatedRole }),
     );
@@ -124,13 +151,41 @@ export class AgentTurnPromptRenderer {
       ...baseContext,
       DelegatedRole: delegatedRole,
       RoleCheck: this.runtime.promptConfig.RoleCheck,
+      VolatileWire: contextWires.volatile.text,
+      SceneWire: contextWires.scene.text,
+      ContinuityWire: contextWires.continuity.text,
+      ContinuityFactsWire: contextWires.continuityFacts.text,
+      ResidentProfileWire: contextWires.residentProfile.text,
+      WorkflowWire: contextWires.workflow.text,
     });
-    const volatilePrompt = joinPromptSections(renderedVolatilePrompt, reusableCapabilityPrompt);
+    const sessionSpacePrompt = formatSessionSpaceIdentity({
+      sessionId: input.sessionId,
+      workspaceRoot: this.runtime.workspaceRoot,
+    });
+    const turnIdentityPrompt = formatTurnIdentity({
+      turnNumber: input.turnNumber,
+      interaction: input.interaction,
+      requestId: input.requestId,
+      effectiveModel: input.effectiveModel,
+    });
+    const stablePromptWithSpace = stablePrompt;
+    const volatilePrompt = joinPromptSections(
+      renderedVolatilePrompt,
+      sessionSpacePrompt,
+      turnIdentityPrompt,
+      reusableCapabilityPrompt,
+    );
+    const turnIdentityRevision = sha256HexOfCanonicalJson({
+      requestId: input.requestId ?? null,
+      turnNumber: input.turnNumber ?? null,
+      interaction: input.interaction ?? null,
+      effectiveModel: input.effectiveModel ?? null,
+    });
     const harness = composeAgentPromptHarness(
       {
-        frozen: { text: frozenPrompt, revision: "static" },
+        frozen: { text: frozenPrompt, revision: sha256HexOfCanonicalJson(frozenPrompt) },
         stable: {
-          text: stablePrompt,
+          text: stablePromptWithSpace,
           revision: sha256HexOfCanonicalJson({
             template: stableTemplate.path,
             contextRevisions: baseContext.ContextRevisions.stable,
@@ -143,6 +198,11 @@ export class AgentTurnPromptRenderer {
             template: volatileTemplate.path,
             contextRevisions: baseContext.ContextRevisions.volatile,
             reusableCapabilityRevision,
+            turnIdentityRevision,
+            volatileWire: {
+              sourceRevision: contextWires.volatile.sourceRevision,
+              blocks: contextWires.volatile.blocks.map((block) => ({ id: block.id, encoding: block.encoding })),
+            },
           }),
         },
       },
@@ -151,7 +211,7 @@ export class AgentTurnPromptRenderer {
     const text = harness.text;
     return {
       text,
-      systemPrompt: joinPromptSections(frozenPrompt, stablePrompt),
+      systemPrompt: joinPromptSections(frozenPrompt, stablePromptWithSpace),
       turnContext: volatilePrompt.trim(),
       tokenCount: this.runtime.tokenEstimator.estimate(text).tokenCount,
       roleplayPreset,
@@ -162,9 +222,76 @@ export class AgentTurnPromptRenderer {
   }
 }
 
-const MaxReusableCapabilityPromptCharacters = 12_000;
+function formatSessionSpaceIdentity(input: { readonly sessionId?: string; readonly workspaceRoot: string }): string {
+  if (!input.sessionId) return "";
+  return renderAgentPromptWireBlocks(
+    {
+      preamble: [
+        "senera.conversation_space=v1",
+        "provenance=host;scope=active-conversation",
+        "rule=keep-this-space-distinct-from-global-defaults",
+      ],
+      blocks: [
+        {
+          id: "identity",
+          value: { session: input.sessionId, workspace: input.workspaceRoot },
+          allowedEncodings: [AgentPromptWireEncodings.CompactJson],
+        },
+      ],
+    },
+    { estimateTokens: (text) => text.length },
+  ).text;
+}
 
-function formatReusableCapabilities(entries: readonly AgentToolCapabilityCacheEntry[]): string {
+function formatTurnIdentity(input: {
+  readonly requestId?: string;
+  readonly turnNumber?: number;
+  readonly interaction?: AgentInteractionContext;
+  readonly effectiveModel?: AgentEffectiveModelReceipt;
+}): string {
+  if (!input.requestId && !input.effectiveModel) return "";
+  const value = {
+    request: input.requestId ?? input.effectiveModel?.requestId,
+    ...(input.turnNumber === undefined ? {} : { turn: input.turnNumber }),
+    surface: input.interaction?.surface ?? "console",
+    ...(input.interaction?.platform ? { platform: input.interaction.platform } : {}),
+    ...(input.interaction?.chatType ? { chatType: input.interaction.chatType } : {}),
+    ...(input.interaction?.spaceId ? { spaceId: input.interaction.spaceId } : {}),
+    ...(input.interaction?.profileId ? { profileId: input.interaction.profileId } : {}),
+    ...(input.effectiveModel
+      ? {
+          effectiveModel: {
+            providerId: input.effectiveModel.providerId,
+            model: input.effectiveModel.model,
+            endpoint: input.effectiveModel.endpoint,
+            source: input.effectiveModel.source,
+          },
+        }
+      : {}),
+  };
+  return renderAgentPromptWireBlocks(
+    {
+      preamble: [
+        "senera.turn=v1",
+        "provenance=host;authoritative-current-turn",
+        "rule=do-not-infer-model-from-global-defaults",
+      ],
+      blocks: [
+        {
+          id: "identity",
+          value,
+          allowedEncodings: [AgentPromptWireEncodings.CompactJson],
+        },
+      ],
+    },
+    { estimateTokens: (text) => text.length },
+  ).text;
+}
+
+function formatReusableCapabilities(
+  entries: readonly AgentToolCapabilityCacheEntry[],
+  options: { readonly estimateTokens: (text: string) => number; readonly contextWindowTokens?: number },
+): string {
   if (entries.length === 0) return "";
   const selected: Array<{
     tool: string;
@@ -172,6 +299,10 @@ function formatReusableCapabilities(entries: readonly AgentToolCapabilityCacheEn
     catalogRevision: string;
     arguments: Readonly<Record<string, unknown>>;
   }> = [];
+  const tokenBudget =
+    options.contextWindowTokens === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(256, Math.floor(options.contextWindowTokens * 0.02));
   for (const entry of entries) {
     if (!entry.arguments) continue;
     const candidate = {
@@ -180,17 +311,39 @@ function formatReusableCapabilities(entries: readonly AgentToolCapabilityCacheEn
       catalogRevision: entry.catalogRevision,
       arguments: entry.arguments,
     };
-    const next = JSON.stringify({ capabilities: [...selected, candidate] });
-    if (next.length > MaxReusableCapabilityPromptCharacters) continue;
+    const next = renderReusableCapabilities([...selected, candidate]);
+    if (options.estimateTokens(next) > tokenBudget) continue;
     selected.push(candidate);
   }
   if (selected.length === 0) return "";
-  return [
-    "<reusable_capabilities>",
-    "Host-confirmed capability data. Reuse these arguments directly when the current task matches; do not search again unless the catalog or contract has changed.",
-    JSON.stringify({ capabilities: selected }),
-    "</reusable_capabilities>",
-  ].join("\n");
+  return renderReusableCapabilities(selected);
+}
+
+function renderReusableCapabilities(
+  capabilities: readonly {
+    readonly tool: string;
+    readonly contractDigest?: string;
+    readonly catalogRevision: string;
+    readonly arguments: Readonly<Record<string, unknown>>;
+  }[],
+): string {
+  return renderAgentPromptWireBlocks(
+    {
+      preamble: [
+        "senera.reusable_capabilities=v1",
+        "provenance=host-confirmed",
+        "rule=reuse-when-task-matches;search-again-only-after-contract-or-catalog-change",
+      ],
+      blocks: [
+        {
+          id: "capabilities",
+          value: { capabilities },
+          allowedEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
+        },
+      ],
+    },
+    { estimateTokens: (text) => text.length },
+  ).text;
 }
 
 function joinPromptSections(...sections: readonly string[]): string {

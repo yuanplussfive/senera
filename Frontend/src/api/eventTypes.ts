@@ -11,6 +11,14 @@ import type {
 import type { ProviderModelConfigOperationKind } from "./providerModelCommandTypes";
 import type { FrontendLocalizedText } from "../i18n/frontendLocaleModel";
 import type { BackendLocalizedMessage } from "../i18n/backendMessage";
+import type { ModelThinkingLevel, ModelThinkingProfile } from "./modelThinkingTypes";
+
+export type { ModelThinkingLevel, ModelThinkingProfile, ModelThinkingProfileConfig } from "./modelThinkingTypes";
+export type {
+  WorkspaceSnapshotData,
+  WorkspaceSwitchFailedData,
+  WorkspaceSwitchStartedData,
+} from "./workspaceEventTypes";
 
 export type {
   ConfigCommandRequestInput,
@@ -220,6 +228,25 @@ export interface SessionSnapshotData {
   turnCount: number;
   activeRequestId?: string;
   channel?: SessionChannelMetadata;
+  modelProviderId?: string;
+  effectiveModel?: {
+    sessionId: string;
+    requestId: string;
+    providerId: string;
+    model: string;
+    endpoint: string;
+    baseUrl: string;
+    source: "request" | "session_preference" | "default" | "channel";
+    effectiveAt: string;
+    logicalCacheScope?: string;
+    physicalPiSessionId?: string;
+  };
+  modelPreference?: {
+    modelProviderId: string;
+    revision: number;
+    updatedAt: string;
+    source: "user" | "agent" | "channel";
+  };
 }
 
 export interface SessionListItem {
@@ -232,6 +259,9 @@ export interface SessionListItem {
   messageCount: number;
   activeRequestId?: string;
   channel?: SessionChannelMetadata;
+  modelProviderId?: string;
+  effectiveModel?: SessionSnapshotData["effectiveModel"];
+  modelPreference?: SessionSnapshotData["modelPreference"];
 }
 
 export interface SessionListSnapshotData {
@@ -349,6 +379,8 @@ export interface SessionHistoryStartedData {
 
 export interface SessionHistoryChunkData {
   sessionId: string;
+  /** 最近窗口的轻量首屏预览；完整回放仍会随后发送。 */
+  preview?: boolean;
   entries: Array<{
     entry: ConversationEntryDto;
     visible?: { kind: string; text: string };
@@ -421,6 +453,9 @@ export interface ModelProviderListItem {
   model: string;
   isDefault: boolean;
   modelsDev?: ModelsDevModelMetadata;
+  thinkingLevels?: ModelThinkingLevel[];
+  thinkingProfiles?: ModelThinkingProfile[];
+  defaultThinkingLevel?: ModelThinkingLevel;
 }
 
 export type ModelToolPlanningMode = "native" | "baml";

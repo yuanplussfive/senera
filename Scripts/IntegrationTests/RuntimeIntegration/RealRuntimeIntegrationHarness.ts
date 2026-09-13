@@ -4,7 +4,6 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { XMLParser } from "fast-xml-parser";
 import { AgentApprovalRuntime } from "../../../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
 import { AgentConfigService } from "../../../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentLogger } from "../../../Source/AgentSystem/Diagnostics/AgentLogger.js";
@@ -23,6 +22,7 @@ import { createAgentRequestCancellationResource } from "../../../Source/AgentSys
 import { AgentPiSessionMutationService } from "../../../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
 import { AgentLocalAdminAccountStore } from "../../../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
 import { readAgentUnknownRecord } from "../../../Source/AgentSystem/Core/AgentUnknownValue.js";
+import { decodeAgentPromptInputWire } from "../../../Source/AgentSystem/Prompt/AgentPromptContextWireRenderer.js";
 import { resolveWorkspaceRoot } from "../../WorkspaceRoot.js";
 
 export const RealRuntimeIntegrationValues = {
@@ -45,12 +45,6 @@ const ModelStages = {
   EvolveTurn: "evolveTurn",
   FillPiToolArguments: "fillPiToolArguments",
 } as const;
-
-const PlannerInputXmlParser = new XMLParser({
-  ignoreAttributes: true,
-  parseTagValue: false,
-  trimValues: true,
-});
 
 const RealRuntimePreparationFingerprint = "real-runtime-e2e-v1";
 const IntegrationResourcesRoot = resolveWorkspaceRoot(import.meta.url);
@@ -391,50 +385,14 @@ function readPlannerInput(payload: unknown): Record<string, unknown> {
   const finalMessage = readAgentUnknownRecord(messages.at(-1));
   const content = finalMessage?.content;
   if (typeof content !== "string") throw new Error("Deterministic controller request has no final text message.");
-  const document = readAgentUnknownRecord(PlannerInputXmlParser.parse(content) as unknown);
-  const root = readAgentUnknownRecord(document?.planner_input);
-  if (!root) throw new Error("Deterministic controller request has no planner_input XML document.");
-
-  const plannerInput = readJsonObjectSection(root.extra_context, "extra_context") ?? {};
-  assignJsonSection(plannerInput, "directive", root.directive);
-  assignJsonSection(plannerInput, "seneraRuntime", root.runtime_context);
-  assignJsonSection(plannerInput, "planningContext", root.planning_context);
-  if (root.routing_cards !== undefined) {
-    plannerInput.routingCards = readRoutingCardSections(root.routing_cards);
-  }
+  const decoded = decodeAgentPromptInputWire(content, {
+    expectedKind: "planner_input",
+    expectedVersion: "1",
+  });
+  const plannerInput = readAgentUnknownRecord(decoded.context);
+  if (!plannerInput) throw new Error("Deterministic controller request has no planner input context.");
+  plannerInput.directive = decoded.directive;
   return plannerInput;
-}
-
-function assignJsonSection(target: Record<string, unknown>, key: string, value: unknown): void {
-  if (value !== undefined && value !== "") {
-    target[key] = readJsonSection(value, key);
-  }
-}
-
-function readRoutingCardSections(value: unknown): unknown[] {
-  const routingCards = readAgentUnknownRecord(value);
-  const rawCards = routingCards?.routing_card;
-  const cards = Array.isArray(rawCards) ? rawCards : rawCards === undefined ? [] : [rawCards];
-  return cards.map((card, index) => readJsonSection(card, `routing_card[${index}]`));
-}
-
-function readJsonObjectSection(value: unknown, sectionName: string): Record<string, unknown> | undefined {
-  if (value === undefined || value === "") return undefined;
-  const parsed = readJsonSection(value, sectionName);
-  const record = readAgentUnknownRecord(parsed);
-  if (!record) throw new Error(`Planner ${sectionName} section is not a JSON object.`);
-  return record;
-}
-
-function readJsonSection(value: unknown, sectionName: string): unknown {
-  if (typeof value !== "string") {
-    throw new Error(`Planner ${sectionName} section is not JSON text.`);
-  }
-  try {
-    return JSON.parse(value) as unknown;
-  } catch (error) {
-    throw new Error(`Planner ${sectionName} section is not valid JSON.`, { cause: error });
-  }
 }
 
 function evolveTurnOutput(plannerInput: Record<string, unknown>): unknown {

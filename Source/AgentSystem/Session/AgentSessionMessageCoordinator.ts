@@ -16,7 +16,11 @@ import type { AgentSessionStore } from "./AgentSessionStore.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
 import type { AgentSystemPromptLayer } from "../Orchestration/AgentRunDispatchPort.js";
-import type { AgentConversationEntryMetadata, AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
+import type {
+  AgentConversationEntryMetadata,
+  AgentModelSelectionSource,
+  AgentSessionOwnership,
+} from "../ModelEndpoints/AgentModelMetadata.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSession } from "./AgentSession.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
@@ -25,6 +29,7 @@ export interface AgentSessionMessageRequest {
   readonly sessionId: string;
   readonly requestId?: string;
   readonly modelProviderId?: string;
+  readonly modelSelectionSource?: AgentModelSelectionSource;
   readonly input: string;
   readonly approvalMode: AgentExecutionApprovalMode;
   readonly attachments?: AgentUploadAttachment[];
@@ -121,7 +126,7 @@ export class AgentSessionMessageCoordinator {
         await matchByKind(gate, {
           available: ({ current }) => {
             kind = "accepted";
-            completion = this.options.runs.runTurn(current, request);
+            completion = this.options.runs.runTurn(current, this.applySessionModelPreference(current, request));
           },
           busy: async ({ current }) => {
             kind = "busy";
@@ -144,7 +149,10 @@ export class AgentSessionMessageCoordinator {
               const refreshed = this.options.runs.assertAvailable(current);
               if (refreshed.kind === "available") {
                 kind = "accepted";
-                completion = this.options.runs.runTurn(refreshed.current, request);
+                completion = this.options.runs.runTurn(
+                  refreshed.current,
+                  this.applySessionModelPreference(refreshed.current, request),
+                );
                 return;
               }
             }
@@ -168,5 +176,22 @@ export class AgentSessionMessageCoordinator {
       channel: structuredClone(channel),
     };
     this.options.store.persistMetadata(session);
+  }
+
+  private applySessionModelPreference(
+    session: AgentSession,
+    request: AgentSessionMessageRequest,
+  ): AgentSessionMessageRequest {
+    const requested = request.modelProviderId?.trim();
+    if (requested) {
+      return {
+        ...request,
+        modelSelectionSource: request.modelSelectionSource ?? (request.metadata?.channel ? "channel" : "request"),
+      };
+    }
+    const preferred = session.metadata?.sessionModel?.modelProviderId;
+    return preferred
+      ? { ...request, modelProviderId: preferred, modelSelectionSource: "session_preference" }
+      : { ...request, modelSelectionSource: "default" };
   }
 }

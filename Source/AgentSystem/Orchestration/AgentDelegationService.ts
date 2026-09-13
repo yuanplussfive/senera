@@ -61,6 +61,12 @@ import {
   type AgentSupervisorContactRequest,
   type AgentSupervisorContactResult,
 } from "./AgentDelegationRuntimeContracts.js";
+import type { AgentToolResourceClaimProjectorPort } from "../ToolRuntime/AgentToolResourceClaimProjector.js";
+import type {
+  AgentToolResourceClaimDeclaration,
+  AgentToolResourceLeaseRequest,
+} from "../ToolRuntime/AgentToolResourceClaimTypes.js";
+import type { AgentToolResourceLeaseHandle } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import {
   parseAgentChildRunTimestamp,
   projectAgentChildRunDeadlinePolicy,
@@ -73,6 +79,12 @@ import { AgentChildRunWaitCoordinator } from "./AgentChildRunWaitCoordinator.js"
 import { latestParentMessage, readChildRunId } from "./AgentDelegationEventSupport.js";
 import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import { AgentTodoStatuses, AgentTodoWriteSources } from "../Todos/AgentTodoTypes.js";
+import { deriveAgentTaskDigest, isLegacyAgentTaskDigest, resolveAgentWorkItemId } from "./AgentWorkItemIdentity.js";
+import {
+  EmptyAgentDelegationPromptContext,
+  projectAgentDelegationPromptContext,
+  type AgentDelegationPromptContext,
+} from "./AgentDelegationPromptContext.js";
 
 export { AgentDelegationExecutionModes, AgentDelegationCompletionGateway } from "./AgentDelegationRuntimeContracts.js";
 export type {
@@ -97,6 +109,12 @@ interface ActiveChildRun {
 interface InitializedChildRun {
   readonly record: AgentChildRunRecord;
   readonly completion: Promise<AgentChildRunRecord>;
+  readonly reused: boolean;
+}
+
+export interface AgentDelegationSpawnResult {
+  readonly run: AgentChildRunRecord;
+  readonly disposition: "created" | "reused";
 }
 
 function createSpawnJoinGroup(context: AgentDelegationContext): AgentChildRunJoinGroup | undefined {
@@ -121,6 +139,7 @@ export class AgentDelegationService {
   private todoService?: AgentTodoService;
   private acceptingWork = true;
   private shutdownPromise?: Promise<void>;
+  private resourceClaims?: AgentToolResourceClaimProjectorPort;
 
   constructor(private readonly options: AgentDelegationServiceOptions) {
     this.todoService = options.todoService;
@@ -149,7 +168,25 @@ export class AgentDelegationService {
     };
   }
 
+  /** Binds the runtime-owned capability projector after the runtime is composed. */
+  bindResourceClaims(projector: AgentToolResourceClaimProjectorPort): () => void {
+    const previous = this.resourceClaims;
+    this.resourceClaims = projector;
+    return () => {
+      // A runtime can be rebound while a previous runtime is still winding
+      // down. Only the binding that owns the current slot may clear it.
+      if (this.resourceClaims === projector) this.resourceClaims = previous;
+    };
+  }
+
   async spawn(request: AgentSpawnRequest, context: AgentDelegationContext): Promise<AgentChildRunRecord> {
+    return (await this.spawnWithOutcome(request, context)).run;
+  }
+
+  async spawnWithOutcome(
+    request: AgentSpawnRequest,
+    context: AgentDelegationContext,
+  ): Promise<AgentDelegationSpawnResult> {
     const role = request.agent
       ? this.roleCatalog.resolve(this.options.workspaceRoot, request.agent)
       : this.roleCatalog.resolveDefault(this.options.workspaceRoot);
@@ -160,10 +197,12 @@ export class AgentDelegationService {
           ? AgentRunContextModes.Fork
           : AgentRunContextModes.Fresh;
     const joinGroup = createSpawnJoinGroup(context);
-    return this.delegate(
+    const initialized = await this.initializeTracked(
       {
         agent: role.id,
         task: request.task,
+        ...(request.workItemId ? { workItemId: request.workItemId } : {}),
+        ...(request.resources ? { resources: request.resources } : {}),
         ...(joinGroup ? { joinGroup } : {}),
         workspaceAccess: role.workspaceAccess,
         context: contextMode,
@@ -171,20 +210,37 @@ export class AgentDelegationService {
       },
       context,
     );
+    return {
+      run: initialized.record,
+      disposition: initialized.reused ? "reused" : "created",
+    };
   }
 
   async delegate(request: AgentDelegationRequest, context: AgentDelegationContext): Promise<AgentChildRunRecord> {
     throwIfAborted(context.signal);
     this.assertAcceptingWork();
+    const initialized = await this.initializeTracked(request, context);
+    return request.executionMode === AgentDelegationExecutionModes.Detach ? initialized.record : initialized.completion;
+  }
+
+  promptContext(parentSessionId?: string): AgentDelegationPromptContext {
+    if (!parentSessionId) return EmptyAgentDelegationPromptContext;
+    return projectAgentDelegationPromptContext(this.list(parentSessionId));
+  }
+
+  private async initializeTracked(
+    request: AgentDelegationRequest,
+    context: AgentDelegationContext,
+  ): Promise<InitializedChildRun> {
+    throwIfAborted(context.signal);
+    this.assertAcceptingWork();
     const initialization = this.initialize(request, context);
     this.starting.add(initialization);
-    let initialized: InitializedChildRun;
     try {
-      initialized = await initialization;
+      return await initialization;
     } finally {
       this.starting.delete(initialization);
     }
-    return request.executionMode === AgentDelegationExecutionModes.Detach ? initialized.record : initialized.completion;
   }
 
   roleCatalogSnapshot(): AgentSubagentRoleCatalogSnapshot {
@@ -208,8 +264,54 @@ export class AgentDelegationService {
     }
     this.assertWorkspaceAccessWithinParent(request.workspaceAccess, context.parentSessionId);
     const parentRun = this.options.repository.getByChildSession(context.parentSessionId);
-    const ownerRunId = request.ownerRunId ?? parentRun?.ownerRunId ?? context.parentRequestId;
-    const nodeId = request.nodeId ?? id;
+    // Interactive parents have a stable session identity; a request id is an
+    // execution instance and must not become the durable workflow owner.
+    const ownerRunId = request.ownerRunId ?? parentRun?.ownerRunId ?? context.parentSessionId;
+    const taskDigest = deriveAgentTaskDigest({
+      task: request.task,
+      agent: request.agent,
+      ...(request.context ? { context: request.context } : {}),
+      workspaceAccess: request.workspaceAccess,
+      skills: request.skills,
+      thinking: request.thinking,
+      ownerRunId,
+      nodeId: request.nodeId,
+      workItemId: request.workItemId,
+      resources: request.resources,
+    });
+    const workItemId = resolveAgentWorkItemId(
+      {
+        task: request.task,
+        agent: request.agent,
+        ...(request.context ? { context: request.context } : {}),
+        workspaceAccess: request.workspaceAccess,
+        skills: request.skills,
+        thinking: request.thinking,
+        ownerRunId,
+        nodeId: request.nodeId,
+        workItemId: request.workItemId,
+        resources: request.resources,
+      },
+      taskDigest,
+    );
+    const nodeId = request.nodeId ?? workItemId;
+    const existingWorkItem = this.options.repository.getByWorkItem(context.parentSessionId, workItemId);
+    if (existingWorkItem) {
+      if (
+        existingWorkItem.taskDigest &&
+        !isLegacyAgentTaskDigest(existingWorkItem.taskDigest) &&
+        existingWorkItem.taskDigest !== taskDigest
+      ) {
+        throw new Error(
+          `Work item '${workItemId}' already belongs to a different task contract. Use a new workItemId for independent work.`,
+        );
+      }
+      return {
+        record: existingWorkItem,
+        completion: this.completionForExisting(existingWorkItem, context, request.executionMode),
+        reused: true,
+      };
+    }
     const existing = this.options.repository.getByOwnerNode(ownerRunId, nodeId);
     if (existing) {
       if (existing.parentSessionId !== context.parentSessionId) {
@@ -217,9 +319,8 @@ export class AgentDelegationService {
       }
       return {
         record: existing,
-        completion: this.wait(existing.id, context.parentSessionId, context.signal).then(
-          (resolved) => resolved ?? existing,
-        ),
+        completion: this.completionForExisting(existing, context, request.executionMode),
+        reused: true,
       };
     }
     const parentCapabilityCeiling = parentRun ? readPersistedSubagentCapabilityCeiling(parentRun) : undefined;
@@ -254,12 +355,15 @@ export class AgentDelegationService {
     }
     throwIfAborted(context.signal);
     this.assertAcceptingWork();
+    const resourceRequest = await this.projectDeclaredResources(request.resources);
     let record: AgentChildRunRecord;
     try {
       record = this.options.repository.create({
         id,
         ownerRunId,
         nodeId,
+        workItemId,
+        taskDigest,
         ...(request.joinGroup ? { joinGroup: request.joinGroup } : {}),
         parentSessionId: context.parentSessionId,
         parentRequestId: context.parentRequestId,
@@ -287,35 +391,81 @@ export class AgentDelegationService {
           ...(plan.model.thinkingLevel ? { thinkingLevel: plan.model.thinkingLevel } : {}),
           inheritProjectContext: plan.inheritProjectContext,
           ...(plan.capabilityCeiling ? { capabilityCeiling: plan.capabilityCeiling } : {}),
+          ...(request.resources && request.resources.length > 0 ? { resources: request.resources } : {}),
+          resourceCoverage: request.resources && request.resources.length > 0 ? "declared" : "unscoped",
+          ...(resourceRequest && resourceRequest.claims.length > 0
+            ? { resourceClaims: this.projectResourceClaimSummaries(resourceRequest) }
+            : {}),
           deadline,
           control,
         },
       });
     } catch (error) {
-      const concurrent = this.options.repository.getByOwnerNode(ownerRunId, nodeId);
+      const concurrent =
+        this.options.repository.getByWorkItem(context.parentSessionId, workItemId) ??
+        this.options.repository.getByOwnerNode(ownerRunId, nodeId);
       if (!concurrent) throw error;
       if (concurrent.parentSessionId !== context.parentSessionId) {
         throw new Error(`Child node '${nodeId}' is already owned by another parent run.`, { cause: error });
+      }
+      if (
+        concurrent.taskDigest &&
+        !isLegacyAgentTaskDigest(concurrent.taskDigest) &&
+        concurrent.taskDigest !== taskDigest
+      ) {
+        throw new Error(
+          `Child node '${nodeId}' already belongs to a different task contract. Use a new workItemId for independent work.`,
+          { cause: error },
+        );
       }
       return {
         record: concurrent,
         completion: this.wait(concurrent.id, context.parentSessionId, context.signal).then(
           (resolved) => resolved ?? concurrent,
         ),
+        reused: true,
       };
     }
+    const completion = this.startExecution(
+      record,
+      plan,
+      context,
+      record.task,
+      record.contextMode,
+      "initial",
+      request.executionMode === AgentDelegationExecutionModes.Detach,
+      resourceRequest,
+    );
     return {
       record,
-      completion: this.startExecution(
-        record,
-        plan,
-        context,
-        record.task,
-        record.contextMode,
-        "initial",
-        request.executionMode === AgentDelegationExecutionModes.Detach,
-      ),
+      completion: this.completionForMode(record, completion, request.executionMode),
+      reused: false,
     };
+  }
+
+  /**
+   * Detached work is driven by the durable child record and completion port;
+   * callers must not create a signal-bound waiter that can reject after the
+   * tool has already returned. The execution promise is still observed so a
+   * delivery/event failure cannot become an unhandled rejection.
+   */
+  private completionForMode(
+    record: AgentChildRunRecord,
+    completion: Promise<AgentChildRunRecord>,
+    executionMode: AgentDelegationRequest["executionMode"],
+  ): Promise<AgentChildRunRecord> {
+    if (executionMode !== AgentDelegationExecutionModes.Detach) return completion;
+    void completion.catch(() => undefined);
+    return Promise.resolve(record);
+  }
+
+  private completionForExisting(
+    record: AgentChildRunRecord,
+    context: AgentDelegationContext,
+    executionMode: AgentDelegationRequest["executionMode"],
+  ): Promise<AgentChildRunRecord> {
+    if (executionMode === AgentDelegationExecutionModes.Detach) return Promise.resolve(record);
+    return this.wait(record.id, context.parentSessionId, context.signal).then((resolved) => resolved ?? record);
   }
 
   list(parentSessionId: string, parentRequestId?: string): AgentChildRunRecord[] {
@@ -329,6 +479,11 @@ export class AgentDelegationService {
   get(id: string, parentSessionId: string): AgentChildRunRecord | undefined {
     const record = this.options.repository.get(id);
     return record?.parentSessionId === parentSessionId ? record : undefined;
+  }
+
+  markResultConsumed(id: string, parentSessionId: string, consumedAt?: string): AgentChildRunRecord | undefined {
+    const record = this.get(id, parentSessionId);
+    return record ? this.options.repository.markResultConsumed(id, consumedAt) : undefined;
   }
 
   checkpoint(id: string, parentSessionId: string): AgentChildRunRecord["checkpoint"] | undefined {
@@ -411,12 +566,12 @@ export class AgentDelegationService {
       resumed,
       restoreAgentSubagentLaunchPlan(resumed),
       context,
-      renderSupervisorResponsePrompt(message),
+      renderSupervisorResponsePrompt(message, resumed.checkpoint),
       AgentRunContextModes.Fresh,
       "resume",
       executionMode === AgentDelegationExecutionModes.Detach,
     );
-    return executionMode === AgentDelegationExecutionModes.Detach ? resumed : completion;
+    return this.completionForMode(resumed, completion, executionMode);
   }
 
   wait(id: string, parentSessionId: string, signal?: AbortSignal): Promise<AgentChildRunRecord | undefined> {
@@ -589,6 +744,7 @@ export class AgentDelegationService {
     contextMode: AgentRunContextMode,
     lifecycle: "initial" | "resume",
     notifyCompletion: boolean,
+    resourceRequest?: AgentToolResourceLeaseRequest,
   ): Promise<AgentChildRunRecord> {
     throwIfAborted(context.signal);
     if (this.active.has(record.id)) throw new Error(`Child run ${record.id} is already active.`);
@@ -619,6 +775,7 @@ export class AgentDelegationService {
       contextMode,
       lifecycle,
       notifyCompletion,
+      resourceRequest,
     ).finally(() => {
       active.deadline?.stop();
       context.signal?.removeEventListener("abort", onParentAbort);
@@ -637,14 +794,30 @@ export class AgentDelegationService {
     contextMode = record.contextMode,
     lifecycle: "initial" | "resume" = "initial",
     notifyCompletion = false,
+    resourceRequest?: AgentToolResourceLeaseRequest,
   ): Promise<AgentChildRunRecord> {
     let permit: AgentRunPermit | undefined;
+    let resourceLease: AgentToolResourceLeaseHandle | undefined;
     let deadlineMonitor: Promise<unknown> | undefined;
     let activity: AgentChildRunActivityTracker | undefined;
     try {
       if (lifecycle === "initial") {
         await this.emit(context.onEvent, createAgentChildRunLifecycleEvent(AgentEventKinds.ChildRunQueued, record));
       }
+      const declaredResources =
+        resourceRequest ?? (await this.projectDeclaredResources(record.executionContract.resources));
+      if (declaredResources && declaredResources.claims.length > 0) {
+        const coordinator = this.options.resourceCoordinator;
+        if (!coordinator) throw new Error("Delegated resource claims require a shared resource coordinator.");
+        resourceLease = await coordinator.acquire(declaredResources, active.controller.signal, {
+          // Tool calls made by this child session use the same owner identity,
+          // allowing a declared assignment lease to be re-entered safely.
+          type: "session",
+          id: record.childSessionId,
+        });
+      }
+      // Resource acquisition precedes the run permit, matching the Pi tool
+      // scheduler and preventing a resource waiter from occupying capacity.
       permit = await this.gate.acquire(
         plan.workspaceAccess === AgentChildWorkspaceAccessModes.ReadWrite
           ? AgentRunPermitKinds.WorkspaceWrite
@@ -681,6 +854,12 @@ export class AgentDelegationService {
         policy: running.executionContract.deadline,
         ...(control ? { control } : {}),
         ...(running.snapshot ? { initialSnapshot: running.snapshot } : {}),
+        ...(running.checkpoint ? { initialCheckpoint: running.checkpoint } : {}),
+        continuity: {
+          referenceId: `senera://work-item/${running.workItemId ?? running.id}`,
+          ...(running.workItemId ? { workItemId: running.workItemId } : {}),
+          ...(running.taskDigest ? { taskDigest: running.taskDigest } : {}),
+        },
       });
       if (todoRequired) {
         const currentTodo = this.todoService!.read(running.childSessionId);
@@ -866,7 +1045,29 @@ export class AgentDelegationService {
       active.deadline?.stop();
       await deadlineMonitor;
       permit?.release();
+      resourceLease?.release();
     }
+  }
+
+  private async projectDeclaredResources(
+    declarations: readonly AgentToolResourceClaimDeclaration[] | undefined,
+  ): Promise<AgentToolResourceLeaseRequest | undefined> {
+    if (!declarations || declarations.length === 0) return undefined;
+    const projector = this.resourceClaims;
+    if (!projector?.projectDeclarations) {
+      throw new Error("Delegated resource declarations require a registered resource capability projector.");
+    }
+    return projector.projectDeclarations(declarations);
+  }
+
+  private projectResourceClaimSummaries(
+    request: AgentToolResourceLeaseRequest,
+  ): readonly { readonly domainId: string; readonly identity: string; readonly access: "shared" | "exclusive" }[] {
+    return request.claims.map((claim) => ({
+      domainId: claim.domain.id,
+      identity: claim.identity,
+      access: claim.access,
+    }));
   }
 
   private async persistActivitySnapshot(

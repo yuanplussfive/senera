@@ -36,6 +36,20 @@ describe("Tool observation context compiler", () => {
     );
   });
 
+  test("allocates the standard result source from the live observation budget", () => {
+    const source = String.fromCodePoint(0x6587, 0x672c).repeat(100_000);
+    const observation = compile({ result: { text: source } });
+    const resultSource = StandardAgentToolObservationProjection.sources.find((entry) => entry.source === "result");
+    if (!resultSource?.budgetShare) throw new Error("Standard result source must declare a budget share.");
+
+    const serialized = JSON.stringify(observation);
+    expect(new AgentTokenProjector("gpt-4o").countJson(observation)).toBeLessThanOrEqual(
+      Math.floor(StandardAgentToolObservationProjection.maxTokens * resultSource.budgetShare) + 1_024,
+    );
+    expect(serialized).not.toContain(source);
+    expect(observation.observation_view.complete).toBe(false);
+  });
+
   test("retains the canonical failure envelope independently of optional detail", () => {
     const observation = compile({
       status: "failure",
@@ -45,7 +59,11 @@ describe("Tool observation context compiler", () => {
         source: "host",
         retryable: false,
         message: "Validation failed.",
-        diagnostics: Array.from({ length: 100 }, (_, index) => ({ index, text: "detail".repeat(100) })),
+        diagnostics: Array.from({ length: 100 }, (_, index) => ({
+          index,
+          message: `detail-${index}`,
+          text: "detail".repeat(100),
+        })),
       },
       result: { error: "Validation failed." },
     });
@@ -58,9 +76,11 @@ describe("Tool observation context compiler", () => {
         source: "host",
         retryable: false,
         message: "Validation failed.",
+        diagnostics: expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining("detail") })]),
       },
     });
-    expect(JSON.stringify(observation.error)).not.toContain("diagnostics");
+    expect(observation.error?.diagnostics).toHaveLength(8);
+    expect(JSON.stringify(observation.error)).not.toContain('"index"');
   });
 
   test("uses an explicit runtime summary without requiring artifact metadata", () => {

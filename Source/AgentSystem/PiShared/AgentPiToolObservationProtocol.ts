@@ -22,6 +22,20 @@ const AgentPiToolObservationErrorSchema = z
     source: z.string().optional(),
     retryable: z.boolean().optional(),
     message: z.string().optional(),
+    diagnostics: z
+      .array(
+        z
+          .object({
+            code: z.string().optional(),
+            path: z.string().optional(),
+            pointer: z.string().optional(),
+            message: z.string().optional(),
+            suggestion: z.string().optional(),
+          })
+          .strict(),
+      )
+      .max(8)
+      .optional(),
   })
   .strict();
 

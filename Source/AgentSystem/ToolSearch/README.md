@@ -25,6 +25,14 @@ Each turn begins with only registry-declared `Bootstrap` tools exposed. Dynamic 
 
 `ToolSearch` returns every eligible Dynamic tool in deterministic score order. Matched entries include source and capability evidence; unmatched entries remain compact with name, title, summary, and zero confidence so the model can still discover them without receiving every contract. `ToolSearch` does not publish contracts or load candidates. `ToolDescribe` never executes or loads a tool. Its TypeScript-like view is the model-facing explanation, while the underlying JSON Schema remains authoritative for host validation. `ToolCall` accepts only Dynamic tools already present in the immutable authorization grant and rejects stale contract revisions. `ToolLoad` requires a current catalog revision when supplied, and can never expand the immutable authorization grant. `ToolUnload` preserves every Bootstrap tool. Skill recommendations remain contextual hints; they neither alter ranking invisibly nor bypass the active planning protocol.
 
+## Confirmed capability reuse
+
+The host keeps a bounded capability-evidence record per durable session and `logicalCacheScope`. The record is populated only after a successful Dynamic-tool invocation and is revalidated against the current catalog identity and contract digest before use. A visible tool is therefore still returned by `ToolSearch` with explicit `exposure` state; visibility is not treated as contract confirmation.
+
+Only declarations that are read-only, effect-free/read-state, and approval-safe are eligible for automatic argument reuse. Tools that write state, touch the network, change workspace state, send messages, or require approval may retain confirmed evidence for diagnostics, but their old arguments are never silently replayed. When automatic reuse is valid, the same immutable capability list is passed through preparation, volatile prompt context, ToolSearch, preflight, resource claims, and execution. Explicit arguments supplied by the model always override remembered values.
+
+Index or extension refreshes do not clear this evidence. A changed catalog or contract naturally invalidates it on the next lookup, which preserves stable prompt/provider cache prefixes while avoiding unrelated cache cold starts. A reused ToolSearch result is not recorded as a new search-learning episode.
+
 ## Cache identity and invalidation
 
 Capability indexes and embeddings are content-addressed, not revision-label-addressed. The catalog identity is a canonical hash of each document's stable ID, kind, declared revision, and complete `semanticText`. The embedding identity is a canonical hash of `(embedding model, document ID, SHA-256(semanticText))`. Changing only a description, example, capability, parameter summary, owner text, or embedding model therefore invalidates the affected vector even when a producer forgot to bump its revision string.

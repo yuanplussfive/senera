@@ -38,6 +38,7 @@ import type { AgentPiModelApi } from "./AgentPiTypes.js";
 import type { AgentPiCompactionPromptInput } from "../PiShared/AgentPiCompactionPrompt.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import { createAgentPiPromptCacheOptions, projectAgentPiPromptCacheModel } from "./AgentPiPromptCache.js";
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 
 const EmptyObjectParameterSchema = {
   type: "object",
@@ -59,7 +60,15 @@ export interface AgentPiPlanningCompileRequest {
   runtime?: Partial<
     Pick<
       AgentPiTurnStateOptions,
-      "sessionId" | "requestId" | "step" | "rootCommand" | "activeSkills" | "toolExposure" | "toolPlan" | "tokenBudget"
+      | "sessionId"
+      | "logicalCacheScope"
+      | "requestId"
+      | "step"
+      | "rootCommand"
+      | "activeSkills"
+      | "toolExposure"
+      | "toolPlan"
+      | "tokenBudget"
     >
   >;
 }
@@ -72,6 +81,7 @@ export interface AgentPiPlanningCompilerPort {
 export interface AgentPiPlanningSummaryOptions {
   readonly signal?: AbortSignal;
   readonly sessionId?: string;
+  readonly logicalCacheScope?: string;
 }
 
 export interface AgentPiPlanningCompilerFactory {
@@ -168,6 +178,7 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
       ? createAgentPiPromptCacheOptions({
           phase: "baml-planning",
           sessionId: input.runtime.sessionId,
+          logicalCacheScope: input.runtime.logicalCacheScope,
           model: { provider: input.model.provider, api: input.model.api, model: input.model.id },
           stablePrefix: {
             systemPrompt: input.context.systemPrompt,
@@ -200,6 +211,7 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
       ? createAgentPiPromptCacheOptions({
           phase: "baml-compaction",
           sessionId: options.sessionId,
+          logicalCacheScope: options.logicalCacheScope,
           model: projectAgentPiPromptCacheModel(this.options.modelProvider),
         })
       : undefined;
@@ -659,7 +671,7 @@ function isPlannerValidationError(error: unknown): error is AgentStructuredOutpu
 
 function stringifyForRepair(value: unknown): string {
   try {
-    return JSON.stringify(value);
+    return stringifyAgentCanonicalJson(value);
   } catch {
     return String(value);
   }

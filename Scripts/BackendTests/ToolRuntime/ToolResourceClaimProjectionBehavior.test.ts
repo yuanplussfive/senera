@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import type { SeneraExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
 import { AgentToolResourceCapabilityRegistry } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResourceCapabilityRegistry.js";
 import { AgentToolWorkspacePathResourceCapability } from "../../../Source/AgentSystem/ToolRuntime/AgentToolWorkspacePathResourceCapability.js";
+import { AgentToolWorkspaceRootResourceCapability } from "../../../Source/AgentSystem/ToolRuntime/AgentToolWorkspaceRootResourceCapability.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import type { ToolResourceArgumentManifest } from "../../../Source/AgentSystem/Types/AgentToolContractTypes.js";
 import { AgentToolResourceClaimProjector } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResourceClaimProjector.js";
@@ -47,6 +48,69 @@ describe("tool resource claim projection", () => {
     expect(resourceRequestsConflict(directoryReader, childWriter)).toBe(true);
   });
 
+  test("claims the whole workspace without a model-facing path argument", async () => {
+    const projector = workspaceClaimProjector();
+    const root = await projector.project(
+      resourceTool([
+        {
+          Capability: "senera.workspace.root",
+          Pointer: "",
+          Parameters: { Intent: "replace" },
+        },
+      ]),
+      {},
+    );
+    const child = await projector.project(resourceTool([workspaceResource("replace")]), {
+      path: "Source/index.ts",
+    });
+
+    expect(root.claims).toMatchObject([{ identity: path.resolve("E:/workspace"), access: "exclusive" }]);
+    expect(resourceRequestsConflict(root, child)).toBe(true);
+  });
+
+  test("projects delegated declarations through the registered capability", async () => {
+    const projection = await workspaceClaimProjector().projectDeclarations([
+      {
+        capability: "senera.workspace.path",
+        value: "Source/index.ts",
+        intent: "replace",
+      },
+    ]);
+
+    expect(projection).toMatchObject({
+      mode: "claims",
+      claims: [{ identity: path.resolve("E:/workspace", "Source/index.ts"), access: "exclusive" }],
+    });
+  });
+
+  test("projects collection path selectors without tool-specific scheduling rules", async () => {
+    const projection = await workspaceClaimProjector().project(
+      resourceTool([
+        {
+          Capability: "senera.workspace.path",
+          Pointer: "/operations",
+          Parameters: {
+            Intent: "replace",
+            PathPointers: ["/*/path", "/*/source", "/*/destination"],
+          },
+        },
+      ]),
+      {
+        operations: [
+          { kind: "update", path: "Source/a.ts" },
+          { kind: "move", source: "Source/b.ts", destination: "Source/c.ts" },
+        ],
+      },
+    );
+
+    expect(projection.claims.map((claim) => claim.identity)).toEqual([
+      path.resolve("E:/workspace", "Source/a.ts"),
+      path.resolve("E:/workspace", "Source/b.ts"),
+      path.resolve("E:/workspace", "Source/c.ts"),
+    ]);
+    expect(projection.claims.every((claim) => claim.access === "exclusive")).toBe(true);
+  });
+
   test("reports a missing declared resource instead of silently taking a global lease", async () => {
     await expect(workspaceClaimProjector().project(resourceTool([workspaceResource("read")]), {})).rejects.toThrow(
       "Tool resource argument is missing: /path",
@@ -79,9 +143,30 @@ function workspaceClaimProjector(): AgentToolResourceClaimProjector {
       value: path.resolve("E:/workspace", value),
     }),
   };
-  const capabilities = new AgentToolResourceCapabilityRegistry().register(
-    new AgentToolWorkspacePathResourceCapability(executionEnv),
-  );
+  const capabilities = new AgentToolResourceCapabilityRegistry()
+    .register(new AgentToolWorkspacePathResourceCapability(executionEnv))
+    .register(
+      new AgentToolWorkspaceRootResourceCapability({
+        workspaceRoot: "E:/workspace",
+        inspectResourcePath: async (value, intent) => ({
+          addressedPath: value,
+          canonicalPath: path.resolve("E:/workspace", value),
+          intent,
+          recursive: true,
+          facts: {
+            scope: "workspace",
+            intent,
+            authority: "tool",
+            domain: "workspace-content",
+            domainRoot: true,
+            relativePath: ".",
+            containment: "inside",
+            linkTraversal: "none",
+            finalEntry: "directory",
+          },
+        }),
+      }),
+    );
   return new AgentToolResourceClaimProjector(capabilities);
 }
 

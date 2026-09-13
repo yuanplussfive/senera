@@ -17,6 +17,18 @@ export interface AgentToolResourceClaim {
   readonly access: AgentToolResourceAccessMode;
 }
 
+/**
+ * Model-facing resource declaration. The declaration is deliberately kept at
+ * capability/value level; access mode and overlap semantics remain owned by
+ * the registered capability implementation.
+ */
+export interface AgentToolResourceClaimDeclaration {
+  readonly capability: string;
+  readonly value: unknown;
+  readonly intent?: string;
+  readonly parameters?: Readonly<Record<string, unknown>>;
+}
+
 export interface AgentToolResourceLeaseRequest {
   readonly mode: "claims";
   readonly claims: readonly AgentToolResourceClaim[];

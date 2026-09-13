@@ -15,7 +15,6 @@ import {
   type DesktopFrontendSource,
 } from "./DesktopFrontendSource.js";
 import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
-import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
 import { isTrustedDesktopNavigation } from "./DesktopNavigationPolicy.js";
 import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolicy.js";
 import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
@@ -35,7 +34,6 @@ let settingsWindow: BrowserWindow | undefined;
 let desktopTray: Tray | undefined;
 let forceSettingsWindowClose = false;
 let desktopQuitting = false;
-let desktopRestartRequested = false;
 const settingsClosePolicy = new DesktopClosePolicy();
 let runtimePaths: DesktopRuntimePaths | undefined;
 let frontendSource: DesktopFrontendSource | undefined;
@@ -54,6 +52,7 @@ const settingsSectionIds = new Set([
   "planning",
   "retrieval",
   "storage",
+  "workspace",
   "general",
   "appearance",
   "skills",
@@ -85,7 +84,7 @@ if (!ownsDesktopInstance) {
       runtimePaths = await prepareDesktopRuntime();
       appendDesktopLog(
         runtimePaths.logPath,
-        `starting desktop runtime dataRoot=${runtimePaths.dataRoot} workspace=${runtimePaths.workspaceRoot} resources=${runtimePaths.resourceRoot} configDatabase=${runtimePaths.configDatabasePath}`,
+        `starting desktop runtime dataRoot=${runtimePaths.dataRoot} workspace=${runtimePaths.workspaceRoot} resources=${runtimePaths.resourceRoot} config=${runtimePaths.configPath}`,
       );
       const paths = runtimePaths;
       desktopTray = createDesktopTray(paths.windowIconPath, () => {
@@ -97,7 +96,6 @@ if (!ownsDesktopInstance) {
       });
       registerDesktopIpc();
       const product = readAgentProductMetadata(paths.appRoot);
-      const seedConfig = loadConfigFile(paths.configSeedPath);
       desktopUpdateService = new DesktopUpdateService({
         isPackaged: app.isPackaged,
         currentVersion: app.getVersion(),
@@ -106,10 +104,11 @@ if (!ownsDesktopInstance) {
         onStateChanged: publishDesktopUpdateState,
       });
       const configSource = {
-        kind: "sqlite" as const,
-        databasePath: paths.configDatabasePath,
-        seedConfig,
-        label: paths.configDatabasePath,
+        kind: "json" as const,
+        // Relative on purpose: resolveServerConfigSource re-resolves it against
+        // the active workspace root, so a hot workspace switch moves the config
+        // along with the workspace instead of pinning the original one.
+        configPath: "senera.config.json",
       };
       serverHandle = await startSeneraServer({
         workspaceRoot: paths.workspaceRoot,
@@ -159,7 +158,6 @@ app.on("before-quit", (event) => {
   if (!handle) return;
   event.preventDefault();
   void handle.stop().finally(() => {
-    if (desktopRestartRequested) app.relaunch();
     app.quit();
   });
 });
@@ -224,6 +222,14 @@ function registerDesktopIpc(): void {
     const external = resolveAgentExternalUrl(input, DesktopExternalUrlPolicy);
     await shell.openExternal(external.url, { activate: true });
   });
+  ipcMain.handle("senera:workspace.choose-folder", async (event) => {
+    if (!resolveManagedWindow(event)) return null;
+    try {
+      return (await chooseDesktopWorkspace()) ?? null;
+    } catch {
+      return null;
+    }
+  });
   ipcMain.handle("senera:update.get-state", () => desktopUpdateService?.getSnapshot());
   ipcMain.handle("senera:update.check", () => desktopUpdateService?.checkForUpdates());
   ipcMain.handle("senera:update.download", () => desktopUpdateService?.downloadUpdate());
@@ -270,18 +276,30 @@ function createDesktopTray(iconPath: string, onSelectWorkspace: () => void): Tra
 }
 
 async function selectDesktopWorkspaceAndRestart(): Promise<void> {
-  if (!runtimePaths) return;
+  if (!runtimePaths || !serverHandle) return;
   try {
     const selected = await chooseDesktopWorkspace();
     if (!selected || path.resolve(selected) === path.resolve(runtimePaths.workspaceRoot)) return;
+    const next = await serverHandle.switchWorkspace(selected);
+    serverHandle = next;
     persistDesktopWorkspace(runtimePaths, selected);
-    desktopRestartRequested = true;
-    app.quit();
+    runtimePaths = {
+      ...runtimePaths,
+      workspaceRoot: path.resolve(selected),
+      configPath: path.join(path.resolve(selected), "senera.config.json"),
+    };
+    appendDesktopLog(runtimePaths.logPath, `workspace switched to ${runtimePaths.workspaceRoot}`);
+    reloadDesktopFrontend();
   } catch (error) {
     const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-    appendDesktopLog(runtimePaths.logPath, `workspace selection failed\n${message}`);
+    appendDesktopLog(runtimePaths.logPath, `workspace switch failed\n${message}`);
     dialog.showErrorBox(desktopMessage("workspace.selectionFailedTitle", {}, app.getLocale()), message);
   }
+}
+
+function reloadDesktopFrontend(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  startDesktopFrontendLoad(mainWindow);
 }
 
 function hideAllDesktopWindows(): void {

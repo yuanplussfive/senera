@@ -8,7 +8,7 @@ describe("configuration command contracts", () => {
   it("loads the generated versioned runtime contract", () => {
     expect(loadAgentConfigCommandRuntimeContract(runtimeContract)).toMatchObject({
       id: "agent-config-commands",
-      version: 1,
+      version: 2,
       definition: {
         operations: {
           "provider.endpoint.upsert": {

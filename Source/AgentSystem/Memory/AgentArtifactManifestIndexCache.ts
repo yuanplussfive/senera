@@ -1,17 +1,28 @@
 import path from "node:path";
-import { indexArtifactManifests } from "./AgentArtifactManifestIndex.js";
+import {
+  collectArtifactManifestFingerprints,
+  indexArtifactManifestSnapshot,
+  type ArtifactManifestFileFingerprint,
+} from "./AgentArtifactManifestIndex.js";
 import type { ArtifactManifestRecord } from "./AgentArtifactMemoryTypes.js";
 
 interface ArtifactManifestIndexCacheEntry {
   index?: ReadonlyMap<string, ArtifactManifestRecord>;
+  fingerprints?: ReadonlyMap<string, ArtifactManifestFileFingerprint>;
   refresh?: Promise<ReadonlyMap<string, ArtifactManifestRecord>>;
   lastUsed: number;
 }
 
 export class AgentArtifactManifestIndexCache {
   private readonly entries = new Map<string, ArtifactManifestIndexCacheEntry>();
+  private readonly maxRoots: number;
 
-  constructor(private readonly maxRoots = 8) {}
+  constructor(maxRoots = 8) {
+    if (!Number.isSafeInteger(maxRoots) || maxRoots < 1) {
+      throw new RangeError(`Artifact manifest cache maxRoots must be a positive safe integer: ${maxRoots}`);
+    }
+    this.maxRoots = maxRoots;
+  }
 
   async load(input: {
     artifactRoot: string;
@@ -19,7 +30,7 @@ export class AgentArtifactManifestIndexCache {
     requiredArtifactIds: readonly string[];
     refresh?: boolean;
   }): Promise<ReadonlyMap<string, ArtifactManifestRecord>> {
-    const key = path.resolve(input.artifactRoot);
+    const key = cacheKey(input.artifactRoot, input.workspaceRoot);
     const entry = this.entries.get(key) ?? { lastUsed: Date.now() };
     entry.lastUsed = Date.now();
     this.entries.set(key, entry);
@@ -29,15 +40,17 @@ export class AgentArtifactManifestIndexCache {
       entry.index &&
       input.requiredArtifactIds.every((artifactId) => entry.index?.has(artifactId))
     ) {
-      return entry.index;
+      const currentFingerprints = await indexArtifactManifestFiles(input.artifactRoot, input.workspaceRoot);
+      if (sameFingerprints(entry.fingerprints, currentFingerprints)) return entry.index;
     }
 
-    entry.refresh ??= indexArtifactManifests(input.artifactRoot, input.workspaceRoot).then((index) => {
-      entry.index = index;
+    entry.refresh ??= indexArtifactManifestSnapshot(input.artifactRoot, input.workspaceRoot).then((snapshot) => {
+      entry.index = snapshot.index;
+      entry.fingerprints = snapshot.fingerprints;
       entry.refresh = undefined;
       entry.lastUsed = Date.now();
       this.evictInactiveRoots(key);
-      return index;
+      return snapshot.index;
     });
 
     try {
@@ -67,4 +80,35 @@ export class AgentArtifactManifestIndexCache {
       this.entries.delete(candidate[0]);
     }
   }
+}
+
+function cacheKey(artifactRoot: string, workspaceRoot: string): string {
+  return `${path.resolve(artifactRoot)}\u0000${path.resolve(workspaceRoot)}`;
+}
+
+async function indexArtifactManifestFiles(
+  artifactRoot: string,
+  workspaceRoot: string,
+): Promise<ReadonlyMap<string, ArtifactManifestFileFingerprint>> {
+  return collectArtifactManifestFingerprints(artifactRoot, workspaceRoot);
+}
+
+function sameFingerprints(
+  left: ReadonlyMap<string, ArtifactManifestFileFingerprint> | undefined,
+  right: ReadonlyMap<string, ArtifactManifestFileFingerprint>,
+): boolean {
+  if (!left || left.size !== right.size) return false;
+  for (const [filePath, current] of right) {
+    const previous = left.get(filePath);
+    if (
+      !previous ||
+      previous.size !== current.size ||
+      previous.mtimeMs !== current.mtimeMs ||
+      previous.ctimeMs !== current.ctimeMs ||
+      previous.ino !== current.ino
+    ) {
+      return false;
+    }
+  }
+  return true;
 }

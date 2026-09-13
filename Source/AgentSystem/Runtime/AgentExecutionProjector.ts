@@ -33,6 +33,7 @@ export interface AgentCompletedRunResult {
   loadedToolNames?: string[];
   /** One-shot continuity rules projected into this run and awaiting durable-turn acknowledgement. */
   continuityRuleDeliveryUris?: string[];
+  physicalPiSessionId?: string;
 }
 
 export class AgentExecutionProjector {

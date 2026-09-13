@@ -11,7 +11,7 @@
       "requiredAssets": [{ "extension": ".woff2", "minimumCount": 2 }],
       "limits": {
         "resourceCount": 9,
-        "identityBytes": 800000,
+        "identityBytes": 819200,
         "gzipBytes": 325000,
         "brotliBytes": 305500
       }

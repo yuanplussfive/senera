@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { buildStyles, CircularProgressbar } from "react-circular-progressbar";
-import type { UploadAttachmentData, ModelProviderListItem } from "../../api/eventTypes";
+import type { ModelProviderListItem, UploadAttachmentData } from "../../api/eventTypes";
 import type { UploadProgress } from "../../api/uploadClient";
 import { cn, formatFileSize } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -38,6 +38,7 @@ import { FilePreviewIcon } from "./FilePreviewIcon";
 import { PresetControl } from "./PresetPanel";
 import { ModelProviderIcon } from "./ModelProviderIcon";
 import { readChatModelProviders, readSelectedModelProvider } from "./modelProvider";
+import { ThinkingSelector } from "./ThinkingSelector";
 import type { MessageQueueMode } from "../../app/useChatCommands";
 import type { ChatApprovalConfig, ChatModelConfig, ChatPresetConfig } from "./ChatPanelContracts";
 import { useComposerAttachments, type PendingAttachment } from "./useComposerAttachments";
@@ -301,6 +302,13 @@ export function ChatComposer({
                 onSelect={modelConfig.onSelectModelProvider}
                 onUseDefault={modelConfig.onApplyDefaultModel}
                 onAddModel={modelConfig.onAddModel}
+                prefersCompactControls={prefersCompactControls}
+              />
+              <ThinkingSelector
+                disabled={disabled || running}
+                model={readSelectedModelProvider(modelConfig.modelProviders, modelConfig.selectedModelProviderId)}
+                selectedLevel={modelConfig.selectedThinkingLevel}
+                onSelect={modelConfig.onSelectThinkingLevel}
                 prefersCompactControls={prefersCompactControls}
               />
               {cancelling ? (

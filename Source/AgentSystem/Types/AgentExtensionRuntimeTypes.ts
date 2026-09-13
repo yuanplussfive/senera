@@ -1,6 +1,7 @@
 export const AgentExtensionOwnerKinds = {
   System: "system",
   Mcp: "mcp",
+  Plugin: "plugin",
 } as const;
 
 export type AgentExtensionOwnerKind = (typeof AgentExtensionOwnerKinds)[keyof typeof AgentExtensionOwnerKinds];

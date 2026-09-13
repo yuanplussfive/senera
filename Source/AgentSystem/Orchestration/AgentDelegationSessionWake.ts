@@ -26,7 +26,7 @@ export interface AgentDelegationSessionWakeManager {
 }
 
 export interface AgentDelegationSessionWakeOptions {
-  readonly childRuns: Pick<AgentChildRunRepository, "listForJoinGroup">;
+  readonly childRuns: Pick<AgentChildRunRepository, "get" | "listForJoinGroup" | "markParentWakeConsumedBatch">;
   readonly sessionManager: AgentDelegationSessionWakeManager;
   readonly onEvent?: AgentEventSink;
 }
@@ -50,35 +50,62 @@ export function createAgentDelegationSessionWakeHandler(
 ): (record: AgentChildRunRecord) => Promise<void> {
   const notifiedJoinGroups = new Map<string, string>();
   const inFlightJoinGroups = new Map<string, Promise<void>>();
+  const inFlightRuns = new Map<string, Promise<void>>();
 
   return async (record) => {
+    const current = options.childRuns.get(record.id) ?? record;
+    if (current.parentWakeConsumed === true) return;
     const group = record.joinGroup;
     if (!group) {
-      await wakeParent(options, [record], createAgentBackgroundTaskCompletionRequestId(record), record.id);
+      const existing = inFlightRuns.get(current.id);
+      if (existing) return existing;
+      const wake = wakeParent(
+        options,
+        [current],
+        createAgentBackgroundTaskCompletionRequestId(current),
+        current.id,
+      ).then((outcome) => {
+        if (outcome !== "busy") options.childRuns.markParentWakeConsumedBatch([current.id]);
+      });
+      inFlightRuns.set(current.id, wake);
+      try {
+        await wake;
+      } finally {
+        if (inFlightRuns.get(current.id) === wake) inFlightRuns.delete(current.id);
+      }
       return;
     }
 
     const records = options.childRuns.listForJoinGroup(group.id);
     const terminal = records.filter((candidate) => isTerminalDetachedChildRun(candidate.status, candidate));
+    const unconsumedTerminal = terminal.filter((candidate) => candidate.parentWakeConsumed !== true);
     const ready =
       group.mode === AgentChildRunJoinModes.All
         ? records.length >= group.expectedCount && terminal.length >= group.expectedCount
-        : terminal.length > 0;
+        : unconsumedTerminal.length > 0;
     if (!ready) return;
 
     const signature =
       group.mode === AgentChildRunJoinModes.All
         ? terminal.map((candidate) => `${candidate.id}:${candidate.revision}:${candidate.status}`).join("|")
-        : "any";
+        : unconsumedTerminal.map((candidate) => `${candidate.id}:${candidate.revision}:${candidate.status}`).join("|");
     if (notifiedJoinGroups.get(group.id) === signature) return;
     const wakeKey = `${group.id}:${signature}`;
     const existing = inFlightJoinGroups.get(wakeKey);
     if (existing) return existing;
-    const wake = wakeParent(options, terminal, createAgentBackgroundTaskJoinRequestId(group, terminal), group.id).then(
-      () => {
-        notifiedJoinGroups.set(group.id, signature);
-      },
-    );
+    const wakeRecords = group.mode === AgentChildRunJoinModes.Any ? unconsumedTerminal : terminal;
+    const wake = wakeParent(
+      options,
+      wakeRecords,
+      createAgentBackgroundTaskJoinRequestId(group, wakeRecords),
+      group.id,
+    ).then((outcome) => {
+      if (outcome !== "busy") {
+        const consumed = group.mode === AgentChildRunJoinModes.Any ? unconsumedTerminal : terminal;
+        options.childRuns.markParentWakeConsumedBatch(consumed.map((candidate) => candidate.id));
+      }
+      notifiedJoinGroups.set(group.id, signature);
+    });
     inFlightJoinGroups.set(wakeKey, wake);
     try {
       await wake;
@@ -93,7 +120,7 @@ async function wakeParent(
   records: readonly AgentChildRunRecord[],
   requestId: string,
   taskId: string,
-): Promise<void> {
+): Promise<"accepted" | "queued" | "missing" | "busy"> {
   const first = records[0];
   if (!first) throw new Error("A detached completion wake requires at least one child run.");
   const outcome = await options.sessionManager.wakeFromBackgroundTask({
@@ -110,8 +137,11 @@ async function wakeParent(
     },
     onEvent: options.onEvent,
   });
-  if (outcome === "missing") throw new Error(`Parent session is missing: ${first.parentSessionId}`);
+  if (outcome === "missing") {
+    return outcome;
+  }
   if (outcome === "busy") throw new Error(`Parent session remained busy: ${first.parentSessionId}`);
+  return outcome;
 }
 
 export function isTerminalDetachedChildRun(status: AgentChildRunStatus, record?: AgentChildRunRecord): boolean {

@@ -1,4 +1,5 @@
 import type { AgentTemporalMemorySummaryPromptInput } from "./AgentTemporalMemoryTypes.js";
+import { renderAgentPromptInputWire } from "../Prompt/AgentPromptContextWireRenderer.js";
 
 export const AgentTemporalMemorySummaryToolName = "TemporalMemoryDigest";
 
@@ -25,6 +26,13 @@ export function createAgentTemporalMemorySummaryPrompt(input: AgentTemporalMemor
   if (input.entries.length === 0) throw new Error("Temporal memory summarization requires evidence entries.");
   return {
     systemPrompt: SummaryInstruction,
-    userPrompt: JSON.stringify({ context: input, directive: { stage: "summarizeTemporalMemory" } }, null, 2),
+    userPrompt: renderAgentPromptInputWire(
+      {
+        kind: "temporal_memory_summary",
+        context: input,
+        directive: { stage: "summarizeTemporalMemory" },
+      },
+      { estimateTokens: (text) => text.length },
+    ).text,
   };
 }

@@ -1,4 +1,5 @@
 import type { AgentAgendaActorRole, AgentAgendaDraft, AgentAgendaRecordKind } from "../Agenda/AgentAgendaTypes.js";
+import { renderAgentPromptInputWire } from "../Prompt/AgentPromptContextWireRenderer.js";
 
 export interface AgentToolLearningPromptInput {
   rawUserTurn: string;
@@ -128,50 +129,42 @@ export type AgentToolLearningPromptStage =
       issues: string[];
     };
 
-export function buildToolLearningPromptJson(
+export function buildToolLearningPromptWire(
   input: AgentToolLearningPromptInput,
   directive: AgentToolLearningPromptStage,
 ): string {
-  return JSON.stringify(
-    {
-      context: input,
-      directive,
-    },
-    null,
-    2,
-  );
+  return renderLearningPromptWire("tool_learning", input, directive);
 }
+
+/** @deprecated The returned value is a versioned prompt wire, not bare JSON. */
+export const buildToolLearningPromptJson = buildToolLearningPromptWire;
 
 export type AgentContinuityFactPromptStage =
   { stage: "extractContinuityFacts" } | { stage: "repairContinuityFacts"; invalidExtraction: string; issues: string[] };
 
-export function buildAgentContinuityFactPromptJson(
+export function buildAgentContinuityFactPromptWire(
   input: AgentContinuityFactPromptInput,
   directive: AgentContinuityFactPromptStage,
 ): string {
-  return JSON.stringify(
-    {
-      context: input,
-      directive,
-    },
-    null,
-    2,
-  );
+  return renderLearningPromptWire("continuity_facts", input, directive);
 }
+
+/** @deprecated The returned value is a versioned prompt wire, not bare JSON. */
+export const buildAgentContinuityFactPromptJson = buildAgentContinuityFactPromptWire;
 
 export type AgentContinuityRulePromptStage =
   { stage: "extractContinuityRules" } | { stage: "repairContinuityRules"; invalidExtraction: string; issues: string[] };
 
-export function buildAgentContinuityRulePromptJson(
+export function buildAgentContinuityRulePromptWire(
   input: AgentContinuityRulePromptInput,
   directive: AgentContinuityRulePromptStage,
 ): string {
-  return JSON.stringify(
-    {
-      context: input,
-      directive,
-    },
-    null,
-    2,
-  );
+  return renderLearningPromptWire("continuity_rules", input, directive);
+}
+
+/** @deprecated The returned value is a versioned prompt wire, not bare JSON. */
+export const buildAgentContinuityRulePromptJson = buildAgentContinuityRulePromptWire;
+
+function renderLearningPromptWire(kind: string, context: unknown, directive: unknown): string {
+  return renderAgentPromptInputWire({ kind, context, directive }, { estimateTokens: (text) => text.length }).text;
 }

@@ -27,6 +27,7 @@ const SourceRuleSchema = z
     mode: z.enum(AgentToolObservationProjectionModes),
     priority: z.enum(AgentToolObservationPriorityTiers),
     requiredForCompletion: z.boolean(),
+    budgetShare: z.number().finite().gt(0).lte(1).optional(),
     pointer: JsonPointerSchema.optional(),
     maxTokens: z.number().int().min(1),
     limits: StructuralLimitsSchema,

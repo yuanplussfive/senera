@@ -106,6 +106,37 @@ describe("Action planner model transport", () => {
         status: "completed",
         cacheReadTokens: 128,
         cacheWriteTokens: 32,
+        promptCache: expect.objectContaining({
+          observation: "hit",
+          strategy: "explicit-breakpoints",
+          providerCacheScope: "cache-scope",
+        }),
+      }),
+    ]);
+  });
+
+  test("allows a request-level timing sink for isolated structured calls", async () => {
+    const timings: unknown[] = [];
+    const transport = new AgentActionPlannerModelTransport(
+      modelProvider({ Endpoint: "ClaudeMessages" }),
+      undefined,
+      () => {
+        throw new Error("the constructor sink must not receive the isolated call");
+      },
+      {
+        apiStreams: piStreams((model) => completedStream(model, '{"kind":"Direct","response":"完成"}')),
+      },
+    );
+
+    await expect(
+      transport.complete(request(), undefined, (timing) => {
+        timings.push(timing);
+      }),
+    ).resolves.toContain("Direct");
+    expect(timings).toEqual([
+      expect.objectContaining({
+        status: "completed",
+        stage: "EvolveTurn",
       }),
     ]);
   });

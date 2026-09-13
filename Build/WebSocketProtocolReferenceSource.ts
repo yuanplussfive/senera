@@ -36,6 +36,8 @@ const requestDescriptions = {
   "model.list": "获取已配置模型提供方及默认模型。",
   "provider.models.fetch": "从指定模型端点刷新可用模型列表。",
   "config.get": "获取当前有效系统配置及表单投影。",
+  "workspace.get": "获取当前工作区标识，包括工作区根目录、配置路径和 WebSocket 地址。",
+  "workspace.switch": "热切换到指定工作区根目录；活动会话和后台任务会被强制取消，客户端需重连后重新获取状态。",
   "systemTool.list": "获取常驻系统工具目录。",
   "mcpServer.list": "获取 MCP 服务及其脱敏凭证状态。",
   "mcpServer.restart": "使指定 MCP 服务的运行时连接在下一轮重新建立。",

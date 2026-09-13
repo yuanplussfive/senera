@@ -127,6 +127,7 @@ export class AgentPiTurnExecutor {
     };
     const turnState = new AgentPiTurnState({
       sessionId: command.sessionId,
+      logicalCacheScope: command.logicalCacheScope,
       requestId: command.requestId,
       step: command.step,
       onEvent,
@@ -136,10 +137,12 @@ export class AgentPiTurnExecutor {
       toolAccessGrant: command.toolAccessGrant,
       toolExposure,
       activeSkills: projectAgentPiPlanningSkills(command.activeSkills),
+      reusableCapabilities: command.reusableCapabilities,
       usageLedger,
       toolPlan: new AgentPiToolPlanCoordinator({ onChanged: onToolPlanChanged }),
       tokenBudget,
       thinkingLevel: command.thinkingLevel,
+      resourceOwner: command.resourceOwner,
       activityReporter: activities,
     });
     const collector = new AgentPiRunCollector({
@@ -333,6 +336,7 @@ export class AgentPiTurnExecutor {
         requestId: command.requestId,
         userInput: command.input,
         sessionId: command.sessionId,
+        logicalCacheScope: command.logicalCacheScope,
         loadedTools: loadedToolNames,
         execution: { value: [...runtimeProjection.executedTools] },
         activeSkills: command.activeSkills,
@@ -363,6 +367,7 @@ export class AgentPiTurnExecutor {
         ],
         executedTools: runtimeProjection.executedTools,
         loadedToolNames,
+        ...(sessionResult.piSessionId ? { physicalPiSessionId: sessionResult.piSessionId } : {}),
       };
     } catch (error) {
       await this.emitDiagnostic(command, PiTurnTraceEvents.TurnFailed, errorPayload(error));

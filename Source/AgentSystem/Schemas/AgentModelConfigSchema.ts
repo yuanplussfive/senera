@@ -1,6 +1,15 @@
 import { z } from "zod";
 import { disabledOrPositiveInteger, disabledOrPositiveNumber } from "./AgentConfigSchemaPrimitives.js";
 import { AgentModelEndpointKinds, AgentModelToolPlanningModes } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import { AgentModelThinkingLevels } from "../ModelEndpoints/AgentModelThinking.js";
+
+const ThinkingLevelSchema = z.enum(AgentModelThinkingLevels);
+const ThinkingLevelMapSchema = z.record(z.string().trim().min(1), z.string().trim().min(1).nullable()).optional();
+const ThinkingProfileSchema = z.object({
+  Id: z.string().trim().min(1),
+  Label: z.string().trim().min(1),
+  Level: ThinkingLevelSchema,
+});
 
 export const ModelEndpointSchema = z.enum(AgentModelEndpointKinds);
 
@@ -24,6 +33,9 @@ export const ModelProviderSchema = z
     ProviderId: z.string().min(1),
     Icon: z.string().min(1).optional(),
     Capabilities: ModelCapabilitiesSchema.optional(),
+    ThinkingLevelMap: ThinkingLevelMapSchema,
+    ThinkingProfiles: z.array(ThinkingProfileSchema).optional(),
+    DefaultThinkingLevel: ThinkingLevelSchema.optional(),
     ToolPlanningMode: z.enum(AgentModelToolPlanningModes).optional(),
     ContextWindowTokens: z.number().int().positive().optional(),
     MaxModelOutputTokens: disabledOrPositiveInteger("MaxModelOutputTokens").optional(),
@@ -55,6 +67,8 @@ export const ModelProviderEndpointSchema = z
     ApiKey: z.string().min(1).optional(),
     ApiVersion: z.string().min(1).optional(),
     Headers: z.record(z.string(), z.string()).optional(),
+    ProviderId: z.string().min(1).optional(),
+    Priority: z.number().int().min(0).optional(),
   })
   .strict();
 

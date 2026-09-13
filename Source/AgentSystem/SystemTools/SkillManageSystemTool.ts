@@ -15,6 +15,11 @@ const SkillInstructions = z.string().trim().min(1).describe("Initial or replacem
 const RecommendedTools = AgentSkillRecommendedToolsSchema.describe(
   "Exact registered tool names to prioritize whenever this Skill activates. Omit when no specific tool is required.",
 );
+const ExpectedRevision = z
+  .string()
+  .trim()
+  .min(1)
+  .describe("Optional content revision read before this mutation; stale revisions are rejected.");
 
 const SkillManageInput = z.discriminatedUnion("action", [
   z
@@ -33,10 +38,11 @@ const SkillManageInput = z.discriminatedUnion("action", [
       description: SkillDescription.optional(),
       instructions: SkillInstructions.optional(),
       recommendedTools: RecommendedTools.optional(),
+      expectedRevision: ExpectedRevision.optional(),
     })
     .strict(),
   z.object({ action: z.literal("validate"), name: SkillName }).strict(),
-  z.object({ action: z.literal("remove"), name: SkillName }).strict(),
+  z.object({ action: z.literal("remove"), name: SkillName, expectedRevision: ExpectedRevision.optional() }).strict(),
 ]);
 
 const SkillManageOutput = z
@@ -45,6 +51,7 @@ const SkillManageOutput = z
     action: z.enum(["create", "update", "validate", "remove"]),
     name: z.string(),
     path: z.string().optional(),
+    revision: z.string().optional(),
     diagnostics: z.object({ item: z.array(z.object({}).passthrough()) }).strict(),
     recommendedTools: z.array(z.string()),
     guidance: z.string(),
@@ -59,8 +66,8 @@ export const SkillManageSystemTool = defineSystemTool({
       "en-US": "Skill Management",
     },
     description: {
-      "zh-CN": "创建、校验、原子更新和移除工作区技能包。",
-      "en-US": "Creates, validates, atomically updates, and removes workspace Skills.",
+      "zh-CN": "创建、校验、带 revision 保护更新和可恢复归档工作区技能包。",
+      "en-US": "Creates, validates, revision-guards, and recoverably archives workspace Skills.",
     },
     priority: 2,
     skills: ["skill-creator"],
@@ -68,7 +75,7 @@ export const SkillManageSystemTool = defineSystemTool({
   metadata: {
     observation: StandardAgentToolObservationProjection,
     description:
-      "Create, update, validate, or remove a standard Skill package under .senera/skills, including optional bindings to registered tools.",
+      "Create, update, validate, or archive a standard Skill package under .senera/skills, including revision guards and optional bindings to registered tools.",
     permissions: ["filesystem:write:.senera/skills"],
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadWrite" },
     runtime: {
@@ -79,7 +86,7 @@ export const SkillManageSystemTool = defineSystemTool({
       MaxConcurrency: 1,
     },
     search: {
-      Summary: "创建、更新、校验或移除标准 SKILL.md 技能包。",
+      Summary: "创建、更新、校验或归档带 revision 保护的标准 SKILL.md 技能包。",
       Tags: ["创建技能", "Skill", "工作流", "技能包", "热更新"],
       Capabilities: [
         {
@@ -89,8 +96,8 @@ export const SkillManageSystemTool = defineSystemTool({
           Facets: {
             Actions: ["create", "update", "validate", "remove"],
             Targets: ["skill", "skill-package"],
-            Inputs: ["name", "description", "instructions", "recommended-tools"],
-            Outputs: ["skill-package", "diagnostics"],
+            Inputs: ["name", "description", "instructions", "recommended-tools", "expected-revision"],
+            Outputs: ["skill-package", "revision", "diagnostics"],
             Effects: ["workspace-change", "runtime-refresh"],
           },
           Aliases: ["创建 skill", "添加技能", "校验 skill", "更新工作流"],

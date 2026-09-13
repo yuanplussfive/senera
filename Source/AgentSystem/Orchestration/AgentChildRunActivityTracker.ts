@@ -8,6 +8,7 @@ import {
   type AgentChildRunSnapshot,
 } from "./AgentChildRunTypes.js";
 import { AgentTodoWriteSources, type AgentTodoItem, type AgentTodoStatus } from "../Todos/AgentTodoTypes.js";
+import { createAgentContinuityCheckpoint } from "../Continuity/AgentContinuityLedger.js";
 
 const ChildRunTodoItemStatuses = new Set<AgentTodoStatus>(["pending", "in_progress", "completed", "cancelled"]);
 
@@ -37,6 +38,14 @@ export interface AgentChildRunActivityTrackerOptions {
   readonly control?: AgentChildRunControlPolicy;
   /** Restores counters and deadline extensions when a persisted child resumes. */
   readonly initialSnapshot?: AgentChildRunSnapshot;
+  /** Restores the last durable model/workspace handoff alongside counters. */
+  readonly initialCheckpoint?: AgentChildRunCheckpoint;
+  readonly continuity?: {
+    readonly referenceId: string;
+    readonly workItemId?: string;
+    readonly taskDigest?: string;
+    readonly workspaceRevision?: string;
+  };
   readonly clock?: AgentChildRunActivityClock;
 }
 
@@ -70,6 +79,7 @@ export class AgentChildRunActivityTracker {
   private limitReason?: AgentChildRunControlSnapshot["budget"]["limitReason"];
   private currentModelText = "";
   private checkpoint?: AgentChildRunCheckpoint;
+  private workspaceRevision?: string;
   private grantedExtensionMs = 0;
   private softDeadlineAt: number;
   private hardDeadlineAt?: number;
@@ -78,6 +88,9 @@ export class AgentChildRunActivityTracker {
   constructor(private readonly options: AgentChildRunActivityTrackerOptions) {
     this.clock = options.clock ?? SystemActivityClock;
     const initial = options.initialSnapshot;
+    this.checkpoint = options.initialCheckpoint ? { ...options.initialCheckpoint } : undefined;
+    this.workspaceRevision =
+      options.continuity?.workspaceRevision ?? options.initialCheckpoint?.continuity?.workspaceRevision;
     this.lastActivityAt = initial ? readTimestamp(initial.lastActivityAt, options.startedAt) : options.startedAt;
     this.lastModelOutputAt = initial?.lastModelOutputAt
       ? readTimestamp(initial.lastModelOutputAt, this.lastActivityAt)
@@ -164,6 +177,9 @@ export class AgentChildRunActivityTracker {
       case AgentEventKinds.ToolCallCompleted:
         this.completedToolCalls += 1;
         this.activeTools.delete(event.data.callId);
+        if (event.data.presentation?.workspaceCheckpoint?.revision) {
+          this.workspaceRevision = event.data.presentation.workspaceCheckpoint.revision;
+        }
         if (event.data.presentation?.artifactUri) this.artifactUris.add(event.data.presentation.artifactUri);
         this.recordMeaningfulProgress(now);
         this.recordActivity(now);
@@ -292,18 +308,28 @@ export class AgentChildRunActivityTracker {
   }
 
   latestCheckpoint(): AgentChildRunCheckpoint | undefined {
-    return this.checkpoint ? { ...this.checkpoint } : undefined;
+    if (!this.checkpoint) return undefined;
+    return {
+      ...this.checkpoint,
+      ...(this.options.continuity ? { continuity: this.continuityCheckpoint(this.checkpoint.capturedAt) } : {}),
+    };
   }
 
   supervisorCheckpoint(content: string): AgentChildRunCheckpoint {
     const capturedAt = this.clock.now();
-    return {
+    const checkpoint: AgentChildRunCheckpoint = {
       version: 1,
       capturedAt: this.clock.timestamp(capturedAt),
       source: AgentChildRunCheckpointSources.SupervisorWait,
       ...(content.trim() ? { content } : {}),
       complete: true,
     };
+    return this.options.continuity
+      ? {
+          ...checkpoint,
+          continuity: this.continuityCheckpoint(checkpoint.capturedAt, "awaiting_supervisor"),
+        }
+      : checkpoint;
   }
 
   private modelCheckpoint(capturedAt: number, complete: boolean): AgentChildRunCheckpoint {
@@ -314,6 +340,21 @@ export class AgentChildRunActivityTracker {
       ...(this.currentModelText.trim() ? { content: this.currentModelText } : {}),
       complete,
     };
+  }
+
+  private continuityCheckpoint(capturedAt: string, status?: string) {
+    const continuity = this.options.continuity;
+    if (!continuity) throw new Error("Continuity checkpoint requested without continuity identity.");
+    const referenceIds = [continuity.referenceId];
+    return createAgentContinuityCheckpoint({
+      capturedAt,
+      referenceIds,
+      workItemId: continuity.workItemId,
+      workspaceRevision: this.workspaceRevision,
+      resume: {
+        status: status ?? (this.checkpoint?.complete ? "completed" : "running"),
+      },
+    });
   }
 
   private recordActivity(at: number): void {

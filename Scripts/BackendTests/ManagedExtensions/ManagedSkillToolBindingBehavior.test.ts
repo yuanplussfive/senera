@@ -79,6 +79,32 @@ describe("managed Skill tool bindings", () => {
     ).toBe(false);
   });
 
+  test("archives removed Skills through the shared revisioned history", () => {
+    const workspaceRoot = createWorkspace();
+    const service = new AgentManagedExtensionService(workspaceRoot, { getTool: () => undefined });
+
+    const created = service.manageSkill({
+      action: "create",
+      name: "archivable-workflow",
+      description: "A Skill that can be restored after removal.",
+      instructions: "Keep the archived revision available.",
+    });
+    expect(created.status).toBe("created");
+    const removed = service.manageSkill({ action: "remove", name: "archivable-workflow" });
+
+    expect(removed).toMatchObject({ status: "removed", action: "remove", name: "archivable-workflow" });
+    expect(removed.guidance).toContain("archived");
+    expect(fs.existsSync(path.join(resolveAgentWorkspaceLayout(workspaceRoot).skillRoot, "archivable-workflow"))).toBe(
+      false,
+    );
+    const historyRoot = path.join(
+      resolveAgentWorkspaceLayout(workspaceRoot).skillRoot,
+      ".skill-history",
+      "archivable-workflow",
+    );
+    expect(fs.readdirSync(historyRoot, { withFileTypes: true }).some((entry) => entry.isDirectory())).toBe(true);
+  });
+
   test("reports duplicate tool declarations at their frontmatter location", () => {
     const workspaceRoot = createWorkspace();
     const skillPath = path.join(resolveAgentWorkspaceLayout(workspaceRoot).skillRoot, "duplicate-tool-workflow");

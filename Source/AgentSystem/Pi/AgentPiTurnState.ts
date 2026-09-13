@@ -14,6 +14,8 @@ import type { AgentRunActivityReporter } from "../Events/AgentRunActivityReporte
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
 import type { AgentResidentSpeechUtterance } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
+import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
+import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 import {
   AgentPiToolCallPreflightCoordinator,
   type AgentPiToolCallPreflight,
@@ -23,6 +25,8 @@ import {
 
 export interface AgentPiTurnStateOptions {
   readonly sessionId?: string;
+  /** Stable logical cache affinity shared by all model calls in this turn. */
+  readonly logicalCacheScope?: string;
   readonly requestId: string;
   readonly step: number;
   readonly onEvent?: AgentEventSink;
@@ -32,10 +36,12 @@ export interface AgentPiTurnStateOptions {
   readonly toolAccessGrant: AgentToolAccessGrant;
   readonly toolExposure: AgentToolExposureState;
   readonly activeSkills: readonly AgentPiPlanningSkill[];
+  readonly reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
   readonly usageLedger: AgentModelUsageLedger;
   readonly toolPlan: AgentPiToolPlanCoordinator;
   readonly tokenBudget: AgentTurnTokenBudget;
   readonly thinkingLevel?: ModelThinkingLevel;
+  readonly resourceOwner?: AgentToolResourceLeaseOwner;
   readonly activityReporter?: AgentRunActivityReporter;
 }
 

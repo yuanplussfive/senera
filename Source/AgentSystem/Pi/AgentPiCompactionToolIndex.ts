@@ -3,6 +3,7 @@ import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { z } from "zod";
 import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
 import { uniqueStrings } from "../Core/AgentCollections.js";
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { readAgentNonBlankString } from "../Core/AgentUnknownValue.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import {
@@ -273,16 +274,12 @@ function projectToolCallError(
 
 function projectArgumentsPreview(argumentsValue: unknown, tokenBudget: number): string {
   if (argumentsValue === undefined || argumentsValue === null) return "";
-  const text = typeof argumentsValue === "string" ? argumentsValue : safeJsonStringify(argumentsValue);
+  const text = typeof argumentsValue === "string" ? argumentsValue : stringifyArguments(argumentsValue);
   return new AgentTokenProjector("default").previewText(text, tokenBudget).text;
 }
 
-function safeJsonStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
+function stringifyArguments(value: unknown): string {
+  return stringifyAgentCanonicalJson(value);
 }
 
 function aggregateToolCallIndex(

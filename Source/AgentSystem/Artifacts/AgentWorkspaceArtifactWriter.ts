@@ -24,6 +24,7 @@ export interface WrittenWorkspaceArtifacts {
   before: ToolWorkspaceSnapshot;
   after: ToolWorkspaceSnapshot;
   changes: ToolWorkspaceChange[];
+  checkpoint?: NonNullable<ToolWorkspaceCaptureResult["checkpoint"]>;
   patch: {
     path: string;
     relativePath: string;
@@ -66,6 +67,7 @@ export class AgentWorkspaceArtifactWriter {
       before: before.snapshot,
       after: after.snapshot,
       changes,
+      ...(this.options.workspaceCapture.checkpoint ? { checkpoint: this.options.workspaceCapture.checkpoint } : {}),
       patch: {
         path: this.options.files.workspacePatch,
         relativePath: toArtifactRelativePath(this.options.artifactDir, this.options.files.workspacePatch),

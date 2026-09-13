@@ -105,7 +105,9 @@ export function createTool(options: {
           Facets: {
             Actions: options.actions,
             Targets: options.targets,
+            Effects: ["none"],
           },
+          Risk: { SideEffect: "none", Permission: "resources-read" },
         },
       ],
     },

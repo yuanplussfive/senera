@@ -8,6 +8,7 @@ import {
   isAgentPiToolResultMessage,
 } from "./AgentPiToolObservation.js";
 import { uniqueStrings } from "../Core/AgentCollections.js";
+import { AgentWorkspaceContinuityCheckpointSchema } from "../Continuity/AgentContinuityLedger.js";
 
 export const AgentPiArtifactIndexCustomType = "senera.artifact_index";
 
@@ -20,6 +21,8 @@ export const AgentPiArtifactReferenceSchema = z
     callIds: z.array(NonBlankStringSchema),
     evidenceUris: z.array(NonBlankStringSchema),
     refs: z.array(NonBlankStringSchema),
+    workspaceCheckpointId: NonBlankStringSchema.optional(),
+    workspaceRevision: NonBlankStringSchema.optional(),
   })
   .strict();
 
@@ -77,6 +80,12 @@ export function mergeAgentPiArtifactReferences(
       callIds: uniqueStrings([...(current?.callIds ?? []), ...reference.callIds]),
       evidenceUris: uniqueStrings([...(current?.evidenceUris ?? []), ...reference.evidenceUris]),
       refs: uniqueStrings([...(current?.refs ?? []), ...reference.refs]),
+      ...(reference.workspaceCheckpointId || current?.workspaceCheckpointId
+        ? { workspaceCheckpointId: reference.workspaceCheckpointId ?? current?.workspaceCheckpointId }
+        : {}),
+      ...(reference.workspaceRevision || current?.workspaceRevision
+        ? { workspaceRevision: reference.workspaceRevision ?? current?.workspaceRevision }
+        : {}),
     });
   }
   return [...byUri.values()];
@@ -88,8 +97,18 @@ function projectToolResultArtifactReferences(message: AgentMessage): AgentPiArti
   const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
   if (!observation) return [];
   const artifactUri = readAgentPiToolObservationArtifactUri(observation);
+  const workspaceCheckpoint = readWorkspaceCheckpoint(observation.detail.workspace);
   const references = artifactUri
-    ? [createArtifactReference({ artifactUri, toolName: message.toolName, callId: message.toolCallId })]
+    ? [
+        createArtifactReference({
+          artifactUri,
+          toolName: message.toolName,
+          callId: message.toolCallId,
+          ...(workspaceCheckpoint
+            ? { workspaceCheckpointId: workspaceCheckpoint.id, workspaceRevision: workspaceCheckpoint.revision }
+            : {}),
+        }),
+      ]
     : [];
 
   return [
@@ -104,6 +123,9 @@ function projectToolResultArtifactReferences(message: AgentMessage): AgentPiArti
               callId: message.toolCallId,
               evidenceUri: evidence.evidence_uri,
               refs: uniqueStrings(evidence.artifact_refs ?? []),
+              ...(workspaceCheckpoint
+                ? { workspaceCheckpointId: workspaceCheckpoint.id, workspaceRevision: workspaceCheckpoint.revision }
+                : {}),
             }),
           ]
         : [];
@@ -117,6 +139,8 @@ function createArtifactReference(input: {
   callId?: string;
   evidenceUri?: string;
   refs?: string[];
+  workspaceCheckpointId?: string;
+  workspaceRevision?: string;
 }): AgentPiArtifactReference {
   return {
     artifactUri: input.artifactUri,
@@ -124,5 +148,12 @@ function createArtifactReference(input: {
     callIds: input.callId ? [input.callId] : [],
     evidenceUris: input.evidenceUri ? [input.evidenceUri] : [],
     refs: uniqueStrings(input.refs ?? []),
+    ...(input.workspaceCheckpointId ? { workspaceCheckpointId: input.workspaceCheckpointId } : {}),
+    ...(input.workspaceRevision ? { workspaceRevision: input.workspaceRevision } : {}),
   };
+}
+
+function readWorkspaceCheckpoint(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return AgentWorkspaceContinuityCheckpointSchema.safeParse((value as Record<string, unknown>).checkpoint).data;
 }

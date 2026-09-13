@@ -19,6 +19,7 @@ import type {
   AgentToolSemanticProjectionRequest,
 } from "../ToolRuntime/AgentToolSemanticProjection.js";
 import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.js";
+import type { AgentWorkspaceContinuityCheckpoint } from "../Continuity/AgentContinuityLedger.js";
 
 export interface AgentToolArtifactAsset {
   readonly id: string;
@@ -130,6 +131,8 @@ export interface AgentToolResultPresentation {
   evidence: AgentToolResultPresentationEvidence[];
   changes: AgentToolResultPresentationChange[];
   artifactUri?: string;
+  /** Compact workspace handoff coordinates; file contents remain in the Artifact. */
+  workspaceCheckpoint?: AgentWorkspaceContinuityCheckpoint;
   artifactAvailability?: AgentToolArtifactAvailability;
   failure?: AgentToolFailure;
 }
@@ -181,6 +184,7 @@ export interface ToolWorkspaceCaptureResult {
   before: ToolWorkspaceSnapshot;
   after: ToolWorkspaceSnapshot;
   changes: ToolWorkspaceChange[];
+  checkpoint?: AgentWorkspaceContinuityCheckpoint;
 }
 
 export interface ToolWorkspaceSnapshot {

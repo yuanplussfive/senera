@@ -533,6 +533,11 @@
     "coverage": {
       "omissions": [
         {
+          "path": ["profileRoutes"],
+          "recursive": true,
+          "reason": "Advanced conversation routing is validated by the extension schema and managed through the Senera self-service/config surface."
+        },
+        {
           "path": ["qq", "transport"],
           "reason": "Hermes compatibility alias for qq.mode; the canonical field is shown above."
         },

@@ -1,4 +1,5 @@
 import type { Context, Message, Tool } from "@earendil-works/pi-ai";
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 import type { AgentPromptContractProperty } from "../Prompt/AgentPromptContractTypes.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
@@ -267,7 +268,7 @@ function buildToolTranscript(messages: readonly Message[]): AgentPiToolTranscrip
         calls.set(part.id, {
           callId: part.id,
           toolName: part.name,
-          argumentsJson: JSON.stringify(part.arguments),
+          argumentsJson: stringifyAgentCanonicalJson(part.arguments),
         });
       }
       continue;

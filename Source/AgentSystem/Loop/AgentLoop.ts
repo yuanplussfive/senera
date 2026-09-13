@@ -25,6 +25,8 @@ import {
   type AgentInteractionContext,
 } from "../Interaction/AgentInteractionContext.js";
 import { createAgentPiLogicalCacheScope } from "../Pi/AgentPiPromptCache.js";
+import { createModelProviderMetadata, type AgentEffectiveModelReceipt } from "../ModelEndpoints/AgentModelMetadata.js";
+import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
 
 export interface AgentLoopOptions {
   runtime: AgentSystemRuntime;
@@ -36,6 +38,9 @@ export interface AgentRunRequest {
   /** Stable cache affinity; defaults to the durable conversation session. */
   logicalCacheScope?: string;
   requestId: string;
+  /** Authoritative provider receipt resolved by the session admission layer. */
+  effectiveModel?: AgentEffectiveModelReceipt;
+  turnNumber?: number;
   step?: number;
   input: string;
   attachments?: AgentUploadAttachment[];
@@ -48,6 +53,8 @@ export interface AgentRunRequest {
   pinnedSkills?: readonly AgentPinnedSkillReference[];
   thinkingLevel?: ModelThinkingLevel;
   inheritProjectContext?: boolean;
+  /** Assignment owner propagated only for leased child-run sessions. */
+  resourceOwner?: AgentToolResourceLeaseOwner;
   onEvent?: AgentEventSink;
   signal?: AbortSignal;
   emitRunStarted?: boolean;
@@ -80,6 +87,10 @@ export class AgentLoop {
     });
   }
 
+  get modelProvider() {
+    return createModelProviderMetadata(this.options.runtime.modelProviderConfig);
+  }
+
   async run(request: AgentRunRequest): Promise<AgentCompletedRunResult> {
     try {
       await this.options.runtime.initialize();
@@ -95,12 +106,22 @@ export class AgentLoop {
       await this.emit(request.onEvent, this.events.runStarted(request.requestId, request.input, request.approvalMode));
     }
 
-    const prepared = await this.prepareTurn(request);
+    const logicalCacheScope =
+      request.logicalCacheScope ??
+      (request.sessionId
+        ? createAgentPiLogicalCacheScope({ sessionId: request.sessionId, family: "conversation" })
+        : undefined);
+    const prepared = await this.prepareTurn(request, logicalCacheScope);
     const prompt = await this.promptRenderer.render({
       userInput: request.input,
       sessionId: request.sessionId,
       requestId: request.requestId,
+      logicalCacheScope,
+      effectiveModel: request.effectiveModel,
+      turnNumber: request.turnNumber,
+      interaction: request.interaction,
       loadedToolNames: prepared.loadedToolNames,
+      reusableCapabilities: prepared.reusableCapabilities,
       authorizedToolNames: prepared.toolAccessGrant.authorizedToolNames,
       rootCommand: prepared.rootCommand,
       toolPlanningMode: resolveAgentModelToolPlanningMode(this.options.runtime.modelProviderConfig),
@@ -128,11 +149,8 @@ export class AgentLoop {
     const result = await this.piTurn.run(
       {
         sessionId: request.sessionId,
-        logicalCacheScope:
-          request.logicalCacheScope ??
-          (request.sessionId
-            ? createAgentPiLogicalCacheScope({ sessionId: request.sessionId, family: "conversation" })
-            : undefined),
+        logicalCacheScope,
+        effectiveModel: request.effectiveModel,
         requestId: request.requestId,
         step,
         input: request.input,
@@ -146,6 +164,7 @@ export class AgentLoop {
         toolAccessGrant: prepared.toolAccessGrant,
         loadedToolNames: prepared.loadedToolNames,
         activeSkills: prepared.activeSkills,
+        reusableCapabilities: prepared.reusableCapabilities,
         roleplayPresetActive: prompt.roleplayPreset.card !== undefined,
         prefaceRewriteEnabled: this.options.runtime.promptConfig.PrefaceRewrite === true,
         onPiBranchBoundary: request.onPiBranchBoundary,
@@ -159,6 +178,7 @@ export class AgentLoop {
         },
         thinkingLevel: request.thinkingLevel,
         inheritProjectContext: request.inheritProjectContext,
+        resourceOwner: request.resourceOwner,
       },
       request.onEvent,
       request.signal,
@@ -174,6 +194,7 @@ export class AgentLoop {
       loadedToolNames: [...result.loadedToolNames],
       stepTraces: result.stepTraces,
       continuityRuleDeliveryUris: [...prompt.continuityMemory.pendingRuleDeliveryUris],
+      physicalPiSessionId: result.physicalPiSessionId,
     };
     const terminalEvents = this.events.terminal(
       {
@@ -191,7 +212,7 @@ export class AgentLoop {
     return completed;
   }
 
-  private async prepareTurn(request: AgentRunRequest): Promise<AgentPreparedTurn> {
+  private async prepareTurn(request: AgentRunRequest, logicalCacheScope?: string): Promise<AgentPreparedTurn> {
     const cached = isAgentTurnPreparationReusable(request.preparation, {
       runtimeFingerprint: this.options.preparationFingerprint,
       userInput: request.input,
@@ -208,11 +229,21 @@ export class AgentLoop {
           toolAccessGrant: cached.toolAccessGrant,
           rootCommand: cached.rootCommand,
           activeSkills: cached.activeSkills.map((skill) => structuredClone(skill)),
+          reusableCapabilities: request.sessionId
+            ? (this.options.runtime.services.retrieval.reusableCapabilities?.({
+                sessionId: request.sessionId,
+                logicalCacheScope,
+                query: request.input,
+                authorizedToolNames: request.allowedToolNames,
+                limit: 6,
+              }) ?? [])
+            : [],
         }
       : await this.preparation.prepare({
           requestId: request.requestId,
           userInput: request.input,
           sessionId: request.sessionId,
+          logicalCacheScope,
           loadedToolNames: initialLoadedToolNames,
           allowedToolNames: request.allowedToolNames,
           pinnedSkills: request.pinnedSkills,

@@ -17,7 +17,11 @@ describe("delegated session wake", () => {
     const records = [first, second];
     const wake = vi.fn(async (..._args: unknown[]) => "accepted" as const);
     const handler = createAgentDelegationSessionWakeHandler({
-      childRuns: { listForJoinGroup: () => records },
+      childRuns: {
+        get: (id) => records.find((record) => record.id === id),
+        listForJoinGroup: () => records,
+        markParentWakeConsumedBatch: vi.fn(),
+      },
       sessionManager: { wakeFromBackgroundTask: wake },
     });
 
@@ -46,7 +50,7 @@ describe("delegated session wake", () => {
     const record = createRecord("single", AgentChildRunStatuses.Completed);
     const wake = vi.fn(async (..._args: unknown[]) => "accepted" as const);
     const handler = createAgentDelegationSessionWakeHandler({
-      childRuns: { listForJoinGroup: () => [] },
+      childRuns: { get: () => record, listForJoinGroup: () => [], markParentWakeConsumedBatch: vi.fn() },
       sessionManager: { wakeFromBackgroundTask: wake },
     });
 
@@ -55,6 +59,29 @@ describe("delegated session wake", () => {
     expect(wake).toHaveBeenCalledOnce();
     const request = wake.mock.calls[0]?.[0] as { requestId: string } | undefined;
     expect(request?.requestId).toBe("background_single_1");
+  });
+
+  test("persists wake consumption and ignores replayed completion events", async () => {
+    let current = createRecord("durable", AgentChildRunStatuses.Completed);
+    const wake = vi.fn(async (..._args: unknown[]) => "accepted" as const);
+    const markParentWakeConsumedBatch = vi.fn((ids: readonly string[]) => {
+      if (ids.includes(current.id)) current = { ...current, parentWakeConsumed: true };
+      return ids.length;
+    });
+    const handler = createAgentDelegationSessionWakeHandler({
+      childRuns: {
+        get: (id) => (id === current.id ? current : undefined),
+        listForJoinGroup: () => [],
+        markParentWakeConsumedBatch,
+      },
+      sessionManager: { wakeFromBackgroundTask: wake },
+    });
+
+    await Promise.all([handler(current), handler({ ...current, parentWakeConsumed: false })]);
+    await handler({ ...current, parentWakeConsumed: false });
+
+    expect(wake).toHaveBeenCalledOnce();
+    expect(markParentWakeConsumedBatch).toHaveBeenCalledOnce();
   });
 
   test("does not treat synchronous child executions as detached completions", () => {

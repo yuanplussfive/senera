@@ -22,6 +22,8 @@ import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
+import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
+import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
@@ -66,6 +68,11 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
   identityDisplayValues?: () => AgentIdentityDisplayValues;
+  /** Host services bound to the `senera` self-service command tool. */
+  selfService?: import("../SelfService/AgentSelfServiceTypes.js").AgentSelfServicePort;
+  /** Loaded plugin host; its tools/skills are applied per runtime composition. */
+  pluginHost?: AgentPluginHost;
+  resourceCoordinator?: AgentToolResourceLeaseCoordinator;
 }
 
 export interface AgentSystemRuntimeLease<TRuntime extends AgentSystemRuntimeCacheRuntime> {
@@ -75,39 +82,19 @@ export interface AgentSystemRuntimeLease<TRuntime extends AgentSystemRuntimeCach
   release(): void;
 }
 
-export interface AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRuntimeCacheRuntime = AgentSystemRuntime> {
-  workspaceRoot: string;
-  configPath: string;
+export type AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRuntimeCacheRuntime = AgentSystemRuntime> = Omit<
+  AgentSystemRuntimeCacheRuntimeFactoryInput,
+  "snapshot" | "modelProviderId"
+> & {
   snapshot: () => AgentSystemRuntimeCacheSnapshot;
-  logger?: AgentLogger;
-  piDiagnostics?: AgentPiDiagnosticSink;
-  approvalRuntime?: AgentApprovalRuntime;
-  sessionApprovals?: AgentSessionApprovalLeaseStore;
-  interactionInput?: AgentInteractionInputRuntime;
-  piSessionRegistry?: AgentPiActiveSessionRegistry;
-  resourcesPath?: string;
-  executionResources?: AgentExecutionResourceBroker;
-  sandboxRuntimeReady?: () => boolean;
-  sandboxAvailable?: boolean;
-  sandboxProvider?: AgentSandboxRuntimeProvider;
-  dockerEngineWorker?: SeneraSandboxWorkerClient;
-  /** Derived sandbox guest workspace root. Defaults to workspaceRoot when omitted (Linux image deployments). */
-  sandboxGuestWorkspaceRoot?: string;
-  mcpInputs?: AgentExtensionValueResolver;
-  workspaceRuntime?: AgentWorkspaceRuntimeServices;
-  orchestration?: AgentOrchestrationHostRuntime;
-  continuityMemory?: AgentContinuityMemoryService;
-  continuityIdentity?: AgentContinuityIdentityContext;
-  continuityLifecycle?: AgentContinuityLifecyclePort;
-  executionLedger?: AgentExecutionLedgerService;
-  todos?: AgentTodoService;
-  agenda?: AgentAgendaService;
-  worldRuntime?: AgentWorldSnapshotProvider;
-  inferenceBudget?: AgentInferenceBudgetPort;
-  identityDisplayValues?: () => AgentIdentityDisplayValues;
   maxIdleEntries?: number;
   runtimeFactory?: (input: AgentSystemRuntimeCacheRuntimeFactoryInput) => TRuntime;
-}
+};
+
+type AgentSystemRuntimeCreationDependencies = Omit<
+  AgentSystemRuntimeCacheRuntimeFactoryInput,
+  "snapshot" | "modelProviderId"
+>;
 
 interface RuntimeCacheEntry<TRuntime extends AgentSystemRuntimeCacheRuntime> {
   readonly fingerprint: string;
@@ -131,7 +118,12 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
 
   acquire(modelProviderId?: string): AgentSystemRuntimeLease<TRuntime> {
     const snapshot = this.options.snapshot();
-    const fingerprint = runtimeFingerprint(snapshot, modelProviderId);
+    const fingerprint = runtimeFingerprint(
+      snapshot,
+      modelProviderId,
+      this.options.workspaceRoot,
+      this.options.configPath,
+    );
     let entry = this.entries.get(fingerprint);
     if (!entry) {
       entry = {
@@ -169,71 +161,30 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
   }
 
   private createRuntime(snapshot: AgentSystemRuntimeCacheSnapshot, modelProviderId: string | undefined): TRuntime {
+    const dependencies = this.runtimeCreationDependencies();
     if (this.options.runtimeFactory) {
       return this.options.runtimeFactory({
-        workspaceRoot: this.options.workspaceRoot,
-        configPath: this.options.configPath,
+        ...dependencies,
         snapshot,
         modelProviderId,
-        logger: this.options.logger,
-        piDiagnostics: this.options.piDiagnostics,
-        approvalRuntime: this.options.approvalRuntime,
-        sessionApprovals: this.options.sessionApprovals,
-        interactionInput: this.options.interactionInput,
-        piSessionRegistry: this.options.piSessionRegistry,
-        resourcesPath: this.options.resourcesPath,
-        executionResources: this.options.executionResources,
-        sandboxRuntimeReady: this.options.sandboxRuntimeReady,
-        sandboxAvailable: this.options.sandboxAvailable,
-        sandboxProvider: this.options.sandboxProvider,
-        dockerEngineWorker: this.options.dockerEngineWorker,
-        sandboxGuestWorkspaceRoot: this.options.sandboxGuestWorkspaceRoot,
-        mcpInputs: this.options.mcpInputs,
-        workspaceRuntime: this.options.workspaceRuntime,
-        orchestration: this.options.orchestration,
-        continuityMemory: this.options.continuityMemory,
-        continuityIdentity: this.options.continuityIdentity,
-        continuityLifecycle: this.options.continuityLifecycle,
-        executionLedger: this.options.executionLedger,
-        todos: this.options.todos,
-        agenda: this.options.agenda,
-        worldRuntime: this.options.worldRuntime,
-        inferenceBudget: this.options.inferenceBudget,
-        identityDisplayValues: this.options.identityDisplayValues,
       });
     }
 
     return AgentSystemRuntime.fromConfig({
-      workspaceRoot: this.options.workspaceRoot,
-      configPath: this.options.configPath,
+      ...dependencies,
       config: snapshot.config,
       modelProviderId,
-      logger: this.options.logger,
-      piDiagnostics: this.options.piDiagnostics,
-      approvalRuntime: this.options.approvalRuntime,
-      sessionApprovals: this.options.sessionApprovals,
-      interactionInput: this.options.interactionInput,
-      piSessionRegistry: this.options.piSessionRegistry,
-      resourcesPath: this.options.resourcesPath,
-      executionResources: this.options.executionResources,
-      sandboxRuntimeReady: this.options.sandboxRuntimeReady,
-      sandboxAvailable: this.options.sandboxAvailable,
-      sandboxProvider: this.options.sandboxProvider,
-      dockerEngineWorker: this.options.dockerEngineWorker,
-      sandboxGuestWorkspaceRoot: this.options.sandboxGuestWorkspaceRoot,
-      mcpInputs: this.options.mcpInputs,
-      workspaceRuntime: this.options.workspaceRuntime,
-      orchestration: this.options.orchestration,
-      continuityMemory: this.options.continuityMemory,
-      continuityIdentity: this.options.continuityIdentity,
-      continuityLifecycle: this.options.continuityLifecycle,
-      executionLedger: this.options.executionLedger,
-      todos: this.options.todos,
-      agenda: this.options.agenda,
-      worldRuntime: this.options.worldRuntime,
-      inferenceBudget: this.options.inferenceBudget,
-      identityDisplayValues: this.options.identityDisplayValues,
     }) as unknown as TRuntime;
+  }
+
+  private runtimeCreationDependencies(): AgentSystemRuntimeCreationDependencies {
+    const {
+      snapshot: _snapshot,
+      maxIdleEntries: _maxIdleEntries,
+      runtimeFactory: _runtimeFactory,
+      ...dependencies
+    } = this.options;
+    return dependencies;
   }
 
   private createLease(entry: RuntimeCacheEntry<TRuntime>): AgentSystemRuntimeLease<TRuntime> {
@@ -347,8 +298,15 @@ function runtimeCacheKey(modelProviderId: string | undefined): string {
   return modelProviderId?.trim() || "<default>";
 }
 
-function runtimeFingerprint(snapshot: AgentSystemRuntimeCacheSnapshot, modelProviderId: string | undefined): string {
+function runtimeFingerprint(
+  snapshot: AgentSystemRuntimeCacheSnapshot,
+  modelProviderId: string | undefined,
+  workspaceRoot: string,
+  configPath: string,
+): string {
   return JSON.stringify([
+    workspaceRoot,
+    configPath,
     snapshot.version,
     snapshot.revision ?? "json",
     stableSourceRevisions(snapshot.sourceRevisions),

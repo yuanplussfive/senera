@@ -67,8 +67,29 @@ jobs:
         run: node --import tsx Scripts/VerifyPullRequestTitle.ts
       - run: npm run quality.commits -- ${{ steps.range.outputs.arguments }}
 
+  build-artifacts:
+    name: Build Verification Artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - run: npm run policy.verify
+      - run: npm run quality.baml
+      - run: npm run build
+      - run: npm --workspace senera-frontend run build
+      - name: Upload verification build
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-build
+          path: |
+            Dist
+            Frontend/dist
+          if-no-files-found: error
+          retention-days: 1
+
   fast:
     name: Fast Gate
+    needs: build-artifacts
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,9 +100,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .cache/eslint
-          key: ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          key: ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json') }}-
+      - name: Download verification build
+        uses: actions/download-artifact@v4
+        with:
+          name: verification-build
+          path: .
       - id: range
         shell: bash
         env:
@@ -111,9 +137,6 @@ jobs:
           else
             echo "arguments=--from=$from --to=$to" >> "$GITHUB_OUTPUT"
           fi
-      - run: npm run policy.verify
-      - run: npm run quality.baml
-      - run: npm run build
       - run: npm run quality.lint
       - run: npm run quality.format -- ${{ steps.range.outputs.arguments }}
       - run: npm run test.frontend.static
@@ -122,10 +145,16 @@ jobs:
 
   browser-e2e:
     name: Chromium Browser E2E
+    needs: build-artifacts
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
+      - name: Download verification build
+        uses: actions/download-artifact@v4
+        with:
+          name: verification-build
+          path: .
       - id: playwright
         name: Resolve Playwright version
         shell: bash
@@ -137,7 +166,7 @@ jobs:
       - name: Install cached Chromium
         run: npm run test.e2e.web.setup
         timeout-minutes: 8
-      - run: npm run test.e2e.web
+      - run: npm run test.e2e.web.run
       - name: Upload browser diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -150,14 +179,18 @@ jobs:
 
   platform-windows:
     name: Windows Platform Smoke
+    needs: build-artifacts
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
         with:
           install-electron: "true"
-      - run: npm run build
-      - run: npm --workspace senera-frontend run build
+      - name: Download verification build
+        uses: actions/download-artifact@v4
+        with:
+          name: verification-build
+          path: .
       - run: npm run test.e2e.desktop.run
       - run: npm run verify.suite -- platform
 

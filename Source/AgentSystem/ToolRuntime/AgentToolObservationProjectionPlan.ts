@@ -20,6 +20,9 @@ const StandardStructuredLimits = structuralLimits({
   maxNodes: 2_048,
 });
 
+/** Keep a single large result from consuming the entire current tool budget. */
+export const StandardAgentToolObservationResultBudgetShare = 1 / 8;
+
 export const StandardAgentToolObservationProjection = deepFreeze({
   schemaVersion: AgentToolObservationProjectionSchemaVersion,
   maxTokens: 64_000,
@@ -29,7 +32,9 @@ export const StandardAgentToolObservationProjection = deepFreeze({
     source("headline", "text", "essential", true, 128, CompactTextLimits),
     source("summary", "text", "high", true, 512, CompactTextLimits),
     source("retrieval", "json", "high", true, 256, StandardStructuredLimits),
-    source("result", "auto", "normal", true, 64_000, StandardStructuredLimits),
+    source("result", "auto", "normal", true, 64_000, StandardStructuredLimits, {
+      budgetShare: StandardAgentToolObservationResultBudgetShare,
+    }),
     source("evidence", "orderedArray", "normal", false, 512, StandardStructuredLimits),
     source("delta", "orderedArray", "normal", false, 384, StandardStructuredLimits),
     source("limitations", "orderedArray", "low", false, 192, StandardStructuredLimits),
@@ -50,8 +55,17 @@ function source(
   requiredForCompletion: boolean,
   maxTokens: number,
   limits: AgentToolObservationStructuralLimits,
+  options: { readonly budgetShare?: number } = {},
 ) {
-  return { source: sourceName, mode, priority, requiredForCompletion, maxTokens, limits };
+  return {
+    source: sourceName,
+    mode,
+    priority,
+    requiredForCompletion,
+    ...(options.budgetShare === undefined ? {} : { budgetShare: options.budgetShare }),
+    maxTokens,
+    limits,
+  };
 }
 
 function structuralLimits(limits: AgentToolObservationStructuralLimits): AgentToolObservationStructuralLimits {

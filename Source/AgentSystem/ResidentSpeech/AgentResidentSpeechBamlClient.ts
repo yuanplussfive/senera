@@ -18,6 +18,7 @@ export class AgentResidentSpeechBamlClient {
   async project(input: {
     readonly prompt: AgentResidentSpeechBamlPromptInput;
     readonly sessionId: string;
+    readonly logicalCacheScope?: string;
     readonly mode: "action_preface" | "final_response";
     readonly signal?: AbortSignal;
     readonly usageSink?: AgentModelUsageSink;
@@ -32,7 +33,13 @@ export class AgentResidentSpeechBamlClient {
     });
     const result = await runner.run({
       functionName: "ProjectResidentSpeech",
-      request: await buildRequest(input.prompt, input.sessionId, input.mode, this.configuration),
+      request: await buildRequest(
+        input.prompt,
+        input.sessionId,
+        input.logicalCacheScope,
+        input.mode,
+        this.configuration,
+      ),
       signal: input.signal,
       parse: (rawOutput) => baml.parse.ProjectResidentSpeech(rawOutput),
     });
@@ -43,6 +50,7 @@ export class AgentResidentSpeechBamlClient {
 async function buildRequest(
   input: AgentResidentSpeechBamlPromptInput,
   sessionId: string,
+  logicalCacheScope: string | undefined,
   mode: "action_preface" | "final_response",
   configuration: ResolvedAgentModelProviderConfig,
 ): Promise<AgentBamlModelRequest> {
@@ -58,6 +66,7 @@ async function buildRequest(
     cache: createAgentPiPromptCacheOptions({
       phase: mode === "action_preface" ? "resident-speech-action-preface" : "resident-speech-final-response",
       sessionId,
+      logicalCacheScope,
       model: projectAgentPiPromptCacheModel(configuration),
       stablePrefix: { systemPrompt: [input.systemPrompt, prompt.systemPrompt].filter(Boolean).join("\n\n") },
     }),

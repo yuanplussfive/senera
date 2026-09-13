@@ -33,6 +33,8 @@
 
 工具通过 `Handler.Resources` 声明资源 capability、参数 JSON Pointer 和 capability 参数。具体 capability 同时负责参数投影和资源 claim，因此通用调度器不包含工具名、参数名或文件路径特例。
 
+当一个资源字段是结构化集合时，capability 参数可以提供 `PathPointers`；它们是相对于该字段的 JSON Pointer 模式，完整的 `*` token 选择数组项或对象键。capability 会同时规范化、授权和投影所有匹配路径，调度器仍只消费最终 claim；例如补丁工具可以声明 `/*/path`、`/*/source` 和 `/*/destination`，无需把操作类型写进调度器。
+
 claim 由资源域、规范化身份和访问模式组成。资源域定义两个身份是否重叠：工作区路径域复用统一路径边界关系，上传域使用精确身份；调度器只消费该契约。字段缺失、capability 未知或 claim 投影为空时调用显式失败，不会静默改成全局独占。MCP 工具明确选择 `ResourceClaims`，没有参数级声明时按 server 精确域隔离，并依据标准 `readOnlyHint` 选择共享或独占访问。
 
 `Runtime.Scheduling` 缺省为 `Parallel`，普通调用只受 `ToolExecution.MaxConcurrentCallsPerRun` 的每次运行容量约束；`Runtime.MaxConcurrency` 可以再声明跨运行的工具级上限。System Tool 包必须显式写出 `Parallel`、`ResourceClaims` 或 `SelfManaged`，生成器和加载器共同校验声明。只有自身已经拥有等价并发闸门的宿主编排 Tool 才声明 `SelfManaged`；执行桥会跳过通用调度，由该服务对实际工作发放 permit。`SelfManaged` 不是“无需并发控制”，也不会传递给 child 内调用的工具。
@@ -55,6 +57,8 @@ MCP 工具未声明运行时元数据时直接使用普通的有界并行调度�
 | 自管理编排 Tool           | 由其领域并发闸门决定           |
 
 等待队列允许互不冲突的调用前进，但后来的读取不能绕过更早的冲突写入，避免写入饥饿。取消等待必须立即移除 waiter；执行结束、失败或取消都必须在 `finally` 中释放租约。
+
+子代理 assignment lease 以 child session 为 owner；该 session 的具体工具调用以 tool-call owner 通过显式 parent 关系重入 assignment lease，但不同 tool-call 之间仍按 claim 互斥。普通会话没有 assignment parent，每个工具调用使用独立 owner，避免同一会话的并行写入相互绕过锁。
 
 ## 边界规则
 

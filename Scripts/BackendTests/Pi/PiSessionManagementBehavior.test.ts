@@ -385,12 +385,10 @@ describe("Pi session management", () => {
     });
     const model = projectSeneraModelProviderToPi(modelProvider).model;
     const inputCapacity = model.contextWindow - model.maxTokens;
-    const proactiveHeadroom = Math.min(inputCapacity, model.maxTokens, DEFAULT_COMPACTION_SETTINGS.keepRecentTokens);
-
     expect(resolveAgentPiCompactionSettings({ Enabled: true }, model)).toEqual({
       enabled: true,
       reserveTokens: model.maxTokens,
-      keepRecentTokens: Math.min(DEFAULT_COMPACTION_SETTINGS.keepRecentTokens, inputCapacity - proactiveHeadroom),
+      keepRecentTokens: Math.min(DEFAULT_COMPACTION_SETTINGS.keepRecentTokens, inputCapacity - model.maxTokens),
     });
   });
 

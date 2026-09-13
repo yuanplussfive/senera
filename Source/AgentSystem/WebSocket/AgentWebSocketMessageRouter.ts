@@ -26,6 +26,7 @@ import { AgentWebSocketRequestScheduler } from "./AgentWebSocketRequestScheduler
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import { AgentWebSocketAgendaRequestHandlers } from "./AgentWebSocketAgendaRequestHandlers.js";
 import { AgentWebSocketWorldRequestHandlers } from "./AgentWebSocketWorldRequestHandlers.js";
+import { AgentWebSocketWorkspaceRequestHandlers } from "./AgentWebSocketWorkspaceRequestHandlers.js";
 import { AgentWebSocketChannelRequestHandlers } from "./AgentWebSocketChannelRequestHandlers.js";
 import type { AgentChannelServiceControl } from "./AgentWebSocketTypes.js";
 
@@ -41,6 +42,7 @@ export class AgentWebSocketMessageRouter {
   private readonly toolSettings: AgentWebSocketToolSettingsRequestHandlers;
   private readonly agenda: AgentWebSocketAgendaRequestHandlers;
   private readonly world: AgentWebSocketWorldRequestHandlers;
+  private readonly workspace: AgentWebSocketWorkspaceRequestHandlers;
   private readonly channel: AgentWebSocketChannelRequestHandlers;
   private readonly scheduler = new AgentWebSocketRequestScheduler();
 
@@ -64,6 +66,7 @@ export class AgentWebSocketMessageRouter {
     this.toolSettings = new AgentWebSocketToolSettingsRequestHandlers(options.context);
     this.agenda = new AgentWebSocketAgendaRequestHandlers(options.context, options.broadcast);
     this.world = new AgentWebSocketWorldRequestHandlers(options.context);
+    this.workspace = new AgentWebSocketWorkspaceRequestHandlers(options.context, options.broadcast);
     this.channel = new AgentWebSocketChannelRequestHandlers(options.channelControl ?? unavailableChannelControl());
   }
 
@@ -121,6 +124,8 @@ export class AgentWebSocketMessageRouter {
       "model.list": () => this.config.listModels(sendEvent),
       "provider.models.fetch": (entry) => this.config.fetchProviderModels(entry, sendEvent),
       "config.get": () => this.config.getConfig(sendEvent),
+      "workspace.get": (entry) => this.workspace.get(entry, sendEvent),
+      "workspace.switch": (entry) => this.workspace.switch(entry, sendEvent),
       "systemTool.list": () => this.toolSettings.listSystemTools(sendEvent),
       "mcpServer.list": () => this.toolSettings.listMcpServers(sendEvent),
       "mcpServer.restart": (entry) => this.toolSettings.restart(entry, sendEvent),

@@ -36,6 +36,8 @@ export interface AgentResidentSpeechNativeContinuation {
   stream(input: {
     readonly context: Context;
     readonly requiredToolName: string;
+    /** Existing callers default to required; repair callers explicitly opt into Pi's automatic mode. */
+    readonly toolChoice?: "required" | "auto";
     readonly signal: AbortSignal;
   }): AssistantMessageEventStream;
 }
@@ -48,6 +50,8 @@ export interface AgentResidentSpeechProjectionInput {
   readonly enabled: boolean;
   readonly signal?: AbortSignal;
   readonly sessionId: string;
+  /** Stable conversation affinity shared with the owning Pi turn. */
+  readonly logicalCacheScope?: string;
   readonly nativeContinuation?: AgentResidentSpeechNativeContinuation;
   readonly usageSink?: AgentModelUsageSink;
   readonly timingSink?: AgentModelTimingSink;

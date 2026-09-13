@@ -37,7 +37,13 @@ import {
   type AgentSessionMessageAcceptance,
 } from "./AgentSessionMessageCoordinator.js";
 import { AgentSessionHistoryController } from "./AgentSessionHistoryController.js";
-import type { AgentConversationEntryMetadata, AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
+import {
+  resolveAgentSessionModelProviderId,
+  type AgentConversationEntryMetadata,
+  type AgentEffectiveModelReceipt,
+  type AgentSessionModelPreference,
+  type AgentSessionOwnership,
+} from "../ModelEndpoints/AgentModelMetadata.js";
 import { mergeSessionConversationEntries } from "./AgentSessionRunProjection.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentChannelFinalizationRecord } from "../Channels/AgentChannelFinalizationTypes.js";
@@ -46,6 +52,7 @@ import {
   appendAgentChannelFinalizationRecord,
   readAgentChannelFinalizationHistory,
 } from "../Channels/AgentChannelFinalizationTypes.js";
+import { projectAssistantDeliveryXml } from "./AgentSessionDeliveryProjection.js";
 
 export type { AgentContinuityLearningSink, AgentSessionManagerOptions } from "./AgentSessionManagerOptions.js";
 
@@ -109,6 +116,7 @@ export class AgentSessionManager {
       piSessionMutations: options.piSessionMutations,
       runControl: options.runControl,
       loopFactory: options.loopFactory,
+      snapshotEvent: (session) => this.eventFactory.snapshot(session),
       eventObserver: options.eventObserver,
     });
     this.messageCoordinator = new AgentSessionMessageCoordinator({
@@ -224,6 +232,7 @@ export class AgentSessionManager {
     sessionId: string;
     requestId?: string;
     modelProviderId?: string;
+    thinkingLevel?: import("@earendil-works/pi-ai").ModelThinkingLevel;
     input: string;
     approvalMode: AgentExecutionApprovalMode;
     attachments?: AgentUploadAttachment[];
@@ -235,7 +244,6 @@ export class AgentSessionManager {
     systemPromptLayer?: import("../Orchestration/AgentRunDispatchPort.js").AgentSystemPromptLayer;
     allowedToolNames?: readonly string[];
     pinnedSkills?: readonly AgentPinnedSkillReference[];
-    thinkingLevel?: import("@earendil-works/pi-ai").ModelThinkingLevel;
     inheritProjectContext?: boolean;
     sessionOwnership?: AgentSessionOwnership;
     interaction?: AgentInteractionContext;
@@ -435,6 +443,9 @@ export class AgentSessionManager {
     messageCount: number;
     activeRequestId?: string;
     channel?: import("../ModelEndpoints/AgentModelMetadata.js").AgentChannelMetadata;
+    modelProviderId?: string;
+    effectiveModel?: AgentEffectiveModelReceipt;
+    modelPreference?: AgentSessionModelPreference;
   }> {
     return this.store
       .listSessions()
@@ -454,10 +465,22 @@ export class AgentSessionManager {
         messageCount: session.messageCount,
         activeRequestId: session.activeRequest?.requestId,
         channel: session.metadata?.channel,
+        modelProviderId: resolveAgentSessionModelProviderId(session.metadata),
+        ...(session.metadata?.activeRun?.receipt
+          ? { effectiveModel: session.metadata.activeRun.receipt }
+          : session.metadata?.lastRun?.receipt
+            ? { effectiveModel: session.metadata.lastRun.receipt }
+            : {}),
+        ...(session.metadata?.sessionModel ? { modelPreference: session.metadata.sessionModel } : {}),
       }));
   }
 
-  async replayHistory(request: { sessionId: string; refresh?: boolean; onEvent?: AgentEventSink }): Promise<void> {
+  async replayHistory(request: {
+    sessionId: string;
+    refresh?: boolean;
+    initialWindow?: boolean;
+    onEvent?: AgentEventSink;
+  }): Promise<void> {
     await this.historyController.replay(request);
   }
 
@@ -583,6 +606,7 @@ export class AgentSessionManager {
     fromRequestId: string;
     requestId: string;
     modelProviderId?: string;
+    thinkingLevel?: import("@earendil-works/pi-ai").ModelThinkingLevel;
     input: string;
     approvalMode: AgentExecutionApprovalMode;
     attachments?: AgentUploadAttachment[];
@@ -761,17 +785,4 @@ export class AgentSessionManager {
 
 function laterIsoTimestamp(current: string, candidate: string): string {
   return candidate > current ? candidate : current;
-}
-
-function projectAssistantDeliveryXml(content: string): string {
-  return `<response><answer>${escapeXmlText(content)}</answer></response>`;
-}
-
-function escapeXmlText(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
 }

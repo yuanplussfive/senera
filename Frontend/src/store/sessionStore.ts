@@ -8,6 +8,7 @@ import { installSessionPreferenceSynchronization } from "./session/sessionPrefer
 import {
   advanceRunDisplayText,
   applyEvent,
+  advanceHistoryHydration,
   bumpSessionMessageCount,
   createRunRecord,
   truncateSessionFromRequest,
@@ -20,13 +21,17 @@ import {
   selectModelForActiveSession,
   syncActiveSessionModelSelection,
 } from "./session/sessionModelSelection";
+import {
+  selectThinkingLevelForActiveSession,
+  syncActiveSessionThinkingSelection,
+} from "./session/sessionThinkingSelection";
 import { DEFAULT_USER_PROFILE, normalizeUserProfile } from "./session/userProfile";
 import { ExecutionApprovalModes } from "../api/executionApprovalMode";
 import type { SessionRecord, StoreState } from "./session/types";
 
 export { DEFAULT_SESSION_TITLE } from "./session/defaults";
 export { DEFAULT_USER_PROFILE, normalizeUserProfile } from "./session/userProfile";
-export { applyEvent, friendlyDecisionKind } from "./session/sessionProjector";
+export { applyEvent, advanceHistoryHydration, friendlyDecisionKind } from "./session/sessionProjector";
 export { readActiveRun } from "./session/sessionProjectorCore";
 export type {
   ApprovalRunRecord,
@@ -86,6 +91,9 @@ export const useStore = create<StoreState>()(
       historyStepBuffers: {},
       historyEventRunIds: {},
       historyActiveRequestIds: {},
+      historyRunEventBuffers: {},
+      historyPreviewedIds: {},
+      historyHydration: {},
       processedEventIds: {},
       processedEventIdOrder: [],
       missingOnServerIds: {},
@@ -98,6 +106,8 @@ export const useStore = create<StoreState>()(
       selectedModelProviderId: null,
       defaultModelProviderId: null,
       selectedModelProviderIdsBySession: {},
+      selectedThinkingLevel: null,
+      selectedThinkingLevelsBySession: {},
       executionApprovalMode: ExecutionApprovalModes.Agent,
       presets: [],
       presetWorldPackages: [],
@@ -128,6 +138,7 @@ export const useStore = create<StoreState>()(
         set((state) => {
           state.activeSessionId = id;
           syncActiveSessionModelSelection(state);
+          syncActiveSessionThinkingSelection(state);
         }),
 
       moveSession: (sessionId, targetSessionId, placement) =>
@@ -313,6 +324,9 @@ export const useStore = create<StoreState>()(
           state.historyStepBuffers[sessionId] = [];
           state.historyEventRunIds[sessionId] = {};
           state.historyActiveRequestIds[sessionId] = state.sessions[sessionId]?.activeRequestId ?? null;
+          state.historyRunEventBuffers[sessionId] = [];
+          delete state.historyPreviewedIds[sessionId];
+          delete state.historyHydration[sessionId];
           delete state.historyFailedIds[sessionId];
         }),
 
@@ -324,7 +338,18 @@ export const useStore = create<StoreState>()(
           delete state.historyStepBuffers[sessionId];
           delete state.historyEventRunIds[sessionId];
           delete state.historyActiveRequestIds[sessionId];
+          delete state.historyRunEventBuffers[sessionId];
+          delete state.historyPreviewedIds[sessionId];
+          delete state.historyHydration[sessionId];
         }),
+
+      advanceHistoryHydration: (sessionId) => {
+        let pending = false;
+        set((state) => {
+          pending = advanceHistoryHydration(state, sessionId);
+        });
+        return pending;
+      },
 
       selectModelProvider: (id) =>
         set((state) => {
@@ -334,6 +359,12 @@ export const useStore = create<StoreState>()(
       applyDefaultModelToActiveSession: () =>
         set((state) => {
           applyDefaultModelToActiveSession(state);
+          syncActiveSessionThinkingSelection(state);
+        }),
+
+      selectThinkingLevel: (level) =>
+        set((state) => {
+          selectThinkingLevelForActiveSession(state, level);
         }),
 
       setExecutionApprovalMode: (mode) =>
@@ -377,11 +408,15 @@ export const useStore = create<StoreState>()(
           state.historyStepBuffers = {};
           state.historyEventRunIds = {};
           state.historyActiveRequestIds = {};
+          state.historyRunEventBuffers = {};
+          state.historyPreviewedIds = {};
+          state.historyHydration = {};
           state.missingOnServerIds = {};
           state.pendingCreatedSessionIds = {};
           state.pendingDeletedSessionIds = {};
           state.childSessionParentIds = {};
           state.selectedModelProviderIdsBySession = {};
+          state.selectedThinkingLevelsBySession = {};
           for (const session of mockSessions) {
             state.sessions[session.sessionId] = session;
             state.sessionOrder.push(session.sessionId);
@@ -390,6 +425,7 @@ export const useStore = create<StoreState>()(
           state.activeSessionId =
             activeSessionId && state.sessions[activeSessionId] ? activeSessionId : (state.sessionOrder[0] ?? null);
           syncActiveSessionModelSelection(state);
+          syncActiveSessionThinkingSelection(state);
         }),
 
       appendUserMessage: (sessionId, requestId, input, attachments, options) =>

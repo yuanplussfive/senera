@@ -9,19 +9,25 @@ import type {
 import { resolveModelProviderConfig } from "../AgentDefaults.js";
 import { createModelProviderMetadata, type AgentModelProviderMetadata } from "./AgentModelMetadata.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import type { ResolvedAgentModelProviderEndpointConfig } from "../Types/AgentConfigTypes.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { ModelHttpClient } from "./ModelHttpClient.js";
 import type { TextGenerationEndpoint } from "./ModelEndpointTypes.js";
 import { createModelEndpoint } from "./ModelEndpointTypes.js";
 import { AgentModelUsageResolver, type AgentModelUsageValue } from "./AgentModelUsage.js";
+import { isModelEndpointFailoverEligible } from "./ModelHttpErrors.js";
 
 type ModelProviderConfig = ReturnType<typeof resolveModelProviderConfig>;
+
+interface AgentModelEndpointCandidate {
+  readonly endpoint: TextGenerationEndpoint;
+}
 
 export class AgentModelEndpointClient implements AgentLanguageModel {
   readonly metadata: AgentModelProviderMetadata;
 
   private readonly providerConfig: ModelProviderConfig;
-  private readonly endpoint: TextGenerationEndpoint;
+  private readonly candidates: readonly AgentModelEndpointCandidate[];
   private readonly usageResolver: AgentModelUsageResolver;
 
   constructor(config: AgentSystemConfig, modelProviderId?: string) {
@@ -34,9 +40,15 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
 
     this.metadata = createModelProviderMetadata(this.providerConfig);
     this.usageResolver = new AgentModelUsageResolver(this.providerConfig.Model);
-    this.endpoint = createModelEndpoint(this.providerConfig.Endpoint, {
-      config: this.providerConfig,
-      http: new ModelHttpClient(this.providerConfig, this.metadata),
+    const pool = this.providerConfig.EndpointPool;
+    this.candidates = (pool && pool.length > 0 ? pool : [this.providerConfig]).map((resolved) => {
+      const candidateConfig = withEndpointOverrides(this.providerConfig, resolved);
+      return {
+        endpoint: createModelEndpoint(this.providerConfig.Endpoint, {
+          config: candidateConfig,
+          http: new ModelHttpClient(candidateConfig, this.metadata),
+        }),
+      };
     });
   }
 
@@ -46,56 +58,91 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
     }
 
     await this.emitStarted(request);
-    const result = await this.endpoint.complete(request);
-    const usage = this.usageResolver.resolve(request, result.text, result.usage);
-
-    await this.emitCompleted(request, result.text, usage);
-
-    return { text: result.text, usage, completion: result.completion };
+    let lastError: unknown;
+    for (let index = 0; index < this.candidates.length; index += 1) {
+      if (request.signal?.aborted) throw request.signal.reason ?? new Error("请求已取消。");
+      try {
+        const result = await this.candidates[index]!.endpoint.complete(request);
+        const usage = this.usageResolver.resolve(request, result.text, result.usage);
+        await this.emitCompleted(request, result.text, usage);
+        return { text: result.text, usage, completion: result.completion };
+      } catch (error) {
+        lastError = error;
+        if (
+          index === this.candidates.length - 1 ||
+          request.signal?.aborted ||
+          !isModelEndpointFailoverEligible(error)
+        ) {
+          throw error;
+        }
+      }
+    }
+    throw lastError;
   }
 
   async stream(request: AgentLanguageModelRequest): Promise<AgentLanguageModelStream> {
     await this.emitStarted(request);
-    const stream = await this.endpoint.stream(request);
 
-    let accumulatedText = "";
-    let usage: AgentModelUsageValue | undefined;
-    const metadata = this.metadata;
-    const usageResolver = this.usageResolver;
-    const emitCompleted = this.emitCompleted.bind(this);
-    const chunks = (async function* (): AsyncGenerator<AgentLanguageModelStreamChunk> {
-      for await (const chunk of stream) {
-        accumulatedText += chunk.textDelta;
-        await emitAgentEvent(request.onEvent, {
-          kind: AgentEventKinds.ModelDelta,
-          context: {
-            requestId: request.requestId,
-            step: request.step,
-          },
-          data: {
-            text: chunk.textDelta,
-          },
-        });
-        yield {
-          textDelta: chunk.textDelta,
-          accumulatedText,
-        };
+    let lastError: unknown;
+    for (let index = 0; index < this.candidates.length; index += 1) {
+      if (request.signal?.aborted) throw request.signal.reason ?? new Error("请求已取消。");
+      let stream: AgentLanguageModelStream;
+      try {
+        // Failover only covers stream establishment; once the stream is open,
+        // mid-stream failures surface to the caller as-is.
+        stream = await this.candidates[index]!.endpoint.stream(request);
+      } catch (error) {
+        lastError = error;
+        if (
+          index === this.candidates.length - 1 ||
+          request.signal?.aborted ||
+          !isModelEndpointFailoverEligible(error)
+        ) {
+          throw error;
+        }
+        continue;
       }
-      usage = usageResolver.resolve(request, accumulatedText, stream.usage);
-      await emitCompleted(request, accumulatedText, usage);
-    })();
 
-    return {
-      metadata,
-      get usage() {
-        return usage;
-      },
-      get completion() {
-        return stream.completion;
-      },
-      abort: () => stream.abort(),
-      [Symbol.asyncIterator]: () => chunks,
-    };
+      let accumulatedText = "";
+      let usage: AgentModelUsageValue | undefined;
+      const metadata = this.metadata;
+      const usageResolver = this.usageResolver;
+      const emitCompleted = this.emitCompleted.bind(this);
+      const chunks = (async function* (): AsyncGenerator<AgentLanguageModelStreamChunk> {
+        for await (const chunk of stream) {
+          accumulatedText += chunk.textDelta;
+          await emitAgentEvent(request.onEvent, {
+            kind: AgentEventKinds.ModelDelta,
+            context: {
+              requestId: request.requestId,
+              step: request.step,
+            },
+            data: {
+              text: chunk.textDelta,
+            },
+          });
+          yield {
+            textDelta: chunk.textDelta,
+            accumulatedText,
+          };
+        }
+        usage = usageResolver.resolve(request, accumulatedText, stream.usage);
+        await emitCompleted(request, accumulatedText, usage);
+      })();
+
+      return {
+        metadata,
+        get usage() {
+          return usage;
+        },
+        get completion() {
+          return stream.completion;
+        },
+        abort: () => stream.abort(),
+        [Symbol.asyncIterator]: () => chunks,
+      };
+    }
+    throw lastError;
   }
 
   private async emitStarted(request: AgentLanguageModelRequest): Promise<void> {
@@ -139,4 +186,17 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
       },
     });
   }
+}
+
+function withEndpointOverrides(
+  config: ModelProviderConfig,
+  resolved: Pick<ResolvedAgentModelProviderEndpointConfig, "BaseUrl" | "ApiKey" | "ApiVersion" | "Headers">,
+): ModelProviderConfig {
+  return {
+    ...config,
+    BaseUrl: resolved.BaseUrl,
+    ApiKey: resolved.ApiKey,
+    ApiVersion: resolved.ApiVersion,
+    Headers: { ...resolved.Headers },
+  };
 }

@@ -1,4 +1,5 @@
 import type { AgentDomainEvent } from "../Events/AgentEvent.js";
+import type { AgentProfileRouteRegistry } from "../Conversation/AgentConversationSpace.js";
 
 /** Stable platform identities supported by the channel subsystem. */
 export const AgentChannelKinds = {
@@ -294,6 +295,8 @@ export interface AgentChannelsConfig {
   readonly channels: Readonly<Record<AgentChannelKind, AgentChannelConfig>>;
   readonly enabled: boolean;
   readonly defaultApprovalMode?: "agent" | "always_ask" | "full_access";
+  /** Host-owned conversation routing, resolved from the extension configuration. */
+  readonly profileRoutes?: AgentProfileRouteRegistry;
 }
 
 export interface AgentChannelEventObserver {

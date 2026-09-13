@@ -1,5 +1,6 @@
 import { Type, type Tool } from "@earendil-works/pi-ai";
 import { AgentRequiredNativeToolCall } from "../ModelEndpoints/AgentRequiredNativeToolCall.js";
+import { AgentNativeToolApiByEndpoint } from "../ModelEndpoints/AgentModelEndpointContract.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import {
   AgentConversationBoundaryToolName,
@@ -7,6 +8,7 @@ import {
 } from "./AgentConversationBoundaryPrompt.js";
 import { createAgentTemporalMemoryPromptCache } from "./AgentTemporalMemoryPromptCache.js";
 import type { AgentConversationBoundaryPromptInput } from "./AgentTemporalMemoryTypes.js";
+import { parseAgentConversationBoundary } from "./AgentConversationBoundarySchema.js";
 
 const NativeBoundaryTool = {
   name: AgentConversationBoundaryToolName,
@@ -36,9 +38,14 @@ export class AgentConversationBoundaryNativeClient {
     return this.call.execute({
       tool: NativeBoundaryTool,
       ...prompt,
+      validate: (value) => {
+        parseAgentConversationBoundary(value);
+      },
       cache: createAgentTemporalMemoryPromptCache({
         scopeKey: this.cacheScopeKey,
         phase: "conversation-boundary",
+        provider: this.configuration.ProviderId,
+        api: AgentNativeToolApiByEndpoint[this.configuration.Endpoint],
         model: this.configuration.Model,
         systemPrompt: prompt.systemPrompt,
         contract: NativeBoundaryTool,

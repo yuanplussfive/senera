@@ -1,5 +1,3 @@
-import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
-
 /**
  * A short-lived, session-scoped record of contracts that the model has
  * actually seen and successful arguments it can safely reuse.  This is kept
@@ -9,6 +7,8 @@ import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
  */
 export interface AgentToolCapabilityCacheEntry {
   readonly toolName: string;
+  /** Logical prompt/cache lane owning this evidence. */
+  readonly logicalCacheScope?: string;
   readonly catalogRevision: string;
   readonly contractDigest?: string;
   /** The user-turn intent that produced the successful invocation. */
@@ -26,6 +26,7 @@ export interface AgentToolCapabilityCacheState {
 
 interface MutableEntry {
   toolName: string;
+  logicalCacheScope?: string;
   catalogRevision: string;
   contractDigest?: string;
   query?: string;
@@ -51,6 +52,7 @@ export class AgentToolCapabilitySessionCache {
 
   rememberContract(input: {
     sessionId?: string;
+    logicalCacheScope?: string;
     toolName: string;
     catalogRevision: string;
     contractDigest?: string;
@@ -58,10 +60,12 @@ export class AgentToolCapabilitySessionCache {
   }): void {
     if (!input.sessionId || !input.toolName || !input.catalogRevision) return;
     const now = input.now ?? Date.now();
-    const entries = this.session(input.sessionId);
+    const logicalCacheScope = normalizeScope(input.logicalCacheScope);
+    const entries = this.session(input.sessionId, logicalCacheScope);
     const previous = entries.get(input.toolName);
     entries.set(input.toolName, {
       toolName: input.toolName,
+      ...(logicalCacheScope ? { logicalCacheScope } : {}),
       catalogRevision: input.catalogRevision,
       contractDigest: input.contractDigest,
       query: previous && sameContract(previous, input) ? previous.query : undefined,
@@ -74,6 +78,7 @@ export class AgentToolCapabilitySessionCache {
 
   rememberInvocation(input: {
     sessionId?: string;
+    logicalCacheScope?: string;
     toolName: string;
     catalogRevision: string;
     contractDigest?: string;
@@ -83,12 +88,14 @@ export class AgentToolCapabilitySessionCache {
   }): void {
     if (!input.sessionId || !input.toolName || !input.catalogRevision) return;
     const now = input.now ?? Date.now();
-    const entries = this.session(input.sessionId);
+    const logicalCacheScope = normalizeScope(input.logicalCacheScope);
+    const entries = this.session(input.sessionId, logicalCacheScope);
     const previous = entries.get(input.toolName);
     const query =
       normalizeQuery(input.query) ?? (previous && sameContract(previous, input) ? previous.query : undefined);
     entries.set(input.toolName, {
       toolName: input.toolName,
+      ...(logicalCacheScope ? { logicalCacheScope } : {}),
       catalogRevision: input.catalogRevision,
       contractDigest: input.contractDigest,
       ...(query ? { query } : {}),
@@ -101,12 +108,13 @@ export class AgentToolCapabilitySessionCache {
 
   state(input: {
     sessionId?: string;
+    logicalCacheScope?: string;
     toolName: string;
     catalogRevision: string;
     contractDigest?: string;
   }): AgentToolCapabilityCacheState {
     if (!input.sessionId) return { contract: "unconfirmed", reuse: "none" };
-    const entry = this.sessions.get(input.sessionId)?.get(input.toolName);
+    const entry = this.sessionEntries(input.sessionId, input.logicalCacheScope)?.get(input.toolName);
     if (!entry || !sameContract(entry, input)) return { contract: "unconfirmed", reuse: "none" };
     entry.lastUsedAt = Date.now();
     return entry.arguments
@@ -116,20 +124,22 @@ export class AgentToolCapabilitySessionCache {
 
   getReusable(input: {
     sessionId?: string;
+    logicalCacheScope?: string;
     toolName: string;
     catalogRevision: string;
     contractDigest?: string;
   }): AgentToolCapabilityCacheEntry | undefined {
     if (!input.sessionId) return undefined;
-    const entry = this.sessions.get(input.sessionId)?.get(input.toolName);
+    const entry = this.sessionEntries(input.sessionId, input.logicalCacheScope)?.get(input.toolName);
     if (!entry || !entry.arguments || !sameContract(entry, input)) return undefined;
     entry.lastUsedAt = Date.now();
     return freezeEntry(entry);
   }
 
-  snapshot(sessionId?: string): readonly AgentToolCapabilityCacheEntry[] {
+  snapshot(sessionId?: string, logicalCacheScope?: string): readonly AgentToolCapabilityCacheEntry[] {
     if (!sessionId) return [];
-    return [...(this.sessions.get(sessionId)?.values() ?? [])]
+    const entries = this.sessionEntries(sessionId, logicalCacheScope);
+    return [...(entries?.values() ?? [])]
       .sort((left, right) => right.lastUsedAt - left.lastUsedAt || left.toolName.localeCompare(right.toolName))
       .map(freezeEntry);
   }
@@ -144,18 +154,37 @@ export class AgentToolCapabilitySessionCache {
   }
 
   clear(sessionId?: string): void {
-    if (sessionId) this.sessions.delete(sessionId);
-    else this.sessions.clear();
+    if (!sessionId) {
+      this.sessions.clear();
+      return;
+    }
+    for (const key of this.sessions.keys()) {
+      if (key.startsWith(`${sessionId}\u0000`)) this.sessions.delete(key);
+    }
   }
 
-  private session(sessionId: string): Map<string, MutableEntry> {
-    let entries = this.sessions.get(sessionId);
+  private session(sessionId: string, logicalCacheScope?: string): Map<string, MutableEntry> {
+    const key = scopedSessionKey(sessionId, logicalCacheScope);
+    let entries = this.sessions.get(key);
     if (!entries) {
       entries = new Map();
-      this.sessions.set(sessionId, entries);
+      this.sessions.set(key, entries);
       this.trimSessions();
     }
     return entries;
+  }
+
+  private sessionEntries(sessionId: string, logicalCacheScope?: string): Map<string, MutableEntry> | undefined {
+    const normalized = normalizeScope(logicalCacheScope);
+    if (normalized) return this.sessions.get(scopedSessionKey(sessionId, normalized));
+    return [...this.sessions.entries()]
+      .filter(([key]) => key.startsWith(`${sessionId}\u0000`))
+      .sort((left, right) => oldestEntry(left[1]) - oldestEntry(right[1]))
+      .map(([, entries]) => entries)
+      .reduce((combined, entries) => {
+        for (const [toolName, entry] of entries) combined.set(toolName, entry);
+        return combined;
+      }, new Map<string, MutableEntry>());
   }
 
   private trimSessions(): void {
@@ -187,20 +216,13 @@ function sameContract(
 }
 
 function cloneArguments(value: Record<string, unknown>): Readonly<Record<string, unknown>> {
-  try {
-    return Object.freeze(structuredClone(value));
-  } catch {
-    // Tool arguments are JSON-shaped by the invocation contract. The
-    // canonical hash also makes the fallback deterministic for runtimes that
-    // do not expose structuredClone.
-    const serialized = JSON.stringify(value);
-    return Object.freeze(JSON.parse(serialized ?? "{}")) as Readonly<Record<string, unknown>>;
-  }
+  return Object.freeze(structuredClone(value));
 }
 
 function freezeEntry(entry: MutableEntry): AgentToolCapabilityCacheEntry {
   return Object.freeze({
     toolName: entry.toolName,
+    ...(entry.logicalCacheScope ? { logicalCacheScope: entry.logicalCacheScope } : {}),
     catalogRevision: entry.catalogRevision,
     contractDigest: entry.contractDigest,
     ...(entry.query ? { query: entry.query } : {}),
@@ -225,6 +247,11 @@ function normalizeQuery(query: string | undefined): string | undefined {
   return normalized ? normalized.slice(0, MaxCapabilityQueryCharacters) : undefined;
 }
 
-export function capabilityArgumentsDigest(arguments_: Readonly<Record<string, unknown>>): string {
-  return sha256HexOfCanonicalJson(arguments_);
+function normalizeScope(scope: string | undefined): string | undefined {
+  const normalized = scope?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function scopedSessionKey(sessionId: string, logicalCacheScope: string | undefined): string {
+  return `${sessionId}\u0000${logicalCacheScope ?? ""}`;
 }

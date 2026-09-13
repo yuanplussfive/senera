@@ -18,7 +18,7 @@ export type SocketPostIngestEffectPlan =
         Extract<
           WsRequest,
           {
-            type: "config.get" | "model.list" | "preset.list" | "sandbox.status" | "systemTool.list";
+            type: "config.get" | "model.list" | "preset.list" | "sandbox.status" | "systemTool.list" | "workspace.get";
           }
         >
       >;
@@ -57,6 +57,7 @@ export function resolveSocketPostIngestEffect(env: EventEnvelope): SocketPostIng
       kind: "config_reloaded",
       requests: [
         { type: "config.get" },
+        { type: "workspace.get" },
         { type: "model.list" },
         { type: "preset.list" },
         { type: "sandbox.status" },

@@ -192,6 +192,24 @@ export type ArtifactJsonQuery = Extract<ArtifactJsonViewRequest, { kind: "query"
 
 const ArtifactSha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 
+/** Integrity identity for manifest-owned files that are not model-readable refs. */
+export const ArtifactSnapshotContentSchema = z
+  .object({
+    file: z.string().trim().min(1),
+    byteLength: z.number().int().nonnegative(),
+    sha256: ArtifactSha256Schema,
+  })
+  .strict();
+
+export const WorkspaceSnapshotContentsSchema = z
+  .object({
+    before: ArtifactSnapshotContentSchema,
+    after: ArtifactSnapshotContentSchema,
+  })
+  .strict();
+
+export type ArtifactSnapshotContent = z.infer<typeof ArtifactSnapshotContentSchema>;
+
 export const ArtifactManifestContentSchema = z
   .object({
     ref: z.enum(ReadableArtifactRefs),

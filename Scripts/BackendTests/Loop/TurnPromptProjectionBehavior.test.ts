@@ -69,6 +69,7 @@ describe("turn prompt projection", () => {
       const rendered = await new AgentTurnPromptRenderer(runtime).render({
         userInput: "测试请求",
         loadedToolNames: ["ShellCommandTool"],
+        reusableCapabilities: [],
         rootCommand,
         toolPlanningMode: mode,
       });
@@ -91,6 +92,45 @@ describe("turn prompt projection", () => {
       expect(rendered.text).not.toContain("<runtime_tools>");
       expect(rendered.text).not.toContain("<sandbox>");
       expect(rendered.text).not.toContain("Sandbox shell tools");
+
+      const identity = await new AgentTurnPromptRenderer(runtime).render({
+        userInput: "测试请求",
+        sessionId: "conversation-space",
+        requestId: "turn-luna",
+        logicalCacheScope: "logical-space-cache",
+        turnNumber: 3,
+        interaction: { surface: "channel", platform: "qq" },
+        effectiveModel: {
+          sessionId: "conversation-space",
+          requestId: "turn-luna",
+          providerId: "gpt-5.6-luna",
+          model: "gpt-5.6-luna",
+          endpoint: "Responses",
+          baseUrl: "https://models.example.test/v1",
+          source: "request",
+          effectiveAt: "2026-09-10T00:00:00.000Z",
+          logicalCacheScope: "logical-space-cache",
+        },
+        loadedToolNames: ["ShellCommandTool"],
+        reusableCapabilities: [],
+        rootCommand,
+        toolPlanningMode: mode,
+      });
+      const baseline = await new AgentTurnPromptRenderer(runtime).render({
+        userInput: "测试请求",
+        loadedToolNames: ["ShellCommandTool"],
+        reusableCapabilities: [],
+        rootCommand,
+        toolPlanningMode: mode,
+      });
+      expect(identity.systemPrompt).toBe(baseline.systemPrompt);
+      expect(identity.systemPrompt).not.toContain("senera.conversation_space=v1");
+      expect(identity.turnContext).toContain("senera.conversation_space=v1");
+      expect(identity.turnContext).toContain("conversation-space");
+      expect(identity.turnContext).not.toContain("<senera_conversation_space>");
+      expect(identity.turnContext).toContain("senera.turn=v1");
+      expect(identity.turnContext).toContain("gpt-5.6-luna");
+      expect(identity.turnContext).toContain('"platform":"qq"');
     },
   );
 
@@ -179,6 +219,7 @@ describe("turn prompt projection", () => {
       const rendered = await new AgentTurnPromptRenderer(runtime).render({
         userInput: "测试请求",
         loadedToolNames: ["ShellCommandTool"],
+        reusableCapabilities: [],
         rootCommand,
         toolPlanningMode: mode,
       });
@@ -248,6 +289,7 @@ describe("turn prompt projection", () => {
       const rendered = await new AgentTurnPromptRenderer(runtime).render({
         userInput: "检查发布流程",
         loadedToolNames: ["ShellCommandTool"],
+        reusableCapabilities: [],
         rootCommand,
         toolPlanningMode: mode,
       });
@@ -379,24 +421,28 @@ describe("turn prompt projection", () => {
         userInput: "继续调查雾港灯塔",
         sessionId: "continuity-session",
         loadedToolNames: [],
+        reusableCapabilities: [],
         rootCommand,
         toolPlanningMode: mode,
       });
 
       expect(rendered.text).not.toContain("internal-delivery");
 
-      expect(rendered.text).toContain("<continuity_memory");
-      expect(rendered.text).toContain("<claim>居住地点: 上海</claim>");
+      expect(rendered.text).toContain("[senera.profile] encoding=toon");
+      expect(rendered.text).toContain("居住地点: 上海");
       expect(rendered.systemPrompt).not.toContain("居住地点: 上海");
-      expect(rendered.turnContext).toContain("<claim>居住地点: 上海</claim>");
-      expect(rendered.text).toContain('<known_facts source="continuity_fact_heads">');
+      expect(rendered.turnContext).toContain("[senera.profile] encoding=toon");
+      expect(rendered.turnContext).toContain("居住地点: 上海");
+      expect(rendered.text).toContain("[senera.facts] encoding=toon");
       expect(rendered.text).toContain("这条完整事实只用于连续性面板诊断。");
-      expect(rendered.text).not.toContain("<valid_until>");
-      expect(rendered.text.indexOf("<known_facts")).toBeLessThan(rendered.text.indexOf("<continuity_memory"));
+      expect(rendered.text).not.toContain("validUntil");
       expect(rendered.text).toContain("senera://memory-source/harbor");
       expect(rendered.text).toContain("用户已完成运动");
+      expect(rendered.text).toMatch(/\[senera\.memory_selection\] encoding=(toon|compact-json)/u);
+      expect(rendered.text).not.toContain("<continuity_memory");
+      expect(rendered.text).not.toContain("<known_facts");
       expect(rendered.text).not.toContain("<workflow_context");
-      expect(rendered.text).not.toContain("expires_at=");
+      expect(rendered.text).not.toContain("expiresAt");
       expect(rendered.text).not.toContain("灯塔位于雾港北岸。");
     },
   );

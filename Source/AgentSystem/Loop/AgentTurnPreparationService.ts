@@ -4,12 +4,14 @@ import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.j
 import type { AgentToolSearchCurrentSetPolicy } from "../ToolSearch/AgentToolSearchRuntimeTypes.js";
 import { AgentToolSearchCurrentSetPolicies } from "../ToolSearch/AgentToolSearchRuntimeTypes.js";
 import type { AgentPromptContextService, AgentRetrievalService } from "../Runtime/AgentRuntimeServices.js";
+import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 
 export interface AgentPreparedTurn {
   loadedToolNames: string[];
   toolAccessGrant: AgentToolAccessGrant;
   rootCommand: AgentRootCommand;
   activeSkills: AgentActivatedSkill[];
+  reusableCapabilities: readonly AgentToolCapabilityCacheEntry[];
 }
 
 export interface AgentTurnPreparationRuntime {
@@ -26,6 +28,7 @@ export class AgentTurnPreparationService {
     requestId: string;
     userInput: string;
     sessionId?: string;
+    logicalCacheScope?: string;
     loadedToolNames: readonly string[];
     allowedToolNames?: readonly string[];
     pinnedSkills?: readonly AgentPinnedSkillReference[];
@@ -40,6 +43,7 @@ export class AgentTurnPreparationService {
     const reusableCapabilities = input.sessionId
       ? (this.runtime.services.retrieval.reusableCapabilities?.({
           sessionId: input.sessionId,
+          logicalCacheScope: input.logicalCacheScope,
           query: input.userInput,
           authorizedToolNames: input.allowedToolNames,
           limit: 6,
@@ -78,6 +82,7 @@ export class AgentTurnPreparationService {
       toolAccessGrant: rootCommand.toolAccessGrant,
       rootCommand,
       activeSkills,
+      reusableCapabilities,
     };
   }
 

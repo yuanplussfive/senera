@@ -6,6 +6,7 @@ import {
   createAgentContinuityFactExtractionContext,
 } from "./AgentContinuityNativeExtractionPrompt.js";
 import { AgentContinuityRelationCatalog } from "./AgentContinuityRelationCatalog.js";
+import { parseAgentContinuityFactExtraction } from "./AgentContinuityLearningSchema.js";
 import { AgentRequiredNativeToolCall } from "../ModelEndpoints/AgentRequiredNativeToolCall.js";
 import type { AgentStablePromptInvocationOptions } from "../ModelEndpoints/AgentLanguageModel.js";
 import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
@@ -66,6 +67,9 @@ export class AgentContinuityNativeExtractionClient {
     return this.call.execute({
       tool: NativeFactTool,
       ...createAgentContinuityFactExtractionContext(input, options.stableSystemPrompt),
+      validate: (value) => {
+        parseAgentContinuityFactExtraction(value);
+      },
       signal: options.signal,
       cache: options.cache,
     });

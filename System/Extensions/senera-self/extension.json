@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "senera-self",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "Senera 自服务", "en-US": "Senera Self-Service" },
+  "description": {
+    "zh-CN": "受控的命令面：查看和更新配置、管理预设与 Skill、检查工作区与系统状态。",
+    "en-US": "Controlled command surface: inspect and update configuration, manage presets and Skills, and check workspace and system health."
+  },
+  "priority": 2,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/SeneraCommand.tool.json",
+      "capability": "system.tool.senera-self.SeneraCommand",
+      "recommendedForSkills": ["senera-workbench"]
+    }
+  ]
+}

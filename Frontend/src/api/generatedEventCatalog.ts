@@ -124,6 +124,10 @@ export const EventKinds = {
   SystemToolSnapshot: "system_tool.snapshot",
   McpServerSnapshot: "mcp_server.snapshot",
   ChannelStatusSnapshot: "channel.status.snapshot",
+  WorkspaceSnapshot: "workspace.snapshot",
+  WorkspaceSwitchStarted: "workspace.switch.started",
+  WorkspaceSwitched: "workspace.switched",
+  WorkspaceSwitchFailed: "workspace.switch.failed",
 } as const;
 export type EventKind = (typeof EventKinds)[keyof typeof EventKinds];
 
@@ -232,6 +236,10 @@ export const EventTransportSpecs = {
   "system_tool.snapshot": { layer: "snapshot", phase: "config" },
   "mcp_server.snapshot": { layer: "snapshot", phase: "config" },
   "channel.status.snapshot": { layer: "snapshot", phase: "config" },
+  "workspace.snapshot": { layer: "snapshot", phase: "config" },
+  "workspace.switch.started": { layer: "progress", phase: "config" },
+  "workspace.switched": { layer: "terminal", phase: "config" },
+  "workspace.switch.failed": { layer: "error", phase: "config" },
 } as const satisfies Record<EventKind, { readonly layer: EventLayer; readonly phase: EventPhase }>;
 
 export { EventSpecs } from "./generatedEventSpecs";

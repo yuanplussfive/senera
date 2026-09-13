@@ -108,6 +108,16 @@ export class AgentConfigSqliteRepository {
     return row ? this.rowToRevision(row) : undefined;
   }
 
+  /** Every retained revision in ascending order, newest last. */
+  listRevisions(): AgentConfigRevisionRecord[] {
+    return this.statements.selectAllRevisions.all().map((row) => this.rowToRevision(row));
+  }
+
+  readRevision(revision: number): AgentConfigRevisionRecord | undefined {
+    const row = this.statements.selectRevision.get(revision);
+    return row ? this.rowToRevision(row) : undefined;
+  }
+
   appendRevision(input: AgentConfigWriteInput): AgentConfigRevisionRecord {
     const createdAt = input.createdAt ?? new Date().toISOString();
     const retention = assertAgentConfigHistoryRetentionPolicy(input.retention ?? DefaultConfigHistoryRetentionPolicy);

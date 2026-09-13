@@ -153,6 +153,10 @@ describe("ToolSearch meta-tool behavior", () => {
       }),
     ]);
     expect(runtime.reusableCapabilities({ sessionId: "session-1", query: "weather forecast" })).toEqual([]);
+    runtime.refresh();
+    expect(runtime.reusableCapabilities({ sessionId: "session-1", query: "read workspace file" })).toMatchObject([
+      expect.objectContaining({ toolName: "WorkspaceReadFile", arguments: { path: "package.json" } }),
+    ]);
     const reused = await handler(
       { query: "read workspace file" },
       hostToolContext({

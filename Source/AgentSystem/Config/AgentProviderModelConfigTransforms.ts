@@ -15,6 +15,8 @@ export function cloneModelProviderConfig(model: AgentModelProviderConfig): Agent
   return {
     ...model,
     ...(model.Capabilities ? { Capabilities: { ...model.Capabilities } } : {}),
+    ...(model.ThinkingLevelMap ? { ThinkingLevelMap: { ...model.ThinkingLevelMap } } : {}),
+    ...(model.ThinkingProfiles ? { ThinkingProfiles: model.ThinkingProfiles.map((profile) => ({ ...profile })) } : {}),
   };
 }
 

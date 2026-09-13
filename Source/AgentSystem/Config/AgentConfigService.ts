@@ -59,6 +59,17 @@ export interface AgentConfigSnapshot {
   form: AgentConfigFormSnapshot;
 }
 
+export interface AgentConfigHistoryEntry {
+  readonly revision: number;
+  readonly source: AgentConfigRevisionRecord["source"];
+  readonly createdAt: string;
+}
+
+export type AgentConfigRevisionReadResult =
+  | { readonly status: "found"; readonly value: AgentSystemConfig }
+  | { readonly status: "unavailable" }
+  | { readonly status: "missing" };
+
 export interface AgentConfigDiagnostic {
   severity: "warning" | "error";
   message: string;
@@ -233,6 +244,24 @@ export class AgentConfigService {
     this.maintainSqliteHistory();
     this.publishSnapshot();
     return this.snapshotValue;
+  }
+
+  /** Retained revision metadata, ascending (oldest first). Empty when the
+   * configuration store is disabled, never a silent approximation. */
+  history(): readonly AgentConfigHistoryEntry[] {
+    if (!this.usesSqliteStore()) return [];
+    return this.repositoryForPath(this.activeDatabasePath())
+      .listRevisions()
+      .map(({ revision, source, createdAt }) => ({ revision, source, createdAt }));
+  }
+
+  /** Reads one retained revision for inspection or rollback adjudication.
+   * `unavailable` means no configuration store backs this service; `missing`
+   * means the revision was pruned by retention or never existed. */
+  readRevision(revision: number): AgentConfigRevisionReadResult {
+    if (!this.usesSqliteStore()) return { status: "unavailable" };
+    const record = this.repositoryForPath(this.activeDatabasePath()).readRevision(revision);
+    return record ? { status: "found", value: record.config } : { status: "missing" };
   }
 
   close(): void {

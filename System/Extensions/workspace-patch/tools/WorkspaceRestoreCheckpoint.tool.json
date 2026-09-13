@@ -1,0 +1,179 @@
+{
+  "name": "WorkspaceRestoreCheckpoint",
+  "observationProjection": "observations/default.projection.json",
+  "description": "从已发布 Artifact 的 workspace checkpoint 恢复 before 或 after 快照。可提供 artifactUri，或仅提供 checkpointId 让宿主从已发布 Artifact 中自动选择最新匹配项。宿主根据 Artifact 对侧快照推导并实时校验当前 workspace revision；内容完整性校验失败或 workspace 在读取期间变化时拒绝写入。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "anyOf": [
+      {
+        "type": "object",
+        "properties": {
+          "artifactUri": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Artifact URI containing the captured workspace checkpoint."
+          },
+          "checkpointId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional durable checkpoint id. When artifactUri is omitted, the host selects the newest matching Artifact."
+          },
+          "currentRevision": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Legacy optional revision hint. The host derives the expected revision from the checkpoint and verifies the live workspace itself."
+          },
+          "target": {
+            "default": "after",
+            "description": "Snapshot side to materialize. after resumes the captured change; before restores its base.",
+            "type": "string",
+            "enum": ["before", "after"]
+          }
+        },
+        "required": ["artifactUri"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "artifactUri": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Artifact URI containing the captured workspace checkpoint."
+          },
+          "checkpointId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional durable checkpoint id. When artifactUri is omitted, the host selects the newest matching Artifact."
+          },
+          "currentRevision": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Legacy optional revision hint. The host derives the expected revision from the checkpoint and verifies the live workspace itself."
+          },
+          "target": {
+            "default": "after",
+            "description": "Snapshot side to materialize. after resumes the captured change; before restores its base.",
+            "type": "string",
+            "enum": ["before", "after"]
+          }
+        },
+        "required": ["checkpointId"],
+        "additionalProperties": false
+      }
+    ],
+    "type": "object"
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "text": { "type": "string" },
+      "artifactUri": { "type": "string" },
+      "target": { "type": "string", "enum": ["before", "after"] },
+      "checkpoint": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "baseRevision": { "type": "string" },
+          "revision": { "type": "string" },
+          "capturedAt": { "type": "string" },
+          "changedPaths": { "type": "array", "items": { "type": "string" } },
+          "changeDigest": { "type": "string" },
+          "artifactUri": { "type": "string" }
+        },
+        "required": ["id", "baseRevision", "revision", "capturedAt", "changedPaths", "changeDigest"],
+        "additionalProperties": false
+      },
+      "checkpointId": { "type": "string" },
+      "baseRevision": { "type": "string" },
+      "targetRevision": { "type": "string" },
+      "restoredPaths": { "type": "array", "items": { "type": "string" } },
+      "skippedPaths": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": { "path": { "type": "string" }, "reason": { "type": "string" } },
+          "required": ["path", "reason"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "text",
+      "artifactUri",
+      "checkpoint",
+      "target",
+      "checkpointId",
+      "baseRevision",
+      "targetRevision",
+      "restoredPaths",
+      "skippedPaths"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": ["filesystem:read:workspace", "filesystem:write:workspace"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "ResourceClaims",
+    "MaxConcurrency": 1,
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [{ "Capability": "senera.workspace.root", "Pointer": "", "Parameters": { "Intent": "replace" } }],
+  "sources": [
+    {
+      "Id": "workspace",
+      "Title": "Workspace",
+      "Description": "Files, directories, and source code in the current workspace."
+    },
+    {
+      "Id": "artifact-checkpoint",
+      "Title": "Artifact Checkpoint",
+      "Description": "Durable Artifact manifests and captured workspace snapshots."
+    }
+  ],
+  "search": {
+    "Summary": "由宿主校验 workspace revision 后从 Artifact 恢复 checkpoint。",
+    "Tags": ["workspace", "checkpoint", "restore", "rollback", "恢复", "回滚"],
+    "Capabilities": [
+      {
+        "Id": "workspace.restore-checkpoint",
+        "Title": "Restore workspace checkpoint",
+        "Description": "Restore a before or after workspace snapshot from a durable Artifact without overwriting unrelated files.",
+        "Facets": {
+          "Actions": ["restore", "rollback", "resume"],
+          "Targets": ["workspace", "file", "source-code"],
+          "Inputs": ["artifactUri", "checkpointId", "currentRevision", "target"],
+          "Outputs": ["workspace-restore-result", "workspace-revision"],
+          "Evidence": ["workspace-checkpoint", "artifact-manifest"],
+          "Effects": ["write-workspace"]
+        },
+        "Aliases": ["restore checkpoint", "rollback workspace", "恢复检查点", "回滚工作区"],
+        "Risk": {
+          "SideEffect": "write-workspace",
+          "Permission": "write",
+          "Notes": [
+            "The host derives the expected current revision from the opposite checkpoint snapshot and rejects stale workspaces before writing.",
+            "Paths absent from the captured snapshot are never deleted implicitly."
+          ]
+        }
+      }
+    ],
+    "UseCases": [
+      "恢复长期任务在 Artifact 中保存的 workspace checkpoint。",
+      "只凭 checkpointId 接管最近的 workspace checkpoint。",
+      "在宿主确认当前 workspace revision 后回滚到变更前快照。",
+      "从中断的子代理任务恢复其最后一个可验证的工作区结果。"
+    ],
+    "Examples": ["恢复某个 Artifact 的 after checkpoint", "在 revision 冲突时安全拒绝回滚"],
+    "Avoid": [
+      "没有 Artifact checkpoint 时不要使用；先通过 ArtifactMemoryRead 获取 evidence。",
+      "不要依赖或伪造 currentRevision；宿主会从 Artifact 对侧快照和实时 workspace 状态重新计算。"
+    ]
+  },
+  "evidenceCapabilities": [],
+  "approval": { "Mode": "ask", "Reason": "恢复或回滚工作区文件。" }
+}

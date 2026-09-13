@@ -4,7 +4,6 @@ import path from "node:path";
 import { formatSkillInvocation } from "@earendil-works/pi-agent-core";
 import { loadSkills, loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
-import { toPosixPath } from "../../../Source/AgentSystem/Artifacts/AgentArtifactLocator.js";
 import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import { AgentPiToolRegistryProjector } from "../../../Source/AgentSystem/Pi/AgentPiToolRegistryProjector.js";
 import type { AgentPiToolExecutionBridge } from "../../../Source/AgentSystem/Pi/AgentPiToolExecutionBridge.js";
@@ -75,9 +74,9 @@ describe("Pi tool contract cache behavior", () => {
     if (!projectedSkill) throw new Error("Missing projected execution-workflow Skill.");
 
     expect(projectedSkill.content).toContain("# Execution Workflow");
-    expect(projectedSkill.filePath).toBe(toPosixPath(skill.descriptionFile));
+    expect(projectedSkill.filePath).toBe(`senera://skills/${skill.name}/SKILL.md`);
     expect(formatSkillInvocation(projectedSkill)).toContain(
-      `References are relative to ${path.dirname(skill.descriptionFile).split(path.sep).join(path.posix.sep)}.`,
+      `References are relative to senera://skills/${skill.name}.`,
     );
   });
 

@@ -1,6 +1,7 @@
 import type { ApprovalDecision } from "./approvalEventTypes";
 import type {
   PersonaPresetCard,
+  ModelThinkingLevel,
   ProviderModelEndpointInput,
   UploadAttachmentData,
   UserProfileData,
@@ -16,6 +17,7 @@ export type WsRequest =
       sessionId: string;
       requestId?: string;
       modelProviderId?: string;
+      thinkingLevel?: ModelThinkingLevel;
       input: string;
       approvalMode: ExecutionApprovalMode;
       attachments?: UploadAttachmentData[];
@@ -31,6 +33,7 @@ export type WsRequest =
       fromRequestId: string;
       requestId: string;
       modelProviderId?: string;
+      thinkingLevel?: ModelThinkingLevel;
       input: string;
       approvalMode: ExecutionApprovalMode;
       attachments?: UploadAttachmentData[];
@@ -40,7 +43,7 @@ export type WsRequest =
   | { type: "session.runtime_status"; sessionId: string }
   | { type: "session.export"; sessionId: string; format: "jsonl" | "html" }
   | { type: "session.list" }
-  | { type: "session.history"; sessionId: string; refresh?: boolean }
+  | { type: "session.history"; sessionId: string; refresh?: boolean; initialWindow?: boolean }
   | { type: "session.rename"; sessionId: string; title: string }
   | { type: "agenda.get" }
   | {
@@ -60,6 +63,8 @@ export type WsRequest =
   | { type: "model.list" }
   | { type: "provider.models.fetch"; providerId: string; force?: boolean; endpoint?: ProviderModelEndpointInput }
   | { type: "config.get" }
+  | { type: "workspace.get" }
+  | { type: "workspace.switch"; workspaceRoot: string }
   | { type: "systemTool.list" }
   | { type: "mcpServer.list" }
   | { type: "mcpServer.restart"; serverId: string }

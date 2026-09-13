@@ -253,6 +253,7 @@ export class AgentToolCallExecutor {
       const execution = normalizeAgentToolProcessResult(
         await this.toolRunner.run(tool, args, {
           sessionId: context.sessionId,
+          logicalCacheScope: context.logicalCacheScope,
           requestId: context.requestId,
           step: context.step,
           toolCallId: callId,
@@ -269,6 +270,7 @@ export class AgentToolCallExecutor {
           tokenBudget: context.tokenBudget,
           approvalMode: context.approvalMode,
           activeSkills: context.activeSkills,
+          reusableCapabilities: context.reusableCapabilities,
           thinkingLevel: context.thinkingLevel,
           resourceAccessGrant: context.resourceAccessGrant,
         }),

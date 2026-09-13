@@ -1,21 +1,13 @@
 import { z } from "zod";
-import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import { decodePlannerTimelinePayload } from "./AgentPlannerTimelinePayload.js";
 import {
   buildCompactionSummarySystemMessages,
   extractPlannerCompactionSummary,
 } from "./AgentActionPlannerCompactionSummaryInjector.js";
-import { formatTimelineTurnContent, type TimelineTurnInput } from "./AgentPlannerTimelineBlockRegistry.js";
+import { formatTimelineTurnWire, type TimelineTurnInput } from "./AgentPlannerTimelineBlockRegistry.js";
 import { DefaultAgentPlannerContextProjectorRegistry } from "./AgentPlannerContextProjectorRegistry.js";
-import {
-  promptXmlChildren,
-  promptXmlJson,
-  promptXmlNode,
-  promptXmlText,
-  serializePromptXml,
-  type AgentPromptXmlNode,
-} from "./AgentPromptXml.js";
+import { decodeAgentPromptInputWire, renderAgentPromptInputWire } from "../Prompt/AgentPromptContextWireRenderer.js";
 
 export interface ProjectedActionPlannerPrompt {
   systemPrompt: string;
@@ -92,7 +84,7 @@ function projectPlannerConversationMessages(
 ): AgentLanguageModelMessage[] {
   const final = messages.at(-1);
   if (!final || final.role !== "user") {
-    throw new Error("BAML action planner prompt must end with a JSON user message.");
+    throw new Error("BAML action planner prompt must end with a planner input user message.");
   }
 
   const envelope = readPlannerPromptEnvelope(final.content);
@@ -109,10 +101,20 @@ function projectPlannerConversationMessages(
 }
 
 function readPlannerPromptEnvelope(value: string): z.infer<typeof PlannerPromptEnvelopeSchema> {
-  const raw = parseJsonText(value, "Action planner prompt envelope");
-  const parsed = PlannerPromptEnvelopeSchema.safeParse(raw);
+  const decoded = decodeAgentPromptInputWire(value, {
+    // Action-planner BAML functions share this adapter, while tool learning
+    // uses its own resource-specific wire kind. Both have the same
+    // lossless directive/context envelope; arbitrary wire kinds are rejected.
+    expectedKind: ["planner_input", "tool_learning"],
+    expectedVersion: "1",
+  });
+  const context = decoded.context;
+  if (!context || typeof context !== "object" || Array.isArray(context)) {
+    throw new Error("Invalid planner input wire: context must be an object.");
+  }
+  const parsed = PlannerPromptEnvelopeSchema.safeParse({ context, directive: decoded.directive });
   if (!parsed.success) {
-    throw new Error(`Invalid action planner prompt envelope: ${parsed.error.message}`);
+    throw new Error(`Invalid planner input wire: ${parsed.error.message}`);
   }
   return parsed.data;
 }
@@ -142,28 +144,28 @@ function projectTimelineTurnMessage(turn: PlannerTimelineTurnRecord): AgentLangu
   };
   return {
     role: turn.role,
-    content: formatTimelineTurnContent(input),
+    content: formatTimelineTurnWire(input),
   };
 }
 
 function buildPlannerInputMessage(context: Record<string, unknown>, directive: unknown): AgentLanguageModelMessage {
-  const sections = [...projectDirective(directive), ...DefaultAgentPlannerContextProjectorRegistry.project(context)];
+  // The registry remains the single validation/extension point; serialization
+  // is delegated to the shared wire so new context fields do not need tags.
+  const normalizedContext = DefaultAgentPlannerContextProjectorRegistry.normalize(context);
+  const wire = renderAgentPromptInputWire(
+    {
+      kind: "planner_input",
+      context: normalizedContext,
+      directive,
+      contextEncodings: ["toon", "compact-json"],
+    },
+    { estimateTokens: (text) => text.length },
+  );
 
   return {
     role: "user",
-    content: serializePromptXml(promptXmlNode("planner_input", promptXmlChildren(sections))),
+    content: wire.text,
   };
-}
-
-function projectDirective(directive: unknown): readonly AgentPromptXmlNode[] {
-  if (typeof directive === "string") {
-    const value = directive.trim();
-    return value ? [promptXmlNode("directive", promptXmlText(value))] : [];
-  }
-  if (directive !== undefined && directive !== null) {
-    return [promptXmlNode("directive", promptXmlJson(directive))];
-  }
-  return [];
 }
 
 function omitRecordKeys(record: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {

@@ -20,6 +20,7 @@ import { AgentPiNativeToolBridge } from "./AgentPiNativeToolBridge.js";
 import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
 import type { AgentPiToolCallPreflightInput } from "./AgentPiToolCallPreflight.js";
 import { projectAgentToolDescription } from "../ToolRuntime/AgentToolInteractionProjector.js";
+import { projectAgentToolCapabilityArguments } from "../ToolSearch/AgentToolCapabilityArgumentProjection.js";
 
 export interface AgentPiToolRuntimeContractProjector {
   projectToolInvocationSchema(tool: RegisteredTool, schema: Readonly<Record<string, unknown>>): Record<string, unknown>;
@@ -110,10 +111,21 @@ export class AgentPiToolRegistryProjector {
   projectPreflight(
     event: AgentPiToolCallPreflightInput,
     toolAccessGrant: AgentToolAccessGrant,
+    reusableCapabilities?: AgentPiToolProjectionContext["reusableCapabilities"],
   ): AgentPiToolPreflightProjection {
-    if (this.options.toolPlanningMode !== "native") return { event, bridged: false };
-    const projected = this.nativeBridge.projectPreflight(event, toolAccessGrant);
-    return { event: projected, bridged: projected !== event };
+    if (this.options.toolPlanningMode === "native") {
+      const projected = this.nativeBridge.projectPreflight(event, toolAccessGrant, reusableCapabilities);
+      return { event: projected, bridged: projected !== event };
+    }
+    const tool = this.options.registry.getTool(event.toolName);
+    if (!tool) return { event, bridged: false };
+    return {
+      event: {
+        ...event,
+        input: projectAgentToolCapabilityArguments(tool, event.input, reusableCapabilities),
+      },
+      bridged: false,
+    };
   }
 
   private visibleTools(
@@ -148,14 +160,20 @@ export class AgentPiToolRegistryProjector {
   ): AgentPiToolDefinition {
     return {
       ...descriptor,
-      execute: (toolCallId, params, signal) =>
-        this.options.execution.execute({
+      execute: (toolCallId, params, signal) => {
+        const projectionContext = context();
+        return this.options.execution.execute({
           tool,
           toolCallId,
-          params: normalizeToolParams(params),
+          params: projectAgentToolCapabilityArguments(
+            tool,
+            normalizeToolParams(params),
+            projectionContext.reusableCapabilities,
+          ),
           signal,
-          context: context(),
-        }),
+          context: projectionContext,
+        });
+      },
     };
   }
 

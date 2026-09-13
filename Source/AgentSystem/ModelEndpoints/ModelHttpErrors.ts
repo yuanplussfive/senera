@@ -31,6 +31,22 @@ export class ModelResponseLimitError extends AgentBaseError {
   }
 }
 
+export function isModelHttpRetryableStatus(status: number): boolean {
+  return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+/** Endpoint pools may only move on an error that another physical endpoint
+ * can plausibly fix. Client/request/schema failures must stay on the primary
+ * endpoint so credentials and invalid payloads are reported directly. */
+export function isModelEndpointFailoverEligible(error: unknown): boolean {
+  const chain = errorChain(error);
+  if (chain.some((entry) => entry instanceof ModelRequestTimeoutError)) return true;
+  const providerError = chain.find((entry): entry is ModelProviderHttpError => entry instanceof ModelProviderHttpError);
+  if (providerError) return isModelHttpRetryableStatus(providerError.status);
+  const message = chain.map((entry) => entry.message).join(" ");
+  return /(?:fetch failed|network|socket|econn|enotfound|eai_again|etimedout|unreachable|unavailable)/iu.test(message);
+}
+
 export function normalizeModelHttpError(config: ModelProviderConfig, error: unknown): Error {
   if (error instanceof ModelProviderHttpError) {
     return new AgentLocalizedError(
@@ -90,4 +106,16 @@ export async function safeReadResponseBody(response: Response): Promise<string> 
   } catch {
     return "";
   }
+}
+
+function errorChain(error: unknown): Error[] {
+  const chain: Error[] = [];
+  const seen = new Set<object>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if (current instanceof Error) chain.push(current);
+    current = Reflect.get(current, "cause") ?? Reflect.get(current, "originalError");
+  }
+  return chain;
 }

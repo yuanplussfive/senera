@@ -1,0 +1,538 @@
+{
+  "name": "SeneraCommand",
+  "description": "Executes the live Senera self-service command surface. The input schema is authoritative for command/action and parameter shapes; call capabilities for the live registry and governance workflow. Config and workspace Skill mutations are revision-guarded, validated, broadcast live where applicable, and adjudicated per the session approval mode. Skill reads are source-bounded; Skill writes can only target the unique workspace Skill source and retain restorable revisions. The human senera CLI and this tool share one executor.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "anyOf": [
+      {
+        "oneOf": [
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "config" },
+                  "action": { "type": "string", "const": "get" },
+                  "path": { "type": "string", "maxLength": 256 }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "config" },
+                  "action": { "type": "string", "const": "models" }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "config" },
+                  "action": { "type": "string", "const": "endpoints" }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "config" },
+                  "action": { "type": "string", "const": "history" }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "config" },
+                  "action": { "type": "string", "const": "env-path" }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "config" },
+                  "action": { "type": "string", "const": "check" }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "config" },
+                  "action": { "type": "string", "const": "rollback" },
+                  "revision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                },
+                "required": ["command", "action", "revision"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "config" },
+                  "action": { "type": "string", "const": "update" },
+                  "path": { "type": "string", "minLength": 1, "maxLength": 256 },
+                  "value": {}
+                },
+                "required": ["command", "action", "path", "value"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "preset" },
+                  "action": { "type": "string", "const": "list" }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "preset" },
+                  "action": { "type": "string", "const": "show" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 }
+                },
+                "required": ["command", "action", "name"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "preset" },
+                  "action": { "type": "string", "const": "use" },
+                  "name": { "anyOf": [{ "type": "string", "maxLength": 128 }, { "type": "null" }] }
+                },
+                "required": ["command", "action", "name"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "preset" },
+                  "action": { "type": "string", "const": "create" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+                  "content": {}
+                },
+                "required": ["command", "action", "name", "content"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "logs" },
+                  "action": { "type": "string", "const": "list" }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "logs" },
+                  "action": { "type": "string", "const": "tail" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+                  "lines": { "type": "integer", "exclusiveMinimum": 0, "maximum": 2000 }
+                },
+                "required": ["command", "action", "name"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "session" },
+                  "action": { "type": "string", "const": "model" },
+                  "operation": { "type": "string", "const": "get" },
+                  "sessionId": { "type": "string", "minLength": 1, "maxLength": 256 }
+                },
+                "required": ["command", "action", "operation"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "session" },
+                  "action": { "type": "string", "const": "model" },
+                  "operation": { "type": "string", "const": "set" },
+                  "modelProviderId": { "type": "string", "minLength": 1, "maxLength": 256 },
+                  "sessionId": { "type": "string", "minLength": 1, "maxLength": 256 }
+                },
+                "required": ["command", "action", "operation", "modelProviderId"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "skills" },
+                  "action": { "type": "string", "const": "list" }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "skills" },
+                  "action": { "type": "string", "const": "search" },
+                  "query": { "type": "string", "minLength": 1, "maxLength": 2048 },
+                  "limit": { "type": "integer", "exclusiveMinimum": 0, "maximum": 12 }
+                },
+                "required": ["command", "action", "query"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "skills" },
+                  "action": { "type": "string", "const": "inspect" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 }
+                },
+                "required": ["command", "action", "name"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "skills" },
+                  "action": { "type": "string", "const": "resources" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 }
+                },
+                "required": ["command", "action", "name"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "skills" },
+                  "action": { "type": "string", "const": "read" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+                  "path": { "type": "string", "minLength": 1, "maxLength": 512 },
+                  "revision": { "type": "string", "minLength": 16, "maxLength": 128 }
+                },
+                "required": ["command", "action", "name", "path"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "skills" },
+                  "action": { "type": "string", "const": "diff" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+                  "revision": { "type": "string", "minLength": 16, "maxLength": 128 }
+                },
+                "required": ["command", "action", "name", "revision"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "skills" },
+                  "action": { "type": "string", "const": "check" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "skills" },
+                  "action": { "type": "string", "const": "history" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 }
+                },
+                "required": ["command", "action", "name"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "skills" },
+                  "action": { "type": "string", "const": "create" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+                  "content": { "type": "string", "minLength": 1, "maxLength": 1048576 }
+                },
+                "required": ["command", "action", "name", "content"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "skills" },
+                  "action": { "type": "string", "const": "update" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+                  "content": { "type": "string", "minLength": 1, "maxLength": 1048576 },
+                  "expectedRevision": { "type": "string", "minLength": 16, "maxLength": 128 }
+                },
+                "required": ["command", "action", "name", "content", "expectedRevision"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "skills" },
+                  "action": { "type": "string", "const": "archive" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+                  "expectedRevision": { "type": "string", "minLength": 16, "maxLength": 128 }
+                },
+                "required": ["command", "action", "name", "expectedRevision"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "skills" },
+                  "action": { "type": "string", "const": "restore" },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+                  "revision": { "type": "string", "minLength": 16, "maxLength": 128 }
+                },
+                "required": ["command", "action", "name", "revision"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "command": { "type": "string", "const": "workspace" },
+              "action": { "type": "string", "const": "info" }
+            },
+            "required": ["command", "action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "command": { "type": "string", "const": "sessions" },
+              "action": { "type": "string", "const": "list" }
+            },
+            "required": ["command", "action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "command": { "type": "string", "const": "plugins" },
+              "action": { "type": "string", "const": "list" }
+            },
+            "required": ["command", "action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": { "command": { "type": "string", "const": "capabilities" } },
+            "required": ["command"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": { "command": { "type": "string", "const": "status" } },
+            "required": ["command"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "command": { "type": "string", "const": "doctor" },
+              "action": { "type": "string", "const": "status" }
+            },
+            "required": ["command", "action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "command": { "type": "string", "const": "approval" },
+              "action": { "type": "string", "const": "resolve" },
+              "approvalId": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "decision": { "type": "string", "enum": ["approve", "deny"] }
+            },
+            "required": ["command", "action", "approvalId", "decision"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "command": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "action": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "args": { "maxItems": 128, "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["command"],
+        "additionalProperties": false
+      }
+    ],
+    "type": "object"
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "ok": { "type": "boolean" },
+      "text": { "type": "string" },
+      "data": {},
+      "error": { "type": "string", "minLength": 1 },
+      "approvalRequired": {
+        "type": "object",
+        "properties": {
+          "approvalId": { "type": "string", "minLength": 1 },
+          "command": {
+            "type": "object",
+            "properties": {
+              "command": { "type": "string", "minLength": 1 },
+              "action": { "type": "string", "minLength": 1 }
+            },
+            "required": ["command"],
+            "additionalProperties": {}
+          },
+          "reason": { "type": "string", "minLength": 1 },
+          "deadlineAt": { "type": "string", "minLength": 1 }
+        },
+        "required": ["approvalId", "command", "reason", "deadlineAt"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["ok", "text"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/SeneraCommand.projection.json",
+  "permissions": [
+    "config:read",
+    "config:update",
+    "preset:manage",
+    "skills:read",
+    "skills:manage",
+    "workspace:inspect",
+    "diagnostics:read"
+  ],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "MaxConcurrency": 8
+  },
+  "resources": [],
+  "sources": [],
+  "search": {
+    "Summary": "受控执行 senera 配置、预设、Skill、工作区与诊断命令。",
+    "Tags": ["配置", "预设", "Skill", "工作区", "诊断", "模型", "doctor", "config", "preset", "skills", "pipeline"],
+    "Capabilities": [
+      {
+        "Id": "senera.self",
+        "Title": "Senera self-service",
+        "Description": "Inspect or update the runtime configuration, list/activate presets, and read workspace/health metadata through the host command surface.",
+        "Facets": {
+          "Actions": [
+            "config.get",
+            "config.models",
+            "config.endpoints",
+            "config.history",
+            "config.env-path",
+            "config.check",
+            "config.rollback",
+            "config.update",
+            "preset.list",
+            "preset.show",
+            "preset.use",
+            "preset.create",
+            "workspace.info",
+            "sessions.list",
+            "session.model",
+            "logs.list",
+            "logs.tail",
+            "status",
+            "doctor.status",
+            "approval.resolve",
+            "plugins.list",
+            "skills.list",
+            "skills.search",
+            "skills.inspect",
+            "skills.resources",
+            "skills.read",
+            "skills.diff",
+            "skills.check",
+            "skills.history",
+            "skills.create",
+            "skills.update",
+            "skills.archive",
+            "skills.restore",
+            "capabilities"
+          ],
+          "Targets": ["configuration", "preset", "skill", "workspace", "runtime", "session", "log"],
+          "Inputs": [
+            "command",
+            "path",
+            "name",
+            "value",
+            "content",
+            "revision",
+            "operation",
+            "modelProviderId",
+            "sessionId"
+          ],
+          "Outputs": [
+            "config-snapshot",
+            "preset-summary",
+            "workspace-info",
+            "session-model-preference",
+            "effective-model-receipt",
+            "skill-catalog",
+            "skill-inspection",
+            "skill-diagnostics",
+            "doctor-report",
+            "capability-report"
+          ],
+          "Effects": ["runtime-refresh", "config-change", "preset-change"]
+        },
+        "Aliases": ["查看配置", "切换预设", "换模型", "查看工作区", "诊断", "senera 命令", "改配置"],
+        "Risk": { "SideEffect": "runtime-refresh", "Permission": "write" }
+      }
+    ],
+    "UseCases": [
+      "用户要求查看或切换当前配置、模型端点、预设，查看、校验或受控维护 Skill，或检查系统与工作区状态。",
+      "任务需要了解运行环境（工作区根目录、数据库、沙箱状态）时。"
+    ],
+    "Examples": [
+      "看看现在的模型配置",
+      "切换到我昨天创建的前端专家预设",
+      "当前配置里默认模型是什么",
+      "把当前对话切换到另一个已配置模型",
+      "帮我检查一下系统状态",
+      "列出当前可用的 Skill 并检查是否有效",
+      "把这次确认过的工作规则保存成工作区 Skill"
+    ],
+    "Avoid": [
+      "不要用它直接读取用户文档或代码文件；用工作区工具。",
+      "不要在工具中执行任意 shell 命令。",
+      "不要用 skills inspect 绕过来源和校验读取任意路径。",
+      "不要修改系统 Skill；系统来源只读。",
+      "不要在没有用户确认的情况下把临时猜测写成长期 Skill。"
+    ]
+  },
+  "evidenceCapabilities": []
+}

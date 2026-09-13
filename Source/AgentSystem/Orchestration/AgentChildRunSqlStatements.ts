@@ -5,6 +5,8 @@ export interface AgentChildRunRow {
   readonly id: string;
   readonly owner_run_id: string;
   readonly node_id: string;
+  readonly work_item_id: string | null;
+  readonly task_digest: string | null;
   readonly join_group_json: string | null;
   readonly parent_session_id: string;
   readonly parent_request_id: string;
@@ -27,6 +29,8 @@ export interface AgentChildRunRow {
   readonly checkpoint_json: string | null;
   readonly final_answer: string | null;
   readonly usage_json: string | null;
+  readonly result_consumed_at: string | null;
+  readonly parent_wake_consumed: number;
   readonly error: string | null;
   readonly created_at: string;
   readonly started_at: string | null;
@@ -50,6 +54,7 @@ export interface AgentChildRunSqlStatements {
   readonly select: Database.Statement<[string], AgentChildRunRow>;
   readonly selectByChildSession: Database.Statement<[string], AgentChildRunRow>;
   readonly selectByOwnerNode: Database.Statement<[string, string], AgentChildRunRow>;
+  readonly selectByWorkItem: Database.Statement<[string, string], AgentChildRunRow>;
   readonly listForOwner: Database.Statement<[string], AgentChildRunRow>;
   readonly listForJoinGroup: Database.Statement<[string], AgentChildRunRow>;
   readonly listForParent: Database.Statement<[string], AgentChildRunRow>;
@@ -69,6 +74,9 @@ export interface AgentChildRunSqlStatements {
   readonly markFailed: Database.Statement;
   readonly markCancelled: Database.Statement;
   readonly markTimedOut: Database.Statement;
+  readonly markResultConsumed: Database.Statement;
+  readonly markParentWakeConsumed: Database.Statement;
+  readonly markParentWakeConsumedBatch: Database.Statement;
   readonly recoverInterrupted: Database.Statement;
   readonly insertMessage: Database.Statement;
   readonly listMessages: Database.Statement<[string], AgentChildRunMessageRow>;
@@ -78,13 +86,13 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
   return {
     insert: database.prepare(
       agentSql`INSERT INTO child_runs (
-                 id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
+                 id, owner_run_id, node_id, work_item_id, task_digest, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                  agent_name, task, context_mode, approval_mode, model_provider_id,
                  model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                  launch_contract_digest, launch_contract_json, allowed_tool_names_json,
                  created_at, updated_at
                ) VALUES (
-                 @id, @owner_run_id, @node_id, @join_group_json, @parent_session_id, @parent_request_id, @child_session_id, @child_request_id,
+                 @id, @owner_run_id, @node_id, @work_item_id, @task_digest, @join_group_json, @parent_session_id, @parent_request_id, @child_session_id, @child_request_id,
                  @agent_name, @task, @context_mode, @approval_mode, @model_provider_id,
                  @model_selection_source, @selected_skills_json, @configuration_revision, @execution_contract_json, @status,
                  @launch_contract_digest, @launch_contract_json, @allowed_tool_names_json,
@@ -92,96 +100,106 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
                )`,
     ),
     select: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, work_item_id, task_digest, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
-                      snapshot_json, checkpoint_json, final_answer, usage_json, error,
+                      snapshot_json, checkpoint_json, final_answer, usage_json, error, result_consumed_at, parent_wake_consumed,
                       created_at, started_at, completed_at, updated_at, revision
                FROM child_runs
                WHERE id = ?`,
     ),
     selectByChildSession: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, work_item_id, task_digest, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
-                      snapshot_json, checkpoint_json, final_answer, usage_json, error,
+                      snapshot_json, checkpoint_json, final_answer, usage_json, error, result_consumed_at, parent_wake_consumed,
                       created_at, started_at, completed_at, updated_at, revision
                FROM child_runs
                WHERE child_session_id = ?`,
     ),
     selectByOwnerNode: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, work_item_id, task_digest, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
-                      snapshot_json, checkpoint_json, final_answer, usage_json, error,
+                      snapshot_json, checkpoint_json, final_answer, usage_json, error, result_consumed_at, parent_wake_consumed,
                       created_at, started_at, completed_at, updated_at, revision
                FROM child_runs
                WHERE owner_run_id = ? AND node_id = ?`,
     ),
-    listForOwner: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
+    selectByWorkItem: database.prepare(
+      agentSql`SELECT id, owner_run_id, node_id, work_item_id, task_digest, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
-                      snapshot_json, checkpoint_json, final_answer, usage_json, error,
+                      snapshot_json, checkpoint_json, final_answer, usage_json, error, result_consumed_at, parent_wake_consumed,
+                      created_at, started_at, completed_at, updated_at, revision
+               FROM child_runs
+               WHERE parent_session_id = ? AND work_item_id = ?`,
+    ),
+    listForOwner: database.prepare(
+      agentSql`SELECT id, owner_run_id, node_id, work_item_id, task_digest, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
+                      agent_name, task, context_mode, approval_mode, model_provider_id,
+                      model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
+                      launch_contract_digest, launch_contract_json, allowed_tool_names_json,
+                      snapshot_json, checkpoint_json, final_answer, usage_json, error, result_consumed_at, parent_wake_consumed,
                       created_at, started_at, completed_at, updated_at, revision
                FROM child_runs
                WHERE owner_run_id = ?
                ORDER BY created_at, id`,
     ),
     listForJoinGroup: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, work_item_id, task_digest, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
-                      snapshot_json, checkpoint_json, final_answer, usage_json, error,
+                      snapshot_json, checkpoint_json, final_answer, usage_json, error, result_consumed_at, parent_wake_consumed,
                       created_at, started_at, completed_at, updated_at, revision
                FROM child_runs
                WHERE json_extract(join_group_json, '$.id') = ?
                ORDER BY created_at, id`,
     ),
     listForParent: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, work_item_id, task_digest, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
-                      snapshot_json, checkpoint_json, final_answer, usage_json, error,
+                      snapshot_json, checkpoint_json, final_answer, usage_json, error, result_consumed_at, parent_wake_consumed,
                       created_at, started_at, completed_at, updated_at, revision
                FROM child_runs
                WHERE parent_session_id = ?
                ORDER BY created_at DESC, id`,
     ),
     listForParentRequest: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, work_item_id, task_digest, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
-                      snapshot_json, checkpoint_json, final_answer, usage_json, error,
+                      snapshot_json, checkpoint_json, final_answer, usage_json, error, result_consumed_at, parent_wake_consumed,
                       created_at, started_at, completed_at, updated_at, revision
                FROM child_runs
                WHERE parent_session_id = ? AND parent_request_id = ?
                ORDER BY created_at DESC, id`,
     ),
     listActive: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, work_item_id, task_digest, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
-                      snapshot_json, checkpoint_json, final_answer, usage_json, error,
+                      snapshot_json, checkpoint_json, final_answer, usage_json, error, result_consumed_at, parent_wake_consumed,
                       created_at, started_at, completed_at, updated_at, revision
                FROM child_runs
                WHERE status IN ('queued', 'running', 'wrapping_up', 'cancelling')
                ORDER BY created_at, id`,
     ),
     listAll: database.prepare(
-      agentSql`SELECT id, owner_run_id, node_id, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
+      agentSql`SELECT id, owner_run_id, node_id, work_item_id, task_digest, join_group_json, parent_session_id, parent_request_id, child_session_id, child_request_id,
                       agent_name, task, context_mode, approval_mode, model_provider_id,
                       model_selection_source, selected_skills_json, configuration_revision, execution_contract_json, status,
                       launch_contract_digest, launch_contract_json, allowed_tool_names_json,
-                      snapshot_json, checkpoint_json, final_answer, usage_json, error,
+                      snapshot_json, checkpoint_json, final_answer, usage_json, error, result_consumed_at, parent_wake_consumed,
                       created_at, started_at, completed_at, updated_at, revision
                FROM child_runs
                ORDER BY created_at, id`,
@@ -210,7 +228,8 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
     markResumed: database.prepare(
       agentSql`UPDATE child_runs
                SET status = 'queued', child_request_id = @child_request_id, error = NULL,
-                   final_answer = NULL, completed_at = NULL, updated_at = @updated_at, revision = revision + 1
+                   final_answer = NULL, completed_at = NULL, result_consumed_at = NULL,
+                   parent_wake_consumed = 0, updated_at = @updated_at, revision = revision + 1
                WHERE id = @id AND status IN ('awaiting_supervisor', 'partial_completed', 'interrupted', 'failed', 'timed_out', 'completed', 'cancelled')`,
     ),
     recordSnapshot: database.prepare(
@@ -266,6 +285,26 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
                    error = @error, completed_at = @completed_at,
                    updated_at = @completed_at, revision = revision + 1
                WHERE id = @id AND status IN ('running', 'wrapping_up', 'cancelling')`,
+    ),
+    markResultConsumed: database.prepare(
+      agentSql`UPDATE child_runs
+               SET result_consumed_at = COALESCE(result_consumed_at, @consumed_at),
+                   updated_at = @consumed_at, revision = revision + 1
+               WHERE id = @id AND result_consumed_at IS NULL
+                 AND status IN ('completed', 'partial_completed', 'interrupted', 'timed_out', 'failed', 'cancelled')`,
+    ),
+    markParentWakeConsumed: database.prepare(
+      agentSql`UPDATE child_runs
+               SET parent_wake_consumed = 1,
+                   updated_at = @consumed_at, revision = revision + 1
+               WHERE id = @id AND parent_wake_consumed = 0`,
+    ),
+    markParentWakeConsumedBatch: database.prepare(
+      agentSql`UPDATE child_runs
+               SET parent_wake_consumed = 1,
+                   updated_at = @consumed_at, revision = revision + 1
+               WHERE parent_wake_consumed = 0
+                 AND id IN (SELECT value FROM json_each(@ids_json))`,
     ),
     recoverInterrupted: database.prepare(
       agentSql`UPDATE child_runs

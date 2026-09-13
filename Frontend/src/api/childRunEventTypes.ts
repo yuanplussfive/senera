@@ -15,6 +15,8 @@ export interface ChildRunEventIdentityData {
   childRunId: string;
   ownerRunId: string;
   nodeId: string;
+  workItemId?: string;
+  taskDigest?: string;
   childSessionId: string;
   agentName: string;
   status: ChildRunStatus;

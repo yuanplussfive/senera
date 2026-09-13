@@ -1,10 +1,17 @@
 import { z } from "zod";
+import {
+  AgentPromptWireEncodings,
+  type AgentPromptWireBlockDescriptor,
+  type AgentPromptWireEncoding,
+} from "../Prompt/AgentPromptContextWireRenderer.js";
 import { promptXmlChildren, promptXmlJson, promptXmlNode, type AgentPromptXmlNode } from "./AgentPromptXml.js";
 
 export interface AgentPlannerContextProjector {
   readonly key: string;
   readonly order: number;
+  /** @deprecated Use wire() through AgentPlannerContextProjectorRegistry.normalize(). */
   project(value: unknown): readonly AgentPromptXmlNode[];
+  wire(value: unknown): AgentPromptWireBlockDescriptor;
 }
 
 interface AgentPlannerContextProjectorDefinition<T> {
@@ -12,6 +19,7 @@ interface AgentPlannerContextProjectorDefinition<T> {
   readonly order: number;
   readonly schema: z.ZodType<T>;
   project(value: T): readonly AgentPromptXmlNode[];
+  wireEncodings?: readonly AgentPromptWireEncoding[];
 }
 
 const UnknownRecordSchema = z.record(z.string(), z.unknown());
@@ -42,13 +50,25 @@ export function defineAgentPlannerContextProjector<T>(
     key: definition.key,
     order: definition.order,
     project(value: unknown): readonly AgentPromptXmlNode[] {
-      const parsed = definition.schema.safeParse(value);
-      if (!parsed.success) {
-        throw new Error(`Invalid action planner context field "${definition.key}": ${parsed.error.message}`);
-      }
-      return definition.project(parsed.data);
+      const parsed = parseContextValue(definition, value);
+      return definition.project(parsed);
+    },
+    wire(value: unknown): AgentPromptWireBlockDescriptor {
+      return {
+        id: definition.key,
+        value: parseContextValue(definition, value),
+        allowedEncodings: definition.wireEncodings ?? [AgentPromptWireEncodings.CompactJson],
+      };
     },
   });
+}
+
+function parseContextValue<T>(definition: AgentPlannerContextProjectorDefinition<T>, value: unknown): T {
+  const parsed = definition.schema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(`Invalid action planner context field "${definition.key}": ${parsed.error.message}`);
+  }
+  return parsed.data;
 }
 
 const DefaultContextProjectors: readonly AgentPlannerContextProjector[] = Object.freeze([
@@ -56,12 +76,14 @@ const DefaultContextProjectors: readonly AgentPlannerContextProjector[] = Object
     key: "seneraRuntime",
     order: 100,
     schema: UnknownRecordSchema,
+    wireEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
     project: (value) => [promptXmlNode("runtime_context", promptXmlJson(value))],
   }),
   defineAgentPlannerContextProjector({
     key: "routingCards",
     order: 200,
     schema: z.array(RoutingCardSchema),
+    wireEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
     project: (cards) => [
       promptXmlNode(
         "routing_cards",
@@ -80,6 +102,7 @@ const DefaultContextProjectors: readonly AgentPlannerContextProjector[] = Object
     key: "planningContext",
     order: 300,
     schema: PlanningContextSchema,
+    wireEncodings: [AgentPromptWireEncodings.CompactJson],
     project: (value) => [promptXmlNode("planning_context", promptXmlJson(value))],
   }),
 ]);
@@ -105,6 +128,8 @@ export class AgentPlannerContextProjectorRegistry {
     this.knownKeys = keys;
   }
 
+  /** @deprecated Use normalize() with the shared prompt wire. */
+  /** @deprecated XML is retained only for historical planner consumers. */
   project(context: Readonly<Record<string, unknown>>): readonly AgentPromptXmlNode[] {
     const nodes: AgentPromptXmlNode[] = [];
     for (const projector of this.projectors) {
@@ -124,6 +149,50 @@ export class AgentPlannerContextProjectorRegistry {
     }
 
     return nodes;
+  }
+
+  /**
+   * Validates and normalizes planner context before it enters the shared wire.
+   * The normalized object is the canonical model input; XML projection is only
+   * retained for callers that still consume the compatibility API above.
+   */
+  normalize(context: Readonly<Record<string, unknown>>): Record<string, unknown> {
+    const blocks = this.projectWireBlocks(context);
+    const normalized: Record<string, unknown> = {};
+    for (const block of blocks) {
+      if (block.id === "extra_context") {
+        if (!block.value || typeof block.value !== "object" || Array.isArray(block.value)) {
+          throw new Error("Planner extra_context must be an object.");
+        }
+        Object.assign(normalized, block.value);
+        continue;
+      }
+      normalized[block.id] = block.value;
+    }
+    return normalized;
+  }
+
+  /** Returns validated, ordered wire blocks for the canonical model envelope. */
+  projectWireBlocks(context: Readonly<Record<string, unknown>>): readonly AgentPromptWireBlockDescriptor[] {
+    const blocks: AgentPromptWireBlockDescriptor[] = [];
+    for (const projector of this.projectors) {
+      const value = context[projector.key];
+      if (value !== undefined && value !== null) blocks.push(projector.wire(value));
+    }
+
+    const extraContext = Object.fromEntries(
+      Object.entries(context).filter(
+        ([key, value]) => !this.knownKeys.has(key) && value !== undefined && value !== null,
+      ),
+    );
+    if (Object.keys(extraContext).length > 0) {
+      blocks.push({
+        id: "extra_context",
+        value: extraContext,
+        allowedEncodings: [AgentPromptWireEncodings.CompactJson],
+      });
+    }
+    return blocks;
   }
 }
 

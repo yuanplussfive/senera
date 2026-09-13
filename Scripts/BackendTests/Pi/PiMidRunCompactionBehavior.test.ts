@@ -40,6 +40,22 @@ describe("Pi mid-run context compaction", () => {
     expect(
       resolveAgentPiCompactionSettings({ Enabled: true }, { contextWindow: 4_096, maxTokens: 512 } as never),
     ).toEqual({ enabled: true, reserveTokens: 512, keepRecentTokens: 3_072 });
+    expect(
+      resolveAgentPiCompactionSettings({ Enabled: true }, { contextWindow: 211_616, maxTokens: 32_768 } as never),
+    ).toEqual({ enabled: true, reserveTokens: 32_768, keepRecentTokens: 20_000 });
+    expect(
+      resolveAgentPiCompactionSettings({ Enabled: true }, { contextWindow: 16_384, maxTokens: 8_192 } as never),
+    ).toEqual({ enabled: true, reserveTokens: 8_192, keepRecentTokens: 4_096 });
+    expect(
+      resolveAgentPiMidRunCompactionPressure(
+        { inputCapacityTokens: 1_000, outputReserveTokens: 900 },
+        { keepRecentTokens: 2_000 },
+      ),
+    ).toEqual({
+      inputCapacityTokens: 1_000,
+      proactiveHeadroomTokens: 500,
+      triggerTokens: 500,
+    });
   });
 
   test("persists a compaction and replaces the active loop context before the next provider request", async () => {
@@ -147,6 +163,18 @@ describe("Pi mid-run context compaction", () => {
         state: AgentRunActivityStates.Completed,
       }),
     ]);
+
+    // Replaying the same completed batch must not summarize the same history
+    // again merely because the rebuilt context is still in the pressure band.
+    const repeated = await coordinator.prepareNextTurn(
+      turn,
+      session,
+      { enabled: true, reserveTokens: 200, keepRecentTokens: 80 },
+      new AbortController().signal,
+    );
+    expect(repeated).toBeUndefined();
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(diagnostics.at(-1)).toBe("compaction.mid_turn.skipped");
   });
 
   test("does not persist a compaction when the completed tool batch is itself over capacity", async () => {
@@ -367,6 +395,127 @@ describe("Pi mid-run context compaction", () => {
     expect(compacted).toBeUndefined();
     expect(summarize).not.toHaveBeenCalled();
     expect(manager.getBranch().some((entry) => entry.type === "compaction")).toBe(false);
+  });
+
+  test("does not swallow cancellation while a mid-run summary is being compiled", async () => {
+    const manager = SessionManager.inMemory("C:\\workspace");
+    const toolAssistant = assistant([{ type: "toolCall", id: "call-cancel", name: "Search", arguments: {} }], 1);
+    const toolResult = result("call-cancel", "Search", "completed result", 2);
+    manager.appendMessage(user("Investigate.", 0));
+    manager.appendMessage(toolAssistant);
+    manager.appendMessage(toolResult);
+
+    const tokenBudget = new AgentTurnTokenBudget({
+      model: "gpt-4o",
+      contextWindowTokens: 1_000,
+      outputReserveTokens: 200,
+    });
+    tokenBudget.recordProviderInputTokens(900);
+    const grant = createAgentToolAccessGrant({ authorizedToolNames: ["Search"], exposedToolNames: ["Search"] });
+    const frame = new AgentPiMutableSessionFrame({
+      requestId: "request-cancel-mid-run",
+      step: 1,
+      skillCatalogFingerprint: "test",
+      nativeProviderToolNames: [],
+      toolAccessGrant: grant,
+      toolExposure: new AgentToolExposureState(grant),
+      selectedPromptTemplates: [],
+      tokenBudget,
+      preflight: async () => undefined,
+    });
+    const abortController = new AbortController();
+    const summarize = vi.fn(async () => {
+      abortController.abort(new Error("User stopped the run."));
+      throw new Error("summary interrupted");
+    });
+    const coordinator = new AgentPiMidRunCompactionCoordinator({
+      frame,
+      sessionManager: manager,
+      compactionController: new AgentPiCompactionController({
+        planningCompilerFactory: { create: () => ({ compile: vi.fn(), summarize }) },
+      }),
+      projectProviderMessages: async (messages) => [...messages],
+    });
+    const context: AgentContext = { messages: manager.buildSessionContext().messages, systemPrompt: "system" };
+
+    await expect(
+      coordinator.prepareNextTurn(
+        { message: toolAssistant, toolResults: [toolResult], context, newMessages: [toolAssistant, toolResult] },
+        { agent: { state: { messages: context.messages } } } as unknown as AgentSession,
+        { enabled: true, reserveTokens: 200, keepRecentTokens: 80 },
+        abortController.signal,
+      ),
+    ).rejects.toThrow("User stopped the run.");
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(manager.getBranch().some((entry) => entry.type === "compaction")).toBe(false);
+  });
+
+  test("does not append a compaction when cancellation arrives after preview projection", async () => {
+    const manager = SessionManager.inMemory("C:\\workspace");
+    const oldUser = user("Earlier context that can be summarized. ".repeat(20), 1);
+    const currentUser = user("Continue with the current tool result.", 2);
+    const toolAssistant = assistant(
+      [{ type: "toolCall", id: "call-preview-cancel", name: "Search", arguments: { query: "context" } }],
+      3,
+    );
+    const toolResult = result("call-preview-cancel", "Search", "Current evidence. ".repeat(40), 4);
+    [oldUser, currentUser, toolAssistant, toolResult].forEach((message) => manager.appendMessage(message));
+
+    const tokenBudget = new AgentTurnTokenBudget({
+      model: "gpt-4o",
+      contextWindowTokens: 1_000,
+      outputReserveTokens: 200,
+    });
+    tokenBudget.recordProviderInputTokens(900);
+    const grant = createAgentToolAccessGrant({ authorizedToolNames: ["Search"], exposedToolNames: ["Search"] });
+    const frame = new AgentPiMutableSessionFrame({
+      requestId: "request-preview-cancel",
+      step: 1,
+      skillCatalogFingerprint: "test",
+      nativeProviderToolNames: [],
+      toolAccessGrant: grant,
+      toolExposure: new AgentToolExposureState(grant),
+      selectedPromptTemplates: [],
+      tokenBudget,
+      preflight: async () => undefined,
+    });
+    const abortController = new AbortController();
+    const summarize = vi.fn(async () => "Short durable summary.");
+    const projectProviderMessages = vi.fn(
+      async (messages: AgentContext["messages"], pendingIndexes?: AgentPiCompactionIndexes) => {
+        if (pendingIndexes) abortController.abort(new Error("User stopped before persistence."));
+        return [...messages];
+      },
+    );
+    const coordinator = new AgentPiMidRunCompactionCoordinator({
+      frame,
+      sessionManager: manager,
+      compactionController: new AgentPiCompactionController({
+        planningCompilerFactory: { create: () => ({ compile: vi.fn(), summarize }) },
+      }),
+      projectProviderMessages,
+    });
+    const state = { messages: manager.buildSessionContext().messages };
+    const context: AgentContext = { messages: [...state.messages], tools: [], systemPrompt: "system" };
+
+    await expect(
+      coordinator.prepareNextTurn(
+        {
+          message: toolAssistant,
+          toolResults: [toolResult],
+          context,
+          newMessages: [currentUser, toolAssistant, toolResult],
+        },
+        { agent: { state } } as unknown as AgentSession,
+        { enabled: true, reserveTokens: 200, keepRecentTokens: 80 },
+        abortController.signal,
+      ),
+    ).rejects.toThrow("User stopped before persistence.");
+
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(projectProviderMessages).toHaveBeenCalledOnce();
+    expect(manager.getBranch().some((entry) => entry.type === "compaction")).toBe(false);
+    expect(state.messages).toEqual(context.messages);
   });
 });
 

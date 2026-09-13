@@ -7,6 +7,7 @@ import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprova
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
+import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 
 export type AgentToolCallExecutionResult =
   | {
@@ -37,6 +38,7 @@ export interface SuspendChildRunControlResult {
 
 export interface AgentToolCallExecutionContext {
   sessionId?: string;
+  logicalCacheScope?: string;
   requestId?: string;
   step?: number;
   onEvent?: AgentEventSink;
@@ -49,6 +51,7 @@ export interface AgentToolCallExecutionContext {
   tokenBudget?: AgentToolTokenBudget;
   approvalMode?: AgentExecutionApprovalMode;
   activeSkills?: readonly AgentActivatedSkill[];
+  reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
   thinkingLevel?: ModelThinkingLevel;
   onLifecycleSettled?: (status: "completed" | "failed") => void;
   deferResultDetail?: boolean;

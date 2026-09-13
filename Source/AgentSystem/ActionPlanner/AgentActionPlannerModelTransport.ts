@@ -27,6 +27,14 @@ import type { AgentNativeToolApi } from "../ModelEndpoints/AgentModelEndpointCon
 import type { AgentNativeToolApiStreams as AgentNativeToolApiStreamMap } from "../ModelEndpoints/AgentNativeToolApiStreams.js";
 import { createAgentPiConfiguredProvider } from "../ModelEndpoints/AgentPiConfiguredProvider.js";
 import { projectAgentPiAssistantUsage } from "../ModelEndpoints/AgentPiModelUsage.js";
+import {
+  createAgentPromptWireCapture,
+  projectAgentPromptCacheRetention,
+  projectAgentStablePrefixBytes,
+  projectAgentStablePrefixRevision,
+  resolveAgentPromptCacheObservation,
+  resolveAgentPromptCacheStrategy,
+} from "../ModelEndpoints/AgentPromptWireSnapshot.js";
 
 export interface AgentActionPlannerModelTransportOptions {
   readonly apiStreams?: AgentNativeToolApiStreamMap;
@@ -58,11 +66,15 @@ export class AgentActionPlannerModelTransport {
     this.omitOutputTokenLimit = options.omitOutputTokenLimit === true;
   }
 
-  async complete(request: AgentBamlModelRequest, signal?: AbortSignal): Promise<string> {
+  async complete(
+    request: AgentBamlModelRequest,
+    signal?: AbortSignal,
+    timingSink?: AgentModelTimingSink,
+  ): Promise<string> {
     const attempts = this.config.MaxNetworkRetries + 1;
     const emptyResponses: AgentEmptyModelResponseAttempt[] = [];
     for (let attempt = 0; attempt < attempts; attempt += 1) {
-      const response = await this.collectCompletion(request, signal);
+      const response = await this.collectCompletion(request, signal, timingSink);
       if (response.text.trim().length > 0) return response.text;
       emptyResponses.push({
         attempt: attempt + 1,
@@ -82,6 +94,7 @@ export class AgentActionPlannerModelTransport {
   private async collectCompletion(
     request: AgentBamlModelRequest,
     signal?: AbortSignal,
+    timingSink?: AgentModelTimingSink,
   ): Promise<{
     text: string;
     finishReason: string | null;
@@ -103,6 +116,12 @@ export class AgentActionPlannerModelTransport {
     const maxRequestTimer = startTimeout(maxRequestController, this.config.MaxRequestMs, "max_request");
     let firstTokenMs: number | undefined;
     let message: AssistantMessage | undefined;
+    const stablePrefix = { systemPrompt: request.systemPrompt, tools: [] as readonly unknown[] };
+    const stablePrefixRevision = request.cache?.stablePrefixRevision ?? projectAgentStablePrefixRevision(stablePrefix);
+    const stablePrefixBytes = request.cache?.stablePrefixBytes ?? projectAgentStablePrefixBytes(stablePrefix);
+    const cacheStrategy = resolveAgentPromptCacheStrategy(this.model.api);
+    const cacheRetention = projectAgentPromptCacheRetention(cacheStrategy, request.cache?.retention ?? "none");
+    const wireCapture = request.cache ? createAgentPromptWireCapture({}) : undefined;
     try {
       const context = projectBamlContext(request);
       const streamOptions = {
@@ -112,7 +131,13 @@ export class AgentActionPlannerModelTransport {
         timeoutMs: this.config.TimeoutMs,
         maxRetries: this.config.MaxNetworkRetries,
         maxRetryDelayMs: this.config.RetryAfterMaxDelayMs,
-        ...(request.cache ? { sessionId: request.cache.scope, cacheRetention: request.cache.retention } : {}),
+        ...(request.cache ? { sessionId: request.cache.scope, cacheRetention } : {}),
+        ...(wireCapture
+          ? {
+              fetch: wireCapture.fetch,
+              onPayload: wireCapture.onPayload,
+            }
+          : {}),
         ...(!this.omitOutputTokenLimit && this.config.MaxOutputTokens > 0
           ? { maxTokens: this.config.MaxOutputTokens }
           : {}),
@@ -140,7 +165,21 @@ export class AgentActionPlannerModelTransport {
       const text = extractText(message);
       const usage = this.usageResolver.resolve(request, text, projectAgentPiAssistantUsage(message));
       (this.usageSink ?? recordActiveAgentModelUsage)({ stage, usage });
-      await this.recordTiming({
+      const promptCache =
+        request.cache && wireCapture
+          ? wireCapture.snapshot({
+              model: this.model,
+              sessionId: request.cache.sessionId,
+              logicalCacheScope: request.cache.logicalCacheScope,
+              providerCacheScope: request.cache.scope,
+              stablePrefixRevision,
+              stablePrefixBytes,
+              retention: cacheRetention,
+              observation: resolveAgentPromptCacheObservation(cacheStrategy, message.usage),
+              usage: message.usage,
+            })
+          : undefined;
+      await this.recordTiming(timingSink, {
         stage,
         requestId: request.requestId,
         status: "completed",
@@ -150,6 +189,7 @@ export class AgentActionPlannerModelTransport {
         responseCharacters: text.length,
         cacheReadTokens: usage.cacheReadTokens,
         cacheWriteTokens: usage.cacheWriteTokens,
+        ...(promptCache ? { promptCache } : {}),
       });
       return {
         text,
@@ -161,7 +201,7 @@ export class AgentActionPlannerModelTransport {
       const deadlineFailure = firstTokenController.signal.reason ?? maxRequestController.signal.reason;
       const aborted = signal?.aborted === true && !deadlineFailure;
       const failure = aborted ? (signal.reason ?? error) : (deadlineFailure ?? error);
-      await this.recordTiming({
+      await this.recordTiming(timingSink, {
         stage,
         requestId: request.requestId,
         status: "failed",
@@ -169,6 +209,24 @@ export class AgentActionPlannerModelTransport {
         durationMs: elapsedMilliseconds(startedAt),
         requestCharacters,
         responseCharacters: 0,
+        ...(request.cache && wireCapture
+          ? {
+              promptCache: wireCapture.snapshot({
+                model: this.model,
+                sessionId: request.cache.sessionId,
+                logicalCacheScope: request.cache.logicalCacheScope,
+                providerCacheScope: request.cache.scope,
+                stablePrefixRevision,
+                stablePrefixBytes,
+                retention: cacheRetention,
+                observation: resolveAgentPromptCacheObservation(cacheStrategy, {
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                }),
+                usage: { cacheRead: 0, cacheWrite: 0 },
+              }),
+            }
+          : {}),
         error: errorMessage(failure),
       });
       throw aborted ? failure : normalizeModelHttpError(this.config, failure);
@@ -182,9 +240,12 @@ export class AgentActionPlannerModelTransport {
     return Math.min(this.config.RetryMaxDelayMs, this.config.RetryBaseDelayMs * 2 ** attempt);
   }
 
-  private async recordTiming(record: Omit<AgentModelTimingRecord, "providerId" | "model">): Promise<void> {
+  private async recordTiming(
+    timingSink: AgentModelTimingSink | undefined,
+    record: Omit<AgentModelTimingRecord, "providerId" | "model">,
+  ): Promise<void> {
     try {
-      await this.timingSink?.({
+      await (timingSink ?? this.timingSink)?.({
         ...record,
         providerId: this.config.Id,
         model: this.config.Model,

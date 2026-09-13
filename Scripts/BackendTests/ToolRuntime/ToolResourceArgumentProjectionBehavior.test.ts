@@ -116,6 +116,44 @@ describe("tool resource argument projection", () => {
     expect(args.request.targets[0]?.location).toBe("Source");
   });
 
+  it("projects wildcard workspace paths inside collection arguments", async () => {
+    const { workspaceRoot } = createFixture();
+    fs.mkdirSync(path.join(workspaceRoot, "Source"));
+    const executionEnv = new SeneraLocalExecutionEnv({ workspaceRoot });
+    const args = {
+      operations: [
+        { kind: "update", path: "Source/a.ts" },
+        { kind: "move", source: "Source/b.ts", destination: "Source/c.ts" },
+      ],
+      dryRun: false,
+    };
+
+    const normalized = await projectAgentToolResourceArguments(
+      args,
+      [
+        {
+          Capability: "senera.workspace.path",
+          Pointer: "/operations",
+          Parameters: {
+            Intent: "replace",
+            PathPointers: ["/*/path", "/*/source", "/*/destination"],
+          },
+        },
+      ],
+      workspaceCapabilities(executionEnv),
+    );
+
+    expect(normalized.operations).toEqual([
+      { kind: "update", path: path.join(workspaceRoot, "Source", "a.ts") },
+      {
+        kind: "move",
+        source: path.join(workspaceRoot, "Source", "b.ts"),
+        destination: path.join(workspaceRoot, "Source", "c.ts"),
+      },
+    ]);
+    expect(args.operations[0]?.path).toBe("Source/a.ts");
+  });
+
   it("rejects non-string values at declared resource pointers", async () => {
     const { workspaceRoot } = createFixture();
     const executionEnv = new SeneraLocalExecutionEnv({ workspaceRoot });

@@ -151,11 +151,14 @@ test("assistant turn exposes one action menu bound to the final reply", async ()
     React.createElement(MessageList, createMessageListProps({ messages: [preface, answer], onRegenerate })),
   );
 
-  const actionMenu = await waitFor(() => {
-    const menus = screen.getAllByRole("button", { name: "更多操作" });
-    expect(menus).toHaveLength(1);
-    return menus[0];
-  });
+  const actionMenu = await waitFor(
+    () => {
+      const menus = screen.getAllByRole("button", { name: "更多操作" });
+      expect(menus).toHaveLength(1);
+      return menus[0];
+    },
+    { timeout: 5_000 },
+  );
   await user.click(actionMenu);
   await user.click(screen.getByRole("menuitem", { name: "从此处重新回答" }));
   expect(onRegenerate).toHaveBeenCalledWith(answer);

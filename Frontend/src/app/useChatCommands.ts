@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { toast } from "sonner";
-import type { UploadAttachmentData, WsRequest } from "../api/eventTypes";
+import type { ModelThinkingLevel, UploadAttachmentData, WsRequest } from "../api/eventTypes";
 import type { ApprovalBatchReference, ApprovalDecision } from "../api/approvalEventTypes";
 import type { InteractionInputAction, InteractionInputContent } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
@@ -15,6 +15,7 @@ export interface RegenerateFromRequest {
   nextInput: string;
   attachments?: UploadAttachmentData[];
   modelProviderId?: string;
+  thinkingLevel?: ModelThinkingLevel;
 }
 
 export interface UseChatCommandsOptions {
@@ -57,6 +58,7 @@ export interface LastSentMessage {
   input: string;
   attachments?: UploadAttachmentData[];
   modelProviderId?: string;
+  thinkingLevel?: ModelThinkingLevel;
   approvalMode: ExecutionApprovalMode;
   queueMode?: MessageQueueMode;
 }
@@ -167,6 +169,7 @@ export function useChatCommands({
         fromRequestId: request.fromRequestId,
         requestId,
         modelProviderId: request.modelProviderId,
+        thinkingLevel: request.thinkingLevel,
         input: request.nextInput,
         approvalMode,
         attachments: request.attachments,
@@ -183,6 +186,7 @@ export function useChatCommands({
         input: request.nextInput,
         attachments: request.attachments,
         modelProviderId: request.modelProviderId,
+        thinkingLevel: request.thinkingLevel,
         approvalMode,
       };
       appendUserMessage(request.sessionId, requestId, request.nextInput, request.attachments);
@@ -227,6 +231,7 @@ export function useChatCommands({
         nextInput: result.input,
         attachments: result.attachments,
         modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
+        thinkingLevel: useStore.getState().selectedThinkingLevel ?? undefined,
       });
     },
     [activeSessionId, regenerateFromRequest, status],
@@ -272,6 +277,7 @@ export function useChatCommands({
         nextInput: trimmed,
         attachments: message.attachments,
         modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
+        thinkingLevel: useStore.getState().selectedThinkingLevel ?? undefined,
       });
     },
     [activeSessionId, regenerateFromRequest, status],
@@ -302,6 +308,7 @@ export function useChatCommands({
     (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode): boolean => {
       const state = useStore.getState();
       const modelProviderId = state.selectedModelProviderId ?? undefined;
+      const thinkingLevel = state.selectedThinkingLevel ?? undefined;
       const approvalMode = state.executionApprovalMode;
       const target = resolveSendTargetSession({
         activeSessionId,
@@ -327,6 +334,7 @@ export function useChatCommands({
         sessionId: targetSessionId,
         requestId,
         modelProviderId,
+        thinkingLevel,
         input,
         approvalMode,
         attachments,
@@ -350,6 +358,7 @@ export function useChatCommands({
         input,
         attachments,
         modelProviderId,
+        thinkingLevel,
         approvalMode,
         queueMode,
       };

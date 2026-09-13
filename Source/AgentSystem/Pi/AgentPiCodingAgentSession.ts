@@ -96,6 +96,11 @@ export class AgentPiCodingAgentSession implements AgentPiSession {
 
   abort(): Promise<void> {
     if (this.abortPromise) return this.abortPromise;
+    // Pi's session.abort() waits for idle but does not cancel its separate
+    // auto-compaction or branch-summary controllers. Cancel those operations
+    // first so a user stop cannot wait for an in-flight summarization request.
+    this.session.abortCompaction();
+    this.session.abortBranchSummary();
     const operation = this.session.abort();
     const tracked = operation.finally(() => {
       if (this.abortPromise === tracked) this.abortPromise = undefined;

@@ -23,7 +23,15 @@ describe("SQLite session repository behavior", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:01.000Z",
         conversation: [],
-        metadata: { title: "Original title" },
+        metadata: {
+          title: "Original title",
+          sessionModel: {
+            modelProviderId: "gpt-5.6",
+            revision: 1,
+            updatedAt: "2026-01-01T00:00:01.000Z",
+            source: "agent" as const,
+          },
+        },
       };
 
       repository.upsertSession(session);
@@ -72,6 +80,7 @@ describe("SQLite session repository behavior", () => {
           messageCount: 3,
           metadata: expect.objectContaining({
             title: "Renamed session",
+            sessionModel: expect.objectContaining({ modelProviderId: "gpt-5.6", revision: 1 }),
           }),
         }),
       ]);
@@ -80,6 +89,7 @@ describe("SQLite session repository behavior", () => {
           id: session.id,
           metadata: expect.objectContaining({
             title: "Renamed session",
+            sessionModel: expect.objectContaining({ modelProviderId: "gpt-5.6", revision: 1 }),
           }),
           conversation: [
             expect.objectContaining({ requestId: "request-a", kind: "user.message" }),

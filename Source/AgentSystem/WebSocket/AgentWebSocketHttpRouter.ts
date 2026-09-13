@@ -9,6 +9,7 @@ import type { AgentWorkspaceResourceHttpApi } from "../WorkspaceResources/AgentW
 import type { AgentProviderCredentialHttpApi } from "../Config/AgentProviderCredentialHttpApi.js";
 import type { AgentRuntimeUpdateHttpApi } from "../Runtime/AgentRuntimeUpdateHttpApi.js";
 import type { AgentChannelWebhookApi } from "../Channels/AgentChannelWebhookApi.js";
+import type { AgentSelfHttpApi } from "../SelfService/AgentSelfHttpApi.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
@@ -21,6 +22,7 @@ export class AgentWebSocketHttpRouter {
       healthApi?: AgentHealthHttpApi;
       runtimeUpdateApi?: AgentRuntimeUpdateHttpApi;
       channelWebhookApi?: AgentChannelWebhookApi;
+      selfApi?: AgentSelfHttpApi;
       accessGuard?: AgentServerAccessGuard;
     },
   ) {}
@@ -35,6 +37,13 @@ export class AgentWebSocketHttpRouter {
 
     if (this.options.authenticationApi?.canHandle(request)) {
       await this.options.authenticationApi.handle(request, response);
+      return;
+    }
+
+    // Machine-to-machine self-service endpoint. The CLI authenticates with
+    // the runtime bearer token, so it runs outside the browser CSRF guard.
+    if (this.options.selfApi?.canHandle(request)) {
+      await this.options.selfApi.handle(request, response);
       return;
     }
 

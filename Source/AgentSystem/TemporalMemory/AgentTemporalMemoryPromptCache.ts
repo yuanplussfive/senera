@@ -12,22 +12,39 @@ export type AgentTemporalMemoryModelPhase = "conversation-boundary" | "digest-su
 export function createAgentTemporalMemoryPromptCache(input: {
   readonly scopeKey: string;
   readonly phase: AgentTemporalMemoryModelPhase;
+  readonly provider: string;
+  readonly api: string;
   readonly model: string;
   readonly systemPrompt: string;
   readonly contract: Tool | string;
 }): AgentLanguageModelCacheOptions {
+  const scopeKey = requireText(input.scopeKey, "scope key");
+  const provider = requireText(input.provider, "provider");
+  const api = requireText(input.api, "API");
+  const model = requireText(input.model, "model");
   return createAgentModelCacheOptions({
     namespace: "senera.temporal-memory",
     identity: {
-      scopeKey: requireText(input.scopeKey, "scope key"),
+      scopeKey,
       phase: input.phase,
-      model: requireText(input.model, "model"),
+      provider,
+      api,
+      model,
       staticContractRevision: sha256HexOfCanonicalJson({
         systemPrompt: input.systemPrompt,
         contract: input.contract,
       }),
     },
+    logicalCacheScope: sha256HexOfCanonicalJson({
+      namespace: "senera.temporal-memory.logical",
+      scopeKey,
+      phase: input.phase,
+    }),
     retention: AgentLongLivedCacheRetention,
+    stablePrefix: {
+      systemPrompt: input.systemPrompt,
+      tools: typeof input.contract === "string" ? [] : [input.contract],
+    },
   });
 }
 

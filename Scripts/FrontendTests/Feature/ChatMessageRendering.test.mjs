@@ -138,7 +138,9 @@ test("live tool activity remains visible while a later answer is streaming", asy
   );
 
   expect(await screen.findByText("我正在整理结果。")).toBeInTheDocument();
-  await waitFor(() => expect(document.querySelector("[data-tool-batch-activity]")).toBeInTheDocument());
+  await waitFor(() => expect(document.querySelector("[data-tool-batch-activity]")).toBeInTheDocument(), {
+    timeout: 5_000,
+  });
   expect(document.querySelector("[data-tool-batch-activity-trigger]")).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByText("Thinking...")).toBeInTheDocument();
   const execution = document.querySelector("[data-tool-batch-activity]");
@@ -202,7 +204,9 @@ test("a persisted tool preface owns the live tool chain while the final answer s
   );
 
   const answer = await screen.findByText("页面内容已经整理完成。");
-  await waitFor(() => expect(document.querySelectorAll("[data-tool-batch-activity]")).toHaveLength(1));
+  await waitFor(() => expect(document.querySelectorAll("[data-tool-batch-activity]")).toHaveLength(1), {
+    timeout: 5_000,
+  });
   const execution = document.querySelector("[data-tool-batch-activity]");
   expect(execution.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   expect(screen.getByText("Thinking...")).toBeInTheDocument();

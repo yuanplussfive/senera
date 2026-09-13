@@ -119,6 +119,26 @@
                 "essential": true
               },
               {
+                "path": ["ProviderId"],
+                "label": "逻辑供应商 ID",
+                "description": "将多个物理端点编入同一个逻辑供应商池；留空时使用端点 ID。",
+                "type": "string",
+                "placeholder": "可选的逻辑供应商 ID",
+                "minLength": 1,
+                "required": false,
+                "essential": false
+              },
+              {
+                "path": ["Priority"],
+                "label": "端点优先级",
+                "description": "同一逻辑供应商内数值越小越优先；相同值按配置顺序。",
+                "type": "number",
+                "min": 0,
+                "step": 1,
+                "required": false,
+                "essential": false
+              },
+              {
                 "path": ["BaseUrl"],
                 "label": "Base URL",
                 "description": "供应商 API 地址，通常以 /v1 结尾。",
@@ -180,11 +200,12 @@
                 "Rerank": false,
                 "Vision": false,
                 "ImageOutput": false,
-                "Reasoning": false,
                 "DeveloperRole": false,
                 "StreamingUsage": true,
                 "ToolCalling": true
               },
+              "ThinkingLevelMap": {},
+              "ThinkingProfiles": [],
               "ToolPlanningMode": "native",
               "ContextWindowTokens": 128000,
               "MaxModelOutputTokens": -1,
@@ -289,6 +310,62 @@
                 "type": "boolean",
                 "required": false,
                 "essential": true
+              },
+              {
+                "path": ["ThinkingLevelMap"],
+                "label": "思考等级映射",
+                "description": "可选的 Pi 等级到供应商原生值覆盖；留空时读取 Pi 模型目录。",
+                "type": "record",
+                "itemType": "string",
+                "required": false,
+                "essential": false
+              },
+              {
+                "path": ["ThinkingProfiles"],
+                "label": "思考预设",
+                "description": "自定义显示名称仍映射到 Pi 标准等级。",
+                "type": "array",
+                "itemType": "table",
+                "addLabel": "添加思考预设",
+                "defaultItem": {
+                  "Id": "",
+                  "Label": "",
+                  "Level": "medium"
+                },
+                "itemFields": [
+                  {
+                    "path": ["Id"],
+                    "label": "预设 ID",
+                    "type": "string",
+                    "required": true,
+                    "essential": true
+                  },
+                  {
+                    "path": ["Label"],
+                    "label": "名称",
+                    "type": "string",
+                    "required": true,
+                    "essential": true
+                  },
+                  {
+                    "path": ["Level"],
+                    "label": "Pi 等级",
+                    "type": "string",
+                    "options": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+                    "required": true,
+                    "essential": true
+                  }
+                ],
+                "required": false,
+                "essential": false
+              },
+              {
+                "path": ["DefaultThinkingLevel"],
+                "label": "默认思考等级",
+                "type": "string",
+                "options": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["ToolPlanningMode"],
@@ -2868,6 +2945,26 @@
         "description": "配置上传、产物、预设和前端默认显示。",
         "icon": "folder-cog",
         "fields": [
+          {
+            "path": ["Plugins", "Enabled"],
+            "label": "启用插件",
+            "description": "允许加载的用户、项目和外部插件 ID；内置插件始终由运行时管理。",
+            "type": "array",
+            "itemType": "string",
+            "addLabel": "添加插件 ID",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Plugins", "Directories"],
+            "label": "插件目录",
+            "description": "额外插件发现目录；相对路径以当前工作区为基准。",
+            "type": "array",
+            "itemType": "string",
+            "addLabel": "添加插件目录",
+            "required": false,
+            "essential": false
+          },
           {
             "path": ["Presets", "Enabled"],
             "label": "启用预设",

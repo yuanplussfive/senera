@@ -28,7 +28,7 @@ function ClassifyConversationBoundary(promptJson: string) -> ConversationBoundar
     - confidence must be between 0 and 1.
     - focus must be one short, source-grounded description of the active subject or intention after the decision.
     - For continue, update the prior focus; for boundary, describe only the candidate turn.
-    - Follow the semantic criteria and physical evidence in the JSON user message.
+    - Follow the semantic criteria and physical evidence in the senera.conversation_boundary=v1 wire user message. Read the directive block for the stage and the context block for the lossless input.
     - Elapsed time and date changes are evidence, not automatic boundaries.
     - focus is classifier state, not a factual claim or final memory summary.
     - Do not explain or invent events.
@@ -48,7 +48,7 @@ function SummarizeTemporalMemory(promptJson: string) -> TemporalMemoryDigest {
 
     Requirements:
     - Return only TemporalMemoryDigest.
-    - Follow every requirement in context embedded in the JSON user message.
+    - Follow every requirement in the context block of the senera.temporal_memory_summary=v1 wire user message. Read the directive block for the stage.
     - summary, topics, and openLoops are ordered structured text. Use TemporalMemoryTextPart(kind=text, text=...) for prose and TemporalMemoryTextPart(kind=identity, role=user|resident) for conversation participants. Each topic and open loop is one inner parts array.
     - summary is concise, source-faithful, and written in the primary language of the entries.
     - topics contains concise retrieval labels.

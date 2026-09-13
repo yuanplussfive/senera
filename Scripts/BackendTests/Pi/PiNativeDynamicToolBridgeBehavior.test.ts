@@ -101,6 +101,43 @@ describe("Pi native dynamic tool bridge", () => {
     );
   });
 
+  test("completes missing arguments from the same confirmed capability evidence", async () => {
+    const registry = toolRegistry();
+    const execute = vi.fn(async () => ({ content: [], details: { senera: { toolName: WeatherToolName } } }));
+    const projector = createProjector(registry, "native", { execute } as unknown as AgentPiToolExecutionBridge);
+    const grant = grantFor(WeatherToolName);
+    const reusableCapabilities = [
+      {
+        toolName: WeatherToolName,
+        catalogRevision: "catalog-v1",
+        contractDigest: ContractDigest,
+        query: "weather in Shanghai",
+        arguments: { city: "上海" },
+        confirmedAt: 1,
+        lastUsedAt: 1,
+      },
+    ] as const;
+    const projection = projector.projectPreflight(
+      {
+        toolCallId: "call-reuse",
+        toolName: AgentPiNativeToolBridgeName,
+        input: { tool: WeatherToolName, arguments: {} },
+      },
+      grant,
+      reusableCapabilities,
+    );
+    expect(projection.event).toMatchObject({ toolName: WeatherToolName, input: { city: "上海" } });
+
+    const bridge = projector
+      .createToolSet(["ToolDescribe", "ToolSearch", WeatherToolName])
+      .materialize(() => ({ toolAccessGrant: grant, reusableCapabilities }))
+      .find((tool) => tool.name === AgentPiNativeToolBridgeName);
+    if (!bridge) throw new Error("Expected the native ToolCall bridge.");
+    await bridge.execute("call-reuse", { tool: WeatherToolName, arguments: {} });
+
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ params: { city: "上海" } }));
+  });
+
   test("rejects undeclared bridge fields and unauthorized dynamic targets before execution", async () => {
     const registry = toolRegistry();
     const execute = vi.fn();

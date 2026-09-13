@@ -26,7 +26,7 @@ export function ChatPanel({
   const activeId = useStore((s) => s.activeSessionId);
   const approvalMode = useStore((s) => s.executionApprovalMode);
   const setApprovalMode = useStore((s) => s.setExecutionApprovalMode);
-  const { session, historyLoaded, historyLoading, historyFailed } = useChatState(activeId);
+  const { session, historyLoaded, historyLoading, historyFailed, historyHydrating } = useChatState(activeId);
   const { level, reduceMotion, disableMotion } = useMotionLevel();
   const effectiveMotionLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
   const messages = session?.messages ?? [];
@@ -85,6 +85,7 @@ export function ChatPanel({
                 <MessageList
                   sessionId={session?.sessionId ?? activeId ?? ""}
                   uploadUrl={runtime.uploadUrl}
+                  historyHydrating={historyHydrating}
                   messages={messages}
                   runs={runs}
                   currentRun={isActive ? currentRun : undefined}

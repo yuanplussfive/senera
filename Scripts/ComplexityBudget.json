@@ -21,7 +21,7 @@
     },
     {
       "path": "Frontend/src/api/eventTypes.ts",
-      "baselineLines": 866,
+      "baselineLines": 880,
       "owner": "frontend-platform",
       "splitTarget": "Split event type declarations by runtime domain while keeping the public event catalog stable."
     },
@@ -57,7 +57,7 @@
     },
     {
       "path": "Scripts/BackendTests/Orchestration/AgentDelegationBehavior.test.ts",
-      "baselineLines": 884,
+      "baselineLines": 919,
       "owner": "orchestration-runtime",
       "splitTarget": "Split child-run lifecycle and wait scenarios into focused test files."
     },
@@ -66,6 +66,12 @@
       "baselineLines": 878,
       "owner": "frontend-platform",
       "splitTarget": "Split workflow feed and child-run component scenarios into focused test files."
+    },
+    {
+      "path": "Scripts/FrontendTests/Feature/WorkflowComponents.test.mjs",
+      "baselineLines": 801,
+      "owner": "frontend-platform",
+      "splitTarget": "Split workflow activity, child-run, and layout scenarios into focused test files."
     },
     {
       "path": "Scripts/BackendTests/Session/SessionManagerBehavior.test.ts",
@@ -87,7 +93,7 @@
     },
     {
       "path": "Source/AgentSystem/Channels/AgentChannelService.ts",
-      "baselineLines": 999,
+      "baselineLines": 1020,
       "owner": "channel-runtime",
       "splitTarget": "Extract command routing, lifecycle synchronization, and delivery orchestration into focused modules."
     },
@@ -99,7 +105,7 @@
     },
     {
       "path": "Source/AgentSystem/Orchestration/AgentDelegationService.ts",
-      "baselineLines": 930,
+      "baselineLines": 1106,
       "owner": "orchestration-runtime",
       "splitTarget": "Extract child-run lifecycle and wait coordination into focused orchestration modules."
     },
@@ -108,6 +114,24 @@
       "baselineLines": 901,
       "owner": "temporal-memory",
       "splitTarget": "Extract SQL row codecs and query projections into dedicated modules."
+    },
+    {
+      "path": "Source/AgentSystem/SelfService/AgentSelfCommand.ts",
+      "baselineLines": 816,
+      "owner": "self-service-runtime",
+      "splitTarget": "Extract preset, skill, and configuration command handlers into focused self-service modules."
+    },
+    {
+      "path": "Source/AgentSystem/Session/AgentSessionStore.ts",
+      "baselineLines": 801,
+      "owner": "session-runtime",
+      "splitTarget": "Extract model preference admission and snapshot projection from the session store."
+    },
+    {
+      "path": "Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.ts",
+      "baselineLines": 916,
+      "owner": "tool-routing-runtime",
+      "splitTarget": "Extract capability reuse, catalog projection, and embedding index lifecycle into focused modules."
     },
     {
       "path": "Source/AgentSystem/World/AgentHabitScheduler.ts",

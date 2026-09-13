@@ -70,6 +70,10 @@ const RequestSchedulingCatalog = {
   "model.list": concurrent,
   "provider.models.fetch": concurrent,
   "config.get": concurrent,
+  "workspace.get": concurrent,
+  // A workspace switch tears down and rebuilds the whole server stack. Keep
+  // it on its own global lane so consecutive switches drain one after another.
+  "workspace.switch": serial(() => "workspace"),
   "systemTool.list": concurrent,
   "mcpServer.list": concurrent,
   "mcpServer.restart": serial((request) => `mcp:${request.serverId}`),

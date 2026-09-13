@@ -30,6 +30,7 @@ import {
   type AgentChildRunSqlStatements,
 } from "./AgentChildRunSqlStatements.js";
 import type { AgentOrchestrationDatabase } from "./AgentOrchestrationDatabase.js";
+import { AgentContinuityCheckpointSchema } from "../Continuity/AgentContinuityLedger.js";
 import {
   AgentModelUsageSources,
   type AgentModelUsageSource,
@@ -50,6 +51,8 @@ export class AgentSqliteChildRunRepository implements AgentChildRunRepository {
       id: input.id,
       owner_run_id: input.ownerRunId ?? input.parentRequestId,
       node_id: input.nodeId ?? input.id,
+      work_item_id: input.workItemId ?? null,
+      task_digest: input.taskDigest ?? null,
       join_group_json: input.joinGroup ? JSON.stringify(input.joinGroup) : null,
       parent_session_id: input.parentSessionId,
       parent_request_id: input.parentRequestId,
@@ -86,6 +89,11 @@ export class AgentSqliteChildRunRepository implements AgentChildRunRepository {
 
   getByOwnerNode(ownerRunId: string, nodeId: string): AgentChildRunRecord | undefined {
     const row = this.statements.selectByOwnerNode.get(ownerRunId, nodeId);
+    return row ? this.fromRow(row) : undefined;
+  }
+
+  getByWorkItem(parentSessionId: string, workItemId: string): AgentChildRunRecord | undefined {
+    const row = this.statements.selectByWorkItem.get(parentSessionId, workItemId);
     return row ? this.fromRow(row) : undefined;
   }
 
@@ -270,6 +278,29 @@ export class AgentSqliteChildRunRepository implements AgentChildRunRepository {
     return this.get(id);
   }
 
+  markResultConsumed(id: string, consumedAt = new Date().toISOString()): AgentChildRunRecord | undefined {
+    this.statements.markResultConsumed.run({ id, consumed_at: consumedAt });
+    return this.get(id);
+  }
+
+  markParentWakeConsumed(id: string, consumedAt = new Date().toISOString()): AgentChildRunRecord | undefined {
+    this.statements.markParentWakeConsumed.run({ id, consumed_at: consumedAt });
+    return this.get(id);
+  }
+
+  markParentWakeConsumedBatch(ids: readonly string[], consumedAt = new Date().toISOString()): number {
+    const normalized = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+    if (normalized.length === 0) return 0;
+    const consume = this.database.transaction(
+      (values: readonly string[], timestamp: string) =>
+        this.statements.markParentWakeConsumedBatch.run({
+          ids_json: JSON.stringify(values),
+          consumed_at: timestamp,
+        }).changes,
+    );
+    return consume(normalized, consumedAt);
+  }
+
   recoverInterrupted(error: string, recoveredAt = new Date().toISOString()): number {
     return this.statements.recoverInterrupted.run({ error, recovered_at: recoveredAt }).changes;
   }
@@ -300,6 +331,8 @@ function childRunFromRow(row: AgentChildRunRow, messages: readonly AgentChildRun
     id: row.id,
     ownerRunId: row.owner_run_id,
     nodeId: row.node_id,
+    ...(row.work_item_id ? { workItemId: row.work_item_id } : {}),
+    ...(row.task_digest ? { taskDigest: row.task_digest } : {}),
     ...(row.join_group_json !== null
       ? { joinGroup: readJoinGroup(row.join_group_json, `child run ${row.id} join group`) }
       : {}),
@@ -337,6 +370,8 @@ function childRunFromRow(row: AgentChildRunRow, messages: readonly AgentChildRun
     ...(row.completed_at !== null ? { completedAt: row.completed_at } : {}),
     updatedAt: row.updated_at,
     revision: row.revision,
+    ...(row.result_consumed_at !== null ? { resultConsumedAt: row.result_consumed_at } : {}),
+    parentWakeConsumed: row.parent_wake_consumed === 1,
   };
 }
 
@@ -373,6 +408,30 @@ const AgentChildRunExecutionContractSchema = z
         sources: z.array(z.string().min(1)),
       })
       .strict()
+      .optional(),
+    resources: z
+      .array(
+        z
+          .object({
+            capability: z.string().trim().min(1),
+            value: z.unknown(),
+            intent: z.string().trim().min(1).optional(),
+            parameters: z.record(z.string(), z.unknown()).optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    resourceCoverage: z.enum(["declared", "unscoped"]).optional(),
+    resourceClaims: z
+      .array(
+        z
+          .object({
+            domainId: z.string().trim().min(1),
+            identity: z.string().trim().min(1),
+            access: z.enum(["shared", "exclusive"]),
+          })
+          .strict(),
+      )
       .optional(),
     deadline: z
       .object({
@@ -483,6 +542,7 @@ const AgentChildRunCheckpointSchema = z
     source: z.enum(AgentChildRunCheckpointSources),
     content: z.string().optional(),
     complete: z.boolean(),
+    continuity: AgentContinuityCheckpointSchema.optional(),
   })
   .strict();
 

@@ -24,6 +24,7 @@ export function projectAgentToolResultPresentation(result: ExecutedToolCallResul
   const fallback = readResultText(result.result);
   const headline = failure?.message ?? evidence[0]?.display ?? changes[0]?.summary ?? fallback ?? result.name;
   const summary = buildSummary(evidence, changes, fallback, headline);
+  const workspaceCheckpoint = result.artifact?.workspace?.checkpoint ?? result.workspaceCapture?.checkpoint;
 
   return {
     type: AgentToolResultPresentationProtocol.type,
@@ -35,6 +36,7 @@ export function projectAgentToolResultPresentation(result: ExecutedToolCallResul
     evidence,
     changes,
     artifactUri: result.artifact?.artifactUri,
+    ...(workspaceCheckpoint ? { workspaceCheckpoint } : {}),
     ...(result.artifactAvailability ? { artifactAvailability: result.artifactAvailability } : {}),
     failure,
   };

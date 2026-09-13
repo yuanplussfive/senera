@@ -153,6 +153,14 @@
       "snapshot": "snapshots/0019.schema.sql",
       "migrationSha256": "366e256b82ac7c694dfcfe9d72a9d0e081f5718e611178b142b9a878f49be5f3",
       "snapshotSha256": "e57ba877d287cfc28c67603b10592ba2b0bf35146cf4388498bdc2d69b7a9927"
+    },
+    {
+      "version": 20,
+      "name": "child-run-work-items",
+      "migration": "migrations/0020-child-run-work-items.sql",
+      "snapshot": "snapshots/0020.schema.sql",
+      "migrationSha256": "8fad919b2c110f76a63e1e04d4630f0cca16db1404f06dbc00fb07651eae0280",
+      "snapshotSha256": "8f995bc393cd345e4dc439e8f1e2c2d07bad7648f2b9c8261c01a0990122fdc7"
     }
   ]
 }

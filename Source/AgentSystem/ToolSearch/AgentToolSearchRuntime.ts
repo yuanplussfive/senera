@@ -1,5 +1,6 @@
 import type { AgentActionCapabilityNeed } from "../ActionPlanner/AgentActionPlannerTypes.js";
 import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type {
   ResolvedAgentToolLearningConfig,
   ResolvedAgentToolSearchConfig,
@@ -48,6 +49,10 @@ import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
 import { AgentToolSearchResultModes, type AgentToolSearchResultMode } from "./AgentToolSearchTypes.js";
 import {
+  AgentToolCapabilityReuseModes,
+  resolveAgentToolCapabilityReusePolicy,
+} from "./AgentToolCapabilityReusePolicy.js";
+import {
   AgentCapabilitySearchIndex,
   createAgentCapabilityEmbeddingIdentity,
   type AgentCapabilityEmbeddingClient,
@@ -57,6 +62,7 @@ import {
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import { AgentToolSearchDocumentBuilder } from "./AgentToolSearchDocumentBuilder.js";
 import { buildSkillCapabilityDocument, buildToolCapabilityDocument } from "./AgentCapabilityDocumentBuilder.js";
+import { isAgentSkillModelInvocable } from "../Skills/AgentSkillInvocation.js";
 import { AgentSkillSelector, type AgentSkillSelectionResult } from "../Skills/AgentSkillSelector.js";
 import { AgentToolSearchContractProjector } from "./AgentToolSearchContractProjector.js";
 import { AgentLruCache } from "../Core/AgentLruCache.js";
@@ -133,8 +139,10 @@ export class AgentToolSearchRuntime {
       const run = await this.runToolSearch(args, {
         requestId: context.requestId,
         sessionId: context.sessionId,
+        logicalCacheScope: context.logicalCacheScope,
         visibleToolNames: context.visibleToolNames,
         authorizedToolNames: context.authorizedToolNames,
+        reusableCapabilities: context.reusableCapabilities,
         signal: context.signal,
       });
       return run;
@@ -152,6 +160,7 @@ export class AgentToolSearchRuntime {
       for (const tool of requested.tools) {
         this.capabilitySessionCache.rememberContract({
           sessionId: context.sessionId,
+          logicalCacheScope: context.logicalCacheScope,
           toolName: tool.name,
           catalogRevision,
           contractDigest: tool.contract?.digest,
@@ -284,17 +293,24 @@ export class AgentToolSearchRuntime {
     requestId: string;
     userInput: string;
     sessionId?: string;
+    logicalCacheScope?: string;
     loadedTools: LoadedToolsState;
     execution: { value: ExecutedToolCallResult[] };
     activeSkills?: readonly AgentActivatedSkill[];
   }): LoadedToolsState {
     const loadedTools = this.mergeVisibleTools(options.loadedTools);
-    this.rememberSuccessfulCapabilities(options.sessionId, options.userInput, options.execution.value);
+    this.rememberSuccessfulCapabilities(
+      options.sessionId,
+      options.userInput,
+      options.execution.value,
+      options.logicalCacheScope,
+    );
     try {
       this.usageMemory.recordToolUsage({
         requestId: options.requestId,
         userInput: options.userInput,
         sessionId: options.sessionId,
+        logicalCacheScope: options.logicalCacheScope,
         results: options.execution.value,
         activeSkills: options.activeSkills,
       });
@@ -338,12 +354,15 @@ export class AgentToolSearchRuntime {
 
   getReusableCapability(options: {
     sessionId?: string;
+    logicalCacheScope?: string;
     toolName: string;
     catalogRevision?: string;
   }): AgentToolCapabilityCacheEntry | undefined {
-    const tool = this.registry.getTool(options.toolName);
+    const tool = this.resolveAutomaticReuseTool(options.toolName);
+    if (!tool) return undefined;
     return this.capabilitySessionCache.getReusable({
       sessionId: options.sessionId,
+      logicalCacheScope: options.logicalCacheScope,
       toolName: options.toolName,
       catalogRevision: options.catalogRevision ?? this.catalogRevision(),
       contractDigest: tool?.contract?.digest,
@@ -358,6 +377,7 @@ export class AgentToolSearchRuntime {
    */
   reusableCapabilities(options: {
     sessionId?: string;
+    logicalCacheScope?: string;
     query?: string;
     authorizedToolNames?: readonly string[];
     limit?: number;
@@ -368,12 +388,14 @@ export class AgentToolSearchRuntime {
     const catalogRevision = this.catalogRevision();
     const queryTokens = options.query?.trim() ? this.tokenize(options.query) : [];
     return this.capabilitySessionCache
-      .snapshot(options.sessionId)
+      .snapshot(options.sessionId, options.logicalCacheScope)
       .filter((entry) => !authorized || authorized.has(entry.toolName))
-      .filter((entry) => queryTokens.length === 0 || this.isReusableForQuery(entry, queryTokens))
+      .filter((entry) => queryTokens.length === 0 || this.isReusableForQuery(entry, queryTokens, options.query ?? ""))
       .flatMap((entry) => {
+        if (!this.resolveAutomaticReuseTool(entry.toolName)) return [];
         const reusable = this.getReusableCapability({
           sessionId: options.sessionId,
+          logicalCacheScope: options.logicalCacheScope,
           toolName: entry.toolName,
           catalogRevision,
         });
@@ -436,7 +458,9 @@ export class AgentToolSearchRuntime {
     this.capabilityRegistryRevision = undefined;
     this.capabilityToolCatalogIdentity = undefined;
     this.contractProjector.refresh();
-    this.capabilitySessionCache.clear();
+    // Keep session evidence across registry/index rebuilds. Lookups still
+    // revalidate catalog revision and contract digest, so changed capabilities
+    // become unavailable without an unrelated cache cold start.
   }
 
   private async runToolSearch(
@@ -444,8 +468,10 @@ export class AgentToolSearchRuntime {
     context: {
       requestId?: string;
       sessionId?: string;
+      logicalCacheScope?: string;
       visibleToolNames?: readonly string[];
       authorizedToolNames?: readonly string[];
+      reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
       signal?: AbortSignal;
     },
   ): Promise<AgentToolProcessRunResult> {
@@ -454,24 +480,37 @@ export class AgentToolSearchRuntime {
       return invalidToolMetaArgumentsResult(AgentToolMetaToolNames.Search, parsed.error.issues);
     }
 
-    const result = await this.buildToolSearchResult(
+    const resolved = await this.buildToolSearchResult(
       parsed.data,
       context.visibleToolNames ?? [],
       context.authorizedToolNames,
       context.sessionId,
+      context.logicalCacheScope,
+      context.reusableCapabilities,
       context.signal,
     );
-    if (context.requestId) {
+    if (!resolved.searchPerformed) {
+      this.logger?.info("routing.tool_search.reused", {
+        requestId: context.requestId,
+        sessionId: context.sessionId,
+        logicalCacheScope: context.logicalCacheScope,
+        query: parsed.data.query,
+        reuseHit: true,
+        searchPerformed: false,
+        tools: resolved.reusedToolNames,
+      });
+    }
+    if (context.requestId && resolved.searchPerformed) {
       this.usageMemory.rememberSearch(context.requestId, {
         query: parsed.data.query,
         queryTokens: this.tokenize(parsed.data.query),
         plannerTags: [],
-        candidates: readToolNamesFromSearchResult(result),
+        candidates: readToolNamesFromSearchResult(resolved.result),
         timestamp: Date.now(),
       });
     }
 
-    return okToolMetaResult(result);
+    return okToolMetaResult(resolved.result);
   }
 
   private async buildToolSearchResult(
@@ -479,17 +518,34 @@ export class AgentToolSearchRuntime {
     loadedToolNames: readonly string[],
     authorizedToolNames: readonly string[] | undefined,
     sessionId?: string,
+    logicalCacheScope?: string,
+    reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[],
     signal?: AbortSignal,
-  ) {
-    const results = await this.search({
+  ): Promise<{
+    result: unknown;
+    searchPerformed: boolean;
+    reusedToolNames: readonly string[];
+  }> {
+    const reusable = this.matchReusableCapabilities({
+      sessionId,
+      logicalCacheScope,
       query: args.query,
-      preferredSourceIds: args.preferredSources,
-      includeLoaded: args.includeLoaded ?? false,
-      loadedToolNames,
       authorizedToolNames,
-      resultMode: AgentToolSearchResultModes.Catalog,
-      signal,
+      candidates: reusableCapabilities,
+      limit: this.config.Ranking.MaxResults,
     });
+    const results =
+      reusable.length > 0
+        ? reusable.map((entry) => this.projectReusableSearchResult(entry, loadedToolNames))
+        : await this.search({
+            query: args.query,
+            preferredSourceIds: args.preferredSources,
+            includeLoaded: args.includeLoaded ?? false,
+            loadedToolNames,
+            authorizedToolNames,
+            resultMode: AgentToolSearchResultModes.Catalog,
+            signal,
+          });
 
     const catalogRevision = this.catalogRevision();
     const visible = new Set(loadedToolNames);
@@ -497,28 +553,38 @@ export class AgentToolSearchRuntime {
       const tool = this.registry.getTool(result.toolName);
       const state = this.capabilitySessionCache.state({
         sessionId,
+        logicalCacheScope,
         toolName: result.toolName,
         catalogRevision,
         contractDigest: tool?.contract?.digest,
       });
+      const reusePolicy = tool ? resolveAgentToolCapabilityReusePolicy(tool) : undefined;
+      const automaticReuse = reusePolicy?.mode === AgentToolCapabilityReuseModes.Automatic;
       return {
         ...result,
         state: {
           exposure: visible.has(result.toolName) ? ("visible" as const) : ("discoverable" as const),
-          ...state,
+          contract: state.contract,
+          reuse: automaticReuse ? state.reuse : ("none" as const),
+          ...(automaticReuse && state.reusableArguments ? { reusableArguments: state.reusableArguments } : {}),
         },
       };
     });
 
-    return createAgentToolDiscoveryResult(
-      withToolSearchCatalogRevision(buildToolSearchResultProjection(args, withState), catalogRevision),
-    );
+    return {
+      result: createAgentToolDiscoveryResult(
+        withToolSearchCatalogRevision(buildToolSearchResultProjection(args, withState), catalogRevision),
+      ),
+      searchPerformed: reusable.length === 0,
+      reusedToolNames: reusable.map((entry) => entry.toolName),
+    };
   }
 
   private rememberSuccessfulCapabilities(
     sessionId: string | undefined,
     userInput: string,
     results: readonly ExecutedToolCallResult[],
+    logicalCacheScope?: string,
   ): void {
     if (!sessionId) return;
     const catalogRevision = this.catalogRevision();
@@ -529,6 +595,7 @@ export class AgentToolSearchRuntime {
       if (!tool || tool.loading !== ToolLoadingModes.Dynamic) continue;
       this.capabilitySessionCache.rememberInvocation({
         sessionId,
+        logicalCacheScope,
         toolName: result.name,
         catalogRevision,
         contractDigest: tool.contract?.digest,
@@ -538,14 +605,92 @@ export class AgentToolSearchRuntime {
     }
   }
 
-  private isReusableForQuery(entry: AgentToolCapabilityCacheEntry, queryTokens: readonly string[]): boolean {
+  private matchReusableCapabilities(options: {
+    sessionId?: string;
+    logicalCacheScope?: string;
+    query: string;
+    authorizedToolNames?: readonly string[];
+    candidates?: readonly AgentToolCapabilityCacheEntry[];
+    limit: number;
+  }): readonly AgentToolCapabilityCacheEntry[] {
+    if (!options.sessionId) return [];
+    const authorized = options.authorizedToolNames ? new Set(options.authorizedToolNames) : undefined;
+    const candidates =
+      options.candidates ?? this.capabilitySessionCache.snapshot(options.sessionId, options.logicalCacheScope);
+    const queryTokens = this.tokenize(options.query);
+    return candidates
+      .filter((entry) => !authorized || authorized.has(entry.toolName))
+      .filter((entry) => this.isReusableForQuery(entry, queryTokens, options.query))
+      .flatMap((entry) => {
+        if (!this.resolveAutomaticReuseTool(entry.toolName)) return [];
+        const reusable = this.getReusableCapability({
+          sessionId: options.sessionId,
+          logicalCacheScope: options.logicalCacheScope,
+          toolName: entry.toolName,
+          catalogRevision: this.catalogRevision(),
+        });
+        return reusable ? [reusable] : [];
+      })
+      .slice(0, options.limit);
+  }
+
+  private resolveAutomaticReuseTool(toolName: string): RegisteredTool | undefined {
+    const tool = this.registry.getTool(toolName);
+    return tool && resolveAgentToolCapabilityReusePolicy(tool).mode === AgentToolCapabilityReuseModes.Automatic
+      ? tool
+      : undefined;
+  }
+
+  private projectReusableSearchResult(
+    entry: AgentToolCapabilityCacheEntry,
+    loadedToolNames: readonly string[],
+  ): AgentToolSearchResult {
+    const tool = this.registry.getTool(entry.toolName);
+    if (!tool) throw new Error(`Reusable tool is no longer registered: ${entry.toolName}.`);
+    const reusePolicy = resolveAgentToolCapabilityReusePolicy(tool);
+    if (reusePolicy.mode !== AgentToolCapabilityReuseModes.Automatic) {
+      throw new Error(`Tool ${entry.toolName} is not eligible for automatic capability reuse.`);
+    }
+    return {
+      toolName: tool.name,
+      title: tool.owner.title ?? tool.name,
+      ownerName: tool.owner.name,
+      summary: tool.search?.Summary ?? tool.owner.description ?? tool.name,
+      whenToUse: tool.search?.UseCases?.[0] ?? tool.search?.Summary ?? tool.owner.description ?? tool.name,
+      parameterSummary: tool.contract?.arguments?.tsHintLines?.join("\n") ?? "",
+      permissions: [...tool.permissions],
+      score: 1,
+      ranks: { memory: 1 },
+      matchedTerms: [],
+      matchedCapabilities: [],
+      learningSignals: [],
+      sources: tool.sources.map((source) => ({ id: source.Id, title: source.Title, description: source.Description })),
+      state: {
+        exposure: loadedToolNames.includes(tool.name) ? "visible" : "discoverable",
+        contract: "confirmed",
+        reuse: "arguments",
+        reusableArguments: entry.arguments,
+      },
+    };
+  }
+
+  private isReusableForQuery(
+    entry: AgentToolCapabilityCacheEntry,
+    queryTokens: readonly string[],
+    currentQuery: string,
+  ): boolean {
     if (!entry.query) return false;
-    const previousTokens = this.tokenize(entry.query);
-    if (previousTokens.length === 0 || queryTokens.length === 0) return false;
+    const currentQueryKey = queryTokens.join("\u001f");
+    const previousQuery = this.tokenize(entry.query).join("\u001f");
+    if (previousQuery.length > 0 && previousQuery === currentQueryKey) return true;
+    if (this.searchIndex().hasDistinctLeadingSubject(entry.query, currentQuery)) return false;
+    const previousTokens = this.searchIndex().tokenizeContent(entry.query);
+    const currentTokens = this.searchIndex().tokenizeContent(currentQuery);
+    if (previousTokens.length === 0 || currentTokens.length === 0) return false;
     const previous = new Set(previousTokens);
-    const overlap = queryTokens.reduce((count, token) => count + (previous.has(token) ? 1 : 0), 0);
-    const smallerQuerySize = Math.min(previous.size, queryTokens.length);
-    const unionSize = new Set([...previous, ...queryTokens]).size;
+    const overlap = currentTokens.reduce((count, token) => count + (previous.has(token) ? 1 : 0), 0);
+    const smallerQuerySize = Math.min(previous.size, currentTokens.length);
+    const unionSize = new Set([...previous, ...currentTokens]).size;
     return (
       overlap >= ReusableCapabilityMatchPolicy.minimumOverlap &&
       (overlap / smallerQuerySize >= ReusableCapabilityMatchPolicy.minimumCoverage ||
@@ -631,7 +776,10 @@ export class AgentToolSearchRuntime {
     const toolDocuments = catalog.tools
       .filter((tool) => tool.loading === ToolLoadingModes.Dynamic && !isAgentToolMetaToolName(tool.name))
       .map((tool) => buildToolCapabilityDocument(tool, documentBuilder.build(tool)));
-    const skillDocuments = this.registry.listSkills().map(buildSkillCapabilityDocument);
+    const skillDocuments = this.registry
+      .listSkills()
+      .filter(isAgentSkillModelInvocable)
+      .map(buildSkillCapabilityDocument);
     const capabilityDocuments = [...toolDocuments, ...skillDocuments];
     const identity = this.capabilityCatalogRevision(capabilityDocuments);
     if (this.capabilities && this.capabilityCatalogIdentity === identity) return this.capabilities;
@@ -752,9 +900,9 @@ const AgentCapabilityEmbeddingCachePolicy = {
 } as const;
 
 const ReusableCapabilityMatchPolicy = Object.freeze({
-  minimumOverlap: 1,
-  minimumCoverage: 0.5,
-  minimumJaccard: 0.25,
+  minimumOverlap: 2,
+  minimumCoverage: 0.75,
+  minimumJaccard: 0.5,
 });
 
 interface AgentToolCatalogSnapshot {

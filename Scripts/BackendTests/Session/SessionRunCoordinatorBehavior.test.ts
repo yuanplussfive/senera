@@ -7,6 +7,7 @@ import { AgentSessionStatuses } from "../../../Source/AgentSystem/Session/AgentS
 import { AgentInteractionInputRuntime } from "../../../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
 import { AgentSessionRunCoordinatorShuttingDownError } from "../../../Source/AgentSystem/Session/AgentSessionRunCoordinator.js";
 import { AgentSessionCommandConflictError } from "../../../Source/AgentSystem/Session/AgentSessionCommand.js";
+import { createAgentPiLogicalCacheScope } from "../../../Source/AgentSystem/Pi/AgentPiPromptCache.js";
 import {
   completedRun,
   createCoordinatorFixture,
@@ -15,6 +16,101 @@ import {
 } from "./SessionRunCoordinatorTestFixtures.js";
 
 describe("Session run coordinator behavior", () => {
+  test("projects the resolved turn model into the active and completed session receipt", async () => {
+    let observedRequest: Parameters<AgentLoopRunner["run"]>[0] | undefined;
+    const fixture = createCoordinatorFixture({
+      loop: {
+        modelProvider: {
+          id: "gpt-5.6-luna",
+          kind: "OpenAICompatible",
+          endpoint: "Responses",
+          baseUrl: "https://models.example/v1",
+          model: "gpt-5.6-luna",
+        },
+        run: async (request) => {
+          observedRequest = request;
+          return completedRun(request.requestId);
+        },
+      },
+    });
+
+    await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
+      requestId: "request-luna",
+      modelProviderId: "gpt-5.6-luna",
+      input: "Which model is running?",
+    });
+
+    expect(observedRequest).toMatchObject({
+      logicalCacheScope: expect.any(String),
+      effectiveModel: {
+        sessionId: fixture.session.id,
+        requestId: "request-luna",
+        providerId: "gpt-5.6-luna",
+        model: "gpt-5.6-luna",
+        source: "request",
+      },
+    });
+    expect(fixture.store.getSessionModelRuntime(fixture.session.id)).toMatchObject({
+      effective: { providerId: "gpt-5.6-luna", model: "gpt-5.6-luna", source: "request" },
+      lastRun: { providerId: "gpt-5.6-luna", model: "gpt-5.6-luna" },
+    });
+  });
+
+  test("uses the host conversation space for logical cache affinity", async () => {
+    let observedRequest: Parameters<AgentLoopRunner["run"]>[0] | undefined;
+    const fixture = createCoordinatorFixture({
+      loop: {
+        run: async (request) => {
+          observedRequest = request;
+          return completedRun(request.requestId);
+        },
+      },
+    });
+
+    await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
+      requestId: "request-channel-space",
+      input: "Use the channel space",
+      interaction: {
+        surface: "channel",
+        platform: "qq",
+        spaceId: "space-stable",
+      },
+    });
+
+    expect(observedRequest?.logicalCacheScope).toBe(
+      createAgentPiLogicalCacheScope({ identity: "space-stable", family: "conversation" }),
+    );
+  });
+
+  test("reuses persisted channel space affinity when a wake has no interaction context", async () => {
+    let observedRequest: Parameters<AgentLoopRunner["run"]>[0] | undefined;
+    const fixture = createCoordinatorFixture({
+      loop: {
+        run: async (request) => {
+          observedRequest = request;
+          return completedRun(request.requestId);
+        },
+      },
+    });
+    fixture.session.metadata = {
+      ...fixture.session.metadata,
+      channel: { platform: "qq", spaceId: "space-persisted" },
+    };
+
+    await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
+      requestId: "request-background-wake",
+      input: "Resume the channel task",
+      metadata: { backgroundTask: { taskId: "task-1", runId: "run-1" } },
+    });
+
+    expect(observedRequest?.logicalCacheScope).toBe(
+      createAgentPiLogicalCacheScope({ identity: "space-persisted", family: "conversation" }),
+    );
+  });
+
   test("persists a successful turn, records memory, and releases the session", async () => {
     const fixture = createCoordinatorFixture({
       loop: {

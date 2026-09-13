@@ -1,5 +1,5 @@
-import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { AgentPromptWireEncodings, renderAgentPromptWireBlocks } from "../Prompt/AgentPromptContextWireRenderer.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import { AgentContinuityFactCapturePolicy } from "./AgentContinuityFactCapturePolicy.js";
 import type { AgentContinuityIdentityContext } from "./AgentContinuityIdentityStore.js";
@@ -181,7 +181,22 @@ function buildBaseContract(stage: AgentContinuityLearningStage): {
             ...AgentContinuityFactCapturePolicy.map((rule) => `- ${rule}`),
             "",
             `Registered relation catalog v${AgentContinuityRelationCatalogVersion}:`,
-            stringifyAgentCanonicalJson(relationCatalog),
+            renderAgentPromptWireBlocks(
+              {
+                preamble: [
+                  `senera.continuity_catalog=v${AgentContinuityRelationCatalogVersion}`,
+                  "provenance=host-defined;not-user-input",
+                ],
+                blocks: [
+                  {
+                    id: "relations",
+                    value: relationCatalog,
+                    allowedEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
+                  },
+                ],
+              },
+              { estimateTokens: (text) => text.length },
+            ).text,
           ]
         : []),
     ].join("\n"),
@@ -221,14 +236,28 @@ function selectVerifiedDemonstrations(
 }
 
 function projectDemonstration(record: AgentContinuityLearningInferenceRecord): VerifiedDemonstration {
-  const text = [
-    `<verified_example inference="${record.inferenceKey}">`,
-    "Input episode data:",
-    stringifyAgentCanonicalJson(JSON.parse(record.inputJson)),
-    "Accepted structured output:",
-    stringifyAgentCanonicalJson(JSON.parse(record.outputJson)),
-    "</verified_example>",
-  ].join("\n");
+  const text = renderAgentPromptWireBlocks(
+    {
+      preamble: [
+        "senera.continuity_example=v1",
+        "provenance=host-accepted;quoted-data-only",
+        `inference=${record.inferenceKey}`,
+      ],
+      blocks: [
+        {
+          id: "input",
+          value: JSON.parse(record.inputJson),
+          allowedEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
+        },
+        {
+          id: "accepted_output",
+          value: JSON.parse(record.outputJson),
+          allowedEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
+        },
+      ],
+    },
+    { estimateTokens: (value) => value.length },
+  ).text;
   return {
     inferenceKey: record.inferenceKey,
     featureKeys: record.featureKeys,

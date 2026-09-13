@@ -13,6 +13,7 @@ import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentTool
 import { redactArtifactSecrets, redactArtifactToolOutcome } from "../Artifacts/AgentArtifactRedaction.js";
 import { AgentPiToolResultStatuses, type AgentPiToolExecutionInput, type AgentPiToolResult } from "./AgentPiTypes.js";
 import type { AgentToolExecutionScheduler } from "../ToolRuntime/AgentToolExecutionScheduler.js";
+import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import {
   AgentToolFailureSources,
@@ -30,6 +31,7 @@ import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResu
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { markAgentToolArtifactUnavailable } from "../Artifacts/AgentToolArtifactAvailability.js";
 import { escapeXml as escapeXmlText } from "../Prompt/AgentTurnRequestComposer.js";
+import { projectAgentToolCapabilityArguments } from "../ToolSearch/AgentToolCapabilityArgumentProjection.js";
 
 export interface AgentPiToolExecutionBridgeOptions {
   model: string;
@@ -58,17 +60,33 @@ export class AgentPiToolExecutionBridge {
   }
 
   async execute(input: AgentPiToolExecutionInput): Promise<AgentPiToolResult> {
-    const operation = () => this.executeWithLease(input);
+    const effectiveInput = {
+      ...input,
+      params: projectAgentToolCapabilityArguments(
+        input.tool,
+        input.params,
+        input.context.turnState?.context.reusableCapabilities,
+      ),
+    };
+    const operation = () => this.executeWithLease(effectiveInput);
     const turnState = input.context.turnState;
     if (!turnState) throw new Error("Pi tool execution requires an active turn state.");
+    const owner = projectToolResourceOwner(input, turnState);
     try {
       return await (this.options.executionScheduler &&
       resolveAgentToolRuntimeCapabilities(input.tool).scheduling !== "self-managed"
-        ? this.options.executionScheduler.run(turnState, input.tool, input.params, operation, input.signal)
+        ? this.options.executionScheduler.run(
+            turnState,
+            effectiveInput.tool,
+            effectiveInput.params,
+            operation,
+            effectiveInput.signal,
+            owner,
+          )
         : operation());
     } catch (error) {
-      if (isCancelledToolExecution(error, input.signal)) throw error;
-      return await this.projectUncaughtFailure(input, error);
+      if (isCancelledToolExecution(error, effectiveInput.signal)) throw error;
+      return await this.projectUncaughtFailure(effectiveInput, error);
     }
   }
 
@@ -77,12 +95,7 @@ export class AgentPiToolExecutionBridge {
     if (!toolAccessGrant) throw new AgentLocalizedError("toolAccess.missingGrant");
     const turnState = input.context.turnState;
     if (!turnState) throw new Error("Pi tool execution requires an active turn state.");
-    const sessionId =
-      input.context.sessionId ??
-      turnState.context.sessionId ??
-      input.context.requestId ??
-      turnState.context.requestId ??
-      input.toolCallId;
+    const sessionId = input.context.sessionId ?? turnState.context.sessionId;
     const artifactSessionId = input.context.sessionId ?? turnState.context.sessionId;
     const requestId = input.context.requestId ?? turnState.context.requestId ?? createRequestId();
     const step = input.context.step ?? turnState.context.step ?? 1;
@@ -101,6 +114,7 @@ export class AgentPiToolExecutionBridge {
         },
         {
           sessionId,
+          logicalCacheScope: turnState.context.logicalCacheScope,
           requestId,
           step,
           onEvent: input.context.onEvent,
@@ -113,6 +127,7 @@ export class AgentPiToolExecutionBridge {
           tokenBudget: reservation,
           approvalMode: input.context.approvalMode,
           activeSkills: input.context.activeSkills,
+          reusableCapabilities: turnState.context.reusableCapabilities,
           thinkingLevel: input.context.thinkingLevel,
           onLifecycleSettled: (status) => turnState.recordExecutorLifecycleStatus(input.toolCallId, status),
           deferResultDetail: true,
@@ -337,6 +352,20 @@ export class AgentPiToolExecutionBridge {
       details: projectToolDetails(tool.name, result, outcome),
     };
   }
+}
+
+function projectToolResourceOwner(
+  input: AgentPiToolExecutionInput,
+  turnState: NonNullable<AgentPiToolExecutionInput["context"]["turnState"]>,
+): AgentToolResourceLeaseOwner | undefined {
+  const sessionId = input.context.sessionId ?? turnState.context.sessionId;
+  if (!sessionId) return undefined;
+  const parent = turnState.context.resourceOwner;
+  return {
+    type: "tool_call",
+    id: input.toolCallId,
+    ...(parent ? { parent } : {}),
+  };
 }
 
 async function projectArtifactImages(result: ExecutedToolCallResult, enabled: boolean): Promise<ImageContent[]> {

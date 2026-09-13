@@ -33,6 +33,7 @@ export interface SeneraDesktopBridge {
   confirmSettingsClose?: () => Promise<void>;
   cancelSettingsClose?: () => Promise<void>;
   openExternalUrl?: (url: string) => Promise<void>;
+  chooseWorkspaceFolder?: () => Promise<string | null>;
   getUpdateState?: () => Promise<DesktopUpdateSnapshot | undefined>;
   checkForUpdates?: () => Promise<DesktopUpdateSnapshot | undefined>;
   downloadUpdate?: () => Promise<DesktopUpdateSnapshot | undefined>;

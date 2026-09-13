@@ -27,6 +27,13 @@ export type AgentNativeRequiredToolChoice =
   | { readonly type: "tool"; readonly name: string }
   | "any";
 
+const AgentNativeRequiredToolChoiceProjectors = {
+  "openai-responses": (name: string) => ({ type: "function", name }),
+  "openai-completions": (name: string) => ({ type: "function", function: { name } }),
+  "anthropic-messages": (name: string) => ({ type: "tool", name }),
+  "google-generative-ai": () => "any",
+} as const satisfies Record<AgentNativeToolApi, (toolName: string) => AgentNativeRequiredToolChoice>;
+
 const AgentNativeToolSdkOwnedBasePath = {
   Responses: [],
   ChatCompletions: [],
@@ -62,16 +69,7 @@ export function projectAgentNativeRequiredToolChoice(
   api: AgentNativeToolApi,
   toolName: string,
 ): AgentNativeRequiredToolChoice {
-  switch (api) {
-    case "openai-responses":
-      return { type: "function", name: toolName };
-    case "openai-completions":
-      return { type: "function", function: { name: toolName } };
-    case "anthropic-messages":
-      return { type: "tool", name: toolName };
-    case "google-generative-ai":
-      return "any";
-  }
+  return AgentNativeRequiredToolChoiceProjectors[api](toolName);
 }
 
 function removeSdkOwnedBasePath(configuredBaseUrl: string, sdkOwnedPath: readonly string[]): string {

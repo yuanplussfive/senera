@@ -278,7 +278,13 @@ describe("agent delegation", () => {
       },
     );
 
-    expect(Object.keys(AgentSpawnArgumentsSchema.shape)).toEqual(["task", "agent", "forkContext"]);
+    expect(Object.keys(AgentSpawnArgumentsSchema.shape)).toEqual([
+      "task",
+      "agent",
+      "forkContext",
+      "workItemId",
+      "resources",
+    ]);
     expect(Object.keys(AgentSpawnArgumentsSchema.shape)).not.toEqual(
       expect.arrayContaining(["workspaceAccess", "modelProviderId", "skills", "thinking", "action"]),
     );
@@ -380,6 +386,60 @@ describe("agent delegation", () => {
       AgentEventKinds.ChildRunSnapshotUpdated,
       AgentEventKinds.ChildRunCompleted,
     ]);
+    database.close();
+  });
+
+  test("persists logical work identity and independent consumption markers", async () => {
+    const database = openDatabase();
+    const repository = new AgentSqliteChildRunRepository(database);
+    const created = repository.create({
+      id: "child-consumption",
+      parentSessionId: "parent-session",
+      parentRequestId: "parent-request",
+      childSessionId: "child-consumption-session",
+      childRequestId: "child-consumption-request",
+      agentName: "reviewer",
+      task: "Persist the assignment identity.",
+      contextMode: AgentRunContextModes.Fresh,
+      approvalMode: AgentExecutionApprovalModes.Agent,
+      selectedSkills: [],
+      workItemId: "work:assignment-1",
+      taskDigest: "a".repeat(64),
+      launchContractDigest: "launch",
+      launchContract: { executionMode: "detach" },
+      allowedToolNames: [],
+      executionContract: {
+        version: 5,
+        workspaceAccess: AgentChildWorkspaceAccessModes.ReadOnly,
+        promptLayer: { mode: "append", content: "" },
+        modelCandidateProviderIds: ["main"],
+        inheritProjectContext: true,
+        deadline: {
+          softTimeoutMs: 10_000,
+          wrapUpTimeoutMs: 1_000,
+          activityExtension: { recentActivityWindowMs: 1_000, stepMs: 1_000, maximumMs: 1_000 },
+          snapshotIntervalMs: 100,
+        },
+      },
+    });
+    expect(repository.getByWorkItem("parent-session", "work:assignment-1")).toMatchObject({
+      id: created.id,
+      workItemId: "work:assignment-1",
+      taskDigest: "a".repeat(64),
+      parentWakeConsumed: false,
+    });
+
+    repository.markRunning(created.id);
+    repository.markCompleted(created.id, { finalAnswer: "done" });
+    const consumed = repository.markResultConsumed(created.id, "2026-09-11T00:00:00.000Z");
+    expect(repository.markParentWakeConsumedBatch([created.id, created.id], "2026-09-11T00:00:01.000Z")).toBe(1);
+    const woken = repository.markParentWakeConsumed(created.id, "2026-09-11T00:00:01.000Z");
+    expect(consumed).toMatchObject({ resultConsumedAt: "2026-09-11T00:00:00.000Z", parentWakeConsumed: false });
+    expect(woken).toMatchObject({ resultConsumedAt: "2026-09-11T00:00:00.000Z", parentWakeConsumed: true });
+    expect(repository.markResultConsumed(created.id, "2026-09-11T00:00:02.000Z")?.resultConsumedAt).toBe(
+      "2026-09-11T00:00:00.000Z",
+    );
+    expect(repository.markParentWakeConsumedBatch([created.id, created.id, " "])).toBe(0);
     database.close();
   });
 

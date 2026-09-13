@@ -29,44 +29,57 @@ export function systemToolCapability(definition: AgentSystemToolDefinition): str
 function createSystemToolHandler(definition: AgentSystemToolDefinition): AgentHostToolHandler {
   return async (args, context) => {
     const { resources, ...invocationArguments } = args;
+    const executionContext = {
+      ...context,
+      ...(isRecord(resources) ? { resources } : {}),
+    };
     const input = definition.input.safeParse(invocationArguments);
     if (!input.success) {
+      const projected = await definition.projectInvalidInput?.(invocationArguments, input.error, executionContext);
+      if (projected) return toolProcessFailureResult(projected);
+      const diagnostics = input.error.issues.map((issue) => ({
+        code: issue.code,
+        message: issue.message,
+        path: issue.path.map(String),
+        pointer: issue.path.length > 0 ? `/${issue.path.map(escapePointerToken).join("/")}` : "",
+      }));
       return toolProcessFailureResult({
         code: AgentExecutionErrorCodes.InvalidToolArguments,
         message: `Invalid arguments for ${definition.name}.`,
-        diagnostics: input.error.issues.map((issue) => ({
-          message: issue.message,
-          path: issue.path.map(String),
-          pointer: issue.path.length > 0 ? `/${issue.path.map(escapePointerToken).join("/")}` : "",
-        })),
+        diagnostics,
         details: {
           phase: AgentToolProcessErrorPhases.RuntimeExecution,
           toolName: definition.name,
-          issues: input.error.issues,
+          issues: diagnostics,
         },
       });
     }
 
     try {
-      const executionContext = {
-        ...context,
-        ...(isRecord(resources) ? { resources } : {}),
-      };
       const executed = definition.executeWithArtifacts
         ? await definition.executeWithArtifacts(input.data, executionContext)
         : await definition.execute(input.data, executionContext);
       const output = isSystemToolExecutionResult(executed) ? executed.result : executed;
       const parsedOutput = definition.output.safeParse(output);
       if (!parsedOutput.success) {
+        const diagnostics = parsedOutput.error.issues.map((issue) => ({
+          code: issue.code,
+          path: issue.path.map(String),
+          message: issue.message,
+        }));
         return toolProcessFailureResult({
           code: AgentExecutionErrorCodes.ToolExecutionError,
           message: `${definition.name} returned an invalid result.`,
+          diagnostics,
           details: {
             phase: AgentToolProcessErrorPhases.RuntimeExecution,
             toolName: definition.name,
-            issues: parsedOutput.error.issues,
+            issues: diagnostics,
           },
         });
+      }
+      if (isSystemToolExecutionResult(executed) && executed.failure) {
+        return toolProcessFailureResult(executed.failure);
       }
       return toolProcessSuccessResult(parsedOutput.data, {
         ...(isSystemToolExecutionResult(executed) && executed.artifactPayload

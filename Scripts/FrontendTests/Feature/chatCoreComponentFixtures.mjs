@@ -114,6 +114,7 @@ export function createMessageListProps(overrides = {}) {
   return {
     sessionId: "session-1",
     uploadUrl: "http://agent.test/api/resources",
+    historyHydrating: false,
     messages: [],
     runs: [],
     userProfile: {

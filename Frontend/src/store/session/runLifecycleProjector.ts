@@ -128,6 +128,9 @@ export const runLifecycleEventHandlers = {
       delete state.historyStepBuffers[sessionId];
       delete state.historyEventRunIds[sessionId];
       delete state.historyActiveRequestIds[sessionId];
+      if (state.historyRunEventBuffers) delete state.historyRunEventBuffers[sessionId];
+      if (state.historyPreviewedIds) delete state.historyPreviewedIds[sessionId];
+      if (state.historyHydration) delete state.historyHydration[sessionId];
       return;
     }
     if (!run) return;
@@ -254,7 +257,7 @@ const cancellationComponentMessages = {
 
 function hasHistoryTraceRun(state: StoreState, sessionId: string, requestId?: string): boolean {
   if (!requestId) return false;
-  return (state.historyStepBuffers[sessionId] ?? []).some((run) => run.requestId === requestId);
+  return (state.historyStepBuffers[sessionId] ?? []).some((page) => page.some((run) => run.requestId === requestId));
 }
 
 function clearActiveRequestIfCurrent(session: { activeRequestId?: string }, requestId: string): void {

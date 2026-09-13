@@ -32,6 +32,7 @@ describe("settings presentation", () => {
       "general",
       "appearance",
       "storage",
+      "workspace",
       "about",
     ]);
     expect(isSettingsSectionId("tools")).toBe(false);
@@ -49,7 +50,7 @@ describe("settings presentation", () => {
       },
       { id: "tools", label: "工具", sectionIds: ["system-tools", "mcp-servers", "channels"] },
       { id: "personal", label: "个人", sectionIds: ["general", "appearance"] },
-      { id: "system", label: "系统", sectionIds: ["storage", "about"] },
+      { id: "system", label: "系统", sectionIds: ["storage", "workspace", "about"] },
     ]);
     expect(readSettingsSectionGroup("appearance").label).toBe("个人");
   });

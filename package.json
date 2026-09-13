@@ -247,6 +247,7 @@
     "@node-rs/jieba": "^2.0.1",
     "@open-policy-agent/opa-wasm": "^1.10.0",
     "@senera/terminal-sidecar": "^0.1.0",
+    "@toon-format/toon": "^4.1.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/busboy": "^1.5.4",
     "@types/mime-types": "^3.0.1",

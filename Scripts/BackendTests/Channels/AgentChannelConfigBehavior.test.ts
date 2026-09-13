@@ -67,6 +67,36 @@ describe("channel config resolution", () => {
     expect(resolved.channels.qq.stt).toEqual(stt);
     expect(resolved.channels.qq.unknown).toBeUndefined();
   });
+
+  test("resolves declarative ProfileRoutes into the live channel configuration", () => {
+    const resolved = resolveAgentChannelsConfig(
+      configWithChannelsExtension({
+        profileRoutes: [
+          {
+            id: "qq-direct",
+            priority: 10,
+            selector: { surface: "channel", platform: "qq", chatType: "direct" },
+            profileId: "qq-profile",
+          },
+        ],
+      }),
+    );
+
+    expect(resolved.profileRoutes?.resolve({ surface: "channel", platform: "qq", chatType: "direct" })).toMatchObject({
+      status: "matched",
+      route: { id: "qq-direct", profileId: "qq-profile" },
+    });
+  });
+
+  test("rejects malformed ProfileRoutes instead of silently dropping them", () => {
+    expect(() =>
+      resolveAgentChannelsConfig(
+        configWithChannelsExtension({
+          profileRoutes: [{ id: "broken", selector: { platform: "unsupported" }, profileId: "profile" }],
+        }),
+      ),
+    ).toThrow(/Invalid option|profileRoutes|platform/u);
+  });
 });
 
 describe("busy message routing resolution", () => {

@@ -16,8 +16,8 @@ export interface SystemMessageSectionInput {
 }
 
 /**
- * Formats independent prompt sections. Section names are validated by the
- * shared serializer, so extensions do not require a central descriptor map.
+ * @deprecated Compatibility formatter for historical XML planner consumers.
+ * Model-facing requests must use AgentPromptContextWireRenderer instead.
  */
 export function formatSystemMessage(
   sections: readonly SystemMessageSectionInput[],

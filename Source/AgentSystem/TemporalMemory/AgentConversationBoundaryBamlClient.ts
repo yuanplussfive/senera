@@ -4,6 +4,7 @@ import { AgentActionPlannerModelTransport } from "../ActionPlanner/AgentActionPl
 import { projectPlainBamlRequestBody } from "../ActionPlanner/AgentActionPlannerPromptProjector.js";
 import { createAgentBamlPromptBuilderRegistry } from "../ActionPlanner/AgentActionPlannerBamlPromptFactory.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
+import { AgentNativeToolApiByEndpoint } from "../ModelEndpoints/AgentModelEndpointContract.js";
 import { createAgentConversationBoundaryPrompt } from "./AgentConversationBoundaryPrompt.js";
 import { createAgentTemporalMemoryPromptCache } from "./AgentTemporalMemoryPromptCache.js";
 import type { AgentConversationBoundaryPromptInput } from "./AgentTemporalMemoryTypes.js";
@@ -38,6 +39,8 @@ export class AgentConversationBoundaryBamlClient {
         cache: createAgentTemporalMemoryPromptCache({
           scopeKey: this.cacheScopeKey,
           phase: "conversation-boundary",
+          provider: this.configuration.ProviderId,
+          api: AgentNativeToolApiByEndpoint[this.configuration.Endpoint],
           model: this.configuration.Model,
           systemPrompt,
           contract: "ClassifyConversationBoundary",

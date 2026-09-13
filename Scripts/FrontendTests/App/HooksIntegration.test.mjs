@@ -84,6 +84,7 @@ test("useSessionCatalogSync sends open-connection and manual refresh requests", 
   expect(send.mock.calls.map(([request]) => request.type)).toEqual([
     "session.list",
     "config.get",
+    "workspace.get",
     "model.list",
     "preset.list",
     "sandbox.status",
@@ -104,6 +105,7 @@ test("useSessionCatalogSync sends open-connection and manual refresh requests", 
   expect(send.mock.calls.map(([request]) => request.type)).toEqual([
     "session.list",
     "config.get",
+    "workspace.get",
     "model.list",
     "preset.list",
     "profile.get",
@@ -204,6 +206,7 @@ test("useSocketPostIngestEffects runs config reload requests and profile sync", 
   });
   expect(send.mock.calls.map(([request]) => request.type)).toEqual([
     "config.get",
+    "workspace.get",
     "model.list",
     "preset.list",
     "sandbox.status",

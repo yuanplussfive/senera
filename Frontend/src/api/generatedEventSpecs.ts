@@ -9,7 +9,13 @@ export const EventSpecs = {
     phase: "session",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/turnCount", "/data/entryCount"],
+      projectionPointers: [
+        "/data/turnCount",
+        "/data/entryCount",
+        "/data/modelProviderId",
+        "/data/effectiveModel",
+        "/data/modelPreference",
+      ],
     },
   },
   "session.snapshot": {
@@ -17,7 +23,15 @@ export const EventSpecs = {
     phase: "session",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/turnCount", "/data/entryCount", "/data/activeRequestId", "/data/status"],
+      projectionPointers: [
+        "/data/turnCount",
+        "/data/entryCount",
+        "/data/activeRequestId",
+        "/data/status",
+        "/data/modelProviderId",
+        "/data/effectiveModel",
+        "/data/modelPreference",
+      ],
     },
   },
   "session.closed": {
@@ -1101,6 +1115,38 @@ export const EventSpecs = {
     observation: {
       retention: "projection",
       projectionPointers: ["/data/statuses"],
+    },
+  },
+  "workspace.snapshot": {
+    layer: "snapshot",
+    phase: "config",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/workspaceRoot", "/data/configPath"],
+    },
+  },
+  "workspace.switch.started": {
+    layer: "progress",
+    phase: "config",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/workspaceRoot"],
+    },
+  },
+  "workspace.switched": {
+    layer: "terminal",
+    phase: "config",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/workspaceRoot", "/data/configPath"],
+    },
+  },
+  "workspace.switch.failed": {
+    layer: "error",
+    phase: "config",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/workspaceRoot", "/data/code"],
     },
   },
 } as const satisfies Record<

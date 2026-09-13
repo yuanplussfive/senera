@@ -338,6 +338,8 @@ describe("ToolSearch runtime behavior", () => {
     usage.recordToolUsage({
       requestId: "request-success",
       userInput: "Read package.json",
+      sessionId: "session-success",
+      logicalCacheScope: "logical-success",
       results: [
         toolResult({
           name: "WorkspaceReadFile",
@@ -372,6 +374,8 @@ describe("ToolSearch runtime behavior", () => {
     expect(learningRuntime.enqueue).toHaveBeenCalledWith(
       expect.objectContaining({
         rawUserTurn: "Read package.json",
+        sessionId: "session-success",
+        logicalCacheScope: "logical-success",
         episode: expect.objectContaining({
           query: "read package",
           chosenTools: ["WorkspaceReadFile"],

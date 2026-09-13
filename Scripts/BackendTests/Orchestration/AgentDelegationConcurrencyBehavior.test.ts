@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { AgentDelegationService } from "../../../Source/AgentSystem/Orchestration/AgentDelegationService.js";
+import { AgentToolResourceLeaseCoordinator } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResourceScheduler.js";
 import {
   AgentRunConcurrencyGate,
   AgentRunPermitKinds,
@@ -118,6 +119,103 @@ describe("agent delegation concurrency and nesting", () => {
     expect(firstResult).toMatchObject({ ownerRunId: "workflow-1", nodeId: "review-node" });
     expect(preflight).toHaveBeenCalledOnce();
     expect(dispatch).toHaveBeenCalledOnce();
+    database.close();
+  });
+
+  test("derives a stable work item and converges duplicate public submissions", async () => {
+    const database = openDelegationTestDatabase();
+    const started = new Deferred<void>();
+    const release = new Deferred<void>();
+    const dispatch = vi.fn(async (request: AgentRunDispatchRequest): Promise<AgentRunDispatchResult> => {
+      started.resolve();
+      await release.promise;
+      return { sessionId: request.sessionId, requestId: request.requestId, finalAnswer: "Completed once." };
+    });
+    const preflight = vi.fn(async (input) =>
+      delegationPlan("main", [], AgentChildRunModelSelectionSources.Parent, input.workspaceAccess),
+    );
+    const service = new AgentDelegationService({
+      workspaceRoot: process.cwd(),
+      configuration: () => ({ config: modelConfig() }),
+      repository: new AgentSqliteChildRunRepository(database),
+      dispatcher: {
+        dispatch,
+        requestFinalAnswer: vi.fn(async () => true),
+        requestCancellation: vi.fn(async () => true),
+        cancel: vi.fn(async () => true),
+      },
+      events: new AgentOrchestrationEventRelay(),
+      preflight: { resolve: preflight } as unknown as AgentSubagentPreflightPort,
+    });
+    const request = {
+      agent: "reviewer",
+      task: "Review one stable logical assignment.",
+      workspaceAccess: AgentChildWorkspaceAccessModes.ReadOnly,
+      executionMode: "wait" as const,
+    };
+    const context = {
+      parentSessionId: "parent-session",
+      parentRequestId: "parent-request",
+      approvalMode: AgentExecutionApprovalModes.Agent,
+      authorizedToolNames: ["WorkspaceRead"],
+      registry: { getTool: () => undefined },
+    };
+
+    const first = service.delegate(request, context);
+    await started.promise;
+    const second = service.delegate(request, context);
+    release.resolve();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(secondResult.id).toBe(firstResult.id);
+    expect(firstResult.workItemId).toMatch(/^task:/);
+    expect(firstResult.taskDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(preflight).toHaveBeenCalledOnce();
+    expect(dispatch).toHaveBeenCalledOnce();
+    database.close();
+  });
+
+  test("reports whether a spawn created or reused the logical assignment", async () => {
+    const database = openDelegationTestDatabase();
+    const release = new Deferred<void>();
+    const dispatch = vi.fn(async (request: AgentRunDispatchRequest): Promise<AgentRunDispatchResult> => {
+      await release.promise;
+      return { sessionId: request.sessionId, requestId: request.requestId, finalAnswer: "Completed once." };
+    });
+    const service = new AgentDelegationService({
+      workspaceRoot: process.cwd(),
+      configuration: () => ({ config: modelConfig() }),
+      repository: new AgentSqliteChildRunRepository(database),
+      dispatcher: {
+        dispatch,
+        requestFinalAnswer: vi.fn(async () => true),
+        requestCancellation: vi.fn(async () => true),
+        cancel: vi.fn(async () => true),
+      },
+      events: new AgentOrchestrationEventRelay(),
+      preflight: {
+        resolve: vi.fn(async (input) =>
+          delegationPlan("main", [], AgentChildRunModelSelectionSources.Parent, input.workspaceAccess),
+        ),
+      } as unknown as AgentSubagentPreflightPort,
+    });
+    const context = {
+      parentSessionId: "parent-session",
+      parentRequestId: "parent-request",
+      approvalMode: AgentExecutionApprovalModes.Agent,
+      authorizedToolNames: ["WorkspaceRead"],
+      registry: { getTool: () => undefined },
+    };
+    const first = await service.spawnWithOutcome({ task: "One logical assignment." }, context);
+    const second = await service.spawnWithOutcome({ task: "One logical assignment." }, context);
+
+    expect(first.disposition).toBe("created");
+    expect(second.disposition).toBe("reused");
+    expect(second.run.id).toBe(first.run.id);
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce());
+
+    release.resolve();
+    await service.wait(first.run.id, context.parentSessionId);
     database.close();
   });
 
@@ -392,6 +490,92 @@ describe("agent delegation concurrency and nesting", () => {
       ),
     ).rejects.toThrow("configured maximum of 1");
     expect(preflight).not.toHaveBeenCalled();
+    database.close();
+  });
+
+  test("holds declared child claims across the full child lifecycle", async () => {
+    const database = openDelegationTestDatabase();
+    const firstStarted = new Deferred<void>();
+    const releaseFirst = new Deferred<void>();
+    const dispatch = vi.fn(async (request: AgentRunDispatchRequest): Promise<AgentRunDispatchResult> => {
+      if (dispatch.mock.calls.length === 1) {
+        firstStarted.resolve();
+        await releaseFirst.promise;
+      }
+      return { sessionId: request.sessionId, requestId: request.requestId, finalAnswer: request.input };
+    });
+    const service = new AgentDelegationService({
+      workspaceRoot: process.cwd(),
+      configuration: () => ({ config: modelConfig() }),
+      repository: new AgentSqliteChildRunRepository(database),
+      dispatcher: {
+        dispatch,
+        requestFinalAnswer: vi.fn(async () => true),
+        requestCancellation: vi.fn(async () => true),
+        cancel: vi.fn(async () => true),
+      },
+      events: new AgentOrchestrationEventRelay(),
+      preflight: {
+        resolve: vi.fn(async (input) =>
+          delegationPlan("main", [], AgentChildRunModelSelectionSources.Parent, input.workspaceAccess),
+        ),
+      } as unknown as AgentSubagentPreflightPort,
+      resourceCoordinator: new AgentToolResourceLeaseCoordinator(),
+    });
+    service.bindResourceClaims({
+      project: async () => ({ mode: "claims", claims: [] }),
+      projectDeclarations: async (declarations) => ({
+        mode: "claims",
+        claims: [
+          {
+            domain: { id: "test.workspace", overlaps: (left, right) => left === right },
+            identity: String(declarations[0]?.value),
+            access: "exclusive",
+          },
+        ],
+      }),
+    });
+    const context = {
+      parentSessionId: "parent-session",
+      parentRequestId: "parent-request",
+      approvalMode: AgentExecutionApprovalModes.Agent,
+      authorizedToolNames: ["ShellCommandTool"],
+      registry: { getTool: () => undefined },
+    };
+
+    const first = await service.spawnWithOutcome(
+      {
+        agent: "worker",
+        task: "Edit the shared file.",
+        workItemId: "first",
+        resources: [{ capability: "test.workspace", value: "Source/shared.ts", intent: "replace" }],
+      },
+      context,
+    );
+    await firstStarted.promise;
+    const second = await service.spawnWithOutcome(
+      {
+        agent: "worker",
+        task: "Review the shared file.",
+        workItemId: "second",
+        resources: [{ capability: "test.workspace", value: "Source/shared.ts", intent: "replace" }],
+      },
+      context,
+    );
+
+    await Promise.resolve();
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(first.run.executionContract.resourceCoverage).toBe("declared");
+    expect(first.run.executionContract.resourceClaims).toEqual([
+      { domainId: "test.workspace", identity: "Source/shared.ts", access: "exclusive" },
+    ]);
+
+    releaseFirst.resolve();
+    await Promise.all([
+      service.wait(first.run.id, context.parentSessionId),
+      service.wait(second.run.id, context.parentSessionId),
+    ]);
+    expect(dispatch).toHaveBeenCalledTimes(2);
     database.close();
   });
 });

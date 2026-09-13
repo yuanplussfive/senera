@@ -1,4 +1,5 @@
 import type { AgentWorldSnapshotProvider, AgentWorldTreeProjection } from "./AgentWorldTypes.js";
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { projectAgentModelPayload, projectAgentModelText } from "../Text/AgentModelPayloadProjection.js";
 
 /** JSON-safe world state for prompt rendering. */
@@ -116,7 +117,7 @@ export function projectAgentWorldSnapshotPromptContext(snapshot: AgentWorldTreeP
 function formatWorldValue(value: unknown): string {
   if (typeof value === "string") return value;
   if (value === null || typeof value === "number" || typeof value === "boolean") return String(value);
-  return JSON.stringify(value);
+  return stringifyAgentCanonicalJson(value);
 }
 
 function projectWorldText(value: string): string {

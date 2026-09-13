@@ -72,6 +72,7 @@ export class AgentResidentSpeechRuntime implements AgentResidentSpeechSessionRun
         const raw = await this.bamlClient.project({
           prompt,
           sessionId: input.sessionId,
+          logicalCacheScope: input.logicalCacheScope,
           mode: focus.mode,
           signal: input.signal,
           usageSink: input.usageSink,
@@ -116,6 +117,9 @@ export class AgentResidentSpeechRuntime implements AgentResidentSpeechSessionRun
       continuation: input.nativeContinuation,
       signal: input.signal,
       sessionId: input.sessionId,
+      validate: (value) => {
+        parseAgentResidentSpeechNativeResult(value, contract);
+      },
       usageSink: input.usageSink,
       timingSink: input.timingSink,
     });

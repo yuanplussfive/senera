@@ -9,6 +9,7 @@ import {
   createAgentContinuityRuleExtractionContext,
 } from "../../../Source/AgentSystem/Continuity/AgentContinuityNativeExtractionPrompt.js";
 import { AgentContinuityLearningPromptBundleRegistry } from "../../../Source/AgentSystem/Continuity/AgentContinuityLearningPromptBundle.js";
+import { decodeAgentPromptInputWire } from "../../../Source/AgentSystem/Prompt/AgentPromptContextWireRenderer.js";
 
 describe("continuity learning prompts", () => {
   test("keeps native and BAML fact routing aligned on persistent assistant behavior", async () => {
@@ -30,13 +31,14 @@ describe("continuity learning prompts", () => {
       expect(prompt).toContain("context.turnContext and context.referents");
       expect(prompt).toContain("profileCatalog");
       expect(prompt).toContain("Registered relation catalog");
-      expect(prompt).toContain('"lives_at"');
+      expect(prompt).toContain("lives_at");
     }
 
     expect(native.systemPrompt).toContain("primary language");
     expect(native.systemPrompt).toContain("qualified claim");
 
-    expect(JSON.parse(native.userPrompt)).toEqual(
+    const decoded = decodeAgentPromptInputWire(native.userPrompt);
+    expect(decoded).toEqual(
       expect.objectContaining({
         context: expect.objectContaining({
           evidence: input.evidence,

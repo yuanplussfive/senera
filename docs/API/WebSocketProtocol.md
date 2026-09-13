@@ -88,6 +88,8 @@
 | `session.runtime_status` | 获取指定 Pi 会话的上下文占用、消息、工具调用和 token 统计。 |
 | `session.truncate_from` | 从指定请求起截断会话历史。 |
 | `systemTool.list` | 获取常驻系统工具目录。 |
+| `workspace.get` | 获取当前工作区标识，包括工作区根目录、配置路径和 WebSocket 地址。 |
+| `workspace.switch` | 热切换到指定工作区根目录；活动会话和后台任务会被强制取消，客户端需重连后重新获取状态。 |
 | `world.get` | 获取模型当前使用的权威世界投影，包括时间阶段、日历、实体、关系、时间线和未来计划。 |
 | `world.resident.wake` | 向持久化世界队列提交一次显式 Resident 唤醒请求。 |
 
@@ -269,6 +271,10 @@
 | `system_tool.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `mcp_server.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `channel.status.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
+| `workspace.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
+| `workspace.switch.started` | `progress` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
+| `workspace.switched` | `terminal` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
+| `workspace.switch.failed` | `error` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 
 ## 会话回放与恢复
 

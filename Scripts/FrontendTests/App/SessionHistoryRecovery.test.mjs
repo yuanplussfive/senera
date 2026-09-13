@@ -66,7 +66,12 @@ test("automatically loads the active session exactly once after the socket opens
   render(React.createElement(HistoryRecoveryHarness, { activeSessionId: "active", handleRef, send, status: "open" }));
 
   expect(send).toHaveBeenCalledTimes(1);
-  expect(send).toHaveBeenCalledWith({ type: "session.history", sessionId: "active", refresh: undefined });
+  expect(send).toHaveBeenCalledWith({
+    type: "session.history",
+    sessionId: "active",
+    refresh: undefined,
+    initialWindow: true,
+  });
   expect(useStore.getState().historyLoadingIds.active).toBe(true);
 
   act(() => {
@@ -86,7 +91,12 @@ test("marks history recovery as failed when the socket cannot accept the request
   });
 
   expect(result).toBe(false);
-  expect(send).toHaveBeenCalledWith({ type: "session.history", sessionId: "disconnected", refresh: true });
+  expect(send).toHaveBeenCalledWith({
+    type: "session.history",
+    sessionId: "disconnected",
+    refresh: true,
+    initialWindow: true,
+  });
   expect(useStore.getState().historyLoadingIds.disconnected).toBe(false);
   expect(useStore.getState().historyFailedIds.disconnected).toBe(true);
   expect(readTestToastCalls()).toEqual([]);
@@ -114,7 +124,7 @@ test("retries unfinished history runs with increasing bounded polling delays", a
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1_500);
   });
-  expect(send).toHaveBeenLastCalledWith({ type: "session.history", sessionId, refresh: true });
+  expect(send).toHaveBeenLastCalledWith({ type: "session.history", sessionId, refresh: true, initialWindow: true });
 
   act(() => {
     useStore.getState().markHistoryLoadFailed(sessionId);
@@ -123,7 +133,7 @@ test("retries unfinished history runs with increasing bounded polling delays", a
     await vi.advanceTimersByTimeAsync(2_000);
   });
   expect(send).toHaveBeenCalledTimes(2);
-  expect(send).toHaveBeenLastCalledWith({ type: "session.history", sessionId, refresh: true });
+  expect(send).toHaveBeenLastCalledWith({ type: "session.history", sessionId, refresh: true, initialWindow: true });
 });
 
 function HistoryRecoveryHarness({ activeSessionId, handleRef, send, status }) {

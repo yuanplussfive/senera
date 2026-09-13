@@ -5,7 +5,7 @@ import { readAgentNonBlankString, readAgentUnknownRecord } from "../Core/AgentUn
  * Context field keys used to locate the conversation summary text within the
  * BAML prompt envelope. These match the property names on
  * {@link AgentPiAssistantMessageCompileInput} serialized by the BAML prompt
- * factory via {@link buildPiPromptJson}.
+ * factory via the shared versioned prompt wire.
  */
 const ContextFieldKeys = {
   SeneraRuntime: "seneraRuntime",

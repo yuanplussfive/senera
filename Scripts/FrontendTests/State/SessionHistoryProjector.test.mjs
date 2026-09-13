@@ -197,7 +197,7 @@ test("history replay buffers chunks and materializes messages on completion", ()
   );
 
   expect(state.sessions[TestSessionId]?.messages.length).toBe(0);
-  expect(state.historyReplayBuffers[TestSessionId]?.length).toBe(2);
+  expect(state.historyReplayBuffers[TestSessionId]?.flat().length).toBe(2);
 
   applyEvent(
     state,

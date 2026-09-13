@@ -47,7 +47,7 @@ describe("Pi native tool provider", () => {
         events.push(event);
       },
       skillCatalogFingerprint: "test",
-      nativeProviderToolNames: ["ToolSearch"],
+      nativeProviderToolNames: ["ToolSearch", AgentPiNativeToolBridgeName],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
       selectedPromptTemplates: [],
@@ -77,7 +77,7 @@ describe("Pi native tool provider", () => {
     const context: Context = {
       systemPrompt: "<agent_system><native_tool_calling /></agent_system>",
       messages: [{ role: "user", content: "Read an artifact.", timestamp: 1 }],
-      tools: [tool("ToolSearch"), tool("ArtifactRead")],
+      tools: [tool("ToolSearch"), tool("ArtifactRead"), tool(AgentPiNativeToolBridgeName)],
     };
 
     await provider.streamSimple(model, context).result();
@@ -87,8 +87,8 @@ describe("Pi native tool provider", () => {
 
     expect(model.api).toBe("openai-completions");
     expect(requests.map((request) => request.tools?.map((entry) => entry.name))).toEqual([
-      ["ToolSearch"],
-      ["ToolSearch"],
+      ["ToolSearch", AgentPiNativeToolBridgeName],
+      ["ToolSearch", AgentPiNativeToolBridgeName],
     ]);
     expect(requests[0]?.systemPrompt).toBe("<agent_system><native_tool_calling /></agent_system>");
     expect(requests[0]?.messages).toEqual(context.messages);
@@ -135,7 +135,7 @@ describe("Pi native tool provider", () => {
         events.push(event);
       },
       skillCatalogFingerprint: "test",
-      nativeProviderToolNames: ["ToolSearch"],
+      nativeProviderToolNames: ["ToolSearch", AgentPiNativeToolBridgeName],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
       selectedPromptTemplates: [],
@@ -207,7 +207,7 @@ describe("Pi native tool provider", () => {
         {
           systemPrompt: "<persona>resident</persona>",
           messages: [{ role: "user", content: "找一下那个文件。", timestamp: 1 }],
-          tools: [tool("ToolSearch")],
+          tools: [tool("ToolSearch"), tool(AgentPiNativeToolBridgeName)],
         },
         { reasoning: "high", metadata: { trace: "resident-continuation" } },
       )
@@ -222,14 +222,14 @@ describe("Pi native tool provider", () => {
       data: { kind: "tool_preface", content: "我去翻一下呀。" },
     });
     expect(turnState.toolBatchId("call-search")).toEqual(expect.stringMatching(/^toolbatch_/u));
-    expect(delegatedRoutes).toEqual(["simple", "simple"]);
+    expect(delegatedRoutes).toEqual(["simple", "stream"]);
     expect(delegatedOptions).toHaveLength(2);
     expect(delegatedOptions.map((options) => options?.cacheRetention)).toEqual(["long", "long"]);
     expect(delegatedOptions.map((options) => options?.sessionId)).toEqual([
       expect.stringMatching(/^[a-f0-9]{64}$/u),
       expect.stringMatching(/^[a-f0-9]{64}$/u),
     ]);
-    expect(delegatedOptions[1]?.sessionId).toBe(delegatedOptions[0]?.sessionId);
+    expect(delegatedOptions[1]?.sessionId).not.toBe(delegatedOptions[0]?.sessionId);
     expect(
       delegatedOptions.map((options) => (options && "reasoning" in options ? options.reasoning : undefined)),
     ).toEqual(["high", "high"]);
@@ -261,7 +261,7 @@ describe("Pi native tool provider", () => {
       turnState,
       roleplayPresetActive: true,
       skillCatalogFingerprint: "test",
-      nativeProviderToolNames: ["ToolSearch"],
+      nativeProviderToolNames: ["ToolSearch", AgentPiNativeToolBridgeName],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
       selectedPromptTemplates: [],
@@ -291,7 +291,7 @@ describe("Pi native tool provider", () => {
     const context = {
       systemPrompt: "<persona>resident</persona>",
       messages: [{ role: "user" as const, content: "今天画完了吗？", timestamp: 1 }],
-      tools: [tool("ToolSearch")],
+      tools: [tool("ToolSearch"), tool(AgentPiNativeToolBridgeName)],
     };
     const directResult = await provider.streamSimple(model, context).result();
     expect(directResult.content).toEqual([{ type: "text", text: "I finished the illustration today." }]);

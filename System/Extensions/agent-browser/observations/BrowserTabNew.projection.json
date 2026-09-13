@@ -34,6 +34,7 @@
       "mode": "auto",
       "priority": "normal",
       "requiredForCompletion": true,
+      "budgetShare": 0.125,
       "maxTokens": 64000,
       "limits": { "maxDepth": 12, "maxArrayItems": 256, "maxObjectProperties": 256, "maxNodes": 2048 }
     },

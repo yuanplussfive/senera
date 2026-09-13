@@ -81,7 +81,7 @@ export function createAgentPiDiagnosticLogger(logger: AgentLogger): AgentPiDiagn
  * server runs in compact (non-verbose) mode. Provider errors and model failures
  * are essential for operators to diagnose upstream issues.
  */
-const CriticalDiagnosticNames = new Set(["provider_error", "model_timing"]);
+const CriticalDiagnosticNames = new Set(["provider_error", "model_timing", "prompt_cache"]);
 
 /**
  * Creates a diagnostic sink that always logs critical events (provider errors,

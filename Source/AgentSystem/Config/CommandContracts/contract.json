@@ -9,6 +9,14 @@
       "snapshot": "snapshots/0001.schema.json",
       "definitionSha256": "58e5d93f1903e74c278399080bf63121b427c99e7795ee7f49e3a60ca106cacd",
       "snapshotSha256": "b92a449b29106ba1c91044e573eab82dfe2ee0ea2934ea8447743b4b2c3ee11b"
+    },
+    {
+      "version": 2,
+      "name": "provider-endpoint-pool",
+      "definition": "versions/0002-provider-endpoint-pool.json",
+      "snapshot": "snapshots/0002.schema.json",
+      "definitionSha256": "1f735e000d01c23149e05b127a0f917c63101508e66ba915a9ff7eea28573ae1",
+      "snapshotSha256": "d57fa5f32bb97dd9ae8b04cb20baf320c4f85b57246c10c4a3a06732fa92dbfa"
     }
   ]
 }

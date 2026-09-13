@@ -267,12 +267,23 @@ function compareSkillPriority(left: RegisteredSkill, right: RegisteredSkill): nu
   );
 }
 
-function compareSourceKind(left: "system" | "mcp" | "standalone", right: "system" | "mcp" | "standalone"): number {
+function compareSourceKind(
+  left: "system" | "mcp" | "standalone" | "plugin",
+  right: "system" | "mcp" | "standalone" | "plugin",
+): number {
   return sourceKindRank(left) - sourceKindRank(right);
 }
 
-function sourceKindRank(kind: "system" | "mcp" | "standalone"): number {
-  return kind === "system" ? 0 : 1;
+function sourceKindRank(kind: "system" | "mcp" | "standalone" | "plugin"): number {
+  switch (kind) {
+    case "system":
+      return 0;
+    case "mcp":
+    case "standalone":
+      return 1;
+    case "plugin":
+      return 2;
+  }
 }
 
 function compareDescending(left: number | undefined, right: number | undefined): number {

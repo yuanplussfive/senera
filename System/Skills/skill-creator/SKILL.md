@@ -9,16 +9,23 @@ Create and maintain standard Skill packages under `.senera/skills/<name>/`.
 
 `SKILL.md` is standard Markdown. The runtime preserves its body exactly, including fenced code blocks and HTML comments. An author may place an optional author-owned EOF comment at the end when it helps the model recognize that a long document is complete; no EOF marker is required and Senera does not assign it protocol meaning.
 
+The package contract and starter document are files in this Skill package:
+read `references/package-contract.md` for the layout and invariants, then read
+`templates/SKILL.md` before authoring a new workflow. These are authoring
+resources, not a second runtime registry. The live catalog is derived from the
+actual package files and revisions, so never create a parallel manifest by
+hand.
+
 First classify the requested package:
 
-- **Workflow Skill**: use only `SKILL.md` to guide and compose existing registered tools. Read `.senera/skills/workflow-skill-example/SKILL.md` as the minimal reference.
-- **Toolkit Skill**: add `scripts/` when deterministic reusable execution is needed. Read `.senera/skills/json-field-selector/SKILL.md` and its script as the reference.
+- **Workflow Skill**: use only `SKILL.md` to guide and compose existing registered tools. Read `SKILL.md` from `workflow-skill-example` through `senera skills read` as the minimal reference.
+- **Toolkit Skill**: add `scripts/` when deterministic reusable execution is needed. Read the `SKILL.md` and script resources from `json-field-selector` through `senera skills read` as the reference.
 - **Native tool**: a Skill cannot register a new Pi tool. Never invent a tool name or claim that a native tool was created. Use an existing registered tool, create a Toolkit Skill executed through `ShellCommandTool`, or state that native tool development is outside `SkillManage`.
 
 Then create the package:
 
 1. Choose a short lowercase kebab-case name and a description that states both capability and trigger conditions.
-2. Confirm every tool the Skill depends on is already registered. Pass its exact name in `recommendedTools` when calling `SkillManage`; omit the field when no specific tool is required. A recommendation affects loading priority only and never grants permission.
+2. Read `templates/SKILL.md`, replace its example values, and keep only sections that make the workflow clearer. Set `disable-model-invocation: true` only when the workflow must be explicitly invoked; otherwise leave automatic routing enabled. Confirm every tool the Skill depends on is already registered. Pass its exact name in `recommendedTools` when calling `SkillManage`; omit the field when no specific tool is required. A recommendation affects loading priority only and never grants permission.
 3. For a Workflow Skill, call `SkillManage` with `create` to atomically create `SKILL.md`. The manager writes tool bindings to the standard namespaced metadata extension:
 
    ```yaml

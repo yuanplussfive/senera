@@ -7,6 +7,7 @@ import {
 } from "../../../Source/AgentSystem/Orchestration/AgentChildRunDeadlineController.js";
 import { renderAgentChildRunWrapUpInstruction } from "../../../Source/AgentSystem/Orchestration/AgentChildRunWrapUpPrompt.js";
 import type { AgentChildRunDeadlinePolicy } from "../../../Source/AgentSystem/Orchestration/AgentChildRunTypes.js";
+import { AgentToolResultPresentationProtocol } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 
 const StartedAt = Date.parse("2026-08-08T00:00:00.000Z");
 
@@ -137,6 +138,56 @@ describe("child-run activity-aware deadlines", () => {
     });
   });
 
+  test("carries the latest workspace revision into the takeover checkpoint", () => {
+    const activity = new AgentChildRunActivityTracker({
+      startedAt: StartedAt,
+      policy: deadlinePolicy(),
+      continuity: {
+        referenceId: "senera://work-item/work-1",
+        workItemId: "work-1",
+        taskDigest: "task-digest",
+      },
+      clock: {
+        now: () => StartedAt + 10,
+        timestamp: (value) => new Date(value).toISOString(),
+      },
+    });
+
+    activity.observe({
+      kind: AgentEventKinds.ToolCallCompleted,
+      context: { requestId: "child-request", step: 1 },
+      data: {
+        index: 0,
+        toolName: "WorkspaceApplyPatch",
+        callId: "call-1",
+        presentation: {
+          type: AgentToolResultPresentationProtocol.type,
+          version: AgentToolResultPresentationProtocol.version,
+          status: "success",
+          headline: "Workspace updated",
+          facts: [],
+          evidence: [],
+          changes: [],
+          workspaceCheckpoint: {
+            id: "workspace:checkpoint",
+            baseRevision: "sha256:before",
+            revision: "sha256:after",
+            capturedAt: new Date(StartedAt + 10).toISOString(),
+            changedPaths: ["src/index.ts"],
+            changeDigest: "sha256:changes",
+          },
+        },
+      },
+    });
+    activity.observe(modelDelta("Updated the source."));
+
+    expect(activity.latestCheckpoint()?.continuity).toMatchObject({
+      workItemId: "work-1",
+      workspaceRevision: "sha256:after",
+      referenceIds: ["senera://work-item/work-1"],
+    });
+  });
+
   test("tracks model budgets and treats a model Todo write as meaningful progress", () => {
     let now = StartedAt;
     const activity = new AgentChildRunActivityTracker({
@@ -259,8 +310,9 @@ describe("child-run activity-aware deadlines", () => {
     });
 
     expect(instruction).toContain("no_progress");
-    expect(instruction).toContain('"id":"verify"');
-    expect(instruction).toContain('"status":"in_progress"');
+    expect(instruction).toContain("senera.child_run_wrap_up=v1");
+    expect(instruction).toContain("verify");
+    expect(instruction).toContain("in_progress");
   });
 });
 

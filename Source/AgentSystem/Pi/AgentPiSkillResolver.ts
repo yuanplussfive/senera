@@ -2,9 +2,10 @@ import type { Skill as HarnessSkill } from "@earendil-works/pi-agent-core";
 import type { ResourceDiagnostic, Skill as CodingAgentSkill } from "@earendil-works/pi-coding-agent";
 import { groupAgentValuesBy } from "../Core/AgentCollections.js";
 import { readRegularTextFileSync } from "../Core/AgentFs.js";
-import { isSamePath, toPosixPath } from "../Core/AgentPath.js";
+import { isSamePath } from "../Core/AgentPath.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import { parseAgentSkillDocument } from "../Skills/AgentSkillDocument.js";
+import { agentSkillLogicalUri } from "../Skills/AgentSkillResourceUri.js";
 
 export interface AgentPiLoadedSkillCatalog {
   readonly skills: readonly CodingAgentSkill[];
@@ -41,7 +42,7 @@ export class AgentPiSkillResolver {
         name: skill.name,
         description: skill.description,
         content: readSkillBody(skill.filePath),
-        filePath: toPosixPath(skill.filePath),
+        filePath: agentSkillLogicalUri(skill.name),
         disableModelInvocation: skill.disableModelInvocation,
       };
     });

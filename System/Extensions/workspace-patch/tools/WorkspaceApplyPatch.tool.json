@@ -165,14 +165,27 @@
     "Lifecycle": "Immediate",
     "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
-    "Scheduling": "Parallel",
+    "Scheduling": "ResourceClaims",
     "MaxConcurrency": 1,
     "Capabilities": {
       "Progress": true,
       "Cancellation": true
     }
   },
-  "resources": [],
+  "resources": [
+    {
+      "Capability": "senera.workspace.path",
+      "Pointer": "/operations",
+      "Parameters": {
+        "Intent": {
+          "Selector": "/dryRun",
+          "Cases": [{ "Equals": true, "Intent": "read" }],
+          "Default": "replace"
+        },
+        "PathPointers": ["/*/path", "/*/source", "/*/destination"]
+      }
+    }
+  ],
   "sources": [
     {
       "Id": "workspace",

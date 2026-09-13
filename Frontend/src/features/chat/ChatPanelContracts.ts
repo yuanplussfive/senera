@@ -2,6 +2,7 @@ import type {
   ConfigMutationState,
   ConfigSnapshotData,
   ModelProviderListItem,
+  ModelThinkingLevel,
   PersonaPresetCard,
   PresetItem,
   PresetMutationState,
@@ -25,6 +26,8 @@ export interface ChatModelConfig {
   /** Server-configured default used for new conversations. */
   defaultModelProviderId?: string | null;
   onSelectModelProvider: (id: string) => void;
+  selectedThinkingLevel: ModelThinkingLevel | null;
+  onSelectThinkingLevel: (level: ModelThinkingLevel) => void;
   /** Restores the active conversation to the current default model. */
   onApplyDefaultModel?: () => void;
   /** Opens provider settings so another model can be configured. */

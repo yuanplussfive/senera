@@ -21,6 +21,8 @@ export type PersistedSessionState = Partial<
     | "executionApprovalMode"
     | "selectedModelProviderId"
     | "selectedModelProviderIdsBySession"
+    | "selectedThinkingLevel"
+    | "selectedThinkingLevelsBySession"
     | "userProfile"
     | "workflowDockWidth"
   >
@@ -28,7 +30,7 @@ export type PersistedSessionState = Partial<
 
 export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionState> = {
   name: PERSIST_KEY,
-  version: 8,
+  version: 9,
   storage: createJSONStorage(() => localStorage),
   // 后端是会话内容的 SSOT；前端另外缓存侧栏排序等 UI 偏好。
   // messages 不持久化 —— 后端 session.history 会权威回放。
@@ -40,6 +42,8 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
     executionApprovalMode: state.executionApprovalMode,
     selectedModelProviderId: state.selectedModelProviderId,
     selectedModelProviderIdsBySession: state.selectedModelProviderIdsBySession,
+    selectedThinkingLevel: state.selectedThinkingLevel,
+    selectedThinkingLevelsBySession: state.selectedThinkingLevelsBySession,
     userProfile: state.userProfile,
     workflowDockWidth: state.workflowDockWidth,
   }),
@@ -57,6 +61,14 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       executionApprovalMode: readPersistedExecutionApprovalMode(p.executionApprovalMode),
       selectedModelProviderId: p.selectedModelProviderId,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(p.selectedModelProviderIdsBySession),
+      ...(p.selectedThinkingLevel !== undefined
+        ? { selectedThinkingLevel: readPersistedThinkingLevel(p.selectedThinkingLevel) ?? null }
+        : {}),
+      ...(p.selectedThinkingLevelsBySession !== undefined
+        ? {
+            selectedThinkingLevelsBySession: readPersistedThinkingSelectionBySession(p.selectedThinkingLevelsBySession),
+          }
+        : {}),
       userProfile: p.userProfile,
       workflowDockWidth: readPersistedWorkflowDockWidth(p.workflowDockWidth),
     };
@@ -78,6 +90,8 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       executionApprovalMode: readPersistedExecutionApprovalMode(p.executionApprovalMode),
       selectedModelProviderId: p.selectedModelProviderId ?? null,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(p.selectedModelProviderIdsBySession),
+      selectedThinkingLevel: readPersistedThinkingLevel(p.selectedThinkingLevel) ?? null,
+      selectedThinkingLevelsBySession: readPersistedThinkingSelectionBySession(p.selectedThinkingLevelsBySession) ?? {},
       userProfile: normalizeUserProfile(p.userProfile),
       workflowDockWidth: readPersistedWorkflowDockWidth(p.workflowDockWidth),
       modelProviders: [],
@@ -94,6 +108,9 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       historyStepBuffers: {},
       historyEventRunIds: {},
       historyActiveRequestIds: {},
+      historyRunEventBuffers: {},
+      historyPreviewedIds: {},
+      historyHydration: {},
       processedEventIds: {},
       processedEventIdOrder: [],
       missingOnServerIds: {},
@@ -153,6 +170,16 @@ export function readPersistedSessionPreferences(rawValue: string | null): Persis
       selectedModelProviderId:
         typeof state.selectedModelProviderId === "string" ? state.selectedModelProviderId : undefined,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(state.selectedModelProviderIdsBySession),
+      ...(state.selectedThinkingLevel !== undefined
+        ? { selectedThinkingLevel: readPersistedThinkingLevel(state.selectedThinkingLevel) ?? null }
+        : {}),
+      ...(state.selectedThinkingLevelsBySession !== undefined
+        ? {
+            selectedThinkingLevelsBySession: readPersistedThinkingSelectionBySession(
+              state.selectedThinkingLevelsBySession,
+            ),
+          }
+        : {}),
       userProfile: state.userProfile,
       workflowDockWidth:
         typeof state.workflowDockWidth === "number"
@@ -162,6 +189,26 @@ export function readPersistedSessionPreferences(rawValue: string | null): Persis
   } catch {
     return null;
   }
+}
+
+const ThinkingLevels = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+
+function readPersistedThinkingLevel(value: unknown): import("../../api/eventTypes").ModelThinkingLevel | undefined {
+  return typeof value === "string" && ThinkingLevels.has(value)
+    ? (value as import("../../api/eventTypes").ModelThinkingLevel)
+    : undefined;
+}
+
+function readPersistedThinkingSelectionBySession(
+  value: unknown,
+): Record<string, import("../../api/eventTypes").ModelThinkingLevel> | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, level]) => typeof level === "string" && ThinkingLevels.has(level))
+      .map(([sessionId, level]) => [sessionId, level as import("../../api/eventTypes").ModelThinkingLevel]),
+  );
 }
 
 export function clearPersistedStore(): void {

@@ -1,4 +1,5 @@
 import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 import { projectAgentToolInvocationSchema } from "../ToolRuntime/AgentToolExecutionPlan.js";
@@ -81,7 +82,7 @@ function summarizeOutputSchema(schema: Readonly<Record<string, unknown>> | undef
   const required = Array.isArray(schema.required)
     ? schema.required.filter((value): value is string => typeof value === "string")
     : [];
-  const summary = JSON.stringify({ type: schema.type ?? "object", required, properties });
+  const summary = stringifyAgentCanonicalJson({ type: schema.type ?? "object", required, properties });
   return summary.length <= OutputSummaryMaxChars ? summary : `${summary.slice(0, OutputSummaryMaxChars - 3)}...`;
 }
 

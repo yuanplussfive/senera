@@ -14,6 +14,7 @@ import { AgentPiSessionExportFormats } from "../Pi/AgentPiSessionManagement.js";
 import { AgentExtensionInputValueSchema } from "../Extensions/AgentExtensionInput.js";
 import { AgentExecutionApprovalModeValues } from "../Safety/AgentExecutionApprovalMode.js";
 import { AgentPersonaPresetSchema } from "../Presets/AgentPresetParser.js";
+import { AgentModelThinkingLevels } from "../ModelEndpoints/AgentModelThinking.js";
 
 const AgentInteractionInputValueSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.array(z.string())]);
 
@@ -81,6 +82,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       sessionId: z.string().min(1),
       requestId: z.string().min(1).optional(),
       modelProviderId: z.string().min(1).optional(),
+      thinkingLevel: z.enum(AgentModelThinkingLevels).optional(),
       input: z.string().min(1),
       approvalMode: z.enum(AgentExecutionApprovalModeValues),
       attachments: AgentUploadAttachmentListSchema.optional(),
@@ -115,6 +117,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       fromRequestId: z.string().min(1),
       requestId: z.string().min(1),
       modelProviderId: z.string().min(1).optional(),
+      thinkingLevel: z.enum(AgentModelThinkingLevels).optional(),
       input: z.string().min(1),
       approvalMode: z.enum(AgentExecutionApprovalModeValues),
       attachments: AgentUploadAttachmentListSchema.optional(),
@@ -158,6 +161,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       type: z.literal("session.history"),
       sessionId: z.string().min(1),
       refresh: z.boolean().optional(),
+      initialWindow: z.boolean().optional(),
     })
     .strict(),
   z
@@ -203,6 +207,13 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("config.get"),
+    })
+    .strict(),
+  z.object({ type: z.literal("workspace.get") }).strict(),
+  z
+    .object({
+      type: z.literal("workspace.switch"),
+      workspaceRoot: z.string().trim().min(1),
     })
     .strict(),
   z.object({ type: z.literal("systemTool.list") }).strict(),

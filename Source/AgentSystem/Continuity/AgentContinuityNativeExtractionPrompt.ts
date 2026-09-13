@@ -3,8 +3,8 @@ import type {
   AgentContinuityRulePromptInput,
 } from "../ActionPlanner/AgentLearningPromptJson.js";
 import {
-  buildAgentContinuityFactPromptJson,
-  buildAgentContinuityRulePromptJson,
+  buildAgentContinuityFactPromptWire,
+  buildAgentContinuityRulePromptWire,
 } from "../ActionPlanner/AgentLearningPromptJson.js";
 
 export const AgentContinuityFactToolName = "ContinuityCapture";
@@ -27,7 +27,7 @@ export function createAgentContinuityFactExtractionContext(
 } {
   return {
     systemPrompt: `${stableSystemPrompt}\n\nNative tool protocol:\n${FactNativeProtocol}`,
-    userPrompt: buildAgentContinuityFactPromptJson(input, { stage: "extractContinuityFacts" }),
+    userPrompt: buildAgentContinuityFactPromptWire(input, { stage: "extractContinuityFacts" }),
   };
 }
 
@@ -40,6 +40,6 @@ export function createAgentContinuityRuleExtractionContext(
 } {
   return {
     systemPrompt: `${stableSystemPrompt}\n\nNative tool protocol:\n${RuleNativeProtocol}`,
-    userPrompt: buildAgentContinuityRulePromptJson(input, { stage: "extractContinuityRules" }),
+    userPrompt: buildAgentContinuityRulePromptWire(input, { stage: "extractContinuityRules" }),
   };
 }

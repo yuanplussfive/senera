@@ -120,6 +120,14 @@ export class AgentToolSearchIndex {
     return this.tokenizer.tokenize(text);
   }
 
+  tokenizeContent(text: string): string[] {
+    return this.tokenizer.tokenizeContent(text);
+  }
+
+  hasDistinctLeadingSubject(left: string, right: string): boolean {
+    return this.tokenizer.hasDistinctLeadingSubject(left, right);
+  }
+
   private toResult(
     entry: AgentToolSearchRankedEntry,
     rankers: Record<AgentToolSearchRankerName, AgentToolSearchRankMap>,

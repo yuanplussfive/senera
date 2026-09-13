@@ -5,6 +5,7 @@ import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import {
   AgentToolResourceAccessModes,
   createExactAgentToolResourceClaimDomain,
+  type AgentToolResourceClaimDeclaration,
   type AgentToolResourceClaim,
   type AgentToolResourceLeaseRequest,
 } from "./AgentToolResourceClaimTypes.js";
@@ -13,6 +14,9 @@ const McpServerResourceDomain = createExactAgentToolResourceClaimDomain("senera.
 
 export interface AgentToolResourceClaimProjectorPort {
   project(tool: RegisteredTool, args: Readonly<Record<string, unknown>>): Promise<AgentToolResourceLeaseRequest>;
+  projectDeclarations?(
+    declarations: readonly AgentToolResourceClaimDeclaration[],
+  ): Promise<AgentToolResourceLeaseRequest>;
 }
 
 export class AgentToolResourceClaimProjector implements AgentToolResourceClaimProjectorPort {
@@ -39,6 +43,18 @@ export class AgentToolResourceClaimProjector implements AgentToolResourceClaimPr
     if (normalized.length === 0) {
       throw new TypeError(`Tool ${tool.name} did not project any scheduling claims.`);
     }
+    return { mode: "claims", claims: normalized };
+  }
+
+  async projectDeclarations(
+    declarations: readonly AgentToolResourceClaimDeclaration[],
+  ): Promise<AgentToolResourceLeaseRequest> {
+    if (declarations.length === 0) return { mode: "claims", claims: [] };
+    const claims = await Promise.all(
+      declarations.map(async (declaration) => this.capabilities.claimDeclaration(declaration)),
+    );
+    const normalized = normalizeClaims(claims.flat());
+    if (normalized.length === 0) throw new TypeError("Resource declarations did not project any scheduling claims.");
     return { mode: "claims", claims: normalized };
   }
 }

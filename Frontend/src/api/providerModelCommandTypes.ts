@@ -1,4 +1,9 @@
-import type { ModelCapabilitiesData, ModelToolPlanningMode } from "./eventTypes";
+import type {
+  ModelCapabilitiesData,
+  ModelThinkingLevel,
+  ModelThinkingProfileConfig,
+  ModelToolPlanningMode,
+} from "./eventTypes";
 
 export interface ProviderModelEndpointInput {
   Id: string;
@@ -22,6 +27,9 @@ export interface ProviderModelConfigInput {
   ProviderId: string;
   Icon?: string;
   Capabilities?: ModelCapabilitiesData;
+  ThinkingLevelMap?: Partial<Record<ModelThinkingLevel, string | null>>;
+  ThinkingProfiles?: ModelThinkingProfileConfig[];
+  DefaultThinkingLevel?: ModelThinkingLevel;
   ToolPlanningMode?: ModelToolPlanningMode;
   ContextWindowTokens?: number;
   MaxModelOutputTokens?: number;

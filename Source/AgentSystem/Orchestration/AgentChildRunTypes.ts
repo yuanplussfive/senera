@@ -4,6 +4,8 @@ import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprova
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSystemPromptLayer } from "./AgentRunDispatchPort.js";
 import type { AgentSubagentCapabilityCeiling } from "./AgentSubagentContracts.js";
+import type { AgentToolResourceClaimDeclaration } from "../ToolRuntime/AgentToolResourceClaimTypes.js";
+import type { AgentContinuityCheckpoint } from "../Continuity/AgentContinuityLedger.js";
 
 export const AgentChildRunStatuses = {
   Queued: "queued",
@@ -98,6 +100,14 @@ export interface AgentChildRunControlPolicy {
   readonly budget: AgentChildRunBudgetPolicy;
 }
 
+export type AgentChildRunResourceCoverage = "declared" | "unscoped";
+
+export interface AgentChildRunResourceClaimSummary {
+  readonly domainId: string;
+  readonly identity: string;
+  readonly access: "shared" | "exclusive";
+}
+
 export interface AgentChildRunExecutionContract {
   readonly version: 5;
   readonly workspaceAccess: AgentChildWorkspaceAccessMode;
@@ -106,6 +116,12 @@ export interface AgentChildRunExecutionContract {
   readonly thinkingLevel?: ModelThinkingLevel;
   readonly inheritProjectContext: boolean;
   readonly capabilityCeiling?: AgentSubagentCapabilityCeiling;
+  /** Capability-level declarations supplied by the delegator, if any. */
+  readonly resources?: readonly AgentToolResourceClaimDeclaration[];
+  /** Explicitly distinguishes declared coverage from an assignment without a scope declaration. */
+  readonly resourceCoverage?: AgentChildRunResourceCoverage;
+  /** Resolved claim summary for observability; overlap functions are host-owned and never persisted. */
+  readonly resourceClaims?: readonly AgentChildRunResourceClaimSummary[];
   readonly deadline: AgentChildRunDeadlinePolicy;
   /** Optional for records created before the control contract was introduced. */
   readonly control?: AgentChildRunControlPolicy;
@@ -201,6 +217,8 @@ export interface AgentChildRunCheckpoint {
   readonly source: AgentChildRunCheckpointSource;
   readonly content?: string;
   readonly complete: boolean;
+  /** Unified resume coordinates shared with compaction and workspace recovery. */
+  readonly continuity?: AgentContinuityCheckpoint;
 }
 
 export const AgentChildRunMessageDirections = {
@@ -236,6 +254,10 @@ export interface AgentChildRunRecord {
   readonly ownerRunId: string;
   /** Stable logical node identity across retries. */
   readonly nodeId: string;
+  /** Logical task identity; absent only on records created before work-item persistence. */
+  readonly workItemId?: string;
+  /** Canonical digest of the task execution contract. */
+  readonly taskDigest?: string;
   /** Host-derived barrier for children launched in one Pi tool batch. */
   readonly joinGroup?: AgentChildRunJoinGroup;
   readonly parentSessionId: string;
@@ -266,6 +288,10 @@ export interface AgentChildRunRecord {
   readonly completedAt?: string;
   readonly updatedAt: string;
   readonly revision: number;
+  /** Set once the parent has received the terminal result through AgentWait. */
+  readonly resultConsumedAt?: string;
+  /** Durable guard against replaying a detached completion wake after restart. */
+  readonly parentWakeConsumed?: boolean;
 }
 
 export type AgentChildRunCreateInput = Omit<
@@ -284,9 +310,15 @@ export type AgentChildRunCreateInput = Omit<
   | "completedAt"
   | "updatedAt"
   | "revision"
+  | "workItemId"
+  | "taskDigest"
+  | "resultConsumedAt"
+  | "parentWakeConsumed"
 > & {
   readonly ownerRunId?: string;
   readonly nodeId?: string;
+  readonly workItemId?: string;
+  readonly taskDigest?: string;
 };
 
 export interface AgentChildRunCompletionInput {
@@ -302,6 +334,11 @@ export interface AgentChildRunRepository {
   listForOwner(ownerRunId: string): AgentChildRunRecord[];
   listForJoinGroup(joinGroupId: string): AgentChildRunRecord[];
   getByOwnerNode(ownerRunId: string, nodeId: string): AgentChildRunRecord | undefined;
+  getByWorkItem(parentSessionId: string, workItemId: string): AgentChildRunRecord | undefined;
+  markResultConsumed(id: string, consumedAt?: string): AgentChildRunRecord | undefined;
+  markParentWakeConsumed(id: string): AgentChildRunRecord | undefined;
+  /** Marks a detached wake batch in one durable transaction and returns rows changed. */
+  markParentWakeConsumedBatch(ids: readonly string[], consumedAt?: string): number;
   listActive(): AgentChildRunRecord[];
   listAll(): AgentChildRunRecord[];
   markRunning(id: string, startedAt?: string): AgentChildRunRecord | undefined;
