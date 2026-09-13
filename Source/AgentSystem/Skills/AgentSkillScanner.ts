@@ -4,7 +4,7 @@ import { isUtf8 } from "node:buffer";
 import crypto from "node:crypto";
 import { z } from "zod";
 import { errorMessage } from "../Core/AgentErrors.js";
-import { readRegularTextFileSync } from "../Core/AgentFs.js";
+import { readRegularFileSync, readRegularTextFileSync } from "../Core/AgentFs.js";
 import { agentDirectoryRevision } from "../Core/AgentDirectoryRevision.js";
 import { AgentSourceDiagnosticBuilder } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { AgentExtensionNameSchema, assertAgentExtensionName } from "../Extensions/AgentExtensionIdentity.js";
@@ -132,14 +132,7 @@ export class AgentSkillScanner {
     if (path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`)) {
       throw new Error("Skill resource path must remain inside the selected Skill package.");
     }
-    const stat = fs.lstatSync(target);
-    if (!stat.isFile() || stat.isSymbolicLink()) {
-      throw new Error(`Skill resource is not a regular file: ${normalized}`);
-    }
-    if (stat.size > MaxSkillResourceBytes) {
-      throw new Error(`Skill resource exceeds the ${MaxSkillResourceBytes} byte limit: ${normalized}`);
-    }
-    const content = fs.readFileSync(target);
+    const content = readRegularFileSync(target, "Skill resource", { maxBytes: MaxSkillResourceBytes });
     return {
       relativePath: normalized,
       kind: classifySkillResource(normalized),

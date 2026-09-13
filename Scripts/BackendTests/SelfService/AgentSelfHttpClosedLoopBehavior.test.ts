@@ -3,7 +3,11 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { executeSeneraSelfCommandViaHttp, SeneraSelfServiceOfflineError } from "../../../Apps/SeneraCliHttpClient.js";
+import {
+  executeSeneraSelfCommandViaHttp,
+  selfServiceUrl,
+  SeneraSelfServiceOfflineError,
+} from "../../../Apps/SeneraCliHttpClient.js";
 import {
   AgentRuntimeManifestStore,
   resolveAgentRuntimeManifestPath,
@@ -129,6 +133,13 @@ describe("senera self-service closed loop over HTTP", () => {
     expect(response.status).toBe(400);
     const payload = (await response.json()) as { error?: { code?: string } };
     expect(payload.error?.code).toBe("invalid_command");
+  });
+
+  test("only projects runtime manifests to loopback service URLs", () => {
+    expect(selfServiceUrl("0.0.0.0", 8787)).toBe("http://127.0.0.1:8787/senera/self");
+    expect(selfServiceUrl("[::1]", 8787)).toBe("http://[::1]:8787/senera/self");
+    expect(() => selfServiceUrl("example.com", 8787)).toThrow(/loopback/u);
+    expect(() => selfServiceUrl("127.0.0.1", 0)).toThrow(/invalid service port/u);
   });
 });
 

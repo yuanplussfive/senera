@@ -118,11 +118,17 @@ async function readArtifactManifest(
   readonly manifest?: ArtifactManifestRecord;
 }> {
   const safeManifestPath = await resolveManifestPath(manifestPath, artifactRoot, boundary);
-  const stat = await fs.stat(safeManifestPath);
-  const fingerprint = toManifestFingerprint(stat);
-  const parsed = ArtifactManifestRecordSchema.safeParse(
-    parseJsonTextOrUndefined(await fs.readFile(safeManifestPath, "utf8")),
-  );
+  const opened = await boundary.openFile(safeManifestPath, AgentResourceAccessIntents.Read);
+  let fingerprint: ArtifactManifestFileFingerprint;
+  let source: string;
+  try {
+    const stat = await opened.handle.stat();
+    fingerprint = toManifestFingerprint(stat);
+    source = await opened.handle.readFile("utf8");
+  } finally {
+    await opened.handle.close();
+  }
+  const parsed = ArtifactManifestRecordSchema.safeParse(parseJsonTextOrUndefined(source));
   if (!parsed.success) return { path: safeManifestPath, fingerprint };
   const normalizedUri = normalizeAgentArtifactUri(parsed.data.artifactUri);
   if (!normalizedUri || parseAgentArtifactUri(normalizedUri) !== parsed.data.artifactId) {

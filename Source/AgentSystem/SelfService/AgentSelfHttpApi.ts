@@ -62,10 +62,17 @@ export class AgentSelfHttpApi {
       });
       return;
     }
-    const output = await executeAgentSelfInvocation(parsed.data, this.port, {
-      approvals: this.approvals,
-    });
-    this.write(response, 200, output);
+    try {
+      const output = await executeAgentSelfInvocation(parsed.data, this.port, {
+        approvals: this.approvals,
+      });
+      this.write(response, 200, output);
+    } catch {
+      this.write(response, 500, {
+        ok: false,
+        error: { code: "command_failed", message: "The self-service command could not be completed." },
+      });
+    }
   }
 
   private authorized(request: IncomingMessage): boolean {
@@ -120,15 +127,22 @@ export class AgentSelfHttpApi {
       "Cache-Control": "no-store",
       "Content-Type": "application/json; charset=utf-8",
     });
-    response.end(JSON.stringify(payload));
+    response.end(JSON.stringify(payload, omitDiagnosticFields));
   }
 }
 
 function readBearerToken(request: IncomingMessage): string | undefined {
   const authorization = request.headers.authorization;
   if (!authorization) return undefined;
-  const match = /^Bearer\s+(.+)$/i.exec(authorization.trim());
-  return match?.[1];
+  const normalized = authorization.trim();
+  if (normalized.slice(0, 6).toLowerCase() !== "bearer") return undefined;
+  if (normalized.slice(6, 7).trim() !== "") return undefined;
+  const token = normalized.slice(7).trim();
+  return token.length > 0 ? token : undefined;
+}
+
+function omitDiagnosticFields(key: string, value: unknown): unknown {
+  return key.toLowerCase() === "stack" || key.toLowerCase() === "stacktrace" ? undefined : value;
 }
 
 function tokensEqual(presented: string, expected: string): boolean {

@@ -4,7 +4,7 @@ import path from "node:path";
 import { z } from "zod";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
-import { isMissingFileError, removeAgentPathWithRetry } from "../Core/AgentFs.js";
+import { isMissingFileError, removeAgentPathWithRetry, writeFileAtomic } from "../Core/AgentFs.js";
 import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
 import { SeneraWorkspaceBoundary, SeneraWorkspaceBoundaryError } from "../Execution/SeneraWorkspaceBoundary.js";
 import { assertInsideRoot } from "./AgentArtifactLocator.js";
@@ -448,7 +448,7 @@ async function restoreFile(
   }
   if (existing?.isDirectory()) await removeFile(absolutePath);
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, text, "utf8");
+  await writeFileAtomic(absolutePath, text);
   return { kind: "restored" };
 }
 

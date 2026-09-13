@@ -1,9 +1,6 @@
 import { AgentSelfPhilosophy } from "./AgentSelfPhilosophy.js";
 import { projectAgentSelfCommandCapabilities, type AgentSelfCommandCapability } from "./AgentSelfCommandRegistry.js";
-import {
-  projectAgentSelfCommandContract,
-  type AgentSelfCommandContractSnapshot,
-} from "./AgentSelfCommandContract.js";
+import { projectAgentSelfCommandContract, type AgentSelfCommandContractSnapshot } from "./AgentSelfCommandContract.js";
 import {
   AgentWorkbenchContract,
   projectAgentWorkbenchRuleIndex,

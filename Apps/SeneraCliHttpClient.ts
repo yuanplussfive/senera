@@ -1,4 +1,5 @@
 import { isAgentRuntimeAlive, readAgentRuntimeManifest } from "../Source/AgentSystem/Runtime/AgentRuntimeManifest.js";
+import { isIP } from "node:net";
 import type {
   AgentSelfCommand,
   AgentSelfCommandOutput,
@@ -76,13 +77,23 @@ export async function executeSeneraSelfCommandViaHttp(
 
 export function selfServiceUrl(host: string, port: number): string {
   const normalized = normalizeLoopbackHost(host);
-  return `http://${normalized}:${port}/senera/self`;
+  const safePort = normalizeSelfServicePort(port);
+  return `http://${normalized}:${safePort}/senera/self`;
 }
 
 function normalizeLoopbackHost(host: string): string {
   const trimmed = host.trim();
-  if (trimmed === "0.0.0.0") return "127.0.0.1";
+  if (trimmed === "localhost" || trimmed === "0.0.0.0") return "127.0.0.1";
   if (trimmed === "::" || trimmed === "[::]") return "[::1]";
-  if (trimmed.includes(":") && !trimmed.startsWith("[")) return `[${trimmed}]`;
-  return trimmed;
+  const unbracketed = trimmed.startsWith("[") && trimmed.endsWith("]") ? trimmed.slice(1, -1) : trimmed;
+  if (isIP(unbracketed) === 4 && unbracketed.startsWith("127.")) return unbracketed;
+  if (isIP(unbracketed) === 6 && unbracketed.toLowerCase() === "::1") return "[::1]";
+  throw new Error("Senera runtime manifest must point to a loopback host.");
+}
+
+function normalizeSelfServicePort(port: number): number {
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error("Senera runtime manifest contains an invalid service port.");
+  }
+  return port;
 }
