@@ -5,11 +5,42 @@ import { AgentSelfInvocationSchema } from "./AgentSelfCommandSchema.js";
 import type { AgentSelfApprovalChannel } from "./AgentSelfApprovalTypes.js";
 import { AgentSelfApprovalRegistry } from "./AgentSelfApprovalRegistry.js";
 import { createHttpApprovalTransport } from "./AgentApprovalTransport.js";
-import type { AgentSelfServicePort } from "./AgentSelfServiceTypes.js";
+import type { AgentSelfCommandOutput, AgentSelfServicePort } from "./AgentSelfServiceTypes.js";
 
 export const AgentSelfHttpRoute = "/senera/self" as const;
 
 const MaxSelfCommandBytes = 512 * 1_024;
+const DiagnosticFieldNames = new Set(["stack", "stacktrace"]);
+
+export type AgentSelfHttpJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly AgentSelfHttpJsonValue[]
+  | { readonly [key: string]: AgentSelfHttpJsonValue };
+
+export type AgentSelfHttpPayload =
+  | AgentSelfCommandOutput
+  | {
+      readonly ok: false;
+      readonly error: { readonly code: string; readonly message: string };
+      readonly text?: string;
+      readonly data?: unknown;
+    };
+
+export interface AgentSelfHttpPublicPayload {
+  readonly ok: boolean;
+  readonly text?: string;
+  readonly data?: AgentSelfHttpJsonValue;
+  readonly error?: string | { readonly code: string; readonly message: string };
+  readonly approvalRequired?: {
+    readonly approvalId: string;
+    readonly command: AgentSelfHttpJsonValue;
+    readonly reason: string;
+    readonly deadlineAt: string;
+  };
+}
 
 export class AgentSelfHttpApi {
   private token: string | undefined;
@@ -122,12 +153,13 @@ export class AgentSelfHttpApi {
     });
   }
 
-  private write(response: ServerResponse, status: number, payload: unknown): void {
+  private write(response: ServerResponse, status: number, payload: AgentSelfHttpPayload): void {
     response.writeHead(status, {
       "Cache-Control": "no-store",
       "Content-Type": "application/json; charset=utf-8",
     });
-    response.end(JSON.stringify(payload, omitDiagnosticFields));
+    // codeql[js/stack-trace-exposure] The public projection rebuilds JSON data and omits diagnostic fields before serialization.
+    response.end(JSON.stringify(projectAgentSelfHttpPayload(payload)));
   }
 }
 
@@ -141,8 +173,81 @@ function readBearerToken(request: IncomingMessage): string | undefined {
   return token.length > 0 ? token : undefined;
 }
 
-function omitDiagnosticFields(key: string, value: unknown): unknown {
-  return key.toLowerCase() === "stack" || key.toLowerCase() === "stacktrace" ? undefined : value;
+export function projectAgentSelfHttpPayload(payload: AgentSelfHttpPayload): AgentSelfHttpPublicPayload {
+  const source: Record<string, unknown> = isRecord(payload) ? payload : {};
+  const result: {
+    ok: boolean;
+    text?: string;
+    data?: AgentSelfHttpJsonValue;
+    error?: string | { readonly code: string; readonly message: string };
+    approvalRequired?: AgentSelfHttpPublicPayload["approvalRequired"];
+  } = { ok: source.ok === true };
+
+  if (typeof source.text === "string") result.text = source.text;
+  if (typeof source.error === "string") {
+    result.error = source.error;
+  } else if (isRecord(source.error)) {
+    const code = source.error.code;
+    const message = source.error.message;
+    if (typeof code === "string" && typeof message === "string") result.error = { code, message };
+  }
+
+  const data = projectAgentSelfHttpJsonValue(source.data);
+  if (data !== undefined) result.data = data;
+
+  const approvalRequired = projectApprovalRequired(source.approvalRequired);
+  if (approvalRequired) result.approvalRequired = approvalRequired;
+  return result;
+}
+
+export function projectAgentSelfHttpJsonValue(value: unknown): AgentSelfHttpJsonValue | undefined {
+  return projectJsonValue(value, new Set<object>());
+}
+
+function projectApprovalRequired(value: unknown): AgentSelfHttpPublicPayload["approvalRequired"] {
+  if (!isRecord(value)) return undefined;
+  const approvalId = value.approvalId;
+  const reason = value.reason;
+  const deadlineAt = value.deadlineAt;
+  if (typeof approvalId !== "string" || typeof reason !== "string" || typeof deadlineAt !== "string") return undefined;
+  const command = projectAgentSelfHttpJsonValue(value.command);
+  if (command === undefined) return undefined;
+  return { approvalId, command, reason, deadlineAt };
+}
+
+function projectJsonValue(value: unknown, ancestors: Set<object>): AgentSelfHttpJsonValue | undefined {
+  if (value === null) return null;
+  if (typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "object") return undefined;
+  if (ancestors.has(value)) return undefined;
+
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return value.map((entry) => projectJsonValue(entry, ancestors) ?? null);
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return undefined;
+
+    const output: Record<string, AgentSelfHttpJsonValue> = {};
+    for (const key of Object.keys(value)) {
+      if (DiagnosticFieldNames.has(key.toLowerCase())) continue;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !("value" in descriptor)) continue;
+      const projected = projectJsonValue(descriptor.value, ancestors);
+      if (projected !== undefined) output[key] = projected;
+    }
+    return output;
+  } catch {
+    return undefined;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function tokensEqual(presented: string, expected: string): boolean {

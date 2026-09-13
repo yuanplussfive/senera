@@ -13,7 +13,11 @@ import {
   resolveAgentRuntimeManifestPath,
 } from "../../../Source/AgentSystem/Runtime/AgentRuntimeManifest.js";
 import type { AgentConfigSnapshot } from "../../../Source/AgentSystem/Config/AgentConfigService.js";
-import { AgentSelfHttpApi } from "../../../Source/AgentSystem/SelfService/AgentSelfHttpApi.js";
+import {
+  AgentSelfHttpApi,
+  projectAgentSelfHttpJsonValue,
+  projectAgentSelfHttpPayload,
+} from "../../../Source/AgentSystem/SelfService/AgentSelfHttpApi.js";
 import type { AgentSelfServicePort } from "../../../Source/AgentSystem/SelfService/AgentSelfServiceTypes.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
@@ -140,6 +144,36 @@ describe("senera self-service closed loop over HTTP", () => {
     expect(selfServiceUrl("[::1]", 8787)).toBe("http://[::1]:8787/senera/self");
     expect(() => selfServiceUrl("example.com", 8787)).toThrow(/loopback/u);
     expect(() => selfServiceUrl("127.0.0.1", 0)).toThrow(/invalid service port/u);
+  });
+
+  test("projects public responses without diagnostic fields", () => {
+    const payload = projectAgentSelfHttpPayload({
+      ok: true,
+      text: "ready",
+      data: {
+        value: 1,
+        stack: "server stack",
+        nested: { stackTrace: "nested stack", keep: "yes" },
+        list: [{ stack: "array stack", keep: true }],
+      },
+    });
+
+    expect(payload).toEqual({
+      ok: true,
+      text: "ready",
+      data: {
+        value: 1,
+        nested: { keep: "yes" },
+        list: [{ keep: true }],
+      },
+    });
+    expect(
+      projectAgentSelfHttpJsonValue({
+        get stack() {
+          throw new Error("must not execute");
+        },
+      }),
+    ).toEqual({});
   });
 });
 

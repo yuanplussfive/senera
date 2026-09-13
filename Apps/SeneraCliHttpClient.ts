@@ -31,6 +31,11 @@ export interface SeneraSelfHttpClientOptions {
   readonly timeoutMs?: number;
 }
 
+interface LocalRuntimeRequestTarget {
+  readonly url: string;
+  readonly authorization: string;
+}
+
 /**
  * Executes one `senera` self-service command against the running service.
  * The command runs inside the live host through the same port and executor
@@ -49,14 +54,16 @@ export async function executeSeneraSelfCommandViaHttp(
   if (!isAgentRuntimeAlive(manifest)) {
     throw new SeneraSelfServiceOfflineError(workspaceRoot, "记录的服务进程已退出");
   }
+  const target = createLocalRuntimeRequestTarget(manifest.host, manifest.port, manifest.token);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? AgentSelfHttpDefaultTimeoutMs);
   try {
-    const response = await (options.fetch ?? fetch)(selfServiceUrl(manifest.host, manifest.port), {
+    // codeql[js/file-access-to-http] The runtime manifest is a local IPC lease; the target is constrained to loopback before this authenticated request.
+    const response = await (options.fetch ?? fetch)(target.url, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${manifest.token}`,
+        authorization: target.authorization,
       },
       body: JSON.stringify(command),
       signal: controller.signal,
@@ -79,6 +86,14 @@ export function selfServiceUrl(host: string, port: number): string {
   const normalized = normalizeLoopbackHost(host);
   const safePort = normalizeSelfServicePort(port);
   return `http://${normalized}:${safePort}/senera/self`;
+}
+
+function createLocalRuntimeRequestTarget(host: string, port: number, token: string): LocalRuntimeRequestTarget {
+  if (token.trim().length === 0) throw new Error("Senera runtime manifest contains an empty service token.");
+  return {
+    url: selfServiceUrl(host, port),
+    authorization: `Bearer ${token}`,
+  };
 }
 
 function normalizeLoopbackHost(host: string): string {
