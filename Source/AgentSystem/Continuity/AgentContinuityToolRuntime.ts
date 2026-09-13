@@ -28,6 +28,12 @@ import { AgentTemporalMemoryRecall } from "../TemporalMemory/AgentTemporalMemory
 import { projectAgentTemporalMemoryScope } from "../TemporalMemory/AgentTemporalMemoryIdentity.js";
 import { agentTemporalMemoryRange } from "../TemporalMemory/AgentTemporalMemoryPeriod.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
+import {
+  createAgentContinuityCheckpoint,
+  createAgentContinuityLedger,
+  createAgentContinuityReference,
+  mergeAgentContinuityLedger,
+} from "./AgentContinuityLedger.js";
 
 const NonEmptyText = z.string().trim().min(1);
 const Lifetime = z.union([z.enum(["session", "permanent"]), z.string().datetime({ offset: true })]);
@@ -141,6 +147,25 @@ interface ContinuityRecallResult {
   readonly records: { readonly item: ContinuityRecallRecordResult[] };
   readonly episodes: { readonly item: ContinuityRecallEpisodeResult[] };
   readonly sources: { readonly item: ContinuityRecallSourceResult[] };
+  /** One compact source/ref/checkpoint surface shared by recall and resume. */
+  readonly continuity?: {
+    readonly revision: string;
+    readonly references: {
+      readonly item: readonly {
+        readonly id: string;
+        readonly kind: string;
+        readonly uri: string;
+        readonly digest: string;
+        readonly summary: string;
+        readonly parentIds: readonly string[];
+      }[];
+    };
+    readonly checkpoint: {
+      readonly id: string;
+      readonly revision: string;
+      readonly referenceIds: readonly string[];
+    };
+  };
   readonly guidance: string;
 }
 
@@ -274,6 +299,13 @@ export function recallContinuity(
     after: args.after ?? 0,
   });
   const anchorSourceRefs = new Set(anchorSources.map((source) => source.uri));
+  const continuityLedger = createRecallContinuityLedger({
+    scope: options.sessionId ?? options.identity.workspaceId,
+    selected,
+    sourceRecords: episodeWindow.flatMap((entry) => entry.sources),
+    digests: temporal.digests,
+  });
+  const continuityCheckpoint = continuityLedger.checkpoints.at(-1);
   return {
     ...(args.query ? { query: args.query } : {}),
     refs: { item: refs },
@@ -305,6 +337,28 @@ export function recallContinuity(
         entry.sources.map((source) => projectRecallSource(source, anchorSourceRefs.has(source.uri))),
       ),
     },
+    ...(continuityCheckpoint
+      ? {
+          continuity: {
+            revision: continuityLedger.revision,
+            references: {
+              item: continuityLedger.references.map(({ id, kind, uri, digest, summary, parentIds }) => ({
+                id,
+                kind,
+                uri,
+                digest,
+                summary,
+                parentIds,
+              })),
+            },
+            checkpoint: {
+              id: continuityCheckpoint.id,
+              revision: continuityCheckpoint.revision,
+              referenceIds: continuityCheckpoint.referenceIds,
+            },
+          },
+        }
+      : {}),
     guidance:
       temporal.digests.length > 0
         ? "Temporal digests are ordered from the coarsest complete periods to boundary segments. Follow sourceRefs only when finer evidence is needed."
@@ -312,6 +366,68 @@ export function recallContinuity(
           ? "These records come from the continuity ledger or physical episode evidence. Use source entries as the evidence before relying on them."
           : "No relevant continuity record, temporal digest, or exact physical source was found.",
   };
+}
+
+function createRecallContinuityLedger(input: {
+  readonly scope: string;
+  readonly selected: readonly AgentContinuityRankedRecord[];
+  readonly sourceRecords: readonly AgentMemorySourceRecord[];
+  readonly digests: readonly {
+    readonly digestRef: string;
+    readonly periodEnd: string;
+    readonly summary: string;
+    readonly topics: readonly string[];
+    readonly openLoops: readonly string[];
+    readonly sourceRefs: readonly string[];
+  }[];
+}) {
+  const references = [
+    ...input.selected.map((entry) =>
+      createAgentContinuityReference({
+        kind: entry.observation.kind.startsWith("conversation.")
+          ? "conversation"
+          : entry.observation.kind === "learning.record"
+            ? "learning"
+            : "work_item",
+        uri: entry.observation.uri,
+        revision: entry.observation.watermark,
+        summary: entry.observation.summary,
+        searchText: entry.observation.searchText,
+        parentIds: entry.observation.sourceRefs,
+      }),
+    ),
+    ...input.sourceRecords.map((source) =>
+      createAgentContinuityReference({
+        kind: source.artifactUri ? "artifact" : "conversation",
+        uri: source.artifactUri || source.uri,
+        revision: source.updatedAt,
+        summary: source.summary ?? source.textContent ?? source.uri,
+        searchText: source.textContent ?? undefined,
+        parentIds: [source.uri, source.episodeUri],
+        metadata: {
+          sourceKind: source.sourceKind,
+          ...(source.artifactUri ? { artifactUri: source.artifactUri } : {}),
+        },
+      }),
+    ),
+    ...input.digests.map((digest) =>
+      createAgentContinuityReference({
+        kind: "compaction",
+        uri: digest.digestRef,
+        revision: digest.periodEnd,
+        summary: digest.summary,
+        searchText: [...digest.topics, ...digest.openLoops].join(" "),
+        parentIds: digest.sourceRefs,
+      }),
+    ),
+  ];
+  const ledger = createAgentContinuityLedger({ scope: input.scope, references });
+  if (ledger.references.length === 0) return ledger;
+  const checkpoint = createAgentContinuityCheckpoint({
+    referenceIds: ledger.references.map((reference) => reference.id),
+    resume: { status: "recall_ready" },
+  });
+  return mergeAgentContinuityLedger(ledger, input.scope, [], [checkpoint]);
 }
 
 function withinRange(value: string, startMs: number, endMs: number): boolean {

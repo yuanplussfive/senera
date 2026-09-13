@@ -10,7 +10,11 @@ import {
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import { AgentSkillCatalogProjector } from "./AgentSkillCatalogProjector.js";
 import { AgentSkillSelector } from "./AgentSkillSelector.js";
-import { parseAgentExplicitSkillNames } from "./AgentSkillInvocation.js";
+import {
+  AgentSkillInvocationRegistry,
+  isAgentSkillModelInvocable,
+  parseAgentSkillInvocations,
+} from "./AgentSkillInvocation.js";
 import type { AgentSkillSelectionLearningEvidence, AgentSkillSelectionResult } from "./AgentSkillSelector.js";
 import type { RegisteredSkill } from "./AgentSkillTypes.js";
 
@@ -22,6 +26,7 @@ export interface AgentActivatedSkill {
   useCases: string[];
   avoid: string[];
   recommendedTools: string[];
+  disableModelInvocation?: boolean;
   evidenceRequirements: SkillEvidenceRequirementManifest[];
   descriptionFile: string;
   matchedTerms: string[];
@@ -77,7 +82,9 @@ export class AgentSkillActivationService {
     const query = this.buildActivationQuery(options);
     const catalogByName = new Map(this.projector.list().map((skill) => [skill.name, skill]));
     const skills = this.registry.listSkills();
+    const routableSkills = skills.filter(isAgentSkillModelInvocable);
     const skillsByName = new Map(skills.map((skill) => [skill.name, skill]));
+    const invocationRegistry = new AgentSkillInvocationRegistry(skills);
     const pinnedReferences = uniquePinnedSkillReferences(options.pinnedSkills ?? []);
     const pinnedNames = pinnedReferences.map((reference) => reference.name);
     const missingPinnedNames = pinnedNames.filter((name) => !skillsByName.has(name));
@@ -101,21 +108,33 @@ export class AgentSkillActivationService {
       matchedTerms: [name],
       matchedFields: [{ term: name, fields: ["pinnedConfiguration"] }],
     }));
-    const explicitNames = new Set(parseAgentExplicitSkillNames(options.input));
+    const parsedInvocations = parseAgentSkillInvocations(options.input);
+    const missingInvocations = parsedInvocations.filter((invocation) => !invocationRegistry.resolve(invocation.name));
+    if (missingInvocations.length > 0) {
+      throw new Error(
+        `Explicit Skill commands are not registered: ${missingInvocations.map((invocation) => invocation.token).join(", ")}.`,
+      );
+    }
+    const explicitInvocations = new Map(parsedInvocations.map((invocation) => [invocation.name, invocation]));
+    const explicitNames = new Set(explicitInvocations.keys());
     const explicit = skills
       .filter((skill) => explicitNames.has(skill.name) && !pinnedNameSet.has(skill.name))
-      .map((skill): AgentSkillSelectionResult => ({
-        skill,
-        score: AgentSkillActivationScores.ExplicitInvocation,
-        matchedTerms: [`$${skill.name}`],
-        matchedFields: [{ term: `$${skill.name}`, fields: ["explicitInvocation"] }],
-      }));
+      .map((skill): AgentSkillSelectionResult => {
+        const invocation = explicitInvocations.get(skill.name);
+        const token = invocation?.token ?? `/${skill.name}`;
+        return {
+          skill,
+          score: AgentSkillActivationScores.ExplicitInvocation,
+          matchedTerms: [token],
+          matchedFields: [{ term: token, fields: ["explicitInvocation"] }],
+        };
+      });
     const selected = this.routingEvidence?.selectSkills
-      ? await this.routingEvidence.selectSkills({ query, skills, signal: options.signal })
+      ? await this.routingEvidence.selectSkills({ query, skills: routableSkills, signal: options.signal })
       : this.selector.select({
           query,
-          skills,
-          learningEvidence: this.routingEvidence?.skillRoutingEvidence({ query, skills }),
+          skills: routableSkills,
+          learningEvidence: this.routingEvidence?.skillRoutingEvidence({ query, skills: routableSkills }),
         });
 
     return [
@@ -132,6 +151,7 @@ export class AgentSkillActivationService {
         useCases: catalog.useCases,
         avoid: catalog.avoid,
         recommendedTools: this.registry.filterAvailableToolNames(item.skill.recommendedTools),
+        ...(item.skill.disableModelInvocation === true ? { disableModelInvocation: true } : {}),
         evidenceRequirements: item.skill.evidenceRequirements,
         descriptionFile: item.skill.descriptionFile,
         matchedTerms: item.matchedTerms,

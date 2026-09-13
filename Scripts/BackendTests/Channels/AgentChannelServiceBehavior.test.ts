@@ -21,6 +21,7 @@ import { AgentChannelSessionMappingStore } from "../../../Source/AgentSystem/Cha
 import { resolveAgentChannelSessionId } from "../../../Source/AgentSystem/Channels/AgentChannelSessionIdentity.js";
 import { AgentChannelWebhookApi } from "../../../Source/AgentSystem/Channels/AgentChannelWebhookApi.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { AgentInteractionContext } from "../../../Source/AgentSystem/Interaction/AgentInteractionContext.js";
 import { cleanupChannelsTestRoots, openChannelsTestDatabase, TestChannelSource } from "./AgentChannelTestSupport.js";
 
 afterEach(() => cleanupChannelsTestRoots());
@@ -30,11 +31,13 @@ interface FakeSessionMemory {
     sessionId: string;
     input: string;
     approvalMode: string;
+    modelProviderId?: string;
     queueMode?: string;
     requestId?: string;
+    interaction?: AgentInteractionContext;
   }>;
   readonly cancellations: string[];
-  readonly steers: Array<{ sessionId: string; input: string }>;
+  readonly steers: Array<{ sessionId: string; input: string; interaction?: AgentInteractionContext }>;
   readonly activeRuns: Set<string>;
   submissionOutcome: "accepted" | "queued" | "busy";
 }
@@ -56,8 +59,10 @@ function fakeSessionPort(memory: FakeSessionMemory): AgentChannelSessionPort {
         sessionId: request.sessionId,
         input: request.input,
         approvalMode: request.approvalMode,
+        modelProviderId: request.modelProviderId,
         queueMode: request.queueMode,
         requestId: request.requestId,
+        interaction: request.interaction,
       });
       if (memory.submissionOutcome !== "accepted") {
         return { kind: memory.submissionOutcome };
@@ -83,8 +88,8 @@ function fakeSessionPort(memory: FakeSessionMemory): AgentChannelSessionPort {
       memory.cancellations.push(sessionId);
       return true;
     },
-    steerActiveRun: async ({ sessionId, input }) => {
-      memory.steers.push({ sessionId, input });
+    steerActiveRun: async ({ sessionId, input, interaction }) => {
+      memory.steers.push({ sessionId, input, interaction });
       return memory.activeRuns.has(sessionId);
     },
     hasActiveRun: (sessionId) => memory.activeRuns.has(sessionId),
@@ -162,6 +167,20 @@ function baseConfig(overrides?: {
   } as unknown as AgentSystemConfig;
 }
 
+function baseConfigWithProfileRoutes(profileRoutes: readonly Record<string, unknown>[]): AgentSystemConfig {
+  return {
+    ...baseConfig(),
+    Extensions: {
+      "agent-channels": {
+        Configuration: {
+          ...baseConfiguration(),
+          profileRoutes,
+        },
+      },
+    },
+  } as unknown as AgentSystemConfig;
+}
+
 function channelsConfig(overrides?: Parameters<typeof baseConfig>[0]): AgentChannelsConfig {
   return resolveAgentChannelsConfig(baseConfig(overrides));
 }
@@ -211,6 +230,32 @@ describe("channel service", () => {
     expect(memory.submissions).toHaveLength(1);
     expect(memory.submissions[0]?.input).toBe("hello world");
     expect(memory.submissions[0]?.queueMode).toBe("steer");
+    await service.stop();
+  });
+
+  test("projects the current configured ProfileRoute into the channel interaction", async () => {
+    const { service, memory, internals } = await runService(() =>
+      resolveAgentChannelsConfig(
+        baseConfigWithProfileRoutes([
+          {
+            id: "telegram-direct",
+            selector: { surface: "channel", platform: "telegram", chatType: "direct" },
+            profileId: "telegram-profile",
+            modelProviderId: "channel-model",
+          },
+        ]),
+      ),
+    );
+    const adapter = internals.active.get("telegram");
+
+    await internals.handleInbound(adapter as never, { source: TestChannelSource, text: "hello" });
+
+    expect(memory.submissions[0]?.interaction).toMatchObject({
+      surface: "channel",
+      platform: "telegram",
+      profileId: "telegram-profile",
+    });
+    expect(memory.submissions[0]?.modelProviderId).toBe("channel-model");
     await service.stop();
   });
 
@@ -292,7 +337,11 @@ describe("channel service", () => {
     await internals.handleInbound(adapter as never, { source: TestChannelSource, text: "/steer 先别做这个" });
 
     expect(usedMemory.steers).toEqual([
-      { sessionId: resolveAgentChannelSessionId(TestChannelSource, 1), input: "先别做这个" },
+      {
+        sessionId: resolveAgentChannelSessionId(TestChannelSource, 1),
+        input: "先别做这个",
+        interaction: expect.objectContaining({ surface: "channel", platform: "telegram", spaceId: expect.any(String) }),
+      },
     ]);
     expect(usedMemory.submissions).toHaveLength(0);
     await delay(30);

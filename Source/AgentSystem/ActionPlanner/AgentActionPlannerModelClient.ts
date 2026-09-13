@@ -153,7 +153,7 @@ export class AgentActionPlannerModelClient {
 
   learnToolUse(
     input: AgentToolLearningPromptInput,
-    options?: { signal?: AbortSignal },
+    options?: AgentLanguageModelInvocationOptions,
   ): Promise<BamlToolLearningResult> {
     return this.learning.learnToolUse(input, options);
   }
@@ -164,7 +164,7 @@ export class AgentActionPlannerModelClient {
       invalidLearning: string;
       issues: string[];
     },
-    requestOptions?: { signal?: AbortSignal },
+    requestOptions?: AgentLanguageModelInvocationOptions,
   ): Promise<BamlToolLearningResult> {
     return this.learning.repairToolLearning(options, requestOptions);
   }

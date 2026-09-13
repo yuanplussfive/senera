@@ -21,10 +21,13 @@ import { resolveSystemExtensionPackageFile } from "../Source/AgentSystem/SystemT
 import { AgentBundledHostToolInputContracts } from "../Source/AgentSystem/SystemTools/AgentBundledHostToolInputContracts.js";
 import { AgentOrchestrationConfigurationContracts } from "../Source/AgentSystem/Orchestration/AgentOrchestrationConfig.js";
 import { ensureObjectRootJsonSchema } from "../Source/AgentSystem/ToolContracts/AgentJsonSchemaObjectRoot.js";
+import { assertAgentSelfCommandContract } from "../Source/AgentSystem/SelfService/AgentSelfCommandContract.js";
 
 const check = process.argv.includes("--check");
 const outputRoot = path.join(process.cwd(), "System", "Extensions");
 const definitions = createAgentSystemTools({ ModelProviders: [] });
+
+assertAgentSelfCommandContract();
 
 for (const group of groupByExtension(definitions)) await synchronizeExtension(group);
 await synchronizeBundledHostToolInputContracts();

@@ -124,6 +124,25 @@ export function readRegularTextFileSync(filePath: string, subject = "File"): str
   return readRegularTextFileSnapshotSync(filePath, subject).content;
 }
 
+export function readRegularFileSync(
+  filePath: string,
+  subject = "File",
+  options: { readonly maxBytes?: number } = {},
+): Buffer {
+  const noFollow = typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0;
+  const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | noFollow);
+  try {
+    const stat = fs.fstatSync(descriptor);
+    if (!stat.isFile()) throw new Error(`${subject} is not a regular file: ${filePath}`);
+    if (options.maxBytes !== undefined && stat.size > options.maxBytes) {
+      throw new Error(`${subject} exceeds the ${options.maxBytes} byte limit: ${filePath}`);
+    }
+    return fs.readFileSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
 export interface AgentAtomicWriteOptions {
   /** 目标文件权限（如 0o600）。 */
   mode?: number;

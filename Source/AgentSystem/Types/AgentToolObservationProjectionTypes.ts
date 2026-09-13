@@ -55,6 +55,12 @@ export interface AgentToolObservationProjectionSourceRule {
   readonly mode: AgentToolObservationProjectionMode;
   readonly priority: AgentToolObservationPriorityTier;
   readonly requiredForCompletion: boolean;
+  /**
+   * Optional share of the current observation budget reserved for this source.
+   * The limit is resolved at runtime, so a projection remains proportional as
+   * the remaining context budget changes across turns and tool batches.
+   */
+  readonly budgetShare?: number;
   readonly pointer?: string;
   readonly maxTokens: number;
   readonly limits: AgentToolObservationStructuralLimits;

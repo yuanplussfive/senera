@@ -17,6 +17,7 @@ import type {
 } from "./AgentPiCodingAgentSessionPoolContracts.js";
 import { resolveAgentPiSessionCacheCapacity } from "./AgentPiSessionCachePolicy.js";
 import { AgentPiSessionCustomEntryTypes } from "./AgentPiSessionEntries.js";
+import { emptyAgentPiPromptDisclosureState } from "./AgentPiPromptDisclosure.js";
 import {
   hasIncompatibleAgentPiToolObservationHistory,
   isAgentPiConversationHistoryEmpty,
@@ -109,8 +110,15 @@ export class AgentPiCodingAgentSessionPool {
         this.sessions.get(sessionId)?.sessionManager ?? (await this.openExistingSession(sessionId));
       if (!sessionManager?.getEntry(entryId)) return false;
       sessionManager.branch(entryId);
+      sessionManager.appendCustomEntry(
+        AgentPiSessionCustomEntryTypes.PromptDisclosure,
+        emptyAgentPiPromptDisclosureState(),
+      );
       const pooled = this.sessions.get(sessionId);
-      if (pooled) pooled.session.agent.state.messages = sessionManager.buildSessionContext().messages;
+      if (pooled) {
+        pooled.frame.resetPromptDisclosure();
+        pooled.session.agent.state.messages = sessionManager.buildSessionContext().messages;
+      }
       return true;
     } finally {
       release?.();

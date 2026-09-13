@@ -205,6 +205,7 @@ function recreateMissingMessagePlan(sessionId: string, lastSentMessage: LastSent
       approvalMode: lastSentMessage.approvalMode,
       attachments: lastSentMessage.attachments,
       modelProviderId: lastSentMessage.modelProviderId,
+      thinkingLevel: lastSentMessage.thinkingLevel,
       disposition: "create_if_missing",
       queueMode: lastSentMessage.queueMode,
     },

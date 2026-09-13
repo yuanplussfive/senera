@@ -55,25 +55,35 @@ export class AgentActionPlannerStructuredCaller {
       diagnostics: AgentSourceDiagnostic[];
     }) => BamlRepairArgs;
   }): Promise<TValue> {
-    const cache = deriveAgentModelCacheOptions(options.cache, options.functionName);
+    const request = await this.promptFactory.buildPrompt(options.args, {
+      attachments: options.attachments,
+    });
+    const cache = deriveAgentModelCacheOptions(options.cache, options.functionName, {
+      systemPrompt: request.systemPrompt,
+      tools: [],
+    });
     const result = await this.structuredOutputRunner.run({
       functionName: options.functionName,
-      request: await this.promptFactory.buildPrompt(options.args, {
-        attachments: options.attachments,
-        cache,
-      }),
+      request: { ...request, ...(cache ? { cache } : {}) },
       signal: options.signal,
       parse: options.parse,
       repair: options.repair
-        ? (failure) =>
-            this.promptFactory.buildPrompt(
+        ? async (failure) => {
+            const repairArgs =
               options.repair?.({
                 invalidOutput: failure.invalidOutput,
                 issues: failure.issues,
                 diagnostics: failure.diagnostics,
-              }) ?? options.args,
-              { attachments: options.attachments, cache },
-            )
+              }) ?? options.args;
+            const request = await this.promptFactory.buildPrompt(repairArgs, {
+              attachments: options.attachments,
+            });
+            const repairCache = deriveAgentModelCacheOptions(options.cache, repairArgs.functionName, {
+              systemPrompt: request.systemPrompt,
+              tools: [],
+            });
+            return { ...request, ...(repairCache ? { cache: repairCache } : {}) };
+          }
         : undefined,
     });
     return result.value;

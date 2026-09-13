@@ -6,13 +6,8 @@ import {
   type SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { applyAgentPiContextPolicy } from "./AgentPiContextPolicy.js";
+import { readAgentPiArtifactIndex, type AgentPiArtifactIndex } from "./AgentPiArtifactIndex.js";
 import {
-  AgentPiArtifactIndexCustomType,
-  readAgentPiArtifactIndex,
-  type AgentPiArtifactIndex,
-} from "./AgentPiArtifactIndex.js";
-import {
-  AgentPiCompactionToolIndexCustomType,
   createAgentPiCompactionToolCallIndex,
   readAgentPiCompactionToolCallIndex,
   type AgentPiCompactionToolCallIndex,
@@ -32,6 +27,13 @@ import { AgentPiTerminalToolObservationProjector } from "./AgentPiTerminalToolOb
 import { AgentPiCompactionController, type AgentPiCompactionIndexes } from "./AgentPiCompactionController.js";
 import { AgentPiMidRunCompactionCoordinator } from "./AgentPiMidRunCompactionCoordinator.js";
 import type { AgentPiResolvedCompactionSettings } from "./AgentPiCompactionSettings.js";
+import { AgentPiSessionCustomEntryTypes } from "./AgentPiSessionEntries.js";
+import { emptyAgentPiPromptDisclosureState, type AgentPiPromptDisclosureState } from "./AgentPiPromptDisclosure.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { projectAgentPiContextForPressure } from "./AgentPiContextPressureProjection.js";
+import { readAgentPiContinuityLedger } from "./AgentPiContinuityLedger.js";
+import type { AgentContinuityLedger } from "../Continuity/AgentContinuityLedger.js";
+import { renderAgentPiSkillLibraryPrompt } from "./AgentPiSkillLibraryPrompt.js";
 
 export interface AgentPiRuntimeExtensionFactoryOptions {
   readonly provider: AgentPiProviderProjection;
@@ -53,6 +55,7 @@ export class AgentPiRuntimeExtensionFactory {
   create(frame: AgentPiMutableSessionFrame, sessionManager: SessionManager): AgentPiRuntimeExtensionRegistration {
     let pendingCompactionIndex: AgentPiArtifactIndex | undefined;
     let pendingCompactionToolIndex: AgentPiCompactionToolCallIndex | undefined;
+    let pendingCompactionLedger: AgentContinuityLedger | undefined;
     const reportedInvalidArtifactIndexes = new Set<string>();
     const reportedInvalidToolIndexes = new Set<string>();
     const compactionSummaryBridge = new AgentPiCompactionSummaryBridge({
@@ -65,7 +68,23 @@ export class AgentPiRuntimeExtensionFactory {
     const compactionController = new AgentPiCompactionController({
       planningCompilerFactory: this.options.planningCompilerFactory,
       diagnostics: this.options.diagnostics,
+      continuityScope: () => frame.snapshot().sessionId ?? frame.snapshot().logicalCacheScope,
     });
+    let activeCompactionSettings: AgentPiResolvedCompactionSettings | undefined;
+    let persistedPromptDisclosureRevision = sha256HexOfCanonicalJson(frame.promptDisclosureState());
+    const persistPromptDisclosure = (state: AgentPiPromptDisclosureState): void => {
+      const revision = sha256HexOfCanonicalJson(state);
+      if (revision === persistedPromptDisclosureRevision) return;
+      try {
+        sessionManager.appendCustomEntry(AgentPiSessionCustomEntryTypes.PromptDisclosure, state);
+        persistedPromptDisclosureRevision = revision;
+      } catch (error) {
+        void compactionController.emitDiagnostic(frame, "prompt.disclosure.persistence_failed", {
+          revision,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
     const projectProviderMessages = async (
       messages: readonly AgentMessage[],
       compactionIndexes?: AgentPiCompactionIndexes,
@@ -76,14 +95,35 @@ export class AgentPiRuntimeExtensionFactory {
         messages,
         toolCallIndex: indexes.toolCallIndex,
       });
+      const pressureProjection =
+        activeCompactionSettings?.enabled && snapshot.tokenBudget
+          ? projectAgentPiContextForPressure(bridgeResult.messages, {
+              model: this.options.provider.model.id,
+              contextWindowTokens: snapshot.tokenBudget.contextWindowTokens,
+              outputReserveTokens: snapshot.tokenBudget.outputReserveTokens,
+              keepRecentTokens: activeCompactionSettings.keepRecentTokens,
+              observedProviderTokens: snapshot.tokenBudget.snapshot().occupiedTokens,
+            })
+          : undefined;
+      if (pressureProjection?.projectedMessages) {
+        await compactionController.emitDiagnostic(frame, "context.pressure_projection", {
+          projectedMessages: pressureProjection.projectedMessages,
+          tokensBefore: pressureProjection.tokensBefore,
+          tokensAfter: pressureProjection.tokensAfter,
+          reclaimedTokens: pressureProjection.reclaimedTokens,
+          triggerTokens: pressureProjection.triggerTokens,
+          observedProviderTokens: pressureProjection.observedProviderTokens,
+        });
+      }
+      const projectedMessages = pressureProjection?.messages ?? bridgeResult.messages;
       return snapshot.tokenBudget
         ? applyAgentPiContextPolicy(
-            bridgeResult.messages,
+            projectedMessages,
             snapshot.contextPolicy,
             indexes.artifactIndex.artifacts,
             snapshot.tokenBudget,
           )
-        : bridgeResult.messages;
+        : projectedMessages;
     };
     const readPersistedCompactionIndexes = async (): Promise<AgentPiCompactionIndexes> => {
       const contextEntries = sessionManager.buildContextEntries();
@@ -104,6 +144,7 @@ export class AgentPiRuntimeExtensionFactory {
       return {
         artifactIndex: { artifacts: artifactIndex.artifacts },
         toolCallIndex: toolIndexResult.index ?? createAgentPiCompactionToolCallIndex([]),
+        continuityLedger: readAgentPiContinuityLedger(contextEntries),
       };
     };
     const midRunCompaction = new AgentPiMidRunCompactionCoordinator({
@@ -119,13 +160,29 @@ export class AgentPiRuntimeExtensionFactory {
       factory: (pi) => {
         pi.on("before_agent_start", (event) => {
           const snapshot = frame.snapshot();
+          const disclosure = frame.promptDisclosurePlan();
           const message = projectAgentPiTurnContextMessage({
             turnContext: snapshot.turnContext,
             skills: frame.skillSnapshot(),
             selectedPromptTemplates: snapshot.selectedPromptTemplates,
+            disclosure,
+          });
+          frame.commitPromptDisclosure(disclosure);
+          persistPromptDisclosure(frame.promptDisclosureState());
+          void compactionController.emitDiagnostic(frame, "prompt.disclosure", {
+            newSkills: disclosure.newSkills.length,
+            reusedSkills: disclosure.reusedSkills.length,
+            newPromptTemplates: disclosure.newPromptTemplates.length,
+            reusedPromptTemplates: disclosure.reusedPromptTemplates.length,
+            disclosedSkillCount: frame.promptDisclosureState().skillKeys.length,
+            disclosedPromptTemplateCount: frame.promptDisclosureState().promptTemplateKeys.length,
           });
           return {
-            systemPrompt: [snapshot.systemPrompt ?? "", event.systemPrompt]
+            systemPrompt: [
+              snapshot.systemPrompt ?? "",
+              event.systemPrompt,
+              renderAgentPiSkillLibraryPrompt(snapshot.skillLibraryCatalog),
+            ]
               .filter((value) => value.trim().length > 0)
               .join("\n\n"),
             ...(message ? { message } : {}),
@@ -147,6 +204,10 @@ export class AgentPiRuntimeExtensionFactory {
           return replacement ? { message: replacement } : undefined;
         });
         pi.on("session_before_compact", async (event) => {
+          // The compaction projection may remove the earlier full resource
+          // blocks. Re-disclose active resources on the first turn after the
+          // compacted transcript is installed.
+          frame.resetPromptDisclosure();
           await this.flushBeforeCompaction(frame.snapshot().sessionId);
           const summarizedMessages = [
             ...event.preparation.messagesToSummarize,
@@ -155,6 +216,7 @@ export class AgentPiRuntimeExtensionFactory {
           const indexes = compactionController.createIndexes(event.branchEntries, summarizedMessages);
           pendingCompactionIndex = indexes.artifactIndex;
           pendingCompactionToolIndex = indexes.toolCallIndex;
+          pendingCompactionLedger = indexes.continuityLedger;
           const summary = await compactionController.compileSummary(
             frame,
             {
@@ -165,6 +227,7 @@ export class AgentPiRuntimeExtensionFactory {
               fileOperations: event.preparation.fileOps,
               artifactIndex: pendingCompactionIndex,
               toolCallIndex: pendingCompactionToolIndex,
+              continuityLedger: indexes.continuityLedger,
             },
             event.signal,
           );
@@ -181,19 +244,28 @@ export class AgentPiRuntimeExtensionFactory {
           };
         });
         pi.on("session_compact", () => {
+          midRunCompaction.resetHysteresis();
+          frame.resetPromptDisclosure();
+          persistPromptDisclosure(emptyAgentPiPromptDisclosureState());
           const index = pendingCompactionIndex;
           pendingCompactionIndex = undefined;
-          if (index && index.artifacts.length > 0) pi.appendEntry(AgentPiArtifactIndexCustomType, index);
           const toolIndex = pendingCompactionToolIndex;
           pendingCompactionToolIndex = undefined;
-          if (toolIndex && toolIndex.calls.length > 0) {
-            pi.appendEntry(AgentPiCompactionToolIndexCustomType, toolIndex);
+          const ledger = pendingCompactionLedger;
+          pendingCompactionLedger = undefined;
+          if (index || toolIndex || ledger) {
+            compactionController.appendIndexes(sessionManager, {
+              artifactIndex: index ?? { artifacts: [] },
+              toolCallIndex: toolIndex ?? createAgentPiCompactionToolCallIndex([]),
+              ...(ledger ? { continuityLedger: ledger } : {}),
+            });
           }
         });
         pi.on("context", async (event) => {
           return { messages: await projectProviderMessages(event.messages) };
         });
         pi.on("session_before_tree", async (event) => {
+          frame.resetPromptDisclosure();
           await this.flushBeforeCompaction(frame.snapshot().sessionId);
           const prepared = prepareBranchEntries(
             event.preparation.entriesToSummarize,
@@ -209,6 +281,7 @@ export class AgentPiRuntimeExtensionFactory {
               fileOperations: prepared.fileOps,
               artifactIndex: indexes.artifactIndex,
               toolCallIndex: indexes.toolCallIndex,
+              continuityLedger: indexes.continuityLedger,
             },
             event.signal,
           );
@@ -219,10 +292,16 @@ export class AgentPiRuntimeExtensionFactory {
             },
           };
         });
+        pi.on("session_tree", () => {
+          midRunCompaction.resetHysteresis();
+          frame.resetPromptDisclosure();
+          persistPromptDisclosure(emptyAgentPiPromptDisclosureState());
+        });
       },
       install: (session, settings) => {
         if (installed) return;
         installed = true;
+        activeCompactionSettings = settings;
         const previous = session.agent.prepareNextTurnWithContext;
         session.agent.prepareNextTurnWithContext = async (turn, signal) => {
           const refreshed = await previous?.(turn, signal);

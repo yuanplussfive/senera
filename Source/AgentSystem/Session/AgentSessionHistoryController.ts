@@ -20,10 +20,12 @@ import type { AgentSessionMessageAcceptance, AgentSessionMessageRequest } from "
 import type { AgentSessionRunCoordinator } from "./AgentSessionRunCoordinator.js";
 import type { AgentSessionStore } from "./AgentSessionStore.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 
 export interface AgentSessionHistoryReplayRequest {
   readonly sessionId: string;
   readonly refresh?: boolean;
+  readonly initialWindow?: boolean;
   readonly onEvent?: AgentEventSink;
 }
 
@@ -39,6 +41,7 @@ export interface AgentSessionRegenerateRequest {
   readonly fromRequestId: string;
   readonly requestId: string;
   readonly modelProviderId?: string;
+  readonly thinkingLevel?: ModelThinkingLevel;
   readonly input: string;
   readonly approvalMode: AgentExecutionApprovalMode;
   readonly attachments?: AgentUploadAttachment[];
@@ -167,6 +170,7 @@ export class AgentSessionHistoryController {
           sessionId: request.sessionId,
           requestId: request.requestId,
           modelProviderId: request.modelProviderId,
+          thinkingLevel: request.thinkingLevel,
           input: request.input,
           approvalMode: request.approvalMode,
           attachments: request.attachments,

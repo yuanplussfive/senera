@@ -1,5 +1,9 @@
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import {
+  AgentProfileRouteCollectionSchema,
+  AgentProfileRouteRegistry,
+} from "../Conversation/AgentConversationSpace.js";
+import {
   AgentChannelBusyMessageModes,
   AgentChannelKinds,
   type AgentChannelBusyMessageMode,
@@ -44,7 +48,12 @@ export interface AgentChannelSubsystemDefaults {
 export function resolveAgentChannelsConfig(config: AgentSystemConfig): AgentChannelsConfig {
   const raw = config.Extensions?.[AgentChannelsExtensionId]?.Configuration;
   if (!raw || typeof raw !== "object") {
-    return { enabled: false, defaultApprovalMode: "agent", channels: cloneDefaults() };
+    return {
+      enabled: false,
+      defaultApprovalMode: "agent",
+      channels: cloneDefaults(),
+      profileRoutes: new AgentProfileRouteRegistry([]),
+    };
   }
   const channels: Record<AgentChannelKind, AgentChannelConfig> = cloneDefaults();
   const source = raw as Record<string, unknown>;
@@ -62,7 +71,12 @@ export function resolveAgentChannelsConfig(config: AgentSystemConfig): AgentChan
   channels.telegram = resolveChannelConfig(AgentChannelKinds.Telegram, source.telegram, subsystemDefaults);
   channels.qq = resolveChannelConfig(AgentChannelKinds.Qq, source.qq, subsystemDefaults);
   channels.discord = resolveChannelConfig(AgentChannelKinds.Discord, source.discord, subsystemDefaults);
-  return { enabled, defaultApprovalMode, channels };
+  return {
+    enabled,
+    defaultApprovalMode,
+    channels,
+    profileRoutes: new AgentProfileRouteRegistry(AgentProfileRouteCollectionSchema.parse(source.profileRoutes ?? [])),
+  };
 }
 
 function resolveChannelConfig(

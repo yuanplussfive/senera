@@ -48,7 +48,7 @@ export function DesktopSettingsSurface({
   });
   sendRef.current = send;
   statusRef.current = status;
-  const runtime = useSettingsRuntime({ httpBaseUrl: HTTP_BASE_URL, sendRef, statusRef });
+  const runtime = useSettingsRuntime({ httpBaseUrl: HTTP_BASE_URL, sendRef, statusRef, status });
   settingsEventHandlerRef.current = runtime.ingestSettingsEvent;
   const bridge = readDesktopBridge();
   const runtimeUpdate = useRuntimeUpdate({
@@ -101,6 +101,7 @@ export function DesktopSettingsSurface({
             }}
             onMotionLevelChange={setMotionLevel}
             systemConfig={runtime.systemConfig}
+            workspace={runtime.workspace}
           />
           <DiscardDraftDialog
             open={closeConfirmationOpen}

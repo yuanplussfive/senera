@@ -186,6 +186,7 @@ export class AgentPiBamlToolProvider {
       enabled: true,
       signal,
       sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
+      logicalCacheScope: turnState.context.logicalCacheScope,
       usageSink: createAgentResidentSpeechUsageSink(turnState.context),
       timingSink: (timing) =>
         emitAgentPiDiagnostic(frame.diagnostics, {

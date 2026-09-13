@@ -1,4 +1,5 @@
 import type { AgentConversationBoundaryPromptInput } from "./AgentTemporalMemoryTypes.js";
+import { renderAgentPromptInputWire } from "../Prompt/AgentPromptContextWireRenderer.js";
 
 export const AgentConversationBoundaryToolName = "ConversationBoundary";
 
@@ -24,6 +25,13 @@ export function createAgentConversationBoundaryPrompt(input: AgentConversationBo
   }
   return {
     systemPrompt: BoundaryInstruction,
-    userPrompt: JSON.stringify({ context: input, directive: { stage: "classifyConversationBoundary" } }, null, 2),
+    userPrompt: renderAgentPromptInputWire(
+      {
+        kind: "conversation_boundary",
+        context: input,
+        directive: { stage: "classifyConversationBoundary" },
+      },
+      { estimateTokens: (text) => text.length },
+    ).text,
   };
 }

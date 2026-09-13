@@ -34,6 +34,7 @@ export class AgentWorldRuntime implements AgentWorldSnapshotProvider {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private sink: AgentWorldAdvanceSink | undefined;
   private advancing = false;
+  private wakeActive = false;
   private wakeInFlight: Promise<AgentWorldTreeProjection> | undefined;
   private pendingWakeAt: Temporal.Instant | undefined;
   private wakeBlocked = false;
@@ -70,6 +71,13 @@ export class AgentWorldRuntime implements AgentWorldSnapshotProvider {
   }
 
   snapshot(now: Temporal.Instant = this.options.now?.() ?? Temporal.Now.instant()): AgentWorldTreeProjection {
+    if (this.wakeActive) {
+      // A wake owns clock advancement until its pass completes. Keep a later
+      // observation for the coalescing loop, but never let a synchronous
+      // snapshot write a newer clock that the in-flight pass could regress.
+      this.pendingWakeAt = laterInstant(this.pendingWakeAt, now);
+      return this.project(now);
+    }
     this.advance(now);
     const snapshot = this.project(now);
     if (this.sink) this.scheduleNextWake(now);
@@ -88,14 +96,21 @@ export class AgentWorldRuntime implements AgentWorldSnapshotProvider {
     }
     this.wakeBlocked = false;
     this.pendingWakeAt = undefined;
+    this.wakeActive = true;
     const operation = this.performWake(now);
     this.wakeInFlight = operation;
     void operation.then(
       () => {
-        if (this.wakeInFlight === operation) this.wakeInFlight = undefined;
+        if (this.wakeInFlight === operation) {
+          this.wakeInFlight = undefined;
+          this.wakeActive = false;
+        }
       },
       () => {
-        if (this.wakeInFlight === operation) this.wakeInFlight = undefined;
+        if (this.wakeInFlight === operation) {
+          this.wakeInFlight = undefined;
+          this.wakeActive = false;
+        }
       },
     );
     return operation;

@@ -67,11 +67,17 @@ export class AgentSessionHistoryReplay {
     this.paging = resolveAgentSessionHistoryReplayPaging(options.paging);
   }
 
-  async replay(request: { sessionId: string; refresh?: boolean; onEvent?: AgentEventSink }): Promise<void> {
+  async replay(request: {
+    sessionId: string;
+    refresh?: boolean;
+    initialWindow?: boolean;
+    onEvent?: AgentEventSink;
+  }): Promise<void> {
     const snapshot = await this.captureHistorySnapshot(request);
     if (!snapshot) return;
 
     await this.emitHistoryStarted(request, snapshot);
+    if (request.initialWindow) await this.emitRecentPreview(request, snapshot);
     await this.emitEntryPages(request, snapshot);
     await this.emitStepRunPages(request, snapshot);
     await this.emitRunEventPages(request, snapshot);
@@ -165,6 +171,43 @@ export class AgentSessionHistoryReplay {
       assertCursorAdvanced(cursor, page.nextCursor, "conversation entry");
       cursor = page.nextCursor;
     }
+  }
+
+  /**
+   * Send one recent page before the complete replay. The page is deliberately
+   * marked as a preview: the normal ascending replay remains authoritative and
+   * reconciles the same entries without changing the durable transcript.
+   */
+  private async emitRecentPreview(
+    request: { sessionId: string; onEvent?: AgentEventSink },
+    snapshot: AgentSessionHistoryView,
+  ): Promise<void> {
+    const highWaterMark = snapshot.entryHighWaterMark;
+    const pageSize = this.paging.entryPageSize;
+    if (highWaterMark === undefined || highWaterMark <= pageSize) return;
+
+    const page = this.options.store.loadConversationPage(request.sessionId, {
+      after: Math.max(-1, highWaterMark - pageSize),
+      through: highWaterMark,
+      pageSize,
+    });
+    if (page.items.length === 0) return;
+
+    await emitAgentEvent(request.onEvent, {
+      kind: AgentEventKinds.SessionHistoryChunk,
+      context: { sessionId: request.sessionId },
+      data: {
+        sessionId: request.sessionId,
+        preview: true,
+        entries: page.items.map((entry) => ({
+          entry,
+          visible:
+            entry.kind === AgentConversationEntryKinds.AssistantDecision
+              ? projectAssistantHistoryVisible(entry)
+              : undefined,
+        })),
+      },
+    });
   }
 
   private async emitStepRunPages(

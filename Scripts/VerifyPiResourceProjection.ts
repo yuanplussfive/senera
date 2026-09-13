@@ -3,10 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
-import { toPosixPath } from "../Source/AgentSystem/Artifacts/AgentArtifactLocator.js";
 import { AgentExtensionRegistry } from "../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import { AgentPiPromptTemplateProjector } from "../Source/AgentSystem/Pi/AgentPiPromptTemplateProjector.js";
 import { AgentPiSkillResolver } from "../Source/AgentSystem/Pi/AgentPiSkillResolver.js";
+import { agentSkillLogicalUri } from "../Source/AgentSystem/Skills/AgentSkillResourceUri.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-pi-resource-"));
 const resourceRoot = path.join(tempRoot, "resources");
@@ -69,7 +69,7 @@ assert.deepEqual(
   resolvedSkills.map((skill) => skill.name),
   ["skills"],
 );
-assert.equal(resolvedSkills[0]?.filePath, toPosixPath(path.join(resourceRoot, "skills", "SKILL.md")));
+assert.equal(resolvedSkills[0]?.filePath, agentSkillLogicalUri("skills"));
 assert.match(resolvedSkills[0]?.content ?? "", /Use workspace evidence/);
 assert.deepEqual(
   resources.promptTemplates.map((template) => template.name),

@@ -1,6 +1,6 @@
 import type { JsonConfigObject } from "../../shared/config/JsonConfigForm";
 import { ConfigSecretContract } from "../../api/generatedEventCatalog";
-import type { ModelsDevModelMetadata } from "../../api/eventTypes";
+import type { ModelThinkingLevel, ModelsDevModelMetadata } from "../../api/eventTypes";
 import { getFrontendLocale } from "../../i18n/frontendLocaleStore";
 import { isUnknownRecord as isRecord, readTrimmedString as readString } from "../../lib/unknownValue";
 import {
@@ -23,6 +23,7 @@ import type {
   ProviderModelGroup,
   ProviderModelInfo,
 } from "./modelConfigTypes";
+import { ModelThinkingLevels } from "./modelThinking";
 
 export function findTopField(section: ConfigFormSectionData | undefined, key: string): ConfigFormFieldData | undefined {
   return section?.fields.find((field) => field.path.length === 1 && field.path[0] === key);
@@ -86,6 +87,9 @@ export function createModelDraft({
 export function copyModelRuntimeTemplate(template: Record<string, unknown>): Partial<ModelProviderDraft> {
   return {
     ...optionalCapabilities("Capabilities", template.Capabilities),
+    ...optionalThinkingLevelMap(template.ThinkingLevelMap),
+    ...optionalThinkingProfiles(template.ThinkingProfiles),
+    ...optionalThinkingLevel("DefaultThinkingLevel", template.DefaultThinkingLevel),
     ...optionalToolPlanningMode(template.ToolPlanningMode),
     ...optionalNumber("ContextWindowTokens", template.ContextWindowTokens),
     ...optionalNumber("MaxModelOutputTokens", template.MaxModelOutputTokens),
@@ -221,6 +225,9 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
     ProviderId: providerId,
     ...optionalString("Icon", record.Icon),
     ...optionalCapabilities("Capabilities", record.Capabilities),
+    ...optionalThinkingLevelMap(record.ThinkingLevelMap),
+    ...optionalThinkingProfiles(record.ThinkingProfiles),
+    ...optionalThinkingLevel("DefaultThinkingLevel", record.DefaultThinkingLevel),
     ...optionalToolPlanningMode(record.ToolPlanningMode),
     ...optionalNumber("ContextWindowTokens", record.ContextWindowTokens),
     ...optionalNumber("MaxModelOutputTokens", record.MaxModelOutputTokens),
@@ -240,6 +247,37 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
     ...optionalNumber("MaxSseEventBytes", record.MaxSseEventBytes),
     ...optionalNumber("MaxSseEvents", record.MaxSseEvents),
   };
+}
+
+function optionalThinkingLevelMap(value: unknown): Pick<ModelProviderDraft, "ThinkingLevelMap"> {
+  if (!isRecord(value)) return {};
+  const supported = new Set<ModelThinkingLevel>(ModelThinkingLevels);
+  const entries = Object.entries(value).filter(
+    (entry): entry is [ModelThinkingLevel, string | null] =>
+      supported.has(entry[0] as ModelThinkingLevel) && (typeof entry[1] === "string" || entry[1] === null),
+  );
+  return entries.length > 0 ? { ThinkingLevelMap: Object.fromEntries(entries) } : {};
+}
+
+function optionalThinkingProfiles(value: unknown): Pick<ModelProviderDraft, "ThinkingProfiles"> {
+  if (!Array.isArray(value)) return {};
+  const supported = new Set<ModelThinkingLevel>(ModelThinkingLevels);
+  const profiles = value.flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    const id = readString(entry.Id);
+    const label = readString(entry.Label);
+    const level = readString(entry.Level) as ModelThinkingLevel | null;
+    return id && label && level && supported.has(level) ? [{ Id: id, Label: label, Level: level }] : [];
+  });
+  return profiles.length > 0 ? { ThinkingProfiles: profiles } : {};
+}
+
+function optionalThinkingLevel(
+  key: "DefaultThinkingLevel",
+  value: unknown,
+): Pick<ModelProviderDraft, "DefaultThinkingLevel"> {
+  const level = readString(value) as ModelThinkingLevel | undefined;
+  return level && ModelThinkingLevels.includes(level) ? { [key]: level } : {};
 }
 
 export function readModelCapabilities(

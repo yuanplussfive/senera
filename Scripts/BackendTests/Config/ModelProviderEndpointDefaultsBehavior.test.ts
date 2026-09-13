@@ -9,6 +9,7 @@ import { migrateAgentConfigPayload } from "../../../Source/AgentSystem/Config/Ag
 import { CurrentAgentConfigVersion } from "../../../Source/AgentSystem/Config/AgentConfigVersion.js";
 import {
   resolveModelProviderConfig,
+  resolveModelProviderCatalog,
   resolveModelProviderEndpointCatalog,
   resolveModelProviderEndpointConfigs,
 } from "../../../Source/AgentSystem/Defaults/AgentModelProviderDefaults.js";
@@ -302,6 +303,76 @@ describe("model provider endpoint defaults", () => {
         modelId: config.ModelProviders[0].Id,
       }),
     ).toThrowError(expect.objectContaining<Partial<AgentProviderModelConfigCommandError>>({ code }));
+  });
+
+  it("orders the failover pool by priority and excludes disabled endpoints", () => {
+    const catalog = resolveModelProviderEndpointCatalog({
+      ModelProviderEndpoints: [
+        { Id: "e-late", Enabled: true, ProviderId: "pool", Priority: 2 },
+        { Id: "e-early", Enabled: true, ProviderId: "pool", Priority: 0 },
+        { Id: "e-disabled", Enabled: false, ProviderId: "pool", Priority: -10 },
+        { Id: "e-other", Enabled: true, ProviderId: "other", Priority: 0 },
+      ],
+      ModelProviders: [],
+    });
+
+    expect(catalog.poolOf("pool").map((endpoint) => endpoint.Id)).toEqual(["e-early", "e-late"]);
+    expect(() => catalog.poolOf("missing-pool")).toThrow(/供应商端点配置不存在/);
+  });
+
+  it("omits models whose known endpoint pool is entirely disabled", () => {
+    const catalog = resolveModelProviderCatalog({
+      DefaultModelProviderId: "active-model",
+      ModelProviderEndpoints: [
+        { Id: "disabled", ProviderId: "disabled-pool", Enabled: false },
+        { Id: "active", ProviderId: "active-pool", Enabled: true, BaseUrl: "https://active.example/v1" },
+      ],
+      ModelProviders: [
+        { Id: "disabled-model", ProviderId: "disabled-pool", Endpoint: "ChatCompletions", Model: "disabled" },
+        { Id: "active-model", ProviderId: "active-pool", Endpoint: "ChatCompletions", Model: "active" },
+      ],
+    });
+
+    expect(catalog.providers.map((provider) => provider.Id)).toEqual(["active-model"]);
+    expect(() => catalog.resolve("disabled-model")).toThrow(/模型配置不存在/);
+  });
+
+  it("projects the ordered endpoint pool into the resolved provider config", () => {
+    const config: AgentSystemConfig = {
+      DefaultModelProviderId: "chat",
+      ModelProviderEndpoints: [
+        {
+          Id: "backup",
+          Enabled: true,
+          ProviderId: "pool",
+          Priority: 1,
+          BaseUrl: "https://backup.example/v1",
+          ApiKey: "backup-key",
+        },
+        {
+          Id: "primary",
+          Enabled: true,
+          ProviderId: "pool",
+          Priority: 0,
+          BaseUrl: "https://primary.example/v1",
+          ApiKey: "primary-key",
+        },
+      ],
+      ModelProviders: [
+        {
+          Id: "chat",
+          ProviderId: "pool",
+          Endpoint: "ChatCompletions",
+          Model: "test-model",
+        },
+      ],
+    };
+
+    const provider = resolveModelProviderConfig(config);
+    expect(provider.EndpointPool?.map((endpoint) => endpoint.Id)).toEqual(["primary", "backup"]);
+    expect(provider.BaseUrl).toBe("https://primary.example/v1");
+    expect(provider.EndpointPool?.[0]?.ApiKey).toBe("primary-key");
+    expect(provider.EndpointPool?.[1]?.ApiKey).toBe("backup-key");
   });
 });
 

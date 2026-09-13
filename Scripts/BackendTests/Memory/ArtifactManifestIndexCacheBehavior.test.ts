@@ -13,6 +13,13 @@ afterEach(async () => {
 });
 
 describe("Artifact manifest index cache", () => {
+  test("requires a positive bounded root capacity", () => {
+    expect(() => new AgentArtifactManifestIndexCache(0)).toThrow("maxRoots must be a positive safe integer");
+    expect(() => new AgentArtifactManifestIndexCache(Number.POSITIVE_INFINITY)).toThrow(
+      "maxRoots must be a positive safe integer",
+    );
+  });
+
   test("reuses a complete index and refreshes when a requested artifact is missing", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-artifact-index-"));
     temporaryRoots.push(root);
@@ -29,6 +36,83 @@ describe("Artifact manifest index cache", () => {
     const refreshed = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [secondId] });
     expect(refreshed).not.toBe(first);
     expect([...refreshed.keys()]).toEqual(expect.arrayContaining([firstId, secondId]));
+  });
+
+  test("invalidates a complete index when a cached manifest is edited or removed", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-artifact-index-invalidation-"));
+    temporaryRoots.push(root);
+    const cache = new AgentArtifactManifestIndexCache();
+    const artifactId = "art_0123456789abcdef01234567";
+    const manifestPath = path.join(root, "artifact", "manifest.json");
+    await writeManifest(root, "artifact", artifactId, { schemaVersion: 3, marker: "before" });
+
+    const before = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [artifactId] });
+    expect(before.get(artifactId)).toMatchObject({ marker: "before" });
+
+    await fs.writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: 3,
+        marker: "after",
+        artifactId,
+        artifactUri: `senera://artifact/${artifactId}`,
+        files: {},
+      }),
+    );
+    const after = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [artifactId] });
+    expect(after).not.toBe(before);
+    expect(after.get(artifactId)).toMatchObject({ marker: "after" });
+
+    await fs.rm(manifestPath);
+    const removed = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [artifactId] });
+    expect(removed.has(artifactId)).toBe(false);
+  });
+
+  test("does not share an index across different workspace boundaries", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-artifact-index-boundary-"));
+    temporaryRoots.push(root);
+    const cache = new AgentArtifactManifestIndexCache();
+    const artifactRoot = path.join(root, "workspace", "artifacts");
+    const workspaceRoot = path.join(root, "workspace");
+    const artifactId = "art_0123456789abcdef01234567";
+    await writeManifest(artifactRoot, "artifact", artifactId);
+
+    const first = await cache.load({ artifactRoot, workspaceRoot, requiredArtifactIds: [artifactId] });
+    const second = await cache.load({ artifactRoot, workspaceRoot: root, requiredArtifactIds: [artifactId] });
+
+    expect(second).not.toBe(first);
+    expect(second.get(artifactId)?.artifactId).toBe(artifactId);
+  });
+
+  test("skips malformed manifests and discovers them after repair", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-artifact-index-malformed-"));
+    temporaryRoots.push(root);
+    const cache = new AgentArtifactManifestIndexCache();
+    const artifactId = "art_0123456789abcdef01234567";
+    const directory = path.join(root, "artifact");
+    const manifestPath = path.join(directory, "manifest.json");
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(manifestPath, "{ malformed", "utf8");
+
+    const skipped = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [] });
+    expect(skipped.has(artifactId)).toBe(false);
+
+    await writeManifest(root, "artifact", artifactId);
+    const repaired = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [] });
+    expect(repaired.get(artifactId)?.artifactId).toBe(artifactId);
+  });
+
+  test("rejects duplicate Artifact IDs instead of selecting by directory order", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-artifact-index-duplicate-"));
+    temporaryRoots.push(root);
+    const cache = new AgentArtifactManifestIndexCache();
+    const artifactId = "art_0123456789abcdef01234567";
+    await writeManifest(root, "first", artifactId);
+    await writeManifest(root, "second", artifactId);
+
+    await expect(cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [] })).rejects.toThrow(
+      `Duplicate Artifact manifest for ${artifactId}`,
+    );
   });
 
   test("resolves artifact read request and concurrency limits through the shared defaults catalog", () => {

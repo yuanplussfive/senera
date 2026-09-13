@@ -38,6 +38,7 @@ export class AgentToolSearchUsageMemory {
     requestId: string;
     userInput: string;
     sessionId?: string;
+    logicalCacheScope?: string;
     results: ExecutedToolCallResult[];
     activeSkills?: readonly AgentActivatedSkill[];
   }): void {
@@ -71,6 +72,7 @@ export class AgentToolSearchUsageMemory {
       episode,
       requestId,
       sessionId: options.sessionId,
+      logicalCacheScope: options.logicalCacheScope,
       rawUserTurn,
       standaloneRequest,
       contextMode: "None",

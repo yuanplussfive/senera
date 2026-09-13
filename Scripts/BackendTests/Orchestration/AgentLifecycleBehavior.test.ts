@@ -36,6 +36,10 @@ describe("agent lifecycle", () => {
       runId: run.id,
       state: "queued",
       agent: "delegate",
+      workItemId: expect.any(String),
+      taskDigest: expect.any(String),
+      resources: { coverage: "unscoped", claims: [] },
+      consumption: { result: false, parentWake: false },
     });
     await harness.dispatcher.waitForDispatches(1);
     expect(harness.dispatcher.requests[0]).toMatchObject({
@@ -54,6 +58,10 @@ describe("agent lifecycle", () => {
       runId: run.id,
       state: "completed",
       agent: "delegate",
+      workItemId: expect.any(String),
+      taskDigest: expect.any(String),
+      resources: { coverage: "unscoped", claims: [] },
+      consumption: { result: false, parentWake: false },
       result: { content: "Default child completed." },
     });
     harness.close();

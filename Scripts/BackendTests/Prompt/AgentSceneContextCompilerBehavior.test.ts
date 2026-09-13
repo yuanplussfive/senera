@@ -6,6 +6,7 @@ import {
   EmptyAgentSceneContext,
   compileAgentSceneContext,
 } from "../../../Source/AgentSystem/Prompt/AgentSceneContextCompiler.js";
+import { renderAgentScenePromptWire } from "../../../Source/AgentSystem/Prompt/AgentPromptContextWireRenderer.js";
 
 function worldContext(overrides: Partial<AgentWorldPromptContext> = {}): AgentWorldPromptContext {
   return {
@@ -160,16 +161,16 @@ describe("agent scene context compiler", () => {
 
   test("renders the current moment as the scene entry", () => {
     const scene = compileAgentSceneContext({ world: worldContext() });
+    const sceneWire = renderAgentScenePromptWire(scene, { estimateTokens: (text) => text.length });
     const rendered = new AgentPromptRenderer().renderFileSync(
       path.resolve(process.cwd(), "System", "Prompts", "Templates", "SceneContext.liquid"),
-      { Scene: scene },
+      { SceneWire: sceneWire.text },
     );
 
-    expect(rendered).toContain('<scene_entry attribution="world" priority="immediate">');
-    expect(rendered).toContain('world="测试世界"');
-    expect(rendered).toContain('date="2026-09-01"');
-    expect(rendered).toContain('<attention source="activity">整理画稿</attention>');
-    expect(rendered).toContain("<activity>整理画稿</activity>");
-    expect(rendered).toContain("<response_anchor>");
+    expect(rendered).toContain("senera.scene=v1");
+    expect(rendered).toContain("[senera.scene] encoding=");
+    expect(rendered).toContain("测试世界");
+    expect(rendered).toContain("整理画稿");
+    expect(rendered).not.toContain("<scene_entry");
   });
 });

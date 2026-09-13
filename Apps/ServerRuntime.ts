@@ -1,5 +1,4 @@
 import path from "node:path";
-import fs from "node:fs";
 import { Temporal } from "@js-temporal/polyfill";
 import { AgentLoop } from "../Source/AgentSystem/Loop/AgentLoop.js";
 import { AgentSessionManager } from "../Source/AgentSystem/Session/AgentSessionManager.js";
@@ -19,9 +18,7 @@ import {
   resolveUploadsConfig,
   resolveVectorModelsConfig,
   resolveAgentWorldConfig,
-  resolveModelProviderConfig,
   resolveActionPlannerConfig,
-  resolveAgentInferenceBudgetConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { AgentUserProfileManager } from "../Source/AgentSystem/Session/AgentUserProfile.js";
@@ -34,11 +31,8 @@ import {
   createAgentWorldSnapshotEventFromProjection,
 } from "../Source/AgentSystem/World/AgentWorldEventTypes.js";
 import type { AgentWorldResidentWakeActionPort } from "../Source/AgentSystem/World/AgentWorldResidentWakeRuntime.js";
-import { composeAgentWorldRuntime } from "../Source/AgentSystem/World/AgentWorldRuntimeComposition.js";
-import { AgentSlidingWindowInferenceBudget } from "../Source/AgentSystem/ModelEndpoints/AgentInferenceBudget.js";
-import { secondsToMilliseconds } from "../Source/AgentSystem/Defaults/AgentTimeDefaults.js";
 import { AgentConfigService, type AgentConfigSourceOptions } from "../Source/AgentSystem/Config/AgentConfigService.js";
-import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent } from "../Source/AgentSystem/Events/AgentEvent.js";
+import { AgentEventKinds } from "../Source/AgentSystem/Events/AgentEvent.js";
 import { serializeError } from "../Source/AgentSystem/Diagnostics/AgentErrorSerializer.js";
 import { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
 import { AgentServerEventLogger } from "../Source/AgentSystem/Diagnostics/AgentServerEventLogger.js";
@@ -67,11 +61,11 @@ import {
   resolveAgentWorkspaceLayout,
 } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import { resolveServerConfigSource, resolveServerRuntimeConfigPath } from "./ServerRuntimeConfig.js";
+import { seedRuntimeConfigForSource } from "./RuntimeConfigBootstrap.js";
 import { AgentMcpInputService } from "../Source/AgentSystem/Credentials/AgentMcpInputService.js";
 import { AgentMcpManagementService } from "../Source/AgentSystem/McpPackages/AgentMcpManagementService.js";
 import { AgentWorkspaceRuntime } from "../Source/AgentSystem/Runtime/AgentWorkspaceRuntime.js";
 import { AgentRunDispatchGateway } from "../Source/AgentSystem/Orchestration/AgentRunDispatchPort.js";
-import { AgentActionPlannerModelClient } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerModelClient.js";
 import { AgentGoalMicroLoopDispatchActionPort } from "../Source/AgentSystem/Agenda/AgentGoalMicroLoopDispatchActionPort.js";
 import { AgentSessionRunDispatcher } from "../Source/AgentSystem/Session/AgentSessionRunDispatcher.js";
 import { AgentOrchestrationDatabase } from "../Source/AgentSystem/Orchestration/AgentOrchestrationDatabase.js";
@@ -99,6 +93,11 @@ import {
   AgentScheduledTaskSourceContextGateway,
 } from "../Source/AgentSystem/Orchestration/AgentScheduledTaskRunTypes.js";
 import { AgentChannelsDatabase } from "../Source/AgentSystem/Channels/AgentChannelsDatabase.js";
+import { createSeneraServerRuntimePlatform } from "./ServerRuntimePlatform.js";
+import { composeSeneraServerWorldRuntime } from "./ServerWorldRuntime.js";
+import { createSeneraServerRuntimeStop } from "./ServerRuntimeShutdown.js";
+import { startSeneraServerRuntimeConfigWatcher } from "./ServerRuntimeConfigWatcher.js";
+import { createSeneraServerInferenceBudget } from "./ServerInferenceBudget.js";
 import { ingestAgentChannelAttachment } from "../Source/AgentSystem/Channels/AgentChannelAttachmentIngestor.js";
 import { parseAgentQqApprovalInteraction } from "../Source/AgentSystem/Channels/AgentQqApprovalInteraction.js";
 import { AgentChannelSessionMappingStore } from "../Source/AgentSystem/Channels/AgentChannelSessionMappingStore.js";
@@ -108,14 +107,13 @@ import { createDefaultAgentChannelRegistry } from "../Source/AgentSystem/Channel
 import { resolveAgentChannelsConfig } from "../Source/AgentSystem/Channels/AgentChannelsConfig.js";
 import { AgentChannelWebhookApi } from "../Source/AgentSystem/Channels/AgentChannelWebhookApi.js";
 import { AgentResourceResolver } from "../Source/AgentSystem/Resources/AgentResourceResolver.js";
+import { AgentToolResourceLeaseCoordinator } from "../Source/AgentSystem/ToolRuntime/AgentToolResourceScheduler.js";
 import {
   resolveAgentDelegationConfiguration,
   resolveAgentSchedulerConfiguration,
 } from "../Source/AgentSystem/Orchestration/AgentOrchestrationConfig.js";
 import { AgentRuntimeUpdateDeployments } from "../Source/AgentSystem/Runtime/AgentRuntimeUpdateContract.js";
 import {
-  closeRuntimeInfrastructure,
-  collectRejected,
   createRepository,
   createRuntimeUpdateOptions,
   disableSandboxRuntime,
@@ -180,6 +178,12 @@ export interface SeneraServerHandle {
   websocketUrl: string;
   healthUrl: string;
   stop(): Promise<void>;
+  /**
+   * Soft-restarts the whole server stack against another workspace root while
+   * keeping the listening port. Active sessions and scheduled work are force
+   * cancelled by the underlying shutdown sequence. Returns the new live handle.
+   */
+  switchWorkspace(nextWorkspaceRoot: string): Promise<SeneraServerHandle>;
 }
 
 export async function startSeneraServer(options: SeneraServerOptions = {}): Promise<SeneraServerHandle> {
@@ -195,11 +199,67 @@ export async function startSeneraServer(options: SeneraServerOptions = {}): Prom
     imageReference: options.runtimeImageReference ?? process.env.SENERA_RUNTIME_IMAGE_REFERENCE,
   });
   const cleanup = new SeneraStartupCleanup();
+  const live: { current?: SeneraServerHandle } = {};
+  let switchChain: Promise<SeneraServerHandle> | undefined;
+
+  const startRuntime = async (root: string, lifecycleCleanup: SeneraStartupCleanup): Promise<SeneraServerHandle> => {
+    const inner = await startSeneraServerRuntime(options, root, upgradeSession, lifecycleCleanup, product, live);
+    const handle: SeneraServerHandle = {
+      ...inner,
+      switchWorkspace: (nextRoot) => switchTo(nextRoot),
+    };
+    live.current = handle;
+    return handle;
+  };
+
+  const switchTo = async (nextWorkspaceRoot: string): Promise<SeneraServerHandle> => {
+    const pending = (switchChain ?? Promise.resolve(live.current!)).then(async () => {
+      const current = live.current;
+      if (!current) throw new Error("Senera server has not started.");
+      const resolved = path.resolve(nextWorkspaceRoot);
+      if (current.workspaceRoot === resolved) return current;
+      await current.stop();
+      migrateLegacyAgentWorkspaceLayout(resolved);
+      const nextCleanup = new SeneraStartupCleanup();
+      let nextHandle: SeneraServerHandle | undefined;
+      try {
+        nextHandle = await startRuntime(resolved, nextCleanup);
+        await probeSeneraReadiness(nextHandle.healthUrl);
+        upgradeSession.markHealthy();
+        nextCleanup.disarm();
+        return nextHandle;
+      } catch (error) {
+        const failures: unknown[] = [error];
+        try {
+          if (nextHandle) await nextHandle.stop();
+          else await nextCleanup.run();
+        } catch (cleanupError) {
+          failures.push(cleanupError);
+        }
+        try {
+          const restoreCleanup = new SeneraStartupCleanup();
+          const restored = await startRuntime(current.workspaceRoot, restoreCleanup);
+          await probeSeneraReadiness(restored.healthUrl);
+          restoreCleanup.disarm();
+          live.current = restored;
+        } catch (restoreError) {
+          failures.push(restoreError);
+        }
+        throw new AggregateError(failures, `Senera workspace switch to ${resolved} failed.`, { cause: error });
+      }
+    });
+    switchChain = pending.then(
+      () => pending,
+      () => pending,
+    );
+    return pending;
+  };
+
   let handle: SeneraServerHandle | undefined;
   try {
     upgradeSession.recoverInterruptedUpgrade();
     migrateLegacyAgentWorkspaceLayout(workspaceRoot);
-    handle = await startSeneraServerRuntime(options, workspaceRoot, upgradeSession, cleanup, product);
+    handle = await startRuntime(workspaceRoot, cleanup);
     await probeSeneraReadiness(handle.healthUrl);
     upgradeSession.markHealthy();
     cleanup.disarm();
@@ -230,7 +290,8 @@ async function startSeneraServerRuntime(
   upgradeSession: AgentUpgradeSession,
   startupCleanup: SeneraStartupCleanup,
   product: ReturnType<typeof readAgentProductMetadata>,
-): Promise<SeneraServerHandle> {
+  live: { current?: SeneraServerHandle },
+): Promise<Omit<SeneraServerHandle, "switchWorkspace">> {
   const resourceRoot = path.resolve(options.resourcesPath ?? process.cwd());
   const workspaceLayout = resolveAgentWorkspaceLayout(workspaceRoot);
   const startupResourceCleanups: Array<() => void> = [];
@@ -241,7 +302,7 @@ async function startSeneraServerRuntime(
   };
   const configSource = resolveServerConfigSource(workspaceRoot, options);
   const configPath = resolveServerRuntimeConfigPath(workspaceRoot, configSource);
-  let watchedConfigPath: string | undefined;
+  seedRuntimeConfigForSource(configSource, resourceRoot);
   const eventLogDetail = resolveServerEventLogDetail(process.env.SENERA_LOG_EVENTS);
   const logger = new AgentLogger({
     verbose: eventLogDetail === "verbose",
@@ -350,6 +411,7 @@ async function startSeneraServerRuntime(
     reviewDelayMs: () => Math.round(goalMicroLoopConfig().ReviewDelaySeconds * 1_000),
   });
   const orchestrationEvents = new AgentOrchestrationEventRelay();
+  const resourceCoordinator = new AgentToolResourceLeaseCoordinator();
   const orchestrationDatabase = new AgentOrchestrationDatabase(workspaceLayout.databases.orchestration, upgradeSession);
   deferResourceCleanup(() => orchestrationDatabase.close());
   const childRuns = new AgentSqliteChildRunRepository(orchestrationDatabase);
@@ -384,6 +446,7 @@ async function startSeneraServerRuntime(
     events: orchestrationEvents,
     completion: delegationCompletion,
     roleCatalog: subagentRoles,
+    resourceCoordinator,
   });
   deferResourceCleanup(() => delegation.shutdown());
   const workflows = new AgentWorkflowService({
@@ -423,27 +486,11 @@ async function startSeneraServerRuntime(
   const sessionApprovals = new AgentSessionApprovalLeaseStore();
   const todoConfig = resolveAgentTodosConfig(initialConfig);
   const vectorModelsConfig = resolveVectorModelsConfig(initialConfig);
-  const inferenceBudget = new AgentSlidingWindowInferenceBudget(() => {
-    const policy = resolveAgentInferenceBudgetConfig(configSnapshot());
-    return {
-      enabled: policy.Enabled,
-      windowMs: secondsToMilliseconds(policy.WindowSeconds),
-      maxRequests: policy.MaxRequests,
-      maxEstimatedInputTokens: policy.MaxEstimatedInputTokens,
-      maxEstimatedOutputTokens: policy.MaxEstimatedOutputTokens,
-      maxConcurrent: policy.MaxConcurrent,
-      foregroundReserveFraction: policy.ForegroundReserveFraction,
-      laneWeights: policy.LaneWeights,
-    };
-  });
-  let inferenceBudgetScope = (): string => {
-    throw new Error("Vector inference budget scope is not initialized.");
-  };
+  const inferenceBudgetRuntime = createSeneraServerInferenceBudget(configSnapshot);
+  const { budget: inferenceBudget } = inferenceBudgetRuntime;
   const vectorClient = new AgentVectorModelClient(vectorModelsConfig, {
     inferenceBudget,
-    inferenceBudgetScope: () => {
-      return inferenceBudgetScope();
-    },
+    inferenceBudgetScope: inferenceBudgetRuntime.scope,
   });
   const continuityRuntime = createAgentContinuityRuntime({
     databasePath: workspaceLayout.databases.memory,
@@ -461,7 +508,7 @@ async function startSeneraServerRuntime(
     identityDisplayValues,
     logger,
   });
-  inferenceBudgetScope = () => continuityRuntime.identity.workspaceId;
+  inferenceBudgetRuntime.bindScope(() => continuityRuntime.identity.workspaceId);
   deferResourceCleanup(() => continuityRuntime.close());
   const {
     learning: continuityLearning,
@@ -474,14 +521,7 @@ async function startSeneraServerRuntime(
     temporalMemory,
   } = continuityRuntime;
   delegation.bindTodoService(todos);
-  const goalModelProvider = resolveModelProviderConfig(initialConfig);
-  const goalPlannerConfig = resolveActionPlannerConfig(initialConfig, goalModelProvider.Id);
-  const goalPlannerClientConfig = goalPlannerConfig.PlanningClient;
-  const goalPlannerModelProvider = goalPlannerClientConfig.ModelProvider;
-  const goalPlannerModelClient = new AgentActionPlannerModelClient(goalPlannerModelProvider, goalPlannerClientConfig, {
-    maxRepairAttempts: goalPlannerConfig.MaxRepairAttempts,
-  });
-  const worldComposition = await composeAgentWorldRuntime({
+  const worldComposition = await composeSeneraServerWorldRuntime({
     workspaceRoot,
     worldPackagesRoot: workspaceLayout.worldPackagesRoot,
     initialConfig,
@@ -491,20 +531,13 @@ async function startSeneraServerRuntime(
     runDispatch,
     orchestrationEvents,
     goalMicroLoopActionPort,
-    goalModelProvider,
-    goalPlannerModelClient,
     inferenceBudget,
     goalMicroLoopConfig,
     residentIdleConfig,
     residentInteractionTarget: options.residentInteractionTarget,
-    listResidentSessions: () => residentSessionManagerRef.current?.listSessions() ?? [],
+    residentSessionManagerRef,
     residentWakeAction: options.residentWakeAction,
-    deliverResidentMessage: async (request) => {
-      if (!residentSessionManagerRef.current) throw new Error("Resident idle delivery is not ready.");
-      return residentSessionManagerRef.current.deliverProactiveMessage(request);
-    },
-    deliverProactiveResult: async (request) =>
-      (await channelServiceRef.current?.deliverProactiveResult(request)) ?? "missing",
+    channelServiceRef,
     identityDisplayValues,
   });
   const {
@@ -519,13 +552,21 @@ async function startSeneraServerRuntime(
     observeWorldAndContinuityEvent,
   } = worldComposition;
   residentDisplayName = activePresetCard?.title ?? resolveAgentWorldConfig(configSnapshot()).Name;
-  if (activePresetCard && activePresetCard.worldPackageIds.length > 0) {
-    logger.info("世界包已加载", {
-      packages: activePresetCard.worldPackageIds,
-      rootDir: workspaceLayout.worldPackagesRoot,
-    });
-  }
   deferResourceCleanup(() => worldRuntime.stop());
+  const platform = await createSeneraServerRuntimePlatform({
+    resourceRoot,
+    workspaceRoot,
+    workspaceLayout,
+    configPath,
+    configSnapshot,
+    configService,
+    presetActivation,
+    resolvePresetsConfig,
+    sessionStore,
+    logger,
+  });
+  const { pluginHost, selfService } = platform;
+  deferResourceCleanup(() => platform.stop());
   const runtimeCache = new AgentSystemRuntimeCache({
     workspaceRoot,
     configPath,
@@ -555,8 +596,12 @@ async function startSeneraServerRuntime(
     agenda,
     worldRuntime,
     inferenceBudget,
+    selfService,
+    pluginHost,
+    resourceCoordinator,
   });
   deferResourceCleanup(() => runtimeCache.clear());
+  const { selfHttpApi } = platform;
 
   const loopFactory = (modelProviderId?: string) => {
     const lease = runtimeCache.acquire(modelProviderId);
@@ -568,6 +613,7 @@ async function startSeneraServerRuntime(
 
       return {
         preparationFingerprint: lease.preparationFingerprint,
+        modelProvider: loop.modelProvider,
         run: async (...args: Parameters<AgentLoop["run"]>) => {
           try {
             return await loop.run(...args);
@@ -751,6 +797,7 @@ async function startSeneraServerRuntime(
       : new AgentCallbackRunEventWriter((events) => sessionManager.recordRunEvents(events));
   const cancelEventWriterCleanup = deferResourceCleanup(() => eventWriter.close());
   const userProfileManager = new AgentUserProfileManager(repository);
+  const serverConfig = resolveServerConfig(initialConfig);
   const server = new AgentWebSocketServer({
     config: initialConfig,
     workspaceRoot,
@@ -785,7 +832,27 @@ async function startSeneraServerRuntime(
     },
     uploadStore: workspaceRuntime.uploadStore,
     channelWebhookApi,
+    selfApi: selfHttpApi,
     channelControl: channelService,
+    workspaceInfo: () => {
+      const current = live.current;
+      if (!current) throw new Error("Senera server has not started.");
+      return {
+        workspaceRoot: current.workspaceRoot,
+        configPath: current.configPath,
+        websocketUrl: current.websocketUrl,
+      };
+    },
+    workspaceSwitchRequest: async (nextWorkspaceRoot) => {
+      const current = live.current;
+      if (!current) throw new Error("Senera server has not started.");
+      const next = await current.switchWorkspace(nextWorkspaceRoot);
+      return {
+        workspaceRoot: next.workspaceRoot,
+        configPath: next.configPath,
+        websocketUrl: next.websocketUrl,
+      };
+    },
     runtimeUpdate: createRuntimeUpdateOptions({
       currentVersion: product.version,
       deployment:
@@ -859,6 +926,7 @@ async function startSeneraServerRuntime(
 
   upgradeSession.markStarting();
   await server.start();
+  await platform.start({ host: serverConfig.Host, port: serverConfig.Port });
   await channelService.start();
   residentIdle.ensureScheduled(
     agenda.snapshot(resolveAgentWorldConfig(configSnapshot()).TimeZone).world.id,
@@ -875,99 +943,45 @@ async function startSeneraServerRuntime(
     logger,
     prepared: options.sandboxRuntimePrepared ?? false,
   });
-  if (configSource.kind === "json" && resolveServerConfig(initialConfig).HotReload) {
-    const jsonConfigPath = configSource.configPath;
-    watchedConfigPath = jsonConfigPath;
-    fs.watchFile(jsonConfigPath, { interval: 500 }, () => {
-      try {
-        const snapshot = configService.reloadFromSources();
-        void (async () => {
-          await server.broadcast({
-            kind: AgentEventKinds.ConfigReloaded,
-            context: {},
-            data: {
-              configPath: snapshot.path,
-              source: snapshot.source,
-              revision: snapshot.revision,
-              diagnostics: snapshot.diagnostics,
-            },
-          });
-          await server.broadcast(createAgentWorldSnapshotEvent(worldRuntime));
-          residentIdle.ensureScheduled(
-            agenda.snapshot(resolveAgentWorldConfig(configSnapshot()).TimeZone).world.id,
-            Temporal.Now.instant(),
-          );
-          requestWorldWake("config_reload");
-        })().catch((error) => {
-          logger.error("配置变更事件广播失败", {
-            error: errorMessage(error),
-          });
-        });
-      } catch (error) {
-        emitAgentEvent((event: AgentDomainEvent) => server.broadcast(event), {
-          kind: AgentEventKinds.ConfigFailed,
-          context: {},
-          data: {
-            configPath: jsonConfigPath,
-            message: errorMessage(error),
-            details: serializeError(error),
-          },
-        }).catch((broadcastError) => {
-          logger.error("配置失败事件广播失败", {
-            error: errorMessage(broadcastError),
-          });
-        });
-      }
-    });
-  }
+  const stopConfigWatch = startSeneraServerRuntimeConfigWatcher({
+    enabled: configSource.kind === "json" && serverConfig.HotReload,
+    configPath,
+    configService,
+    server,
+    worldRuntime,
+    residentIdle,
+    agenda,
+    configSnapshot,
+    requestWorldWake,
+    logger,
+  });
 
-  const serverConfig = resolveServerConfig(initialConfig);
-  let stopPromise: Promise<void> | undefined;
-  const stop = (): Promise<void> =>
-    (stopPromise ??= (async () => {
-      if (watchedConfigPath) fs.unwatchFile(watchedConfigPath);
-      unsubscribeSandboxStatus();
-      sessionManager.beginShutdown();
-      const failures: unknown[] = [];
-      collectRejected(await Promise.allSettled([schedules.stop(), workflows.shutdown()]), failures);
-      collectRejected(await Promise.allSettled([delegation.shutdown()]), failures);
-      collectRejected(await Promise.allSettled([delegationCompletion.stop(), channelService.stop()]), failures);
-      const boundaryOutcomes = await Promise.allSettled([server.stop(), sessionManager.shutdown()]);
-      collectRejected(boundaryOutcomes, failures);
-      orchestrationEvents.setSink(undefined);
-      unbindRunDispatch();
-      try {
-        collectRejected(
-          await Promise.allSettled([
-            closeRuntimeInfrastructure(runtimeCache, workspaceRuntime),
-            executionResources.close(),
-            interactionInput.close(),
-            artifactRetention.close(),
-            sandboxRuntimeService.close(),
-          ]),
-          failures,
-        );
-      } finally {
-        for (const close of [
-          () => configService.close(),
-          () => mcpInputs.close(),
-          () => continuityRuntime.close(),
-          () => repository.close(),
-          () => orchestrationDatabase.close(),
-          () => channelsDatabase.close(),
-        ]) {
-          try {
-            close();
-          } catch (error) {
-            failures.push(error);
-          }
-        }
-      }
-      if (failures.length === 1) throw failures[0];
-      if (failures.length > 1) {
-        throw new AggregateError(failures, "Senera server shutdown failed.");
-      }
-    })());
+  const stop = createSeneraServerRuntimeStop({
+    stopConfigWatch,
+    unsubscribeSandboxStatus,
+    sessionManager,
+    schedules,
+    workflows,
+    delegation,
+    delegationCompletion,
+    channelService,
+    server,
+    platform,
+    orchestrationEvents,
+    unbindRunDispatch,
+    runtimeCache,
+    workspaceRuntime,
+    executionResources,
+    interactionInput,
+    artifactRetention,
+    sandboxRuntimeService,
+    configService,
+    mcpInputs,
+    continuityRuntime,
+    repository,
+    orchestrationDatabase,
+    channelsDatabase,
+  });
 
   for (const cancel of startupResourceCleanups) cancel();
   startupCleanup.defer(stop);

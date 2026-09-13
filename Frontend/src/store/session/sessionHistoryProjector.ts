@@ -12,7 +12,20 @@ import { ensureSession, syncSessionCountsFromLoadedMessages, upsertStep } from "
 import { syncRunActiveFlags, touchRun } from "./sessionRunProjection";
 import { mergeToolResultPresentation } from "./toolResultPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import type { ChatMessage, SessionRecord, StoreState, TimelineStep } from "./types";
+import type {
+  ChatMessage,
+  HistoryActiveStreamSnapshot,
+  HistoryHydrationProgress,
+  SessionRecord,
+  StoreState,
+  TimelineStep,
+} from "./types";
+
+/** Keep long replay work off the first interactive frame. */
+export const HistoryHydrationPolicy = Object.freeze({
+  maxSynchronousItems: 512,
+  maxItemsPerSlice: 240,
+});
 
 export type SessionHistoryProjectionContext = {
   state: StoreState;
@@ -45,6 +58,11 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     state.historyReplayBuffers[sessionId] = [];
     state.historyStepBuffers[sessionId] = [];
     state.historyEventRunIds[sessionId] = {};
+    const runEventBuffers = (state.historyRunEventBuffers ??= {});
+    runEventBuffers[sessionId] = [];
+    const previewedIds = (state.historyPreviewedIds ??= {});
+    delete previewedIds[sessionId];
+    if (state.historyHydration) delete state.historyHydration[sessionId];
     state.historyActiveRequestIds[sessionId] = session.activeRequestId ?? null;
     state.historyLoadingIds[sessionId] = true;
     if (!data.refresh) {
@@ -59,9 +77,28 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     if (!sessionId) return;
     const data = env.data as SessionHistoryChunkData;
     ensureSession(state, sessionId);
-    const buffer = state.historyReplayBuffers[sessionId];
-    if (!state.historyLoadingIds[sessionId] || !buffer) return;
-    buffer.push(...data.entries);
+    if (data.preview) {
+      if (!state.historyLoadingIds[sessionId] || data.entries.length === 0) return;
+      const previewedIds = (state.historyPreviewedIds ??= {});
+      previewedIds[sessionId] = true;
+      const previewCompletedRequestIds = new Set(
+        data.entries
+          .filter(
+            ({ entry }) =>
+              entry.kind === "assistant.decision" &&
+              (Boolean(entry.metadata?.run) || Boolean(entry.metadata?.scheduledTask)),
+          )
+          .map(({ entry }) => entry.requestId),
+      );
+      const previewMessages = data.entries
+        .map(({ entry, visible }) => projectEntryToMessage(entry, visible, previewCompletedRequestIds))
+        .filter((message): message is ChatMessage => Boolean(message));
+      mergeHistoryMessages(state.sessions[sessionId], previewMessages);
+      return;
+    }
+    const pages = state.historyReplayBuffers[sessionId];
+    if (!state.historyLoadingIds[sessionId] || !pages || data.entries.length === 0) return;
+    pages.push([...data.entries]);
   },
 
   [EventKinds.SessionHistorySteps]: ({ state, env }) => {
@@ -70,12 +107,12 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     const data = env.data as SessionHistoryStepsData;
     ensureSession(state, sessionId);
     if (!state.historyLoadingIds[sessionId]) return;
-    const buffer = state.historyStepBuffers[sessionId] ?? [];
-    buffer.push(...data.runs);
-    state.historyStepBuffers[sessionId] = buffer;
+    const pages = state.historyStepBuffers[sessionId] ?? [];
+    if (data.runs.length > 0) pages.push([...data.runs]);
+    state.historyStepBuffers[sessionId] = pages;
   },
 
-  [EventKinds.SessionRunHistoryChunk]: ({ state, env, applyEvent }) => {
+  [EventKinds.SessionRunHistoryChunk]: ({ state, env }) => {
     const sessionId = env.sessionId;
     if (!sessionId) return;
     const data = env.data as SessionRunHistoryChunkData;
@@ -84,80 +121,246 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     if (!state.historyLoadingIds[sessionId]) return;
     const eventRunIds = state.historyEventRunIds[sessionId] ?? {};
     state.historyEventRunIds[sessionId] = eventRunIds;
+    const runEventBuffers = (state.historyRunEventBuffers ??= {});
+    const eventPages = runEventBuffers[sessionId] ?? [];
+    runEventBuffers[sessionId] = eventPages;
+    const page: EventEnvelope[] = [];
     for (const event of data.events) {
       if (event.kind === EventKinds.RunStarted && event.requestId) {
         eventRunIds[event.requestId] = true;
       }
       const restoredRequestId = event.scope?.parentRequestId ?? event.requestId;
       if (restoredRequestId && !eventRunIds[restoredRequestId]) continue;
-      const activeStream = captureActiveStream(state, sessionId, restoredRequestId);
-      const projected = applyEvent(state, {
+      page.push({
         ...event,
         sessionId: event.sessionId ?? sessionId,
       });
-      if (projected && activeStream) restoreActiveStream(state, sessionId, activeStream);
     }
+    if (page.length > 0) eventPages.push(page);
   },
 
-  [EventKinds.SessionHistoryCompleted]: ({ state, env }) => {
+  [EventKinds.SessionHistoryCompleted]: ({ state, env, applyEvent }) => {
     const sessionId = env.sessionId;
     if (!sessionId) return;
     const data = env.data as SessionHistoryCompletedData;
     if (data.sessionId && data.sessionId !== sessionId) return;
     if (!state.historyLoadingIds[sessionId]) return;
-    const session = ensureSession(state, sessionId);
-    const buffer = state.historyReplayBuffers[sessionId] ?? [];
-    const stepRuns = state.historyStepBuffers[sessionId] ?? [];
-    const completedRequestIds = new Set(
-      stepRuns.filter((run) => run.status === "completed").map((run) => run.requestId),
-    );
-    const nextMessages = buffer
-      .map((item) => projectEntryToMessage(item.entry, item.visible, completedRequestIds))
-      .filter((message): message is ChatMessage => Boolean(message));
-    const eventRunIds = state.historyEventRunIds[sessionId] ?? {};
-    const activeRequestId = state.historyActiveRequestIds[sessionId] ?? undefined;
-    // Run events restore live progress messages and execution details; conversation entries restore durable turns.
-    mergeHistoryMessages(session, nextMessages);
-    reconcileHistoryStepRuns(session, stepRuns);
-    closeRecoveredRunningRuns(
-      session,
-      env.timestamp,
-      new Set([...stepRuns.map((run) => run.requestId), ...Object.keys(eventRunIds)]),
-      activeRequestId,
-    );
-    clearHistoryLoadingState(state, sessionId);
-    state.historyLoadedIds[sessionId] = true;
-    syncSessionCountsFromLoadedMessages(session);
+    ensureSession(state, sessionId);
+    const progress = createHistoryHydrationProgress(state, sessionId, env.timestamp);
+    if (historyWorkSize(state, sessionId) > HistoryHydrationPolicy.maxSynchronousItems) {
+      const hydration = (state.historyHydration ??= {});
+      hydration[sessionId] = progress;
+      // The wire replay is complete, so the composer can be used while the
+      // remaining pages are projected during idle time.
+      state.historyLoadingIds[sessionId] = false;
+      return;
+    }
+
+    while (advanceSessionHistoryHydration(state, sessionId, applyEvent, progress, Number.MAX_SAFE_INTEGER)) {
+      // Small histories use the same reconciliation path as large histories;
+      // the only difference is that this loop is allowed to finish inline.
+    }
   },
 };
 
-type ActiveStreamSnapshot = Pick<
-  SessionRecord["runs"][number],
-  | "requestId"
-  | "status"
-  | "endedAt"
-  | "recoverySource"
-  | "liveActivity"
-  | "activities"
-  | "activeFlags"
-  | "streamingRaw"
-  | "xmlPreview"
-  | "visibleText"
-  | "displayText"
-  | "displayMessageId"
-  | "visibleKind"
-  | "expectedOutputMode"
-  | "decisionMode"
-  | "plannedDecisionMode"
-  | "modelProvider"
-  | "continuity"
->;
+/**
+ * Drain one history replay in bounded work slices. The caller owns scheduling;
+ * keeping this function synchronous makes it usable by both the Zustand
+ * action and the inline small-history path without introducing a second state
+ * machine.
+ */
+export function advanceSessionHistoryHydration(
+  state: StoreState,
+  sessionId: string,
+  applyEvent: (state: StoreState, env: EventEnvelope) => boolean,
+  suppliedProgress?: HistoryHydrationProgress,
+  itemBudget: number = HistoryHydrationPolicy.maxItemsPerSlice,
+): boolean {
+  const progress = suppliedProgress ?? state.historyHydration?.[sessionId];
+  if (!progress) return false;
+  const session = state.sessions[sessionId];
+  if (!session) {
+    clearHistoryLoadingState(state, sessionId);
+    return false;
+  }
+
+  let remaining = Math.max(1, itemBudget);
+  while (remaining > 0) {
+    if (progress.phase === "events") {
+      const pages = state.historyRunEventBuffers?.[sessionId] ?? [];
+      const page = pages[progress.eventPageIndex];
+      if (!page) {
+        progress.phase = "steps";
+        continue;
+      }
+      while (progress.eventItemIndex < page.length && remaining > 0) {
+        applyEvent(state, page[progress.eventItemIndex]!);
+        progress.eventItemIndex += 1;
+        remaining -= 1;
+      }
+      if (progress.eventItemIndex >= page.length) {
+        pages[progress.eventPageIndex] = [];
+        progress.eventPageIndex += 1;
+        progress.eventItemIndex = 0;
+      }
+      continue;
+    }
+
+    if (progress.phase === "steps") {
+      const pages = state.historyStepBuffers[sessionId] ?? [];
+      const page = pages[progress.stepPageIndex];
+      if (!page) {
+        progress.phase = "entries";
+        continue;
+      }
+      const start = progress.stepItemIndex;
+      const end = Math.min(page.length, start + remaining);
+      if (end > start) {
+        reconcileHistoryStepRuns(session, page.slice(start, end), false);
+        const requestIds = page.slice(start, end).map((run) => run.requestId);
+        for (const requestId of requestIds) progress.recoveredRequestIds[requestId] = true;
+        progress.stepItemIndex = end;
+        remaining -= end - start;
+      }
+      if (progress.stepItemIndex >= page.length) {
+        pages[progress.stepPageIndex] = [];
+        progress.stepPageIndex += 1;
+        progress.stepItemIndex = 0;
+      }
+      continue;
+    }
+
+    const pages = state.historyReplayBuffers[sessionId] ?? [];
+    const page = pages[progress.entryPageIndex];
+    if (!page) {
+      finalizeHistoryHydration(state, sessionId, progress);
+      return false;
+    }
+    const start = progress.entryItemIndex;
+    const end = Math.min(page.length, start + remaining);
+    if (end > start) {
+      const completedRequestIds = new Set(Object.keys(progress.completedRequestIds));
+      const projected = page
+        .slice(start, end)
+        .map((item) => projectEntryToMessage(item.entry, item.visible, completedRequestIds))
+        .filter((message): message is ChatMessage => Boolean(message));
+      mergeHistoryMessages(session, projected, {
+        sort: false,
+        placement: progress.entryDirection,
+      });
+      progress.entryItemIndex = end;
+      remaining -= end - start;
+    }
+    if (progress.entryItemIndex >= page.length) {
+      pages[progress.entryPageIndex] = [];
+      progress.entryItemIndex = 0;
+      progress.entryPageIndex += progress.entryDirection === "prepend" ? -1 : 1;
+    }
+  }
+
+  return true;
+}
+
+function createHistoryHydrationProgress(
+  state: StoreState,
+  sessionId: string,
+  completedAt: string,
+): HistoryHydrationProgress {
+  const stepPages = state.historyStepBuffers[sessionId] ?? [];
+  const eventRunIds = state.historyEventRunIds[sessionId] ?? {};
+  const completedRequestIds: Record<string, boolean> = {};
+  const recoveredRequestIds: Record<string, boolean> = { ...eventRunIds };
+  for (const page of stepPages) {
+    for (const run of page) {
+      recoveredRequestIds[run.requestId] = true;
+      if (run.status === "completed") completedRequestIds[run.requestId] = true;
+    }
+  }
+  const entryPages = state.historyReplayBuffers[sessionId] ?? [];
+  const prepended = state.historyPreviewedIds?.[sessionId] === true;
+  const activeRequestId = state.historyActiveRequestIds[sessionId] ?? undefined;
+  return {
+    phase: "events",
+    entryPageIndex: prepended ? entryPages.length - 1 : 0,
+    entryItemIndex: 0,
+    stepPageIndex: 0,
+    stepItemIndex: 0,
+    eventPageIndex: 0,
+    eventItemIndex: 0,
+    entryDirection: prepended ? "prepend" : "append",
+    completedAt,
+    completedRequestIds,
+    recoveredRequestIds,
+    activeRequestId,
+    activeStream: captureActiveStream(state, sessionId, activeRequestId),
+  };
+}
+
+function historyWorkSize(state: StoreState, sessionId: string): number {
+  const entries = (state.historyReplayBuffers[sessionId] ?? []).reduce((total, page) => total + page.length, 0);
+  const steps = (state.historyStepBuffers[sessionId] ?? []).reduce((total, page) => total + page.length, 0);
+  const events = (state.historyRunEventBuffers?.[sessionId] ?? []).reduce((total, page) => total + page.length, 0);
+  return entries + steps + events;
+}
+
+function finalizeHistoryHydration(state: StoreState, sessionId: string, progress: HistoryHydrationProgress): void {
+  const session = state.sessions[sessionId];
+  if (!session) {
+    clearHistoryLoadingState(state, sessionId);
+    return;
+  }
+
+  session.messages.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  session.runs.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+  const activeRequestId = resolveHydrationActiveRequestId(session, progress);
+  if (progress.activeStream && activeRequestId === progress.activeStream.requestId) {
+    restoreActiveStream(state, sessionId, progress.activeStream);
+  }
+  closeRecoveredRunningRuns(
+    session,
+    progress.completedAt,
+    new Set(Object.keys(progress.recoveredRequestIds)),
+    activeRequestId,
+  );
+  clearHistoryLoadingState(state, sessionId);
+  state.historyLoadedIds[sessionId] = true;
+  syncSessionCountsFromLoadedMessages(session);
+}
+
+function resolveHydrationActiveRequestId(
+  session: SessionRecord,
+  progress: HistoryHydrationProgress,
+): string | undefined {
+  const snapshotActiveRequestId = progress.activeRequestId;
+  const currentActiveRequestId = session.activeRequestId;
+
+  // Replay events can temporarily make an old historical run look active. Keep
+  // the server snapshot as the authority for recovered requests, while still
+  // preserving a new live request started after the wire replay completed.
+  if (
+    currentActiveRequestId &&
+    currentActiveRequestId !== snapshotActiveRequestId &&
+    !progress.recoveredRequestIds[currentActiveRequestId]
+  ) {
+    return currentActiveRequestId;
+  }
+
+  if (currentActiveRequestId === undefined) {
+    const snapshotRun = snapshotActiveRequestId
+      ? session.runs.find((run) => run.requestId === snapshotActiveRequestId)
+      : undefined;
+    if (snapshotRun?.status === "running") return snapshotActiveRequestId;
+    return undefined;
+  }
+
+  return snapshotActiveRequestId;
+}
 
 function captureActiveStream(
   state: StoreState,
   sessionId: string,
   restoredRequestId: string | undefined,
-): ActiveStreamSnapshot | undefined {
+): HistoryActiveStreamSnapshot | undefined {
   const activeRequestId = state.historyActiveRequestIds[sessionId] ?? undefined;
   if (!activeRequestId || restoredRequestId !== activeRequestId) return undefined;
   const run = state.sessions[sessionId]?.runs.find((entry) => entry.requestId === activeRequestId);
@@ -190,7 +393,7 @@ function captureActiveStream(
   };
 }
 
-function restoreActiveStream(state: StoreState, sessionId: string, snapshot: ActiveStreamSnapshot): void {
+function restoreActiveStream(state: StoreState, sessionId: string, snapshot: HistoryActiveStreamSnapshot): void {
   const session = state.sessions[sessionId];
   const run = session?.runs.find((entry) => entry.requestId === snapshot.requestId);
   if (!session || !run) return;
@@ -198,12 +401,20 @@ function restoreActiveStream(state: StoreState, sessionId: string, snapshot: Act
   session.activeRequestId = snapshot.requestId;
 }
 
-function reconcileHistoryStepRuns(session: SessionRecord, snapshots: SessionHistoryStepsData["runs"]): void {
+function reconcileHistoryStepRuns(
+  session: SessionRecord,
+  snapshots: SessionHistoryStepsData["runs"],
+  sort = true,
+): void {
+  if (snapshots.length === 0) return;
+
+  const runsByRequestId = new Map(session.runs.map((run) => [run.requestId, run] as const));
   for (const snapshot of snapshots) {
     const recovered = rebuildRunFromHistory(snapshot);
-    const existing = session.runs.find((run) => run.requestId === snapshot.requestId);
+    const existing = runsByRequestId.get(snapshot.requestId);
     if (!existing) {
       session.runs.push(recovered);
+      runsByRequestId.set(snapshot.requestId, recovered);
       continue;
     }
 
@@ -233,7 +444,7 @@ function reconcileHistoryStepRuns(session: SessionRecord, snapshots: SessionHist
     }
     touchRun(existing);
   }
-  session.runs.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+  if (sort) session.runs.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
 }
 
 /**
@@ -288,6 +499,9 @@ function clearHistoryLoadingState(state: StoreState, sessionId: string): void {
   delete state.historyStepBuffers[sessionId];
   delete state.historyEventRunIds[sessionId];
   delete state.historyActiveRequestIds[sessionId];
+  if (state.historyRunEventBuffers) delete state.historyRunEventBuffers[sessionId];
+  if (state.historyPreviewedIds) delete state.historyPreviewedIds[sessionId];
+  if (state.historyHydration) delete state.historyHydration[sessionId];
   delete state.historyFailedIds[sessionId];
   delete state.missingOnServerIds[sessionId];
 }

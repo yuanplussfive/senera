@@ -10,6 +10,7 @@ import type { ModelsDevModelMetadata } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { Button, Dialog, DialogContent, InlineError, MenuSelect, ScrollArea, Tooltip } from "../../shared/ui";
 import { ModelProviderIconNames } from "./ModelProviderIcon";
+import { ModelThinkingControls } from "./ModelThinkingControls";
 import {
   readBooleanWithTemplate,
   readModelCapabilities,
@@ -120,6 +121,7 @@ export function ModelOptionsDialog({
   const catalogContextLimit = catalogMetadata?.contextLimit ? String(catalogMetadata.contextLimit) : undefined;
   const streamEnabled =
     typeof model.Stream === "boolean" ? model.Stream : (readBooleanWithTemplate(modelTemplate, "Stream") ?? true);
+  const reasoningEnabled = capabilities.Reasoning === true;
 
   const updateCapability = (key: keyof ModelCapabilitiesDraft, enabled: boolean): void => {
     onChange({
@@ -189,6 +191,13 @@ export function ModelOptionsDialog({
               />
               <ToolPlanningModeControl value={toolPlanningMode} disabled={disabled} onChange={updateToolPlanningMode} />
             </section>
+
+            <ModelThinkingControls
+              model={model}
+              disabled={disabled}
+              reasoningEnabled={reasoningEnabled}
+              onChange={onChange}
+            />
 
             <section>
               <SectionLabel

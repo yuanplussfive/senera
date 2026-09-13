@@ -4,6 +4,7 @@ describe("buildSettingsSurfaceSyncRequests", () => {
   it("keeps the independent settings surface scoped to settings workbench data", () => {
     expect(buildSettingsSurfaceSyncRequests()).toEqual([
       { type: "config.get" },
+      { type: "workspace.get" },
       { type: "model.list" },
       { type: "systemTool.list" },
       { type: "mcpServer.list" },

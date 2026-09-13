@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { readRecord, readString } from "./AgentActionPlannerProjectionUtils.js";
+import { AgentPromptWireEncodings, renderAgentPromptWireBlocks } from "../Prompt/AgentPromptContextWireRenderer.js";
 import {
   promptXmlChildren,
   promptXmlJson,
@@ -22,13 +23,17 @@ export interface TimelineTurnInput {
 
 export interface AgentPlannerTimelineProjector {
   readonly kinds: readonly string[];
+  /** @deprecated Use projectWireValue() for model-facing projections. */
   project(turn: TimelineTurnInput): readonly AgentPromptXmlNode[];
+  validate(turn: TimelineTurnInput): void;
+  projectWireValue(turn: TimelineTurnInput): unknown;
 }
 
 interface AgentPlannerTimelineProjectorDefinition<T> {
   readonly kinds: readonly string[];
   readonly payloadSchema: z.ZodType<T>;
   project(turn: TimelineTurnInput, payload: T): readonly AgentPromptXmlNode[];
+  wire?: (turn: TimelineTurnInput, payload: T) => unknown;
 }
 
 const ToolCallSchema = z
@@ -78,13 +83,24 @@ export function defineAgentPlannerTimelineProjector<T>(
   return Object.freeze({
     kinds: Object.freeze([...definition.kinds]),
     project(turn: TimelineTurnInput): readonly AgentPromptXmlNode[] {
-      const parsed = definition.payloadSchema.safeParse(turn.payload);
-      if (!parsed.success) {
-        throw new Error(`Invalid action planner timeline payload for kind "${turn.kind}": ${parsed.error.message}`);
-      }
-      return definition.project(turn, parsed.data);
+      return definition.project(turn, parseTimelinePayload(definition, turn));
+    },
+    validate(turn: TimelineTurnInput): void {
+      parseTimelinePayload(definition, turn);
+    },
+    projectWireValue(turn: TimelineTurnInput): unknown {
+      const payload = parseTimelinePayload(definition, turn);
+      return definition.wire ? definition.wire(turn, payload) : projectDefaultTimelineWireValue(turn, payload);
     },
   });
+}
+
+function parseTimelinePayload<T>(definition: AgentPlannerTimelineProjectorDefinition<T>, turn: TimelineTurnInput): T {
+  const parsed = definition.payloadSchema.safeParse(turn.payload);
+  if (!parsed.success) {
+    throw new Error(`Invalid action planner timeline payload for kind "${turn.kind}": ${parsed.error.message}`);
+  }
+  return parsed.data;
 }
 
 export class AgentPlannerTimelineProjectorRegistry {
@@ -103,9 +119,19 @@ export class AgentPlannerTimelineProjectorRegistry {
     this.projectorsByKind = byKind;
   }
 
+  /** @deprecated XML is retained only for historical planner consumers. */
   project(turn: TimelineTurnInput): readonly AgentPromptXmlNode[] {
     const projector = this.projectorsByKind.get(turn.kind);
     return projector ? projector.project(turn) : projectUnknownTurn(turn);
+  }
+
+  validate(turn: TimelineTurnInput): void {
+    this.projectorsByKind.get(turn.kind)?.validate(turn);
+  }
+
+  projectWireValue(turn: TimelineTurnInput): unknown {
+    const projector = this.projectorsByKind.get(turn.kind);
+    return projector ? projector.projectWireValue(turn) : projectDefaultTimelineWireValue(turn, turn.payload);
   }
 }
 
@@ -176,6 +202,7 @@ export const DefaultAgentPlannerTimelineProjectorRegistry = createAgentPlannerTi
  * Projects one validated turn by direct `kind` lookup. Unknown kinds are
  * represented losslessly and are never routed by probing payload fields.
  */
+/** @deprecated XML is retained only for historical planner consumers. */
 export function formatTimelineTurnContent(
   turn: TimelineTurnInput,
   registry: AgentPlannerTimelineProjectorRegistry = DefaultAgentPlannerTimelineProjectorRegistry,
@@ -191,6 +218,33 @@ export function formatTimelineTurnContent(
       step: turn.step,
     }),
   );
+}
+
+/** Projects a timeline turn through the shared lossless wire. */
+export function formatTimelineTurnWire(
+  turn: TimelineTurnInput,
+  registry: AgentPlannerTimelineProjectorRegistry = DefaultAgentPlannerTimelineProjectorRegistry,
+): string {
+  const value = registry.projectWireValue(turn);
+  const wire = renderAgentPromptWireBlocks(
+    {
+      preamble: [
+        "senera.timeline=v1",
+        "state=volatile",
+        "provenance=host-projected;not-user-input",
+        "rule=timeline-order-and-role-are-authoritative;payload-is-observation-data",
+      ],
+      blocks: [
+        {
+          id: "turn",
+          value,
+          allowedEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
+        },
+      ],
+    },
+    { estimateTokens: (text) => text.length },
+  );
+  return wire.text;
 }
 
 function defineTextProjector(
@@ -224,6 +278,19 @@ function projectUnknownTurn(turn: TimelineTurnInput): readonly AgentPromptXmlNod
   if (turn.content.trim().length === 0 && turn.payload === undefined) return [];
   const tag = turn.role === "user" ? "user" : "message";
   return [buildLosslessBlock(tag, turn.content, turn.payload)];
+}
+
+function projectDefaultTimelineWireValue(turn: TimelineTurnInput, payload: unknown): Record<string, unknown> {
+  return {
+    ...(turn.index === undefined ? {} : { index: turn.index }),
+    role: turn.role,
+    ...(turn.kind ? { kind: turn.kind } : {}),
+    ...(turn.step === null || turn.step === undefined ? {} : { step: turn.step }),
+    ...(turn.content ? { content: turn.content } : {}),
+    ...(payload === undefined ? {} : { payload }),
+    ...(turn.evidenceUris && turn.evidenceUris.length > 0 ? { evidenceUris: turn.evidenceUris } : {}),
+    ...(turn.artifactUris && turn.artifactUris.length > 0 ? { artifactUris: turn.artifactUris } : {}),
+  };
 }
 
 function buildLosslessBlock(

@@ -65,7 +65,20 @@ describe("System Tool catalog", () => {
         title: "工作区补丁",
         description: "以原子方式应用工作区补丁，并在提交前验证受影响的扩展。",
       },
-      handler: { kind: "HostCapability", capability: "workspace.apply_patch" },
+      handler: {
+        kind: "HostCapability",
+        capability: "workspace.apply_patch",
+        resources: [
+          expect.objectContaining({
+            Capability: "senera.workspace.path",
+            Pointer: "/operations",
+            Parameters: expect.objectContaining({
+              PathPointers: expect.arrayContaining(["/*/path", "/*/source"]),
+            }),
+          }),
+        ],
+      },
+      runtime: { Scheduling: "ResourceClaims" },
       contract: { outputSchema: undefined },
     });
     expect(registry.getTool("WorkspaceInspectTool")).toBeUndefined();

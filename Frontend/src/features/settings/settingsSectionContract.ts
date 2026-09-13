@@ -10,6 +10,7 @@ export const settingsSectionIds = [
   "general",
   "appearance",
   "storage",
+  "workspace",
   "about",
 ] as const;
 

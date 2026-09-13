@@ -19,6 +19,7 @@ export function buildConnectionOpenSyncRequests(userProfile: UserProfile): WsReq
   const requests: WsRequest[] = [
     { type: "session.list" },
     { type: "config.get" },
+    { type: "workspace.get" },
     { type: "model.list" },
     { type: "preset.list" },
     { type: "sandbox.status" },
@@ -40,6 +41,7 @@ export function buildManualRefreshRequests(): WsRequest[] {
   return [
     { type: "session.list" },
     { type: "config.get" },
+    { type: "workspace.get" },
     { type: "model.list" },
     { type: "preset.list" },
     { type: "profile.get" },

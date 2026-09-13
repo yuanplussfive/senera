@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { lazy, Suspense, useId, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "../../lib/util";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { motionTimings, useMotionLevel } from "../../shared/motion";
 import { Popover, PopoverContent, PopoverTrigger } from "../../shared/ui/Popover";
 import { Spinner } from "../../shared/ui/Spinner";
@@ -23,14 +24,16 @@ export function ThinkingSummaryBar({
   const [expanded, setExpanded] = useState(false);
   const detailId = useId();
   const { disableMotion, reduceMotion } = useMotionLevel();
-  const live = run?.status === "running" || run?.status === "cancelling";
+  const live = run?.status === "running";
+  const cancelling = run?.status === "cancelling";
 
   if (!run || (run.status === "running" && presentation !== "live-final-answer") || (!live && run.steps.length === 0)) {
     return null;
   }
 
   const summary = summarizeRun(run);
-  const label = live ? "Thinking..." : `Thinking ${summary.duration}`;
+  const label = readThinkingLabel(run.status, summary.duration);
+  const compactLabel = live || cancelling ? label : readTerminalLabel(run.status);
 
   return (
     <div className="mt-1.5" data-ui-chrome>
@@ -42,13 +45,13 @@ export function ThinkingSummaryBar({
             aria-controls={detailId}
             aria-expanded={expanded}
             aria-label={label}
+            data-run-status={run.status}
           >
-            {live ? <Spinner size="xs" className="text-content-secondary" /> : null}
-            <span className={cn("truncate", live && "thinking-summary-trigger__label--live")}>
-              {live ? label : "Thinking"}
+            {live || cancelling ? <Spinner size="xs" className="text-content-secondary" /> : null}
+            <span className={cn("truncate", (live || cancelling) && "thinking-summary-trigger__label--live")}>
+              {compactLabel}
             </span>
-            {!live ? <span className="shrink-0 tabular-nums text-content-muted">{summary.duration}</span> : null}
-            {!live ? (
+            {!live && !cancelling ? (
               <motion.span
                 animate={{ rotate: expanded ? 180 : 0 }}
                 transition={disableMotion || reduceMotion ? { duration: 0 } : motionTimings.base}
@@ -76,4 +79,30 @@ export function ThinkingSummaryBar({
       </Popover>
     </div>
   );
+}
+
+function readThinkingLabel(status: NonNullable<RunRecord>["status"], duration: string): string {
+  switch (status) {
+    case "running":
+      return "Thinking...";
+    case "cancelling":
+      return frontendMessage("workflow.run.status.cancelling");
+    case "cancelled":
+      return frontendMessage("workflow.run.status.cancelled");
+    case "failed":
+      return frontendMessage("workflow.run.status.failed");
+    case "completed":
+      return `Thinking ${duration}`;
+  }
+}
+
+function readTerminalLabel(status: NonNullable<RunRecord>["status"]): string {
+  switch (status) {
+    case "cancelled":
+      return frontendMessage("workflow.run.status.cancelled");
+    case "failed":
+      return frontendMessage("workflow.run.status.failed");
+    default:
+      return "Thinking";
+  }
 }

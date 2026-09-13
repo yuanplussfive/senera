@@ -10,8 +10,10 @@ export const AgentPiInteractiveCacheRetention = AgentLongLivedCacheRetention;
 export type AgentPiPromptCachePhase =
   | "native-conversation"
   | "native-channel-rewrite"
+  | "baml-channel-rewrite"
   | "baml-planning"
   | "baml-compaction"
+  | "tool-learning"
   | "goal-decision"
   | "resident-speech-action-preface"
   | "resident-speech-final-response";
@@ -40,14 +42,17 @@ export interface AgentPiPromptCacheStablePrefix {
  * routing metadata never become part of the prompt-cache key verbatim.
  */
 export function createAgentPiLogicalCacheScope(input: {
-  readonly sessionId: string;
+  /** Physical session identity. Kept for console and legacy callers. */
+  readonly sessionId?: string;
+  /** Stable host-owned identity of a conversation space. */
+  readonly identity?: string;
   readonly family?: string;
 }): string {
-  const sessionId = requireAgentPiPromptCacheSessionId(input.sessionId);
+  const identity = resolveLogicalCacheIdentity(input);
   return sha256HexOfCanonicalJson({
     namespace: "senera.pi.logical-cache",
     family: input.family?.trim() || "conversation",
-    sessionId,
+    identity,
   });
 }
 
@@ -69,8 +74,19 @@ export function createAgentPiPromptCacheOptions(input: {
   readonly model: AgentPiPromptCacheModelIdentity;
   readonly stablePrefix?: AgentPiPromptCacheStablePrefix;
 }): AgentLanguageModelCacheOptions {
-  const logicalCacheScope = requireAgentPiPromptCacheScope(input.logicalCacheScope ?? input.sessionId);
-  return createAgentModelCacheOptions({
+  const logicalCacheScope = requireAgentPiPromptCacheScope(
+    input.logicalCacheScope ??
+      (input.sessionId
+        ? createAgentPiLogicalCacheScope({ sessionId: input.sessionId, family: "conversation" })
+        : undefined),
+  );
+  const stablePrefix = input.stablePrefix
+    ? {
+        systemPrompt: input.stablePrefix.systemPrompt ?? "",
+        tools: input.stablePrefix.tools ?? [],
+      }
+    : undefined;
+  const cache = createAgentModelCacheOptions({
     namespace: "senera.pi",
     identity: {
       phase: input.phase,
@@ -80,17 +96,13 @@ export function createAgentPiPromptCacheOptions(input: {
         api: requireText(input.model.api, "API"),
         model: requireText(input.model.model, "model"),
       },
-      ...(input.stablePrefix
-        ? {
-            stablePrefixRevision: sha256HexOfCanonicalJson({
-              systemPrompt: input.stablePrefix.systemPrompt ?? "",
-              tools: input.stablePrefix.tools ?? [],
-            }),
-          }
-        : {}),
     },
+    sessionId: input.sessionId,
+    logicalCacheScope,
     retention: AgentPiInteractiveCacheRetention,
+    stablePrefix,
   });
+  return cache;
 }
 
 export function projectAgentPiPromptCacheModel(
@@ -115,4 +127,10 @@ function requireText(value: string, name: string): string {
   const normalized = value.trim();
   if (!normalized) throw new Error(`Pi prompt cache ${name} must not be empty.`);
   return normalized;
+}
+
+function resolveLogicalCacheIdentity(input: { readonly sessionId?: string; readonly identity?: string }): string {
+  const identity = input.identity?.trim();
+  if (identity) return identity;
+  return requireAgentPiPromptCacheSessionId(input.sessionId);
 }

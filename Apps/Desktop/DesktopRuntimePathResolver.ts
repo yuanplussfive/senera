@@ -42,16 +42,17 @@ export function resolveDesktopResourceRoot(input: DesktopResourceRootResolutionI
 }
 
 export function resolveDesktopWorkspaceRoot(input: {
-  isPackaged: boolean;
   resourceRoot: string;
   configuredWorkspaceRoot?: string;
   persistedWorkspaceRoot?: string;
 }): string | undefined {
   const configured = input.configuredWorkspaceRoot?.trim();
   if (configured) return path.resolve(configured);
-  if (!input.isPackaged) return path.resolve(input.resourceRoot);
   const persisted = input.persistedWorkspaceRoot?.trim();
-  return persisted ? path.resolve(persisted) : undefined;
+  if (persisted) return path.resolve(persisted);
+  // Packaged apps default to the project root just like development, so the
+  // desktop and web deployments share one workspace unless the user switches.
+  return path.resolve(input.resourceRoot);
 }
 
 export class DesktopRuntimePathResolutionError extends Error {

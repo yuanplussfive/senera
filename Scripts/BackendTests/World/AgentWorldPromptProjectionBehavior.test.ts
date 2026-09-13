@@ -2,6 +2,8 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { AgentPromptRenderer } from "../../../Source/AgentSystem/Prompt/AgentPromptRenderer.js";
 import type { AgentWorkflowPromptContext } from "../../../Source/AgentSystem/Prompt/AgentWorkflowPromptContext.js";
+import { EmptyAgentDelegationPromptContext } from "../../../Source/AgentSystem/Orchestration/AgentDelegationPromptContext.js";
+import { renderAgentWorkflowPromptWire } from "../../../Source/AgentSystem/Prompt/AgentPromptContextWireRenderer.js";
 
 describe("world prompt projection", () => {
   test("renders one authoritative world state without a duplicate Agenda section", () => {
@@ -62,18 +64,19 @@ describe("world prompt projection", () => {
           nextPlan: null,
         },
       },
+      delegation: EmptyAgentDelegationPromptContext,
     };
 
+    const wire = renderAgentWorkflowPromptWire(workflow, { estimateTokens: (text) => text.length });
     const rendered = new AgentPromptRenderer().renderFileSync(
       path.resolve(process.cwd(), "System", "Prompts", "Templates", "WorkflowContext.liquid"),
-      { Workflow: workflow },
+      { Workflow: workflow, WorkflowWire: wire.text },
     );
 
-    expect(rendered).toContain('<world_state source="senera_world_runtime">');
-    expect(rendered).toContain(
-      '<relation id="relation_resident_home" subject="resident" predicate="lives_at" object="home" />',
-    );
-    expect(rendered).not.toContain("valid_from=");
-    expect(rendered).not.toContain("<world_agenda");
+    expect(rendered).toContain("senera.workflow=v1");
+    expect(rendered).toMatch(/\[senera\.world\] encoding=(toon|compact-json)/u);
+    expect(rendered).toContain("relation_resident_home");
+    expect(rendered).not.toContain("world_agenda");
+    expect(wire.complete).toBe(true);
   });
 });

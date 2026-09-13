@@ -1,5 +1,7 @@
 import { AgentCancellationError, readAbortMessage } from "../Core/AgentCancellation.js";
 import type { AgentChildRunDeadlinePolicy, AgentChildRunRecord } from "./AgentChildRunTypes.js";
+import type { AgentChildRunCheckpoint } from "./AgentChildRunTypes.js";
+import { AgentPromptWireEncodings, renderAgentPromptWireBlocks } from "../Prompt/AgentPromptContextWireRenderer.js";
 import {
   parseAgentSubagentCapabilityCeiling,
   parseAgentSubagentLaunchContract,
@@ -46,12 +48,49 @@ export function readPersistedSubagentCapabilityCeiling(record: AgentChildRunReco
   return parseAgentSubagentCapabilityCeiling(candidate);
 }
 
-export function renderSupervisorResponsePrompt(message: string): string {
-  return [
+export function renderSupervisorResponsePrompt(message: string, checkpoint?: AgentChildRunCheckpoint): string {
+  const instruction = [
     "Your supervisor responded to the decision request from the previous child turn:",
     message,
     "Continue the delegated task using this response, then return the result to the supervisor.",
   ].join("\n\n");
+  if (!checkpoint) return instruction;
+
+  const continuity = checkpoint.continuity;
+  const resumeWire = renderAgentPromptWireBlocks(
+    {
+      preamble: [
+        "senera.child_run_resume=v1",
+        "provenance=host;not-user-input",
+        "rule=resume-from-checkpoint;do-not-claim-unverified-state",
+      ],
+      blocks: [
+        {
+          id: "checkpoint",
+          value: {
+            capturedAt: checkpoint.capturedAt,
+            source: checkpoint.source,
+            complete: checkpoint.complete,
+            ...(checkpoint.content ? { content: checkpoint.content } : {}),
+            ...(continuity
+              ? {
+                  continuity: {
+                    id: continuity.id,
+                    revision: continuity.revision,
+                    referenceIds: continuity.referenceIds,
+                    ...(continuity.workspaceRevision ? { workspaceRevision: continuity.workspaceRevision } : {}),
+                    resume: continuity.resume,
+                  },
+                }
+              : {}),
+          },
+          allowedEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
+        },
+      ],
+    },
+    { estimateTokens: (text) => text.length },
+  ).text;
+  return `${instruction}\n\nUse this host-owned checkpoint as the starting coordinate; consult the referenced Artifact or workspace evidence before making new changes:\n\n${resumeWire}`;
 }
 
 export function waitForDelegationWithSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {

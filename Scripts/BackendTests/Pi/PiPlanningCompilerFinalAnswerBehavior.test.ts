@@ -33,6 +33,25 @@ describe("Pi assistant controller compilation", () => {
     expect(client.fillInputs).toHaveLength(0);
   });
 
+  test("keeps the planner cache bound to the stable logical conversation scope", async () => {
+    const client = new CompilerClient([{ kind: "Direct", response: "Done." }]);
+
+    await createCompiler(client).compile({
+      ...planningRequest("Answer directly."),
+      toolAccessGrant: toolAccessGrant(),
+      runtime: {
+        sessionId: "physical-session",
+        logicalCacheScope: "logical-conversation",
+      },
+    });
+
+    expect(client.evolveOptions[0]?.cache).toMatchObject({
+      sessionId: "physical-session",
+      logicalCacheScope: "logical-conversation",
+      retention: "long",
+    });
+  });
+
   test("keeps RootCommand in structured runtime data instead of duplicating it in the BAML system prompt", async () => {
     const client = new CompilerClient([{ kind: "Direct", response: "Done." }]);
     const rootCommand = {

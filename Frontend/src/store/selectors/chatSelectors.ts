@@ -14,6 +14,7 @@ export function useChatState(sessionId: string | null) {
       historyLoaded: sessionId ? !!s.historyLoadedIds[sessionId] : false,
       historyLoading: sessionId ? !!s.historyLoadingIds[sessionId] : false,
       historyFailed: sessionId ? !!s.historyFailedIds[sessionId] : false,
+      historyHydrating: sessionId ? !!s.historyHydration?.[sessionId] : false,
     })),
   );
 }

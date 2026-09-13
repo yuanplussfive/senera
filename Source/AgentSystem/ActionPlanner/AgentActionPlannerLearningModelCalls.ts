@@ -10,19 +10,24 @@ import type {
   AgentToolLearningPromptInput,
 } from "./AgentLearningPromptJson.js";
 import type { AgentActionPlannerStructuredCaller } from "./AgentActionPlannerStructuredCaller.js";
-import type { AgentStablePromptInvocationOptions } from "../ModelEndpoints/AgentLanguageModel.js";
+import type {
+  AgentLanguageModelInvocationOptions,
+  AgentStablePromptInvocationOptions,
+} from "../ModelEndpoints/AgentLanguageModel.js";
 
 export class AgentActionPlannerLearningModelCalls {
   constructor(private readonly caller: AgentActionPlannerStructuredCaller) {}
 
   async learnToolUse(
     input: AgentToolLearningPromptInput,
-    options: { signal?: AbortSignal } = {},
+    options: AgentLanguageModelInvocationOptions = {},
   ): Promise<BamlToolLearningResult> {
     return this.caller.run({
       functionName: "LearnToolUse",
       args: { functionName: "LearnToolUse", input },
       signal: options.signal,
+      attachments: options.attachments,
+      cache: options.cache,
       parse: (rawOutput) => baml.parse.LearnToolUse(rawOutput),
       repair: (failure) => ({
         functionName: "RepairToolLearning",
@@ -39,12 +44,14 @@ export class AgentActionPlannerLearningModelCalls {
       invalidLearning: string;
       issues: string[];
     },
-    requestOptions: { signal?: AbortSignal } = {},
+    requestOptions: AgentLanguageModelInvocationOptions = {},
   ): Promise<BamlToolLearningResult> {
     return this.caller.repair({
       functionName: "RepairToolLearning",
       args: { functionName: "RepairToolLearning", ...options },
       signal: requestOptions.signal,
+      attachments: requestOptions.attachments,
+      cache: requestOptions.cache,
       parse: (rawOutput) => baml.parse.RepairToolLearning(rawOutput),
     });
   }

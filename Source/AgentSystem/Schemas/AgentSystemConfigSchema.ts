@@ -32,6 +32,13 @@ const AgentSystemExtensionConfigSchema = z
   })
   .strict();
 
+const AgentPluginsConfigSchema = z
+  .object({
+    Enabled: z.array(z.string().trim().min(1)).optional(),
+    Directories: z.array(z.string().trim().min(1)).optional(),
+  })
+  .strict();
+
 const AgentDefaultsSchema = z
   .object({
     ToolExecution: ToolExecutionSchema.optional(),
@@ -117,5 +124,6 @@ export const AgentSystemConfigSchema = z
     InferenceBudget: InferenceBudgetSchema.optional(),
     ConfigStore: ConfigStoreSchema.optional(),
     Extensions: z.record(z.string().trim().min(1), AgentSystemExtensionConfigSchema).optional(),
+    Plugins: AgentPluginsConfigSchema.optional(),
   })
   .strict();

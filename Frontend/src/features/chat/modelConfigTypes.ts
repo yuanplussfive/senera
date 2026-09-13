@@ -1,6 +1,8 @@
 import type {
   ConfigFormFieldData,
   ConfigFormSectionData,
+  ModelThinkingLevel,
+  ModelThinkingProfileConfig,
   ModelToolPlanningMode,
   ProviderModelEndpointInput,
   ProviderModelInfo,
@@ -23,6 +25,9 @@ export interface ModelProviderDraft {
   ProviderId: string;
   Icon?: string;
   Capabilities?: ModelCapabilitiesDraft;
+  ThinkingLevelMap?: Partial<Record<ModelThinkingLevel, string | null>>;
+  ThinkingProfiles?: ModelThinkingProfileConfig[];
+  DefaultThinkingLevel?: ModelThinkingLevel;
   ToolPlanningMode?: ModelToolPlanningMode;
   ContextWindowTokens?: number;
   MaxModelOutputTokens?: number;

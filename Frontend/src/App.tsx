@@ -81,6 +81,8 @@ export function App({
   const selectedModelProviderId = useStore((s) => s.selectedModelProviderId);
   const defaultModelProviderId = useStore((s) => s.defaultModelProviderId);
   const selectModelProvider = useStore((s) => s.selectModelProvider);
+  const selectedThinkingLevel = useStore((s) => s.selectedThinkingLevel);
+  const selectThinkingLevel = useStore((s) => s.selectThinkingLevel);
   const applyDefaultModelToActiveSession = useStore((s) => s.applyDefaultModelToActiveSession);
   const userProfile = useStore((s) => s.userProfile);
   const markUserProfileSynced = useStore((s) => s.markUserProfileSynced);
@@ -247,7 +249,7 @@ export function App({
 
   sendRef.current = send;
   statusRef.current = status;
-  const settingsRuntime = useSettingsRuntime({ httpBaseUrl: HTTP_BASE_URL, sendRef, statusRef });
+  const settingsRuntime = useSettingsRuntime({ httpBaseUrl: HTTP_BASE_URL, sendRef, statusRef, status });
   settingsEventHandlerRef.current = settingsRuntime.ingestSettingsEvent;
   const executionResourceCommands = useExecutionResourceCommands({
     activeSessionId: activeId,
@@ -414,6 +416,8 @@ export function App({
                       selectedModelProviderId,
                       defaultModelProviderId,
                       onSelectModelProvider: selectModelProvider,
+                      selectedThinkingLevel,
+                      onSelectThinkingLevel: selectThinkingLevel,
                       onApplyDefaultModel: applyDefaultModelToActiveSession,
                       onAddModel: () => {
                         void settingsController
@@ -509,6 +513,7 @@ export function App({
                     },
                     onMotionLevelChange: setMotionLevel,
                     systemConfig: settingsRuntime.systemConfig,
+                    workspace: settingsRuntime.workspace,
                   }}
                 />
               ) : (

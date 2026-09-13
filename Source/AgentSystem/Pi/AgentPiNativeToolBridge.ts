@@ -7,6 +7,7 @@ import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type { AgentPiToolExecutionBridge } from "./AgentPiToolExecutionBridge.js";
 import type { AgentPiToolCallPreflightInput } from "./AgentPiToolCallPreflight.js";
 import type { AgentPiToolDefinition, AgentPiToolProjectionContext } from "./AgentPiTypes.js";
+import { projectAgentToolCapabilityArguments } from "../ToolSearch/AgentToolCapabilityArgumentProjection.js";
 
 export const AgentPiNativeToolBridgeName = "ToolCall";
 
@@ -64,7 +65,11 @@ export class AgentPiNativeToolBridge {
       executionMode: "parallel",
       execute: (toolCallId, params, signal) => {
         const projectionContext = context();
-        const invocation = this.resolve(params, projectionContext.toolAccessGrant);
+        const invocation = this.resolve(
+          params,
+          projectionContext.toolAccessGrant,
+          projectionContext.reusableCapabilities,
+        );
         return this.execution.execute({
           tool: invocation.tool,
           toolCallId,
@@ -79,9 +84,10 @@ export class AgentPiNativeToolBridge {
   projectPreflight(
     event: AgentPiToolCallPreflightInput,
     toolAccessGrant: AgentToolAccessGrant,
+    reusableCapabilities?: AgentPiToolProjectionContext["reusableCapabilities"],
   ): AgentPiToolCallPreflightInput {
     if (event.toolName !== AgentPiNativeToolBridgeName) return event;
-    const invocation = this.resolve(event.input, toolAccessGrant);
+    const invocation = this.resolve(event.input, toolAccessGrant, reusableCapabilities);
     return {
       ...event,
       toolName: invocation.tool.name,
@@ -92,6 +98,7 @@ export class AgentPiNativeToolBridge {
   private resolve(
     value: unknown,
     toolAccessGrant: AgentToolAccessGrant | undefined,
+    reusableCapabilities?: AgentPiToolProjectionContext["reusableCapabilities"],
   ): AgentPiNativeToolBridgeInvocation {
     if (!toolAccessGrant) throw new AgentLocalizedError("toolAccess.missingGrant");
     const parsed = AgentPiNativeToolBridgeArgumentsSchema.safeParse(value);
@@ -108,7 +115,7 @@ export class AgentPiNativeToolBridge {
     }
     return {
       tool,
-      arguments: parsed.data.arguments,
+      arguments: projectAgentToolCapabilityArguments(tool, parsed.data.arguments, reusableCapabilities),
     };
   }
 }

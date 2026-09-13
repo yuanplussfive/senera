@@ -27,7 +27,19 @@ export function createAgentGoalMicroLoopCacheOptions(input: {
       model,
       ...(input.stableSystemPrompt ? { stablePrefixRevision: sha256HexOfCanonicalJson(input.stableSystemPrompt) } : {}),
     },
+    logicalCacheScope: sha256HexOfCanonicalJson({
+      namespace: "senera.goal-micro-loop.logical",
+      worldId,
+    }),
     retention: AgentLongLivedCacheRetention,
+    ...(input.stableSystemPrompt
+      ? {
+          stablePrefix: {
+            systemPrompt: input.stableSystemPrompt,
+            tools: [],
+          },
+        }
+      : {}),
   });
 }
 

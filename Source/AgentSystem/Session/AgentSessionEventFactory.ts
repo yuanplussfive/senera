@@ -3,6 +3,7 @@ import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy
 import type { AgentSession, AgentSessionSnapshot } from "./AgentSession.js";
 import { projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import type { AgentSessionOperation } from "./AgentSessionOperation.js";
+import { resolveAgentSessionModelProviderId } from "../ModelEndpoints/AgentModelMetadata.js";
 
 export class AgentSessionEventFactory {
   constructor(private readonly conversationPolicy = new AgentConversationPolicy()) {}
@@ -74,6 +75,11 @@ export class AgentSessionEventFactory {
   }
 
   private snapshotData(session: AgentSession): AgentSessionSnapshot {
+    const modelProviderId = resolveAgentSessionModelProviderId(session.metadata);
+    const effectiveModel =
+      session.metadata?.activeRun?.receipt ??
+      session.activeRequest?.effectiveModel ??
+      session.metadata?.lastRun?.receipt;
     return {
       sessionId: session.id,
       status: session.status,
@@ -84,6 +90,9 @@ export class AgentSessionEventFactory {
       turnCount: session.conversation.filter((entry) => entry.kind === "user.message").length,
       activeRequestId: session.activeRequest?.requestId,
       ...(session.metadata?.channel ? { channel: session.metadata.channel } : {}),
+      ...(modelProviderId ? { modelProviderId } : {}),
+      ...(effectiveModel ? { effectiveModel: structuredClone(effectiveModel) } : {}),
+      ...(session.metadata?.sessionModel ? { modelPreference: structuredClone(session.metadata.sessionModel) } : {}),
     };
   }
 }

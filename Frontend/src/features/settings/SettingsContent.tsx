@@ -17,6 +17,10 @@ import type { ConfigSettingsDraftState } from "./sections/configSettingsDraftSta
 import { GeneralSettings } from "./sections/GeneralSettings";
 import { projectSectionConfigFields } from "./sections/runtimeModelAssignments";
 
+const WorkspaceSettings = lazy(() =>
+  import("./sections/WorkspaceSettings").then((module) => ({ default: module.WorkspaceSettings })),
+);
+
 const SettingsExtensionSection = lazy(() =>
   import("./sections/SettingsExtensionSection").then((module) => ({ default: module.SettingsExtensionSection })),
 );
@@ -35,6 +39,7 @@ export function SettingsContent({
   onValueChange,
   systemConfig,
   values,
+  workspace,
 }: SettingsContentProps & {
   activeSection: SettingsSectionDefinition;
   configDraftState: ConfigSettingsDraftState;
@@ -50,6 +55,7 @@ export function SettingsContent({
     onValueChange,
     systemConfig,
     values,
+    workspace,
   });
 
   return (
@@ -120,6 +126,7 @@ function renderSettingsContent({
   onValueChange,
   systemConfig,
   values,
+  workspace,
 }: SettingsContentProps & {
   activeSection: SettingsSectionDefinition;
   configDraftState: ConfigSettingsDraftState;
@@ -128,6 +135,12 @@ function renderSettingsContent({
   switch (activeSection.id) {
     case "appearance":
       return <AppearanceSettings />;
+    case "workspace":
+      return workspace ? (
+        <WorkspaceSettings workspace={workspace} environment={environment} />
+      ) : (
+        <SettingsSectionLoading />
+      );
     case "general":
       return (
         <GeneralSettings
@@ -326,6 +339,7 @@ function isFullHeightWorkspace(sectionId: SettingsSectionId): boolean {
 function sectionWidthClassName(sectionId: SettingsSectionId): string {
   if (sectionId === "appearance") return "mx-auto w-full max-w-[1120px]";
   if (sectionId === "general") return "mx-auto w-full max-w-[1120px]";
+  if (sectionId === "workspace") return "mx-auto w-full max-w-[980px]";
   if (sectionId === "about") return "mx-auto w-full max-w-[980px]";
   if (sectionId === "default-model") return "mx-auto w-full max-w-[960px]";
   if (sectionId === "runtime" || sectionId === "planning" || sectionId === "retrieval" || sectionId === "storage") {

@@ -123,6 +123,10 @@ export const AgentEventKinds = {
   SystemToolSnapshot: "system_tool.snapshot",
   McpServerSnapshot: "mcp_server.snapshot",
   ChannelStatusSnapshot: "channel.status.snapshot",
+  WorkspaceSnapshot: "workspace.snapshot",
+  WorkspaceSwitchStarted: "workspace.switch.started",
+  WorkspaceSwitched: "workspace.switched",
+  WorkspaceSwitchFailed: "workspace.switch.failed",
 } as const;
 
 export type AgentEventKind = (typeof AgentEventKinds)[keyof typeof AgentEventKinds];
@@ -533,6 +537,22 @@ export const AgentEventSpecTable: {
   },
   [AgentEventKinds.ChannelStatusSnapshot]: {
     layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Config,
+  },
+  [AgentEventKinds.WorkspaceSnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Config,
+  },
+  [AgentEventKinds.WorkspaceSwitchStarted]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Config,
+  },
+  [AgentEventKinds.WorkspaceSwitched]: {
+    layer: AgentEventLayers.Terminal,
+    phase: AgentEventPhases.Config,
+  },
+  [AgentEventKinds.WorkspaceSwitchFailed]: {
+    layer: AgentEventLayers.Error,
     phase: AgentEventPhases.Config,
   },
 };

@@ -46,51 +46,54 @@ export class AgentWorldClock {
           nextLocalMidnight(input.now, input.timeZone),
           ...(input.additionalWakeInstants ?? []).filter((instant) => Temporal.Instant.compare(instant, input.now) > 0),
         ]);
-    const existing = this.read(input.worldId);
-    if (!existing) {
-      this.write(input.worldId, input.now, nextWakeAt);
-      return { worldId: input.worldId, lastAdvancedAt: input.now, nextWakeAt, changed: false };
-    }
-    if (Temporal.Instant.compare(input.now, existing.lastAdvancedAt) < 0) {
-      throw new Error("World clock cannot advance backwards.");
-    }
-    const previous = projectAgentWorldTime({
-      instant: existing.lastAdvancedAt,
-      timeZone: input.timeZone,
-      dayPhases: input.dayPhases,
-    });
-    const current = projectAgentWorldTime({
-      instant: input.now,
-      timeZone: input.timeZone,
-      dayPhases: input.dayPhases,
-    });
-    const changed = previous.localDate !== current.localDate || previous.phaseId !== current.phaseId;
-    if (changed) {
-      const crossedLocalDates = localDatesBetween(previous.localDate, current.localDate);
-      this.ledger.append({
-        worldId: input.worldId,
+    const advance = this.db.transaction((): AgentWorldClockState => {
+      const existing = this.read(input.worldId);
+      if (!existing) {
+        this.write(input.worldId, input.now, nextWakeAt);
+        return { worldId: input.worldId, lastAdvancedAt: input.now, nextWakeAt, changed: false };
+      }
+      if (Temporal.Instant.compare(input.now, existing.lastAdvancedAt) < 0) {
+        throw new Error("World clock cannot advance backwards.");
+      }
+      const previous = projectAgentWorldTime({
+        instant: existing.lastAdvancedAt,
         timeZone: input.timeZone,
-        subject: { id: input.worldId, kind: "state" },
-        type: "clock.boundary_crossed",
-        summary: `${previous.localDate} ${previous.phaseLabel} -> ${current.localDate} ${current.phaseLabel}`,
-        changes: [
-          {
-            kind: "clock_advance",
-            from: existing.lastAdvancedAt.toString(),
-            to: input.now.toString(),
-            previousPhaseId: previous.phaseId,
-            phaseId: current.phaseId,
-            crossedLocalDates,
-          },
-        ],
-        evidenceRefs: [`senera://world-clock/${input.worldId}/${encodeURIComponent(input.now.toString())}`],
-        occurredAt: input.now.toString(),
-        recordedAt: input.now.toString(),
-        idempotencyKey: `world-clock:${input.worldId}:${existing.lastAdvancedAt.toString()}:${input.now.toString()}`,
+        dayPhases: input.dayPhases,
       });
-    }
-    this.write(input.worldId, input.now, nextWakeAt);
-    return { worldId: input.worldId, lastAdvancedAt: input.now, nextWakeAt, changed };
+      const current = projectAgentWorldTime({
+        instant: input.now,
+        timeZone: input.timeZone,
+        dayPhases: input.dayPhases,
+      });
+      const changed = previous.localDate !== current.localDate || previous.phaseId !== current.phaseId;
+      if (changed) {
+        const crossedLocalDates = localDatesBetween(previous.localDate, current.localDate);
+        this.ledger.append({
+          worldId: input.worldId,
+          timeZone: input.timeZone,
+          subject: { id: input.worldId, kind: "state" },
+          type: "clock.boundary_crossed",
+          summary: `${previous.localDate} ${previous.phaseLabel} -> ${current.localDate} ${current.phaseLabel}`,
+          changes: [
+            {
+              kind: "clock_advance",
+              from: existing.lastAdvancedAt.toString(),
+              to: input.now.toString(),
+              previousPhaseId: previous.phaseId,
+              phaseId: current.phaseId,
+              crossedLocalDates,
+            },
+          ],
+          evidenceRefs: [`senera://world-clock/${input.worldId}/${encodeURIComponent(input.now.toString())}`],
+          occurredAt: input.now.toString(),
+          recordedAt: input.now.toString(),
+          idempotencyKey: `world-clock:${input.worldId}:${existing.lastAdvancedAt.toString()}:${input.now.toString()}`,
+        });
+      }
+      this.write(input.worldId, input.now, nextWakeAt);
+      return { worldId: input.worldId, lastAdvancedAt: input.now, nextWakeAt, changed };
+    });
+    return advance.immediate();
   }
 
   state(worldId: string): AgentWorldClockState | undefined {

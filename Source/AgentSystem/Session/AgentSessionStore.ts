@@ -1,4 +1,5 @@
 import { createOpaqueId, createSessionId } from "../Core/AgentIds.js";
+import { AgentKeyedLeaseQueue } from "../Core/AgentKeyedLeaseQueue.js";
 import { AgentSessionStatuses, type AgentSession } from "./AgentSession.js";
 import type {
   AgentSessionCursorPage,
@@ -43,7 +44,15 @@ import {
   type AgentSessionWorkingSetPolicy,
 } from "./AgentSessionWorkingSetPolicy.js";
 import { clearAgentSessionRegenerationLineage } from "./AgentSessionLifecycleMetadata.js";
-import type { AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
+import { resolveAgentSessionModelProviderId } from "../ModelEndpoints/AgentModelMetadata.js";
+import type {
+  AgentEffectiveModelReceipt,
+  AgentSessionModelPreference,
+  AgentSessionModelPreferenceMutationResult,
+  AgentSessionModelPreferenceSource,
+  AgentSessionOwnership,
+} from "../ModelEndpoints/AgentModelMetadata.js";
+import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 
 export type AgentSessionOpenResult =
   | {
@@ -103,6 +112,7 @@ export class AgentSessionStore {
   // 每个会话目前的 entry 计数（用作 SQLite sequence）
   private readonly sequenceBySession = new Map<string, number>();
   private readonly retainedSessions = new Map<string, number>();
+  private readonly modelPreferenceAdmissions = new AgentKeyedLeaseQueue<string>();
   private readonly repository: AgentSessionRepository;
   private readonly workingSetPolicy: AgentSessionWorkingSetPolicy;
 
@@ -321,6 +331,108 @@ export class AgentSessionStore {
   get(sessionId: string): AgentSessionLookupResult {
     const session = this.findOrLoadSession(sessionId);
     return session ? { kind: "found", session } : { kind: "missing", sessionId };
+  }
+
+  getSessionModelPreference(sessionId: string): AgentSessionModelPreference | undefined {
+    const lookup = this.get(sessionId);
+    return lookup.kind === "found" ? structuredClone(lookup.session.metadata?.sessionModel) : undefined;
+  }
+
+  /**
+   * Returns the runtime model facts for self-service and UI projections. The
+   * active turn wins over the last completed turn; neither is synthesized from
+   * the global default, so callers never mistake a preference for execution.
+   */
+  getSessionModelRuntime(sessionId: string):
+    | {
+        readonly effective?: AgentEffectiveModelReceipt;
+        readonly preference?: AgentSessionModelPreference;
+        readonly lastRun?: AgentEffectiveModelReceipt;
+      }
+    | undefined {
+    const lookup = this.get(sessionId);
+    if (lookup.kind === "missing") return undefined;
+    return {
+      ...(lookup.session.metadata?.activeRun?.receipt
+        ? {
+            active: structuredClone(lookup.session.metadata.activeRun.receipt),
+            effective: structuredClone(lookup.session.metadata.activeRun.receipt),
+          }
+        : lookup.session.activeRequest?.effectiveModel
+          ? {
+              active: structuredClone(lookup.session.activeRequest.effectiveModel),
+              effective: structuredClone(lookup.session.activeRequest.effectiveModel),
+            }
+          : lookup.session.metadata?.lastRun?.receipt
+            ? { effective: structuredClone(lookup.session.metadata.lastRun.receipt) }
+            : {}),
+      ...(lookup.session.metadata?.sessionModel
+        ? { preference: structuredClone(lookup.session.metadata.sessionModel) }
+        : {}),
+      ...(lookup.session.metadata?.lastRun?.receipt
+        ? { lastRun: structuredClone(lookup.session.metadata.lastRun.receipt) }
+        : {}),
+    };
+  }
+
+  /**
+   * Changes only the durable conversation-level model preference. The keyed
+   * admission keeps concurrent self-service calls deterministic while the
+   * existing session repository remains the single persistence boundary.
+   */
+  setSessionModelPreference(
+    sessionId: string,
+    modelProviderId: string,
+    source: AgentSessionModelPreferenceSource = "agent",
+  ): Promise<AgentSessionModelPreferenceMutationResult> {
+    return this.modelPreferenceAdmissions.run(sessionId, async () => {
+      const lookup = this.get(sessionId);
+      if (lookup.kind === "missing") return { status: "missing", sessionId };
+
+      const current = lookup.session.metadata?.sessionModel;
+      if (current?.modelProviderId === modelProviderId && current.source === source) {
+        return { status: "unchanged", sessionId, ...structuredClone(current), effectiveAt: "next_turn" };
+      }
+
+      const next: AgentSessionModelPreference = {
+        modelProviderId,
+        revision: (current?.revision ?? 0) + 1,
+        updatedAt: new Date().toISOString(),
+        source,
+      };
+      lookup.session.metadata = { ...lookup.session.metadata, sessionModel: next };
+      lookup.session.updatedAt = next.updatedAt;
+      this.persistMetadata(lookup.session);
+      return { status: "updated", sessionId, ...structuredClone(next), effectiveAt: "next_turn" };
+    });
+  }
+
+  /** Builds the existing session snapshot shape for an immediate self-service
+   * update event without introducing a second event protocol. */
+  getSessionSnapshot(sessionId: string): import("./AgentSession.js").AgentSessionSnapshot | undefined {
+    const lookup = this.get(sessionId);
+    if (lookup.kind === "missing") return undefined;
+    const session = lookup.session;
+    const conversationPolicy = new AgentConversationPolicy();
+    const modelProviderId = resolveAgentSessionModelProviderId(session.metadata);
+    const effectiveModel =
+      session.metadata?.activeRun?.receipt ??
+      session.activeRequest?.effectiveModel ??
+      session.metadata?.lastRun?.receipt;
+    return {
+      sessionId: session.id,
+      status: session.status,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      entryCount: session.conversation.length,
+      messageCount: conversationPolicy.materialize(session.conversation).length,
+      turnCount: session.conversation.filter((entry) => entry.kind === "user.message").length,
+      activeRequestId: session.activeRequest?.requestId,
+      ...(session.metadata?.channel ? { channel: session.metadata.channel } : {}),
+      ...(modelProviderId ? { modelProviderId } : {}),
+      ...(effectiveModel ? { effectiveModel: structuredClone(effectiveModel) } : {}),
+      ...(session.metadata?.sessionModel ? { modelPreference: structuredClone(session.metadata.sessionModel) } : {}),
+    };
   }
 
   hasPersistedSession(sessionId: string): boolean {

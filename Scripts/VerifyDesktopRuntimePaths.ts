@@ -94,16 +94,6 @@ assert.throws(
 
 assert.equal(
   resolveDesktopWorkspaceRoot({
-    isPackaged: false,
-    resourceRoot: workspaceRoot,
-    persistedWorkspaceRoot: path.join(workspaceRoot, ".senera", "desktop-data"),
-  }),
-  workspaceRoot,
-);
-
-assert.equal(
-  resolveDesktopWorkspaceRoot({
-    isPackaged: true,
     resourceRoot: workspaceRoot,
     persistedWorkspaceRoot: path.join(workspaceRoot, ".senera", "desktop-data"),
   }),
@@ -112,7 +102,6 @@ assert.equal(
 
 assert.equal(
   resolveDesktopWorkspaceRoot({
-    isPackaged: true,
     resourceRoot: workspaceRoot,
     configuredWorkspaceRoot: path.join(workspaceRoot, "configured-workspace"),
     persistedWorkspaceRoot: path.join(workspaceRoot, "persisted-workspace"),
@@ -120,7 +109,7 @@ assert.equal(
   path.join(workspaceRoot, "configured-workspace"),
 );
 
-assert.equal(resolveDesktopWorkspaceRoot({ isPackaged: true, resourceRoot: workspaceRoot }), undefined);
+assert.equal(resolveDesktopWorkspaceRoot({ resourceRoot: workspaceRoot }), workspaceRoot);
 
 const workspaceLayout = resolveAgentWorkspaceLayout(workspaceRoot);
 assert.equal(workspaceLayout.desktopRuntimeRoot, path.join(workspaceRoot, ".senera", "desktop"));

@@ -59,9 +59,9 @@ interface ProjectedSource {
 
 const RuntimeFailureLimits: AgentToolObservationStructuralLimits = {
   maxDepth: 3,
-  maxArrayItems: 0,
+  maxArrayItems: 8,
   maxObjectProperties: 8,
-  maxNodes: 24,
+  maxNodes: 48,
 };
 
 const RuntimeFailureTokenLimit = 512;
@@ -119,7 +119,7 @@ export class AgentToolObservationContextCompiler {
     const projectedSources = orderedRules.flatMap((rule) => {
       const source = this.readSource(rule.source, input, artifact, structuredSummary, manifest.continuation);
       if (source === undefined) return [];
-      return [this.projectSource(source, rule, manifest.maxOmissions)];
+      return [this.projectSource(source, rule, manifest.maxOmissions, maxTokens)];
     });
     const failureOmissions = prefixOmissions("error", requiredFailure?.omissions ?? []);
     const initialOmissions = [...failureOmissions, ...projectedSources.flatMap((source) => source.omissions)];
@@ -211,6 +211,7 @@ export class AgentToolObservationContextCompiler {
         source: record.source,
         retryable: record.retryable,
         message: record.message,
+        diagnostics: this.projectFailureDiagnostics(record.diagnostics),
       }),
       RuntimeFailureLimits,
       maxOmissions,
@@ -229,10 +230,40 @@ export class AgentToolObservationContextCompiler {
     };
   }
 
+  private projectFailureDiagnostics(value: unknown): readonly Record<string, string>[] | undefined {
+    const entries = readArray(value)
+      .flatMap((entry) => {
+        const record = readRecord(entry);
+        if (!record) return [];
+        const message = typeof record.message === "string" ? record.message.trim() : "";
+        if (!message) return [];
+        const path = Array.isArray(record.path)
+          ? record.path.map((part) => String(part)).join(".")
+          : typeof record.path === "string"
+            ? record.path
+            : undefined;
+        const pointer = typeof record.pointer === "string" ? record.pointer : undefined;
+        const code = typeof record.code === "string" ? record.code : undefined;
+        const suggestion = typeof record.suggestion === "string" ? record.suggestion : undefined;
+        return [
+          {
+            ...(code ? { code } : {}),
+            ...(path ? { path } : {}),
+            ...(pointer ? { pointer } : {}),
+            message,
+            ...(suggestion ? { suggestion } : {}),
+          },
+        ];
+      })
+      .slice(0, 8);
+    return entries.length > 0 ? entries : undefined;
+  }
+
   private projectSource(
     source: unknown,
     rule: AgentToolObservationProjectionSourceRule,
     maxOmissions: number,
+    availableTokens: number,
   ): ProjectedSource {
     const key = SourceOutputKeys[rule.source];
     if (rule.mode === AgentToolObservationProjectionModes.ArtifactOnly) {
@@ -257,8 +288,9 @@ export class AgentToolObservationContextCompiler {
       };
     }
     const structural = this.structuralProjector.project(selected, rule.limits, maxOmissions);
+    const sourceTokenLimit = resolveSourceTokenLimit(rule, availableTokens);
     if (rule.mode === AgentToolObservationProjectionModes.Text && typeof structural.value === "string") {
-      const preview = this.tokenProjector.previewText(structural.value, rule.maxTokens);
+      const preview = this.tokenProjector.previewText(structural.value, sourceTokenLimit);
       const tokenOmitted = preview.truncated ? 1 : 0;
       return {
         key,
@@ -274,7 +306,7 @@ export class AgentToolObservationContextCompiler {
         ],
       };
     }
-    const tokenProjection = this.tokenProjector.projectJson(structural.value, rule.maxTokens);
+    const tokenProjection = this.tokenProjector.projectJson(structural.value, sourceTokenLimit);
     const tokenOmitted = tokenProjection.complete ? 0 : 1;
     return {
       key,
@@ -443,4 +475,14 @@ function escapeJsonPointerSegment(value: string): string {
 
 function normalizePositiveInteger(value: number): number {
   return Number.isFinite(value) ? Math.max(1, Math.floor(value)) : 1;
+}
+
+function resolveSourceTokenLimit(rule: AgentToolObservationProjectionSourceRule, availableTokens: number): number {
+  const declaredLimit = normalizePositiveInteger(rule.maxTokens);
+  if (rule.budgetShare === undefined) return declaredLimit;
+  // A small reservation is already bounded by the enclosing observation
+  // budget. Applying the share again would hide high-signal coordinates such
+  // as cursors before the envelope has a chance to project them.
+  if (declaredLimit > availableTokens) return declaredLimit;
+  return Math.min(declaredLimit, Math.max(1, Math.floor(availableTokens * rule.budgetShare)));
 }

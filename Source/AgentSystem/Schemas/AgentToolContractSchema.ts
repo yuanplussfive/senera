@@ -26,7 +26,7 @@ export const AgentToolDiscoverySourceSchema = z
   })
   .strict();
 
-const JsonPointerSchema = z.string().refine(isAgentJsonPointer, "Expected a non-root RFC 6901 JSON Pointer.");
+const JsonPointerSchema = z.string().refine(isAgentJsonPointer, "Expected an RFC 6901 JSON Pointer.");
 
 export const ToolResourceArgumentSchema = z
   .object({

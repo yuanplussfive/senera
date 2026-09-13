@@ -3,8 +3,15 @@ export interface AgentJsonPointerLookup {
   readonly value?: unknown;
 }
 
+export interface AgentJsonPointerMatch {
+  readonly pointer: string;
+  readonly value: unknown;
+}
+
 /** RFC 6901 pointer operations shared by manifest validation and runtime projection. */
 export function parseAgentJsonPointer(pointer: string): readonly string[] {
+  // RFC 6901 uses the empty string to address the document root.
+  if (pointer === "") return [];
   if (!pointer.startsWith("/")) throw new TypeError(`Invalid JSON Pointer: ${pointer}`);
   return pointer.slice(1).split("/").map(decodeJsonPointerToken);
 }
@@ -33,6 +40,16 @@ export function readAgentJsonPointer(value: unknown, pointer: string): AgentJson
   return { found: true, value: current };
 }
 
+/**
+ * Reads a JSON Pointer pattern. A whole `*` token selects every own object
+ * property or array entry at that level; ordinary tokens retain RFC 6901
+ * semantics. The concrete pointer is returned so callers can safely project
+ * each selected value without inventing their own traversal rules.
+ */
+export function readAgentJsonPointerMatches(value: unknown, pointer: string): readonly AgentJsonPointerMatch[] {
+  return readPointerMatches(value, parseAgentJsonPointer(pointer), []);
+}
+
 export function replaceAgentJsonPointer(value: unknown, pointer: string, replacement: unknown): unknown {
   return replaceJsonPointerTokens(value, parseAgentJsonPointer(pointer), replacement, pointer);
 }
@@ -59,6 +76,40 @@ function replaceJsonPointerTokens(
     ...value,
     [token]: replaceJsonPointerTokens(value[token], remaining, replacement, pointer),
   };
+}
+
+function readPointerMatches(
+  value: unknown,
+  tokens: readonly string[],
+  pathTokens: readonly string[],
+): AgentJsonPointerMatch[] {
+  const [token, ...remaining] = tokens;
+  if (token === undefined) {
+    return [{ pointer: formatAgentJsonPointer(pathTokens), value }];
+  }
+  if (token === "*") {
+    if (Array.isArray(value)) {
+      return value.flatMap((entry, index) => readPointerMatches(entry, remaining, [...pathTokens, String(index)]));
+    }
+    if (isRecord(value)) {
+      return Object.keys(value).flatMap((key) => readPointerMatches(value[key], remaining, [...pathTokens, key]));
+    }
+    return [];
+  }
+  if (Array.isArray(value)) {
+    const index = parseArrayIndex(token, value.length);
+    return index === undefined ? [] : readPointerMatches(value[index], remaining, [...pathTokens, token]);
+  }
+  if (!isRecord(value) || !Object.hasOwn(value, token)) return [];
+  return readPointerMatches(value[token], remaining, [...pathTokens, token]);
+}
+
+function formatAgentJsonPointer(tokens: readonly string[]): string {
+  return tokens.length === 0 ? "" : `/${tokens.map(encodeJsonPointerToken).join("/")}`;
+}
+
+function encodeJsonPointerToken(token: string): string {
+  return token.replace(/~/gu, "~0").replace(/\//gu, "~1");
 }
 
 function decodeJsonPointerToken(token: string): string {

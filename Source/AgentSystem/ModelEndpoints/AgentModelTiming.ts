@@ -1,3 +1,5 @@
+import type { AgentPromptWireSnapshot } from "./AgentPromptWireSnapshot.js";
+
 export interface AgentModelTimingRecord {
   stage: string;
   requestId: string;
@@ -10,6 +12,8 @@ export interface AgentModelTimingRecord {
   responseCharacters: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  /** Redacted wire/cache identity for diagnosing provider-prefix reuse. */
+  promptCache?: AgentPromptWireSnapshot;
   error?: string;
 }
 

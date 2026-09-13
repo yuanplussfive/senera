@@ -58,6 +58,9 @@ export function invalidateSessionHistoryCache(state: StoreState): void {
     delete state.historyStepBuffers[sessionId];
     delete state.historyEventRunIds[sessionId];
     delete state.historyActiveRequestIds[sessionId];
+    if (state.historyRunEventBuffers) delete state.historyRunEventBuffers[sessionId];
+    if (state.historyPreviewedIds) delete state.historyPreviewedIds[sessionId];
+    if (state.historyHydration) delete state.historyHydration[sessionId];
   }
 }
 
@@ -106,6 +109,9 @@ export function restorePendingSessionDeletion(state: StoreState, sessionIds: rea
     delete state.historyStepBuffers[sessionId];
     delete state.historyEventRunIds[sessionId];
     delete state.historyActiveRequestIds[sessionId];
+    if (state.historyRunEventBuffers) delete state.historyRunEventBuffers[sessionId];
+    if (state.historyPreviewedIds) delete state.historyPreviewedIds[sessionId];
+    if (state.historyHydration) delete state.historyHydration[sessionId];
     delete state.historyFailedIds[sessionId];
     if (!state.childSessionParentIds[sessionId]) restoredIds.add(sessionId);
   }
@@ -133,9 +139,13 @@ export function deleteSessionRuntimeStates(state: StoreState, sessionIds: readon
     delete state.historyStepBuffers[sessionId];
     delete state.historyEventRunIds[sessionId];
     delete state.historyActiveRequestIds[sessionId];
+    if (state.historyRunEventBuffers) delete state.historyRunEventBuffers[sessionId];
+    if (state.historyPreviewedIds) delete state.historyPreviewedIds[sessionId];
+    if (state.historyHydration) delete state.historyHydration[sessionId];
     delete state.viewedRunIdBySession[sessionId];
     delete state.missingOnServerIds[sessionId];
     delete state.selectedModelProviderIdsBySession[sessionId];
+    if (state.selectedThinkingLevelsBySession) delete state.selectedThinkingLevelsBySession[sessionId];
     delete state.childSessionParentIds[sessionId];
   }
 
@@ -157,6 +167,11 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
     existing.messageCount = item.messageCount;
     existing.activeRequestId = item.activeRequestId;
     existing.channel = item.channel;
+    if (item.effectiveModel) existing.effectiveModel = item.effectiveModel;
+    if (item.modelPreference) existing.modelPreference = item.modelPreference;
+    if (item.modelProviderId) {
+      state.selectedModelProviderIdsBySession[item.sessionId] = item.modelProviderId;
+    }
     if (state.historyLoadingIds[item.sessionId]) {
       state.historyActiveRequestIds[item.sessionId] = item.activeRequestId ?? null;
     }
@@ -176,7 +191,12 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
     runs: [],
     activeRequestId: item.activeRequestId,
     channel: item.channel,
+    ...(item.effectiveModel ? { effectiveModel: item.effectiveModel } : {}),
+    ...(item.modelPreference ? { modelPreference: item.modelPreference } : {}),
   };
+  if (item.modelProviderId) {
+    state.selectedModelProviderIdsBySession[item.sessionId] = item.modelProviderId;
+  }
   state.sessions[item.sessionId] = session;
   settleStaleHistoryLoading(state, session);
 }
@@ -188,7 +208,12 @@ function settleStaleHistoryLoading(state: StoreState, session: SessionRecord): v
 
   const hasRecoveringRun = session.runs.some((run) => run.status === "running" && run.recoverySource === "history");
   const hasMissingMessages = session.messageCount > 0 && session.messages.length === 0;
-  if (hasRecoveringRun || hasMissingMessages) {
+  const replayHasStarted =
+    (state.historyReplayBuffers[session.sessionId]?.length ?? 0) > 0 ||
+    (state.historyStepBuffers[session.sessionId]?.length ?? 0) > 0 ||
+    (state.historyRunEventBuffers?.[session.sessionId]?.length ?? 0) > 0 ||
+    state.historyPreviewedIds?.[session.sessionId] === true;
+  if (hasRecoveringRun || hasMissingMessages || !replayHasStarted) {
     return;
   }
 
@@ -197,6 +222,9 @@ function settleStaleHistoryLoading(state: StoreState, session: SessionRecord): v
   delete state.historyStepBuffers[session.sessionId];
   delete state.historyEventRunIds[session.sessionId];
   delete state.historyActiveRequestIds[session.sessionId];
+  if (state.historyRunEventBuffers) delete state.historyRunEventBuffers[session.sessionId];
+  if (state.historyPreviewedIds) delete state.historyPreviewedIds[session.sessionId];
+  if (state.historyHydration) delete state.historyHydration[session.sessionId];
 }
 
 function syncActiveSessionAfterListIngest(state: StoreState, visibleItems: readonly SessionListItem[]): void {

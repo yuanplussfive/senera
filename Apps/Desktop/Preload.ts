@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("seneraDesktop", {
   confirmSettingsClose: () => ipcRenderer.invoke("senera:settings.confirm-close"),
   cancelSettingsClose: () => ipcRenderer.invoke("senera:settings.cancel-close"),
   openExternalUrl: (url: string) => ipcRenderer.invoke("senera:external-url.open", url),
+  chooseWorkspaceFolder: () => ipcRenderer.invoke("senera:workspace.choose-folder"),
   getUpdateState: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.get-state"),
   checkForUpdates: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.check"),
   downloadUpdate: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.download"),

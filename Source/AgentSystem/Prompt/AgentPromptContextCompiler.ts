@@ -148,7 +148,10 @@ function buildLayerManifest(input: AgentPromptContextCompilerInput): readonly Ag
       name: "workflow",
       source: "runtime",
       stability: "turn",
-      included: input.workflow.execution.executions.length > 0 || input.workflow.todos.items.length > 0,
+      included:
+        input.workflow.execution.executions.length > 0 ||
+        input.workflow.todos.items.length > 0 ||
+        input.workflow.delegation.runs.length > 0,
     },
     {
       name: "task",

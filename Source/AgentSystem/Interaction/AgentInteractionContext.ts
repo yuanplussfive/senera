@@ -1,3 +1,5 @@
+import type { AgentChannelChatType, AgentChannelKind } from "../Channels/AgentChannelTypes.js";
+
 /**
  * Runtime-owned interaction context. Only the surface and platform are
  * exposed to the model; channel identifiers remain host-side metadata.
@@ -9,14 +11,18 @@ export const AgentInteractionSurfaces = {
 
 export type AgentInteractionSurface = (typeof AgentInteractionSurfaces)[keyof typeof AgentInteractionSurfaces];
 
-export type AgentInteractionPlatform = "qq" | "telegram" | "discord";
+export type AgentInteractionPlatform = AgentChannelKind;
 
-export type AgentInteractionChatType = "direct" | "group" | "channel" | "thread";
+export type AgentInteractionChatType = AgentChannelChatType;
 
 export interface AgentInteractionContext {
   readonly surface: AgentInteractionSurface;
   readonly platform?: AgentInteractionPlatform;
   readonly chatType?: AgentInteractionChatType;
+  /** Opaque host-derived conversation space identity; raw channel IDs stay host-side. */
+  readonly spaceId?: string;
+  /** Resolved ProfileRoute identity, when the host configured one. */
+  readonly profileId?: string;
 }
 
 /** Keeps callers honest when a channel context is constructed at a boundary. */
@@ -31,5 +37,7 @@ export function normalizeAgentInteractionContext(
     surface: context.surface,
     ...(context.platform ? { platform: context.platform } : {}),
     ...(context.chatType ? { chatType: context.chatType } : {}),
+    ...(context.spaceId?.trim() ? { spaceId: context.spaceId.trim() } : {}),
+    ...(context.profileId?.trim() ? { profileId: context.profileId.trim() } : {}),
   };
 }

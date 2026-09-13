@@ -18,6 +18,7 @@ import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
+import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 
 export interface AgentHostToolContext {
   tool: RegisteredTool;
@@ -31,6 +32,8 @@ export interface AgentHostToolContext {
   uploadStore?: Pick<AgentUploadStore, "resolve">;
   resourceResolver?: AgentResourceResolverLike;
   sessionId?: string;
+  /** Stable logical lane for session-scoped capability evidence. */
+  logicalCacheScope?: string;
   requestId?: string;
   step?: number;
   toolCallId?: string;
@@ -48,6 +51,8 @@ export interface AgentHostToolContext {
   approvalMode?: AgentExecutionApprovalMode;
   modelProviderId?: string;
   activeSkills?: readonly AgentActivatedSkill[];
+  /** Host-confirmed capabilities prepared for this turn. */
+  reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
   thinkingLevel?: ModelThinkingLevel;
   todoService?: AgentTodoService;
 }

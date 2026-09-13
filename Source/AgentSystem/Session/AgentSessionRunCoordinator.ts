@@ -44,9 +44,17 @@ import {
 } from "./AgentSessionActiveRunController.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
-import type { AgentConversationEntryMetadata, AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
+import {
+  resolveAgentSessionModelProviderId,
+  type AgentConversationEntryMetadata,
+  type AgentEffectiveModelReceipt,
+  type AgentModelSelectionSource,
+  type AgentSessionOwnership,
+} from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import { createAgentPiLogicalCacheScope } from "../Pi/AgentPiPromptCache.js";
+import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
 
 export interface AgentSessionRunCoordinatorOptions {
   store: AgentSessionStore;
@@ -61,6 +69,8 @@ export interface AgentSessionRunCoordinatorOptions {
   piSessionMutations?: Pick<AgentPiSessionMutationPort, "reset">;
   runControl: AgentSessionRunControlPolicy;
   loopFactory: (modelProviderId?: string) => AgentLoopRunner;
+  /** Projects a live session snapshot for UI/channel observers. */
+  snapshotEvent?: (session: AgentSession) => AgentDomainEvent;
   eventObserver?: AgentEventSink;
 }
 
@@ -79,6 +89,7 @@ interface AgentSessionRunRequest {
   inheritProjectContext?: boolean;
   sessionOwnership?: AgentSessionOwnership;
   metadata?: AgentConversationEntryMetadata;
+  modelSelectionSource?: AgentModelSelectionSource;
   interaction?: AgentInteractionContext;
   /** Allows a durable internal wake to reclaim its own crashed run receipt. */
   reclaimRunningCommand?: boolean;
@@ -102,6 +113,12 @@ export class AgentSessionRunCoordinator {
     this.activeRuns.assertAcceptingRuns();
     const requestId = request.requestId?.trim() || createRequestId();
     const timestamp = new Date().toISOString();
+    const conversationSpaceId =
+      request.interaction?.spaceId ?? request.metadata?.channel?.spaceId ?? session.metadata?.channel?.spaceId;
+    const logicalCacheScope = createAgentPiLogicalCacheScope({
+      ...(conversationSpaceId ? { identity: conversationSpaceId } : { sessionId: session.id }),
+      family: "conversation",
+    });
     const channelScope = request.metadata?.channel?.platform
       ? { channel: request.metadata.channel.platform }
       : undefined;
@@ -178,6 +195,10 @@ export class AgentSessionRunCoordinator {
     if (reclaimRunningCommand) runningSession.conversation = [...session.conversation];
 
     replaceAgentSessionState(session, runningSession);
+    // A reclaimed process must not expose a stale receipt from an abandoned
+    // physical runtime while the replacement runtime is being resolved.
+    session.metadata = { ...session.metadata, activeRun: undefined };
+    this.options.store.persistMetadata(session);
     const run = this.activeRuns.register(session.id, requestId, request.onEvent);
     const terminalEvents: AgentDomainEvent[] = [];
     const onRunEvent: AgentEventSink = async (event) => {
@@ -193,9 +214,39 @@ export class AgentSessionRunCoordinator {
       await emitAgentEvent(request.onEvent, runStartedEvent);
       const workingConversation = [...session.conversation];
       const turnTerminalEvents: AgentDomainEvent[] = [];
+      const loop = this.options.loopFactory(request.modelProviderId);
+      const effectiveModel = loop.modelProvider
+        ? {
+            sessionId: session.id,
+            requestId,
+            providerId: loop.modelProvider.id,
+            model: loop.modelProvider.model,
+            endpoint: loop.modelProvider.endpoint,
+            baseUrl: loop.modelProvider.baseUrl,
+            source: request.modelSelectionSource ?? (request.modelProviderId ? "request" : "default"),
+            effectiveAt: timestamp,
+            logicalCacheScope,
+          }
+        : undefined;
+      if (effectiveModel && session.activeRequest?.requestId === requestId) {
+        session.activeRequest = { ...session.activeRequest, effectiveModel };
+        session.metadata = {
+          ...session.metadata,
+          activeRun: {
+            modelProvider: loop.modelProvider!,
+            receipt: effectiveModel,
+          },
+        };
+        this.options.store.persistMetadata(session);
+        const snapshot = this.options.snapshotEvent?.(session);
+        if (snapshot) await this.publishSessionSnapshot(request.onEvent, snapshot, session.id, requestId, channelScope);
+      }
       const result = await this.runLoopTurn({
         session,
         run,
+        loop,
+        logicalCacheScope,
+        effectiveModel,
         request,
         requestId,
         input: request.input,
@@ -222,6 +273,14 @@ export class AgentSessionRunCoordinator {
               run: {
                 modelProvider: result.modelProvider,
                 usage: result.usage,
+                ...(effectiveModel
+                  ? {
+                      receipt: {
+                        ...effectiveModel,
+                        ...(result.physicalPiSessionId ? { physicalPiSessionId: result.physicalPiSessionId } : {}),
+                      },
+                    }
+                  : {}),
               },
             }
           : undefined,
@@ -245,11 +304,19 @@ export class AgentSessionRunCoordinator {
         ...allFreshEntries,
       ]);
       if (result.modelProvider) {
+        const completedReceipt = effectiveModel
+          ? {
+              ...effectiveModel,
+              ...(result.physicalPiSessionId ? { physicalPiSessionId: result.physicalPiSessionId } : {}),
+            }
+          : undefined;
         completedSession.metadata = {
           ...completedSession.metadata,
+          activeRun: undefined,
           lastRun: {
             modelProvider: result.modelProvider,
             usage: result.usage,
+            ...(completedReceipt ? { receipt: completedReceipt } : {}),
           },
         };
       }
@@ -307,6 +374,7 @@ export class AgentSessionRunCoordinator {
         });
         const cancelledSession = cloneAgentSessionState(session);
         this.activeRuns.releaseSession(cancelledSession);
+        cancelledSession.metadata = { ...cancelledSession.metadata, activeRun: undefined };
         cancelledSession.updatedAt = endedAt;
         try {
           this.options.store.persistTurnCommit(
@@ -347,6 +415,7 @@ export class AgentSessionRunCoordinator {
       });
       const failedSession = cloneAgentSessionState(session);
       this.activeRuns.releaseSession(failedSession);
+      failedSession.metadata = { ...failedSession.metadata, activeRun: undefined };
       failedSession.updatedAt = endedAt;
       try {
         this.options.store.persistTurnCommit(
@@ -390,6 +459,9 @@ export class AgentSessionRunCoordinator {
   private runLoopTurn(input: {
     readonly session: AgentSession;
     readonly run: AgentSessionActiveRun;
+    readonly loop: AgentLoopRunner;
+    readonly logicalCacheScope: string;
+    readonly effectiveModel?: AgentEffectiveModelReceipt;
     readonly request: AgentSessionRunRequest;
     readonly requestId: string;
     readonly input: string;
@@ -400,13 +472,17 @@ export class AgentSessionRunCoordinator {
     readonly terminalEvents: AgentDomainEvent[];
     readonly onEvent: AgentEventSink;
   }): Promise<Awaited<ReturnType<AgentLoopRunner["run"]>>> {
-    const loop = this.options.loopFactory(input.request.modelProviderId);
     const loadedToolNames =
       input.loadedToolNames ??
-      resolveAgentToolAvailabilitySnapshot(input.session.metadata, loop.preparationFingerprint);
-    const resultPromise = loop.run({
+      resolveAgentToolAvailabilitySnapshot(input.session.metadata, input.loop.preparationFingerprint);
+    const resourceOwner: AgentToolResourceLeaseOwner | undefined =
+      input.session.metadata?.ownership?.type === "child_run" ? { type: "session", id: input.session.id } : undefined;
+    const resultPromise = input.loop.run({
       sessionId: input.session.id,
+      logicalCacheScope: input.logicalCacheScope,
       requestId: input.requestId,
+      effectiveModel: input.effectiveModel,
+      turnNumber: input.session.conversation.filter((entry) => entry.kind === "user.message").length,
       step: input.step,
       input: input.input,
       attachments: input.request.attachments,
@@ -418,6 +494,7 @@ export class AgentSessionRunCoordinator {
       pinnedSkills: input.request.pinnedSkills,
       thinkingLevel: input.request.thinkingLevel,
       inheritProjectContext: input.request.inheritProjectContext,
+      resourceOwner,
       interaction: input.request.interaction,
       signal: input.run.controller.signal,
       emitRunStarted: false,
@@ -425,10 +502,10 @@ export class AgentSessionRunCoordinator {
       preparation: input.preparation,
       onPreparation: (snapshot) => {
         this.options.store.persistTurnPreparation(input.session.id, input.requestId, snapshot);
-        if (loop.preparationFingerprint && snapshot.loadedToolNames.length > 0) {
+        if (input.loop.preparationFingerprint && snapshot.loadedToolNames.length > 0) {
           input.session.metadata = withAgentToolAvailabilitySnapshot(
             input.session.metadata,
-            loop.preparationFingerprint,
+            input.loop.preparationFingerprint,
             snapshot.loadedToolNames,
           );
           this.options.store.persistMetadata(input.session);
@@ -436,10 +513,14 @@ export class AgentSessionRunCoordinator {
       },
       onPiBranchBoundary: (entryId) => {
         this.options.store.persistTurnPreparationBoundary(input.session.id, input.requestId, entryId);
+        const lifecycleModelProviderId =
+          input.effectiveModel?.providerId ??
+          input.request.modelProviderId ??
+          resolveAgentSessionModelProviderId(input.session.metadata);
         input.session.metadata = withAgentPiSessionLifecycle(
           input.session.metadata,
           AgentPiSessionLifecycleStates.Initialized,
-          input.request.modelProviderId,
+          lifecycleModelProviderId,
         );
         this.options.store.persistMetadata(input.session);
       },
@@ -458,10 +539,10 @@ export class AgentSessionRunCoordinator {
       },
     });
     return resultPromise.then((result) => {
-      if (loop.preparationFingerprint && result.loadedToolNames && result.loadedToolNames.length > 0) {
+      if (input.loop.preparationFingerprint && result.loadedToolNames && result.loadedToolNames.length > 0) {
         input.session.metadata = withAgentToolAvailabilitySnapshot(
           input.session.metadata,
-          loop.preparationFingerprint,
+          input.loop.preparationFingerprint,
           result.loadedToolNames,
         );
         this.options.store.persistMetadata(input.session);
@@ -529,6 +610,18 @@ export class AgentSessionRunCoordinator {
         });
       }
     }
+  }
+
+  private async publishSessionSnapshot(
+    onEvent: AgentEventSink | undefined,
+    event: AgentDomainEvent,
+    sessionId: string,
+    requestId: string,
+    scope: Record<string, string> | undefined,
+  ): Promise<void> {
+    const contextual = withEventContext(event, { sessionId, requestId, scope });
+    await this.observeEvent(contextual);
+    await emitAgentEvent(onEvent, contextual);
   }
 
   private async observeEvent(event: AgentDomainEvent): Promise<void> {

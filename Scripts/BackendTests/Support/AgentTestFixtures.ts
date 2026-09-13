@@ -133,6 +133,8 @@ export function createModelProviderEndpoint(
     ApiKey: "test-key",
     ApiVersion: "",
     Headers: {},
+    ProviderId: "test-endpoint",
+    Priority: 0,
     ...overrides,
   };
 }

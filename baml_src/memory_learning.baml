@@ -62,7 +62,7 @@ function RepairContinuityFacts(stablePrompt: string, promptJson: string) -> Cont
     {{ _.role("system") }}
     {{ stablePrompt }}
 
-    Repair protocol: read directive from the JSON user message and fix every listed issue without changing the semantic contract.
+    Repair protocol: read the directive block from the senera.continuity_facts=v1 wire and fix every listed issue without changing the semantic contract.
 
     {{ ctx.output_format }}
 
@@ -90,7 +90,7 @@ function RepairContinuityRules(stablePrompt: string, promptJson: string) -> Cont
     {{ _.role("system") }}
     {{ stablePrompt }}
 
-    Repair protocol: read directive from the JSON user message and fix every listed issue without changing the semantic contract.
+    Repair protocol: read the directive block from the senera.continuity_rules=v1 wire and fix every listed issue without changing the semantic contract.
 
     {{ ctx.output_format }}
 

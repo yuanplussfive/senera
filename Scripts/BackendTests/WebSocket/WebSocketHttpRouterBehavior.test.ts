@@ -8,6 +8,7 @@ import { AgentWebSocketHttpRouter } from "../../../Source/AgentSystem/WebSocket/
 import type { AgentHealthHttpApi } from "../../../Source/AgentSystem/WebSocket/AgentHealthHttpApi.js";
 import type { AgentWorkspaceResourceHttpApi } from "../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
 import type { AgentProviderCredentialHttpApi } from "../../../Source/AgentSystem/Config/AgentProviderCredentialHttpApi.js";
+import type { AgentSelfHttpApi } from "../../../Source/AgentSystem/SelfService/AgentSelfHttpApi.js";
 
 describe("WebSocket HTTP router", () => {
   test("routes authentication before generic access control", async () => {
@@ -36,6 +37,16 @@ describe("WebSocket HTTP router", () => {
 
     expect(fixture.health.handle).toHaveBeenCalledTimes(1);
     expect(fixture.staticFrontend.handle).not.toHaveBeenCalled();
+    expect(fixture.authorizeHttp).not.toHaveBeenCalled();
+  });
+
+  test("routes self-service commands outside CSRF access control", async () => {
+    const fixture = createRouterFixture({ self: true, upload: true });
+
+    await fixture.router.handle(request("POST", "/senera/self"), fixture.response.value);
+
+    expect(fixture.self.handle).toHaveBeenCalledTimes(1);
+    expect(fixture.upload.handle).not.toHaveBeenCalled();
     expect(fixture.authorizeHttp).not.toHaveBeenCalled();
   });
 
@@ -126,6 +137,7 @@ function createRouterFixture(
     staticFrontend?: boolean;
     workspaceResource?: boolean;
     providerCredential?: boolean;
+    self?: boolean;
     accessResult?: unknown;
   } = {},
 ) {
@@ -135,6 +147,7 @@ function createRouterFixture(
   const staticFrontend = createApi(options.staticFrontend ?? false);
   const workspaceResource = createApi(options.workspaceResource ?? false);
   const providerCredential = createApi(options.providerCredential ?? false);
+  const self = createApi(options.self ?? false);
   const authorizeHttp = vi.fn(() => options.accessResult ?? { ok: true });
   const response = createResponse();
   return {
@@ -144,6 +157,7 @@ function createRouterFixture(
     staticFrontend,
     workspaceResource,
     providerCredential,
+    self,
     authorizeHttp,
     response,
     router: new AgentWebSocketHttpRouter({
@@ -153,6 +167,7 @@ function createRouterFixture(
       providerCredentialApi: providerCredential as unknown as AgentProviderCredentialHttpApi,
       workspaceResourceApi: workspaceResource as unknown as AgentWorkspaceResourceHttpApi,
       staticFrontendApi: staticFrontend as unknown as AgentStaticFrontendHttpApi,
+      selfApi: self as unknown as AgentSelfHttpApi,
       accessGuard: { authorizeHttp } as unknown as AgentServerAccessGuard,
     }),
   };

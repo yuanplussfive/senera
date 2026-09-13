@@ -28,12 +28,18 @@ import type { AgentPresetActivationRuntime } from "../Presets/AgentPresetActivat
 import type { AgentChannelKind } from "../Channels/AgentChannelTypes.js";
 import type { AgentChannelStatus } from "../Channels/AgentChannelService.js";
 import type { AgentModelsDevCatalog } from "../ModelEndpoints/AgentModelsDevCatalog.js";
+import type { AgentWorkspaceSnapshotData } from "../Config/AgentConfigEventTypes.js";
 
 /** Narrow surface the WebSocket layer needs to drive channel connections. */
 export interface AgentChannelServiceControl {
   connectChannel(kind: AgentChannelKind): Promise<void>;
   statuses: readonly AgentChannelStatus[];
 }
+
+/** Read-only workspace identity reported to connected clients. */
+export type AgentWorkspaceInfoSnapshot = AgentWorkspaceSnapshotData;
+
+export type AgentWorkspaceSwitchRequest = (workspaceRoot: string) => Promise<AgentWorkspaceInfoSnapshot>;
 
 export interface AgentWebSocketServerOptions {
   config: AgentSystemConfig;
@@ -60,6 +66,7 @@ export interface AgentWebSocketServerOptions {
   resourceResolver?: AgentResourceResolverLike;
   runtimeUpdate?: AgentRuntimeUpdateHttpApiOptions;
   channelWebhookApi?: import("../Channels/AgentChannelWebhookApi.js").AgentChannelWebhookApi;
+  selfApi?: import("../SelfService/AgentSelfHttpApi.js").AgentSelfHttpApi;
   channelControl?: AgentChannelServiceControl;
   agenda?: AgentAgendaService;
   goalCommands?: AgentGoalCommandService;
@@ -68,6 +75,8 @@ export interface AgentWebSocketServerOptions {
   onWorldWake?: (reason: string) => void | Promise<void>;
   presetActivation?: AgentPresetActivationRuntime;
   onPresetSnapshot?: (snapshot: AgentPresetSnapshot) => void;
+  workspaceInfo?: () => AgentWorkspaceInfoSnapshot;
+  workspaceSwitchRequest?: AgentWorkspaceSwitchRequest;
 }
 
 export interface AgentWebSocketRequestContext {
@@ -92,6 +101,8 @@ export interface AgentWebSocketRequestContext {
   worldRuntime?: AgentWorldSnapshotProvider;
   residentWakeRuntime?: AgentWorldResidentWakeRuntime;
   onWorldWake?: (reason: string) => void | Promise<void>;
+  workspaceInfo?: () => AgentWorkspaceInfoSnapshot;
+  workspaceSwitchRequest?: AgentWorkspaceSwitchRequest;
 }
 
 export type AgentWebSocketEventSender = (event: AgentDomainEvent) => void | Promise<void>;

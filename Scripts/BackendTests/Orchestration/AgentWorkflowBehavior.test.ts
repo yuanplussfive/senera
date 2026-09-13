@@ -45,7 +45,6 @@ describe("native subagent workflows", () => {
       events: new AgentOrchestrationEventRelay(),
       maxNodes: () => undefined,
     });
-
     const completion = workflows.start(
       {
         nodes: [
@@ -155,10 +154,55 @@ describe("native subagent workflows", () => {
     await workflows.shutdown();
     database.close();
   });
+
+  test("cancels from the latest persisted node state and is idempotent for terminal workflows", async () => {
+    const database = openDelegationTestDatabase();
+    const childRuns = new AgentSqliteChildRunRepository(database);
+    const delegation = new ControlledDelegation(childRuns);
+    const lifecycleEvents: string[] = [];
+    const onEvent = async (event: { readonly kind: string }): Promise<void> => {
+      lifecycleEvents.push(event.kind);
+    };
+    const events = new AgentOrchestrationEventRelay();
+    events.setSink(onEvent);
+    const workflows = new AgentWorkflowService({
+      repository: new AgentSqliteWorkflowRepository(database),
+      delegation,
+      events,
+      maxNodes: () => undefined,
+    });
+    const completion = workflows.start(
+      { nodes: [node("first", "Run first."), node("second", "Run second.")] },
+      AgentWorkflowExecutionModes.Wait,
+      workflowContext(),
+    );
+
+    await vi.waitFor(() => expect(delegation.requests).toHaveLength(2));
+    const workflow = workflows.list("parent-session")[0]!;
+    const second = workflow.nodes.find((entry) => entry.nodeId === "second")!;
+    expect(second.childRunId).toBeDefined();
+
+    const cancelled = await workflows.cancel(workflow.id, "parent-session", onEvent);
+    expect(cancelled?.status).toBe(AgentWorkflowStatuses.Cancelled);
+    expect(cancelled?.nodes.map((entry) => entry.status)).toEqual([
+      AgentWorkflowNodeStatuses.Cancelled,
+      AgentWorkflowNodeStatuses.Cancelled,
+    ]);
+    expect(delegation.cancelledIds.sort()).toEqual(["child-first", "child-second"]);
+    expect(await completion).toMatchObject({ status: AgentWorkflowStatuses.Cancelled });
+
+    const terminal = await workflows.cancel(workflow.id, "parent-session", onEvent);
+    expect(terminal).toMatchObject({ status: AgentWorkflowStatuses.Cancelled });
+    expect(delegation.cancelledIds).toHaveLength(2);
+    expect(lifecycleEvents.filter((kind) => kind === "workflow.cancelled")).toHaveLength(1);
+    await workflows.shutdown();
+    database.close();
+  });
 });
 
 class ControlledDelegation implements AgentWorkflowDelegationPort {
   readonly requests: AgentDelegationRequest[] = [];
+  readonly cancelledIds: string[] = [];
   private readonly deferred = new Map<string, Deferred<AgentChildRunRecord>>();
 
   constructor(private readonly repository: AgentSqliteChildRunRepository) {}
@@ -219,6 +263,11 @@ class ControlledDelegation implements AgentWorkflowDelegationPort {
     return this.repository.listForOwner(ownerRunId);
   }
 
+  markResultConsumed(id: string, parentSessionId: string): AgentChildRunRecord | undefined {
+    const child = this.get(id, parentSessionId);
+    return child ? this.repository.markResultConsumed(id) : undefined;
+  }
+
   wait(id: string, parentSessionId: string): Promise<AgentChildRunRecord | undefined> {
     const child = this.get(id, parentSessionId);
     if (!child) return Promise.resolve(undefined);
@@ -228,6 +277,7 @@ class ControlledDelegation implements AgentWorkflowDelegationPort {
   cancel(id: string, parentSessionId: string): Promise<AgentChildRunRecord | undefined> {
     const child = this.get(id, parentSessionId);
     if (!child) return Promise.resolve(undefined);
+    this.cancelledIds.push(id);
     const cancelled = this.repository.markCancelled(id)!;
     this.deferred.get(child.nodeId)?.resolve(cancelled);
     return Promise.resolve(cancelled);

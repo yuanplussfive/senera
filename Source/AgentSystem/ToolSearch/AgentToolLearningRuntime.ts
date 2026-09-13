@@ -20,12 +20,19 @@ import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import { AgentLearningStates } from "./AgentLearningEpisodeTypes.js";
+import type { AgentLanguageModelCacheOptions } from "../ModelEndpoints/AgentLanguageModel.js";
+import {
+  createAgentPiLogicalCacheScope,
+  createAgentPiPromptCacheOptions,
+  projectAgentPiPromptCacheModel,
+} from "../Pi/AgentPiPromptCache.js";
 
 export interface AgentToolLearningEpisodeDraft {
   learningEpisodeId: string;
   episode: Omit<AgentToolSearchEpisode, "learnedKeywords">;
   requestId: string;
   sessionId?: string;
+  logicalCacheScope?: string;
   rawUserTurn: string;
   standaloneRequest: string;
   contextMode: string;
@@ -39,12 +46,12 @@ export class AgentToolLearningRuntime {
 
   constructor(
     private readonly registry: AgentExtensionRegistry,
-    model: ResolvedAgentModelProviderConfig,
+    private readonly modelProvider: ResolvedAgentModelProviderConfig,
     private readonly config: ResolvedAgentToolLearningConfig,
     private readonly memory: AgentToolSearchMemory,
     private readonly logger?: AgentLogger,
   ) {
-    this.client = new AgentActionPlannerModelClient(model, config.Client, {
+    this.client = new AgentActionPlannerModelClient(modelProvider, config.Client, {
       maxRepairAttempts: config.MaxRepairAttempts,
     });
   }
@@ -94,10 +101,12 @@ export class AgentToolLearningRuntime {
     };
 
     const allowedTags = new Map(toolTagCatalogByTool.map((entry) => [entry.toolName, new Set(entry.tags)] as const));
+    const cache = createToolLearningCache(this.modelProvider, draft);
     const parsed = await this.learnAndValidate(input, {
       selectedTools,
       candidateSourceTerms,
       allowedTags,
+      cache,
     });
     const learnedKeywords = parsed.records.flatMap(recordToLearnedTerms);
     if (learnedKeywords.length === 0) {
@@ -132,9 +141,10 @@ export class AgentToolLearningRuntime {
       selectedTools: readonly string[];
       candidateSourceTerms: readonly string[];
       allowedTags: ReadonlyMap<string, ReadonlySet<string>>;
+      cache?: AgentLanguageModelCacheOptions;
     },
   ) {
-    let current = await this.client.learnToolUse(input);
+    let current = await this.client.learnToolUse(input, { cache: options.cache });
     for (let attempt = 0; attempt <= this.config.MaxRepairAttempts; attempt += 1) {
       try {
         return parseToolLearningResult(current, {
@@ -150,11 +160,14 @@ export class AgentToolLearningRuntime {
         if (!isRepairablePlanningFailure(failure.error)) {
           throw error;
         }
-        current = await this.client.repairToolLearning({
-          input,
-          invalidLearning: stringifyIssueValue(failure.invalidOutput ?? failure.error),
-          issues: issueMessages(failure.error),
-        });
+        current = await this.client.repairToolLearning(
+          {
+            input,
+            invalidLearning: stringifyIssueValue(failure.invalidOutput ?? failure.error),
+            issues: issueMessages(failure.error),
+          },
+          { cache: options.cache },
+        );
       }
     }
 
@@ -200,6 +213,21 @@ export class AgentToolLearningRuntime {
       ...this.tokenizer.keywords(draft.episode.query),
     ]);
   }
+}
+
+function createToolLearningCache(
+  modelProvider: ResolvedAgentModelProviderConfig,
+  draft: AgentToolLearningEpisodeDraft,
+): AgentLanguageModelCacheOptions | undefined {
+  if (!draft.sessionId?.trim()) return undefined;
+  return createAgentPiPromptCacheOptions({
+    phase: "tool-learning",
+    sessionId: draft.sessionId,
+    logicalCacheScope:
+      draft.logicalCacheScope ??
+      createAgentPiLogicalCacheScope({ sessionId: draft.sessionId, family: "tool-learning" }),
+    model: projectAgentPiPromptCacheModel(modelProvider),
+  });
 }
 
 function recordToLearnedTerms(record: {

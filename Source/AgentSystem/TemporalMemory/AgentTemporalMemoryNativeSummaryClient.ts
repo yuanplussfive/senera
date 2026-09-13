@@ -1,5 +1,6 @@
 import { Type, type Tool } from "@earendil-works/pi-ai";
 import { AgentRequiredNativeToolCall } from "../ModelEndpoints/AgentRequiredNativeToolCall.js";
+import { AgentNativeToolApiByEndpoint } from "../ModelEndpoints/AgentModelEndpointContract.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import {
   createAgentTemporalMemorySummaryPrompt,
@@ -7,6 +8,7 @@ import {
 } from "./AgentTemporalMemorySummaryPrompt.js";
 import { createAgentTemporalMemoryPromptCache } from "./AgentTemporalMemoryPromptCache.js";
 import type { AgentTemporalMemorySummaryPromptInput } from "./AgentTemporalMemoryTypes.js";
+import { parseAgentTemporalMemorySummary } from "./AgentTemporalMemorySummarySchema.js";
 
 const TextPart = Type.Union([
   Type.Object({ kind: Type.Literal("text"), text: Type.String({ minLength: 1 }) }, { additionalProperties: false }),
@@ -48,9 +50,14 @@ export class AgentTemporalMemoryNativeSummaryClient {
     return this.call.execute({
       tool: NativeSummaryTool,
       ...prompt,
+      validate: (value) => {
+        parseAgentTemporalMemorySummary(value);
+      },
       cache: createAgentTemporalMemoryPromptCache({
         scopeKey: this.cacheScopeKey,
         phase: "digest-summary",
+        provider: this.configuration.ProviderId,
+        api: AgentNativeToolApiByEndpoint[this.configuration.Endpoint],
         model: this.configuration.Model,
         systemPrompt: prompt.systemPrompt,
         contract: NativeSummaryTool,

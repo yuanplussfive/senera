@@ -17,15 +17,20 @@ export function deriveAgentSessionTitle(session: AgentSession): string {
 
 export function rowToAgentSession(row: SessionRow): AgentSession {
   const metadata = parseJsonObject(row.metadata);
+  const status = parseStoredAgentSessionStatus(row.status);
+  // A persisted running row is reopened as idle after a process restart. Its
+  // in-flight receipt belongs to the abandoned physical run and must not be
+  // presented as the current model until a new runtime is admitted.
+  const { activeRun: _abandonedActiveRun, ...durableMetadata } = metadata;
   return {
     id: row.id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    status: parseStoredAgentSessionStatus(row.status),
+    status,
     conversation: [],
     metadata: {
-      ...metadata,
-      title: readStoredTitle(row.title) ?? readStoredTitle(metadata.title),
+      ...durableMetadata,
+      title: readStoredTitle(row.title) ?? readStoredTitle(durableMetadata.title),
     },
   };
 }

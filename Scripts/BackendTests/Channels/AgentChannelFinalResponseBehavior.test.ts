@@ -1,14 +1,136 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  AgentChannelFinalResponseBamlRewriter,
   parseAgentChannelFinalDelivery,
   projectAgentChannelFinalParts,
 } from "../../../Source/AgentSystem/Channels/AgentChannelFinalResponse.js";
+import type { AgentBamlModelRequest } from "../../../Source/AgentSystem/BamlClient/AgentBamlStructuredOutputRunner.js";
+import { AgentActionPlannerModelTransport } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerModelTransport.js";
 import {
   collectAgentChannelMarkdownResourceManifest,
   projectAgentChannelFinalParts as projectOutboundFinalParts,
 } from "../../../Source/AgentSystem/Channels/AgentChannelOutboundMedia.js";
+import { createModelProvider } from "../Support/AgentTestFixtures.js";
 
 describe("channel final response rewriter", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("projects the BAML rewrite through the conversation cache boundary", async () => {
+    const requestCapture: {
+      request?: unknown;
+      signal?: AbortSignal;
+      timingSink?: unknown;
+    } = {};
+    const complete = vi
+      .spyOn(AgentActionPlannerModelTransport.prototype, "complete")
+      .mockImplementation(async (request, signal, timingSink) => {
+        requestCapture.request = request;
+        requestCapture.signal = signal;
+        requestCapture.timingSink = timingSink;
+        return JSON.stringify({ parts: [{ kind: "text", text: "已发送" }] });
+      });
+    const timingSink = vi.fn();
+    const rewriter = new AgentChannelFinalResponseBamlRewriter(
+      createModelProvider({ ToolPlanningMode: "baml", MaxOutputTokens: 256 }),
+    );
+
+    await expect(
+      rewriter.rewrite({
+        content: "第一段\n![图](senera://resource/r1)\n第二段",
+        source: {
+          platform: "qq",
+          chatType: "direct",
+          chatId: "chat-1",
+          userId: "user-1",
+        },
+        sessionId: "session-1",
+        requestId: "request-1",
+        logicalCacheScope: "channel-scope-1",
+        timingSink,
+        context: {
+          resourceManifest: {
+            references: [
+              {
+                source: "senera://resource/r1",
+                kind: "senera",
+                resourceUri: "senera://resource/r1",
+                name: "image.svg",
+                mime: "image/svg+xml",
+              },
+            ],
+          },
+          history: [
+            {
+              id: "history-1",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              platform: "qq",
+              chatType: "direct",
+              content: "上一条",
+              parts: [{ kind: "text", text: "上一条" }],
+            },
+          ],
+        },
+      }),
+    ).resolves.toEqual({ parts: [{ kind: "text", text: "已发送" }] });
+
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(requestCapture.signal).toBeUndefined();
+    expect(requestCapture.timingSink).toBe(timingSink);
+    expect(requestCapture.request).toMatchObject({
+      requestId: "request-1",
+      cache: {
+        sessionId: "session-1",
+        logicalCacheScope: "channel-scope-1",
+        retention: "long",
+        stablePrefixRevision: expect.any(String),
+        stablePrefixBytes: expect.any(Number),
+      },
+      systemPrompt: expect.stringContaining("Current channel platform: qq."),
+      messages: [
+        {
+          role: "user",
+          content: expect.stringContaining('"resourceUri":"senera://resource/r1"'),
+        },
+      ],
+    });
+    expect((requestCapture.request as { messages: [{ content: string }] }).messages[0].content).toContain(
+      '"id":"history-1"',
+    );
+  });
+
+  test("repairs one malformed BAML projection while retaining its cache boundary", async () => {
+    const requests: AgentBamlModelRequest[] = [];
+    const complete = vi
+      .spyOn(AgentActionPlannerModelTransport.prototype, "complete")
+      .mockImplementation(async (request) => {
+        requests.push(request);
+        return requests.length === 1 ? "not-json" : JSON.stringify({ parts: [{ kind: "text", text: "修复后" }] });
+      });
+    const rewriter = new AgentChannelFinalResponseBamlRewriter(createModelProvider({ ToolPlanningMode: "baml" }));
+
+    await expect(
+      rewriter.rewrite({
+        content: "回答",
+        source: {
+          platform: "qq",
+          chatType: "direct",
+          chatId: "chat-1",
+          userId: "user-1",
+        },
+        sessionId: "session-1",
+        logicalCacheScope: "channel-scope-1",
+      }),
+    ).resolves.toEqual({ parts: [{ kind: "text", text: "修复后" }] });
+
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(requests[1]?.step).toBe(1);
+    expect(requests[1]?.cache).toEqual(requests[0]?.cache);
+    expect(requests[1]?.messages.at(-1)?.content).toContain("<channel_final_delivery_repair>");
+    expect(requests[1]?.messages.at(-1)?.content).toContain("not-json");
+  });
+
   test("projects native tool-call arguments into a structured final delivery", () => {
     const parts = projectAgentChannelFinalParts({
       parts: [

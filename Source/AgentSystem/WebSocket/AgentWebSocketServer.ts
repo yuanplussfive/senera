@@ -139,6 +139,7 @@ export class AgentWebSocketServer {
       healthApi: new AgentHealthHttpApi(),
       runtimeUpdateApi: options.runtimeUpdate ? new AgentRuntimeUpdateHttpApi(options.runtimeUpdate) : undefined,
       channelWebhookApi: options.channelWebhookApi,
+      selfApi: options.selfApi,
       accessGuard: this.accessGuard,
     });
     this.messageRouter = new AgentWebSocketMessageRouter({
@@ -164,6 +165,8 @@ export class AgentWebSocketServer {
         worldRuntime: options.worldRuntime,
         residentWakeRuntime: options.residentWakeRuntime,
         onWorldWake: options.onWorldWake,
+        workspaceInfo: options.workspaceInfo,
+        workspaceSwitchRequest: options.workspaceSwitchRequest,
       },
       sendEnvelope: (socket, event) => this.eventSender.sendEnvelope(socket, event),
       broadcast: (event) => this.broadcast(event),

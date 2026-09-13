@@ -89,26 +89,100 @@ export function upsertMessageByRequestId(session: SessionRecord, message: ChatMe
   return true;
 }
 
-export function mergeHistoryMessages(session: SessionRecord, messages: readonly ChatMessage[]): void {
+export interface HistoryMessageMergeOptions {
+  /** Keep the incoming page's order without sorting the full transcript. */
+  readonly sort?: boolean;
+  /** Older pages are inserted before the current preview/window. */
+  readonly placement?: "append" | "prepend";
+}
+
+export function mergeHistoryMessages(
+  session: SessionRecord,
+  messages: readonly ChatMessage[],
+  options: HistoryMessageMergeOptions = {},
+): void {
+  if (messages.length === 0) return;
+
+  const byId = new Map(session.messages.map((message, index) => [message.id, index] as const));
+  const byRequestRoleKind = new Map<string, number>();
+  const insertedById = new Map<string, number>();
+  const insertedByRequestRoleKind = new Map<string, number>();
+  const inserted: ChatMessage[] = [];
+  session.messages.forEach((message, index) => {
+    if (message.requestId && message.kind !== "AssistantToolPreface") {
+      byRequestRoleKind.set(messageIdentity(message), index);
+    }
+  });
+  let changed = false;
+
   for (const message of messages) {
-    upsertMessageByRequestId(session, message);
+    const existingById = byId.get(message.id);
+    if (existingById !== undefined) {
+      if (existingById < session.messages.length) session.messages[existingById] = message;
+      else inserted[existingById - session.messages.length] = message;
+      continue;
+    }
+    const insertedByMessageId = insertedById.get(message.id);
+    if (insertedByMessageId !== undefined) {
+      inserted[insertedByMessageId] = message;
+      continue;
+    }
+
+    if (!message.requestId || message.kind === "AssistantToolPreface") {
+      insertedById.set(message.id, inserted.length);
+      inserted.push(message);
+      continue;
+    }
+
+    const identity = messageIdentity(message);
+    const insertedByIdentity = insertedByRequestRoleKind.get(identity);
+    if (insertedByIdentity !== undefined) {
+      inserted[insertedByIdentity] = message;
+      continue;
+    }
+    const existingByIdentity = byRequestRoleKind.get(identity);
+    if (existingByIdentity !== undefined) {
+      session.messages[existingByIdentity] = message;
+      byId.set(message.id, existingByIdentity);
+      continue;
+    }
+
+    insertedByRequestRoleKind.set(identity, inserted.length);
+    insertedById.set(message.id, inserted.length);
+    inserted.push(message);
   }
-  session.messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  if (inserted.length > 0) {
+    changed = true;
+    if (options.placement === "prepend") session.messages.unshift(...inserted);
+    else session.messages.push(...inserted);
+  }
+  if (changed && options.sort !== false) session.messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export function mergeHistoryRuns(session: SessionRecord, runs: readonly RunRecord[]): void {
+  if (runs.length === 0) return;
+
+  const indexes = new Map(session.runs.map((run, index) => [run.requestId, index] as const));
+  let changed = false;
   for (const run of runs) {
-    const index = session.runs.findIndex((item) => item.requestId === run.requestId);
-    if (index >= 0) {
+    const index = indexes.get(run.requestId);
+    if (index !== undefined) {
       session.runs[index] = {
         ...run,
         revision: Math.max(session.runs[index].revision + 1, run.revision),
       };
     } else {
+      indexes.set(run.requestId, session.runs.length);
       session.runs.push(run);
+      changed = true;
     }
   }
-  session.runs.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  if (changed) session.runs.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+}
+
+function messageIdentity(message: ChatMessage): string {
+  return `${message.requestId}\u0000${message.role}\u0000${message.kind ?? ""}`;
 }
 
 export function rebuildRunFromHistory(run: SessionHistoryStepsData["runs"][number]): RunRecord {

@@ -1,5 +1,10 @@
 import { combineAbortSignals, disposeCombinedAbortSignal, readAbortFailure } from "./ModelHttpAbort.js";
-import { ModelProviderHttpError, ModelRequestTimeoutError, safeReadResponseBody } from "./ModelHttpErrors.js";
+import {
+  isModelHttpRetryableStatus,
+  ModelProviderHttpError,
+  ModelRequestTimeoutError,
+  safeReadResponseBody,
+} from "./ModelHttpErrors.js";
 
 export interface ModelHttpRetryOptions {
   random?: () => number;
@@ -43,7 +48,7 @@ export async function fetchModelHttpWithRetries(
 
       const body = await safeReadResponseBody(response);
       const error = new ModelProviderHttpError(response.status, response.statusText, body);
-      if (!isRetryableStatus(response.status) || attempt === attempts - 1) {
+      if (!isModelHttpRetryableStatus(response.status) || attempt === attempts - 1) {
         throw error;
       }
       lastError = error;
@@ -111,10 +116,6 @@ function waitForRetry(delayMs: number, signal?: AbortSignal | null): Promise<voi
     };
     signal?.addEventListener("abort", onAbort, { once: true });
   });
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 408 || status === 409 || status === 429 || status >= 500;
 }
 
 function isRetryableFetchError(error: unknown): boolean {

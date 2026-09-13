@@ -317,6 +317,7 @@ function projectTransientStages(
       projected.push({
         id: readTransientStageId(turn, "transient-answer"),
         kind: "final",
+        run: projectCurrentStageRun(turn.run),
         current: true,
         transientContent: transientAnswer,
         transientKind: turn.run?.visibleKind === "ask_user" ? "AssistantAsk" : "AssistantFinal",

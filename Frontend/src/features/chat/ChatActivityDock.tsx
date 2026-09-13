@@ -25,12 +25,7 @@ export function ChatActivityDock({
   onResolveApprovalBatch?: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
 }): JSX.Element | null {
   const pendingRun = useMemo(() => findPendingApprovalRun(runs), [runs]);
-  const activeRun = useMemo(() => {
-    const byId = new Map(runs.map((run) => [run.requestId, run] as const));
-    return (
-      [...byId.values()].reverse().find((run) => run.status === "running" || run.status === "cancelling") ?? undefined
-    );
-  }, [runs]);
+  const activeRun = useMemo(() => findActiveRun(runs), [runs]);
 
   if (!pendingRun && !activeRun) return null;
 
@@ -65,9 +60,18 @@ export function ChatActivityDock({
 }
 
 function findPendingApprovalRun(runs: readonly RunRecord[]): RunRecord | undefined {
-  for (const run of [...runs].reverse()) {
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    const run = runs[index];
     const pending = (run.approvals ?? []).some((approval) => approval.status === "pending");
     if (pending) return run;
+  }
+  return undefined;
+}
+
+function findActiveRun(runs: readonly RunRecord[]): RunRecord | undefined {
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    const run = runs[index];
+    if (run.status === "running" || run.status === "cancelling") return run;
   }
   return undefined;
 }

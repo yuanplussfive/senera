@@ -18,6 +18,12 @@
       "contract": "tools/WorkspaceApplyPatch.tool.json",
       "capability": "workspace.apply_patch",
       "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/WorkspaceRestoreCheckpoint.tool.json",
+      "capability": "workspace.restore_checkpoint",
+      "recommendedForSkills": []
     }
   ]
 }

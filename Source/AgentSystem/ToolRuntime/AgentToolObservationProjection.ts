@@ -204,6 +204,7 @@ export class AgentToolObservationProjector {
     const record = value as Record<string, unknown>;
     const patch = readRecord(record.patch);
     return compactObject({
+      checkpoint: record.checkpoint,
       patch: patch
         ? compactObject({
             generated: patch.generated,

@@ -530,7 +530,7 @@ function projectChildRunLifecycle(
 function updateChildRunStep(
   run: RunRecord,
   env: EventEnvelope,
-  data: { childRunId: string; agentName: string; status: ChildRunStatus },
+  data: { childRunId: string; agentName: string; status: ChildRunStatus; workItemId?: string; taskDigest?: string },
   scope: TimelineStep["scope"],
   statePatch: Partial<TimelineChildRunState> = {},
 ): void {
@@ -541,6 +541,8 @@ function updateChildRunStep(
     messages: current?.childRun?.messages ? [...current.childRun.messages] : [],
     ...statePatch,
     id: data.childRunId,
+    ...(data.workItemId ? { workItemId: data.workItemId } : {}),
+    ...(data.taskDigest ? { taskDigest: data.taskDigest } : {}),
     status: data.status,
   };
   const terminal = isTerminalChildRunStatus(data.status);

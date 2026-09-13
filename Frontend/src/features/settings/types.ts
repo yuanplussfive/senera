@@ -1,5 +1,6 @@
 import {
   FolderCog,
+  FolderOpen,
   Gauge,
   Info,
   Palette,
@@ -82,6 +83,12 @@ export const settingsSections = [
     "settings.section.appearance.description",
   ),
   defineSettingsSection("storage", FolderCog, "settings.section.storage.label", "settings.section.storage.description"),
+  defineSettingsSection(
+    "workspace",
+    FolderOpen,
+    "settings.section.workspace.label",
+    "settings.section.workspace.description",
+  ),
   defineSettingsSection("about", Info, "settings.section.about.label", "settings.section.about.description"),
 ] as const satisfies readonly SettingsSectionDefinition[];
 

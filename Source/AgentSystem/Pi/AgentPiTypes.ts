@@ -13,6 +13,8 @@ import type { AgentPiTurnState } from "./AgentPiTurnState.js";
 import type { AgentNativeToolApi, AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
+import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 
 export {
   AgentPiToolResultStatuses,
@@ -40,6 +42,9 @@ export interface AgentPiToolProjectionContext {
   approvalMode?: AgentExecutionApprovalMode;
   tokenBudget?: AgentToolTokenBudget;
   thinkingLevel?: ModelThinkingLevel;
+  /** Assignment owner, present only for child-run sessions with a lease. */
+  resourceOwner?: AgentToolResourceLeaseOwner;
+  reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
 }
 
 export interface AgentPiToolExecutionInput {

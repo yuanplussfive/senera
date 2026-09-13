@@ -6,6 +6,8 @@ describe("temporal memory prompt cache identity", () => {
     const first = createAgentTemporalMemoryPromptCache({
       scopeKey: "temporal_scope_a",
       phase: "conversation-boundary",
+      provider: "provider-a",
+      api: "openai-responses",
       model: "model-a",
       systemPrompt: "stable boundary contract",
       contract: "ClassifyConversationBoundary",
@@ -13,6 +15,8 @@ describe("temporal memory prompt cache identity", () => {
     const second = createAgentTemporalMemoryPromptCache({
       scopeKey: "temporal_scope_a",
       phase: "conversation-boundary",
+      provider: "provider-a",
+      api: "openai-responses",
       model: "model-a",
       systemPrompt: "stable boundary contract",
       contract: "ClassifyConversationBoundary",
@@ -27,6 +31,8 @@ describe("temporal memory prompt cache identity", () => {
     const baseline = createAgentTemporalMemoryPromptCache({
       scopeKey: "temporal_scope_a",
       phase: "conversation-boundary",
+      provider: "provider-a",
+      api: "openai-responses",
       model: "model-a",
       systemPrompt: "stable contract",
       contract: "Boundary",
@@ -35,6 +41,8 @@ describe("temporal memory prompt cache identity", () => {
       createAgentTemporalMemoryPromptCache({
         scopeKey: "temporal_scope_b",
         phase: "conversation-boundary",
+        provider: "provider-a",
+        api: "openai-responses",
         model: "model-a",
         systemPrompt: "stable contract",
         contract: "Boundary",
@@ -42,6 +50,8 @@ describe("temporal memory prompt cache identity", () => {
       createAgentTemporalMemoryPromptCache({
         scopeKey: "temporal_scope_a",
         phase: "digest-summary",
+        provider: "provider-a",
+        api: "openai-responses",
         model: "model-a",
         systemPrompt: "stable contract",
         contract: "Boundary",
@@ -49,6 +59,8 @@ describe("temporal memory prompt cache identity", () => {
       createAgentTemporalMemoryPromptCache({
         scopeKey: "temporal_scope_a",
         phase: "conversation-boundary",
+        provider: "provider-a",
+        api: "openai-responses",
         model: "model-b",
         systemPrompt: "stable contract",
         contract: "Boundary",
@@ -56,6 +68,17 @@ describe("temporal memory prompt cache identity", () => {
       createAgentTemporalMemoryPromptCache({
         scopeKey: "temporal_scope_a",
         phase: "conversation-boundary",
+        provider: "provider-b",
+        api: "openai-responses",
+        model: "model-a",
+        systemPrompt: "stable contract",
+        contract: "Boundary",
+      }),
+      createAgentTemporalMemoryPromptCache({
+        scopeKey: "temporal_scope_a",
+        phase: "conversation-boundary",
+        provider: "provider-a",
+        api: "openai-responses",
         model: "model-a",
         systemPrompt: "changed contract",
         contract: "Boundary",
@@ -64,5 +87,16 @@ describe("temporal memory prompt cache identity", () => {
 
     expect(new Set(variants.map(({ scope }) => scope)).size).toBe(variants.length);
     expect(variants.every(({ scope }) => scope !== baseline.scope)).toBe(true);
+    expect(
+      createAgentTemporalMemoryPromptCache({
+        scopeKey: "temporal_scope_a",
+        phase: "conversation-boundary",
+        provider: "provider-a",
+        api: "openai-responses",
+        model: "model-b",
+        systemPrompt: "stable contract",
+        contract: "Boundary",
+      }).logicalCacheScope,
+    ).toBe(baseline.logicalCacheScope);
   });
 });

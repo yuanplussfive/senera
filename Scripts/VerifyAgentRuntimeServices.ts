@@ -7,6 +7,15 @@ import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRun
 import { projectAgentDelegatedRolePromptContext } from "../Source/AgentSystem/Loop/AgentTurnPromptRenderer.js";
 import type { LoadedToolsState } from "../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
 import { createIsolatedVerificationRuntimeConfig } from "./VerificationRuntimeConfig.js";
+import {
+  renderAgentPromptContextWires,
+  type AgentPromptContextWireSet,
+} from "../Source/AgentSystem/Prompt/AgentPromptContextWireRenderer.js";
+import { compileAgentSceneContext } from "../Source/AgentSystem/Prompt/AgentSceneContextCompiler.js";
+import {
+  normalizeAgentContinuityTemplateContext,
+  normalizeAgentWorkflowTemplateContext,
+} from "../Source/AgentSystem/Prompt/AgentPromptTemplateContextNormalizer.js";
 
 const workspaceRoot = process.cwd();
 const isolatedConfig = await createIsolatedVerificationRuntimeConfig(workspaceRoot);
@@ -74,6 +83,15 @@ try {
   const localShellDialect = baseContext.ExecutionEnvironment.executionTargets.local.shellDialect;
   assert.equal(baseContext.ExecutionEnvironment.executionTargets.local.workspaceRoot, workspaceRoot);
   assert.equal(baseContext.ExecutionEnvironment.executionTargets.local.workspaceMount, "host");
+  const promptWires = renderAgentPromptContextWires(
+    {
+      scene: compileAgentSceneContext({ world: baseContext.Workflow.world }),
+      continuity: normalizeAgentContinuityTemplateContext(baseContext.ContinuityMemory),
+      workflow: normalizeAgentWorkflowTemplateContext(baseContext.Workflow),
+    },
+    { estimateTokens: (text) => text.length },
+  );
+  const templateWireContext = projectTemplateWireContext(promptWires);
   for (const templateName of ["PiNativeSystemPrompt", "PiBamlSystemPrompt"]) {
     const template = runtime.registry.getTemplate(templateName);
     assert.ok(template);
@@ -81,6 +99,7 @@ try {
       ...baseContext,
       DelegatedRole: projectAgentDelegatedRolePromptContext(),
       RoleCheck: runtime.promptConfig.RoleCheck,
+      ...templateWireContext,
     });
     assert.ok(renderedPrompt.includes("<execution_environment>"));
     assert.ok(renderedPrompt.includes("<logical_root>.</logical_root>"));
@@ -203,4 +222,15 @@ try {
 function readRecord(value: unknown): Record<string, unknown> {
   assert.ok(value && typeof value === "object" && !Array.isArray(value));
   return value as Record<string, unknown>;
+}
+
+function projectTemplateWireContext(wires: AgentPromptContextWireSet): Record<string, string> {
+  return {
+    VolatileWire: wires.volatile.text,
+    SceneWire: wires.scene.text,
+    ContinuityWire: wires.continuity.text,
+    ContinuityFactsWire: wires.continuityFacts.text,
+    ResidentProfileWire: wires.residentProfile.text,
+    WorkflowWire: wires.workflow.text,
+  };
 }

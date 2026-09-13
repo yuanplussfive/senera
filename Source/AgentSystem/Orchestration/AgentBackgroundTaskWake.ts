@@ -36,10 +36,13 @@ export function renderAgentBackgroundTaskCompletionInput(
 }
 
 function projectTask(record: AgentChildRunRecord): Record<string, unknown> {
+  const continuity = record.checkpoint?.continuity;
   return {
     taskId: record.id,
     task: record.task,
     agent: record.agentName,
+    ...(record.workItemId ? { workItemId: record.workItemId } : {}),
+    ...(record.taskDigest ? { taskDigest: record.taskDigest } : {}),
     status: record.status,
     completedAt: record.completedAt ?? record.updatedAt,
     ...(record.finalAnswer !== undefined ? { result: record.finalAnswer } : {}),
@@ -52,5 +55,17 @@ function projectTask(record: AgentChildRunRecord): Record<string, unknown> {
           artifactCount: record.snapshot.artifactUris.length,
         }
       : undefined,
+    ...(record.snapshot?.artifactUris.length ? { artifacts: record.snapshot.artifactUris.slice(-64) } : {}),
+    ...(continuity
+      ? {
+          continuity: {
+            checkpointId: continuity.id,
+            revision: continuity.revision,
+            referenceIds: continuity.referenceIds,
+            ...(continuity.workspaceRevision ? { workspaceRevision: continuity.workspaceRevision } : {}),
+            resume: continuity.resume,
+          },
+        }
+      : {}),
   };
 }

@@ -32,6 +32,15 @@ export interface AgentSystemExtensionConfig {
   Configuration?: Record<string, unknown>;
 }
 
+/** Plugin loading policy. `Enabled` is the opt-in whitelist: bundled plugins
+ * ship with the runtime and load by default; user/project/pip plugins load
+ * only when their id appears here. `Directories` appends pip-style discovery
+ * roots for locally installed plugin packages. */
+export interface AgentPluginsConfig {
+  Enabled?: string[];
+  Directories?: string[];
+}
+
 export interface AgentDefaultsConfig {
   ToolExecution?: AgentToolExecutionConfig;
   SandboxRuntime?: AgentSandboxRuntimeConfig;
@@ -107,4 +116,5 @@ export interface AgentSystemConfig {
   World?: AgentWorldConfig;
   InferenceBudget?: AgentInferenceBudgetConfig;
   Extensions?: Record<string, AgentSystemExtensionConfig>;
+  Plugins?: AgentPluginsConfig;
 }

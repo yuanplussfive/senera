@@ -81,6 +81,30 @@ describe("Session history replay behavior", () => {
     );
   });
 
+  test("emits an optional recent preview before the full replay", async () => {
+    const fixture = createReplayFixture({ entryPageSize: 2 });
+    const sessionId = "recent-preview-session";
+    fixture.store.open(sessionId);
+    fixture.store.persistEntries(
+      sessionId,
+      Array.from({ length: 5 }, (_, index) => userEntry(`request-${index}`, `message-${index}`, index)),
+    );
+    const events: AgentDomainEvent[] = [];
+
+    await fixture.replay.replay({
+      sessionId,
+      initialWindow: true,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    const chunks = events.filter((event) => event.kind === AgentEventKinds.SessionHistoryChunk);
+    expect(chunks.map((event) => readArrayLength(event.data, "entries"))).toEqual([2, 2, 2, 1]);
+    expect(readRecord(chunks[0]?.data)?.preview).toBe(true);
+    expect(readRecord(chunks[1]?.data)?.preview).toBeUndefined();
+  });
+
   test("uses repository pages without calling the legacy full-history readers", async () => {
     const repository = new PageOnlyHistoryRepository();
     const fixture = createReplayFixture({

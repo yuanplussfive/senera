@@ -43,6 +43,7 @@ export interface AgentWorkflowDelegationPort {
   delegate(request: AgentDelegationRequest, context: AgentDelegationContext): Promise<AgentChildRunRecord>;
   get(id: string, parentSessionId: string): AgentChildRunRecord | undefined;
   listForOwner(ownerRunId: string): AgentChildRunRecord[];
+  markResultConsumed(id: string, parentSessionId: string, consumedAt?: string): AgentChildRunRecord | undefined;
   wait(id: string, parentSessionId: string, signal?: AbortSignal): Promise<AgentChildRunRecord | undefined>;
   cancel(id: string, parentSessionId: string, onEvent?: AgentEventSink): Promise<AgentChildRunRecord | undefined>;
   resume(
@@ -140,20 +141,30 @@ export class AgentWorkflowService {
   ): Promise<AgentWorkflowRecord | undefined> {
     const record = this.get(id, parentSessionId);
     if (!record) return undefined;
+    if (isWorkflowTerminalStatus(record.status)) return record;
     const active = this.active.get(id);
     if (!active) {
+      const previousStatus = record.status;
       const cancelling = this.options.repository.markCancelling(id);
-      if (cancelling) await this.emit(onEvent, workflowEvent(AgentEventKinds.WorkflowCancelling, cancelling));
+      if (cancelling && previousStatus !== AgentWorkflowStatuses.Cancelling) {
+        await this.emit(onEvent, workflowEvent(AgentEventKinds.WorkflowCancelling, cancelling));
+      }
       const cancelled = this.options.repository.markCancelled(id) ?? record;
-      await this.emit(onEvent, workflowEvent(AgentEventKinds.WorkflowCancelled, cancelled));
+      if (cancelled.status === AgentWorkflowStatuses.Cancelled && cancelled.status !== record.status) {
+        await this.emit(onEvent, workflowEvent(AgentEventKinds.WorkflowCancelled, cancelled));
+      }
       return cancelled;
     }
     if (!active.termination) active.termination = "cancel";
+    const previousStatus = this.options.repository.get(id)?.status ?? record.status;
     const cancelling = this.options.repository.markCancelling(id);
-    if (cancelling) await this.emit(onEvent, workflowEvent(AgentEventKinds.WorkflowCancelling, cancelling));
+    if (cancelling && previousStatus !== AgentWorkflowStatuses.Cancelling) {
+      await this.emit(onEvent, workflowEvent(AgentEventKinds.WorkflowCancelling, cancelling));
+    }
     active.controller.abort(new AgentCancellationError("Subagent workflow cancelled by its parent."));
+    const latest = this.options.repository.get(id) ?? cancelling ?? record;
     await Promise.allSettled(
-      record.nodes
+      latest.nodes
         .filter((node) => node.status === AgentWorkflowNodeStatuses.Running && node.childRunId)
         .map((node) => this.options.delegation.cancel(node.childRunId!, parentSessionId, onEvent)),
     );
@@ -304,6 +315,7 @@ export class AgentWorkflowService {
       if (persisted.childRunId) {
         const existing = this.options.delegation.get(persisted.childRunId, workflow.parentSessionId);
         if (existing?.status === AgentChildRunStatuses.Completed) {
+          this.options.delegation.markResultConsumed(existing.id, workflow.parentSessionId);
           this.options.repository.markNodeTerminal(workflow.id, definition.id, AgentWorkflowNodeStatuses.Completed);
           return;
         }
@@ -314,6 +326,9 @@ export class AgentWorkflowService {
           "Resume this workflow node from its persisted checkpoint and finish the assigned task.",
           context,
         );
+        if (child && isChildResultTerminal(child.status)) {
+          child = this.options.delegation.markResultConsumed(child.id, workflow.parentSessionId) ?? child;
+        }
       } else {
         child = await this.options.delegation.delegate(
           {
@@ -332,6 +347,9 @@ export class AgentWorkflowService {
         );
         this.options.repository.markNodeRunning(workflow.id, definition.id, child.id);
         child = await this.options.delegation.wait(child.id, workflow.parentSessionId, context.signal);
+        if (child && isChildResultTerminal(child.status)) {
+          child = this.options.delegation.markResultConsumed(child.id, workflow.parentSessionId) ?? child;
+        }
       }
       if (!child) throw new Error(`Child run for workflow node '${definition.id}' disappeared.`);
       const terminal = projectNodeTerminal(child);
@@ -505,8 +523,30 @@ function isChildTerminal(status: AgentChildRunRecord["status"]): boolean {
   ]);
 }
 
+function isChildResultTerminal(status: AgentChildRunRecord["status"]): boolean {
+  const resultStatuses: readonly AgentChildRunStatus[] = [
+    AgentChildRunStatuses.Completed,
+    AgentChildRunStatuses.PartialCompleted,
+    AgentChildRunStatuses.Interrupted,
+    AgentChildRunStatuses.TimedOut,
+    AgentChildRunStatuses.Failed,
+    AgentChildRunStatuses.Cancelled,
+  ];
+  return resultStatuses.includes(status);
+}
+
 function isWorkflowStatus(status: AgentWorkflowStatus, candidates: readonly AgentWorkflowStatus[]): boolean {
   return candidates.includes(status);
+}
+
+function isWorkflowTerminalStatus(status: AgentWorkflowStatus): boolean {
+  const terminalStatuses: readonly AgentWorkflowStatus[] = [
+    AgentWorkflowStatuses.Completed,
+    AgentWorkflowStatuses.PartialCompleted,
+    AgentWorkflowStatuses.Failed,
+    AgentWorkflowStatuses.Cancelled,
+  ];
+  return terminalStatuses.includes(status);
 }
 
 function isWorkflowNodeStatus(

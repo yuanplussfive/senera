@@ -5,6 +5,8 @@
 .cache
 .senera
 .uploads
+.tmp
+artifacts
 coverage
 docker-data
 node_modules

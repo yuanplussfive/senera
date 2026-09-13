@@ -21,15 +21,21 @@ import {
   type AgentPiDiagnosticSource,
 } from "./AgentPiDiagnostics.js";
 import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
+import { createAgentPiContinuityLedger } from "./AgentPiContinuityLedger.js";
+import { AgentContinuityLedgerCustomType } from "../Continuity/AgentContinuityLedger.js";
+import type { AgentContinuityLedger } from "../Continuity/AgentContinuityLedger.js";
 
 export interface AgentPiCompactionIndexes {
   readonly artifactIndex: AgentPiArtifactIndex;
   readonly toolCallIndex: AgentPiCompactionToolCallIndex;
+  /** Unified source/ref surface used for compaction and recovery. */
+  readonly continuityLedger?: AgentContinuityLedger;
 }
 
 export interface AgentPiCompactionControllerOptions {
   readonly planningCompilerFactory: AgentPiPlanningCompilerFactory;
   readonly diagnostics?: AgentPiDiagnosticSink;
+  readonly continuityScope?: () => string | undefined;
 }
 
 /** Shared owner for Senera compaction summaries and persisted retrieval indexes. */
@@ -40,12 +46,21 @@ export class AgentPiCompactionController {
     entries: readonly SessionEntry[],
     summarizedMessages: readonly AgentMessage[],
   ): AgentPiCompactionIndexes {
+    const artifactIndex = createAgentPiArtifactIndex(readAgentPiArtifactIndex(entries).artifacts, summarizedMessages);
+    const toolCallIndex = mergeAgentPiCompactionToolCallIndexes([
+      readAgentPiCompactionToolCallIndex(entries).index,
+      createAgentPiCompactionToolCallIndex(summarizedMessages),
+    ]);
     return {
-      artifactIndex: createAgentPiArtifactIndex(readAgentPiArtifactIndex(entries).artifacts, summarizedMessages),
-      toolCallIndex: mergeAgentPiCompactionToolCallIndexes([
-        readAgentPiCompactionToolCallIndex(entries).index,
-        createAgentPiCompactionToolCallIndex(summarizedMessages),
-      ]),
+      artifactIndex,
+      toolCallIndex,
+      continuityLedger: createAgentPiContinuityLedger({
+        scope: this.options.continuityScope?.() ?? "pi-session",
+        entries,
+        messages: summarizedMessages,
+        artifactIndex,
+        toolCallIndex,
+      }),
     };
   }
 
@@ -61,7 +76,11 @@ export class AgentPiCompactionController {
         timingSink: (timing) =>
           this.emitDiagnostic(frame, "compaction.model_timing", timing, AgentPiDiagnosticSources.Provider),
       })
-      .summarize(input, { signal, sessionId: snapshot.sessionId });
+      .summarize(input, {
+        signal,
+        sessionId: snapshot.sessionId,
+        logicalCacheScope: snapshot.logicalCacheScope,
+      });
   }
 
   appendIndexes(sessionManager: SessionManager, indexes: AgentPiCompactionIndexes): void {
@@ -70,6 +89,9 @@ export class AgentPiCompactionController {
     }
     if (indexes.toolCallIndex.calls.length > 0) {
       sessionManager.appendCustomEntry(AgentPiCompactionToolIndexCustomType, indexes.toolCallIndex);
+    }
+    if (indexes.continuityLedger) {
+      sessionManager.appendCustomEntry(AgentContinuityLedgerCustomType, indexes.continuityLedger);
     }
   }
 

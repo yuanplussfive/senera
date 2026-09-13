@@ -14,16 +14,32 @@ export function createAgentResidentIdleCacheOptions(input: {
     if (!normalized) throw new Error(`${label} must not be empty.`);
     return normalized;
   };
+  const worldId = requireText(input.worldId, "Resident idle world id");
+  const provider = requireText(input.provider, "Resident idle provider");
+  const api = requireText(input.api, "Resident idle API");
+  const model = requireText(input.model, "Resident idle model");
   return createAgentModelCacheOptions({
     namespace: "senera.resident-idle",
     identity: {
       phase: "resident-idle-decision",
-      worldId: requireText(input.worldId, "Resident idle world id"),
-      provider: requireText(input.provider, "Resident idle provider"),
-      api: requireText(input.api, "Resident idle API"),
-      model: requireText(input.model, "Resident idle model"),
+      worldId,
+      provider,
+      api,
+      model,
       ...(input.stableSystemPrompt ? { stablePrefixRevision: sha256HexOfCanonicalJson(input.stableSystemPrompt) } : {}),
     },
+    logicalCacheScope: sha256HexOfCanonicalJson({
+      namespace: "senera.resident-idle.logical",
+      worldId,
+    }),
     retention: AgentLongLivedCacheRetention,
+    ...(input.stableSystemPrompt
+      ? {
+          stablePrefix: {
+            systemPrompt: input.stableSystemPrompt,
+            tools: [],
+          },
+        }
+      : {}),
   });
 }

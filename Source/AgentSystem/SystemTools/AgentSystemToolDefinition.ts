@@ -14,7 +14,7 @@ import type {
 import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolObservationProjectionTypes.js";
 import type { ConfigFormDocument } from "../Config/AgentConfigFormDocument.js";
 import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
-import type { AgentToolArtifactPayload } from "../Types/ToolRuntimeTypes.js";
+import type { AgentToolArtifactPayload, AgentToolProcessError } from "../Types/ToolRuntimeTypes.js";
 import type { AgentSystemExtensionPlatform } from "./AgentSystemExtensionPlatform.js";
 
 const SystemToolExecutionResultMarker = Symbol("senera.system-tool-execution-result");
@@ -28,16 +28,19 @@ export interface AgentSystemToolExecutionResult<TOutput> {
   readonly [SystemToolExecutionResultMarker]: true;
   readonly result: TOutput;
   readonly artifactPayload?: AgentToolArtifactPayload;
+  /** Optional structured failure while retaining the validated output shape. */
+  readonly failure?: AgentToolProcessError;
 }
 
 export function systemToolExecutionResult<TOutput>(
   result: TOutput,
-  options: { readonly artifactPayload?: AgentToolArtifactPayload } = {},
+  options: { readonly artifactPayload?: AgentToolArtifactPayload; readonly failure?: AgentToolProcessError } = {},
 ): AgentSystemToolExecutionResult<TOutput> {
   return Object.defineProperty(
     {
       result,
       ...(options.artifactPayload ? { artifactPayload: options.artifactPayload } : {}),
+      ...(options.failure ? { failure: options.failure } : {}),
     },
     SystemToolExecutionResultMarker,
     { value: true },
@@ -95,6 +98,16 @@ export interface AgentSystemToolDefinition<
   readonly name: string;
   readonly input: TInput;
   readonly output: TOutput;
+  /**
+   * Optional projection for malformed model input. Most tools can use the
+   * catalog's generic Zod diagnostics; tools with a command envelope may
+   * provide a domain-aware repair message without weakening their schema.
+   */
+  readonly projectInvalidInput?: (
+    input: Record<string, unknown>,
+    error: z.ZodError,
+    context: AgentHostToolContext,
+  ) => AgentToolProcessError | Promise<AgentToolProcessError>;
   execute(input: z.output<TInput>, context: AgentHostToolContext): Promise<z.input<TOutput>> | z.input<TOutput>;
   /**
    * Optional artifact-aware execution path. It preserves the public execute

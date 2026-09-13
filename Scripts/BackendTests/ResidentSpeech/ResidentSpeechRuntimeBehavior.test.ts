@@ -1,4 +1,9 @@
-import type { AssistantMessage, Context } from "@earendil-works/pi-ai";
+import {
+  createAssistantMessageEventStream,
+  type AssistantMessage,
+  type AssistantMessageEventStream,
+  type Context,
+} from "@earendil-works/pi-ai";
 import { describe, expect, test, vi } from "vitest";
 import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import { AgentResidentSpeechRuntime } from "../../../Source/AgentSystem/ResidentSpeech/AgentResidentSpeechRuntime.js";
@@ -17,6 +22,36 @@ type NativeProjectionRequest = Parameters<AgentResidentSpeechNativeClient["proje
 type BamlProjectionRequest = Parameters<AgentResidentSpeechBamlClient["project"]>[0];
 
 describe("resident speech runtime", () => {
+  test("repairs a wrong native bridge selection once with automatic tool choice", async () => {
+    const choices: Array<"required" | "auto"> = [];
+    const client = new AgentResidentSpeechNativeClient(
+      createModelProvider({ ToolPlanningMode: "native", Capabilities: { ToolCalling: true } }),
+    );
+
+    const result = await client.project({
+      context: conversationContext(),
+      continuation: {
+        stream: ({ toolChoice = "required" }) => {
+          choices.push(toolChoice);
+          return completedNativeStream(
+            choices.length === 1 ? "ToolSearch" : AgentPiNativeToolBridgeName,
+            choices.length === 1
+              ? { query: "schedule" }
+              : { tool: "ResidentActionSpeak", arguments: { utterance: "我去看看呀。" } },
+          );
+        },
+      },
+      signal: new AbortController().signal,
+      sessionId: "resident-recovery-session",
+    });
+
+    expect(result).toEqual({
+      tool: "ResidentActionSpeak",
+      arguments: { utterance: "我去看看呀。" },
+    });
+    expect(choices).toEqual(["required", "auto"]);
+  });
+
   test("projects one native roleplay tool-preface while preserving the pending tool call", async () => {
     const registry = createRegistry();
     let nativeRequest: NativeProjectionRequest | undefined;
@@ -54,7 +89,7 @@ describe("resident speech runtime", () => {
     expect(nativeRequest?.context.messages.at(-1)?.content).toContain("确认明天的安排");
     expect(nativeRequest?.context.messages.at(-1)?.content).toContain("Let me check tomorrow's schedule.");
     expect(nativeRequest?.context.systemPrompt).toBe(context.systemPrompt);
-    expect(nativeRequest?.context.tools).toEqual(context.tools);
+    expect(nativeRequest?.context.tools).toEqual([context.tools?.[0]]);
     expect(nativeRequest?.continuation).toBe(nativeContinuation);
   });
 
@@ -80,15 +115,20 @@ describe("resident speech runtime", () => {
       spokenUtterances: [],
       enabled: true,
       sessionId: "resident-baml-session",
+      logicalCacheScope: "resident-logical-scope",
     });
 
     expect(readText(projected)).toBe("等我瞄一眼明天的课表。");
     expect(nativeProject).not.toHaveBeenCalled();
     expect(bamlRequest?.prompt.systemPrompt).toContain("<persona>失语症</persona>");
-    expect(bamlRequest?.prompt.systemPrompt).toContain("<resident_speech_contract");
+    expect(bamlRequest?.prompt.systemPrompt).toContain("senera.resident_speech_contract=v1");
+    expect(bamlRequest?.prompt.systemPrompt).toContain("[senera.contract] encoding=compact-json");
     expect(bamlRequest?.prompt.conversation.map((entry) => entry.role)).toEqual(["user"]);
     expect(bamlRequest?.prompt.conversation[0]?.content).toContain("action_preface");
     expect(bamlRequest?.prompt.conversation[0]?.content).toContain("确认明天的安排");
+    expect(bamlRequest?.prompt.conversation[0]?.content).toContain("senera.resident_speech_scene=v1");
+    expect(bamlRequest?.prompt.conversation[0]?.content).not.toContain("<resident_speech_scene");
+    expect(bamlRequest?.logicalCacheScope).toBe("resident-logical-scope");
   });
 
   test("projects a completed final response through the dedicated final speech contract", async () => {
@@ -124,6 +164,8 @@ describe("resident speech runtime", () => {
     expect(nativeRequest?.context.messages.at(-1)?.content).toContain("final_response");
     expect(nativeRequest?.context.messages.at(-1)?.content).toContain("我先看看明天的安排呀。");
     expect(nativeRequest?.context.messages.at(-1)?.content).toContain("do not restate");
+    expect(nativeRequest?.context.messages.at(-1)?.content).toContain("senera.resident_speech_projection=v1");
+    expect(nativeRequest?.context.messages.at(-1)?.content).not.toContain("<resident_speech_projection");
     expect(nativeRequest?.context.messages.at(-1)?.content).not.toContain("pending_actions");
   });
 
@@ -367,6 +409,16 @@ function conversationContext(): Context {
           additionalProperties: false,
         },
       },
+      {
+        name: "ToolSearch",
+        description: "Discover a dynamic capability.",
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+          additionalProperties: false,
+        },
+      },
     ],
   };
 }
@@ -444,4 +496,29 @@ function assistantMessage(
 
 function readText(message: AssistantMessage): string {
   return message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
+}
+
+function completedNativeStream(toolName: string, argumentsValue: Record<string, unknown>): AssistantMessageEventStream {
+  const stream = createAssistantMessageEventStream();
+  const message = {
+    role: "assistant" as const,
+    api: "openai-responses" as const,
+    provider: "test",
+    model: "test-model",
+    content: [{ type: "toolCall" as const, id: "call-resident", name: toolName, arguments: argumentsValue }],
+    usage: {
+      input: 1,
+      output: 1,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 2,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "toolUse" as const,
+    timestamp: Date.now(),
+  } satisfies AssistantMessage;
+  stream.push({ type: "start", partial: { ...message, content: [], stopReason: "pending" } });
+  stream.push({ type: "done", reason: "toolUse", message });
+  stream.end(message);
+  return stream;
 }

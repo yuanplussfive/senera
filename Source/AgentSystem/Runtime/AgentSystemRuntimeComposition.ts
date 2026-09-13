@@ -54,6 +54,9 @@ import { AgentBrowserRuntime } from "../Browser/AgentBrowserRuntime.js";
 import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
 import { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import { AgentToolCatalogProjector } from "../ToolRuntime/AgentToolCatalogProjector.js";
+import { createAgentDefaultToolResourceCapabilities } from "../ToolRuntime/AgentToolResourceCapabilities.js";
+import { AgentToolResourceClaimProjector } from "../ToolRuntime/AgentToolResourceClaimProjector.js";
+import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntime.js";
 import type { AgentToolSearchMemoryStore } from "../ToolSearch/AgentToolSearchMemoryTypes.js";
 import { AgentToolSemanticAuditModes, type AgentSystemConfig } from "../Types/AgentConfigTypes.js";
@@ -84,6 +87,7 @@ import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
 import { AgentResidentSpeechRuntime } from "../ResidentSpeech/AgentResidentSpeechRuntime.js";
 import { AgentResidentSpeechCapabilities } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
+import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
 
 export interface AgentSystemRuntimeCompositionOptions {
   workspaceRoot: string;
@@ -120,6 +124,13 @@ export interface AgentSystemRuntimeCompositionOptions {
   worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
   identityDisplayValues?: () => AgentIdentityDisplayValues;
+  /** Host services bound to the `senera` self-service command tool. */
+  selfService?: import("../SelfService/AgentSelfServiceTypes.js").AgentSelfServicePort;
+  /** Loaded plugin host whose tools/skills are applied to this composition's
+   * registry; commands, hooks, and approval transports are process-level. */
+  pluginHost?: AgentPluginHost;
+  /** Shared with orchestration so delegated leases and Pi tool claims converge. */
+  resourceCoordinator?: AgentToolResourceLeaseCoordinator;
 }
 
 export function composeAgentSystemRuntime(options: AgentSystemRuntimeCompositionOptions) {
@@ -177,6 +188,13 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
     resourceAccessPolicy: new AgentResourceAccessPolicy(authorizationPolicyClient),
     sandboxGuestWorkspaceRoot,
   });
+  const resourceCapabilities = createAgentDefaultToolResourceCapabilities({
+    config: options.config,
+    workspaceRoot: options.workspaceRoot,
+    executionEnv: executionEnvironments.tool,
+    uploadStore,
+  });
+  const resourceClaims = new AgentToolResourceClaimProjector(resourceCapabilities);
   const browserRuntime = new AgentBrowserRuntime({
     workspaceRoot: options.workspaceRoot,
     configuration: AgentBrowserConfigurationSchema.parse(
@@ -185,12 +203,15 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
   });
   const systemTools = createAgentSystemTools(options.config, options.modelProviderId, {
     browserRuntime,
+    selfService: options.selfService,
+    approvalRuntime,
   });
   const systemExtensions = new AgentSystemExtensionCatalog();
   systemExtensions.registerRoot(registry, path.join(resourcesRoot, "System", "Extensions"), {
     capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...systemTools.map(systemToolCapability)]),
     configurations: options.config.Extensions,
   });
+  options.pluginHost?.applyTools(registry);
   new AgentPromptAssetCatalog().registerRoot(registry, path.join(resourcesRoot, "System", "Prompts"));
   const residentSpeech = AgentResidentSpeechCapabilities.some((capability) => registry.getSidecarTool(capability))
     ? new AgentResidentSpeechRuntime({ registry, modelProvider: modelProviderConfig })
@@ -208,6 +229,8 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
     authorizationPolicyClient,
     executionEnv: executionEnvironments.system,
     toolExecutionEnv: executionEnvironments.tool,
+    resourceCapabilities,
+    resourceClaims,
     sandboxGuestWorkspaceRoot,
     executionResources:
       options.executionResources ??
@@ -322,6 +345,7 @@ export function createAgentRuntimeAgentServices(
     executionResources: infrastructure.executionResources,
     orchestration: options.orchestration,
   });
+  options.orchestration?.delegation.bindResourceClaims(infrastructure.resourceClaims);
   registerAgentSystemToolHandlers(hostCapabilities, infrastructure.systemTools);
   const toolCallExecutor = new AgentToolCallExecutor({
     registry: infrastructure.registry,
@@ -354,6 +378,9 @@ export function createAgentRuntimeAgentServices(
     toolCallExecutor,
     artifactRecorder,
     executionEnv: infrastructure.executionEnv,
+    resourceCapabilities: infrastructure.resourceCapabilities,
+    resourceClaims: infrastructure.resourceClaims,
+    resourceCoordinator: options.resourceCoordinator,
     resourcesPath: options.resourcesPath,
     toolPermissionGate,
     diagnostics: options.piDiagnostics,
@@ -378,6 +405,7 @@ export function createAgentRuntimeAgentServices(
         executionLedger: options.executionLedger,
         todos: options.todos,
         worldRuntime: options.worldRuntime,
+        delegation: options.orchestration?.delegation,
       }),
       executionLedger: options.executionLedger,
     }),

@@ -9,6 +9,8 @@ import type {
 } from "../Types/AgentConfigTypes.js";
 import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
 import { optionalDisabledOrSecondsToMilliseconds, optionalSecondsToMilliseconds } from "./AgentTimeDefaults.js";
+import { resolveAgentNativeToolRoute } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import { resolveAgentModelThinking } from "../ModelEndpoints/AgentModelThinking.js";
 
 export function resolveModelProviderConfig(config: AgentSystemConfig, id?: string): ResolvedAgentModelProviderConfig {
   return resolveModelProviderCatalog(config).resolve(id);
@@ -64,6 +66,7 @@ export function resolveStandaloneModelProviderEndpointConfig(
 export function resolveModelProviderEndpointCatalog(config: AgentSystemConfig) {
   const resolvedEndpoints = resolveModelProviderEndpointConfigs(config);
   const endpointsById = new Map(resolvedEndpoints.map((endpoint) => [endpoint.Id, endpoint]));
+  const providerIds = new Set(resolvedEndpoints.map((endpoint) => endpoint.ProviderId));
   const endpoints = resolvedEndpoints.filter((endpoint) => endpoint.Enabled);
 
   return {
@@ -82,6 +85,17 @@ export function resolveModelProviderEndpointCatalog(config: AgentSystemConfig) {
       }
       return endpoint;
     },
+    /** Ordered failover pool for one provider: lowest `Priority` first, then
+     * configuration order (stable sort), disabled endpoints excluded. */
+    poolOf: (providerId: string) => {
+      const pool = endpoints
+        .filter((endpoint) => endpoint.ProviderId === providerId)
+        .sort((a, b) => a.Priority - b.Priority);
+      if (pool.length === 0 && !providerIds.has(providerId)) {
+        throw new Error(`供应商端点配置不存在：ProviderId=${providerId}`);
+      }
+      return pool;
+    },
   };
 }
 
@@ -91,8 +105,13 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
   const configuredModelIds = new Set(config.ModelProviders.map((provider) => provider.Id));
   const resolveConfiguredModelId = createModelProviderIdAliasResolver(config, configuredModelIds);
   const providers: ResolvedAgentModelProviderConfig[] = config.ModelProviders.flatMap((provider) => {
-    const endpoint = endpointCatalog.resolveKnown(provider.ProviderId);
-    if (!endpoint.Enabled) return [];
+    const pool = endpointCatalog.poolOf(provider.ProviderId);
+    // A model whose entire physical endpoint pool is disabled is intentionally
+    // omitted from the active catalog. This keeps endpoint disablement
+    // explicit without treating it as an unknown ProviderId or selecting a
+    // different provider implicitly.
+    if (pool.length === 0) return [];
+    const endpoint = pool[0]!;
     const runtime = resolveModelProviderRuntimeDefaults(defaults.ModelRuntime, provider);
     const retryDelays = resolveModelRetryDelays(defaults.ModelRuntime, {
       RetryBaseDelaySeconds: runtime.RetryBaseDelaySeconds,
@@ -103,6 +122,7 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
       {
         ...endpoint,
         ...runtime,
+        DeclaredCapabilities: provider.Capabilities ? { ...provider.Capabilities } : undefined,
         TimeoutMs: optionalSecondsToMilliseconds(runtime.TimeoutSeconds) ?? defaults.ModelRuntime.TimeoutMs,
         FirstTokenTimeoutMs:
           optionalDisabledOrSecondsToMilliseconds(runtime.FirstTokenTimeoutSeconds) ??
@@ -111,12 +131,15 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
           optionalDisabledOrSecondsToMilliseconds(runtime.MaxRequestSeconds) ?? defaults.ModelRuntime.MaxRequestMs,
         ...retryDelays,
         Icon: provider.Icon ?? endpoint.Icon,
-        ProviderId: endpoint.Id,
+        // Keep the logical provider identity stable across its physical
+        // endpoint pool. The endpoint id is routing metadata only.
+        ProviderId: provider.ProviderId,
         Kind: endpoint.Kind,
         BaseUrl: endpoint.BaseUrl,
         ApiKey: endpoint.ApiKey,
         ApiVersion: endpoint.ApiVersion,
         Headers: { ...endpoint.Headers },
+        EndpointPool: pool.map(cloneResolvedEndpoint),
       },
     ];
   });
@@ -224,6 +247,8 @@ function resolveEndpointFields(
     ApiKey: endpoint.ApiKey ?? baseline?.ApiKey ?? "",
     ApiVersion: endpoint.ApiVersion ?? baseline?.ApiVersion ?? "2023-06-01",
     Headers: { ...(endpoint.Headers ?? baseline?.Headers ?? {}) },
+    ProviderId: endpoint.ProviderId ?? baseline?.ProviderId ?? endpoint.Id,
+    Priority: endpoint.Priority ?? baseline?.Priority ?? 0,
   };
 }
 
@@ -241,16 +266,32 @@ function toModelProviderListItem(
   defaultId: string,
   runtimeDefaults: AgentModelRuntimeDefaultsConfig,
 ) {
+  const thinking = resolveAgentModelThinking({
+    api: resolveAgentNativeToolRoute(provider.Endpoint, provider.BaseUrl).api,
+    provider: provider.ProviderId,
+    model: provider.Model,
+    capabilities: provider.Capabilities,
+    declaredCapabilities: provider.DeclaredCapabilities,
+    thinkingLevelMap: provider.ThinkingLevelMap,
+    thinkingProfiles: provider.ThinkingProfiles,
+    defaultThinkingLevel: provider.DefaultThinkingLevel,
+  });
   return {
     id: provider.Id,
     providerId: provider.ProviderId,
     icon: provider.Icon,
-    capabilities: resolveModelCapabilities(runtimeDefaults, provider.Capabilities),
+    capabilities: {
+      ...resolveModelCapabilities(runtimeDefaults, provider.Capabilities),
+      Reasoning: thinking.reasoning,
+    },
     kind: provider.Kind,
     endpoint: provider.Endpoint,
     baseUrl: provider.BaseUrl,
     model: provider.Model,
     isDefault: provider.Id === defaultId,
+    thinkingLevels: [...thinking.levels],
+    thinkingProfiles: [...thinking.profiles],
+    defaultThinkingLevel: thinking.defaultLevel,
   };
 }
 

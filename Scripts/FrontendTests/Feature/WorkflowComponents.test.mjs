@@ -97,6 +97,30 @@ test("live run summary uses the quiet Thinking label without completed-run chrom
   expect(trigger?.querySelector(".lucide-chevron-down")).not.toBeInTheDocument();
 });
 
+test("cancelled run summary does not masquerade as a new Thinking run", () => {
+  const run = createRun({ status: "cancelled" });
+  renderWithFrontendProviders(React.createElement(ThinkingSummaryBar, { run }));
+
+  const trigger = document.querySelector("[data-ui-chrome] button[aria-expanded]");
+  expect(trigger).toHaveAttribute("data-run-status", "cancelled");
+  expect(trigger).toHaveAccessibleName(frontendMessage("workflow.run.status.cancelled"));
+  expect(trigger).toHaveTextContent(frontendMessage("workflow.run.status.cancelled"));
+  expect(trigger).not.toHaveTextContent("Thinking");
+  expect(trigger?.querySelector(".senera-spinner-trace")).not.toBeInTheDocument();
+});
+
+test("cancelling run summary exposes the stopping state while settlement is pending", () => {
+  const run = createRun({ status: "cancelling", endedAt: undefined });
+  renderWithFrontendProviders(React.createElement(ThinkingSummaryBar, { run }));
+
+  const trigger = document.querySelector("[data-ui-chrome] button[aria-expanded]");
+  expect(trigger).toHaveAttribute("data-run-status", "cancelling");
+  expect(trigger).toHaveAccessibleName(frontendMessage("workflow.run.status.cancelling"));
+  expect(trigger).toHaveTextContent(frontendMessage("workflow.run.status.cancelling"));
+  expect(trigger?.querySelector(".senera-spinner-trace")).toBeInTheDocument();
+  expect(trigger?.querySelector(".lucide-chevron-down")).not.toBeInTheDocument();
+});
+
 test("thinking summary expands tool rounds through the shared batch activity", async () => {
   const user = userEvent.setup();
   const run = createToolBatchRun(["WorkspaceRead", "WorkspaceRead", "WorkspaceGrep"]);

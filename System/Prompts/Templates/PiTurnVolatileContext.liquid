@@ -1,5 +1,3 @@
-{% include "SceneContext.liquid" %}
-
 {% if DelegatedRole.enabled and DelegatedRole.mode == "append" %}
 <delegated_role mode="{{ DelegatedRole.mode | escape }}">
   {{ DelegatedRole.content | escape }}
@@ -7,16 +5,13 @@
 {% endif %}
 
 <coordination_report attribution="root">
-  <report>Resource assembly for this turn completed. Memory selection: {{ ContinuityMemory.selection.profiles.selected }} profile, {{ ContinuityMemory.selection.facts.selected }} fact, {{ ContinuityMemory.selection.evidence.selected }} evidence reference; {{ Workflow.todos.items.size }} todo item(s) in task state.</report>
+  <report>Resource assembly for this turn completed. Host-validated volatile context is in the wire below.</report>
   <report>Every handle named below is traceable through the tool or URI it names; read the source before relying on its content.</report>
 </coordination_report>
 
 <reference_stage>
-{% include "ResidentProfile.liquid" %}
 {% include "RoleplayLore.liquid" %}
-{% include "ContinuityFacts.liquid" %}
-{% include "ContinuityMemory.liquid" %}
-{% include "WorkflowContext.liquid" %}
+{{ VolatileWire }}
 <!-- senera:reference_stage complete -->
 </reference_stage>
 

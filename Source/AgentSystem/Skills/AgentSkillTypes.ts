@@ -28,6 +28,9 @@ export interface RegisteredSkill {
   title?: string;
   description: string;
   descriptionFile: string;
+  /** Explicit `/skill` activation remains available, but automatic model
+   * routing and capability search must not select this Skill. */
+  disableModelInvocation?: boolean;
   /** Content revision used to scope learned routing evidence. */
   revision?: string;
   recommendedTools: string[];

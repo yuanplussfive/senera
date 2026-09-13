@@ -14,6 +14,37 @@
       "forkContext": {
         "description": "True forks parent conversation context; false starts fresh; omission follows the role contract.",
         "type": "boolean"
+      },
+      "workItemId": {
+        "description": "Stable logical task id for retries. Reuse only for the same assignment; use a different id for independent repeated work.",
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "resources": {
+        "description": "Capability-level resources reserved for this assignment. Declare files or directories when the child may modify them; omit only when the scope is genuinely unknown.",
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "capability": { "type": "string", "minLength": 1, "description": "Registered resource capability id." },
+            "value": { "description": "Capability-specific resource value, usually a workspace path." },
+            "intent": {
+              "description": "Capability-defined access intent, such as read or replace.",
+              "type": "string",
+              "minLength": 1
+            },
+            "parameters": {
+              "description": "Capability-specific parameters.",
+              "type": "object",
+              "propertyNames": { "type": "string" },
+              "additionalProperties": {}
+            }
+          },
+          "required": ["capability", "value"],
+          "additionalProperties": false
+        }
       }
     },
     "required": ["task"],
@@ -21,8 +52,15 @@
   },
   "outputSchema": {
     "type": "object",
-    "properties": { "run": { "type": "object" } },
-    "required": ["run"],
+    "properties": {
+      "disposition": {
+        "type": "string",
+        "enum": ["created", "reused"],
+        "description": "Whether this logical assignment created a child run or reused an existing one."
+      },
+      "run": { "type": "object" }
+    },
+    "required": ["disposition", "run"],
     "additionalProperties": false
   },
   "observationProjection": "observations/AgentLifecycle.projection.json",
@@ -49,7 +87,7 @@
         "Facets": {
           "Actions": ["spawn", "delegate", "parallelize"],
           "Targets": ["subagent", "child-run", "task"],
-          "Inputs": ["task", "role"],
+          "Inputs": ["task", "role", "work-item-id", "resources"],
           "Outputs": ["child-run-id"],
           "Effects": ["model-call", "may-run-tools"]
         },
@@ -58,7 +96,7 @@
       }
     ],
     "UseCases": [
-      "把独立调查、审查或实现职责交给隔离上下文。",
+      "把独立调查、审查或实现职责交给隔离上下文，并声明已知的文件或目录资源。",
       "在同一原生 Tool 批次发出多个调用以并行启动互不依赖的任务。"
     ],
     "Avoid": ["简单或紧耦合任务不要委派。", "不要重复执行已经交给子代理的同一工作。"],

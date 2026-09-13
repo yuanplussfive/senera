@@ -19,6 +19,7 @@ export class AgentWebSocketSessionRequestHandlers {
       sessionId: request.sessionId,
       requestId: request.requestId,
       modelProviderId: request.modelProviderId,
+      thinkingLevel: request.thinkingLevel,
       input: request.input,
       approvalMode: request.approvalMode,
       attachments: request.attachments,
@@ -63,6 +64,7 @@ export class AgentWebSocketSessionRequestHandlers {
       fromRequestId: request.fromRequestId,
       requestId: request.requestId,
       modelProviderId: request.modelProviderId,
+      thinkingLevel: request.thinkingLevel,
       input: request.input,
       approvalMode: request.approvalMode,
       attachments: request.attachments,
@@ -122,6 +124,7 @@ export class AgentWebSocketSessionRequestHandlers {
     await this.context.sessionManager.replayHistory({
       sessionId: request.sessionId,
       refresh: request.refresh,
+      initialWindow: request.initialWindow,
       onEvent: sendEvent,
     });
   }

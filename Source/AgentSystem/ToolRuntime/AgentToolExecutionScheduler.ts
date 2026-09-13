@@ -2,11 +2,16 @@ import { AgentConcurrencyGate } from "../Core/AgentConcurrencyGate.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import { resolveAgentToolRuntimeCapabilities } from "./AgentToolRuntimeCapabilities.js";
 import type { AgentToolResourceClaimProjectorPort } from "./AgentToolResourceClaimProjector.js";
-import { AgentToolResourceScheduler } from "./AgentToolResourceScheduler.js";
+import {
+  AgentToolResourceLeaseCoordinator,
+  AgentToolResourceScheduler,
+  type AgentToolResourceLeaseOwner,
+} from "./AgentToolResourceScheduler.js";
 
 export interface AgentToolExecutionSchedulerOptions {
   readonly maxConcurrentCallsPerRun: number;
   readonly resourceClaims: AgentToolResourceClaimProjectorPort;
+  readonly resourceCoordinator?: AgentToolResourceLeaseCoordinator;
 }
 
 /** Coordinates bounded run capacity separately from declared resource conflicts. */
@@ -19,7 +24,7 @@ export class AgentToolExecutionScheduler {
     if (!Number.isSafeInteger(options.maxConcurrentCallsPerRun) || options.maxConcurrentCallsPerRun < 1) {
       throw new RangeError("Per-run tool concurrency limit must be a positive safe integer.");
     }
-    this.resources = new AgentToolResourceScheduler(options.resourceClaims);
+    this.resources = new AgentToolResourceScheduler(options.resourceClaims, options.resourceCoordinator);
   }
 
   run<T>(
@@ -28,12 +33,15 @@ export class AgentToolExecutionScheduler {
     args: Readonly<Record<string, unknown>>,
     operation: () => Promise<T>,
     signal?: AbortSignal,
+    owner?: AgentToolResourceLeaseOwner,
   ): Promise<T> {
     const scheduling = resolveAgentToolRuntimeCapabilities(tool).scheduling;
     if (scheduling === "self-managed") return operation();
 
     const withCapacity = () => this.runWithCapacity(run, tool, operation, signal);
-    return scheduling === "resource-claims" ? this.resources.run(tool, args, withCapacity, signal) : withCapacity();
+    return scheduling === "resource-claims"
+      ? this.resources.run(tool, args, withCapacity, signal, owner)
+      : withCapacity();
   }
 
   private runWithCapacity<T>(

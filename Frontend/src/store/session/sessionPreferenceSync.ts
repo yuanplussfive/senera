@@ -1,6 +1,7 @@
 import type { ExecutionApprovalMode } from "../../api/executionApprovalMode";
 import type { MotionLevel } from "../../shared/motion/types";
 import { PERSIST_KEY, readPersistedSessionPreferences } from "./persistence";
+import type { ModelThinkingLevel } from "../../api/eventTypes";
 
 interface SessionPreferenceState {
   readonly defaultSidebarCollapsed: boolean;
@@ -13,6 +14,8 @@ interface SessionPreferenceState {
   readonly workflowDockWidth: number;
   readonly selectedModelProviderId: string | null;
   readonly selectedModelProviderIdsBySession: Record<string, string>;
+  readonly selectedThinkingLevel: ModelThinkingLevel | null;
+  readonly selectedThinkingLevelsBySession: Record<string, ModelThinkingLevel>;
 }
 
 interface SessionPreferenceSyncPort {
@@ -36,6 +39,9 @@ export function installSessionPreferenceSynchronization(port: SessionPreferenceS
     const nextSelectedModelProviderId = preferences.selectedModelProviderId ?? state.selectedModelProviderId;
     const nextSelectedModelProviderIdsBySession =
       preferences.selectedModelProviderIdsBySession ?? state.selectedModelProviderIdsBySession;
+    const nextSelectedThinkingLevel = preferences.selectedThinkingLevel ?? state.selectedThinkingLevel;
+    const nextSelectedThinkingLevelsBySession =
+      preferences.selectedThinkingLevelsBySession ?? state.selectedThinkingLevelsBySession ?? {};
     const defaultSidebarChanged = nextDefaultSidebarCollapsed !== state.defaultSidebarCollapsed;
     const defaultRightPanelChanged = nextDefaultRightPanelCollapsed !== state.defaultRightPanelCollapsed;
     const sessionOrderChanged = !areStringArraysEqual(nextSessionOrder, state.sessionOrder);
@@ -47,6 +53,11 @@ export function installSessionPreferenceSynchronization(port: SessionPreferenceS
       nextSelectedModelProviderIdsBySession,
       state.selectedModelProviderIdsBySession,
     );
+    const selectedThinkingChanged = nextSelectedThinkingLevel !== state.selectedThinkingLevel;
+    const selectedThinkingBySessionChanged = !areStringRecordsEqual(
+      nextSelectedThinkingLevelsBySession,
+      state.selectedThinkingLevelsBySession ?? {},
+    );
     if (
       !defaultSidebarChanged &&
       !defaultRightPanelChanged &&
@@ -55,7 +66,9 @@ export function installSessionPreferenceSynchronization(port: SessionPreferenceS
       !executionApprovalModeChanged &&
       !workflowDockWidthChanged &&
       !selectedModelProviderChanged &&
-      !selectedModelsBySessionChanged
+      !selectedModelsBySessionChanged &&
+      !selectedThinkingChanged &&
+      !selectedThinkingBySessionChanged
     ) {
       return;
     }
@@ -70,6 +83,8 @@ export function installSessionPreferenceSynchronization(port: SessionPreferenceS
       workflowDockWidth: nextWorkflowDockWidth,
       selectedModelProviderId: nextSelectedModelProviderId,
       selectedModelProviderIdsBySession: nextSelectedModelProviderIdsBySession,
+      selectedThinkingLevel: nextSelectedThinkingLevel,
+      selectedThinkingLevelsBySession: nextSelectedThinkingLevelsBySession,
     });
   });
 }

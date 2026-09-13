@@ -1,7 +1,11 @@
 import { Type, type Tool } from "@earendil-works/pi-ai";
 import type { AgentContinuityRulePromptInput } from "../ActionPlanner/AgentLearningPromptJson.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
-import { AgentContinuityConditionMatches, AgentContinuityNamedLifetimes } from "./AgentContinuityLearningSchema.js";
+import {
+  AgentContinuityConditionMatches,
+  AgentContinuityNamedLifetimes,
+  parseAgentContinuityRuleExtraction,
+} from "./AgentContinuityLearningSchema.js";
 import {
   AgentContinuityRuleToolName,
   createAgentContinuityRuleExtractionContext,
@@ -59,6 +63,9 @@ export class AgentContinuityNativeRuleClient {
     return this.call.execute({
       tool: NativeRuleTool,
       ...createAgentContinuityRuleExtractionContext(input, options.stableSystemPrompt),
+      validate: (value) => {
+        parseAgentContinuityRuleExtraction(value);
+      },
       signal: options.signal,
       cache: options.cache,
     });

@@ -1,4 +1,5 @@
 import type { AgentToolApprovalPolicyInput } from "./AgentToolApprovalPolicy.js";
+import { renderAgentPromptInputWire } from "../Prompt/AgentPromptContextWireRenderer.js";
 
 export interface AgentBamlToolRiskAuditProfile {
   readonly riskScale: readonly AgentBamlToolRiskScaleItem[];
@@ -47,21 +48,24 @@ export interface AgentBamlToolRiskAuditPromptInput {
   readonly profile: AgentBamlToolRiskAuditProfile;
 }
 
-export function buildBamlToolRiskAuditPromptJson(
+export function buildBamlToolRiskAuditPromptWire(
   input: AgentBamlToolRiskAuditPromptInput,
   directive: AgentBamlToolRiskAuditPromptStage = {
     stage: "auditToolRisk",
   },
 ): string {
-  return JSON.stringify(
+  return renderAgentPromptInputWire(
     {
+      kind: "planner_input",
       context: input,
       directive,
     },
-    null,
-    2,
-  );
+    { estimateTokens: (text) => text.length },
+  ).text;
 }
+
+/** @deprecated The returned value is a versioned prompt wire, not bare JSON. */
+export const buildBamlToolRiskAuditPromptJson = buildBamlToolRiskAuditPromptWire;
 
 export function projectToolRiskAuditPromptInput(options: {
   readonly input: AgentToolApprovalPolicyInput;

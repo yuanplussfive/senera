@@ -69,6 +69,16 @@
       "action": "Edit"
     },
     {
+      "id": "workspace-restore",
+      "match": {
+        "exactCapabilities": ["workspace.restore-checkpoint", "workspace.restore_checkpoint"],
+        "exactToolNames": ["WorkspaceRestoreCheckpoint"]
+      },
+      "argumentPath": "target",
+      "detailPaths": ["artifactUri", "checkpointId", "target"],
+      "action": "Restore"
+    },
+    {
       "id": "git-inspect",
       "match": {
         "exactCapabilities": ["repository.git.inspect"],
@@ -161,6 +171,15 @@
       },
       "detailPaths": ["todos.*.content", "todos.*.status"],
       "action": "Plan"
+    },
+    {
+      "id": "senera-self-service",
+      "match": {
+        "exactToolNames": ["SeneraCommand"]
+      },
+      "argumentPath": "action",
+      "detailPaths": ["command", "action", "path"],
+      "action": "Manage"
     },
     {
       "id": "learning-manage",

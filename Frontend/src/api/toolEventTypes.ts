@@ -6,7 +6,19 @@ import type {
   AgentToolResultPresentationFact,
 } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes";
 
-export type ToolResultPresentation = Omit<AgentToolResultPresentation, "failure">;
+/**
+ * Backend protocol DTOs intentionally expose readonly collections. The
+ * frontend store projects the same values through Immer, whose draft type
+ * requires mutable collections. Keep the wire shape identical while making
+ * the local projection writable at every nested collection boundary.
+ */
+type MutableProjection<T> = T extends readonly (infer Item)[]
+  ? MutableProjection<Item>[]
+  : T extends object
+    ? { -readonly [Key in keyof T]: MutableProjection<T[Key]> }
+    : T;
+
+export type ToolResultPresentation = MutableProjection<Omit<AgentToolResultPresentation, "failure">>;
 export type ToolResultPresentationFact = AgentToolResultPresentationFact;
 export type ToolResultPresentationEvidence = AgentToolResultPresentationEvidence;
 export type ToolResultPresentationChange = AgentToolResultPresentationChange;

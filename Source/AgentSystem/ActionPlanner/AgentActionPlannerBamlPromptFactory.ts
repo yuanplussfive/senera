@@ -10,9 +10,9 @@ import {
   type AgentContinuityFactPromptInput,
   type AgentContinuityRulePromptInput,
   type AgentToolLearningPromptInput,
-  buildAgentContinuityFactPromptJson,
-  buildAgentContinuityRulePromptJson,
-  buildToolLearningPromptJson,
+  buildAgentContinuityFactPromptWire,
+  buildAgentContinuityRulePromptWire,
+  buildToolLearningPromptWire,
 } from "./AgentLearningPromptJson.js";
 import type {
   AgentPiControllerDecisionInput,
@@ -22,13 +22,14 @@ import type {
 import type { AgentGoalMicroLoopDecisionInput } from "../Agenda/AgentGoalMicroLoopRuntime.js";
 import type { AgentWorldResidentIdleDecisionInput } from "../World/AgentWorldResidentIdleRuntime.js";
 import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
-import { buildBamlToolRiskAuditPromptJson } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
+import { buildBamlToolRiskAuditPromptWire } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 import { projectActionPlannerBamlRequestBody } from "./AgentActionPlannerPromptProjector.js";
 import { projectPlainBamlRequestBody } from "./AgentActionPlannerPromptProjector.js";
 import {
-  buildAgentPiCompactionPromptJson,
+  buildAgentPiCompactionPromptWire,
   type AgentPiCompactionPromptInput,
 } from "../PiShared/AgentPiCompactionPrompt.js";
+import { renderAgentPromptInputWire } from "../Prompt/AgentPromptContextWireRenderer.js";
 
 export type AgentActionPlannerBamlFunctionArgs =
   | {
@@ -141,14 +142,14 @@ export class AgentActionPlannerBamlPromptFactory {
     switch (args.functionName) {
       case "EvolveTurn":
         return baml.request.EvolveTurn(
-          buildPiPromptJson(args.input, {
+          buildPiPromptWire(args.input, {
             stage: "evolveTurn",
           }),
           options,
         );
       case "RepairControllerDecision":
         return baml.request.RepairControllerDecision(
-          buildPiPromptJson(args.input, {
+          buildPiPromptWire(args.input, {
             stage: "repairControllerDecision",
             invalidDecision: args.invalidDecision,
             issues: args.issues,
@@ -157,14 +158,14 @@ export class AgentActionPlannerBamlPromptFactory {
         );
       case "FillPiToolArguments":
         return baml.request.FillPiToolArguments(
-          buildPiPromptJson(args.input, {
+          buildPiPromptWire(args.input, {
             stage: "fillPiToolArguments",
           }),
           options,
         );
       case "RepairPiToolArguments":
         return baml.request.RepairPiToolArguments(
-          buildPiPromptJson(args.input, {
+          buildPiPromptWire(args.input, {
             stage: "repairPiToolArguments",
             invalidArguments: args.input.invalidArguments,
             issues: args.input.issues,
@@ -172,10 +173,10 @@ export class AgentActionPlannerBamlPromptFactory {
           options,
         );
       case "AuditToolRisk":
-        return baml.request.AuditToolRisk(buildBamlToolRiskAuditPromptJson(args.input), options);
+        return baml.request.AuditToolRisk(buildBamlToolRiskAuditPromptWire(args.input), options);
       case "RepairToolRiskAudit":
         return baml.request.RepairToolRiskAudit(
-          buildBamlToolRiskAuditPromptJson(args.input, {
+          buildBamlToolRiskAuditPromptWire(args.input, {
             stage: "repairToolRiskAudit",
             invalidAudit: args.invalidAudit,
             issues: args.issues,
@@ -184,14 +185,14 @@ export class AgentActionPlannerBamlPromptFactory {
         );
       case "LearnToolUse":
         return baml.request.LearnToolUse(
-          buildToolLearningPromptJson(args.input, {
+          buildToolLearningPromptWire(args.input, {
             stage: "learnToolUse",
           }),
           options,
         );
       case "RepairToolLearning":
         return baml.request.RepairToolLearning(
-          buildToolLearningPromptJson(args.input, {
+          buildToolLearningPromptWire(args.input, {
             stage: "repairToolLearning",
             invalidLearning: args.invalidLearning,
             issues: args.issues,
@@ -201,13 +202,13 @@ export class AgentActionPlannerBamlPromptFactory {
       case "ExtractContinuityFacts":
         return baml.request.ExtractContinuityFacts(
           args.stablePrompt,
-          buildAgentContinuityFactPromptJson(args.input, { stage: "extractContinuityFacts" }),
+          buildAgentContinuityFactPromptWire(args.input, { stage: "extractContinuityFacts" }),
           options,
         );
       case "RepairContinuityFacts":
         return baml.request.RepairContinuityFacts(
           args.stablePrompt,
-          buildAgentContinuityFactPromptJson(args.input, {
+          buildAgentContinuityFactPromptWire(args.input, {
             stage: "repairContinuityFacts",
             invalidExtraction: args.invalidExtraction,
             issues: args.issues,
@@ -217,13 +218,13 @@ export class AgentActionPlannerBamlPromptFactory {
       case "ExtractContinuityRules":
         return baml.request.ExtractContinuityRules(
           args.stablePrompt,
-          buildAgentContinuityRulePromptJson(args.input, { stage: "extractContinuityRules" }),
+          buildAgentContinuityRulePromptWire(args.input, { stage: "extractContinuityRules" }),
           options,
         );
       case "RepairContinuityRules":
         return baml.request.RepairContinuityRules(
           args.stablePrompt,
-          buildAgentContinuityRulePromptJson(args.input, {
+          buildAgentContinuityRulePromptWire(args.input, {
             stage: "repairContinuityRules",
             invalidExtraction: args.invalidExtraction,
             issues: args.issues,
@@ -232,12 +233,12 @@ export class AgentActionPlannerBamlPromptFactory {
         );
       case "SummarizePiConversation":
         return baml.request.SummarizePiConversation(
-          buildAgentPiCompactionPromptJson(args.input, { stage: "summarizePiConversation" }),
+          buildAgentPiCompactionPromptWire(args.input, { stage: "summarizePiConversation" }),
           options,
         );
       case "RepairPiConversationSummary":
         return baml.request.RepairPiConversationSummary(
-          buildAgentPiCompactionPromptJson(args.input, {
+          buildAgentPiCompactionPromptWire(args.input, {
             stage: "repairPiConversationSummary",
             invalidSummary: args.invalidSummary,
             issues: args.issues,
@@ -245,9 +246,9 @@ export class AgentActionPlannerBamlPromptFactory {
           options,
         );
       case "DecideGoalMicroLoop":
-        return baml.request.DecideGoalMicroLoop(buildGoalMicroLoopPromptJson(args.input), options);
+        return baml.request.DecideGoalMicroLoop(buildGoalMicroLoopPromptWire(args.input), options);
       case "DecideResidentIdle":
-        return baml.request.DecideResidentIdle(buildResidentIdlePromptJson(args.input), options);
+        return baml.request.DecideResidentIdle(buildResidentIdlePromptWire(args.input), options);
     }
   }
 }
@@ -294,22 +295,21 @@ function isPlainBamlFunction(functionName: AgentActionPlannerBamlFunctionArgs["f
   );
 }
 
-function buildPiPromptJson(input: object, directive: Record<string, unknown>): string {
-  return JSON.stringify(
+function buildPiPromptWire(input: object, directive: Record<string, unknown>): string {
+  return renderAgentPromptInputWire(
     {
-      context: {
-        ...input,
-      },
+      kind: "planner_input",
+      context: { ...input },
       directive,
     },
-    null,
-    2,
-  );
+    { estimateTokens: (text) => text.length },
+  ).text;
 }
 
-function buildGoalMicroLoopPromptJson(input: AgentGoalMicroLoopDecisionInput): string {
-  return JSON.stringify(
+function buildGoalMicroLoopPromptWire(input: AgentGoalMicroLoopDecisionInput): string {
+  return renderAgentPromptInputWire(
     {
+      kind: "planner_input",
       context: {
         worldId: input.worldId,
         from: input.from.toString(),
@@ -334,14 +334,14 @@ function buildGoalMicroLoopPromptJson(input: AgentGoalMicroLoopDecisionInput): s
       },
       directive: { stage: "decideGoalMicroLoop" },
     },
-    null,
-    2,
-  );
+    { estimateTokens: (text) => text.length },
+  ).text;
 }
 
-function buildResidentIdlePromptJson(input: AgentWorldResidentIdleDecisionInput): string {
-  return JSON.stringify(
+function buildResidentIdlePromptWire(input: AgentWorldResidentIdleDecisionInput): string {
+  return renderAgentPromptInputWire(
     {
+      kind: "planner_input",
       context: {
         worldId: input.worldId,
         now: input.now.toString(),
@@ -364,9 +364,8 @@ function buildResidentIdlePromptJson(input: AgentWorldResidentIdleDecisionInput)
       },
       directive: { stage: "decideResidentIdle" },
     },
-    null,
-    2,
-  );
+    { estimateTokens: (text) => text.length },
+  ).text;
 }
 
 export function createAgentBamlPromptBuilderRegistry(): ClientRegistry {

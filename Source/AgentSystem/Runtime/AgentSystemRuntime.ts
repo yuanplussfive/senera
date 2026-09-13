@@ -39,6 +39,8 @@ import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
+import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
+import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
 
 export interface AgentSystemRuntimeSharedOptions {
   modelProviderId?: string;
@@ -64,6 +66,11 @@ export interface AgentSystemRuntimeSharedOptions {
   worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
   identityDisplayValues?: () => AgentIdentityDisplayValues;
+  /** Host services bound to the `senera` self-service command tool. */
+  selfService?: import("../SelfService/AgentSelfServiceTypes.js").AgentSelfServicePort;
+  /** Loaded plugin host; its tools/skills are applied per runtime composition. */
+  pluginHost?: AgentPluginHost;
+  resourceCoordinator?: AgentToolResourceLeaseCoordinator;
 }
 
 export interface AgentSystemRuntimeLoadOptions extends AgentSystemRuntimeSharedOptions {

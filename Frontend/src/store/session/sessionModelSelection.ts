@@ -1,6 +1,7 @@
 import type { ModelListSnapshotData } from "../../api/eventTypes";
 import { readChatModelProviders } from "../../features/chat/modelProvider";
 import type { StoreState } from "./types";
+import { syncActiveSessionThinkingSelection } from "./sessionThinkingSelection";
 
 /**
  * The configured default is the starting model for a newly created conversation.
@@ -25,6 +26,7 @@ export function applyModelListSnapshotSelection(state: StoreState, data: ModelLi
   }
 
   syncActiveSessionModelSelectionWithAvailableIds(state, availableIds);
+  syncActiveSessionThinkingSelection(state);
 }
 
 export function selectModelForActiveSession(state: StoreState, modelId: string): void {
@@ -32,6 +34,7 @@ export function selectModelForActiveSession(state: StoreState, modelId: string):
   if (state.activeSessionId) {
     state.selectedModelProviderIdsBySession[state.activeSessionId] = modelId;
   }
+  syncActiveSessionThinkingSelection(state);
 }
 
 export function applyDefaultModelToActiveSession(state: StoreState): boolean {
@@ -54,6 +57,7 @@ function syncActiveSessionModelSelectionWithAvailableIds(state: StoreState, avai
     state.selectedModelProviderId = isAvailable(state.selectedModelProviderId, availableIds)
       ? state.selectedModelProviderId
       : fallbackModelId;
+    syncActiveSessionThinkingSelection(state);
     return;
   }
 
@@ -71,6 +75,7 @@ function syncActiveSessionModelSelectionWithAvailableIds(state: StoreState, avai
     delete state.selectedModelProviderIdsBySession[activeSessionId];
   }
   state.selectedModelProviderId = selectedModelId;
+  syncActiveSessionThinkingSelection(state);
 }
 
 function isAvailable(modelId: string | null | undefined, availableIds: ReadonlySet<string>): modelId is string {

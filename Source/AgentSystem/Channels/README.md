@@ -47,6 +47,12 @@ workbench renders it automatically:
   variables) can transcribe voice attachments when QQ did not provide a native
   transcript.
 - `discord.token/allowedUsers/allowAllUsers/intents`.
+- `profileRoutes` — optional declarative routing rules that select a profile by
+  surface, platform, chat shape or opaque lane identifiers. Rules are
+  ranked by priority and selector specificity; an unresolved tie is rejected
+  explicitly instead of silently choosing one. The resolved registry is read
+  from the live configuration for each new channel turn, so a configuration
+  update does not require a process restart.
 
 Authorization is explicit per channel. QQ follows the settings contract and
 defaults `allowAllUsers` to `true`; disable it and provide `allowedUsers` (and

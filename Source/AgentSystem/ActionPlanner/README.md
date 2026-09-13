@@ -29,20 +29,20 @@ Pi Coding Agent provider call
 2. `AgentActionPlannerCoreModelCalls.ts`：BAML 函数、parse 函数和定向 repair 的显式映射。
 3. `AgentActionPlannerStructuredCaller.ts`：统一 structured output、诊断、repair budget 和取消传播。
 4. `AgentActionPlannerBamlPromptFactory.ts`：调用生成的 BAML request builder，再按函数选择 planner 或 plain prompt projection。
-5. `AgentActionPlannerPromptProjector.ts`：验证 BAML envelope/timeline，并投影为模型 system prompt 与消息数组。
+5. `AgentActionPlannerPromptProjector.ts`：验证 BAML envelope/timeline，规范化上下文，并投影为模型 system prompt 与消息数组。
 6. `AgentPlannerContextProjectorRegistry.ts`：按明确 context key 和 order 注册投影器。
 7. `AgentPlannerTimelineBlockRegistry.ts`：按 timeline `kind` 精确查找投影器，并验证每类 payload。
-8. `AgentPromptXml.ts`：唯一的 planner prompt XML 结构化序列化边界。
+8. `AgentPromptXml.ts`：仅为历史/导出兼容调用保留的 XML 序列化边界；模型请求使用 `AgentPromptContextWireRenderer`。
 9. `AgentActionPlannerModelTransport.ts` / `AgentActionPlannerProviderResolver.ts`：把 BAML prompt 投影为 Pi context，经声明的 Pi API adapter 请求模型，并统一超时、usage 和 timing；这里不维护第二套供应商协议解析。
 
-## JSON 到 XML 投影
+## Context wire 投影
 
-上下文数组的 JSON 到 XML 不是按字段猜测，也不是在一组解析器里取 first match。投影遵循四个确定性步骤：
+上下文数组不再默认 JSON 到 XML。模型请求遵循四个确定性步骤：
 
 1. `AgentActionPlannerPromptProjector` 使用 Zod 验证最外层 envelope 和 timeline turn。非法结构直接失败，不带病进入模型。
-2. context 使用 `AgentPlannerContextProjectorRegistry` 按唯一 `key` 精确读取，并按 `order + key` 稳定排序。未知字段统一进入 lossless `extra_context`，不会被静默丢弃。
-3. timeline 使用 `AgentPlannerTimelineProjectorRegistry` 按明确 `kind` 做 O(1) 查找。每个 projector 拥有自己的 Zod payload schema；重复 kind 在注册阶段报错。未知 kind 使用保留 `content + payload + refs` 的通用投影，不探测 `payload.calls`、`payload.observations` 等字段来猜类型。
-4. `AgentPromptXml` 构造受限 AST，并交给 `fast-xml-parser` 的 `XMLBuilder`。动态值只能以 text、canonical JSON text 或 attribute 进入，统一处理 XML 字符、名称校验和转义；业务代码不拼接标签字符串。
+2. `AgentPlannerContextProjectorRegistry.normalize` 按唯一 `key` 精确读取并验证，未知字段进入 lossless `extra_context`，不会被静默丢弃。
+3. timeline 使用 `AgentPlannerTimelineProjectorRegistry` 按明确 `kind` 做 O(1) 查找。每个 projector 拥有自己的 Zod payload schema；重复 kind 在注册阶段报错。未知 kind 保留 `content + payload + refs`，不探测字段猜类型。
+4. `AgentPromptContextWireRenderer` 对规范化上下文和 timeline 做 TOON/compact JSON 实测选择、严格 round-trip 校验和版本化 envelope。`AgentPromptXml` 的 `project`/`formatTimelineTurnContent` 仅供显式 legacy 使用，不进入默认模型链路；模型请求代码使用 `*Wire` 命名的构建器，历史 `*Json` 导出名仅作兼容别名。
 
 这使 `kind` 成为权威判别字段，payload schema 成为局部合同，XML builder 成为唯一转义边界。JSON 对象仍以稳定 canonical JSON 文本嵌入 XML，既保留嵌套数据的完整语义，也避免为每个业务字段手写标签。
 

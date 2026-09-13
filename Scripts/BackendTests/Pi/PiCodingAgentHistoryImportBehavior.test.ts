@@ -82,10 +82,42 @@ describe("Pi Coding Agent history import", () => {
     expect(hasIncompatibleAgentPiToolObservationHistory(bounded)).toBe(false);
     expect(hasIncompatibleAgentPiToolObservationHistory(incompatible)).toBe(true);
   });
+
+  test("cancels Pi compaction and branch summarization before waiting for idle", async () => {
+    const calls: string[] = [];
+    const session = new AgentPiCodingAgentSession(
+      codingSession(
+        { messages: [] },
+        {
+          abortCompaction: () => calls.push("compaction"),
+          abortBranchSummary: () => calls.push("branch_summary"),
+          abort: async () => {
+            calls.push("agent");
+          },
+        },
+      ),
+      SessionManager.inMemory(),
+      sessionFrame(),
+      vi.fn(),
+    );
+
+    await session.abort();
+
+    expect(calls).toEqual(["compaction", "branch_summary", "agent"]);
+  });
 });
 
-function codingSession(state: { messages: AgentMessage[] }): CodingAgentSession {
-  return { agent: { state } } as unknown as CodingAgentSession;
+function codingSession(
+  state: { messages: AgentMessage[] },
+  methods: Partial<Pick<CodingAgentSession, "abort" | "abortCompaction" | "abortBranchSummary">> = {},
+): CodingAgentSession {
+  return {
+    agent: { state },
+    abort: async () => undefined,
+    abortCompaction: () => undefined,
+    abortBranchSummary: () => undefined,
+    ...methods,
+  } as unknown as CodingAgentSession;
 }
 
 function sessionFrame(): AgentPiMutableSessionFrame {

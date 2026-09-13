@@ -1,5 +1,7 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { readAgentPiToolObservation } from "./AgentPiToolObservationProtocol.js";
+import { projectAgentPiToolObservationForContext } from "./AgentPiToolObservationProjection.js";
+import { renderAgentPromptInputWire } from "../Prompt/AgentPromptContextWireRenderer.js";
 
 export const AgentPiCompactionSummaryBridgeCustomType = "senera.compaction_summary_text";
 
@@ -11,6 +13,8 @@ export interface AgentPiCompactionPromptInput {
   readonly fileOperations?: unknown;
   readonly artifactIndex: unknown;
   readonly toolCallIndex: unknown;
+  /** Compact source/ref ledger used to rebuild context after compaction. */
+  readonly continuityLedger?: unknown;
 }
 
 export type AgentPiCompactionDirective =
@@ -21,13 +25,14 @@ export type AgentPiCompactionDirective =
       readonly issues: readonly string[];
     };
 
-export function buildAgentPiCompactionPromptJson(
+export function buildAgentPiCompactionPromptWire(
   input: AgentPiCompactionPromptInput,
   directive: AgentPiCompactionDirective,
 ): string {
-  return JSON.stringify(
+  return renderAgentPromptInputWire(
     {
-      compactionInput: {
+      kind: "pi_compaction",
+      context: {
         mode: input.mode,
         previousSummary: input.previousSummary,
         customInstructions: input.customInstructions,
@@ -35,13 +40,16 @@ export function buildAgentPiCompactionPromptJson(
         messages: input.messages.flatMap(projectMessage),
         artifactIndex: input.artifactIndex,
         toolCallIndex: input.toolCallIndex,
-        directive,
+        continuityLedger: input.continuityLedger,
       },
+      directive,
     },
-    null,
-    2,
-  );
+    { estimateTokens: (text) => text.length },
+  ).text;
 }
+
+/** @deprecated The returned value is a versioned prompt wire, not bare JSON. */
+export const buildAgentPiCompactionPromptJson = buildAgentPiCompactionPromptWire;
 
 function projectMessage(message: AgentMessage): unknown[] {
   switch (message.role) {
@@ -99,7 +107,20 @@ function projectMessage(message: AgentMessage): unknown[] {
 
 function parseToolObservation(message: Extract<AgentMessage, { role: "toolResult" }>): unknown {
   const text = message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
-  return readAgentPiToolObservation(text);
+  const observation = readAgentPiToolObservation(text);
+  return observation ? projectCompactionObservation(observation) : undefined;
+}
+
+/**
+ * Compaction only needs continuity facts and retrieval coordinates. An
+ * incomplete observation already declares that its full payload is in an
+ * Artifact, so replaying result/arguments/process here needlessly inflates the
+ * summarizer request and duplicates the active model context.
+ */
+function projectCompactionObservation(
+  observation: NonNullable<ReturnType<typeof readAgentPiToolObservation>>,
+): unknown {
+  return projectAgentPiToolObservationForContext(observation);
 }
 
 function projectContent(content: Extract<AgentMessage, { role: "user" | "custom" }>["content"]): unknown {

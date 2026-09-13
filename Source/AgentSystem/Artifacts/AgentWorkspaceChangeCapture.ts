@@ -10,6 +10,7 @@ import { resolveWorkspaceCaptureOptions, resolveWorkspacePathRules } from "./Age
 import { AgentWorkspacePathSelector } from "./AgentWorkspacePathSelector.js";
 import { AgentWorkspaceSnapshotBuilder } from "./AgentWorkspaceSnapshotBuilder.js";
 import { compareWorkspaceSnapshots } from "./AgentWorkspaceSnapshotDiff.js";
+import { createAgentWorkspaceContinuityCheckpoint } from "../Continuity/AgentContinuityLedger.js";
 
 export type { AgentWorkspaceChangeCaptureOptions, PreparedWorkspaceCapture } from "./AgentWorkspaceCaptureTypes.js";
 
@@ -40,10 +41,12 @@ export class AgentWorkspaceChangeCapture {
       complete: async (result: unknown) => {
         const afterPaths = new Set([...beforePaths, ...this.pathSelector.selectDeclaredPaths(result, rules)]);
         const after = await this.snapshot(afterPaths, options);
+        const changes = compareWorkspaceSnapshots(before, after);
         return {
           before,
           after,
-          changes: compareWorkspaceSnapshots(before, after),
+          changes,
+          checkpoint: createAgentWorkspaceContinuityCheckpoint({ before, after, changes }),
         };
       },
     };

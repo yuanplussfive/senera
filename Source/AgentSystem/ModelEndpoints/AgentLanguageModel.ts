@@ -37,8 +37,16 @@ export type AgentModelCacheRetention = "none" | "short" | "long";
 
 /** Provider-neutral prompt-cache affinity passed through Pi. */
 export interface AgentLanguageModelCacheOptions {
+  /** Provider-facing affinity/session scope. This is intentionally opaque. */
   readonly scope: string;
   readonly retention: AgentModelCacheRetention;
+  /** Senera's physical session identity, kept separate from the provider scope. */
+  readonly sessionId?: string;
+  /** Stable logical scope used to correlate physical provider sessions. */
+  readonly logicalCacheScope?: string;
+  /** Digest and byte count of the immutable prefix sent before turn data. */
+  readonly stablePrefixRevision?: string;
+  readonly stablePrefixBytes?: number;
 }
 
 /** Invocation contract for model calls whose immutable system prefix is owned by the caller. */

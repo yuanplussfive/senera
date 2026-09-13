@@ -21,6 +21,14 @@ import type { AgentScheduleRuntime } from "./AgentScheduleRuntime.js";
 const NonEmptyString = z.string().trim().min(1);
 const RunIdSchema = NonEmptyString.describe("Child-run ID returned by AgentSpawn.");
 const ToolNamesSchema = z.array(NonEmptyString).min(1);
+const AgentSpawnResourceSchema = z
+  .object({
+    capability: NonEmptyString.describe("Registered resource capability id."),
+    value: z.unknown().describe("Capability-specific resource value, usually a workspace path."),
+    intent: NonEmptyString.optional().describe("Capability-defined access intent, such as read or replace."),
+    parameters: z.record(z.string(), z.unknown()).optional().describe("Capability-specific parameters."),
+  })
+  .strict();
 export const AgentOrchestrationToolNames = Object.freeze({
   Spawn: "AgentSpawn",
   Wait: "AgentWait",
@@ -45,6 +53,18 @@ export const AgentSpawnArgumentsSchema = z
       .boolean()
       .optional()
       .describe("True forks parent conversation context; false starts fresh; omission follows the role contract."),
+    workItemId: NonEmptyString.max(256)
+      .optional()
+      .describe(
+        "Stable logical task id for retries. Reuse only for the same assignment; use a different id for independent repeated work.",
+      ),
+    resources: z
+      .array(AgentSpawnResourceSchema)
+      .min(1)
+      .optional()
+      .describe(
+        "Capability-level resources reserved for this assignment. Declare files or directories when the child may modify them; omit only when the scope is genuinely unknown.",
+      ),
   })
   .strict();
 
@@ -174,8 +194,11 @@ export function createAgentOrchestrationHostHandlers(runtime: AgentOrchestration
       throwIfAborted(context.signal);
       const input = AgentSpawnArgumentsSchema.parse(args);
       const parent = requireRunContext(context.sessionId, context.requestId);
-      const record = await runtime.delegation.spawn(input, createDelegationContext(context, parent));
-      return toolProcessSuccessResult({ run: projectAgentChildRunView(record, record.id) });
+      const result = await runtime.delegation.spawnWithOutcome(input, createDelegationContext(context, parent));
+      return toolProcessSuccessResult({
+        disposition: result.disposition,
+        run: projectAgentChildRunView(result.run, result.run.id),
+      });
     },
     list: async (args, context) => {
       throwIfAborted(context.signal);
@@ -196,8 +219,14 @@ export function createAgentOrchestrationHostHandlers(runtime: AgentOrchestration
         input.mode === "all"
           ? await runtime.delegation.waitAll(input.targets, parent.sessionId, input.timeoutMs, context.signal)
           : await runtime.delegation.waitAny(input.targets, parent.sessionId, input.timeoutMs, context.signal);
+      const projectedRuns = input.targets.map((target, index) => {
+        const run = result.runs[index];
+        if (!run || !isTerminalChildRunStatus(run.status)) return projectAgentChildRunView(run, target);
+        const consumed = runtime.delegation.markResultConsumed(run.id, parent.sessionId);
+        return projectAgentChildRunView(consumed ?? run, target);
+      });
       return toolProcessSuccessResult({
-        runs: input.targets.map((target, index) => projectAgentChildRunView(result.runs[index], target)),
+        runs: projectedRuns,
         waitTimedOut: result.timedOut,
       });
     },
@@ -323,6 +352,17 @@ export interface AgentChildRunPublicView {
   readonly error?: string;
   readonly request?: { readonly id: string; readonly message: string };
   readonly progress?: AgentChildRunProgressProjection;
+  readonly workItemId?: string;
+  readonly taskDigest?: string;
+  readonly resources?: {
+    readonly coverage: "declared" | "unscoped";
+    readonly claims: readonly {
+      readonly domainId: string;
+      readonly identity: string;
+      readonly access: "shared" | "exclusive";
+    }[];
+  };
+  readonly consumption?: { readonly result: boolean; readonly parentWake: boolean };
 }
 
 export function projectAgentChildRunView(run: AgentChildRunRecord | undefined, runId: string): AgentChildRunPublicView {
@@ -342,6 +382,16 @@ export function projectAgentChildRunView(run: AgentChildRunRecord | undefined, r
     runId: run.id,
     state: projectChildRunPublicState(run.status),
     agent: run.agentName,
+    ...(run.workItemId ? { workItemId: run.workItemId } : {}),
+    ...(run.taskDigest ? { taskDigest: run.taskDigest } : {}),
+    resources: {
+      coverage: run.executionContract.resourceCoverage ?? "unscoped",
+      claims: run.executionContract.resourceClaims ?? [],
+    },
+    consumption: {
+      result: run.resultConsumedAt !== undefined,
+      parentWake: run.parentWakeConsumed === true,
+    },
     ...(run.joinGroup ? { joinGroup: run.joinGroup } : {}),
     ...(run.finalAnswer !== undefined ? { result: { content: run.finalAnswer } } : {}),
     ...(run.error !== undefined ? { error: run.error } : {}),

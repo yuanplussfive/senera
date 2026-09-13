@@ -14,6 +14,34 @@
       "enum": ["agent", "always_ask", "full_access"],
       "description": "Approval mode used for agent turns started from channels."
     },
+    "profileRoutes": {
+      "type": "array",
+      "maxItems": 512,
+      "description": "Declarative conversation-to-profile routes. Ties at the same priority and specificity are rejected.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "selector", "profileId"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "priority": { "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+          "selector": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "surface": { "type": "string", "enum": ["console", "channel"] },
+              "platform": { "type": "string", "enum": ["qq", "telegram", "discord"] },
+              "chatType": { "type": "string", "enum": ["direct", "group", "channel", "thread"] },
+              "chatId": { "type": "string", "minLength": 1, "maxLength": 512 },
+              "userId": { "type": "string", "minLength": 1, "maxLength": 512 },
+              "threadId": { "type": "string", "minLength": 1, "maxLength": 512 }
+            }
+          },
+          "profileId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "modelProviderId": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      }
+    },
     "telegram": {
       "type": "object",
       "default": { "enabled": false },

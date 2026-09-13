@@ -2,6 +2,7 @@ import { readArtifactMemoryHostTool } from "./Memory/AgentArtifactMemoryRuntime.
 import { recallContinuityHostTool, writeContinuityHostTool } from "./Continuity/AgentContinuityToolRuntime.js";
 import { createShellCommandHostTool } from "./ToolRuntime/AgentShellCommandRuntime.js";
 import { applyWorkspacePatchHostTool } from "./ToolRuntime/AgentWorkspaceApplyPatchRuntime.js";
+import { restoreWorkspaceCheckpointHostTool } from "./ToolRuntime/AgentWorkspaceCheckpointRuntime.js";
 import { AgentToolHostCapabilityRegistry } from "./ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { AgentToolSearchRuntime } from "./ToolSearch/AgentToolSearchRuntime.js";
 import type { AgentExecutionResourceBroker } from "./ExecutionResources/AgentExecutionResourceBroker.js";
@@ -31,6 +32,7 @@ export const AgentHostCapabilityNames = {
   MemoryRecall: "memory.recall",
   MemoryWrite: "memory.write",
   WorkspaceApplyPatch: "workspace.apply_patch",
+  WorkspaceRestoreCheckpoint: "workspace.restore_checkpoint",
   AskUser: "conversation.ask_user",
   SkillManage: "extensions.skill.manage",
   AgentSpawn: "orchestration.agent.spawn",
@@ -59,7 +61,8 @@ export function createDefaultHostCapabilityRegistry(
     .register(AgentHostCapabilityNames.ArtifactMemoryRead, readArtifactMemoryHostTool)
     .register(AgentHostCapabilityNames.MemoryRecall, recallContinuityHostTool)
     .register(AgentHostCapabilityNames.MemoryWrite, writeContinuityHostTool)
-    .register(AgentHostCapabilityNames.WorkspaceApplyPatch, applyWorkspacePatchHostTool);
+    .register(AgentHostCapabilityNames.WorkspaceApplyPatch, applyWorkspacePatchHostTool)
+    .register(AgentHostCapabilityNames.WorkspaceRestoreCheckpoint, restoreWorkspaceCheckpointHostTool);
   registry.register(AgentHostCapabilityNames.AskUser, askUserHostTool);
 
   if (options.executionResources) {

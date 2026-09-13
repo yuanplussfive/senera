@@ -220,16 +220,26 @@ export class AgentToolExecutionArtifactRecorder {
               fileWriter: this.fileWriter,
             })
           : undefined;
+        const workspaceArtifactsWithUri = workspaceArtifacts?.checkpoint
+          ? {
+              ...workspaceArtifacts,
+              checkpoint: {
+                ...workspaceArtifacts.checkpoint,
+                artifactUri: locator.artifactUri,
+              },
+            }
+          : workspaceArtifacts;
         const delta = buildArtifactDelta({
           evidence,
           previousEvidence: input.previousEvidence,
-          workspaceChanges: workspaceArtifacts?.changes,
+          workspaceChanges: workspaceArtifactsWithUri?.changes,
         });
-        const workspaceProjection = workspaceArtifacts
+        const workspaceProjection = workspaceArtifactsWithUri
           ? {
-              before: workspaceArtifacts.before,
-              after: workspaceArtifacts.after,
-              changes: workspaceArtifacts.changes,
+              before: workspaceArtifactsWithUri.before,
+              after: workspaceArtifactsWithUri.after,
+              changes: workspaceArtifactsWithUri.changes,
+              ...(workspaceArtifactsWithUri.checkpoint ? { checkpoint: workspaceArtifactsWithUri.checkpoint } : {}),
             }
           : undefined;
         const deterministicSummary = buildArtifactSummary({
@@ -305,7 +315,7 @@ export class AgentToolExecutionArtifactRecorder {
           rootDir: locator.rootDir,
           absoluteDir: locator.absoluteDir,
           relativeDir: locator.relativeDir,
-          workspaceArtifacts,
+          workspaceArtifacts: workspaceArtifactsWithUri,
           artifactAssetReceipts: materializedPayload?.receipts,
         });
         await publication.commit();

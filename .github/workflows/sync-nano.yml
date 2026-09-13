@@ -27,7 +27,7 @@ jobs:
       SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       - name: Check out the verified source commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 1

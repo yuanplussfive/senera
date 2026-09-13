@@ -35,7 +35,10 @@ import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentChannelFinalResponseRewriter } from "./AgentChannelFinalResponse.js";
 import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
-import { createAgentPiLogicalCacheScope } from "../Pi/AgentPiPromptCache.js";
+import {
+  createAgentConversationSpace,
+  type AgentProfileRouteRegistry,
+} from "../Conversation/AgentConversationSpace.js";
 import type { AgentChannelFinalizationRecord } from "./AgentChannelFinalizationTypes.js";
 
 export const AgentChannelServiceDefaults = Object.freeze({
@@ -55,6 +58,7 @@ export interface AgentChannelSessionPort {
   submitMessage(request: {
     sessionId: string;
     requestId?: string;
+    modelProviderId?: string;
     input: string;
     approvalMode: AgentExecutionApprovalMode;
     attachments?: AgentUploadAttachment[];
@@ -630,10 +634,17 @@ export class AgentChannelService {
       return;
     }
     const lane = await this.resolveLane(source, false);
+    const conversationSpace = this.createConversationSpace(lane.sessionId, source);
     const steered = await this.options.sessionManager.steerActiveRun({
       sessionId: lane.sessionId,
       input: instruction,
-      interaction: { surface: "channel", platform: channel.kind, chatType: source.chatType },
+      interaction: {
+        surface: "channel",
+        platform: source.platform,
+        chatType: source.chatType,
+        spaceId: conversationSpace.id,
+        ...(conversationSpace.profileId ? { profileId: conversationSpace.profileId } : {}),
+      },
     });
     channel.delivery.enqueue(
       source,
@@ -665,10 +676,12 @@ export class AgentChannelService {
     attachments?: readonly AgentUploadAttachment[],
   ): Promise<void> {
     const requestId = `channel_${createShortId()}`;
-    const logicalCacheScope = createAgentPiLogicalCacheScope({
+    const conversationSpace = this.createConversationSpace(
       sessionId,
-      family: `channel-finalization:${source.platform}`,
-    });
+      source,
+      `channel-finalization:${source.platform}`,
+    );
+    const logicalCacheScope = conversationSpace.logicalCacheScope;
     const finalizationHistory = await this.loadFinalizationHistory(sessionId, channel.kind);
     const renderer = new AgentChannelRunRenderer({
       adapter: channel.adapter,
@@ -714,6 +727,7 @@ export class AgentChannelService {
       const submission = await this.options.sessionManager.submitMessage({
         sessionId,
         requestId,
+        ...(conversationSpace.modelProviderId ? { modelProviderId: conversationSpace.modelProviderId } : {}),
         input,
         approvalMode,
         attachments: attachments ? [...attachments] : undefined,
@@ -728,9 +742,16 @@ export class AgentChannelService {
             userId: source.userId,
             messageId: source.messageId,
             attachmentCount: attachments?.length ?? 0,
+            spaceId: conversationSpace.id,
           },
         },
-        interaction: { surface: "channel", platform: channel.kind, chatType: source.chatType },
+        interaction: {
+          surface: "channel",
+          platform: channel.kind,
+          chatType: source.chatType,
+          spaceId: conversationSpace.id,
+          ...(conversationSpace.profileId ? { profileId: conversationSpace.profileId } : {}),
+        },
       });
       if (submission.kind === "accepted") {
         await Promise.race([terminal, timeout(this.replyTimeoutMs(channel))]);
@@ -896,9 +917,10 @@ export class AgentChannelService {
     requestId?: string,
     finalizationHistory: readonly AgentChannelFinalizationRecord[] = [],
   ): AgentChannelRunRenderer {
-    const logicalCacheScope = sessionId
-      ? createAgentPiLogicalCacheScope({ sessionId, family: `channel-finalization:${source.platform}` })
+    const conversationSpace = sessionId
+      ? this.createConversationSpace(sessionId, source, `channel-finalization:${source.platform}`)
       : undefined;
+    const logicalCacheScope = conversationSpace?.logicalCacheScope;
     return new AgentChannelRunRenderer({
       adapter: channel.adapter,
       delivery: channel.delivery,
@@ -939,6 +961,30 @@ export class AgentChannelService {
       });
       return [];
     }
+  }
+
+  private resolveProfileRoutes(): AgentProfileRouteRegistry | undefined {
+    return this.options.config().profileRoutes;
+  }
+
+  private createConversationSpace(
+    sessionId: string,
+    source: AgentChannelSource,
+    cacheFamily = `conversation:${source.platform}`,
+  ) {
+    return createAgentConversationSpace({
+      sessionId,
+      address: {
+        surface: "channel",
+        platform: source.platform,
+        chatType: source.chatType,
+        chatId: source.chatId,
+        userId: source.userId,
+        ...(source.threadId ? { threadId: source.threadId } : {}),
+      },
+      routes: this.resolveProfileRoutes(),
+      cacheFamily,
+    });
   }
 
   private log(level: "info" | "warn" | "error", message: string, details?: Record<string, unknown>): void {

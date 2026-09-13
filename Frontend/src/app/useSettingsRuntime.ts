@@ -14,10 +14,12 @@ import { useStore } from "../store/sessionStore";
 import { useConfigMutationController, type ConfigMutationController } from "./useConfigMutationController";
 import { generateId } from "../lib/util";
 import { resolveBackendMessage } from "../i18n/backendMessage";
+import { useWorkspaceController, type WorkspaceControllerHandle } from "./useWorkspaceController";
 
 export interface SettingsRuntimeHandle {
   controller: ConfigMutationController;
   systemConfig: SettingsSystemConfigHandle;
+  workspace: WorkspaceControllerHandle;
   ingestSettingsEvent: (event: EventEnvelope) => boolean;
 }
 
@@ -25,10 +27,12 @@ export function useSettingsRuntime({
   httpBaseUrl,
   sendRef,
   statusRef,
+  status,
 }: {
   httpBaseUrl: string;
   sendRef: MutableRefObject<((request: WsRequest) => boolean) | null>;
   statusRef: MutableRefObject<SocketStatus>;
+  status: SocketStatus;
 }): SettingsRuntimeHandle {
   const configSnapshot = useStore((state) => state.configSnapshot);
   const providerModelCatalogs = useStore((state) => state.providerModelCatalogs);
@@ -40,6 +44,7 @@ export function useSettingsRuntime({
   const channelStatuses = useStore((state) => state.channelStatuses);
   const [mcpInputOperation, setMcpInputOperation] = useState<McpInputMutationState | null>(null);
   const controller = useConfigMutationController({ configSnapshot, sendRef, statusRef });
+  const workspace = useWorkspaceController({ sendRef, statusRef, status });
   const sendWhenConnected = useCallback(
     (request: WsRequest): boolean => statusRef.current === "open" && Boolean(sendRef.current?.(request)),
     [sendRef, statusRef],
@@ -134,6 +139,7 @@ export function useSettingsRuntime({
   const ingestSettingsEvent = useCallback(
     (event: EventEnvelope): boolean => {
       const configHandled = controller.ingestConfigMutationEvent(event);
+      const workspaceHandled = workspace.ingestWorkspaceEvent(event);
       if (event.kind === EventKinds.McpServerSnapshot) {
         const operation = (event.data as McpServerSnapshotData).operation;
         if (operation?.kind === "mcp_input_update") {
@@ -152,12 +158,12 @@ export function useSettingsRuntime({
           return true;
         }
       }
-      return configHandled;
+      return configHandled || workspaceHandled;
     },
-    [controller],
+    [controller, workspace],
   );
 
-  return { controller, systemConfig, ingestSettingsEvent };
+  return { controller, systemConfig, workspace, ingestSettingsEvent };
 }
 
 function isProviderCredentialResponse(value: unknown, providerId: string): value is { apiKey: string } {

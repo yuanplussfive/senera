@@ -25,6 +25,7 @@ export function SettingsWorkbench({
   onValueChange,
   onMotionLevelChange,
   systemConfig,
+  workspace,
 }: SettingsWorkbenchProps): JSX.Element {
   useFrontendLocale();
   const [sectionSearch, setSectionSearch] = useState("");
@@ -126,6 +127,7 @@ export function SettingsWorkbench({
         onValueChange={onValueChange}
         systemConfig={systemConfig}
         values={values}
+        workspace={workspace}
       />
     </SettingsWorkbenchLayout>
   );

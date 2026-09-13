@@ -1,6 +1,7 @@
 import type { Skill } from "@earendil-works/pi-agent-core";
 import { sha256Hex } from "../Core/AgentHash.js";
 import { renderPiSystemPromptFrame, type AgentPiSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
+import type { AgentPiPromptDisclosurePlan } from "./AgentPiPromptDisclosure.js";
 import { projectAgentModelText } from "../Text/AgentModelPayloadProjection.js";
 
 export const AgentPiTurnContextCustomType = "senera.turn_context";
@@ -20,11 +21,13 @@ export function projectAgentPiTurnContextMessage(input: {
   readonly turnContext?: string;
   readonly skills: readonly Skill[];
   readonly selectedPromptTemplates: readonly AgentPiSelectedPromptTemplateFrame[];
+  readonly disclosure?: AgentPiPromptDisclosurePlan;
 }): AgentPiTurnContextMessage | undefined {
   const renderedSnapshot = renderPiSystemPromptFrame({
     systemPrompt: input.turnContext ?? "",
     skills: input.skills,
     selectedPromptTemplates: input.selectedPromptTemplates,
+    disclosure: input.disclosure,
   });
   const snapshot = projectAgentModelText(renderedSnapshot).text.trim();
   if (!snapshot) return undefined;

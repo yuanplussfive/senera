@@ -16,6 +16,8 @@ import type { AgentRunContextMode, AgentRunDispatchPort } from "./AgentRunDispat
 import type { AgentSubagentPreflightPort } from "./AgentSubagentPreflight.js";
 import type { AgentSubagentRoleCatalogPort } from "./AgentSubagentRoleCatalog.js";
 import type { AgentTodoService } from "../Todos/AgentTodoService.js";
+import type { AgentToolResourceClaimDeclaration } from "../ToolRuntime/AgentToolResourceClaimTypes.js";
+import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
 
 export const AgentDelegationExecutionModes = {
   Wait: "wait",
@@ -31,6 +33,10 @@ export interface AgentSpawnRequest {
   readonly task: string;
   readonly agent?: string;
   readonly forkContext?: boolean;
+  /** Stable logical identity for retries. Omit to derive it from the task contract. */
+  readonly workItemId?: string;
+  /** Optional capability-level claims used to reserve the assignment's scope. */
+  readonly resources?: readonly AgentToolResourceClaimDeclaration[];
 }
 
 export interface AgentDelegationRequest {
@@ -39,6 +45,8 @@ export interface AgentDelegationRequest {
   /** Optional v2 graph identity. The host generates both values when omitted. */
   readonly ownerRunId?: string;
   readonly nodeId?: string;
+  /** Stable logical identity for retries and duplicate submission convergence. */
+  readonly workItemId?: string;
   readonly joinGroup?: AgentChildRunJoinGroup;
   readonly workspaceAccess: AgentChildWorkspaceAccessMode;
   readonly context?: AgentRunContextMode;
@@ -46,6 +54,7 @@ export interface AgentDelegationRequest {
   readonly modelProviderId?: string;
   readonly skills?: readonly string[];
   readonly thinking?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+  readonly resources?: readonly AgentToolResourceClaimDeclaration[];
 }
 
 export interface AgentDelegationContext {
@@ -81,6 +90,8 @@ export interface AgentDelegationServiceOptions {
   readonly roleCatalog?: AgentSubagentRoleCatalogPort;
   /** Bound after continuity startup; children receive the same durable Todo store. */
   readonly todoService?: AgentTodoService;
+  /** Shared lease coordinator used by Pi tools and child assignments. */
+  readonly resourceCoordinator?: AgentToolResourceLeaseCoordinator;
 }
 
 /**

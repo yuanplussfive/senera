@@ -119,6 +119,8 @@ function createAgentChildRunEventIdentity(record: AgentChildRunRecord) {
     childRunId: record.id,
     ownerRunId: record.ownerRunId,
     nodeId: record.nodeId,
+    ...(record.workItemId ? { workItemId: record.workItemId } : {}),
+    ...(record.taskDigest ? { taskDigest: record.taskDigest } : {}),
     childSessionId: record.childSessionId,
     agentName: record.agentName,
     status: record.status,

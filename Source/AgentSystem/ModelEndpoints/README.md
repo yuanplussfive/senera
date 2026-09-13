@@ -38,3 +38,23 @@ Native Tool Calling 的 Pi adapter 只由模型声明的 Endpoint kind 选择，
 配置中的 `BaseUrl` 表示供应商 API 根。若 Pi SDK 已拥有相同的末尾路径，Senera 只按完整 URL segment 移除精确重叠，再把结果交给 SDK。例如 Anthropic adapter 自己追加 `/v1/messages`，所以配置 `https://chat.senerapi.com/v1` 会投影为 SDK base `https://chat.senerapi.com/`，最终请求仍是且仅是 `https://chat.senerapi.com/v1/messages`。`/v11` 不匹配，`/proxy/v1` 只移除末尾 `v1` 并保留代理前缀。
 
 该归一化只属于 Native Pi 投影；BAML 和 Senera 自有 Endpoint 客户端继续使用各自的正式 URL 合同。新增 Endpoint 或升级 SDK 时，必须用 adapter 的真实 fetch 探针验证最终请求 URL，不能只断言中间字符串。
+
+## Thinking 等级合同
+
+思考能力沿用 Pi 的可移植语义等级：`off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`。模型目录负责声明默认支持集合；模型配置只记录显式覆盖，不把供应商私有字符串直接当成新的 Pi 等级。
+
+```json
+{
+  "ThinkingLevelMap": {
+    "high": "deep",
+    "max": "ultra"
+  },
+  "ThinkingProfiles": [
+    { "Id": "balanced", "Label": "均衡", "Level": "medium" },
+    { "Id": "deep-review", "Label": "深度审查", "Level": "high" }
+  ],
+  "DefaultThinkingLevel": "medium"
+}
+```
+
+`ThinkingLevelMap` 的 value 是供应商原生参数；`null` 明确禁用一个 Pi 等级，省略则继承 Pi 目录。`ThinkingProfiles` 是可读名称到标准等级的一对一别名，运行时仍只向 Pi adapter 传标准等级。空对象、空数组和未声明字段都不会覆盖目录推导。这样既允许用户自定义名称与原生值，又不会生成 adapter 无法执行的伪等级。

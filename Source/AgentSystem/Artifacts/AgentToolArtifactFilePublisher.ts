@@ -96,8 +96,14 @@ export async function publishToolArtifactFiles(input: PublishToolArtifactFilesIn
     }),
   );
   if (input.workspaceArtifacts) {
-    await input.fileWriter.writeJson(input.artifact.files.workspaceBefore, input.workspaceArtifacts.before);
-    await input.fileWriter.writeJson(input.artifact.files.workspaceAfter, input.workspaceArtifacts.after);
+    retainReceipt(
+      receipts,
+      await input.fileWriter.writeJson(input.artifact.files.workspaceBefore, input.workspaceArtifacts.before),
+    );
+    retainReceipt(
+      receipts,
+      await input.fileWriter.writeJson(input.artifact.files.workspaceAfter, input.workspaceArtifacts.after),
+    );
     retainReceipts(
       receipts,
       await writeStructuredArtifactJson(input.fileWriter, input.artifact.files.workspaceDiff, {
@@ -204,7 +210,9 @@ function buildArtifactManifest(
             beforeDir: input.artifact.files.workspaceBeforeDir,
             afterDir: input.artifact.files.workspaceAfterDir,
           },
+          snapshotContents: collectWorkspaceSnapshotContents(input.artifact.files, receipts),
           patch: input.workspaceArtifacts.patch,
+          ...(input.workspaceArtifacts.checkpoint ? { checkpoint: input.workspaceArtifacts.checkpoint } : {}),
         }
       : undefined,
     contents: collectArtifactContents(input.artifact.files, receipts),
@@ -252,6 +260,30 @@ function collectArtifactContents(
       },
     ];
   });
+}
+
+function collectWorkspaceSnapshotContents(
+  files: Readonly<Record<string, string>>,
+  receipts: ReadonlyMap<string, AgentArtifactFileReceipt>,
+) {
+  return {
+    before: collectWorkspaceSnapshotContent(files.workspaceBefore, receipts, "before"),
+    after: collectWorkspaceSnapshotContent(files.workspaceAfter, receipts, "after"),
+  };
+}
+
+function collectWorkspaceSnapshotContent(
+  filePath: string,
+  receipts: ReadonlyMap<string, AgentArtifactFileReceipt>,
+  label: string,
+) {
+  const receipt = receipts.get(path.resolve(filePath));
+  if (!receipt) throw new Error(`Workspace ${label} snapshot was written without an integrity receipt.`);
+  return {
+    file: receipt.filePath,
+    byteLength: receipt.byteLength,
+    sha256: receipt.sha256,
+  };
 }
 
 async function writeStructuredArtifactJson(

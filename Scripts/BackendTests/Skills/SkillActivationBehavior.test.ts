@@ -64,6 +64,29 @@ describe("Skill activation", () => {
     expect(activated.map((candidate) => candidate.name)).toContain("web-research");
   });
 
+  test("fails explicitly for an unknown slash Skill instead of routing to a semantic fallback", async () => {
+    const registry = new AgentExtensionRegistry();
+    registry.registerSkill(skill("web-research", "Research current external web facts."));
+
+    await expect(
+      new AgentSkillActivationService(registry).activate({ input: "/missing-skill research current web facts" }),
+    ).rejects.toThrow("Explicit Skill commands are not registered: /missing-skill.");
+  });
+
+  test("keeps model-disabled Skills out of automatic routing while allowing explicit activation", async () => {
+    const registry = new AgentExtensionRegistry();
+    registry.registerSkill({
+      ...skill("internal-playbook", "Inspect internal operational playbooks."),
+      disableModelInvocation: true,
+    });
+
+    const service = new AgentSkillActivationService(registry);
+    expect(await service.activate({ input: "Inspect internal operational playbooks." })).toEqual([]);
+    expect((await service.activate({ input: "Use /internal-playbook now." })).map((item) => item.name)).toEqual([
+      "internal-playbook",
+    ]);
+  });
+
   test("does not activate a Skill from learned evidence without a semantic match", async () => {
     const registry = new AgentExtensionRegistry();
     registry.registerSkill({

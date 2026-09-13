@@ -2,6 +2,7 @@ import { DEFAULT_COMPACTION_SETTINGS } from "@earendil-works/pi-coding-agent";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import { resolveAgentNativeToolRoute, type AgentNativeToolApi } from "./AgentModelEndpointContract.js";
+import { resolveAgentModelThinking } from "./AgentModelThinking.js";
 
 const FreeCostModel = {
   input: 0,
@@ -15,13 +16,24 @@ export function projectAgentNativeToolModel(provider: ResolvedAgentModelProvider
   const capabilities = provider.Capabilities ?? {};
   const route = resolveAgentNativeToolRoute(provider.Endpoint, provider.BaseUrl);
   const api = route.api;
+  const thinking = resolveAgentModelThinking({
+    api,
+    provider: provider.ProviderId,
+    model: provider.Model,
+    capabilities,
+    declaredCapabilities: provider.DeclaredCapabilities,
+    thinkingLevelMap: provider.ThinkingLevelMap,
+    thinkingProfiles: provider.ThinkingProfiles,
+    defaultThinkingLevel: provider.DefaultThinkingLevel,
+  });
   return {
     id: provider.Model,
     name: provider.Id,
     api,
     provider: provider.ProviderId,
     baseUrl: route.baseUrl,
-    reasoning: capabilities.Reasoning === true,
+    reasoning: thinking.reasoning,
+    ...(thinking.thinkingLevelMap ? { thinkingLevelMap: thinking.thinkingLevelMap } : {}),
     input: capabilities.Vision === true ? ["text", "image"] : ["text"],
     cost: { ...FreeCostModel },
     contextWindow: provider.ContextWindowTokens,

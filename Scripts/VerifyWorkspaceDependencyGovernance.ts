@@ -92,7 +92,7 @@ const rootOwnedToolchainDependencies = new Map(
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^4.7.0",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     jsdom: "^29.1.1",
     prettier: "^3.9.5",
     tailwindcss: "^4.3.3",
@@ -100,7 +100,7 @@ const rootOwnedToolchainDependencies = new Map(
     typescript: "^6.0.3",
     tsx: "^4.22.4",
     vite: "^7.3.6",
-    vitest: "^4.1.10",
+    vitest: "^4.1.11",
   }),
 );
 const productReleaseWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "release.yml"));

@@ -17,6 +17,10 @@ import {
   migrateLegacyAgentDatabaseFileFamily,
   resolveAgentWorkspaceLayout,
 } from "../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
+import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
+import { AgentConfigSqliteRepository } from "../../Source/AgentSystem/Config/AgentConfigSqliteRepository.js";
+import { writeAgentConfigJsonMirror } from "../../Source/AgentSystem/Config/AgentConfigServicePaths.js";
+import { AgentConfigSecretCodec } from "../../Source/AgentSystem/Config/AgentConfigSecretProtection.js";
 
 const { app, dialog } = electron;
 
@@ -32,6 +36,7 @@ export interface DesktopRuntimePaths {
   installationSelectionPath: string;
   configDatabasePath: string;
   configSeedPath: string;
+  configPath: string;
   sandboxRuntimeRoot: string;
   upgradeStateRoot: string;
   frontendIndexHtml: string;
@@ -61,12 +66,11 @@ export async function prepareDesktopRuntime(): Promise<DesktopRuntimePaths> {
       ? installationSelection.workspaceRoot
       : undefined;
   let workspaceRoot = resolveDesktopWorkspaceRoot({
-    isPackaged: app.isPackaged,
     resourceRoot,
     configuredWorkspaceRoot,
     persistedWorkspaceRoot: configuredWorkspaceRoot ?? installationWorkspaceRoot ?? persistedWorkspaceRoot,
   });
-  if (!workspaceRoot || !isDesktopWorkspaceDirectory(workspaceRoot)) {
+  if (!workspaceRoot || !isDesktopWorkspaceDirectory(workspaceRoot) || !isWritableDesktopWorkspace(workspaceRoot)) {
     if (configuredWorkspaceRoot) {
       throw new DesktopWorkspaceResolutionError(configuredWorkspaceRoot);
     }
@@ -84,6 +88,8 @@ export async function prepareDesktopRuntime(): Promise<DesktopRuntimePaths> {
   migrateLegacyDesktopRuntime(legacyDesktopDataRoot, desktopDataRoot);
   moveFileIfTargetAbsent(path.join(bootstrapDataRoot, "desktop.log"), path.join(desktopDataRoot, "desktop.log"));
   const configSeedPath = path.join(resourceRoot, ConfigTemplateFileName);
+  const configPath = path.join(workspaceRoot, "senera.config.json");
+  ensureDesktopConfigFile(configPath, configDatabasePath, configSeedPath);
   const sandboxRuntimeRoot = path.join(desktopDataRoot, "sandbox");
   const upgradeStateRoot = path.join(desktopDataRoot, "upgrades");
 
@@ -110,6 +116,7 @@ export async function prepareDesktopRuntime(): Promise<DesktopRuntimePaths> {
     installationSelectionPath,
     configDatabasePath,
     configSeedPath,
+    configPath,
     sandboxRuntimeRoot,
     upgradeStateRoot,
     frontendIndexHtml: path.join(resourceRoot, "Frontend", "dist", "index.html"),
@@ -134,6 +141,33 @@ export function persistDesktopWorkspace(paths: DesktopRuntimePaths, workspaceRoo
   if (!isDesktopWorkspaceDirectory(resolved)) throw new DesktopWorkspaceResolutionError(resolved);
   writeDesktopInstallationSelection(paths.installationSelectionPath, { workspaceRoot: resolved });
   return resolved;
+}
+
+/**
+ * Makes sure the workspace JSON config exists before the server starts. The
+ * desktop configuration source is unified on `<workspaceRoot>/senera.config.json`;
+ * a previous SQLite-backed config database is migrated when present, otherwise
+ * the bundled example config seeds the file.
+ */
+export function ensureDesktopConfigFile(configPath: string, configDatabasePath: string, configSeedPath: string): void {
+  if (fs.existsSync(configPath)) return;
+  if (migrateDesktopConfigFromSqlite(configPath, configDatabasePath)) return;
+  const seedConfig = loadConfigFile(configSeedPath);
+  writeAgentConfigJsonMirror(seedConfig, configPath);
+}
+
+function migrateDesktopConfigFromSqlite(configPath: string, configDatabasePath: string): boolean {
+  if (!fs.existsSync(configDatabasePath)) return false;
+  try {
+    const repository = new AgentConfigSqliteRepository(configDatabasePath);
+    const latest = repository.latestRevision();
+    if (!latest) return false;
+    const secretCodec = new AgentConfigSecretCodec({ workspaceRoot: path.dirname(configPath) });
+    writeAgentConfigJsonMirror(latest.config, configPath, secretCodec);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function migrateLegacyDesktopRuntime(sourceRoot: string, targetRoot: string): void {
@@ -169,6 +203,17 @@ function moveFileIfTargetAbsent(source: string, target: string): void {
 function isDirectory(value: string): boolean {
   try {
     return fs.statSync(value).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function isWritableDesktopWorkspace(value: string): boolean {
+  const probePath = path.join(path.resolve(value), `.senera-desktop-write-probe-${process.pid}`);
+  try {
+    fs.writeFileSync(probePath, "probe", { encoding: "utf8" });
+    fs.rmSync(probePath, { force: true });
+    return true;
   } catch {
     return false;
   }

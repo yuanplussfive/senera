@@ -24,7 +24,7 @@
       "id": "change",
       "icon": "pencil",
       "title": "workflow.stage.activityGroup.change",
-      "activityCategories": ["workspace-write", "git-mutate"]
+      "activityCategories": ["workspace-write", "workspace-restore", "git-mutate"]
     },
     {
       "id": "execute",
@@ -199,7 +199,7 @@
     {
       "id": "workspace-write",
       "icon": "pencil",
-      "match": { "exactToolNames": ["WorkspaceApplyPatch"] },
+      "match": { "exactToolNames": ["WorkspaceApplyPatch", "WorkspaceRestoreCheckpoint"] },
       "labels": {
         "active": "workflow.stage.workspaceWrite.active",
         "completed": "workflow.stage.workspaceWrite.completed"

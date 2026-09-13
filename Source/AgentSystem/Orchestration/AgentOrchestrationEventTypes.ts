@@ -53,6 +53,8 @@ export type AgentOrchestrationDomainEvent =
         childRunId: string;
         ownerRunId: string;
         nodeId: string;
+        workItemId?: string;
+        taskDigest?: string;
         childSessionId: string;
         agentName: string;
         status: AgentChildRunStatus;
@@ -101,6 +103,8 @@ export type AgentOrchestrationDomainEvent =
         childRunId: string;
         ownerRunId: string;
         nodeId: string;
+        workItemId?: string;
+        taskDigest?: string;
         childSessionId: string;
         agentName: string;
         status: AgentChildRunStatus;
@@ -152,6 +156,8 @@ interface AgentChildRunEventIdentity {
   readonly childRunId: string;
   readonly ownerRunId: string;
   readonly nodeId: string;
+  readonly workItemId?: string;
+  readonly taskDigest?: string;
   readonly childSessionId: string;
   readonly agentName: string;
   readonly status: AgentChildRunStatus;

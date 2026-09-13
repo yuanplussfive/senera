@@ -51,6 +51,7 @@ import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess
 import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
+import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -62,6 +63,7 @@ export interface AgentToolRunnerLike {
 
 export interface AgentToolRunnerContext {
   sessionId?: string;
+  logicalCacheScope?: string;
   requestId?: string;
   step?: number;
   toolCallId?: string;
@@ -77,6 +79,7 @@ export interface AgentToolRunnerContext {
   tokenBudget?: AgentToolTokenBudget;
   approvalMode?: AgentExecutionApprovalMode;
   activeSkills?: readonly AgentActivatedSkill[];
+  reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
   thinkingLevel?: ModelThinkingLevel;
   resourceAccessGrant?: AgentResourceAccessGrant;
 }
@@ -370,6 +373,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       uploadStore: this.uploadStore,
       resourceResolver: this.resourceResolver,
       sessionId: context.sessionId,
+      logicalCacheScope: context.logicalCacheScope,
       requestId: context.requestId,
       step: context.step,
       toolCallId: context.toolCallId,
@@ -386,6 +390,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       approvalMode: context.approvalMode,
       modelProviderId: this.modelProviderId,
       activeSkills: context.activeSkills,
+      reusableCapabilities: context.reusableCapabilities,
       thinkingLevel: context.thinkingLevel,
       todoService: this.todoService,
     });

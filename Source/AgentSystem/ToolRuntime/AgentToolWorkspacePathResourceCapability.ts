@@ -5,7 +5,12 @@ import type { AgentResourceAccessRequest } from "../Execution/SeneraResourceAcce
 import type { ToolResourceArgumentManifest } from "../Types/AgentToolContractTypes.js";
 import type { AgentToolResourceCapability } from "./AgentToolResourceCapabilityRegistry.js";
 import { AgentToolResourceCapabilityIds } from "./AgentToolResourceCapabilityIds.js";
-import { readAgentJsonPointer } from "../Core/AgentJsonPointerOperations.js";
+import {
+  parseAgentJsonPointer,
+  readAgentJsonPointer,
+  readAgentJsonPointerMatches,
+  replaceAgentJsonPointer,
+} from "../Core/AgentJsonPointerOperations.js";
 import { AgentResourceAccessIntents } from "../Execution/SeneraResourceAccess.js";
 import { AgentToolResourceAccessModes, type AgentToolResourceClaimDomain } from "./AgentToolResourceClaimTypes.js";
 import { workspacePathsOverlap } from "../Execution/SeneraWorkspacePath.js";
@@ -42,9 +47,22 @@ const ResourceIntentSelectorSchema = z
     });
   });
 
+const PathPointerPatternSchema = z
+  .string()
+  .min(1)
+  .refine((pointer) => {
+    try {
+      return parseAgentJsonPointer(pointer).every((token) => token === "*" || !token.includes("*"));
+    } catch {
+      return false;
+    }
+  }, "Path pointer patterns must be valid JSON Pointers with whole-token '*' wildcards.")
+  .describe("JSON Pointer pattern relative to the declared value; * selects array entries or object keys.");
+
 const WorkspacePathParametersSchema = z
   .object({
     Intent: z.union([ResourceIntentSchema, ResourceIntentSelectorSchema]),
+    PathPointers: z.array(PathPointerPatternSchema).min(1).optional(),
   })
   .strict();
 
@@ -62,12 +80,15 @@ const SharedResourceIntents = new Set<AgentResourceAccessIntent>([
   AgentResourceAccessIntents.Execute,
 ]);
 
+/** Shared overlap domain for path and whole-workspace claims. */
+export const AgentWorkspacePathClaimDomain: AgentToolResourceClaimDomain = Object.freeze({
+  id: AgentToolResourceCapabilityIds.WorkspacePath,
+  overlaps: workspacePathsOverlap,
+});
+
 export class AgentToolWorkspacePathResourceCapability implements AgentToolResourceCapability {
   readonly id = AgentToolResourceCapabilityIds.WorkspacePath;
-  private readonly claimDomain: AgentToolResourceClaimDomain = Object.freeze({
-    id: this.id,
-    overlaps: workspacePathsOverlap,
-  });
+  private readonly claimDomain = AgentWorkspacePathClaimDomain;
 
   constructor(
     private readonly executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath"> &
@@ -75,51 +96,101 @@ export class AgentToolWorkspacePathResourceCapability implements AgentToolResour
   ) {}
 
   async project(input: WorkspacePathResourceInput) {
-    const resolved = await this.resolve(input);
+    const parameters = WorkspacePathParametersSchema.parse(input.resource.Parameters ?? {});
+    if (!parameters.PathPointers) {
+      const resolved = await this.resolveSingle(input, resolveIntent(parameters, input.args), input.value);
+      return { target: "argument" as const, value: resolved.path };
+    }
     return {
       target: "argument" as const,
-      value: resolved.path,
+      value: await this.projectPathCollection(input, parameters),
     };
   }
 
   async claim(input: WorkspacePathResourceInput) {
-    const resolved = await this.resolve(input);
-    return [
-      {
-        domain: this.claimDomain,
-        identity: resolved.path,
-        access: SharedResourceIntents.has(resolved.intent)
-          ? AgentToolResourceAccessModes.Shared
-          : AgentToolResourceAccessModes.Exclusive,
-      },
-    ];
+    const parameters = WorkspacePathParametersSchema.parse(input.resource.Parameters ?? {});
+    const intent = resolveIntent(parameters, input.args);
+    const paths = await this.resolvePaths(input, parameters);
+    return paths.map((pathValue) => ({
+      domain: this.claimDomain,
+      identity: pathValue,
+      access: SharedResourceIntents.has(intent)
+        ? AgentToolResourceAccessModes.Shared
+        : AgentToolResourceAccessModes.Exclusive,
+    }));
   }
 
   async inspect(input: WorkspacePathResourceInput): Promise<readonly AgentResourceAccessRequest[]> {
-    if (typeof input.value !== "string") {
-      throw new TypeError(`Workspace resource ${input.resource.Pointer} must be a string.`);
-    }
     const parameters = WorkspacePathParametersSchema.parse(input.resource.Parameters ?? {});
     const intent = resolveIntent(parameters, input.args);
-    const inspected = await this.executionEnv.inspectResourcePath?.(input.value, intent);
-    return inspected ? [inspected] : [];
+    const paths = await this.resolveInputPaths(input, parameters);
+    const executionEnv = this.executionEnv;
+    if (!executionEnv.inspectResourcePath) return [];
+    const inspectResourcePath = executionEnv.inspectResourcePath.bind(executionEnv);
+    return (await Promise.all(paths.map((pathValue) => inspectResourcePath(pathValue, intent)))).filter(
+      (request): request is AgentResourceAccessRequest => request !== undefined,
+    );
   }
 
-  private async resolve(input: WorkspacePathResourceInput): Promise<{
-    path: string;
-    intent: AgentResourceAccessIntent;
-  }> {
-    if (typeof input.value !== "string") {
+  private async resolveSingle(
+    input: WorkspacePathResourceInput,
+    intent: AgentResourceAccessIntent,
+    value: unknown,
+  ): Promise<{ path: string; intent: AgentResourceAccessIntent }> {
+    if (typeof value !== "string") {
       throw new TypeError(`Workspace resource ${input.resource.Pointer} must be a string.`);
     }
-    const parameters = WorkspacePathParametersSchema.parse(input.resource.Parameters ?? {});
-    const intent = resolveIntent(parameters, input.args);
-    const resolved = await this.executionEnv.resolveResourcePath(input.value, intent);
+    const resolved = await this.executionEnv.resolveResourcePath(value, intent);
     if (!resolved.ok) throw resolved.error;
-    return {
-      path: resolved.value,
-      intent,
-    };
+    return { path: resolved.value, intent };
+  }
+
+  private async resolvePaths(
+    input: WorkspacePathResourceInput,
+    parameters: WorkspacePathParameters,
+  ): Promise<readonly string[]> {
+    const intent = resolveIntent(parameters, input.args);
+    const paths = await this.resolveInputPaths(input, parameters);
+    return (await Promise.all(paths.map((value) => this.resolveSingle(input, intent, value)))).map(
+      (resolved) => resolved.path,
+    );
+  }
+
+  private async resolveInputPaths(
+    input: WorkspacePathResourceInput,
+    parameters: WorkspacePathParameters,
+  ): Promise<readonly string[]> {
+    if (!parameters.PathPointers) {
+      if (typeof input.value !== "string") {
+        throw new TypeError(`Workspace resource ${input.resource.Pointer} must be a string.`);
+      }
+      return [input.value];
+    }
+    const matches = parameters.PathPointers.flatMap((pointer) => readAgentJsonPointerMatches(input.value, pointer));
+    if (matches.length === 0) {
+      throw new TypeError(`Workspace resource ${input.resource.Pointer} did not select any paths.`);
+    }
+    return matches.map((match) => {
+      if (typeof match.value !== "string") {
+        throw new TypeError(`Workspace resource ${input.resource.Pointer}${match.pointer} must be a string.`);
+      }
+      return match.value;
+    });
+  }
+
+  private async projectPathCollection(
+    input: WorkspacePathResourceInput,
+    parameters: WorkspacePathParameters,
+  ): Promise<unknown> {
+    let projected = input.value;
+    const intent = resolveIntent(parameters, input.args);
+    for (const pointer of parameters.PathPointers ?? []) {
+      for (const match of readAgentJsonPointerMatches(projected, pointer)) {
+        const resolved = await this.resolveSingle(input, intent, match.value);
+        projected = replaceAgentJsonPointer(projected, match.pointer, resolved.path);
+      }
+    }
+    return projected;
   }
 }
 

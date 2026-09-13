@@ -1,4 +1,14 @@
-import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  startTransition,
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { useResponsiveMode } from "../../shared/responsive";
@@ -18,6 +28,7 @@ import {
 import { useMessageHeightObserver } from "./useMessageHeightObserver";
 import { useStreamingDisplayTicker } from "./useStreamingDisplayTicker";
 import { useVirtuosoAutoStickToBottom } from "./useVirtuosoAutoStickToBottom";
+import { scheduleIdleTask } from "../../shared/scheduling/scheduleIdleTask";
 import {
   ConversationEventRail,
   projectConversationEvents,
@@ -29,6 +40,7 @@ import {
 interface MessageListProps {
   sessionId: string;
   uploadUrl: string;
+  historyHydrating?: boolean;
   messages: ChatMessage[];
   runs: RunRecord[];
   currentRun?: RunRecord;
@@ -74,6 +86,7 @@ function readMeasuredMessageKey(element: HTMLElement): string | null {
 export function MessageList({
   sessionId,
   uploadUrl,
+  historyHydrating = false,
   messages,
   runs,
   currentRun,
@@ -103,6 +116,7 @@ export function MessageList({
   const [chatScroller, setChatScroller] = useState<HTMLElement | null>(null);
   const [activeEventIndex, setActiveEventIndex] = useState(0);
   const [completedRunIdToHighlight, setCompletedRunIdToHighlight] = useState<string | null>(null);
+  const [eventRailReady, setEventRailReady] = useState(!historyHydrating);
   const runsByRequestId = useMemo(() => {
     const map = new Map<string, RunRecord>();
     for (const run of runs) map.set(run.requestId, run);
@@ -117,58 +131,75 @@ export function MessageList({
     () => new Set(displayedMessages.map((message) => message.id)),
     [displayedMessages],
   );
+  const deferredMessages = useDeferredValue(displayedMessages);
+  const deferredRuns = useDeferredValue(runs);
+  const deferredStreamingRun = useDeferredValue(streamingRun);
   const items = useMemo(
-    () => projectAssistantTurns(displayedMessages, runs, streamingRun),
-    [displayedMessages, runs, streamingRun],
+    () => projectAssistantTurns(deferredMessages, deferredRuns, deferredStreamingRun),
+    [deferredMessages, deferredRuns, deferredStreamingRun],
   );
-  const itemKeys = useMemo(() => items.map((item, index) => readMessageListItemKey(item, index)), [items]);
-  const eventSourceItems = useMemo<ConversationEventSourceItem[]>(
-    () =>
-      items.flatMap((item, index): ConversationEventSourceItem[] => {
-        if (!isAssistantTurnListItem(item)) {
-          return [
-            {
-              key: readMessageListItemKey(item, index),
-              requestId: item.requestId,
-              eventKind: readMessageConversationEventKind(item),
-              content: item.content,
-              itemIndex: index,
-            },
-          ];
-        }
-
-        const sources: ConversationEventSourceItem[] = item.messages.map((message, messageIndex) => ({
-          key: message.id,
-          requestId: message.requestId,
-          eventKind: readMessageConversationEventKind(message),
-          content: message.content,
-          itemIndex: index,
-          itemProgress: readTurnEventProgress(messageIndex, item.messages.length, message.kind),
-          anchorId: readAssistantTurnAnchorId(message),
-        }));
-        const transientKind = item.run
-          ? readStreamingConversationEventKind(
-              item.run,
-              item.run.displayMessageId !== undefined && displayedMessageIds.has(item.run.displayMessageId),
-            )
-          : null;
-        if (item.streaming && transientKind) {
-          sources.push({
-            key: `${item.key}:streaming`,
+  // Keep the socket/store path responsive while a large history projection is
+  // being committed. React can paint the previous window first and reconcile
+  // the new list at lower priority without changing the durable session state.
+  const renderedItems = items;
+  useEffect(() => {
+    if (historyHydrating) {
+      setEventRailReady(false);
+      return;
+    }
+    return scheduleIdleTask(() => setEventRailReady(true), { priority: "user-visible" });
+  }, [historyHydrating]);
+  const shouldRenderEventRail = !historyHydrating && eventRailReady;
+  const itemKeys = useMemo(
+    () => (shouldRenderEventRail ? renderedItems.map((item, index) => readMessageListItemKey(item, index)) : []),
+    [renderedItems, shouldRenderEventRail],
+  );
+  const eventSourceItems = useMemo<ConversationEventSourceItem[]>(() => {
+    if (!shouldRenderEventRail) return [];
+    return renderedItems.flatMap((item, index): ConversationEventSourceItem[] => {
+      if (!isAssistantTurnListItem(item)) {
+        return [
+          {
+            key: readMessageListItemKey(item, index),
             requestId: item.requestId,
-            eventKind: transientKind,
-            content: item.run?.displayText ?? "",
+            eventKind: readMessageConversationEventKind(item),
+            content: item.content,
             itemIndex: index,
-            itemProgress: 0.82,
-          });
-        }
-        return sources;
-      }),
-    [displayedMessageIds, items],
-  );
+          },
+        ];
+      }
+
+      const sources: ConversationEventSourceItem[] = item.messages.map((message, messageIndex) => ({
+        key: message.id,
+        requestId: message.requestId,
+        eventKind: readMessageConversationEventKind(message),
+        content: message.content,
+        itemIndex: index,
+        itemProgress: readTurnEventProgress(messageIndex, item.messages.length, message.kind),
+        anchorId: readAssistantTurnAnchorId(message),
+      }));
+      const transientKind = item.run
+        ? readStreamingConversationEventKind(
+            item.run,
+            item.run.displayMessageId !== undefined && displayedMessageIds.has(item.run.displayMessageId),
+          )
+        : null;
+      if (item.streaming && transientKind) {
+        sources.push({
+          key: `${item.key}:streaming`,
+          requestId: item.requestId,
+          eventKind: transientKind,
+          content: item.run?.displayText ?? "",
+          itemIndex: index,
+          itemProgress: 0.82,
+        });
+      }
+      return sources;
+    });
+  }, [displayedMessageIds, renderedItems, shouldRenderEventRail]);
   const conversationEvents = useMemo(() => projectConversationEvents(eventSourceItems), [eventSourceItems]);
   const autoScroll = useVirtuosoAutoStickToBottom({
-    itemCount: items.length,
+    itemCount: renderedItems.length,
     resetKey: sessionId,
     bottomThreshold: MESSAGE_LIST_BOTTOM_THRESHOLD,
   });
@@ -269,12 +300,12 @@ export function MessageList({
   };
 
   const scrollToBottom = (): void => {
-    if (items.length === 0) return;
+    if (renderedItems.length === 0) return;
     const behavior = reduceMotion || disableMotion ? "auto" : "smooth";
     autoScroll.scrollToBottom(behavior);
   };
 
-  const showScrollButton = !isAtBottom && items.length > 0;
+  const showScrollButton = !isAtBottom && renderedItems.length > 0;
 
   useEffect(() => {
     const lastEventIndex = Math.max(0, conversationEvents.length - 1);
@@ -322,8 +353,8 @@ export function MessageList({
             ref={autoScroll.ref}
             scrollerRef={setChatContainerScrollerRef}
             style={{ flex: 1, minHeight: 0 }}
-            data={items}
-            totalCount={items.length}
+            data={renderedItems}
+            totalCount={renderedItems.length}
             followOutput={autoScroll.followOutput}
             atBottomStateChange={(atBottom) => {
               autoScroll.atBottomStateChange(atBottom);
@@ -334,7 +365,7 @@ export function MessageList({
             }}
             totalListHeightChanged={autoScroll.totalListHeightChanged}
             defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
-            initialTopMostItemIndex={{ index: Math.max(0, items.length - 1), align: "end" }}
+            initialTopMostItemIndex={{ index: Math.max(0, renderedItems.length - 1), align: "end" }}
             atBottomThreshold={MESSAGE_LIST_BOTTOM_THRESHOLD}
             overscan={{ main: MESSAGE_LIST_FORWARD_OVERSCAN_PX, reverse: MESSAGE_LIST_REVERSE_OVERSCAN_PX }}
             computeItemKey={(index, item) => readMessageListItemKey(item, index)}
@@ -345,7 +376,7 @@ export function MessageList({
               if (isAssistantTurnListItem(item)) {
                 const shouldHighlightCompletedStream = item.requestId === completedRunIdToHighlight;
                 const shouldAnimateMount =
-                  !item.streaming && (shouldHighlightCompletedStream || index >= items.length - 2);
+                  !item.streaming && (shouldHighlightCompletedStream || index >= renderedItems.length - 2);
                 return (
                   <div
                     className="chat-message-item box-border w-full pb-3 pt-1"
@@ -371,7 +402,7 @@ export function MessageList({
                   </div>
                 );
               }
-              const shouldAnimateMount = index >= items.length - 2;
+              const shouldAnimateMount = index >= renderedItems.length - 2;
               return (
                 <div
                   className="chat-message-item box-border w-full pb-3 pt-1"

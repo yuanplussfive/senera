@@ -82,6 +82,18 @@ describe("AgentPlannerContextProjectorRegistry", () => {
     );
   });
 
+  test("normalizes validated fields before the shared wire and preserves unknown fields", () => {
+    const normalized = createAgentPlannerContextProjectorRegistry().normalize({
+      routingCards: [routingCard("search")],
+      futureContext: { value: "keep" },
+    });
+
+    expect(normalized).toEqual({
+      routingCards: [routingCard("search")],
+      futureContext: { value: "keep" },
+    });
+  });
+
   test("rejects duplicate context projector registrations", () => {
     const projector = defineAgentPlannerContextProjector({
       key: "duplicate",

@@ -1,4 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { AgentHostCapabilityNames } from "../AgentDefaultHostCapabilities.js";
 import { readAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
 import { AgentTokenBudgetOracle } from "../Text/AgentTokenBudgetOracle.js";
@@ -198,7 +199,7 @@ function createContextPolicyMessage(
   return {
     role: "custom",
     customType: AgentPiContextPolicyCustomType,
-    content: JSON.stringify(envelope),
+    content: stringifyAgentCanonicalJson(envelope),
     display: false,
     timestamp: Date.parse(createdAt) || Date.now(),
   };

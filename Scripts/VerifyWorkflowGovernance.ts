@@ -21,6 +21,7 @@ function inspectVerifyWorkflow(workflow: string): string[] {
   const violations = [
     ...inspectTextIncludes(workflow, VerifyWorkflowPath, [
       "name: Fast Gate",
+      "name: Build Verification Artifacts",
       "name: Windows Platform Smoke",
       "name: Coverage Gate",
       "./.github/actions/setup-node",
@@ -31,10 +32,14 @@ function inspectVerifyWorkflow(workflow: string): string[] {
       "GITHUB_PR_TITLE: ${{ github.event.pull_request.title }}",
       "node --import tsx Scripts/VerifyPullRequestTitle.ts",
       "Restore ESLint cache",
+      "key: ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json') }}",
+      "actions/upload-artifact@v6",
+      "actions/download-artifact@v7",
+      "verification-build",
+      "npm run test.e2e.web.run",
       "npm run quality.format -- ${{ steps.range.outputs.arguments }}",
       "npm run test.frontend.static",
       "npm run test.integration",
-      "npm run test.e2e.web",
       "npm run verify.suite -- workspace core integration e2e release",
       "npm run verify.suite -- platform",
       "github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'",
@@ -45,9 +50,23 @@ function inspectVerifyWorkflow(workflow: string): string[] {
     ...inspectPullRequestJobGate(workflow, "coverage"),
   ];
   const fastJob = workflowJobBlock(workflow, "fast");
+  const buildJob = workflowJobBlock(workflow, "build-artifacts");
   const browserJob = workflowJobBlock(workflow, "browser-e2e");
   const windowsJob = workflowJobBlock(workflow, "platform-windows");
   const coverageJob = workflowJobBlock(workflow, "coverage");
+
+  if (!buildJob) {
+    violations.push(`${VerifyWorkflowPath} must define the build-artifacts job.`);
+  }
+  for (const [jobName, job] of [
+    ["fast", fastJob],
+    ["browser-e2e", browserJob],
+    ["platform-windows", windowsJob],
+  ] as const) {
+    if (job && !job.includes("needs: build-artifacts")) {
+      violations.push(`${VerifyWorkflowPath} ${jobName} must consume build-artifacts.`);
+    }
+  }
 
   if (fastJob) {
     for (const duplicate of ["npm run check.types", "npm run test.backend", "npm run test.frontend"]) {
@@ -56,10 +75,7 @@ function inspectVerifyWorkflow(workflow: string): string[] {
       }
     }
   }
-  for (const [jobName, job] of [
-    ["browser-e2e", browserJob],
-    ["coverage", coverageJob],
-  ] as const) {
+  for (const [jobName, job] of [["coverage", coverageJob]] as const) {
     if (job?.includes("\n    needs:")) {
       violations.push(`${VerifyWorkflowPath} ${jobName} must run independently of the Fast Gate.`);
     }

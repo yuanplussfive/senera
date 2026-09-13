@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { MotionLevel } from "../../shared/motion/types";
+import type { WorkspaceControllerHandle } from "../../app/useWorkspaceController";
 import type { LayoutPreferenceId } from "../session/types";
 import type { SettingsSystemConfigHandle } from "./SettingsContracts";
 import type { SettingsSectionId } from "./types";
@@ -24,6 +25,7 @@ export interface SettingsWorkbenchProps {
   onValueChange: (id: LayoutPreferenceId, value: boolean) => void;
   onMotionLevelChange: (level: MotionLevel) => void;
   systemConfig?: SettingsSystemConfigHandle;
+  workspace?: WorkspaceControllerHandle;
 }
 
 export type SettingsContentProps = Omit<

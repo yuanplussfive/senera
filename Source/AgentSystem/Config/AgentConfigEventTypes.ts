@@ -23,6 +23,12 @@ export interface AgentSystemConfigOperationResult {
   kind: AgentSystemConfigOperationKind;
 }
 
+export interface AgentWorkspaceSnapshotData {
+  workspaceRoot: string;
+  configPath: string;
+  websocketUrl: string;
+}
+
 export type AgentConfigDomainEvent =
   | {
       kind: typeof AgentEventKinds.ConfigReloaded;
@@ -94,5 +100,32 @@ export type AgentConfigDomainEvent =
         localizedMessage?: AgentLocalizedMessage;
         details?: unknown;
         operation?: AgentPresetOperationResult;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.WorkspaceSnapshot;
+      context: AgentEventContext;
+      data: AgentWorkspaceSnapshotData;
+    }
+  | {
+      kind: typeof AgentEventKinds.WorkspaceSwitchStarted;
+      context: AgentEventContext;
+      data: {
+        workspaceRoot: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.WorkspaceSwitched;
+      context: AgentEventContext;
+      data: AgentWorkspaceSnapshotData;
+    }
+  | {
+      kind: typeof AgentEventKinds.WorkspaceSwitchFailed;
+      context: AgentEventContext;
+      data: {
+        workspaceRoot: string;
+        message: string;
+        localizedMessage?: AgentLocalizedMessage;
+        details?: unknown;
       };
     };

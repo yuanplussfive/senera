@@ -1,10 +1,5 @@
 import { z } from "zod";
-import { BamlAbortError, BamlTimeoutError } from "@boundaryml/baml";
-import {
-  BamlClientFinishReasonError,
-  BamlClientHttpError,
-  BamlValidationError,
-} from "../BamlClient/baml_client/index.js";
+import { BamlValidationError } from "@boundaryml/baml";
 import { AgentStructuredOutputValidationError } from "../Diagnostics/AgentStructuredOutputValidationError.js";
 import {
   AgentBamlModelCallError,
@@ -12,6 +7,7 @@ import {
 } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
 import { zodIssuesToAgentStructuredIssues, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 
 interface RawActionPlanningFailure {
   error: unknown;
@@ -52,7 +48,7 @@ export function issueDetails(error: unknown): AgentStructuredIssue[] {
 
 export function stringifyIssueValue(error: unknown): string {
   if (error instanceof AgentStructuredOutputValidationError) {
-    return JSON.stringify(error.invalidOutput, null, 2);
+    return stringifyPromptValue(error.invalidOutput);
   }
 
   if (error instanceof AgentBamlModelCallError) {
@@ -60,18 +56,28 @@ export function stringifyIssueValue(error: unknown): string {
   }
 
   if (error instanceof AgentBamlStructuredOutputError) {
-    return error.rawOutput ?? JSON.stringify(error.attempts, null, 2);
+    return error.rawOutput ?? stringifyPromptValue(error.attempts);
   }
 
   if (error instanceof z.ZodError) {
-    return JSON.stringify(error.issues, null, 2);
+    return stringifyPromptValue(error.issues);
   }
 
   if (error instanceof Error) {
     return `${error.name}: ${error.message}`;
   }
 
-  return JSON.stringify(error);
+  return stringifyPromptValue(error);
+}
+
+/**
+ * Repair prompts are part of a model-call family. Keep structured invalid
+ * output compact and key-order stable so equivalent failures reuse the same
+ * provider prefix while preserving the complete value for the repair pass.
+ */
+function stringifyPromptValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  return value === undefined ? "null" : stringifyAgentCanonicalJson(value);
 }
 
 export function normalizePlanningFailure(error: unknown): RawActionPlanningFailure {
@@ -92,82 +98,4 @@ export function isRepairablePlanningFailure(error: unknown): boolean {
     error instanceof z.ZodError ||
     error instanceof BamlValidationError
   );
-}
-
-export function summarizePlannerFailure(error: unknown): string {
-  if (error instanceof AgentBamlModelCallError) {
-    return summarizePlannerModelCallFailure(error);
-  }
-
-  if (error instanceof BamlTimeoutError) {
-    return "action_planner_timeout";
-  }
-
-  if (error instanceof BamlClientHttpError) {
-    return `action_planner_http_error${error.status_code > 0 ? `:${error.status_code}` : ""}`;
-  }
-
-  if (error instanceof BamlAbortError) {
-    return "action_planner_aborted";
-  }
-
-  if (error instanceof BamlClientFinishReasonError) {
-    return "action_planner_incomplete_output";
-  }
-
-  if (error instanceof BamlValidationError) {
-    return withPlannerDetails("action_planner_invalid_structured_output", error.message);
-  }
-
-  if (error instanceof AgentBamlStructuredOutputError) {
-    return withPlannerDetails("action_planner_invalid_structured_output", error.issues);
-  }
-
-  if (error instanceof AgentStructuredOutputValidationError || error instanceof z.ZodError) {
-    return withPlannerDetails("action_planner_invalid_decision", issueMessages(error));
-  }
-
-  return error instanceof Error ? truncateOneLine(error.message, 160) : truncateOneLine(String(error), 160);
-}
-
-function summarizePlannerModelCallFailure(error: AgentBamlModelCallError): string {
-  const original = error.originalError;
-  if (original instanceof BamlTimeoutError) return "action_planner_timeout";
-  if (original instanceof BamlClientHttpError) {
-    return `action_planner_http_error${original.status_code > 0 ? `:${original.status_code}` : ""}`;
-  }
-  if (original instanceof BamlAbortError) return "action_planner_aborted";
-  if (original instanceof BamlClientFinishReasonError) return "action_planner_incomplete_output";
-  return withPlannerDetails("action_planner_model_request_failed", error.issues);
-}
-
-function withPlannerDetails(code: string, details: string | readonly string[]): string {
-  const values = Array.isArray(details) ? details : [details];
-  const summary = values.map(collapseWhitespace).filter(Boolean).slice(0, 6).join("; ");
-  return summary ? `${code}: ${truncateOneLine(summary, 520)}` : code;
-}
-
-function truncateOneLine(value: string, maxLength: number): string {
-  const normalized = collapseWhitespace(value);
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
-}
-
-function collapseWhitespace(value: string): string {
-  const pieces: string[] = [];
-  let lastWasWhitespace = true;
-  for (const char of value) {
-    if (char.trim().length === 0) {
-      if (!lastWasWhitespace) {
-        pieces.push(" ");
-      }
-      lastWasWhitespace = true;
-      continue;
-    }
-    pieces.push(char);
-    lastWasWhitespace = false;
-  }
-  if (pieces[pieces.length - 1] === " ") {
-    pieces.pop();
-  }
-  return pieces.join("");
 }

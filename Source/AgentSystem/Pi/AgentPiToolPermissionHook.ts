@@ -71,12 +71,10 @@ export class AgentPiToolPermissionHook {
     if (!approvalMode) {
       return { block: true, reason: agentErrorMessage("toolAccess.missingApprovalMode") };
     }
-    const sessionId =
-      context.sessionId ??
-      context.turnState?.context.sessionId ??
-      context.requestId ??
-      context.turnState?.context.requestId ??
-      event.toolCallId;
+    const sessionId = context.sessionId ?? context.turnState?.context.sessionId;
+    if (!sessionId) {
+      return { block: true, reason: agentErrorMessage("toolAccess.missingSession") };
+    }
     const requestId = context.requestId ?? context.turnState?.context.requestId ?? event.toolCallId;
     const step = context.step ?? context.turnState?.context.step ?? 1;
     try {

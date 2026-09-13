@@ -127,12 +127,21 @@ const ToolCallFailedDiagnostic: AgentEventDiagnosticSpec = {
  * safe fields that the frontend journal may retain.
  */
 export const AgentEventObservationSpecTable = {
-  [AgentEventKinds.SessionCreated]: projection("/data/turnCount", "/data/entryCount"),
+  [AgentEventKinds.SessionCreated]: projection(
+    "/data/turnCount",
+    "/data/entryCount",
+    "/data/modelProviderId",
+    "/data/effectiveModel",
+    "/data/modelPreference",
+  ),
   [AgentEventKinds.SessionSnapshot]: projection(
     "/data/turnCount",
     "/data/entryCount",
     "/data/activeRequestId",
     "/data/status",
+    "/data/modelProviderId",
+    "/data/effectiveModel",
+    "/data/modelPreference",
   ),
   [AgentEventKinds.SessionClosed]: metadata(),
   [AgentEventKinds.SessionBusy]: projection("/data/code"),
@@ -579,6 +588,10 @@ export const AgentEventObservationSpecTable = {
   [AgentEventKinds.SystemToolSnapshot]: projection("/data/extensionCount", "/data/toolCount"),
   [AgentEventKinds.McpServerSnapshot]: projection("/data/serverCount", "/data/revision"),
   [AgentEventKinds.ChannelStatusSnapshot]: projection("/data/statuses"),
+  [AgentEventKinds.WorkspaceSnapshot]: projection("/data/workspaceRoot", "/data/configPath"),
+  [AgentEventKinds.WorkspaceSwitchStarted]: projection("/data/workspaceRoot"),
+  [AgentEventKinds.WorkspaceSwitched]: projection("/data/workspaceRoot", "/data/configPath"),
+  [AgentEventKinds.WorkspaceSwitchFailed]: projection("/data/workspaceRoot", "/data/code"),
 } as const satisfies Record<AgentEventKind, AgentEventObservationSpec>;
 
 function workflowProjection(): AgentEventObservationSpec {

@@ -1,6 +1,6 @@
 {
   "name": "SkillManage",
-  "description": "Create, update, validate, or remove a standard Skill package under .senera/skills, including optional bindings to registered tools.",
+  "description": "Create, update, validate, or archive a standard Skill package under .senera/skills, including revision guards and optional bindings to registered tools.",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "oneOf": [
@@ -39,6 +39,11 @@
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
             "description": "Exact registered tool names to prioritize whenever this Skill activates. Omit when no specific tool is required."
+          },
+          "expectedRevision": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional content revision read before this mutation; stale revisions are rejected."
           }
         },
         "required": ["action", "name"],
@@ -57,7 +62,12 @@
         "type": "object",
         "properties": {
           "action": { "type": "string", "const": "remove" },
-          "name": { "type": "string", "minLength": 1, "description": "Lowercase kebab-case Skill directory name." }
+          "name": { "type": "string", "minLength": 1, "description": "Lowercase kebab-case Skill directory name." },
+          "expectedRevision": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional content revision read before this mutation; stale revisions are rejected."
+          }
         },
         "required": ["action", "name"],
         "additionalProperties": false
@@ -73,6 +83,7 @@
       "action": { "type": "string", "enum": ["create", "update", "validate", "remove"] },
       "name": { "type": "string" },
       "path": { "type": "string" },
+      "revision": { "type": "string" },
       "diagnostics": {
         "type": "object",
         "properties": {
@@ -100,7 +111,7 @@
   "resources": [],
   "sources": [],
   "search": {
-    "Summary": "创建、更新、校验或移除标准 SKILL.md 技能包。",
+    "Summary": "创建、更新、校验或归档带 revision 保护的标准 SKILL.md 技能包。",
     "Tags": ["创建技能", "Skill", "工作流", "技能包", "热更新"],
     "Capabilities": [
       {
@@ -110,8 +121,8 @@
         "Facets": {
           "Actions": ["create", "update", "validate", "remove"],
           "Targets": ["skill", "skill-package"],
-          "Inputs": ["name", "description", "instructions", "recommended-tools"],
-          "Outputs": ["skill-package", "diagnostics"],
+          "Inputs": ["name", "description", "instructions", "recommended-tools", "expected-revision"],
+          "Outputs": ["skill-package", "revision", "diagnostics"],
           "Effects": ["workspace-change", "runtime-refresh"]
         },
         "Aliases": ["创建 skill", "添加技能", "校验 skill", "更新工作流"],

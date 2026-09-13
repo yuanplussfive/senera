@@ -21,6 +21,7 @@ import type {
   InteractionInputSchema,
   McpServerSettingsItem,
   ModelProviderListItem,
+  ModelThinkingLevel,
   ModelProviderMetadata,
   PresetItem,
   PresetWorldPackageDescriptor,
@@ -28,6 +29,7 @@ import type {
   ProviderModelsSnapshotData,
   RunCancellationProgressData,
   SessionHistoryStepsData,
+  SessionSnapshotData,
   SessionChannelMetadata,
   SystemExtensionSettingsItem,
   SystemToolSettingsItem,
@@ -175,6 +177,8 @@ export interface TimelineChildRunTodo {
 
 export interface TimelineChildRunState {
   id: string;
+  workItemId?: string;
+  taskDigest?: string;
   status:
     | "queued"
     | "running"
@@ -280,6 +284,50 @@ export interface RunRecord {
   recoverySource?: "history";
 }
 
+/**
+ * A history replay can finish on the wire before its large projection has
+ * finished on the UI thread. Keep the live stream snapshot in the replay work
+ * item so historical events cannot overwrite newer live output while the work
+ * is being drained in slices.
+ */
+export type HistoryActiveStreamSnapshot = Pick<
+  RunRecord,
+  | "requestId"
+  | "status"
+  | "endedAt"
+  | "recoverySource"
+  | "liveActivity"
+  | "activities"
+  | "activeFlags"
+  | "streamingRaw"
+  | "xmlPreview"
+  | "visibleText"
+  | "displayText"
+  | "displayMessageId"
+  | "visibleKind"
+  | "expectedOutputMode"
+  | "decisionMode"
+  | "plannedDecisionMode"
+  | "modelProvider"
+  | "continuity"
+>;
+
+export interface HistoryHydrationProgress {
+  phase: "events" | "steps" | "entries";
+  entryPageIndex: number;
+  entryItemIndex: number;
+  stepPageIndex: number;
+  stepItemIndex: number;
+  eventPageIndex: number;
+  eventItemIndex: number;
+  entryDirection: "append" | "prepend";
+  completedAt: string;
+  completedRequestIds: Record<string, boolean>;
+  recoveredRequestIds: Record<string, boolean>;
+  activeRequestId?: string;
+  activeStream?: HistoryActiveStreamSnapshot;
+}
+
 interface InteractionInputRunRecordBase {
   interactionId: string;
   status: InteractionInputRequestedData["status"] | InteractionInputResolvedData["status"];
@@ -336,6 +384,8 @@ export interface SessionRecord {
   runs: RunRecord[];
   activeRequestId?: string;
   channel?: SessionChannelMetadata;
+  effectiveModel?: SessionSnapshotData["effectiveModel"];
+  modelPreference?: SessionSnapshotData["modelPreference"];
   forkOrigin?: {
     sourceSessionId: string;
     throughRequestId: string;
@@ -370,13 +420,20 @@ export interface StoreState {
   /** 历史回放失败的 sessionId，避免把失败会话伪装成新会话空态 */
   historyFailedIds: Record<string, boolean>;
   /** 正在回放但尚未 completed 的历史条目；completed 前不污染真实消息列表 */
-  historyReplayBuffers: Record<string, HistoryReplayEntry[]>;
-  /** 回放期间暂存的 step 轨迹 run，completed 时据此重建 session.runs */
-  historyStepBuffers: Record<string, SessionHistoryStepsData["runs"]>;
+  /** 回放期间按页暂存 entries，completed 时一次性展平，避免逐页复制长数组。 */
+  historyReplayBuffers: Record<string, HistoryReplayEntry[][]>;
+  /** 回放期间按页暂存 step 轨迹 run，completed 时据此重建 session.runs。 */
+  historyStepBuffers: Record<string, SessionHistoryStepsData["runs"][]>;
   /** 回放期间已经由 run events 还原过的 requestId，避免再用精简 step traces 覆盖完整图 */
   historyEventRunIds: Record<string, Record<string, boolean>>;
   /** 历史事件可能改写 activeRequestId；这里保留服务端实时快照用于回放收尾。 */
   historyActiveRequestIds: Record<string, string | null>;
+  /** 历史 run events 在回放完成前只暂存，避免逐事件触发主会话投影。 */
+  historyRunEventBuffers: Record<string, EventEnvelope[][]>;
+  /** 首屏预览已到达；完整页从对应方向渐进合并，避免一次性重排整段消息。 */
+  historyPreviewedIds: Record<string, boolean>;
+  /** wire 回放完成后仍待主线程分片投影的历史会话。 */
+  historyHydration: Record<string, HistoryHydrationProgress>;
   /** 当前前端生命周期内已经投影的服务端事件，用于 live/replay 全局幂等。 */
   processedEventIds: Record<string, string | null>;
   processedEventIdOrder: string[];
@@ -397,6 +454,9 @@ export interface StoreState {
   defaultModelProviderId: string | null;
   /** Local per-conversation selections. The backend still receives the chosen id per request. */
   selectedModelProviderIdsBySession: Record<string, string>;
+  /** Current conversation's Pi thinking level; validated against the selected model metadata. */
+  selectedThinkingLevel: ModelThinkingLevel | null;
+  selectedThinkingLevelsBySession: Record<string, ModelThinkingLevel>;
   executionApprovalMode: ExecutionApprovalMode;
   presets: PresetItem[];
   presetWorldPackages: PresetWorldPackageDescriptor[];
@@ -449,8 +509,11 @@ export interface StoreState {
   clearAllSessions: (sessionIds?: string[]) => void;
   markHistoryLoading: (sessionId: string) => void;
   markHistoryLoadFailed: (sessionId: string) => void;
+  /** 投影一小段待补全历史，返回是否还有未处理工作。 */
+  advanceHistoryHydration: (sessionId: string) => boolean;
   selectModelProvider: (id: string) => void;
   applyDefaultModelToActiveSession: () => void;
+  selectThinkingLevel: (level: ModelThinkingLevel) => void;
   setExecutionApprovalMode: (mode: ExecutionApprovalMode) => void;
   setUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   markUserProfileSynced: (profile?: UserProfileData) => void;

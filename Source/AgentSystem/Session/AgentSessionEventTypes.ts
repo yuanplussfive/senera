@@ -1,7 +1,12 @@
 import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventContext, AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import type { AgentChannelMetadata, AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
+import type {
+  AgentChannelMetadata,
+  AgentEffectiveModelReceipt,
+  AgentModelProviderMetadata,
+  AgentSessionModelPreference,
+} from "../ModelEndpoints/AgentModelMetadata.js";
 import type { StepTrace } from "../Core/AgentStepTrace.js";
 import type { AgentPiSessionRuntimeStatus } from "../Pi/AgentPiSessionManagement.js";
 import type { AgentSessionOperation } from "./AgentSessionOperation.js";
@@ -59,6 +64,9 @@ export type AgentSessionDomainEvent =
           messageCount: number;
           activeRequestId?: string;
           channel?: import("../ModelEndpoints/AgentModelMetadata.js").AgentChannelMetadata;
+          modelProviderId?: string;
+          effectiveModel?: AgentEffectiveModelReceipt;
+          modelPreference?: AgentSessionModelPreference;
         }>;
       };
     }
@@ -77,6 +85,7 @@ export type AgentSessionDomainEvent =
       context: Required<Pick<AgentEventContext, "sessionId">>;
       data: {
         sessionId: string;
+        preview?: boolean;
         entries: AgentSessionHistoryEntry[];
       };
     }
@@ -163,6 +172,9 @@ interface AgentSessionSnapshotData {
   turnCount: number;
   activeRequestId?: string;
   channel?: AgentChannelMetadata;
+  modelProviderId?: string;
+  effectiveModel?: AgentEffectiveModelReceipt;
+  modelPreference?: AgentSessionModelPreference;
 }
 
 interface AgentSessionHistoryEntry {
