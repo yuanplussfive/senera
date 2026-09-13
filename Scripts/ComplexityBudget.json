@@ -117,7 +117,7 @@
     },
     {
       "path": "Source/AgentSystem/SelfService/AgentSelfCommand.ts",
-      "baselineLines": 816,
+      "baselineLines": 802,
       "owner": "self-service-runtime",
       "splitTarget": "Extract preset, skill, and configuration command handlers into focused self-service modules."
     },

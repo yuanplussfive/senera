@@ -31,7 +31,7 @@ import {
 } from "./AgentSelfPreset.js";
 import { describeAgentSelfWorkspace, projectAgentSelfWorkspaceInfo } from "./AgentSelfWorkspace.js";
 import { describeAgentSelfDoctor, projectAgentSelfDoctorReport } from "./AgentSelfDoctor.js";
-import { listAgentSelfSessions } from "./AgentSelfSessions.js";
+import { executeAgentSelfSessionModel, listAgentSelfSessions } from "./AgentSelfSessions.js";
 import { describeAgentSelfStatus, projectAgentSelfStatus } from "./AgentSelfStatus.js";
 import { listAgentSelfLogs, readAgentSelfLogTail } from "./AgentSelfLogs.js";
 import { projectAgentSelfRedacted } from "./AgentSelfRedaction.js";
@@ -39,10 +39,9 @@ import { findAgentSelfPluginCommand, listAgentSelfBuiltinCommandSpecs } from "./
 import { AgentSelfCommandSchema, AgentSelfPluginCommandEnvelopeSchema } from "./AgentSelfCommandSchema.js";
 import type { AgentSelfInvocation } from "./AgentSelfServiceTypes.js";
 import { describeAgentSelfCapabilities, projectAgentSelfCapabilities } from "./AgentSelfCapabilities.js";
-import { resolveModelProviderCatalog } from "../AgentDefaults.js";
-import { createModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
-import { readAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
+import { projectInvalidAgentSelfInvocation, readAgentSelfCommandRoot } from "./AgentSelfCommandValidation.js";
+export { projectAgentSelfInvocationValidationFailure } from "./AgentSelfCommandValidation.js";
 
 const SkillMutationApprovalReason = "Skill 会改变后续模型行为，需要确认工作区指令资产的变更。";
 
@@ -69,7 +68,7 @@ export async function executeAgentSelfCommand(
       case "sessions":
         return listAgentSelfSessions(port);
       case "session":
-        return await executeSessionModel(invocation, port);
+        return await executeAgentSelfSessionModel(invocation, port);
       case "plugins":
         return describeAgentSelfPlugins(port);
       case "skills":
@@ -102,72 +101,6 @@ export async function executeAgentSelfCommand(
   }
 }
 
-async function executeSessionModel(
-  invocation: Extract<AgentSelfCommand, { command: "session"; action: "model" }>,
-  port: AgentSelfServicePort,
-): Promise<AgentSelfCommandOutput> {
-  const sessions = port.sessions;
-  if (!sessions) {
-    return { ok: false, text: "会话目录不可用（当前主机未绑定会话存储）。", error: "sessions_unavailable" };
-  }
-  const sessionId = invocation.sessionId?.trim();
-  if (!sessionId) {
-    return {
-      ok: false,
-      text: "session model 需要明确的 sessionId；模型工具应使用当前会话绑定，CLI/API 请显式提供。",
-      error: "session_id_required",
-    };
-  }
-  if (invocation.operation === "get") {
-    if (!sessions.snapshot(sessionId)) {
-      return { ok: false, text: `会话不存在: ${sessionId}`, error: "session_not_found" };
-    }
-    const preference = sessions.getModelPreference(sessionId);
-    const runtime = sessions.getModelRuntime(sessionId);
-    const effective = runtime?.effective;
-    const catalog = resolveModelProviderCatalog(port.config.getSnapshot().value);
-    const defaultProvider = createModelProviderMetadata(catalog.resolve(catalog.defaultId));
-    return {
-      ok: true,
-      text: runtime?.active
-        ? `会话 ${sessionId} 当前轮次模型: ${runtime.active.model}（provider ${runtime.active.providerId}，来源 ${runtime.active.source}）`
-        : effective
-          ? `会话 ${sessionId} 最近完成轮次模型: ${effective.model}（provider ${effective.providerId}，来源 ${effective.source}）`
-          : `会话 ${sessionId} 尚无已执行轮次模型。下一轮将按请求、会话偏好或系统默认解析。`,
-      data: {
-        sessionId,
-        effective: effective ?? null,
-        preference: runtime?.preference ?? preference ?? null,
-        default: { modelProviderId: defaultProvider.id, ...defaultProvider },
-        lastRun: runtime?.lastRun ?? null,
-        effectiveAt: runtime?.active ? "current" : effective ? "last_run" : "next_turn",
-      },
-    };
-  }
-
-  const requestedModel = invocation.modelProviderId?.trim();
-  if (!requestedModel) {
-    return {
-      ok: false,
-      text: "session model set 需要 modelProviderId。",
-      error: "model_provider_id_required",
-    };
-  }
-  const resolved = resolveModelProviderCatalog(port.config.getSnapshot().value).resolve(requestedModel);
-  const result = await sessions.setModelPreference(sessionId, resolved.Id, "agent");
-  if (result.status === "missing") {
-    return { ok: false, text: `会话不存在: ${sessionId}`, error: "session_not_found" };
-  }
-  return {
-    ok: true,
-    text:
-      result.status === "updated"
-        ? `已将会话 ${sessionId} 的下一轮模型设置为 ${result.modelProviderId}。当前轮次保持不变。`
-        : `会话 ${sessionId} 已经使用 ${result.modelProviderId}，无需重复设置。`,
-    data: { sessionId, preference: result, effectiveAt: "next_turn" },
-  };
-}
-
 /** Dispatches either a built-in command or a command owned by the live plugin
  * registry. This is the shared entry point for HTTP, CLI adapters and the
  * model-facing SeneraCommand tool. */
@@ -180,7 +113,7 @@ export async function executeAgentSelfInvocation(
   if (builtIn.success) return executeAgentSelfCommand(builtIn.data, port, options);
   const plugin = AgentSelfPluginCommandEnvelopeSchema.safeParse(invocation);
   if (!plugin.success) {
-    return projectInvalidAgentSelfInvocation(builtIn.error.issues, readCommandRoot(invocation));
+    return projectInvalidAgentSelfInvocation(builtIn.error.issues, readAgentSelfCommandRoot(invocation));
   }
   if (listAgentSelfBuiltinCommandSpecs().some((spec) => spec.command === plugin.data.command)) {
     return projectInvalidAgentSelfInvocation(builtIn.error.issues, plugin.data.command);
@@ -194,75 +127,6 @@ export async function executeAgentSelfInvocation(
     };
   }
   return entry.handler(plugin.data.args ?? [], port, options);
-}
-
-/** Converts a catalog-level Zod rejection into the same repairable response
- * used by the direct HTTP/CLI invocation path. */
-export function projectAgentSelfInvocationValidationFailure(
-  invocation: unknown,
-  issues: readonly { readonly code: string; readonly path: readonly PropertyKey[]; readonly message: string }[],
-): AgentSelfCommandOutput {
-  return projectInvalidAgentSelfInvocation(issues, readCommandRoot(invocation));
-}
-
-function readCommandRoot(value: unknown): string | undefined {
-  if (!isRecord(value) || typeof value.command !== "string") return undefined;
-  const command = value.command.trim();
-  return command.length > 0 ? command : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function projectInvalidAgentSelfInvocation(
-  issues: readonly { readonly code: string; readonly path: readonly PropertyKey[]; readonly message: string }[],
-  command?: string,
-): AgentSelfCommandOutput {
-  const projected = flattenAgentSelfValidationIssues(issues).slice(0, 8);
-  const summary =
-    projected.length > 0
-      ? projected
-          .map((issue) => `${issue.path.length > 0 ? issue.path.join(".") : "(root)"}: ${issue.message}`)
-          .join("; ")
-      : "参数未通过当前命令契约校验。";
-  return {
-    ok: false,
-    text: `Senera 命令参数无效${command ? `（${command}）` : ""}：${summary}。请先调用 capabilities 获取当前命令契约后重试。`,
-    error: "invalid_command",
-    data: {
-      kind: "schema_validation",
-      ...(command ? { command } : {}),
-      issues: projected,
-      repair: "使用 capabilities 返回的 command/action 和参数名；不要把 CLI 文本字段替换成未声明的字段。",
-    },
-  };
-}
-
-function flattenAgentSelfValidationIssues(value: readonly unknown[]): {
-  readonly code: string;
-  readonly path: readonly string[];
-  readonly message: string;
-}[] {
-  const flattened: { code: string; path: readonly string[]; message: string }[] = [];
-  for (const entry of value) {
-    const issue = readAgentUnknownRecord(entry);
-    if (!issue) continue;
-    const nested = Array.isArray(issue.errors)
-      ? issue.errors.flatMap((branch) => (Array.isArray(branch) ? flattenAgentSelfValidationIssues(branch) : []))
-      : [];
-    if (nested.length > 0) {
-      flattened.push(...nested);
-      continue;
-    }
-    if (typeof issue.code !== "string" || typeof issue.message !== "string") continue;
-    flattened.push({
-      code: issue.code,
-      path: Array.isArray(issue.path) ? issue.path.map(String) : [],
-      message: issue.message,
-    });
-  }
-  return flattened;
 }
 
 async function executeConfig(

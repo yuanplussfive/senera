@@ -73,6 +73,11 @@ import {
   type AgentToolCapabilityCacheEntry,
 } from "./AgentToolCapabilitySessionCache.js";
 import { AgentToolAssessmentStatuses } from "../ToolRuntime/AgentToolResultOutcome.js";
+import {
+  AgentCapabilityEmbeddingCachePolicy,
+  CurrentSetProjectors,
+  ReusableCapabilityMatchPolicy,
+} from "./AgentToolSearchRuntimePolicies.js";
 
 export type { LoadedToolsState } from "./AgentToolSearchRuntimeTypes.js";
 export { AgentToolMetaToolNames } from "./AgentToolSearchRuntimeTypes.js";
@@ -894,28 +899,12 @@ export class AgentToolSearchRuntime {
   }
 }
 
-const AgentCapabilityEmbeddingCachePolicy = {
-  MinimumEntries: 32,
-  CatalogGenerations: 2,
-} as const;
-
-const ReusableCapabilityMatchPolicy = Object.freeze({
-  minimumOverlap: 2,
-  minimumCoverage: 0.75,
-  minimumJaccard: 0.5,
-});
-
 interface AgentToolCatalogSnapshot {
   readonly registryRevision: number | undefined;
   readonly runtimeTargetsKey: string;
   readonly tools: ReturnType<AgentExtensionRegistry["listTools"]>;
   readonly identity: string;
 }
-
-const CurrentSetProjectors = {
-  [AgentToolSearchCurrentSetPolicies.Retain]: (current: LoadedToolsState | undefined) => [...(current ?? [])],
-  [AgentToolSearchCurrentSetPolicies.Replace]: () => [],
-} satisfies Record<AgentToolSearchCurrentSetPolicy, (current: LoadedToolsState | undefined) => string[]>;
 
 function uniqueToolNames(toolNames: readonly string[]): string[] {
   return [...new Set(toolNames.map((toolName) => toolName.trim()).filter(Boolean))];
