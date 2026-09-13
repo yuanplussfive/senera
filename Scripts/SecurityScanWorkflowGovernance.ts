@@ -1,7 +1,7 @@
 import { inspectTextIncludes, inspectWorkflowNamedStep, workflowJobBlock } from "./Support/WorkflowGovernance.js";
 
 const SecurityScanWorkflowLabel = ".github/workflows/security-scan.yml";
-const TrivyAction = "aquasecurity/trivy-action@0.35.0";
+const TrivyAction = "aquasecurity/trivy-action@0.36.0";
 const PullRequestSecurityJobs = ["dependency-audit", "codeql", "trivy-filesystem"] as const;
 const TrivyStepPolicies = [
   {
@@ -20,7 +20,7 @@ export function inspectSecurityScanWorkflow(workflow: string): string[] {
     "pull_request:",
     "github/codeql-action/init@v4",
     "queries: security-extended,security-and-quality",
-    "actions/dependency-review-action@v4",
+    "actions/dependency-review-action@v5",
     TrivyAction,
     "github/codeql-action/upload-sarif@v4",
     "actions/setup-node@v5",
