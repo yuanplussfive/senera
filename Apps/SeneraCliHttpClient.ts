@@ -61,9 +61,9 @@ export async function executeSeneraSelfCommandViaHttp(
     // lgtm[js/file-access-to-http] The runtime manifest is a validated loopback IPC lease.
     const response = await (options.fetch ?? fetch)(target.url, {
       method: "POST",
+      // lgtm[js/file-access-to-http] The token is sent only to the validated loopback service.
       headers: {
         "content-type": "application/json",
-        // lgtm[js/file-access-to-http] The token is sent only to the validated loopback service.
         authorization: target.authorization,
       },
       body: JSON.stringify(command),
