@@ -14,14 +14,14 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v5
       with:
         node-version: ${{ inputs.node-version }}
         cache: npm
         cache-dependency-path: package-lock.json
     - name: Restore Windows Electron downloads
       if: runner.os == 'Windows' && inputs.install-electron == 'true'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/AppData/Local/electron/Cache

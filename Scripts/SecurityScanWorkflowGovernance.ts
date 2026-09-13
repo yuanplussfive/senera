@@ -23,7 +23,7 @@ export function inspectSecurityScanWorkflow(workflow: string): string[] {
     "actions/dependency-review-action@v4",
     TrivyAction,
     "github/codeql-action/upload-sarif@v4",
-    "actions/setup-node@v4",
+    "actions/setup-node@v5",
     "npm run quality.security",
   ]);
   const auditJob = workflowJobBlock(workflow, "dependency-audit");

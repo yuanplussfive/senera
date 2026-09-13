@@ -31,7 +31,7 @@ jobs:
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
@@ -71,14 +71,14 @@ jobs:
     name: Build Verification Artifacts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-node
       - run: npm run policy.verify
       - run: npm run quality.baml
       - run: npm run build
       - run: npm --workspace senera-frontend run build
       - name: Upload verification build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: verification-build
           path: |
@@ -92,19 +92,19 @@ jobs:
     needs: build-artifacts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
       - name: Restore ESLint cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .cache/eslint
           key: ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json') }}-
       - name: Download verification build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: verification-build
           path: .
@@ -148,10 +148,10 @@ jobs:
     needs: build-artifacts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-node
       - name: Download verification build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: verification-build
           path: .
@@ -159,7 +159,7 @@ jobs:
         name: Resolve Playwright version
         shell: bash
         run: node -p "'version=' + require('@playwright/test/package.json').version" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-chromium-${{ steps.playwright.outputs.version }}
@@ -169,7 +169,7 @@ jobs:
       - run: npm run test.e2e.web.run
       - name: Upload browser diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: chromium-e2e-diagnostics
           path: |
@@ -182,12 +182,12 @@ jobs:
     needs: build-artifacts
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-node
         with:
           install-electron: "true"
       - name: Download verification build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: verification-build
           path: .
@@ -199,16 +199,16 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-node
       - run: npm run test.coverage.frontend
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: frontend-coverage
           path: coverage/frontend
           if-no-files-found: error
       - run: npm run test.coverage.backend
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: backend-coverage
           path: coverage/backend
@@ -220,6 +220,6 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && inputs.full_suite
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-node
       - run: npm run verify.all

@@ -21,7 +21,7 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         "Verify differential update assets",
         "Release/latest.yml",
         "senera-update.json",
-        "actions/upload-artifact@v4",
+        "actions/upload-artifact@v6",
       ]),
     );
     if (desktopJob.includes("actions/download-artifact")) {
@@ -90,7 +90,7 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         "timeout-minutes: 10",
         "CONTAINER_HEALTH_TIMEOUT_SECONDS: 180",
         "needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest",
-        "actions/checkout@v4",
+        "actions/checkout@v5",
         "./.github/actions/setup-gvisor",
         'docker pull "$IMAGE"',
         'docker pull "$SANDBOX_IMAGE"',
@@ -133,7 +133,7 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         "type=raw,value=sandbox-runtime-${{ needs.metadata.outputs.sandbox_runtime_version_tag }}",
         "type=raw,value=sandbox-runtime-latest",
         "environment: release-stable",
-        "actions/download-artifact@v4",
+        "actions/download-artifact@v7",
         "gh release upload",
         "gh release edit",
         "--draft=false --latest",
