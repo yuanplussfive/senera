@@ -58,10 +58,10 @@ export async function executeSeneraSelfCommandViaHttp(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? AgentSelfHttpDefaultTimeoutMs);
   try {
-    // lgtm[js/file-access-to-http] The runtime manifest is a validated loopback IPC lease.
+    // codeql[js/file-access-to-http]
     const response = await (options.fetch ?? fetch)(target.url, {
       method: "POST",
-      // lgtm[js/file-access-to-http] The token is sent only to the validated loopback service.
+      // codeql[js/file-access-to-http]
       headers: {
         "content-type": "application/json",
         authorization: target.authorization,
