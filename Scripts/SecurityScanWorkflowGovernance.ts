@@ -18,11 +18,11 @@ export function inspectSecurityScanWorkflow(workflow: string): string[] {
   const violations = inspectTextIncludes(workflow, SecurityScanWorkflowLabel, [
     "name: Security Scan",
     "pull_request:",
-    "github/codeql-action/init@v3",
+    "github/codeql-action/init@v4",
     "queries: security-extended,security-and-quality",
     "actions/dependency-review-action@v4",
     TrivyAction,
-    "github/codeql-action/upload-sarif@v3",
+    "github/codeql-action/upload-sarif@v4",
     "actions/setup-node@v4",
     "npm run quality.security",
   ]);

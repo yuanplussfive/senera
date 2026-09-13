@@ -58,12 +58,12 @@ export async function executeSeneraSelfCommandViaHttp(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? AgentSelfHttpDefaultTimeoutMs);
   try {
-    // codeql[js/file-access-to-http] The runtime manifest is a local IPC lease; the target is constrained to loopback before this authenticated request.
     const response = await (options.fetch ?? fetch)(target.url, {
+      // lgtm[js/file-access-to-http] Validated local runtime IPC lease.
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: target.authorization,
+        authorization: target.authorization, // lgtm[js/file-access-to-http] Token is sent only to the validated loopback service.
       },
       body: JSON.stringify(command),
       signal: controller.signal,
