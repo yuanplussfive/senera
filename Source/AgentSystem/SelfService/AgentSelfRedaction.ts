@@ -1,23 +1,10 @@
 /** Secret redaction for self-service output. Model-visible config snapshots
  * must never echo ApiKey/AppSecret/token values back into the conversation. */
 
-const SecretValuePatterns = [/senera:secret:v1:/u, /bots\.qq\.com/u, /^Bearer\s+\S+/iu];
-const SensitiveKeyNames = new Set([
-  "apikey",
-  "appsecret",
-  "clientsecret",
-  "webhooksecret",
-  "token",
-  "bottoken",
-  "accesstoken",
-  "refreshtoken",
-  "authorization",
-  "xapikey",
-  "credential",
-  "password",
-  "privatekey",
-  "secret",
-]);
+import { isAgentConfigSensitiveFieldName } from "../Config/AgentConfigSecretContract.js";
+
+const SecretEnvelopePrefix = "senera:secret:v1:";
+const ProtocolSecretKeyNames = new Set(["authorization", "privatekey"]);
 
 const Redacted = "***";
 
@@ -35,8 +22,8 @@ export function projectAgentSelfRedacted(value: unknown, maxDepth = 12, depth = 
       output[key] = Redacted;
       continue;
     }
-    if (typeof entry === "string" && SecretValuePatterns.some((pattern) => pattern.test(entry))) {
-      output[key] = maskSecretString(entry);
+    if (typeof entry === "string" && isAgentSelfSecretValue(entry)) {
+      output[key] = maskSecretString();
       continue;
     }
     output[key] = projectAgentSelfRedacted(entry, maxDepth, depth + 1);
@@ -44,16 +31,29 @@ export function projectAgentSelfRedacted(value: unknown, maxDepth = 12, depth = 
   return output;
 }
 
-function maskSecretString(value: string): string {
-  if (value.length <= 12) return Redacted;
-  return `${value.slice(0, 4)}…${value.slice(-4)}`;
+function maskSecretString(): string {
+  return Redacted;
 }
 
 export function isAgentSelfSensitiveKey(key: string): boolean {
   const normalized = key.replace(/[^a-z0-9]/giu, "").toLowerCase();
-  return (
-    SensitiveKeyNames.has(normalized) || /(?:api)?key|secret|token|credential|password|authorization/iu.test(normalized)
-  );
+  return isAgentConfigSensitiveFieldName(key) || ProtocolSecretKeyNames.has(normalized);
+}
+
+function isAgentSelfSecretValue(value: string): boolean {
+  const normalized = value.trim();
+  return isSecretEnvelope(normalized) || isBearerCredential(normalized);
+}
+
+function isSecretEnvelope(value: string): boolean {
+  const marker = value.indexOf(SecretEnvelopePrefix);
+  return marker >= 0 && value.length > marker + SecretEnvelopePrefix.length;
+}
+
+function isBearerCredential(value: string): boolean {
+  if (value.slice(0, 6).toLowerCase() !== "bearer") return false;
+  if (value.slice(6, 7).trim() !== "") return false;
+  return value.slice(7).trim().length > 0;
 }
 
 export const AgentSelfRedactedMarker = Redacted;
