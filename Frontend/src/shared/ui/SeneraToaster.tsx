@@ -1,28 +1,28 @@
-import { CircleAlert, Info, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import { Toaster, type ToasterProps } from "sonner";
-import { ResonanceTrace } from "./LoadingSignal";
+import { AppIcon } from "./AppIcon";
+import { Spinner } from "./Spinner";
 
 function ToastIcon({ children, tone }: { children: ReactNode; tone: "info" | "warning" | "error" }): JSX.Element {
   return <span className={`senera-toast-icon-glyph senera-toast-icon-glyph-${tone}`}>{children}</span>;
 }
 
 const seneraToastIcons = {
-  success: <ResonanceTrace size="sm" state="settled" />,
-  loading: <ResonanceTrace size="sm" />,
+  success: <AppIcon icon="check" size={15} aria-hidden="true" />,
+  loading: <Spinner size="sm" />,
   info: (
     <ToastIcon tone="info">
-      <Info />
+      <AppIcon icon="info" size={15} aria-hidden="true" />
     </ToastIcon>
   ),
   warning: (
     <ToastIcon tone="warning">
-      <TriangleAlert />
+      <AppIcon icon="warning" size={15} aria-hidden="true" />
     </ToastIcon>
   ),
   error: (
     <ToastIcon tone="error">
-      <CircleAlert />
+      <AppIcon icon="alert" size={15} aria-hidden="true" />
     </ToastIcon>
   ),
 };
@@ -40,11 +40,7 @@ const seneraToastOptions: NonNullable<ToasterProps["toastOptions"]> = {
   },
 };
 
-/**
- * Shared status surface for save, sync and recovery feedback. The component
- * keeps the Sonner API at the application edge while its visual language is
- * owned by Senera's resonance trace.
- */
+/** Shared status surface for save, sync and recovery feedback. */
 export function SeneraToaster({ position = "bottom-right" }: { position?: ToasterProps["position"] }): JSX.Element {
   return <Toaster position={position} icons={seneraToastIcons} toastOptions={seneraToastOptions} />;
 }

@@ -1,20 +1,5 @@
-import {
-  FolderCog,
-  FolderOpen,
-  Gauge,
-  Info,
-  Palette,
-  Route,
-  Cable,
-  Search,
-  SlidersHorizontal,
-  Target,
-  ServerCog,
-  Package,
-  MessagesSquare,
-  type LucideIcon,
-} from "lucide-react";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
+import type { AppIconName } from "../../shared/ui/AppIcon";
 import type { SettingsSectionId } from "./settingsSectionContract";
 
 export {
@@ -27,74 +12,79 @@ export {
 export interface SettingsSectionDefinition {
   id: SettingsSectionId;
   label: string;
-  icon: LucideIcon;
+  icon: AppIconName;
   description: string;
 }
 
 export const settingsSections = [
   defineSettingsSection(
     "model-service",
-    Cable,
+    "link",
     "settings.section.modelService.label",
     "settings.section.modelService.description",
   ),
   defineSettingsSection(
     "default-model",
-    Target,
+    "target",
     "settings.section.defaultModel.label",
     "settings.section.defaultModel.description",
   ),
-  defineSettingsSection("runtime", Gauge, "settings.section.runtime.label", "settings.section.runtime.description"),
-  defineSettingsSection("planning", Route, "settings.section.planning.label", "settings.section.planning.description"),
+  defineSettingsSection(
+    "runtime",
+    "activity",
+    "settings.section.runtime.label",
+    "settings.section.runtime.description",
+  ),
+  defineSettingsSection(
+    "planning",
+    "route",
+    "settings.section.planning.label",
+    "settings.section.planning.description",
+  ),
   defineSettingsSection(
     "retrieval",
-    Search,
+    "search",
     "settings.section.retrieval.label",
     "settings.section.retrieval.description",
   ),
   defineSettingsSection(
     "system-tools",
-    Package,
+    "package",
     "settings.section.systemTools.label",
     "settings.section.systemTools.description",
   ),
   defineSettingsSection(
     "mcp-servers",
-    ServerCog,
+    "server",
     "settings.section.mcpServers.label",
     "settings.section.mcpServers.description",
   ),
   defineSettingsSection(
     "channels",
-    MessagesSquare,
+    "message",
     "settings.section.channels.label",
     "settings.section.channels.description",
   ),
-  defineSettingsSection(
-    "general",
-    SlidersHorizontal,
-    "settings.section.general.label",
-    "settings.section.general.description",
-  ),
+  defineSettingsSection("general", "tools", "settings.section.general.label", "settings.section.general.description"),
   defineSettingsSection(
     "appearance",
-    Palette,
+    "palette",
     "settings.section.appearance.label",
     "settings.section.appearance.description",
   ),
-  defineSettingsSection("storage", FolderCog, "settings.section.storage.label", "settings.section.storage.description"),
+  defineSettingsSection("storage", "folder", "settings.section.storage.label", "settings.section.storage.description"),
   defineSettingsSection(
     "workspace",
-    FolderOpen,
+    "folder",
     "settings.section.workspace.label",
     "settings.section.workspace.description",
   ),
-  defineSettingsSection("about", Info, "settings.section.about.label", "settings.section.about.description"),
+  defineSettingsSection("about", "info", "settings.section.about.label", "settings.section.about.description"),
 ] as const satisfies readonly SettingsSectionDefinition[];
 
 function defineSettingsSection(
   id: SettingsSectionId,
-  icon: LucideIcon,
+  icon: AppIconName,
   labelKey: FrontendMessageKey,
   descriptionKey: FrontendMessageKey,
 ): SettingsSectionDefinition {

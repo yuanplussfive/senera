@@ -310,16 +310,18 @@ export function ProviderCatalogStatus({
   );
   const text = disabled
     ? frontendMessage("config.model.statusProviderDisabled")
-    : (error?.message ??
-      (catalog
-        ? frontendMessage("config.model.statusSummary", {
-            count: catalog.models.length,
-            source: frontendMessage(
-              catalog.source === "cache" ? "config.model.sourceCache" : "config.model.sourceNetwork",
-            ),
-            time: formatShortTime(catalog.fetchedAt),
-          })
-        : frontendMessage("config.model.statusNotFetched")));
+    : loading
+      ? frontendMessage("config.model.statusLoading")
+      : (error?.message ??
+        (catalog
+          ? frontendMessage("config.model.statusSummary", {
+              count: catalog.models.length,
+              source: frontendMessage(
+                catalog.source === "cache" ? "config.model.sourceCache" : "config.model.sourceNetwork",
+              ),
+              time: formatShortTime(catalog.fetchedAt),
+            })
+          : frontendMessage("config.model.statusNotFetched")));
 
   return (
     <div

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Info, Settings, User, UserRoundPen, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 import type { UserProfile } from "../../store/sessionStore";
 import type { SettingsSectionId } from "../settings/types";
 import { cn } from "../../lib/util";
 import {
+  AppIcon,
   Dialog,
   DialogActionButton,
   DialogActions,
@@ -12,10 +12,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuMeta,
-  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-  Spinner,
 } from "../../shared/ui";
 import {
   AVATAR_PREVIEW_SIZE,
@@ -26,18 +26,25 @@ import {
   useLoadedAvatarImage,
   type AvatarCropState,
 } from "./useAvatarCrop";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { FrontendLocalePreferences, FrontendLocales, frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { useFrontendLocalePreference, useSetFrontendLocalePreference } from "../../i18n/useFrontendLocale";
+import { themeModeLabels } from "../../shared/theme/appearancePresentation";
+import { type ThemeMode } from "../../shared/theme/themeModel";
+import { useAppearance, useSetAppearancePreference } from "../../shared/theme/useAppearance";
+
+const themeModeOptions = ["system", "light", "dark"] as const satisfies readonly ThemeMode[];
 
 export function UserFooter({
   collapsed = false,
+  compactFrame = false,
   profile,
-  socketStatus,
   onUpdateProfile,
   onLogout,
   onSettingsIntent,
   onOpenSettings,
 }: {
   collapsed?: boolean;
+  compactFrame?: boolean;
   profile: UserProfile;
   socketStatus: string;
   onUpdateProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
@@ -49,18 +56,10 @@ export function UserFooter({
   const [menuOpen, setMenuOpen] = useState(false);
   const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const openProfileAfterMenuCloseRef = useRef(false);
-  const statusLabel =
-    socketStatus === "open"
-      ? frontendMessage("connection.open")
-      : socketStatus === "connecting" || socketStatus === "idle"
-        ? frontendMessage("connection.connecting")
-        : socketStatus === "error"
-          ? frontendMessage("connection.error")
-          : frontendMessage("connection.closed");
-  const connecting = socketStatus === "connecting" || socketStatus === "idle";
-  const StatusIcon = socketStatus === "open" ? Wifi : WifiOff;
-  const statusIconClass = socketStatus === "open" ? "text-moss-600" : "text-brick-600";
-
+  const localePreference = useFrontendLocalePreference();
+  const setLocalePreference = useSetFrontendLocalePreference();
+  const { preference: appearancePreference } = useAppearance();
+  const setAppearancePreference = useSetAppearancePreference();
   useEffect(() => {
     if (menuOpen || !openProfileAfterMenuCloseRef.current) return;
     openProfileAfterMenuCloseRef.current = false;
@@ -70,70 +69,129 @@ export function UserFooter({
   return (
     <>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-        <DropdownMenuTrigger asChild>
-          <button
-            ref={settingsTriggerRef}
-            type="button"
-            onPointerEnter={onSettingsIntent}
-            onPointerDown={onSettingsIntent}
-            onFocus={onSettingsIntent}
-            className={cn(
-              "mt-auto w-full transition-colors duration-150 hover:bg-surface-hover data-[state=open]:bg-surface-hover",
-              collapsed
-                ? "grid h-12 place-items-center border-t-0 px-0"
-                : "flex h-[48px] items-center gap-2 border-t border-line-subtle px-3 text-left",
-            )}
-          >
-            <UserAvatar profile={profile} />
-            {collapsed ? null : (
-              <>
-                <div className="min-w-0 flex-1 truncate text-[13px] text-content-primary">{profile.name}</div>
-                <Settings className="h-3.5 w-3.5 shrink-0 text-content-muted" />
-              </>
-            )}
-          </button>
-        </DropdownMenuTrigger>
+        <div
+          className={cn(
+            "mt-auto shrink-0 bg-transparent transition-colors duration-150 hover:bg-surface-hover",
+            menuOpen && "bg-surface-hover",
+            compactFrame &&
+              "-mx-[10px] -mb-[10px] w-[calc(100%+20px)] border-t border-line-subtle px-[10px] pb-[10px] pt-2.5",
+            !compactFrame && !collapsed && "border-t border-line-subtle",
+          )}
+        >
+          <DropdownMenuTrigger asChild>
+            <button
+              ref={settingsTriggerRef}
+              type="button"
+              onPointerEnter={onSettingsIntent}
+              onPointerDown={onSettingsIntent}
+              onFocus={onSettingsIntent}
+              className={cn(
+                "w-full bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus",
+                collapsed ? "grid h-12 place-items-center px-0" : "flex h-[48px] items-center gap-2 px-3 text-left",
+              )}
+            >
+              <UserAvatar profile={profile} />
+              {collapsed ? null : (
+                <>
+                  <div className="min-w-0 flex-1 truncate text-[13px] text-content-primary">{profile.name}</div>
+                  <AppIcon
+                    icon="account-menu"
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-150",
+                      menuOpen && "rotate-180",
+                    )}
+                  />
+                </>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+        </div>
         <DropdownMenuContent
           align={collapsed ? "end" : "start"}
           side={collapsed ? "right" : "top"}
+          sideOffset={12}
           collisionPadding={8}
           className="w-[220px]"
         >
           <DropdownMenuItem
-            icon={<UserRoundPen className="h-3.5 w-3.5" />}
+            className="gap-1.5"
+            icon={<AppIcon icon="user-round-pen" className="h-3.5 w-3.5 text-content-primary" />}
             onSelect={() => {
               openProfileAfterMenuCloseRef.current = true;
             }}
           >
-            {frontendMessage("profile.menu.edit")}
+            {frontendMessage("profile.menu.userSettings")}
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger
+              className="gap-1.5"
+              icon={<AppIcon icon="sun-moon" className="h-3.5 w-3.5 text-content-primary" />}
+            >
+              {frontendMessage("profile.menu.theme")}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-[200px]">
+              {themeModeOptions.map((mode) => (
+                <DropdownMenuItem
+                  key={mode}
+                  trailing={
+                    appearancePreference.themeMode === mode ? (
+                      <AppIcon icon="checkmark" size={15} className="text-content-primary" />
+                    ) : undefined
+                  }
+                  onClick={() => setAppearancePreference({ themeMode: mode })}
+                >
+                  {themeModeLabels[mode]}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger
+              className="gap-1.5"
+              icon={<AppIcon icon="language" className="h-3.5 w-3.5 text-content-primary" />}
+            >
+              {frontendMessage("profile.menu.language")}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-[200px]">
+              <DropdownMenuItem
+                trailing={
+                  localePreference === FrontendLocalePreferences.System ? (
+                    <AppIcon icon="checkmark" size={15} className="text-content-primary" />
+                  ) : undefined
+                }
+                onClick={() => setLocalePreference(FrontendLocalePreferences.System)}
+              >
+                {frontendMessage("profile.menu.language.system")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                trailing={
+                  localePreference === FrontendLocales.ZhCn ? (
+                    <AppIcon icon="checkmark" size={15} className="text-content-primary" />
+                  ) : undefined
+                }
+                onClick={() => setLocalePreference(FrontendLocales.ZhCn)}
+              >
+                {frontendMessage("profile.menu.language.zhCn")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                trailing={
+                  localePreference === FrontendLocales.EnUs ? (
+                    <AppIcon icon="checkmark" size={15} className="text-content-primary" />
+                  ) : undefined
+                }
+                onClick={() => setLocalePreference(FrontendLocales.EnUs)}
+              >
+                {frontendMessage("profile.menu.language.enUs")}
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
           <DropdownMenuItem
-            icon={<Settings className="h-3.5 w-3.5" />}
+            className="gap-1.5"
+            icon={<AppIcon icon="settings" className="h-3.5 w-3.5 text-content-primary" />}
             onSelect={() => onOpenSettings(undefined, settingsTriggerRef.current)}
           >
             {frontendMessage("profile.menu.settings")}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            icon={<Info className="h-3.5 w-3.5" />}
-            onSelect={() => onOpenSettings("about", settingsTriggerRef.current)}
-          >
-            {frontendMessage("profile.menu.about")}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuMeta
-            aria-live="polite"
-            icon={
-              connecting ? (
-                <Spinner size="sm" className="text-umber-600" />
-              ) : (
-                <StatusIcon className={cn("h-3.5 w-3.5", statusIconClass)} aria-hidden="true" />
-              )
-            }
-            value={statusLabel}
-          >
-            {frontendMessage("profile.menu.connectionStatus")}
-          </DropdownMenuMeta>
         </DropdownMenuContent>
       </DropdownMenu>
       <ProfileDialog
@@ -178,7 +236,7 @@ function UserAvatar({ profile, size = "normal" }: { profile: UserProfile; size?:
       ) : initial ? (
         initial
       ) : (
-        <User className={size === "large" ? "h-5 w-5" : "h-3.5 w-3.5"} />
+        <AppIcon icon="user" className={size === "large" ? "h-5 w-5" : "h-3.5 w-3.5"} />
       )}
     </div>
   );
@@ -357,7 +415,7 @@ function AvatarPicker({
         <div className="mt-0.5 text-[12px] leading-5 text-ink-500">{frontendMessage("profile.avatarHint")}</div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-3 text-[12.5px] font-medium text-ink-700 transition-colors hover:border-ink-300 hover:bg-ink-900/[0.035] hover:text-ink-900">
-            <Camera className="h-3.5 w-3.5" />
+            <AppIcon icon="camera" className="h-3.5 w-3.5" />
             {frontendMessage("profile.selectImage")}
             <input
               type="file"

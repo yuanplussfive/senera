@@ -247,7 +247,7 @@ export function ChatComposer({
   };
 
   return (
-    <div className="bg-transparent py-3 sm:py-4">
+    <div className="bg-transparent pb-4 pt-3 sm:pb-5 sm:pt-3.5">
       <ConversationFrame mode="composer">
         <div
           onDragEnter={attachments.handleDragEnter}
@@ -255,7 +255,7 @@ export function ChatComposer({
           onDragLeave={attachments.handleDragLeave}
           onDrop={attachments.handleDrop}
           className={cn(
-            "relative flex min-w-0 flex-col rounded-[22px] border border-line-subtle bg-surface-raised px-3.5 pb-2.5 pt-2.5 shadow-[0_12px_32px_-16px_rgb(43_40_32_/_0.10)] transition-[background-color,border-color,box-shadow] duration-150",
+            "relative flex min-w-0 flex-col gap-2 rounded-[14px] border border-line-subtle bg-surface-raised px-3.5 pb-2.5 pt-[13px] shadow-[0_12px_32px_-16px_rgb(43_40_32_/_0.10)] transition-[background-color,border-color,box-shadow] duration-150",
             attachments.isDraggingFiles && "border-accent-border bg-accent-surface ring-2 ring-accent-focus",
           )}
           data-chat-composer
@@ -290,10 +290,10 @@ export function ChatComposer({
             placeholder={hint}
             disabled={disabled}
             style={{ maxHeight: textareaMaxHeight }}
-            className="scrollbar-thin min-h-10 w-full resize-none bg-transparent px-1 py-2 text-[14.5px] leading-6 text-content-primary placeholder:text-content-secondary focus:outline-none disabled:opacity-60 sm:min-h-10"
+            className="scrollbar-thin min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-[14px] leading-5 text-content-primary placeholder:text-content-disabled focus:outline-none disabled:opacity-60 sm:min-h-9"
           />
 
-          <div className="flex min-w-0 items-center gap-2 pt-0.5">
+          <div className="flex min-w-0 items-center gap-1.5">
             <div className="flex min-w-0 flex-1 items-center gap-1">
               <DropdownMenu open={toolkitOpen} onOpenChange={setToolkitOpen}>
                 <DropdownMenuTrigger asChild disabled={disabled || running || cancelling}>
@@ -370,7 +370,21 @@ export function ChatComposer({
                 onDelete={presetConfig.onDeletePreset}
                 onSetActive={presetConfig.onSetActivePreset}
               />
-              <Suspense fallback={<span className={cn("h-7 w-24 shrink-0", prefersCompactControls && "h-11 w-11")} />}>
+              <Suspense
+                fallback={
+                  <span
+                    className={cn(
+                      "inline-flex h-7 w-24 shrink-0 items-center justify-center text-content-muted",
+                      prefersCompactControls && "h-11 w-11",
+                    )}
+                    role="status"
+                    aria-busy="true"
+                    aria-label={frontendMessage("ui.loading")}
+                  >
+                    <Spinner size="xs" />
+                  </span>
+                }
+              >
                 <ApprovalModeControl
                   disabled={disabled || running || cancelling}
                   mode={approvalConfig.mode}
@@ -448,11 +462,11 @@ export function ChatComposer({
                     onClick={handleComposerAction}
                     disabled={!canSend}
                     className={cn(
-                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
+                      "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-0 transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
                       prefersCompactControls && "min-h-11 min-w-11",
                       canSend
-                        ? "border-transparent bg-content-strong text-content-inverse shadow-panel hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
-                        : "border-line-subtle bg-surface-muted text-content-disabled",
+                        ? "bg-content-strong text-content-inverse hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
+                        : "bg-surface-muted text-content-disabled",
                     )}
                     aria-label={
                       composerAction === "steer"
@@ -488,7 +502,7 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
   return (
     <Tooltip
       content={
-        <span className="grid gap-0.5 text-left leading-5">
+        <span className="flex items-center gap-1 whitespace-nowrap text-left leading-4 tabular-nums">
           <span className="font-medium">
             {usage && hasTokens
               ? frontendMessage("chat.composer.contextUsageSummary", {
@@ -497,7 +511,8 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
                 })
               : frontendMessage("chat.composer.contextUsage")}
           </span>
-          <span className="tabular-nums text-ink-300">
+          <span className="text-ink-300">·</span>
+          <span className="text-ink-300">
             {usage && hasTokens
               ? frontendMessage("chat.composer.contextUsageTokens", {
                   used: formatComposerTokenCount(used),
@@ -521,9 +536,7 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
           usage && hasTokens ? `${roundedPercent}%` : frontendMessage("chat.composer.contextUsagePending")
         }
         data-context-usage-indicator
-        className={cn(
-          "mx-0.5 inline-block h-4 w-4 shrink-0 rounded-full outline-none opacity-75 transition-[filter,opacity] hover:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-focus",
-        )}
+        className="inline-block h-[13px] w-[13px] shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
       >
         <CircularProgressbar
           value={value}
@@ -531,8 +544,8 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
           className="h-full w-full align-middle"
           aria-hidden="true"
           styles={buildStyles({
-            pathColor: "var(--accent-solid)",
-            trailColor: "var(--line-subtle)",
+            pathColor: "rgb(var(--color-ink-600))",
+            trailColor: "rgb(var(--color-ink-300) / 0.6)",
             strokeLinecap: "round",
             pathTransitionDuration: 0.35,
           })}
@@ -588,7 +601,7 @@ function AttachmentTray({
   onPreviewUnavailable: (id: string) => void;
 }): JSX.Element {
   return (
-    <MotionList className="flex flex-wrap gap-1.5 px-0.5 pb-1">
+    <MotionList className={cn("flex flex-wrap gap-1.5 px-0.5 pb-1", attachments.length === 0 && "hidden")}>
       {attachments.map((entry) => (
         <MotionListItem key={entry.id} layout="position" initial={false} className={cn(entry.previewUrl && "shrink-0")}>
           {entry.previewUrl ? (
@@ -713,7 +726,7 @@ function UploadProgressBar({ progress, className }: { progress?: UploadProgress;
       <span
         className={cn(
           "block h-full origin-left rounded-full bg-accent-solid transition-transform duration-150",
-          ratio === undefined && "motion-safe:animate-pulse",
+          ratio === undefined && "senera-loading-pulse",
         )}
         style={{ transform: `scaleX(${ratio ?? 1})` }}
       />

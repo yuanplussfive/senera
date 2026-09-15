@@ -35,8 +35,10 @@ export function ChatHeader({
 }): JSX.Element {
   return (
     <div
-      className="relative z-10 flex h-[52px] shrink-0 items-center gap-2 border-b border-line-subtle bg-transparent px-3 sm:px-5"
+      className="relative z-10 flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-2 border-b border-line-subtle bg-transparent px-3 sm:px-5"
       data-ui-chrome
+      data-chat-header
+      data-testid="chat-header"
       data-window-drag-region
       data-window-controls-inset
     >
@@ -56,27 +58,32 @@ export function ChatHeader({
         <SandboxStatusBadge status={sandboxStatus} />
       </div>
       {waitingForApproval ? (
-        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-umber-200 bg-umber-50 px-2 py-0.5 font-mono text-[10px] text-umber-600">
+        <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-umber-200 bg-umber-50 px-2.5 py-1 font-mono text-[11.5px] text-umber-600">
           <Clock3 className="h-3 w-3" />
           {frontendMessage("approval.waiting")}
         </span>
       ) : waitingForInput ? (
-        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-surface px-2 py-0.5 font-mono text-[10px] text-accent-content">
+        <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-accent-border bg-accent-surface px-2.5 py-1 font-mono text-[11.5px] text-accent-content">
           <MessageSquareText className="h-3 w-3" />
           {frontendMessage("interaction.input.pending")}
         </span>
+      ) : runStatus === "running" ? (
+        <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-moss-100 bg-moss-50 px-2.5 py-1 font-mono text-[11.5px] text-moss-600">
+          <span className="senera-loading-pulse h-1.5 w-1.5 rounded-full bg-moss-500" aria-hidden="true" />
+          {frontendMessage("workflow.run.status.running")}
+        </span>
       ) : runStatus === "cancelling" ? (
-        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-umber-200 bg-umber-50 px-2 py-0.5 font-mono text-[10px] text-umber-700">
+        <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-umber-200 bg-umber-50 px-2.5 py-1 font-mono text-[11.5px] text-umber-700">
           <Spinner size="xs" />
           {frontendMessage("workflow.run.status.cancelling")}
         </span>
       ) : runStatus === "failed" ? (
-        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-brick-200 bg-brick-50 px-2 py-0.5 font-mono text-[10px] text-brick-700">
+        <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-brick-200 bg-brick-50 px-2.5 py-1 font-mono text-[11.5px] text-brick-700">
           <CircleAlert className="h-3 w-3" />
           {frontendMessage("workflow.run.status.failed")}
         </span>
       ) : runStatus === "cancelled" ? (
-        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-line bg-surface-muted px-2 py-0.5 font-mono text-[10px] text-content-secondary">
+        <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface-muted px-2.5 py-1 font-mono text-[11.5px] text-content-secondary">
           <Ban className="h-3 w-3" />
           {frontendMessage("workflow.run.status.cancelled")}
         </span>
@@ -157,7 +164,7 @@ function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null
       label: frontendMessage("sandbox.status.preparing"),
       tooltip: commonTooltip,
       Icon: LoaderCircle,
-      iconClassName: "motion-safe:animate-spin",
+      iconClassName: "senera-loading-spin",
     },
     ready: {
       label: frontendMessage("sandbox.status.ready"),

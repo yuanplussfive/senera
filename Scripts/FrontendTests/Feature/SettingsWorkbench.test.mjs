@@ -94,7 +94,7 @@ describe("SettingsWorkbench", () => {
     expect(rail).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("automatically syncs typed MCP inputs without retaining a Secret in the input", async () => {
+  it("commits typed MCP secrets on blur and keeps the value verifiable", async () => {
     const user = userEvent.setup();
     const systemConfig = createSystemConfig({
       mcpServers: [
@@ -134,17 +134,30 @@ describe("SettingsWorkbench", () => {
 
     await user.click(await screen.findByText("网页研究", {}, { timeout: 5_000 }));
     const input = await screen.findByLabelText("Tavily API key", {}, { timeout: 5_000 });
-    fireEvent.change(input, { target: { value: "secret-value" } });
+    expect(input).toHaveAttribute("type", "password");
+    await user.type(input, "secret-value");
 
+    // Keystrokes alone must not sync a partially typed secret.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(systemConfig.updateMcpInputs).not.toHaveBeenCalled();
+
+    // Blur commits the secret exactly once, without a save-all flow.
+    await user.tab();
     await waitFor(() =>
       expect(systemConfig.updateMcpInputs).toHaveBeenCalledWith("web-research", { TAVILY_API_KEY: "secret-value" }, []),
     );
+    expect(systemConfig.updateMcpInputs).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "保存全部更改" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Clear the workspace value for Tavily API key" }),
     ).not.toBeInTheDocument();
-    expect(input).toHaveValue("");
-    expect(screen.queryByDisplayValue("secret-value")).not.toBeInTheDocument();
+
+    // The committed secret stays masked in the field and can be revealed.
+    expect(input).toHaveValue("secret-value");
+    expect(input).toHaveAttribute("type", "password");
+    await user.click(screen.getByRole("button", { name: "显示 Secret" }));
+    expect(input).toHaveAttribute("type", "text");
+    expect(input).toHaveValue("secret-value");
   });
 
   it("keeps a newer MCP value while the previous hot update is awaiting its receipt", async () => {
@@ -241,7 +254,7 @@ describe("SettingsWorkbench", () => {
         },
       ],
     });
-    renderWithFrontendProviders(
+    const view = renderWithFrontendProviders(
       React.createElement(SettingsWorkbench, {
         ...baseProps,
         section: "mcp-servers",
@@ -254,6 +267,25 @@ describe("SettingsWorkbench", () => {
     await user.click(screen.getByRole("menuitemcheckbox", { name: "us" }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "eu" }));
     await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(systemConfig.updateMcpInputs).toHaveBeenCalled());
+    const firstCall = systemConfig.updateMcpInputs.mock.calls[0];
+    if (JSON.stringify(firstCall?.[1]) === JSON.stringify({ regions: ["us"] })) {
+      // A slow test environment can let the first debounce fire between the
+      // two clicks; complete it so the newer draft is flushed by the next effect.
+      systemConfig.mcpInputOperation = { requestId: "mcp-save-1", status: "success" };
+      view.rerender(
+        React.createElement(
+          TooltipProvider,
+          { delayDuration: 0 },
+          React.createElement(SettingsWorkbench, {
+            ...baseProps,
+            section: "mcp-servers",
+            systemConfig,
+          }),
+        ),
+      );
+    }
 
     await waitFor(() =>
       expect(systemConfig.updateMcpInputs).toHaveBeenCalledWith("regional-search", { regions: ["us", "eu"] }, []),

@@ -1,12 +1,13 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { Check } from "lucide-react";
 import { type HTMLAttributes, type ReactNode, forwardRef } from "react";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../responsive";
+import { AppIcon } from "./AppIcon";
 import { metaLabelClassName } from "./MetaLabel";
 import { MenuItemContent, menuItemClassName, menuSeparatorClassName, menuSurfaceClassName } from "./MenuShared";
 
 export const DropdownMenu = DropdownMenuPrimitive.Root;
+export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
@@ -34,14 +35,66 @@ export const DropdownMenuContent = forwardRef<HTMLDivElement, ContentProps>(
 );
 DropdownMenuContent.displayName = "DropdownMenuContent";
 
+interface SubTriggerProps extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> {
+  icon?: ReactNode;
+}
+
+export const DropdownMenuSubTrigger = forwardRef<HTMLDivElement, SubTriggerProps>(
+  ({ className, icon, children, ...props }, ref) => {
+    const { isCoarsePointer } = useResponsiveMode();
+
+    return (
+      <DropdownMenuPrimitive.SubTrigger
+        ref={ref}
+        className={menuItemClassName({ className, isCoarsePointer })}
+        {...props}
+      >
+        {icon ? (
+          <span className="grid h-[18px] w-[18px] shrink-0 place-items-center text-content-muted">{icon}</span>
+        ) : null}
+        <span className="min-w-0 flex-1 truncate">{children}</span>
+        <AppIcon
+          icon="chevron-right"
+          className="h-3.5 w-3.5 shrink-0 text-content-muted transition-colors duration-[var(--menu-item-dur)] group-data-[highlighted]:text-content-primary"
+          aria-hidden="true"
+        />
+      </DropdownMenuPrimitive.SubTrigger>
+    );
+  },
+);
+DropdownMenuSubTrigger.displayName = "DropdownMenuSubTrigger";
+
+interface SubContentProps extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent> {
+  className?: string;
+}
+
+export const DropdownMenuSubContent = forwardRef<HTMLDivElement, SubContentProps>(
+  ({ className, sideOffset = 12, alignOffset = -4, collisionPadding = 8, children, ...props }, ref) => (
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.SubContent
+        ref={ref}
+        sideOffset={sideOffset}
+        alignOffset={alignOffset}
+        collisionPadding={collisionPadding}
+        className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
+        {...props}
+      >
+        {children}
+      </DropdownMenuPrimitive.SubContent>
+    </DropdownMenuPrimitive.Portal>
+  ),
+);
+DropdownMenuSubContent.displayName = "DropdownMenuSubContent";
+
 interface ItemProps extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> {
   icon?: ReactNode;
   destructive?: boolean;
   shortcut?: string;
+  trailing?: ReactNode;
 }
 
 export const DropdownMenuItem = forwardRef<HTMLDivElement, ItemProps>(
-  ({ className, icon, destructive, shortcut, children, ...props }, ref) => {
+  ({ className, icon, destructive, shortcut, trailing, children, ...props }, ref) => {
     const { isCoarsePointer } = useResponsiveMode();
 
     return (
@@ -50,7 +103,7 @@ export const DropdownMenuItem = forwardRef<HTMLDivElement, ItemProps>(
         className={menuItemClassName({ className, destructive, isCoarsePointer })}
         {...props}
       >
-        <MenuItemContent icon={icon} destructive={destructive} shortcut={shortcut}>
+        <MenuItemContent icon={icon} destructive={destructive} shortcut={shortcut} trailing={trailing}>
           {children}
         </MenuItemContent>
       </DropdownMenuPrimitive.Item>
@@ -126,7 +179,7 @@ export const DropdownMenuCheckboxItem = forwardRef<
     >
       <span className="grid h-[18px] w-[18px] shrink-0 place-items-center">
         <DropdownMenuPrimitive.ItemIndicator forceMount asChild>
-          <Check className="menu-check h-4 w-4 text-accent-content" />
+          <AppIcon icon="check" size={16} className="menu-check text-accent-content" aria-hidden="true" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       <span className="min-w-0 flex-1 truncate">{children}</span>

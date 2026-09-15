@@ -1,7 +1,7 @@
-import { Check, ChevronDown } from "lucide-react";
 import { type ReactNode } from "react";
 import { cn } from "../../lib/util";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./DropdownMenu";
+import { AppIcon } from "./AppIcon";
 
 export interface MenuSelectOption {
   value: string;
@@ -82,7 +82,7 @@ export function MenuSelect({
               {display ?? placeholder}
             </span>
           </span>
-          {trailing ?? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-content-muted" />}
+          {trailing ?? <AppIcon icon="chevron-down" size={14} className="text-content-muted" aria-hidden="true" />}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -96,7 +96,7 @@ export function MenuSelect({
               disabled={option.disabled}
               icon={
                 <span className="grid h-3.5 w-3.5 place-items-center" aria-hidden="true">
-                  {option.value === value ? <Check className="h-3.5 w-3.5" /> : null}
+                  {option.value === value ? <AppIcon icon="check" size={14} aria-hidden="true" /> : null}
                 </span>
               }
               onSelect={() => onChange(option.value)}

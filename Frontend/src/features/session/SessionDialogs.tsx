@@ -1,7 +1,6 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { CircleAlert } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Dialog, DialogActionButton, DialogActions, DialogContent } from "../../shared/ui";
+import { AppIcon, Dialog, DialogActionButton, DialogActions, DialogContent } from "../../shared/ui";
 import type { ConfirmationIntent } from "./types";
 
 export function RenameDialog({
@@ -86,7 +85,7 @@ export function ConfirmationDialog({
       >
         <div className="rounded-lg border border-ink-200/70 bg-paper-100/70 p-3">
           <div className="flex gap-2.5">
-            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-brick-500" />
+            <AppIcon icon="alert" className="mt-0.5 h-4 w-4 shrink-0 text-brick-500" />
             <div className="space-y-1.5">
               {intent?.details.map((detail) => (
                 <p key={detail} className="text-[12.5px] leading-5 text-ink-600">

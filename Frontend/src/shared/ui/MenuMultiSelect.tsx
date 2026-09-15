@@ -1,8 +1,8 @@
-import { ChevronDown } from "lucide-react";
 import { type ReactNode } from "react";
 import { cn } from "../../lib/util";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "./DropdownMenu";
 import type { MenuSelectOption } from "./MenuSelect";
+import { AppIcon } from "./AppIcon";
 
 export interface MenuMultiSelectProps {
   values: readonly string[];
@@ -49,7 +49,7 @@ export function MenuMultiSelect({
           )}
         >
           <span className={cn("min-w-0 flex-1 truncate", !display && "text-ink-350")}>{display || placeholder}</span>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-350" />
+          <AppIcon icon="chevron-down" size={14} className="text-ink-350" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="scrollbar-thin max-h-[320px] min-w-[240px] overflow-y-auto">

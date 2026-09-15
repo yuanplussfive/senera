@@ -1,7 +1,6 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { X } from "lucide-react";
 import type { WebSettingsController } from "../../app/useWebSettingsController";
-import { Dialog, DialogContent, IconButton } from "../../shared/ui";
+import { AppIcon, Dialog, DialogContent, IconButton } from "../../shared/ui";
 import { DiscardDraftDialog } from "./DiscardDraftDialog";
 import { SettingsWorkbench, type SettingsWorkbenchProps } from "./SettingsWorkbench";
 
@@ -58,7 +57,7 @@ export function SettingsOverlay({
                   tone="muted"
                   onClick={controller.requestClose}
                 >
-                  <X className="h-4 w-4" />
+                  <AppIcon icon="close" size={16} aria-hidden="true" />
                 </IconButton>
               }
             />

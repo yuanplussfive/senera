@@ -12,6 +12,7 @@ export const dialogPresenceExitMs = 180;
 
 export const motionSprings = {
   snappy: { type: "spring", stiffness: 520, damping: 42 } satisfies Transition,
+  fluidHover: { type: "spring", duration: 0.08, bounce: 0 } satisfies Transition,
   soft: { type: "spring", stiffness: 360, damping: 34 } satisfies Transition,
   drawer: { type: "spring", stiffness: 420, damping: 40, mass: 1 } satisfies Transition,
   // Brand motion: a quick settle with almost no wobble. Used for feedback

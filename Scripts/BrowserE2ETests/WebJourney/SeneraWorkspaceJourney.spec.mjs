@@ -89,9 +89,19 @@ test.describe("workspace resilience and error boundary", () => {
   test("opens the workflow dock and collapses it back via the collapse button", async ({ page }) => {
     await page.goto(harness.httpOrigin);
     await expect(workspaceComposer(page)).toBeVisible();
+    await expect(page.locator("[data-desktop-window-controls]")).toHaveCount(0);
 
-    await page.locator('[data-workflow-dock-tool="execution"]').click();
-    const dock = page.locator('[data-workflow-dock][data-open="true"]');
+    const capsule = page.getByTestId("workflow-dock-capsule");
+    await expect(capsule).toBeVisible();
+    const geometry = await readWorkspaceRailGeometry(page);
+    expect(geometry.chatHeaderBottom).not.toBeNull();
+    expect(geometry.workflowCapsuleTop).not.toBeNull();
+    expect(geometry.workflowCapsuleTop).toBeGreaterThanOrEqual(geometry.chatHeaderBottom);
+    if (geometry.eventRailRight !== null) {
+      expect(geometry.eventRailRight).toBeLessThanOrEqual(geometry.workflowCapsuleLeft ?? Number.POSITIVE_INFINITY);
+    }
+    await capsule.locator('[data-workflow-dock-tool="execution"]').click();
+    const dock = page.locator('[data-testid="workflow-dock"][data-open="true"]');
     await expect(dock).toBeVisible();
 
     const collapseButton = dock.locator("[data-workflow-dock-collapse]");
@@ -99,6 +109,24 @@ test.describe("workspace resilience and error boundary", () => {
     await collapseButton.click();
 
     await expect(dock).toHaveCount(0);
+  });
+
+  test("opens the workflow drawer from the header trigger on a narrow web viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(harness.httpOrigin);
+    await expect(workspaceComposer(page)).toBeVisible();
+    await expect(page.locator("[data-desktop-window-controls]")).toHaveCount(0);
+    await expect(page.locator("[data-workflow-dock-capsule]")).toHaveCount(0);
+
+    const trigger = page.locator('[data-workflow-dock-trigger="header"]').getByRole("button", {
+      name: "展开执行面板",
+    });
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+
+    const drawerDock = page.locator('[data-testid="workflow-dock"][data-workflow-dock-layout="drawer"]');
+    await expect(drawerDock).toBeVisible();
+    await expect(drawerDock.getByRole("tab", { name: "执行" })).toBeVisible();
   });
 
   test("keeps keyboard focus when toggling the profile menu open and closed @smoke", async ({ page }) => {
@@ -112,9 +140,9 @@ test.describe("workspace resilience and error boundary", () => {
     await trigger.press("Enter");
     const menu = page.getByRole("menu");
     await expect(menu).toBeVisible();
-    const editProfile = menu.getByRole("menuitem", { name: "编辑资料" });
+    const userSettings = menu.getByRole("menuitem", { name: "用户设置" });
     await expectPortaledOutsideSessionSidebar(menu);
-    await expect(editProfile).toBeFocused();
+    await expect(userSettings).toBeFocused();
 
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
@@ -133,4 +161,24 @@ async function openProfileMenu(page) {
 
 function workspaceComposer(page) {
   return page.getByLabel("输入消息");
+}
+
+async function readWorkspaceRailGeometry(page) {
+  return page.evaluate(() => {
+    const readRect = (selector) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom };
+    };
+    const header = readRect('[data-testid="chat-header"]');
+    const capsule = readRect('[data-testid="workflow-dock-capsule"]');
+    const eventRail = readRect('[data-testid="chat-event-rail"]');
+    return {
+      chatHeaderBottom: header?.bottom ?? null,
+      workflowCapsuleTop: capsule?.top ?? null,
+      workflowCapsuleLeft: capsule?.left ?? null,
+      eventRailRight: eventRail?.right ?? null,
+    };
+  });
 }

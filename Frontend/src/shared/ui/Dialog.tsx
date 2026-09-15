@@ -1,11 +1,11 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
 import { forwardRef, useRef, type CSSProperties, type ReactNode } from "react";
 import type { Transition, VariantLabels, Variants } from "framer-motion";
 import { cn } from "../../lib/util";
 import { dialogPresenceExitMs, MotionDialogContent, MotionDialogOverlay, type DialogMotionPreset } from "../motion";
 import { Button, type ButtonProps } from "./Button";
+import { AppIcon } from "./AppIcon";
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
@@ -151,7 +151,7 @@ const DialogContentFrame = forwardRef<
                     )}
                     aria-label={frontendMessage("ui.close")}
                   >
-                    <X className="h-[18px] w-[18px]" />
+                    <AppIcon icon="close" size={18} aria-hidden="true" />
                   </button>
                 </DialogClose>
               ) : null}

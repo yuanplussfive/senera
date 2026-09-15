@@ -1,10 +1,9 @@
-import type { MutableRefObject, ReactNode, Ref } from "react";
+import { useCallback, useRef, type MutableRefObject, type ReactNode, type Ref } from "react";
 import { motion } from "framer-motion";
-import { Menu, Search, X } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { motionTimings, useMotionLevel } from "../../shared/motion";
-import { IconButton, LogoLockup, LogoMark, ScrollArea, Sheet, SheetContent } from "../../shared/ui";
+import { FluidHoverHighlight, motionTimings, useFluidHover, useMotionLevel } from "../../shared/motion";
+import { AppIcon, IconButton, LogoLockup, LogoMark, ScrollArea, Sheet, SheetContent } from "../../shared/ui";
 import { DiscardDraftDialog } from "./DiscardDraftDialog";
 import type { groupSettingsSectionResults } from "./settingsPresentation";
 import type { SettingsSectionDefinition, SettingsSectionId } from "./types";
@@ -44,7 +43,7 @@ export function SettingsWorkbenchLayout({
     >
       {layout === "compact" ? (
         <header
-          className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line-subtle bg-surface-panel px-3"
+          className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-2 border-b border-line-subtle bg-surface-panel px-3"
           data-window-drag-region
           data-window-controls-inset
         >
@@ -55,7 +54,7 @@ export function SettingsWorkbenchLayout({
             tone="muted"
             onClick={() => onNavigationOpenChange(true)}
           >
-            <Menu className="h-4 w-4" />
+            <AppIcon icon="menu" size={16} aria-hidden="true" />
           </IconButton>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[13px] font-semibold text-content-strong">{activeSection.label}</div>
@@ -101,7 +100,7 @@ export function SettingsWorkbenchLayout({
           focusContentOnOpen
         >
           <div className="flex h-full min-h-0 flex-col bg-surface-canvas">
-            <div className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line-subtle px-4">
+            <div className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-2 border-b border-line-subtle px-4">
               <LogoMark size={18} />
               <div className="min-w-0 flex-1 text-[14px] font-semibold text-content-strong">
                 {frontendMessage("settings.header.title")}
@@ -113,7 +112,7 @@ export function SettingsWorkbenchLayout({
                 tone="muted"
                 onClick={() => onNavigationOpenChange(false)}
               >
-                <X className="h-4 w-4" />
+                <AppIcon icon="close" size={16} aria-hidden="true" />
               </IconButton>
             </div>
             {navigation}
@@ -142,11 +141,20 @@ export function SettingsNavigation({
 }): JSX.Element {
   const { reduceMotion, disableMotion } = useMotionLevel();
   const animateSelection = !reduceMotion && !disableMotion;
+  const navigationListRef = useRef<HTMLElement>(null);
+  const navigationHover = useFluidHover(navigationListRef, { axis: "y", gapClick: false });
+  // The selected row owns its own surface through the layoutId indicator;
+  // letting the hover layer paint underneath it doubles the wash and puts two
+  // animations on the same pixels.
+  const selectedNavigationIndex = groupedResults
+    .flatMap(({ results }) => results)
+    .findIndex(({ section }) => section.id === activeSectionId);
+  let navigationIndex = 0;
   return (
     <>
       <div className="shrink-0 px-3 pb-2.5 pt-3">
         <label className="flex h-8 items-center gap-2 rounded-md border border-transparent bg-surface-hover px-2.5 text-content-muted transition-[background-color,border-color,box-shadow] focus-within:border-accent-border focus-within:bg-surface-panel focus-within:ring-2 focus-within:ring-accent-focus">
-          <Search className="h-3.5 w-3.5 shrink-0" />
+          <AppIcon icon="search" size={14} aria-hidden="true" />
           <input
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
@@ -161,30 +169,46 @@ export function SettingsNavigation({
               onClick={() => onSearchChange("")}
               className="grid h-5 w-5 shrink-0 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary"
             >
-              <X className="h-3.5 w-3.5" />
+              <AppIcon icon="close" size={14} aria-hidden="true" />
             </button>
           ) : null}
         </label>
       </div>
       <ScrollArea className="min-h-0 flex-1" viewportClassName="px-2 pb-4 pt-1">
-        <nav className="space-y-4" aria-label={frontendMessage("settings.nav.sectionsLabel")}>
+        <nav
+          ref={navigationListRef}
+          className="relative space-y-4"
+          aria-label={frontendMessage("settings.nav.sectionsLabel")}
+          {...navigationHover.handlers}
+        >
+          <FluidHoverHighlight
+            hover={navigationHover}
+            hidden={disableMotion || navigationHover.activeIndex === selectedNavigationIndex}
+            className="rounded-md"
+          />
           {groupedResults.map(({ group, results }) => (
             <div key={group.id}>
               <div className="px-2.5 pb-1.5 text-[10px] font-medium tracking-[0.06em] text-content-muted">
                 {group.label}
               </div>
               <div className="space-y-0.5">
-                {results.map(({ section, details }) => (
-                  <SettingsNavItem
-                    key={section.id}
-                    section={section}
-                    active={section.id === activeSectionId}
-                    searchDetails={details}
-                    buttonRef={section.id === activeSectionId ? activeNavItemRef : undefined}
-                    animateSelection={animateSelection}
-                    onSelect={() => onSelect(section.id)}
-                  />
-                ))}
+                {results.map(({ section, details }) => {
+                  const index = navigationIndex;
+                  navigationIndex += 1;
+                  return (
+                    <SettingsNavItem
+                      key={section.id}
+                      itemRef={navigationHover.getItemRef(index)}
+                      fluidHoverEnabled={!disableMotion}
+                      section={section}
+                      active={section.id === activeSectionId}
+                      searchDetails={details}
+                      buttonRef={section.id === activeSectionId ? activeNavItemRef : undefined}
+                      animateSelection={animateSelection}
+                      onSelect={() => onSelect(section.id)}
+                    />
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -200,6 +224,8 @@ export function SettingsNavigation({
 }
 
 function SettingsNavItem({
+  itemRef,
+  fluidHoverEnabled,
   section,
   active,
   searchDetails,
@@ -207,6 +233,8 @@ function SettingsNavItem({
   animateSelection,
   onSelect,
 }: {
+  itemRef: (element: HTMLElement | null) => void;
+  fluidHoverEnabled: boolean;
   section: SettingsSectionDefinition;
   active: boolean;
   searchDetails: readonly { label: string; value: string }[];
@@ -214,16 +242,30 @@ function SettingsNavItem({
   animateSelection: boolean;
   onSelect: () => void;
 }): JSX.Element {
-  const Icon = section.icon;
+  const setItemRef = useCallback(
+    (node: HTMLButtonElement | null): void => {
+      itemRef(node);
+      if (!buttonRef) return;
+      if (typeof buttonRef === "function") buttonRef(node);
+      else buttonRef.current = node;
+    },
+    [buttonRef, itemRef],
+  );
+
   return (
     <button
-      ref={buttonRef}
+      ref={setItemRef}
       type="button"
       aria-current={active ? "page" : undefined}
       onClick={onSelect}
       className={cn(
         "relative grid min-h-9 w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 rounded-md px-2.5 py-2 text-left text-[12.5px] transition-colors",
-        active ? "text-content-primary" : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
+        active
+          ? "text-content-primary"
+          : cn(
+              "text-content-secondary hover:text-content-primary",
+              fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
+            ),
       )}
     >
       {active ? (
@@ -235,7 +277,12 @@ function SettingsNavItem({
           data-settings-navigation-indicator
         />
       ) : null}
-      <Icon className={cn("relative z-[1] h-4 w-4 shrink-0", active ? "text-accent-content" : "text-content-muted")} />
+      <AppIcon
+        icon={section.icon}
+        size={16}
+        className={cn("relative z-[1]", active ? "text-accent-content" : "text-content-muted")}
+        aria-hidden="true"
+      />
       <span className="relative z-[1] min-w-0">
         <span className="block truncate leading-5">{section.label}</span>
         {searchDetails.map((detail) => (
@@ -252,7 +299,6 @@ function SettingsNavItem({
 }
 
 function SettingsSectionHeader({ section }: { section: SettingsSectionDefinition }): JSX.Element {
-  const Icon = section.icon;
   return (
     <header
       className="shrink-0 border-b border-line-subtle bg-surface-canvas px-5 py-4 sm:px-8 sm:py-5"
@@ -262,7 +308,7 @@ function SettingsSectionHeader({ section }: { section: SettingsSectionDefinition
       <div className="flex min-w-0 items-start gap-3">
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
-            <Icon className="h-4 w-4 shrink-0 text-accent-content" />
+            <AppIcon icon={section.icon} size={16} className="text-accent-content" aria-hidden="true" />
             <h2 className="truncate text-[18px] font-semibold leading-6 tracking-[-0.01em] text-content-strong">
               {section.label}
             </h2>

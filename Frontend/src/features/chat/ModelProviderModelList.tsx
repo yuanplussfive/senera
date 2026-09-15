@@ -4,14 +4,21 @@ import AdjustmentsHorizontalIcon from "@heroicons/react/24/outline/AdjustmentsHo
 import { MoreHorizontal, Plus, RefreshCw, Search, Star, Tags, Trash2, X } from "lucide-react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { MotionDisclosure, MotionIconSwap } from "../../shared/motion";
+import {
+  FluidHoverHighlight,
+  MotionDisclosure,
+  MotionIconSwap,
+  useFluidHover,
+  useMotionLevel,
+} from "../../shared/motion";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  RefreshOrbit,
+  Button,
+  IconButton,
   ScrollArea,
   Spinner,
   Tooltip,
@@ -173,15 +180,17 @@ export function ProviderModelList({
             </div>
             <div className="flex items-center gap-1.5">
               {showFetchAction ? (
-                <button
-                  type="button"
-                  disabled={disabled || loading || !enabled || !canFetchModels || !selectedProvider?.Id}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[11.5px] font-medium text-ink-650 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-45"
+                <Button
+                  variant="outline"
+                  size="sm"
+                  loading={loading}
+                  disabled={disabled || !enabled || !canFetchModels || !selectedProvider?.Id}
+                  className="h-8 rounded-md border-ink-200 bg-paper-50 px-2.5 text-[11.5px] text-ink-650 shadow-none hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover"
                   onClick={() => onFetch(true)}
                 >
-                  {loading ? <RefreshOrbit size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  <RefreshCw className="h-3.5 w-3.5" />
                   {frontendMessage("config.model.fetchList")}
-                </button>
+                </Button>
               ) : null}
               {onAddManualModel ? (
                 <Tooltip content={frontendMessage("config.model.customModel")} side="top">
@@ -235,17 +244,17 @@ export function ProviderModelList({
                 </Tooltip>
               ) : null}
               {showFetchAction ? (
-                <Tooltip content={frontendMessage("config.model.fetchList")} side="top">
-                  <button
-                    type="button"
-                    disabled={disabled || loading || !enabled || !canFetchModels || !selectedProvider?.Id}
-                    className={iconButtonClassName}
-                    onClick={() => onFetch(true)}
-                    aria-label={frontendMessage("config.model.fetchList")}
-                  >
-                    {loading ? <RefreshOrbit size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                  </button>
-                </Tooltip>
+                <IconButton
+                  label={frontendMessage("config.model.fetchList")}
+                  tooltip={frontendMessage("config.model.fetchList")}
+                  tooltipSide="top"
+                  loading={loading}
+                  disabled={disabled || !enabled || !canFetchModels || !selectedProvider?.Id}
+                  className={iconButtonClassName}
+                  onClick={() => onFetch(true)}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </IconButton>
               ) : null}
             </div>
           }
@@ -308,6 +317,9 @@ function ProviderModelRows({
       new Map(models.filter((model) => model.ProviderId === selectedProviderId).map((model) => [model.Model, model])),
     [models, selectedProviderId],
   );
+  const { disableMotion } = useMotionLevel();
+  const modelListRef = useRef<HTMLDivElement>(null);
+  const modelHover = useFluidHover(modelListRef, { axis: "y", gapClick: false });
 
   if (!selectedProvider) {
     return <EmptyList text={frontendMessage("config.model.addProviderFirst")} />;
@@ -330,8 +342,10 @@ function ProviderModelRows({
     );
   }
 
+  let rowIndex = 0;
   return (
-    <div>
+    <div ref={modelListRef} className="relative" {...modelHover.handlers}>
+      <FluidHoverHighlight hover={modelHover} hidden={disableMotion} surfaceClassName="bg-paper-100/80" />
       {groups.map((group) => (
         <section key={group.id} className={cn("border-b border-ink-200/70 last:border-b-0")}>
           <div
@@ -348,21 +362,27 @@ function ProviderModelRows({
             <span className="tabular-nums text-[10.5px] text-ink-400">{group.rows.length}</span>
           </div>
           <div className="divide-y divide-ink-200/70">
-            {group.rows.map((model) => (
-              <ProviderModelRow
-                key={model.id}
-                model={model}
-                providerId={selectedProvider.Id}
-                configured={configuredByModel.get(model.id)}
-                defaultModelId={defaultModelId}
-                pendingKind={pendingModelIds.get(modelConfigId(selectedProviderId, model.id))}
-                modelTemplate={modelTemplate}
-                disabled={disabled}
-                onConfigureModel={onConfigureModel}
-                onSetDefaultModel={onSetDefaultModel}
-                onRemoveModel={onRemoveModel}
-              />
-            ))}
+            {group.rows.map((model) => {
+              const index = rowIndex;
+              rowIndex += 1;
+              return (
+                <ProviderModelRow
+                  key={model.id}
+                  itemRef={modelHover.getItemRef(index)}
+                  fluidHoverEnabled={!disableMotion}
+                  model={model}
+                  providerId={selectedProvider.Id}
+                  configured={configuredByModel.get(model.id)}
+                  defaultModelId={defaultModelId}
+                  pendingKind={pendingModelIds.get(modelConfigId(selectedProviderId, model.id))}
+                  modelTemplate={modelTemplate}
+                  disabled={disabled}
+                  onConfigureModel={onConfigureModel}
+                  onSetDefaultModel={onSetDefaultModel}
+                  onRemoveModel={onRemoveModel}
+                />
+              );
+            })}
           </div>
         </section>
       ))}
@@ -371,6 +391,8 @@ function ProviderModelRows({
 }
 
 function ProviderModelRow({
+  itemRef,
+  fluidHoverEnabled,
   model,
   providerId,
   configured,
@@ -382,6 +404,8 @@ function ProviderModelRow({
   onSetDefaultModel,
   onRemoveModel,
 }: {
+  itemRef: (element: HTMLElement | null) => void;
+  fluidHoverEnabled: boolean;
   model: ProviderModelInfo;
   providerId: string;
   configured?: ModelProviderDraft;
@@ -400,7 +424,13 @@ function ProviderModelRow({
     : defaultModelCapabilities(modelTemplate, model.id, providerId, model.modelsDev);
 
   return (
-    <div className="group/model grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 transition hover:bg-paper-100/80 [content-visibility:auto] [contain-intrinsic-size:52px]">
+    <div
+      ref={itemRef}
+      className={cn(
+        "group/model relative z-10 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 transition [content-visibility:auto] [contain-intrinsic-size:52px]",
+        fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-paper-100/80",
+      )}
+    >
       <ModelProviderIcon
         icon={
           configured?.Icon ??
@@ -520,16 +550,29 @@ function ModelGroupSummary({
   total: number;
   onSelectGroup: (groupId: string | null) => void;
 }): JSX.Element | null {
+  const { disableMotion } = useMotionLevel();
+  const groupListRef = useRef<HTMLDivElement>(null);
+  const groupHover = useFluidHover(groupListRef, { axis: "x", gapClick: false });
   if (groups.length === 0) {
     return null;
   }
   return (
     <div className="border-b border-ink-200/70 bg-paper-50 px-2.5 py-2">
-      <div className="flex min-w-0 flex-wrap gap-1">
+      <div ref={groupListRef} className="relative flex min-w-0 flex-wrap gap-1" {...groupHover.handlers}>
+        <FluidHoverHighlight
+          hover={groupHover}
+          hidden={disableMotion}
+          surfaceClassName="bg-ink-900/[0.035]"
+          className="rounded-md"
+        />
         <Tooltip content={frontendMessage("config.model.allModelsTitle", { count: total })} side="top">
           <button
             type="button"
-            className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-accent-border px-1.5 text-[11px] text-ink-800 transition-colors duration-150 hover:text-accent-content-hover"
+            ref={groupHover.getItemRef(0)}
+            className={cn(
+              "relative z-10 inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-accent-border px-1.5 text-[11px] text-ink-800 transition-colors duration-150 hover:text-accent-content-hover",
+              !disableMotion && "hover:bg-transparent",
+            )}
             onClick={() => onSelectGroup(null)}
           >
             <Tags className="h-3.5 w-3.5" />
@@ -537,11 +580,15 @@ function ModelGroupSummary({
             <span className="tabular-nums text-[10px] text-ink-400">{total}</span>
           </button>
         </Tooltip>
-        {groups.map((group) => (
+        {groups.map((group, index) => (
           <Tooltip key={group.id} content={`${group.label}: ${group.rows.length}`} side="top">
             <button
               type="button"
-              className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-transparent px-1.5 text-[11px] text-ink-650 transition-colors duration-150 hover:border-ink-350 hover:text-ink-850"
+              ref={groupHover.getItemRef(index + 1)}
+              className={cn(
+                "relative z-10 inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-transparent px-1.5 text-[11px] text-ink-650 transition-colors duration-150 hover:border-ink-350 hover:text-ink-850",
+                !disableMotion && "hover:bg-transparent",
+              )}
               onClick={() => onSelectGroup(group.id)}
             >
               <ModelProviderIcon icon={group.icon} size={14} className="rounded" />

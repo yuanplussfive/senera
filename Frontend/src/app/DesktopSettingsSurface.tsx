@@ -7,6 +7,7 @@ import { useSettingsRuntime } from "./useSettingsRuntime";
 import { SettingsWorkbench } from "../features/settings";
 import { DiscardDraftDialog } from "../features/settings/DiscardDraftDialog";
 import type { SettingsSectionId } from "../features/settings/settingsSectionContract";
+import { SettingsSurfaceLoading } from "./SurfaceLoading";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { AppMotionProvider } from "../shared/motion/MotionProvider";
 import { AppAppearanceProvider } from "../shared/theme/useAppearance";
@@ -56,6 +57,7 @@ export function DesktopSettingsSurface({
     currentVersion: __SENERA_APP_VERSION__,
     surface: "desktop",
   });
+  const settingsReady = Boolean(runtime.systemConfig.configSnapshot);
 
   useEffect(() => {
     if (status !== "open") return;
@@ -82,27 +84,31 @@ export function DesktopSettingsSurface({
     <AppMotionProvider level={motionLevel}>
       <AppAppearanceProvider motionLevel={motionLevel}>
         <TooltipProvider delayDuration={300}>
-          <SettingsWorkbench
-            section={section}
-            onSectionChange={changeSection}
-            onPendingChangesChange={setPendingChanges}
-            environment={{
-              appVersion: __SENERA_APP_VERSION__,
-              frontendVersion: __SENERA_FRONTEND_VERSION__,
-              mode: import.meta.env.MODE,
-              surface: "desktop",
-              runtimeUpdate,
-            }}
-            values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
-            motionLevel={motionLevel}
-            onValueChange={(id, value) => {
-              if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
-              if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
-            }}
-            onMotionLevelChange={setMotionLevel}
-            systemConfig={runtime.systemConfig}
-            workspace={runtime.workspace}
-          />
+          {settingsReady ? (
+            <SettingsWorkbench
+              section={section}
+              onSectionChange={changeSection}
+              onPendingChangesChange={setPendingChanges}
+              environment={{
+                appVersion: __SENERA_APP_VERSION__,
+                frontendVersion: __SENERA_FRONTEND_VERSION__,
+                mode: import.meta.env.MODE,
+                surface: "desktop",
+                runtimeUpdate,
+              }}
+              values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
+              motionLevel={motionLevel}
+              onValueChange={(id, value) => {
+                if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
+                if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
+              }}
+              onMotionLevelChange={setMotionLevel}
+              systemConfig={runtime.systemConfig}
+              workspace={runtime.workspace}
+            />
+          ) : (
+            <SettingsSurfaceLoading presentation="desktop" />
+          )}
           <DiscardDraftDialog
             open={closeConfirmationOpen}
             title={frontendMessage("settings.discard.title")}

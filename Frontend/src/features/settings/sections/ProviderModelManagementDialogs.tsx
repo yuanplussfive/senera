@@ -2,6 +2,7 @@ import { Check, Plus } from "lucide-react";
 import { useRef } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { cn } from "../../../lib/util";
+import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../../shared/motion";
 import {
   Dialog,
   DialogActionButton,
@@ -182,6 +183,10 @@ function CatalogModelDialogContent({
     configuredModels.filter((model) => model.ProviderId === providerId).map((model) => model.Model),
   );
   const groupRefs = useRef(new Map<string, HTMLElement>());
+  const { disableMotion } = useMotionLevel();
+  const catalogListRef = useRef<HTMLDivElement>(null);
+  const catalogHover = useFluidHover(catalogListRef, { axis: "y", gapClick: false });
+  let rowIndex = 0;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 px-8 pb-4 pt-1">
@@ -232,7 +237,13 @@ function CatalogModelDialogContent({
             onRetry={onRetryFetch}
           />
         ) : rows.length > 0 ? (
-          <div className="px-5 pb-6 pt-4">
+          <div ref={catalogListRef} className="relative px-5 pb-6 pt-4" {...catalogHover.handlers}>
+            <FluidHoverHighlight
+              hover={catalogHover}
+              hidden={disableMotion}
+              surfaceClassName="bg-ink-900/[0.03]"
+              className="rounded-lg"
+            />
             {groups.map((group) => (
               <section key={group.id}>
                 <div
@@ -251,16 +262,22 @@ function CatalogModelDialogContent({
                   <span className="tabular-nums text-[10.5px] text-ink-400">{group.rows.length}</span>
                 </div>
                 <div className="space-y-px pb-4 pt-1">
-                  {group.rows.map((row) => (
-                    <CatalogModelRow
-                      key={row.id}
-                      row={row}
-                      configured={configuredIds.has(row.id)}
-                      pending={pendingModelIds.has(modelConfigId(providerId, row.id))}
-                      disabled={disabled}
-                      onAddModel={onAddModel}
-                    />
-                  ))}
+                  {group.rows.map((row) => {
+                    const index = rowIndex;
+                    rowIndex += 1;
+                    return (
+                      <CatalogModelRow
+                        key={row.id}
+                        itemRef={catalogHover.getItemRef(index)}
+                        fluidHoverEnabled={!disableMotion}
+                        row={row}
+                        configured={configuredIds.has(row.id)}
+                        pending={pendingModelIds.has(modelConfigId(providerId, row.id))}
+                        disabled={disabled}
+                        onAddModel={onAddModel}
+                      />
+                    );
+                  })}
                 </div>
               </section>
             ))}
@@ -278,12 +295,16 @@ function CatalogModelDialogContent({
 }
 
 function CatalogModelRow({
+  itemRef,
+  fluidHoverEnabled,
   row,
   configured,
   pending,
   disabled,
   onAddModel,
 }: {
+  itemRef: (element: HTMLElement | null) => void;
+  fluidHoverEnabled: boolean;
   row: ProviderModelInfo;
   configured: boolean;
   pending: boolean;
@@ -292,9 +313,12 @@ function CatalogModelRow({
 }): JSX.Element {
   return (
     <div
+      ref={itemRef}
       className={cn(
-        "grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-3 py-2",
-        "transition-colors duration-150 hover:bg-ink-900/[0.03]",
+        "relative z-10 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-3 py-2",
+        fluidHoverEnabled
+          ? "transition-colors duration-150 hover:bg-transparent"
+          : "transition-colors duration-150 hover:bg-ink-900/[0.03]",
       )}
     >
       <span className="grid h-9 w-9 shrink-0 place-items-center">

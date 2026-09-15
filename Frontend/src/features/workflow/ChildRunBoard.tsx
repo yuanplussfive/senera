@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { AlertTriangle, Check, Circle, CirclePause, Flag, GitBranch, X } from "lucide-react";
 import type { RunRecord, TimelineChildRunState, TimelineStep } from "../../store/sessionStore";
 import { cn, formatDuration, formatTime } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Spinner } from "../../shared/ui";
+import { FluidHoverHighlight, useFluidHover, useMotionLevel, type UseFluidHoverReturn } from "../../shared/motion";
 import { summarizeRun } from "./runSummary";
 import { RunSummaryStrip } from "./WorkflowRunControls";
 import { ChildRunStatusPresentation } from "./ChildRunOverview";
@@ -31,6 +32,11 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
   const selectedStep = childSteps.find((step) => step.id === selectedStepId) ?? null;
   const activeSteps = childSteps.filter((step) => ACTIVE_CHILD_RUN_STATUSES.has(step.childRun!.status));
   const settledSteps = childSteps.filter((step) => !ACTIVE_CHILD_RUN_STATUSES.has(step.childRun!.status));
+  const { disableMotion } = useMotionLevel();
+  const activeListRef = useRef<HTMLDivElement>(null);
+  const settledListRef = useRef<HTMLDivElement>(null);
+  const activeHover = useFluidHover(activeListRef, { axis: "y" });
+  const settledHover = useFluidHover(settledListRef, { axis: "y" });
   const summary = summarizeRun(run);
   const runProgress = childSteps.length > 0 ? readRunProgress(childSteps) : undefined;
 
@@ -88,10 +94,17 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
 
       <div className="scrollbar-thin min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-3">
         {activeSteps.length > 0 ? (
-          <BoardGroup label={frontendMessage("workflow.childRun.board.active")}>
+          <BoardGroup
+            label={frontendMessage("workflow.childRun.board.active")}
+            listRef={activeListRef}
+            hover={activeHover}
+            disableMotion={disableMotion}
+          >
             {activeSteps.map((step, index) => (
               <ChildRunTimelineItem
                 key={step.id}
+                itemRef={activeHover.getItemRef(index)}
+                fluidHoverEnabled={!disableMotion}
                 step={step}
                 accentIndex={index}
                 onSelect={() => setSelectedStepId(step.id)}
@@ -101,10 +114,17 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
         ) : null}
 
         {settledSteps.length > 0 ? (
-          <BoardGroup label={frontendMessage("workflow.childRun.board.settled")}>
+          <BoardGroup
+            label={frontendMessage("workflow.childRun.board.settled")}
+            listRef={settledListRef}
+            hover={settledHover}
+            disableMotion={disableMotion}
+          >
             {settledSteps.map((step, index) => (
               <ChildRunTimelineItem
                 key={step.id}
+                itemRef={settledHover.getItemRef(index)}
+                fluidHoverEnabled={!disableMotion}
                 step={step}
                 accentIndex={activeSteps.length + index}
                 onSelect={() => setSelectedStepId(step.id)}
@@ -127,14 +147,31 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
 
 export default ChildRunBoard;
 
-function BoardGroup({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+function BoardGroup({
+  label,
+  children,
+  listRef,
+  hover,
+  disableMotion,
+}: {
+  label: string;
+  children: ReactNode;
+  listRef: RefObject<HTMLDivElement | null>;
+  hover: UseFluidHoverReturn;
+  disableMotion: boolean;
+}): JSX.Element {
   return (
     <section className="space-y-1.5" aria-label={label}>
       <div className="flex items-center gap-2 px-1">
         <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-content-muted">{label}</h3>
         <span className="h-px flex-1 bg-line-subtle" aria-hidden="true" />
       </div>
-      <div className="relative space-y-1.5 pl-4 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:w-px before:bg-line-subtle">
+      <div
+        ref={listRef}
+        className="relative space-y-1.5 pl-4 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:w-px before:bg-line-subtle"
+        {...hover.handlers}
+      >
+        <FluidHoverHighlight hover={hover} hidden={disableMotion} className="rounded-md" />
         {children}
       </div>
     </section>
@@ -142,10 +179,14 @@ function BoardGroup({ label, children }: { label: string; children: ReactNode })
 }
 
 function ChildRunTimelineItem({
+  itemRef,
+  fluidHoverEnabled,
   step,
   accentIndex,
   onSelect,
 }: {
+  itemRef: (element: HTMLElement | null) => void;
+  fluidHoverEnabled: boolean;
   step: TimelineStep;
   accentIndex: number;
   onSelect: () => void;
@@ -162,9 +203,11 @@ function ChildRunTimelineItem({
   return (
     <button
       type="button"
+      ref={itemRef}
       onClick={onSelect}
       className={cn(
-        "group relative w-full border-b border-line-subtle border-l-[3px] bg-transparent px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow] hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+        "group relative z-10 w-full border-b border-line-subtle border-l-[3px] bg-transparent px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+        fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
         accent.rail,
         (childRun.status === "failed" || childRun.status === "timed_out") && "border-brick-300",
       )}
@@ -184,7 +227,7 @@ function ChildRunTimelineItem({
           className={cn(
             "h-1.5 w-1.5 rounded-full",
             accent.rail,
-            ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) && "motion-safe:animate-pulse",
+            ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) && "senera-loading-pulse",
           )}
         />
       </span>
@@ -214,7 +257,7 @@ function ChildRunTimelineItem({
               className={cn(
                 "block h-full w-full origin-left rounded-full transition-transform duration-300",
                 accent.progress,
-                totalTools === 0 && ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) && "motion-safe:animate-pulse",
+                totalTools === 0 && ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) && "senera-loading-pulse",
               )}
               style={{
                 transform:

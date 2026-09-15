@@ -3,7 +3,7 @@ import { useState } from "react";
 import { readActiveRun, useStore, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
 import type { ChatMessage, RunRecord } from "../../store/sessionStore";
 import { useChatState } from "../../store/selectors/chatSelectors";
-import { ErrorBoundary, StateView } from "../../shared/ui";
+import { ErrorBoundary } from "../../shared/ui";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { ChatComposer } from "./ChatComposer";
 import { ChatActivityDock } from "./ChatActivityDock";
@@ -63,8 +63,8 @@ export function ChatPanel({
         <>
           {shouldShowSessionCatalogLoading ? (
             <ChatContentMotion key={`catalog:${activeId ?? "none"}`} motionLevel={effectiveMotionLevel}>
-              <div className="flex min-h-0 flex-1" data-session-catalog-loading>
-                <StateView status="loading" description={frontendMessage("app.loading")} className="min-h-0 flex-1" />
+              <div className="flex min-h-0 flex-1" aria-busy="true" data-session-catalog-loading>
+                <span className="sr-only">{frontendMessage("app.loading")}</span>
               </div>
             </ChatContentMotion>
           ) : shouldShowHistoryRecovery ? (

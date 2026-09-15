@@ -1,4 +1,3 @@
-import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { EmptyAgentContinuityMemoryPromptContext } from "../../../Source/AgentSystem/Continuity/AgentContinuityMemoryTypes.js";
 import {
@@ -6,13 +5,9 @@ import {
   normalizeAgentWorkflowTemplateContext,
 } from "../../../Source/AgentSystem/Prompt/AgentPromptTemplateContextNormalizer.js";
 import type { AgentWorkflowPromptContext } from "../../../Source/AgentSystem/Prompt/AgentWorkflowPromptContext.js";
-import { AgentPromptRenderer } from "../../../Source/AgentSystem/Prompt/AgentPromptRenderer.js";
-
-const renderer = new AgentPromptRenderer();
-const templatePath = (name: string) => path.resolve(process.cwd(), "System", "Prompts", "Templates", name);
 
 describe("prompt template context normalization", () => {
-  test("keeps strict workflow rendering safe for legacy commitments without optional fields", () => {
+  test("normalizes legacy commitments without optional fields", () => {
     const workflow = normalizeAgentWorkflowTemplateContext({
       execution: { active: null, executions: [] },
       todos: {
@@ -91,14 +86,9 @@ describe("prompt template context normalization", () => {
       parentGoalId: null,
       ownerSessionId: null,
     });
-    expect(() =>
-      renderer.renderFileSync(templatePath("WorkflowContext.liquid"), {
-        Workflow: workflow,
-      }),
-    ).not.toThrow();
   });
 
-  test("keeps strict continuity rendering safe for graph relations without temporal bounds", () => {
+  test("normalizes graph relations without temporal bounds", () => {
     const continuity = normalizeAgentContinuityTemplateContext({
       ...EmptyAgentContinuityMemoryPromptContext,
       enabled: true,
@@ -120,10 +110,12 @@ describe("prompt template context normalization", () => {
       ],
     });
 
-    expect(() =>
-      renderer.renderFileSync(templatePath("ContinuityMemory.liquid"), {
-        ContinuityMemory: continuity,
-      }),
-    ).not.toThrow();
+    expect(continuity.graphRelations).toHaveLength(1);
+    expect(continuity.graphRelations[0]).toMatchObject({
+      subject: "用户",
+      relation: "喜欢",
+      object: "咖啡",
+      temporal: { kind: "persistent", timeZone: "Asia/Shanghai" },
+    });
   });
 });

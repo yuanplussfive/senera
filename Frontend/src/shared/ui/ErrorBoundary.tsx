@@ -1,9 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode, useId } from "react";
-import { AlertCircle } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Button } from "./Button";
 import { cn } from "../../lib/util";
-import { ResonanceTrace } from "./LoadingSignal";
+import { AppIcon } from "./AppIcon";
 
 export interface ErrorBoundaryProps {
   children: ReactNode;
@@ -103,9 +102,8 @@ function DefaultErrorFallback({ error, onReset, onReload, presentation }: Defaul
       >
         <span className="senera-error-boundary__pulse" aria-hidden="true" />
         <div className="flex items-start gap-3.5 sm:gap-4">
-          <div className="relative mt-0.5 flex h-8 w-11 shrink-0 items-center justify-start">
-            <ResonanceTrace size="sm" state="settled" className="opacity-80" />
-            <AlertCircle aria-hidden="true" className="absolute left-0 h-3.5 w-3.5 text-accent-content" />
+          <div className="mt-0.5 flex h-8 w-5 shrink-0 items-center justify-start">
+            <AppIcon icon="alert" size={14} className="text-brick-600" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
             <Heading

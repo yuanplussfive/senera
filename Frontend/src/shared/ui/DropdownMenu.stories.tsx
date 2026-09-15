@@ -11,8 +11,12 @@ import {
   DropdownMenuLabel,
   DropdownMenuMeta,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./DropdownMenu";
+import { AppIcon } from "./AppIcon";
 
 export const WithSelection: Story = () => {
   const [showDiagnostics, setShowDiagnostics] = useState(true);
@@ -148,6 +152,25 @@ export const ProfileReference: Story = () => (
         <DropdownMenuMeta icon={<Wifi className="h-3.5 w-3.5 text-moss-600" />} value="已连接">
           连接状态
         </DropdownMenuMeta>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  </div>
+);
+
+export const WithSubmenu: Story = () => (
+  <div className="flex min-h-[400px] items-center justify-center p-8">
+    <DropdownMenu defaultOpen>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline">账户菜单</Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger icon={<AppIcon icon="language" size={15} />}>语言</DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuItem trailing={<AppIcon icon="checkmark" size={15} />}>简体中文</DropdownMenuItem>
+            <DropdownMenuItem>English</DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
       </DropdownMenuContent>
     </DropdownMenu>
   </div>

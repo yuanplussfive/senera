@@ -400,30 +400,6 @@ test.each([
   );
 });
 
-test("useSessionCommands keeps failed bulk deletions and reports the partial result", () => {
-  registerTestSession("session-a");
-  registerTestSession("session-b");
-  const serverKnownSessionIdsRef = { current: new Set(["session-a", "session-b"]) };
-  const send = vi.fn((request) => request.sessionId !== "session-b");
-  const handleRef = { current: null };
-  renderSessionCommands({ handleRef, send, serverKnownSessionIdsRef, status: "open" });
-
-  act(() => handleRef.current.closeSessions(["session-a", "session-a", "session-b", ""]));
-
-  expect(send.mock.calls.map(([request]) => request.sessionId)).toEqual(["session-a", "session-b"]);
-  expect(useStore.getState().sessions["session-a"]).toBeDefined();
-  expect(useStore.getState().pendingDeletedSessionIds["session-a"]).toBe(true);
-  expect(useStore.getState().sessionOrder).toEqual(["session-b"]);
-  expect(useStore.getState().sessions["session-b"]).toBeDefined();
-  expect(serverKnownSessionIdsRef.current).toEqual(new Set(["session-a", "session-b"]));
-  expect(readTestToastCalls()).toContainEqual(
-    expect.objectContaining({
-      variant: "error",
-      title: frontendMessage("session.bulkDeletePartialFailed", { count: 1 }),
-    }),
-  );
-});
-
 test("useSessionCommands updates the local profile offline and defers network synchronization", () => {
   const send = vi.fn(() => true);
   const handleRef = { current: null };

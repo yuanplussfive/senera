@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import AdjustmentsHorizontalIcon from "@heroicons/react/24/outline/AdjustmentsHorizontalIcon";
 import ArrowLeftIcon from "@heroicons/react/24/outline/ArrowLeftIcon";
 import ArrowPathIcon from "@heroicons/react/24/outline/ArrowPathIcon";
@@ -8,8 +8,10 @@ import ServerStackIcon from "@heroicons/react/24/outline/ServerStackIcon";
 import UsersIcon from "@heroicons/react/24/outline/UsersIcon";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
+import { cn } from "../../../lib/util";
 import { JsonConfigSettingsView } from "../../../shared/config/JsonConfigForm";
 import { isJsonConfigObject } from "../../../shared/config/JsonConfigValue";
+import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../../shared/motion";
 import { Button, IconButton, InlineError, ScrollArea, StateView, Switch } from "../../../shared/ui";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import { projectSystemExtensionConfigurationSections } from "../systemExtensionConfigurationPresentation";
@@ -75,6 +77,13 @@ export function ChannelsSection({
   const [selectedId, setSelectedId] = useState<ChannelEntryId | null>(null);
   const [connectAfterSave, setConnectAfterSave] = useState<ChannelSectionId | null>(null);
   const [connectingId, setConnectingId] = useState<ChannelSectionId | null>(null);
+  const { disableMotion } = useMotionLevel();
+  const channelListRef = useRef<HTMLDivElement>(null);
+  const channelHover = useFluidHover(channelListRef, {
+    axis: "y",
+    gapClick: false,
+    isItemDisabled: (element) => element.querySelector("button:disabled") !== null,
+  });
 
   const connectChannel = systemConfig?.connectChannel;
   const requestConnection = useCallback(
@@ -202,41 +211,48 @@ export function ChannelsSection({
             <p className="mb-5 text-[11.5px] leading-5 text-content-muted">
               {frontendMessage("settings.channels.connectionHint")}
             </p>
-            {(["general", ...ChannelSectionIds] as ChannelEntryId[]).map((entryId) => {
-              const section = entryId === "general" ? general : sections.find((other) => other.name === entryId);
-              if (!section) return null;
-              const mark =
-                entryId === "general"
-                  ? frontendMessage("settings.channels.generalTitle")
-                  : ChannelEntryMarks[entryId as ChannelSectionId];
-              const channelValue = isJsonConfigObject(configuration[entryId]) ? configuration[entryId] : {};
-              const rowEnabled =
-                entryId === "general"
-                  ? enabled
-                  : typeof channelValue.enabled === "boolean"
-                    ? channelValue.enabled
-                    : false;
-              const status =
-                entryId === "general" ? undefined : systemConfig.channelStatuses.find((item) => item.kind === entryId);
-              return (
-                <ChannelRow
-                  key={entryId}
-                  entryId={entryId}
-                  mark={mark}
-                  description={section.description ?? ""}
-                  enabled={rowEnabled}
-                  disabled={!connected}
-                  status={status}
-                  onToggle={(next) => {
-                    if (entryId === "general") updateExtension(next, configuration, "debounced");
-                    else {
-                      updateChannel(entryId as ChannelSectionId, { ...channelValue, enabled: next }, "debounced");
-                    }
-                  }}
-                  onSelect={() => setSelectedId(entryId)}
-                />
-              );
-            })}
+            <div ref={channelListRef} className="relative" {...channelHover.handlers}>
+              <FluidHoverHighlight hover={channelHover} hidden={disableMotion} className="rounded-md" />
+              {(["general", ...ChannelSectionIds] as ChannelEntryId[]).map((entryId, index) => {
+                const section = entryId === "general" ? general : sections.find((other) => other.name === entryId);
+                if (!section) return null;
+                const mark =
+                  entryId === "general"
+                    ? frontendMessage("settings.channels.generalTitle")
+                    : ChannelEntryMarks[entryId as ChannelSectionId];
+                const channelValue = isJsonConfigObject(configuration[entryId]) ? configuration[entryId] : {};
+                const rowEnabled =
+                  entryId === "general"
+                    ? enabled
+                    : typeof channelValue.enabled === "boolean"
+                      ? channelValue.enabled
+                      : false;
+                const status =
+                  entryId === "general"
+                    ? undefined
+                    : systemConfig.channelStatuses.find((item) => item.kind === entryId);
+                return (
+                  <ChannelRow
+                    key={entryId}
+                    itemRef={channelHover.getItemRef(index)}
+                    fluidHoverEnabled={!disableMotion}
+                    entryId={entryId}
+                    mark={mark}
+                    description={section.description ?? ""}
+                    enabled={rowEnabled}
+                    disabled={!connected}
+                    status={status}
+                    onToggle={(next) => {
+                      if (entryId === "general") updateExtension(next, configuration, "debounced");
+                      else {
+                        updateChannel(entryId as ChannelSectionId, { ...channelValue, enabled: next }, "debounced");
+                      }
+                    }}
+                    onSelect={() => setSelectedId(entryId)}
+                  />
+                );
+              })}
+            </div>
           </div>
         </ScrollArea>
       </section>
@@ -371,6 +387,8 @@ function ChannelsHeader({ refreshButton }: { refreshButton: JSX.Element }): JSX.
 }
 
 function ChannelRow({
+  itemRef,
+  fluidHoverEnabled,
   entryId,
   mark,
   description,
@@ -380,6 +398,8 @@ function ChannelRow({
   onToggle,
   onSelect,
 }: {
+  itemRef: (element: HTMLElement | null) => void;
+  fluidHoverEnabled: boolean;
   entryId: ChannelEntryId;
   mark: string;
   description: string;
@@ -392,7 +412,11 @@ function ChannelRow({
   const Icon = channelEntryIcon(entryId);
   return (
     <div
-      className="flex min-h-[68px] w-full min-w-0 items-center gap-3 border-b border-line px-1 py-3 text-left transition-colors hover:bg-surface-hover"
+      ref={itemRef}
+      className={cn(
+        "relative z-10 flex min-h-[68px] w-full min-w-0 items-center gap-3 border-b border-line px-1 py-3 text-left transition-colors",
+        fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
+      )}
       data-channels-entry={entryId}
     >
       <button type="button" onClick={onSelect} className="flex w-0 min-w-0 flex-1 items-center gap-3 text-left">

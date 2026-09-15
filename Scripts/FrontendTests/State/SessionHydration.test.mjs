@@ -1,5 +1,9 @@
 import { expect, test } from "vitest";
-import { blocksSessionInput, readSessionHydrationState } from "../../../Frontend/src/store/session/sessionHydration.ts";
+import {
+  blocksSessionInput,
+  isSessionHydratedForStartup,
+  readSessionHydrationState,
+} from "../../../Frontend/src/store/session/sessionHydration.ts";
 
 test.each([
   ["catalog", { catalogSynced: false, session: null }, "catalog_loading", true],
@@ -13,6 +17,7 @@ test.each([
   const state = readSessionHydrationState(input);
   expect(state).toBe(expected);
   expect(blocksSessionInput(state)).toBe(blocked);
+  expect(isSessionHydratedForStartup(state)).toBe(expected === "ready" || expected === "history_failed");
 });
 
 function sessionWithHistory(overrides = {}) {

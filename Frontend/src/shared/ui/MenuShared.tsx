@@ -29,11 +29,13 @@ export function MenuItemContent({
   destructive,
   icon,
   shortcut,
+  trailing,
 }: {
   children: ReactNode;
   destructive?: boolean;
   icon?: ReactNode;
   shortcut?: string;
+  trailing?: ReactNode;
 }): JSX.Element {
   return (
     <>
@@ -52,6 +54,7 @@ export function MenuItemContent({
       {shortcut ? (
         <span className="ml-3 shrink-0 font-mono text-[10.5px] tracking-tight text-content-muted">{shortcut}</span>
       ) : null}
+      {trailing ? <span className="ml-3 shrink-0 text-content-muted">{trailing}</span> : null}
     </>
   );
 }

@@ -1,124 +1,57 @@
-import { Search, X } from "lucide-react";
 import { LayoutGroup } from "framer-motion";
-import { useRef, useState, type DragEvent } from "react";
-import { MenuSelect, ScrollArea, StateView } from "../../shared/ui";
-import { MotionList, MotionListItem } from "../../shared/motion";
+import { useRef } from "react";
+import { AppIcon, ScrollArea, StateView } from "../../shared/ui";
+import { FluidHoverHighlight, MotionList, MotionListItem, useFluidHover, useMotionLevel } from "../../shared/motion";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { readActiveRun, type SessionOrderPlacement, type SessionRecord } from "../../store/sessionStore";
+import { cn } from "../../lib/util";
+import { readActiveRun, type SessionRecord } from "../../store/sessionStore";
 import { EmptyState, SessionRow } from "./SessionRows";
-import type { FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
-
-type SessionChannelFilter = "all" | "console" | "qq" | "telegram" | "discord";
-
-const SessionChannelMessageKeys = {
-  all: "session.channel.all",
-  console: "session.channel.console",
-  qq: "session.channel.qq",
-  telegram: "session.channel.telegram",
-  discord: "session.channel.discord",
-} as const satisfies Record<SessionChannelFilter, FrontendMessageKey>;
 
 interface SessionPanelBodyProps {
+  compactFrame?: boolean;
   sessions: readonly SessionRecord[];
   totalSessionCount: number;
   catalogSynced: boolean;
   query: string;
   onQueryChange: (query: string) => void;
-  channelFilter: SessionChannelFilter;
-  onChannelFilterChange: (value: SessionChannelFilter) => void;
   activeSessionId: string | null;
   historyLoadingIds: Readonly<Record<string, boolean>>;
-  showInlineRowActions: boolean;
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
-  onMoveSession: (sessionId: string, targetSessionId: string, placement: SessionOrderPlacement) => void;
   onRenameSession: (session: SessionRecord, returnFocus: HTMLElement | null) => void;
   onDeleteSession: (session: SessionRecord, returnFocus: HTMLElement | null) => void;
 }
 
 export function SessionPanelBody({
+  compactFrame = false,
   sessions,
   totalSessionCount,
   catalogSynced,
   query,
   onQueryChange,
-  channelFilter,
-  onChannelFilterChange,
   activeSessionId,
   historyLoadingIds,
-  showInlineRowActions,
   onNewSession,
   onSelectSession,
-  onMoveSession,
   onRenameSession,
   onDeleteSession,
 }: SessionPanelBodyProps): JSX.Element {
-  const [draggedSessionId, setDraggedSessionId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ sessionId: string; placement: SessionOrderPlacement } | null>(null);
-  const draggedSessionIdRef = useRef<string | null>(null);
-  const dropTargetRef = useRef<{ sessionId: string; placement: SessionOrderPlacement } | null>(null);
-
-  const clearDragState = (): void => {
-    draggedSessionIdRef.current = null;
-    dropTargetRef.current = null;
-    setDraggedSessionId((current) => (current === null ? current : null));
-    setDropTarget((current) => (current === null ? current : null));
-  };
-
-  const handleDragStart = (sessionId: string, event: DragEvent<HTMLButtonElement>): void => {
-    draggedSessionIdRef.current = sessionId;
-    dropTargetRef.current = null;
-    setDraggedSessionId(sessionId);
-    setDropTarget(null);
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", sessionId);
-  };
-
-  const handleDragOver = (sessionId: string, event: DragEvent<HTMLDivElement>): void => {
-    const sourceSessionId = draggedSessionIdRef.current ?? event.dataTransfer.getData("text/plain");
-    if (!sourceSessionId || sourceSessionId === sessionId) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const placement = event.clientY <= bounds.top + bounds.height / 2 ? "before" : "after";
-    const current = dropTargetRef.current;
-    if (current?.sessionId === sessionId && current.placement === placement) return;
-    const next = { sessionId, placement } satisfies { sessionId: string; placement: SessionOrderPlacement };
-    dropTargetRef.current = next;
-    setDropTarget(next);
-  };
-
-  const handleDrop = (sessionId: string, event: DragEvent<HTMLDivElement>): void => {
-    event.preventDefault();
-    const sourceSessionId = draggedSessionIdRef.current ?? event.dataTransfer.getData("text/plain");
-    const currentTarget = dropTargetRef.current;
-    const placement = currentTarget?.sessionId === sessionId ? currentTarget.placement : "before";
-    if (sourceSessionId && sourceSessionId !== sessionId) {
-      onMoveSession(sourceSessionId, sessionId, placement);
-    }
-    clearDragState();
-  };
-
-  const handleKeyboardMove = (sessionId: string, direction: "up" | "down" | "start" | "end"): void => {
-    const currentIndex = sessions.findIndex((session) => session.sessionId === sessionId);
-    if (currentIndex < 0 || sessions.length < 2) return;
-    if (direction === "up" && currentIndex > 0) {
-      onMoveSession(sessionId, sessions[currentIndex - 1].sessionId, "before");
-    } else if (direction === "down" && currentIndex < sessions.length - 1) {
-      onMoveSession(sessionId, sessions[currentIndex + 1].sessionId, "after");
-    } else if (direction === "start" && currentIndex > 0) {
-      onMoveSession(sessionId, sessions[0].sessionId, "before");
-    } else if (direction === "end" && currentIndex < sessions.length - 1) {
-      onMoveSession(sessionId, sessions[sessions.length - 1].sessionId, "after");
-    }
-  };
+  const { disableMotion } = useMotionLevel();
+  const sessionListRef = useRef<HTMLDivElement>(null);
+  const sessionHover = useFluidHover(sessionListRef, { axis: "y" });
+  // The active row already paints an opaque selection surface; the hover layer
+  // must not run a second animation for the same rect underneath it.
+  const selectedSessionIndex = sessions.findIndex((session) => session.sessionId === activeSessionId);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-2 pb-2">
+    <div className={cn("flex min-h-0 flex-1 flex-col", compactFrame ? "px-0 pb-0" : "px-2 pb-2")}>
       <div className="mb-2 flex min-w-0 shrink-0 items-center gap-1.5">
         <label className="group relative min-w-0 flex-1">
           <span className="sr-only">{frontendMessage("session.searchPlaceholder")}</span>
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-content-muted group-focus-within:text-accent-content" />
+          <AppIcon
+            icon="search"
+            className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-content-muted group-focus-within:text-accent-content"
+          />
           <input
             type="search"
             data-selectable="true"
@@ -134,22 +67,10 @@ export function SessionPanelBody({
               className="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-content-muted transition-colors duration-150 hover:bg-surface-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus:ring-accent-focus"
               aria-label={frontendMessage("session.searchClear")}
             >
-              <X className="h-3.5 w-3.5" />
+              <AppIcon icon="close" className="h-3.5 w-3.5" />
             </button>
           ) : null}
         </label>
-        <MenuSelect
-          value={channelFilter}
-          placeholder={frontendMessage("session.channel.all")}
-          ariaLabel={frontendMessage("session.channel.filter")}
-          options={(Object.keys(SessionChannelMessageKeys) as SessionChannelFilter[]).map((value) => ({
-            value,
-            label: frontendMessage(SessionChannelMessageKeys[value]),
-          }))}
-          triggerClassName="h-8 w-[92px] shrink-0 rounded-[10px] border border-line-subtle bg-surface-raised px-2 text-[11px] shadow-none"
-          contentClassName="min-w-[150px]"
-          onChange={(value) => onChannelFilterChange(value as SessionChannelFilter)}
-        />
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
@@ -167,45 +88,44 @@ export function SessionPanelBody({
               description={frontendMessage("session.searchEmpty")}
             />
           ) : (
-            <LayoutGroup id="session-list-selection">
-              <MotionList className="flex flex-col gap-0.5 pt-1">
-                {sessions.map((session) => {
-                  const isActive = session.sessionId === activeSessionId;
-                  const activeRun = readActiveRun(session);
-                  const lastRun = session.runs[session.runs.length - 1];
-                  const isRunning = activeRun !== undefined;
-                  const hasFailed = !activeRun && lastRun?.status === "failed";
-                  const isHistoryLoading = !!historyLoadingIds[session.sessionId];
+            <div ref={sessionListRef} className="relative" data-session-list {...sessionHover.handlers}>
+              <FluidHoverHighlight
+                hover={sessionHover}
+                hidden={disableMotion || sessionHover.activeIndex === selectedSessionIndex}
+                className="rounded-[9px]"
+                data-session-fluid-hover
+              />
+              <LayoutGroup id="session-list-selection">
+                <MotionList className="flex flex-col gap-0.5 pt-1">
+                  {sessions.map((session, index) => {
+                    const isActive = session.sessionId === activeSessionId;
+                    const activeRun = readActiveRun(session);
+                    const lastRun = session.runs[session.runs.length - 1];
+                    const isRunning = activeRun !== undefined;
+                    const hasFailed = !activeRun && lastRun?.status === "failed";
+                    const isHistoryLoading = !!historyLoadingIds[session.sessionId];
 
-                  return (
-                    <MotionListItem
-                      key={session.sessionId}
-                      layout={draggedSessionId ? false : "position"}
-                      initial={false}
-                    >
-                      <SessionRow
-                        active={isActive}
-                        sessionId={session.sessionId}
-                        title={session.title}
-                        accent={isHistoryLoading || isRunning ? "running" : hasFailed ? "failed" : "idle"}
-                        onClick={() => onSelectSession(session.sessionId)}
-                        dragging={draggedSessionId === session.sessionId}
-                        dragActive={draggedSessionId !== null}
-                        dropPosition={dropTarget?.sessionId === session.sessionId ? dropTarget.placement : undefined}
-                        onDragStart={handleDragStart}
-                        onDragEnd={clearDragState}
-                        onDragOver={handleDragOver}
-                        onDrop={handleDrop}
-                        onKeyboardMove={handleKeyboardMove}
-                        showInlineActions={showInlineRowActions}
-                        onRename={(returnFocus) => onRenameSession(session, returnFocus)}
-                        onClose={(returnFocus) => onDeleteSession(session, returnFocus)}
-                      />
-                    </MotionListItem>
-                  );
-                })}
-              </MotionList>
-            </LayoutGroup>
+                    return (
+                      <MotionListItem key={session.sessionId} initial={false}>
+                        <SessionRow
+                          index={index}
+                          registerItem={sessionHover.registerItem}
+                          fluidHoverEnabled={!disableMotion}
+                          active={isActive}
+                          sessionId={session.sessionId}
+                          title={session.title}
+                          accent={isHistoryLoading || isRunning ? "running" : hasFailed ? "failed" : "idle"}
+                          onClick={() => onSelectSession(session.sessionId)}
+                          onRename={(returnFocus) => onRenameSession(session, returnFocus)}
+                          onClose={(returnFocus) => onDeleteSession(session, returnFocus)}
+                          onFocus={() => sessionHover.setActiveIndex(index)}
+                        />
+                      </MotionListItem>
+                    );
+                  })}
+                </MotionList>
+              </LayoutGroup>
+            </div>
           )}
         </div>
       </ScrollArea>

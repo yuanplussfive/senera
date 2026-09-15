@@ -1,10 +1,10 @@
 import { MoreVertical, PenLine, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import { cn } from "../../../lib/util";
-import { motionTimings, useMotionLevel } from "../../../shared/motion";
+import { FluidHoverHighlight, motionTimings, useFluidHover, useMotionLevel } from "../../../shared/motion";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,6 +48,12 @@ export function ProviderConnectionList({
   const [providerSearch, setProviderSearch] = useState("");
   const { reduceMotion, disableMotion } = useMotionLevel();
   const animateSelection = !reduceMotion && !disableMotion;
+  const providerListRef = useRef<HTMLDivElement>(null);
+  const providerHover = useFluidHover(providerListRef, {
+    axis: "y",
+    gapClick: false,
+    isItemDisabled: (element) => element.hasAttribute("disabled"),
+  });
   const providerQuery = providerSearch.trim().toLowerCase();
   const providerResults = sortProviderRows(providers).filter(({ provider }) => {
     if (!providerQuery) return true;
@@ -57,10 +63,18 @@ export function ProviderConnectionList({
         .includes(providerQuery),
     );
   });
+  // The selected row paints its own indicator; the hover layer must not run a
+  // second animation or stack a second translucent wash on the same rect.
+  const selectedProviderIndex = providerResults.findIndex(({ provider }) => provider.Id === selectedProviderId);
   const providerRows =
     providers.length > 0 ? (
-      <div className="space-y-0.5 p-2">
-        {providerResults.map(({ provider }) => {
+      <div ref={providerListRef} className="relative space-y-0.5 p-2" {...providerHover.handlers}>
+        <FluidHoverHighlight
+          hover={providerHover}
+          hidden={disableMotion || providerHover.activeIndex === selectedProviderIndex}
+          className="rounded-md"
+        />
+        {providerResults.map(({ provider }, index) => {
           const active = provider.Id === selectedProviderId;
           const catalog = provider.Id ? catalogs[provider.Id] : undefined;
           const error = provider.Id ? errors[provider.Id] : undefined;
@@ -77,10 +91,16 @@ export function ProviderConnectionList({
                 : null;
           return (
             <div
+              ref={providerHover.getItemRef(index)}
               key={provider.Id}
               className={cn(
-                "relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-0.5 rounded-md px-1.5 py-1.5 transition-colors",
-                active ? "text-ink-900" : "text-ink-650 hover:bg-ink-900/[0.03] hover:text-ink-900",
+                "relative z-10 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-0.5 rounded-md px-1.5 py-1.5 transition-colors",
+                active
+                  ? "text-ink-900"
+                  : cn(
+                      "text-ink-650 hover:text-ink-900",
+                      disableMotion ? "hover:bg-ink-900/[0.03]" : "hover:bg-transparent",
+                    ),
                 !enabled && "opacity-65",
               )}
             >

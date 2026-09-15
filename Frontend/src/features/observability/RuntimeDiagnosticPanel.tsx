@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, CircleAlert, History, RotateCcw, X } from "lucide-react";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
@@ -17,6 +17,7 @@ import {
 } from "./runtimeDiagnosticProjection";
 import type { RunRecord } from "../../store/sessionStore";
 import { summarizeRun } from "../workflow/runSummary";
+import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../shared/motion";
 import { Spinner, Tooltip } from "../../shared/ui";
 
 const StatusMessageKeys = {
@@ -151,6 +152,11 @@ function RunHistoryStrip({
   onSelect: (requestId: string) => void;
   onFollowLatest: () => void;
 }): JSX.Element | null {
+  const { disableMotion } = useMotionLevel();
+  const historyListRef = useRef<HTMLDivElement>(null);
+  const historyHover = useFluidHover(historyListRef, { axis: "y" });
+  // The selected run paints its own wash; the hover layer yields on that row.
+  const selectedRunIndex = runs.findIndex((run) => run.requestId === selectedRun?.requestId);
   if (runs.length === 0) return null;
   return (
     <section className="border-b border-line-subtle px-3 pb-2 pt-2.5 sm:px-4" data-run-history>
@@ -159,10 +165,22 @@ function RunHistoryStrip({
         <span>{frontendMessage("observability.diagnostic.runHistory")}</span>
         <span className="ml-auto font-mono tabular-nums text-content-disabled">{runs.length}</span>
       </div>
-      <div className="scrollbar-thin max-h-[144px] min-w-0 overflow-y-auto" role="list">
+      <div
+        ref={historyListRef}
+        className="scrollbar-thin relative max-h-[144px] min-w-0 overflow-y-auto"
+        role="list"
+        {...historyHover.handlers}
+      >
+        <FluidHoverHighlight
+          hover={historyHover}
+          hidden={disableMotion || historyHover.activeIndex === selectedRunIndex}
+          className="rounded-md"
+        />
         {runs.map((run, index) => (
           <RunHistoryItem
             key={run.requestId}
+            itemRef={historyHover.getItemRef(index)}
+            fluidHoverEnabled={!disableMotion}
             run={run}
             index={index}
             total={runs.length}
@@ -186,12 +204,16 @@ function RunHistoryStrip({
 }
 
 function RunHistoryItem({
+  itemRef,
+  fluidHoverEnabled,
   run,
   index,
   total,
   selected,
   onSelect,
 }: {
+  itemRef: (element: HTMLElement | null) => void;
+  fluidHoverEnabled: boolean;
   run: RunRecord;
   index: number;
   total: number;
@@ -204,12 +226,15 @@ function RunHistoryItem({
   return (
     <button
       type="button"
+      ref={itemRef}
       aria-pressed={selected}
       aria-label={`${frontendMessage("workflow.run.index", { index: index + 1, total })}: ${label}`}
       onClick={onSelect}
       className={cn(
-        "group grid min-h-[42px] w-full min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
-        selected ? "bg-surface-hover text-content-primary" : "text-content-secondary hover:bg-surface-hover/70",
+        "group relative z-10 grid min-h-[42px] w-full min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+        selected
+          ? "bg-surface-hover text-content-primary"
+          : cn("text-content-secondary", fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover/70"),
       )}
     >
       <span className="grid h-4 w-4 place-items-center">
@@ -428,7 +453,7 @@ function RuntimeTrajectoryOverview({ model }: { model: RuntimeDiagnosticModel })
                       className={cn(
                         "absolute inset-y-0 rounded-[2px] opacity-85",
                         trajectorySpanClass(span),
-                        span.status === "running" && "motion-safe:animate-pulse",
+                        span.status === "running" && "senera-loading-pulse",
                       )}
                       style={{ left: `${Math.max(0, Math.min(100, left))}%`, width: `${Math.min(100, width)}%` }}
                     />
@@ -452,6 +477,9 @@ function RuntimeConsole({
   expandedSpanId?: string;
   onToggle: (spanId: string) => void;
 }): JSX.Element {
+  const { disableMotion } = useMotionLevel();
+  const consoleListRef = useRef<HTMLDivElement>(null);
+  const consoleHover = useFluidHover(consoleListRef, { axis: "y", gapClick: false });
   return (
     <section aria-label={frontendMessage("observability.diagnostic.timeline")} data-runtime-waterfall>
       <div className="sticky top-0 z-[1] grid h-8 grid-cols-[26px_58px_minmax(0,1fr)_48px_12px] items-center gap-1.5 border-b border-line-subtle bg-surface-panel/95 px-3 text-[9px] text-content-muted backdrop-blur sm:px-4">
@@ -461,10 +489,13 @@ function RuntimeConsole({
         <span className="text-right">{frontendFeatureMessage("observability.diagnostic.detail.duration")}</span>
         <span aria-hidden="true" />
       </div>
-      <div data-runtime-terminal-stream>
+      <div ref={consoleListRef} data-runtime-terminal-stream {...consoleHover.handlers}>
+        <FluidHoverHighlight hover={consoleHover} hidden={disableMotion} surfaceClassName="bg-surface-hover/60" />
         {model.spans.map((span, index) => (
           <RuntimeConsoleRow
             key={span.id}
+            itemRef={consoleHover.getItemRef(index)}
+            fluidHoverEnabled={!disableMotion}
             index={index + 1}
             span={span}
             nowEpoch={model.nowEpoch}
@@ -478,12 +509,16 @@ function RuntimeConsole({
 }
 
 function RuntimeConsoleRow({
+  itemRef,
+  fluidHoverEnabled,
   index,
   span,
   nowEpoch,
   expanded,
   onToggle,
 }: {
+  itemRef: (element: HTMLElement | null) => void;
+  fluidHoverEnabled: boolean;
   index: number;
   span: RuntimeDiagnosticSpan;
   nowEpoch: number;
@@ -499,9 +534,13 @@ function RuntimeConsoleRow({
     >
       <button
         type="button"
+        ref={itemRef}
         aria-expanded={expanded}
         aria-label={`${label} · ${statusLabel(span.status)} · ${formatSpanDuration(span, nowEpoch)}`}
-        className="grid min-h-9 w-full min-w-0 grid-cols-[26px_58px_minmax(0,1fr)_48px_12px] items-center gap-1.5 px-3 py-1.5 text-left outline-none transition-colors hover:bg-surface-hover/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus sm:px-4"
+        className={cn(
+          "relative z-10 grid min-h-9 w-full min-w-0 grid-cols-[26px_58px_minmax(0,1fr)_48px_12px] items-center gap-1.5 px-3 py-1.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus sm:px-4",
+          fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover/60",
+        )}
         onClick={() => onToggle(span.id)}
       >
         <span className="font-mono text-[9px] tabular-nums text-content-disabled">

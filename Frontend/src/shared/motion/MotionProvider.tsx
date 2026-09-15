@@ -1,20 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { MotionConfig, useReducedMotion } from "framer-motion";
 import type { MotionLevel } from "./types";
-
-interface MotionLevelContextValue {
-  level: MotionLevel;
-  prefersReducedMotion: boolean;
-  reduceMotion: boolean;
-  disableMotion: boolean;
-}
-
-const MotionLevelContext = createContext<MotionLevelContextValue>({
-  level: "full",
-  prefersReducedMotion: false,
-  reduceMotion: false,
-  disableMotion: false,
-});
+import { MotionLevelContext } from "./MotionLevelContext";
 
 export function AppMotionProvider({
   children,
@@ -54,6 +41,4 @@ export function AppMotionProvider({
   );
 }
 
-export function useMotionLevel(): MotionLevelContextValue {
-  return useContext(MotionLevelContext);
-}
+export { useMotionLevel } from "./MotionLevelContext";

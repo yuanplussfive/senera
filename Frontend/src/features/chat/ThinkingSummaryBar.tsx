@@ -1,11 +1,12 @@
 import { motion } from "framer-motion";
 import { lazy, Suspense, useId, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { cn } from "../../lib/util";
 import { motionTimings, useMotionLevel } from "../../shared/motion";
 import { Popover, PopoverContent, PopoverTrigger } from "../../shared/ui/Popover";
 import { Spinner } from "../../shared/ui/Spinner";
+import { StateView } from "../../shared/ui/StateView";
 import type { RunRecord } from "../../store/sessionStore";
 import { summarizeRun } from "../workflow/runSummary";
 
@@ -72,7 +73,15 @@ export function ThinkingSummaryBar({
         >
           <div className="thinking-tool-popover__body max-h-[min(19rem,calc(100dvh-10rem))] overflow-y-auto px-3 py-2.5 scrollbar-thin">
             <Suspense
-              fallback={<div className="h-20 rounded bg-surface-muted motion-safe:animate-pulse" aria-hidden="true" />}
+              fallback={
+                <div className="h-20">
+                  <StateView
+                    status="loading"
+                    title={frontendMessage("workflow.feed.trace")}
+                    className="min-h-0 rounded bg-surface-muted py-2"
+                  />
+                </div>
+              }
             >
               <LazyThinkingToolChain run={run} />
             </Suspense>

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { toast } from "sonner";
-import { ErrorBoundary, SeneraToaster, TooltipProvider } from "./shared/ui";
+import { ErrorBoundary, SeneraToaster, StateView, TooltipProvider } from "./shared/ui";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
 import { buildResourceUploadUrl } from "./api/uploadClient";
 import { useStore } from "./store/sessionStore";
@@ -26,13 +26,15 @@ import { useWebSettingsController } from "./app/useWebSettingsController";
 import { useExecutionResourceCommands } from "./app/useExecutionResourceCommands";
 import { TerminalPanelStatus, TerminalRuntimeBoundary } from "./features/terminal/TerminalPanelStatus";
 import { loadWebSettingsOverlayComponent } from "./app/applicationModuleLoaders";
-import { SettingsSurfaceLoading } from "./app/SurfaceLoading";
+import { ApplicationSurfaceLoading, SettingsSurfaceLoading } from "./app/SurfaceLoading";
 import { scheduleIdleTask } from "./shared/scheduling/scheduleIdleTask";
 import { frontendMessage } from "./i18n/frontendMessageCatalog";
+import { isSessionHydratedForStartup, readSessionHydrationState } from "./store/session/sessionHydration";
 import { AppMotionProvider } from "./shared/motion/MotionProvider";
 import { AppAppearanceProvider } from "./shared/theme/useAppearance";
 import { WorkspaceResourceProvider } from "./shared/workspace/WorkspaceResourceProvider";
 import { useRuntimeUpdate } from "./app/runtimeUpdate";
+import { readDesktopBridge } from "./app/desktopBridge";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
@@ -104,12 +106,25 @@ export function App({
   const [workflowDockTool, setWorkflowDockTool] = useState<WorkflowDockTool>("execution");
   const [terminalPanelLoadState, setTerminalPanelLoadState] = useState<TerminalPanelLoadState>({ status: "idle" });
   const [terminalRuntimeRevision, setTerminalRuntimeRevision] = useState(0);
+  const [startupReleased, setStartupReleased] = useState(false);
+  const startupCatalogSynced = useStore((state) => state.catalogSynced.sessions);
+  const startupHydrationState = useStore((state) => {
+    const session = state.activeSessionId ? state.sessions[state.activeSessionId] : null;
+    return readSessionHydrationState({
+      catalogSynced: state.catalogSynced.sessions,
+      session,
+      historyLoaded: state.activeSessionId ? !!state.historyLoadedIds[state.activeSessionId] : false,
+      historyLoading: state.activeSessionId ? !!state.historyLoadingIds[state.activeSessionId] : false,
+      historyFailed: state.activeSessionId ? !!state.historyFailedIds[state.activeSessionId] : false,
+    });
+  });
   const uploadUrl = useMemo(() => buildResourceUploadUrl(HTTP_BASE_URL), []);
   const appShellRenderPlan = readAppShellRenderPlan(responsiveMode);
+  const runtimeSurface = readDesktopBridge()?.isDesktop ? "desktop" : "web";
   const runtimeUpdate = useRuntimeUpdate({
     httpBaseUrl: HTTP_BASE_URL,
     currentVersion: __SENERA_APP_VERSION__,
-    surface: "web",
+    surface: runtimeSurface,
   });
   const [SettingsOverlayComponent, setSettingsOverlayComponent] = useState<SettingsOverlayComponentType | null>(null);
   const prepareSettingsOverlay = useCallback(async (): Promise<void> => {
@@ -250,6 +265,7 @@ export function App({
   sendRef.current = send;
   statusRef.current = status;
   const settingsRuntime = useSettingsRuntime({ httpBaseUrl: HTTP_BASE_URL, sendRef, statusRef, status });
+  const settingsReady = Boolean(settingsRuntime.systemConfig.configSnapshot);
   settingsEventHandlerRef.current = settingsRuntime.ingestSettingsEvent;
   const executionResourceCommands = useExecutionResourceCommands({
     activeSessionId: activeId,
@@ -280,11 +296,7 @@ export function App({
 
   const {
     closeSession: handleCloseSession,
-    closeSessions: handleCloseSessions,
-    compactSession: handleCompactSession,
     createSession: handleNewSession,
-    exportSession: handleExportSession,
-    inspectSessionRuntime: handleInspectSessionRuntime,
     renameSession: handleRenameSession,
     updateUserProfile: handleUpdateUserProfile,
   } = useSessionCommands({
@@ -326,6 +338,17 @@ export function App({
     statusRef.current = status;
   }, [status]);
 
+  useEffect(() => {
+    if (startupReleased) return;
+    if (
+      (startupCatalogSynced && isSessionHydratedForStartup(startupHydrationState)) ||
+      status === "closed" ||
+      status === "error"
+    ) {
+      setStartupReleased(true);
+    }
+  }, [startupCatalogSynced, startupHydrationState, startupReleased, status]);
+
   const handleToggleSessionPanelShortcut = useCallback((): void => {
     if (hasPersistentSessionPanel) {
       toggleSidebar();
@@ -338,6 +361,9 @@ export function App({
     onNewSession: handleNewSession,
     onToggleSessionPanel: handleToggleSessionPanelShortcut,
   });
+
+  if (!startupReleased) return <ApplicationSurfaceLoading />;
+
   const TerminalPanel = terminalPanelLoadState.status === "ready" ? terminalPanelLoadState.Component : undefined;
   const terminalPanel = TerminalPanel ? (
     <TerminalRuntimeBoundary
@@ -373,10 +399,6 @@ export function App({
   > = {
     onNewSession: handleNewSession,
     onCloseSession: handleCloseSession,
-    onCloseSessions: handleCloseSessions,
-    onCompactSession: handleCompactSession,
-    onExportSession: handleExportSession,
-    onInspectSessionRuntime: handleInspectSessionRuntime,
     onRenameSession: handleRenameSession,
     userProfile,
     onUpdateUserProfile: handleUpdateUserProfile,
@@ -478,12 +500,28 @@ export function App({
               workflowDrawer={<DeferredThinkingTimeline presentation="panel" hidePanelTitle />}
               terminalPanel={terminalPanel}
               eventPanel={
-                <Suspense fallback={<div className="h-full bg-surface-panel" />}>
+                <Suspense
+                  fallback={
+                    <StateView
+                      status="loading"
+                      title={frontendMessage("observability.title")}
+                      className="h-full min-h-0 bg-surface-panel"
+                    />
+                  }
+                >
                   <LazyEventObservabilityPanel />
                 </Suspense>
               }
               statePanel={
-                <Suspense fallback={<div className="h-full bg-surface-panel" />}>
+                <Suspense
+                  fallback={
+                    <StateView
+                      status="loading"
+                      title={frontendMessage("continuity.title")}
+                      className="h-full min-h-0 bg-surface-panel"
+                    />
+                  }
+                >
                   <LazyContinuityPanel send={send} connected={status === "open"} />
                 </Suspense>
               }
@@ -500,7 +538,7 @@ export function App({
               onRefreshSession={activeId ? handleRefreshActiveSession : undefined}
             />
             {settingsController.section !== null || settingsController.closeConfirmationOpen ? (
-              SettingsOverlayComponent ? (
+              SettingsOverlayComponent && settingsReady ? (
                 <SettingsOverlayComponent
                   controller={settingsController}
                   workbench={{
@@ -508,7 +546,7 @@ export function App({
                       appVersion: __SENERA_APP_VERSION__,
                       frontendVersion: __SENERA_FRONTEND_VERSION__,
                       mode: import.meta.env.MODE,
-                      surface: "web",
+                      surface: runtimeSurface,
                       runtimeUpdate,
                     },
                     values: { defaultSidebarCollapsed, defaultRightPanelCollapsed },
@@ -536,7 +574,15 @@ export function App({
 
 function DeferredThinkingTimeline(props: ThinkingTimelineProps): JSX.Element {
   return (
-    <Suspense fallback={<div className="h-full w-full" aria-busy="true" />}>
+    <Suspense
+      fallback={
+        <StateView
+          status="loading"
+          title={frontendMessage("workflow.panel.loadingGraph")}
+          className="h-full min-h-0 w-full"
+        />
+      }
+    >
       <LazyThinkingTimeline {...props} />
     </Suspense>
   );

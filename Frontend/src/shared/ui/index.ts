@@ -28,6 +28,8 @@ export { ErrorBoundary } from "./ErrorBoundary";
 export { FileDropZone } from "./FileDropZone";
 export type { FileDropZoneAccept, FileDropZoneState } from "./FileDropZone";
 export { FormField, FormHint, FormLabel, Input } from "./Form";
+export { SecretInput } from "./SecretInput";
+export type { SecretInputProps } from "./SecretInput";
 export {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -38,6 +40,9 @@ export {
   DropdownMenuMeta,
   DropdownMenuPortal,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./DropdownMenu";
 export { IconButton } from "./IconButton";
@@ -57,16 +62,12 @@ export { SegmentedControl } from "./SegmentedControl";
 export type { SegmentedControlOption, SegmentedControlProps } from "./SegmentedControl";
 export { SettingsControlRow, settingsSelectClassName } from "./SettingsControlRow";
 export { Skeleton } from "./Skeleton";
-export { AppIcon, AppIconCatalog } from "./AppIcon";
+export { AppIcon } from "./AppIcon";
 export type { AppIconName } from "./AppIcon";
 export { Spinner } from "./Spinner";
 export type { SpinnerSize } from "./Spinner";
-export { LoadingSignal } from "./LoadingSignal";
-export { ResonanceTrace } from "./LoadingSignal";
-export { RefreshOrbit } from "./LoadingSignal";
-export type { LoadingSignalSize } from "./LoadingSignal";
 export { SeneraToaster } from "./SeneraToaster";
-export { InlineError, RetryButton, StateView } from "./StateView";
+export { ErrorBanner, InlineError, RetryButton, StateView } from "./StateView";
 export type { StateViewStatus } from "./StateView";
 export {
   Sheet,

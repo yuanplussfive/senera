@@ -1,7 +1,7 @@
-import { Copy, Minus, Square, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { readDesktopBridge, type SeneraDesktopBridge } from "./desktopBridge";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { AppIcon } from "../shared/ui";
 
 export type DesktopWindowSurface = "main" | "settings";
 
@@ -32,7 +32,7 @@ export function DesktopWindowChrome({
     <>
       {customControlsBridge ? (
         <div
-          className={`fixed inset-x-0 top-0 z-10 h-[52px] ${
+          className={`fixed inset-x-0 top-0 z-10 h-[var(--senera-top-chrome-height)] ${
             surface === "main" ? "bg-transparent" : "border-b border-ink-200/60 bg-[var(--theme-elevated-bg)]"
           }`}
           data-desktop-window-drag-strip
@@ -78,7 +78,7 @@ function DesktopWindowControls({ bridge }: { bridge: SeneraDesktopBridge }): JSX
 
   return (
     <div
-      className="fixed right-0 top-0 z-40 flex h-[52px] items-stretch text-content-muted"
+      className="fixed right-0 top-0 z-40 flex h-[var(--senera-top-chrome-height)] items-stretch text-content-muted"
       role="group"
       aria-label={frontendMessage("desktop.window.controls")}
       data-desktop-window-controls
@@ -87,16 +87,16 @@ function DesktopWindowControls({ bridge }: { bridge: SeneraDesktopBridge }): JSX
         label={frontendMessage("desktop.window.minimize")}
         onClick={() => void bridge.minimizeWindow?.()}
       >
-        <Minus className="h-4 w-4" />
+        <AppIcon icon="minus" className="h-4 w-4" />
       </WindowControlButton>
       <WindowControlButton
         label={frontendMessage(isMaximized ? "desktop.window.restore" : "desktop.window.maximize")}
         onClick={toggleMaximize}
       >
-        {isMaximized ? <Copy className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+        {isMaximized ? <AppIcon icon="restore" className="h-4 w-4" /> : <AppIcon icon="maximize" className="h-4 w-4" />}
       </WindowControlButton>
       <WindowControlButton label={frontendMessage("desktop.window.close")} onClick={() => void bridge.closeWindow?.()}>
-        <X className="h-4 w-4" />
+        <AppIcon icon="close" className="h-4 w-4" />
       </WindowControlButton>
     </div>
   );

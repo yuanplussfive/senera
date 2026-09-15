@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type { UploadAttachmentData } from "../../api/eventTypes";
 import { buildResourceContentUrl } from "../../api/uploadClient";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { downloadUrl } from "../../lib/download";
 import { isImageFilePreview } from "../../lib/filePreview";
 import { cn, formatFileSize } from "../../lib/util";
 import { ImagePreviewDialog } from "../../shared/media/ImagePreviewDialog";
@@ -96,10 +97,11 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
 
       {files.length > 0 ? (
         <div className="flex max-w-full flex-col items-end gap-1">
-          {files.map(({ attachment, imageCandidate }) => (
+          {files.map(({ attachment, imageCandidate, canonicalSource }) => (
             <AttachmentFileRow
               key={attachment.resourceUri}
               attachment={attachment}
+              downloadSource={canonicalSource}
               previewUnavailable={imageCandidate}
             />
           ))}
@@ -160,11 +162,20 @@ function ProgressiveMessageImage({
 
 function AttachmentFileRow({
   attachment,
+  downloadSource,
   previewUnavailable,
 }: {
   attachment: UploadAttachmentData;
+  downloadSource?: string;
   previewUnavailable: boolean;
 }): JSX.Element {
+  const download = (): void => {
+    if (!downloadSource) return;
+    void downloadUrl(downloadSource, attachment.name).catch(() => {
+      toast.error(frontendMessage("chat.attachment.downloadFailed"));
+    });
+  };
+
   return (
     <div
       className="flex max-w-full items-center gap-1.5 rounded-md border border-line-subtle bg-surface-raised px-2 py-1 text-[11px] text-content-secondary"
@@ -177,6 +188,17 @@ function AttachmentFileRow({
           ? frontendMessage("chat.attachment.previewUnavailable")
           : `${attachment.mime} · ${formatFileSize(attachment.size)}`}
       </span>
+      <IconButton
+        label={frontendMessage("chat.attachment.downloadFile")}
+        tooltip={frontendMessage("chat.attachment.downloadFile")}
+        tooltipSide="bottom"
+        size="sm"
+        className="h-6 w-6 shrink-0 text-content-muted hover:bg-surface-hover hover:text-content-primary"
+        disabled={!downloadSource}
+        onClick={download}
+      >
+        <Download className="h-3.5 w-3.5" />
+      </IconButton>
     </div>
   );
 }
@@ -217,7 +239,7 @@ function AttachmentImagePreviewDialog({
           size="md"
           className="text-content-secondary hover:bg-surface-hover hover:text-content-primary"
           onClick={() => {
-            void downloadImage(image.canonicalSource, image.attachment.name).catch(() => {
+            void downloadUrl(image.canonicalSource, image.attachment.name).catch(() => {
               toast.error(frontendMessage("chat.attachment.downloadFailed"));
             });
           }}
@@ -227,21 +249,4 @@ function AttachmentImagePreviewDialog({
       }
     />
   );
-}
-
-async function downloadImage(source: string, fileName: string): Promise<void> {
-  const response = await fetch(source, { credentials: "include" });
-  if (!response.ok) {
-    throw new Error(frontendMessage("chat.attachment.downloadFailed"));
-  }
-  const downloadUrl = URL.createObjectURL(await response.blob());
-  const link = document.createElement("a");
-  link.href = downloadUrl;
-  link.download = fileName;
-  link.rel = "noopener";
-  link.hidden = true;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  requestAnimationFrame(() => URL.revokeObjectURL(downloadUrl));
 }

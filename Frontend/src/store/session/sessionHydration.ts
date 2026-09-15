@@ -39,3 +39,7 @@ export function readSessionHydrationState({
 export function blocksSessionInput(state: SessionHydrationState): boolean {
   return state !== "ready";
 }
+
+export function isSessionHydratedForStartup(state: SessionHydrationState): boolean {
+  return state === "ready" || state === "history_failed";
+}
