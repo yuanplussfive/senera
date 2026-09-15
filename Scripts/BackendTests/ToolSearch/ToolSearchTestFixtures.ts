@@ -5,6 +5,7 @@ import type {
 } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import type { ToolExecutionTarget, ToolLoadingMode } from "../../../Source/AgentSystem/Types/AgentToolContractTypes.js";
+import type { AgentInteractionSurface } from "../../../Source/AgentSystem/Interaction/AgentInteractionContext.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
 
 export function createRegistry(tools: RegisteredTool[]): AgentToolSearchRegistryReader & {
@@ -46,6 +47,7 @@ export function createTool(options: {
   rootKind?: "System" | "User";
   loading?: ToolLoadingMode;
   executionTargets?: ToolExecutionTarget[];
+  interactionSurfaces?: readonly AgentInteractionSurface[];
   source?: {
     id: string;
     title: string;
@@ -70,6 +72,7 @@ export function createTool(options: {
       requiresApproval: false,
     },
     loading: options.loading ?? "Dynamic",
+    ...(options.interactionSurfaces ? { interactionSurfaces: options.interactionSurfaces } : {}),
     name: options.name,
     permissions: [],
     sources: [

@@ -47,6 +47,8 @@ import { errorMessage } from "../Core/AgentErrors.js";
 import { createAgentToolSearchProjectId } from "./AgentToolSearchProject.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
+import { isAgentToolAvailableForInteraction } from "../ToolRuntime/AgentToolInteractionAvailability.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import { AgentToolSearchResultModes, type AgentToolSearchResultMode } from "./AgentToolSearchTypes.js";
 import {
   AgentToolCapabilityReuseModes,
@@ -147,6 +149,7 @@ export class AgentToolSearchRuntime {
         logicalCacheScope: context.logicalCacheScope,
         visibleToolNames: context.visibleToolNames,
         authorizedToolNames: context.authorizedToolNames,
+        interaction: context.interaction,
         reusableCapabilities: context.reusableCapabilities,
         signal: context.signal,
       });
@@ -161,7 +164,11 @@ export class AgentToolSearchRuntime {
       if (!parsed.success) return invalidToolMetaArgumentsResult(AgentToolMetaToolNames.Describe, parsed.error.issues);
 
       const catalogRevision = this.catalogRevision();
-      const requested = this.resolveAuthorizedTools(parsed.data.tools, context.authorizedToolNames);
+      const requested = this.resolveAuthorizedTools(
+        parsed.data.tools,
+        context.authorizedToolNames,
+        context.interaction,
+      );
       for (const tool of requested.tools) {
         this.capabilitySessionCache.rememberContract({
           sessionId: context.sessionId,
@@ -192,7 +199,11 @@ export class AgentToolSearchRuntime {
 
       const catalogRevision = this.catalogRevision();
       const catalogStatus = readCatalogStatus(parsed.data.catalogRevision, catalogRevision);
-      const requested = this.resolveAuthorizedTools(parsed.data.tools, context.authorizedToolNames);
+      const requested = this.resolveAuthorizedTools(
+        parsed.data.tools,
+        context.authorizedToolNames,
+        context.interaction,
+      );
       const delta =
         catalogStatus === "current" && context.toolExposure
           ? context.toolExposure.expose(requested.tools.map((tool) => tool.name))
@@ -221,11 +232,15 @@ export class AgentToolSearchRuntime {
       const parsed = ToolUnloadArgumentsSchema.safeParse(args);
       if (!parsed.success) return invalidToolMetaArgumentsResult(AgentToolMetaToolNames.Unload, parsed.error.issues);
 
-      const requested = this.resolveAuthorizedTools(parsed.data.tools, context.authorizedToolNames);
+      const requested = this.resolveAuthorizedTools(
+        parsed.data.tools,
+        context.authorizedToolNames,
+        context.interaction,
+      );
       const delta = context.toolExposure?.revoke(
         requested.tools.map((tool) => tool.name),
         {
-          protectedToolNames: this.bootstrapToolNames(),
+          protectedToolNames: this.bootstrapToolNames(context.interaction),
         },
       );
       return okToolMetaResult(
@@ -250,8 +265,15 @@ export class AgentToolSearchRuntime {
     return this.contractProjector.createProjection();
   }
 
-  async resolveInitialLoadedTools(_input: string, warmToolNames: LoadedToolsState = []): Promise<LoadedToolsState> {
-    return this.mergeVisibleTools([...this.bootstrapToolNames(), ...this.existingToolNames(warmToolNames)]);
+  async resolveInitialLoadedTools(
+    _input: string,
+    warmToolNames: LoadedToolsState = [],
+    interaction?: AgentInteractionContext,
+  ): Promise<LoadedToolsState> {
+    return this.mergeVisibleTools(
+      [...this.bootstrapToolNames(interaction), ...this.existingToolNames(warmToolNames, interaction)],
+      interaction,
+    );
   }
 
   async resolvePlannedLoadedTools(options: {
@@ -262,14 +284,18 @@ export class AgentToolSearchRuntime {
     queries?: readonly string[];
     needs?: readonly AgentActionCapabilityNeed[];
     discover?: boolean;
+    interaction?: AgentInteractionContext;
     signal?: AbortSignal;
   }): Promise<LoadedToolsState> {
-    const bootstrap = this.bootstrapToolNames();
-    const current = this.projectCurrentLoadedTools(
-      options.currentLoadedTools,
-      options.currentSetPolicy ?? AgentToolSearchCurrentSetPolicies.Retain,
+    const bootstrap = this.bootstrapToolNames(options.interaction);
+    const current = this.existingToolNames(
+      this.projectCurrentLoadedTools(
+        options.currentLoadedTools,
+        options.currentSetPolicy ?? AgentToolSearchCurrentSetPolicies.Retain,
+      ),
+      options.interaction,
     );
-    const preferred = options.discover ? this.existingToolNames(options.preferredTools ?? []) : [];
+    const preferred = options.discover ? this.existingToolNames(options.preferredTools ?? [], options.interaction) : [];
     const planned = [...current, ...preferred];
     if (options.discover) {
       const query = buildPlannedToolSearchQuery(options);
@@ -278,12 +304,13 @@ export class AgentToolSearchRuntime {
           query,
           includeLoaded: false,
           loadedToolNames: planned,
+          interaction: options.interaction,
           signal: options.signal,
         });
         planned.push(...results.map((result) => result.toolName));
       }
     }
-    return this.mergeVisibleTools([...bootstrap, ...planned]);
+    return this.mergeVisibleTools([...bootstrap, ...planned], options.interaction);
   }
 
   rememberAutoSearch(_requestId: string, _query: string, _loadedToolNames: LoadedToolsState): void {
@@ -299,11 +326,12 @@ export class AgentToolSearchRuntime {
     userInput: string;
     sessionId?: string;
     logicalCacheScope?: string;
+    interaction?: AgentInteractionContext;
     loadedTools: LoadedToolsState;
     execution: { value: ExecutedToolCallResult[] };
     activeSkills?: readonly AgentActivatedSkill[];
   }): LoadedToolsState {
-    const loadedTools = this.mergeVisibleTools(options.loadedTools);
+    const loadedTools = this.mergeVisibleTools(options.loadedTools, options.interaction);
     this.rememberSuccessfulCapabilities(
       options.sessionId,
       options.userInput,
@@ -331,6 +359,7 @@ export class AgentToolSearchRuntime {
 
   async search(options: {
     query: string;
+    interaction?: AgentInteractionContext;
     preferredSourceIds?: readonly string[];
     plannerTags?: readonly string[];
     includeLoaded?: boolean;
@@ -362,8 +391,9 @@ export class AgentToolSearchRuntime {
     logicalCacheScope?: string;
     toolName: string;
     catalogRevision?: string;
+    interaction?: AgentInteractionContext;
   }): AgentToolCapabilityCacheEntry | undefined {
-    const tool = this.resolveAutomaticReuseTool(options.toolName);
+    const tool = this.resolveAutomaticReuseTool(options.toolName, options.interaction);
     if (!tool) return undefined;
     return this.capabilitySessionCache.getReusable({
       sessionId: options.sessionId,
@@ -385,6 +415,7 @@ export class AgentToolSearchRuntime {
     logicalCacheScope?: string;
     query?: string;
     authorizedToolNames?: readonly string[];
+    interaction?: AgentInteractionContext;
     limit?: number;
   }): readonly AgentToolCapabilityCacheEntry[] {
     if (!options.sessionId) return [];
@@ -397,12 +428,13 @@ export class AgentToolSearchRuntime {
       .filter((entry) => !authorized || authorized.has(entry.toolName))
       .filter((entry) => queryTokens.length === 0 || this.isReusableForQuery(entry, queryTokens, options.query ?? ""))
       .flatMap((entry) => {
-        if (!this.resolveAutomaticReuseTool(entry.toolName)) return [];
+        if (!this.resolveAutomaticReuseTool(entry.toolName, options.interaction)) return [];
         const reusable = this.getReusableCapability({
           sessionId: options.sessionId,
           logicalCacheScope: options.logicalCacheScope,
           toolName: entry.toolName,
           catalogRevision,
+          interaction: options.interaction,
         });
         return reusable ? [reusable] : [];
       })
@@ -474,6 +506,7 @@ export class AgentToolSearchRuntime {
       requestId?: string;
       sessionId?: string;
       logicalCacheScope?: string;
+      interaction?: AgentInteractionContext;
       visibleToolNames?: readonly string[];
       authorizedToolNames?: readonly string[];
       reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
@@ -491,6 +524,7 @@ export class AgentToolSearchRuntime {
       context.authorizedToolNames,
       context.sessionId,
       context.logicalCacheScope,
+      context.interaction,
       context.reusableCapabilities,
       context.signal,
     );
@@ -524,6 +558,7 @@ export class AgentToolSearchRuntime {
     authorizedToolNames: readonly string[] | undefined,
     sessionId?: string,
     logicalCacheScope?: string,
+    interaction?: AgentInteractionContext,
     reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[],
     signal?: AbortSignal,
   ): Promise<{
@@ -536,6 +571,7 @@ export class AgentToolSearchRuntime {
       logicalCacheScope,
       query: args.query,
       authorizedToolNames,
+      interaction,
       candidates: reusableCapabilities,
       limit: this.config.Ranking.MaxResults,
     });
@@ -548,6 +584,7 @@ export class AgentToolSearchRuntime {
             includeLoaded: args.includeLoaded ?? false,
             loadedToolNames,
             authorizedToolNames,
+            interaction,
             resultMode: AgentToolSearchResultModes.Catalog,
             signal,
           });
@@ -615,6 +652,7 @@ export class AgentToolSearchRuntime {
     logicalCacheScope?: string;
     query: string;
     authorizedToolNames?: readonly string[];
+    interaction?: AgentInteractionContext;
     candidates?: readonly AgentToolCapabilityCacheEntry[];
     limit: number;
   }): readonly AgentToolCapabilityCacheEntry[] {
@@ -627,21 +665,27 @@ export class AgentToolSearchRuntime {
       .filter((entry) => !authorized || authorized.has(entry.toolName))
       .filter((entry) => this.isReusableForQuery(entry, queryTokens, options.query))
       .flatMap((entry) => {
-        if (!this.resolveAutomaticReuseTool(entry.toolName)) return [];
+        if (!this.resolveAutomaticReuseTool(entry.toolName, options.interaction)) return [];
         const reusable = this.getReusableCapability({
           sessionId: options.sessionId,
           logicalCacheScope: options.logicalCacheScope,
           toolName: entry.toolName,
           catalogRevision: this.catalogRevision(),
+          interaction: options.interaction,
         });
         return reusable ? [reusable] : [];
       })
       .slice(0, options.limit);
   }
 
-  private resolveAutomaticReuseTool(toolName: string): RegisteredTool | undefined {
+  private resolveAutomaticReuseTool(
+    toolName: string,
+    interaction?: AgentInteractionContext,
+  ): RegisteredTool | undefined {
     const tool = this.registry.getTool(toolName);
-    return tool && resolveAgentToolCapabilityReusePolicy(tool).mode === AgentToolCapabilityReuseModes.Automatic
+    return tool &&
+      isAgentToolAvailableForInteraction(tool, interaction) &&
+      resolveAgentToolCapabilityReusePolicy(tool).mode === AgentToolCapabilityReuseModes.Automatic
       ? tool
       : undefined;
   }
@@ -734,8 +778,12 @@ export class AgentToolSearchRuntime {
     );
   }
 
-  private existingToolNames(toolNames: readonly string[]): string[] {
-    const available = new Set(this.availableTools().map((tool) => tool.name));
+  private existingToolNames(toolNames: readonly string[], interaction?: AgentInteractionContext): string[] {
+    const available = new Set(
+      this.availableTools()
+        .filter((tool) => isAgentToolAvailableForInteraction(tool, interaction))
+        .map((tool) => tool.name),
+    );
     return toolNames.filter((name) => available.has(name));
   }
 
@@ -746,16 +794,22 @@ export class AgentToolSearchRuntime {
     return CurrentSetProjectors[policy](current);
   }
 
-  private mergeVisibleTools(toolNames: readonly string[]): string[] {
-    const available = new Set(this.availableTools().map((tool) => tool.name));
+  private mergeVisibleTools(toolNames: readonly string[], interaction?: AgentInteractionContext): string[] {
+    const available = new Set(
+      this.availableTools()
+        .filter((tool) => isAgentToolAvailableForInteraction(tool, interaction))
+        .map((tool) => tool.name),
+    );
     const unique = [...new Set(toolNames)].filter((name) => available.has(name));
-    const required = this.bootstrapToolNames();
+    const required = this.bootstrapToolNames(interaction);
     return [...required, ...unique.filter((name) => !required.includes(name))];
   }
 
-  private bootstrapToolNames(): string[] {
+  private bootstrapToolNames(interaction?: AgentInteractionContext): string[] {
     return this.availableTools()
-      .filter((tool) => tool.loading === ToolLoadingModes.Bootstrap)
+      .filter(
+        (tool) => tool.loading === ToolLoadingModes.Bootstrap && isAgentToolAvailableForInteraction(tool, interaction),
+      )
       .map((tool) => tool.name);
   }
 
@@ -883,13 +937,18 @@ export class AgentToolSearchRuntime {
   private resolveAuthorizedTools(
     toolNames: readonly string[],
     authorizedToolNames: readonly string[] | undefined,
+    interaction?: AgentInteractionContext,
   ): { tools: ReturnType<AgentExtensionRegistry["listTools"]>; rejectedToolNames: string[] } {
     const authorized = authorizedToolNames ? new Set(authorizedToolNames) : undefined;
     const tools: ReturnType<AgentExtensionRegistry["listTools"]> = [];
     const rejectedToolNames: string[] = [];
     for (const toolName of uniqueToolNames(toolNames)) {
       const tool = this.registry.getTool(toolName);
-      if (!tool || (authorized && !authorized.has(toolName))) {
+      if (
+        !tool ||
+        (authorized && !authorized.has(toolName)) ||
+        !isAgentToolAvailableForInteraction(tool, interaction)
+      ) {
         rejectedToolNames.push(toolName);
       } else {
         tools.push(tool);

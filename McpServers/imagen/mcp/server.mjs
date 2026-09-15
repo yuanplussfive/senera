@@ -44,8 +44,15 @@ server.registerTool(
       environment: process.env,
       signal: extra.signal,
     });
+    // Binary output is published by the Senera host. Returning a provider-local
+    // Markdown URI alongside the same bytes creates two identities for one
+    // image and leaves the model with an unresolvable placeholder.
+    const text =
+      execution.artifactPayload.assets && execution.artifactPayload.assets.length > 0
+        ? execution.data.text
+        : execution.data.markdown || execution.data.text;
     const content = [
-      { type: "text", text: execution.data.markdown || execution.data.text },
+      { type: "text", text },
       ...(execution.artifactPayload.assets ?? []).map((asset) => ({
         type: "image",
         data: asset.dataBase64,

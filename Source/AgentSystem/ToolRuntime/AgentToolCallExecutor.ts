@@ -40,6 +40,7 @@ import { projectAgentToolEventOrigin } from "./AgentToolEventOrigin.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import { projectSeneraProcessBackendsToToolTargets, resolveAgentToolInvocation } from "./AgentToolExecutionPlan.js";
 import { isAgentToolAuthorized, type AgentToolAccessGrant } from "./AgentToolAccessGrant.js";
+import { isAgentToolAvailableForInteraction } from "./AgentToolInteractionAvailability.js";
 import type { AgentMcpToolsChangedHandler } from "../Mcp/AgentMcpToolCatalogChange.js";
 import type { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
 import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
@@ -160,7 +161,7 @@ export class AgentToolCallExecutor {
     request: AgentToolCallExecutionRequest,
     context: AgentToolCallExecutionContext,
   ): Promise<AgentToolCallExecutionResult> {
-    const tool = this.resolveTool(request, context.toolAccessGrant);
+    const tool = this.resolveTool(request, context.toolAccessGrant, context.interaction);
     const result = await this.runToolCall(tool, request, context);
     const control = readAskUserControl(result.result);
     const suspension = readSuspendChildRunControl(result.result);
@@ -181,9 +182,16 @@ export class AgentToolCallExecutor {
           };
   }
 
-  private resolveTool(request: AgentToolCallExecutionRequest, toolAccessGrant: AgentToolAccessGrant): RegisteredTool {
+  private resolveTool(
+    request: AgentToolCallExecutionRequest,
+    toolAccessGrant: AgentToolAccessGrant,
+    interaction?: AgentToolCallExecutionContext["interaction"],
+  ): RegisteredTool {
     const tool = this.options.registry.getTool(request.name);
     if (!tool || !isAgentToolAuthorized(toolAccessGrant, request.name)) {
+      throw new AgentLocalizedError("tool.notRegisteredOrAllowed", { toolName: request.name });
+    }
+    if (!isAgentToolAvailableForInteraction(tool, interaction)) {
       throw new AgentLocalizedError("tool.notRegisteredOrAllowed", { toolName: request.name });
     }
     if (
@@ -252,6 +260,7 @@ export class AgentToolCallExecutor {
       throwIfAborted(context.signal);
       const execution = normalizeAgentToolProcessResult(
         await this.toolRunner.run(tool, args, {
+          interaction: context.interaction,
           sessionId: context.sessionId,
           logicalCacheScope: context.logicalCacheScope,
           requestId: context.requestId,

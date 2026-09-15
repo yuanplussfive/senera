@@ -1,19 +1,17 @@
 import { agentUnknownRecordOrEmpty, isAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
-import type {
-  AgentToolArtifactAsset,
-  AgentToolArtifactPayload,
-  AgentToolEvidenceCandidate,
-} from "../Types/ToolRuntimeTypes.js";
+import type { AgentToolArtifactPayload, AgentToolEvidenceCandidate } from "../Types/ToolRuntimeTypes.js";
 import { extension as mimeExtension } from "mime-types";
-import { z } from "zod";
-import { createAgentResourceId, createAgentResourceUri } from "../Resources/AgentResourceUri.js";
+import type { AgentPublishedResource, AgentResourcePublisher } from "../Resources/AgentResourcePublisher.js";
+import { createAgentUploadId } from "../Uploads/AgentUploadLocator.js";
 import { projectAgentModelText } from "../Text/AgentModelPayloadProjection.js";
-
-const LegacyArtifactMetadataKeys = ["ai.senera/artifact"] as const;
 
 export interface AgentMcpToolResultProjection {
   readonly result: unknown;
   readonly artifactPayload?: AgentToolArtifactPayload;
+}
+
+interface AgentMcpToolFeedbackOptions {
+  readonly rawResponse?: unknown;
 }
 
 /**
@@ -25,7 +23,10 @@ export interface AgentMcpToolResultProjection {
  * boundary. The model receives only the projection, structured content, and
  * bounded evidence needed for the next turn.
  */
-export function projectAgentMcpToolFeedback(value: unknown): AgentMcpToolResultProjection {
+function projectAgentMcpToolFeedback(
+  value: unknown,
+  options: AgentMcpToolFeedbackOptions = {},
+): AgentMcpToolResultProjection {
   const envelope = agentUnknownRecordOrEmpty(value);
   const hasStructuredContent = envelope.structuredContent !== undefined;
   const content = projectMcpContent(envelope.content, { captureEvidence: hasStructuredContent });
@@ -34,12 +35,10 @@ export function projectAgentMcpToolFeedback(value: unknown): AgentMcpToolResultP
   // merge content blocks into it: doing so would invalidate a declared
   // outputSchema and would guess the meaning of plugin-defined fields.
   const result = hasStructuredContent ? structuredContent : projectMcpContentResult(content);
-  const legacy = projectLegacyArtifactPayload(envelope);
-  const artifactPayload = mergeArtifactPayload(legacy, {
-    rawResponse: envelope,
-    ...(content.assets.length > 0 ? { assets: content.assets } : {}),
+  const artifactPayload: AgentToolArtifactPayload = {
+    rawResponse: options.rawResponse ?? envelope,
     ...(content.evidence.length > 0 ? { evidence: content.evidence } : {}),
-  });
+  };
 
   return {
     result,
@@ -47,8 +46,35 @@ export function projectAgentMcpToolFeedback(value: unknown): AgentMcpToolResultP
   };
 }
 
-export function projectAgentMcpToolResult(value: unknown): unknown {
-  return projectAgentMcpToolFeedback(value).result;
+/**
+ * Publishes MCP binary content before it reaches the model. MCP image/audio
+ * blocks otherwise have no durable identity, so the generic projection would
+ * have to invent a temporary URI that the frontend and channels cannot resolve.
+ */
+export async function projectAgentMcpToolFeedbackWithResources(
+  value: unknown,
+  publisher: AgentResourcePublisher,
+): Promise<AgentMcpToolResultProjection> {
+  const envelope = agentUnknownRecordOrEmpty(value);
+  const content = Array.isArray(envelope.content) ? envelope.content : [];
+  const publishedByContent = new Map<string, AgentPublishedResource>();
+  const publishedByIndex = new Map<number, AgentPublishedResource>();
+  const canonicalContent: unknown[] = [];
+  for (const [index, item] of content.entries()) {
+    const record = agentUnknownRecordOrEmpty(item);
+    const published = await publishMcpBinaryContent(record, publisher, publishedByContent);
+    if (!published) {
+      canonicalContent.push(item);
+      continue;
+    }
+    publishedByIndex.set(index, published);
+    canonicalContent.push(canonicalMcpResourceBlock(record, published));
+  }
+  const projected = projectAgentMcpToolFeedback(
+    { ...envelope, content: canonicalContent },
+    { rawResponse: sanitizeMcpEnvelope(value, publishedByIndex) },
+  );
+  return projected;
 }
 
 export function extractAgentMcpText(value: unknown): string {
@@ -62,20 +88,9 @@ export function extractAgentMcpText(value: unknown): string {
   return "";
 }
 
-export function projectAgentMcpArtifactPayload(value: unknown): AgentToolArtifactPayload | undefined {
-  const envelope = agentUnknownRecordOrEmpty(value);
-  const content = projectMcpContent(envelope.content, { captureEvidence: envelope.structuredContent !== undefined });
-  return mergeArtifactPayload(projectLegacyArtifactPayload(envelope), {
-    rawResponse: envelope,
-    ...(content.assets.length > 0 ? { assets: content.assets } : {}),
-    ...(content.evidence.length > 0 ? { evidence: content.evidence } : {}),
-  });
-}
-
 interface ProjectedMcpContent {
   readonly text: string[];
   readonly blocks: unknown[];
-  readonly assets: AgentToolArtifactAsset[];
   readonly evidence: AgentToolEvidenceCandidate[];
 }
 
@@ -83,7 +98,6 @@ function projectMcpContent(value: unknown, options: { captureEvidence?: boolean 
   const projected: ProjectedMcpContent = {
     text: [],
     blocks: [],
-    assets: [],
     evidence: [],
   };
   if (!Array.isArray(value)) return projected;
@@ -102,10 +116,7 @@ function projectMcpContent(value: unknown, options: { captureEvidence?: boolean 
       }
       continue;
     }
-    if (type === "image" || type === "audio") {
-      projectBinaryContent(record, index, type, projected, options);
-      continue;
-    }
+    if (type === "image" || type === "audio") continue;
     if (type === "resource") {
       projectResourceContent(record.resource, index, projected, options, record.annotations);
       continue;
@@ -115,35 +126,6 @@ function projectMcpContent(value: unknown, options: { captureEvidence?: boolean 
     }
   }
   return projected;
-}
-
-function projectBinaryContent(
-  record: Record<string, unknown>,
-  index: number,
-  type: "image" | "audio",
-  projected: ProjectedMcpContent,
-  options: { captureEvidence?: boolean },
-): void {
-  const data = typeof record.data === "string" ? record.data : undefined;
-  const mediaType = typeof record.mimeType === "string" ? record.mimeType.trim() : "";
-  if (!data || !mediaType || !isBase64(data)) return;
-
-  const id = `mcp-content-${index + 1}`;
-  const fileName = `${id}.${mediaTypeExtension(mediaType)}`;
-  const placeholder = createAgentResourceUri(createAgentResourceId(id));
-  projected.assets.push({ id, fileName, mediaType, dataBase64: data });
-  projected.blocks.push({
-    type,
-    mimeType: mediaType,
-    uri: placeholder,
-    ...projectAnnotations(record.annotations),
-  });
-  if (type === "image") {
-    projected.text.push(`![MCP image](${placeholder})`);
-  }
-  if (options.captureEvidence) {
-    projected.evidence.push(mcpContentEvidence(index, `${type} content`, type, id));
-  }
 }
 
 function projectResourceContent(
@@ -159,11 +141,13 @@ function projectResourceContent(
   if (typeof resource.text === "string") {
     const text = projectAgentModelText(resource.text).text.trim();
     if (text) {
+      const name = typeof resource.name === "string" ? resource.name.trim() : "";
       projected.text.push(text);
       projected.blocks.push({
         type: "resource",
         uri: uri || undefined,
         mimeType: mimeType || undefined,
+        ...(name ? { name } : {}),
         text,
         ...projectAnnotations(annotations),
       });
@@ -174,34 +158,13 @@ function projectResourceContent(
     return;
   }
 
-  if (typeof resource.blob === "string" && isBase64(resource.blob)) {
-    const id = `mcp-resource-${index + 1}`;
-    const fileName = `${id}.${mediaTypeExtension(mimeType || "application/octet-stream")}`;
-    const placeholder = createAgentResourceUri(createAgentResourceId(id));
-    projected.assets.push({
-      id,
-      fileName,
-      mediaType: mimeType || "application/octet-stream",
-      dataBase64: resource.blob,
-    });
-    projected.blocks.push({
-      type: "resource",
-      uri: placeholder,
-      mimeType: mimeType || undefined,
-      ...projectAnnotations(annotations),
-    });
-    if (mimeType.startsWith("image/")) projected.text.push(`![MCP resource](${placeholder})`);
-    if (options.captureEvidence) {
-      projected.evidence.push(mcpContentEvidence(index, "Embedded resource", "resource", id));
-    }
-    return;
-  }
-
   if (uri) {
+    const name = typeof resource.name === "string" ? resource.name.trim() : "";
     projected.blocks.push({
       type: "resource",
       uri,
       mimeType: mimeType || undefined,
+      ...(name ? { name } : {}),
       ...projectAnnotations(annotations),
     });
     projected.evidence.push(resourceEvidence(uri, uri, "MCP resource"));
@@ -223,6 +186,77 @@ function projectResourceLink(value: Record<string, unknown>, projected: Projecte
     ...projectAnnotations(value.annotations),
   });
   projected.evidence.push(resourceEvidence(uri, description || name || uri, name || "MCP resource"));
+}
+
+async function publishMcpBinaryContent(
+  record: Record<string, unknown>,
+  publisher: AgentResourcePublisher,
+  publishedByContent: Map<string, AgentPublishedResource>,
+): Promise<AgentPublishedResource | undefined> {
+  const type = typeof record.type === "string" ? record.type : "";
+  const data =
+    type === "resource"
+      ? readResourceBlob(record.resource)
+      : type === "image" || type === "audio"
+        ? readBinaryContent(record)
+        : undefined;
+  if (!data) return undefined;
+
+  const key = `${data.mimeType}\u0000${data.data}`;
+  const existing = publishedByContent.get(key);
+  if (existing) return existing;
+
+  const published = await publisher.publishBytes({
+    bytes: Buffer.from(data.data, "base64"),
+    name: resourceFileName(data.mimeType),
+    mime: data.mimeType,
+  });
+  publishedByContent.set(key, published);
+  return published;
+}
+
+function canonicalMcpResourceBlock(record: Record<string, unknown>, published: AgentPublishedResource): unknown {
+  const annotations = projectAnnotations(record.annotations);
+  return {
+    type: "resource",
+    resource: {
+      uri: published.resourceUri,
+      mimeType: published.mime,
+      name: published.name,
+    },
+    ...annotations,
+  };
+}
+
+function sanitizeMcpEnvelope(value: unknown, publishedByIndex: ReadonlyMap<number, AgentPublishedResource>): unknown {
+  const envelope = agentUnknownRecordOrEmpty(value);
+  if (!Array.isArray(envelope.content) || publishedByIndex.size === 0) return value;
+  return {
+    ...envelope,
+    content: envelope.content.map((item, index) => {
+      const published = publishedByIndex.get(index);
+      if (!published) return item;
+      const record = agentUnknownRecordOrEmpty(item);
+      return canonicalMcpResourceBlock(record, published);
+    }),
+  };
+}
+
+function readBinaryContent(record: Record<string, unknown>): { data: string; mimeType: string } | undefined {
+  const data = typeof record.data === "string" ? record.data.trim() : "";
+  const mimeType = typeof record.mimeType === "string" ? record.mimeType.trim() : "";
+  return data && mimeType && isBase64(data) ? { data, mimeType } : undefined;
+}
+
+function readResourceBlob(value: unknown): { data: string; mimeType: string } | undefined {
+  const resource = agentUnknownRecordOrEmpty(value);
+  const data = typeof resource.blob === "string" ? resource.blob.trim() : "";
+  const mimeType = typeof resource.mimeType === "string" ? resource.mimeType.trim() : "";
+  return data && mimeType && isBase64(data) ? { data, mimeType } : undefined;
+}
+
+function resourceFileName(mimeType: string): string {
+  return `${createAgentUploadId()}.${mediaTypeExtension(mimeType)}`;
 }
 
 function mcpContentEvidence(
@@ -286,75 +320,6 @@ function projectMcpContentResult(content: ProjectedMcpContent): unknown {
     content: content.blocks,
   };
 }
-
-function projectLegacyArtifactPayload(envelope: Record<string, unknown>): AgentToolArtifactPayload | undefined {
-  const meta = agentUnknownRecordOrEmpty(envelope._meta);
-  for (const key of LegacyArtifactMetadataKeys) {
-    const parsed = AgentMcpArtifactPayloadSchema.safeParse(meta[key]);
-    if (parsed.success) {
-      const payload = parsed.data;
-      if (
-        payload.rawResponse !== undefined ||
-        (payload.assets?.length ?? 0) > 0 ||
-        (payload.evidence?.length ?? 0) > 0
-      ) {
-        return payload;
-      }
-    }
-  }
-  return undefined;
-}
-
-function mergeArtifactPayload(
-  left: AgentToolArtifactPayload | undefined,
-  right: AgentToolArtifactPayload,
-): AgentToolArtifactPayload | undefined {
-  const assets = [...(left?.assets ?? []), ...(right.assets ?? [])];
-  const uniqueAssets = [...new Map(assets.map((asset) => [asset.id, asset])).values()];
-  const evidence = [...(left?.evidence ?? []), ...(right.evidence ?? [])];
-  const uniqueEvidence = [
-    ...new Map(evidence.map((entry) => [entry.key ?? `${entry.kind}:${entry.locator}`, entry])).values(),
-  ];
-  const rawResponse = left?.rawResponse ?? right.rawResponse;
-  if (rawResponse === undefined && uniqueAssets.length === 0 && uniqueEvidence.length === 0) return undefined;
-  return {
-    ...(rawResponse === undefined ? {} : { rawResponse }),
-    ...(uniqueAssets.length > 0 ? { assets: uniqueAssets } : {}),
-    ...(uniqueEvidence.length > 0 ? { evidence: uniqueEvidence } : {}),
-  };
-}
-
-const AgentMcpArtifactAssetSchema = z
-  .object({
-    id: z.string().trim().min(1),
-    fileName: z.string().trim().min(1),
-    mediaType: z.string().trim().min(1),
-    dataBase64: z.string().trim().min(1).refine(isBase64, "must be base64"),
-  })
-  .strict();
-
-const AgentMcpEvidenceCandidateSchema = z
-  .object({
-    key: z.string().trim().min(1).optional(),
-    kind: z.string().trim().min(1),
-    locator: z.string().trim().min(1),
-    display: z.string().trim().min(1),
-    label: z.string().trim().min(1).optional(),
-    source: z.string().trim().min(1).optional(),
-    confidence: z.number().finite().optional(),
-    facts: z.array(z.object({ name: z.string().trim().min(1), value: z.unknown() }).strict()).optional(),
-    artifactRefs: z.array(z.string().trim().min(1)).optional(),
-    metadata: z.record(z.string(), z.unknown()).optional(),
-  })
-  .passthrough();
-
-const AgentMcpArtifactPayloadSchema = z
-  .object({
-    rawResponse: z.unknown().optional(),
-    assets: z.array(AgentMcpArtifactAssetSchema).optional(),
-    evidence: z.array(AgentMcpEvidenceCandidateSchema).optional(),
-  })
-  .strict();
 
 function isBase64(value: string): boolean {
   const normalized = value.replace(/\s+/gu, "");

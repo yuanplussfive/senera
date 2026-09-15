@@ -12,6 +12,8 @@ import { createAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRunt
 import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 import { AgentToolSuccessOutcome } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
 import type { ExecutedToolCallResult } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import { AgentChannelKinds } from "../../../Source/AgentSystem/Channels/AgentChannelTypes.js";
+import { AgentInteractionSurfaces } from "../../../Source/AgentSystem/Interaction/AgentInteractionContext.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
 import {
   createRegistry,
@@ -222,6 +224,82 @@ describe("ToolSearch meta-tool behavior", () => {
     runtime.close();
   });
 
+  test("keeps surface-scoped tools out of console discovery and loads them on a channel", async () => {
+    const runtime = new AgentToolSearchRuntime(
+      createRegistry([
+        createTool({
+          name: AgentToolMetaToolNames.Search,
+          title: "Tool search",
+          summary: "Find tools",
+          tags: ["search"],
+          actions: ["search"],
+          targets: ["tools"],
+          priority: 100,
+          rootKind: "System",
+          loading: "Bootstrap",
+        }),
+        createTool({
+          name: "ChannelLookup",
+          title: "Look up channel details",
+          summary: "Inspect the current channel",
+          tags: ["channel", "inspect"],
+          actions: ["read"],
+          targets: ["channel"],
+          priority: 20,
+          interactionSurfaces: [AgentInteractionSurfaces.Channel],
+        }),
+      ]) as unknown as AgentExtensionRegistry,
+      createToolSearchConfig(),
+      createToolLearningConfig({ Enabled: true }),
+      "E:/workspace",
+      createModelProvider(),
+      { memoryStore: new InMemoryToolSearchMemoryStore(), availableExecutionTargets: () => ["Local"] },
+    );
+
+    const consoleInteraction = { surface: AgentInteractionSurfaces.Console } as const;
+    const channelInteraction = { surface: AgentInteractionSurfaces.Channel, platform: AgentChannelKinds.Qq } as const;
+    expect(await runtime.resolveInitialLoadedTools("publish", [], consoleInteraction)).toEqual([
+      AgentToolMetaToolNames.Search,
+    ]);
+    expect(await runtime.resolveInitialLoadedTools("publish", [], channelInteraction)).toEqual([
+      AgentToolMetaToolNames.Search,
+    ]);
+
+    const handler = runtime.createSearchHostHandler();
+    const consoleResult = await handler(
+      { query: "publish message channel" },
+      hostToolContext({ interaction: consoleInteraction, visibleToolNames: [AgentToolMetaToolNames.Search] }),
+    );
+    expect(readToolNamesFromSearchResult(consoleResult.response.result)).not.toContain("ChannelLookup");
+
+    const channelResult = await handler(
+      { query: "inspect channel" },
+      hostToolContext({ interaction: channelInteraction, visibleToolNames: [AgentToolMetaToolNames.Search] }),
+    );
+    expect(readToolNamesFromSearchResult(channelResult.response.result)).toContain("ChannelLookup");
+
+    const grant = createAgentToolAccessGrant({
+      authorizedToolNames: [AgentToolMetaToolNames.Search, "ChannelLookup"],
+      exposedToolNames: [AgentToolMetaToolNames.Search],
+    });
+    const exposure = new AgentToolExposureState(grant);
+    const rejected = await runtime.createLoadHostHandler()(
+      { tools: ["ChannelLookup"] },
+      hostToolContext({
+        interaction: consoleInteraction,
+        authorizedToolNames: grant.authorizedToolNames,
+        visibleToolNames: grant.exposedToolNames,
+        toolExposure: exposure,
+      }),
+    );
+    expect(rejected.response).toMatchObject({
+      ok: true,
+      result: { rejected: { item: ["ChannelLookup"] }, loaded: { item: [AgentToolMetaToolNames.Search] } },
+    });
+    expect(exposure.snapshot().exposedToolNames).toEqual([AgentToolMetaToolNames.Search]);
+    runtime.close();
+  });
+
   test("projects the source catalog into the host contract and validates preferences", async () => {
     const registry = createRegistry([
       createTool({
@@ -400,7 +478,7 @@ function artifactWithEvidence(): ExecutedToolCallResult["artifact"] {
 
 function hostToolContext(
   overrides: Pick<AgentHostToolContext, "requestId" | "visibleToolNames"> &
-    Partial<Pick<AgentHostToolContext, "authorizedToolNames" | "sessionId">> &
+    Partial<Pick<AgentHostToolContext, "authorizedToolNames" | "sessionId" | "interaction">> &
     Partial<Pick<AgentHostToolContext, "toolExposure">>,
 ): AgentHostToolContext {
   const tool = createTool({

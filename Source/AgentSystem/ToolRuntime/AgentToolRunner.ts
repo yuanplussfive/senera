@@ -8,6 +8,7 @@ import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/Ag
 import { toolProcessFailureResult } from "./AgentToolProcessEnvelope.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import { AgentMcpToolRunner } from "../Mcp/AgentMcpToolRunner.js";
+import { resolveUploadsConfig } from "../AgentDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { explainUnsupportedAgentToolRuntime } from "./AgentToolRuntimeCapabilities.js";
 import { resolveAgentToolRuntimeCapabilities } from "./AgentToolRuntimeCapabilities.js";
@@ -41,7 +42,7 @@ import type { AgentToolExposureState } from "./AgentToolExposureState.js";
 import type { AgentMcpToolsChangedHandler } from "../Mcp/AgentMcpToolCatalogChange.js";
 import type { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
 import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
-import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
@@ -52,6 +53,7 @@ import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -62,6 +64,7 @@ export interface AgentToolRunnerLike {
 }
 
 export interface AgentToolRunnerContext {
+  interaction?: AgentInteractionContext;
   sessionId?: string;
   logicalCacheScope?: string;
   requestId?: string;
@@ -86,6 +89,7 @@ export interface AgentToolRunnerContext {
 
 export class AgentToolRunner implements AgentToolRunnerLike {
   private readonly mcpRunner: AgentMcpToolRunner;
+  private readonly uploadStore: AgentUploadStore;
 
   constructor(
     private readonly config: AgentSystemConfig,
@@ -98,12 +102,14 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     onMcpToolsChanged?: AgentMcpToolsChangedHandler,
     mcpClientPool?: AgentMcpToolClientPool,
     mcpSampling?: AgentMcpSamplingHandler,
-    private readonly uploadStore?: AgentUploadStore,
+    uploadStore?: AgentUploadStore,
     private readonly resourceResolver?: AgentResourceResolverLike,
     private readonly todoService?: AgentTodoService,
     private readonly continuityIdentity?: AgentContinuityIdentityContext,
     private readonly identityDisplayValues?: () => AgentIdentityDisplayValues,
   ) {
+    this.uploadStore =
+      uploadStore ?? new AgentUploadStore({ workspaceRoot, config: () => resolveUploadsConfig(config) });
     this.mcpRunner = new AgentMcpToolRunner({
       config,
       executionEnv,
@@ -112,6 +118,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       onToolsChanged: onMcpToolsChanged,
       clientPool: mcpClientPool,
       sampling: mcpSampling,
+      resourcePublisher: this.uploadStore,
     });
   }
 
@@ -372,6 +379,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       executionEnv,
       uploadStore: this.uploadStore,
       resourceResolver: this.resourceResolver,
+      interaction: context.interaction,
       sessionId: context.sessionId,
       logicalCacheScope: context.logicalCacheScope,
       requestId: context.requestId,

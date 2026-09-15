@@ -14,6 +14,7 @@ import type { AgentPiToolCallPreflightInput, AgentPiToolCallPreflightResult } fr
 import type { SeneraExecutionRuntimeCapabilities } from "../Execution/SeneraExecutionRuntimeCapabilities.js";
 import type { AgentToolResourceCapabilityRegistry } from "../ToolRuntime/AgentToolResourceCapabilityRegistry.js";
 import { inspectAgentToolResourceAccess } from "../ToolRuntime/AgentToolResourceCapabilities.js";
+import { isAgentToolAvailableForInteraction } from "../ToolRuntime/AgentToolInteractionAvailability.js";
 
 export interface AgentPiToolPermissionHookOptions {
   registry: AgentExtensionRegistry;
@@ -49,6 +50,12 @@ export class AgentPiToolPermissionHook {
       };
     }
     const tool = this.options.registry.getTool(event.toolName);
+    if (tool && !isAgentToolAvailableForInteraction(tool, context.interaction)) {
+      return {
+        block: true,
+        reason: agentErrorMessage("tool.notRegisteredOrAllowed", { toolName: event.toolName }),
+      };
+    }
     let invocation;
     try {
       invocation = tool

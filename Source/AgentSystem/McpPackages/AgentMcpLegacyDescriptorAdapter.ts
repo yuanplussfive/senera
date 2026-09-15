@@ -23,6 +23,7 @@ export const AgentMcpLegacyDescriptorAdapter: AgentMcpDescriptorAdapter = {
       name: context.directoryName,
       descriptorKind: "legacy",
       execution: configuration.execution ?? createAgentMcpDefaultLocalExecution(),
+      ...(configuration.requirements ? { requirements: configuration.requirements } : {}),
       servers: Object.entries(configuration.mcpServers).map(([name, server]) => {
         const inputDefinitions = legacyInputDefinitions(server);
         return {

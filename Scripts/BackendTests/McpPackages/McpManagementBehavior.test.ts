@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { AgentMcpInputService } from "../../../Source/AgentSystem/Credentials/AgentMcpInputService.js";
 import type { AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentMcpManagementService } from "../../../Source/AgentSystem/McpPackages/AgentMcpManagementService.js";
+import type { AgentMcpHostCapabilitySnapshot } from "../../../Source/AgentSystem/McpPackages/AgentMcpHostRequirements.js";
 import { resolveAgentWorkspaceLayout } from "../../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { AgentWebSocketRequestSchema } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketProtocol.js";
@@ -104,6 +105,40 @@ describe("MCP management", () => {
     expect(servers.find((server) => server.id === "weather")?.status).toBe("needs_input");
     expect(JSON.stringify(servers)).not.toContain(secret);
     expect(inputs.resolve("weather", { source: "secret", inputId: "TEST_SECRET" })).toBeUndefined();
+  });
+
+  test("projects missing host capabilities with their diagnostic reason", () => {
+    const { management, workspaceRoot } = createManagement(() => ({ ModelProviders: [] }), {
+      available: new Set(),
+      diagnostics: new Map([["interactive-desktop", "Desktop session is unavailable for this test."]]),
+    });
+    const packageRoot = path.join(resolveAgentWorkspaceLayout(workspaceRoot).mcpRoot, "desktop-test");
+    fs.mkdirSync(packageRoot, { recursive: true });
+    fs.writeFileSync(
+      path.join(packageRoot, ".mcp.json"),
+      `${JSON.stringify(
+        {
+          requirements: { hostCapabilities: ["interactive-desktop"] },
+          mcpServers: { "desktop-test": { type: "stdio", command: "node" } },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    expect(management.listMcpServers()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "desktop-test",
+          status: "unavailable",
+          unavailableCapabilities: ["interactive-desktop"],
+          unavailableCapabilityDetails: [
+            { id: "interactive-desktop", reason: "Desktop session is unavailable for this test." },
+          ],
+        }),
+      ]),
+    );
   });
 
   test("accepts only declared variables and includes server identity in restart revisions", () => {
@@ -276,7 +311,10 @@ describe("MCP management", () => {
   });
 });
 
-function createManagement(config: () => AgentSystemConfig = () => ({ ModelProviders: [] })): {
+function createManagement(
+  config: () => AgentSystemConfig = () => ({ ModelProviders: [] }),
+  hostCapabilities?: AgentMcpHostCapabilitySnapshot,
+): {
   workspaceRoot: string;
   inputs: AgentMcpInputService;
   management: AgentMcpManagementService;
@@ -316,6 +354,7 @@ function createManagement(config: () => AgentSystemConfig = () => ({ ModelProvid
       resourcesRoot: path.resolve("."),
       inputs,
       config,
+      ...(hostCapabilities ? { hostCapabilities } : {}),
     }),
   };
 }

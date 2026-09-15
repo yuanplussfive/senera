@@ -55,6 +55,11 @@ export function McpServersSection({
   const selectedServer = selectedServerId ? (servers.find((server) => server.id === selectedServerId) ?? null) : null;
   const selectedDisplayName = selectedServer ? resolveFrontendLocalizedText(selectedServer.displayName, locale) : "";
   const selectedDescription = selectedServer ? resolveFrontendLocalizedText(selectedServer.description, locale) : "";
+  const unavailableCapabilityDetails: readonly { id: string; reason?: string }[] = selectedServer
+    ? (selectedServer.unavailableCapabilityDetails ??
+      selectedServer.unavailableCapabilities?.map((id) => ({ id })) ??
+      [])
+    : [];
   const pendingChanges = Object.keys(drafts).length > 0;
   const syncing = syncRequest !== null;
   const connected = systemConfig?.socketStatus === "open";
@@ -113,7 +118,7 @@ export function McpServersSection({
   }, [connected, selectedServer?.id, servers, syncRequest]);
 
   useEffect(() => {
-    if (!selectedServer || !pendingChanges || syncing || !connected) return;
+    if (!selectedServer || selectedServer.status === "unavailable" || !pendingChanges || syncing || !connected) return;
     const timer = window.setTimeout(() => {
       const mutation = readMcpInputMutation(selectedServer, drafts);
       if (mutation.error) {
@@ -256,7 +261,12 @@ export function McpServersSection({
               {frontendMessage("settings.mcp.saving")}
             </span>
           ) : null}
-          <Button variant="outline" size="sm" disabled={!connected || syncing} onClick={restartServer}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!connected || syncing || selectedServer.status === "unavailable"}
+            onClick={restartServer}
+          >
             <ArrowPathRoundedSquareIcon className="h-3.5 w-3.5" />
             {frontendMessage("settings.mcp.restart")}
           </Button>
@@ -267,6 +277,26 @@ export function McpServersSection({
           <InlineError className="mx-auto mt-4 max-w-[980px] px-6 lg:px-8">{operationError}</InlineError>
         ) : null}
         <div className="mx-auto w-full max-w-[900px] px-6 py-6 lg:px-8">
+          {selectedServer.status === "unavailable" ? (
+            <div className="mb-5 border-y border-line py-3 text-[12px] leading-5 text-content-secondary" role="status">
+              <p>{frontendMessage("settings.mcp.unavailableDescription")}</p>
+              {unavailableCapabilityDetails.length ? (
+                <div className="mt-2">
+                  <div className="text-[11px] font-semibold text-content-primary">
+                    {frontendMessage("settings.mcp.unavailableCapabilities")}
+                  </div>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    {unavailableCapabilityDetails.map((capability) => (
+                      <li key={capability.id}>
+                        <code className="font-mono text-[11px] text-content-primary">{capability.id}</code>
+                        {capability.reason ? <span className="ml-1">{capability.reason}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mb-3 flex items-baseline justify-between gap-3">
             <div className="text-[13px] font-semibold text-content-primary">
               {frontendMessage("settings.mcp.inputs")}
@@ -306,7 +336,7 @@ export function McpServersSection({
                       <McpInputControl
                         input={input}
                         value={value}
-                        disabled={!connected}
+                        disabled={!connected || selectedServer.status === "unavailable"}
                         onChange={(next) => updateDraft(input, next)}
                       />
                       {input.description ? <FormHint>{input.description}</FormHint> : null}

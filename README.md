@@ -209,6 +209,7 @@ cp senera.config.example.json senera.config.json
 
 - `web-research/search`：联网搜索。
 - `weather/forecast`：天气查询。
+- `zavora-computer-use`：桌面控制。它声明 `interactive-desktop` 宿主能力；桌面端、Linux 图形会话和 WSLg 可用时才会启动，无头 Docker 会在 discovery 前标记为不可用，不会伪装成可用工具。
 
 以下可信宿主能力由 System Tool 提供：
 

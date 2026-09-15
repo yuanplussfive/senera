@@ -42,6 +42,10 @@ export const AgentSystemToolContractSchema = z
     evidenceCapabilities: z.array(ToolEvidenceCapabilitySchema).default([]),
     approval: ToolApprovalSchema.optional(),
     artifacts: ToolArtifactPolicySchema.optional(),
+    surfaces: z
+      .array(z.enum(["console", "channel"]))
+      .min(1)
+      .optional(),
   })
   .strict()
   .superRefine((tool, context) => {

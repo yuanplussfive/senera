@@ -23,6 +23,9 @@
       "targets": ["local"],
       "preferred": "local"
     },
+    "ai.senera/requirements": {
+      "hostCapabilities": ["interactive-desktop"]
+    },
     "ai.senera/runtime-assets": {
       "node_modules": [
         {

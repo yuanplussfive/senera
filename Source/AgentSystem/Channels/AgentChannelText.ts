@@ -96,23 +96,6 @@ export function analyzeChannelMarkdownStructure(content: string): AgentChannelMa
   return structure;
 }
 
-/**
- * Decides whether the model-based final response serializer is required.
- * Code fences and explicit resource references cannot be re-flowed reliably
- * by the local splitter, so they keep the model rewrite; ordinary prose
- * falls through to {@link splitChannelTextByParagraphs}.
- */
-export function requiresChannelFinalRewrite(content: string): boolean {
-  if (content.length === 0) return false;
-  const structure = analyzeChannelMarkdownStructure(content);
-  return (
-    structure.codeBlockCount > 0 ||
-    structure.mediaReferenceCount > 0 ||
-    structure.resourceLinkCount > 0 ||
-    structure.inlineResourceUriCount > 0
-  );
-}
-
 function isResourceLikeTarget(href: string): boolean {
   return href.startsWith("senera://") || FileLikeTargetPattern.test(href);
 }

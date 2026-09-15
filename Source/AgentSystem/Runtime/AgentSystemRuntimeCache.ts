@@ -24,6 +24,7 @@ import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
 import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
+import type { AgentMcpHostCapabilitySnapshot } from "../McpPackages/AgentMcpHostRequirements.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
@@ -73,6 +74,8 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   /** Loaded plugin host; its tools/skills are applied per runtime composition. */
   pluginHost?: AgentPluginHost;
   resourceCoordinator?: AgentToolResourceLeaseCoordinator;
+  /** Shared capability snapshot used by MCP discovery and management projections. */
+  mcpHostCapabilities?: AgentMcpHostCapabilitySnapshot;
 }
 
 export interface AgentSystemRuntimeLease<TRuntime extends AgentSystemRuntimeCacheRuntime> {

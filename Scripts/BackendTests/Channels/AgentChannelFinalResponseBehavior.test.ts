@@ -10,6 +10,7 @@ import {
   collectAgentChannelMarkdownResourceManifest,
   projectAgentChannelFinalParts as projectOutboundFinalParts,
 } from "../../../Source/AgentSystem/Channels/AgentChannelOutboundMedia.js";
+import { packAgentChannelFinalTextParts } from "../../../Source/AgentSystem/Channels/AgentChannelFinalTextPacking.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
 
 describe("channel final response rewriter", () => {
@@ -224,17 +225,87 @@ describe("channel final response rewriter", () => {
     expect(manifest.references).toEqual([{ source: "missing.svg", kind: "unresolved" }]);
   });
 
-  test("normalizes a Markdown image left inside a text part", async () => {
+  test("keeps media Markdown inside text when no resource part was requested", async () => {
     const projection = await projectOutboundFinalParts([
       { kind: "text", text: "前文\n![截图](https://cdn.example/screenshot.png)\n后文" },
     ]);
 
-    expect(projection.segments.map((segment) => segment.kind)).toEqual(["text", "media", "text"]);
-    expect(projection.segments[1]).toMatchObject({
-      kind: "media",
-      media: { kind: "image", url: "https://cdn.example/screenshot.png" },
-    });
-    expect(projection.segments[0]).toEqual({ kind: "text", content: "前文" });
-    expect(projection.segments[2]).toEqual({ kind: "text", content: "后文" });
+    expect(projection.segments).toEqual([
+      { kind: "text", content: "前文\n![截图](https://cdn.example/screenshot.png)\n后文" },
+    ]);
+    expect(projection.media).toEqual([]);
+  });
+
+  test("packs dense prose into a bounded number of text parts without crossing media boundaries", () => {
+    const dense = Array.from({ length: 38 }, (_, index) => `第${index + 1}段。`);
+    const denseParts = packAgentChannelFinalTextParts(dense.map((text) => ({ kind: "text", text }) as const));
+    expect(denseParts).toHaveLength(6);
+
+    const parts = packAgentChannelFinalTextParts([
+      { kind: "text", text: "前文" },
+      { kind: "text", text: "中间" },
+      { kind: "resource", uri: "senera://resource/image-1", alt: "图片" },
+      { kind: "text", text: "收束段。" },
+    ]);
+    expect(parts).toEqual([
+      { kind: "text", text: "前文" },
+      { kind: "text", text: "中间" },
+      { kind: "resource", uri: "senera://resource/image-1", alt: "图片" },
+      { kind: "text", text: "收束段。" },
+    ]);
+  });
+
+  test("projects manifest-backed Markdown images and removes internal projection markers", async () => {
+    const projection = await projectOutboundFinalParts(
+      [
+        {
+          kind: "text",
+          text: [
+            "前文",
+            "![inline](<[inline media omitted mediaType=image/png encodedCharacters=32 sha256=0123456789abcdef]>)",
+            "![生成图](senera://resource/res-1)",
+            "后文",
+          ].join("\n"),
+        },
+      ],
+      {
+        resourceManifest: {
+          references: [
+            {
+              source: "senera://resource/res-1",
+              kind: "senera",
+              resourceUri: "senera://resource/res-1",
+              name: "generated.png",
+              mime: "image/png",
+            },
+          ],
+        },
+        resourceResolver: {
+          resolve: async (resourceUri) =>
+            resourceUri === "senera://resource/res-1"
+              ? {
+                  resourceUri,
+                  filePath: "E:/senera/artifacts/generated.png",
+                  name: "generated.png",
+                  mime: "image/png",
+                  size: 10,
+                  sha256: "c".repeat(64),
+                  origin: "artifact" as const,
+                }
+              : undefined,
+        },
+      },
+    );
+
+    expect(projection.segments).toEqual([
+      { kind: "text", content: "前文" },
+      expect.objectContaining({
+        kind: "media",
+        media: expect.objectContaining({ resourceUri: "senera://resource/res-1" }),
+      }),
+      { kind: "text", content: "后文" },
+    ]);
+    expect(JSON.stringify(projection.segments)).not.toContain("inline media omitted");
+    expect(JSON.stringify(projection.segments)).not.toContain("![");
   });
 });

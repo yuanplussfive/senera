@@ -27,6 +27,9 @@ import {
 import { compileAgentPromptContext } from "./AgentPromptContextCompiler.js";
 import { EmptyAgentSceneContext } from "./AgentSceneContextCompiler.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import { isAgentToolScopedToInteractionSurface } from "../ToolRuntime/AgentToolInteractionAvailability.js";
+import { ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
 
 export type {
   AgentPromptContext,
@@ -100,6 +103,17 @@ export class AgentPromptContextBuilder {
       policy,
       allowedToolNames: options.allowedToolNames,
     });
+  }
+
+  interactionToolNames(interaction?: AgentInteractionContext): string[] {
+    if (!interaction) return [];
+    return this.availableTools()
+      .filter(
+        (tool) =>
+          tool.loading === ToolLoadingModes.Bootstrap &&
+          isAgentToolScopedToInteractionSurface(tool, interaction.surface),
+      )
+      .map((tool) => tool.name);
   }
 
   private resolveLoadedTools(

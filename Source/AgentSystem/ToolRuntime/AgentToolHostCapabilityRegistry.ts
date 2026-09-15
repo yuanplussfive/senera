@@ -19,8 +19,10 @@ import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export interface AgentHostToolContext {
+  interaction?: AgentInteractionContext;
   tool: RegisteredTool;
   config: AgentSystemConfig;
   configPath?: string;

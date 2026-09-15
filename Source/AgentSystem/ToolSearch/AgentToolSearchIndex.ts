@@ -16,6 +16,7 @@ import { AgentCapabilityKinds, AgentCapabilitySearchIndex } from "./AgentCapabil
 import { buildToolCapabilityDocument } from "./AgentCapabilityDocumentBuilder.js";
 import { isAgentToolMetaToolName } from "./AgentToolSearchRuntimeTypes.js";
 import { ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
+import { isAgentToolAvailableForInteraction } from "../ToolRuntime/AgentToolInteractionAvailability.js";
 
 export type {
   AgentToolSearchCapabilityMatch,
@@ -31,6 +32,7 @@ export class AgentToolSearchIndex {
   private readonly tokenizer = new AgentToolSearchTokenizer();
   private readonly docs: ToolSearchDocument[];
   private readonly docsByTool = new Map<string, ToolSearchDocument>();
+  private readonly toolsByName: ReadonlyMap<string, RegisteredTool>;
   private readonly rankPipeline: AgentToolSearchRankPipeline;
   private readonly capabilityIndex: AgentCapabilitySearchIndex;
 
@@ -42,6 +44,7 @@ export class AgentToolSearchIndex {
     const documentBuilder = new AgentToolSearchDocumentBuilder();
     const registeredTools = registry.listTools();
     const toolsByName = new Map(registeredTools.map((tool) => [tool.name, tool]));
+    this.toolsByName = toolsByName;
     this.docs = registeredTools
       .filter((tool) => tool.loading === ToolLoadingModes.Dynamic && !isAgentToolMetaToolName(tool.name))
       .map((tool) => documentBuilder.build(tool));
@@ -66,7 +69,17 @@ export class AgentToolSearchIndex {
   }
 
   search(options: AgentToolSearchOptions): AgentToolSearchResult[] {
-    const ranked = this.rankPipeline.rank(options);
+    const eligibleToolNames = new Set(
+      this.docs
+        .map((document) => document.toolName)
+        .filter((toolName) =>
+          isAgentToolAvailableForInteraction(this.toolsByName.get(toolName) ?? {}, options.interaction),
+        ),
+    );
+    const authorized = options.authorizedToolNames
+      ? options.authorizedToolNames.filter((toolName) => eligibleToolNames.has(toolName))
+      : [...eligibleToolNames];
+    const ranked = this.rankPipeline.rank({ ...options, authorizedToolNames: authorized });
     const memoryByTool = new Map((options.memoryEvidence ?? []).map((entry) => [entry.toolName, entry]));
     return ranked.entries.map((entry) => this.toResult(entry, ranked.rankers, ranked.queryTokens, memoryByTool));
   }
@@ -74,7 +87,12 @@ export class AgentToolSearchIndex {
   async searchHybrid(options: AgentToolSearchOptions, signal?: AbortSignal): Promise<AgentToolSearchResult[]> {
     const authorized = options.authorizedToolNames ? new Set(options.authorizedToolNames) : undefined;
     const allowedNames = new Set(
-      this.docs.map((document) => document.toolName).filter((toolName) => !authorized || authorized.has(toolName)),
+      this.docs
+        .map((document) => document.toolName)
+        .filter((toolName) => !authorized || authorized.has(toolName))
+        .filter((toolName) =>
+          isAgentToolAvailableForInteraction(this.toolsByName.get(toolName) ?? {}, options.interaction),
+        ),
     );
     let recalled = this.search(options);
     if (!hasPrimaryLexicalRecall(recalled)) {

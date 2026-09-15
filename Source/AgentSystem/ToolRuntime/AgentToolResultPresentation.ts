@@ -9,6 +9,8 @@ import {
 import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
 import { projectAgentExecutedToolResultStatus, readAgentToolFailure } from "./AgentToolResultOutcome.js";
 import { projectAgentModelText } from "../Text/AgentModelPayloadProjection.js";
+import { normalizeAgentResourceUri } from "../Resources/AgentResourceUri.js";
+import { AgentResourceReferenceOrigins, type AgentResourceReference } from "../Resources/AgentResourceReference.js";
 
 /**
  * Separates the model's complete tool observation from the compact, human
@@ -25,6 +27,7 @@ export function projectAgentToolResultPresentation(result: ExecutedToolCallResul
   const headline = failure?.message ?? evidence[0]?.display ?? changes[0]?.summary ?? fallback ?? result.name;
   const summary = buildSummary(evidence, changes, fallback, headline);
   const workspaceCheckpoint = result.artifact?.workspace?.checkpoint ?? result.workspaceCapture?.checkpoint;
+  const resources = projectResources(result);
 
   return {
     type: AgentToolResultPresentationProtocol.type,
@@ -35,11 +38,50 @@ export function projectAgentToolResultPresentation(result: ExecutedToolCallResul
     facts,
     evidence,
     changes,
+    ...(resources.length > 0 ? { resources } : {}),
     artifactUri: result.artifact?.artifactUri,
     ...(workspaceCheckpoint ? { workspaceCheckpoint } : {}),
     ...(result.artifactAvailability ? { artifactAvailability: result.artifactAvailability } : {}),
     failure,
   };
+}
+
+function projectResources(result: ExecutedToolCallResult): AgentResourceReference[] {
+  const resources = new Map<string, AgentResourceReference>();
+  for (const asset of result.artifact?.assets ?? []) {
+    resources.set(asset.resourceUri, {
+      uri: asset.resourceUri,
+      name: asset.fileName,
+      mime: asset.mediaType,
+      size: asset.byteLength,
+      sha256: asset.sha256,
+      origin: AgentResourceReferenceOrigins.Artifact,
+    });
+  }
+
+  const resultRecord = readRecord(result.result);
+  const content = resultRecord && Array.isArray(resultRecord.content) ? resultRecord.content : [];
+  for (const item of content) {
+    const record = readRecord(item);
+    if (record?.type !== "resource") continue;
+    const resource = readRecord(record.resource);
+    const rawUri =
+      typeof record.uri === "string" ? record.uri : typeof resource?.uri === "string" ? resource.uri : undefined;
+    const uri = rawUri ? normalizeAgentResourceUri(rawUri) : undefined;
+    if (!uri || resources.has(uri)) continue;
+    const nameValue = typeof record.name === "string" ? record.name : resource?.name;
+    const mimeValue = typeof record.mimeType === "string" ? record.mimeType : resource?.mimeType;
+    const name = typeof nameValue === "string" && nameValue.trim() ? nameValue.trim() : uri;
+    const mime = typeof mimeValue === "string" && mimeValue.trim() ? mimeValue.trim() : "application/octet-stream";
+    resources.set(uri, {
+      uri,
+      name,
+      mime,
+      origin: AgentResourceReferenceOrigins.Tool,
+    });
+  }
+
+  return [...resources.values()];
 }
 
 function projectEvidence(result: ExecutedToolCallResult): AgentToolResultPresentationEvidence[] {

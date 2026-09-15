@@ -1,6 +1,6 @@
 import { AgentEventKinds, type AgentEventKind } from "../Events/AgentEventCatalog.js";
 import type { AgentDomainEvent } from "../Events/AgentEvent.js";
-import type { AgentChannelAdapter, AgentChannelSource } from "./AgentChannelTypes.js";
+import type { AgentChannelAdapter, AgentChannelMedia, AgentChannelSource } from "./AgentChannelTypes.js";
 import type { AgentChannelDelivery } from "./AgentChannelDelivery.js";
 import type { AgentChannelFinalResponseRewriter } from "./AgentChannelFinalResponse.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
@@ -9,13 +9,30 @@ import {
   agentChannelMediaIdentity,
   collectAgentChannelMarkdownResourceManifest,
   projectAgentChannelFinalParts,
-  projectAgentChannelOutboundMedia,
 } from "./AgentChannelOutboundMedia.js";
-import type { AgentChannelOutboundMediaProjection, AgentChannelOutboundSegment } from "./AgentChannelOutboundMedia.js";
+import type {
+  AgentChannelFinalPart,
+  AgentChannelOutboundMediaProjection,
+  AgentChannelOutboundSegment,
+} from "./AgentChannelOutboundMedia.js";
+import {
+  createAgentChannelActivity,
+  type AgentChannelActivity,
+  type AgentChannelActivityPart,
+  type AgentChannelActivityDeliveryReceipt,
+} from "./AgentChannelActivity.js";
 import type { AgentChannelFinalizationRecord } from "./AgentChannelFinalizationTypes.js";
 import { createOpaqueId } from "../Core/AgentIds.js";
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
-import { requiresChannelFinalRewrite, splitChannelTextByParagraphs } from "./AgentChannelText.js";
+import {
+  analyzeChannelMarkdownStructure,
+  splitAgentChannelContent,
+  splitChannelTextByParagraphs,
+} from "./AgentChannelText.js";
+import {
+  packAgentChannelFinalTextParts,
+  type AgentChannelFinalTextPackingPolicy,
+} from "./AgentChannelFinalTextPacking.js";
 
 export const AgentChannelRunRendererDefaults = Object.freeze({
   /** Throttle window for progressive edits (Telegram allows ~1 edit/s). */
@@ -39,7 +56,7 @@ export interface AgentChannelRunRendererOptions {
   readonly toolProgress?: (toolName: string) => string;
   /** Resolves canonical Senera resources before native media delivery. */
   readonly resourceResolver?: AgentResourceResolverLike;
-  /** Host-owned serializer used for channel turns; absent only in legacy tests. */
+  /** Host-owned serializer used for every settled channel answer. */
   readonly finalResponseRewriter?: AgentChannelFinalResponseRewriter;
   /** Durable session identity used by the native serializer cache. */
   readonly sessionId?: string;
@@ -47,9 +64,11 @@ export interface AgentChannelRunRendererOptions {
   readonly logicalCacheScope?: string;
   /** Prior successful serializer projections for this channel session. */
   readonly finalizationHistory?: readonly AgentChannelFinalizationRecord[];
+  /** Transport grouping for adjacent prose; media and code remain boundaries. */
+  readonly finalTextPacking?: AgentChannelFinalTextPackingPolicy;
   readonly now?: () => Date;
   readonly onPreviewFailed?: (error: unknown) => void;
-  readonly onMediaFailed?: (error: unknown) => void;
+  readonly onDeliveryFailed?: (error: unknown) => void;
   readonly onFinalRewriteFailed?: (error: unknown) => void;
   readonly onFinalRewriteTiming?: AgentModelTimingSink;
   readonly onFinalizationPersistFailed?: (error: unknown) => void;
@@ -57,6 +76,13 @@ export interface AgentChannelRunRendererOptions {
 }
 
 type RendererPhase = "idle" | "running" | "terminal";
+
+type AgentChannelFinalDeliveryIntent =
+  { readonly kind: "assistant_final" } | { readonly kind: "proactive" } | { readonly kind: "host_notice" };
+
+const AssistantFinalDelivery: AgentChannelFinalDeliveryIntent = Object.freeze({ kind: "assistant_final" });
+const ProactiveDelivery: AgentChannelFinalDeliveryIntent = Object.freeze({ kind: "proactive" });
+const HostNoticeDelivery: AgentChannelFinalDeliveryIntent = Object.freeze({ kind: "host_notice" });
 
 /**
  * Renders the senera run event stream into one channel conversation lane.
@@ -78,6 +104,7 @@ export class AgentChannelRunRenderer {
   private finalAnswer?: string;
   private deliveredAssistantContents = new Set<string>();
   private deliveredMedia = new Set<string>();
+  private deliveryFailureReported = false;
   private disposed = false;
   private readonly finalizationAbortController = new AbortController();
   /** Serializes event handling even when the provider invokes its sink
@@ -280,7 +307,11 @@ export class AgentChannelRunRenderer {
       // overwrite it in the same editable message.
       this.disposePreviewMessage();
     }
-    if (!delivered) delivered = this.options.delivery.enqueue(this.options.source, content);
+    if (!delivered) {
+      const receipt = await this.options.delivery.enqueueAndWait(this.options.source, content);
+      delivered = receipt.status === "sent";
+      if (receipt.status === "failed") this.reportDeliveryFailure(receipt.error);
+    }
     if (delivered) this.deliveredAssistantContents.add(normalized);
   }
 
@@ -339,10 +370,10 @@ export class AgentChannelRunRenderer {
     this.clearPreviewTimer();
     const final = this.finalAnswer;
     if (!final || final.trim().length === 0) {
-      await this.deliverFinal(agentErrorMessage("channels.renderer.done"));
+      await this.deliverFinal(agentErrorMessage("channels.renderer.done"), HostNoticeDelivery);
       return;
     }
-    await this.deliverFinal(final);
+    await this.deliverFinal(final, AssistantFinalDelivery);
   }
 
   private async fail(data: { message?: string }): Promise<void> {
@@ -353,14 +384,14 @@ export class AgentChannelRunRenderer {
       typeof data.message === "string" && data.message.length > 0
         ? data.message
         : agentErrorMessage("channels.renderer.failedFallback");
-    await this.deliverFinal(agentErrorMessage("channels.renderer.failed", { message }));
+    await this.deliverFinal(agentErrorMessage("channels.renderer.failed", { message }), HostNoticeDelivery);
   }
 
   private async cancel(): Promise<void> {
     if (this.phase === "terminal") return;
     this.phase = "terminal";
     this.clearPreviewTimer();
-    await this.deliverFinal(agentErrorMessage("channels.renderer.cancelled"));
+    await this.deliverFinal(agentErrorMessage("channels.renderer.cancelled"), HostNoticeDelivery);
   }
 
   /**
@@ -370,28 +401,69 @@ export class AgentChannelRunRenderer {
    */
   async deliverProactive(content: string): Promise<boolean> {
     if (this.disposed) return false;
-    return this.deliverFinal(content);
+    return this.deliverFinal(content, ProactiveDelivery);
   }
 
-  private async deliverFinal(content: string): Promise<boolean> {
+  /** Delivers an already structured activity without Markdown inference. */
+  async deliverActivity(activity: AgentChannelActivity): Promise<boolean> {
+    const receipt = await this.publishActivity(activity);
+    return receipt.status === "sent";
+  }
+
+  /** Publishes a structured activity and returns a bounded delivery receipt. */
+  async publishActivity(activity: AgentChannelActivity): Promise<AgentChannelActivityDeliveryReceipt> {
+    if (
+      this.disposed ||
+      activity.source.platform !== this.options.source.platform ||
+      activity.source.chatType !== this.options.source.chatType ||
+      activity.source.chatId !== this.options.source.chatId ||
+      activity.source.userId !== this.options.source.userId ||
+      activity.source.threadId !== this.options.source.threadId
+    )
+      return {
+        status: "failed",
+        activityId: activity.activityId,
+        messageIds: [],
+        parts: [],
+      };
+    const selectedResources = new Set(
+      activity.publication.mode === "current_turn" ? activity.publication.resourceUris : [],
+    );
+    const parts = activity.parts.filter(
+      (part) =>
+        part.kind === "text" ||
+        (activity.publication.mode === "current_turn" &&
+          (part.media.resourceUri === undefined || selectedResources.has(part.media.resourceUri))),
+    );
+    const delivery = await this.deliverActivityPartsWithReceipt(parts);
+    const receipt: AgentChannelActivityDeliveryReceipt = {
+      status: delivery.accepted ? "sent" : delivery.parts.some((part) => part.status === "sent") ? "partial" : "failed",
+      activityId: activity.activityId,
+      messageIds: delivery.parts.flatMap((part) => part.messageIds),
+      parts: delivery.parts,
+    };
+    return receipt;
+  }
+
+  private async deliverFinal(content: string, intent: AgentChannelFinalDeliveryIntent): Promise<boolean> {
     if (this.disposed) return false;
     const rewriter = this.options.finalResponseRewriter;
-    const requiresRewrite = requiresChannelFinalRewrite(content);
-    // Keep the cheap, deterministic path for ordinary prose. The native
-    // serializer is reserved for payloads whose resource/code boundaries
-    // cannot be recovered safely by the local projector.
-    if (rewriter && requiresRewrite) {
-      try {
-        let resourceManifest;
-        try {
-          resourceManifest = await collectAgentChannelMarkdownResourceManifest(content, {
+    // Resource selection is driven by the parsed manifest. A tool result alone
+    // never enters this path, so merely creating an Artifact cannot publish it.
+    const structure = analyzeChannelMarkdownStructure(content);
+    const needsResourceManifest =
+      structure.mediaReferenceCount > 0 || structure.resourceLinkCount > 0 || structure.inlineResourceUriCount > 0;
+    const resourceManifest =
+      intent.kind !== "host_notice" && needsResourceManifest
+        ? await collectAgentChannelMarkdownResourceManifest(content, {
             resourceResolver: this.options.resourceResolver,
-          });
-        } catch {
-          // The serializer can still preserve the original answer when a
-          // malformed Markdown block prevents manifest extraction.
-          resourceManifest = undefined;
-        }
+          }).catch(() => undefined)
+        : undefined;
+    // Every settled assistant answer uses the same host-owned serializer. This
+    // keeps paragraph boundaries, resource intent and finalization history
+    // consistent; local projection below is recovery only.
+    if (intent.kind !== "host_notice" && rewriter) {
+      try {
         const delivery = await rewriter.rewrite({
           content,
           source: this.options.source,
@@ -406,13 +478,18 @@ export class AgentChannelRunRenderer {
           },
         });
         if (this.disposed) return false;
-        const projection = await projectAgentChannelFinalParts(delivery.parts, {
+        const parts = packAgentChannelFinalTextParts(delivery.parts, this.options.finalTextPacking);
+        const projection = await projectAgentChannelFinalParts(parts, {
           resourceResolver: this.options.resourceResolver,
+          resourceManifest,
         });
         if (this.disposed) return false;
         if (projection.segments.length > 0 || projection.caption.trim().length > 0) {
           const accepted = await this.deliverFinalProjection(projection);
-          if (accepted) await this.persistFinalization(content, delivery.parts, resourceManifest);
+          if (accepted) {
+            const history = projectFinalizationHistory(projection, content, parts);
+            await this.persistFinalization(history.content, history.parts, resourceManifest);
+          }
           return accepted;
         }
         // An empty projection (e.g. whitespace-only parts) must not swallow
@@ -421,17 +498,26 @@ export class AgentChannelRunRenderer {
         this.options.onFinalRewriteFailed?.(error);
       }
     }
-    if (this.options.adapter.capabilities.supportsMedia === true) {
+    // If the model serializer is unavailable or rejected, keep the same
+    // resource/marker safety boundary locally instead of sending raw Markdown
+    // placeholders to the channel. This path is also useful for legacy callers
+    // that do not configure a rewriter.
+    if (intent.kind !== "host_notice" && needsResourceManifest) {
       try {
-        const projection = await projectAgentChannelOutboundMedia(content, {
+        const projection = await projectAgentChannelFinalParts([{ kind: "text", text: content }], {
           resourceResolver: this.options.resourceResolver,
+          resourceManifest,
         });
-        if (projection.media.length > 0) {
+        if (projection.segments.length > 0 || projection.caption.trim().length > 0) {
           return this.deliverFinalProjection(projection);
         }
       } catch (error) {
-        this.reportMediaFailure(error);
+        this.options.onFinalRewriteFailed?.(error);
       }
+      // A content made entirely of internal placeholders has no safe visible
+      // fallback. Do not re-emit the original model projection after it has
+      // been deliberately removed by the channel boundary.
+      return true;
     }
     if (this.previewMessageId && this.options.adapter.capabilities.supportsEdit) {
       const previewLength = this.options.previewLength ?? AgentChannelRunRendererDefaults.previewLength;
@@ -453,7 +539,7 @@ export class AgentChannelRunRenderer {
       // Preserve fenced/resource syntax as one text payload when the model
       // serializer produced no usable parts; paragraph splitting would break
       // a code fence into unrelated messages.
-      return requiresChannelFinalRewrite(content) ? this.enqueueText(content) : this.enqueueTextByParagraphs(content);
+      return structure.codeBlockCount > 0 ? this.enqueueText(content) : this.enqueueTextByParagraphs(content);
     }
     return true;
   }
@@ -466,10 +552,34 @@ export class AgentChannelRunRenderer {
         : projection.caption.trim()
           ? ([{ kind: "text", content: projection.caption }] satisfies AgentChannelOutboundSegment[])
           : [];
+    const activity = createAgentChannelActivity({
+      activityId: this.options.requestId ?? createOpaqueId("channel_activity"),
+      source: this.options.source,
+      parts: segments.map((segment): AgentChannelActivityPart =>
+        segment.kind === "text" ? { kind: "text", content: segment.content } : { kind: "media", media: segment.media },
+      ),
+      publication: {
+        mode: "current_turn",
+        resourceUris: segments.flatMap((segment) =>
+          segment.kind === "media" && segment.media.resourceUri ? [segment.media.resourceUri] : [],
+        ),
+      },
+    });
+    return this.deliverActivity(activity);
+  }
+
+  private async deliverActivityPartsWithReceipt(
+    parts: readonly AgentChannelActivityPart[],
+  ): Promise<{ accepted: boolean; parts: AgentChannelActivityDeliveryReceipt["parts"] }> {
+    if (this.disposed) return { accepted: false, parts: [] };
     const previewMessageId = this.previewMessageId;
+    const segments = parts.map((part): AgentChannelOutboundSegment =>
+      part.kind === "text" ? { kind: "text", content: part.content } : { kind: "media", media: part.media },
+    );
     const hadPreview = Boolean(previewMessageId && this.options.adapter.capabilities.supportsEdit);
     let consumedTextIndex = -1;
     let consumedTextLength = 0;
+    let consumedPreviewMessageId: string | undefined;
     if (hadPreview) {
       const firstText = segments.findIndex((segment) => segment.kind === "text");
       const previewCaption =
@@ -482,6 +592,7 @@ export class AgentChannelRunRenderer {
         );
         if (edited?.kind === "edited" || edited?.kind === "sent") {
           consumedTextIndex = firstText;
+          consumedPreviewMessageId = previewMessageId;
           consumedTextLength = Math.min(
             previewCaption.length,
             this.options.previewLength ?? AgentChannelRunRendererDefaults.previewLength,
@@ -494,27 +605,50 @@ export class AgentChannelRunRenderer {
     }
 
     let accepted = true;
+    const receipts: Array<AgentChannelActivityDeliveryReceipt["parts"][number]> = [];
     for (let index = 0; index < segments.length; index += 1) {
-      if (this.disposed) return false;
+      if (this.disposed) return { accepted: false, parts: receipts };
       const segment = segments[index];
       if (segment.kind === "text") {
         const skip = index === consumedTextIndex ? consumedTextLength : 0;
-        accepted = (await this.enqueueText(segment.content, skip)) && accepted;
+        const result = await this.enqueueTextWithReceipt(segment.content, skip);
+        receipts.push({
+          index,
+          status: result.accepted ? "sent" : "failed",
+          messageIds: [
+            ...(index === consumedTextIndex && consumedPreviewMessageId ? [consumedPreviewMessageId] : []),
+            ...result.messageIds,
+          ],
+          ...(result.code ? { errorCode: result.code } : {}),
+        });
+        accepted = result.accepted && accepted;
         continue;
       }
       const key = agentChannelMediaIdentity(segment.media);
-      if (this.deliveredMedia.has(key)) continue;
-      this.deliveredMedia.add(key);
-      const queued = this.options.delivery.enqueue(this.options.source, "", {
+      if (this.deliveredMedia.has(key)) {
+        receipts.push({ index, status: "sent", messageIds: [] });
+        continue;
+      }
+      if (this.options.adapter.capabilities.supportsMedia !== true) {
+        this.reportDeliveryFailure(new Error("Channel adapter does not support media delivery."));
+        receipts.push({ index, status: "failed", messageIds: [], errorCode: "unsupported" });
+        accepted = false;
+        continue;
+      }
+      const receipt = await this.options.delivery.enqueueAndWait(this.options.source, "", {
         chatType: this.options.source.chatType,
         media: [segment.media],
       });
-      if (!queued) {
-        this.deliveredMedia.delete(key);
+      if (receipt.status === "sent") {
+        this.deliveredMedia.add(key);
+        receipts.push({ index, status: "sent", messageIds: [receipt.messageId] });
+      } else {
+        this.reportDeliveryFailure(receipt.error);
+        receipts.push({ index, status: "failed", messageIds: [], errorCode: receipt.code });
         accepted = false;
       }
     }
-    return accepted;
+    return { accepted, parts: receipts };
   }
 
   private async persistFinalization(
@@ -542,24 +676,37 @@ export class AgentChannelRunRenderer {
   }
 
   private async enqueueText(content: string, skipPrefixLength = 0): Promise<boolean> {
-    if (this.disposed) return false;
-    if (!content.trim()) return true;
-    const { splitAgentChannelContent } = await import("./AgentChannelText.js");
+    return (await this.enqueueTextWithReceipt(content, skipPrefixLength)).accepted;
+  }
+
+  private async enqueueTextWithReceipt(
+    content: string,
+    skipPrefixLength = 0,
+  ): Promise<{ accepted: boolean; messageIds: string[]; code?: string }> {
+    if (this.disposed) return { accepted: false, messageIds: [] };
+    if (!content.trim()) return { accepted: true, messageIds: [] };
     const max = this.options.adapter.capabilities.maxMessageLength;
     const payload = skipPrefixLength > 0 ? content.slice(skipPrefixLength) : content;
     const pending = this.options.adapter.capabilities.splitsLongMessages
       ? splitAgentChannelContent(payload, max)
       : [payload];
     let accepted = true;
+    const messageIds: string[] = [];
+    let code: string | undefined;
     for (const chunk of pending) {
-      if (this.disposed) return false;
-      if (chunk.trim() && this.options.delivery.enqueue(this.options.source, chunk)) {
+      if (this.disposed) return { accepted: false, messageIds, ...(code ? { code } : {}) };
+      if (!chunk.trim()) continue;
+      const receipt = await this.options.delivery.enqueueAndWait(this.options.source, chunk);
+      if (receipt.status === "sent") {
         this.deliveredAssistantContents.add(chunk.trim());
-      } else if (chunk.trim()) {
+        messageIds.push(receipt.messageId);
+      } else {
+        this.reportDeliveryFailure(receipt.error);
+        code = receipt.code;
         accepted = false;
       }
     }
-    return accepted;
+    return { accepted, messageIds, ...(code ? { code } : {}) };
   }
 
   private async enqueueTextByParagraphs(content: string, skipPrefixLength = 0): Promise<boolean> {
@@ -579,8 +726,13 @@ export class AgentChannelRunRenderer {
     this.options.onPreviewFailed?.(error);
   }
 
-  private reportMediaFailure(error: unknown): void {
-    this.options.onMediaFailed?.(error);
+  private reportDeliveryFailure(error: unknown): void {
+    this.options.onDeliveryFailed?.(error);
+    if (this.deliveryFailureReported || this.disposed) return;
+    this.deliveryFailureReported = true;
+    // A failure receipt is itself a normal channel activity. It is deliberately
+    // best-effort and guarded so a broken adapter cannot recurse forever.
+    this.options.delivery.enqueue(this.options.source, agentErrorMessage("channels.delivery.droppedPrefix"));
   }
 }
 
@@ -592,4 +744,44 @@ function clampPreview(content: string, maxLength: number): string {
 function threshold(value: number | undefined): number {
   const resolved = value ?? AgentChannelRunRendererDefaults.bufferThreshold;
   return resolved < 1 ? 1 : resolved;
+}
+
+function projectFinalizationHistory(
+  projection: AgentChannelOutboundMediaProjection,
+  originalContent: string,
+  fallbackParts: readonly AgentChannelFinalPart[],
+): { content: string; parts: readonly AgentChannelFinalPart[] } {
+  if (projection.media.length === 0) return { content: originalContent, parts: fallbackParts };
+
+  const parts: AgentChannelFinalPart[] = [];
+  for (const segment of projection.segments) {
+    if (segment.kind === "text") {
+      if (segment.content.trim()) parts.push({ kind: "text", text: segment.content });
+      continue;
+    }
+    const uri = stableMediaReference(segment.media);
+    if (!uri) continue;
+    parts.push({
+      kind: "resource",
+      uri,
+      ...(segment.media.altText?.trim() ? { alt: segment.media.altText.trim() } : {}),
+      mediaKind: segment.media.kind,
+      ...(segment.media.contentType ? { mime: segment.media.contentType } : {}),
+      ...(segment.media.filename ? { fileName: segment.media.filename } : {}),
+    });
+  }
+  if (parts.length === 0) return { content: originalContent, parts: fallbackParts };
+
+  const content = parts
+    .map((part) => {
+      if (part.kind === "text") return part.text;
+      if (part.kind === "resource") return `![${part.alt ?? "resource"}](${part.uri})`;
+      return part.code;
+    })
+    .join("\n\n");
+  return { content, parts };
+}
+
+function stableMediaReference(media: AgentChannelMedia): string | undefined {
+  return media.resourceUri ?? media.url ?? media.path;
 }

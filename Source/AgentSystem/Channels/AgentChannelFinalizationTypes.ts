@@ -83,6 +83,9 @@ function normalizeAgentChannelFinalizationRecord(
               kind: "resource",
               uri,
               ...(part.alt?.trim() ? { alt: part.alt.trim().slice(0, 512) } : {}),
+              ...(part.mediaKind ? { mediaKind: part.mediaKind } : {}),
+              ...(part.mime?.trim() ? { mime: part.mime.trim().slice(0, 128) } : {}),
+              ...(part.fileName?.trim() ? { fileName: part.fileName.trim().slice(0, 512) } : {}),
             },
           ]
         : [];

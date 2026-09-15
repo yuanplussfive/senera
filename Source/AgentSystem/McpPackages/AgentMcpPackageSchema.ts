@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AgentExtensionNameSchema } from "../Extensions/AgentExtensionIdentity.js";
 import { validateAgentMcpEnvironmentTemplate } from "./AgentMcpEnvironmentTemplate.js";
+import { AgentMcpHostRequirementsSchema } from "./AgentMcpHostRequirements.js";
 
 export const AgentMcpExecutionTargets = {
   Sandbox: "sandbox",
@@ -66,6 +67,7 @@ export const AgentMcpLegacyServerConfigurationSchema = z.discriminatedUnion("typ
 export const AgentMcpConfigurationDocumentSchema = z
   .object({
     execution: AgentMcpExecutionSchema.optional(),
+    requirements: AgentMcpHostRequirementsSchema.optional(),
     mcpServers: z.record(AgentExtensionNameSchema, AgentMcpLegacyServerConfigurationSchema),
   })
   .strict()

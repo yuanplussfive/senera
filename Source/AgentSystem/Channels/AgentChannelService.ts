@@ -32,7 +32,7 @@ import { resolveAgentChannelSessionId, serializeAgentChannelLane } from "./Agent
 import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 import { renderAgentChannelCommandHelp, resolveAgentChannelCommand } from "./AgentChannelCommandRegistry.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import { AgentInteractionSurfaces, type AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentChannelFinalResponseRewriter } from "./AgentChannelFinalResponse.js";
 import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import {
@@ -40,6 +40,7 @@ import {
   type AgentProfileRouteRegistry,
 } from "../Conversation/AgentConversationSpace.js";
 import type { AgentChannelFinalizationRecord } from "./AgentChannelFinalizationTypes.js";
+import type { AgentChannelActivity } from "./AgentChannelActivity.js";
 
 export const AgentChannelServiceDefaults = Object.freeze({
   enabled: false,
@@ -126,12 +127,21 @@ export interface AgentChannelStatus {
   readonly error?: string;
 }
 
-export interface AgentChannelProactiveDeliveryRequest {
+export type AgentChannelProactiveDeliveryRequest = {
   readonly deliveryId: string;
   readonly sessionId: string;
-  readonly content: string;
   readonly createdAt: string;
-}
+} & (
+  | {
+      readonly content: string;
+      readonly activity?: never;
+    }
+  | {
+      /** Structured activity used by host jobs that already know publication intent. */
+      readonly activity: AgentChannelActivity;
+      readonly content?: never;
+    }
+);
 
 interface ActiveChannel {
   readonly kind: AgentChannelKind;
@@ -639,7 +649,7 @@ export class AgentChannelService {
       sessionId: lane.sessionId,
       input: instruction,
       interaction: {
-        surface: "channel",
+        surface: AgentInteractionSurfaces.Channel,
         platform: source.platform,
         chatType: source.chatType,
         spaceId: conversationSpace.id,
@@ -697,8 +707,8 @@ export class AgentChannelService {
       onFinalized: (record) => this.options.sessionManager.recordChannelFinalization?.(sessionId, record),
       onPreviewFailed: (error) =>
         this.log("warn", "channels.preview_failed", { kind: channel.kind, message: describe(error) }),
-      onMediaFailed: (error) =>
-        this.log("warn", "channels.media_projection_failed", { kind: channel.kind, message: describe(error) }),
+      onDeliveryFailed: (error) =>
+        this.log("error", "channels.send_dropped", { kind: channel.kind, source, message: describe(error) }),
       onFinalRewriteFailed: (error) =>
         this.log("warn", "channels.final_rewrite_failed", { kind: channel.kind, message: describe(error) }),
       onFinalRewriteTiming: (timing) =>
@@ -746,7 +756,7 @@ export class AgentChannelService {
           },
         },
         interaction: {
-          surface: "channel",
+          surface: AgentInteractionSurfaces.Channel,
           platform: channel.kind,
           chatType: source.chatType,
           spaceId: conversationSpace.id,
@@ -847,7 +857,9 @@ export class AgentChannelService {
     const finalizationHistory = await this.loadFinalizationHistory(request.sessionId, lane.platform);
     const renderer = this.createRenderer(channel, source, request.sessionId, request.deliveryId, finalizationHistory);
     try {
-      const accepted = await renderer.deliverProactive(request.content);
+      const accepted = request.activity
+        ? await renderer.deliverActivity(request.activity)
+        : await renderer.deliverProactive(request.content);
       if (!accepted) {
         this.log("warn", "channels.proactive_delivery_backpressure", {
           kind: lane.platform,
@@ -936,8 +948,8 @@ export class AgentChannelService {
         sessionId ? this.options.sessionManager.recordChannelFinalization?.(sessionId, record) : undefined,
       onPreviewFailed: (error) =>
         this.log("warn", "channels.preview_failed", { kind: channel.kind, message: describe(error) }),
-      onMediaFailed: (error) =>
-        this.log("warn", "channels.media_projection_failed", { kind: channel.kind, message: describe(error) }),
+      onDeliveryFailed: (error) =>
+        this.log("error", "channels.send_dropped", { kind: channel.kind, source, message: describe(error) }),
       onFinalRewriteFailed: (error) =>
         this.log("warn", "channels.final_rewrite_failed", { kind: channel.kind, message: describe(error) }),
       onFinalRewriteTiming: (timing) =>
@@ -975,7 +987,7 @@ export class AgentChannelService {
     return createAgentConversationSpace({
       sessionId,
       address: {
-        surface: "channel",
+        surface: AgentInteractionSurfaces.Channel,
         platform: source.platform,
         chatType: source.chatType,
         chatId: source.chatId,

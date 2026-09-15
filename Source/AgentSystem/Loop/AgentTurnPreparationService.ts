@@ -5,6 +5,7 @@ import type { AgentToolSearchCurrentSetPolicy } from "../ToolSearch/AgentToolSea
 import { AgentToolSearchCurrentSetPolicies } from "../ToolSearch/AgentToolSearchRuntimeTypes.js";
 import type { AgentPromptContextService, AgentRetrievalService } from "../Runtime/AgentRuntimeServices.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export interface AgentPreparedTurn {
   loadedToolNames: string[];
@@ -17,7 +18,10 @@ export interface AgentPreparedTurn {
 export interface AgentTurnPreparationRuntime {
   services: {
     retrieval: Pick<AgentRetrievalService, "resolvePlannedLoadedTools" | "rememberAutoSearch" | "reusableCapabilities">;
-    promptContext: Pick<AgentPromptContextService, "activateSkills" | "recommendedSkillTools" | "buildRootCommand">;
+    promptContext: Pick<
+      AgentPromptContextService,
+      "activateSkills" | "recommendedSkillTools" | "buildRootCommand" | "interactionToolNames"
+    >;
   };
 }
 
@@ -31,6 +35,7 @@ export class AgentTurnPreparationService {
     logicalCacheScope?: string;
     loadedToolNames: readonly string[];
     allowedToolNames?: readonly string[];
+    interaction?: AgentInteractionContext;
     pinnedSkills?: readonly AgentPinnedSkillReference[];
     signal?: AbortSignal;
   }): Promise<AgentPreparedTurn> {
@@ -47,10 +52,15 @@ export class AgentTurnPreparationService {
           query: input.userInput,
           authorizedToolNames: input.allowedToolNames,
           limit: 6,
+          ...(input.interaction ? { interaction: input.interaction } : {}),
         }) ?? [])
       : [];
     const reusableToolNames = reusableCapabilities.map((entry) => entry.toolName);
-    const currentLoadedTools = uniqueToolNames([...input.loadedToolNames, ...reusableToolNames]);
+    const currentLoadedTools = uniqueToolNames([
+      ...input.loadedToolNames,
+      ...reusableToolNames,
+      ...(this.runtime.services.promptContext.interactionToolNames?.(input.interaction) ?? []),
+    ]);
     const discover =
       reusableCapabilities.length === 0 || preferredToolNames.some((toolName) => !reusableToolNames.includes(toolName));
     const resolvedToolNames = await this.resolveLoadedTools({
@@ -59,6 +69,7 @@ export class AgentTurnPreparationService {
       currentSetPolicy: AgentToolSearchCurrentSetPolicies.Retain,
       preferredTools: preferredToolNames,
       discover,
+      ...(input.interaction ? { interaction: input.interaction } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
     });
     const loadedToolNames = intersectAllowedToolNames(resolvedToolNames, input.allowedToolNames);
@@ -92,6 +103,7 @@ export class AgentTurnPreparationService {
     currentSetPolicy: AgentToolSearchCurrentSetPolicy;
     preferredTools: readonly string[];
     discover: boolean;
+    interaction?: AgentInteractionContext;
     signal?: AbortSignal;
   }): Promise<string[]> {
     return this.runtime.services.retrieval.resolvePlannedLoadedTools({

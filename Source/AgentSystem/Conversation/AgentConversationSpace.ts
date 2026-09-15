@@ -1,5 +1,6 @@
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { createAgentPiLogicalCacheScope } from "../Pi/AgentPiPromptCache.js";
+import { AgentInteractionSurfaces, type AgentInteractionSurface } from "../Interaction/AgentInteractionContext.js";
 import {
   AgentChannelChatTypes,
   AgentChannelKinds,
@@ -8,7 +9,7 @@ import {
 } from "../Channels/AgentChannelTypes.js";
 import { z } from "zod";
 
-export type AgentConversationSpaceSurface = "console" | "channel";
+export type AgentConversationSpaceSurface = AgentInteractionSurface;
 export type AgentConversationSpacePlatform = AgentChannelKind;
 export type AgentConversationSpaceChatType = AgentChannelChatType;
 
@@ -41,7 +42,9 @@ export interface AgentProfileRoute {
 
 const AgentConversationAddressSelectorSchema = z
   .object({
-    surface: z.enum(["console", "channel"]),
+    surface: z.enum(
+      Object.values(AgentInteractionSurfaces) as [AgentConversationSpaceSurface, ...AgentConversationSpaceSurface[]],
+    ),
     platform: AgentConversationSpacePlatformSchema,
     chatType: AgentConversationSpaceChatTypeSchema,
     chatId: z.string().trim().min(1).max(512),
@@ -173,7 +176,7 @@ function normalizeAddress(address: AgentConversationAddress | AgentProfileRouteS
       .map(([key, value]) => [key, requireText(String(value), key)]),
   ) as unknown as AgentConversationAddress;
   if (!normalized.surface) throw new Error("Conversation space surface is required.");
-  if (normalized.surface === "channel" && !normalized.platform) {
+  if (normalized.surface === AgentInteractionSurfaces.Channel && !normalized.platform) {
     throw new Error("Channel conversation spaces require a platform.");
   }
   return normalized;

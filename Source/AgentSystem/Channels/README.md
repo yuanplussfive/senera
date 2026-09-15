@@ -85,18 +85,32 @@ one request and produces channel messages:
   injectable) only on platforms that support message edits.
 - `tool.call.started` — one compact `调用 <tool>` line per invocation (opt-out
   `streamProgress`).
-- Channel final answers that contain explicit Markdown images or long text can
-  use the host-owned ordered-parts serializer. The serializer keeps its
-  protocol guidance in the stable system prefix; the current user payload
-  carries a bounded `resource_manifest` generated from the same Markdown AST
-  and workspace boundary used by delivery. Canonical `senera://resource/...`
-  references are preferred, public `http(s)` URLs remain unchanged, and
-  relative/absolute local paths are emitted with their verified workspace
-  absolute path. Unresolved paths stay text rather than being guessed.
+- Every channel final answer goes through the host-owned ordered-parts
+  serializer. The serializer keeps its protocol guidance in the stable system
+  prefix; the current user payload carries a bounded `resource_manifest`
+  generated from the same Markdown AST and workspace boundary used by delivery.
+  Canonical `senera://resource/...` references are preferred, public `http(s)`
+  URLs remain unchanged, and relative/absolute local paths are emitted with
+  their verified workspace absolute path. Unresolved paths stay text rather
+  than being guessed.
+  A resource is published only when the serializer emits an explicit resource
+  part or a host job submits an `AgentChannelActivity` with a current-turn
+  publication set. Tool observations and Artifact assets are availability
+  metadata, never implicit outbound messages.
 - `run.completed/failed/cancelled` — final answer, failure or cancellation
   message. Long answers are split by the platform's max length while code
   fences stay balanced; Telegram receives MarkdownV2 escaping and degrades to
   plain text if a send is rejected.
+
+### Host-owned final publication
+
+The model does not publish directly to a channel. Once a channel run reaches
+its terminal assistant response, the host serializes that response into
+ordered text, resource, and code parts, validates the resource boundary, and
+delivers the parts exactly once through the adapter. This keeps media intent,
+paragraph boundaries, delivery receipts, and finalization history on one
+path. Host-generated proactive activities may submit an already structured
+`AgentChannelActivity`; they still use the same adapter delivery boundary.
 
 Detached background work completes through `AgentDelegationCompletionPort`
 (durable, idempotent, retried by `AgentDelegationCompletionDelivery`); the
@@ -107,9 +121,11 @@ channel service looks up the owning lane and delivers the result summary.
 `AgentChannelDelivery` serializes one lane's sends, retries transient
 failures with injectable backoff, honors platform flood-control windows
 (`retry_after`), and drops only after the configured attempt budget while
-logging the dropped payload. Throttles, timeouts and attempt counts are
-constants with constructor injection — no magic numbers are scattered through
-adapters.
+logging the dropped payload. The renderer uses `enqueueAndWait` for user-facing
+text and media, so a delivery receipt is required before a part is marked as
+sent. `queue_full`, `stopped`, `unsupported`, and `retry_exhausted` remain
+distinct failure states; a failed turn produces one best-effort channel notice
+instead of being reported as completed.
 
 ## HTTP Entries
 

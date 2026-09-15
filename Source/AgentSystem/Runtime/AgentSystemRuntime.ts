@@ -41,6 +41,7 @@ import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
 import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
+import type { AgentMcpHostCapabilitySnapshot } from "../McpPackages/AgentMcpHostRequirements.js";
 
 export interface AgentSystemRuntimeSharedOptions {
   modelProviderId?: string;
@@ -71,6 +72,7 @@ export interface AgentSystemRuntimeSharedOptions {
   /** Loaded plugin host; its tools/skills are applied per runtime composition. */
   pluginHost?: AgentPluginHost;
   resourceCoordinator?: AgentToolResourceLeaseCoordinator;
+  mcpHostCapabilities?: AgentMcpHostCapabilitySnapshot;
 }
 
 export interface AgentSystemRuntimeLoadOptions extends AgentSystemRuntimeSharedOptions {
@@ -100,6 +102,7 @@ export class AgentSystemRuntime {
   readonly resourcesPath: string | undefined;
   private readonly composition: AgentSystemRuntimeComposition;
   private readonly mcpPackageCatalog: AgentMcpPackageCatalog;
+  private readonly mcpHostCapabilities: AgentMcpHostCapabilitySnapshot | undefined;
   private readonly promptTierCache = new AgentPromptTierRenderCache();
   private closePromise: Promise<void> | undefined;
   private initialization: Promise<void> | undefined;
@@ -113,6 +116,7 @@ export class AgentSystemRuntime {
     this.logger = options.logger;
     this.piDiagnostics = options.piDiagnostics;
     this.resourcesPath = options.resourcesPath;
+    this.mcpHostCapabilities = options.mcpHostCapabilities;
     this.composition = composeAgentSystemRuntime({
       ...options,
       onMcpToolsChanged: (change) => this.applyMcpToolsChanged(change),
@@ -320,6 +324,7 @@ export class AgentSystemRuntime {
       sampling: this.composition.infrastructure.mcpSampling,
       onToolsChanged: (change) => this.applyMcpToolsChanged(change),
       inputs: this.composition.infrastructure.mcpInputs,
+      hostCapabilities: this.mcpHostCapabilities,
     }).discover(packages);
     if (discovery.failures.length > 0) {
       this.logger?.warn("mcp.discovery.failed", {
@@ -328,6 +333,11 @@ export class AgentSystemRuntime {
           serverName: failure.serverName,
           error: failure.error,
         })),
+      });
+    }
+    if (discovery.unavailableServers.length > 0) {
+      this.logger?.info("mcp.discovery.skipped", {
+        servers: discovery.unavailableServers,
       });
     }
     const deferredMcpServerNames = new Set([
